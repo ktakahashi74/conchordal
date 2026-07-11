@@ -1,11 +1,11 @@
 # Rhythm: One Coupling Continuum
 
 Rhythm in conchordal is **one coupling continuum on a shared emergent meter**,
-not a set of independent clocks. The population drives a single production
+not a set of independent clocks. The Community drives a single production
 meter (a coupled-oscillator beat); each voice is a phase oscillator that
 entrains its onset phase to that emergent beat with a coupling strength. There
 is no externally imposed grid — coherence (or its absence) emerges from how
-tightly each voice locks to the meter the population itself drives.
+tightly each voice locks to the meter the Community itself drives.
 
 The three rhythm "families" are just three regions of the continuum:
 
@@ -34,8 +34,13 @@ work:
 
 The Tier-1 presets take **no rate argument**: `metric()`, `entrained()`, and
 `flow()`. The tempo region is a property of the terrain, set once at the
-director level, not per voice. They work on both a `Material` and a draft
-`Participant`.
+  director level, not per voice. Configure them on a `PopulationSpec` before
+  calling `place()`.
+
+Do not confuse `.entrained()` with `brain("entrain")`. The preset controls
+onset timing; the brain selects the voice's articulation life and metabolism.
+They are independent and may be used together. See
+[The Life of a Voice](voice_life.md).
 
 Per-voice modifiers refine where on the continuum a voice sits:
 

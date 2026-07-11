@@ -467,9 +467,9 @@ Conchordal はリアルタイムオーディオの厳格な要件（レイテン
 
 ## 6.3 Conductor：Rhai によるスクリプティング
 
-Conductor モジュールは人間のアーティストとエコシステムの間のインターフェースとして機能する。[Rhai](https://rhai.rs/) スクリプト言語を組み込み、シミュレーション制御のための階層化された API を公開する。API は2種類のオブジェクトを軸に構成される：**Material**（プリセットにメソッドをチェーンして構築する種のレシピ）と **Participant**（エコシステムに配置された Material）である。常に最新の網羅的リファレンスは Script Reference ブック（`docs/rhai_book`、`/docs/rhai/` で公開）にあり、本節は概念的な階層のみを要約する。
+Conductor モジュールは人間のアーティストとエコシステムの間のインターフェースとして機能する。[Rhai](https://rhai.rs/) スクリプト言語を組み込み、シミュレーション制御のための階層化された API を公開する。API は四つの明示的な寿命に従う。**PopulationSpec** は再利用可能な配置前定義、**Population** は `place()` が生成する安定した集団同一性、**Voice** は一個の生きた構成員、実行時の **Community** は同じ Landscape を共有する全 Population の集約である。常に最新の網羅的リファレンスは Script Reference ブック（`docs/rhai_book`、`/docs/rhai/` で公開）にあり、本節は概念的な階層のみを要約する。`Species` は設定オブジェクトの別名にはせず、将来、遺伝と種分化の不変条件が実装された時のために予約する。
 
-**Material の構築**: プリセット `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()` から開始し、`variant(parent)` で複製・派生する。
+**PopulationSpec の構築**: プリセット `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()` から開始し、`variant(parent)` で複製・派生する。PopulationSpec は創始 Voice の既定値と、集団全体のライフサイクル・生存可能性・リスポーン方針を併せ持つ。
 
 *   ボディ: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)`（ハビタット/プレゼンテーションのルーティング）。
 *   ピッチ: `anchor()`（ピッチを保持。`freq(hz)` はアンカーを含意）, `seek_consonance()`（協和地形を登る。適用モードは自動解決される——持続ボイスはグライド、再アタックするボイスはオンセットでスナップ——`pitch_apply_mode("gate_snap"|"glide")` で明示上書き可）, `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `tessitura_gravity(v)`, `temperature(v)`（両コア共有の探索ノブ。0 で貪欲に落ち着く——音楽的にはこれが運動の緊張のノブで、高温ではボイスが協和から外れて彷徨い、冷ますと解決する）ほか。
@@ -477,14 +477,14 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。
 *   **リズム（カップリング連続体、5.4節）**: プリセット `metric()`, `entrained()`, `flow()` が連続体上の領域を選択する——Hz 引数はない。テンポはディレクターの `temporal_basin` の管轄である。微調整は `entrainment(v)`（ロック強度 0–1）, `rhythm_role("beat"|"subdivision"|"accent"|"texture")`, `microtiming(v)`。呼吸レベルの結合は `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, `rhythm_reward(rho_t, "attack_phase_match")`。
 *   ライフサイクル/生存可能性: `endurance(sec)`, 任意の `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`。
-*   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
+*   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
 
 **モードパターン**: モーダル合成のためのモード比率生成関数。
 
 *   `harmonic_modes()`, `odd_modes()`, `power_modes(beta)`, `stiff_string_modes(stiffness)`, `custom_modes(ratios)`, `modal_table(name)`, `landscape_density_modes()`, `landscape_peaks_modes()`。
 *   修飾子: `.count(n)`, `.range(min, max)`, `.spacing(d)`, `.gamma(g)`, `.jitter(cents)`, `.seed(s)`。
 
-**プレースメント**（Material 投入時の周波数配置）。場相対のプレースメントは対象を名指す。既定は density クラウド、`.peak()` で決定論的な極値になる:
+**プレースメント**（PopulationSpec 投入時の創始 Voice の周波数配置）。場相対のプレースメントは対象を名指す。既定は density クラウド、`.peak()` で決定論的な極値になる:
 *   `consonance(...)`: 協和性最大。`consonance(root)` は root 相対の倍音窓、`consonance(min, max)` は絶対範囲。
 *   `dissonance(min, max)`: 協和性最小（緊張・クラスター）。
 *   `edge(min, max)`: 協和/不協和の境界（準安定な中点）。
@@ -492,14 +492,15 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   場非依存: `random(min, max)`（対数一様）, 幾何の `at(freq)` / `line(start, end)`。
 *   修飾子: `.count(n)`, `.peak()`, `.range(min_mul, max_mul)`, `.spacing(d)`（最小ERB距離）。
 
-**Participant とグループ操作**:
-*   `place(material, placement)`: ボイスを生成し Participant を返す。
-*   `create(material, count)`: 段階的設定のためのドラフトグループを生成。
-*   `release(participant)`: グループをフェードアウトリリース。ライブグループはピッチ・振幅・音色のパッチに対応する。
+**Population の配置とライブ操作**:
+*   `place(population_spec, placement)`: 現在のカーソルで創始 Voice を即座にスケジュールし、安定した Population を返す。
+*   `release(population)`: Population を終端的に閉じ、現在の構成員をフェードアウトさせる。以後のパッチは無視される。
+
+`place()` が定義と実行時を分ける唯一の境界であり、公開ドラフト Population は存在しない。初期のボディ・挙動・ライフサイクル・リスポーンは PopulationSpec だけに、ピッチ・振幅・音色などのライブパッチと release は Population だけに属する。死とリスポーンで `voice_id` と世代が変わっても、Population の `population_id` は変わらない。
 
 **制御フロー**:
-*   `wait(seconds)`: 保留グループをコミットし、タイムラインカーソルを進める。
-*   `flush()`: タイムラインを進めずにコミット。
+*   `wait(seconds)`: 保留中のライブパッチを発行し、タイムラインカーソルを進める。
+*   `flush()`: タイムラインを進めずに保留中のライブパッチを発行する。
 *   `seed(value)`: ランダムシード設定。
 *   `section(name, callback)`: スコープ付きシーン——終了時に自動リリース。
 *   `play(callback)` / `parallel([callbacks])`: スコープ付き/並行ブロック実行。
@@ -573,11 +574,12 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 
 ## 9.3 上流への改訂
 
-実装の結果は、Manifesto の原理を裏づけながら、その機構レベルのスケッチをこれまでに三度書き換えた。
+実装の結果は、Manifesto の原理を裏づけながら、その機構レベルのスケッチを更新してきた。
 
 *   **固定4帯域のテーブルから、創発するメトリカル階層へ。** Manifesto は delta/theta/alpha/beta の固定帯域に音楽的役割を割り当てるスケッチを描いていた。実際に作ってみて分かったのは逆で、固定フィルタバンクは姿を変えた「課されたグリッド」だった。知覚研究に照らして生き残るのは原理の方——神経振動が音楽的時間を構造化する——であり、それは確信度を備え自己組織化する、拍・サブディビジョン・小節の階層として実現された（第4章）。
 *   **鏡像双対性から、生成ループの不動点要件へ。** 下倍音地形は計算できるのに、短調の調性は創発しなかった。この分析は一般化できる。知覚的な対称性が音楽として実在するのは、それに引き寄せられたエージェントの放射スペクトルが、その対称性を強め返す場合に限られる。知覚は鏡像化できても、生成はできない。あらゆる身体は倍音を放射するからである（3.3.3節）。したがって今後のあらゆる地形操作は、二つの試験に合格しなければならない——知覚機構が実在すること、そして生成側でループが閉じること。緊張ノブとして一時的に生き残った `harmonic_tension` ダイアルも撤去された（v0.4）。二試験のいずれも満たさず、エコシステムが読む協和ピークを動かさないことが確認され、そもそも数学的に冗長だったからである——二つの投影パスは、減衰指数が二つある単一の偶畳み込みカーネルにすぎない（3.3.3節）。両試験を満たす緊張軸は、その後構築された（v0.5）——運動の緊張はピッチ探索の*温度*（実ポテンシャル上の Boltzmann 探索。熱い探索は協和から外れ、冷たい探索は落ち着く）であり、配置の緊張は*相対的な協和レベル*（最強ピークより一段下の準安定点へ配置する）である。いずれもエコシステムが築いた実地形を歪めずに読むため、両試験を満たす。`docs/design-notes/tension.md` を参照。
 *   **rateの考古学から、観測可能な時間契約へ。** 生のエネルギープールと毎秒rateを公開すると、エコロジーが導出できる次元まで作曲家に手計算させることになる。実装アッセイにより、独立した契約は `initial_energy` や `energy_cap` ではなく公称enduranceだと分かった。エネルギーは $[0,1]$ に正規化でき、ゼロ適合時の消費rateはenduranceと不協和形状から導出できる。一方、毎秒の連続回復とアタックごとの回復は次元が異なるため、回復時間と離散割合として分離した。同じアッセイは `Entrain`・`Seq`・`Drone` の統合も退けた。オンセット時のリセット、死亡規則、telemetry、render modulatorが観測可能に異なり、単一コア化はenumをフラグの背後へ隠すだけだからである。
+*   **曖昧なオブジェクト名から、寿命を担うオントロジーへ。** `Material`、`Participant`、公開ドラフト Population は、どれも自分が表す寿命を名指さないため、説明に例外を必要とした。現在の遷移は `PopulationSpec + Placement --place()--> Population` と明示され、その生きた構成員が Voice、Landscape を共有する全 Population の集約が Community である。集団方針は PopulationSpec に、ライブ操作は Population に属し、`place()` は創始 Voice を即座にスケジュールする。`Species` は遺伝と種分化が実在する不変条件を与えるまで予約する。命名は観測可能な同一性に支えられる。Population は構成員の死とリスポーンをまたいで残るが、Voice とその世代は残らない。
 
 # 付録A：主要システムパラメータ
 

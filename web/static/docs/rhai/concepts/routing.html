@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0bf5c79c.js";
+            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-ebd22986.js"></script>
+        <script src="../toc-7940c472.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -203,10 +203,18 @@ wait(4.0);
 <code>send(habitat_bus)</code> can shape how the population organizes without ever
 becoming audible, and presented decor on <code>send(presentation_bus)</code> can be heard
 without perturbing the ecology.</p>
+<p>Both buses receiving every voice is the default because it <em>is</em> Direct
+Cognitive Coupling: what the listener hears and what the ecology senses are
+the same physical event. Splitting the buses is a deliberate departure.
+<code>send(habitat_bus)</code> casts terrain — the director’s work, shaping the field
+without being heard. <code>send(presentation_bus)</code> casts decor — heard, but outside
+the ecology’s world. The études’ craft rule applies: scaffolding is inaudible
+or embodied.</p>
 <h2 id="the-listener-twin"><a class="header" href="#the-listener-twin">The Listener Twin</a></h2>
 <p>conchordal keeps a <code>ListenerTwin</code>: a listener-side model of the <em>presented</em>
 sound only. It never reads the habitat bus, so hidden scaffolds cannot create
-fake listener tension. It reports five state values:</p>
+fake listener tension. Its <code>listener_state</code> report contains four perceptual
+levels:</p>
 <ul>
 <li><code>stability_level</code>: how stable / consonant the current audible sound is.</li>
 <li><code>resolvability_level</code>: whether a nearby audible state offers a plausible,
@@ -214,8 +222,16 @@ more stable continuation.</li>
 <li><code>tension_level</code>: <code>(1 - stability) * resolvability</code> — unstable now, but with
 a reachable path toward improvement.</li>
 <li><code>attention_level</code>: presentation-derived onset / spectral-flux salience.</li>
-<li><code>neural_rhythms</code>: presentation-derived listener-side rhythm (delta/theta).</li>
 </ul>
+<p>It also contains the listener-side meter estimate:</p>
+<ul>
+<li><code>beat_hz</code>, <code>beat_phase</code>, and <code>beat_confidence</code>;</li>
+<li><code>subdivision_ratio</code> and <code>subdivision_confidence</code>;</li>
+<li><code>measure_hz</code>, <code>measure_ratio</code>, and <code>measure_confidence</code>.</li>
+</ul>
+<p><code>generated_frame_id</code>, <code>analysis_frame_id</code>, and <code>analysis_lag_frames</code> make the
+perceptual delay explicit. They matter when comparing a report event with the
+sound that caused it.</p>
 <p>There is no scripting verb for the twin. It is observed, not commanded: when
 you run with reporting enabled it emits <code>listener_state</code> records, and the GUI
 shows the same state. Use it to check whether the tension you hear matches
@@ -237,7 +253,9 @@ changes rhythm synchronization.</li>
 <li><code>max_exploration_bonus</code> (default <code>0.10</code>): ceiling on that transient bonus.</li>
 </ul>
 <p>Raise <code>coupling_strength</code> gradually, and only after the reported
-<code>listener_state</code> looks musically legible.</p>
+<code>listener_state</code> looks musically legible. When coupling is active,
+<code>dcc_pressure</code> report records show both the pressure and the resulting
+temperature bonus.</p>
 
                     </main>
 
@@ -247,7 +265,7 @@ changes rhythm synchronization.</li>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../reference/api.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../concepts/timeline.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -261,7 +279,7 @@ changes rhythm synchronization.</li>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../reference/api.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../concepts/timeline.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

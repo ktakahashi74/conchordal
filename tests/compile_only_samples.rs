@@ -16,6 +16,7 @@ fn args_for_path(path: &Path) -> Args {
         nogui: false,
         compile_only: false,
         report: None,
+        seed: None,
     }
 }
 

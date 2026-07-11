@@ -50,7 +50,7 @@
 ## 参照
 
 - 論文: arXiv:2603.25637 実験 E6 / E6b
-- コード: `src/life/population.rs` (respawn / viability), `src/life/pitch_core.rs` (hill-climb)
+- コード: `src/life/community.rs` (respawn / viability), `src/life/pitch_core.rs` (hill-climb)
 
 ## 関連サンプル群
 

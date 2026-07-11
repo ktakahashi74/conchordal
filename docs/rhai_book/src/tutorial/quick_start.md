@@ -14,31 +14,37 @@ place(sine().amp(0.08).sustain(), at(440.0));
 wait(2.0);
 ```
 
-`place(material, placement)` stages a `Participant` at the current script time.
-It is committed by `wait(seconds)` or `flush()`, then can be patched while it
-is alive.
+`place(population_spec, placement)` creates a `Population` immediately at the
+current script time. The returned handle can patch or release that living
+population.
 
 ## Basic Objects
 
-- **Materials** are voice templates made with `sine()`, `harmonic()`,
+- **PopulationSpecs** describe founder voices and population policy. Start one
+  with `sine()`, `harmonic()`,
   `modal()`, `saw()`, `square()`, and `noise()`.
-- **Variants** clone a material with `variant(material)`.
-- **Placements** decide where participants enter: field targets
+- **Variants** clone a specification with `variant(population_spec)`.
+- **Placements** decide where populations enter: field targets
   `consonance()`, `dissonance()`, `edge()`, `gap()` (cloud by default,
   `.peak()` for the extremum), plus `random()`, `at()`, and `line()`.
-- **Participants** are the handles returned by `place()`. Before the next
-  `wait()` or `flush()`, participant builder methods still shape the initial
-  spawn; after that, patchable methods update running voices.
-- **Sections** scope participants and release them automatically.
+- **Populations** are the stable handles returned by `place()`. Their founder
+  voices exist from that boundary; live methods update the current voices.
+- **Sections** scope populations and release them automatically.
+
+A Population is one stable handle for a placed population. A placement with `.count(6)`
+creates six founder voices under that handle. If voices later die and respawn,
+the Population remains the same while its members and generations change. See
+[The Life of a Voice](../concepts/voice_life.md) for the complete object and
+lifecycle model.
 
 ```rhai
-let voice = harmonic()
+let population_spec = harmonic()
     .amp(0.08)
     .sustain()
     .brightness(0.35);
 
 section("plain entry", || {
-    place(voice, line(220.0, 440.0).count(3));
+    place(population_spec, line(220.0, 440.0).count(3));
     wait(4.0);
 });
 ```
@@ -74,22 +80,21 @@ the subject of [The Consonance Field](../concepts/consonance.md).
 
 ## Live Patching
 
-Some participant methods patch running voices; others only shape the draft and
-must be set before the group is committed. The
-[API Reference](../reference/api.md) tags every method as live-patchable or
-draft-only.
+Configure body, behavior, lifecycle, and respawn on a `PopulationSpec` before
+calling `place()`. The returned `Population` exposes only operations that make
+sense after placement: live patches and release. The
+[API Reference](../reference/api.md) marks the two method sets.
 
 ```rhai
-let g = place(
-    harmonic().amp(0.04).sustain(),
+let spec = harmonic().amp(0.04).sustain();
+let population = place(
+    spec,
     consonance(220.0).peak().count(3)
 );
-wait(2.0);     // commit: the group is now live
-
-g.amp(0.02);   // live patch on running voices
-g.glide(0.8);
+population.amp(0.02); // live patch on running voices
+population.glide(0.8);
 wait(3.0);
-release(g);
+release(population);
 ```
 
 ## A Complete Miniature
@@ -122,8 +127,18 @@ section("emergence", || {
 
 - [Editor Setup](editor_setup.md) — completion, hover docs, and diagnostics
   for the whole scripting surface.
+- [Observing a Performance](observing.md) — reports, filtering, and
+  replaying a run with `--seed`.
+- [The Life of a Voice](../concepts/voice_life.md) — population specs, voices, brains,
+  phonation, survival, and release.
+- [The Ecological Loop](../concepts/ecological_loop.md) — how sound changes
+  the terrain that changes the voices.
 - [The Consonance Field](../concepts/consonance.md) — field, density,
   movement, viability, respawn.
 - [Rhythm](../concepts/rhythm.md) — the coupling continuum and the director's
   rhythmic terrain.
+- [Routing and the Listener Twin](../concepts/routing.md) — what the ecology
+  senses, what the audience hears, and what is observed.
+- [Timeline and Structure](../concepts/timeline.md) — placement boundaries,
+  scopes, reusable gestures, and parallel branches.
 - [Curated Samples](../reference/samples.md) — the guided listening path.

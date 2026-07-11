@@ -38,13 +38,17 @@ The environment represents the structure of human hearing in both frequency and 
     * **Beta Band (~13-30Hz):** Controls micro-timing (groove) and ensemble tightness.
 	
 
-### 2. The Population (The Collective)
+### 2. The Community (The Collective)
 
-Sound is not a singular event but a mass phenomenon. The **Population** manages the aggregate state of all active agents. It represents the "species" or "society" of sound that inhabits the Landscape, handling the density, diversity, and collective spectral footprint that feeds back into the environment.
+Sound is not a singular event but a mass phenomenon. The runtime **Community**
+aggregates every placed **Population** that shares the Landscape, handling the
+density, diversity, and collective spectral footprint that feeds back into the
+environment. A Population keeps its identity while its living members and
+generations change.
 
-### 3. The Individual (The Agent)
+### 3. The Voice (The Agent)
 
-The atomic unit of the system. Each **Individual** is an autonomous entity:
+The atomic unit of the system. Each **Voice** is an autonomous entity:
 * **Proprioception:** It senses the Landscape's spectral potentials and synchronizes its internal clock to the environmental Neural Rhythms.
 * **Metabolism:** It consumes energy to sustain articulation.
 * **Autonomy:** It makes local decisions—moving away from dissonance (segregation) or locking onto harmonic peaks (fusion)—without a central conductor.

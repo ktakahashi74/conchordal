@@ -34,6 +34,10 @@ pub struct Args {
     /// Write machine-readable runtime report as JSONL
     #[arg(long)]
     pub report: Option<String>,
+
+    /// Override the fresh scenario seed (a script-level seed() still wins)
+    #[arg(long)]
+    pub seed: Option<u64>,
 }
 
 #[cfg(test)]

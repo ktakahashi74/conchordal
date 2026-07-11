@@ -1,9 +1,9 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::Timebase;
+use conchordal::life::community::Community;
 use conchordal::life::control::VoiceControl;
 use conchordal::life::generator_model::GeneratorModel;
-use conchordal::life::population::Population;
 use conchordal::life::voice::VoiceMetadata;
 use conchordal::scenario::{ArticulationCoreConfig, EnvelopeConfig, VoiceSpec};
 
@@ -34,7 +34,7 @@ fn spawn_and_get_adsr(articulation: ArticulationCoreConfig, envelope: EnvelopeCo
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = GeneratorModel::new(tb, space.clone());
-    let mut pop = Population::new(tb);
+    let mut pop = Community::new(tb);
 
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
@@ -46,7 +46,7 @@ fn spawn_and_get_adsr(articulation: ArticulationCoreConfig, envelope: EnvelopeCo
         articulation,
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,

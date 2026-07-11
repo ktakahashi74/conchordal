@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0bf5c79c.js";
+            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-ebd22986.js"></script>
+        <script src="../toc-7940c472.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,12 +182,12 @@ of its capacities, and the script itself is the score.</p>
 </code></pre>
 <ol>
 <li><strong>A Single Voice</strong> — one voice appears, holds its breath, and leaves.</li>
-<li><strong>Constellation</strong> — four ways to enter: a line, the peaks, the density,
-chance.</li>
+<li><strong>Constellation</strong> — six ways to enter: a line, the peaks, the density, the
+strain, the gaps, and chance.</li>
 <li><strong>Gravity</strong> — the same root under two suns; the peaks listen to what is
 sounding, not to a chart.</li>
-<li><strong>Tension</strong> — the director leans on the terrain until it strains, then
-lets the gravity come home.</li>
+<li><strong>Tension</strong> — the voices settle onto consonance, grow restless and stray,
+then cool and settle again.</li>
 <li><strong>Settling</strong> — scattered voices glide to where the field can hold them.</li>
 <li><strong>Bells</strong> — struck bodies; the last bell lets the field choose its
 partials.</li>
@@ -204,7 +204,10 @@ arc.</li>
 <p>Études 1–6 walk the consonance terrain (placement, gravity, tension,
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
 10 closes the loop into life; 11–12 are directed by the composer. All études
-are compile-checked by the test suite, so they always match the current API.</p>
+are compile-checked by the test suite, so they always match the current API.
+Top-level études intentionally do not call <code>seed(...)</code>: each run starts from
+a fresh scenario seed. Research assays keep fixed seeds so comparisons remain
+reproducible.</p>
 <p>One craft rule holds across the path: <strong>scaffolding is inaudible or
 embodied</strong>. Terrain anchors sing to the habitat bus, not to the audience,
 unless the drone is itself the subject, as with the suns of <em>Gravity</em>. Pulse

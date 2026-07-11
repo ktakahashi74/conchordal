@@ -39,7 +39,7 @@ pub use sound_body::{AnySoundBody, HarmonicBody, SineBody, SoundBody};
 
 #[derive(Debug, Clone, Default)]
 pub struct VoiceMetadata {
-    pub group_id: u64,
+    pub population_id: u64,
     pub member_idx: usize,
     pub generation: u32,
     pub parent_id: Option<u64>,
@@ -292,7 +292,7 @@ impl Voice {
         tracing::debug!(
             target: "rhythm::spawn",
             id = assigned_id,
-            group_id = metadata.group_id,
+            population_id = metadata.population_id,
             member_idx = metadata.member_idx,
             articulation = articulation_core,
             lifecycle = lifecycle_label,
@@ -421,6 +421,13 @@ impl Voice {
 
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    /// Whether the `phonate_when_viable()` gate has latched open. Always
+    /// `true` for the default `Immediate` gate; a one-way latch for
+    /// `WhenViable` (see `update_phonation_gate`).
+    pub fn phonation_gate_open(&self) -> bool {
+        self.phonation_gate_open
     }
 
     pub fn target_pitch_log2(&self) -> f32 {

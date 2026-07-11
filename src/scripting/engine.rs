@@ -5,8 +5,8 @@ impl ScriptHost {
         let mut engine = Engine::new();
         engine.on_print(|msg| println!("[rhai] {msg}"));
 
-        engine.register_type_with_name::<SpeciesHandle>("Material");
-        engine.register_type_with_name::<GroupHandle>("Participant");
+        engine.register_type_with_name::<PopulationSpecHandle>("PopulationSpec");
+        engine.register_type_with_name::<PopulationHandle>("Population");
         engine.register_type_with_name::<Placement>("Placement");
         engine.register_type_with_name::<Bus>("Bus");
         engine.register_type_with_name::<BusSet>("BusSet");
@@ -17,387 +17,462 @@ impl ScriptHost {
         builtins.set_var("presentation_bus", Bus::presentation());
         engine.register_global_module(builtins.into());
 
-        engine.register_fn("sine", || SpeciesHandle {
-            spec: SpeciesSpec::preset(BodyMethod::Sine),
+        engine.register_fn("sine", || PopulationSpecHandle {
+            spec: PopulationSpec::preset(BodyMethod::Sine),
         });
-        engine.register_fn("harmonic", || SpeciesHandle {
-            spec: SpeciesSpec::preset(BodyMethod::Harmonic),
+        engine.register_fn("harmonic", || PopulationSpecHandle {
+            spec: PopulationSpec::preset(BodyMethod::Harmonic),
         });
-        engine.register_fn("modal", || SpeciesHandle {
-            spec: SpeciesSpec::preset(BodyMethod::Modal),
+        engine.register_fn("modal", || PopulationSpecHandle {
+            spec: PopulationSpec::preset(BodyMethod::Modal),
         });
-        engine.register_fn("saw", || SpeciesHandle {
+        engine.register_fn("saw", || PopulationSpecHandle {
             spec: {
-                let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                let mut spec = PopulationSpec::preset(BodyMethod::Harmonic);
                 spec.control.body.timbre.brightness = 0.85;
                 spec
             },
         });
-        engine.register_fn("square", || SpeciesHandle {
+        engine.register_fn("square", || PopulationSpecHandle {
             spec: {
-                let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                let mut spec = PopulationSpec::preset(BodyMethod::Harmonic);
                 spec.control.body.timbre.brightness = 0.65;
                 spec
             },
         });
-        engine.register_fn("noise", || SpeciesHandle {
+        engine.register_fn("noise", || PopulationSpecHandle {
             spec: {
-                let mut spec = SpeciesSpec::preset(BodyMethod::Harmonic);
+                let mut spec = PopulationSpec::preset(BodyMethod::Harmonic);
                 spec.control.body.timbre.brightness = 1.0;
                 spec.control.body.timbre.motion = 1.0;
                 spec
             },
         });
-        engine.register_fn("variant", |parent: SpeciesHandle| parent);
+        engine.register_fn("variant", |parent: PopulationSpecHandle| parent);
 
         engine.register_fn("|", |left: Bus, right: Bus| left.set().combine(right.set()));
         engine.register_fn("|", |left: BusSet, right: Bus| left.combine(right.set()));
         engine.register_fn("|", |left: Bus, right: BusSet| left.set().combine(right));
         engine.register_fn("|", |left: BusSet, right: BusSet| left.combine(right));
-        engine.register_fn("send", |mut species: SpeciesHandle, bus: Bus| {
-            species.spec.set_routing(bus.set().routing());
-            species
-        });
-        engine.register_fn("send", |mut species: SpeciesHandle, bus: BusSet| {
-            species.spec.set_routing(bus.routing());
-            species
-        });
+        engine.register_fn(
+            "send",
+            |mut population_spec: PopulationSpecHandle, bus: Bus| {
+                population_spec.spec.set_routing(bus.set().routing());
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "send",
+            |mut population_spec: PopulationSpecHandle, bus: BusSet| {
+                population_spec.spec.set_routing(bus.routing());
+                population_spec
+            },
+        );
 
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("amp", SpeciesSpec::set_amp),
-                ("freq", SpeciesSpec::set_freq),
-                ("landscape_weight", SpeciesSpec::set_landscape_weight),
-                ("neighbor_step_cents", SpeciesSpec::set_neighbor_step_cents),
-                ("tessitura_gravity", SpeciesSpec::set_tessitura_gravity),
-                ("sustain_drive", SpeciesSpec::set_continuous_drive),
-                ("pitch_smooth", SpeciesSpec::set_pitch_smooth_tau),
+                ("amp", PopulationSpec::set_amp),
+                ("freq", PopulationSpec::set_freq),
+                ("landscape_weight", PopulationSpec::set_landscape_weight),
+                (
+                    "neighbor_step_cents",
+                    PopulationSpec::set_neighbor_step_cents,
+                ),
+                ("tessitura_gravity", PopulationSpec::set_tessitura_gravity),
+                ("sustain_drive", PopulationSpec::set_continuous_drive),
+                ("pitch_smooth", PopulationSpec::set_pitch_smooth_tau),
             ],
         );
-        register_species_pair_numeric_methods(
+        register_population_spec_pair_numeric_methods(
             &mut engine,
-            &[("avoid_neighbors", SpeciesSpec::set_crowding)],
+            &[("avoid_neighbors", PopulationSpec::set_crowding)],
         );
         engine.register_fn(
             "avoid_neighbors",
-            |mut species: SpeciesHandle, strength: FLOAT| {
-                species.spec.set_crowding_strength_only(strength as f32);
-                species
+            |mut population_spec: PopulationSpecHandle, strength: FLOAT| {
+                population_spec
+                    .spec
+                    .set_crowding_strength_only(strength as f32);
+                population_spec
             },
         );
         engine.register_fn(
             "avoid_neighbors",
-            |mut species: SpeciesHandle, strength: INT| {
-                species.spec.set_crowding_strength_only(strength as f32);
-                species
+            |mut population_spec: PopulationSpecHandle, strength: INT| {
+                population_spec
+                    .spec
+                    .set_crowding_strength_only(strength as f32);
+                population_spec
             },
         );
         engine.register_fn(
             "crowding_target",
-            |mut species: SpeciesHandle, same_group_visible: bool, other_group_visible: bool| {
-                species
+            |mut population_spec: PopulationSpecHandle,
+             same_population_visible: bool,
+             other_population_visible: bool| {
+                population_spec
                     .spec
-                    .set_crowding_target(same_group_visible, other_group_visible);
-                species
+                    .set_crowding_target(same_population_visible, other_population_visible);
+                population_spec
             },
         );
         engine.register_fn(
             "leave_self_out",
-            |mut species: SpeciesHandle, enabled: bool| {
-                species.spec.set_leave_self_out(enabled);
-                species
+            |mut population_spec: PopulationSpecHandle, enabled: bool| {
+                population_spec.spec.set_leave_self_out(enabled);
+                population_spec
             },
         );
         engine.register_fn(
             "leave_self_out_mode",
-            |mut species: SpeciesHandle, name: &str| {
-                species.spec.set_leave_self_out_mode(name);
-                species
+            |mut population_spec: PopulationSpecHandle, name: &str| {
+                population_spec.spec.set_leave_self_out_mode(name);
+                population_spec
             },
         );
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("move_cost", SpeciesSpec::set_move_cost_coeff),
-                ("move_cost_exp", SpeciesSpec::set_move_cost_exp),
-                ("proposal_interval", SpeciesSpec::set_proposal_interval_sec),
+                ("move_cost", PopulationSpec::set_move_cost_coeff),
+                ("move_cost_exp", PopulationSpec::set_move_cost_exp),
+                (
+                    "proposal_interval",
+                    PopulationSpec::set_proposal_interval_sec,
+                ),
             ],
         );
-        engine.register_fn("global_peaks", |mut species: SpeciesHandle, count: INT| {
-            species.spec.set_global_peaks(count, 0.0);
-            species
-        });
         engine.register_fn(
             "global_peaks",
-            |mut species: SpeciesHandle, count: INT, min_sep_cents: FLOAT| {
-                species.spec.set_global_peaks(count, min_sep_cents as f32);
-                species
+            |mut population_spec: PopulationSpecHandle, count: INT| {
+                population_spec.spec.set_global_peaks(count, 0.0);
+                population_spec
             },
         );
         engine.register_fn(
             "global_peaks",
-            |mut species: SpeciesHandle, count: INT, min_sep_cents: INT| {
-                species.spec.set_global_peaks(count, min_sep_cents as f32);
-                species
+            |mut population_spec: PopulationSpecHandle, count: INT, min_sep_cents: FLOAT| {
+                population_spec
+                    .spec
+                    .set_global_peaks(count, min_sep_cents as f32);
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "global_peaks",
+            |mut population_spec: PopulationSpecHandle, count: INT, min_sep_cents: INT| {
+                population_spec
+                    .spec
+                    .set_global_peaks(count, min_sep_cents as f32);
+                population_spec
             },
         );
         engine.register_fn(
             "ratio_candidates",
-            |mut species: SpeciesHandle, count: INT| {
-                species.spec.set_ratio_candidates(count);
-                species
+            |mut population_spec: PopulationSpecHandle, count: INT| {
+                population_spec.spec.set_ratio_candidates(count);
+                population_spec
             },
         );
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("window_cents", SpeciesSpec::set_window_cents),
-                ("top_k", SpeciesSpec::set_top_k),
-                ("temperature", SpeciesSpec::set_temperature),
-                ("sigma_cents", SpeciesSpec::set_sigma_cents),
-                ("random_candidates", SpeciesSpec::set_random_candidates),
+                ("window_cents", PopulationSpec::set_window_cents),
+                ("top_k", PopulationSpec::set_top_k),
+                ("temperature", PopulationSpec::set_temperature),
+                ("sigma_cents", PopulationSpec::set_sigma_cents),
+                ("random_candidates", PopulationSpec::set_random_candidates),
             ],
         );
         engine.register_fn(
             "move_cost_time_scale",
-            |mut species: SpeciesHandle, name: &str| {
-                species.spec.set_move_cost_time_scale(name);
-                species
+            |mut population_spec: PopulationSpecHandle, name: &str| {
+                population_spec.spec.set_move_cost_time_scale(name);
+                population_spec
             },
         );
         engine.register_fn(
             "leave_self_out_harmonics",
-            |mut species: SpeciesHandle, value: INT| {
-                species.spec.set_leave_self_out_harmonics(value);
-                species
+            |mut population_spec: PopulationSpecHandle, value: INT| {
+                population_spec.spec.set_leave_self_out_harmonics(value);
+                population_spec
             },
         );
         engine.register_fn(
             "pitch_apply_mode",
-            |mut species: SpeciesHandle, name: &str| {
-                species.spec.set_pitch_apply_mode(name);
-                species
+            |mut population_spec: PopulationSpecHandle, name: &str| {
+                population_spec.spec.set_pitch_apply_mode(name);
+                population_spec
             },
         );
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
-            &[("glide", SpeciesSpec::set_pitch_glide_tau_sec)],
+            &[("glide", PopulationSpec::set_pitch_glide_tau_sec)],
         );
-        engine.register_fn("seek_consonance", |mut species: SpeciesHandle| {
-            species.spec.set_consonance_movement();
-            species
+        engine.register_fn(
+            "seek_consonance",
+            |mut population_spec: PopulationSpecHandle| {
+                population_spec.spec.set_consonance_movement();
+                population_spec
+            },
+        );
+        engine.register_fn("anchor", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_anchor();
+            population_spec
         });
-        engine.register_fn("anchor", |mut species: SpeciesHandle| {
-            species.spec.set_anchor();
-            species
+        engine.register_fn(
+            "pitch_core",
+            |mut population_spec: PopulationSpecHandle, name: &str| {
+                population_spec.spec.set_pitch_core(name);
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "brain",
+            |call_ctx: NativeCallContext,
+             mut population_spec: PopulationSpecHandle,
+             name: &str|
+             -> Result<PopulationSpecHandle, Box<EvalAltResult>> {
+                population_spec
+                    .spec
+                    .set_brain(name, call_ctx.call_position())?;
+                Ok(population_spec)
+            },
+        );
+        engine.register_fn("sustain", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_phonation(PhonationKind::Sustain);
+            population_spec
         });
-        engine.register_fn("pitch_core", |mut species: SpeciesHandle, name: &str| {
-            species.spec.set_pitch_core(name);
-            species
-        });
-        engine.register_fn("brain", |mut species: SpeciesHandle, name: &str| {
-            species.spec.set_brain(name);
-            species
-        });
-        engine.register_fn("sustain", |mut species: SpeciesHandle| {
-            species.spec.set_phonation(PhonationKind::Sustain);
-            species
-        });
-        engine.register_fn("repeat", |mut species: SpeciesHandle| {
-            species.spec.set_phonation(PhonationKind::Repeat);
-            species
+        engine.register_fn("repeat", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_phonation(PhonationKind::Repeat);
+            population_spec
         });
         // Tier-1 rhythm presets over the coupling continuum. No Hz argument: the
         // tempo region is the director's `temporal_basin`; a preset only sets how
         // the voice relates to the shared emergent beat (free .. locked).
-        engine.register_fn("metric", |mut species: SpeciesHandle| {
-            species.spec.set_metric();
-            species
+        engine.register_fn("metric", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_metric();
+            population_spec
         });
-        engine.register_fn("entrained", |mut species: SpeciesHandle| {
-            species.spec.set_entrained();
-            species
+        engine.register_fn("entrained", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_entrained();
+            population_spec
         });
-        engine.register_fn("flow", |mut species: SpeciesHandle| {
-            species.spec.set_flow();
-            species
+        engine.register_fn("flow", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_flow();
+            population_spec
         });
-        engine.register_fn("rhythm_role", |mut species: SpeciesHandle, name: &str| {
-            species.spec.set_rhythm_role(name);
-            species
-        });
-        register_species_numeric_methods(
+        engine.register_fn(
+            "rhythm_role",
+            |call_ctx: NativeCallContext,
+             mut population_spec: PopulationSpecHandle,
+             name: &str|
+             -> Result<PopulationSpecHandle, Box<EvalAltResult>> {
+                population_spec
+                    .spec
+                    .set_rhythm_role(name, call_ctx.call_position())?;
+                Ok(population_spec)
+            },
+        );
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("entrainment", SpeciesSpec::set_entrainment),
-                ("microtiming", SpeciesSpec::set_microtiming),
+                ("entrainment", PopulationSpec::set_entrainment),
+                ("microtiming", PopulationSpec::set_microtiming),
             ],
         );
         // Tier 2: explicit when/duration
-        engine.register_fn("once", |mut species: SpeciesHandle| {
-            species.spec.set_when_once();
-            species
+        engine.register_fn("once", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_when_once();
+            population_spec
         });
-        register_species_numeric_methods(&mut engine, &[("pulse", SpeciesSpec::set_when_pulse)]);
-        engine.register_fn("while_alive", |mut species: SpeciesHandle| {
-            species.spec.set_duration_while_alive();
-            species
-        });
-        engine.register_fn("phonate_when_viable", |mut species: SpeciesHandle| {
-            species.spec.set_phonate_when_viable();
-            species
-        });
-        engine.register_fn("cycles", |mut species: SpeciesHandle, n: INT| {
-            species.spec.set_duration_cycles(n.max(1) as u32);
-            species
-        });
-        engine.register_fn("adaptive_duration", |mut species: SpeciesHandle| {
-            species.spec.set_adaptive_duration();
-            species
-        });
+        register_population_spec_numeric_methods(
+            &mut engine,
+            &[("pulse", PopulationSpec::set_when_pulse)],
+        );
+        engine.register_fn(
+            "while_alive",
+            |mut population_spec: PopulationSpecHandle| {
+                population_spec.spec.set_duration_while_alive();
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "phonate_when_viable",
+            |mut population_spec: PopulationSpecHandle| {
+                population_spec.spec.set_phonate_when_viable();
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "cycles",
+            |mut population_spec: PopulationSpecHandle, n: INT| {
+                population_spec.spec.set_duration_cycles(n.max(1) as u32);
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "adaptive_duration",
+            |mut population_spec: PopulationSpecHandle| {
+                population_spec.spec.set_adaptive_duration();
+                population_spec
+            },
+        );
         // Tier 3: expert tuning
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("pulse_lock", SpeciesSpec::set_pulse_lock),
-                ("social", SpeciesSpec::set_social),
-                ("shorten_on_drop", SpeciesSpec::set_shorten_on_drop),
+                ("pulse_lock", PopulationSpec::set_pulse_lock),
+                ("social", PopulationSpec::set_social),
+                ("shorten_on_drop", PopulationSpec::set_shorten_on_drop),
             ],
         );
-        register_species_pair_numeric_methods(
+        register_population_spec_pair_numeric_methods(
             &mut engine,
             &[
-                ("duration_range", SpeciesSpec::set_duration_range),
-                ("duration_curve", SpeciesSpec::set_duration_curve),
+                ("duration_range", PopulationSpec::set_duration_range),
+                ("duration_curve", PopulationSpec::set_duration_curve),
             ],
         );
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("brightness", SpeciesSpec::set_brightness),
-                ("spread", SpeciesSpec::set_spread),
-                ("unison", SpeciesSpec::set_unison),
+                ("brightness", PopulationSpec::set_brightness),
+                ("spread", PopulationSpec::set_spread),
+                ("unison", PopulationSpec::set_unison),
             ],
         );
         engine.register_fn(
             "modes",
-            |mut species: SpeciesHandle, pattern: ModePattern| {
-                species.spec.set_modes(pattern);
-                species
+            |mut population_spec: PopulationSpecHandle, pattern: ModePattern| {
+                population_spec.spec.set_modes(pattern);
+                population_spec
             },
         );
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("endurance", SpeciesSpec::set_endurance),
-                ("recovery", SpeciesSpec::set_recovery),
+                ("endurance", PopulationSpec::set_endurance),
+                ("recovery", PopulationSpec::set_recovery),
                 (
                     "attack_cost_fraction",
-                    SpeciesSpec::set_attack_cost_fraction,
+                    PopulationSpec::set_attack_cost_fraction,
                 ),
                 (
                     "attack_recharge_fraction",
-                    SpeciesSpec::set_attack_recharge_fraction,
+                    PopulationSpec::set_attack_recharge_fraction,
                 ),
             ],
         );
-        register_species_pair_numeric_methods(
+        register_population_spec_pair_numeric_methods(
             &mut engine,
             &[(
                 "consonance_viability",
-                SpeciesSpec::set_consonance_viability,
+                PopulationSpec::set_consonance_viability,
             )],
         );
         engine.register_fn(
             "viability_scope",
-            |mut species: SpeciesHandle, name: &str| {
-                species.spec.set_viability_scope(name);
-                species
+            |mut population_spec: PopulationSpecHandle, name: &str| {
+                population_spec.spec.set_viability_scope(name);
+                population_spec
             },
         );
         engine.register_fn(
             "selection_approx_loo",
-            |mut species: SpeciesHandle, enabled: bool| {
-                species.spec.set_selection_approx_loo(enabled);
-                species
+            |mut population_spec: PopulationSpecHandle, enabled: bool| {
+                population_spec.spec.set_selection_approx_loo(enabled);
+                population_spec
             },
         );
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
-            &[("dissonance_penalty", SpeciesSpec::set_dissonance_penalty)],
+            &[("dissonance_penalty", PopulationSpec::set_dissonance_penalty)],
         );
         engine.register_fn(
             "adsr",
-            |mut species: SpeciesHandle, a: FLOAT, d: FLOAT, s: FLOAT, r: FLOAT| {
-                species
+            |mut population_spec: PopulationSpecHandle, a: FLOAT, d: FLOAT, s: FLOAT, r: FLOAT| {
+                population_spec
                     .spec
                     .set_adsr(a as f32, d as f32, s as f32, r as f32);
-                species
+                population_spec
             },
         );
         engine.register_fn(
             "rhythm_coupling_vitality",
-            |mut species: SpeciesHandle, lambda_v: FLOAT, v_floor: FLOAT| {
-                species
+            |mut population_spec: PopulationSpecHandle, lambda_v: FLOAT, v_floor: FLOAT| {
+                population_spec
                     .spec
                     .set_rhythm_coupling_vitality(lambda_v as f32, v_floor as f32);
-                species
+                population_spec
             },
         );
         engine.register_fn(
             "rhythm_reward",
-            |mut species: SpeciesHandle, rho_t: FLOAT, metric: &str| {
-                species.spec.set_rhythm_reward(rho_t as f32, metric);
-                species
+            |mut population_spec: PopulationSpecHandle, rho_t: FLOAT, metric: &str| {
+                population_spec.spec.set_rhythm_reward(rho_t as f32, metric);
+                population_spec
             },
         );
-        register_species_numeric_methods(
+        register_population_spec_numeric_methods(
             &mut engine,
-            &[("rhythm_freq", SpeciesSpec::set_rhythm_freq)],
+            &[("rhythm_freq", PopulationSpec::set_rhythm_freq)],
         );
-        engine.register_fn("respawn_random", |mut species: SpeciesHandle| {
-            species.spec.set_respawn_random();
-            species
-        });
         engine.register_fn(
-            "respawn_hereditary",
-            |mut species: SpeciesHandle, sigma_oct: FLOAT| {
-                species.spec.set_respawn_hereditary(sigma_oct as f32);
-                species
+            "respawn_random",
+            |mut population_spec: PopulationSpecHandle| {
+                population_spec.spec.set_respawn_random();
+                population_spec
             },
         );
         engine.register_fn(
             "respawn_hereditary",
-            |mut species: SpeciesHandle, sigma_oct: INT| {
-                species.spec.set_respawn_hereditary(sigma_oct as f32);
-                species
+            |mut population_spec: PopulationSpecHandle, sigma_oct: FLOAT| {
+                population_spec
+                    .spec
+                    .set_respawn_hereditary(sigma_oct as f32);
+                population_spec
             },
         );
-        engine.register_fn("respawn_consonance", |mut species: SpeciesHandle| {
-            species.spec.set_respawn_consonance();
-            species
-        });
-        register_species_numeric_methods(
+        engine.register_fn(
+            "respawn_hereditary",
+            |mut population_spec: PopulationSpecHandle, sigma_oct: INT| {
+                population_spec
+                    .spec
+                    .set_respawn_hereditary(sigma_oct as f32);
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "respawn_consonance",
+            |mut population_spec: PopulationSpecHandle| {
+                population_spec.spec.set_respawn_consonance();
+                population_spec
+            },
+        );
+        register_population_spec_numeric_methods(
             &mut engine,
             &[
-                ("respawn_capacity", SpeciesSpec::set_respawn_capacity),
-                ("respawn_min_c_level", SpeciesSpec::set_respawn_min_c_level),
+                ("respawn_capacity", PopulationSpec::set_respawn_capacity),
+                (
+                    "respawn_min_c_level",
+                    PopulationSpec::set_respawn_min_c_level,
+                ),
                 (
                     "respawn_background_death_rate",
-                    SpeciesSpec::set_respawn_background_death_rate,
+                    PopulationSpec::set_respawn_background_death_rate,
                 ),
             ],
         );
         engine.register_fn(
             "respawn_settle",
-            |mut species: SpeciesHandle, placement: Placement| {
+            |mut population_spec: PopulationSpecHandle, placement: Placement| {
                 if let Some(strategy) = placement.strategy() {
-                    species.spec.set_respawn_settle_strategy(strategy);
+                    population_spec.spec.set_respawn_settle_strategy(strategy);
                 } else {
                     warn!("respawn_settle() requires consonance(), dissonance(), edge(), gap(), random(), or line()");
                 }
-                species
+                population_spec
             },
         );
 
@@ -406,21 +481,25 @@ impl ScriptHost {
             let ctx_for_create = ctx.clone();
             engine.register_fn(
                 "create",
-                move |call_ctx: NativeCallContext, species: SpeciesHandle, count: INT| {
+                move |call_ctx: NativeCallContext,
+                      population_spec: PopulationSpecHandle,
+                      count: INT| {
                     let mut ctx = ctx_for_create.lock().expect("lock script context");
-                    ctx.create_group(species, count, call_ctx.call_position())
+                    ctx.create_population(population_spec, count, None, call_ctx.call_position())
                 },
             );
         }
-        let ctx_for_place_material = ctx.clone();
+        let ctx_for_place_population_spec = ctx.clone();
         engine.register_fn(
             "place",
             move |call_ctx: NativeCallContext,
-                  species: SpeciesHandle,
+                  population_spec: PopulationSpecHandle,
                   placement: Placement|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_place_material.lock().expect("lock script context");
-                ctx.place_material(species, placement, call_ctx.call_position())
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_place_population_spec
+                    .lock()
+                    .expect("lock script context");
+                ctx.place_population_spec(population_spec, placement, call_ctx.call_position())
             },
         );
 
@@ -465,9 +544,9 @@ impl ScriptHost {
         let ctx_for_release = ctx.clone();
         engine.register_fn(
             "release",
-            move |_call_ctx: NativeCallContext, handle: GroupHandle| {
+            move |_call_ctx: NativeCallContext, handle: PopulationHandle| {
                 let mut ctx = ctx_for_release.lock().expect("lock script context");
-                ctx.release_group(handle.id);
+                ctx.release_population(handle.id);
             },
         );
 
@@ -737,302 +816,291 @@ impl ScriptHost {
             placement.with_spacing(spacing as f32)
         });
 
-        register_group_numeric_methods(
+        register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
             &[
-                ("amp", SpeciesSpec::set_amp, patch_amp, None),
-                (
-                    "freq",
-                    SpeciesSpec::set_freq,
-                    patch_freq,
-                    Some(draft_clear_strategy),
-                ),
+                ("amp", PopulationSpec::set_amp, patch_amp),
+                ("freq", PopulationSpec::set_freq, patch_freq),
                 (
                     "landscape_weight",
-                    SpeciesSpec::set_landscape_weight,
+                    PopulationSpec::set_landscape_weight,
                     patch_landscape_weight,
-                    None,
                 ),
                 (
                     "neighbor_step_cents",
-                    SpeciesSpec::set_neighbor_step_cents,
+                    PopulationSpec::set_neighbor_step_cents,
                     patch_neighbor_step_cents,
-                    None,
                 ),
                 (
                     "tessitura_gravity",
-                    SpeciesSpec::set_tessitura_gravity,
+                    PopulationSpec::set_tessitura_gravity,
                     patch_tessitura_gravity,
-                    None,
                 ),
                 (
                     "sustain_drive",
-                    SpeciesSpec::set_continuous_drive,
+                    PopulationSpec::set_continuous_drive,
                     patch_continuous_drive,
-                    None,
                 ),
                 (
                     "pitch_smooth",
-                    SpeciesSpec::set_pitch_smooth_tau,
+                    PopulationSpec::set_pitch_smooth_tau,
                     patch_pitch_smooth_tau,
-                    None,
                 ),
             ],
         );
-        register_group_crowding_overloads(&mut engine, ctx.clone(), "avoid_neighbors");
-        let ctx_for_group_crowding_target = ctx.clone();
+        register_population_crowding_overloads(&mut engine, ctx.clone(), "avoid_neighbors");
+        let ctx_for_population_crowding_target = ctx.clone();
         engine.register_fn(
             "crowding_target",
-            move |handle: GroupHandle,
-                  same_group_visible: bool,
-                  other_group_visible: bool|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_crowding_target
+            move |handle: PopulationHandle,
+                  same_population_visible: bool,
+                  other_population_visible: bool|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_crowding_target
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("crowding_target ignored for unknown group {}", handle.id);
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
+                    warn!(
+                        "crowding_target ignored for unknown population {}",
+                        handle.id
+                    );
                     return Ok(handle);
                 };
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.crowding_target_same = same_group_visible;
-                        group.crowding_target_other = other_group_visible;
-                        group
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.crowding_target_same = same_population_visible;
+                        population.crowding_target_other = other_population_visible;
+                        population
                             .spec
-                            .set_crowding_target(same_group_visible, other_group_visible);
+                            .set_crowding_target(same_population_visible, other_population_visible);
+                        population.pending_crowding_target =
+                            Some((same_population_visible, other_population_visible));
                     }
-                    GroupStatus::Live => {
-                        group.crowding_target_same = same_group_visible;
-                        group.crowding_target_other = other_group_visible;
-                        group
-                            .spec
-                            .set_crowding_target(same_group_visible, other_group_visible);
-                        group.pending_crowding_target =
-                            Some((same_group_visible, other_group_visible));
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "crowding_target"),
+                    _ => ctx.warn_population_inactive(handle.id, "crowding_target"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_leave_self_out = ctx.clone();
+        let ctx_for_population_leave_self_out = ctx.clone();
         engine.register_fn(
             "leave_self_out",
-            move |handle: GroupHandle, enabled: bool| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_leave_self_out
+            move |handle: PopulationHandle,
+                  enabled: bool|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_leave_self_out
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("leave_self_out ignored for unknown group {}", handle.id);
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
+                    warn!(
+                        "leave_self_out ignored for unknown population {}",
+                        handle.id
+                    );
                     return Ok(handle);
                 };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_leave_self_out(enabled),
-                    GroupStatus::Live => {
-                        group.spec.set_leave_self_out(enabled);
-                        group.pending_patch.leave_self_out = Some(enabled);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.set_leave_self_out(enabled);
+                        population.pending_patch.leave_self_out = Some(enabled);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "leave_self_out"),
+                    _ => ctx.warn_population_inactive(handle.id, "leave_self_out"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_leave_self_out_mode = ctx.clone();
+        let ctx_for_population_leave_self_out_mode = ctx.clone();
         engine.register_fn(
             "leave_self_out_mode",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_leave_self_out_mode
+            move |handle: PopulationHandle,
+                  name: &str|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_leave_self_out_mode
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
                     warn!(
-                        "leave_self_out_mode ignored for unknown group {}",
+                        "leave_self_out_mode ignored for unknown population {}",
                         handle.id
                     );
                     return Ok(handle);
                 };
                 let mode = parse_leave_self_out_mode_name(
-                    group.spec.control.pitch.leave_self_out_mode,
+                    population.spec.control.pitch.leave_self_out_mode,
                     name,
                 );
-                match group.status {
-                    GroupStatus::Draft => group.spec.control.pitch.set_leave_self_out_mode(mode),
-                    GroupStatus::Live => {
-                        group.spec.control.pitch.set_leave_self_out_mode(mode);
-                        patch_leave_self_out_mode(&mut group.pending_patch, mode);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.control.pitch.set_leave_self_out_mode(mode);
+                        patch_leave_self_out_mode(&mut population.pending_patch, mode);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "leave_self_out_mode"),
+                    _ => ctx.warn_population_inactive(handle.id, "leave_self_out_mode"),
                 }
                 Ok(handle)
             },
         );
-        register_group_numeric_methods(
+        register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
             &[
                 (
                     "move_cost",
-                    SpeciesSpec::set_move_cost_coeff,
+                    PopulationSpec::set_move_cost_coeff,
                     patch_move_cost_coeff,
-                    None,
                 ),
                 (
                     "move_cost_exp",
-                    SpeciesSpec::set_move_cost_exp,
+                    PopulationSpec::set_move_cost_exp,
                     patch_move_cost_exp,
-                    None,
                 ),
                 (
                     "proposal_interval",
-                    SpeciesSpec::set_proposal_interval_sec,
+                    PopulationSpec::set_proposal_interval_sec,
                     patch_proposal_interval,
-                    None,
                 ),
             ],
         );
-        let ctx_for_group_global_peaks = ctx.clone();
+        let ctx_for_population_global_peaks = ctx.clone();
         engine.register_fn(
             "global_peaks",
-            move |handle: GroupHandle, count: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_global_peaks
+            move |handle: PopulationHandle,
+                  count: INT|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_global_peaks
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("global_peaks ignored for unknown group {}", handle.id);
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
+                    warn!("global_peaks ignored for unknown population {}", handle.id);
                     return Ok(handle);
                 };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_global_peaks(count, 0.0),
-                    GroupStatus::Live => {
-                        group.spec.set_global_peaks(count, 0.0);
-                        group.pending_patch.global_peak_count = Some(count);
-                        group.pending_patch.global_peak_min_sep_cents = Some(0.0);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.set_global_peaks(count, 0.0);
+                        population.pending_patch.global_peak_count = Some(count);
+                        population.pending_patch.global_peak_min_sep_cents = Some(0.0);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "global_peaks"),
+                    _ => ctx.warn_population_inactive(handle.id, "global_peaks"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_global_peaks_sep = ctx.clone();
+        let ctx_for_population_global_peaks_sep = ctx.clone();
         engine.register_fn(
             "global_peaks",
-            move |handle: GroupHandle,
+            move |handle: PopulationHandle,
                   count: INT,
                   min_sep_cents: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_global_peaks_sep
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_global_peaks_sep
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("global_peaks ignored for unknown group {}", handle.id);
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
+                    warn!("global_peaks ignored for unknown population {}", handle.id);
                     return Ok(handle);
                 };
                 let min_sep = min_sep_cents as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_global_peaks(count, min_sep),
-                    GroupStatus::Live => {
-                        group.spec.set_global_peaks(count, min_sep);
-                        group.pending_patch.global_peak_count = Some(count);
-                        group.pending_patch.global_peak_min_sep_cents = Some(min_sep);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.set_global_peaks(count, min_sep);
+                        population.pending_patch.global_peak_count = Some(count);
+                        population.pending_patch.global_peak_min_sep_cents = Some(min_sep);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "global_peaks"),
+                    _ => ctx.warn_population_inactive(handle.id, "global_peaks"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_global_peaks_sep_int = ctx.clone();
+        let ctx_for_population_global_peaks_sep_int = ctx.clone();
         engine.register_fn(
             "global_peaks",
-            move |handle: GroupHandle,
+            move |handle: PopulationHandle,
                   count: INT,
                   min_sep_cents: INT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_global_peaks_sep_int
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_global_peaks_sep_int
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("global_peaks ignored for unknown group {}", handle.id);
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
+                    warn!("global_peaks ignored for unknown population {}", handle.id);
                     return Ok(handle);
                 };
                 let min_sep = min_sep_cents as f32;
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_global_peaks(count, min_sep),
-                    GroupStatus::Live => {
-                        group.spec.set_global_peaks(count, min_sep);
-                        group.pending_patch.global_peak_count = Some(count);
-                        group.pending_patch.global_peak_min_sep_cents = Some(min_sep);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.set_global_peaks(count, min_sep);
+                        population.pending_patch.global_peak_count = Some(count);
+                        population.pending_patch.global_peak_min_sep_cents = Some(min_sep);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "global_peaks"),
+                    _ => ctx.warn_population_inactive(handle.id, "global_peaks"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_ratio_candidates = ctx.clone();
+        let ctx_for_population_ratio_candidates = ctx.clone();
         engine.register_fn(
             "ratio_candidates",
-            move |handle: GroupHandle, count: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_ratio_candidates
+            move |handle: PopulationHandle,
+                  count: INT|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_ratio_candidates
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("ratio_candidates ignored for unknown group {}", handle.id);
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
+                    warn!(
+                        "ratio_candidates ignored for unknown population {}",
+                        handle.id
+                    );
                     return Ok(handle);
                 };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_ratio_candidates(count),
-                    GroupStatus::Live => {
-                        group.spec.set_ratio_candidates(count);
-                        group.pending_patch.ratio_candidate_count = Some(count);
-                        group.pending_patch.use_ratio_candidates = Some(count > 0);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.set_ratio_candidates(count);
+                        population.pending_patch.ratio_candidate_count = Some(count);
+                        population.pending_patch.use_ratio_candidates = Some(count > 0);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "ratio_candidates"),
+                    _ => ctx.warn_population_inactive(handle.id, "ratio_candidates"),
                 }
                 Ok(handle)
             },
         );
-        register_group_numeric_methods(
+        register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
             &[
                 (
                     "window_cents",
-                    SpeciesSpec::set_window_cents,
+                    PopulationSpec::set_window_cents,
                     patch_window_cents,
-                    None,
                 ),
-                ("top_k", SpeciesSpec::set_top_k, patch_top_k, None),
+                ("top_k", PopulationSpec::set_top_k, patch_top_k),
                 (
                     "temperature",
-                    SpeciesSpec::set_temperature,
+                    PopulationSpec::set_temperature,
                     patch_temperature,
-                    None,
                 ),
                 (
                     "sigma_cents",
-                    SpeciesSpec::set_sigma_cents,
+                    PopulationSpec::set_sigma_cents,
                     patch_sigma_cents,
-                    None,
                 ),
                 (
                     "random_candidates",
-                    SpeciesSpec::set_random_candidates,
+                    PopulationSpec::set_random_candidates,
                     patch_random_candidates,
-                    None,
                 ),
             ],
         );
-        let ctx_for_group_move_cost_time_scale = ctx.clone();
+        let ctx_for_population_move_cost_time_scale = ctx.clone();
         engine.register_fn(
             "move_cost_time_scale",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_move_cost_time_scale
+            move |handle: PopulationHandle,
+                  name: &str|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_move_cost_time_scale
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
                     warn!(
-                        "move_cost_time_scale ignored for unknown group {}",
+                        "move_cost_time_scale ignored for unknown population {}",
                         handle.id
                     );
                     return Ok(handle);
@@ -1044,55 +1112,64 @@ impl ScriptHost {
                     }
                     "proposal" | "proposal_interval" => MoveCostTimeScale::ProposalInterval,
                     _ => {
-                        ctx.warn_live_builder(handle.id, "move_cost_time_scale");
+                        ctx.warn_population_inactive(handle.id, "move_cost_time_scale");
                         return Ok(handle);
                     }
                 };
-                match group.status {
-                    GroupStatus::Draft => group.spec.control.pitch.set_move_cost_time_scale(value),
-                    GroupStatus::Live => {
-                        group.spec.control.pitch.set_move_cost_time_scale(value);
-                        group.pending_patch.move_cost_time_scale = Some(value);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population
+                            .spec
+                            .control
+                            .pitch
+                            .set_move_cost_time_scale(value);
+                        population.pending_patch.move_cost_time_scale = Some(value);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "move_cost_time_scale"),
+                    _ => ctx.warn_population_inactive(handle.id, "move_cost_time_scale"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_loo_harmonics = ctx.clone();
+        let ctx_for_population_loo_harmonics = ctx.clone();
         engine.register_fn(
             "leave_self_out_harmonics",
-            move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_loo_harmonics
+            move |handle: PopulationHandle,
+                  value: INT|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_loo_harmonics
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
                     warn!(
-                        "leave_self_out_harmonics ignored for unknown group {}",
+                        "leave_self_out_harmonics ignored for unknown population {}",
                         handle.id
                     );
                     return Ok(handle);
                 };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_leave_self_out_harmonics(value),
-                    GroupStatus::Live => {
-                        group.spec.set_leave_self_out_harmonics(value);
-                        group.pending_patch.leave_self_out_harmonics = Some(value);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.set_leave_self_out_harmonics(value);
+                        population.pending_patch.leave_self_out_harmonics = Some(value);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "leave_self_out_harmonics"),
+                    _ => ctx.warn_population_inactive(handle.id, "leave_self_out_harmonics"),
                 }
                 Ok(handle)
             },
         );
-        let ctx_for_group_pitch_apply_mode = ctx.clone();
+        let ctx_for_population_pitch_apply_mode = ctx.clone();
         engine.register_fn(
             "pitch_apply_mode",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_apply_mode
+            move |handle: PopulationHandle,
+                  name: &str|
+                  -> Result<PopulationHandle, Box<EvalAltResult>> {
+                let mut ctx = ctx_for_population_pitch_apply_mode
                     .lock()
                     .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_apply_mode ignored for unknown group {}", handle.id);
+                let Some(population) = ctx.populations.get_mut(&handle.id) else {
+                    warn!(
+                        "pitch_apply_mode ignored for unknown population {}",
+                        handle.id
+                    );
                     return Ok(handle);
                 };
                 let lowered = name.trim().to_ascii_lowercase();
@@ -1100,541 +1177,44 @@ impl ScriptHost {
                     "gate_snap" | "gatesnap" | "snap" => PitchApplyMode::GateSnap,
                     "glide" | "gliss" | "glissando" => PitchApplyMode::Glide,
                     _ => {
-                        ctx.warn_live_builder(handle.id, "pitch_apply_mode");
+                        ctx.warn_population_inactive(handle.id, "pitch_apply_mode");
                         return Ok(handle);
                     }
                 };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_pitch_apply_mode_resolved(mode),
-                    GroupStatus::Live => {
-                        group.spec.set_pitch_apply_mode_resolved(mode);
-                        group.pending_patch.pitch_apply_mode = Some(mode);
+                match population.status {
+                    PopulationStatus::Live => {
+                        population.spec.set_pitch_apply_mode_resolved(mode);
+                        population.pending_patch.pitch_apply_mode = Some(mode);
                     }
-                    _ => ctx.warn_live_builder(handle.id, "pitch_apply_mode"),
+                    _ => ctx.warn_population_inactive(handle.id, "pitch_apply_mode"),
                 }
                 Ok(handle)
             },
         );
-        register_group_numeric_methods(
+        register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
             &[(
                 "glide",
-                SpeciesSpec::set_pitch_glide_tau_sec,
+                PopulationSpec::set_pitch_glide_tau_sec,
                 patch_pitch_glide_tau,
-                None,
             )],
         );
-        let ctx_for_group_seek_consonance = ctx.clone();
-        engine.register_fn(
-            "seek_consonance",
-            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_seek_consonance
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("seek_consonance ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_consonance_movement(),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "seek_consonance"),
-                    _ => ctx.warn_live_builder(handle.id, "seek_consonance"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_brain = ctx.clone();
-        engine.register_fn(
-            "brain",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_brain.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("brain ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_brain(name),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "brain"),
-                    _ => ctx.warn_live_builder(handle.id, "brain"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_anchor = ctx.clone();
-        engine.register_fn(
-            "anchor",
-            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_anchor.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("anchor ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_anchor(),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "anchor"),
-                    _ => ctx.warn_live_builder(handle.id, "anchor"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_pitch_core = ctx.clone();
-        engine.register_fn(
-            "pitch_core",
-            move |handle: GroupHandle, name: &str| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_pitch_core
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("pitch_core ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_pitch_core(name),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "pitch_core"),
-                    _ => ctx.warn_live_builder(handle.id, "pitch_core"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_sustain = ctx.clone();
-        engine.register_fn(
-            "sustain",
-            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_sustain.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("sustain ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_phonation(PhonationKind::Sustain);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "sustain"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_repeat = ctx.clone();
-        engine.register_fn(
-            "repeat",
-            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_repeat.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("repeat ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_phonation(PhonationKind::Repeat);
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "repeat"),
-                }
-                Ok(handle)
-            },
-        );
-        // Tier 2: explicit when/duration (group, draft-only)
-        macro_rules! register_group_draft_fn {
-            ($name:expr, $ctx:expr, $engine:expr, |$spec:ident| $body:expr) => {{
-                let ctx_clone = $ctx.clone();
-                $engine.register_fn(
-                    $name,
-                    move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                        let mut ctx = ctx_clone.lock().expect("lock script context");
-                        let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                            warn!("{} ignored for unknown group {}", $name, handle.id);
-                            return Ok(handle);
-                        };
-                        match group.status {
-                            GroupStatus::Draft => {
-                                let $spec = &mut group.spec;
-                                $body;
-                            }
-                            _ => ctx.warn_live_builder(handle.id, $name),
-                        }
-                        Ok(handle)
-                    },
-                );
-            }};
-        }
-        macro_rules! register_group_draft_fn1 {
-            ($name:expr, $ctx:expr, $engine:expr, |$spec:ident, $a:ident: $at:ty| $body:expr) => {{
-                let ctx_clone = $ctx.clone();
-                $engine.register_fn(
-                    $name,
-                    move |handle: GroupHandle,
-                          $a: $at|
-                          -> Result<GroupHandle, Box<EvalAltResult>> {
-                        let mut ctx = ctx_clone.lock().expect("lock script context");
-                        let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                            warn!("{} ignored for unknown group {}", $name, handle.id);
-                            return Ok(handle);
-                        };
-                        match group.status {
-                            GroupStatus::Draft => {
-                                let $spec = &mut group.spec;
-                                $body;
-                            }
-                            _ => ctx.warn_live_builder(handle.id, $name),
-                        }
-                        Ok(handle)
-                    },
-                );
-            }};
-        }
-        register_group_draft_fn!("metric", ctx, engine, |s| s.set_metric());
-        register_group_draft_fn!("entrained", ctx, engine, |s| s.set_entrained());
-        register_group_draft_fn!("flow", ctx, engine, |s| s.set_flow());
-        register_group_draft_fn1!("rhythm_role", ctx, engine, |s, name: &str| s
-            .set_rhythm_role(name));
-        register_group_draft_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[
-                ("entrainment", SpeciesSpec::set_entrainment),
-                ("microtiming", SpeciesSpec::set_microtiming),
-            ],
-        );
-        register_group_draft_fn!("once", ctx, engine, |s| s.set_when_once());
-        register_group_draft_fn!("while_alive", ctx, engine, |s| s.set_duration_while_alive());
-        register_group_draft_fn!("phonate_when_viable", ctx, engine, |s| s
-            .set_phonate_when_viable());
-        register_group_draft_fn1!("cycles", ctx, engine, |s, n: INT| s
-            .set_duration_cycles(n.max(1) as u32));
-        register_group_draft_fn!("adaptive_duration", ctx, engine, |s| s
-            .set_adaptive_duration());
-        register_group_draft_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[
-                ("pulse", SpeciesSpec::set_when_pulse),
-                ("pulse_lock", SpeciesSpec::set_pulse_lock),
-                ("social", SpeciesSpec::set_social),
-                ("shorten_on_drop", SpeciesSpec::set_shorten_on_drop),
-            ],
-        );
-        register_group_draft_pair_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[
-                ("duration_range", SpeciesSpec::set_duration_range),
-                ("duration_curve", SpeciesSpec::set_duration_curve),
-            ],
-        );
-        register_group_numeric_methods(
+        // Initial-only configuration is deliberately registered only on
+        // PopulationSpec. A placed Population exposes live patches and release.
+
+        register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
             &[
                 (
                     "brightness",
-                    SpeciesSpec::set_brightness,
+                    PopulationSpec::set_brightness,
                     patch_timbre_brightness,
-                    None,
                 ),
-                ("spread", SpeciesSpec::set_spread, patch_timbre_spread, None),
-                ("unison", SpeciesSpec::set_unison, patch_timbre_unison, None),
+                ("spread", PopulationSpec::set_spread, patch_timbre_spread),
+                ("unison", PopulationSpec::set_unison, patch_timbre_unison),
             ],
-        );
-        let ctx_for_group_modes = ctx.clone();
-        engine.register_fn(
-            "modes",
-            move |handle: GroupHandle,
-                  pattern: ModePattern|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_modes.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("modes ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_modes(pattern),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "modes"),
-                    _ => ctx.warn_live_builder(handle.id, "modes"),
-                }
-                Ok(handle)
-            },
-        );
-        register_group_draft_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[
-                ("endurance", SpeciesSpec::set_endurance),
-                ("recovery", SpeciesSpec::set_recovery),
-                (
-                    "attack_cost_fraction",
-                    SpeciesSpec::set_attack_cost_fraction,
-                ),
-                (
-                    "attack_recharge_fraction",
-                    SpeciesSpec::set_attack_recharge_fraction,
-                ),
-            ],
-        );
-        register_group_draft_pair_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[(
-                "consonance_viability",
-                SpeciesSpec::set_consonance_viability,
-            )],
-        );
-        register_group_draft_fn1!("viability_scope", ctx, engine, |s, name: &str| s
-            .set_viability_scope(name));
-        register_group_draft_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[("dissonance_penalty", SpeciesSpec::set_dissonance_penalty)],
-        );
-        let ctx_for_group_adsr = ctx.clone();
-        engine.register_fn(
-            "adsr",
-            move |handle: GroupHandle,
-                  a: FLOAT,
-                  d: FLOAT,
-                  s: FLOAT,
-                  r: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_adsr.lock().expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("adsr ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.spec.set_adsr(a as f32, d as f32, s as f32, r as f32);
-                    }
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "adsr"),
-                    _ => ctx.warn_live_builder(handle.id, "adsr"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_rhythm_coupling_vitality = ctx.clone();
-        engine.register_fn(
-            "rhythm_coupling_vitality",
-            move |handle: GroupHandle,
-                  lambda_v: FLOAT,
-                  v_floor: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_rhythm_coupling_vitality
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!(
-                        "rhythm_coupling_vitality ignored for unknown group {}",
-                        handle.id
-                    );
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group
-                        .spec
-                        .set_rhythm_coupling_vitality(lambda_v as f32, v_floor as f32),
-                    GroupStatus::Live => {
-                        ctx.warn_live_builder(handle.id, "rhythm_coupling_vitality")
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "rhythm_coupling_vitality"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_rhythm_reward = ctx.clone();
-        engine.register_fn(
-            "rhythm_reward",
-            move |handle: GroupHandle,
-                  rho_t: FLOAT,
-                  metric: &str|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_rhythm_reward
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("rhythm_reward ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => group.spec.set_rhythm_reward(rho_t as f32, metric),
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "rhythm_reward"),
-                    _ => ctx.warn_live_builder(handle.id, "rhythm_reward"),
-                }
-                Ok(handle)
-            },
-        );
-        register_group_draft_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[("rhythm_freq", SpeciesSpec::set_rhythm_freq)],
-        );
-        let ctx_for_group_respawn_random = ctx.clone();
-        engine.register_fn(
-            "respawn_random",
-            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_respawn_random
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("respawn_random ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        group.respawn_policy = RespawnPolicy::Random;
-                        group.spec.respawn_policy = RespawnPolicy::Random;
-                    }
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_random"),
-                    _ => ctx.warn_live_builder(handle.id, "respawn_random"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_respawn_hereditary = ctx.clone();
-        engine.register_fn(
-            "respawn_hereditary",
-            move |handle: GroupHandle,
-                  sigma_oct: FLOAT|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_respawn_hereditary
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("respawn_hereditary ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let sigma_oct = sigma_oct as f32;
-                let sigma_oct = if sigma_oct.is_finite() {
-                    sigma_oct.max(0.0)
-                } else {
-                    0.0
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        let policy = RespawnPolicy::Hereditary { sigma_oct };
-                        group.respawn_policy = policy;
-                        group.spec.respawn_policy = policy;
-                    }
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
-                    _ => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_respawn_hereditary_int = ctx.clone();
-        engine.register_fn(
-            "respawn_hereditary",
-            move |handle: GroupHandle, sigma_oct: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_respawn_hereditary_int
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("respawn_hereditary ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                let sigma_oct = (sigma_oct as f32).max(0.0);
-                match group.status {
-                    GroupStatus::Draft => {
-                        let policy = RespawnPolicy::Hereditary { sigma_oct };
-                        group.respawn_policy = policy;
-                        group.spec.respawn_policy = policy;
-                    }
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
-                    _ => ctx.warn_live_builder(handle.id, "respawn_hereditary"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_respawn_consonance = ctx.clone();
-        engine.register_fn(
-            "respawn_consonance",
-            move |handle: GroupHandle| -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_respawn_consonance
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("respawn_consonance ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        let policy = RespawnPolicy::PeakBiased {
-                            config: RespawnPeakBiasConfig::default(),
-                        };
-                        group.respawn_policy = policy;
-                        group.spec.respawn_policy = policy;
-                    }
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "respawn_consonance"),
-                    _ => ctx.warn_live_builder(handle.id, "respawn_consonance"),
-                }
-                Ok(handle)
-            },
-        );
-        register_group_draft_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[
-                ("respawn_capacity", SpeciesSpec::set_respawn_capacity),
-                ("respawn_min_c_level", SpeciesSpec::set_respawn_min_c_level),
-                (
-                    "respawn_background_death_rate",
-                    SpeciesSpec::set_respawn_background_death_rate,
-                ),
-            ],
-        );
-        let ctx_for_group_respawn_settle_placement = ctx.clone();
-        engine.register_fn(
-            "respawn_settle",
-            move |handle: GroupHandle,
-                  placement: Placement|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_respawn_settle_placement
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("respawn_settle ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        if let Some(strategy) = placement.strategy() {
-                            group.spec.set_respawn_settle_strategy(strategy);
-                        } else {
-                            warn!(
-                                "respawn_settle() requires consonance(), dissonance(), edge(), gap(), random(), or line()"
-                            );
-                        }
-                    }
-                    _ => ctx.warn_live_builder(handle.id, "respawn_settle"),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_group_place_placement = ctx.clone();
-        engine.register_fn(
-            "place",
-            move |handle: GroupHandle,
-                  placement: Placement|
-                  -> Result<GroupHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_group_place_placement
-                    .lock()
-                    .expect("lock script context");
-                let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                    warn!("place ignored for unknown group {}", handle.id);
-                    return Ok(handle);
-                };
-                match group.status {
-                    GroupStatus::Draft => {
-                        if let Some(freq_hz) = placement.freq_hz {
-                            group.spec.set_freq(freq_hz);
-                        }
-                        if placement.count != 1 {
-                            group.count = placement.count;
-                        }
-                        group.strategy = placement.strategy();
-                    }
-                    GroupStatus::Live => ctx.warn_live_builder(handle.id, "place"),
-                    _ => ctx.warn_live_builder(handle.id, "place"),
-                }
-                Ok(handle)
-            },
         );
 
         // Director-level shaping of the emergent production meter (scene-global
@@ -1825,10 +1405,16 @@ impl ScriptHost {
         engine
     }
 
-    pub fn load_script(path: &str) -> Result<Scenario, ScriptError> {
+    /// Loads and evaluates a scenario script. `seed`, when given, seeds the
+    /// fresh scenario before evaluation; a script-level `seed()` call still
+    /// wins, since it runs during evaluation and overwrites it.
+    pub fn load_script(path: &str, seed: Option<u64>) -> Result<Scenario, ScriptError> {
         let src = fs::read_to_string(path)
             .map_err(|err| ScriptError::new(format!("read script {path}: {err}"), None))?;
-        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let ctx = Arc::new(Mutex::new(match seed {
+            Some(seed) => ScriptContext::with_seed(seed),
+            None => ScriptContext::default(),
+        }));
         let engine = ScriptHost::create_engine(ctx.clone());
 
         if let Err(e) = engine.eval::<()>(&src) {

@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 
 use tracing::info;
 
-use super::population::Population;
+use super::community::Community;
 use crate::core::landscape::LandscapeFrame;
 use crate::scenario::{Action, Scenario, SceneMarker, TimedEvent};
 
@@ -77,14 +77,14 @@ impl Conductor {
     /// Apply any events scheduled up to and including current time.
     ///
     /// Note: spawn placement rules (e.g. minimum ERB distance between fundamentals) are enforced
-    /// inside `Population` when handling spawn actions.
+    /// inside `Community` when handling spawn actions.
     pub fn dispatch_until(
         &mut self,
         time_sec: f32,
         _current_frame: u64,
         landscape: &LandscapeFrame,
         mut analysis_rt: Option<&mut crate::core::stream::analysis::AnalysisStream>,
-        population: &mut Population,
+        community: &mut Community,
     ) {
         while let Some(ev) = self.event_queue.front() {
             if ev.time > time_sec {
@@ -95,7 +95,7 @@ impl Conductor {
             let action_descs: Vec<String> = ev.actions.iter().map(ToString::to_string).collect();
             info!("[t={:.3}] Event: {}", ev.time, action_descs.join(" | "));
             for action in ev.actions {
-                population.apply_action(action, landscape, analysis_rt.as_deref_mut());
+                community.apply_action(action, landscape, analysis_rt.as_deref_mut());
             }
         }
     }

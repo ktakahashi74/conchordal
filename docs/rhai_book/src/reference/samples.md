@@ -9,12 +9,12 @@ cargo run --release -- samples/01_a_single_voice.rhai
 ```
 
 1. **A Single Voice** — one voice appears, holds its breath, and leaves.
-2. **Constellation** — four ways to enter: a line, the peaks, the density,
-   chance.
+2. **Constellation** — six ways to enter: a line, the peaks, the density, the
+   strain, the gaps, and chance.
 3. **Gravity** — the same root under two suns; the peaks listen to what is
    sounding, not to a chart.
-4. **Tension** — the director leans on the terrain until it strains, then
-   lets the gravity come home.
+4. **Tension** — the voices settle onto consonance, grow restless and stray,
+   then cool and settle again.
 5. **Settling** — scattered voices glide to where the field can hold them.
 6. **Bells** — struck bodies; the last bell lets the field choose its
    partials.
@@ -32,6 +32,9 @@ cargo run --release -- samples/01_a_single_voice.rhai
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
 10 closes the loop into life; 11–12 are directed by the composer. All études
 are compile-checked by the test suite, so they always match the current API.
+Top-level études intentionally do not call `seed(...)`: each run starts from
+a fresh scenario seed. Research assays keep fixed seeds so comparisons remain
+reproducible.
 
 One craft rule holds across the path: **scaffolding is inaudible or
 embodied**. Terrain anchors sing to the habitat bus, not to the audience,

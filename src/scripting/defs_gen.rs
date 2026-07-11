@@ -47,7 +47,7 @@ const RHAI_RESERVED: &[&str] = &[
 #[derive(Clone, Debug)]
 struct Sig {
     name: String,
-    /// Mapped parameter type names (e.g. `Material`, `f64`, `String`, `[?]`).
+    /// Mapped parameter type names (e.g. `PopulationSpec`, `f64`, `String`, `[?]`).
     params: Vec<String>,
     /// Mapped return type; `None` for unit.
     ret: Option<String>,
@@ -56,7 +56,7 @@ struct Sig {
 impl Sig {
     fn owner(&self) -> Owner {
         match self.params.first().map(String::as_str) {
-            Some("Material") | Some("Participant") => Owner::Voice,
+            Some("PopulationSpec") | Some("Population") => Owner::Population,
             Some("Placement") => Owner::Placement,
             Some("ModePattern") => Owner::ModePattern,
             _ => Owner::Global,
@@ -141,8 +141,8 @@ fn map_type(t: &str) -> String {
         "string" => "String".to_string(),
         "Dynamic" => "?".to_string(),
         "array" => "[?]".to_string(),
-        "SpeciesHandle" => "Material".to_string(),
-        "GroupHandle" => "Participant".to_string(),
+        "PopulationSpecHandle" => "PopulationSpec".to_string(),
+        "PopulationHandle" => "Population".to_string(),
         other => other.to_string(),
     }
 }
@@ -167,20 +167,20 @@ fn unwrap_result(t: &str) -> Option<String> {
     None
 }
 
-type Groups = BTreeMap<(String, Owner), Vec<Sig>>;
+type Populations = BTreeMap<(String, Owner), Vec<Sig>>;
 
-fn group(sigs: Vec<Sig>) -> Groups {
-    let mut groups: Groups = BTreeMap::new();
+fn population(sigs: Vec<Sig>) -> Populations {
+    let mut populations: Populations = BTreeMap::new();
     for sig in sigs {
-        groups
+        populations
             .entry((sig.name.clone(), sig.owner()))
             .or_default()
             .push(sig);
     }
-    for sigs in groups.values_mut() {
+    for sigs in populations.values_mut() {
         sigs.sort_by_key(Sig::decl);
     }
-    groups
+    populations
 }
 
 fn doc_index() -> Result<BTreeMap<(&'static str, Owner), &'static FnDoc>, Vec<String>> {
@@ -224,14 +224,14 @@ fn usage_arity(usage: &str, name: &str) -> Result<usize, String> {
 /// Verify that the doc registry and the registered engine surface match.
 pub fn check() -> Result<(), String> {
     let (sigs, _) = collect();
-    let groups = group(sigs);
+    let populations = population(sigs);
     let index = match doc_index() {
         Ok(index) => index,
         Err(errors) => return Err(errors.join("\n")),
     };
     let mut errors = Vec::new();
 
-    for ((name, owner), sigs) in &groups {
+    for ((name, owner), sigs) in &populations {
         let Some(doc) = index.get(&(name.as_str(), *owner)) else {
             errors.push(format!(
                 "registered fn {name:?} ({owner:?}) has no entry in src/scripting/docs.rs"
@@ -243,6 +243,25 @@ pub fn check() -> Result<(), String> {
             Style::Free => 0,
         };
         let actual: BTreeSet<usize> = sigs.iter().map(|s| s.params.len() - receiver).collect();
+        if *owner == Owner::Population {
+            let receivers: BTreeSet<&str> = sigs
+                .iter()
+                .filter_map(|sig| sig.params.first().map(String::as_str))
+                .collect();
+            let expected = match doc.patch {
+                Patch::Initial => Some(BTreeSet::from(["PopulationSpec"])),
+                Patch::Live => Some(BTreeSet::from(["Population", "PopulationSpec"])),
+                Patch::Na => None,
+            };
+            if let Some(expected) = expected
+                && receivers != expected
+            {
+                errors.push(format!(
+                    "doc patch contract for {name:?} is {:?}, but engine receivers are {receivers:?}",
+                    doc.patch
+                ));
+            }
+        }
         let mut documented = BTreeSet::new();
         for usage in doc.usage {
             match usage_arity(usage, doc.name) {
@@ -261,7 +280,7 @@ pub fn check() -> Result<(), String> {
     }
 
     for (name, owner) in index.keys() {
-        if !groups.contains_key(&(name.to_string(), *owner)) {
+        if !populations.contains_key(&(name.to_string(), *owner)) {
             errors.push(format!(
                 "doc entry {name:?} ({owner:?}) has no registered engine function (stale?)"
             ));
@@ -295,17 +314,17 @@ pub fn check() -> Result<(), String> {
     }
 }
 
-fn checked_groups() -> (Groups, Vec<String>) {
+fn checked_populations() -> (Populations, Vec<String>) {
     if let Err(err) = check() {
         panic!("scripting docs registry out of sync with engine surface:\n{err}");
     }
     let (sigs, skipped) = collect();
-    (group(sigs), skipped)
+    (population(sigs), skipped)
 }
 
 /// Render `rhai-defs/conchordal.d.rhai`.
 pub fn render_d_rhai() -> String {
-    let (groups, skipped) = checked_groups();
+    let (populations, skipped) = checked_populations();
     let index = doc_index().expect("doc index validated by check()");
 
     let mut out = String::new();
@@ -320,7 +339,7 @@ pub fn render_d_rhai() -> String {
         let _ = writeln!(out, "const {}: {};", c.name, c.ty);
     }
 
-    for ((name, owner), sigs) in &groups {
+    for ((name, owner), sigs) in &populations {
         let doc = index
             .get(&(name.as_str(), *owner))
             .expect("doc presence validated by check()");
@@ -348,7 +367,7 @@ pub fn render_d_rhai() -> String {
 
 /// Render `docs/rhai_book/src/reference/api.md`.
 pub fn render_reference_md() -> String {
-    let (groups, _) = checked_groups();
+    let (populations, _) = checked_populations();
 
     let mut out = String::new();
     out.push_str("# API Reference\n\n");
@@ -427,9 +446,9 @@ disappear as their research questions settle.",
                 let _ = write!(out, "\n{}\n", category.intro);
             }
             for doc in entries {
-                let sigs = groups
+                let sigs = populations
                     .get(&(doc.name.to_string(), doc.owner))
-                    .expect("group presence validated by check()");
+                    .expect("population presence validated by check()");
                 let _ = write!(out, "\n#### `{}`\n\n```rhai,ignore\n", doc.name);
                 let ret = free_return(doc, sigs);
                 for usage in doc.usage {
@@ -475,22 +494,22 @@ fn applies_line(doc: &FnDoc, sigs: &[Sig]) -> Option<String> {
         return None;
     }
     match doc.owner {
-        Owner::Voice => {
-            let has_material = sigs
+        Owner::Population => {
+            let has_spec = sigs
                 .iter()
-                .any(|s| s.params.first().map(String::as_str) == Some("Material"));
-            let has_participant = sigs
+                .any(|s| s.params.first().map(String::as_str) == Some("PopulationSpec"));
+            let has_population = sigs
                 .iter()
-                .any(|s| s.params.first().map(String::as_str) == Some("Participant"));
-            let receivers = match (has_material, has_participant) {
-                (true, true) => "`Material` and `Participant`",
-                (true, false) => "`Material` only",
-                (false, true) => "`Participant` only",
-                (false, false) => unreachable!("Voice group without voice receiver"),
+                .any(|s| s.params.first().map(String::as_str) == Some("Population"));
+            let receivers = match (has_spec, has_population) {
+                (true, true) => "`PopulationSpec` and `Population`",
+                (true, false) => "`PopulationSpec` only",
+                (false, true) => "`Population` only",
+                (false, false) => unreachable!("Voice population without voice receiver"),
             };
             let patch = match doc.patch {
-                Patch::Live => " Live-patchable: updates running voices on a live `Participant`.",
-                Patch::Draft => " Draft-only: ignored with a warning on a live `Participant`.",
+                Patch::Live => " Live-patchable: updates running voices in a `Population`.",
+                Patch::Initial => " Initial-only: configure the `PopulationSpec` before `place()`.",
                 Patch::Na => "",
             };
             Some(format!("Applies to: {receivers}.{patch}"))

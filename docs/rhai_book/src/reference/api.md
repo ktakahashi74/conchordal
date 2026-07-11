@@ -16,8 +16,8 @@ The surface is split into three tiers. **Core API** is the curated composing sur
 
 | Type | Description |
 |------|-------------|
-| `Material` | Voice template built from a constructor such as `sine()` or `harmonic()`; all builder methods are chainable. |
-| `Participant` | Handle to a placed voice group returned by `place()`; draft until the next `wait()`/`flush()`, then live. |
+| `PopulationSpec` | Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules. |
+| `Population` | Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations. |
 | `Placement` | Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`. |
 | `ModePattern` | Frequency pattern for modal synthesis bodies; built by `*_modes()` constructors. |
 | `Bus` | One of the two mono output buses; combine with `|` into a `BusSet`. |
@@ -34,38 +34,38 @@ The surface is split into three tiers. **Core API** is the curated composing sur
 
 The curated composing surface. These verbs are enough for every curated sample.
 
-### Materials
+### Population Specs
 
-Materials are voice templates. A constructor returns a `Material`; builder methods refine it; `place()` turns it into living voices.
+A PopulationSpec defines founder voice traits and population-level lifecycle rules. Constructors return a `PopulationSpec`; builder methods refine it; `place()` creates a `Population`.
 
 #### `sine`
 
 ```rhai,ignore
-sine() -> Material
+sine() -> PopulationSpec
 ```
 
-Material with a pure sine body.
+PopulationSpec whose founder voices use a pure sine body.
 
 #### `harmonic`
 
 ```rhai,ignore
-harmonic() -> Material
+harmonic() -> PopulationSpec
 ```
 
-Material with a harmonic-series body.
+PopulationSpec whose founder voices use a harmonic-series body.
 
 #### `modal`
 
 ```rhai,ignore
-modal() -> Material
+modal() -> PopulationSpec
 ```
 
-Material with a resonator-based modal body; shape it with `modes()`.
+PopulationSpec whose founder voices use a resonator-based modal body; shape it with `modes()`.
 
 #### `saw`
 
 ```rhai,ignore
-saw() -> Material
+saw() -> PopulationSpec
 ```
 
 Harmonic-body preset with brightness 0.85.
@@ -73,7 +73,7 @@ Harmonic-body preset with brightness 0.85.
 #### `square`
 
 ```rhai,ignore
-square() -> Material
+square() -> PopulationSpec
 ```
 
 Harmonic-body preset with brightness 0.65.
@@ -81,18 +81,18 @@ Harmonic-body preset with brightness 0.65.
 #### `noise`
 
 ```rhai,ignore
-noise() -> Material
+noise() -> PopulationSpec
 ```
 
-Harmonic-body preset with brightness 1.0 and motion 1.0.
+Harmonic-body preset with full brightness and maximal spectral motion (jitter).
 
 #### `variant`
 
 ```rhai,ignore
-variant(material) -> Material
+variant(population_spec) -> PopulationSpec
 ```
 
-Clone a material so the copy can be modified independently.
+Clone a PopulationSpec so the copy can be modified independently.
 
 ### Placement
 
@@ -193,7 +193,7 @@ count(n)
 
 Applies to: `Placement`.
 
-Number of voices to place (default 1).
+Positive number of founder voices to place (default 1).
 
 #### `range`
 
@@ -215,17 +215,17 @@ Applies to: `Placement`.
 
 Minimum ERB distance between placed voices; valid on field placements.
 
-### Timeline & Staging
+### Timeline & Populations
 
-Staging verbs commit voices and move script time. `place()` stages a draft `Participant`; `wait()`/`flush()` commit drafts; scopes release groups automatically.
+`place()` creates a Population at the current script time. `wait()` advances the cursor; `flush()` emits pending live patches without advancing it; scopes release their populations automatically.
 
 #### `place`
 
 ```rhai,ignore
-place(material, placement) -> Participant
+place(population_spec, placement) -> Population
 ```
 
-Stage a Participant at the current script time. Committed by the next `wait()` or `flush()`. Until then, builder methods on the returned `Participant` shape the initial spawn; afterwards, live-patchable methods update running voices. Calling `place(participant, placement)` on a draft re-places it (sets frequency, count, and strategy).
+Create a Population at the current script time. `place()` is the sole Population boundary. Configure initial-only properties on the PopulationSpec first; the returned Population exposes only live patches and release.
 
 #### `wait`
 
@@ -233,7 +233,7 @@ Stage a Participant at the current script time. Committed by the next `wait()` o
 wait(seconds)
 ```
 
-Commit pending drafts, then advance the timeline cursor.
+Emit pending live patches, then advance the timeline cursor.
 
 #### `flush`
 
@@ -241,15 +241,15 @@ Commit pending drafts, then advance the timeline cursor.
 flush()
 ```
 
-Commit pending drafts without advancing time.
+Emit pending live patches without advancing time.
 
 #### `release`
 
 ```rhai,ignore
-release(participant)
+release(population)
 ```
 
-Release a live group; its voices enter their release phase and fade out.
+Close a live Population; its voices enter their release phase and fade out. Release is terminal at the scripting surface: later live patches on the same Population are ignored.
 
 #### `section`
 
@@ -257,7 +257,7 @@ Release a live group; its voices enter their release phase and fade out.
 section(name, callback)
 ```
 
-Named scope; groups placed inside are released when the callback returns.
+Named scope; populations placed inside are released when the callback returns.
 
 #### `play`
 
@@ -269,7 +269,7 @@ play(callback, arg1, arg2, arg3)
 play(callback, [args])
 ```
 
-Scoped callback execution with automatic group release. Accepts 0-3 positional arguments, or an array of arguments.
+Scoped callback execution with automatic population release. Accepts 0-3 positional arguments, or an array of arguments.
 
 #### `parallel`
 
@@ -297,7 +297,7 @@ Sound body parameters of a voice: level, spectrum, detuning, and envelope.
 amp(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Amplitude in 0.0-1.0.
 
@@ -307,7 +307,7 @@ Amplitude in 0.0-1.0.
 freq(hz)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 
@@ -317,7 +317,7 @@ Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 brightness(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
 
@@ -327,7 +327,7 @@ Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
 spread(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Detuning spread.
 
@@ -337,7 +337,7 @@ Detuning spread.
 unison(count)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Number of unison detuning copies.
 
@@ -347,7 +347,7 @@ Number of unison detuning copies.
 modes(pattern)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Set the mode pattern of a modal body. See the Mode Patterns section for constructors and modifiers.
 
@@ -357,7 +357,7 @@ Set the mode pattern of a modal body. See the Mode Patterns section for construc
 adsr(attack_sec, decay_sec, sustain_level, release_sec)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 ADSR amplitude envelope.
 
@@ -371,7 +371,7 @@ When and how long a voice sounds. Tier 1 picks a region on the rhythm coupling c
 brain(name)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`. Selects how the voice lives while sounding; orthogonal to the rhythm coupling continuum (`metric`/`entrained`/`flow`). `entrain` is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. `seq` holds for a fixed lifetime, ignoring the field and metabolism. `drone` is undying, sustaining forever with a slow sway -- useful as terrain material.
 
@@ -381,7 +381,7 @@ Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`. Selects how the
 sustain()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Sustain phonation mode (default).
 
@@ -391,7 +391,7 @@ Sustain phonation mode (default).
 repeat()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Repeated/pulsed phonation mode.
 
@@ -401,7 +401,7 @@ Repeated/pulsed phonation mode.
 metric()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 High coupling to the shared emergent meter: deep attractor, stable pulse. Takes no rate argument: the tempo region is director-level terrain (`temporal_basin`).
 
@@ -411,7 +411,7 @@ High coupling to the shared emergent meter: deep attractor, stable pulse. Takes 
 entrained()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Medium coupling: synchronization emerges over time, still drifts.
 
@@ -421,7 +421,7 @@ Medium coupling: synchronization emerges over time, still drifts.
 flow()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Near-zero coupling: free renewal process, non-metric texture.
 
@@ -431,7 +431,7 @@ Near-zero coupling: free renewal process, non-metric texture.
 entrainment(strength)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Override coupling strength in 0-1 (free .. locked). Order-independent with presets: `entrainment(0.8).metric()` and `metric().entrainment(0.8)` are equivalent.
 
@@ -441,7 +441,7 @@ Override coupling strength in 0-1 (free .. locked). Order-independent with prese
 rhythm_role(name)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`. `accent` emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.
 
@@ -451,7 +451,7 @@ Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`. `accent` em
 microtiming(amount)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
 
@@ -461,7 +461,7 @@ Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
 cycles(n)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Duration of n rhythm cycles.
 
@@ -475,7 +475,7 @@ How a voice moves through the consonance field. `seek_consonance()`, `glide()`, 
 anchor()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Hold the voice at its pitch: an anchored voice never moves. Voices placed with `at()` or given `freq()` are anchored implicitly; use `anchor()` to hold strategy-placed voices (`consonance()`, `dissonance()`, ...) at their settled position, or to state the intent explicitly.
 
@@ -485,9 +485,9 @@ Hold the voice at its pitch: an anchored voice never moves. Voices placed with `
 seek_consonance()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at commit unless `pitch_apply_mode()` was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, `entrained()`, `flow()`) snap at onsets.
+Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at placement unless `pitch_apply_mode()` was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, `entrained()`, `flow()`) snap at onsets.
 
 #### `glide`
 
@@ -495,7 +495,7 @@ Free hill-climb movement toward better field positions, with glide defaults. How
 glide(tau_sec)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Pitch glide time constant in seconds.
 
@@ -505,7 +505,7 @@ Pitch glide time constant in seconds.
 temperature(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory. The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler's candidate choice. Musically the movement-tension dial; its placement twin is `tension()`.
 
@@ -520,7 +520,7 @@ avoid_neighbors(strength)
 avoid_neighbors(strength, sigma_cents)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Crowding repulsion from neighboring voices. With one argument the repulsion width uses the default; the two-argument form sets it explicitly in cents.
 
@@ -534,7 +534,7 @@ Time-domain survival and recovery. `endurance()` states nominal zero-fit lifetim
 endurance(seconds)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Nominal survival time at zero field fit, excluding the release tail. Energy is normalized to 0-1. The runtime drain rate is derived at spawn; actual lifetime varies with field fit, attacks, recovery, and release time.
 
@@ -544,7 +544,7 @@ Nominal survival time at zero field fit, excluding the release tail. Energy is n
 recovery(seconds)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Time to refill normalized energy from empty at full viability. Optional. If omitted, continuous recovery is disabled. This does not govern the separate per-attack economy.
 
@@ -554,7 +554,7 @@ Time to refill normalized energy from empty at full viability. Optional. If omit
 attack_cost_fraction(value)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Fraction of normalized energy spent by a full-strength attack.
 
@@ -564,7 +564,7 @@ Fraction of normalized energy spent by a full-strength attack.
 attack_recharge_fraction(value)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Maximum normalized energy restored by a fully consonant attack.
 
@@ -574,7 +574,7 @@ Maximum normalized energy restored by a fully consonant attack.
 sustain_drive(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Continuous drive level for sustained voices.
 
@@ -584,7 +584,7 @@ Continuous drive level for sustained voices.
 consonance_viability(low, high)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Consonance window used for viability scoring. Enables environment-relative scoring by default: a voice is evaluated against the field with its own footprint approximately removed (see `viability_scope()`).
 
@@ -594,7 +594,7 @@ Consonance window used for viability scoring. Enables environment-relative scori
 dissonance_penalty(value)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 How strongly good field fit extends life beyond zero-fit endurance. The zero-fit endurance remains fixed; the penalty changes how much longer a well-fit voice survives.
 
@@ -608,7 +608,7 @@ Population turnover. A respawn policy decides where replacements appear when voi
 respawn_random()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Respawn at random locations.
 
@@ -618,7 +618,7 @@ Respawn at random locations.
 respawn_hereditary(sigma_oct)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Hereditary respawn with frequency variance in octaves.
 
@@ -628,7 +628,7 @@ Hereditary respawn with frequency variance in octaves.
 respawn_consonance()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Respawn from consonance-biased parental peaks.
 
@@ -638,9 +638,9 @@ Respawn from consonance-biased parental peaks.
 respawn_capacity(count)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Maintain population up to a capacity.
+Maximum number of living members in the Population. Defaults to the number of founder Voices created by `place()` and cannot be lower than that founder count.
 
 #### `respawn_settle`
 
@@ -648,7 +648,7 @@ Maintain population up to a capacity.
 respawn_settle(placement)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Placement used for replacements. Requires a strategy-bearing placement: `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()` (not `at()`).
 
@@ -658,7 +658,7 @@ Placement used for replacements. Requires a strategy-bearing placement: `consona
 respawn_min_c_level(level)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Minimum consonance level for respawn acceptance.
 
@@ -668,7 +668,7 @@ Minimum consonance level for respawn acceptance.
 respawn_background_death_rate(rate)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Background turnover rate per second.
 
@@ -810,9 +810,9 @@ Each voice contributes to two independent mono buses: the presentation bus (the 
 send(bus)
 ```
 
-Applies to: `Material` only.
+Applies to: `PopulationSpec` only.
 
-Route the voice to specific buses; accepts a `Bus` or a `BusSet`. Material only. `send(habitat_bus)` makes a voice sensed by the ecology but absent from the presented sound; `send(presentation_bus)` is heard without perturbing the ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).
+Route the voice to specific buses; accepts a `Bus` or a `BusSet`. PopulationSpec only. `send(habitat_bus)` makes a voice sensed by the ecology but absent from the presented sound; `send(presentation_bus)` is heard without perturbing the ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).
 
 ### Director & Global Parameters
 
@@ -846,7 +846,7 @@ Candidate core verbs under audition: composing surface by intent, but with resea
 phonate_when_viable()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Withhold the first onset until perceived consonance is viable. Silently settles into the field until consonance reaches the low bound of the voice's consonance-viability window (`consonance_viability()`, or always-viable if that window was never set), then phonates normally and never re-gates. A voice that never settles dies unheard and the respawn policy replaces it -- there is no timeout parameter, the energy economy is the timeout.
 
@@ -862,7 +862,7 @@ Fine-grained control over the mechanisms behind the core verbs. Defaults are cal
 once()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Single trigger.
 
@@ -872,7 +872,7 @@ Single trigger.
 pulse(rate_hz)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Pulse at an explicit rate in Hz.
 
@@ -882,7 +882,7 @@ Pulse at an explicit rate in Hz.
 while_alive()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Hold/sustain until release.
 
@@ -892,7 +892,7 @@ Hold/sustain until release.
 adaptive_duration()
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Duration follows field support.
 
@@ -902,7 +902,7 @@ Duration follows field support.
 pulse_lock(depth)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Low-level pulse phase weighting in 0-1.
 
@@ -912,7 +912,7 @@ Low-level pulse phase weighting in 0-1.
 social(coupling)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Social coupling for `entrained()` or `pulse()`, in 0-1.
 
@@ -922,7 +922,7 @@ Social coupling for `entrained()` or `pulse()`, in 0-1.
 duration_range(min_cycles, max_cycles)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Adaptive duration range in rhythm cycles.
 
@@ -932,7 +932,7 @@ Adaptive duration range in rhythm cycles.
 duration_curve(k, x0)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Adaptive duration curve parameters.
 
@@ -942,7 +942,7 @@ Adaptive duration curve parameters.
 shorten_on_drop(gain)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Shorten adaptive duration when field support drops.
 
@@ -952,7 +952,7 @@ Shorten adaptive duration when field support drops.
 rhythm_freq(freq_hz)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Internal theta/rhythm oscillator frequency.
 
@@ -962,7 +962,7 @@ Internal theta/rhythm oscillator frequency.
 rhythm_coupling_vitality(lambda_v, v_floor)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Vitality-modulated rhythm coupling.
 
@@ -972,7 +972,7 @@ Vitality-modulated rhythm coupling.
 rhythm_reward(rho_t, metric)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
 
@@ -984,7 +984,7 @@ Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
 pitch_smooth(tau_sec)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Pitch smoothing time constant in seconds.
 
@@ -994,9 +994,9 @@ Pitch smoothing time constant in seconds.
 pitch_apply_mode(name)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-`"gate_snap"` or `"glide"`: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at commit from their phonation: sustained voices glide, re-attacking voices snap at onsets.
+`"gate_snap"` or `"glide"`: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at placement from their phonation: sustained voices glide, re-attacking voices snap at onsets.
 
 #### `landscape_weight`
 
@@ -1004,7 +1004,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 landscape_weight(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Weight of the landscape objective.
 
@@ -1014,7 +1014,7 @@ Weight of the landscape objective.
 neighbor_step_cents(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Step size for neighbor exploration in cents.
 
@@ -1024,7 +1024,7 @@ Step size for neighbor exploration in cents.
 move_cost(coeff)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Cost multiplier for pitch changes.
 
@@ -1034,7 +1034,7 @@ Cost multiplier for pitch changes.
 move_cost_exp(exp)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Exponent for the move cost.
 
@@ -1044,7 +1044,7 @@ Exponent for the move cost.
 proposal_interval(seconds)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Proposal generation interval in seconds.
 
@@ -1054,7 +1054,7 @@ Proposal generation interval in seconds.
 tessitura_gravity(value)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Gravity toward the tessitura center.
 
@@ -1064,7 +1064,7 @@ Gravity toward the tessitura center.
 window_cents(width)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Peak-sampler search window width in cents.
 
@@ -1074,7 +1074,7 @@ Peak-sampler search window width in cents.
 top_k(count)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Number of top candidates kept by the peak sampler.
 
@@ -1084,7 +1084,7 @@ Number of top candidates kept by the peak sampler.
 sigma_cents(spread)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Gaussian spread of the peak sampler in cents.
 
@@ -1094,7 +1094,7 @@ Gaussian spread of the peak sampler in cents.
 random_candidates(count)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Number of random candidates considered.
 
@@ -1105,7 +1105,7 @@ global_peaks(count)
 global_peaks(count, min_sep_cents)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Global field peaks as movement candidates, with optional minimum separation.
 
@@ -1115,7 +1115,7 @@ Global field peaks as movement candidates, with optional minimum separation.
 ratio_candidates(count)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Ratio-based movement candidates; 0 disables.
 
@@ -1127,9 +1127,9 @@ Ratio-based movement candidates; 0 disables.
 crowding_target(same_visible, other_visible)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Which voices are visible to crowding: own group, other groups (booleans).
+Which voices are visible to crowding: own population, other populations (booleans).
 
 #### `leave_self_out`
 
@@ -1137,7 +1137,7 @@ Which voices are visible to crowding: own group, other groups (booleans).
 leave_self_out(enabled)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Subtract the voice's own spectral contribution when evaluating the field.
 
@@ -1147,7 +1147,7 @@ Subtract the voice's own spectral contribution when evaluating the field.
 leave_self_out_harmonics(count)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Number of harmonics used for approximate self-subtraction.
 
@@ -1159,7 +1159,7 @@ Number of harmonics used for approximate self-subtraction.
 viability_scope(name)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 `"environment"` (default) or `"total"` viability scoring scope. Use `"total"` only when the selection question should include the voice's own contribution.
 
@@ -1193,7 +1193,7 @@ For studying the instrument, not composing with it. Normal composing never touch
 pitch_core(name)
 ```
 
-Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on a live `Participant`.
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 `"hill_climb"` or `"peak_sampler"`. Research control.
 
@@ -1203,7 +1203,7 @@ Applies to: `Material` and `Participant`. Draft-only: ignored with a warning on 
 move_cost_time_scale(name)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
 
@@ -1215,7 +1215,7 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 leave_self_out_mode(name)
 ```
 
-Applies to: `Material` and `Participant`. Live-patchable: updates running voices on a live `Participant`.
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
 
@@ -1227,9 +1227,9 @@ Applies to: `Material` and `Participant`. Live-patchable: updates running voices
 selection_approx_loo(enabled)
 ```
 
-Applies to: `Material` only.
+Applies to: `PopulationSpec` only.
 
-Override environment-relative viability scoring; research/reference control. Material only. Use only for older reference assays that need the previous implementation-level control.
+Override environment-relative viability scoring; research/reference control. PopulationSpec only. Use only for older reference assays that need the previous implementation-level control.
 
 ### Director & Global Parameters
 

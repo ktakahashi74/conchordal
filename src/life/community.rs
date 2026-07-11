@@ -20,6 +20,7 @@ use tracing::{debug, info, warn};
 
 const DEFAULT_REPORT_FIRST_K: u32 = 10;
 const DEFAULT_REPORT_PLV_WINDOW: usize = 200;
+const RESPAWN_CANDIDATE_COUNT: usize = 16;
 /// Width (fraction of the range's field_score span) of the Gaussian that weights
 /// peaks near the tension target in density placement.
 const TENSION_LEVEL_SIGMA_FRAC: f32 = 0.15;
@@ -158,7 +159,7 @@ impl PredGateAccum {
     }
 }
 
-pub struct Population {
+pub struct Community {
     pub voices: Vec<Voice>,
     current_frame: u64,
     pub abort_requested: bool,
@@ -169,7 +170,7 @@ pub struct Population {
     seed: u64,
     spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
-    groups: BTreeMap<u64, RuntimeGroupState>,
+    populations: BTreeMap<u64, RuntimePopulationState>,
     death_observed: HashSet<u64>,
     next_runtime_id: u64,
     control_update_mode: ControlUpdateMode,
@@ -180,11 +181,12 @@ pub struct Population {
     death_records: Vec<LifeRecord>,
     auto_observe: Option<ObservationConfig>,
     runtime_events: Vec<RuntimeEvent>,
+    phonation_gate_open_events: Vec<PhonationGateOpenEvent>,
     advance_scratch: AdvanceScratch,
 }
 
 #[derive(Debug, Clone)]
-struct RuntimeGroupState {
+struct RuntimePopulationState {
     template: VoiceSpec,
     strategy: Option<SpawnStrategy>,
     respawn_policy: RespawnPolicy,
@@ -202,7 +204,7 @@ struct RuntimeGroupState {
 #[derive(Debug, Clone, Copy)]
 struct SpawnParams {
     id: u64,
-    group_id: u64,
+    population_id: u64,
     member_idx: usize,
     resolved_freq_hz: f32,
     parent_id: Option<u64>,
@@ -233,7 +235,7 @@ pub enum SpawnReason {
 #[derive(Debug, Clone)]
 pub struct RuntimeEvent {
     pub time_sec: f32,
-    pub group_id: u64,
+    pub population_id: u64,
     pub voice_id: u64,
     pub member_idx: usize,
     pub freq_hz: f32,
@@ -242,10 +244,20 @@ pub struct RuntimeEvent {
     pub reason: SpawnReason,
 }
 
+/// A `phonate_when_viable()` gate's false->true latch moment (see
+/// `Voice::update_phonation_gate`). `Immediate`-gated voices never emit this.
+#[derive(Debug, Clone)]
+pub struct PhonationGateOpenEvent {
+    pub time_sec: f32,
+    pub population_id: u64,
+    pub voice_id: u64,
+    pub consonance: f32,
+}
+
 #[derive(Default)]
 struct AdvanceScratch {
     freq_snapshot: Vec<(u64, u64, f32)>,
-    group_visibility: HashMap<u64, (bool, bool)>,
+    population_visibility: HashMap<u64, (bool, bool)>,
     neighbor_pitch_log2: Vec<f32>,
     neighbor_salience: Vec<f32>,
     commit_queue: Vec<CommitQueueEntry>,
@@ -262,7 +274,7 @@ mod social;
 use respawn::*;
 use social::*;
 
-impl Population {
+impl Community {
     const CONTROL_STEP_SAMPLES: usize = 64;
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing voice's base
     /// frequency.
@@ -298,7 +310,7 @@ impl Population {
     }
 
     pub fn new(time: Timebase) -> Self {
-        debug!("Population sample rate: {:.1} Hz", time.fs);
+        debug!("Community sample rate: {:.1} Hz", time.fs);
         Self {
             voices: Vec::new(),
             current_frame: 0,
@@ -310,7 +322,7 @@ impl Population {
             seed: rand::random::<u64>(),
             spawn_counter: 0,
             social_trace: None,
-            groups: BTreeMap::new(),
+            populations: BTreeMap::new(),
             death_observed: HashSet::new(),
             next_runtime_id: 1,
             control_update_mode: ControlUpdateMode::SnapshotPhased,
@@ -321,8 +333,16 @@ impl Population {
             death_records: Vec::new(),
             auto_observe: None,
             runtime_events: Vec::new(),
+            phonation_gate_open_events: Vec::new(),
             advance_scratch: AdvanceScratch::default(),
         }
+    }
+
+    pub(crate) fn active_population_ids(&self) -> Vec<u64> {
+        self.populations
+            .iter()
+            .filter_map(|(population_id, state)| (!state.released).then_some(*population_id))
+            .collect()
     }
 
     pub fn set_seed(&mut self, seed: u64) {
@@ -348,6 +368,10 @@ impl Population {
         std::mem::take(&mut self.runtime_events)
     }
 
+    pub fn drain_phonation_gate_open_events(&mut self) -> Vec<PhonationGateOpenEvent> {
+        std::mem::take(&mut self.phonation_gate_open_events)
+    }
+
     pub fn take_death_records(&mut self) -> Vec<LifeRecord> {
         std::mem::take(&mut self.death_records)
     }
@@ -357,13 +381,13 @@ impl Population {
         self.time.tick_to_sec(tick)
     }
 
-    fn spawn_seed(&self, group_id: u64, count: usize, seq: u64) -> u64 {
+    fn spawn_seed(&self, population_id: u64, count: usize, seq: u64) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.seed.hash(&mut hasher);
         self.current_frame.hash(&mut hasher);
         seq.hash(&mut hasher);
         count.hash(&mut hasher);
-        group_id.hash(&mut hasher);
+        population_id.hash(&mut hasher);
         hasher.finish() ^ 0x9E37_79B9_7F4A_7C15
     }
 
@@ -472,6 +496,9 @@ impl Population {
         let mut phonation_onset_strength_in_hop = 0.0f32;
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
+        let auto_observe_enabled = self.auto_observe.is_some();
+        let time_sec = self.current_time_sec();
+        let mut gate_open_events: Vec<PhonationGateOpenEvent> = Vec::new();
         for voice in &mut self.voices {
             let social_coupling = voice.social_coupling;
             if used == out.len() {
@@ -479,6 +506,7 @@ impl Population {
             }
             let batch = &mut out[used];
             let consonance = landscape.evaluate_pitch_level(voice.body.base_freq_hz());
+            let was_gate_open = voice.phonation_gate_open();
             let extra_gate_gain = match pred_scan.as_ref() {
                 Some(scan) => {
                     let gain_raw = generator_model
@@ -502,6 +530,14 @@ impl Population {
                 consonance,
                 batch,
             );
+            if auto_observe_enabled && !was_gate_open && voice.phonation_gate_open() {
+                gate_open_events.push(PhonationGateOpenEvent {
+                    time_sec,
+                    population_id: voice.metadata.population_id,
+                    voice_id: voice.id(),
+                    consonance,
+                });
+            }
             phonation_onsets_in_hop = phonation_onsets_in_hop
                 .saturating_add(batch.onsets.len().min(u32::MAX as usize) as u32);
             phonation_onset_strength_in_hop += batch
@@ -535,6 +571,7 @@ impl Population {
         self.last_phonation_onsets_in_hop = Some(phonation_onsets_in_hop);
         self.last_phonation_onset_strength_in_hop = Some(phonation_onset_strength_in_hop);
         self.last_pred_gate_stats = pred_acc.finalize();
+        self.phonation_gate_open_events.extend(gate_open_events);
         used
     }
 
@@ -764,7 +801,7 @@ impl Population {
     fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceSpec, landscape: &LandscapeFrame) {
         let SpawnParams {
             id,
-            group_id,
+            population_id,
             member_idx,
             resolved_freq_hz,
             parent_id,
@@ -772,7 +809,7 @@ impl Population {
             reason,
         } = params;
         if self.voices.iter().any(|v| v.id() == id) {
-            warn!("Spawn: id collision for {id} in group {group_id}");
+            warn!("Spawn: id collision for {id} in population {population_id}");
             return;
         }
 
@@ -780,7 +817,7 @@ impl Population {
         let mut control = spec.control.clone();
         control.pitch.freq = resolved_freq_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
         let metadata = VoiceMetadata {
-            group_id,
+            population_id,
             member_idx,
             generation,
             parent_id,
@@ -816,7 +853,7 @@ impl Population {
         if self.auto_observe.is_some() {
             self.runtime_events.push(RuntimeEvent {
                 time_sec: self.current_time_sec(),
-                group_id,
+                population_id,
                 voice_id: id,
                 member_idx,
                 freq_hz: resolved_freq_hz,
@@ -827,9 +864,9 @@ impl Population {
         }
     }
 
-    fn ensure_group_state(
+    fn ensure_population_state(
         &mut self,
-        group_id: u64,
+        population_id: u64,
         spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
         member_count: usize,
@@ -837,22 +874,22 @@ impl Population {
         let current_members = self
             .voices
             .iter()
-            .filter(|v| v.metadata.group_id == group_id)
+            .filter(|v| v.metadata.population_id == population_id)
             .count();
-        if let Some(group) = self.groups.get_mut(&group_id) {
-            // Runtime currently allows multiple Spawn actions with the same group_id.
-            // In that case we treat it as "refresh group template/strategy" while preserving
-            // existing runtime policies. New Spawn implicitly re-activates the group.
-            group.template = spec;
-            group.strategy = strategy;
-            group.released = false;
-            group.spawn_count_hint = member_count.max(1);
-            group.next_member_idx = group.next_member_idx.max(current_members);
+        if let Some(population) = self.populations.get_mut(&population_id) {
+            // Runtime currently allows multiple Spawn actions with the same population_id.
+            // In that case we treat it as "refresh population template/strategy" while preserving
+            // existing runtime policies. New Spawn implicitly re-activates the population.
+            population.template = spec;
+            population.strategy = strategy;
+            population.released = false;
+            population.spawn_count_hint = member_count.max(1);
+            population.next_member_idx = population.next_member_idx.max(current_members);
             return;
         }
-        self.groups.insert(
-            group_id,
-            RuntimeGroupState {
+        self.populations.insert(
+            population_id,
+            RuntimePopulationState {
                 template: spec,
                 strategy,
                 respawn_policy: RespawnPolicy::None,
@@ -869,49 +906,54 @@ impl Population {
         );
     }
 
-    fn apply_group_update(&mut self, group_id: u64, update: &super::control::ControlUpdate) {
-        if let Some(group) = self.groups.get_mut(&group_id) {
-            group.template.control.apply_update(update);
-        }
-    }
-
-    fn mark_group_released(&mut self, group_id: u64) {
-        if let Some(group) = self.groups.get_mut(&group_id) {
-            group.released = true;
-        }
-    }
-
-    fn set_group_respawn_policy(
+    fn apply_population_update(
         &mut self,
-        group_id: u64,
+        population_id: u64,
+        update: &super::control::ControlUpdate,
+    ) {
+        if let Some(population) = self.populations.get_mut(&population_id) {
+            population.template.control.apply_update(update);
+        }
+    }
+
+    fn mark_population_released(&mut self, population_id: u64) {
+        if let Some(population) = self.populations.get_mut(&population_id) {
+            population.released = true;
+        }
+    }
+
+    fn set_population_respawn_policy(
+        &mut self,
+        population_id: u64,
         policy: RespawnPolicy,
         settle_strategy: Option<SpawnStrategy>,
         capacity: usize,
         min_c_level: Option<f32>,
         background_death_rate_per_sec: f32,
     ) {
-        if let Some(group) = self.groups.get_mut(&group_id) {
-            group.respawn_policy = policy;
-            group.respawn_settle_strategy = settle_strategy;
-            group.respawn_capacity = capacity.max(1);
-            group.respawn_min_c_level = min_c_level.map(|value| value.clamp(0.0, 1.0));
-            group.respawn_background_death_rate_per_sec = background_death_rate_per_sec.max(0.0);
+        if let Some(population) = self.populations.get_mut(&population_id) {
+            population.respawn_policy = policy;
+            population.respawn_settle_strategy = settle_strategy;
+            population.respawn_capacity = capacity.max(1);
+            population.respawn_min_c_level = min_c_level.map(|value| value.clamp(0.0, 1.0));
+            population.respawn_background_death_rate_per_sec =
+                background_death_rate_per_sec.max(0.0);
         } else {
-            warn!("SetRespawnPolicy: unknown group {group_id}");
+            warn!("SetRespawnPolicy: unknown population {population_id}");
         }
     }
 
-    fn set_group_crowding_target(
+    fn set_population_crowding_target(
         &mut self,
-        group_id: u64,
-        same_group_visible: bool,
-        other_group_visible: bool,
+        population_id: u64,
+        same_population_visible: bool,
+        other_population_visible: bool,
     ) {
-        if let Some(group) = self.groups.get_mut(&group_id) {
-            group.crowding_target_same = same_group_visible;
-            group.crowding_target_other = other_group_visible;
+        if let Some(population) = self.populations.get_mut(&population_id) {
+            population.crowding_target_same = same_population_visible;
+            population.crowding_target_other = other_population_visible;
         } else {
-            warn!("SetGroupCrowdingTarget: unknown group {group_id}");
+            warn!("SetPopulationCrowdingTarget: unknown population {population_id}");
         }
     }
 
@@ -938,24 +980,24 @@ impl Population {
 
     fn random_respawn_frequency<R: Rng + ?Sized>(
         &self,
-        group: &RuntimeGroupState,
+        population: &RuntimePopulationState,
         landscape: &LandscapeFrame,
         rng: &mut R,
         member_idx: usize,
     ) -> f32 {
-        if let Some(strategy) = group.strategy.as_ref() {
-            let linear_idx = member_idx % group.spawn_count_hint.max(1);
+        if let Some(strategy) = population.strategy.as_ref() {
+            let linear_idx = member_idx % population.spawn_count_hint.max(1);
             self.resolve_strategy_frequency(
                 strategy,
                 landscape,
                 rng,
                 &[],
                 linear_idx,
-                group.spawn_count_hint.max(1),
+                population.spawn_count_hint.max(1),
             )
             .max(MIN_FREQ_HZ)
         } else {
-            group
+            population
                 .template
                 .control
                 .pitch
@@ -966,26 +1008,28 @@ impl Population {
 
     fn peak_biased_respawn_candidate<R: Rng + ?Sized>(
         &self,
-        group: &RuntimeGroupState,
+        population: &RuntimePopulationState,
         selected_parent: Option<ParentCandidate>,
         landscape: &LandscapeFrame,
         rng: &mut R,
         member_idx: usize,
         config: RespawnPeakBiasConfig,
     ) -> Option<(f32, Option<u64>, Option<u32>)> {
-        let (min_hz, max_hz) = group
+        let (min_hz, max_hz) = population
             .strategy
             .as_ref()
             .map(SpawnStrategy::freq_range_hz)
             .unwrap_or_else(|| landscape.freq_bounds());
         let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
         let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
-        let candidate_count = group.respawn_capacity.max(1);
+        let candidate_count = RESPAWN_CANDIDATE_COUNT;
         let candidate_bins = peak_bias_candidate_bins(landscape, lo, hi, candidate_count);
 
         let fallback_freq = selected_parent
             .map(|parent| parent.freq_hz.clamp(lo, hi))
-            .unwrap_or_else(|| self.random_respawn_frequency(group, landscape, rng, member_idx));
+            .unwrap_or_else(|| {
+                self.random_respawn_frequency(population, landscape, rng, member_idx)
+            });
 
         let chosen_freq = if candidate_bins.is_empty() {
             fallback_freq
@@ -1048,7 +1092,7 @@ impl Population {
             peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config)
         };
 
-        if let Some(min_c_level) = group.respawn_min_c_level
+        if let Some(min_c_level) = population.respawn_min_c_level
             && landscape.evaluate_pitch_level(chosen_freq) < min_c_level
         {
             return None;
@@ -1063,16 +1107,16 @@ impl Population {
 
     fn pick_respawn_candidate<R: Rng + ?Sized>(
         &self,
-        group_id: u64,
-        group: &RuntimeGroupState,
-        alive_by_group: &BTreeMap<u64, Vec<ParentCandidate>>,
+        population_id: u64,
+        population: &RuntimePopulationState,
+        alive_by_population: &BTreeMap<u64, Vec<ParentCandidate>>,
         landscape: &LandscapeFrame,
         rng: &mut R,
         member_idx: usize,
     ) -> Option<(f32, Option<u64>, Option<u32>)> {
-        if let RespawnPolicy::PeakBiased { config } = group.respawn_policy {
-            let pool = alive_by_group
-                .get(&group_id)
+        if let RespawnPolicy::PeakBiased { config } = population.respawn_policy {
+            let pool = alive_by_population
+                .get(&population_id)
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
             let selected_parent = if pool.is_empty() {
@@ -1081,7 +1125,7 @@ impl Population {
                 Some(pool[weighted_parent_select(pool, rng)])
             };
             return self.peak_biased_respawn_candidate(
-                group,
+                population,
                 selected_parent,
                 landscape,
                 rng,
@@ -1090,15 +1134,15 @@ impl Population {
             );
         }
 
-        let capacity = group.respawn_capacity.max(1);
+        let candidate_count = RESPAWN_CANDIDATE_COUNT;
 
         // Step 1: Select parent ONCE before candidate generation
-        let selected_parent: Option<ParentCandidate> = match group.respawn_policy {
+        let selected_parent: Option<ParentCandidate> = match population.respawn_policy {
             RespawnPolicy::None => return None,
             RespawnPolicy::Random => None,
             RespawnPolicy::Hereditary { .. } => {
-                let pool = alive_by_group
-                    .get(&group_id)
+                let pool = alive_by_population
+                    .get(&population_id)
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
                 if pool.is_empty() {
@@ -1111,9 +1155,9 @@ impl Population {
         };
 
         // Step 2: Generate candidates (all share same parent lineage)
-        let mut candidates = Vec::with_capacity(capacity);
-        for idx in 0..capacity {
-            let freq = match (idx, group.respawn_settle_strategy.as_ref()) {
+        let mut candidates = Vec::with_capacity(candidate_count);
+        for idx in 0..candidate_count {
+            let freq = match (idx, population.respawn_settle_strategy.as_ref()) {
                 (1.., Some(strategy)) => self
                     .resolve_strategy_frequency(
                         strategy,
@@ -1121,20 +1165,20 @@ impl Population {
                         rng,
                         &[],
                         member_idx + idx,
-                        capacity,
+                        candidate_count,
                     )
                     .max(MIN_FREQ_HZ),
-                _ => match group.respawn_policy {
+                _ => match population.respawn_policy {
                     RespawnPolicy::None => return None,
                     RespawnPolicy::Random => {
-                        self.random_respawn_frequency(group, landscape, rng, member_idx + idx)
+                        self.random_respawn_frequency(population, landscape, rng, member_idx + idx)
                     }
                     RespawnPolicy::Hereditary { sigma_oct } => {
                         if let Some(ref parent) = selected_parent {
                             let parent_log2 = parent.freq_hz.max(MIN_FREQ_HZ).log2();
                             let noise = Self::normal_sample(rng) * sigma_oct.max(0.0);
                             let child_log2 = parent_log2 + noise;
-                            let (min_hz, max_hz) = group
+                            let (min_hz, max_hz) = population
                                 .strategy
                                 .as_ref()
                                 .map(SpawnStrategy::freq_range_hz)
@@ -1143,7 +1187,12 @@ impl Population {
                             let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
                             2.0f32.powf(child_log2).clamp(lo, hi)
                         } else {
-                            self.random_respawn_frequency(group, landscape, rng, member_idx + idx)
+                            self.random_respawn_frequency(
+                                population,
+                                landscape,
+                                rng,
+                                member_idx + idx,
+                            )
                         }
                     }
                     RespawnPolicy::PeakBiased { .. } => unreachable!("handled above"),
@@ -1152,7 +1201,7 @@ impl Population {
             candidates.push(freq);
         }
 
-        let chosen_freq = match group.respawn_policy {
+        let chosen_freq = match population.respawn_policy {
             RespawnPolicy::Random => choose_candidate_by_scene_score(landscape, &candidates, rng)?,
             _ => *candidates.iter().max_by(|a, b| {
                 landscape
@@ -1162,7 +1211,7 @@ impl Population {
             })?,
         };
 
-        if let Some(min_c_level) = group.respawn_min_c_level
+        if let Some(min_c_level) = population.respawn_min_c_level
             && landscape.evaluate_pitch_level(chosen_freq) < min_c_level
         {
             return None;
@@ -1182,19 +1231,19 @@ impl Population {
         }
 
         let mut statuses = Vec::with_capacity(self.voices.len());
-        let mut alive_by_group: BTreeMap<u64, Vec<ParentCandidate>> = BTreeMap::new();
+        let mut alive_by_population: BTreeMap<u64, Vec<ParentCandidate>> = BTreeMap::new();
         for voice in &self.voices {
             let alive = voice.is_alive();
-            let group_id = voice.metadata.group_id;
+            let population_id = voice.metadata.population_id;
             let id = voice.id();
-            statuses.push((id, group_id, alive));
+            statuses.push((id, population_id, alive));
             if alive {
                 let energy = match &voice.articulation.core {
                     AnyArticulationCore::Entrain(core) => core.energy.max(0.0),
                     _ => 0.0,
                 };
-                alive_by_group
-                    .entry(group_id)
+                alive_by_population
+                    .entry(population_id)
                     .or_default()
                     .push(ParentCandidate {
                         id,
@@ -1206,34 +1255,43 @@ impl Population {
         }
 
         let mut dead_candidates = Vec::new();
-        for (id, group_id, alive) in statuses {
+        for (id, population_id, alive) in statuses {
             if alive {
                 self.death_observed.remove(&id);
                 continue;
             }
             if self.death_observed.insert(id) {
-                dead_candidates.push((id, group_id));
+                dead_candidates.push((id, population_id));
             }
         }
 
-        for (_dead_id, group_id) in dead_candidates {
-            let Some(group) = self.groups.get(&group_id).cloned() else {
+        let mut projected_alive: BTreeMap<u64, usize> = alive_by_population
+            .iter()
+            .map(|(population_id, members)| (*population_id, members.len()))
+            .collect();
+
+        for (_dead_id, population_id) in dead_candidates {
+            let Some(population) = self.populations.get(&population_id).cloned() else {
                 continue;
             };
-            if group.released {
+            if population.released {
+                continue;
+            }
+            let alive_count = projected_alive.get(&population_id).copied().unwrap_or(0);
+            if alive_count >= population.respawn_capacity {
                 continue;
             }
 
-            let member_idx = group.next_member_idx;
+            let member_idx = population.next_member_idx;
             let spawn_seq = self.spawn_counter;
             self.spawn_counter = self.spawn_counter.wrapping_add(1);
-            let seed = self.spawn_seed(group_id, 1, spawn_seq);
+            let seed = self.spawn_seed(population_id, 1, spawn_seq);
             let mut rng = SmallRng::seed_from_u64(seed);
 
             let Some((freq_hz, parent_id, parent_generation)) = self.pick_respawn_candidate(
-                group_id,
-                &group,
-                &alive_by_group,
+                population_id,
+                &population,
+                &alive_by_population,
                 landscape,
                 &mut rng,
                 member_idx,
@@ -1245,20 +1303,21 @@ impl Population {
             self.spawn_one(
                 SpawnParams {
                     id,
-                    group_id,
+                    population_id,
                     member_idx,
                     resolved_freq_hz: freq_hz,
                     parent_id,
                     parent_generation,
                     reason: SpawnReason::Respawn,
                 },
-                &group.template,
+                &population.template,
                 landscape,
             );
 
-            if let Some(state) = self.groups.get_mut(&group_id) {
+            if let Some(state) = self.populations.get_mut(&population_id) {
                 state.next_member_idx = state.next_member_idx.saturating_add(1);
             }
+            *projected_alive.entry(population_id).or_default() += 1;
         }
     }
 
@@ -1273,27 +1332,33 @@ impl Population {
                 self.abort_requested = true;
             }
             Action::Spawn {
-                group_id,
+                population_id,
                 ids,
                 spec,
                 strategy,
-            } => self.on_spawn_action(group_id, ids, spec, strategy, landscape),
-            Action::UpdateGroup { group_id, patch } => {
-                self.on_update_group_action(group_id, patch);
+            } => self.on_spawn_action(population_id, ids, spec, strategy, landscape),
+            Action::UpdatePopulation {
+                population_id,
+                patch,
+            } => {
+                self.on_update_population_action(population_id, patch);
             }
-            Action::ReleaseGroup { group_id, fade_sec } => {
-                self.on_release_group_action(group_id, fade_sec);
+            Action::ReleasePopulation {
+                population_id,
+                fade_sec,
+            } => {
+                self.on_release_population_action(population_id, fade_sec);
             }
             Action::SetRespawnPolicy {
-                group_id,
+                population_id,
                 policy,
                 settle_strategy,
                 capacity,
                 min_c_level,
                 background_death_rate_per_sec,
             } => {
-                self.set_group_respawn_policy(
-                    group_id,
+                self.set_population_respawn_policy(
+                    population_id,
                     policy,
                     settle_strategy,
                     capacity,
@@ -1301,12 +1366,16 @@ impl Population {
                     background_death_rate_per_sec,
                 );
             }
-            Action::SetGroupCrowdingTarget {
-                group_id,
-                same_group_visible,
-                other_group_visible,
+            Action::SetPopulationCrowdingTarget {
+                population_id,
+                same_population_visible,
+                other_population_visible,
             } => {
-                self.set_group_crowding_target(group_id, same_group_visible, other_group_visible);
+                self.set_population_crowding_target(
+                    population_id,
+                    same_population_visible,
+                    other_population_visible,
+                );
             }
             Action::SetHarmonicityParams { update } => {
                 self.merge_landscape_update(update);
@@ -1322,7 +1391,7 @@ impl Population {
 
     fn on_spawn_action(
         &mut self,
-        group_id: u64,
+        population_id: u64,
         ids: Vec<u64>,
         spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
@@ -1330,7 +1399,7 @@ impl Population {
     ) {
         let spawn_seq = self.spawn_counter;
         self.spawn_counter = self.spawn_counter.wrapping_add(1);
-        let seed = self.spawn_seed(group_id, ids.len(), spawn_seq);
+        let seed = self.spawn_seed(population_id, ids.len(), spawn_seq);
         let mut rng = SmallRng::seed_from_u64(seed);
         let mut reserved = Vec::with_capacity(ids.len());
         let total = ids.len().max(1);
@@ -1347,7 +1416,7 @@ impl Population {
             self.spawn_one(
                 SpawnParams {
                     id,
-                    group_id,
+                    population_id,
                     member_idx,
                     resolved_freq_hz: freq_hz,
                     parent_id: None,
@@ -1359,21 +1428,25 @@ impl Population {
             );
             reserved.push(freq_hz);
         }
-        self.ensure_group_state(group_id, spec, strategy, total);
+        self.ensure_population_state(population_id, spec, strategy, total);
     }
 
-    fn on_update_group_action(&mut self, group_id: u64, patch: super::control::ControlUpdate) {
-        // Group-wide runtime semantics:
-        // updates apply to all current members with matching group_id.
+    fn on_update_population_action(
+        &mut self,
+        population_id: u64,
+        patch: super::control::ControlUpdate,
+    ) {
+        // Population-wide runtime semantics:
+        // updates apply to all current members with matching population_id.
         let mut updated = 0usize;
         for voice in self
             .voices
             .iter_mut()
-            .filter(|v| v.metadata.group_id == group_id)
+            .filter(|v| v.metadata.population_id == population_id)
         {
             if let Err(err) = voice.apply_patch(&patch) {
                 warn!(
-                    "Update: voice {} (group {group_id}) rejected update: {err}",
+                    "Update: voice {} (population {population_id}) rejected update: {err}",
                     voice.id()
                 );
             } else {
@@ -1381,28 +1454,28 @@ impl Population {
             }
         }
         if updated == 0 {
-            warn!("Update: no active members found for group {group_id}");
+            warn!("Update: no active members found for population {population_id}");
         }
-        self.apply_group_update(group_id, &patch);
+        self.apply_population_update(population_id, &patch);
     }
 
-    fn on_release_group_action(&mut self, group_id: u64, fade_sec: f32) {
-        // Group-wide runtime semantics:
-        // release applies to all current members with matching group_id.
+    fn on_release_population_action(&mut self, population_id: u64, fade_sec: f32) {
+        // Population-wide runtime semantics:
+        // release applies to all current members with matching population_id.
         let fade_sec = fade_sec.max(0.0);
         let mut released = 0usize;
         for voice in self
             .voices
             .iter_mut()
-            .filter(|v| v.metadata.group_id == group_id)
+            .filter(|v| v.metadata.population_id == population_id)
         {
             voice.start_remove_fade(fade_sec);
             released += 1;
         }
         if released == 0 {
-            warn!("Release: no active members found for group {group_id}");
+            warn!("Release: no active members found for population {population_id}");
         }
-        self.mark_group_released(group_id);
+        self.mark_population_released(population_id);
     }
 
     fn on_set_roughness_tolerance(&mut self, value: f32) {
@@ -1549,7 +1622,7 @@ impl Population {
     fn prepare_substep_snapshot(&mut self, crowding_active: bool) {
         let scratch = &mut self.advance_scratch;
         scratch.freq_snapshot.clear();
-        scratch.group_visibility.clear();
+        scratch.population_visibility.clear();
         scratch.commit_queue.clear();
         if !crowding_active {
             return;
@@ -1560,17 +1633,20 @@ impl Population {
             if voice.is_alive() {
                 scratch.freq_snapshot.push((
                     voice.id(),
-                    voice.metadata.group_id,
+                    voice.metadata.population_id,
                     voice.body.base_freq_hz().max(1.0).log2(),
                 ));
             }
         }
         scratch
-            .group_visibility
-            .extend(self.groups.iter().map(|(&group_id, group)| {
+            .population_visibility
+            .extend(self.populations.iter().map(|(&population_id, population)| {
                 (
-                    group_id,
-                    (group.crowding_target_same, group.crowding_target_other),
+                    population_id,
+                    (
+                        population.crowding_target_same,
+                        population.crowding_target_other,
+                    ),
                 )
             }));
     }
@@ -1585,15 +1661,15 @@ impl Population {
     ) {
         // Decide phase: evaluate all alive voices against a stable snapshot.
         for voice_idx in 0..self.voices.len() {
-            let (vid, actor_group_id, alive) = {
+            let (vid, actor_population_id, alive) = {
                 let v = &self.voices[voice_idx];
-                (v.id(), v.metadata.group_id, v.is_alive())
+                (v.id(), v.metadata.population_id, v.is_alive())
             };
             if !alive {
                 continue;
             }
             if crowding_active {
-                self.fill_neighbors_from_snapshot(vid, actor_group_id);
+                self.fill_neighbors_from_snapshot(vid, actor_population_id);
             }
             let neighbors = if crowding_active {
                 self.advance_scratch.neighbor_pitch_log2.as_slice()
@@ -1621,7 +1697,7 @@ impl Population {
         }
     }
 
-    fn fill_neighbors_from_snapshot(&mut self, actor_id: u64, actor_group_id: u64) {
+    fn fill_neighbors_from_snapshot(&mut self, actor_id: u64, actor_population_id: u64) {
         let scratch = &mut self.advance_scratch;
         scratch.neighbor_pitch_log2.clear();
         scratch.neighbor_salience.clear();
@@ -1631,22 +1707,22 @@ impl Population {
         scratch
             .neighbor_salience
             .reserve(scratch.freq_snapshot.len());
-        for &(neighbor_id, neighbor_group_id, log2) in &scratch.freq_snapshot {
+        for &(neighbor_id, neighbor_population_id, log2) in &scratch.freq_snapshot {
             if neighbor_id == actor_id {
                 continue;
             }
             let visible = scratch
-                .group_visibility
-                .get(&neighbor_group_id)
+                .population_visibility
+                .get(&neighbor_population_id)
                 .map(|&(same_visible, other_visible)| {
                     Self::is_neighbor_visible(
-                        actor_group_id,
-                        neighbor_group_id,
+                        actor_population_id,
+                        neighbor_population_id,
                         same_visible,
                         other_visible,
                     )
                 })
-                .unwrap_or(neighbor_group_id == actor_group_id);
+                .unwrap_or(neighbor_population_id == actor_population_id);
             if visible {
                 scratch.neighbor_pitch_log2.push(log2);
                 scratch
@@ -1656,7 +1732,7 @@ impl Population {
         }
     }
 
-    fn fill_neighbors_from_current_state(&mut self, actor_id: u64, actor_group_id: u64) {
+    fn fill_neighbors_from_current_state(&mut self, actor_id: u64, actor_population_id: u64) {
         let scratch = &mut self.advance_scratch;
         scratch.neighbor_pitch_log2.clear();
         scratch.neighbor_salience.clear();
@@ -1670,19 +1746,19 @@ impl Population {
             if !voice.is_alive() || voice.id() == actor_id {
                 continue;
             }
-            let neighbor_group_id = voice.metadata.group_id;
+            let neighbor_population_id = voice.metadata.population_id;
             let visible = self
-                .groups
-                .get(&neighbor_group_id)
-                .map(|group| {
+                .populations
+                .get(&neighbor_population_id)
+                .map(|population| {
                     Self::is_neighbor_visible(
-                        actor_group_id,
-                        neighbor_group_id,
-                        group.crowding_target_same,
-                        group.crowding_target_other,
+                        actor_population_id,
+                        neighbor_population_id,
+                        population.crowding_target_same,
+                        population.crowding_target_other,
                     )
                 })
-                .unwrap_or(neighbor_group_id == actor_group_id);
+                .unwrap_or(neighbor_population_id == actor_population_id);
             if visible {
                 scratch
                     .neighbor_pitch_log2
@@ -1696,12 +1772,12 @@ impl Population {
 
     #[inline]
     fn is_neighbor_visible(
-        actor_group_id: u64,
-        neighbor_group_id: u64,
+        actor_population_id: u64,
+        neighbor_population_id: u64,
         same_visible: bool,
         other_visible: bool,
     ) -> bool {
-        if neighbor_group_id == actor_group_id {
+        if neighbor_population_id == actor_population_id {
             same_visible
         } else {
             other_visible
@@ -1745,15 +1821,15 @@ impl Population {
         let start = order_offset % order.len();
         order.rotate_left(start);
         for voice_idx in order {
-            let (vid, actor_group_id, alive) = {
+            let (vid, actor_population_id, alive) = {
                 let v = &self.voices[voice_idx];
-                (v.id(), v.metadata.group_id, v.is_alive())
+                (v.id(), v.metadata.population_id, v.is_alive())
             };
             if !alive {
                 continue;
             }
             if crowding_active {
-                self.fill_neighbors_from_current_state(vid, actor_group_id);
+                self.fill_neighbors_from_current_state(vid, actor_population_id);
             } else {
                 self.advance_scratch.neighbor_pitch_log2.clear();
                 self.advance_scratch.neighbor_salience.clear();
@@ -1805,13 +1881,13 @@ impl Population {
             if !voice.is_alive() || voice.remove_pending {
                 continue;
             }
-            let Some(group) = self.groups.get(&voice.metadata.group_id) else {
+            let Some(population) = self.populations.get(&voice.metadata.population_id) else {
                 continue;
             };
-            if group.released {
+            if population.released {
                 continue;
             }
-            let rate = group.respawn_background_death_rate_per_sec;
+            let rate = population.respawn_background_death_rate_per_sec;
             if !rate.is_finite() || rate <= 0.0 {
                 continue;
             }
@@ -1851,7 +1927,7 @@ impl Population {
                     };
                     death_records.push(acc.finalize(
                         voice.id(),
-                        voice.metadata.group_id,
+                        voice.metadata.population_id,
                         current_frame,
                         plv,
                         voice.metadata.generation,
@@ -1888,7 +1964,7 @@ mod tests {
     use crate::core::landscape::LandscapeFrame;
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
-    use crate::life::control::{ControlUpdate, PitchMode, VoiceControl};
+    use crate::life::control::{ControlUpdate, PhonationGate, PitchMode, VoiceControl};
     use crate::life::generator_model::GeneratorModel;
     use crate::life::lifecycle::LifecycleConfig;
     use crate::life::phonation_engine::{OnsetEvent, OnsetKick, ToneCmd};
@@ -1900,8 +1976,8 @@ mod tests {
     use rand::{RngExt, SeedableRng};
     use std::collections::HashSet;
 
-    fn test_pop() -> Population {
-        Population::new(Timebase {
+    fn test_pop() -> Community {
+        Community::new(Timebase {
             fs: 48_000.0,
             hop: 64,
         })
@@ -1985,6 +2061,39 @@ mod tests {
         }
     }
 
+    /// Like `sustain_spawn_spec_with_freq`, but with an explicit phonation
+    /// gate and consonance-viability low bound, for `phonate_when_viable()`
+    /// gate-latch tests.
+    fn sustain_spawn_spec_with_gate(
+        freq: f32,
+        gate: crate::life::control::PhonationGate,
+        viability_low: f32,
+    ) -> VoiceSpec {
+        let mut control = VoiceControl::default();
+        control.pitch.freq = freq;
+        control.phonation.gate = gate;
+        VoiceSpec {
+            control,
+            articulation: ArticulationCoreConfig::Entrain {
+                lifecycle: LifecycleConfig::Sustain {
+                    endurance_sec: None,
+                    recovery_sec: None,
+                    attack_cost_fraction: Some(0.0),
+                    attack_recharge_fraction: Some(0.0),
+                    continuous_recharge_score_low: Some(viability_low),
+                    continuous_recharge_score_high: Some(0.95),
+                    selection_approx_loo: false,
+                    dissonance_penalty: 0.0,
+                    envelope: crate::scenario::EnvelopeConfig::default(),
+                },
+                rhythm_freq: None,
+                rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
+                rhythm_reward: None,
+                breath_gain_init: None,
+            },
+        }
+    }
+
     fn runtime_landscape() -> LandscapeFrame {
         LandscapeFrame::new(Log2Space::new(55.0, 1760.0, 24))
     }
@@ -2023,14 +2132,14 @@ mod tests {
         landscape
     }
 
-    fn step_population(pop: &mut Population, frame: u64, dt_sec: f32, landscape: &LandscapeFrame) {
+    fn step_population(pop: &mut Community, frame: u64, dt_sec: f32, landscape: &LandscapeFrame) {
         let fs = 48_000.0;
         let samples_per_hop = (fs * dt_sec) as usize;
         pop.advance(samples_per_hop, fs, frame, dt_sec, landscape);
         pop.cleanup_dead(frame, dt_sec, false, landscape);
     }
 
-    fn force_dead(pop: &mut Population, id: u64) {
+    fn force_dead(pop: &mut Community, id: u64) {
         if let Some(dying) = pop.voices.iter_mut().find(|v| v.id() == id) {
             dying.release_gain = 0.0;
             dying.release_pending = true;
@@ -2055,7 +2164,7 @@ mod tests {
         spec.control.pitch.crowding_sigma_cents = 60.0;
         pop.apply_action(
             Action::Spawn {
-                group_id: 66,
+                population_id: 66,
                 ids: vec![660, 661, 662],
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
@@ -2091,7 +2200,7 @@ mod tests {
         )
     }
 
-    fn run_cross_group_visibility_trial(other_group_visible: bool) -> f32 {
+    fn run_cross_population_visibility_trial(other_population_visible: bool) -> f32 {
         let mut pop = test_pop();
         pop.set_seed(303);
         let landscape = crowding_order_landscape();
@@ -2107,7 +2216,7 @@ mod tests {
 
         pop.apply_action(
             Action::Spawn {
-                group_id: 70,
+                population_id: 70,
                 ids: vec![700],
                 spec: mover_spec,
                 strategy: None,
@@ -2117,7 +2226,7 @@ mod tests {
         );
         pop.apply_action(
             Action::Spawn {
-                group_id: 71,
+                population_id: 71,
                 ids: vec![701],
                 spec: neighbor_spec,
                 strategy: None,
@@ -2126,10 +2235,10 @@ mod tests {
             None,
         );
         pop.apply_action(
-            Action::SetGroupCrowdingTarget {
-                group_id: 71,
-                same_group_visible: true,
-                other_group_visible,
+            Action::SetPopulationCrowdingTarget {
+                population_id: 71,
+                same_population_visible: true,
+                other_population_visible,
             },
             &landscape,
             None,
@@ -2181,7 +2290,7 @@ mod tests {
         spec.control.pitch.range_oct = 0.5;
         pop.apply_action(
             Action::Spawn {
-                group_id: 90,
+                population_id: 90,
                 ids: vec![900],
                 spec,
                 strategy: None,
@@ -2479,12 +2588,12 @@ mod tests {
     }
 
     #[test]
-    fn update_applies_to_group_members() {
+    fn update_applies_to_population_members() {
         let mut pop = test_pop();
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
-                group_id: 1,
+                population_id: 1,
                 ids: vec![10, 11],
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
@@ -2497,8 +2606,8 @@ mod tests {
             ..ControlUpdate::default()
         };
         pop.apply_action(
-            Action::UpdateGroup {
-                group_id: 1,
+            Action::UpdatePopulation {
+                population_id: 1,
                 patch: update,
             },
             &landscape,
@@ -2553,30 +2662,30 @@ mod tests {
     }
 
     #[test]
-    fn cross_group_crowding_follows_target_visibility_policy() {
-        let hidden = run_cross_group_visibility_trial(false);
-        let visible = run_cross_group_visibility_trial(true);
+    fn cross_population_crowding_follows_target_visibility_policy() {
+        let hidden = run_cross_population_visibility_trial(false);
+        let visible = run_cross_population_visibility_trial(true);
         assert!(
             visible > hidden + 1e-6,
-            "cross-group crowding should only affect behavior when target group allows visibility"
+            "cross-population crowding should only affect behavior when target population allows visibility"
         );
     }
 
     #[test]
     fn pairwise_split_sign_is_antisymmetric() {
-        let ab = Population::pairwise_split_sign(10, 42);
-        let ba = Population::pairwise_split_sign(42, 10);
+        let ab = Community::pairwise_split_sign(10, 42);
+        let ba = Community::pairwise_split_sign(42, 10);
         assert!(ab.abs() > 0.0);
         assert!((ab + ba).abs() <= 1e-6);
     }
 
     #[test]
-    fn release_marks_group_members() {
+    fn release_marks_population_members() {
         let mut pop = test_pop();
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
-                group_id: 1,
+                population_id: 1,
                 ids: vec![21, 22],
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
@@ -2585,8 +2694,8 @@ mod tests {
             None,
         );
         pop.apply_action(
-            Action::ReleaseGroup {
-                group_id: 1,
+            Action::ReleasePopulation {
+                population_id: 1,
                 fade_sec: 0.05,
             },
             &landscape,
@@ -2609,7 +2718,7 @@ mod tests {
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
-                group_id: 6,
+                population_id: 6,
                 ids: vec![60],
                 spec: spawn_spec_with_freq(275.0),
                 strategy: None,
@@ -2638,7 +2747,7 @@ mod tests {
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 7,
+                population_id: 7,
                 ids: vec![1],
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
@@ -2664,7 +2773,7 @@ mod tests {
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 8,
+                population_id: 8,
                 ids: vec![10],
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
@@ -2674,7 +2783,7 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 8,
+                population_id: 8,
                 policy: RespawnPolicy::Random,
                 settle_strategy: None,
                 capacity: 1,
@@ -2702,13 +2811,48 @@ mod tests {
     }
 
     #[test]
+    fn respawn_capacity_limits_living_members() {
+        let mut pop = test_pop();
+        pop.set_seed(12);
+        let landscape = runtime_landscape();
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 82,
+                ids: vec![820, 821],
+                spec: sustain_spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+        pop.apply_action(
+            Action::SetRespawnPolicy {
+                population_id: 82,
+                policy: RespawnPolicy::Random,
+                settle_strategy: None,
+                capacity: 1,
+                min_c_level: None,
+                background_death_rate_per_sec: 0.0,
+            },
+            &landscape,
+            None,
+        );
+
+        force_dead(&mut pop, 820);
+        pop.cleanup_dead(0, 0.01, false, &landscape);
+
+        assert_eq!(pop.voices.len(), 1);
+        assert_eq!(pop.voices[0].id(), 821);
+    }
+
+    #[test]
     fn background_turnover_replaces_member_via_respawn() {
         let mut pop = test_pop();
         pop.set_seed(61);
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 81,
+                population_id: 81,
                 ids: vec![810],
                 spec: sustain_spawn_spec_with_freq(220.0),
                 strategy: None,
@@ -2718,7 +2862,7 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 81,
+                population_id: 81,
                 policy: RespawnPolicy::Random,
                 settle_strategy: None,
                 capacity: 1,
@@ -2750,7 +2894,7 @@ mod tests {
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 9,
+                population_id: 9,
                 ids: vec![20],
                 spec: decay_spawn_spec_with_freq(330.0, 0.02),
                 strategy: None,
@@ -2760,7 +2904,7 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 9,
+                population_id: 9,
                 policy: RespawnPolicy::Hereditary { sigma_oct: 0.01 },
                 settle_strategy: None,
                 capacity: 1,
@@ -2797,7 +2941,7 @@ mod tests {
         spec.control.pitch.mode = PitchMode::Lock;
         pop.apply_action(
             Action::Spawn {
-                group_id: 90,
+                population_id: 90,
                 ids: vec![900, 901],
                 spec,
                 strategy: None,
@@ -2807,10 +2951,10 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 90,
+                population_id: 90,
                 policy: RespawnPolicy::Hereditary { sigma_oct: 0.002 },
                 settle_strategy: None,
-                capacity: 1,
+                capacity: 2,
                 min_c_level: None,
                 background_death_rate_per_sec: 0.0,
             },
@@ -2849,7 +2993,7 @@ mod tests {
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 10,
+                population_id: 10,
                 ids: vec![30],
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
@@ -2859,7 +3003,7 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 10,
+                population_id: 10,
                 policy: RespawnPolicy::Random,
                 settle_strategy: None,
                 capacity: 1,
@@ -2876,7 +3020,7 @@ mod tests {
             if let Some(id) = pop
                 .voices
                 .iter()
-                .find(|v| v.metadata.group_id == 10 && v.id() != 30)
+                .find(|v| v.metadata.population_id == 10 && v.id() != 30)
                 .map(|v| v.id())
             {
                 respawned_id = Some(id);
@@ -2886,8 +3030,8 @@ mod tests {
         let respawned_id = respawned_id.expect("respawned member should exist");
 
         pop.apply_action(
-            Action::ReleaseGroup {
-                group_id: 10,
+            Action::ReleasePopulation {
+                population_id: 10,
                 fade_sec: 0.05,
             },
             &landscape,
@@ -2909,7 +3053,7 @@ mod tests {
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 11,
+                population_id: 11,
                 ids: vec![40],
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
@@ -2919,7 +3063,7 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 11,
+                population_id: 11,
                 policy: RespawnPolicy::Random,
                 settle_strategy: None,
                 capacity: 1,
@@ -2936,7 +3080,7 @@ mod tests {
             if let Some(id) = pop
                 .voices
                 .iter()
-                .find(|v| v.metadata.group_id == 11 && v.id() != 40)
+                .find(|v| v.metadata.population_id == 11 && v.id() != 40)
                 .map(|v| v.id())
             {
                 respawned_id = Some(id);
@@ -2946,8 +3090,8 @@ mod tests {
         let respawned_id = respawned_id.expect("respawned member should exist");
 
         pop.apply_action(
-            Action::UpdateGroup {
-                group_id: 11,
+            Action::UpdatePopulation {
+                population_id: 11,
                 patch: ControlUpdate {
                     amp: Some(0.17),
                     ..ControlUpdate::default()
@@ -2972,7 +3116,7 @@ mod tests {
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 91,
+                population_id: 91,
                 ids: vec![910, 911],
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
@@ -2982,10 +3126,10 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 91,
+                population_id: 91,
                 policy: RespawnPolicy::Random,
                 settle_strategy: None,
-                capacity: 1,
+                capacity: 2,
                 min_c_level: None,
                 background_death_rate_per_sec: 0.0,
             },
@@ -2993,8 +3137,8 @@ mod tests {
             None,
         );
         pop.apply_action(
-            Action::UpdateGroup {
-                group_id: 91,
+            Action::UpdatePopulation {
+                population_id: 91,
                 patch: ControlUpdate {
                     landscape_weight: Some(0.73),
                     ..ControlUpdate::default()
@@ -3004,7 +3148,7 @@ mod tests {
             None,
         );
 
-        for member in pop.voices.iter().filter(|v| v.metadata.group_id == 91) {
+        for member in pop.voices.iter().filter(|v| v.metadata.population_id == 91) {
             assert!((member.effective_control.pitch.landscape_weight - 0.73).abs() <= 1e-6);
         }
 
@@ -3026,7 +3170,7 @@ mod tests {
         let landscape = runtime_landscape();
         pop.apply_action(
             Action::Spawn {
-                group_id: 92,
+                population_id: 92,
                 ids: vec![920],
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
@@ -3036,7 +3180,7 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 92,
+                population_id: 92,
                 policy: RespawnPolicy::Random,
                 settle_strategy: None,
                 capacity: 1,
@@ -3047,8 +3191,8 @@ mod tests {
             None,
         );
         pop.apply_action(
-            Action::ReleaseGroup {
-                group_id: 92,
+            Action::ReleasePopulation {
+                population_id: 92,
                 fade_sec: 0.01,
             },
             &landscape,
@@ -3070,7 +3214,7 @@ mod tests {
         assert!(!saw_new_id, "release must disable future respawns");
         assert!(
             pop.voices.is_empty(),
-            "released group should drain without repopulation"
+            "released population should drain without repopulation"
         );
     }
 
@@ -3084,7 +3228,7 @@ mod tests {
         spec.control.pitch.mode = PitchMode::Lock;
         pop.apply_action(
             Action::Spawn {
-                group_id: 12,
+                population_id: 12,
                 ids: vec![100, 101],
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
@@ -3097,10 +3241,10 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 12,
+                population_id: 12,
                 policy: RespawnPolicy::Hereditary { sigma_oct: 0.005 },
                 settle_strategy: None,
-                capacity: 1,
+                capacity: 2,
                 min_c_level: None,
                 background_death_rate_per_sec: 0.0,
             },
@@ -3143,7 +3287,7 @@ mod tests {
         spec.control.pitch.mode = PitchMode::Lock;
         pop.apply_action(
             Action::Spawn {
-                group_id: 13,
+                population_id: 13,
                 ids: vec![130, 131],
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
@@ -3156,7 +3300,7 @@ mod tests {
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
-                group_id: 13,
+                population_id: 13,
                 policy: RespawnPolicy::PeakBiased {
                     config: RespawnPeakBiasConfig::default(),
                 },
@@ -3190,7 +3334,7 @@ mod tests {
     }
 
     #[test]
-    fn random_respawn_capacity_uses_weighted_scene_scores() {
+    fn random_respawn_selection_uses_weighted_scene_scores() {
         let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 880.0, 96));
         let candidate_bins = [12usize, 36usize, 60usize];
         let candidate_freqs = candidate_bins.map(|idx| landscape.space.centers_hz[idx]);
@@ -3235,7 +3379,7 @@ mod tests {
         spec.control.pitch.mode = PitchMode::Free;
         pop.apply_action(
             Action::Spawn {
-                group_id: 1,
+                population_id: 1,
                 ids: vec![1],
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
@@ -3284,7 +3428,7 @@ mod tests {
         let landscape = LandscapeFrame::default();
         pop.apply_action(
             Action::Spawn {
-                group_id: 1,
+                population_id: 1,
                 ids: vec![1, 2, 3],
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
@@ -3316,11 +3460,11 @@ mod tests {
         let space = Log2Space::new(55.0, 880.0, 12);
         let landscape = LandscapeFrame::new(space.clone());
         let mut world = GeneratorModel::new(time, space);
-        let mut pop = Population::new(time);
+        let mut pop = Community::new(time);
         let spec = spawn_spec_with_freq(440.0);
         pop.apply_action(
             Action::Spawn {
-                group_id: 2,
+                population_id: 2,
                 ids: vec![77],
                 spec,
                 strategy: None,
@@ -3351,5 +3495,88 @@ mod tests {
         if used > 0 {
             assert_eq!(batches[0].source_id, 77);
         }
+    }
+
+    #[test]
+    fn when_viable_gate_latch_emits_exactly_one_phonation_gate_open_event() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let space = Log2Space::new(55.0, 880.0, 12);
+        let mut world = GeneratorModel::new(time, space.clone());
+        let mut pop = Community::new(time);
+        pop.enable_auto_observe();
+
+        let mut landscape_low = LandscapeFrame::new(space.clone());
+        landscape_low.consonance_field_level.fill(0.0);
+        let mut landscape_high = LandscapeFrame::new(space);
+        landscape_high.consonance_field_level.fill(1.0);
+
+        let spec = sustain_spawn_spec_with_gate(440.0, PhonationGate::WhenViable, 0.5);
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 9,
+                ids: vec![501],
+                spec,
+                strategy: None,
+            },
+            &landscape_low,
+            None,
+        );
+
+        let mut batches = Vec::new();
+        pop.collect_phonation_batches_into(&mut world, &landscape_low, 0, &mut batches);
+        assert!(
+            pop.drain_phonation_gate_open_events().is_empty(),
+            "gate stays closed while consonance is below the viability low bound"
+        );
+
+        pop.collect_phonation_batches_into(&mut world, &landscape_high, 64, &mut batches);
+        let events = pop.drain_phonation_gate_open_events();
+        assert_eq!(events.len(), 1, "exactly one latch-open record");
+        assert_eq!(events[0].population_id, 9);
+        assert_eq!(events[0].voice_id, 501);
+
+        pop.collect_phonation_batches_into(&mut world, &landscape_high, 128, &mut batches);
+        assert!(
+            pop.drain_phonation_gate_open_events().is_empty(),
+            "the one-way latch must not re-fire once open"
+        );
+    }
+
+    #[test]
+    fn immediate_gate_never_emits_phonation_gate_open_events() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let space = Log2Space::new(55.0, 880.0, 12);
+        let mut world = GeneratorModel::new(time, space.clone());
+        let mut pop = Community::new(time);
+        pop.enable_auto_observe();
+
+        let mut landscape_high = LandscapeFrame::new(space);
+        landscape_high.consonance_field_level.fill(1.0);
+
+        let spec = sustain_spawn_spec_with_gate(440.0, PhonationGate::Immediate, 0.5);
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 9,
+                ids: vec![502],
+                spec,
+                strategy: None,
+            },
+            &landscape_high,
+            None,
+        );
+
+        let mut batches = Vec::new();
+        pop.collect_phonation_batches_into(&mut world, &landscape_high, 0, &mut batches);
+        pop.collect_phonation_batches_into(&mut world, &landscape_high, 64, &mut batches);
+        assert!(
+            pop.drain_phonation_gate_open_events().is_empty(),
+            "Immediate gates start open and never latch, so they never emit"
+        );
     }
 }

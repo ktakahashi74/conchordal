@@ -25,6 +25,10 @@ struct Args {
     /// Path to config TOML
     #[arg(long, default_value = "config.toml")]
     config: String,
+
+    /// Override the fresh scenario seed (a script-level seed() still wins)
+    #[arg(long)]
+    seed: Option<u64>,
 }
 
 fn main() {
@@ -46,7 +50,9 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    if let Err(err) = conchordal::app::run_render(&args.scenario, args.output, config, stop_flag) {
+    if let Err(err) =
+        conchordal::app::run_render(&args.scenario, args.output, config, stop_flag, args.seed)
+    {
         eprintln!("{err}");
         std::process::exit(1);
     }

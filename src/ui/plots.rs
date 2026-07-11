@@ -36,7 +36,7 @@ pub fn log2_plot_hz(
     y_min: f64,
     y_max: f64,
     height: f32,
-    link_group: Option<&str>,
+    link_population: Option<&str>,
     line_color: Option<Color32>,
     overlay: Option<(&[f32], &str, Color32)>,
 ) {
@@ -106,7 +106,7 @@ pub fn log2_plot_hz(
             format!("{:.0}", hz)
         })
         .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value));
-    if let Some(link) = link_group {
+    if let Some(link) = link_population {
         plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
     }
 
@@ -127,7 +127,7 @@ pub fn draw_roughness_harmonicity(
     harmonicity: &[f32],
     roughness: &[f32],
     height: f32,
-    link_group: Option<&str>,
+    link_population: Option<&str>,
 ) {
     assert_eq!(
         xs_hz.len(),
@@ -183,7 +183,7 @@ pub fn draw_roughness_harmonicity(
             format!("{:.0}", hz)
         })
         .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value));
-    if let Some(link) = link_group {
+    if let Some(link) = link_population {
         plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
     }
 
@@ -236,7 +236,7 @@ pub fn neural_activity_plot(
     height: f32,
     window_start: f64,
     window_end: f64,
-    link_group: Option<&str>,
+    link_population: Option<&str>,
 ) {
     let fallback_history;
     let history = if history.len() < 2 {
@@ -267,7 +267,7 @@ pub fn neural_activity_plot(
         .default_x_bounds(window_start, window_end)
         .y_axis_formatter(|_, _| String::new())
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value));
-    if let Some(link) = link_group {
+    if let Some(link) = link_population {
         plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
     }
     plot.show(ui, |plot_ui| {
@@ -410,7 +410,7 @@ pub fn plot_population_dynamics(
         .default_x_bounds(x_min, x_max)
         .x_axis_formatter(|mark, _| format!("{:.0} Hz", 2f64.powf(mark.value)))
         .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
-        .link_axis(Id::new("landscape_group"), Vec2b::new(true, false));
+        .link_axis(Id::new("landscape_population"), Vec2b::new(true, false));
 
     plot.show(ui, |plot_ui| {
         plot_ui.set_plot_bounds_x(x_min..=x_max);
@@ -462,7 +462,7 @@ pub fn spectrum_time_freq_axes(
     height: f32,
     window_start: f64,
     window_end: f64,
-    link_group: Option<&str>,
+    link_population: Option<&str>,
 ) {
     let fallback_history;
     let history = if history.len() < 2 {
@@ -494,7 +494,7 @@ pub fn spectrum_time_freq_axes(
         .default_y_bounds(0.0, 3.0)
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
         .y_axis_formatter(|_, _| String::new());
-    if let Some(link) = link_group {
+    if let Some(link) = link_population {
         plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
     }
 

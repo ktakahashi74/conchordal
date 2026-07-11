@@ -93,6 +93,7 @@ fn book_rhai_examples_execute() {
             nogui: false,
             compile_only: false,
             report: None,
+            seed: None,
         };
         compile_scenario_from_script(&script_path, &args, &AppConfig::default()).unwrap_or_else(
             |e| {

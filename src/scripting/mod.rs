@@ -73,11 +73,11 @@ enum PhonationKind {
 }
 
 #[derive(Clone, Debug)]
-struct SpeciesSpec {
+struct PopulationSpec {
     control: VoiceControl,
     respawn_policy: RespawnPolicy,
     respawn_settle_strategy: Option<SpawnStrategy>,
-    respawn_capacity: usize,
+    respawn_capacity: Option<usize>,
     respawn_min_c_level: Option<f32>,
     respawn_background_death_rate_per_sec: f32,
     crowding_target_same: bool,
@@ -107,7 +107,7 @@ struct SpeciesSpec {
     pitch_apply_mode_user_set: bool,
 }
 
-impl SpeciesSpec {
+impl PopulationSpec {
     fn preset(body: BodyMethod) -> Self {
         let mut control = VoiceControl::default();
         control.body.method = body;
@@ -116,7 +116,7 @@ impl SpeciesSpec {
             control,
             respawn_policy: RespawnPolicy::None,
             respawn_settle_strategy: None,
-            respawn_capacity: 1,
+            respawn_capacity: None,
             respawn_min_c_level: None,
             respawn_background_death_rate_per_sec: 0.0,
             crowding_target_same: true,
@@ -265,7 +265,7 @@ impl SpeciesSpec {
         control.phonation.gate = self.phonation_gate;
         // Resolve how seek_consonance() pitch decisions land, unless the script
         // chose explicitly: re-attacking voices snap at onsets, sustained voices
-        // glide. Order-independent (resolved at commit, not at call time).
+        // glide. Order-independent (resolved at placement, not at call time).
         if self.consonance_movement && !self.pitch_apply_mode_user_set {
             let apply = match self.phonation_spec.timing {
                 PhonationTiming::Once => PitchApplyMode::Glide,
@@ -324,9 +324,13 @@ impl SpeciesSpec {
         self.control.body.routing = routing;
     }
 
-    fn set_crowding_target(&mut self, same_group_visible: bool, other_group_visible: bool) {
-        self.crowding_target_same = same_group_visible;
-        self.crowding_target_other = other_group_visible;
+    fn set_crowding_target(
+        &mut self,
+        same_population_visible: bool,
+        other_population_visible: bool,
+    ) {
+        self.crowding_target_same = same_population_visible;
+        self.crowding_target_other = other_population_visible;
     }
 
     fn set_leave_self_out(&mut self, enabled: bool) {
@@ -498,17 +502,21 @@ impl SpeciesSpec {
         self.control.body.modes = Some(pattern);
     }
 
-    fn set_brain(&mut self, name: &str) {
+    fn set_brain(&mut self, name: &str, position: Position) -> Result<(), Box<EvalAltResult>> {
         let lowered = name.trim().to_ascii_lowercase();
         self.brain = match lowered.as_str() {
             "drone" => BrainKind::Drone,
             "seq" => BrainKind::Seq,
             "entrain" => BrainKind::Entrain,
             other => {
-                warn!("brain '{}' not supported yet", other);
-                self.brain
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    format!("unknown brain '{other}': expected \"entrain\", \"seq\", or \"drone\"")
+                        .into(),
+                    position,
+                )));
             }
         };
+        Ok(())
     }
 
     fn set_phonation(&mut self, kind: PhonationKind) {
@@ -601,19 +609,29 @@ impl SpeciesSpec {
         self.coupled_spec_mut().coupling = strength;
     }
 
-    fn set_rhythm_role(&mut self, name: &str) {
+    fn set_rhythm_role(
+        &mut self,
+        name: &str,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
         let role = match name {
             "beat" => RhythmRole::Beat,
             "subdivision" => RhythmRole::Subdivision,
             "accent" => RhythmRole::Accent,
             "texture" => RhythmRole::Texture,
             other => {
-                warn!("unknown rhythm_role '{other}', ignoring");
-                return;
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    format!(
+                        "unknown rhythm_role '{other}': expected \"beat\", \"subdivision\", \"accent\", or \"texture\""
+                    )
+                    .into(),
+                    position,
+                )));
             }
         };
         self.rhythm_role = Some(role);
         self.coupled_spec_mut().role = role;
+        Ok(())
     }
 
     fn set_microtiming(&mut self, amount: f32) {
@@ -818,7 +836,7 @@ impl SpeciesSpec {
         } else {
             1.0
         };
-        self.respawn_capacity = rounded.max(1.0) as usize;
+        self.respawn_capacity = Some(rounded.max(1.0) as usize);
     }
 
     fn set_respawn_min_c_level(&mut self, value: f32) {
@@ -859,12 +877,12 @@ impl SpeciesSpec {
 }
 
 #[derive(Clone, Debug)]
-pub struct SpeciesHandle {
-    spec: SpeciesSpec,
+pub struct PopulationSpecHandle {
+    spec: PopulationSpec,
 }
 
 #[derive(Clone, Debug)]
-pub struct GroupHandle {
+pub struct PopulationHandle {
     id: u64,
 }
 
@@ -921,7 +939,7 @@ impl BusSet {
 
 #[derive(Clone, Debug)]
 pub struct Placement {
-    count: usize,
+    count: i64,
     strategy: Option<SpawnStrategy>,
     freq_hz: Option<f32>,
     /// Set when built from `consonance(root)`, so `range()` reads multiples.
@@ -995,7 +1013,7 @@ impl Placement {
     }
 
     fn with_count(mut self, count: i64) -> Self {
-        self.count = count.max(0) as usize;
+        self.count = count;
         self
     }
 
@@ -1100,37 +1118,33 @@ impl Placement {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum GroupStatus {
-    Draft,
+enum PopulationStatus {
     Live,
+    ReleasePending,
     Released,
-    Dropped,
 }
 
 #[derive(Clone, Debug)]
-struct GroupState {
+struct PopulationState {
     id: u64,
-    count: usize,
-    spec: SpeciesSpec,
+    spec: PopulationSpec,
     respawn_policy: RespawnPolicy,
     crowding_target_same: bool,
     crowding_target_other: bool,
-    strategy: Option<SpawnStrategy>,
-    status: GroupStatus,
+    status: PopulationStatus,
     live_ids: Vec<u64>,
     pending_patch: ControlUpdate,
     pending_crowding_target: Option<(bool, bool)>,
     pending_release: bool,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Default)]
-struct ScriptWarnings {
-    draft_dropped: u32,
-}
+struct ScriptWarnings;
 
 #[derive(Debug, Clone)]
 struct ScopeFrame {
-    created_groups: Vec<u64>,
+    created_populations: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -1139,16 +1153,24 @@ pub struct ScriptContext {
     pub scenario: Scenario,
     pub seed: u64,
     pub next_event_order: u64,
-    next_group_id: u64,
+    next_population_id: u64,
     next_voice_id: u64,
-    groups: BTreeMap<u64, GroupState>,
+    populations: BTreeMap<u64, PopulationState>,
     scopes: Vec<ScopeFrame>,
+    #[cfg(test)]
     warnings: ScriptWarnings,
 }
 
 impl Default for ScriptContext {
     fn default() -> Self {
-        let seed = random::<u64>();
+        Self::with_seed(random::<u64>())
+    }
+}
+
+impl ScriptContext {
+    /// A fresh context seeded with `seed`. Scripts still override this via a
+    /// `seed()` call, which wins because it runs during evaluation.
+    fn with_seed(seed: u64) -> Self {
         Self {
             cursor: 0.0,
             scenario: Scenario {
@@ -1162,16 +1184,15 @@ impl Default for ScriptContext {
             },
             seed,
             next_event_order: 1,
-            next_group_id: 1,
+            next_population_id: 1,
             next_voice_id: 1,
-            groups: BTreeMap::new(),
+            populations: BTreeMap::new(),
             scopes: Vec::new(),
-            warnings: ScriptWarnings::default(),
+            #[cfg(test)]
+            warnings: ScriptWarnings,
         }
     }
-}
 
-impl ScriptContext {
     fn push_event(&mut self, time_sec: f32, actions: Vec<Action>) {
         if actions.is_empty() {
             return;
@@ -1197,7 +1218,7 @@ impl ScriptContext {
 
     fn push_scope(&mut self) {
         self.scopes.push(ScopeFrame {
-            created_groups: Vec::new(),
+            created_populations: Vec::new(),
         });
     }
 
@@ -1205,44 +1226,48 @@ impl ScriptContext {
         let Some(scope) = self.scopes.pop() else {
             return;
         };
+        let mut updates = Vec::new();
+        let mut crowding_updates = Vec::new();
         let mut releases = Vec::new();
-        for group_id in scope.created_groups {
-            let Some(group) = self.groups.get_mut(&group_id) else {
+        for population_id in scope.created_populations {
+            let Some(population) = self.populations.get_mut(&population_id) else {
                 continue;
             };
-            match group.status {
-                GroupStatus::Draft => {
-                    warn!("scope ended with draft group {group_id} (spawn skipped)");
-                    self.warnings.draft_dropped += 1;
-                    group.status = GroupStatus::Dropped;
-                }
-                GroupStatus::Live => {
-                    if !group.live_ids.is_empty() {
-                        releases.push(Action::ReleaseGroup {
-                            group_id,
-                            fade_sec: group.spec.release_sec(),
+            match population.status {
+                PopulationStatus::Live | PopulationStatus::ReleasePending => {
+                    if population.pending_patch != ControlUpdate::default() {
+                        updates.push(Action::UpdatePopulation {
+                            population_id,
+                            patch: population.pending_patch.clone(),
                         });
                     }
-                    group.pending_patch = ControlUpdate::default();
-                    group.pending_crowding_target = None;
-                    group.pending_release = false;
-                    group.status = GroupStatus::Released;
+                    if let Some((same_population_visible, other_population_visible)) =
+                        population.pending_crowding_target
+                    {
+                        crowding_updates.push(Action::SetPopulationCrowdingTarget {
+                            population_id,
+                            same_population_visible,
+                            other_population_visible,
+                        });
+                    }
+                    if !population.live_ids.is_empty() {
+                        releases.push(Action::ReleasePopulation {
+                            population_id,
+                            fade_sec: population.spec.release_sec(),
+                        });
+                    }
+                    population.pending_patch = ControlUpdate::default();
+                    population.pending_crowding_target = None;
+                    population.pending_release = false;
+                    population.status = PopulationStatus::Released;
                 }
-                GroupStatus::Released | GroupStatus::Dropped => {}
+                PopulationStatus::Released => {}
             }
         }
-        if !releases.is_empty() {
-            self.push_event(self.cursor, releases);
-        }
-    }
-
-    fn drop_remaining_drafts(&mut self) {
-        for (group_id, group) in self.groups.iter_mut() {
-            if matches!(group.status, GroupStatus::Draft) {
-                warn!("script ended with draft group {group_id} (spawn skipped)");
-                self.warnings.draft_dropped += 1;
-                group.status = GroupStatus::Dropped;
-            }
+        if !updates.is_empty() || !crowding_updates.is_empty() || !releases.is_empty() {
+            updates.extend(crowding_updates);
+            updates.extend(releases);
+            self.push_event(self.cursor, updates);
         }
     }
 
@@ -1260,7 +1285,7 @@ impl ScriptContext {
         let mut max_end: f32 = 0.0;
         for event in &self.scenario.events {
             for action in &event.actions {
-                if let Action::ReleaseGroup { fade_sec, .. } = action {
+                if let Action::ReleasePopulation { fade_sec, .. } = action {
                     let fade = fade_sec.max(0.0);
                     max_end = max_end.max(event.time + fade);
                 }
@@ -1269,103 +1294,60 @@ impl ScriptContext {
         max_end
     }
 
-    fn commit(&mut self, include_drafts: bool) {
-        let mut spawn_actions = Vec::new();
-        if include_drafts {
-            for group in self.groups.values_mut() {
-                if !matches!(group.status, GroupStatus::Draft) {
-                    continue;
-                }
-                let mut ids = Vec::with_capacity(group.count);
-                for _ in 0..group.count {
-                    let id = self.next_voice_id;
-                    self.next_voice_id = self.next_voice_id.wrapping_add(1);
-                    ids.push(id);
-                }
-                group.live_ids = ids.clone();
-                group.status = GroupStatus::Live;
-                if !ids.is_empty() {
-                    spawn_actions.push(Action::Spawn {
-                        group_id: group.id,
-                        ids,
-                        spec: group.spec.spawn_spec(),
-                        strategy: group.strategy.clone(),
-                    });
-                    spawn_actions.push(Action::SetGroupCrowdingTarget {
-                        group_id: group.id,
-                        same_group_visible: group.crowding_target_same,
-                        other_group_visible: group.crowding_target_other,
-                    });
-                    if !matches!(group.respawn_policy, RespawnPolicy::None) {
-                        spawn_actions.push(Action::SetRespawnPolicy {
-                            group_id: group.id,
-                            policy: group.respawn_policy,
-                            settle_strategy: group.spec.respawn_settle_strategy.clone(),
-                            capacity: group.spec.respawn_capacity.max(1),
-                            min_c_level: group.spec.respawn_min_c_level,
-                            background_death_rate_per_sec: group
-                                .spec
-                                .respawn_background_death_rate_per_sec,
-                        });
-                    }
-                }
-            }
-        }
-
+    fn emit_pending_actions(&mut self) {
         let mut update_actions = Vec::new();
         let mut crowding_target_actions = Vec::new();
-        for group in self.groups.values_mut() {
-            if !matches!(group.status, GroupStatus::Live) {
+        for population in self.populations.values_mut() {
+            if !matches!(
+                population.status,
+                PopulationStatus::Live | PopulationStatus::ReleasePending
+            ) {
                 continue;
             }
-            if group.pending_patch != ControlUpdate::default() {
-                if !group.live_ids.is_empty() {
-                    update_actions.push(Action::UpdateGroup {
-                        group_id: group.id,
-                        patch: group.pending_patch.clone(),
+            if population.pending_patch != ControlUpdate::default() {
+                if !population.live_ids.is_empty() {
+                    update_actions.push(Action::UpdatePopulation {
+                        population_id: population.id,
+                        patch: population.pending_patch.clone(),
                     });
                 }
-                group.pending_patch = ControlUpdate::default();
+                population.pending_patch = ControlUpdate::default();
             }
-            if let Some((same_group_visible, other_group_visible)) = group.pending_crowding_target {
-                crowding_target_actions.push(Action::SetGroupCrowdingTarget {
-                    group_id: group.id,
-                    same_group_visible,
-                    other_group_visible,
+            if let Some((same_population_visible, other_population_visible)) =
+                population.pending_crowding_target
+            {
+                crowding_target_actions.push(Action::SetPopulationCrowdingTarget {
+                    population_id: population.id,
+                    same_population_visible,
+                    other_population_visible,
                 });
-                group.pending_crowding_target = None;
+                population.pending_crowding_target = None;
             }
         }
 
         let mut release_actions = Vec::new();
-        for group in self.groups.values_mut() {
-            if !matches!(group.status, GroupStatus::Live) {
-                continue;
-            }
-            if group.pending_release {
-                if !group.live_ids.is_empty() {
-                    release_actions.push(Action::ReleaseGroup {
-                        group_id: group.id,
-                        fade_sec: group.spec.release_sec(),
+        for population in self.populations.values_mut() {
+            if matches!(population.status, PopulationStatus::ReleasePending)
+                && population.pending_release
+            {
+                if !population.live_ids.is_empty() {
+                    release_actions.push(Action::ReleasePopulation {
+                        population_id: population.id,
+                        fade_sec: population.spec.release_sec(),
                     });
                 }
-                group.pending_release = false;
-                group.status = GroupStatus::Released;
+                population.pending_release = false;
+                population.status = PopulationStatus::Released;
             }
         }
 
-        if !spawn_actions.is_empty()
-            || !update_actions.is_empty()
+        if !update_actions.is_empty()
             || !crowding_target_actions.is_empty()
             || !release_actions.is_empty()
         {
             let mut actions = Vec::with_capacity(
-                spawn_actions.len()
-                    + update_actions.len()
-                    + crowding_target_actions.len()
-                    + release_actions.len(),
+                update_actions.len() + crowding_target_actions.len() + release_actions.len(),
             );
-            actions.extend(spawn_actions);
             actions.extend(update_actions);
             actions.extend(crowding_target_actions);
             actions.extend(release_actions);
@@ -1374,8 +1356,7 @@ impl ScriptContext {
     }
 
     fn finish(&mut self) {
-        self.commit(false);
-        self.drop_remaining_drafts();
+        self.emit_pending_actions();
         let mut end_time = self.finalize_duration();
         let release_tail = self.max_release_tail();
         if release_tail > end_time {
@@ -1386,56 +1367,99 @@ impl ScriptContext {
         self.push_event(end_time, vec![Action::Finish]);
     }
 
-    fn create_group(
+    fn create_population(
         &mut self,
-        species: SpeciesHandle,
+        population_spec: PopulationSpecHandle,
         count: i64,
+        strategy: Option<SpawnStrategy>,
         position: Position,
-    ) -> Result<GroupHandle, Box<EvalAltResult>> {
-        if count < 0 {
+    ) -> Result<PopulationHandle, Box<EvalAltResult>> {
+        if count <= 0 {
             return Err(Box::new(EvalAltResult::ErrorRuntime(
-                "create count must be non-negative".into(),
+                "population count must be >= 1".into(),
                 position,
             )));
         }
         let count = count as usize;
-        let id = self.next_group_id;
-        self.next_group_id = self.next_group_id.wrapping_add(1);
-        let group = GroupState {
+        if let Some(capacity) = population_spec.spec.respawn_capacity
+            && count > capacity
+        {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "respawn_capacity must be >= founder count".into(),
+                position,
+            )));
+        }
+        let id = self.next_population_id;
+        self.next_population_id = self.next_population_id.wrapping_add(1);
+        let mut ids = Vec::with_capacity(count);
+        for _ in 0..count {
+            let voice_id = self.next_voice_id;
+            self.next_voice_id = self.next_voice_id.wrapping_add(1);
+            ids.push(voice_id);
+        }
+        let population = PopulationState {
             id,
-            count,
-            respawn_policy: species.spec.respawn_policy,
-            crowding_target_same: species.spec.crowding_target_same,
-            crowding_target_other: species.spec.crowding_target_other,
-            spec: species.spec,
-            strategy: None,
-            status: GroupStatus::Draft,
-            live_ids: Vec::new(),
+            respawn_policy: population_spec.spec.respawn_policy,
+            crowding_target_same: population_spec.spec.crowding_target_same,
+            crowding_target_other: population_spec.spec.crowding_target_other,
+            spec: population_spec.spec,
+            status: PopulationStatus::Live,
+            live_ids: ids.clone(),
             pending_patch: ControlUpdate::default(),
             pending_crowding_target: None,
             pending_release: false,
         };
-        self.groups.insert(id, group);
+        self.populations.insert(id, population);
         if let Some(scope) = self.scopes.last_mut() {
-            scope.created_groups.push(id);
+            scope.created_populations.push(id);
         }
-        Ok(GroupHandle { id })
+        if !ids.is_empty() {
+            let population = self.populations.get(&id).expect("inserted population");
+            let mut actions = vec![
+                Action::Spawn {
+                    population_id: id,
+                    ids,
+                    spec: population.spec.spawn_spec(),
+                    strategy,
+                },
+                Action::SetPopulationCrowdingTarget {
+                    population_id: id,
+                    same_population_visible: population.crowding_target_same,
+                    other_population_visible: population.crowding_target_other,
+                },
+            ];
+            if !matches!(population.respawn_policy, RespawnPolicy::None) {
+                actions.push(Action::SetRespawnPolicy {
+                    population_id: id,
+                    policy: population.respawn_policy,
+                    settle_strategy: population.spec.respawn_settle_strategy.clone(),
+                    capacity: population.spec.respawn_capacity.unwrap_or(count).max(1),
+                    min_c_level: population.spec.respawn_min_c_level,
+                    background_death_rate_per_sec: population
+                        .spec
+                        .respawn_background_death_rate_per_sec,
+                });
+            }
+            self.push_event(self.cursor, actions);
+        }
+        Ok(PopulationHandle { id })
     }
 
-    fn place_material(
+    fn place_population_spec(
         &mut self,
-        mut species: SpeciesHandle,
+        mut population_spec: PopulationSpecHandle,
         placement: Placement,
         position: Position,
-    ) -> Result<GroupHandle, Box<EvalAltResult>> {
+    ) -> Result<PopulationHandle, Box<EvalAltResult>> {
         if let Some(freq_hz) = placement.freq_hz {
-            species.spec.set_freq(freq_hz);
+            population_spec.spec.set_freq(freq_hz);
         }
-        let handle = self.create_group(species, placement.count as i64, position)?;
-        if let Some(group) = self.groups.get_mut(&handle.id) {
-            group.strategy = placement.strategy;
-        }
-        Ok(handle)
+        self.create_population(
+            population_spec,
+            placement.count,
+            placement.strategy,
+            position,
+        )
     }
 
     fn set_seed(&mut self, seed: i64, position: Position) -> Result<(), Box<EvalAltResult>> {
@@ -1452,385 +1476,228 @@ impl ScriptContext {
     }
 
     fn wait(&mut self, sec: f32) {
-        self.commit(true);
+        self.emit_pending_actions();
         self.cursor += sec.max(0.0);
     }
 
     fn flush(&mut self) {
-        self.commit(true);
+        self.emit_pending_actions();
     }
 
-    fn release_group(&mut self, group_id: u64) {
-        let Some(group) = self.groups.get_mut(&group_id) else {
-            warn!("release on unknown group {group_id}");
+    fn release_population(&mut self, population_id: u64) {
+        let Some(population) = self.populations.get_mut(&population_id) else {
+            warn!("release on unknown population {population_id}");
             return;
         };
-        match group.status {
-            GroupStatus::Draft => {
-                warn!("release on draft group {group_id} (spawn skipped)");
-                self.warnings.draft_dropped += 1;
-                group.status = GroupStatus::Dropped;
+        match population.status {
+            PopulationStatus::Live => {
+                population.pending_release = true;
+                population.status = PopulationStatus::ReleasePending;
             }
-            GroupStatus::Live => {
-                group.pending_release = true;
+            PopulationStatus::ReleasePending => {
+                warn!("release ignored for population {population_id}: release already pending");
             }
-            GroupStatus::Released | GroupStatus::Dropped => {
-                warn!("release ignored for inactive group {group_id}");
+            PopulationStatus::Released => {
+                warn!("release ignored for inactive population {population_id}");
             }
         }
     }
 
-    fn warn_live_builder(&self, group_id: u64, label: &str) {
-        warn!("{label} ignored for live group {group_id}");
+    fn warn_population_inactive(&self, population_id: u64, label: &str) {
+        warn!("{label} ignored for inactive population {population_id}");
     }
 }
 
-type SpeciesNumericSetter = fn(&mut SpeciesSpec, f32);
-type SpeciesPairNumericSetter = fn(&mut SpeciesSpec, f32, f32);
-type GroupSpecNumericSetter = fn(&mut SpeciesSpec, f32);
-type GroupSpecPairNumericSetter = fn(&mut SpeciesSpec, f32, f32);
-type GroupPatchNumericSetter = fn(&mut ControlUpdate, f32);
-type GroupDraftHook = fn(&mut GroupState);
-type SpeciesNumericMethod = (&'static str, SpeciesNumericSetter);
-type SpeciesPairNumericMethod = (&'static str, SpeciesPairNumericSetter);
-type GroupNumericMethod = (
+type PopulationSpecNumericSetter = fn(&mut PopulationSpec, f32);
+type PopulationSpecPairNumericSetter = fn(&mut PopulationSpec, f32, f32);
+type PopulationPatchNumericSetter = fn(&mut ControlUpdate, f32);
+type PopulationSpecNumericMethod = (&'static str, PopulationSpecNumericSetter);
+type PopulationSpecPairNumericMethod = (&'static str, PopulationSpecPairNumericSetter);
+type PopulationNumericMethod = (
     &'static str,
-    GroupSpecNumericSetter,
-    GroupPatchNumericSetter,
-    Option<GroupDraftHook>,
+    PopulationSpecNumericSetter,
+    PopulationPatchNumericSetter,
 );
-type GroupDraftNumericMethod = (&'static str, GroupSpecNumericSetter);
-type GroupDraftPairNumericMethod = (&'static str, GroupSpecPairNumericSetter);
 
-fn register_species_numeric_overloads(
+fn register_population_spec_numeric_overloads(
     engine: &mut Engine,
     name: &'static str,
-    setter: SpeciesNumericSetter,
-) {
-    engine.register_fn(name, move |mut species: SpeciesHandle, value: FLOAT| {
-        setter(&mut species.spec, value as f32);
-        species
-    });
-    engine.register_fn(name, move |mut species: SpeciesHandle, value: INT| {
-        setter(&mut species.spec, value as f32);
-        species
-    });
-}
-
-fn register_species_pair_numeric_overloads(
-    engine: &mut Engine,
-    name: &'static str,
-    setter: SpeciesPairNumericSetter,
+    setter: PopulationSpecNumericSetter,
 ) {
     engine.register_fn(
         name,
-        move |mut species: SpeciesHandle, first: FLOAT, second: FLOAT| {
-            setter(&mut species.spec, first as f32, second as f32);
-            species
+        move |mut population_spec: PopulationSpecHandle, value: FLOAT| {
+            setter(&mut population_spec.spec, value as f32);
+            population_spec
         },
     );
     engine.register_fn(
         name,
-        move |mut species: SpeciesHandle, first: INT, second: FLOAT| {
-            setter(&mut species.spec, first as f32, second as f32);
-            species
-        },
-    );
-    engine.register_fn(
-        name,
-        move |mut species: SpeciesHandle, first: FLOAT, second: INT| {
-            setter(&mut species.spec, first as f32, second as f32);
-            species
-        },
-    );
-    engine.register_fn(
-        name,
-        move |mut species: SpeciesHandle, first: INT, second: INT| {
-            setter(&mut species.spec, first as f32, second as f32);
-            species
+        move |mut population_spec: PopulationSpecHandle, value: INT| {
+            setter(&mut population_spec.spec, value as f32);
+            population_spec
         },
     );
 }
 
-fn register_species_numeric_methods(engine: &mut Engine, methods: &[SpeciesNumericMethod]) {
+fn register_population_spec_pair_numeric_overloads(
+    engine: &mut Engine,
+    name: &'static str,
+    setter: PopulationSpecPairNumericSetter,
+) {
+    engine.register_fn(
+        name,
+        move |mut population_spec: PopulationSpecHandle, first: FLOAT, second: FLOAT| {
+            setter(&mut population_spec.spec, first as f32, second as f32);
+            population_spec
+        },
+    );
+    engine.register_fn(
+        name,
+        move |mut population_spec: PopulationSpecHandle, first: INT, second: FLOAT| {
+            setter(&mut population_spec.spec, first as f32, second as f32);
+            population_spec
+        },
+    );
+    engine.register_fn(
+        name,
+        move |mut population_spec: PopulationSpecHandle, first: FLOAT, second: INT| {
+            setter(&mut population_spec.spec, first as f32, second as f32);
+            population_spec
+        },
+    );
+    engine.register_fn(
+        name,
+        move |mut population_spec: PopulationSpecHandle, first: INT, second: INT| {
+            setter(&mut population_spec.spec, first as f32, second as f32);
+            population_spec
+        },
+    );
+}
+
+fn register_population_spec_numeric_methods(
+    engine: &mut Engine,
+    methods: &[PopulationSpecNumericMethod],
+) {
     for &(name, setter) in methods {
-        register_species_numeric_overloads(engine, name, setter);
+        register_population_spec_numeric_overloads(engine, name, setter);
     }
 }
 
-fn register_species_pair_numeric_methods(
+fn register_population_spec_pair_numeric_methods(
     engine: &mut Engine,
-    methods: &[SpeciesPairNumericMethod],
+    methods: &[PopulationSpecPairNumericMethod],
 ) {
     for &(name, setter) in methods {
-        register_species_pair_numeric_overloads(engine, name, setter);
+        register_population_spec_pair_numeric_overloads(engine, name, setter);
     }
 }
 
-fn apply_group_numeric_patch(
+fn apply_population_numeric_patch(
     ctx_arc: &Arc<Mutex<ScriptContext>>,
-    handle: GroupHandle,
+    handle: PopulationHandle,
     label: &'static str,
     value: f32,
-    spec_setter: GroupSpecNumericSetter,
-    patch_setter: GroupPatchNumericSetter,
-    draft_hook: Option<GroupDraftHook>,
-) -> Result<GroupHandle, Box<EvalAltResult>> {
+    spec_setter: PopulationSpecNumericSetter,
+    patch_setter: PopulationPatchNumericSetter,
+) -> Result<PopulationHandle, Box<EvalAltResult>> {
     let mut ctx = ctx_arc.lock().expect("lock script context");
-    let Some(group) = ctx.groups.get_mut(&handle.id) else {
-        warn!("{label} ignored for unknown group {}", handle.id);
+    let Some(population) = ctx.populations.get_mut(&handle.id) else {
+        warn!("{label} ignored for unknown population {}", handle.id);
         return Ok(handle);
     };
-    match group.status {
-        GroupStatus::Draft => {
-            if let Some(hook) = draft_hook {
-                hook(group);
-            }
-            spec_setter(&mut group.spec, value);
+    match population.status {
+        PopulationStatus::Live => {
+            spec_setter(&mut population.spec, value);
+            patch_setter(&mut population.pending_patch, value);
         }
-        GroupStatus::Live => {
-            spec_setter(&mut group.spec, value);
-            patch_setter(&mut group.pending_patch, value);
-        }
-        GroupStatus::Released | GroupStatus::Dropped => {
-            warn!("{label} ignored for inactive group {}", handle.id);
+        PopulationStatus::ReleasePending | PopulationStatus::Released => {
+            warn!("{label} ignored for inactive population {}", handle.id);
         }
     }
     Ok(handle)
 }
 
-fn register_group_numeric_overloads(
+fn register_population_numeric_overloads(
     engine: &mut Engine,
     ctx: Arc<Mutex<ScriptContext>>,
     name: &'static str,
-    spec_setter: GroupSpecNumericSetter,
-    patch_setter: GroupPatchNumericSetter,
-    draft_hook: Option<GroupDraftHook>,
+    spec_setter: PopulationSpecNumericSetter,
+    patch_setter: PopulationPatchNumericSetter,
 ) {
     let ctx_float = ctx.clone();
     engine.register_fn(
         name,
-        move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_numeric_patch(
+        move |handle: PopulationHandle,
+              value: FLOAT|
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_numeric_patch(
                 &ctx_float,
                 handle,
                 name,
                 value as f32,
                 spec_setter,
                 patch_setter,
-                draft_hook,
             )
         },
     );
     engine.register_fn(
         name,
-        move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_numeric_patch(
+        move |handle: PopulationHandle,
+              value: INT|
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_numeric_patch(
                 &ctx,
                 handle,
                 name,
                 value as f32,
                 spec_setter,
                 patch_setter,
-                draft_hook,
             )
         },
     );
 }
 
-fn register_group_numeric_methods(
+fn register_population_numeric_methods(
     engine: &mut Engine,
     ctx: Arc<Mutex<ScriptContext>>,
-    methods: &[GroupNumericMethod],
+    methods: &[PopulationNumericMethod],
 ) {
-    for &(name, spec_setter, patch_setter, draft_hook) in methods {
-        register_group_numeric_overloads(
-            engine,
-            ctx.clone(),
-            name,
-            spec_setter,
-            patch_setter,
-            draft_hook,
-        );
+    for &(name, spec_setter, patch_setter) in methods {
+        register_population_numeric_overloads(engine, ctx.clone(), name, spec_setter, patch_setter);
     }
 }
 
-fn register_group_draft_numeric_overloads(
-    engine: &mut Engine,
-    ctx: Arc<Mutex<ScriptContext>>,
-    name: &'static str,
-    spec_setter: GroupSpecNumericSetter,
-) {
-    let ctx_float = ctx.clone();
-    engine.register_fn(
-        name,
-        move |handle: GroupHandle, value: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            let mut ctx = ctx_float.lock().expect("lock script context");
-            let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                warn!("{name} ignored for unknown group {}", handle.id);
-                return Ok(handle);
-            };
-            match group.status {
-                GroupStatus::Draft => spec_setter(&mut group.spec, value as f32),
-                _ => ctx.warn_live_builder(handle.id, name),
-            }
-            Ok(handle)
-        },
-    );
-    engine.register_fn(
-        name,
-        move |handle: GroupHandle, value: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            let mut ctx = ctx.lock().expect("lock script context");
-            let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                warn!("{name} ignored for unknown group {}", handle.id);
-                return Ok(handle);
-            };
-            match group.status {
-                GroupStatus::Draft => spec_setter(&mut group.spec, value as f32),
-                _ => ctx.warn_live_builder(handle.id, name),
-            }
-            Ok(handle)
-        },
-    );
-}
-
-fn register_group_draft_numeric_methods(
-    engine: &mut Engine,
-    ctx: Arc<Mutex<ScriptContext>>,
-    methods: &[GroupDraftNumericMethod],
-) {
-    for &(name, spec_setter) in methods {
-        register_group_draft_numeric_overloads(engine, ctx.clone(), name, spec_setter);
-    }
-}
-
-fn register_group_draft_pair_numeric_overloads(
-    engine: &mut Engine,
-    ctx: Arc<Mutex<ScriptContext>>,
-    name: &'static str,
-    spec_setter: GroupSpecPairNumericSetter,
-) {
-    let ctx_ff = ctx.clone();
-    engine.register_fn(
-        name,
-        move |handle: GroupHandle,
-              first: FLOAT,
-              second: FLOAT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            let mut ctx = ctx_ff.lock().expect("lock script context");
-            let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                warn!("{name} ignored for unknown group {}", handle.id);
-                return Ok(handle);
-            };
-            match group.status {
-                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
-                _ => ctx.warn_live_builder(handle.id, name),
-            }
-            Ok(handle)
-        },
-    );
-    let ctx_if = ctx.clone();
-    engine.register_fn(
-        name,
-        move |handle: GroupHandle,
-              first: INT,
-              second: FLOAT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            let mut ctx = ctx_if.lock().expect("lock script context");
-            let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                warn!("{name} ignored for unknown group {}", handle.id);
-                return Ok(handle);
-            };
-            match group.status {
-                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
-                _ => ctx.warn_live_builder(handle.id, name),
-            }
-            Ok(handle)
-        },
-    );
-    let ctx_fi = ctx.clone();
-    engine.register_fn(
-        name,
-        move |handle: GroupHandle,
-              first: FLOAT,
-              second: INT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            let mut ctx = ctx_fi.lock().expect("lock script context");
-            let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                warn!("{name} ignored for unknown group {}", handle.id);
-                return Ok(handle);
-            };
-            match group.status {
-                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
-                _ => ctx.warn_live_builder(handle.id, name),
-            }
-            Ok(handle)
-        },
-    );
-    engine.register_fn(
-        name,
-        move |handle: GroupHandle,
-              first: INT,
-              second: INT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            let mut ctx = ctx.lock().expect("lock script context");
-            let Some(group) = ctx.groups.get_mut(&handle.id) else {
-                warn!("{name} ignored for unknown group {}", handle.id);
-                return Ok(handle);
-            };
-            match group.status {
-                GroupStatus::Draft => spec_setter(&mut group.spec, first as f32, second as f32),
-                _ => ctx.warn_live_builder(handle.id, name),
-            }
-            Ok(handle)
-        },
-    );
-}
-
-fn register_group_draft_pair_numeric_methods(
-    engine: &mut Engine,
-    ctx: Arc<Mutex<ScriptContext>>,
-    methods: &[GroupDraftPairNumericMethod],
-) {
-    for &(name, spec_setter) in methods {
-        register_group_draft_pair_numeric_overloads(engine, ctx.clone(), name, spec_setter);
-    }
-}
-
-fn apply_group_crowding(
+fn apply_population_crowding(
     ctx_arc: &Arc<Mutex<ScriptContext>>,
-    handle: GroupHandle,
+    handle: PopulationHandle,
     label: &'static str,
     strength: f32,
     sigma_cents: Option<f32>,
-) -> Result<GroupHandle, Box<EvalAltResult>> {
+) -> Result<PopulationHandle, Box<EvalAltResult>> {
     let mut ctx = ctx_arc.lock().expect("lock script context");
-    let Some(group) = ctx.groups.get_mut(&handle.id) else {
-        warn!("{label} ignored for unknown group {}", handle.id);
+    let Some(population) = ctx.populations.get_mut(&handle.id) else {
+        warn!("{label} ignored for unknown population {}", handle.id);
         return Ok(handle);
     };
-    match group.status {
-        GroupStatus::Draft => match sigma_cents {
-            Some(sigma) => group.spec.set_crowding(strength, sigma),
-            None => group.spec.set_crowding_strength_only(strength),
-        },
-        GroupStatus::Live => match sigma_cents {
+    match population.status {
+        PopulationStatus::Live => match sigma_cents {
             Some(sigma) => {
-                group.spec.set_crowding(strength, sigma);
-                group.pending_patch.crowding_strength = Some(strength);
-                group.pending_patch.crowding_sigma_cents = Some(sigma);
+                population.spec.set_crowding(strength, sigma);
+                population.pending_patch.crowding_strength = Some(strength);
+                population.pending_patch.crowding_sigma_cents = Some(sigma);
             }
             None => {
-                group.spec.set_crowding_strength_only(strength);
-                group.pending_patch.crowding_strength = Some(strength);
+                population.spec.set_crowding_strength_only(strength);
+                population.pending_patch.crowding_strength = Some(strength);
             }
         },
-        _ => ctx.warn_live_builder(handle.id, label),
+        _ => ctx.warn_population_inactive(handle.id, label),
     }
     Ok(handle)
 }
 
-fn register_group_crowding_overloads(
+fn register_population_crowding_overloads(
     engine: &mut Engine,
     ctx: Arc<Mutex<ScriptContext>>,
     name: &'static str,
@@ -1838,11 +1705,11 @@ fn register_group_crowding_overloads(
     let ctx_float_float = ctx.clone();
     engine.register_fn(
         name,
-        move |handle: GroupHandle,
+        move |handle: PopulationHandle,
               strength: FLOAT,
               sigma_cents: FLOAT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_crowding(
                 &ctx_float_float,
                 handle,
                 name,
@@ -1854,11 +1721,11 @@ fn register_group_crowding_overloads(
     let ctx_int_float = ctx.clone();
     engine.register_fn(
         name,
-        move |handle: GroupHandle,
+        move |handle: PopulationHandle,
               strength: INT,
               sigma_cents: FLOAT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_crowding(
                 &ctx_int_float,
                 handle,
                 name,
@@ -1870,11 +1737,11 @@ fn register_group_crowding_overloads(
     let ctx_float_int = ctx.clone();
     engine.register_fn(
         name,
-        move |handle: GroupHandle,
+        move |handle: PopulationHandle,
               strength: FLOAT,
               sigma_cents: INT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_crowding(
                 &ctx_float_int,
                 handle,
                 name,
@@ -1886,11 +1753,11 @@ fn register_group_crowding_overloads(
     let ctx_int_int = ctx.clone();
     engine.register_fn(
         name,
-        move |handle: GroupHandle,
+        move |handle: PopulationHandle,
               strength: INT,
               sigma_cents: INT|
-              -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_crowding(
                 &ctx_int_int,
                 handle,
                 name,
@@ -1902,14 +1769,18 @@ fn register_group_crowding_overloads(
     let ctx_float = ctx.clone();
     engine.register_fn(
         name,
-        move |handle: GroupHandle, strength: FLOAT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(&ctx_float, handle, name, strength as f32, None)
+        move |handle: PopulationHandle,
+              strength: FLOAT|
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_crowding(&ctx_float, handle, name, strength as f32, None)
         },
     );
     engine.register_fn(
         name,
-        move |handle: GroupHandle, strength: INT| -> Result<GroupHandle, Box<EvalAltResult>> {
-            apply_group_crowding(&ctx, handle, name, strength as f32, None)
+        move |handle: PopulationHandle,
+              strength: INT|
+              -> Result<PopulationHandle, Box<EvalAltResult>> {
+            apply_population_crowding(&ctx, handle, name, strength as f32, None)
         },
     );
 }
@@ -1992,10 +1863,6 @@ fn patch_timbre_spread(update: &mut ControlUpdate, value: f32) {
 
 fn patch_timbre_unison(update: &mut ControlUpdate, value: f32) {
     update.timbre_unison = Some(value.round() as i64);
-}
-
-fn draft_clear_strategy(group: &mut GroupState) {
-    group.strategy = None;
 }
 
 pub struct ScriptHost;

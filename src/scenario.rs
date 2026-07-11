@@ -657,32 +657,32 @@ impl Default for RespawnPeakBiasConfig {
 #[allow(clippy::large_enum_variant)]
 pub enum Action {
     Spawn {
-        group_id: u64,
+        population_id: u64,
         ids: Vec<u64>,
         spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
     },
-    UpdateGroup {
-        group_id: u64,
-        /// Partial control patch applied to runtime current members of `group_id`.
+    UpdatePopulation {
+        population_id: u64,
+        /// Partial control patch applied to runtime current members of `population_id`.
         patch: ControlUpdate,
     },
-    ReleaseGroup {
-        group_id: u64,
+    ReleasePopulation {
+        population_id: u64,
         fade_sec: f32,
     },
     SetRespawnPolicy {
-        group_id: u64,
+        population_id: u64,
         policy: RespawnPolicy,
         settle_strategy: Option<SpawnStrategy>,
         capacity: usize,
         min_c_level: Option<f32>,
         background_death_rate_per_sec: f32,
     },
-    SetGroupCrowdingTarget {
-        group_id: u64,
-        same_group_visible: bool,
-        other_group_visible: bool,
+    SetPopulationCrowdingTarget {
+        population_id: u64,
+        same_population_visible: bool,
+        other_population_visible: bool,
     },
     SetHarmonicityParams {
         update: LandscapeUpdate,
@@ -699,15 +699,26 @@ pub enum Action {
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Action::Spawn { group_id, ids, .. } => {
-                write!(f, "Spawn group={} count={}", group_id, ids.len())
+            Action::Spawn {
+                population_id, ids, ..
+            } => {
+                write!(f, "Spawn population={} count={}", population_id, ids.len())
             }
-            Action::UpdateGroup { group_id, .. } => write!(f, "Update group={}", group_id),
-            Action::ReleaseGroup { group_id, fade_sec } => {
-                write!(f, "Release group={} fade={:.3}", group_id, fade_sec)
+            Action::UpdatePopulation { population_id, .. } => {
+                write!(f, "Update population={}", population_id)
+            }
+            Action::ReleasePopulation {
+                population_id,
+                fade_sec,
+            } => {
+                write!(
+                    f,
+                    "Release population={} fade={:.3}",
+                    population_id, fade_sec
+                )
             }
             Action::SetRespawnPolicy {
-                group_id,
+                population_id,
                 policy,
                 capacity,
                 background_death_rate_per_sec,
@@ -715,18 +726,18 @@ impl fmt::Display for Action {
             } => {
                 write!(
                     f,
-                    "SetRespawnPolicy group={} policy={:?} capacity={} background_death_rate_per_sec={:.3}",
-                    group_id, policy, capacity, background_death_rate_per_sec
+                    "SetRespawnPolicy population={} policy={:?} capacity={} background_death_rate_per_sec={:.3}",
+                    population_id, policy, capacity, background_death_rate_per_sec
                 )
             }
-            Action::SetGroupCrowdingTarget {
-                group_id,
-                same_group_visible,
-                other_group_visible,
+            Action::SetPopulationCrowdingTarget {
+                population_id,
+                same_population_visible,
+                other_population_visible,
             } => write!(
                 f,
-                "SetGroupCrowdingTarget group={} same={} other={}",
-                group_id, same_group_visible, other_group_visible
+                "SetPopulationCrowdingTarget population={} same={} other={}",
+                population_id, same_population_visible, other_population_visible
             ),
             Action::SetHarmonicityParams { update } => write!(
                 f,

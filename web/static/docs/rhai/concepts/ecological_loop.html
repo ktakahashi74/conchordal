@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>The Consonance Field - Conchordal Script Reference</title>
+        <title>The Ecological Loop - Conchordal Script Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -174,199 +174,149 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="the-consonance-field"><a class="header" href="#the-consonance-field">The Consonance Field</a></h1>
-<p>Conchordal’s perception core (the <strong>Landscape</strong>) listens to the habitat bus,
-transforms it into log-frequency space, and computes two potentials:
-<strong>roughness</strong> (sensory dissonance from amplitude fluctuations within critical
-bands) and <strong>harmonicity</strong> (periodicity and template matching). Their
-combination is the <strong>Consonance Field</strong>: an evaluation terrain over frequency
-that placement, movement, prediction, and survival all read from.</p>
-<p>Because the field is computed from what the system actually hears, every voice
-deforms the terrain for every other voice. That feedback loop — not a chord
-chart — is where harmony comes from. See <a href="ecological_loop.html">The Ecological Loop</a>
-for the relationship between potential, score, level, mass, and density.</p>
-<h2 id="placing-into-the-field-consonance-dissonance-edge-gap"><a class="header" href="#placing-into-the-field-consonance-dissonance-edge-gap">Placing into the field: <code>consonance</code>, <code>dissonance</code>, <code>edge</code>, <code>gap</code></a></h2>
-<p>A field-relative placement names a <strong>target</strong> — a region of the field — and is
-realized either as a cloud (the default) or as a deterministic extremum with
-<code>.peak()</code>. The targets are:</p>
+                        <h1 id="the-ecological-loop"><a class="header" href="#the-ecological-loop">The Ecological Loop</a></h1>
+<p>Conchordal becomes an ecology when a voice’s sound changes the environment
+that guides that voice and every other voice.</p>
+<pre><code class="language-text">Voice bodies
+    |-- presentation bus --&gt; listener / Listener Twin
+    |
+    `-- habitat bus --&gt; Landscape --&gt; placement, movement, viability
+                              ^                         |
+                              `------ new sound &lt;------'
+</code></pre>
+<p>By default every voice feeds both buses, so the audience and the ecology share
+the same physical event. Routing can split them deliberately; see
+<a href="routing.html">Routing and the Listener Twin</a>.</p>
+<h2 id="from-sound-to-terrain"><a class="header" href="#from-sound-to-terrain">From sound to terrain</a></h2>
+<p>The Landscape analyzes the habitat bus in log-frequency space and computes:</p>
 <ul>
-<li><code>consonance</code> — high-consonance positions (harmonic centers, fusion).</li>
-<li><code>dissonance</code> — low-consonance positions (tension, clusters, color).</li>
-<li><code>edge</code> — the consonance/dissonance boundary (the metastable middle).</li>
-<li><code>gap</code> — empty registers (fill the room, avoid masking).</li>
+<li><strong>roughness potential</strong>: interference and beating within critical bands;</li>
+<li><strong>harmonicity potential</strong>: periodicity and support for virtual roots;</li>
+<li><strong>Consonance Field</strong>: the combined terrain used to evaluate candidate
+frequencies.</li>
 </ul>
-<p><code>consonance(root)</code> takes a harmonic window around a root (multiples via
-<code>range()</code>); every target also takes an absolute <code>(min_hz, max_hz)</code> range.</p>
-<pre><code class="language-rhai">let anchor = harmonic()
-    .brain("drone")
-    .amp(0.06)
+<p>A voice changes the spectrum on the habitat bus, which changes these scans.
+That is why <code>consonance(...).peak()</code> does not return a fixed scale degree: its
+answer depends on what is sounding now.</p>
+<h2 id="score-level-mass-and-density"><a class="header" href="#score-level-mass-and-density">Score, level, mass, and density</a></h2>
+<p>Several representations are derived from the same terrain. They are related,
+but they are not interchangeable.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Representation</th><th style="text-align: right">Range</th><th>Used for</th></tr>
+</thead>
+<tbody>
+<tr><td>potential</td><td style="text-align: right">kernel-dependent</td><td>Raw roughness and harmonicity output.</td></tr>
+<tr><td>field score</td><td style="text-align: right">unbounded real value</td><td>Comparing positions, hill-climb, and placement tension.</td></tr>
+<tr><td>field level</td><td style="text-align: right"><code>0..1</code></td><td>Bounded behavior and viability signals.</td></tr>
+<tr><td>density mass</td><td style="text-align: right">non-negative</td><td>Weight before normalization for stochastic placement.</td></tr>
+<tr><td>density / PMF</td><td style="text-align: right">sums to 1 in the selected range</td><td>Sampling a density cloud.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>.peak()</code> selects an extremum. The default density placement samples a PMF, so
+several voices can form a cloud around supported regions instead of collapsing
+onto one bin. <code>tension(degree)</code> targets a field-score step below the strongest
+peak. A viability window reads a bounded or environment-relative fit signal.</p>
+<p>The suffixes in reports preserve the same distinction: for example,
+<code>mean_c_field_score</code> and <code>mean_c_field_level</code> are different quantities.</p>
+<h2 id="placement-is-not-movement"><a class="header" href="#placement-is-not-movement">Placement is not movement</a></h2>
+<p>Placement answers where a voice enters. Pitch behavior answers what happens
+after entry.</p>
+<pre><code class="language-rhai">let fixed_strain = harmonic()
+    .amp(0.035)
     .sustain()
     .anchor();
 
-let voice = harmonic()
-    .amp(0.04)
-    .sustain();
+let resolving_strain = harmonic()
+    .amp(0.035)
+    .sustain()
+    .seek_consonance()
+    .glide(0.4);
 
-section("field placement", || {
-    place(anchor, at(110.0));
-    wait(1.0);
-
-    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
+section("two responses to dissonance", || {
+    place(fixed_strain, dissonance(140.0, 900.0).count(3));
+    place(resolving_strain, dissonance(140.0, 900.0).count(3));
     wait(6.0);
 });
 </code></pre>
-<p>A target with no modifier is a <strong>density cloud</strong>: not “random but harmonic” but
-a normalized distribution derived from the consonance model, well-defined inside
-the range. Placement is independent of behavior — enter at <code>dissonance</code> and
-<code>anchor()</code> for a held cluster, or enter at <code>dissonance</code> and <code>seek_consonance()</code>
-for a resolution gesture.</p>
-<pre><code class="language-rhai">let cloud = harmonic().amp(0.035).sustain();
-
-place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
-wait(8.0);
-</code></pre>
-<h2 id="placement-tension-tensionτ"><a class="header" href="#placement-tension-tensionτ">Placement tension: <code>tension(τ)</code></a></h2>
-<p><code>consonance</code> aims at the <em>strongest</em> peak. <code>tension(τ)</code> aims a step <strong>below</strong> it:
-<code>τ ∈ [0, 1]</code> is the tension degree, where <code>0</code> keeps the resolved peak and larger
-values target progressively weaker, metastable steps
-(<code>target = L_max − τ·(L_max − L_min)</code> over the range, in field score). It is the
-placement twin of movement’s search <code>temperature</code> — the dial for <em>how resolved</em> a
-spawn should sit — and it reads the field’s score directly, so the degree rides
-the terrain’s own scale rather than the count of peaks that happen to be
-sounding. With <code>.peak()</code> it snaps to the nearest step; as a cloud it concentrates
-the distribution around the target.</p>
-<pre><code class="language-rhai">let tense = harmonic().amp(0.035).sustain();
-
-// A metastable step below the strongest peak — placed, not resolved.
-place(tense, consonance(110.0, 1200.0).peak().tension(0.4).count(6).spacing(0.8));
-wait(6.0);
-</code></pre>
-<p>The field-agnostic placements are <code>random(min_hz, max_hz)</code> (log-uniform) and the
-geometric <code>at(hz)</code> and <code>line(start_hz, end_hz)</code>.</p>
-<h2 id="naming-frequencies-ratios-of-a-root"><a class="header" href="#naming-frequencies-ratios-of-a-root">Naming frequencies: ratios of a root</a></h2>
-<p><code>at(hz)</code> and <code>line(start_hz, end_hz)</code> take absolute frequencies, and the
-canonical idiom for filling them in is to name one sounding root in Hz and
-derive every other pitch as a ratio of it: <code>root_hz * 1.5</code> for a fifth,
-<code>root_hz * 4.0/3.0</code> for a fourth, <code>root_hz * 2.0</code> for a register lift. A ratio
-is the physical quantity the field itself reads, so writing intervals this way
-keeps the thinking in frequency relationships.</p>
-<p>Writing an equal-tempered decimal instead — <code>146.83</code> for a D3 — still runs,
-but it re-imports the twelve-tone symbol grid through the back door: the
-number stands in for a note name rather than describing a relationship to a
-sounding partial. Prefer ratios of a root that is actually sounding in the
-scene.</p>
-<pre><code class="language-rhai">let root_hz = 110.0;
-let voice = harmonic().amp(0.04).sustain();
-
-place(voice, at(root_hz * 1.5));
-wait(2.0);
-</code></pre>
-<h2 id="consonance-movement-seek_consonance"><a class="header" href="#consonance-movement-seek_consonance">Consonance Movement: <code>seek_consonance</code></a></h2>
-<p>Use <code>seek_consonance()</code> when voices should actively seek better field
-positions. It sets free hill-climb movement with glide defaults. Use
-<code>glide(tau_sec)</code> when the musical thought is “same movement idea, slower or
-faster pitch motion”.</p>
-<pre><code class="language-rhai">let mover = harmonic()
-    .amp(0.045)
-    .sustain()
-    .seek_consonance()
-    .glide(0.35)
-    .avoid_neighbors(0.6)
-    .global_peaks(8, 70.0)
-    .ratio_candidates(5);
-
-place(mover, consonance(80.0, 900.0).count(8));
-wait(12.0);
-</code></pre>
-<p><code>avoid_neighbors(strength)</code> adds crowding repulsion so movers spread out
-instead of collapsing onto the same peak.</p>
-<p>The opposite of movement is <code>anchor()</code>: an anchored voice holds its pitch and
-only deforms the terrain for others. Voices placed with <code>at()</code> or given
-<code>freq()</code> are anchored implicitly; use <code>anchor()</code> to freeze strategy-placed
-voices at their settled position.</p>
-<p>How movement lands is resolved from phonation: sustained movers glide,
-re-attacking movers (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap to
-their new pitch at each onset. Override with <code>pitch_apply_mode()</code> when a
-script needs the other behavior. Mechanism-level controls (<code>pitch_core()</code> and
-the hill-climb / peak-sampler tuning in the
-<a href="../reference/api.html">API Reference</a>) remain available for research scripts;
-prefer <code>seek_consonance()</code> and <code>glide()</code> in curated work.</p>
-<h2 id="consonance-viability-and-respawn"><a class="header" href="#consonance-viability-and-respawn">Consonance Viability and Respawn</a></h2>
-<p>Viability makes field fit matter over time. <code>consonance_viability(low, high)</code>
-defines the consonance window, while <code>recovery(seconds)</code> states how long a
-full-scale recharge takes: a voice in a well-fitting place is sustained, a
-voice in a poor place approaches its nominal <code>endurance(seconds)</code>.</p>
-<p>By default viability uses <strong>environment-relative</strong> scoring: a voice is
-evaluated against the field with its own footprint approximately removed. Use
-<code>viability_scope("total")</code> only when the compositional question is explicitly
-total-field viability.</p>
-<p>Respawn closes the loop into an ecology: when voices die, replacements appear
-according to a respawn policy. <code>respawn_consonance()</code> draws them from
-consonance-biased parental peaks; <code>respawn_capacity(count)</code> sets the maximum
-living membership (defaulting to, and never lower than, the founder count);
-<code>respawn_settle(placement)</code> decides where replacements settle.</p>
-<pre><code class="language-rhai">let settle = consonance(70.0, 1100.0).spacing(0.8);
+<p>Both Populations enter a dissonant region. One holds it; the other treats it as a
+starting point for resolution.</p>
+<h2 id="evaluate-the-environment-not-the-self"><a class="header" href="#evaluate-the-environment-not-the-self">Evaluate the environment, not the self</a></h2>
+<p>A voice contributes energy to the field it later evaluates. Without care, a
+strong voice could appear viable merely because it hears its own footprint.
+<code>consonance_viability()</code> therefore enables environment-relative evaluation by
+default: the system approximately removes the voice’s own contribution before
+judging its fit.</p>
+<p>This is a survival rule, not a routing rule. The voice may still feed the
+habitat bus and reshape the terrain for every other voice. Use
+<code>viability_scope("total")</code> only when the intended question is explicitly
+whether the voice fits the total field including itself.</p>
+<h2 id="energy-death-and-replacement"><a class="header" href="#energy-death-and-replacement">Energy, death, and replacement</a></h2>
+<p>The ecological lifecycle belongs to <code>brain("entrain")</code>. Its energy is
+normalized to <code>0..1</code>:</p>
+<ol>
+<li><code>endurance(seconds)</code> establishes the nominal zero-fit lifetime.</li>
+<li>Each attack spends <code>attack_cost_fraction</code>.</li>
+<li>A consonant attack can restore up to <code>attack_recharge_fraction</code>.</li>
+<li><code>recovery(seconds)</code> enables continuous recovery; the viability window
+determines how much of that recovery is available at the current pitch.</li>
+<li>At zero energy the voice dies and enters its release tail.</li>
+<li>If a respawn policy exists, the Population may create a replacement.</li>
+</ol>
+<pre><code class="language-rhai">let settlement = consonance(70.0, 1100.0).spacing(0.8);
 
 let ecology = harmonic()
-    .amp(0.04)
-    .repeat()
-    .pulse(1.5)
-    .cycles(3)
+    .brain("entrain")
+    .entrained()
+    .cycles(2)
     .seek_consonance()
-    .glide(0.45)
     .endurance(8.0)
     .recovery(4.0)
     .attack_cost_fraction(0.017)
     .attack_recharge_fraction(0.70)
     .consonance_viability(0.32, 0.82)
     .respawn_consonance()
-    .respawn_capacity(14)
-    .respawn_settle(settle);
+    .respawn_capacity(8)
+    .respawn_settle(settlement);
 
-place(ecology, consonance(70.0, 1100.0).count(14));
-wait(30.0);
+place(ecology, consonance(70.0, 1100.0).count(8));
+wait(20.0);
 </code></pre>
-<p>The full lifecycle surface (time-domain endurance/recovery and normalized
-per-attack fractions) and the respawn policies are documented in the
-<a href="../reference/api.html">API Reference</a>. <a href="voice_life.html">The Life of a Voice</a>
-separates articulation, phonation, pitch behavior, and survival; the
-<a href="ecological_loop.html">Ecological Loop</a> follows the complete energy and respawn
-cycle.</p>
-<h2 id="landscape-aware-timbre"><a class="header" href="#landscape-aware-timbre">Landscape-aware timbre</a></h2>
-<p>The field can shape timbre as well as pitch. The <code>modal()</code> body takes a mode
-pattern, and landscape-aware patterns sample the live field, so a bell’s
-partials can sit where the terrain already supports them.</p>
-<pre><code class="language-rhai">let shimmer_modes = landscape_density_modes()
-    .count(10)
-    .range(1.0, 5.5)
-    .gamma(1.6)
-    .spacing(0.7);
-
-let shimmer = modal()
-    .amp(0.025)
-    .sustain()
-    .seek_consonance()
-    .modes(shimmer_modes)
-    .brightness(0.7);
-
-place(shimmer, consonance(200.0, 1600.0).count(4));
-wait(8.0);
-</code></pre>
-<p>Mode constructors include <code>harmonic_modes()</code>, <code>odd_modes()</code>,
-<code>power_modes(beta)</code>, <code>stiff_string_modes(stiffness)</code>,
-<code>custom_modes([ratios])</code>, <code>modal_table(name)</code>, <code>landscape_density_modes()</code>,
-and <code>landscape_peaks_modes()</code> — see the
-<a href="../reference/api.html#mode-patterns">API Reference</a>.</p>
+<p>Respawn policies answer different compositional questions:</p>
+<ul>
+<li><code>respawn_random()</code> asks what survives under fresh random variation.</li>
+<li><code>respawn_hereditary(sigma_oct)</code> places offspring near a selected parent.</li>
+<li><code>respawn_consonance()</code> biases parent/candidate choice toward supported peaks.</li>
+<li><code>respawn_capacity(n)</code> bounds how many living members the Population maintains;
+without it, the founder count is the capacity, and an explicit value cannot
+be lower than that founder count.</li>
+<li><code>respawn_settle(placement)</code> supplies the placement strategy for replacements.</li>
+</ul>
+<p>Respawn preserves the <code>Population</code> and its <code>population_id</code> while individual
+<code>voice_id</code> and <code>generation</code> values change. The report stream makes that
+turnover observable.</p>
+<h2 id="two-observation-loops"><a class="header" href="#two-observation-loops">Two observation loops</a></h2>
+<p>There are therefore two feedback loops:</p>
+<ul>
+<li>The <strong>runtime loop</strong> is automatic: sound reshapes the terrain, which changes
+voice behavior and survival.</li>
+<li>The <strong>composing loop</strong> is human: run, listen, inspect a report, revise the
+scenario, and run again.</li>
+</ul>
+<p>The runtime loop is the piece’s ecology. The composing loop is described in
+<a href="../tutorial/observing.html">Observing a Performance</a>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../concepts/ecological_loop.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../concepts/voice_life.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../concepts/rhythm.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../concepts/consonance.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -376,11 +326,11 @@ and <code>landscape_peaks_modes()</code> — see the
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../concepts/ecological_loop.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../concepts/voice_life.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../concepts/rhythm.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../concepts/consonance.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

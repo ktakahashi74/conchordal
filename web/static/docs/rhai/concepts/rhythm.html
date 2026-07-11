@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0bf5c79c.js";
+            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-ebd22986.js"></script>
+        <script src="../toc-7940c472.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -176,11 +176,11 @@
                     <main>
                         <h1 id="rhythm-one-coupling-continuum"><a class="header" href="#rhythm-one-coupling-continuum">Rhythm: One Coupling Continuum</a></h1>
 <p>Rhythm in conchordal is <strong>one coupling continuum on a shared emergent meter</strong>,
-not a set of independent clocks. The population drives a single production
+not a set of independent clocks. The Community drives a single production
 meter (a coupled-oscillator beat); each voice is a phase oscillator that
 entrains its onset phase to that emergent beat with a coupling strength. There
 is no externally imposed grid — coherence (or its absence) emerges from how
-tightly each voice locks to the meter the population itself drives.</p>
+tightly each voice locks to the meter the Community itself drives.</p>
 <p>The three rhythm “families” are just three regions of the continuum:</p>
 <ul>
 <li><strong>metric</strong>: high coupling — a deep attractor, reads as a stable pulse.</li>
@@ -205,8 +205,12 @@ the terrain; it does not place a beat, and it never forces a measure.</li>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
 <p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
 <code>flow()</code>. The tempo region is a property of the terrain, set once at the
-director level, not per voice. They work on both a <code>Material</code> and a draft
-<code>Participant</code>.</p>
+director level, not per voice. Configure them on a <code>PopulationSpec</code> before
+calling <code>place()</code>.</p>
+<p>Do not confuse <code>.entrained()</code> with <code>brain("entrain")</code>. The preset controls
+onset timing; the brain selects the voice’s articulation life and metabolism.
+They are independent and may be used together. See
+<a href="voice_life.html">The Life of a Voice</a>.</p>
 <p>Per-voice modifiers refine where on the continuum a voice sits:</p>
 <ul>
 <li><code>entrainment(strength)</code> — coupling in <code>[0,1]</code>, free (<code>0</code>) .. locked (<code>1</code>).</li>

@@ -6,7 +6,7 @@
 #[derive(Debug, Clone)]
 pub struct LifeRecord {
     pub voice_id: u64,
-    pub group_id: u64,
+    pub population_id: u64,
     pub birth_frame: u64,
     pub death_frame: u64,
     pub lifetime_ticks: u32,
@@ -59,7 +59,7 @@ impl LifeAccumulator {
     pub fn finalize(
         &self,
         voice_id: u64,
-        group_id: u64,
+        population_id: u64,
         death_frame: u64,
         plv: Option<f32>,
         generation: u32,
@@ -71,7 +71,7 @@ impl LifeAccumulator {
         };
         LifeRecord {
             voice_id,
-            group_id,
+            population_id,
             birth_frame: self.birth_frame,
             death_frame,
             lifetime_ticks: self.lifetime_count,
@@ -97,7 +97,7 @@ mod tests {
 
         let rec = acc.finalize(42, 7, 200, Some(0.9), 0);
         assert_eq!(rec.voice_id, 42);
-        assert_eq!(rec.group_id, 7);
+        assert_eq!(rec.population_id, 7);
         assert_eq!(rec.birth_frame, 100);
         assert_eq!(rec.death_frame, 200);
         assert_eq!(rec.lifetime_ticks, 5);

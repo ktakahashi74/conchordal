@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::core::landscape::LandscapeFrame;
 use crate::dcc_coupler::ListenerPressure;
-use crate::life::population::{RuntimeEvent, SpawnReason};
+use crate::life::community::{PhonationGateOpenEvent, RuntimeEvent, SpawnReason};
 use crate::life::telemetry::LifeRecord;
 use crate::life::voice::sound_body::SoundBody;
 use crate::life::voice::{AnyArticulationCore, Voice};
@@ -25,7 +25,7 @@ pub struct JsonlReporter {
 #[derive(Debug, Clone)]
 pub struct OnsetSample {
     pub time_sec: f32,
-    pub group_id: u64,
+    pub population_id: u64,
     pub voice_id: u64,
     pub generation: u32,
     pub freq_hz: f32,
@@ -36,9 +36,9 @@ pub struct OnsetSample {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct GroupStepSummary {
+pub struct PopulationStepSummary {
     pub time_sec: f32,
-    pub group_id: u64,
+    pub population_id: u64,
     pub alive_count: usize,
     pub mean_freq_hz: f32,
     pub mean_c_field_score: f32,
@@ -63,7 +63,7 @@ pub struct RhythmSummary {
     pub time_sec: f32,
     pub window_start_sec: f32,
     pub window_end_sec: f32,
-    pub group_id: Option<u64>,
+    pub population_id: Option<u64>,
     pub onset_count: usize,
     pub onset_density_hz: f32,
     pub ioi_mean_sec: Option<f32>,
@@ -81,6 +81,9 @@ pub struct RhythmSummary {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
+    Meta {
+        seed: u64,
+    },
     SceneMarker {
         time_sec: f32,
         order: u64,
@@ -88,7 +91,7 @@ enum ReportRecord<'a> {
     },
     Spawn {
         time_sec: f32,
-        group_id: u64,
+        population_id: u64,
         voice_id: u64,
         generation: u32,
         member_idx: usize,
@@ -96,7 +99,7 @@ enum ReportRecord<'a> {
     },
     Respawn {
         time_sec: f32,
-        group_id: u64,
+        population_id: u64,
         voice_id: u64,
         generation: u32,
         member_idx: usize,
@@ -105,7 +108,7 @@ enum ReportRecord<'a> {
     },
     Death {
         time_sec: f32,
-        group_id: u64,
+        population_id: u64,
         voice_id: u64,
         generation: u32,
         lifetime_sec: f32,
@@ -116,7 +119,7 @@ enum ReportRecord<'a> {
     },
     Onset {
         time_sec: f32,
-        group_id: u64,
+        population_id: u64,
         voice_id: u64,
         generation: u32,
         freq_hz: f32,
@@ -125,9 +128,9 @@ enum ReportRecord<'a> {
         scaffold_mode: &'a str,
         scaffold_phase_0_1: Option<f32>,
     },
-    GroupStep {
+    PopulationStep {
         time_sec: f32,
-        group_id: u64,
+        population_id: u64,
         alive_count: usize,
         mean_freq_hz: f32,
         mean_c_field_score: f32,
@@ -171,7 +174,7 @@ enum ReportRecord<'a> {
         time_sec: f32,
         window_start_sec: f32,
         window_end_sec: f32,
-        group_id: Option<u64>,
+        population_id: Option<u64>,
         onset_count: usize,
         onset_density_hz: f32,
         ioi_mean_sec: Option<f32>,
@@ -192,6 +195,12 @@ enum ReportRecord<'a> {
         beat_confidence_peak: f32,
         beat_confidence_late_mean: f32,
     },
+    PhonationGateOpen {
+        time_sec: f32,
+        population_id: u64,
+        voice_id: u64,
+        consonance: f32,
+    },
 }
 
 impl JsonlReporter {
@@ -204,6 +213,12 @@ impl JsonlReporter {
             listener_beat_confidence: Vec::new(),
             rhythm_summary_written: false,
         })
+    }
+
+    /// Header record identifying the effective scenario seed, written first
+    /// so a report can be matched back to a `--seed` replay.
+    pub fn write_meta(&mut self, seed: u64) -> Result<(), String> {
+        self.write_record(&ReportRecord::Meta { seed })
     }
 
     pub fn write_scene_markers(&mut self, markers: &[SceneMarker]) -> Result<(), String> {
@@ -222,7 +237,7 @@ impl JsonlReporter {
             match event.reason {
                 SpawnReason::Initial => self.write_record(&ReportRecord::Spawn {
                     time_sec: event.time_sec,
-                    group_id: event.group_id,
+                    population_id: event.population_id,
                     voice_id: event.voice_id,
                     generation: event.generation,
                     member_idx: event.member_idx,
@@ -230,7 +245,7 @@ impl JsonlReporter {
                 })?,
                 SpawnReason::Respawn => self.write_record(&ReportRecord::Respawn {
                     time_sec: event.time_sec,
-                    group_id: event.group_id,
+                    population_id: event.population_id,
                     voice_id: event.voice_id,
                     generation: event.generation,
                     member_idx: event.member_idx,
@@ -252,7 +267,7 @@ impl JsonlReporter {
         for record in records {
             self.write_record(&ReportRecord::Death {
                 time_sec: record.death_frame as f32 * frame_sec,
-                group_id: record.group_id,
+                population_id: record.population_id,
                 voice_id: record.voice_id,
                 generation: record.generation,
                 lifetime_sec: record.death_frame.saturating_sub(record.birth_frame) as f32
@@ -270,7 +285,7 @@ impl JsonlReporter {
         for onset in onsets {
             self.write_record(&ReportRecord::Onset {
                 time_sec: onset.time_sec,
-                group_id: onset.group_id,
+                population_id: onset.population_id,
                 voice_id: onset.voice_id,
                 generation: onset.generation,
                 freq_hz: onset.freq_hz,
@@ -287,11 +302,29 @@ impl JsonlReporter {
         Ok(())
     }
 
-    pub fn write_group_steps(&mut self, steps: &[GroupStepSummary]) -> Result<(), String> {
+    pub fn write_phonation_gate_opens(
+        &mut self,
+        events: &[PhonationGateOpenEvent],
+    ) -> Result<(), String> {
+        for event in events {
+            self.write_record(&ReportRecord::PhonationGateOpen {
+                time_sec: event.time_sec,
+                population_id: event.population_id,
+                voice_id: event.voice_id,
+                consonance: event.consonance,
+            })?;
+        }
+        Ok(())
+    }
+
+    pub fn write_population_steps(
+        &mut self,
+        steps: &[PopulationStepSummary],
+    ) -> Result<(), String> {
         for step in steps {
-            self.write_record(&ReportRecord::GroupStep {
+            self.write_record(&ReportRecord::PopulationStep {
                 time_sec: step.time_sec,
-                group_id: step.group_id,
+                population_id: step.population_id,
                 alive_count: step.alive_count,
                 mean_freq_hz: step.mean_freq_hz,
                 mean_c_field_score: step.mean_c_field_score,
@@ -366,15 +399,15 @@ impl JsonlReporter {
         let summary = summarize_rhythm(&self.rhythm_onsets, &self.rhythm_observations, None);
         self.write_summary_record(&summary)?;
 
-        let mut groups = BTreeSet::new();
+        let mut populations = BTreeSet::new();
         for onset in &self.rhythm_onsets {
-            groups.insert(onset.group_id);
+            populations.insert(onset.population_id);
         }
-        for group_id in groups {
+        for population_id in populations {
             let summary = summarize_rhythm(
                 &self.rhythm_onsets,
                 &self.rhythm_observations,
-                Some(group_id),
+                Some(population_id),
             );
             self.write_summary_record(&summary)?;
         }
@@ -426,7 +459,7 @@ impl JsonlReporter {
             time_sec: summary.time_sec,
             window_start_sec: summary.window_start_sec,
             window_end_sec: summary.window_end_sec,
-            group_id: summary.group_id,
+            population_id: summary.population_id,
             onset_count: summary.onset_count,
             onset_density_hz: summary.onset_density_hz,
             ioi_mean_sec: summary.ioi_mean_sec,
@@ -458,19 +491,22 @@ impl JsonlReporter {
     }
 }
 
-pub fn summarize_rhythm_onsets(onsets: &[OnsetSample], group_id: Option<u64>) -> RhythmSummary {
-    summarize_rhythm(onsets, &[], group_id)
+pub fn summarize_rhythm_onsets(
+    onsets: &[OnsetSample],
+    population_id: Option<u64>,
+) -> RhythmSummary {
+    summarize_rhythm(onsets, &[], population_id)
 }
 
 pub fn summarize_rhythm(
     onsets: &[OnsetSample],
     observations: &[RhythmObservation],
-    group_id: Option<u64>,
+    population_id: Option<u64>,
 ) -> RhythmSummary {
     let filtered: Vec<&OnsetSample> = onsets
         .iter()
-        .filter(|onset| match group_id {
-            Some(id) => onset.group_id == id,
+        .filter(|onset| match population_id {
+            Some(id) => onset.population_id == id,
             None => true,
         })
         .collect();
@@ -519,7 +555,7 @@ pub fn summarize_rhythm(
         .filter_map(|onset| onset.plv.filter(|value| value.is_finite()))
         .collect();
     let mean_plv = mean_and_std(&plvs).map(|(mean, _)| mean);
-    let observation_summary = (group_id.is_none())
+    let observation_summary = (population_id.is_none())
         .then(|| summarize_rhythm_observations(observations))
         .flatten();
     let one_over_f_slope = estimate_one_over_f_slope(&times);
@@ -529,7 +565,7 @@ pub fn summarize_rhythm(
         time_sec: window_end_sec,
         window_start_sec,
         window_end_sec,
-        group_id,
+        population_id,
         onset_count,
         onset_density_hz,
         ioi_mean_sec: has_ioi.then_some(ioi_mean_sec),
@@ -636,7 +672,7 @@ fn estimate_voice_ioi_one_over_f_slope(onsets: &[&OnsetSample]) -> Option<f32> {
     for onset in onsets {
         if onset.time_sec.is_finite() {
             by_voice
-                .entry((onset.group_id, onset.voice_id, onset.generation))
+                .entry((onset.population_id, onset.voice_id, onset.generation))
                 .or_default()
                 .push(onset.time_sec);
         }
@@ -733,13 +769,14 @@ fn mean_and_std(values: &[f32]) -> Option<(f32, f32)> {
     Some((mean, variance.max(0.0).sqrt()))
 }
 
-pub fn summarize_groups(
+pub fn summarize_populations(
     voices: &[Voice],
+    active_population_ids: &[u64],
     landscape: &LandscapeFrame,
     time_sec: f32,
-) -> Vec<GroupStepSummary> {
+) -> Vec<PopulationStepSummary> {
     #[derive(Default)]
-    struct GroupAccum {
+    struct PopulationAccum {
         count: usize,
         sum_freq: f32,
         sum_score: f32,
@@ -747,45 +784,51 @@ pub fn summarize_groups(
         bins: BTreeMap<usize, usize>,
     }
 
-    let mut by_group: BTreeMap<u64, GroupAccum> = BTreeMap::new();
+    let mut by_population: BTreeMap<u64, PopulationAccum> = active_population_ids
+        .iter()
+        .copied()
+        .map(|population_id| (population_id, PopulationAccum::default()))
+        .collect();
     for agent in voices {
         if !agent.is_alive() {
             continue;
         }
         let freq_hz = agent.body.base_freq_hz();
-        let group = by_group.entry(agent.metadata.group_id).or_default();
-        group.count += 1;
-        group.sum_freq += freq_hz;
-        group.sum_score += landscape.evaluate_pitch_score(freq_hz);
-        group.sum_level += landscape.evaluate_pitch_level(freq_hz);
+        let population = by_population
+            .entry(agent.metadata.population_id)
+            .or_default();
+        population.count += 1;
+        population.sum_freq += freq_hz;
+        population.sum_score += landscape.evaluate_pitch_score(freq_hz);
+        population.sum_level += landscape.evaluate_pitch_level(freq_hz);
         if let Some(bin) = landscape.space.index_of_freq(freq_hz) {
-            *group.bins.entry(bin).or_default() += 1;
+            *population.bins.entry(bin).or_default() += 1;
         }
     }
 
-    by_group
+    by_population
         .into_iter()
-        .map(|(group_id, group)| {
-            let inv = if group.count > 0 {
-                1.0 / group.count as f32
+        .map(|(population_id, population)| {
+            let inv = if population.count > 0 {
+                1.0 / population.count as f32
             } else {
                 0.0
             };
             let mut entropy = 0.0f32;
-            for count in group.bins.values().copied() {
-                if count == 0 || group.count == 0 {
+            for count in population.bins.values().copied() {
+                if count == 0 || population.count == 0 {
                     continue;
                 }
-                let p = count as f32 / group.count as f32;
+                let p = count as f32 / population.count as f32;
                 entropy -= p * p.log2();
             }
-            GroupStepSummary {
+            PopulationStepSummary {
                 time_sec,
-                group_id,
-                alive_count: group.count,
-                mean_freq_hz: group.sum_freq * inv,
-                mean_c_field_score: group.sum_score * inv,
-                mean_c_field_level: group.sum_level * inv,
+                population_id,
+                alive_count: population.count,
+                mean_freq_hz: population.sum_freq * inv,
+                mean_c_field_score: population.sum_score * inv,
+                mean_c_field_level: population.sum_level * inv,
                 freq_entropy_log2: entropy,
             }
         })
@@ -838,7 +881,7 @@ pub fn onset_samples_from_batches(
         for onset in &batch.onsets {
             out.push(OnsetSample {
                 time_sec,
-                group_id: agent.metadata.group_id,
+                population_id: agent.metadata.population_id,
                 voice_id: agent.id(),
                 generation: agent.metadata.generation,
                 freq_hz,
@@ -868,7 +911,7 @@ mod tests {
     fn onset(time_sec: f32, plv: Option<f32>) -> OnsetSample {
         OnsetSample {
             time_sec,
-            group_id: 1,
+            population_id: 1,
             voice_id: 1,
             generation: 0,
             freq_hz: 440.0,
@@ -877,6 +920,17 @@ mod tests {
             scaffold_mode: "off",
             scaffold_phase_0_1: None,
         }
+    }
+
+    #[test]
+    fn population_step_keeps_active_population_visible_when_empty() {
+        let landscape = LandscapeFrame::default();
+        let steps = summarize_populations(&[], &[7], &landscape, 1.5);
+
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].population_id, 7);
+        assert_eq!(steps[0].alive_count, 0);
+        assert_eq!(steps[0].mean_freq_hz, 0.0);
     }
 
     fn rhythm_observation(time_sec: f32, order: Option<f32>) -> RhythmObservation {
@@ -978,15 +1032,15 @@ mod tests {
     }
 
     #[test]
-    fn group_filter_limits_rhythm_summary() {
+    fn population_filter_limits_rhythm_summary() {
         let mut onsets = vec![onset(0.0, None), onset(1.0, None)];
         let mut other = onset(10.0, None);
-        other.group_id = 2;
+        other.population_id = 2;
         onsets.push(other);
 
         let summary = summarize_rhythm_onsets(&onsets, Some(1));
 
-        assert_eq!(summary.group_id, Some(1));
+        assert_eq!(summary.population_id, Some(1));
         assert_eq!(summary.onset_count, 2);
         assert_eq!(summary.window_end_sec, 1.0);
     }
@@ -1009,7 +1063,7 @@ mod tests {
     }
 
     #[test]
-    fn group_filtered_summary_omits_global_kuramoto_fields() {
+    fn population_filtered_summary_omits_global_kuramoto_fields() {
         let onsets = vec![onset(0.0, None), onset(1.0, None), onset(2.0, None)];
         let observations = vec![rhythm_observation(0.0, Some(0.9))];
 

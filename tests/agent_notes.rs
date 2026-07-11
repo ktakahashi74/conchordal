@@ -1,9 +1,9 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
+use conchordal::life::community::Community;
 use conchordal::life::control::VoiceControl;
 use conchordal::life::generator_model::GeneratorModel;
-use conchordal::life::population::Population;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
 use conchordal::scenario::{
@@ -18,7 +18,7 @@ fn agents_publish_notes_and_render_audio() {
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = GeneratorModel::new(tb, space.clone());
-    let mut pop = Population::new(tb);
+    let mut pop = Community::new(tb);
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
@@ -36,7 +36,7 @@ fn agents_publish_notes_and_render_audio() {
     };
     let assigned_id = 1;
     let metadata = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -78,7 +78,7 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     };
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = GeneratorModel::new(tb, space.clone());
-    let mut pop = Population::new(tb);
+    let mut pop = Community::new(tb);
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
@@ -96,7 +96,7 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     };
     let assigned_id = 1;
     let metadata = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -130,7 +130,7 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     landscape_off.rhythm.env_open = 1.0;
     landscape_off.rhythm.env_level = 1.0;
     let mut world_off = GeneratorModel::new(tb, Log2Space::new(20.0, 20_000.0, 24));
-    let mut pop_off = Population::new(tb);
+    let mut pop_off = Community::new(tb);
     let agent = agent_cfg.spawn(assigned_id, 0, metadata, tb.fs, 0);
     pop_off.add_voice(agent);
     let batches_off = pop_off.collect_phonation_batches(&mut world_off, &landscape_off, now);

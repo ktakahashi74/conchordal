@@ -9,7 +9,8 @@ that placement, movement, prediction, and survival all read from.
 
 Because the field is computed from what the system actually hears, every voice
 deforms the terrain for every other voice. That feedback loop — not a chord
-chart — is where harmony comes from.
+chart — is where harmony comes from. See [The Ecological Loop](ecological_loop.md)
+for the relationship between potential, score, level, mass, and density.
 
 ## Placing into the field: `consonance`, `dissonance`, `edge`, `gap`
 
@@ -81,6 +82,29 @@ wait(6.0);
 The field-agnostic placements are `random(min_hz, max_hz)` (log-uniform) and the
 geometric `at(hz)` and `line(start_hz, end_hz)`.
 
+## Naming frequencies: ratios of a root
+
+`at(hz)` and `line(start_hz, end_hz)` take absolute frequencies, and the
+canonical idiom for filling them in is to name one sounding root in Hz and
+derive every other pitch as a ratio of it: `root_hz * 1.5` for a fifth,
+`root_hz * 4.0/3.0` for a fourth, `root_hz * 2.0` for a register lift. A ratio
+is the physical quantity the field itself reads, so writing intervals this way
+keeps the thinking in frequency relationships.
+
+Writing an equal-tempered decimal instead — `146.83` for a D3 — still runs,
+but it re-imports the twelve-tone symbol grid through the back door: the
+number stands in for a note name rather than describing a relationship to a
+sounding partial. Prefer ratios of a root that is actually sounding in the
+scene.
+
+```rhai
+let root_hz = 110.0;
+let voice = harmonic().amp(0.04).sustain();
+
+place(voice, at(root_hz * 1.5));
+wait(2.0);
+```
+
 ## Consonance Movement: `seek_consonance`
 
 Use `seek_consonance()` when voices should actively seek better field
@@ -132,9 +156,9 @@ total-field viability.
 
 Respawn closes the loop into an ecology: when voices die, replacements appear
 according to a respawn policy. `respawn_consonance()` draws them from
-consonance-biased parental peaks; `respawn_capacity(count)` keeps the
-population bounded; `respawn_settle(placement)` decides where replacements
-settle.
+consonance-biased parental peaks; `respawn_capacity(count)` sets the maximum
+living membership (defaulting to, and never lower than, the founder count);
+`respawn_settle(placement)` decides where replacements settle.
 
 ```rhai
 let settle = consonance(70.0, 1100.0).spacing(0.8);
@@ -161,7 +185,10 @@ wait(30.0);
 
 The full lifecycle surface (time-domain endurance/recovery and normalized
 per-attack fractions) and the respawn policies are documented in the
-[API Reference](../reference/api.md).
+[API Reference](../reference/api.md). [The Life of a Voice](voice_life.md)
+separates articulation, phonation, pitch behavior, and survival; the
+[Ecological Loop](ecological_loop.md) follows the complete energy and respawn
+cycle.
 
 ## Landscape-aware timbre
 

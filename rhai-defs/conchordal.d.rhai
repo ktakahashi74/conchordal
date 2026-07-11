@@ -10,28 +10,22 @@ const habitat_bus: Bus;
 const presentation_bus: Bus;
 
 /// [tuning] Duration follows field support.
-fn adaptive_duration(arg0: Material) -> Material;
-/// [tuning] Duration follows field support.
-fn adaptive_duration(arg0: Participant) -> Participant;
+fn adaptive_duration(arg0: PopulationSpec) -> PopulationSpec;
 
 /// ADSR amplitude envelope.
-fn adsr(arg0: Material, arg1: f64, arg2: f64, arg3: f64, arg4: f64) -> Material;
-/// ADSR amplitude envelope.
-fn adsr(arg0: Participant, arg1: f64, arg2: f64, arg3: f64, arg4: f64) -> Participant;
+fn adsr(arg0: PopulationSpec, arg1: f64, arg2: f64, arg3: f64, arg4: f64) -> PopulationSpec;
 
 /// Amplitude in 0.0-1.0.
-fn amp(arg0: Material, arg1: f64) -> Material;
+fn amp(arg0: Population, arg1: f64) -> Population;
 /// Amplitude in 0.0-1.0.
-fn amp(arg0: Material, arg1: i64) -> Material;
+fn amp(arg0: Population, arg1: i64) -> Population;
 /// Amplitude in 0.0-1.0.
-fn amp(arg0: Participant, arg1: f64) -> Participant;
+fn amp(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Amplitude in 0.0-1.0.
-fn amp(arg0: Participant, arg1: i64) -> Participant;
+fn amp(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Hold the voice at its pitch: an anchored voice never moves.
-fn anchor(arg0: Material) -> Material;
-/// Hold the voice at its pitch: an anchored voice never moves.
-fn anchor(arg0: Participant) -> Participant;
+fn anchor(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Place at a fixed frequency in Hz.
 fn at(arg0: f64) -> Placement;
@@ -39,61 +33,51 @@ fn at(arg0: f64) -> Placement;
 fn at(arg0: i64) -> Placement;
 
 /// Fraction of normalized energy spent by a full-strength attack.
-fn attack_cost_fraction(arg0: Material, arg1: f64) -> Material;
+fn attack_cost_fraction(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Fraction of normalized energy spent by a full-strength attack.
-fn attack_cost_fraction(arg0: Material, arg1: i64) -> Material;
-/// Fraction of normalized energy spent by a full-strength attack.
-fn attack_cost_fraction(arg0: Participant, arg1: f64) -> Participant;
-/// Fraction of normalized energy spent by a full-strength attack.
-fn attack_cost_fraction(arg0: Participant, arg1: i64) -> Participant;
+fn attack_cost_fraction(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Maximum normalized energy restored by a fully consonant attack.
-fn attack_recharge_fraction(arg0: Material, arg1: f64) -> Material;
+fn attack_recharge_fraction(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Maximum normalized energy restored by a fully consonant attack.
-fn attack_recharge_fraction(arg0: Material, arg1: i64) -> Material;
-/// Maximum normalized energy restored by a fully consonant attack.
-fn attack_recharge_fraction(arg0: Participant, arg1: f64) -> Participant;
-/// Maximum normalized energy restored by a fully consonant attack.
-fn attack_recharge_fraction(arg0: Participant, arg1: i64) -> Participant;
+fn attack_recharge_fraction(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Material, arg1: f64) -> Material;
+fn avoid_neighbors(arg0: Population, arg1: f64) -> Population;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Material, arg1: f64, arg2: f64) -> Material;
+fn avoid_neighbors(arg0: Population, arg1: f64, arg2: f64) -> Population;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Material, arg1: f64, arg2: i64) -> Material;
+fn avoid_neighbors(arg0: Population, arg1: f64, arg2: i64) -> Population;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Material, arg1: i64) -> Material;
+fn avoid_neighbors(arg0: Population, arg1: i64) -> Population;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Material, arg1: i64, arg2: f64) -> Material;
+fn avoid_neighbors(arg0: Population, arg1: i64, arg2: f64) -> Population;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Material, arg1: i64, arg2: i64) -> Material;
+fn avoid_neighbors(arg0: Population, arg1: i64, arg2: i64) -> Population;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Participant, arg1: f64) -> Participant;
+fn avoid_neighbors(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
+fn avoid_neighbors(arg0: PopulationSpec, arg1: f64, arg2: f64) -> PopulationSpec;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Participant, arg1: f64, arg2: i64) -> Participant;
+fn avoid_neighbors(arg0: PopulationSpec, arg1: f64, arg2: i64) -> PopulationSpec;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Participant, arg1: i64) -> Participant;
+fn avoid_neighbors(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
+fn avoid_neighbors(arg0: PopulationSpec, arg1: i64, arg2: f64) -> PopulationSpec;
 /// Crowding repulsion from neighboring voices.
-fn avoid_neighbors(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
+fn avoid_neighbors(arg0: PopulationSpec, arg1: i64, arg2: i64) -> PopulationSpec;
 
 /// Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`.
-fn brain(arg0: Material, arg1: String) -> Material;
-/// Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`.
-fn brain(arg0: Participant, arg1: String) -> Participant;
+fn brain(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
 /// Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
-fn brightness(arg0: Material, arg1: f64) -> Material;
+fn brightness(arg0: Population, arg1: f64) -> Population;
 /// Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
-fn brightness(arg0: Material, arg1: i64) -> Material;
+fn brightness(arg0: Population, arg1: i64) -> Population;
 /// Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
-fn brightness(arg0: Participant, arg1: f64) -> Participant;
+fn brightness(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
-fn brightness(arg0: Participant, arg1: i64) -> Participant;
+fn brightness(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Target consonance maxima. Density cloud by default; `.peak()` for the extremum.
 fn consonance(arg0: f64) -> Placement;
@@ -109,40 +93,30 @@ fn consonance(arg0: i64, arg1: f64) -> Placement;
 fn consonance(arg0: i64, arg1: i64) -> Placement;
 
 /// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Material, arg1: f64, arg2: f64) -> Material;
+fn consonance_viability(arg0: PopulationSpec, arg1: f64, arg2: f64) -> PopulationSpec;
 /// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Material, arg1: f64, arg2: i64) -> Material;
+fn consonance_viability(arg0: PopulationSpec, arg1: f64, arg2: i64) -> PopulationSpec;
 /// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Material, arg1: i64, arg2: f64) -> Material;
+fn consonance_viability(arg0: PopulationSpec, arg1: i64, arg2: f64) -> PopulationSpec;
 /// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Material, arg1: i64, arg2: i64) -> Material;
-/// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
-/// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Participant, arg1: f64, arg2: i64) -> Participant;
-/// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
-/// Consonance window used for viability scoring.
-fn consonance_viability(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
+fn consonance_viability(arg0: PopulationSpec, arg1: i64, arg2: i64) -> PopulationSpec;
 
-/// Number of voices to place (default 1).
+/// Positive number of founder voices to place (default 1).
 fn count(arg0: Placement, arg1: i64) -> Placement;
 
 /// Number of modes.
 fn count(arg0: ModePattern, arg1: i64) -> ModePattern;
 
-/// [tuning] Which voices are visible to crowding: own group, other groups (booleans).
-fn crowding_target(arg0: Material, arg1: bool, arg2: bool) -> Material;
-/// [tuning] Which voices are visible to crowding: own group, other groups (booleans).
-fn crowding_target(arg0: Participant, arg1: bool, arg2: bool) -> Participant;
+/// [tuning] Which voices are visible to crowding: own population, other populations (booleans).
+fn crowding_target(arg0: Population, arg1: bool, arg2: bool) -> Population;
+/// [tuning] Which voices are visible to crowding: own population, other populations (booleans).
+fn crowding_target(arg0: PopulationSpec, arg1: bool, arg2: bool) -> PopulationSpec;
 
 /// Custom frequency ratios from an array.
 fn custom_modes(arg0: [?]) -> ModePattern;
 
 /// Duration of n rhythm cycles.
-fn cycles(arg0: Material, arg1: i64) -> Material;
-/// Duration of n rhythm cycles.
-fn cycles(arg0: Participant, arg1: i64) -> Participant;
+fn cycles(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Realize a field target as a stochastic cloud (the default).
 fn density(arg0: Placement) -> Placement;
@@ -157,47 +131,27 @@ fn dissonance(arg0: i64, arg1: f64) -> Placement;
 fn dissonance(arg0: i64, arg1: i64) -> Placement;
 
 /// How strongly good field fit extends life beyond zero-fit endurance.
-fn dissonance_penalty(arg0: Material, arg1: f64) -> Material;
+fn dissonance_penalty(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// How strongly good field fit extends life beyond zero-fit endurance.
-fn dissonance_penalty(arg0: Material, arg1: i64) -> Material;
-/// How strongly good field fit extends life beyond zero-fit endurance.
-fn dissonance_penalty(arg0: Participant, arg1: f64) -> Participant;
-/// How strongly good field fit extends life beyond zero-fit endurance.
-fn dissonance_penalty(arg0: Participant, arg1: i64) -> Participant;
+fn dissonance_penalty(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Material, arg1: f64, arg2: f64) -> Material;
+fn duration_curve(arg0: PopulationSpec, arg1: f64, arg2: f64) -> PopulationSpec;
 /// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Material, arg1: f64, arg2: i64) -> Material;
+fn duration_curve(arg0: PopulationSpec, arg1: f64, arg2: i64) -> PopulationSpec;
 /// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Material, arg1: i64, arg2: f64) -> Material;
+fn duration_curve(arg0: PopulationSpec, arg1: i64, arg2: f64) -> PopulationSpec;
 /// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Material, arg1: i64, arg2: i64) -> Material;
-/// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
-/// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Participant, arg1: f64, arg2: i64) -> Participant;
-/// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
-/// [tuning] Adaptive duration curve parameters.
-fn duration_curve(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
+fn duration_curve(arg0: PopulationSpec, arg1: i64, arg2: i64) -> PopulationSpec;
 
 /// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Material, arg1: f64, arg2: f64) -> Material;
+fn duration_range(arg0: PopulationSpec, arg1: f64, arg2: f64) -> PopulationSpec;
 /// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Material, arg1: f64, arg2: i64) -> Material;
+fn duration_range(arg0: PopulationSpec, arg1: f64, arg2: i64) -> PopulationSpec;
 /// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Material, arg1: i64, arg2: f64) -> Material;
+fn duration_range(arg0: PopulationSpec, arg1: i64, arg2: f64) -> PopulationSpec;
 /// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Material, arg1: i64, arg2: i64) -> Material;
-/// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
-/// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Participant, arg1: f64, arg2: i64) -> Participant;
-/// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
-/// [tuning] Adaptive duration range in rhythm cycles.
-fn duration_range(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
+fn duration_range(arg0: PopulationSpec, arg1: i64, arg2: i64) -> PopulationSpec;
 
 /// Target the consonance/dissonance boundary (C near its midpoint).
 fn edge(arg0: f64, arg1: f64) -> Placement;
@@ -209,44 +163,32 @@ fn edge(arg0: i64, arg1: f64) -> Placement;
 fn edge(arg0: i64, arg1: i64) -> Placement;
 
 /// Nominal survival time at zero field fit, excluding the release tail.
-fn endurance(arg0: Material, arg1: f64) -> Material;
+fn endurance(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Nominal survival time at zero field fit, excluding the release tail.
-fn endurance(arg0: Material, arg1: i64) -> Material;
-/// Nominal survival time at zero field fit, excluding the release tail.
-fn endurance(arg0: Participant, arg1: f64) -> Participant;
-/// Nominal survival time at zero field fit, excluding the release tail.
-fn endurance(arg0: Participant, arg1: i64) -> Participant;
+fn endurance(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Medium coupling: synchronization emerges over time, still drifts.
-fn entrained(arg0: Material) -> Material;
-/// Medium coupling: synchronization emerges over time, still drifts.
-fn entrained(arg0: Participant) -> Participant;
+fn entrained(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Override coupling strength in 0-1 (free .. locked).
-fn entrainment(arg0: Material, arg1: f64) -> Material;
+fn entrainment(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Override coupling strength in 0-1 (free .. locked).
-fn entrainment(arg0: Material, arg1: i64) -> Material;
-/// Override coupling strength in 0-1 (free .. locked).
-fn entrainment(arg0: Participant, arg1: f64) -> Participant;
-/// Override coupling strength in 0-1 (free .. locked).
-fn entrainment(arg0: Participant, arg1: i64) -> Participant;
+fn entrainment(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Near-zero coupling: free renewal process, non-metric texture.
-fn flow(arg0: Material) -> Material;
-/// Near-zero coupling: free renewal process, non-metric texture.
-fn flow(arg0: Participant) -> Participant;
+fn flow(arg0: PopulationSpec) -> PopulationSpec;
 
-/// Commit pending drafts without advancing time.
+/// Emit pending live patches without advancing time.
 fn flush();
 
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
-fn freq(arg0: Material, arg1: f64) -> Material;
+fn freq(arg0: Population, arg1: f64) -> Population;
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
-fn freq(arg0: Material, arg1: i64) -> Material;
+fn freq(arg0: Population, arg1: i64) -> Population;
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
-fn freq(arg0: Participant, arg1: f64) -> Participant;
+fn freq(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
-fn freq(arg0: Participant, arg1: i64) -> Participant;
+fn freq(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Density sharpening exponent; only valid on `landscape_density_modes()`.
 fn gamma(arg0: ModePattern, arg1: f64) -> ModePattern;
@@ -261,29 +203,29 @@ fn gap(arg0: i64, arg1: f64) -> Placement;
 fn gap(arg0: i64, arg1: i64) -> Placement;
 
 /// Pitch glide time constant in seconds.
-fn glide(arg0: Material, arg1: f64) -> Material;
+fn glide(arg0: Population, arg1: f64) -> Population;
 /// Pitch glide time constant in seconds.
-fn glide(arg0: Material, arg1: i64) -> Material;
+fn glide(arg0: Population, arg1: i64) -> Population;
 /// Pitch glide time constant in seconds.
-fn glide(arg0: Participant, arg1: f64) -> Participant;
+fn glide(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Pitch glide time constant in seconds.
-fn glide(arg0: Participant, arg1: i64) -> Participant;
+fn glide(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Global field peaks as movement candidates, with optional minimum separation.
-fn global_peaks(arg0: Material, arg1: i64) -> Material;
+fn global_peaks(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Global field peaks as movement candidates, with optional minimum separation.
-fn global_peaks(arg0: Material, arg1: i64, arg2: f64) -> Material;
+fn global_peaks(arg0: Population, arg1: i64, arg2: f64) -> Population;
 /// [tuning] Global field peaks as movement candidates, with optional minimum separation.
-fn global_peaks(arg0: Material, arg1: i64, arg2: i64) -> Material;
+fn global_peaks(arg0: Population, arg1: i64, arg2: i64) -> Population;
 /// [tuning] Global field peaks as movement candidates, with optional minimum separation.
-fn global_peaks(arg0: Participant, arg1: i64) -> Participant;
+fn global_peaks(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// [tuning] Global field peaks as movement candidates, with optional minimum separation.
-fn global_peaks(arg0: Participant, arg1: i64, arg2: f64) -> Participant;
+fn global_peaks(arg0: PopulationSpec, arg1: i64, arg2: f64) -> PopulationSpec;
 /// [tuning] Global field peaks as movement candidates, with optional minimum separation.
-fn global_peaks(arg0: Participant, arg1: i64, arg2: i64) -> Participant;
+fn global_peaks(arg0: PopulationSpec, arg1: i64, arg2: i64) -> PopulationSpec;
 
-/// Material with a harmonic-series body.
-fn harmonic() -> Material;
+/// PopulationSpec whose founder voices use a harmonic-series body.
+fn harmonic() -> PopulationSpec;
 
 /// Harmonic series: f, 2f, 3f, ...
 fn harmonic_modes() -> ModePattern;
@@ -298,28 +240,28 @@ fn landscape_density_modes() -> ModePattern;
 fn landscape_peaks_modes() -> ModePattern;
 
 /// [tuning] Weight of the landscape objective.
-fn landscape_weight(arg0: Material, arg1: f64) -> Material;
+fn landscape_weight(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Weight of the landscape objective.
-fn landscape_weight(arg0: Material, arg1: i64) -> Material;
+fn landscape_weight(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Weight of the landscape objective.
-fn landscape_weight(arg0: Participant, arg1: f64) -> Participant;
+fn landscape_weight(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Weight of the landscape objective.
-fn landscape_weight(arg0: Participant, arg1: i64) -> Participant;
+fn landscape_weight(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Subtract the voice's own spectral contribution when evaluating the field.
-fn leave_self_out(arg0: Material, arg1: bool) -> Material;
+fn leave_self_out(arg0: Population, arg1: bool) -> Population;
 /// [tuning] Subtract the voice's own spectral contribution when evaluating the field.
-fn leave_self_out(arg0: Participant, arg1: bool) -> Participant;
+fn leave_self_out(arg0: PopulationSpec, arg1: bool) -> PopulationSpec;
 
 /// [tuning] Number of harmonics used for approximate self-subtraction.
-fn leave_self_out_harmonics(arg0: Material, arg1: i64) -> Material;
+fn leave_self_out_harmonics(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Number of harmonics used for approximate self-subtraction.
-fn leave_self_out_harmonics(arg0: Participant, arg1: i64) -> Participant;
+fn leave_self_out_harmonics(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [research] `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
-fn leave_self_out_mode(arg0: Material, arg1: String) -> Material;
+fn leave_self_out_mode(arg0: Population, arg1: String) -> Population;
 /// [research] `"approx"`/`"approx_harmonics"` or `"exact"`/`"exact_scan"`.
-fn leave_self_out_mode(arg0: Participant, arg1: String) -> Participant;
+fn leave_self_out_mode(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
 /// Linear interpolation of positions between two frequencies.
 fn line(arg0: f64, arg1: f64) -> Placement;
@@ -336,72 +278,62 @@ fn meter_stability(arg0: f64);
 fn meter_stability(arg0: i64);
 
 /// High coupling to the shared emergent meter: deep attractor, stable pulse.
-fn metric(arg0: Material) -> Material;
-/// High coupling to the shared emergent meter: deep attractor, stable pulse.
-fn metric(arg0: Participant) -> Participant;
+fn metric(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
-fn microtiming(arg0: Material, arg1: f64) -> Material;
+fn microtiming(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
-fn microtiming(arg0: Material, arg1: i64) -> Material;
-/// Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
-fn microtiming(arg0: Participant, arg1: f64) -> Participant;
-/// Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
-fn microtiming(arg0: Participant, arg1: i64) -> Participant;
+fn microtiming(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Material with a resonator-based modal body; shape it with `modes()`.
-fn modal() -> Material;
+/// PopulationSpec whose founder voices use a resonator-based modal body; shape it with `modes()`.
+fn modal() -> PopulationSpec;
 
 /// Named mode table lookup.
 fn modal_table(arg0: String) -> ModePattern;
 
 /// Set the mode pattern of a modal body.
-fn modes(arg0: Material, arg1: ModePattern) -> Material;
-/// Set the mode pattern of a modal body.
-fn modes(arg0: Participant, arg1: ModePattern) -> Participant;
+fn modes(arg0: PopulationSpec, arg1: ModePattern) -> PopulationSpec;
 
 /// [tuning] Cost multiplier for pitch changes.
-fn move_cost(arg0: Material, arg1: f64) -> Material;
+fn move_cost(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Cost multiplier for pitch changes.
-fn move_cost(arg0: Material, arg1: i64) -> Material;
+fn move_cost(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Cost multiplier for pitch changes.
-fn move_cost(arg0: Participant, arg1: f64) -> Participant;
+fn move_cost(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Cost multiplier for pitch changes.
-fn move_cost(arg0: Participant, arg1: i64) -> Participant;
+fn move_cost(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Exponent for the move cost.
-fn move_cost_exp(arg0: Material, arg1: f64) -> Material;
+fn move_cost_exp(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Exponent for the move cost.
-fn move_cost_exp(arg0: Material, arg1: i64) -> Material;
+fn move_cost_exp(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Exponent for the move cost.
-fn move_cost_exp(arg0: Participant, arg1: f64) -> Participant;
+fn move_cost_exp(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Exponent for the move cost.
-fn move_cost_exp(arg0: Participant, arg1: i64) -> Participant;
+fn move_cost_exp(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [research] `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
-fn move_cost_time_scale(arg0: Material, arg1: String) -> Material;
+fn move_cost_time_scale(arg0: Population, arg1: String) -> Population;
 /// [research] `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
-fn move_cost_time_scale(arg0: Participant, arg1: String) -> Participant;
+fn move_cost_time_scale(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
 /// [tuning] Step size for neighbor exploration in cents.
-fn neighbor_step_cents(arg0: Material, arg1: f64) -> Material;
+fn neighbor_step_cents(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Step size for neighbor exploration in cents.
-fn neighbor_step_cents(arg0: Material, arg1: i64) -> Material;
+fn neighbor_step_cents(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Step size for neighbor exploration in cents.
-fn neighbor_step_cents(arg0: Participant, arg1: f64) -> Participant;
+fn neighbor_step_cents(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Step size for neighbor exploration in cents.
-fn neighbor_step_cents(arg0: Participant, arg1: i64) -> Participant;
+fn neighbor_step_cents(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Harmonic-body preset with brightness 1.0 and motion 1.0.
-fn noise() -> Material;
+/// Harmonic-body preset with full brightness and maximal spectral motion (jitter).
+fn noise() -> PopulationSpec;
 
 /// Odd harmonics: f, 3f, 5f, ...
 fn odd_modes() -> ModePattern;
 
 /// [tuning] Single trigger.
-fn once(arg0: Material) -> Material;
-/// [tuning] Single trigger.
-fn once(arg0: Participant) -> Participant;
+fn once(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Run an array of closures on parallel timelines from the current cursor.
 fn parallel(arg0: [?]);
@@ -410,74 +342,60 @@ fn parallel(arg0: [?]);
 fn peak(arg0: Placement) -> Placement;
 
 /// [experimental] Withhold the first onset until perceived consonance is viable.
-fn phonate_when_viable(arg0: Material) -> Material;
-/// [experimental] Withhold the first onset until perceived consonance is viable.
-fn phonate_when_viable(arg0: Participant) -> Participant;
+fn phonate_when_viable(arg0: PopulationSpec) -> PopulationSpec;
 
 /// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
-fn pitch_apply_mode(arg0: Material, arg1: String) -> Material;
+fn pitch_apply_mode(arg0: Population, arg1: String) -> Population;
 /// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
-fn pitch_apply_mode(arg0: Participant, arg1: String) -> Participant;
+fn pitch_apply_mode(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
 /// [research] `"hill_climb"` or `"peak_sampler"`. Research control.
-fn pitch_core(arg0: Material, arg1: String) -> Material;
-/// [research] `"hill_climb"` or `"peak_sampler"`. Research control.
-fn pitch_core(arg0: Participant, arg1: String) -> Participant;
+fn pitch_core(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
 /// [tuning] Pitch smoothing time constant in seconds.
-fn pitch_smooth(arg0: Material, arg1: f64) -> Material;
+fn pitch_smooth(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Pitch smoothing time constant in seconds.
-fn pitch_smooth(arg0: Material, arg1: i64) -> Material;
+fn pitch_smooth(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Pitch smoothing time constant in seconds.
-fn pitch_smooth(arg0: Participant, arg1: f64) -> Participant;
+fn pitch_smooth(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Pitch smoothing time constant in seconds.
-fn pitch_smooth(arg0: Participant, arg1: i64) -> Participant;
+fn pitch_smooth(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Stage a Participant at the current script time.
-fn place(arg0: Material, arg1: Placement) -> Participant;
-/// Stage a Participant at the current script time.
-fn place(arg0: Participant, arg1: Placement) -> Participant;
+/// Create a Population at the current script time.
+fn place(arg0: PopulationSpec, arg1: Placement) -> Population;
 
-/// Scoped callback execution with automatic group release.
+/// Scoped callback execution with automatic population release.
 fn play(arg0: Fn);
-/// Scoped callback execution with automatic group release.
+/// Scoped callback execution with automatic population release.
 fn play(arg0: Fn, arg1: ?);
-/// Scoped callback execution with automatic group release.
+/// Scoped callback execution with automatic population release.
 fn play(arg0: Fn, arg1: ?, arg2: ?);
-/// Scoped callback execution with automatic group release.
+/// Scoped callback execution with automatic population release.
 fn play(arg0: Fn, arg1: ?, arg2: ?, arg3: ?);
-/// Scoped callback execution with automatic group release.
+/// Scoped callback execution with automatic population release.
 fn play(arg0: Fn, arg1: [?]);
 
 /// Power law: f * n^beta.
 fn power_modes(arg0: f64) -> ModePattern;
 
 /// [tuning] Proposal generation interval in seconds.
-fn proposal_interval(arg0: Material, arg1: f64) -> Material;
+fn proposal_interval(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Proposal generation interval in seconds.
-fn proposal_interval(arg0: Material, arg1: i64) -> Material;
+fn proposal_interval(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Proposal generation interval in seconds.
-fn proposal_interval(arg0: Participant, arg1: f64) -> Participant;
+fn proposal_interval(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Proposal generation interval in seconds.
-fn proposal_interval(arg0: Participant, arg1: i64) -> Participant;
+fn proposal_interval(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Pulse at an explicit rate in Hz.
-fn pulse(arg0: Material, arg1: f64) -> Material;
+fn pulse(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Pulse at an explicit rate in Hz.
-fn pulse(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Pulse at an explicit rate in Hz.
-fn pulse(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Pulse at an explicit rate in Hz.
-fn pulse(arg0: Participant, arg1: i64) -> Participant;
+fn pulse(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Low-level pulse phase weighting in 0-1.
-fn pulse_lock(arg0: Material, arg1: f64) -> Material;
+fn pulse_lock(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Low-level pulse phase weighting in 0-1.
-fn pulse_lock(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Low-level pulse phase weighting in 0-1.
-fn pulse_lock(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Low-level pulse phase weighting in 0-1.
-fn pulse_lock(arg0: Participant, arg1: i64) -> Participant;
+fn pulse_lock(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Log-uniform random placement inside a frequency range.
 fn random(arg0: f64, arg1: f64) -> Placement;
@@ -489,13 +407,13 @@ fn random(arg0: i64, arg1: f64) -> Placement;
 fn random(arg0: i64, arg1: i64) -> Placement;
 
 /// [tuning] Number of random candidates considered.
-fn random_candidates(arg0: Material, arg1: f64) -> Material;
+fn random_candidates(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Number of random candidates considered.
-fn random_candidates(arg0: Material, arg1: i64) -> Material;
+fn random_candidates(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Number of random candidates considered.
-fn random_candidates(arg0: Participant, arg1: f64) -> Participant;
+fn random_candidates(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Number of random candidates considered.
-fn random_candidates(arg0: Participant, arg1: i64) -> Participant;
+fn random_candidates(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Multiplier range relative to the root; only valid on `consonance(root)`.
 fn range(arg0: Placement, arg1: f64, arg2: f64) -> Placement;
@@ -510,106 +428,68 @@ fn range(arg0: Placement, arg1: i64, arg2: i64) -> Placement;
 fn range(arg0: ModePattern, arg1: f64, arg2: f64) -> ModePattern;
 
 /// [tuning] Ratio-based movement candidates; 0 disables.
-fn ratio_candidates(arg0: Material, arg1: i64) -> Material;
+fn ratio_candidates(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Ratio-based movement candidates; 0 disables.
-fn ratio_candidates(arg0: Participant, arg1: i64) -> Participant;
+fn ratio_candidates(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Time to refill normalized energy from empty at full viability.
-fn recovery(arg0: Material, arg1: f64) -> Material;
+fn recovery(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Time to refill normalized energy from empty at full viability.
-fn recovery(arg0: Material, arg1: i64) -> Material;
-/// Time to refill normalized energy from empty at full viability.
-fn recovery(arg0: Participant, arg1: f64) -> Participant;
-/// Time to refill normalized energy from empty at full viability.
-fn recovery(arg0: Participant, arg1: i64) -> Participant;
+fn recovery(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Release a live group; its voices enter their release phase and fade out.
-fn release(arg0: Participant);
+/// Close a live Population; its voices enter their release phase and fade out.
+fn release(arg0: Population);
 
 /// Repeated/pulsed phonation mode.
-fn repeat(arg0: Material) -> Material;
-/// Repeated/pulsed phonation mode.
-fn repeat(arg0: Participant) -> Participant;
+fn repeat(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Background turnover rate per second.
-fn respawn_background_death_rate(arg0: Material, arg1: f64) -> Material;
+fn respawn_background_death_rate(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Background turnover rate per second.
-fn respawn_background_death_rate(arg0: Material, arg1: i64) -> Material;
-/// Background turnover rate per second.
-fn respawn_background_death_rate(arg0: Participant, arg1: f64) -> Participant;
-/// Background turnover rate per second.
-fn respawn_background_death_rate(arg0: Participant, arg1: i64) -> Participant;
+fn respawn_background_death_rate(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Maintain population up to a capacity.
-fn respawn_capacity(arg0: Material, arg1: f64) -> Material;
-/// Maintain population up to a capacity.
-fn respawn_capacity(arg0: Material, arg1: i64) -> Material;
-/// Maintain population up to a capacity.
-fn respawn_capacity(arg0: Participant, arg1: f64) -> Participant;
-/// Maintain population up to a capacity.
-fn respawn_capacity(arg0: Participant, arg1: i64) -> Participant;
+/// Maximum number of living members in the Population.
+fn respawn_capacity(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
+/// Maximum number of living members in the Population.
+fn respawn_capacity(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Respawn from consonance-biased parental peaks.
-fn respawn_consonance(arg0: Material) -> Material;
-/// Respawn from consonance-biased parental peaks.
-fn respawn_consonance(arg0: Participant) -> Participant;
+fn respawn_consonance(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Hereditary respawn with frequency variance in octaves.
-fn respawn_hereditary(arg0: Material, arg1: f64) -> Material;
+fn respawn_hereditary(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Hereditary respawn with frequency variance in octaves.
-fn respawn_hereditary(arg0: Material, arg1: i64) -> Material;
-/// Hereditary respawn with frequency variance in octaves.
-fn respawn_hereditary(arg0: Participant, arg1: f64) -> Participant;
-/// Hereditary respawn with frequency variance in octaves.
-fn respawn_hereditary(arg0: Participant, arg1: i64) -> Participant;
+fn respawn_hereditary(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Minimum consonance level for respawn acceptance.
-fn respawn_min_c_level(arg0: Material, arg1: f64) -> Material;
+fn respawn_min_c_level(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Minimum consonance level for respawn acceptance.
-fn respawn_min_c_level(arg0: Material, arg1: i64) -> Material;
-/// Minimum consonance level for respawn acceptance.
-fn respawn_min_c_level(arg0: Participant, arg1: f64) -> Participant;
-/// Minimum consonance level for respawn acceptance.
-fn respawn_min_c_level(arg0: Participant, arg1: i64) -> Participant;
+fn respawn_min_c_level(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Respawn at random locations.
-fn respawn_random(arg0: Material) -> Material;
-/// Respawn at random locations.
-fn respawn_random(arg0: Participant) -> Participant;
+fn respawn_random(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Placement used for replacements.
-fn respawn_settle(arg0: Material, arg1: Placement) -> Material;
-/// Placement used for replacements.
-fn respawn_settle(arg0: Participant, arg1: Placement) -> Participant;
+fn respawn_settle(arg0: PopulationSpec, arg1: Placement) -> PopulationSpec;
 
 /// [tuning] Vitality-modulated rhythm coupling.
-fn rhythm_coupling_vitality(arg0: Material, arg1: f64, arg2: f64) -> Material;
-/// [tuning] Vitality-modulated rhythm coupling.
-fn rhythm_coupling_vitality(arg0: Participant, arg1: f64, arg2: f64) -> Participant;
+fn rhythm_coupling_vitality(arg0: PopulationSpec, arg1: f64, arg2: f64) -> PopulationSpec;
 
 /// [tuning] Internal theta/rhythm oscillator frequency.
-fn rhythm_freq(arg0: Material, arg1: f64) -> Material;
+fn rhythm_freq(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Internal theta/rhythm oscillator frequency.
-fn rhythm_freq(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Internal theta/rhythm oscillator frequency.
-fn rhythm_freq(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Internal theta/rhythm oscillator frequency.
-fn rhythm_freq(arg0: Participant, arg1: i64) -> Participant;
+fn rhythm_freq(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
-fn rhythm_reward(arg0: Material, arg1: f64, arg2: String) -> Material;
-/// [tuning] Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`.
-fn rhythm_reward(arg0: Participant, arg1: f64, arg2: String) -> Participant;
+fn rhythm_reward(arg0: PopulationSpec, arg1: f64, arg2: String) -> PopulationSpec;
 
 /// Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`.
-fn rhythm_role(arg0: Material, arg1: String) -> Material;
-/// Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`.
-fn rhythm_role(arg0: Participant, arg1: String) -> Participant;
+fn rhythm_role(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
 /// Harmonic-body preset with brightness 0.85.
-fn saw() -> Material;
+fn saw() -> PopulationSpec;
 
-/// Named scope; groups placed inside are released when the callback returns.
+/// Named scope; populations placed inside are released when the callback returns.
 fn section(arg0: String, arg1: Fn);
 
 /// Set the random seed for reproducible scenarios.
@@ -619,17 +499,15 @@ fn seed(arg0: i64);
 fn seed(arg0: ModePattern, arg1: i64) -> ModePattern;
 
 /// Free hill-climb movement toward better field positions, with glide defaults.
-fn seek_consonance(arg0: Material) -> Material;
-/// Free hill-climb movement toward better field positions, with glide defaults.
-fn seek_consonance(arg0: Participant) -> Participant;
+fn seek_consonance(arg0: PopulationSpec) -> PopulationSpec;
 
 /// [research] Override environment-relative viability scoring; research/reference control.
-fn selection_approx_loo(arg0: Material, arg1: bool) -> Material;
+fn selection_approx_loo(arg0: PopulationSpec, arg1: bool) -> PopulationSpec;
 
 /// Route the voice to specific buses; accepts a `Bus` or a `BusSet`.
-fn send(arg0: Material, arg1: Bus) -> Material;
+fn send(arg0: PopulationSpec, arg1: Bus) -> PopulationSpec;
 /// Route the voice to specific buses; accepts a `Bus` or a `BusSet`.
-fn send(arg0: Material, arg1: BusSet) -> Material;
+fn send(arg0: PopulationSpec, arg1: BusSet) -> PopulationSpec;
 
 /// [research] `"snapshot_phased"`/`"snapshot"` (default) or `"sequential_rotating"`/`"sequential"`. Research control.
 fn set_control_update_mode(arg0: String);
@@ -657,34 +535,26 @@ fn set_scaffold_shared(arg0: f64);
 fn set_scaffold_shared(arg0: i64);
 
 /// [tuning] Shorten adaptive duration when field support drops.
-fn shorten_on_drop(arg0: Material, arg1: f64) -> Material;
+fn shorten_on_drop(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Shorten adaptive duration when field support drops.
-fn shorten_on_drop(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Shorten adaptive duration when field support drops.
-fn shorten_on_drop(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Shorten adaptive duration when field support drops.
-fn shorten_on_drop(arg0: Participant, arg1: i64) -> Participant;
+fn shorten_on_drop(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Gaussian spread of the peak sampler in cents.
-fn sigma_cents(arg0: Material, arg1: f64) -> Material;
+fn sigma_cents(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Gaussian spread of the peak sampler in cents.
-fn sigma_cents(arg0: Material, arg1: i64) -> Material;
+fn sigma_cents(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Gaussian spread of the peak sampler in cents.
-fn sigma_cents(arg0: Participant, arg1: f64) -> Participant;
+fn sigma_cents(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Gaussian spread of the peak sampler in cents.
-fn sigma_cents(arg0: Participant, arg1: i64) -> Participant;
+fn sigma_cents(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Material with a pure sine body.
-fn sine() -> Material;
+/// PopulationSpec whose founder voices use a pure sine body.
+fn sine() -> PopulationSpec;
 
 /// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
-fn social(arg0: Material, arg1: f64) -> Material;
+fn social(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
-fn social(arg0: Material, arg1: i64) -> Material;
-/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
-fn social(arg0: Participant, arg1: f64) -> Participant;
-/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
-fn social(arg0: Participant, arg1: i64) -> Participant;
+fn social(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Minimum ERB distance between placed voices; valid on field placements.
 fn spacing(arg0: Placement, arg1: f64) -> Placement;
@@ -695,42 +565,40 @@ fn spacing(arg0: Placement, arg1: i64) -> Placement;
 fn spacing(arg0: ModePattern, arg1: f64) -> ModePattern;
 
 /// Detuning spread.
-fn spread(arg0: Material, arg1: f64) -> Material;
+fn spread(arg0: Population, arg1: f64) -> Population;
 /// Detuning spread.
-fn spread(arg0: Material, arg1: i64) -> Material;
+fn spread(arg0: Population, arg1: i64) -> Population;
 /// Detuning spread.
-fn spread(arg0: Participant, arg1: f64) -> Participant;
+fn spread(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Detuning spread.
-fn spread(arg0: Participant, arg1: i64) -> Participant;
+fn spread(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Harmonic-body preset with brightness 0.65.
-fn square() -> Material;
+fn square() -> PopulationSpec;
 
 /// Stiffness-adjusted harmonics.
 fn stiff_string_modes(arg0: f64) -> ModePattern;
 
 /// Sustain phonation mode (default).
-fn sustain(arg0: Material) -> Material;
-/// Sustain phonation mode (default).
-fn sustain(arg0: Participant) -> Participant;
+fn sustain(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Continuous drive level for sustained voices.
-fn sustain_drive(arg0: Material, arg1: f64) -> Material;
+fn sustain_drive(arg0: Population, arg1: f64) -> Population;
 /// Continuous drive level for sustained voices.
-fn sustain_drive(arg0: Material, arg1: i64) -> Material;
+fn sustain_drive(arg0: Population, arg1: i64) -> Population;
 /// Continuous drive level for sustained voices.
-fn sustain_drive(arg0: Participant, arg1: f64) -> Participant;
+fn sustain_drive(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Continuous drive level for sustained voices.
-fn sustain_drive(arg0: Participant, arg1: i64) -> Participant;
+fn sustain_drive(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
-fn temperature(arg0: Material, arg1: f64) -> Material;
+fn temperature(arg0: Population, arg1: f64) -> Population;
 /// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
-fn temperature(arg0: Material, arg1: i64) -> Material;
+fn temperature(arg0: Population, arg1: i64) -> Population;
 /// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
-fn temperature(arg0: Participant, arg1: f64) -> Participant;
+fn temperature(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
-fn temperature(arg0: Participant, arg1: i64) -> Participant;
+fn temperature(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Tempo region the emergent beat gravitates toward.
 fn temporal_basin(arg0: f64, arg1: f64);
@@ -747,58 +615,54 @@ fn tension(arg0: Placement, arg1: f64) -> Placement;
 fn tension(arg0: Placement, arg1: i64) -> Placement;
 
 /// [tuning] Gravity toward the tessitura center.
-fn tessitura_gravity(arg0: Material, arg1: f64) -> Material;
+fn tessitura_gravity(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Gravity toward the tessitura center.
-fn tessitura_gravity(arg0: Material, arg1: i64) -> Material;
+fn tessitura_gravity(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Gravity toward the tessitura center.
-fn tessitura_gravity(arg0: Participant, arg1: f64) -> Participant;
+fn tessitura_gravity(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Gravity toward the tessitura center.
-fn tessitura_gravity(arg0: Participant, arg1: i64) -> Participant;
+fn tessitura_gravity(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// [tuning] Number of top candidates kept by the peak sampler.
-fn top_k(arg0: Material, arg1: f64) -> Material;
+fn top_k(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Number of top candidates kept by the peak sampler.
-fn top_k(arg0: Material, arg1: i64) -> Material;
+fn top_k(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Number of top candidates kept by the peak sampler.
-fn top_k(arg0: Participant, arg1: f64) -> Participant;
+fn top_k(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Number of top candidates kept by the peak sampler.
-fn top_k(arg0: Participant, arg1: i64) -> Participant;
+fn top_k(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Number of unison detuning copies.
-fn unison(arg0: Material, arg1: f64) -> Material;
+fn unison(arg0: Population, arg1: f64) -> Population;
 /// Number of unison detuning copies.
-fn unison(arg0: Material, arg1: i64) -> Material;
+fn unison(arg0: Population, arg1: i64) -> Population;
 /// Number of unison detuning copies.
-fn unison(arg0: Participant, arg1: f64) -> Participant;
+fn unison(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Number of unison detuning copies.
-fn unison(arg0: Participant, arg1: i64) -> Participant;
+fn unison(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Clone a material so the copy can be modified independently.
-fn variant(arg0: Material) -> Material;
+/// Clone a PopulationSpec so the copy can be modified independently.
+fn variant(arg0: PopulationSpec) -> PopulationSpec;
 
 /// [tuning] `"environment"` (default) or `"total"` viability scoring scope.
-fn viability_scope(arg0: Material, arg1: String) -> Material;
-/// [tuning] `"environment"` (default) or `"total"` viability scoring scope.
-fn viability_scope(arg0: Participant, arg1: String) -> Participant;
+fn viability_scope(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
-/// Commit pending drafts, then advance the timeline cursor.
+/// Emit pending live patches, then advance the timeline cursor.
 fn wait(arg0: f64);
-/// Commit pending drafts, then advance the timeline cursor.
+/// Emit pending live patches, then advance the timeline cursor.
 fn wait(arg0: i64);
 
 /// [tuning] Hold/sustain until release.
-fn while_alive(arg0: Material) -> Material;
-/// [tuning] Hold/sustain until release.
-fn while_alive(arg0: Participant) -> Participant;
+fn while_alive(arg0: PopulationSpec) -> PopulationSpec;
 
 /// [tuning] Peak-sampler search window width in cents.
-fn window_cents(arg0: Material, arg1: f64) -> Material;
+fn window_cents(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Peak-sampler search window width in cents.
-fn window_cents(arg0: Material, arg1: i64) -> Material;
+fn window_cents(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Peak-sampler search window width in cents.
-fn window_cents(arg0: Participant, arg1: f64) -> Participant;
+fn window_cents(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Peak-sampler search window width in cents.
-fn window_cents(arg0: Participant, arg1: i64) -> Participant;
+fn window_cents(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 // Skipped (reserved keyword or non-identifier function name):
 // - |(_: Bus, _: Bus) -> BusSet

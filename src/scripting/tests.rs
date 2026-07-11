@@ -1,7 +1,7 @@
 use super::*;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::timebase::Timebase;
-use crate::life::population::Population;
+use crate::life::community::Community;
 use crate::life::voice::AnyArticulationCore;
 use crate::life::voice::sound_body::SoundBody;
 use crate::scenario::{
@@ -23,6 +23,17 @@ fn run_script_err(src: &str) -> ScriptError {
     let engine = ScriptHost::create_engine(ctx);
     let err = engine.eval::<Dynamic>(src).expect_err("script should fail");
     ScriptError::from_eval(err, None)
+}
+
+/// Like `run_script`, but seeds the context the way a CLI `--seed` override
+/// does: `ScriptContext::with_seed` instead of a fresh random draw.
+fn run_script_with_seed(src: &str, seed: u64) -> (Scenario, ScriptWarnings) {
+    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(seed)));
+    let engine = ScriptHost::create_engine(ctx.clone());
+    let _ = engine.eval::<Dynamic>(src).expect("script runs");
+    let mut ctx_out = ctx.lock().expect("lock script context");
+    ctx_out.finish();
+    (ctx_out.scenario.clone(), ctx_out.warnings.clone())
 }
 
 fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
@@ -49,8 +60,33 @@ fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
 }
 
 #[test]
-fn draft_group_without_commit_is_dropped() {
-    let (scenario, warnings) = run_script(
+fn cli_seed_is_used_when_script_has_no_seed_call() {
+    let (scenario, _warnings) = run_script_with_seed(
+        r#"
+            create(sine(), 1);
+            flush();
+        "#,
+        123_456_789,
+    );
+    assert_eq!(scenario.seed, 123_456_789);
+}
+
+#[test]
+fn script_seed_call_overrides_cli_seed() {
+    let (scenario, _warnings) = run_script_with_seed(
+        r#"
+            seed(42);
+            create(sine(), 1);
+            flush();
+        "#,
+        123_456_789,
+    );
+    assert_eq!(scenario.seed, 42);
+}
+
+#[test]
+fn population_is_spawned_without_wait_or_flush() {
+    let (scenario, _warnings) = run_script(
         r#"
             create(sine(), 1);
         "#,
@@ -59,12 +95,11 @@ fn draft_group_without_commit_is_dropped() {
         .events
         .iter()
         .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Spawn { .. })));
-    assert!(!has_spawn, "draft should not spawn without wait/flush");
-    assert_eq!(warnings.draft_dropped, 1);
+    assert!(has_spawn, "place/create is the population boundary");
 }
 
 #[test]
-fn flush_spawns_without_advancing_time() {
+fn flush_does_not_delay_or_advance_immediate_spawn() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine(), 1);
@@ -86,11 +121,11 @@ fn flush_spawns_without_advancing_time() {
 }
 
 #[test]
-fn scene_scope_releases_live_groups() {
+fn scene_scope_releases_live_populations() {
     let (scenario, _warnings) = run_script(
         r#"
             section("alpha", || {
-                let g = create(sine(), 1);
+                let population = create(sine(), 1);
                 flush();
                 wait(0.5);
             });
@@ -98,7 +133,7 @@ fn scene_scope_releases_live_groups() {
     );
     let mut release_time = None;
     for (time, action) in action_times(&scenario) {
-        if matches!(action, Action::ReleaseGroup { .. }) {
+        if matches!(action, Action::ReleasePopulation { .. }) {
             release_time = Some(time);
         }
     }
@@ -123,7 +158,7 @@ fn parallel_advances_to_max_child_end() {
     let mut release_tail: f32 = 0.0;
     for event in &scenario.events {
         for action in &event.actions {
-            if let Action::ReleaseGroup { fade_sec, .. } = action {
+            if let Action::ReleasePopulation { fade_sec, .. } = action {
                 release_tail = release_tail.max(event.time + fade_sec);
             }
         }
@@ -133,17 +168,127 @@ fn parallel_advances_to_max_child_end() {
 }
 
 #[test]
-fn scope_drop_warns_on_draft() {
-    let (_scenario, warnings) = run_script(
+fn scope_releases_population_even_without_wait() {
+    let (scenario, _warnings) = run_script(
         r#"
             section("alpha", || { create(sine(), 1); });
         "#,
     );
-    assert_eq!(warnings.draft_dropped, 1);
+    assert!(scenario.events.iter().any(|event| {
+        event
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::ReleasePopulation { .. }))
+    }));
 }
 
 #[test]
-fn spawn_order_is_group_id_order() {
+fn scope_emits_pending_patch_before_automatic_release() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            section("alpha", || {
+                let population = place(sine().amp(0.1), at(220.0));
+                wait(0.5);
+                population.amp(0.3);
+            });
+        "#,
+    );
+    let actions: Vec<&Action> = scenario
+        .events
+        .iter()
+        .filter(|event| (event.time - 0.5).abs() <= f32::EPSILON)
+        .flat_map(|event| event.actions.iter())
+        .collect();
+    let update_idx = actions
+        .iter()
+        .position(|action| {
+            matches!(
+                action,
+                Action::UpdatePopulation { patch, .. } if patch.amp == Some(0.3)
+            )
+        })
+        .expect("scope should emit its pending patch");
+    let release_idx = actions
+        .iter()
+        .position(|action| matches!(action, Action::ReleasePopulation { .. }))
+        .expect("scope should release its population");
+    assert!(update_idx < release_idx);
+}
+
+#[test]
+fn placement_count_must_be_positive() {
+    for count in [0, -1] {
+        let err = run_script_err(&format!("place(sine(), at(220.0).count({count}));"));
+        assert!(
+            err.message.contains("population count must be >= 1"),
+            "unexpected error for count {count}: {}",
+            err.message
+        );
+    }
+}
+
+#[test]
+fn respawn_capacity_cannot_be_below_founder_count() {
+    let err = run_script_err(
+        r#"
+            place(
+                sine().respawn_random().respawn_capacity(1),
+                line(220.0, 440.0).count(2)
+            );
+        "#,
+    );
+    assert!(
+        err.message
+            .contains("respawn_capacity must be >= founder count"),
+        "unexpected error: {}",
+        err.message
+    );
+}
+
+#[test]
+fn release_is_terminal_for_live_patches() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            let population = place(sine(), at(220.0));
+            release(population);
+            population.amp(0.5);
+            flush();
+        "#,
+    );
+    assert!(!scenario.events.iter().any(|event| {
+        event
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::UpdatePopulation { .. }))
+    }));
+    assert!(scenario.events.iter().any(|event| {
+        event
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::ReleasePopulation { .. }))
+    }));
+}
+
+#[test]
+fn population_spec_is_reusable_across_placements() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            let spec = sine().amp(0.2);
+            place(spec, at(220.0));
+            place(spec, at(330.0));
+        "#,
+    );
+    let spawns = scenario
+        .events
+        .iter()
+        .flat_map(|event| event.actions.iter())
+        .filter(|action| matches!(action, Action::Spawn { .. }))
+        .count();
+    assert_eq!(spawns, 2);
+}
+
+#[test]
+fn spawn_order_is_population_id_order() {
     let (scenario, _warnings) = run_script(
         r#"
             let a = create(sine(), 1);
@@ -154,8 +299,11 @@ fn spawn_order_is_group_id_order() {
     let mut spawns = Vec::new();
     for event in &scenario.events {
         for action in &event.actions {
-            if let Action::Spawn { group_id, ids, .. } = action {
-                spawns.push((event.time, *group_id, ids.clone()));
+            if let Action::Spawn {
+                population_id, ids, ..
+            } = action
+            {
+                spawns.push((event.time, *population_id, ids.clone()));
             }
         }
     }
@@ -169,7 +317,7 @@ fn spawn_order_is_group_id_order() {
 }
 
 #[test]
-fn place_material_builds_draft_participant_until_flush() {
+fn place_spawns_population_and_same_time_patch_is_separate() {
     let (scenario, _warnings) = run_script(
         r#"
             let p = place(
@@ -181,28 +329,35 @@ fn place_material_builds_draft_participant_until_flush() {
         "#,
     );
     let mut spawn = None;
+    let mut patch = None;
     for event in &scenario.events {
         for action in &event.actions {
-            if let Action::Spawn {
-                ids,
-                spec,
-                strategy,
-                ..
-            } = action
-            {
-                spawn = Some((
-                    event.time,
-                    ids.len(),
-                    spec.control.clone(),
-                    strategy.clone(),
-                ));
+            match action {
+                Action::Spawn {
+                    ids,
+                    spec,
+                    strategy,
+                    ..
+                } => {
+                    spawn = Some((
+                        event.time,
+                        ids.len(),
+                        spec.control.clone(),
+                        strategy.clone(),
+                    ));
+                }
+                Action::UpdatePopulation { patch: update, .. } => {
+                    patch = update.amp;
+                }
+                _ => {}
             }
         }
     }
     let (time, count, control, strategy) = spawn.expect("spawn action");
     assert_eq!(time, 0.0);
     assert_eq!(count, 3);
-    assert_eq!(control.body.amp, 0.02);
+    assert_eq!(control.body.amp, 0.04);
+    assert_eq!(patch, Some(0.02));
     assert!(control.body.routing.to_habitat);
     assert!(control.body.routing.to_presentation);
     assert!(matches!(
@@ -223,19 +378,29 @@ fn field_can_be_user_variable_when_using_habitat_bus() {
             flush();
         "#,
     );
-    let control = scenario
+    let (control, patch_freq) = scenario
         .events
         .iter()
         .flat_map(|event| &event.actions)
         .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.control.clone()),
+            Action::Spawn { spec, .. } => Some((spec.control.clone(), None)),
             _ => None,
         })
         .expect("spawn action");
+    let patch_freq = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::UpdatePopulation { patch, .. } => patch.freq,
+            _ => None,
+        })
+        .or(patch_freq);
 
     assert!(control.body.routing.to_habitat);
     assert!(!control.body.routing.to_presentation);
-    assert!((control.pitch.freq - 330.0).abs() <= 1e-6);
+    assert!((control.pitch.freq - 220.0).abs() <= 1e-6);
+    assert_eq!(patch_freq, Some(330.0));
 }
 
 #[test]
@@ -261,10 +426,11 @@ fn flush_events_have_increasing_order_at_same_time() {
 }
 
 #[test]
-fn place_then_freq_clears_strategy() {
+fn population_freq_patch_preserves_founder_placement() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).place(consonance(220.0).peak()).freq(330.0);
+            let population = place(sine(), consonance(220.0).peak().count(4));
+            population.freq(330.0);
             flush();
         "#,
     );
@@ -277,14 +443,29 @@ fn place_then_freq_clears_strategy() {
             _ => None,
         })
         .expect("spawn action");
-    assert!(strategy.is_none());
+    assert!(matches!(
+        strategy,
+        Some(SpawnStrategy::Field {
+            target: FieldTarget::Consonance,
+            ..
+        })
+    ));
+    let patch_freq = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::UpdatePopulation { patch, .. } => patch.freq,
+            _ => None,
+        });
+    assert_eq!(patch_freq, Some(330.0));
 }
 
 #[test]
 fn freq_then_place_sets_strategy() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).freq(330.0).place(consonance(220.0).peak());
+            place(sine().freq(330.0), consonance(220.0).peak().count(4));
             flush();
         "#,
     );
@@ -307,11 +488,10 @@ fn freq_then_place_sets_strategy() {
 }
 
 #[test]
-fn place_then_anchor_locks_spawn_mode() {
+fn anchored_spec_locks_population_spawn_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).place(consonance(220.0).peak()).anchor();
-            flush();
+            place(sine().anchor(), consonance(220.0).peak().count(4));
         "#,
     );
     let (strategy, mode) = scenario
@@ -336,11 +516,10 @@ fn place_then_anchor_locks_spawn_mode() {
 }
 
 #[test]
-fn place_then_anchor_survives_spawn() {
+fn anchored_spec_survives_population_spawn() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 2).place(consonance(220.0).peak()).anchor();
-            flush();
+            place(sine().anchor(), consonance(220.0).peak().count(2));
         "#,
     );
     let spawn_action = scenario
@@ -353,7 +532,7 @@ fn place_then_anchor_survives_spawn() {
         })
         .expect("spawn action");
 
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -369,8 +548,7 @@ fn place_then_anchor_survives_spawn() {
 fn place_preserves_default_pitch_mode() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).place(consonance(220.0).peak());
-            flush();
+            place(sine(), consonance(220.0).peak().count(4));
         "#,
     );
     let mode = scenario
@@ -389,8 +567,7 @@ fn place_preserves_default_pitch_mode() {
 fn anchor_then_place_preserves_lock() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine(), 4).anchor().place(consonance(220.0).peak());
-            flush();
+            place(sine().anchor(), consonance(220.0).peak().count(4));
         "#,
     );
     let mode = scenario
@@ -406,7 +583,7 @@ fn anchor_then_place_preserves_lock() {
 }
 
 #[test]
-fn species_anchor_sets_spawn_mode() {
+fn population_spec_anchor_sets_spawn_mode() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().anchor(), 1);
@@ -433,7 +610,7 @@ fn consonance_movement_sets_free_hill_climb_glide_defaults() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -514,7 +691,7 @@ fn movement_glide_overrides_consonance_movement_default() {
 }
 
 #[test]
-fn species_pitch_core_sets_spawn_core_kind() {
+fn population_spec_pitch_core_sets_spawn_core_kind() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().pitch_core("peak_sampler"), 1);
@@ -534,7 +711,7 @@ fn species_pitch_core_sets_spawn_core_kind() {
 }
 
 #[test]
-fn species_landscape_weight_sets_spawn_control() {
+fn test_create_accepts_preconfigured_population_spec() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().landscape_weight(0.25), 1);
@@ -554,14 +731,14 @@ fn species_landscape_weight_sets_spawn_control() {
 }
 
 #[test]
-fn species_landscape_weight_reaches_spawned_individual() {
+fn population_spec_landscape_weight_reaches_spawned_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().landscape_weight(0.3), 1);
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -580,14 +757,14 @@ fn species_landscape_weight_reaches_spawned_individual() {
 }
 
 #[test]
-fn species_temperature_reaches_spawned_core() {
+fn population_spec_temperature_reaches_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().temperature(0.3), 1);
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -606,7 +783,7 @@ fn species_temperature_reaches_spawned_core() {
 }
 
 #[test]
-fn group_landscape_weight_emits_live_update() {
+fn population_landscape_weight_emits_live_update() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -621,7 +798,7 @@ fn group_landscape_weight_emits_live_update() {
         .iter()
         .flat_map(|event| event.actions.iter())
     {
-        if let Action::UpdateGroup { patch, .. } = action
+        if let Action::UpdatePopulation { patch, .. } = action
             && patch.landscape_weight == Some(0.4)
         {
             saw_update = true;
@@ -632,7 +809,7 @@ fn group_landscape_weight_emits_live_update() {
 }
 
 #[test]
-fn group_landscape_weight_live_update_reaches_individual() {
+fn population_landscape_weight_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -641,7 +818,7 @@ fn group_landscape_weight_live_update_reaches_individual() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -652,7 +829,7 @@ fn group_landscape_weight_live_update_reaches_individual() {
         .flat_map(|event| event.actions.iter())
     {
         match action {
-            Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
                 pop.apply_action(action.clone(), &landscape, None);
             }
             _ => {}
@@ -663,16 +840,16 @@ fn group_landscape_weight_live_update_reaches_individual() {
 }
 
 #[test]
-fn group_amp_live_update_preserves_member_pitch_centers() {
+fn population_amp_live_update_preserves_member_pitch_centers() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine(), 4).place(consonance(196.0).peak().range(0.8, 2.5).spacing(0.9));
+            let g = place(sine(), consonance(196.0).peak().range(0.8, 2.5).spacing(0.9).count(4));
             flush();
             let g = g.amp(0.33);
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -703,7 +880,7 @@ fn group_amp_live_update_preserves_member_pitch_centers() {
         if event
             .actions
             .iter()
-            .any(|action| matches!(action, Action::UpdateGroup { .. }))
+            .any(|action| matches!(action, Action::UpdatePopulation { .. }))
         {
             after_update = pop
                 .voices
@@ -727,7 +904,7 @@ fn group_amp_live_update_preserves_member_pitch_centers() {
 }
 
 #[test]
-fn group_live_update_last_write_wins_within_flush() {
+fn population_live_update_last_write_wins_within_flush() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -746,7 +923,7 @@ fn group_live_update_last_write_wins_within_flush() {
         .iter()
         .flat_map(|event| event.actions.iter())
         .filter_map(|action| match action {
-            Action::UpdateGroup { patch, .. } => Some(patch.clone()),
+            Action::UpdatePopulation { patch, .. } => Some(patch.clone()),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -760,7 +937,7 @@ fn group_live_update_last_write_wins_within_flush() {
 }
 
 #[test]
-fn flush_emits_update_before_release_for_same_group() {
+fn flush_emits_update_before_release_for_same_population() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -778,23 +955,23 @@ fn flush_emits_update_before_release_for_same_group() {
             event
                 .actions
                 .iter()
-                .any(|action| matches!(action, Action::UpdateGroup { .. }))
+                .any(|action| matches!(action, Action::UpdatePopulation { .. }))
                 && event
                     .actions
                     .iter()
-                    .any(|action| matches!(action, Action::ReleaseGroup { .. }))
+                    .any(|action| matches!(action, Action::ReleasePopulation { .. }))
         })
         .expect("event with both update and release");
 
     let update_idx = event
         .actions
         .iter()
-        .position(|action| matches!(action, Action::UpdateGroup { .. }))
+        .position(|action| matches!(action, Action::UpdatePopulation { .. }))
         .expect("update action");
     let release_idx = event
         .actions
         .iter()
-        .position(|action| matches!(action, Action::ReleaseGroup { .. }))
+        .position(|action| matches!(action, Action::ReleasePopulation { .. }))
         .expect("release action");
     assert!(
         update_idx < release_idx,
@@ -803,7 +980,7 @@ fn flush_emits_update_before_release_for_same_group() {
 }
 
 #[test]
-fn group_temperature_live_update_reaches_individual() {
+fn population_temperature_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -812,7 +989,7 @@ fn group_temperature_live_update_reaches_individual() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -823,7 +1000,7 @@ fn group_temperature_live_update_reaches_individual() {
         .flat_map(|event| event.actions.iter())
     {
         match action {
-            Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
                 pop.apply_action(action.clone(), &landscape, None);
             }
             _ => {}
@@ -834,7 +1011,7 @@ fn group_temperature_live_update_reaches_individual() {
 }
 
 #[test]
-fn species_crowding_sets_spawn_control() {
+fn population_spec_crowding_sets_spawn_control() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().avoid_neighbors(1.2, 35.0), 1);
@@ -858,14 +1035,14 @@ fn species_crowding_sets_spawn_control() {
 }
 
 #[test]
-fn species_crowding_reaches_spawned_core() {
+fn population_spec_crowding_reaches_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().avoid_neighbors(1.2, 35.0), 1);
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -885,14 +1062,14 @@ fn species_crowding_reaches_spawned_core() {
 }
 
 #[test]
-fn species_crowding_single_arg_uses_default_sigma() {
+fn population_spec_crowding_single_arg_uses_default_sigma() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().avoid_neighbors(0.8), 1);
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -912,7 +1089,7 @@ fn species_crowding_single_arg_uses_default_sigma() {
 }
 
 #[test]
-fn species_crowding_mixed_numeric_overloads_work() {
+fn population_spec_crowding_mixed_numeric_overloads_work() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().avoid_neighbors(1, 35.0), 1);
@@ -936,7 +1113,7 @@ fn species_crowding_mixed_numeric_overloads_work() {
 }
 
 #[test]
-fn group_crowding_live_update_reaches_individual_core() {
+fn population_crowding_live_update_reaches_individual_core() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -945,7 +1122,7 @@ fn group_crowding_live_update_reaches_individual_core() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -956,7 +1133,7 @@ fn group_crowding_live_update_reaches_individual_core() {
         .flat_map(|event| event.actions.iter())
     {
         match action {
-            Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
                 pop.apply_action(action.clone(), &landscape, None);
             }
             _ => {}
@@ -968,7 +1145,7 @@ fn group_crowding_live_update_reaches_individual_core() {
 }
 
 #[test]
-fn group_crowding_mixed_numeric_overloads_work() {
+fn population_crowding_mixed_numeric_overloads_work() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -985,7 +1162,7 @@ fn group_crowding_mixed_numeric_overloads_work() {
         .iter()
         .flat_map(|event| event.actions.iter())
     {
-        if let Action::UpdateGroup { patch, .. } = action
+        if let Action::UpdatePopulation { patch, .. } = action
             && let (Some(strength), Some(sigma)) =
                 (patch.crowding_strength, patch.crowding_sigma_cents)
         {
@@ -998,7 +1175,7 @@ fn group_crowding_mixed_numeric_overloads_work() {
 }
 
 #[test]
-fn group_crowding_target_emits_actions_for_draft_and_live_updates() {
+fn population_crowding_target_emits_actions_for_founders_and_live_updates() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine().crowding_target(true, false), 1);
@@ -1014,23 +1191,23 @@ fn group_crowding_target_emits_actions_for_draft_and_live_updates() {
         .iter()
         .flat_map(|event| event.actions.iter())
     {
-        if let Action::SetGroupCrowdingTarget {
-            same_group_visible,
-            other_group_visible,
+        if let Action::SetPopulationCrowdingTarget {
+            same_population_visible,
+            other_population_visible,
             ..
         } = action
         {
-            if *same_group_visible && !*other_group_visible {
+            if *same_population_visible && !*other_population_visible {
                 saw_spawn_target = true;
             }
-            if *same_group_visible && *other_group_visible {
+            if *same_population_visible && *other_population_visible {
                 saw_live_target = true;
             }
         }
     }
     assert!(
         saw_spawn_target,
-        "expected draft crowding_target to be emitted"
+        "expected founder crowding_target to be emitted"
     );
     assert!(
         saw_live_target,
@@ -1039,14 +1216,14 @@ fn group_crowding_target_emits_actions_for_draft_and_live_updates() {
 }
 
 #[test]
-fn species_leave_self_out_and_temperature_reach_spawned_core() {
+fn population_spec_leave_self_out_and_temperature_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().leave_self_out(true).temperature(0.12), 1);
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1066,7 +1243,7 @@ fn species_leave_self_out_and_temperature_reach_spawned_core() {
 }
 
 #[test]
-fn group_leave_self_out_and_temperature_live_update_reaches_individual() {
+fn population_leave_self_out_and_temperature_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -1075,7 +1252,7 @@ fn group_leave_self_out_and_temperature_live_update_reaches_individual() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1086,7 +1263,7 @@ fn group_leave_self_out_and_temperature_live_update_reaches_individual() {
         .flat_map(|event| event.actions.iter())
     {
         match action {
-            Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
                 pop.apply_action(action.clone(), &landscape, None);
             }
             _ => {}
@@ -1098,14 +1275,14 @@ fn group_leave_self_out_and_temperature_live_update_reaches_individual() {
 }
 
 #[test]
-fn species_move_cost_reaches_spawned_core() {
+fn population_spec_move_cost_reaches_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().move_cost(0.9), 1);
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1124,7 +1301,7 @@ fn species_move_cost_reaches_spawned_core() {
 }
 
 #[test]
-fn group_move_cost_live_update_reaches_individual() {
+fn population_move_cost_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -1133,7 +1310,7 @@ fn group_move_cost_live_update_reaches_individual() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1144,7 +1321,7 @@ fn group_move_cost_live_update_reaches_individual() {
         .flat_map(|event| event.actions.iter())
     {
         match action {
-            Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
                 pop.apply_action(action.clone(), &landscape, None);
             }
             _ => {}
@@ -1155,7 +1332,7 @@ fn group_move_cost_live_update_reaches_individual() {
 }
 
 #[test]
-fn group_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
+fn population_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -1169,7 +1346,7 @@ fn group_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1180,7 +1357,7 @@ fn group_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
         .flat_map(|event| event.actions.iter())
     {
         match action {
-            Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
                 pop.apply_action(action.clone(), &landscape, None);
             }
             _ => {}
@@ -1203,7 +1380,7 @@ fn group_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
 }
 
 #[test]
-fn species_peak_sampler_knobs_reach_spawned_core() {
+fn population_spec_peak_sampler_knobs_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
@@ -1220,7 +1397,7 @@ fn species_peak_sampler_knobs_reach_spawned_core() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1246,7 +1423,7 @@ fn species_peak_sampler_knobs_reach_spawned_core() {
 }
 
 #[test]
-fn species_advanced_pitch_knobs_reach_spawned_core() {
+fn population_spec_advanced_pitch_knobs_reach_spawned_core() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
@@ -1262,7 +1439,7 @@ fn species_advanced_pitch_knobs_reach_spawned_core() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1295,7 +1472,7 @@ fn species_advanced_pitch_knobs_reach_spawned_core() {
 }
 
 #[test]
-fn group_advanced_pitch_knobs_live_update_reaches_individual() {
+fn population_advanced_pitch_knobs_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -1311,7 +1488,7 @@ fn group_advanced_pitch_knobs_live_update_reaches_individual() {
             flush();
         "#,
     );
-    let mut pop = Population::new(Timebase {
+    let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 64,
     });
@@ -1322,7 +1499,7 @@ fn group_advanced_pitch_knobs_live_update_reaches_individual() {
         .flat_map(|event| event.actions.iter())
     {
         match action {
-            Action::Spawn { .. } | Action::UpdateGroup { .. } => {
+            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
                 pop.apply_action(action.clone(), &landscape, None);
             }
             _ => {}
@@ -1374,11 +1551,10 @@ fn set_pitch_objective_emits_landscape_update() {
 }
 
 #[test]
-fn group_draft_landscape_weight_sets_spawn_control() {
+fn population_spec_landscape_weight_sets_spawn_control() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine(), 1).landscape_weight(0.4);
-            flush();
+            create(sine().landscape_weight(0.4), 1);
         "#,
     );
     let weight = scenario
@@ -1394,7 +1570,7 @@ fn group_draft_landscape_weight_sets_spawn_control() {
 }
 
 #[test]
-fn species_respawn_policy_emits_runtime_action() {
+fn population_spec_respawn_policy_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
             create(sine().respawn_hereditary(0.03), 1);
@@ -1408,10 +1584,12 @@ fn species_respawn_policy_emits_runtime_action() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::SetRespawnPolicy {
-            group_id, policy, ..
+            population_id,
+            policy,
+            ..
         } = action
         {
-            assert_eq!(*group_id, 1);
+            assert_eq!(*population_id, 1);
             assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
             saw_policy = true;
         }
@@ -1420,11 +1598,10 @@ fn species_respawn_policy_emits_runtime_action() {
 }
 
 #[test]
-fn group_draft_respawn_random_emits_runtime_action() {
+fn population_spec_respawn_random_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine(), 1).respawn_random();
-            flush();
+            create(sine().respawn_random(), 1);
         "#,
     );
     let mut saw_policy = false;
@@ -1434,10 +1611,12 @@ fn group_draft_respawn_random_emits_runtime_action() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::SetRespawnPolicy {
-            group_id, policy, ..
+            population_id,
+            policy,
+            ..
         } = action
         {
-            assert_eq!(*group_id, 1);
+            assert_eq!(*population_id, 1);
             assert_eq!(*policy, RespawnPolicy::Random);
             saw_policy = true;
         }
@@ -1446,11 +1625,29 @@ fn group_draft_respawn_random_emits_runtime_action() {
 }
 
 #[test]
-fn group_draft_respawn_hereditary_emits_runtime_action() {
+fn respawn_capacity_defaults_to_founder_count() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine(), 1).respawn_hereditary(0.03);
-            flush();
+            place(sine().respawn_random(), line(220.0, 440.0).count(3));
+        "#,
+    );
+    let capacity = scenario
+        .events
+        .iter()
+        .flat_map(|event| event.actions.iter())
+        .find_map(|action| match action {
+            Action::SetRespawnPolicy { capacity, .. } => Some(*capacity),
+            _ => None,
+        })
+        .expect("respawn policy action");
+    assert_eq!(capacity, 3);
+}
+
+#[test]
+fn population_spec_respawn_hereditary_emits_runtime_action() {
+    let (scenario, _warnings) = run_script(
+        r#"
+            create(sine().respawn_hereditary(0.03), 1);
         "#,
     );
     let mut saw_policy = false;
@@ -1460,10 +1657,12 @@ fn group_draft_respawn_hereditary_emits_runtime_action() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::SetRespawnPolicy {
-            group_id, policy, ..
+            population_id,
+            policy,
+            ..
         } = action
         {
-            assert_eq!(*group_id, 1);
+            assert_eq!(*population_id, 1);
             assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
             saw_policy = true;
         }
@@ -1472,11 +1671,10 @@ fn group_draft_respawn_hereditary_emits_runtime_action() {
 }
 
 #[test]
-fn group_draft_respawn_consonance_emits_runtime_action() {
+fn population_spec_respawn_consonance_emits_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine(), 1).respawn_consonance();
-            flush();
+            create(sine().respawn_consonance(), 1);
         "#,
     );
     let mut saw_policy = false;
@@ -1486,12 +1684,12 @@ fn group_draft_respawn_consonance_emits_runtime_action() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::SetRespawnPolicy {
-            group_id,
+            population_id,
             policy: RespawnPolicy::PeakBiased { config },
             ..
         } = action
         {
-            assert_eq!(*group_id, 1);
+            assert_eq!(*population_id, 1);
             assert_eq!(*config, RespawnPeakBiasConfig::default());
             saw_policy = true;
         }
@@ -1500,16 +1698,18 @@ fn group_draft_respawn_consonance_emits_runtime_action() {
 }
 
 #[test]
-fn group_respawn_tier2_settings_reach_runtime_action() {
+fn population_respawn_tier2_settings_reach_runtime_action() {
     let (scenario, _warnings) = run_script(
         r#"
-            let g = create(sine(), 1)
-                .respawn_hereditary(0.03)
-                .respawn_settle(consonance(220.0).peak().range(0.75, 1.5).spacing(0.5))
-                .respawn_capacity(3)
-                .respawn_min_c_level(0.4)
-                .respawn_background_death_rate(0.03);
-            flush();
+            create(
+                sine()
+                    .respawn_hereditary(0.03)
+                    .respawn_settle(consonance(220.0).peak().range(0.75, 1.5).spacing(0.5))
+                    .respawn_capacity(3)
+                    .respawn_min_c_level(0.4)
+                    .respawn_background_death_rate(0.03),
+                1
+            );
         "#,
     );
     let mut saw_policy = false;
@@ -1519,7 +1719,7 @@ fn group_respawn_tier2_settings_reach_runtime_action() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::SetRespawnPolicy {
-            group_id,
+            population_id,
             policy,
             settle_strategy,
             capacity,
@@ -1527,7 +1727,7 @@ fn group_respawn_tier2_settings_reach_runtime_action() {
             background_death_rate_per_sec,
         } = action
         {
-            assert_eq!(*group_id, 1);
+            assert_eq!(*population_id, 1);
             assert_eq!(*policy, RespawnPolicy::Hereditary { sigma_oct: 0.03 });
             assert_eq!(*capacity, 3);
             assert_eq!(*min_c_level, Some(0.4));
@@ -1592,14 +1792,16 @@ fn set_scaffold_scrambled_updates_scenario() {
 }
 
 #[test]
-fn spawn_payload_preserves_species_control_fields() {
+fn spawn_payload_preserves_population_spec_control_fields() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(harmonic(), 1)
-                .amp(0.33)
-                .freq(330.0)
-                .brightness(0.7);
-            flush();
+            create(
+                harmonic()
+                    .amp(0.33)
+                    .freq(330.0)
+                    .brightness(0.7),
+                1
+            );
         "#,
     );
     let control = scenario
@@ -1813,14 +2015,16 @@ fn viability_scope_total_overrides_environment_default() {
 }
 
 #[test]
-fn draft_group_viability_scope_total_overrides_environment_default() {
+fn population_spec_viability_scope_total_overrides_environment_default() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(harmonic(), 1)
-                .endurance(10.0)
-                .consonance_viability(0.3, 0.8)
-                .viability_scope("total");
-            flush();
+            create(
+                harmonic()
+                    .endurance(10.0)
+                    .consonance_viability(0.3, 0.8)
+                    .viability_scope("total"),
+                1
+            );
         "#,
     );
     let spawn = scenario
@@ -1846,7 +2050,7 @@ fn draft_group_viability_scope_total_overrides_environment_default() {
 }
 
 #[test]
-fn live_group_brightness_emits_timbre_patch() {
+fn live_population_brightness_emits_timbre_patch() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(harmonic(), 1);
@@ -1860,7 +2064,7 @@ fn live_group_brightness_emits_timbre_patch() {
         .iter()
         .flat_map(|event| &event.actions)
         .find_map(|action| match action {
-            Action::UpdateGroup { patch, .. } => Some(patch.clone()),
+            Action::UpdatePopulation { patch, .. } => Some(patch.clone()),
             _ => None,
         })
         .expect("update action");
@@ -1930,6 +2134,26 @@ fn removed_pre_040_api_names_are_not_registered() {
 }
 
 #[test]
+fn unknown_brain_value_fails_fast_on_population_spec() {
+    let err = run_script_err(r#"harmonic().brain("nonexistent");"#);
+    assert!(
+        err.message.contains("brain") && err.message.contains("nonexistent"),
+        "expected an unknown-brain error, got {}",
+        err.message
+    );
+}
+
+#[test]
+fn unknown_rhythm_role_value_fails_fast_on_population_spec() {
+    let err = run_script_err(r#"harmonic().rhythm_role("nonexistent");"#);
+    assert!(
+        err.message.contains("rhythm_role") && err.message.contains("nonexistent"),
+        "expected an unknown-rhythm_role error, got {}",
+        err.message
+    );
+}
+
+#[test]
 fn spread_and_unison_methods_update_timbre() {
     let (scenario, _warnings) = run_script(
         r#"
@@ -1952,7 +2176,7 @@ fn spread_and_unison_methods_update_timbre() {
 }
 
 #[test]
-fn live_group_spread_and_unison_emit_timbre_patch() {
+fn live_population_spread_and_unison_emit_timbre_patch() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(harmonic(), 1);
@@ -1966,7 +2190,7 @@ fn live_group_spread_and_unison_emit_timbre_patch() {
         .iter()
         .flat_map(|event| &event.actions)
         .find_map(|action| match action {
-            Action::UpdateGroup { patch, .. } => Some(patch.clone()),
+            Action::UpdatePopulation { patch, .. } => Some(patch.clone()),
             _ => None,
         })
         .expect("update action");
@@ -2199,46 +2423,26 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
 }
 
 #[test]
-fn phonate_when_viable_sets_gate_on_material_and_draft_participant() {
-    let from_material = first_spawn_spec_for_script(
+fn phonate_when_viable_sets_gate_on_population_spec() {
+    let spawn = first_spawn_spec_for_script(
         r#"
             create(sine().phonate_when_viable(), 1);
-            flush();
         "#,
     );
-    assert_eq!(
-        from_material.control.phonation.gate,
-        PhonationGate::WhenViable
-    );
-
-    let from_draft_participant = first_spawn_spec_for_script(
-        r#"
-            create(sine(), 1).phonate_when_viable();
-            flush();
-        "#,
-    );
-    assert_eq!(
-        from_draft_participant.control.phonation.gate,
-        PhonationGate::WhenViable
-    );
+    assert_eq!(spawn.control.phonation.gate, PhonationGate::WhenViable);
 }
 
 #[test]
-fn phonate_when_viable_is_ignored_on_live_participant() {
-    let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let _ = engine
-        .eval::<Dynamic>(
-            r#"
-                let p = create(sine(), 1);
-                flush();
-                p.phonate_when_viable();
-            "#,
-        )
-        .expect("script runs");
-    let ctx = ctx.lock().expect("lock script context");
-    let group = ctx.groups.values().next().expect("group exists");
-    assert_eq!(group.spec.phonation_gate, PhonationGate::Immediate);
+fn initial_only_methods_are_not_registered_on_population() {
+    for method in ["phonate_when_viable", "brain", "respawn_random"] {
+        let script = format!("let population = place(sine(), at(220.0)); population.{method}();");
+        let err = run_script_err(&script);
+        assert!(
+            err.message.contains(method) && err.message.contains("Population"),
+            "expected {method} to be unavailable on Population, got {}",
+            err.message
+        );
+    }
 }
 
 #[test]

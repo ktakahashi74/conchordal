@@ -406,7 +406,7 @@ Agents are not static; they move through frequency space to improve their fitnes
 Two modes govern how a new pitch target is applied:
 
 *   **GateSnap**: Discrete hop at note boundaries. The pitch snaps to the new target at note onset, so each note sounds a single stable frequency. Ordering matters: on the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency.
-*   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like species or slow melodic movement.
+*   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like Voices or slow melodic movement.
 
 For `seek_consonance()` voices the mode is resolved automatically from the phonation timing unless the script chooses explicitly: sustained voices (`once()`) glide, while re-attacking voices (pulse or coupled timing) snap at onsets.
 
@@ -501,13 +501,13 @@ This decoupled architecture ensures that the audio thread always sees a consiste
 
 The Conductor module acts as the interface between the human artist and the ecosystem. It embeds the [Rhai](https://rhai.rs/) scripting language, exposing a tiered API for controlling the simulation.
 
-The API is organized around two object kinds: a **Material** (a species recipe built by chaining methods onto a preset) and a **Participant** (a Material placed into the ecosystem). The authoritative, always-current reference is the Script Reference book (`docs/rhai_book`, published under `/docs/rhai/`); this section summarizes the conceptual tiers only.
+The API follows four explicit lifetimes: a **PopulationSpec** is a reusable pre-placement definition, a **Population** is the stable population identity created by `place()`, a **Voice** is one living member, and the runtime **Community** aggregates all Populations sharing the Landscape. The authoritative, always-current reference is the Script Reference book (`docs/rhai_book`, published under `/docs/rhai/`); this section summarizes the conceptual tiers only. `Species` remains reserved for a future hereditary/speciation model rather than being used as a synonym for a configuration object.
 
-### 6.3.1 Material Configuration
+### 6.3.1 PopulationSpec Configuration
 
-A Material begins with a preset and is refined through method chaining:
+A PopulationSpec begins with a preset and is refined through method chaining. It contains founder Voice defaults together with population-level lifecycle, viability, and respawn policy:
 
-**Presets**: `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()`. `variant(parent)` clones an existing Material for modification.
+**Presets**: `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()`. `variant(parent)` clones an existing PopulationSpec for modification.
 
 **Body**: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)` (habitat/presentation routing).
 
@@ -521,7 +521,7 @@ A Material begins with a preset and is refined through method chaining:
 
 **Lifecycle/Viability**: `endurance(sec)`, optional `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`.
 
-**Respawn**: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`.
+**Respawn**: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)` (maximum living membership; founder count by default and never lower than it), `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`.
 
 ### 6.3.2 Mode Patterns
 
@@ -533,23 +533,22 @@ Modifiers: `.count(n)`, `.range(min, max)`, `.spacing(d)`, `.gamma(g)`, `.jitter
 
 ### 6.3.3 Placements
 
-Placements determine initial frequency allocation when a Material enters the ecosystem. A field-relative placement names a target — `consonance`, `dissonance`, `edge` (the consonance/dissonance boundary), `gap` (low-intensity registers) — realized as a density cloud by default or a deterministic extremum with `.peak()`; `consonance(root)` takes a harmonic window, the others an absolute `(min, max)` range. Field-agnostic placements are `random(min, max)` (log-uniform) and the geometric `at(freq)` / `line(start, end)`. Modifiers: `.count(n)`, `.range(min_mul, max_mul)`, `.spacing(d)` (minimum ERB distance).
+Placements determine the founder Voices' initial frequency allocation when a PopulationSpec enters the ecosystem. A field-relative placement names a target — `consonance`, `dissonance`, `edge` (the consonance/dissonance boundary), `gap` (low-intensity registers) — realized as a density cloud by default or a deterministic extremum with `.peak()`; `consonance(root)` takes a harmonic window, the others an absolute `(min, max)` range. Field-agnostic placements are `random(min, max)` (log-uniform) and the geometric `at(freq)` / `line(start, end)`. Modifiers: `.count(n)`, `.range(min_mul, max_mul)`, `.spacing(d)` (minimum ERB distance).
 
-### 6.3.4 Participants and Groups
+### 6.3.4 Population Placement and Live Control
 
-*   `place(material, placement)`: Instantiates voices, returning a Participant.
-*   `create(material, count)`: Instantiates a draft group for staged configuration.
-*   `release(participant)`: Marks a group for fade-out release.
+*   `place(population_spec, placement)`: Immediately schedules founder Voices at the current cursor and returns their stable Population.
+*   `release(population)`: Terminally closes the Population and marks its current members for fade-out; later patches are ignored.
 
-Live groups support patching of pitch parameters, amplitude, and timbre during execution; draft-only methods are rejected with a warning once a group is live.
+`place()` is the sole definition/runtime boundary; there is no public draft Population. Initial body, behavior, lifecycle, and respawn methods exist only on PopulationSpec. Population exposes only live patches—such as pitch, amplitude, and timbre updates—and release. A Population retains its `population_id` while member `voice_id` and generation values change through death and respawn.
 
 ### 6.3.5 Control Flow
 
-*   `wait(sec)`: Commits pending groups, then advances the timeline cursor.
-*   `flush()`: Commits pending groups without advancing the timeline.
+*   `wait(sec)`: Emits pending live patches, then advances the timeline cursor.
+*   `flush()`: Emits pending live patches without advancing the timeline.
 *   `seed(n)`: Sets the random seed for reproducible runs.
-*   `section(name, callback)`: Marks a named scene boundary; groups created within the callback are automatically released when the section ends.
-*   `play(callback)`: Executes a scoped block—groups created inside are released on exit.
+*   `section(name, callback)`: Marks a named scene boundary; Populations created within the callback are automatically released when the section ends.
+*   `play(callback)`: Executes a scoped block—Populations created inside are released on exit.
 *   `parallel([callbacks])`: Runs multiple blocks concurrently (timeline branches), advancing the cursor to the latest endpoint.
 
 ### 6.3.6 Director Operations
@@ -628,11 +627,12 @@ Fragments exist: the per-voice boredom/familiarity of `PerceptualContext` is the
 
 ## 9.3 Upstream Revisions
 
-Implementation results have three times revised the Manifesto's mechanism-level sketches while confirming its principles:
+Implementation results have revised the Manifesto's mechanism-level sketches while confirming its principles:
 
 *   **The four-band table → an emergent metrical hierarchy.** The Manifesto sketches fixed delta/theta/alpha/beta bands with assigned musical roles. Building that taught otherwise: a fixed filterbank is an imposed grid in disguise. What survives the perception research is the principle—neural oscillation structures musical time—realized as a self-organizing beat–subdivision–measure hierarchy with confidence (Section 4).
 *   **Mirror dualism → the production-loop fixed-point requirement.** The undertone terrain is computable, but no minor tonality emerged, and the analysis generalizes: a perceptual symmetry is musically real only if the agents it attracts radiate spectra that reinforce it. Perception can be mirrored; production cannot—every body radiates overtones (Section 3.3.3). Any future terrain operation must pass both tests: a perceptual mechanism must exist, and the loop must close on the production side. The `harmonic_tension` dial that briefly survived as a tension knob was itself removed (v0.4): it passed neither test, was confirmed not to move the consonant peaks the ecology reads, and was in any case mathematically redundant—its two projection paths are one even convolution kernel at two decay exponents (Section 3.3.3). A tension axis that passes both tests was then built (v0.5): movement tension is the pitch-search *temperature* (Boltzmann exploration over the real potential — a hot search strays off consonance, a cold one settles), and placement tension is a *relative consonance level* (spawn a metastable step below the strongest peak). Both read the real, ecology-built terrain rather than warping it, so both pass. See `docs/design-notes/tension.md`.
 *   **Rate archaeology → observable time contracts.** Exposing raw energy pools and per-second rates made the composer balance dimensions that the ecology could derive. The implementation assay showed that the independent contract is nominal endurance, not `initial_energy` or `energy_cap`: energy can be normalized to $[0,1]$, while zero-fit drain is derived from endurance and the dissonance shape. Continuous recovery remains a separate time contract because per-second recovery and per-attack recharge have different dimensions. The same assay rejected collapsing `Entrain`, `Seq`, and `Drone`: their onset resets, death rules, telemetry, and render modulators are observably different, so one configured core would only hide the enum behind flags.
+*   **Ambiguous object nouns → lifetime-bearing ontology.** `Material`, `Participant`, and a public draft Population each required prose exceptions because none named the lifetime it represented. The implementation now makes the transition explicit: `PopulationSpec + Placement --place()--> Population`, whose living members are Voices; all Populations sharing the Landscape form the Community. Population policy belongs to PopulationSpec, live control belongs to Population, and `place()` schedules founders immediately. `Species` is reserved until heredity and speciation give it an actual biological invariant. The naming is therefore guarded by observable identity: a Population survives member death and respawn, while a Voice and its generation do not.
 
 # Appendix A: Key System Parameters
 

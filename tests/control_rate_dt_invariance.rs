@@ -15,7 +15,7 @@ fn build_agent() -> Voice {
     };
     let assigned_id = 1;
     let metadata = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,

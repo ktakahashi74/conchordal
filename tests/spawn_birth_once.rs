@@ -1,9 +1,9 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
+use conchordal::life::community::Community;
 use conchordal::life::control::VoiceControl;
 use conchordal::life::generator_model::GeneratorModel;
-use conchordal::life::population::Population;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
 use conchordal::scenario::{ArticulationCoreConfig, VoiceSpec};
@@ -30,12 +30,12 @@ fn spawn_sustain_publishes_note_on_first_tick() {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = GeneratorModel::new(tb, space.clone());
-    let mut pop = Population::new(tb);
+    let mut pop = Community::new(tb);
 
     let cfg = spawn_agent(440.0, 0.4);
     let assigned_id = 1;
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -53,12 +53,12 @@ fn spawn_emits_phonation_note_that_renders_audio() {
     let tb = test_timebase();
     let space = Log2Space::new(55.0, 8000.0, 96);
     let mut world = GeneratorModel::new(tb, space.clone());
-    let mut pop = Population::new(tb);
+    let mut pop = Community::new(tb);
 
     let cfg = spawn_agent(440.0, 0.4);
     let assigned_id = 1;
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,

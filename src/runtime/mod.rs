@@ -25,11 +25,11 @@ use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
 use crate::dcc_coupler::DccCoupler;
+use crate::life::community::Community;
 use crate::life::conductor::Conductor;
-use crate::life::population::Population;
 use crate::life::report::{
     JsonlReporter, RhythmObservation, onset_samples_from_batches, scaffold_phase_0_1,
-    summarize_groups,
+    summarize_populations,
 };
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::voice::{PhonationBatch, SoundBody};
@@ -161,7 +161,7 @@ fn analysis_ok(frame_idx: u64, last_analysis: Option<u64>, max_lag: u64) -> bool
 struct RuntimeUiFrameInput<'a> {
     scenario_name: &'a str,
     conductor: &'a Conductor,
-    pop: &'a Population,
+    pop: &'a Community,
     generator_model: &'a crate::life::generator_model::GeneratorModel,
     current_landscape: &'a LandscapeFrame,
     log_space: &'a Log2Space,
@@ -180,7 +180,7 @@ struct RuntimeUiFrameInput<'a> {
 fn build_initial_ui_frame(
     scenario_name: &str,
     conductor: &Conductor,
-    pop: &Population,
+    pop: &Community,
     current_landscape: &LandscapeFrame,
     current_time: f32,
     playback_state: PlaybackState,
@@ -625,13 +625,13 @@ pub fn validate_scenario_script_extension(script_path: &Path) -> Result<(), Stri
 
 pub fn compile_scenario_from_script(
     script_path: &Path,
-    _args: &crate::cli::Args,
+    args: &crate::cli::Args,
     _config: &AppConfig,
 ) -> Result<Scenario, String> {
     crate::life::modal::register_modal();
     validate_scenario_script_extension(script_path)?;
     let path_str = script_path.to_string_lossy();
-    ScriptHost::load_script(&path_str).map_err(|e| {
+    ScriptHost::load_script(&path_str, args.seed).map_err(|e| {
         let pos = e
             .position
             .map(|pos| format!(" (line {})", pos.line().unwrap_or(0)))
@@ -657,10 +657,10 @@ pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                     has_finish = true;
                 }
                 Action::Spawn { .. }
-                | Action::UpdateGroup { .. }
-                | Action::ReleaseGroup { .. }
+                | Action::UpdatePopulation { .. }
+                | Action::ReleasePopulation { .. }
                 | Action::SetRespawnPolicy { .. }
-                | Action::SetGroupCrowdingTarget { .. } => {}
+                | Action::SetPopulationCrowdingTarget { .. } => {}
                 Action::SetHarmonicityParams { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessTolerance { .. } => {}
@@ -873,6 +873,10 @@ pub(crate) fn init_runtime(
         eprintln!("{e}");
         std::process::exit(1);
     });
+    info!(
+        "scenario seed: {} (replay with --seed {})",
+        scenario.seed, scenario.seed
+    );
     let max_scenario_voice_id = scenario
         .events
         .iter()
@@ -891,10 +895,13 @@ pub(crate) fn init_runtime(
             eprintln!("{err}");
             std::process::exit(1);
         });
+    report_try(&mut reporter, "meta", |writer| {
+        writer.write_meta(scenario.seed)
+    });
     report_try(&mut reporter, "scene markers", |writer| {
         writer.write_scene_markers(&scenario.scene_markers)
     });
-    let mut pop = Population::new(crate::core::timebase::Timebase {
+    let mut pop = Community::new(crate::core::timebase::Timebase {
         fs: runtime_sample_rate as f32,
         hop,
     });
@@ -980,7 +987,7 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
     }
 }
 
-fn render_compile_args(scenario_path: &str) -> crate::cli::Args {
+fn render_compile_args(scenario_path: &str, seed: Option<u64>) -> crate::cli::Args {
     crate::cli::Args {
         play: false,
         scenario_path: scenario_path.to_string(),
@@ -990,6 +997,7 @@ fn render_compile_args(scenario_path: &str) -> crate::cli::Args {
         nogui: true,
         compile_only: false,
         report: None,
+        seed,
     }
 }
 
@@ -998,6 +1006,7 @@ pub fn run_render(
     wav_path: String,
     config: AppConfig,
     stop_flag: Arc<AtomicBool>,
+    seed: Option<u64>,
 ) -> Result<(), String> {
     crate::life::modal::register_modal();
 
@@ -1057,17 +1066,21 @@ pub fn run_render(
         .and_then(|s| s.to_str())
         .unwrap_or("scenario")
         .to_string();
-    let compile_args = render_compile_args(scenario_path);
+    let compile_args = render_compile_args(scenario_path, seed);
     let scenario = compile_scenario_from_script(path, &compile_args, &config).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
     });
+    info!(
+        "scenario seed: {} (replay with --seed {})",
+        scenario.seed, scenario.seed
+    );
     if let Err(e) = validate_scenario(&scenario) {
         eprintln!("{e}");
         std::process::exit(1);
     }
 
-    let mut pop = Population::new(crate::core::timebase::Timebase {
+    let mut pop = Community::new(crate::core::timebase::Timebase {
         fs: runtime_sample_rate as f32,
         hop,
     });
@@ -1172,7 +1185,7 @@ fn worker_loop(
     wait_user_exit: bool,
     start_flag: Arc<AtomicBool>,
     ui_tx: Sender<UiFrame>,
-    mut pop: Population,
+    mut pop: Community,
     mut conductor: Conductor,
     current_landscape: Landscape,
     mut lparams: LandscapeParams,
@@ -1425,8 +1438,15 @@ fn worker_loop(
                     frame_idx,
                 );
                 let runtime_events = pop.drain_runtime_events();
+                let phonation_gate_open_events = pop.drain_phonation_gate_open_events();
                 let death_records = pop.take_death_records();
-                let group_steps = summarize_groups(&pop.voices, &current_landscape, now_sec);
+                let active_population_ids = pop.active_population_ids();
+                let population_steps = summarize_populations(
+                    &pop.voices,
+                    &active_population_ids,
+                    &current_landscape,
+                    now_sec,
+                );
                 let kuramoto = pop.kuramoto_order_parameter();
                 let rhythm_observation = RhythmObservation {
                     time_sec: now_sec,
@@ -1441,14 +1461,17 @@ fn worker_loop(
                 report_try(&mut reporter, "runtime events", |writer| {
                     writer.write_runtime_events(&runtime_events)
                 });
+                report_try(&mut reporter, "phonation gate open", |writer| {
+                    writer.write_phonation_gate_opens(&phonation_gate_open_events)
+                });
                 report_try(&mut reporter, "deaths", |writer| {
                     writer.write_deaths(&death_records, hop, fs)
                 });
                 report_try(&mut reporter, "onsets", |writer| {
                     writer.write_onsets(&onset_samples)
                 });
-                report_try(&mut reporter, "group steps", |writer| {
-                    writer.write_group_steps(&group_steps)
+                report_try(&mut reporter, "population steps", |writer| {
+                    writer.write_population_steps(&population_steps)
                 });
                 report_try(&mut reporter, "rhythm observation", |writer| {
                     writer.write_rhythm_observation(rhythm_observation)
@@ -1678,7 +1701,7 @@ struct ParamsUpdateEffect {
 }
 
 fn apply_pending_landscape_update(
-    pop: &mut Population,
+    pop: &mut Community,
     params: &mut LandscapeParams,
     current_landscape: &mut LandscapeFrame,
     analysis_update_tx: &Sender<LandscapeUpdate>,
@@ -1819,7 +1842,7 @@ mod tests {
         let space = Log2Space::new(80.0, 2_000.0, 96);
         let mut params = build_test_params(&space);
         let mut landscape = Landscape::new(space);
-        let mut pop = Population::new(Timebase {
+        let mut pop = Community::new(Timebase {
             fs: 48_000.0,
             hop: 256,
         });

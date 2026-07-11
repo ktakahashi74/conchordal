@@ -698,7 +698,7 @@ pub fn main_window(
             y_min,
             y_max,
             102.0,
-            Some("landscape_group"),
+            Some("landscape_population"),
             None,
             overlay,
         );
@@ -722,7 +722,7 @@ pub fn main_window(
                 y_min,
                 y_max,
                 102.0,
-                Some("landscape_group"),
+                Some("landscape_population"),
                 None,
                 None,
             );
@@ -735,7 +735,7 @@ pub fn main_window(
                 &frame.landscape.harmonicity01,
                 &frame.landscape.roughness01,
                 102.0,
-                Some("landscape_group"),
+                Some("landscape_population"),
             );
         });
 
@@ -832,7 +832,7 @@ pub fn main_window(
                     0.0,
                     1.0,
                     102.0,
-                    Some("landscape_group"),
+                    Some("landscape_population"),
                     None,
                     pred_overlay,
                 );

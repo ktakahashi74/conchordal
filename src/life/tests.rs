@@ -2,13 +2,13 @@ use crate::core::landscape::{Landscape, LandscapeFrame};
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::community::Community;
 use crate::life::conductor::Conductor;
 use crate::life::control::{ControlUpdate, PitchApplyMode, PitchMode, VoiceControl};
 use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
     CandidatePoint, OnsetKick, OnsetRule, PhonationClock, ToneCmd,
 };
-use crate::life::population::Population;
 use crate::life::sound::RenderModulator;
 use crate::life::voice::{
     AnyArticulationCore, ArticulationCore, ArticulationWrapper, PhonationBatch, SoundBody, Voice,
@@ -51,7 +51,7 @@ fn spawn_voice(freq: f32, assigned_id: u64) -> Voice {
         articulation: ArticulationCoreConfig::default(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -84,18 +84,18 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
     }
 }
 
-// ──── Population / Conductor ────
+// ──── Community / Conductor ────
 
 #[test]
 fn population_spawn_and_release_removes_voice() {
-    let mut pop = Population::new(test_timebase());
+    let mut pop = Community::new(test_timebase());
     let landscape = LandscapeFrame::default();
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
 
     pop.apply_action(
         Action::Spawn {
-            group_id: 1,
+            population_id: 1,
             ids: vec![1],
             spec: spawn_spec_with_control(control),
             strategy: None,
@@ -106,8 +106,8 @@ fn population_spawn_and_release_removes_voice() {
     assert_eq!(pop.voices.len(), 1);
 
     pop.apply_action(
-        Action::ReleaseGroup {
-            group_id: 1,
+        Action::ReleasePopulation {
+            population_id: 1,
             fade_sec: 0.05,
         },
         &landscape,
@@ -141,7 +141,7 @@ fn conductor_dispatches_finish_on_time() {
     };
 
     let mut conductor = Conductor::from_scenario(scenario);
-    let mut pop = Population::new(test_timebase());
+    let mut pop = Community::new(test_timebase());
     let landscape = LandscapeFrame::default();
     conductor.dispatch_until(
         0.5,
@@ -164,13 +164,13 @@ fn conductor_dispatches_finish_on_time() {
 
 #[test]
 fn voice_lifecycle_decay_death() {
-    let mut pop = Population::new(test_timebase());
+    let mut pop = Community::new(test_timebase());
     let landscape = LandscapeFrame::default();
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     pop.apply_action(
         Action::Spawn {
-            group_id: 9,
+            population_id: 9,
             ids: vec![9],
             spec: spawn_spec_with_control(control),
             strategy: None,
@@ -214,13 +214,13 @@ fn voice_lifecycle_decay_death() {
 #[test]
 fn lock_mode_advances_release_gain() {
     let fs = 48_000.0;
-    let mut pop = Population::new(test_timebase());
+    let mut pop = Community::new(test_timebase());
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.pitch.mode = PitchMode::Lock;
     pop.apply_action(
         Action::Spawn {
-            group_id: 2,
+            population_id: 2,
             ids: vec![2],
             spec: spawn_spec_with_control(control),
             strategy: None,
@@ -244,13 +244,13 @@ fn lock_mode_advances_release_gain() {
 #[test]
 fn lock_mode_keeps_pitch_and_target() {
     let fs = 48_000.0;
-    let mut pop = Population::new(test_timebase());
+    let mut pop = Community::new(test_timebase());
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     control.pitch.mode = PitchMode::Lock;
     pop.apply_action(
         Action::Spawn {
-            group_id: 3,
+            population_id: 3,
             ids: vec![3],
             spec: spawn_spec_with_control(control),
             strategy: None,
@@ -279,12 +279,12 @@ fn lock_mode_keeps_pitch_and_target() {
 #[test]
 fn lock_mode_prevents_snapback() {
     let landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 48));
-    let mut pop = Population::new(test_timebase());
+    let mut pop = Community::new(test_timebase());
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;
     pop.apply_action(
         Action::Spawn {
-            group_id: 1,
+            population_id: 1,
             ids: vec![1],
             spec: spawn_spec_with_control(control),
             strategy: None,
@@ -302,8 +302,8 @@ fn lock_mode_prevents_snapback() {
     let new_freq: f32 = 440.0;
     let new_log = new_freq.log2();
     pop.apply_action(
-        Action::UpdateGroup {
-            group_id: 1,
+        Action::UpdatePopulation {
+            population_id: 1,
             patch: ControlUpdate {
                 freq: Some(new_freq),
                 ..ControlUpdate::default()
@@ -396,7 +396,7 @@ fn adaptation_disabled_still_runs_pitch_proposal() {
         articulation: ArticulationCoreConfig::default(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -437,7 +437,7 @@ fn proposal_interval_decouples_from_integration_window() {
         articulation: ArticulationCoreConfig::default(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -533,7 +533,7 @@ fn remove_pending_still_emits_note_offs() {
         articulation: ArticulationCoreConfig::default(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -597,7 +597,7 @@ fn tick_phonation_into_gated_bridges_each_onset_to_body_articulation() {
         articulation: sustain_entrain_articulation(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -665,7 +665,7 @@ fn hold_mode_renderer_still_pulses_after_render_clone_removal() {
         articulation: sustain_entrain_articulation(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -718,7 +718,7 @@ fn hold_note_emits_target_amp_update_when_authority_amp_changes() {
         articulation: sustain_entrain_articulation(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -787,7 +787,7 @@ fn hold_note_does_not_emit_update_below_amp_threshold() {
         articulation: sustain_entrain_articulation(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -850,7 +850,7 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
         articulation: sustain_entrain_articulation(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,
@@ -932,7 +932,7 @@ fn render_modulator_snapshot_is_finite() {
         articulation: ArticulationCoreConfig::default(),
     };
     let meta = VoiceMetadata {
-        group_id: 0,
+        population_id: 0,
         member_idx: 0,
         generation: 0,
         parent_id: None,

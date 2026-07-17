@@ -471,6 +471,11 @@ fn merge_latest_listener_analysis_results(
     let (analysis_frame_id, mut frame) = latest_audio?;
 
     frame.recompute_consonance(lparams);
+    // Listener habituation advances per processed presentation frame; under the
+    // deterministic-render catch-up loop this can advance >1x per hop. Accepted:
+    // with the default dcc coupling_strength = 0.0 the listener field feeds only
+    // ListenerTwin telemetry, not pre-synth ALIFE. The ecology field advances
+    // exactly once per hop (deterministic).
     drive_and_apply_habituation(&mut frame, hab_listener, lparams, dt_sec);
     let analysis_time_sec = timebase.tick_to_sec(timebase.frame_end_tick(analysis_frame_id));
     Some(listener_twin.observe_presentation_landscape(

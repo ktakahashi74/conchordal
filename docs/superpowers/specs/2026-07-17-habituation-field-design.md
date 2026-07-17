@@ -273,7 +273,12 @@ missed):
   placement (`community.rs`) — transform/invert the level; on eroded terrain a *stale
   consonant* location can become a desirable *dissonant* target. Behavior must be
   defined and assayed, not left implicit.
-- **Field-derived modal patterns** read mass/level and inherit erosion.
+- **Field-derived modal patterns** (`landscape_density_modes` / `landscape_peaks_modes`
+  in `mode_pattern.rs`) INTENTIONALLY read the RAW terrain, not the `_eff` views.
+  Corrected after the final review: body-mode generation is production-side (a voice's
+  physical timbre), and habituation is a perception-side salience erosion; eroding body
+  modes would conflate perception and production (cf. the H01 decision). Spawn placement
+  uses the eroded views; body timbre tracks the physical terrain.
 - **Per-voice `AdaptationContext`** (boredom/familiarity) remains additive on top of
   global habituation. The combined system can double-count adaptation; the assay runs
   with per-voice adaptation both enabled and disabled to isolate the effect.

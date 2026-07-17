@@ -45,7 +45,6 @@ pub struct HabituationField {
     ref_drive: f32,
     theta: f32,
     h: Vec<f32>,
-    drive_scratch: Vec<f32>,
 }
 
 impl HabituationField {
@@ -57,14 +56,12 @@ impl HabituationField {
             ref_drive: params.ref_drive.max(1e-6),
             theta,
             h: vec![0.0; n_bins],
-            drive_scratch: vec![0.0; n_bins],
         }
     }
 
     pub fn ensure_len(&mut self, n_bins: usize) {
         if self.h.len() != n_bins {
             self.h.resize(n_bins, 0.0);
-            self.drive_scratch.resize(n_bins, 0.0);
         }
     }
 

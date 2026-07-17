@@ -377,6 +377,12 @@ impl ModePattern {
         let gamma = sanitize_positive_finite(self.gamma, 1.0);
         let mut weights = Vec::with_capacity(idx_max - idx_min + 1);
         for idx in idx_min..=idx_max {
+            // Intentional: body-mode generation is production-side (a voice's physical
+            // timbre), so it reads the raw terrain, not the habituation-eroded `_eff`
+            // views. Habituation is perception-side salience erosion; eroding body
+            // modes would conflate perception and production (cf. the H01 decision to
+            // erode kernel output but never the physical analysis). Spawn placement
+            // uses the eroded views; body timbre tracks the physical terrain.
             let raw = sanitize_nonnegative_finite(landscape.consonance_density_mass[idx]);
             weights.push(raw.powf(gamma));
         }
@@ -436,6 +442,12 @@ impl ModePattern {
         if landscape.consonance_field_level.len() != eval_space.n_bins() {
             return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         }
+        // Intentional: body-mode generation is production-side (a voice's physical
+        // timbre), so it reads the raw terrain, not the habituation-eroded `_eff`
+        // views. Habituation is perception-side salience erosion; eroding body
+        // modes would conflate perception and production (cf. the H01 decision to
+        // erode kernel output but never the physical analysis). Spawn placement
+        // uses the eroded views; body timbre tracks the physical terrain.
         let scan = &landscape.consonance_field_level;
         let mut candidates = Vec::new();
         for idx in idx_min..=idx_max {

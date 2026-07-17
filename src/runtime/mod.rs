@@ -431,10 +431,33 @@ fn merge_latest_analysis_results(
     true
 }
 
+/// Advance a habituation field one hop from the landscape's raw views, then
+/// write the effective views. No-op when disabled: `recompute_consonance`
+/// already seeded the effective views bit-exact to raw.
+fn drive_and_apply_habituation(
+    landscape: &mut Landscape,
+    hab: &mut crate::core::habituation::HabituationField,
+    lparams: &LandscapeParams,
+    dt_sec: f32,
+) {
+    if !hab.is_enabled() {
+        return;
+    }
+    hab.ensure_len(landscape.space.n_bins());
+    let (proj, _max) = lparams
+        .harmonicity_kernel
+        .potential_h_from_log2_spectrum(&landscape.subjective_intensity, &landscape.space);
+    hab.advance_from_parts(&landscape.consonance_field_level, &proj, dt_sec);
+    landscape.apply_habituation(hab.state(), hab.theta(), &lparams.consonance_representation);
+}
+
+#[allow(clippy::too_many_arguments)]
 fn merge_latest_listener_analysis_results(
     listener_result_rx: Option<&Receiver<(u64, Landscape)>>,
     listener_twin: &mut ListenerTwin,
     lparams: &LandscapeParams,
+    hab_listener: &mut crate::core::habituation::HabituationField,
+    dt_sec: f32,
     timebase: crate::core::timebase::Timebase,
     generated_frame_id: u64,
     last_listener_analysis_frame: &mut Option<u64>,
@@ -448,6 +471,7 @@ fn merge_latest_listener_analysis_results(
     let (analysis_frame_id, mut frame) = latest_audio?;
 
     frame.recompute_consonance(lparams);
+    drive_and_apply_habituation(&mut frame, hab_listener, lparams, dt_sec);
     let analysis_time_sec = timebase.tick_to_sec(timebase.frame_end_tick(analysis_frame_id));
     Some(listener_twin.observe_presentation_landscape(
         analysis_time_sec,
@@ -1247,6 +1271,17 @@ fn worker_loop(
     prod_meter.set_shaping(meter_shaping);
     let mut generator_model =
         crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
+    let hab_bins = current_landscape.space.n_bins();
+    let mut hab_ecology = crate::core::habituation::HabituationField::new(
+        &lparams.habituation,
+        lparams.consonance_representation.theta,
+        hab_bins,
+    );
+    let mut hab_listener = crate::core::habituation::HabituationField::new(
+        &lparams.habituation,
+        lparams.consonance_representation.theta,
+        hab_bins,
+    );
     let mut schedule_renderer = ScheduleRenderer::new(timebase);
     let init_now_tick = timebase.frame_start_tick(frame_idx);
     generator_model.advance_to(init_now_tick);
@@ -1345,6 +1380,12 @@ fn worker_loop(
                 &analysis_update_tx,
                 listener_analysis_update_tx.as_ref(),
             );
+            drive_and_apply_habituation(
+                &mut current_landscape,
+                &mut hab_ecology,
+                &lparams,
+                hop_duration.as_secs_f32(),
+            );
             if (analysis_updated || landscape_params_updated)
                 && let Some(analysis_id) = last_analysis_frame
             {
@@ -1368,6 +1409,8 @@ fn worker_loop(
                     listener_result_rx.as_ref(),
                     &mut listener_twin,
                     &lparams,
+                    &mut hab_listener,
+                    hop_duration.as_secs_f32(),
                     timebase,
                     frame_idx,
                     &mut last_listener_analysis_frame,

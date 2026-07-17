@@ -17,6 +17,7 @@ pub struct LandscapeParams {
     pub consonance_kernel: ConsonanceKernel,
     pub consonance_representation: ConsonanceRepresentationParams,
     pub consonance_density_roughness_gain: f32,
+    pub habituation: crate::core::habituation::HabituationParams,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
     pub loudness_exp: f32,
@@ -429,6 +430,7 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
+            habituation: crate::core::habituation::HabituationParams::default(),
             loudness_exp: 1.0,
             ref_power: 1.0,
             tau_ms: 1.0,
@@ -438,6 +440,12 @@ mod tests {
             roughness_ref_mass_split: 0.5,
             roughness_ref_eps: 1e-12,
         }
+    }
+
+    #[test]
+    fn landscape_params_carries_habituation() {
+        let p = crate::core::habituation::HabituationParams::default();
+        assert!(!p.enabled);
     }
 
     #[test]

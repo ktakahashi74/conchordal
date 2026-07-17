@@ -1525,6 +1525,39 @@ fn worker_loop(
                 report_try(&mut reporter, "rhythm observation", |writer| {
                     writer.write_rhythm_observation(rhythm_observation)
                 });
+                let hstate = &current_landscape.perc_habituation_state_scan;
+                let n = hstate.len().max(1);
+                let mean_h = hstate.iter().sum::<f32>() / n as f32;
+                let max_h = hstate.iter().copied().fold(0.0f32, f32::max);
+                let mut mean_erosion = 0.0f32;
+                for i in 0..current_landscape.consonance_field_score.len() {
+                    mean_erosion += current_landscape.consonance_field_score[i]
+                        - current_landscape.consonance_field_score_eff[i];
+                }
+                mean_erosion /= n as f32;
+                let tracked_bin = current_landscape
+                    .consonance_field_score
+                    .iter()
+                    .enumerate()
+                    .fold(
+                        (0usize, f32::MIN),
+                        |(bi, bv), (i, &v)| {
+                            if v > bv { (i, v) } else { (bi, bv) }
+                        },
+                    )
+                    .0;
+                report_try(&mut reporter, "habituation", |w| {
+                    w.write_habituation(
+                        now_sec,
+                        mean_h,
+                        max_h,
+                        mean_erosion,
+                        tracked_bin,
+                        current_landscape.perc_habituation_state_scan[tracked_bin],
+                        current_landscape.consonance_field_score[tracked_bin],
+                        current_landscape.consonance_field_score_eff[tracked_bin],
+                    )
+                });
                 if let Some(listener_state) = listener_state_update {
                     report_try(&mut reporter, "listener state", |writer| {
                         writer.write_listener_state(listener_state)

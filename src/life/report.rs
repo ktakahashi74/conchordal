@@ -170,6 +170,16 @@ enum ReportRecord<'a> {
         tension_pressure: f32,
         temperature_bonus: f32,
     },
+    Habituation {
+        time_sec: f32,
+        mean_h: f32,
+        max_h: f32,
+        mean_erosion: f32,
+        tracked_bin: usize,
+        tracked_h: f32,
+        tracked_raw_score: f32,
+        tracked_eff_score: f32,
+    },
     RhythmSummary {
         time_sec: f32,
         window_start_sec: f32,
@@ -389,6 +399,30 @@ impl JsonlReporter {
             time_sec,
             tension_pressure: pressure.tension_pressure,
             temperature_bonus: pressure.temperature_bonus,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn write_habituation(
+        &mut self,
+        time_sec: f32,
+        mean_h: f32,
+        max_h: f32,
+        mean_erosion: f32,
+        tracked_bin: usize,
+        tracked_h: f32,
+        tracked_raw_score: f32,
+        tracked_eff_score: f32,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::Habituation {
+            time_sec,
+            mean_h,
+            max_h,
+            mean_erosion,
+            tracked_bin,
+            tracked_h,
+            tracked_raw_score,
+            tracked_eff_score,
         })
     }
 

@@ -6,6 +6,7 @@ pub mod density;
 pub mod erb;
 pub mod fft;
 pub mod float;
+pub mod habituation;
 pub mod harmonic_ratios;
 pub mod harmonicity_kernel;
 pub mod landscape;

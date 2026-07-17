@@ -943,7 +943,9 @@ fn sample_consonance_score_with_loo(
         && matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan)
         && let Some(scan) = exact_loo_scan
     {
-        return landscape.sample_linear_log2(scan, pitch_log2);
+        let raw = landscape.sample_linear_log2(scan, pitch_log2);
+        let h = landscape.sample_linear_log2(&landscape.perc_habituation_state_scan, pitch_log2);
+        return crate::core::habituation::erode_score(raw, h, landscape.consonance_theta);
     }
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
@@ -1675,6 +1677,51 @@ mod tests {
 
     fn test_adaptation(n_bins: usize) -> AdaptationContext {
         AdaptationContext::from_config(&AdaptationConfig::default(), n_bins)
+    }
+
+    #[test]
+    fn exact_loo_scan_is_eroded_by_habituation() {
+        let mut landscape = Landscape::new(Log2Space::new(55.0, 1760.0, 12));
+        let n = landscape.space.n_bins();
+        landscape.perc_habituation_state_scan = vec![1.0; n];
+        landscape.consonance_theta = 0.0;
+        let scan = vec![0.8f32; n];
+        let mid_log2 = landscape.space.centers_log2[n / 2];
+        let s = sample_consonance_score_with_loo(
+            mid_log2,
+            mid_log2,
+            &landscape,
+            true,
+            LeaveSelfOutMode::ExactScan,
+            0,
+            Some(&scan),
+            None,
+        );
+        assert!(s.abs() < 1e-3, "expected eroded ~0, got {s}");
+    }
+
+    #[test]
+    fn exact_loo_scan_zero_state_is_identity() {
+        let mut landscape = Landscape::new(Log2Space::new(55.0, 1760.0, 12));
+        let n = landscape.space.n_bins();
+        landscape.perc_habituation_state_scan = vec![0.0; n];
+        landscape.consonance_theta = 0.0;
+        let scan = vec![0.8f32; n];
+        let mid_log2 = landscape.space.centers_log2[n / 2];
+        let s = sample_consonance_score_with_loo(
+            mid_log2,
+            mid_log2,
+            &landscape,
+            true,
+            LeaveSelfOutMode::ExactScan,
+            0,
+            Some(&scan),
+            None,
+        );
+        assert!(
+            (s - 0.8).abs() < 1e-6,
+            "zero-state must be identity, got {s}"
+        );
     }
 
     #[test]

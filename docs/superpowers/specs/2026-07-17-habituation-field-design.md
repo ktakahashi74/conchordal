@@ -370,6 +370,54 @@ The assay stays in the tree as the regression instrument for the core change.
   including an explicit verdict on whether habituation actually required the life-
   coupling continuum.
 
+## Assay results and closure verdict (2026-07-17)
+
+Implemented behind the opt-in `[psychoacoustics.habituation]` config (default off).
+The feature-gated path, the seeded shared-terrain assay
+(`samples/research/habituation_field_assay.rhai`), and the deterministic
+regression test (`tests/habituation_field_assay.rs`) are in the tree. Measurements
+from the assay (habituation JSONL telemetry, offline `--play=false` runs):
+
+- **Causal control.** With habituation disabled, every telemetry record has
+  `max_h == 0` and `mean_h == 0` (exact, 5669 records). Enabled, `max_h` rises to
+  ~0.72. The mechanism does something, and only when switched on.
+- **Erosion reaches the terrain and is deterministic.** Two identical enabled runs
+  produce byte-identical `(mean_h, max_h)` series — the ecology habituation advances
+  once per hop deterministically, satisfying the pre-synth determinism policy.
+- **No runaway; bounded.** `mean_h` stays ~0.10–0.13 while `max_h` sits at ~0.5–0.7:
+  erosion is localized to wherever the population currently clusters, not global.
+  The population survives the full 60 s.
+- **Vacated-basin recovery (indirect, but solid).** `mean_h` shows no secular drift
+  (early 5–15 s vs late 50–60 s: +0.003 with terrain, +0.011 drone-free). If basins
+  the population left did not recover, continuous erosion across many visited basins
+  would ratchet `mean_h` upward over 60 s; it does not. Recovery keeps pace with new
+  erosion.
+- **Mobile erosion.** `max_h` fluctuates (stdev ~0.09) and the strongest-peak bin
+  moves across the run — the eroded location is not static; the population relocates,
+  which is the meso-scale motion the mechanism exists to produce.
+
+**Verdict: PARTIAL — closure well-supported, strict criterion not yet instrumented.**
+The §9.3 perceptual test passes strongly (stimulus-specific adaptation), and the
+production loop *appears to close*: erosion drives relocation, and the flat `mean_h`
+implies vacated basins recover rather than accumulating. What is NOT directly shown
+is the literal "a specific voice returns to a specific previously-vacated basin,"
+because the scalar telemetry (`max_h`, `mean_h`, and a per-hop argmax-of-raw
+`tracked_bin` that moves between bins) cannot isolate one basin's erode→recover→
+return trajectory. A drone-free variant behaves the same as the shared-terrain one,
+so the result is not an artifact of the anchored terrain.
+
+**Recommended next step before default-on promotion:** add per-basin instrumentation
+(a periodic full `h`-scan snapshot, or a fixed reference-basin tracker) and re-run to
+measure erode→recover→return at a single basin directly; then run the robustness
+matrix (seeds, population sizes, `tau_e:tau_r` ratios, body spectra, gains). Until
+that lands, the technote §9.1 ledger row moves to **"partial — landscape habituation
+implemented"**, not fully discharged.
+
+**Deferred continuum verdict.** Habituation was implemented as a Landscape-level
+scan with no change to `AnyArticulationCore`; it did **not** require the life-coupling
+continuum / mortal-terrain generalization. The deferred note stays deferred: the
+concrete second use case (habituation) landed without forcing the abstraction.
+
 ## Non-goals
 
 - The life-coupling continuum / mortal-terrain generalization of the brain axis.

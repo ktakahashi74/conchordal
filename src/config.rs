@@ -174,6 +174,44 @@ impl Default for ConsonanceDensityConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HabituationConfig {
+    #[serde(default = "HabituationConfig::default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "HabituationConfig::default_satiation_sec")]
+    pub satiation_sec: f32,
+    #[serde(default = "HabituationConfig::default_recovery_sec")]
+    pub recovery_sec: f32,
+    #[serde(default = "HabituationConfig::default_ref_drive")]
+    pub ref_drive: f32,
+}
+
+impl HabituationConfig {
+    fn default_enabled() -> bool {
+        false
+    }
+    fn default_satiation_sec() -> f32 {
+        5.0
+    }
+    fn default_recovery_sec() -> f32 {
+        8.0
+    }
+    fn default_ref_drive() -> f32 {
+        0.25
+    }
+}
+
+impl Default for HabituationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: Self::default_enabled(),
+            satiation_sec: Self::default_satiation_sec(),
+            recovery_sec: Self::default_recovery_sec(),
+            ref_drive: Self::default_ref_drive(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConsonanceConfig {
     #[serde(default)]
@@ -190,6 +228,8 @@ pub struct PsychoAcousticsConfig {
     pub roughness_k: f32,
     #[serde(default)]
     pub consonance: ConsonanceConfig,
+    #[serde(default)]
+    pub habituation: HabituationConfig,
     #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
     pub use_incoherent_power: bool,
 }
@@ -212,6 +252,7 @@ impl Default for PsychoAcousticsConfig {
             loudness_exp: Self::default_loudness_exp(),
             roughness_k: Self::default_roughness_k(),
             consonance: ConsonanceConfig::default(),
+            habituation: HabituationConfig::default(),
             use_incoherent_power: Self::default_use_incoherent_power(),
         }
     }
@@ -515,6 +556,7 @@ mod tests {
                         roughness_gain: 0.5,
                     },
                 },
+                habituation: HabituationConfig::default(),
                 use_incoherent_power: false,
             },
             playback: PlaybackConfig {
@@ -565,6 +607,26 @@ roughness_gain = 0.5
             parsed.psychoacoustics.consonance.density.roughness_gain,
             0.5
         );
+    }
+
+    #[test]
+    fn habituation_defaults_off_and_parses() {
+        let cfg = AppConfig::default();
+        assert!(!cfg.psychoacoustics.habituation.enabled);
+        assert_eq!(cfg.psychoacoustics.habituation.satiation_sec, 5.0);
+        assert_eq!(cfg.psychoacoustics.habituation.recovery_sec, 8.0);
+        assert_eq!(cfg.psychoacoustics.habituation.ref_drive, 0.25);
+
+        let text = "\
+[psychoacoustics.habituation]
+enabled = true
+satiation_sec = 3.0
+recovery_sec = 6.0
+ref_drive = 0.4
+";
+        let parsed: AppConfig = toml::from_str(text).expect("parse habituation keys");
+        assert!(parsed.psychoacoustics.habituation.enabled);
+        assert_eq!(parsed.psychoacoustics.habituation.satiation_sec, 3.0);
     }
 
     #[test]

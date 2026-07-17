@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use conchordal::config::{
     AnalysisConfig, AppConfig, AudioConfig, ConsonanceConfig, ConsonanceDensityConfig,
     ConsonanceFieldConfig, ConsonanceKernelConfig, ConsonanceLevelConfig, DccConfig,
-    LimiterSetting, PlaybackConfig, PsychoAcousticsConfig,
+    HabituationConfig, LimiterSetting, PlaybackConfig, PsychoAcousticsConfig,
 };
 use conchordal::core::nsgt_kernel::KernelAlign;
 
@@ -88,6 +88,25 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         "psychoacoustics.consonance.density.roughness_gain",
     );
     assert_eq!(
+        actual.psychoacoustics.habituation.enabled, expected.psychoacoustics.habituation.enabled,
+        "psychoacoustics.habituation.enabled",
+    );
+    assert_eq!(
+        actual.psychoacoustics.habituation.satiation_sec,
+        expected.psychoacoustics.habituation.satiation_sec,
+        "psychoacoustics.habituation.satiation_sec",
+    );
+    assert_eq!(
+        actual.psychoacoustics.habituation.recovery_sec,
+        expected.psychoacoustics.habituation.recovery_sec,
+        "psychoacoustics.habituation.recovery_sec",
+    );
+    assert_eq!(
+        actual.psychoacoustics.habituation.ref_drive,
+        expected.psychoacoustics.habituation.ref_drive,
+        "psychoacoustics.habituation.ref_drive",
+    );
+    assert_eq!(
         actual.psychoacoustics.use_incoherent_power,
         expected.psychoacoustics.use_incoherent_power
     );
@@ -154,6 +173,12 @@ fn config_load_custom_values() {
                 density: ConsonanceDensityConfig {
                     roughness_gain: 0.5,
                 },
+            },
+            habituation: HabituationConfig {
+                enabled: true,
+                satiation_sec: 4.0,
+                recovery_sec: 7.0,
+                ref_drive: 0.3,
             },
             use_incoherent_power: false,
         },

@@ -3343,6 +3343,8 @@ mod tests {
         for (bin_idx, score) in candidate_bins.into_iter().zip(candidate_scores) {
             landscape.consonance_field_score[bin_idx] = score;
             landscape.consonance_field_level[bin_idx] = score.clamp(0.0, 1.0);
+            landscape.consonance_field_score_eff[bin_idx] = score;
+            landscape.consonance_field_level_eff[bin_idx] = score.clamp(0.0, 1.0);
         }
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(20260331);
@@ -3510,8 +3512,10 @@ mod tests {
 
         let mut landscape_low = LandscapeFrame::new(space.clone());
         landscape_low.consonance_field_level.fill(0.0);
+        landscape_low.consonance_field_level_eff.fill(0.0);
         let mut landscape_high = LandscapeFrame::new(space);
         landscape_high.consonance_field_level.fill(1.0);
+        landscape_high.consonance_field_level_eff.fill(1.0);
 
         let spec = sustain_spawn_spec_with_gate(440.0, PhonationGate::WhenViable, 0.5);
         pop.apply_action(
@@ -3558,6 +3562,7 @@ mod tests {
 
         let mut landscape_high = LandscapeFrame::new(space);
         landscape_high.consonance_field_level.fill(1.0);
+        landscape_high.consonance_field_level_eff.fill(1.0);
 
         let spec = sustain_spawn_spec_with_gate(440.0, PhonationGate::Immediate, 0.5);
         pop.apply_action(

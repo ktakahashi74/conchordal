@@ -480,6 +480,8 @@ fn scan_moves_toward_higher_scoring_neighbor() {
     landscape.subjective_intensity = vec![1.0; n];
     landscape.consonance_field_score.fill(0.0);
     landscape.consonance_field_level.fill(0.0);
+    landscape.consonance_field_score_eff.fill(0.0);
+    landscape.consonance_field_level_eff.fill(0.0);
     let idx_cur = landscape
         .space
         .index_of_freq(voice.body.base_freq_hz())
@@ -495,6 +497,12 @@ fn scan_moves_toward_higher_scoring_neighbor() {
                 *c = 1.0;
             }
             if let Some(c) = landscape.consonance_field_level.get_mut(idx) {
+                *c = 1.0;
+            }
+            if let Some(c) = landscape.consonance_field_score_eff.get_mut(idx) {
+                *c = 1.0;
+            }
+            if let Some(c) = landscape.consonance_field_level_eff.get_mut(idx) {
                 *c = 1.0;
             }
         }

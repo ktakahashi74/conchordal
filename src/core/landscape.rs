@@ -95,6 +95,16 @@ pub struct Landscape {
     pub consonance_density: Vec<f32>,
     /// Field energy cache (`-score`) kept for diagnostics/tests/plots.
     pub consonance_field_energy: Vec<f32>,
+    /// Effective (habituation-eroded) score read by movement/prediction.
+    pub consonance_field_score_eff: Vec<f32>,
+    /// Effective level derived from the eroded score.
+    pub consonance_field_level_eff: Vec<f32>,
+    /// Effective (eroded) density mass, source of the spawn PMF.
+    pub consonance_density_mass_eff: Vec<f32>,
+    /// perc_habituation_state_scan in [0,1] (copy of the worker-owned state).
+    pub perc_habituation_state_scan: Vec<f32>,
+    /// Level-neutral baseline used by score erosion (mirrors representation theta).
+    pub consonance_theta: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     /// perc_state_R (summary statistics).
@@ -132,6 +142,11 @@ impl Landscape {
             consonance_density_mass: vec![0.0; n],
             consonance_density: vec![0.0; n],
             consonance_field_energy: vec![0.0; n],
+            consonance_field_score_eff: vec![0.0; n],
+            consonance_field_level_eff: vec![0.0; n],
+            consonance_density_mass_eff: vec![0.0; n],
+            perc_habituation_state_scan: vec![0.0; n],
+            consonance_theta: 0.0,
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             roughness_total: 0.0,
@@ -162,6 +177,10 @@ impl Landscape {
         self.consonance_density_mass.resize(n, 0.0);
         self.consonance_density.resize(n, 0.0);
         self.consonance_field_energy.resize(n, 0.0);
+        self.consonance_field_score_eff.resize(n, 0.0);
+        self.consonance_field_level_eff.resize(n, 0.0);
+        self.consonance_density_mass_eff.resize(n, 0.0);
+        self.perc_habituation_state_scan.resize(n, 0.0);
         self.subjective_intensity.resize(n, 0.0);
         self.nsgt_power.resize(n, 0.0);
     }
@@ -187,6 +206,22 @@ impl Landscape {
             .assert_scan_len_named(&self.consonance_density, "consonance_density");
         self.space
             .assert_scan_len_named(&self.consonance_field_energy, "consonance_field_energy");
+        self.space.assert_scan_len_named(
+            &self.consonance_field_score_eff,
+            "consonance_field_score_eff",
+        );
+        self.space.assert_scan_len_named(
+            &self.consonance_field_level_eff,
+            "consonance_field_level_eff",
+        );
+        self.space.assert_scan_len_named(
+            &self.consonance_density_mass_eff,
+            "consonance_density_mass_eff",
+        );
+        self.space.assert_scan_len_named(
+            &self.perc_habituation_state_scan,
+            "perc_habituation_state_scan",
+        );
         self.space
             .assert_scan_len_named(&self.subjective_intensity, "subjective_intensity");
         self.space
@@ -196,24 +231,24 @@ impl Landscape {
     /// Layer 1 score. Prefer `evaluate_pitch_level` for normalized usage.
     pub fn evaluate_pitch_score(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear(&self.consonance_field_score, freq_hz)
+        self.sample_linear(&self.consonance_field_score_eff, freq_hz)
     }
 
     /// Layer 1 score. Prefer `evaluate_pitch_level_log2` for normalized usage.
     pub fn evaluate_pitch_score_log2(&self, log_freq: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear_log2(&self.consonance_field_score, log_freq)
+        self.sample_linear_log2(&self.consonance_field_score_eff, log_freq)
     }
 
     pub fn evaluate_pitch_level(&self, freq_hz: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear(&self.consonance_field_level, freq_hz)
+        self.sample_linear(&self.consonance_field_level_eff, freq_hz)
             .clamp(0.0, 1.0)
     }
 
     pub fn evaluate_pitch_level_log2(&self, log_freq: f32) -> f32 {
         self.assert_scan_lengths();
-        self.sample_linear_log2(&self.consonance_field_level, log_freq)
+        self.sample_linear_log2(&self.consonance_field_level_eff, log_freq)
             .clamp(0.0, 1.0)
     }
 
@@ -261,6 +296,42 @@ impl Landscape {
         self.recompute_consonance_density_mass(params);
         for i in 0..n {
             self.consonance_density[i] = self.consonance_density_mass[i];
+        }
+        normalize_or_uniform(&mut self.consonance_density[..n]);
+
+        // Seed effective views to raw (identity) until apply_habituation runs.
+        self.consonance_field_score_eff
+            .copy_from_slice(&self.consonance_field_score);
+        self.consonance_field_level_eff
+            .copy_from_slice(&self.consonance_field_level);
+        self.consonance_density_mass_eff
+            .copy_from_slice(&self.consonance_density_mass);
+    }
+
+    /// Apply a habituation state to the raw kernel outputs, producing the
+    /// effective views the consumers read. `h[i] == 0` is identity. Also
+    /// re-normalizes the spawn PMF (`consonance_density`) from the eroded mass.
+    pub fn apply_habituation(
+        &mut self,
+        h: &[f32],
+        theta: f32,
+        repr: &ConsonanceRepresentationParams,
+    ) {
+        self.assert_scan_lengths();
+        let n = self.consonance_field_score.len();
+        self.consonance_theta = theta;
+        for i in 0..n {
+            let hi = h.get(i).copied().unwrap_or(0.0);
+            self.perc_habituation_state_scan[i] = hi.clamp(0.0, 1.0);
+            let score_eff =
+                crate::core::habituation::erode_score(self.consonance_field_score[i], hi, theta);
+            self.consonance_field_score_eff[i] = score_eff;
+            self.consonance_field_level_eff[i] = repr.level(score_eff);
+            self.consonance_density_mass_eff[i] =
+                crate::core::habituation::erode_mass(self.consonance_density_mass[i], hi);
+        }
+        for i in 0..n {
+            self.consonance_density[i] = self.consonance_density_mass_eff[i];
         }
         normalize_or_uniform(&mut self.consonance_density[..n]);
     }
@@ -449,6 +520,51 @@ mod tests {
     }
 
     #[test]
+    fn apply_habituation_zero_state_is_identity() {
+        let space = Log2Space::new(55.0, 1760.0, 12);
+        let mut ls = Landscape::new(space);
+        let n = ls.space.n_bins();
+        for i in 0..n {
+            ls.consonance_field_score[i] = 0.8;
+            ls.consonance_density_mass[i] = 0.5;
+        }
+        let repr = ConsonanceRepresentationParams {
+            beta: 2.0,
+            theta: 0.0,
+        };
+        let zeros = vec![0.0f32; n];
+        ls.apply_habituation(&zeros, repr.theta, &repr);
+        for i in 0..n {
+            assert!((ls.consonance_field_score_eff[i] - 0.8).abs() < 1e-6);
+            assert!((ls.consonance_density_mass_eff[i] - 0.5).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn apply_habituation_full_state_relaxes_to_theta_and_zero_mass() {
+        let space = Log2Space::new(55.0, 1760.0, 12);
+        let mut ls = Landscape::new(space);
+        let n = ls.space.n_bins();
+        for i in 0..n {
+            ls.consonance_field_score[i] = 0.8;
+            ls.consonance_density_mass[i] = 0.5;
+        }
+        let repr = ConsonanceRepresentationParams {
+            beta: 2.0,
+            theta: 0.1,
+        };
+        let ones = vec![1.0f32; n];
+        ls.apply_habituation(&ones, repr.theta, &repr);
+        for i in 0..n {
+            assert!((ls.consonance_field_score_eff[i] - 0.1).abs() < 1e-6);
+            assert!(ls.consonance_density_mass_eff[i].abs() < 1e-6);
+            assert!((ls.perc_habituation_state_scan[i] - 1.0).abs() < 1e-6);
+        }
+        let mid = ls.space.centers_hz[n / 2];
+        assert!((ls.evaluate_pitch_score(mid) - 0.1).abs() < 1e-3);
+    }
+
+    #[test]
     fn roughness01_in_range_and_halfpoint() {
         let r_half = 0.2;
         let r0 = map_roughness01(0.0, r_half);
@@ -487,10 +603,10 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_pitch_level_uses_consonance_field_level() {
+    fn evaluate_pitch_level_uses_effective_consonance_field_level() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
         landscape.consonance_field_score.fill(10.0);
-        landscape.consonance_field_level.fill(0.3);
+        landscape.consonance_field_level_eff.fill(0.3);
         let val = landscape.evaluate_pitch_level(200.0);
         assert!((val - 0.3).abs() < 1e-6, "val={val}");
     }
@@ -498,7 +614,7 @@ mod tests {
     #[test]
     fn evaluate_pitch_level_is_clamped() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
-        landscape.consonance_field_level.fill(1.2);
+        landscape.consonance_field_level_eff.fill(1.2);
         let val = landscape.evaluate_pitch_level(200.0);
         assert!((val - 1.0).abs() < 1e-6, "val={val}");
     }
@@ -506,10 +622,10 @@ mod tests {
     #[test]
     fn evaluate_pitch_score_log2_outside_space_uses_edge_bins() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
-        let n = landscape.consonance_field_score.len();
-        landscape.consonance_field_score.fill(0.0);
-        landscape.consonance_field_score[0] = 0.25;
-        landscape.consonance_field_score[n - 1] = 0.75;
+        let n = landscape.consonance_field_score_eff.len();
+        landscape.consonance_field_score_eff.fill(0.0);
+        landscape.consonance_field_score_eff[0] = 0.25;
+        landscape.consonance_field_score_eff[n - 1] = 0.75;
 
         let lo = landscape.evaluate_pitch_score_log2(landscape.space.fmin.log2() - 10.0);
         let hi = landscape.evaluate_pitch_score_log2(landscape.space.fmax.log2() + 10.0);
@@ -893,6 +1009,10 @@ mod tests {
         assert_eq!(landscape.consonance_density_mass.len(), n);
         assert_eq!(landscape.consonance_density.len(), n);
         assert_eq!(landscape.consonance_field_energy.len(), n);
+        assert_eq!(landscape.consonance_field_score_eff.len(), n);
+        assert_eq!(landscape.consonance_field_level_eff.len(), n);
+        assert_eq!(landscape.consonance_density_mass_eff.len(), n);
+        assert_eq!(landscape.perc_habituation_state_scan.len(), n);
         assert_eq!(landscape.subjective_intensity.len(), n);
         assert_eq!(landscape.nsgt_power.len(), n);
 

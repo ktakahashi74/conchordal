@@ -1667,6 +1667,8 @@ mod tests {
             }
             landscape.consonance_field_score[idx] = score;
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+            landscape.consonance_field_score_eff[idx] = score;
+            landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         landscape
     }
@@ -1792,6 +1794,7 @@ mod tests {
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
         landscape.consonance_field_score[idx] = 1.75;
+        landscape.consonance_field_score_eff[idx] = 1.75;
         let perceptual = test_adaptation(landscape.space.n_bins());
 
         let weighted = adjusted_pitch_score(
@@ -1839,6 +1842,7 @@ mod tests {
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
         landscape.consonance_field_score[idx] = 1.0;
+        landscape.consonance_field_score_eff[idx] = 1.0;
         let perceptual = test_adaptation(landscape.space.n_bins());
 
         let without_crowding = adjusted_pitch_score(
@@ -1886,6 +1890,7 @@ mod tests {
     fn crowding_pairwise_split_biases_agents_in_opposite_directions() {
         let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 128));
         landscape.consonance_field_score.fill(1.0);
+        landscape.consonance_field_score_eff.fill(1.0);
         let perceptual = test_adaptation(landscape.space.n_bins());
         let center = landscape.space.centers_log2[landscape.space.n_bins() / 2];
         let left = center - cents_to_log2(6.0);
@@ -1976,6 +1981,7 @@ mod tests {
         let pitch_log2 = landscape.space.centers_log2[idx];
         let neighbor_log2 = pitch_log2 + cents_to_log2(40.0);
         landscape.consonance_field_score[idx] = 1.0;
+        landscape.consonance_field_score_eff[idx] = 1.0;
         let perceptual = test_adaptation(landscape.space.n_bins());
 
         landscape.roughness_suppress_sigma_erb = 0.04;
@@ -2029,6 +2035,7 @@ mod tests {
         let idx = landscape.space.n_bins() / 2;
         let pitch_log2 = landscape.space.centers_log2[idx];
         landscape.consonance_field_score[idx] = 1.23;
+        landscape.consonance_field_score_eff[idx] = 1.23;
         let perceptual = test_adaptation(landscape.space.n_bins());
 
         let score = adjusted_pitch_score(
@@ -2059,6 +2066,8 @@ mod tests {
         let nearby = landscape.space.centers_log2[idx + 1];
         landscape.consonance_field_score[idx] = 1.0;
         landscape.consonance_field_score[idx + 1] = 0.7;
+        landscape.consonance_field_score_eff[idx] = 1.0;
+        landscape.consonance_field_score_eff[idx + 1] = 0.7;
         let perceptual = test_adaptation(landscape.space.n_bins());
 
         let current_no_loo = adjusted_pitch_score(
@@ -2267,6 +2276,8 @@ mod tests {
             let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
             landscape.consonance_field_score[idx] = score;
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+            landscape.consonance_field_score_eff[idx] = score;
+            landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
@@ -2303,6 +2314,8 @@ mod tests {
             let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
             landscape.consonance_field_score[idx] = score;
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+            landscape.consonance_field_score_eff[idx] = score;
+            landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
@@ -2368,6 +2381,8 @@ mod tests {
             let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
             landscape.consonance_field_score[idx] = score;
             landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+            landscape.consonance_field_score_eff[idx] = score;
+            landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
         let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);

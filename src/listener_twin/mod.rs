@@ -179,13 +179,13 @@ fn has_audible_evidence(landscape: &LandscapeFrame) -> bool {
 
 fn weighted_stability_level(landscape: &LandscapeFrame) -> f32 {
     weighted_scan_mean(
-        &landscape.consonance_field_level,
+        &landscape.consonance_field_level_eff,
         &landscape.subjective_intensity,
     )
 }
 
 fn weighted_resolution_gain(landscape: &LandscapeFrame, config: &ListenerTwinConfig) -> f32 {
-    let levels = &landscape.consonance_field_level;
+    let levels = &landscape.consonance_field_level_eff;
     let weights = &landscape.subjective_intensity;
     if levels.is_empty()
         || levels.len() != weights.len()
@@ -302,10 +302,12 @@ mod tests {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut landscape = Landscape::new(space);
         landscape.consonance_field_level.fill(default_level);
+        landscape.consonance_field_level_eff.fill(default_level);
         landscape.consonance_field_score.fill(default_level);
         landscape.subjective_intensity.fill(0.0);
         for &(idx, level, weight) in active {
             landscape.consonance_field_level[idx] = level;
+            landscape.consonance_field_level_eff[idx] = level;
             landscape.consonance_field_score[idx] = level;
             landscape.subjective_intensity[idx] = weight;
         }

@@ -86,7 +86,7 @@ pub(super) fn peak_bias_candidate_bins(
         if !freq_hz.is_finite() || freq_hz < min_hz || freq_hz > max_hz {
             continue;
         }
-        let weight = landscape.consonance_field_score[idx].max(0.0);
+        let weight = landscape.consonance_field_score_eff[idx].max(0.0);
         if weight.is_finite() {
             weights[idx] = weight;
         }

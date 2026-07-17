@@ -411,12 +411,12 @@ fn merge_latest_analysis_results(
             .copied()
             .unwrap_or(0.0);
         let c_score = current_landscape
-            .consonance_field_score
+            .consonance_field_score_eff
             .get(max_i)
             .copied()
             .unwrap_or(0.0);
         let c_level = current_landscape
-            .consonance_field_level
+            .consonance_field_level_eff
             .get(max_i)
             .copied()
             .unwrap_or(0.0);
@@ -1352,7 +1352,7 @@ fn worker_loop(
                 let obs_tick = timebase.frame_end_tick(analysis_id);
                 generator_model.observe_consonance_field_level(
                     obs_tick,
-                    Arc::from(current_landscape.consonance_field_level.clone()),
+                    Arc::from(current_landscape.consonance_field_level_eff.clone()),
                 );
             }
 

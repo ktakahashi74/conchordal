@@ -9,23 +9,23 @@ fn has_seed_statement(contents: &str) -> bool {
 }
 
 #[test]
-fn etudes_are_unseeded_and_research_assays_are_seeded() {
-    let mut etude_count = 0;
+fn top_level_samples_are_unseeded_and_research_assays_are_seeded() {
+    let mut sample_count = 0;
     for entry in fs::read_dir(Path::new("samples")).expect("read samples dir") {
         let path = entry.expect("sample entry").path();
         if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("rhai") {
             continue;
         }
-        etude_count += 1;
+        sample_count += 1;
         let contents = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
         assert!(
             !has_seed_statement(&contents),
-            "top-level etude should use a fresh scenario seed: {}",
+            "top-level sample should use a fresh scenario seed: {}",
             path.display()
         );
     }
-    assert_eq!(etude_count, 12, "expected the twelve top-level etudes");
+    assert_eq!(sample_count, 12, "expected the twelve top-level samples");
 
     let mut research_count = 0;
     for entry in fs::read_dir(Path::new("samples/research")).expect("read research dir") {
@@ -43,4 +43,31 @@ fn etudes_are_unseeded_and_research_assays_are_seeded() {
         );
     }
     assert!(research_count > 0, "expected research assay scripts");
+}
+
+#[test]
+fn top_level_sample_material_uses_sample_framing() {
+    let mut paths = vec![
+        Path::new("README.md").to_path_buf(),
+        Path::new("samples/README.md").to_path_buf(),
+    ];
+    paths.extend(
+        fs::read_dir(Path::new("samples"))
+            .expect("read samples dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("rhai")),
+    );
+
+    for path in paths {
+        let contents = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        for stale_label in ["Étude", "étude"] {
+            assert!(
+                !contents.contains(stale_label),
+                "{} frames a sample as a musical work with {stale_label:?}",
+                path.display()
+            );
+        }
+    }
 }

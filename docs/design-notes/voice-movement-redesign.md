@@ -287,7 +287,7 @@ and clippy pass. Crowding is still the separate Channel A penalty
 real audio. *Before* (full-spectrum feed) keeps residual tension to the end —
 voices that reach a consonant interval are pushed back off it because their own
 shared-harmonic energy marks those bins "occupied" (Finding 1's erosion, audible).
-*After* (Stage 1.5) resolves fully to consonance: the "Settling" étude actually
+*After* (Stage 1.5) resolves fully to consonance: the "Settling" sample actually
 settles. So the change is a real, audible fix, not just a cleanup. The
 over-resolution concern (does it freeze pieces that want sustained life into
 static consonance?) was checked against `08_murmuration`: the after render keeps

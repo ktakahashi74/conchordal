@@ -1,4 +1,4 @@
-// Étude 2 — Constellation
+// Sample 2 — Constellation
 // Six ways to enter a field: a line, the peaks, the density,
 // the strain, the gaps, and chance.
 

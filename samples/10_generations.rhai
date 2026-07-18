@@ -1,4 +1,4 @@
-// Étude 10 — Generations
+// Sample 10 — Generations
 // Voices live, starve, and are reborn where harmony can hold them.
 
 let root_hz = 110.0;

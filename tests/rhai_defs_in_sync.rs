@@ -1,7 +1,7 @@
 //! Drift checks for the artifacts generated from the scripting surface.
 //!
-//! `rhai-defs/conchordal.d.rhai` and `docs/rhai_book/src/reference/api.md`
-//! must match the output of `cargo run --bin gen_rhai_defs`, and every
+//! `rhai-defs/conchordal.d.rhai` and both generated book API references must
+//! match the output of `cargo run --bin gen_rhai_defs`, and every
 //! registered function must have a doc entry in `src/scripting/docs.rs`.
 //! If any of these fail, editor completion/diagnostics or the book reference
 //! fall out of sync with the engine.
@@ -31,6 +31,14 @@ fn book_api_reference_matches_generator_output() {
     assert_generated_matches(
         "docs/rhai_book/src/reference/api.md",
         &defs_gen::render_reference_md(),
+    );
+}
+
+#[test]
+fn japanese_book_api_reference_matches_generator_output() {
+    assert_generated_matches(
+        "docs/rhai_book_ja/src/reference/api.md",
+        &defs_gen::render_reference_md_ja(),
     );
 }
 

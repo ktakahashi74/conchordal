@@ -96,6 +96,6 @@ This distinction is central:
 - The Community produces moment-to-moment behavior.
 - Reports show what actually happened during the authored interval.
 
-Use [Observing a Performance](../tutorial/observing.md) to close the composing
-loop, and use `seed(...)` or `--seed` only when a particular realization must
-be replayed.
+Use the workflow in [Performance](../tutorial/observing.md) to inspect the
+result and revise the scenario. Use `seed(...)` or `--seed` only when a
+particular realization must be replayed.

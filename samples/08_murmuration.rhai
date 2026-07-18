@@ -1,4 +1,4 @@
-// Étude 8 — Murmuration
+// Sample 8 — Murmuration
 // A flock drifts into step. Nothing commands it; coupling and survival do.
 
 let root_hz = 196.0;

@@ -1,4 +1,4 @@
-// Étude 9 — Rain
+// Sample 9 — Rain
 // Time without a beat, falling along the field.
 
 let root_hz = 146.83;

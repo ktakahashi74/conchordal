@@ -567,7 +567,7 @@ The following examples, derived from the `samples/` directory, illustrate how sp
 
 ## 7.1 Case Study: The Rhythm Family Continuum (`samples/07_heartbeat.rhai`, `08_murmuration.rhai`, `09_rain.rhai`)
 
-Three sibling études demonstrate that one coupling mechanism (Section 5.4) spans qualitatively different temporalities:
+Three sibling samples demonstrate that one coupling mechanism (Section 5.4) spans qualitatively different temporalities:
 
 1.  **Metric** (`07_heartbeat.rhai`): voices declare `metric()` with an accent role on the downbeat voice. Their onsets drive the shared production meter; the meter's confidence rises; high coupling pulls every onset into the now-deep attractor. A legible pulse appears—yet there is no clock anywhere, only a `temporal_basin` telling the terrain *where* a tempo may settle.
 2.  **Entrained** (`08_murmuration.rhai`): medium coupling plus vitality coupling and attack reward. Synchronization is not immediate; it *emerges* over tens of seconds as confidence accumulates, and degrades if the colony weakens—rhythmic coherence is tied to ecological health.
@@ -583,7 +583,7 @@ This script validates the hop-based movement logic.
 
 ## 7.3 Case Study: Emergence and Resolution (`samples/12_emergence_and_resolution.rhai`)
 
-The closing étude of the v0.4 book composes the full stack as a single directed arc. The composer touches a temperature arc—heating the colony's search so it grows restless and strays off consonance, then cooling it to settle (harmonic tension as search temperature)—plus a register transposition, while everything else emerges: a metric heartbeat (an accent-role voice driving a deep beat attractor), a living colony that locks to the *same* emergent beat while climbing toward consonance, and a non-metric flow shimmer appearing only at the tension peak. The colony's survival through the dissonant peak (consonance-gated viability plus consonance-biased respawn) *is* the resolution: the return of tonal gravity is enacted by the ecosystem rather than written into a score.
+The closing integration sample combines the full stack as a single directed arc. The scenario controls a temperature arc—heating the colony's search so it grows restless and strays off consonance, then cooling it to settle (harmonic tension as search temperature)—plus a register transposition, while everything else emerges: a metric heartbeat (an accent-role voice driving a deep beat attractor), a living colony that locks to the *same* emergent beat while climbing toward consonance, and a non-metric flow shimmer appearing only at the tension peak. The colony's survival through the dissonant peak (consonance-gated viability plus consonance-biased respawn) demonstrates resolution enacted by the ecosystem rather than scheduled note by note.
 
 # 8. Conclusion
 
@@ -623,7 +623,7 @@ Human temporal cognition layers experience in three windows. Within the **percep
 
 For a system whose terrain *is* a model of perception, the consequence is structural: **consonance is a meal, not a place**. A landscape that models the listener must devalue what has been sounding—habituation as terrain erosion, with a time constant on the order of the prediction window—and let it recover after release. Stasis avoidance then belongs to the ecology rather than to authored pacing, and the three windows assign a clean division of labor: the **body** owns the micro layer (jitter, breath, beating), the **ecology** owns the meso layer (adaptation-driven movement, life and death), and the **scenario** owns the macro layer—the one window the Manifesto explicitly assigns to the human director, who owes the listener a boundary at this scale and cannot delegate it.
 
-Fragments exist: the per-voice boredom/familiarity of `PerceptualContext` is the agent-side preview, and the `ListenerTwin`'s tension and attention reporting—with its currently report-only DCC pressure path—is the feedback channel that would close the loop. A landscape-level habituation field is future work; until it lands, "no more than ~8 s without perceptible change" serves as a *diagnostic* for the étude path, not a property of the system.
+Fragments exist: the per-voice boredom/familiarity of `PerceptualContext` is the agent-side preview, and the `ListenerTwin`'s tension and attention reporting—with its currently report-only DCC pressure path—is the feedback channel that would close the loop. A landscape-level habituation field is future work; until it lands, "no more than ~8 s without perceptible change" serves as a *diagnostic* for the sample sequence, not a property of the system.
 
 ## 9.3 Upstream Revisions
 

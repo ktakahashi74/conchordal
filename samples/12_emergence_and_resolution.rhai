@@ -1,4 +1,4 @@
-// Étude 12 — Emergence and Resolution
+// Sample 12 — Emergence and Resolution
 // One arc: the terrain bends toward tension and the register lifts;
 // life survives the strain, and gravity returns.
 

@@ -3,8 +3,8 @@
 //! Single source of truth for the human-readable documentation of every
 //! function registered on the script engine. `defs_gen` joins this table
 //! with the live engine signatures to emit both the LSP definition file
-//! (`rhai-defs/conchordal.d.rhai`) and the book API reference
-//! (`docs/rhai_book/src/reference/api.md`). Integration tests enforce that
+//! (`rhai-defs/conchordal.d.rhai`) and the English and Japanese book API
+//! references. Integration tests enforce that
 //! this table and the registered engine surface match exactly, so a new
 //! `register_fn` without a doc entry (or a stale entry) fails CI.
 
@@ -273,7 +273,8 @@ voices die; capacity and acceptance thresholds shape ecology-scale behavior.",
         id: "modes",
         title: "Mode Patterns",
         intro: "Frequency relationships for `modal()` bodies. Constructors return a \
-`ModePattern`; modifiers are chainable. Landscape-aware patterns sample the live field.",
+`ModePattern`; modifiers are chainable. Landscape-aware patterns deterministically select \
+supported positions from the live field.",
     },
     CategoryDoc {
         id: "routing",
@@ -444,9 +445,10 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
         style: Style::Method,
         patch: Patch::Na,
         usage: &["tension(degree)"],
-        summary: "Place at a metastable consonance below the strongest (degree 0..1).",
-        details: "Consonance placement only. 0 targets the strongest consonance \
-(resolved); higher targets a weaker, more tense step \
+        summary: "Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1).",
+        details: "Consonance placement only. 0 leaves ordinary Consonance placement \
+unchanged: `peak()` selects the strongest peak, while the default density remains the \
+ordinary Consonance cloud. Higher values target a weaker, more tense step \
 (target = L_max - degree*(L_max - L_min) over the range, in field_score). \
 Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).",
     },
@@ -1272,8 +1274,10 @@ implementation-level control.",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["respawn_random()"],
-        summary: "Respawn at random locations.",
-        details: "",
+        summary: "Respawn without parent inheritance.",
+        details: "Candidates come from the Population's original Placement and, when set, \
+`respawn_settle()` adds alternative candidates. The current scene score weights the final \
+choice, so this is not uniform random placement.",
     },
     FnDoc {
         name: "respawn_hereditary",
@@ -1282,8 +1286,9 @@ implementation-level control.",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["respawn_hereditary(sigma_oct)"],
-        summary: "Hereditary respawn with frequency variance in octaves.",
-        details: "",
+        summary: "Respawn near an energy-weighted living parent, with frequency variance in octaves.",
+        details: "Candidates share one selected parent. The candidate with the highest current \
+Consonance Field level is used.",
     },
     FnDoc {
         name: "respawn_consonance",
@@ -1292,8 +1297,10 @@ implementation-level control.",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["respawn_consonance()"],
-        summary: "Respawn from consonance-biased parental peaks.",
-        details: "",
+        summary: "Respawn from high field-score peaks, biased around an energy-weighted living parent.",
+        details: "When living members exist, one parent is selected by energy. Candidate peaks \
+come from the current Consonance Field and are weighted by scene score and their relation \
+to the parent; without a usable peak, the policy falls back to the parent or original Placement.",
     },
     FnDoc {
         name: "respawn_capacity",
@@ -1312,9 +1319,10 @@ implementation-level control.",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["respawn_settle(placement)"],
-        summary: "Placement used for replacements.",
-        details: "Requires a strategy-bearing placement: `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or \
-`line()` (not `at()`).",
+        summary: "Add a Placement source to the replacement candidate pool.",
+        details: "The policy's own baseline still supplies one candidate; this Placement supplies \
+the remaining alternatives. Requires a strategy-bearing placement: `consonance()`, \
+`dissonance()`, `edge()`, `gap()`, `random()`, or `line()` (not `at()`).",
     },
     FnDoc {
         name: "respawn_min_c_level",
@@ -1404,8 +1412,10 @@ implementation-level control.",
         style: Style::Free,
         patch: Patch::Na,
         usage: &["landscape_density_modes()"],
-        summary: "Modes sampled from the live landscape density.",
-        details: "",
+        summary: "Modes selected from the strongest live landscape density-mass positions.",
+        details: "Selection is deterministic: after each strongest position is chosen, nearby \
+weights are suppressed according to `spacing()`. Falls back to harmonic modes when live \
+landscape data yields no usable position.",
     },
     FnDoc {
         name: "landscape_peaks_modes",
@@ -1414,8 +1424,9 @@ implementation-level control.",
         style: Style::Free,
         patch: Patch::Na,
         usage: &["landscape_peaks_modes()"],
-        summary: "Modes sampled from live landscape peaks.",
-        details: "",
+        summary: "Modes selected from the strongest local peaks of the live Consonance Field level.",
+        details: "Selection is deterministic and enforces the ERB separation from `spacing()`. \
+Falls back to harmonic modes when live landscape data yields no usable peak.",
     },
     FnDoc {
         name: "count",

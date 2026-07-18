@@ -1,0 +1,397 @@
+<!DOCTYPE HTML>
+<html lang="ja" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Consonance Field — 音高を評価する地形 - Conchordal スクリプトリファレンス</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-ef152e60.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-ddfde326.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Conchordal スクリプトリファレンス</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="consonance-field--音高を評価する地形"><a class="header" href="#consonance-field--音高を評価する地形">Consonance Field — 音高を評価する地形</a></h1>
+<p>Conchordalの知覚coreである<strong>Landscape</strong>はhabitat busを聴き、log-frequency spaceへ
+変換して二つのpotentialを計算します。<strong>roughness</strong>はcritical band内の振幅変動による
+感覚的不協和、<strong>harmonicity</strong>はperiodicityとtemplate matchingです。この二つを
+組み合わせた<strong>Consonance Field</strong>は、placement、movement、prediction、survivalが
+読む、周波数上の評価地形です。</p>
+<p>Consonance Fieldはhabitat busから計算されるため、そのbusへ送られたVoiceが
+ほかのVoiceの読むConsonance Fieldを変形します。presentation busだけへ送られたVoiceは
+変形しません。和声はchord chartではなく、このfeedback loopから生まれます。
+potential、score、level、mass、densityの関係は
+<a href="ecological_loop.html">VoiceとLandscape — 音と環境のフィードバック</a>を参照してください。</p>
+<h2 id="consonance-fieldへの配置consonancedissonanceedgegap"><a class="header" href="#consonance-fieldへの配置consonancedissonanceedgegap">Consonance Fieldへの配置：<code>consonance</code>、<code>dissonance</code>、<code>edge</code>、<code>gap</code></a></h2>
+<p>Consonance Fieldに応じたPlacementでは、Field内の<strong>対象領域</strong>を指定します。既定では確率分布から位置を選び、
+<code>.peak()</code>を付けると決定的な極値を選びます。</p>
+<ul>
+<li><code>consonance</code> — consonanceが高い位置（harmonic center、fusion）。</li>
+<li><code>dissonance</code> — consonanceが低い位置（tension、cluster、color）。</li>
+<li><code>edge</code> — consonance/dissonanceの境界（metastableな中間）。</li>
+<li><code>gap</code> — 空いたregister（空間を埋め、maskingを避ける）。</li>
+</ul>
+<p><code>consonance(root)</code>はroot周辺のharmonic windowを取り、<code>range()</code>で倍音範囲を指定します。
+どの配置先にも、絶対周波数の<code>(min_hz, max_hz)</code>範囲を渡せます。</p>
+<pre><code class="language-rhai">let anchor = harmonic()
+    .brain("drone")
+    .amp(0.06)
+    .sustain()
+    .anchor();
+
+let voice = harmonic()
+    .amp(0.04)
+    .sustain();
+
+section("field placement", || {
+    place(anchor, at(110.0));
+    wait(1.0);
+
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
+    wait(6.0);
+});
+</code></pre>
+<p>追加指定のない配置先は<strong>密度分布</strong>として扱われます。「無作為だが調和的」なのではなく、
+協和のモデルから導かれ、指定範囲内で正規化された分布です。配置は配置後の振る舞いから
+独立しています。<code>dissonance</code>へ入り<code>anchor()</code>でclusterを保持することも、
+<code>seek_consonance()</code>で解決へ向かわせることもできます。</p>
+<pre><code class="language-rhai">let cloud = harmonic().amp(0.035).sustain();
+
+place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
+wait(8.0);
+</code></pre>
+<h2 id="配置時の緊張度tensionτ"><a class="header" href="#配置時の緊張度tensionτ">配置時の緊張度：<code>tension(τ)</code></a></h2>
+<p><code>tension</code>を指定しないConsonance Placementは、通常の方法で実現されます。<code>.peak()</code>なら
+最も強いpeakを選び、既定のdensityなら通常のConsonance密度分布を作ります。
+<code>tension(τ)</code>は、最大値より一段<strong>下</strong>のfield-scoreへ配置を偏らせます。
+<code>τ ∈ [0, 1]</code>がtension degreeで、<code>0</code>は通常の配置を変えず、大きい値ほど弱く
+metastableなstepを対象にします。指定範囲内の評価値で
+<code>target = L_max − τ·(L_max − L_min)</code>です。movementにおけるsearch <code>temperature</code>と
+対になる、spawnをどれだけ解決した位置に置くかのdialです。<code>.peak()</code>なら最も近いstepへ
+最寄りの段へ固定し、確率分布なら対象値の周辺へ重みを集中させます。</p>
+<pre><code class="language-rhai">let tense = harmonic().amp(0.035).sustain();
+
+// A metastable step below the strongest peak — placed, not resolved.
+place(tense, consonance(110.0, 1200.0).peak().tension(0.4).count(6).spacing(0.8));
+wait(6.0);
+</code></pre>
+<p>Consonance Fieldに依存しないPlacementには、対数周波数上で一様な<code>random(min_hz, max_hz)</code>と、幾何的な
+<code>at(hz)</code>、<code>line(start_hz, end_hz)</code>があります。</p>
+<h2 id="周波数をroot比で名づける"><a class="header" href="#周波数をroot比で名づける">周波数をroot比で名づける</a></h2>
+<p><code>at(hz)</code>と<code>line(start_hz, end_hz)</code>は絶対周波数を取ります。標準的な書き方は、
+鳴っている一つのrootをHzで名づけ、他のpitchをその比として導くことです。完全5度なら
+<code>root_hz * 1.5</code>、完全4度なら<code>root_hz * 4.0/3.0</code>、registerを上げるなら
+<code>root_hz * 2.0</code>です。比はField自身が読む物理量なので、周波数関係として考えられます。</p>
+<p>平均律のdecimal、たとえばD3を表す<code>146.83</code>も動作しますが、12音のsymbol gridを裏口から
+持ち込みます。sceneで実際に鳴っているrootの比を優先してください。</p>
+<pre><code class="language-rhai">let root_hz = 110.0;
+let voice = harmonic().amp(0.04).sustain();
+
+place(voice, at(root_hz * 1.5));
+wait(2.0);
+</code></pre>
+<h2 id="consonance-movementseek_consonance"><a class="header" href="#consonance-movementseek_consonance">Consonance movement：<code>seek_consonance</code></a></h2>
+<p>VoiceがConsonance Field上のより良い位置を能動的に探すときは<code>seek_consonance()</code>を使います。
+自由な山登り探索と音高推移の初期値を設定します。同じ移動を遅く、または速く
+動かしたいときは<code>glide(tau_sec)</code>を使います。</p>
+<pre><code class="language-rhai">let mover = harmonic()
+    .amp(0.045)
+    .sustain()
+    .seek_consonance()
+    .glide(0.35)
+    .avoid_neighbors(0.6)
+    .global_peaks(8, 70.0)
+    .ratio_candidates(5);
+
+place(mover, consonance(80.0, 900.0).count(8));
+wait(12.0);
+</code></pre>
+<p><code>avoid_neighbors(strength)</code>は混雑を避ける反発を加え、移動するVoiceがすべて同じ山へ重なるのを防ぎます。
+移動の反対は<code>anchor()</code>です。固定されたVoiceは音高を保ち、ほかのVoiceが読むConsonance Fieldだけを
+変形します。<code>at()</code>または<code>freq()</code>で指定したVoiceは暗黙に固定されます。</p>
+<p>移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
+（<code>pulse()</code>、<code>metric()</code>、<code>entrained()</code>、<code>flow()</code>）は発音開始ごとに新しい音高へ
+snapします。例外が必要なら<code>pitch_apply_mode()</code>を使います。研究scriptには
+<code>pitch_core()</code>など機構水準のcontrolもありますが、作品では<code>seek_consonance()</code>と
+<code>glide()</code>を優先してください。</p>
+<h2 id="consonance-viabilityとrespawn"><a class="header" href="#consonance-viabilityとrespawn">Consonance viabilityとrespawn</a></h2>
+<p><code>consonance_viability(low, high)</code>はconsonance window、<code>recovery(seconds)</code>は最大回復に
+要する時間を定義します。適合度の高いVoiceは支えられ、低いVoiceは基準
+<code>endurance(seconds)</code>へ近づきます。既定では自分の音響的な痕跡を近似的に除く
+<strong>環境相対</strong>評価です。Consonance Field全体への適合度を問う場合だけ<code>viability_scope("total")</code>を使います。</p>
+<p>再生成は循環を生態系として閉じます。Voiceが死亡すると、再生成の方針に従って代わりのVoiceが
+現れます。<code>respawn_consonance()</code>は、energyで重み付けして選んだliving parentの周辺へ
+偏らせながら、field scoreの高いpeakから選びます。<code>respawn_capacity(count)</code>はliving
+membership上限です。<code>respawn_settle(placement)</code>はpolicy本来のcandidateを置き換えず、
+replacementのcandidate poolへそのPlacementを追加します。</p>
+<pre><code class="language-rhai">let settle = consonance(70.0, 1100.0).spacing(0.8);
+
+let ecology = harmonic()
+    .amp(0.04)
+    .repeat()
+    .pulse(1.5)
+    .cycles(3)
+    .seek_consonance()
+    .glide(0.45)
+    .endurance(8.0)
+    .recovery(4.0)
+    .attack_cost_fraction(0.017)
+    .attack_recharge_fraction(0.70)
+    .consonance_viability(0.32, 0.82)
+    .respawn_consonance()
+    .respawn_capacity(14)
+    .respawn_settle(settle);
+
+place(ecology, consonance(70.0, 1100.0).count(14));
+wait(30.0);
+</code></pre>
+<p>完全なlifecycle/respawn surfaceは<a href="../reference/api.html">APIリファレンス</a>、articulation、
+発音、音高の振る舞い、生存の区別は<a href="voice_life.html">Population — Voiceをまとめる持続単位</a>、
+エネルギーと再生成のcycleは
+<a href="ecological_loop.html">VoiceとLandscape — 音と環境のフィードバック</a>を参照してください。</p>
+<h2 id="landscape-awareな音色"><a class="header" href="#landscape-awareな音色">Landscape-awareな音色</a></h2>
+<p>Fieldはpitchだけでなく音色も形づくれます。<code>modal()</code> bodyはmode patternを取ります。
+<code>landscape_density_modes()</code>はdensity massの強い位置を間隔を空けて決定的に選び、
+<code>landscape_peaks_modes()</code>はField levelの強いlocal peakを間隔を空けて選びます。
+そのため、bellのpartialをConsonance Fieldがすでにsupportする位置へ置けます。</p>
+<pre><code class="language-rhai">let shimmer_modes = landscape_density_modes()
+    .count(10)
+    .range(1.0, 5.5)
+    .gamma(1.6)
+    .spacing(0.7);
+
+let shimmer = modal()
+    .amp(0.025)
+    .sustain()
+    .seek_consonance()
+    .modes(shimmer_modes)
+    .brightness(0.7);
+
+place(shimmer, consonance(200.0, 1600.0).count(4));
+wait(8.0);
+</code></pre>
+<p>mode patternの生成関数には<code>harmonic_modes()</code>、<code>odd_modes()</code>、<code>power_modes(beta)</code>、
+<code>stiff_string_modes(stiffness)</code>、<code>custom_modes([ratios])</code>、<code>modal_table(name)</code>、
+<code>landscape_density_modes()</code>、<code>landscape_peaks_modes()</code>があります。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../concepts/ecological_loop.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../concepts/rhythm.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../concepts/ecological_loop.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../concepts/rhythm.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../theme/rhai-highlight-f40c858c.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

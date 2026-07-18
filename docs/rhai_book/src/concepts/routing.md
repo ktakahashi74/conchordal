@@ -38,7 +38,7 @@ Cognitive Coupling: what the listener hears and what the ecology senses are
 the same physical event. Splitting the buses is a deliberate departure.
 `send(habitat_bus)` casts terrain — the director's work, shaping the field
 without being heard. `send(presentation_bus)` casts decor — heard, but outside
-the ecology's world. The études' craft rule applies: scaffolding is inaudible
+the ecology's world. The samples' design rule applies: scaffolding is inaudible
 or embodied.
 
 ## The Listener Twin
@@ -72,22 +72,22 @@ what the twin reports before coupling it back into generation.
 
 ## DCC: coupling the twin back
 
-That optional coupling is **DCC**, configured in `conchordal.toml`, not in
-script:
+That optional coupling is **DCC**, configured in `config.toml` (or the file
+selected with `--config`), not in script:
 
 ```toml
 [dcc]
 # Listener pressure is report/UI-only by default.
 # coupling_strength = 0.0
-# max_exploration_bonus = 0.10
+# max_temperature_bonus = 0.10
 ```
 
 - `coupling_strength` (`0.0`–`1.0`, default `0.0`): at `0.0` the twin is
   report/UI-only and generation is unchanged. Above `0.0` it applies
   `tension_pressure = tension_level * resolvability_level * coupling_strength`
   as a transient pitch-exploration bonus only. It never sets target pitches or
-changes rhythm synchronization.
-- `max_exploration_bonus` (default `0.10`): ceiling on that transient bonus.
+  changes rhythm synchronization.
+- `max_temperature_bonus` (default `0.10`): ceiling on that transient bonus.
 
 Raise `coupling_strength` gradually, and only after the reported
 `listener_state` looks musically legible. When coupling is active,

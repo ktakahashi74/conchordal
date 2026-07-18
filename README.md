@@ -90,8 +90,8 @@ cargo run --release -- samples/12_emergence_and_resolution.rhai
 
 On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 
-The alpha ships as a book of twelve études under `samples/` — small pieces,
-in order; played and read one after another, they are the instrument:
+The alpha ships with twelve ordered samples under `samples/`. Each is a small
+demonstration of one or more instrument capabilities:
 
 ```bash
 cargo run --release -- samples/01_a_single_voice.rhai
@@ -99,8 +99,8 @@ cargo run --release -- samples/07_heartbeat.rhai
 cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
 
-See [`samples/README.md`](samples/README.md) for the full path. These are
-études, not polished works; musical compositions arrive with the beta.
+See [`samples/README.md`](samples/README.md) for the full path. These are API
+and behavior samples, not musical works; compositions arrive with the beta.
 `samples/research/` holds comparison assays outside the path.
 
 ### Scenario scripting example

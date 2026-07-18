@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
+            window.path_to_searchindex_js = "../searchindex-bcf94908.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-7940c472.js"></script>
+        <script src="../toc-e3932d17.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,7 @@
 <pre><code class="language-bash">cargo run --bin gen_rhai_defs
 </code></pre>
 <p>Builder methods return their receiver and are chainable. Integer and float literals are interchangeable wherever both overloads are registered; the generated LSP definitions (<code>rhai-defs/conchordal.d.rhai</code>) list the exact overloads.</p>
-<p>The surface is split into three tiers. <strong>Core API</strong> is the curated composing surface — it is enough for every curated sample. <strong>Mechanism Tuning</strong> adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. <strong>Research Controls</strong> exist for studying the instrument, not composing with it.</p>
+<p>The surface is split into four tiers. <strong>Core API</strong> is the curated composing surface — it is enough for every curated sample. <strong>Experimental</strong> contains candidate Core verbs under audition. <strong>Mechanism Tuning</strong> adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. <strong>Research Controls</strong> exist for studying the instrument, not composing with it.</p>
 <h2 id="types"><a class="header" href="#types">Types</a></h2>
 <div class="table-wrapper">
 <table>
@@ -278,7 +278,7 @@ consonance(min_hz, max_hz) -&gt; Placement
 <pre><code class="language-rhai ignore">tension(degree)
 </code></pre>
 <p>Applies to: <code>Placement</code>.</p>
-<p>Place at a metastable consonance below the strongest (degree 0..1). Consonance placement only. 0 targets the strongest consonance (resolved); higher targets a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).</p>
+<p>Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1). Consonance placement only. 0 leaves ordinary Consonance placement unchanged: <code>peak()</code> selects the strongest peak, while the default density remains the ordinary Consonance cloud. Higher values target a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).</p>
 <h4 id="random"><a class="header" href="#random"><code>random</code></a></h4>
 <pre><code class="language-rhai ignore">random(min_hz, max_hz) -&gt; Placement
 </code></pre>
@@ -502,17 +502,17 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">respawn_random()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Respawn at random locations.</p>
+<p>Respawn without parent inheritance. Candidates come from the Population’s original Placement and, when set, <code>respawn_settle()</code> adds alternative candidates. The current scene score weights the final choice, so this is not uniform random placement.</p>
 <h4 id="respawn_hereditary"><a class="header" href="#respawn_hereditary"><code>respawn_hereditary</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_hereditary(sigma_oct)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Hereditary respawn with frequency variance in octaves.</p>
+<p>Respawn near an energy-weighted living parent, with frequency variance in octaves. Candidates share one selected parent. The candidate with the highest current Consonance Field level is used.</p>
 <h4 id="respawn_consonance"><a class="header" href="#respawn_consonance"><code>respawn_consonance</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_consonance()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Respawn from consonance-biased parental peaks.</p>
+<p>Respawn from high field-score peaks, biased around an energy-weighted living parent. When living members exist, one parent is selected by energy. Candidate peaks come from the current Consonance Field and are weighted by scene score and their relation to the parent; without a usable peak, the policy falls back to the parent or original Placement.</p>
 <h4 id="respawn_capacity"><a class="header" href="#respawn_capacity"><code>respawn_capacity</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_capacity(count)
 </code></pre>
@@ -522,7 +522,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">respawn_settle(placement)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Placement used for replacements. Requires a strategy-bearing placement: <code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
+<p>Add a Placement source to the replacement candidate pool. The policy’s own baseline still supplies one candidate; this Placement supplies the remaining alternatives. Requires a strategy-bearing placement: <code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
 <h4 id="respawn_min_c_level"><a class="header" href="#respawn_min_c_level"><code>respawn_min_c_level</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_min_c_level(level)
 </code></pre>
@@ -534,7 +534,7 @@ avoid_neighbors(strength, sigma_cents)
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
 <p>Background turnover rate per second.</p>
 <h3 id="mode-patterns"><a class="header" href="#mode-patterns">Mode Patterns</a></h3>
-<p>Frequency relationships for <code>modal()</code> bodies. Constructors return a <code>ModePattern</code>; modifiers are chainable. Landscape-aware patterns sample the live field.</p>
+<p>Frequency relationships for <code>modal()</code> bodies. Constructors return a <code>ModePattern</code>; modifiers are chainable. Landscape-aware patterns deterministically select supported positions from the live field.</p>
 <h4 id="harmonic_modes"><a class="header" href="#harmonic_modes"><code>harmonic_modes</code></a></h4>
 <pre><code class="language-rhai ignore">harmonic_modes() -&gt; ModePattern
 </code></pre>
@@ -562,11 +562,11 @@ avoid_neighbors(strength, sigma_cents)
 <h4 id="landscape_density_modes"><a class="header" href="#landscape_density_modes"><code>landscape_density_modes</code></a></h4>
 <pre><code class="language-rhai ignore">landscape_density_modes() -&gt; ModePattern
 </code></pre>
-<p>Modes sampled from the live landscape density.</p>
+<p>Modes selected from the strongest live landscape density-mass positions. Selection is deterministic: after each strongest position is chosen, nearby weights are suppressed according to <code>spacing()</code>. Falls back to harmonic modes when live landscape data yields no usable position.</p>
 <h4 id="landscape_peaks_modes"><a class="header" href="#landscape_peaks_modes"><code>landscape_peaks_modes</code></a></h4>
 <pre><code class="language-rhai ignore">landscape_peaks_modes() -&gt; ModePattern
 </code></pre>
-<p>Modes sampled from live landscape peaks.</p>
+<p>Modes selected from the strongest local peaks of the live Consonance Field level. Selection is deterministic and enforces the ERB separation from <code>spacing()</code>. Falls back to harmonic modes when live landscape data yields no usable peak.</p>
 <h4 id="count-1"><a class="header" href="#count-1"><code>count</code></a></h4>
 <pre><code class="language-rhai ignore">count(n)
 </code></pre>

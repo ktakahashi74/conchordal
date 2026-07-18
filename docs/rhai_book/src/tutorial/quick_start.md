@@ -34,7 +34,7 @@ population.
 A Population is one stable handle for a placed population. A placement with `.count(6)`
 creates six founder voices under that handle. If voices later die and respawn,
 the Population remains the same while its members and generations change. See
-[The Life of a Voice](../concepts/voice_life.md) for the complete object and
+[Population — A Persistent Unit of Voices](../concepts/voice_life.md) for the complete object and
 lifecycle model.
 
 ```rhai
@@ -76,7 +76,7 @@ section("field placement", || {
 ```
 
 How the field works — and how voices move, survive, and respawn inside it — is
-the subject of [The Consonance Field](../concepts/consonance.md).
+the subject of [Consonance Field — A Terrain for Evaluating Pitch](../concepts/consonance.md).
 
 ## Live Patching
 
@@ -127,13 +127,13 @@ section("emergence", || {
 
 - [Editor Setup](editor_setup.md) — completion, hover docs, and diagnostics
   for the whole scripting surface.
-- [Observing a Performance](observing.md) — reports, filtering, and
+- [Performance](observing.md) — reports, filtering, and
   replaying a run with `--seed`.
-- [The Life of a Voice](../concepts/voice_life.md) — population specs, voices, brains,
+- [Population — A Persistent Unit of Voices](../concepts/voice_life.md) — population specs, voices, brains,
   phonation, survival, and release.
-- [The Ecological Loop](../concepts/ecological_loop.md) — how sound changes
+- [Voice and Landscape — Sound–Environment Feedback](../concepts/ecological_loop.md) — how sound changes
   the terrain that changes the voices.
-- [The Consonance Field](../concepts/consonance.md) — field, density,
+- [Consonance Field — A Terrain for Evaluating Pitch](../concepts/consonance.md) — field, density,
   movement, viability, respawn.
 - [Rhythm](../concepts/rhythm.md) — the coupling continuum and the director's
   rhythmic terrain.

@@ -1,10 +1,11 @@
 # Editor Setup (LSP)
 
-Conchordal ships a Rhai LSP definition file describing the entire scripting
-surface, including hover documentation for every function. Hooking your editor
-up to it gives you completion, hover, go-to-def, and inline diagnostics for
-every conchordal function — `place`, `harmonic`, `.brain()`,
-`.send(habitat_bus)`, and so on.
+Conchordal ships a Rhai LSP definition file describing its named callable
+scripting API, including hover documentation. With a compatible client, it can
+provide completion, hover, go-to-definition, and diagnostics for calls such as
+`place`, `harmonic`, `.brain()`, and `.send(habitat_bus)`. The bus-combining
+`|` overloads are operators rather than named declarations and are therefore
+not emitted into the definition file.
 
 The two files that drive this are committed at the repo root:
 
@@ -12,8 +13,11 @@ The two files that drive this are committed at the repo root:
 - `rhai-defs/conchordal.d.rhai` — auto-generated type/fn declarations with
   doc comments
 
-Install the [rhai-lsp](https://github.com/rhaiscript/lsp) server once (it is
-not on crates.io; install directly from the git repo):
+The upstream [rhai-lsp](https://github.com/rhaiscript/lsp) project labels
+itself experimental and incomplete, and does not recommend general use. Treat
+this setup as an optional development aid rather than guaranteed production
+tooling. If you still want to use it, install it directly from its git
+repository (it is not published on crates.io):
 
 ```bash
 cargo install --git https://github.com/rhaiscript/lsp rhai-cli
@@ -34,14 +38,15 @@ launch this command from the conchordal workspace:
 rhai lsp stdio --config Rhai.toml
 ```
 
-## Neovim (nvim-lspconfig)
+## Neovim 0.11+
 
 ```lua
-require("lspconfig").rhai.setup({
-  cmd = { "rhai", "lsp", "stdio" },
+vim.lsp.config("rhai", {
+  cmd = { "rhai", "lsp", "stdio", "--config", "Rhai.toml" },
   filetypes = { "rhai" },
-  root_dir = require("lspconfig.util").root_pattern("Rhai.toml", ".git"),
+  root_markers = { "Rhai.toml", ".git" },
 })
+vim.lsp.enable("rhai")
 ```
 
 ## Helix
@@ -57,27 +62,28 @@ language-servers = ["rhai-lsp"]
 
 [language-server.rhai-lsp]
 command = "rhai"
-args = ["lsp", "stdio"]
+args = ["lsp", "stdio", "--config", "Rhai.toml"]
 ```
 
 ## Emacs (eglot)
 
 ```elisp
 (add-to-list 'eglot-server-programs
-             '(rhai-mode . ("rhai" "lsp" "stdio")))
+             '(rhai-mode . ("rhai" "lsp" "stdio" "--config" "Rhai.toml")))
 (add-hook 'rhai-mode-hook #'eglot-ensure)
 ```
 
 ## Regenerating the definition file
 
-The definition file and the [API Reference](../reference/api.md) are both
+The definition file and both the English and Japanese API references are
 generated from the engine's `register_fn` surface joined with the
 documentation registry (`src/scripting/docs.rs`). If you pull a new conchordal
-version and miss diagnostics, regenerate both:
+version and miss diagnostics, regenerate all three:
 
 ```bash
 cargo run --bin gen_rhai_defs
 ```
 
-CI tests fail whenever the committed artifacts are stale, so in a clean
-checkout they are always in sync with the engine.
+CI tests fail whenever the committed artifacts are stale. This checks the
+registered signatures and generated text; editor behavior still depends on
+the experimental upstream server and the client configuration.

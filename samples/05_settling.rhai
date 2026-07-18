@@ -1,4 +1,4 @@
-// Étude 5 — Settling
+// Sample 5 — Settling
 // Scattered by chance, the voices glide to where the field can hold them.
 
 let ground = harmonic()

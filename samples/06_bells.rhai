@@ -1,4 +1,4 @@
-// Étude 6 — Bells
+// Sample 6 — Bells
 // Struck bodies. The last bell lets the field choose its partials.
 
 let bell = modal()

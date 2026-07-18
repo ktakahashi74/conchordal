@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-365c20a8.js";
+            window.path_to_searchindex_js = "searchindex-bcf94908.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-7940c472.js"></script>
+        <script src="toc-e3932d17.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -176,43 +176,51 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p>Conchordal is a research-composer scripting surface. The central idea is not
-note scheduling. The central idea is shaping a perceptual consonance field,
-then letting populations of voices move, survive, and reorganize inside it.</p>
+<p><a href="/ja/docs/rhai">日本語版</a></p>
+<p>Conchordal is a bio-acoustic instrument for generative composition. Rhai is
+its scenario language: it directs the instrument without reducing it to note
+scheduling. The central idea is shaping a perceptual consonance field, then
+letting populations of voices move, survive, and reorganize inside it.</p>
 <p>A scenario script defines <strong>PopulationSpecs</strong>, places each one into the field
 as a stable <strong>Population</strong>, and shapes the terrain its <strong>Voices</strong> inhabit.
 Together those Populations form the runtime <strong>Community</strong>. Harmony emerges from
 psychoacoustics (roughness and harmonicity); rhythm emerges from coupled
 oscillators on a shared meter the Community itself drives. The script is a
 director, not a sequencer.</p>
-<p>Conchordal v0.4.0 is aimed at research composers who want to work with these
-concepts directly. It is not trying to hide the model behind common
+<p>Conchordal v0.4.0 is a research alpha for researchers and developers who want
+to examine these concepts directly. Features are incomplete and may be
+unstable; composers and creators should wait for the beta release. The model
+is intentionally described in its own terms rather than hidden behind common
 music-production vocabulary.</p>
 <h2 id="how-this-book-is-organized"><a class="header" href="#how-this-book-is-organized">How this book is organized</a></h2>
 <ul>
-<li><strong>Tutorial</strong> gets a first sound out, wires up your editor, and shows how to
-inspect a performance:
+<li><strong>Tutorial</strong> gets a first sound out, wires up your editor, and covers running,
+recording analysis, and replaying a performance:
 <a href="#quick-start">Quick Start</a>,
 <a href="#editor-setup-lsp">Editor Setup</a>, and
-<a href="#observing-a-performance">Observing a Performance</a>.</li>
+<a href="#performance">Performance</a>.</li>
 <li><strong>Concepts</strong> builds the model from a single living voice to the complete
 ecological and temporal structure:
-<a href="#the-life-of-a-voice">the Life of a Voice</a>,
-<a href="#the-ecological-loop">the Ecological Loop</a>,
-<a href="#the-consonance-field">the Consonance Field</a>,
+<a href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a>,
+<a href="#voice-and-landscape--soundenvironment-feedback">Voice and Landscape — Sound–Environment Feedback</a>,
+<a href="#consonance-field--a-terrain-for-evaluating-pitch">Consonance Field — A Terrain for Evaluating Pitch</a>,
 <a href="#rhythm-one-coupling-continuum">Rhythm</a>, and
 <a href="#routing-and-the-listener-twin">Routing and the Listener Twin</a>, followed by
 <a href="#timeline-and-structure">Timeline and Structure</a>.</li>
-<li><strong>Reference</strong> is the complete, generated
-<a href="#api-reference">API Reference</a> — it is produced from the engine’s
-registered scripting surface, so it cannot drift — and the
-<a href="#études">Curated Samples</a> listening path. The reference is
-split into three tiers: the <strong>Core API</strong> (enough for every curated sample),
-<strong>Mechanism Tuning</strong>, and <strong>Research Controls</strong>. Start with Core and ignore
-the rest until a piece demands it.</li>
+<li><strong>Reference</strong> contains the generated
+<a href="#api-reference">API Reference</a> and the
+<a href="#samples">Curated Samples</a> listening path. The reference is
+split into four tiers: the <strong>Core API</strong> (enough for every curated sample),
+<strong>Experimental</strong> (candidate Core verbs under audition), <strong>Mechanism
+Tuning</strong>, and <strong>Research Controls</strong>. Start with Core and ignore the rest
+until a piece demands it. Registered signatures and tier membership are
+generated and checked against the engine; explanatory prose is maintained
+in the documentation registry.</li>
 </ul>
 <p>Every <code>rhai</code> code block in this book is executed against the real script
-engine by the test suite, so the examples are guaranteed to run.</p>
+engine by the test suite. This checks that the examples compile and run with
+the current engine; it does not by itself prove that every explanation is
+semantically correct.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
 <p>Run a scenario script with the real-time instrument (release mode is
@@ -242,7 +250,7 @@ voices exist from that boundary; live methods update the current voices.</li>
 <p>A Population is one stable handle for a placed population. A placement with <code>.count(6)</code>
 creates six founder voices under that handle. If voices later die and respawn,
 the Population remains the same while its members and generations change. See
-<a href="#the-life-of-a-voice">The Life of a Voice</a> for the complete object and
+<a href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a> for the complete object and
 lifecycle model.</p>
 <pre><code class="language-rhai">let population_spec = harmonic()
     .amp(0.08)
@@ -277,7 +285,7 @@ section("field placement", || {
 });
 </code></pre>
 <p>How the field works — and how voices move, survive, and respawn inside it — is
-the subject of <a href="#the-consonance-field">The Consonance Field</a>.</p>
+the subject of <a href="#consonance-field--a-terrain-for-evaluating-pitch">Consonance Field — A Terrain for Evaluating Pitch</a>.</p>
 <h2 id="live-patching"><a class="header" href="#live-patching">Live Patching</a></h2>
 <p>Configure body, behavior, lifecycle, and respawn on a <code>PopulationSpec</code> before
 calling <code>place()</code>. The returned <code>Population</code> exposes only operations that make
@@ -320,13 +328,13 @@ section("emergence", || {
 <ul>
 <li><a href="#editor-setup-lsp">Editor Setup</a> — completion, hover docs, and diagnostics
 for the whole scripting surface.</li>
-<li><a href="#observing-a-performance">Observing a Performance</a> — reports, filtering, and
+<li><a href="#performance">Performance</a> — reports, filtering, and
 replaying a run with <code>--seed</code>.</li>
-<li><a href="#the-life-of-a-voice">The Life of a Voice</a> — population specs, voices, brains,
+<li><a href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a> — population specs, voices, brains,
 phonation, survival, and release.</li>
-<li><a href="#the-ecological-loop">The Ecological Loop</a> — how sound changes
+<li><a href="#voice-and-landscape--soundenvironment-feedback">Voice and Landscape — Sound–Environment Feedback</a> — how sound changes
 the terrain that changes the voices.</li>
-<li><a href="#the-consonance-field">The Consonance Field</a> — field, density,
+<li><a href="#consonance-field--a-terrain-for-evaluating-pitch">Consonance Field — A Terrain for Evaluating Pitch</a> — field, density,
 movement, viability, respawn.</li>
 <li><a href="#rhythm-one-coupling-continuum">Rhythm</a> — the coupling continuum and the director’s
 rhythmic terrain.</li>
@@ -334,23 +342,27 @@ rhythmic terrain.</li>
 senses, what the audience hears, and what is observed.</li>
 <li><a href="#timeline-and-structure">Timeline and Structure</a> — placement boundaries,
 scopes, reusable gestures, and parallel branches.</li>
-<li><a href="#études">Curated Samples</a> — the guided listening path.</li>
+<li><a href="#samples">Curated Samples</a> — the guided listening path.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editor-setup-lsp"><a class="header" href="#editor-setup-lsp">Editor Setup (LSP)</a></h1>
-<p>Conchordal ships a Rhai LSP definition file describing the entire scripting
-surface, including hover documentation for every function. Hooking your editor
-up to it gives you completion, hover, go-to-def, and inline diagnostics for
-every conchordal function — <code>place</code>, <code>harmonic</code>, <code>.brain()</code>,
-<code>.send(habitat_bus)</code>, and so on.</p>
+<p>Conchordal ships a Rhai LSP definition file describing its named callable
+scripting API, including hover documentation. With a compatible client, it can
+provide completion, hover, go-to-definition, and diagnostics for calls such as
+<code>place</code>, <code>harmonic</code>, <code>.brain()</code>, and <code>.send(habitat_bus)</code>. The bus-combining
+<code>|</code> overloads are operators rather than named declarations and are therefore
+not emitted into the definition file.</p>
 <p>The two files that drive this are committed at the repo root:</p>
 <ul>
 <li><code>Rhai.toml</code> — workspace config picked up by <code>rhai-lsp</code></li>
 <li><code>rhai-defs/conchordal.d.rhai</code> — auto-generated type/fn declarations with
 doc comments</li>
 </ul>
-<p>Install the <a href="https://github.com/rhaiscript/lsp">rhai-lsp</a> server once (it is
-not on crates.io; install directly from the git repo):</p>
+<p>The upstream <a href="https://github.com/rhaiscript/lsp">rhai-lsp</a> project labels
+itself experimental and incomplete, and does not recommend general use. Treat
+this setup as an optional development aid rather than guaranteed production
+tooling. If you still want to use it, install it directly from its git
+repository (it is not published on crates.io):</p>
 <pre><code class="language-bash">cargo install --git https://github.com/rhaiscript/lsp rhai-cli
 </code></pre>
 <p>This builds a binary named <code>rhai</code> with the <code>lsp</code> subcommand.</p>
@@ -362,12 +374,13 @@ extension currently provides syntax highlighting only. It does not launch
 launch this command from the conchordal workspace:</p>
 <pre><code class="language-bash">rhai lsp stdio --config Rhai.toml
 </code></pre>
-<h2 id="neovim-nvim-lspconfig"><a class="header" href="#neovim-nvim-lspconfig">Neovim (nvim-lspconfig)</a></h2>
-<pre><code class="language-lua">require("lspconfig").rhai.setup({
-  cmd = { "rhai", "lsp", "stdio" },
+<h2 id="neovim-011"><a class="header" href="#neovim-011">Neovim 0.11+</a></h2>
+<pre><code class="language-lua">vim.lsp.config("rhai", {
+  cmd = { "rhai", "lsp", "stdio", "--config", "Rhai.toml" },
   filetypes = { "rhai" },
-  root_dir = require("lspconfig.util").root_pattern("Rhai.toml", ".git"),
+  root_markers = { "Rhai.toml", ".git" },
 })
+vim.lsp.enable("rhai")
 </code></pre>
 <h2 id="helix"><a class="header" href="#helix">Helix</a></h2>
 <p>In <code>~/.config/helix/languages.toml</code>:</p>
@@ -379,32 +392,85 @@ language-servers = ["rhai-lsp"]
 
 [language-server.rhai-lsp]
 command = "rhai"
-args = ["lsp", "stdio"]
+args = ["lsp", "stdio", "--config", "Rhai.toml"]
 </code></pre>
 <h2 id="emacs-eglot"><a class="header" href="#emacs-eglot">Emacs (eglot)</a></h2>
 <pre><code class="language-elisp">(add-to-list 'eglot-server-programs
-             '(rhai-mode . ("rhai" "lsp" "stdio")))
+             '(rhai-mode . ("rhai" "lsp" "stdio" "--config" "Rhai.toml")))
 (add-hook 'rhai-mode-hook #'eglot-ensure)
 </code></pre>
 <h2 id="regenerating-the-definition-file"><a class="header" href="#regenerating-the-definition-file">Regenerating the definition file</a></h2>
-<p>The definition file and the <a href="#api-reference">API Reference</a> are both
+<p>The definition file and both the English and Japanese API references are
 generated from the engine’s <code>register_fn</code> surface joined with the
 documentation registry (<code>src/scripting/docs.rs</code>). If you pull a new conchordal
-version and miss diagnostics, regenerate both:</p>
+version and miss diagnostics, regenerate all three:</p>
 <pre><code class="language-bash">cargo run --bin gen_rhai_defs
 </code></pre>
-<p>CI tests fail whenever the committed artifacts are stale, so in a clean
-checkout they are always in sync with the engine.</p>
+<p>CI tests fail whenever the committed artifacts are stale. This checks the
+registered signatures and generated text; editor behavior still depends on
+the experimental upstream server and the client configuration.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="observing-a-performance"><a class="header" href="#observing-a-performance">Observing a Performance</a></h1>
-<p>A scenario script is open-loop: it says where voices enter and how they
-behave, not what the terrain will do with them. The composing loop closes it
-by hand — run, listen, read what actually happened, adjust the numbers, run
+<h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
+<p><a href="#quick-start">Quick Start</a> explains how to write and run a minimal
+scenario. This chapter describes the actual performance workflow: starting
+the real-time instrument, ending a run, performing without the GUI, and then
+recording or replaying what happened.</p>
+<h2 id="performing-with-the-gui"><a class="header" href="#performing-with-the-gui">Performing with the GUI</a></h2>
+<p>Start a scenario with the real-time instrument:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai
+</code></pre>
+<p>The scenario is compiled, the GUI opens, and playback begins automatically.
+The script supplies the macro-timeline: <code>place()</code> introduces Populations,
+<code>wait()</code> advances script time, and <code>section()</code> or <code>play()</code> releases the
+Populations created inside its scope. During that timeline, Voice behavior,
+the Landscape, and their feedback continue to evolve in real time.</p>
+<p>The progress bar shows scenario time. While playback is running, the control
+at its right exits the performance; closing the window or pressing Ctrl-C also
+stops it. It is not a pause button, and the GUI is not a live script editor.
+To change the scenario, stop the run, edit the Rhai file, and run it again.</p>
+<p>To prepare the GUI first and begin on a cue, add <code>--wait-user-start</code>. Press
+Space or click the start control when ready:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --wait-user-start
+</code></pre>
+<p>By default the GUI remains open when the scenario finishes, allowing the
+final state to be inspected. Close it with the playback control or window
+close button. Add <code>--wait-user-exit=false</code> when it should close automatically
+at the end.</p>
+<h2 id="performing-without-the-gui"><a class="header" href="#performing-without-the-gui">Performing without the GUI</a></h2>
+<p><code>--nogui</code> starts immediately and exits when the scenario finishes. It still
+plays through the default audio device:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --nogui
+</code></pre>
+<p>Use <code>--play=false</code> only for a silent simulation or report-only run:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --nogui --play=false --report run.jsonl
+</code></pre>
+<p><code>--nogui</code> disables both wait-for-start and wait-for-exit. Offline WAV output
+is a different operation provided by <code>conchordal-render</code>; the real-time
+instrument itself never records audio.</p>
+<h2 id="listen-inspect-revise"><a class="header" href="#listen-inspect-revise">Listen, inspect, revise</a></h2>
+<p>A scenario specifies which Populations enter, when they enter, and the
+policies that guide their behavior. It does not predetermine the exact pitches,
+rhythmic synchronization, survival, or respawn outcome of a performance;
+those emerge from interaction with the changing Landscape. Run the scenario,
+listen to the result, inspect what happened, adjust the script, and run it
 again.</p>
 <p><code>conchordal</code> (the instrument) never writes audio to disk, in any build
-profile — performances are ephemeral by design. It can, however, write
-analysis. That asymmetry is deliberate: the sound is a one-time event, but the
-evidence about how the ecology behaved is worth keeping.</p>
+profile. A performance is designed as an ephemeral event that leaves no audio
+inside the instrument after it ends.</p>
+<h2 id="replaying-a-performance"><a class="header" href="#replaying-a-performance">Replaying a performance</a></h2>
+<p>Every run logs its seed:</p>
+<pre><code class="language-text">scenario seed: 3821650944810716341 (replay with --seed 3821650944810716341)
+</code></pre>
+<p>Top-level samples start from a fresh, unseeded run every time so they expose
+the system’s variation rather than prescribe one fixed result. When a run is
+worth keeping, replay it exactly with the logged value:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --seed 3821650944810716341
+</code></pre>
+<p><code>--seed</code> works the same way on <code>conchordal-render</code> for turning a kept
+performance into a WAV. A script-level <code>seed(...)</code> call always wins over the
+flag, since it runs during script evaluation and overwrites whatever seed the
+run started with — reach for it only when a script itself must be
+reproducible regardless of how it is invoked.</p>
 <h2 id="reports"><a class="header" href="#reports">Reports</a></h2>
 <p>Run with <code>--report</code>, pointing at a file to write:</p>
 <pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --report run.jsonl
@@ -416,8 +482,8 @@ audio rather than observing a live run.</p>
 families are:</p>
 <ul>
 <li><code>meta</code> — the effective scenario seed, written first.</li>
-<li><code>scene_marker</code> — your <code>section("name", || { ... })</code> boundaries, so records
-can be read section by section.</li>
+<li><code>scene_marker</code> — the start of each <code>section("name", || { ... })</code>, so later
+records can be grouped by the most recent marker.</li>
 <li><code>spawn</code> / <code>respawn</code> / <code>death</code> — population turnover per voice: <code>spawn</code> and
 <code>respawn</code> carry the entry frequency (and, for <code>respawn</code>, the parent voice);
 <code>death</code> carries configured nominal endurance, energy-depletion time,
@@ -432,8 +498,10 @@ frequency entropy over time.</li>
 <li><code>listener_state</code> — the <code>ListenerTwin</code>’s four perceptual levels
 (<code>stability_level</code>, <code>resolvability_level</code>, <code>tension_level</code>, and
 <code>attention_level</code>), beat/subdivision/measure tracking, and analysis lag.</li>
-<li><code>rhythm_observation</code> / <code>rhythm_summary</code> — Kuramoto order, onset density,
-inter-onset-interval regularity, and burstiness, globally and per Population.</li>
+<li><code>rhythm_observation</code> — instantaneous global Kuramoto and environment rhythm
+state. <code>rhythm_summary</code> reports onset density, inter-onset-interval
+regularity, and burstiness globally and per Population; its Kuramoto summary
+is global only.</li>
 <li><code>listener_confidence_summary</code> — peak and late-window beat confidence.</li>
 <li><code>dcc_pressure</code> — listener-derived tension pressure and the pitch-temperature
 bonus applied by DCC.</li>
@@ -456,26 +524,12 @@ section IV, and at what consonance?” becomes a direct read. There is no
 bespoke digest tool: which summaries matter depends on the piece, and a
 one-off filter (or a script) shaped to the question beats a fixed report
 format.</p>
-<h2 id="replaying-a-performance"><a class="header" href="#replaying-a-performance">Replaying a performance</a></h2>
-<p>Every run logs its seed:</p>
-<pre><code class="language-text">scenario seed: 3821650944810716341 (replay with --seed 3821650944810716341)
-</code></pre>
-<p>Top-level études start from a fresh, unseeded run every time by design — that
-is what makes them études rather than fixed pieces. When a run is worth
-keeping, replay it exactly with the logged value:</p>
-<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --seed 3821650944810716341
-</code></pre>
-<p><code>--seed</code> works the same way on <code>conchordal-render</code> for turning a kept
-performance into a WAV. A script-level <code>seed(...)</code> call always wins over the
-flag, since it runs during script evaluation and overwrites whatever seed the
-run started with — reach for it only when a script itself must be
-reproducible regardless of how it is invoked.</p>
 <h2 id="the-gui"><a class="header" href="#the-gui">The GUI</a></h2>
 <p>The GUI shows the same landscape and listener-twin state live, as it runs.
 Reports exist for reading <em>after</em> listening — for the moments you noticed
 something but couldn’t hold every number in your head at once.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="the-life-of-a-voice"><a class="header" href="#the-life-of-a-voice">The Life of a Voice</a></h1>
+<h1 id="population--a-persistent-unit-of-voices"><a class="header" href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a></h1>
 <p>The shortest useful mental model of conchordal is not a note followed by
 another note. It is a population definition becoming a persistent population of living
 voices:</p>
@@ -600,12 +654,14 @@ the Population closes. Ecological death is a runtime
 result: one living Voice exhausts its energy, after which the Population’s
 respawn policy may replace it. A <code>section</code> or <code>play</code> scope also releases the
 Populations it created when the scope ends.</p>
-<p>The next chapter follows a Voice through the complete
-<a href="#the-ecological-loop">Ecological Loop</a>.</p>
+<p>The next chapter explains
+<a href="#voice-and-landscape--soundenvironment-feedback">Voice and Landscape — Sound–Environment Feedback</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="the-ecological-loop"><a class="header" href="#the-ecological-loop">The Ecological Loop</a></h1>
-<p>Conchordal becomes an ecology when a voice’s sound changes the environment
-that guides that voice and every other voice.</p>
+<h1 id="voice-and-landscape--soundenvironment-feedback"><a class="header" href="#voice-and-landscape--soundenvironment-feedback">Voice and Landscape — Sound–Environment Feedback</a></h1>
+<p>A Voice routed to the habitat bus changes the Landscape. The changed
+Landscape then affects placement, movement, and viability. This chapter traces
+that runtime feedback path and the energy, death, and respawn processes it
+supports.</p>
 <pre><code class="language-text">Voice bodies
     |-- presentation bus --&gt; listener / Listener Twin
     |
@@ -715,39 +771,45 @@ wait(20.0);
 </code></pre>
 <p>Respawn policies answer different compositional questions:</p>
 <ul>
-<li><code>respawn_random()</code> asks what survives under fresh random variation.</li>
-<li><code>respawn_hereditary(sigma_oct)</code> places offspring near a selected parent.</li>
-<li><code>respawn_consonance()</code> biases parent/candidate choice toward supported peaks.</li>
+<li><code>respawn_random()</code> creates no parent lineage. Candidates come from the
+Population’s original Placement and are weighted by the current scene score;
+it is not uniform random placement.</li>
+<li><code>respawn_hereditary(sigma_oct)</code> selects a living parent by energy, proposes
+offspring near it, and keeps the candidate with the best current Field level.</li>
+<li><code>respawn_consonance()</code> selects an energy-weighted living parent and chooses
+among high field-score peaks with a bias around that parent.</li>
 <li><code>respawn_capacity(n)</code> bounds how many living members the Population maintains;
 without it, the founder count is the capacity, and an explicit value cannot
 be lower than that founder count.</li>
-<li><code>respawn_settle(placement)</code> supplies the placement strategy for replacements.</li>
+<li><code>respawn_settle(placement)</code> adds candidates from that Placement; the
+respawn policy’s own baseline still contributes one candidate.</li>
 </ul>
 <p>Respawn preserves the <code>Population</code> and its <code>population_id</code> while individual
 <code>voice_id</code> and <code>generation</code> values change. The report stream makes that
 turnover observable.</p>
-<h2 id="two-observation-loops"><a class="header" href="#two-observation-loops">Two observation loops</a></h2>
-<p>There are therefore two feedback loops:</p>
+<h2 id="runtime-feedback-and-human-revision"><a class="header" href="#runtime-feedback-and-human-revision">Runtime feedback and human revision</a></h2>
+<p>Two different processes are involved:</p>
 <ul>
-<li>The <strong>runtime loop</strong> is automatic: sound reshapes the terrain, which changes
+<li><strong>Runtime feedback</strong> is automatic: sound reshapes the terrain, which changes
 voice behavior and survival.</li>
-<li>The <strong>composing loop</strong> is human: run, listen, inspect a report, revise the
-scenario, and run again.</li>
+<li><strong>Human revision</strong> happens between runs: run, listen, inspect a report,
+revise the scenario, and run again.</li>
 </ul>
-<p>The runtime loop is the piece’s ecology. The composing loop is described in
-<a href="#observing-a-performance">Observing a Performance</a>.</p>
+<p>The practical run-and-revise procedure is described in
+<a href="#performance">Performance</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="the-consonance-field"><a class="header" href="#the-consonance-field">The Consonance Field</a></h1>
+<h1 id="consonance-field--a-terrain-for-evaluating-pitch"><a class="header" href="#consonance-field--a-terrain-for-evaluating-pitch">Consonance Field — A Terrain for Evaluating Pitch</a></h1>
 <p>Conchordal’s perception core (the <strong>Landscape</strong>) listens to the habitat bus,
 transforms it into log-frequency space, and computes two potentials:
 <strong>roughness</strong> (sensory dissonance from amplitude fluctuations within critical
 bands) and <strong>harmonicity</strong> (periodicity and template matching). Their
 combination is the <strong>Consonance Field</strong>: an evaluation terrain over frequency
 that placement, movement, prediction, and survival all read from.</p>
-<p>Because the field is computed from what the system actually hears, every voice
-deforms the terrain for every other voice. That feedback loop — not a chord
-chart — is where harmony comes from. See <a href="#the-ecological-loop">The Ecological Loop</a>
-for the relationship between potential, score, level, mass, and density.</p>
+<p>Because the field is computed from the habitat bus, every voice routed to that
+bus deforms the terrain for every other voice. A presentation-only voice does
+not. That feedback loop — not a chord chart — is where harmony comes from. See
+<a href="#voice-and-landscape--soundenvironment-feedback">Voice and Landscape — Sound–Environment Feedback</a> for the relationship between
+potential, score, level, mass, and density.</p>
 <h2 id="placing-into-the-field-consonance-dissonance-edge-gap"><a class="header" href="#placing-into-the-field-consonance-dissonance-edge-gap">Placing into the field: <code>consonance</code>, <code>dissonance</code>, <code>edge</code>, <code>gap</code></a></h2>
 <p>A field-relative placement names a <strong>target</strong> — a region of the field — and is
 realized either as a cloud (the default) or as a deterministic extremum with
@@ -789,9 +851,12 @@ place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
 </code></pre>
 <h2 id="placement-tension-tensionτ"><a class="header" href="#placement-tension-tensionτ">Placement tension: <code>tension(τ)</code></a></h2>
-<p><code>consonance</code> aims at the <em>strongest</em> peak. <code>tension(τ)</code> aims a step <strong>below</strong> it:
-<code>τ ∈ [0, 1]</code> is the tension degree, where <code>0</code> keeps the resolved peak and larger
-values target progressively weaker, metastable steps
+<p>Without <code>tension</code>, Consonance Placement uses its ordinary realization:
+<code>.peak()</code> chooses the strongest peak, while the default density produces the
+ordinary Consonance cloud. <code>tension(τ)</code> biases that Placement toward a
+field-score step <strong>below</strong> the maximum. <code>τ ∈ [0, 1]</code> is the tension degree;
+<code>0</code> leaves the ordinary realization unchanged, while larger values target
+progressively weaker, metastable steps
 (<code>target = L_max − τ·(L_max − L_min)</code> over the range, in field score). It is the
 placement twin of movement’s search <code>temperature</code> — the dial for <em>how resolved</em> a
 spawn should sit — and it reads the field’s score directly, so the degree rides
@@ -864,10 +929,12 @@ evaluated against the field with its own footprint approximately removed. Use
 <code>viability_scope("total")</code> only when the compositional question is explicitly
 total-field viability.</p>
 <p>Respawn closes the loop into an ecology: when voices die, replacements appear
-according to a respawn policy. <code>respawn_consonance()</code> draws them from
-consonance-biased parental peaks; <code>respawn_capacity(count)</code> sets the maximum
-living membership (defaulting to, and never lower than, the founder count);
-<code>respawn_settle(placement)</code> decides where replacements settle.</p>
+according to a respawn policy. <code>respawn_consonance()</code> selects high field-score
+peaks with a bias around an energy-weighted living parent;
+<code>respawn_capacity(count)</code> sets the maximum living membership (defaulting to,
+and never lower than, the founder count); <code>respawn_settle(placement)</code> adds
+that Placement to the replacement candidate pool rather than replacing the
+policy’s baseline candidate.</p>
 <pre><code class="language-rhai">let settle = consonance(70.0, 1100.0).spacing(0.8);
 
 let ecology = harmonic()
@@ -891,14 +958,16 @@ wait(30.0);
 </code></pre>
 <p>The full lifecycle surface (time-domain endurance/recovery and normalized
 per-attack fractions) and the respawn policies are documented in the
-<a href="#api-reference">API Reference</a>. <a href="#the-life-of-a-voice">The Life of a Voice</a>
+<a href="#api-reference">API Reference</a>. <a href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a>
 separates articulation, phonation, pitch behavior, and survival; the
-<a href="#the-ecological-loop">Ecological Loop</a> follows the complete energy and respawn
+<a href="#voice-and-landscape--soundenvironment-feedback">Voice and Landscape — Sound–Environment Feedback</a> follows the complete energy and respawn
 cycle.</p>
 <h2 id="landscape-aware-timbre"><a class="header" href="#landscape-aware-timbre">Landscape-aware timbre</a></h2>
 <p>The field can shape timbre as well as pitch. The <code>modal()</code> body takes a mode
-pattern, and landscape-aware patterns sample the live field, so a bell’s
-partials can sit where the terrain already supports them.</p>
+pattern. <code>landscape_density_modes()</code> deterministically chooses the strongest
+separated density-mass positions; <code>landscape_peaks_modes()</code> chooses the
+strongest separated local Field-level peaks. Thus a bell’s partials can sit
+where the terrain already supports them.</p>
 <pre><code class="language-rhai">let shimmer_modes = landscape_density_modes()
     .count(10)
     .range(1.0, 5.5)
@@ -957,7 +1026,7 @@ calling <code>place()</code>.</p>
 <p>Do not confuse <code>.entrained()</code> with <code>brain("entrain")</code>. The preset controls
 onset timing; the brain selects the voice’s articulation life and metabolism.
 They are independent and may be used together. See
-<a href="#the-life-of-a-voice">The Life of a Voice</a>.</p>
+<a href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a>.</p>
 <p>Per-voice modifiers refine where on the continuum a voice sits:</p>
 <ul>
 <li><code>entrainment(strength)</code> — coupling in <code>[0,1]</code>, free (<code>0</code>) .. locked (<code>1</code>).</li>
@@ -1062,7 +1131,7 @@ Cognitive Coupling: what the listener hears and what the ecology senses are
 the same physical event. Splitting the buses is a deliberate departure.
 <code>send(habitat_bus)</code> casts terrain — the director’s work, shaping the field
 without being heard. <code>send(presentation_bus)</code> casts decor — heard, but outside
-the ecology’s world. The études’ craft rule applies: scaffolding is inaudible
+the ecology’s world. The samples’ design rule applies: scaffolding is inaudible
 or embodied.</p>
 <h2 id="the-listener-twin"><a class="header" href="#the-listener-twin">The Listener Twin</a></h2>
 <p>conchordal keeps a <code>ListenerTwin</code>: a listener-side model of the <em>presented</em>
@@ -1091,12 +1160,12 @@ you run with reporting enabled it emits <code>listener_state</code> records, and
 shows the same state. Use it to check whether the tension you hear matches
 what the twin reports before coupling it back into generation.</p>
 <h2 id="dcc-coupling-the-twin-back"><a class="header" href="#dcc-coupling-the-twin-back">DCC: coupling the twin back</a></h2>
-<p>That optional coupling is <strong>DCC</strong>, configured in <code>conchordal.toml</code>, not in
-script:</p>
+<p>That optional coupling is <strong>DCC</strong>, configured in <code>config.toml</code> (or the file
+selected with <code>--config</code>), not in script:</p>
 <pre><code class="language-toml">[dcc]
 # Listener pressure is report/UI-only by default.
 # coupling_strength = 0.0
-# max_exploration_bonus = 0.10
+# max_temperature_bonus = 0.10
 </code></pre>
 <ul>
 <li><code>coupling_strength</code> (<code>0.0</code>–<code>1.0</code>, default <code>0.0</code>): at <code>0.0</code> the twin is
@@ -1104,7 +1173,7 @@ report/UI-only and generation is unchanged. Above <code>0.0</code> it applies
 <code>tension_pressure = tension_level * resolvability_level * coupling_strength</code>
 as a transient pitch-exploration bonus only. It never sets target pitches or
 changes rhythm synchronization.</li>
-<li><code>max_exploration_bonus</code> (default <code>0.10</code>): ceiling on that transient bonus.</li>
+<li><code>max_temperature_bonus</code> (default <code>0.10</code>): ceiling on that transient bonus.</li>
 </ul>
 <p>Raise <code>coupling_strength</code> gradually, and only after the reported
 <code>listener_state</code> looks musically legible. When coupling is active,
@@ -1189,9 +1258,9 @@ and respawn continue inside the runtime while <code>wait()</code> advances the s
 <li>The Community produces moment-to-moment behavior.</li>
 <li>Reports show what actually happened during the authored interval.</li>
 </ul>
-<p>Use <a href="#observing-a-performance">Observing a Performance</a> to close the composing
-loop, and use <code>seed(...)</code> or <code>--seed</code> only when a particular realization must
-be replayed.</p>
+<p>Use the workflow in <a href="#performance">Performance</a> to inspect the
+result and revise the scenario. Use <code>seed(...)</code> or <code>--seed</code> only when a
+particular realization must be replayed.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h1>
 <!-- Auto-generated by `cargo run --bin gen_rhai_defs`. DO NOT EDIT. -->
@@ -1199,7 +1268,7 @@ be replayed.</p>
 <pre><code class="language-bash">cargo run --bin gen_rhai_defs
 </code></pre>
 <p>Builder methods return their receiver and are chainable. Integer and float literals are interchangeable wherever both overloads are registered; the generated LSP definitions (<code>rhai-defs/conchordal.d.rhai</code>) list the exact overloads.</p>
-<p>The surface is split into three tiers. <strong>Core API</strong> is the curated composing surface — it is enough for every curated sample. <strong>Mechanism Tuning</strong> adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. <strong>Research Controls</strong> exist for studying the instrument, not composing with it.</p>
+<p>The surface is split into four tiers. <strong>Core API</strong> is the curated composing surface — it is enough for every curated sample. <strong>Experimental</strong> contains candidate Core verbs under audition. <strong>Mechanism Tuning</strong> adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. <strong>Research Controls</strong> exist for studying the instrument, not composing with it.</p>
 <h2 id="types"><a class="header" href="#types">Types</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1297,7 +1366,7 @@ consonance(min_hz, max_hz) -&gt; Placement
 <pre><code class="language-rhai ignore">tension(degree)
 </code></pre>
 <p>Applies to: <code>Placement</code>.</p>
-<p>Place at a metastable consonance below the strongest (degree 0..1). Consonance placement only. 0 targets the strongest consonance (resolved); higher targets a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).</p>
+<p>Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1). Consonance placement only. 0 leaves ordinary Consonance placement unchanged: <code>peak()</code> selects the strongest peak, while the default density remains the ordinary Consonance cloud. Higher values target a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).</p>
 <h4 id="random"><a class="header" href="#random"><code>random</code></a></h4>
 <pre><code class="language-rhai ignore">random(min_hz, max_hz) -&gt; Placement
 </code></pre>
@@ -1521,17 +1590,17 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">respawn_random()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Respawn at random locations.</p>
+<p>Respawn without parent inheritance. Candidates come from the Population’s original Placement and, when set, <code>respawn_settle()</code> adds alternative candidates. The current scene score weights the final choice, so this is not uniform random placement.</p>
 <h4 id="respawn_hereditary"><a class="header" href="#respawn_hereditary"><code>respawn_hereditary</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_hereditary(sigma_oct)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Hereditary respawn with frequency variance in octaves.</p>
+<p>Respawn near an energy-weighted living parent, with frequency variance in octaves. Candidates share one selected parent. The candidate with the highest current Consonance Field level is used.</p>
 <h4 id="respawn_consonance"><a class="header" href="#respawn_consonance"><code>respawn_consonance</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_consonance()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Respawn from consonance-biased parental peaks.</p>
+<p>Respawn from high field-score peaks, biased around an energy-weighted living parent. When living members exist, one parent is selected by energy. Candidate peaks come from the current Consonance Field and are weighted by scene score and their relation to the parent; without a usable peak, the policy falls back to the parent or original Placement.</p>
 <h4 id="respawn_capacity"><a class="header" href="#respawn_capacity"><code>respawn_capacity</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_capacity(count)
 </code></pre>
@@ -1541,7 +1610,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">respawn_settle(placement)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Placement used for replacements. Requires a strategy-bearing placement: <code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
+<p>Add a Placement source to the replacement candidate pool. The policy’s own baseline still supplies one candidate; this Placement supplies the remaining alternatives. Requires a strategy-bearing placement: <code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
 <h4 id="respawn_min_c_level"><a class="header" href="#respawn_min_c_level"><code>respawn_min_c_level</code></a></h4>
 <pre><code class="language-rhai ignore">respawn_min_c_level(level)
 </code></pre>
@@ -1553,7 +1622,7 @@ avoid_neighbors(strength, sigma_cents)
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
 <p>Background turnover rate per second.</p>
 <h3 id="mode-patterns"><a class="header" href="#mode-patterns">Mode Patterns</a></h3>
-<p>Frequency relationships for <code>modal()</code> bodies. Constructors return a <code>ModePattern</code>; modifiers are chainable. Landscape-aware patterns sample the live field.</p>
+<p>Frequency relationships for <code>modal()</code> bodies. Constructors return a <code>ModePattern</code>; modifiers are chainable. Landscape-aware patterns deterministically select supported positions from the live field.</p>
 <h4 id="harmonic_modes"><a class="header" href="#harmonic_modes"><code>harmonic_modes</code></a></h4>
 <pre><code class="language-rhai ignore">harmonic_modes() -&gt; ModePattern
 </code></pre>
@@ -1581,11 +1650,11 @@ avoid_neighbors(strength, sigma_cents)
 <h4 id="landscape_density_modes"><a class="header" href="#landscape_density_modes"><code>landscape_density_modes</code></a></h4>
 <pre><code class="language-rhai ignore">landscape_density_modes() -&gt; ModePattern
 </code></pre>
-<p>Modes sampled from the live landscape density.</p>
+<p>Modes selected from the strongest live landscape density-mass positions. Selection is deterministic: after each strongest position is chosen, nearby weights are suppressed according to <code>spacing()</code>. Falls back to harmonic modes when live landscape data yields no usable position.</p>
 <h4 id="landscape_peaks_modes"><a class="header" href="#landscape_peaks_modes"><code>landscape_peaks_modes</code></a></h4>
 <pre><code class="language-rhai ignore">landscape_peaks_modes() -&gt; ModePattern
 </code></pre>
-<p>Modes sampled from live landscape peaks.</p>
+<p>Modes selected from the strongest local peaks of the live Consonance Field level. Selection is deterministic and enforces the ERB separation from <code>spacing()</code>. Falls back to harmonic modes when live landscape data yields no usable peak.</p>
 <h4 id="count-1"><a class="header" href="#count-1"><code>count</code></a></h4>
 <pre><code class="language-rhai ignore">count(n)
 </code></pre>
@@ -1854,10 +1923,10 @@ global_peaks(count, min_sep_cents)
 </code></pre>
 <p>Per-voice scrambled scaffold pulse.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="études"><a class="header" href="#études">Études</a></h1>
-<p>The samples are a book of twelve études — small pieces, in order. Played and
-read one after another, they are the instrument: each is written around one
-of its capacities, and the script itself is the score.</p>
+<h1 id="samples"><a class="header" href="#samples">Samples</a></h1>
+<p>This is an ordered set of twelve small demonstrations. Run and read them to
+see the instrument’s main capabilities one at a time. They are API and
+behavior samples, not musical works.</p>
 <pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
 </code></pre>
 <ol>
@@ -1881,11 +1950,11 @@ hold them.</li>
 <li><strong>Emergence and Resolution</strong> — everything at once, bent into a single
 arc.</li>
 </ol>
-<p>Études 1–6 walk the consonance terrain (placement, gravity, tension,
+<p>Samples 1–6 walk the consonance terrain (placement, gravity, tension,
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
-10 closes the loop into life; 11–12 are directed by the composer. All études
+10 closes the loop into life; 11–12 combine several mechanisms. All samples
 are compile-checked by the test suite, so they always match the current API.
-Top-level études intentionally do not call <code>seed(...)</code>: each run starts from
+Top-level samples intentionally do not call <code>seed(...)</code>: each run starts from
 a fresh scenario seed. Research assays keep fixed seeds so comparisons remain
 reproducible.</p>
 <p>One craft rule holds across the path: <strong>scaffolding is inaudible or

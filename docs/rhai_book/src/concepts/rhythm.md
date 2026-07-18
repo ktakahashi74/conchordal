@@ -40,7 +40,7 @@ The Tier-1 presets take **no rate argument**: `metric()`, `entrained()`, and
 Do not confuse `.entrained()` with `brain("entrain")`. The preset controls
 onset timing; the brain selects the voice's articulation life and metabolism.
 They are independent and may be used together. See
-[The Life of a Voice](voice_life.md).
+[Population — A Persistent Unit of Voices](voice_life.md).
 
 Per-voice modifiers refine where on the continuum a voice sits:
 

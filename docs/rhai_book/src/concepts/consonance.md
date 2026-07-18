@@ -1,4 +1,4 @@
-# The Consonance Field
+# Consonance Field — A Terrain for Evaluating Pitch
 
 Conchordal's perception core (the **Landscape**) listens to the habitat bus,
 transforms it into log-frequency space, and computes two potentials:
@@ -7,10 +7,11 @@ bands) and **harmonicity** (periodicity and template matching). Their
 combination is the **Consonance Field**: an evaluation terrain over frequency
 that placement, movement, prediction, and survival all read from.
 
-Because the field is computed from what the system actually hears, every voice
-deforms the terrain for every other voice. That feedback loop — not a chord
-chart — is where harmony comes from. See [The Ecological Loop](ecological_loop.md)
-for the relationship between potential, score, level, mass, and density.
+Because the field is computed from the habitat bus, every voice routed to that
+bus deforms the terrain for every other voice. A presentation-only voice does
+not. That feedback loop — not a chord chart — is where harmony comes from. See
+[Voice and Landscape — Sound–Environment Feedback](ecological_loop.md) for the relationship between
+potential, score, level, mass, and density.
 
 ## Placing into the field: `consonance`, `dissonance`, `edge`, `gap`
 
@@ -61,9 +62,12 @@ wait(8.0);
 
 ## Placement tension: `tension(τ)`
 
-`consonance` aims at the *strongest* peak. `tension(τ)` aims a step **below** it:
-`τ ∈ [0, 1]` is the tension degree, where `0` keeps the resolved peak and larger
-values target progressively weaker, metastable steps
+Without `tension`, Consonance Placement uses its ordinary realization:
+`.peak()` chooses the strongest peak, while the default density produces the
+ordinary Consonance cloud. `tension(τ)` biases that Placement toward a
+field-score step **below** the maximum. `τ ∈ [0, 1]` is the tension degree;
+`0` leaves the ordinary realization unchanged, while larger values target
+progressively weaker, metastable steps
 (`target = L_max − τ·(L_max − L_min)` over the range, in field score). It is the
 placement twin of movement's search `temperature` — the dial for *how resolved* a
 spawn should sit — and it reads the field's score directly, so the degree rides
@@ -155,10 +159,12 @@ evaluated against the field with its own footprint approximately removed. Use
 total-field viability.
 
 Respawn closes the loop into an ecology: when voices die, replacements appear
-according to a respawn policy. `respawn_consonance()` draws them from
-consonance-biased parental peaks; `respawn_capacity(count)` sets the maximum
-living membership (defaulting to, and never lower than, the founder count);
-`respawn_settle(placement)` decides where replacements settle.
+according to a respawn policy. `respawn_consonance()` selects high field-score
+peaks with a bias around an energy-weighted living parent;
+`respawn_capacity(count)` sets the maximum living membership (defaulting to,
+and never lower than, the founder count); `respawn_settle(placement)` adds
+that Placement to the replacement candidate pool rather than replacing the
+policy's baseline candidate.
 
 ```rhai
 let settle = consonance(70.0, 1100.0).spacing(0.8);
@@ -185,16 +191,18 @@ wait(30.0);
 
 The full lifecycle surface (time-domain endurance/recovery and normalized
 per-attack fractions) and the respawn policies are documented in the
-[API Reference](../reference/api.md). [The Life of a Voice](voice_life.md)
+[API Reference](../reference/api.md). [Population — A Persistent Unit of Voices](voice_life.md)
 separates articulation, phonation, pitch behavior, and survival; the
-[Ecological Loop](ecological_loop.md) follows the complete energy and respawn
+[Voice and Landscape — Sound–Environment Feedback](ecological_loop.md) follows the complete energy and respawn
 cycle.
 
 ## Landscape-aware timbre
 
 The field can shape timbre as well as pitch. The `modal()` body takes a mode
-pattern, and landscape-aware patterns sample the live field, so a bell's
-partials can sit where the terrain already supports them.
+pattern. `landscape_density_modes()` deterministically chooses the strongest
+separated density-mass positions; `landscape_peaks_modes()` chooses the
+strongest separated local Field-level peaks. Thus a bell's partials can sit
+where the terrain already supports them.
 
 ```rhai
 let shimmer_modes = landscape_density_modes()

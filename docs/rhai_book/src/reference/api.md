@@ -10,7 +10,7 @@ cargo run --bin gen_rhai_defs
 
 Builder methods return their receiver and are chainable. Integer and float literals are interchangeable wherever both overloads are registered; the generated LSP definitions (`rhai-defs/conchordal.d.rhai`) list the exact overloads.
 
-The surface is split into three tiers. **Core API** is the curated composing surface — it is enough for every curated sample. **Mechanism Tuning** adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. **Research Controls** exist for studying the instrument, not composing with it.
+The surface is split into four tiers. **Core API** is the curated composing surface — it is enough for every curated sample. **Experimental** contains candidate Core verbs under audition. **Mechanism Tuning** adjusts the mechanisms behind the core verbs when a piece needs a behavior the core surface does not express. **Research Controls** exist for studying the instrument, not composing with it.
 
 ## Types
 
@@ -167,7 +167,7 @@ tension(degree)
 
 Applies to: `Placement`.
 
-Place at a metastable consonance below the strongest (degree 0..1). Consonance placement only. 0 targets the strongest consonance (resolved); higher targets a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).
+Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1). Consonance placement only. 0 leaves ordinary Consonance placement unchanged: `peak()` selects the strongest peak, while the default density remains the ordinary Consonance cloud. Higher values target a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).
 
 #### `random`
 
@@ -610,7 +610,7 @@ respawn_random()
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Respawn at random locations.
+Respawn without parent inheritance. Candidates come from the Population's original Placement and, when set, `respawn_settle()` adds alternative candidates. The current scene score weights the final choice, so this is not uniform random placement.
 
 #### `respawn_hereditary`
 
@@ -620,7 +620,7 @@ respawn_hereditary(sigma_oct)
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Hereditary respawn with frequency variance in octaves.
+Respawn near an energy-weighted living parent, with frequency variance in octaves. Candidates share one selected parent. The candidate with the highest current Consonance Field level is used.
 
 #### `respawn_consonance`
 
@@ -630,7 +630,7 @@ respawn_consonance()
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Respawn from consonance-biased parental peaks.
+Respawn from high field-score peaks, biased around an energy-weighted living parent. When living members exist, one parent is selected by energy. Candidate peaks come from the current Consonance Field and are weighted by scene score and their relation to the parent; without a usable peak, the policy falls back to the parent or original Placement.
 
 #### `respawn_capacity`
 
@@ -650,7 +650,7 @@ respawn_settle(placement)
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Placement used for replacements. Requires a strategy-bearing placement: `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()` (not `at()`).
+Add a Placement source to the replacement candidate pool. The policy's own baseline still supplies one candidate; this Placement supplies the remaining alternatives. Requires a strategy-bearing placement: `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()` (not `at()`).
 
 #### `respawn_min_c_level`
 
@@ -674,7 +674,7 @@ Background turnover rate per second.
 
 ### Mode Patterns
 
-Frequency relationships for `modal()` bodies. Constructors return a `ModePattern`; modifiers are chainable. Landscape-aware patterns sample the live field.
+Frequency relationships for `modal()` bodies. Constructors return a `ModePattern`; modifiers are chainable. Landscape-aware patterns deterministically select supported positions from the live field.
 
 #### `harmonic_modes`
 
@@ -730,7 +730,7 @@ Named mode table lookup. Falls back to `harmonic_modes()` with a warning if the 
 landscape_density_modes() -> ModePattern
 ```
 
-Modes sampled from the live landscape density.
+Modes selected from the strongest live landscape density-mass positions. Selection is deterministic: after each strongest position is chosen, nearby weights are suppressed according to `spacing()`. Falls back to harmonic modes when live landscape data yields no usable position.
 
 #### `landscape_peaks_modes`
 
@@ -738,7 +738,7 @@ Modes sampled from the live landscape density.
 landscape_peaks_modes() -> ModePattern
 ```
 
-Modes sampled from live landscape peaks.
+Modes selected from the strongest local peaks of the live Consonance Field level. Selection is deterministic and enforces the ERB separation from `spacing()`. Falls back to harmonic modes when live landscape data yields no usable peak.
 
 #### `count`
 

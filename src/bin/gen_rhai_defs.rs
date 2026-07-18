@@ -2,6 +2,7 @@
 //!
 //!   - `rhai-defs/conchordal.d.rhai` (Rhai LSP definitions with hover docs)
 //!   - `docs/rhai_book/src/reference/api.md` (book API reference)
+//!   - `docs/rhai_book_ja/src/reference/api.md` (Japanese book API reference)
 //!
 //! Run with:
 //!
@@ -23,6 +24,10 @@ fn main() {
         (
             "docs/rhai_book/src/reference/api.md",
             defs_gen::render_reference_md(),
+        ),
+        (
+            "docs/rhai_book_ja/src/reference/api.md",
+            defs_gen::render_reference_md_ja(),
         ),
     ] {
         let path = root.join(rel);

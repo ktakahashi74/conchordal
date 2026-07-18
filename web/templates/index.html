@@ -129,7 +129,7 @@
                 {% if section is defined and section.extra.lede %}
                     <p class="text-white-50 mx-auto mt-4 masthead-lede">{{ section.extra.lede }}</p>
                     <p class="masthead-cta">
-                        <a href="/docs/rhai/tutorial/quick_start.html">{% if lang == 'ja' %}クイックスタート →{% else %}Quick Start →{% endif %}</a>
+                        <a href="{% if lang == 'ja' %}/ja/docs/rhai/tutorial/quick_start.html{% else %}/docs/rhai/tutorial/quick_start.html{% endif %}">{% if lang == 'ja' %}クイックスタート →{% else %}Quick Start →{% endif %}</a>
                     </p>
                 {% endif %}
             </div>

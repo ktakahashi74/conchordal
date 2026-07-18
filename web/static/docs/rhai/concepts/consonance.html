@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>The Consonance Field - Conchordal Script Reference</title>
+        <title>Consonance Field — A Terrain for Evaluating Pitch - Conchordal Script Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
+            window.path_to_searchindex_js = "../searchindex-bcf94908.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-7940c472.js"></script>
+        <script src="../toc-e3932d17.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,17 +174,18 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="the-consonance-field"><a class="header" href="#the-consonance-field">The Consonance Field</a></h1>
+                        <h1 id="consonance-field--a-terrain-for-evaluating-pitch"><a class="header" href="#consonance-field--a-terrain-for-evaluating-pitch">Consonance Field — A Terrain for Evaluating Pitch</a></h1>
 <p>Conchordal’s perception core (the <strong>Landscape</strong>) listens to the habitat bus,
 transforms it into log-frequency space, and computes two potentials:
 <strong>roughness</strong> (sensory dissonance from amplitude fluctuations within critical
 bands) and <strong>harmonicity</strong> (periodicity and template matching). Their
 combination is the <strong>Consonance Field</strong>: an evaluation terrain over frequency
 that placement, movement, prediction, and survival all read from.</p>
-<p>Because the field is computed from what the system actually hears, every voice
-deforms the terrain for every other voice. That feedback loop — not a chord
-chart — is where harmony comes from. See <a href="ecological_loop.html">The Ecological Loop</a>
-for the relationship between potential, score, level, mass, and density.</p>
+<p>Because the field is computed from the habitat bus, every voice routed to that
+bus deforms the terrain for every other voice. A presentation-only voice does
+not. That feedback loop — not a chord chart — is where harmony comes from. See
+<a href="ecological_loop.html">Voice and Landscape — Sound–Environment Feedback</a> for the relationship between
+potential, score, level, mass, and density.</p>
 <h2 id="placing-into-the-field-consonance-dissonance-edge-gap"><a class="header" href="#placing-into-the-field-consonance-dissonance-edge-gap">Placing into the field: <code>consonance</code>, <code>dissonance</code>, <code>edge</code>, <code>gap</code></a></h2>
 <p>A field-relative placement names a <strong>target</strong> — a region of the field — and is
 realized either as a cloud (the default) or as a deterministic extremum with
@@ -226,9 +227,12 @@ place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
 wait(8.0);
 </code></pre>
 <h2 id="placement-tension-tensionτ"><a class="header" href="#placement-tension-tensionτ">Placement tension: <code>tension(τ)</code></a></h2>
-<p><code>consonance</code> aims at the <em>strongest</em> peak. <code>tension(τ)</code> aims a step <strong>below</strong> it:
-<code>τ ∈ [0, 1]</code> is the tension degree, where <code>0</code> keeps the resolved peak and larger
-values target progressively weaker, metastable steps
+<p>Without <code>tension</code>, Consonance Placement uses its ordinary realization:
+<code>.peak()</code> chooses the strongest peak, while the default density produces the
+ordinary Consonance cloud. <code>tension(τ)</code> biases that Placement toward a
+field-score step <strong>below</strong> the maximum. <code>τ ∈ [0, 1]</code> is the tension degree;
+<code>0</code> leaves the ordinary realization unchanged, while larger values target
+progressively weaker, metastable steps
 (<code>target = L_max − τ·(L_max − L_min)</code> over the range, in field score). It is the
 placement twin of movement’s search <code>temperature</code> — the dial for <em>how resolved</em> a
 spawn should sit — and it reads the field’s score directly, so the degree rides
@@ -301,10 +305,12 @@ evaluated against the field with its own footprint approximately removed. Use
 <code>viability_scope("total")</code> only when the compositional question is explicitly
 total-field viability.</p>
 <p>Respawn closes the loop into an ecology: when voices die, replacements appear
-according to a respawn policy. <code>respawn_consonance()</code> draws them from
-consonance-biased parental peaks; <code>respawn_capacity(count)</code> sets the maximum
-living membership (defaulting to, and never lower than, the founder count);
-<code>respawn_settle(placement)</code> decides where replacements settle.</p>
+according to a respawn policy. <code>respawn_consonance()</code> selects high field-score
+peaks with a bias around an energy-weighted living parent;
+<code>respawn_capacity(count)</code> sets the maximum living membership (defaulting to,
+and never lower than, the founder count); <code>respawn_settle(placement)</code> adds
+that Placement to the replacement candidate pool rather than replacing the
+policy’s baseline candidate.</p>
 <pre><code class="language-rhai">let settle = consonance(70.0, 1100.0).spacing(0.8);
 
 let ecology = harmonic()
@@ -328,14 +334,16 @@ wait(30.0);
 </code></pre>
 <p>The full lifecycle surface (time-domain endurance/recovery and normalized
 per-attack fractions) and the respawn policies are documented in the
-<a href="../reference/api.html">API Reference</a>. <a href="voice_life.html">The Life of a Voice</a>
+<a href="../reference/api.html">API Reference</a>. <a href="voice_life.html">Population — A Persistent Unit of Voices</a>
 separates articulation, phonation, pitch behavior, and survival; the
-<a href="ecological_loop.html">Ecological Loop</a> follows the complete energy and respawn
+<a href="ecological_loop.html">Voice and Landscape — Sound–Environment Feedback</a> follows the complete energy and respawn
 cycle.</p>
 <h2 id="landscape-aware-timbre"><a class="header" href="#landscape-aware-timbre">Landscape-aware timbre</a></h2>
 <p>The field can shape timbre as well as pitch. The <code>modal()</code> body takes a mode
-pattern, and landscape-aware patterns sample the live field, so a bell’s
-partials can sit where the terrain already supports them.</p>
+pattern. <code>landscape_density_modes()</code> deterministically chooses the strongest
+separated density-mass positions; <code>landscape_peaks_modes()</code> chooses the
+strongest separated local Field-level peaks. Thus a bell’s partials can sit
+where the terrain already supports them.</p>
 <pre><code class="language-rhai">let shimmer_modes = landscape_density_modes()
     .count(10)
     .range(1.0, 5.5)

@@ -1,7 +1,9 @@
-# The Ecological Loop
+# Voice and Landscape — Sound–Environment Feedback
 
-Conchordal becomes an ecology when a voice's sound changes the environment
-that guides that voice and every other voice.
+A Voice routed to the habitat bus changes the Landscape. The changed
+Landscape then affects placement, movement, and viability. This chapter traces
+that runtime feedback path and the energy, death, and respawn processes it
+supports.
 
 ```text
 Voice bodies
@@ -126,26 +128,31 @@ wait(20.0);
 
 Respawn policies answer different compositional questions:
 
-- `respawn_random()` asks what survives under fresh random variation.
-- `respawn_hereditary(sigma_oct)` places offspring near a selected parent.
-- `respawn_consonance()` biases parent/candidate choice toward supported peaks.
+- `respawn_random()` creates no parent lineage. Candidates come from the
+  Population's original Placement and are weighted by the current scene score;
+  it is not uniform random placement.
+- `respawn_hereditary(sigma_oct)` selects a living parent by energy, proposes
+  offspring near it, and keeps the candidate with the best current Field level.
+- `respawn_consonance()` selects an energy-weighted living parent and chooses
+  among high field-score peaks with a bias around that parent.
 - `respawn_capacity(n)` bounds how many living members the Population maintains;
   without it, the founder count is the capacity, and an explicit value cannot
   be lower than that founder count.
-- `respawn_settle(placement)` supplies the placement strategy for replacements.
+- `respawn_settle(placement)` adds candidates from that Placement; the
+  respawn policy's own baseline still contributes one candidate.
 
 Respawn preserves the `Population` and its `population_id` while individual
 `voice_id` and `generation` values change. The report stream makes that
 turnover observable.
 
-## Two observation loops
+## Runtime feedback and human revision
 
-There are therefore two feedback loops:
+Two different processes are involved:
 
-- The **runtime loop** is automatic: sound reshapes the terrain, which changes
+- **Runtime feedback** is automatic: sound reshapes the terrain, which changes
   voice behavior and survival.
-- The **composing loop** is human: run, listen, inspect a report, revise the
-  scenario, and run again.
+- **Human revision** happens between runs: run, listen, inspect a report,
+  revise the scenario, and run again.
 
-The runtime loop is the piece's ecology. The composing loop is described in
-[Observing a Performance](../tutorial/observing.md).
+The practical run-and-revise procedure is described in
+[Performance](../tutorial/observing.md).

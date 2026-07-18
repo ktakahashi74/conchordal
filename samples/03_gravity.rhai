@@ -1,4 +1,4 @@
-// Étude 3 — Gravity
+// Sample 3 — Gravity
 // The same root under two suns. The peaks listen to what is sounding,
 // not to a chart.
 

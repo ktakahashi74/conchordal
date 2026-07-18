@@ -17,7 +17,7 @@ why the lifecycle work goes first.
 7–8 coupled rates (`metabolism`, `initial_energy`, `energy_cap`,
 `action_cost`, `recharge_rate`, `viability_rate`, `dissonance_cost`) with
 no perceptual meaning — `metabolism(0.055)` says nothing about how long a
-voice survives. Every ecology étude (08, 10, 12) carries the same
+voice survives. Every ecology sample (08, 10, 12) carries the same
 imitated numeric block; it is the steepest usability cliff in the
 composing API. A script-side preset facade was considered and rejected:
 it diverges the vocabulary between API, core config, and telemetry. The
@@ -63,7 +63,7 @@ and a deterministic assay probe for the earlier energy-depletion instant.
   hereditary respawn parent selection, which weights by raw energy
   (population/respawn.rs). Fixing the cap makes parent fitness
   comparable across groups but removes "larger cap as lineage
-  advantage"; confirm no étude or assay depends on that.
+  advantage"; confirm no sample or assay depends on that.
 - **Determinism.** Fixed seeds, fixed control-update mode, golden
   summary outputs — the assay must be replayable, not auditioned.
 - Deliverable: `samples/research/` assay script(s) + a closed-form nominal
@@ -131,7 +131,7 @@ and a deterministic assay probe for the earlier energy-depletion instant.
   observed `lifetime_sec`, so the composing loop closes: "endurance 8 s,
   measured 2 s in section IV" is a direct read from the report.
 - Alpha no-compat policy: old keys and verbs removed, no aliases;
-  curated études rewritten; generated docs regenerated; technote
+  curated samples rewritten; generated docs regenerated; technote
   Appendix A (key system parameters) updated in the same change.
 
 ### Phase B outcome
@@ -146,7 +146,7 @@ and a deterministic assay probe for the earlier energy-depletion instant.
 - `AnyArticulationCore::from_config` derives runtime rates once. JSONL death
   records report `configured_endurance_sec`, `energy_depletion_sec`, and
   observable `lifetime_sec` separately.
-- Curated études, research assays, Rhai definitions, the API book, and both
+- Curated samples, research assays, Rhai definitions, the API book, and both
   technote languages use the time-domain vocabulary.
 
 ## Phase C — Brain-axis equivalence assay

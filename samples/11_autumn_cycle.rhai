@@ -1,4 +1,4 @@
-// Étude 11 — Autumn Cycle
+// Sample 11 — Autumn Cycle
 // A directed harmony; the season turns and comes home.
 
 let bass = sine().amp(0.1).sustain();

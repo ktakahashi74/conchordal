@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-365c20a8.js";
+            window.path_to_searchindex_js = "searchindex-bcf94908.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-7940c472.js"></script>
+        <script src="toc-e3932d17.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,43 +175,51 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p>Conchordal is a research-composer scripting surface. The central idea is not
-note scheduling. The central idea is shaping a perceptual consonance field,
-then letting populations of voices move, survive, and reorganize inside it.</p>
+<p><a href="/ja/docs/rhai/">日本語版</a></p>
+<p>Conchordal is a bio-acoustic instrument for generative composition. Rhai is
+its scenario language: it directs the instrument without reducing it to note
+scheduling. The central idea is shaping a perceptual consonance field, then
+letting populations of voices move, survive, and reorganize inside it.</p>
 <p>A scenario script defines <strong>PopulationSpecs</strong>, places each one into the field
 as a stable <strong>Population</strong>, and shapes the terrain its <strong>Voices</strong> inhabit.
 Together those Populations form the runtime <strong>Community</strong>. Harmony emerges from
 psychoacoustics (roughness and harmonicity); rhythm emerges from coupled
 oscillators on a shared meter the Community itself drives. The script is a
 director, not a sequencer.</p>
-<p>Conchordal v0.4.0 is aimed at research composers who want to work with these
-concepts directly. It is not trying to hide the model behind common
+<p>Conchordal v0.4.0 is a research alpha for researchers and developers who want
+to examine these concepts directly. Features are incomplete and may be
+unstable; composers and creators should wait for the beta release. The model
+is intentionally described in its own terms rather than hidden behind common
 music-production vocabulary.</p>
 <h2 id="how-this-book-is-organized"><a class="header" href="#how-this-book-is-organized">How this book is organized</a></h2>
 <ul>
-<li><strong>Tutorial</strong> gets a first sound out, wires up your editor, and shows how to
-inspect a performance:
+<li><strong>Tutorial</strong> gets a first sound out, wires up your editor, and covers running,
+recording analysis, and replaying a performance:
 <a href="tutorial/quick_start.html">Quick Start</a>,
 <a href="tutorial/editor_setup.html">Editor Setup</a>, and
-<a href="tutorial/observing.html">Observing a Performance</a>.</li>
+<a href="tutorial/observing.html">Performance</a>.</li>
 <li><strong>Concepts</strong> builds the model from a single living voice to the complete
 ecological and temporal structure:
-<a href="concepts/voice_life.html">the Life of a Voice</a>,
-<a href="concepts/ecological_loop.html">the Ecological Loop</a>,
-<a href="concepts/consonance.html">the Consonance Field</a>,
+<a href="concepts/voice_life.html">Population — A Persistent Unit of Voices</a>,
+<a href="concepts/ecological_loop.html">Voice and Landscape — Sound–Environment Feedback</a>,
+<a href="concepts/consonance.html">Consonance Field — A Terrain for Evaluating Pitch</a>,
 <a href="concepts/rhythm.html">Rhythm</a>, and
 <a href="concepts/routing.html">Routing and the Listener Twin</a>, followed by
 <a href="concepts/timeline.html">Timeline and Structure</a>.</li>
-<li><strong>Reference</strong> is the complete, generated
-<a href="reference/api.html">API Reference</a> — it is produced from the engine’s
-registered scripting surface, so it cannot drift — and the
+<li><strong>Reference</strong> contains the generated
+<a href="reference/api.html">API Reference</a> and the
 <a href="reference/samples.html">Curated Samples</a> listening path. The reference is
-split into three tiers: the <strong>Core API</strong> (enough for every curated sample),
-<strong>Mechanism Tuning</strong>, and <strong>Research Controls</strong>. Start with Core and ignore
-the rest until a piece demands it.</li>
+split into four tiers: the <strong>Core API</strong> (enough for every curated sample),
+<strong>Experimental</strong> (candidate Core verbs under audition), <strong>Mechanism
+Tuning</strong>, and <strong>Research Controls</strong>. Start with Core and ignore the rest
+until a piece demands it. Registered signatures and tier membership are
+generated and checked against the engine; explanatory prose is maintained
+in the documentation registry.</li>
 </ul>
 <p>Every <code>rhai</code> code block in this book is executed against the real script
-engine by the test suite, so the examples are guaranteed to run.</p>
+engine by the test suite. This checks that the examples compile and run with
+the current engine; it does not by itself prove that every explanation is
+semantically correct.</p>
 
                     </main>
 

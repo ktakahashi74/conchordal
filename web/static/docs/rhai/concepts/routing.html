@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
+            window.path_to_searchindex_js = "../searchindex-bcf94908.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-7940c472.js"></script>
+        <script src="../toc-e3932d17.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -208,7 +208,7 @@ Cognitive Coupling: what the listener hears and what the ecology senses are
 the same physical event. Splitting the buses is a deliberate departure.
 <code>send(habitat_bus)</code> casts terrain — the director’s work, shaping the field
 without being heard. <code>send(presentation_bus)</code> casts decor — heard, but outside
-the ecology’s world. The études’ craft rule applies: scaffolding is inaudible
+the ecology’s world. The samples’ design rule applies: scaffolding is inaudible
 or embodied.</p>
 <h2 id="the-listener-twin"><a class="header" href="#the-listener-twin">The Listener Twin</a></h2>
 <p>conchordal keeps a <code>ListenerTwin</code>: a listener-side model of the <em>presented</em>
@@ -237,12 +237,12 @@ you run with reporting enabled it emits <code>listener_state</code> records, and
 shows the same state. Use it to check whether the tension you hear matches
 what the twin reports before coupling it back into generation.</p>
 <h2 id="dcc-coupling-the-twin-back"><a class="header" href="#dcc-coupling-the-twin-back">DCC: coupling the twin back</a></h2>
-<p>That optional coupling is <strong>DCC</strong>, configured in <code>conchordal.toml</code>, not in
-script:</p>
+<p>That optional coupling is <strong>DCC</strong>, configured in <code>config.toml</code> (or the file
+selected with <code>--config</code>), not in script:</p>
 <pre><code class="language-toml">[dcc]
 # Listener pressure is report/UI-only by default.
 # coupling_strength = 0.0
-# max_exploration_bonus = 0.10
+# max_temperature_bonus = 0.10
 </code></pre>
 <ul>
 <li><code>coupling_strength</code> (<code>0.0</code>–<code>1.0</code>, default <code>0.0</code>): at <code>0.0</code> the twin is
@@ -250,7 +250,7 @@ report/UI-only and generation is unchanged. Above <code>0.0</code> it applies
 <code>tension_pressure = tension_level * resolvability_level * coupling_strength</code>
 as a transient pitch-exploration bonus only. It never sets target pitches or
 changes rhythm synchronization.</li>
-<li><code>max_exploration_bonus</code> (default <code>0.10</code>): ceiling on that transient bonus.</li>
+<li><code>max_temperature_bonus</code> (default <code>0.10</code>): ceiling on that transient bonus.</li>
 </ul>
 <p>Raise <code>coupling_strength</code> gradually, and only after the reported
 <code>listener_state</code> looks musically legible. When coupling is active,

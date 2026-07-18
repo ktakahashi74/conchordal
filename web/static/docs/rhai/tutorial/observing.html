@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Observing a Performance - Conchordal Script Reference</title>
+        <title>Performance - Conchordal Script Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
+            window.path_to_searchindex_js = "../searchindex-bcf94908.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-7940c472.js"></script>
+        <script src="../toc-e3932d17.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,15 +174,67 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="observing-a-performance"><a class="header" href="#observing-a-performance">Observing a Performance</a></h1>
-<p>A scenario script is open-loop: it says where voices enter and how they
-behave, not what the terrain will do with them. The composing loop closes it
-by hand — run, listen, read what actually happened, adjust the numbers, run
+                        <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
+<p><a href="quick_start.html">Quick Start</a> explains how to write and run a minimal
+scenario. This chapter describes the actual performance workflow: starting
+the real-time instrument, ending a run, performing without the GUI, and then
+recording or replaying what happened.</p>
+<h2 id="performing-with-the-gui"><a class="header" href="#performing-with-the-gui">Performing with the GUI</a></h2>
+<p>Start a scenario with the real-time instrument:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai
+</code></pre>
+<p>The scenario is compiled, the GUI opens, and playback begins automatically.
+The script supplies the macro-timeline: <code>place()</code> introduces Populations,
+<code>wait()</code> advances script time, and <code>section()</code> or <code>play()</code> releases the
+Populations created inside its scope. During that timeline, Voice behavior,
+the Landscape, and their feedback continue to evolve in real time.</p>
+<p>The progress bar shows scenario time. While playback is running, the control
+at its right exits the performance; closing the window or pressing Ctrl-C also
+stops it. It is not a pause button, and the GUI is not a live script editor.
+To change the scenario, stop the run, edit the Rhai file, and run it again.</p>
+<p>To prepare the GUI first and begin on a cue, add <code>--wait-user-start</code>. Press
+Space or click the start control when ready:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --wait-user-start
+</code></pre>
+<p>By default the GUI remains open when the scenario finishes, allowing the
+final state to be inspected. Close it with the playback control or window
+close button. Add <code>--wait-user-exit=false</code> when it should close automatically
+at the end.</p>
+<h2 id="performing-without-the-gui"><a class="header" href="#performing-without-the-gui">Performing without the GUI</a></h2>
+<p><code>--nogui</code> starts immediately and exits when the scenario finishes. It still
+plays through the default audio device:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --nogui
+</code></pre>
+<p>Use <code>--play=false</code> only for a silent simulation or report-only run:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --nogui --play=false --report run.jsonl
+</code></pre>
+<p><code>--nogui</code> disables both wait-for-start and wait-for-exit. Offline WAV output
+is a different operation provided by <code>conchordal-render</code>; the real-time
+instrument itself never records audio.</p>
+<h2 id="listen-inspect-revise"><a class="header" href="#listen-inspect-revise">Listen, inspect, revise</a></h2>
+<p>A scenario specifies which Populations enter, when they enter, and the
+policies that guide their behavior. It does not predetermine the exact pitches,
+rhythmic synchronization, survival, or respawn outcome of a performance;
+those emerge from interaction with the changing Landscape. Run the scenario,
+listen to the result, inspect what happened, adjust the script, and run it
 again.</p>
 <p><code>conchordal</code> (the instrument) never writes audio to disk, in any build
-profile — performances are ephemeral by design. It can, however, write
-analysis. That asymmetry is deliberate: the sound is a one-time event, but the
-evidence about how the ecology behaved is worth keeping.</p>
+profile. A performance is designed as an ephemeral event that leaves no audio
+inside the instrument after it ends.</p>
+<h2 id="replaying-a-performance"><a class="header" href="#replaying-a-performance">Replaying a performance</a></h2>
+<p>Every run logs its seed:</p>
+<pre><code class="language-text">scenario seed: 3821650944810716341 (replay with --seed 3821650944810716341)
+</code></pre>
+<p>Top-level samples start from a fresh, unseeded run every time so they expose
+the system’s variation rather than prescribe one fixed result. When a run is
+worth keeping, replay it exactly with the logged value:</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --seed 3821650944810716341
+</code></pre>
+<p><code>--seed</code> works the same way on <code>conchordal-render</code> for turning a kept
+performance into a WAV. A script-level <code>seed(...)</code> call always wins over the
+flag, since it runs during script evaluation and overwrites whatever seed the
+run started with — reach for it only when a script itself must be
+reproducible regardless of how it is invoked.</p>
 <h2 id="reports"><a class="header" href="#reports">Reports</a></h2>
 <p>Run with <code>--report</code>, pointing at a file to write:</p>
 <pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --report run.jsonl
@@ -194,8 +246,8 @@ audio rather than observing a live run.</p>
 families are:</p>
 <ul>
 <li><code>meta</code> — the effective scenario seed, written first.</li>
-<li><code>scene_marker</code> — your <code>section("name", || { ... })</code> boundaries, so records
-can be read section by section.</li>
+<li><code>scene_marker</code> — the start of each <code>section("name", || { ... })</code>, so later
+records can be grouped by the most recent marker.</li>
 <li><code>spawn</code> / <code>respawn</code> / <code>death</code> — population turnover per voice: <code>spawn</code> and
 <code>respawn</code> carry the entry frequency (and, for <code>respawn</code>, the parent voice);
 <code>death</code> carries configured nominal endurance, energy-depletion time,
@@ -210,8 +262,10 @@ frequency entropy over time.</li>
 <li><code>listener_state</code> — the <code>ListenerTwin</code>’s four perceptual levels
 (<code>stability_level</code>, <code>resolvability_level</code>, <code>tension_level</code>, and
 <code>attention_level</code>), beat/subdivision/measure tracking, and analysis lag.</li>
-<li><code>rhythm_observation</code> / <code>rhythm_summary</code> — Kuramoto order, onset density,
-inter-onset-interval regularity, and burstiness, globally and per Population.</li>
+<li><code>rhythm_observation</code> — instantaneous global Kuramoto and environment rhythm
+state. <code>rhythm_summary</code> reports onset density, inter-onset-interval
+regularity, and burstiness globally and per Population; its Kuramoto summary
+is global only.</li>
 <li><code>listener_confidence_summary</code> — peak and late-window beat confidence.</li>
 <li><code>dcc_pressure</code> — listener-derived tension pressure and the pitch-temperature
 bonus applied by DCC.</li>
@@ -234,20 +288,6 @@ section IV, and at what consonance?” becomes a direct read. There is no
 bespoke digest tool: which summaries matter depends on the piece, and a
 one-off filter (or a script) shaped to the question beats a fixed report
 format.</p>
-<h2 id="replaying-a-performance"><a class="header" href="#replaying-a-performance">Replaying a performance</a></h2>
-<p>Every run logs its seed:</p>
-<pre><code class="language-text">scenario seed: 3821650944810716341 (replay with --seed 3821650944810716341)
-</code></pre>
-<p>Top-level études start from a fresh, unseeded run every time by design — that
-is what makes them études rather than fixed pieces. When a run is worth
-keeping, replay it exactly with the logged value:</p>
-<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --seed 3821650944810716341
-</code></pre>
-<p><code>--seed</code> works the same way on <code>conchordal-render</code> for turning a kept
-performance into a WAV. A script-level <code>seed(...)</code> call always wins over the
-flag, since it runs during script evaluation and overwrites whatever seed the
-run started with — reach for it only when a script itself must be
-reproducible regardless of how it is invoked.</p>
 <h2 id="the-gui"><a class="header" href="#the-gui">The GUI</a></h2>
 <p>The GUI shows the same landscape and listener-twin state live, as it runs.
 Reports exist for reading <em>after</em> listening — for the moments you noticed

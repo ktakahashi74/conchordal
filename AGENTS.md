@@ -216,7 +216,12 @@ Scenarios should be approachable for newcomers while remaining expressive for ad
 - Don't touch `web/` when editing sourcecode. Don't touch `src/` when editing `web/`, unless otherwise specified.
 - The technote's final chapter ("Manifesto Correspondence and Open Problems") is the ledger connecting Manifesto commitments to the implementation. Record new first-principles findings there (ledger row, gap, or upstream revision), not in version-specific design notes. Compositional craft rules live in `samples/README.md`.
 - `web/content/technote.md` (+ `.ja.md`) is hand-curated; keep it in sync with the code when core algorithms change. There is no generation pipeline.
-- `docs/rhai_book` is the Rhai API reference (mdBook source); build with `mdbook build docs/rhai_book`.
+- `docs/rhai_book` is the English Rhai API reference; build with `mdbook build docs/rhai_book`.
+- `docs/rhai_book_ja` is a Japanese adaptation, not a sentence-by-sentence translation. Follow
+  `docs/rhai_book_ja/README.md`: write natural Japanese prose, preserve canonical ontology names
+  such as Voice and Population in English, and translate only ordinary explanatory language. Build with
+  `mdbook build docs/rhai_book_ja` and keep its chapter paths and executable Rhai examples aligned
+  with the English book.
 
 ## Compatibility Policy
 - During the alpha phase, do not preserve backward compatibility by default.

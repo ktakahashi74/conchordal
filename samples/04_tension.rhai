@@ -1,4 +1,4 @@
-// Étude 4 — Tension
+// Sample 4 — Tension
 // The voices settle onto consonance, grow restless and stray, then cool and
 // settle again.
 

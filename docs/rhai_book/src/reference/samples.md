@@ -1,8 +1,8 @@
-# Études
+# Samples
 
-The samples are a book of twelve études — small pieces, in order. Played and
-read one after another, they are the instrument: each is written around one
-of its capacities, and the script itself is the score.
+This is an ordered set of twelve small demonstrations. Run and read them to
+see the instrument's main capabilities one at a time. They are API and
+behavior samples, not musical works.
 
 ```bash
 cargo run --release -- samples/01_a_single_voice.rhai
@@ -28,11 +28,11 @@ cargo run --release -- samples/01_a_single_voice.rhai
 12. **Emergence and Resolution** — everything at once, bent into a single
     arc.
 
-Études 1–6 walk the consonance terrain (placement, gravity, tension,
+Samples 1–6 walk the consonance terrain (placement, gravity, tension,
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
-10 closes the loop into life; 11–12 are directed by the composer. All études
+10 closes the loop into life; 11–12 combine several mechanisms. All samples
 are compile-checked by the test suite, so they always match the current API.
-Top-level études intentionally do not call `seed(...)`: each run starts from
+Top-level samples intentionally do not call `seed(...)`: each run starts from
 a fresh scenario seed. Research assays keep fixed seeds so comparisons remain
 reproducible.
 

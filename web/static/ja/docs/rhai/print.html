@@ -1,0 +1,1876 @@
+<!DOCTYPE HTML>
+<html lang="ja" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Conchordal スクリプトリファレンス</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-ef152e60.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-ddfde326.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Conchordal スクリプトリファレンス</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="はじめに"><a class="header" href="#はじめに">はじめに</a></h1>
+<p><a href="/docs/rhai">English version</a></p>
+<p>Conchordalは、生成的な作曲のための生体音響楽器です。Rhaiは、この楽器にシナリオを
+与えるための言語であり、音符を順番に並べるためのものではありません。音から
+Consonance Fieldをつくり、複数のVoiceがその中を移動し、生き残り、世代を重ねながら
+Populationを再編成します。</p>
+<p>シナリオでは、まず<strong>PopulationSpec</strong>を定義します。それを<code>place()</code>で配置すると、
+世代交代を通じて同一性を保つ<strong>Population</strong>になります。Populationを構成する一個の
+生きた要素が<strong>Voice</strong>です。同じLandscapeを共有するすべてのPopulationを合わせたものを
+<strong>Community</strong>と呼びます。和声は心理音響的なroughnessとharmonicityから生まれ、
+リズムはCommunity自身が駆動する共有拍の上で創発します。スクリプトの役割は、音符を並べる
+シーケンサーではなく、全体の条件と流れを整える演出者です。</p>
+<p>Conchordal v0.4.0は、こうしたコンセプトを直接検討したい研究者と開発者のための
+research alphaです。機能は未完成で、不安定な場合があります。作曲家や制作者は
+beta版を待ってください。一般的な音楽制作の語彙で覆い隠さず、このモデル固有の
+言葉で説明します。</p>
+<h2 id="本書の構成"><a class="header" href="#本書の構成">本書の構成</a></h2>
+<ul>
+<li><strong>チュートリアル</strong>では、最初の音を鳴らし、エディタを設定し、演奏の実行、analysisの
+記録、再現を扱います：
+<a href="#クイックスタート">クイックスタート</a>、
+<a href="#エディタ設定lsp">エディタ設定</a>、
+<a href="#演奏">演奏</a>。</li>
+<li><strong>コンセプト</strong>では、一つの生きたVoiceから、生態系と時間構造の全体までを
+組み立てます：
+<a href="#population--voiceをまとめる持続単位">Population — Voiceをまとめる持続単位</a>、
+<a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a>、
+<a href="#consonance-field--音高を評価する地形">Consonance Field — 音高を評価する地形</a>、
+<a href="#リズム一つの結合連続体">リズム</a>、
+<a href="#ルーティングとlistenertwin">ルーティングとListenerTwin</a>、
+<a href="#タイムラインと構造">タイムラインと構造</a>。</li>
+<li><strong>リファレンス</strong>には、生成された<a href="#apiリファレンス">APIリファレンス</a>と、
+順に試すための<a href="#サンプル">サンプル</a>があります。APIは
+<strong>Core API</strong>、Core候補を試聴する<strong>Experimental</strong>、<strong>Mechanism Tuning</strong>、
+<strong>Research Controls</strong>の四層です。まずCoreから始め、作品が必要とするまでは
+残りを無視してください。登録signatureとtier分類はengineから生成して照合し、
+意味を説明する文章はdocumentation registryで管理します。</li>
+</ul>
+<p>本書のすべての<code>rhai</code>コードブロックは、テストスイートによって実際の
+スクリプトengine上で実行されます。これにより、現在のengineでcompile・実行
+できることを確認します。ただし、説明文の意味まで自動的に証明するものではありません。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="クイックスタート"><a class="header" href="#クイックスタート">クイックスタート</a></h1>
+<p>リアルタイムinstrumentでシナリオを実行します。DSP性能のためrelease modeを推奨します。</p>
+<pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
+</code></pre>
+<h2 id="最小の音"><a class="header" href="#最小の音">最小の音</a></h2>
+<pre><code class="language-rhai">place(sine().amp(0.08).sustain(), at(440.0));
+wait(2.0);
+</code></pre>
+<p><code>place(population_spec, placement)</code>は、現在のスクリプト時刻にPopulationをただちに配置します。
+返された<code>Population</code>への参照を使うと、実行中のPopulationを更新したり終了したりできます。</p>
+<h2 id="基本オブジェクト"><a class="header" href="#基本オブジェクト">基本オブジェクト</a></h2>
+<ul>
+<li><strong>PopulationSpec</strong>は、初代として生成されるVoiceとPopulation全体の方針を記述します。
+<code>sine()</code>、<code>harmonic()</code>、<code>modal()</code>、<code>saw()</code>、<code>square()</code>、<code>noise()</code>から始めます。</li>
+<li><strong>Variant</strong>は<code>variant(population_spec)</code>でspecificationを複製します。</li>
+<li><strong>Placement</strong>はPopulationをどこへ配置するかを決めます。協和、不協和、その境界、空いた音域を
+<code>consonance()</code>、<code>dissonance()</code>、<code>edge()</code>、<code>gap()</code>で選べます。既定では候補を確率分布として
+扱い、<code>.peak()</code>を付けると最も強い一点を選びます。ほかに<code>random()</code>、<code>at()</code>、<code>line()</code>があります。</li>
+<li><strong>Population</strong>は<code>place()</code>が返す安定した参照です。この時点で初代のVoiceが
+存在し始め、実行中に使えるメソッドは現在のVoiceを更新します。</li>
+<li><strong>Section</strong>はPopulationの有効範囲を定め、終了時に自動で解放します。</li>
+</ul>
+<p>Populationは、配置後も同一性を保つ一つの安定した参照です。<code>.count(6)</code>を指定したPlacementでは、
+そのPopulationに6つの初代のVoiceが生まれます。後でVoiceが死亡して再生成されても、構成員と世代が
+変わるだけでPopulationの同一性は保たれます。詳しいオブジェクト構造と生存過程は
+<a href="#population--voiceをまとめる持続単位">Population — Voiceをまとめる持続単位</a>を参照してください。</p>
+<pre><code class="language-rhai">let population_spec = harmonic()
+    .amp(0.08)
+    .sustain()
+    .brightness(0.35);
+
+section("plain entry", || {
+    place(population_spec, line(220.0, 440.0).count(3));
+    wait(4.0);
+});
+</code></pre>
+<h2 id="consonance-fieldへ配置する"><a class="header" href="#consonance-fieldへ配置する">Consonance Fieldへ配置する</a></h2>
+<p><code>consonance(root_hz).peak()</code>は、基準周波数の周辺で協和の評価が高い位置へVoiceを
+配置します。Fieldはsystemが知覚したものによって形づくられるため、anchorが入ると
+peakの位置も変わります。</p>
+<pre><code class="language-rhai">let anchor = harmonic()
+    .brain("drone")
+    .amp(0.06)
+    .sustain()
+    .anchor();
+
+let voice = harmonic()
+    .amp(0.04)
+    .sustain();
+
+section("field placement", || {
+    place(anchor, at(110.0));
+    wait(1.0);
+
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
+    wait(6.0);
+});
+</code></pre>
+<p>Consonance Fieldの働きと、その中でVoiceが移動し、生き残り、再生成される仕組みは
+<a href="#consonance-field--音高を評価する地形">Consonance Field — 音高を評価する地形</a>で説明します。</p>
+<h2 id="実行中のpopulationを更新する"><a class="header" href="#実行中のpopulationを更新する">実行中のPopulationを更新する</a></h2>
+<p>発音体、振る舞い、生存過程、再生成の方針は、<code>place()</code>より前に<code>PopulationSpec</code>へ設定します。
+返された<code>Population</code>には、配置後に意味を持つ操作、つまり実行中の更新と終了だけが
+公開されます。<a href="#apiリファレンス">APIリファレンス</a>には、両者のメソッドが区別して
+表示されます。</p>
+<pre><code class="language-rhai">let spec = harmonic().amp(0.04).sustain();
+let population = place(
+    spec,
+    consonance(220.0).peak().count(3)
+);
+population.amp(0.02); // live patch on running voices
+population.glide(0.8);
+wait(3.0);
+release(population);
+</code></pre>
+<h2 id="完成した小品"><a class="header" href="#完成した小品">完成した小品</a></h2>
+<pre><code class="language-rhai">seed(7);
+
+let anchor = harmonic()
+    .brain("drone")
+    .amp(0.05)
+    .sustain();
+
+let colony = harmonic()
+    .amp(0.035)
+    .sustain()
+    .seek_consonance()
+    .glide(0.4)
+    .avoid_neighbors(0.6);
+
+section("emergence", || {
+    place(anchor, at(110.0));
+    wait(2.0);
+
+    place(colony, consonance(90.0, 900.0).count(8).spacing(0.8));
+    wait(8.0);
+});
+</code></pre>
+<h2 id="次に読む章"><a class="header" href="#次に読む章">次に読む章</a></h2>
+<ul>
+<li><a href="#エディタ設定lsp">エディタ設定</a> — completion、hover documentation、diagnostics。</li>
+<li><a href="#演奏">演奏</a> — report、filter、<code>--seed</code>による再現。</li>
+<li><a href="#population--voiceをまとめる持続単位">Population — Voiceをまとめる持続単位</a> — PopulationSpec、Voice、brain、phonation、生存、release。</li>
+<li><a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a> — 音と知覚環境がfeedbackを作る仕組み。</li>
+<li><a href="#consonance-field--音高を評価する地形">Consonance Field — 音高を評価する地形</a> — Field、density、movement、viability、respawn。</li>
+<li><a href="#リズム一つの結合連続体">リズム</a> — 結合連続体とdirectorが形づくるリズム地形。</li>
+<li><a href="#ルーティングとlistenertwin">ルーティングとListenerTwin</a> — 生態系が知覚する音、聴衆が聴く音、観測される状態。</li>
+<li><a href="#タイムラインと構造">タイムラインと構造</a> — 配置境界、有効範囲、再利用可能な身振り、並行する流れ。</li>
+<li><a href="#サンプル">サンプル</a> — 機能を順番に試すための道筋。</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="エディタ設定lsp"><a class="header" href="#エディタ設定lsp">エディタ設定（LSP）</a></h1>
+<p>Conchordalには、名前を持つ呼び出し可能なスクリプティングAPIとhover documentationを
+記述したRhai LSP定義ファイルが付属します。対応するclientへ接続すると、<code>place</code>、
+<code>harmonic</code>、<code>.brain()</code>、<code>.send(habitat_bus)</code>などでcompletion、hover、定義への移動、
+diagnosticsを利用できます。busを結合する<code>|</code> overloadは名前付き宣言ではなくoperatorなので、
+定義ファイルには出力されません。</p>
+<p>repository rootにある次の2ファイルが設定の中心です。</p>
+<ul>
+<li><code>Rhai.toml</code> — <code>rhai-lsp</code>が読むworkspace設定</li>
+<li><code>rhai-defs/conchordal.d.rhai</code> — doc comment付きの自動生成type/function宣言</li>
+</ul>
+<p>upstreamの<a href="https://github.com/rhaiscript/lsp">rhai-lsp</a>は、自らをexperimentalかつ
+incompleteとし、一般利用を推奨していません。保証されたproduction toolingではなく、
+任意の開発補助として扱ってください。それでも使う場合は、crates.ioにはないため
+git repositoryから直接installします。</p>
+<pre><code class="language-bash">cargo install --git https://github.com/rhaiscript/lsp rhai-cli
+</code></pre>
+<p>これにより、<code>lsp</code> subcommandを持つ<code>rhai</code> binaryが生成されます。</p>
+<h2 id="vs-code"><a class="header" href="#vs-code">VS Code</a></h2>
+<p>公式<a href="https://marketplace.visualstudio.com/items?itemName=rhaiscript.vscode-rhai">Rhai extension</a>
+が現在提供するのはsyntax highlightだけで、<code>rhai-lsp</code>は起動しません。LSP機能には、
+Conchordal workspaceから次のcommandを起動できるLSP client/extensionを使います。</p>
+<pre><code class="language-bash">rhai lsp stdio --config Rhai.toml
+</code></pre>
+<h2 id="neovim-011以降"><a class="header" href="#neovim-011以降">Neovim 0.11以降</a></h2>
+<pre><code class="language-lua">vim.lsp.config("rhai", {
+  cmd = { "rhai", "lsp", "stdio", "--config", "Rhai.toml" },
+  filetypes = { "rhai" },
+  root_markers = { "Rhai.toml", ".git" },
+})
+vim.lsp.enable("rhai")
+</code></pre>
+<h2 id="helix"><a class="header" href="#helix">Helix</a></h2>
+<p><code>~/.config/helix/languages.toml</code>へ追加します。</p>
+<pre><code class="language-toml">[[language]]
+name = "rhai"
+scope = "source.rhai"
+file-types = ["rhai"]
+language-servers = ["rhai-lsp"]
+
+[language-server.rhai-lsp]
+command = "rhai"
+args = ["lsp", "stdio", "--config", "Rhai.toml"]
+</code></pre>
+<h2 id="emacseglot"><a class="header" href="#emacseglot">Emacs（eglot）</a></h2>
+<pre><code class="language-elisp">(add-to-list 'eglot-server-programs
+             '(rhai-mode . ("rhai" "lsp" "stdio" "--config" "Rhai.toml")))
+(add-hook 'rhai-mode-hook #'eglot-ensure)
+</code></pre>
+<h2 id="定義ファイルを再生成する"><a class="header" href="#定義ファイルを再生成する">定義ファイルを再生成する</a></h2>
+<p>定義ファイル、英語版<a href="/docs/rhai/reference/api.html">API Reference</a>、日本語版
+<a href="#apiリファレンス">APIリファレンス</a>は、engineの<code>register_fn</code> surfaceと
+documentation registry（<code>src/scripting/docs.rs</code>）を結合して生成されます。
+新しいConchordal versionを取得した後にdiagnosticsが欠ける場合は、すべてを再生成します。</p>
+<pre><code class="language-bash">cargo run --bin gen_rhai_defs
+</code></pre>
+<p>commit済みartifactが古いとCI testが失敗します。これは登録signatureと生成textを検査しますが、
+editor上の挙動はexperimentalなupstream serverとclient設定にも依存します。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="演奏"><a class="header" href="#演奏">演奏</a></h1>
+<p><a href="#クイックスタート">クイックスタート</a>では、最小のscenarioを書いて実行するところまでを
+説明しました。本章では、リアルタイムinstrumentを起動して演奏を始める、終了する、
+GUIなしで演奏する、その結果を記録・再現する、という一連の手順を説明します。</p>
+<h2 id="guiで演奏する"><a class="header" href="#guiで演奏する">GUIで演奏する</a></h2>
+<p>リアルタイムinstrumentでscenarioを起動します。</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai
+</code></pre>
+<p>scenarioをcompileした後にGUIが開き、初期設定では自動的に演奏が始まります。scriptが
+大まかな時間構造を与えます。<code>place()</code>がPopulationを導入し、<code>wait()</code>がscript上の時刻を進め、
+<code>section()</code>と<code>play()</code>は内部で作ったPopulationを有効範囲の終了時にreleaseします。その間も、
+Voiceの振る舞い、Landscape、それらのfeedbackはリアルタイムに変化し続けます。</p>
+<p>進行バーはscenario上の時刻を表示します。演奏中は、その右側にあるボタンを押すと
+演奏を終了します。ウィンドウを閉じるかCtrl-Cを押しても終了します。このボタンは一時停止では
+なく、GUI上でscriptを実行中に書き換えることもできません。scenarioを変更するときは、演奏を終了し、
+Rhai fileを編集して、もう一度起動します。</p>
+<p>GUIを先に用意し、合図に合わせて開始するには<code>--wait-user-start</code>を付けます。準備ができたら
+Spaceを押すか、開始ボタンをクリックします。</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --wait-user-start
+</code></pre>
+<p>scenarioが終わっても、初期設定では最終状態を確認できるようにGUIが残ります。進行バー
+右端のボタンまたはウィンドウの閉じるボタンで終了します。scenarioの終了と同時に閉じるには
+<code>--wait-user-exit=false</code>を付けます。</p>
+<h2 id="guiなしで演奏する"><a class="header" href="#guiなしで演奏する">GUIなしで演奏する</a></h2>
+<p><code>--nogui</code>を付けると、すぐに演奏を始め、scenarioの終了時にプログラムも終了します。GUIは
+表示しませんが、初期設定では既定の音声出力先から音を出します。</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --nogui
+</code></pre>
+<p>音を出さず、simulationやreport作成だけを行う場合に限り<code>--play=false</code>を使います。</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --nogui --play=false --report run.jsonl
+</code></pre>
+<p><code>--nogui</code>では、開始待ちと終了待ちの両方が無効になります。offline WAV出力は別の操作で、
+<code>conchordal-render</code>が担当します。リアルタイムinstrumentである<code>conchordal</code>はaudioを
+記録しません。</p>
+<h2 id="聴く確かめる修正する"><a class="header" href="#聴く確かめる修正する">聴く・確かめる・修正する</a></h2>
+<p>scenarioは、どのPopulationをいつ配置し、どのような方針で振る舞わせるかを指定します。
+ただし、演奏中の正確な音高、リズム同期、生存、respawnの結果までは事前に決まりません。
+それらは、変化し続けるLandscapeとの相互作用から生まれます。scenarioを実行して聴き、
+実際に起きたことを確かめ、scriptを修正して、もう一度実行します。</p>
+<p>instrumentである<code>conchordal</code>は、どのbuild profileでもaudioをdiskへ書きません。
+演奏は、音が鳴り終わるとinstrument内には残らない一過的な出来事（ephemeral）として
+設計されています。</p>
+<h2 id="演奏を再現する"><a class="header" href="#演奏を再現する">演奏を再現する</a></h2>
+<p>各runはseedをlogへ出します。</p>
+<pre><code class="language-text">scenario seed: 3821650944810716341 (replay with --seed 3821650944810716341)
+</code></pre>
+<p>最上位のサンプルは毎回新しいseedから始まり、一つの固定結果ではなくsystemのvariationを
+示します。残したいrunが得られたら、表示された値で正確に再現します。</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --seed 3821650944810716341
+</code></pre>
+<p><code>conchordal-render</code>でも同じ<code>--seed</code>を使い、保存した演奏をWAVにできます。
+script内の<code>seed(...)</code>は実行中に初期seedを上書きするため、常にcommand-line flagより優先します。
+呼び出し方に関係なくscript自体を再現可能にする必要がある場合だけ使ってください。</p>
+<h2 id="レポート"><a class="header" href="#レポート">レポート</a></h2>
+<p><code>--report</code>へ書き込み先を指定して実行します。</p>
+<pre><code class="language-bash">cargo run --release -- samples/10_generations.rhai --report run.jsonl
+</code></pre>
+<p><code>--report</code>は<code>conchordal</code> instrumentのflagで、<code>--nogui</code>でも動作します。
+audioを描画する<code>conchordal-render</code>にはありません。</p>
+<p>fileはJSON Linesで、1行が1 record、<code>type</code> fieldで種類を示します。</p>
+<ul>
+<li><code>meta</code> — 最初に記録される有効なscenario seed。</li>
+<li><code>scene_marker</code> — 各<code>section("name", || { ... })</code>の開始位置。以後のrecordを直前の
+markerごとにまとめられます。</li>
+<li><code>spawn</code> / <code>respawn</code> / <code>death</code> — Voiceごとの世代交代。出現周波数、親となるVoice、
+設定寿命、energy枯渇時刻、envelope tailを含む観測寿命、初期consonance、死亡時PLV。</li>
+<li><code>onset</code> — Voiceごとの発音開始時刻、強度、周波数、位相同期、足場の状態。</li>
+<li><code>population_step</code> — 再生成待ちの<code>alive_count: 0</code>も含むPopulation size、
+平均周波数、Consonance Field score/level、周波数entropy。</li>
+<li><code>listener_state</code> — <code>ListenerTwin</code>の4つの知覚level、beat/subdivision/measure追跡、解析遅延。</li>
+<li><code>rhythm_observation</code> — Community全体の瞬間的なKuramoto orderと環境rhythm state。
+<code>rhythm_summary</code> — Community全体およびPopulationごとのonset density、IOI規則性、
+burstiness。Kuramoto summaryはCommunity全体にだけ付きます。</li>
+<li><code>listener_confidence_summary</code> — beat confidenceのpeakと終盤window。</li>
+<li><code>dcc_pressure</code> — listener由来のtension pressureとDCCが加えたpitch temperature bonus。</li>
+<li><code>phonation_gate_open</code> — phonation gateが開いた時刻と、その時点のconsonance値。</li>
+</ul>
+<p>未加工のJSONLは「Population 3の構成員が実際に入れ替わったのはいつか」「anchorが入った直後、
+<code>tension_level</code>はどう変化したか」といった狭い問いに直接答えます。</p>
+<h2 id="レポートを読む"><a class="header" href="#レポートを読む">レポートを読む</a></h2>
+<p>streamはplain JSONLなので、任意のJSON toolでfilterできます。次は全deathについて寿命と
+初期consonanceを取り出します。</p>
+<pre><code class="language-bash">jq -c 'select(.type == "death")
+       | {time_sec, population_id, configured_endurance_sec,
+          energy_depletion_sec, lifetime_sec, first_k_mean}' run.jsonl
+</code></pre>
+<p><code>scene_marker</code>の時刻でbucketに分ければ、「第IV sectionでcolonyは飢えたか、その時の
+consonanceはいくつか」を直接読めます。専用digest toolはありません。重要なsummaryは
+作品ごとに異なるため、問いに合わせた一度限りのfilterやscriptの方が固定formatより有効です。</p>
+<h2 id="gui"><a class="header" href="#gui">GUI</a></h2>
+<p>GUIは実行中のLandscapeとListenerTwinの状態をリアルタイムに表示します。レポートは、聴いて気づいたが
+すべての数値を同時には覚えられなかった瞬間を、演奏後に読むためのものです。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="population--voiceをまとめる持続単位"><a class="header" href="#population--voiceをまとめる持続単位">Population — Voiceをまとめる持続単位</a></h1>
+<p>Conchordalを理解するための最も簡単な捉え方は、音符の次に別の音符が来るというものでは
+ありません。PopulationSpecが、生きたVoiceからなる持続的なPopulationへ変わります。</p>
+<pre><code class="language-text">PopulationSpec + Placement --place()--&gt; Population --&gt; Voice(s)
+                                                |
+                                                `-- later generations
+
+Community = runtime terrainを共有するすべてのPopulation
+</code></pre>
+<p><strong>PopulationSpec</strong>は再利用可能な配置前の定義です。初代のVoiceの初期値と、
+生存過程、生存可能性、respawnなど、Population全体に属する方針を組み合わせます。
+<strong>Placement</strong>は初代のVoiceがどこへ何体入るかを指定します。<code>place()</code>は両者を結合し、
+ただちに<strong>Population</strong>を返します。これはVoiceごとの参照ではなく、配置されたPopulationを
+表す一つの安定した参照です。実行時の<strong>Community</strong>は、Landscapeを共有するすべての
+Populationを集約したものです。</p>
+<pre><code class="language-rhai">let population_spec = harmonic()
+    .amp(0.035)
+    .sustain()
+    .respawn_capacity(6);
+
+let population = place(
+    population_spec,
+    consonance(90.0, 900.0).count(6)
+);
+wait(3.0);
+release(population);
+</code></pre>
+<p>ここで<code>population</code>は6つの初代のVoiceをまとめて制御します。レポートでは共有する
+<code>population_id</code>と、各々のVoiceの<code>voice_id</code>を区別します。Voiceが死亡して代わりのVoiceに
+置き換わると<code>voice_id</code>と<code>generation</code>は変わりますが、Populationと<code>population_id</code>は
+変わりません。</p>
+<h2 id="配置境界"><a class="header" href="#配置境界">配置境界</a></h2>
+<p><code>place()</code>だけが定義から実行時への遷移です。初期設定専用の属性は、先に
+<code>PopulationSpec</code>へすべて設定します。配置後の<code>Population</code>が公開するのは実行中の更新と
+releaseだけで、specificationへ戻したりfounder policyを書き換えたりはできません。</p>
+<pre><code class="language-rhai">let spec = harmonic()
+    .brightness(0.4)
+    .brain("entrain")
+    .endurance(8.0);
+
+let population = place(spec, consonance(220.0).count(3));
+population.amp(0.03); // Live patch at the current script time.
+flush();              // Emit pending live patches without advancing time.
+wait(2.0);
+release(population);
+</code></pre>
+<p><code>wait(seconds)</code>も保留中の更新を発行してからスクリプト上の時刻を進めます。
+<code>wait()</code>も<code>flush()</code>も、未配置のPopulationを作りません。初代のVoiceは
+<code>place()</code>そのものによってschedule済みです。<a href="#apiリファレンス">APIリファレンス</a>では、
+<code>PopulationSpec</code>のメソッドを初期設定専用、<code>Population</code>のメソッドを実行中に更新可能と表示します。</p>
+<h2 id="独立した五つの問い"><a class="header" href="#独立した五つの問い">独立した五つの問い</a></h2>
+<p>PopulationSpecは、複数の独立した問いに答えます。分けて考えることで、ある音楽的判断を
+別の判断と取り違えずに済みます。</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>問い</th><th>主なcontrol</th><th>意味</th></tr>
+</thead>
+<tbody>
+<tr><td>何が鳴るか</td><td><code>sine</code>, <code>harmonic</code>, <code>modal</code>, <code>brightness</code>, <code>modes</code></td><td>初代のVoiceの発音体と周波数成分。</td></tr>
+<tr><td>どんな生を送るか</td><td><code>brain(name)</code>: <code>entrain</code>, <code>seq</code>, <code>drone</code></td><td>articulationが生態系に参加するか、書かれた生を進むか、Landscapeのanchorとして持続するか。</td></tr>
+<tr><td>いつ鳴るか</td><td><code>sustain</code>, <code>repeat</code>, <code>metric</code>, <code>entrained</code>, <code>flow</code></td><td>phonationとonset timing。</td></tr>
+<tr><td>音高はどこへ行くか</td><td>Placement、<code>anchor</code>, <code>seek_consonance</code>, <code>temperature</code></td><td>初代のVoiceが入る位置と、その後の移動。</td></tr>
+<tr><td>Populationはどう持続するか</td><td><code>endurance</code>, <code>recovery</code>, viability, respawn</td><td>Voiceのエネルギー、死、Populationの世代交代。</td></tr>
+</tbody>
+</table>
+</div>
+<p>別の行に属するcallは合成できます。同じ軸では通常、最後の指定が優先されます。正確な
+構築時に各メソッドがどう働くかはAPIリファレンスに記載されています。</p>
+<h2 id="articulation-lifebrain"><a class="header" href="#articulation-lifebrain">Articulation life：<code>brain</code></a></h2>
+<p><code>brain(name)</code>は、鳴っている間にVoiceがどのような生を送るかを選びます。</p>
+<ul>
+<li><code>brain("entrain")</code>は既定の、生きた発音様式です。代謝と生存過程の設定を
+通じてconsonanceとrhythmic fitに応答できます。</li>
+<li><code>brain("seq")</code>は固定された生を持つauthored eventです。Field viabilityとmetabolismを
+無視します。</li>
+<li><code>brain("drone")</code>は明示的にreleaseされるまで死にません。terrain anchorなど、
+持続するmaterialに適します。</li>
+</ul>
+<p>これはphonation timingとは別です。</p>
+<blockquote>
+<p><code>brain("entrain")</code>は生の種類を選び、<code>.entrained()</code>は反復onsetを共有meterへ
+中程度に結合します。</p>
+</blockquote>
+<p>似た名前ですが別の軸なので、同時に使用できます。</p>
+<pre><code class="language-rhai">let colony = harmonic()
+    .brain("entrain")
+    .entrained()
+    .cycles(2)
+    .seek_consonance()
+    .endurance(8.0)
+    .recovery(4.0)
+    .consonance_viability(0.30, 0.80);
+
+place(colony, consonance(90.0, 900.0).count(5));
+wait(8.0);
+</code></pre>
+<p><code>brain()</code>は発音体、Placement、音高の方針を選びません。droneは聴取可能にもhabitat-onlyにも
+でき、生きたVoiceは固定も移動もできます。同じ共鳴発音体に任意のarticulation lifeを
+組み合わせられます。</p>
+<h2 id="phonationとduration"><a class="header" href="#phonationとduration">Phonationとduration</a></h2>
+<p>Phonationは、onsetがいつ起きるか、そのonsetがどれだけ開いたままかに答えます。</p>
+<ul>
+<li><code>sustain()</code>はVoiceが生きている間、音を保持します。</li>
+<li><code>repeat()</code>は初期値が設定された反復発音を選びます。</li>
+<li><code>metric()</code>、<code>entrained()</code>、<code>flow()</code>は共有meterとの結合連続体上の領域を選び、
+re-attackを含意します。</li>
+<li><code>cycles(n)</code>はdurationをrhythmic cycle数で表します。</li>
+</ul>
+<p>presetで意図を表せない場合は、低水準の<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、
+adaptive duration controlを使えます。まずpresetから始め、作品が必要とするときだけ
+明示的timingを使ってください。</p>
+<h2 id="releaseはdeathではない"><a class="header" href="#releaseはdeathではない">Releaseはdeathではない</a></h2>
+<p><code>release(population)</code>はスクリプトによる終端判断です。以後そのPopulationへの更新は無視され、
+現在のVoiceはrelease envelopeへ入り、Populationは閉じます。生態学的な死は実行時の
+結果です。一つのVoiceがenergyを使い果たした後、Populationの再生成方針が代わりのVoiceを
+作る場合があります。<code>section</code>や<code>play</code>の有効範囲も、終了時に内部で作ったPopulationをreleaseします。</p>
+<p>次章では、<a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a>を説明します。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="voiceとlandscape--音と環境のフィードバック"><a class="header" href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a></h1>
+<p>habitat busへ送られたVoiceはLandscapeを変え、変化したLandscapeはplacement、movement、
+viabilityへ影響します。この章では、その実行時feedbackと、そこから生じるenergy、death、
+respawnの過程を追います。</p>
+<pre><code class="language-text">Voice bodies
+    |-- presentation bus --&gt; listener / ListenerTwin
+    |
+    `-- habitat bus --&gt; Landscape --&gt; placement, movement, viability
+                              ^                         |
+                              `------ new sound &lt;------'
+</code></pre>
+<p>初期状態ではすべてのVoiceが両方のバスへ送られ、聴衆と生態系は同じ物理的な出来事を共有します。
+意図的に分離する方法は<a href="#ルーティングとlistenertwin">ルーティングとListenerTwin</a>を参照してください。</p>
+<h2 id="音からlandscapeへ"><a class="header" href="#音からlandscapeへ">音からLandscapeへ</a></h2>
+<p>Landscapeはhabitat busをlog-frequency spaceで解析し、次を計算します。</p>
+<ul>
+<li><strong>roughness potential</strong> — critical band内の干渉とbeating。</li>
+<li><strong>harmonicity potential</strong> — periodicityとvirtual rootへのsupport。</li>
+<li><strong>Consonance Field</strong> — candidate frequencyの評価に使う合成地形。</li>
+</ul>
+<p>Voiceがhabitat bus上の周波数成分を変えると、これらの走査結果も変わります。そのため
+<code>consonance(...).peak()</code>は固定scale degreeを返しません。現在鳴っているものによって
+答えが変わります。</p>
+<h2 id="scorelevelmassdensity"><a class="header" href="#scorelevelmassdensity">Score、level、mass、density</a></h2>
+<p>同じLandscapeから複数の表現が導かれます。関連はありますが交換可能ではありません。</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>表現</th><th style="text-align: right">範囲</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td>potential</td><td style="text-align: right">kernel依存</td><td>raw roughness/harmonicity output。</td></tr>
+<tr><td>field score</td><td style="text-align: right">非有界の実数</td><td>位置比較、hill-climb、placement tension。</td></tr>
+<tr><td>field level</td><td style="text-align: right"><code>0..1</code></td><td>振る舞いと生存可能性に使う有界な信号。</td></tr>
+<tr><td>density mass</td><td style="text-align: right">非負</td><td>stochastic placementの正規化前weight。</td></tr>
+<tr><td>density / PMF</td><td style="text-align: right">選択範囲内で総和1</td><td>密度分布からの標本抽出。</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>.peak()</code>は極値を選びます。既定の密度配置はPMFから標本を取るため、複数のVoiceは
+一つの周波数区間へ重ならず、支えられた領域の周囲に分布します。
+<code>tension(degree)</code>は最大peakより一定のfield-score stepだけ下を狙います。
+生存可能性の範囲は、有界または環境相対の適合度を読みます。レポートの接尾辞も同じ区別を
+保ち、<code>mean_c_field_score</code>と<code>mean_c_field_level</code>は別の量です。</p>
+<h2 id="配置と移動は別の判断"><a class="header" href="#配置と移動は別の判断">配置と移動は別の判断</a></h2>
+<p>配置はVoiceがどこへ入るか、音高の振る舞いは入った後に何が起きるかに答えます。</p>
+<pre><code class="language-rhai">let fixed_strain = harmonic()
+    .amp(0.035)
+    .sustain()
+    .anchor();
+
+let resolving_strain = harmonic()
+    .amp(0.035)
+    .sustain()
+    .seek_consonance()
+    .glide(0.4);
+
+section("two responses to dissonance", || {
+    place(fixed_strain, dissonance(140.0, 900.0).count(3));
+    place(resolving_strain, dissonance(140.0, 900.0).count(3));
+    wait(6.0);
+});
+</code></pre>
+<p>両方のPopulationが不協和な領域へ入ります。一方はその状態を保ち、もう一方は解決へ向かう
+出発点として扱います。</p>
+<h2 id="自分ではなく環境を評価する"><a class="header" href="#自分ではなく環境を評価する">自分ではなく環境を評価する</a></h2>
+<p>Voiceは、後で自ら評価するConsonance Fieldへ自身のエネルギーも加えます。そのままでは、強いVoiceは自分の
+footprintを聴くことでviableに見えるかもしれません。そこで<code>consonance_viability()</code>は
+既定で環境相対評価を有効にし、自分の寄与を近似的に除いて適合度を判断します。</p>
+<p>これは生存規則であり、音の送り先を決める規則ではありません。Voiceはhabitat busへ寄与し、ほかの
+すべてのVoiceが読むConsonance Fieldを変え続けます。自分も含むConsonance Field全体への適合度を問いたい場合だけ
+<code>viability_scope("total")</code>を使います。</p>
+<h2 id="energydeathreplacement"><a class="header" href="#energydeathreplacement">Energy、death、replacement</a></h2>
+<p>生態学的lifecycleは<code>brain("entrain")</code>に属し、energyは<code>0..1</code>へ正規化されます。</p>
+<ol>
+<li><code>endurance(seconds)</code>がzero-fit時の基準寿命を定める。</li>
+<li>attackごとに<code>attack_cost_fraction</code>を消費する。</li>
+<li>consonantなattackは最大<code>attack_recharge_fraction</code>まで回復できる。</li>
+<li><code>recovery(seconds)</code>が連続回復を有効にし、viability windowが現在位置での回復量を決める。</li>
+<li>energyがゼロになるとVoiceは死亡し、音の減衰へ入る。</li>
+<li>再生成の方針があれば、Populationは代わりのVoiceを生み出せる。</li>
+</ol>
+<pre><code class="language-rhai">let settlement = consonance(70.0, 1100.0).spacing(0.8);
+
+let ecology = harmonic()
+    .brain("entrain")
+    .entrained()
+    .cycles(2)
+    .seek_consonance()
+    .endurance(8.0)
+    .recovery(4.0)
+    .attack_cost_fraction(0.017)
+    .attack_recharge_fraction(0.70)
+    .consonance_viability(0.32, 0.82)
+    .respawn_consonance()
+    .respawn_capacity(8)
+    .respawn_settle(settlement);
+
+place(ecology, consonance(70.0, 1100.0).count(8));
+wait(20.0);
+</code></pre>
+<p>respawn policyは異なる作曲上の問いに答えます。</p>
+<ul>
+<li><code>respawn_random()</code> — parentの系譜を作りません。Populationを最初に配置したPlacementから
+candidateを作り、現在のscene scoreで重み付けして選びます。一様random配置ではありません。</li>
+<li><code>respawn_hereditary(sigma_oct)</code> — living parentをenergyで重み付けして選び、その近くへ
+offspring候補を作り、現在のField levelが最も高いcandidateを採用します。</li>
+<li><code>respawn_consonance()</code> — living parentをenergyで重み付けして選び、そのparentの周辺へ
+偏らせながらfield scoreの高いpeakから選びます。</li>
+<li><code>respawn_capacity(n)</code> — Populationが維持する生存個体数の上限。未指定時は初代の個体数で、
+明示値をfounder数より小さくはできない。</li>
+<li><code>respawn_settle(placement)</code> — そのPlacementからcandidateを追加します。respawn policy本来の
+baseline candidateも一つ残ります。</li>
+</ul>
+<p>respawn後も<code>Population</code>と<code>population_id</code>は維持され、<code>voice_id</code>と<code>generation</code>が変わります。
+レポートの記録により、この世代交代を観測できます。</p>
+<h2 id="実行時のfeedbackと人間による修正"><a class="header" href="#実行時のfeedbackと人間による修正">実行時のfeedbackと人間による修正</a></h2>
+<ul>
+<li><strong>実行時のfeedback</strong>は自動です。音がLandscapeを変え、LandscapeがVoiceの振る舞いと
+生存を変えます。</li>
+<li><strong>人間による修正</strong>はrunの間に行います。実行し、聴き、reportを調べ、scenarioを修正して
+再実行します。</li>
+</ul>
+<p>実行して結果を確かめ、修正する具体的な手順は<a href="#演奏">演奏</a>で説明します。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="consonance-field--音高を評価する地形"><a class="header" href="#consonance-field--音高を評価する地形">Consonance Field — 音高を評価する地形</a></h1>
+<p>Conchordalの知覚coreである<strong>Landscape</strong>はhabitat busを聴き、log-frequency spaceへ
+変換して二つのpotentialを計算します。<strong>roughness</strong>はcritical band内の振幅変動による
+感覚的不協和、<strong>harmonicity</strong>はperiodicityとtemplate matchingです。この二つを
+組み合わせた<strong>Consonance Field</strong>は、placement、movement、prediction、survivalが
+読む、周波数上の評価地形です。</p>
+<p>Consonance Fieldはhabitat busから計算されるため、そのbusへ送られたVoiceが
+ほかのVoiceの読むConsonance Fieldを変形します。presentation busだけへ送られたVoiceは
+変形しません。和声はchord chartではなく、このfeedback loopから生まれます。
+potential、score、level、mass、densityの関係は
+<a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a>を参照してください。</p>
+<h2 id="consonance-fieldへの配置consonancedissonanceedgegap"><a class="header" href="#consonance-fieldへの配置consonancedissonanceedgegap">Consonance Fieldへの配置：<code>consonance</code>、<code>dissonance</code>、<code>edge</code>、<code>gap</code></a></h2>
+<p>Consonance Fieldに応じたPlacementでは、Field内の<strong>対象領域</strong>を指定します。既定では確率分布から位置を選び、
+<code>.peak()</code>を付けると決定的な極値を選びます。</p>
+<ul>
+<li><code>consonance</code> — consonanceが高い位置（harmonic center、fusion）。</li>
+<li><code>dissonance</code> — consonanceが低い位置（tension、cluster、color）。</li>
+<li><code>edge</code> — consonance/dissonanceの境界（metastableな中間）。</li>
+<li><code>gap</code> — 空いたregister（空間を埋め、maskingを避ける）。</li>
+</ul>
+<p><code>consonance(root)</code>はroot周辺のharmonic windowを取り、<code>range()</code>で倍音範囲を指定します。
+どの配置先にも、絶対周波数の<code>(min_hz, max_hz)</code>範囲を渡せます。</p>
+<pre><code class="language-rhai">let anchor = harmonic()
+    .brain("drone")
+    .amp(0.06)
+    .sustain()
+    .anchor();
+
+let voice = harmonic()
+    .amp(0.04)
+    .sustain();
+
+section("field placement", || {
+    place(anchor, at(110.0));
+    wait(1.0);
+
+    place(voice, consonance(110.0).peak().range(1.0, 4.0).count(6).spacing(0.9));
+    wait(6.0);
+});
+</code></pre>
+<p>追加指定のない配置先は<strong>密度分布</strong>として扱われます。「無作為だが調和的」なのではなく、
+協和のモデルから導かれ、指定範囲内で正規化された分布です。配置は配置後の振る舞いから
+独立しています。<code>dissonance</code>へ入り<code>anchor()</code>でclusterを保持することも、
+<code>seek_consonance()</code>で解決へ向かわせることもできます。</p>
+<pre><code class="language-rhai">let cloud = harmonic().amp(0.035).sustain();
+
+place(cloud, consonance(90.0, 1200.0).count(10).spacing(0.8));
+wait(8.0);
+</code></pre>
+<h2 id="配置時の緊張度tensionτ"><a class="header" href="#配置時の緊張度tensionτ">配置時の緊張度：<code>tension(τ)</code></a></h2>
+<p><code>tension</code>を指定しないConsonance Placementは、通常の方法で実現されます。<code>.peak()</code>なら
+最も強いpeakを選び、既定のdensityなら通常のConsonance密度分布を作ります。
+<code>tension(τ)</code>は、最大値より一段<strong>下</strong>のfield-scoreへ配置を偏らせます。
+<code>τ ∈ [0, 1]</code>がtension degreeで、<code>0</code>は通常の配置を変えず、大きい値ほど弱く
+metastableなstepを対象にします。指定範囲内の評価値で
+<code>target = L_max − τ·(L_max − L_min)</code>です。movementにおけるsearch <code>temperature</code>と
+対になる、spawnをどれだけ解決した位置に置くかのdialです。<code>.peak()</code>なら最も近いstepへ
+最寄りの段へ固定し、確率分布なら対象値の周辺へ重みを集中させます。</p>
+<pre><code class="language-rhai">let tense = harmonic().amp(0.035).sustain();
+
+// A metastable step below the strongest peak — placed, not resolved.
+place(tense, consonance(110.0, 1200.0).peak().tension(0.4).count(6).spacing(0.8));
+wait(6.0);
+</code></pre>
+<p>Consonance Fieldに依存しないPlacementには、対数周波数上で一様な<code>random(min_hz, max_hz)</code>と、幾何的な
+<code>at(hz)</code>、<code>line(start_hz, end_hz)</code>があります。</p>
+<h2 id="周波数をroot比で名づける"><a class="header" href="#周波数をroot比で名づける">周波数をroot比で名づける</a></h2>
+<p><code>at(hz)</code>と<code>line(start_hz, end_hz)</code>は絶対周波数を取ります。標準的な書き方は、
+鳴っている一つのrootをHzで名づけ、他のpitchをその比として導くことです。完全5度なら
+<code>root_hz * 1.5</code>、完全4度なら<code>root_hz * 4.0/3.0</code>、registerを上げるなら
+<code>root_hz * 2.0</code>です。比はField自身が読む物理量なので、周波数関係として考えられます。</p>
+<p>平均律のdecimal、たとえばD3を表す<code>146.83</code>も動作しますが、12音のsymbol gridを裏口から
+持ち込みます。sceneで実際に鳴っているrootの比を優先してください。</p>
+<pre><code class="language-rhai">let root_hz = 110.0;
+let voice = harmonic().amp(0.04).sustain();
+
+place(voice, at(root_hz * 1.5));
+wait(2.0);
+</code></pre>
+<h2 id="consonance-movementseek_consonance"><a class="header" href="#consonance-movementseek_consonance">Consonance movement：<code>seek_consonance</code></a></h2>
+<p>VoiceがConsonance Field上のより良い位置を能動的に探すときは<code>seek_consonance()</code>を使います。
+自由な山登り探索と音高推移の初期値を設定します。同じ移動を遅く、または速く
+動かしたいときは<code>glide(tau_sec)</code>を使います。</p>
+<pre><code class="language-rhai">let mover = harmonic()
+    .amp(0.045)
+    .sustain()
+    .seek_consonance()
+    .glide(0.35)
+    .avoid_neighbors(0.6)
+    .global_peaks(8, 70.0)
+    .ratio_candidates(5);
+
+place(mover, consonance(80.0, 900.0).count(8));
+wait(12.0);
+</code></pre>
+<p><code>avoid_neighbors(strength)</code>は混雑を避ける反発を加え、移動するVoiceがすべて同じ山へ重なるのを防ぎます。
+移動の反対は<code>anchor()</code>です。固定されたVoiceは音高を保ち、ほかのVoiceが読むConsonance Fieldだけを
+変形します。<code>at()</code>または<code>freq()</code>で指定したVoiceは暗黙に固定されます。</p>
+<p>移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
+（<code>pulse()</code>、<code>metric()</code>、<code>entrained()</code>、<code>flow()</code>）は発音開始ごとに新しい音高へ
+snapします。例外が必要なら<code>pitch_apply_mode()</code>を使います。研究scriptには
+<code>pitch_core()</code>など機構水準のcontrolもありますが、作品では<code>seek_consonance()</code>と
+<code>glide()</code>を優先してください。</p>
+<h2 id="consonance-viabilityとrespawn"><a class="header" href="#consonance-viabilityとrespawn">Consonance viabilityとrespawn</a></h2>
+<p><code>consonance_viability(low, high)</code>はconsonance window、<code>recovery(seconds)</code>は最大回復に
+要する時間を定義します。適合度の高いVoiceは支えられ、低いVoiceは基準
+<code>endurance(seconds)</code>へ近づきます。既定では自分の音響的な痕跡を近似的に除く
+<strong>環境相対</strong>評価です。Consonance Field全体への適合度を問う場合だけ<code>viability_scope("total")</code>を使います。</p>
+<p>再生成は循環を生態系として閉じます。Voiceが死亡すると、再生成の方針に従って代わりのVoiceが
+現れます。<code>respawn_consonance()</code>は、energyで重み付けして選んだliving parentの周辺へ
+偏らせながら、field scoreの高いpeakから選びます。<code>respawn_capacity(count)</code>はliving
+membership上限です。<code>respawn_settle(placement)</code>はpolicy本来のcandidateを置き換えず、
+replacementのcandidate poolへそのPlacementを追加します。</p>
+<pre><code class="language-rhai">let settle = consonance(70.0, 1100.0).spacing(0.8);
+
+let ecology = harmonic()
+    .amp(0.04)
+    .repeat()
+    .pulse(1.5)
+    .cycles(3)
+    .seek_consonance()
+    .glide(0.45)
+    .endurance(8.0)
+    .recovery(4.0)
+    .attack_cost_fraction(0.017)
+    .attack_recharge_fraction(0.70)
+    .consonance_viability(0.32, 0.82)
+    .respawn_consonance()
+    .respawn_capacity(14)
+    .respawn_settle(settle);
+
+place(ecology, consonance(70.0, 1100.0).count(14));
+wait(30.0);
+</code></pre>
+<p>完全なlifecycle/respawn surfaceは<a href="#apiリファレンス">APIリファレンス</a>、articulation、
+発音、音高の振る舞い、生存の区別は<a href="#population--voiceをまとめる持続単位">Population — Voiceをまとめる持続単位</a>、
+エネルギーと再生成のcycleは
+<a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a>を参照してください。</p>
+<h2 id="landscape-awareな音色"><a class="header" href="#landscape-awareな音色">Landscape-awareな音色</a></h2>
+<p>Fieldはpitchだけでなく音色も形づくれます。<code>modal()</code> bodyはmode patternを取ります。
+<code>landscape_density_modes()</code>はdensity massの強い位置を間隔を空けて決定的に選び、
+<code>landscape_peaks_modes()</code>はField levelの強いlocal peakを間隔を空けて選びます。
+そのため、bellのpartialをConsonance Fieldがすでにsupportする位置へ置けます。</p>
+<pre><code class="language-rhai">let shimmer_modes = landscape_density_modes()
+    .count(10)
+    .range(1.0, 5.5)
+    .gamma(1.6)
+    .spacing(0.7);
+
+let shimmer = modal()
+    .amp(0.025)
+    .sustain()
+    .seek_consonance()
+    .modes(shimmer_modes)
+    .brightness(0.7);
+
+place(shimmer, consonance(200.0, 1600.0).count(4));
+wait(8.0);
+</code></pre>
+<p>mode patternの生成関数には<code>harmonic_modes()</code>、<code>odd_modes()</code>、<code>power_modes(beta)</code>、
+<code>stiff_string_modes(stiffness)</code>、<code>custom_modes([ratios])</code>、<code>modal_table(name)</code>、
+<code>landscape_density_modes()</code>、<code>landscape_peaks_modes()</code>があります。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="リズム一つの結合連続体"><a class="header" href="#リズム一つの結合連続体">リズム：一つの結合連続体</a></h1>
+<p>Conchordalのリズムは、別々の時計を寄せ集めたものではありません。<strong>Communityから生まれる
+共有拍の上に、一つの結合連続体があります。</strong> Communityは、結合振動子からなる一つの拍を
+駆動します。個々のVoiceは位相振動子として働き、結合の強さに応じて発音位置をその拍へ
+近づけます。外から押し付ける格子はありません。VoiceがCommunity自身の拍へどれほど強く
+同期するかによって、まとまりも、その欠如も生まれます。</p>
+<p>三つのrhythm「family」は連続体上の三領域にすぎません。</p>
+<ul>
+<li><strong>metric</strong> — 強い結合。深いattractorとして安定したpulseに聞こえる。</li>
+<li><strong>entrained</strong> — 中程度の結合。時間とともに同期するがdriftも残る。</li>
+<li><strong>flow</strong> — ほぼゼロの結合。自由なrenewal processによる非metric texture。</li>
+</ul>
+<p>リズムはconsonance、viability、movement、respawnと同じ生態系に属します。timingが生存へ
+影響し、生存がtimingを再編成できます。</p>
+<h2 id="director水準の地形"><a class="header" href="#director水準の地形">Director水準の地形</a></h2>
+<p>directorはConsonance Fieldの操作と対称的にrhythmic terrainを形づくります。これらは
+scheduleではなくsoft priorであり、創発が働き続けます。</p>
+<ul>
+<li><code>meter_stability(value)</code> — <code>[0,1]</code>のattractor depth。実在するperiodicityに対する
+basinを深くするだけで、非metric inputからbeatを捏造しない。</li>
+<li><code>temporal_basin(min_hz, max_hz)</code> — 創発beatが引き寄せられるtempo領域。
+<code>consonance(min, max)</code>の時間軸版で、beatを配置したりmeasureを強制したりはしない。</li>
+</ul>
+<h2 id="voiceごとのプリセットと調整"><a class="header" href="#voiceごとのプリセットと調整">Voiceごとのプリセットと調整</a></h2>
+<p>Tier 1 presetの<code>metric()</code>、<code>entrained()</code>、<code>flow()</code>はrate引数を取りません。tempo領域は
+Voiceごとではなく、演出者が一度だけ設定する地形の性質です。<code>place()</code>より前に
+<code>PopulationSpec</code>へ設定します。</p>
+<p><code>.entrained()</code>と<code>brain("entrain")</code>を混同しないでください。前者はonset timing、後者は
+Voiceの発音上の生と代謝を選びます。独立しており併用できます。</p>
+<p>Voiceごとの設定で、結合連続体上の位置を細かく調整できます。</p>
+<ul>
+<li><code>entrainment(strength)</code> — <code>[0,1]</code>の結合。free（<code>0</code>）からlocked（<code>1</code>）。</li>
+<li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — metrical role。
+<code>accent</code>は共有meterを強く駆動するonsetを出し、反復downbeatからmeasureを創発できる。</li>
+<li><code>microtiming(amount)</code> — <code>[-0.5, 0.5]</code>のsigned beat-phase offset。<code>0.5</code>は半beatずれ、
+syncopationとして聞こえる。</li>
+</ul>
+<pre><code class="language-rhai">meter_stability(0.85);     // attractor depth: how readily a pulse forms
+temporal_basin(1.8, 2.2);   // tempo region the emergent beat gravitates toward
+
+let beat = harmonic()
+    .metric()
+    .rhythm_role("accent")  // a strong onset that drives the shared beat
+    .cycles(2);
+
+let entrained = harmonic()
+    .entrained()
+    .cycles(2);
+
+let drift = harmonic()
+    .flow()
+    .cycles(1);
+
+let offbeat = harmonic()
+    .metric()
+    .microtiming(0.5)       // a half-beat offset reads as syncopation
+    .cycles(2);
+
+place(beat, at(110.0));
+place(entrained, consonance(110.0).peak().count(3));
+place(drift, consonance(300.0, 1200.0).count(4));
+place(offbeat, at(220.0));
+wait(12.0);
+</code></pre>
+<p>同じ軸では最後の指定が優先されます。調整値は記憶され、対応するプリセットを選んだ時に適用されるため、
+<code>entrainment(0.8).metric()</code>と<code>metric().entrainment(0.8)</code>は同等です。
+<code>duration_range(...).adaptive_duration()</code>と逆順も同様です。</p>
+<h2 id="明示的なwhendurationtier-2"><a class="header" href="#明示的なwhendurationtier-2">明示的なwhen/duration（Tier 2）</a></h2>
+<p>presetの下には<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、<code>cycles(n)</code>、
+<code>adaptive_duration()</code>があり、<code>duration_range</code>、<code>duration_curve</code>、<code>shorten_on_drop</code>で
+調整できます。</p>
+<h2 id="生存としてのtimingtier-3"><a class="header" href="#生存としてのtimingtier-3">生存としてのtiming（Tier 3）</a></h2>
+<p>timingを生存と再編成へ影響させるには<code>rhythm_coupling_vitality(lambda_v, v_floor)</code>と
+<code>rhythm_reward(rho_t, "attack_phase_match")</code>を使い、internal oscillatorの直接設定には
+<code>rhythm_freq(freq_hz)</code>を使います。</p>
+<pre><code class="language-rhai">let pulse_voice = harmonic()
+    .repeat()
+    .pulse(2.0)
+    .cycles(2)
+    .rhythm_freq(2.0)
+    .rhythm_coupling_vitality(0.8, 0.4)
+    .rhythm_reward(0.4, "attack_phase_match");
+
+place(pulse_voice, at(165.0));
+wait(8.0);
+</code></pre>
+<h2 id="scaffoldresearch-control"><a class="header" href="#scaffoldresearch-control">Scaffold（research control）</a></h2>
+<p>scaffold functionは比較assay用の外部pulseを強制します。</p>
+<pre><code class="language-rhai">set_scaffold_off();
+set_scaffold_shared(2.0);
+set_scaffold_scrambled(2.0, 17);
+</code></pre>
+<p>demoやassayには有用ですが、リズム作曲の抽象ではありません。作曲されたリズムは結合連続体と
+地形から生じるべきです。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="ルーティングとlistenertwin"><a class="header" href="#ルーティングとlistenertwin">ルーティングとListenerTwin</a></h1>
+<h2 id="二つのbus"><a class="header" href="#二つのbus">二つのbus</a></h2>
+<p>各々のVoiceは、独立した二つのモノラルバスへ寄与します。</p>
+<ul>
+<li><strong>presentation bus</strong> → cpal出力 / offline render / UI metering（提示される作品）</li>
+<li><strong>habitat bus</strong> → NSGT解析 → Landscape（ALife生態系が応答するもの）</li>
+</ul>
+<p>初期状態では両方へ送られます。一方だけに送るには<code>send()</code>、両方を明示するには<code>|</code>で
+結合します。</p>
+<pre><code class="language-rhai">// Reference anchor: sensed by the ecology, absent from the presented sound.
+let anchor = harmonic().brain("drone").send(habitat_bus);
+
+// Presented decor that does not influence the ecology.
+let decor = sine().send(presentation_bus);
+
+// Explicitly both (the default).
+let normal = harmonic().send(habitat_bus | presentation_bus);
+
+place(anchor, at(110.0));
+place(decor, at(880.0));
+place(normal, consonance(110.0).peak().count(3));
+wait(4.0);
+</code></pre>
+<p>バスの分離は作曲の道具です。<code>send(habitat_bus)</code>の隠れたanchorは聞こえずにPopulationの
+組織化を変え、<code>send(presentation_bus)</code>のdecorは生態系を乱さずに聞こえます。</p>
+<p>初期状態ですべてのVoiceを両方のバスへ送るのは、それがDirect Cognitive Couplingだからです。
+聴き手が聴くものと生態系が知覚するものが同じ物理eventになります。分離は意図的な逸脱です。
+<code>send(habitat_bus)</code>は聞こえずにFieldを形づくるterrain、<code>send(presentation_bus)</code>は
+聞こえるが生態系の世界の外にあるdecorです。サンプルでは、scaffoldingは聞こえないか、
+Voiceとしての発音体と生を与えられます。</p>
+<h2 id="listenertwin"><a class="header" href="#listenertwin">ListenerTwin</a></h2>
+<p>Conchordalは、<strong>提示された音だけ</strong>をmodel化するlistener側の<code>ListenerTwin</code>を持ちます。
+habitat busは読まないため、hidden scaffoldが偽のlistener tensionを作ることはありません。
+<code>listener_state</code> reportには四つの知覚levelがあります。</p>
+<ul>
+<li><code>stability_level</code> — 現在聞こえる音の安定性 / consonance。</li>
+<li><code>resolvability_level</code> — 近くに、より安定したもっともらしい継続状態があるか。</li>
+<li><code>tension_level</code> — <code>(1 - stability) * resolvability</code>。現在は不安定だが改善経路がある状態。</li>
+<li><code>attention_level</code> — presentation由来のonset / spectral-flux salience。</li>
+</ul>
+<p>listener側のmeter推定も含みます。</p>
+<ul>
+<li><code>beat_hz</code>、<code>beat_phase</code>、<code>beat_confidence</code></li>
+<li><code>subdivision_ratio</code>、<code>subdivision_confidence</code></li>
+<li><code>measure_hz</code>、<code>measure_ratio</code>、<code>measure_confidence</code></li>
+</ul>
+<p><code>generated_frame_id</code>、<code>analysis_frame_id</code>、<code>analysis_lag_frames</code>は知覚遅延を明示します。
+report eventと原因となった音を比較するときに重要です。</p>
+<p>Twinを操作するscripting verbはありません。命令する対象ではなく観測する対象です。
+report有効時に<code>listener_state</code> recordを出し、GUIにも同じstateを表示します。generationへ
+結合する前に、自分が聴くtensionとTwinのreportが一致するかを確認してください。</p>
+<h2 id="dcctwinを戻す結合"><a class="header" href="#dcctwinを戻す結合">DCC：Twinを戻す結合</a></h2>
+<p>任意の結合である<strong>DCC</strong>はscriptではなく<code>config.toml</code>（または<code>--config</code>で指定したfile）で
+設定します。</p>
+<pre><code class="language-toml">[dcc]
+# Listener pressure is report/UI-only by default.
+# coupling_strength = 0.0
+# max_temperature_bonus = 0.10
+</code></pre>
+<ul>
+<li><code>coupling_strength</code>（<code>0.0</code>–<code>1.0</code>、既定値<code>0.0</code>）：<code>0.0</code>ではレポートとUI専用で、
+generationは変わりません。値を上げると
+<code>tension_pressure = tension_level * resolvability_level * coupling_strength</code>を
+一時的な音高探索の加算値としてだけ使います。目標音高やリズム同期を
+直接設定しません。</li>
+<li><code>max_temperature_bonus</code>（既定値<code>0.10</code>）：一時的な加算値の上限。</li>
+</ul>
+<p><code>listener_state</code>が音楽的に読めることを確かめてから<code>coupling_strength</code>を少しずつ上げます。
+結合中は<code>dcc_pressure</code> recordにpressureとtemperature bonusが記録されます。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="タイムラインと構造"><a class="header" href="#タイムラインと構造">タイムラインと構造</a></h1>
+<p>シナリオは音響標本を一つずつ予定表へ並べません。スクリプト上の時刻を進め、その時点で
+Populationを配置し、更新または終了する時刻を記述します。</p>
+<h2 id="placewaitflush"><a class="header" href="#placewaitflush"><code>place</code>、<code>wait</code>、<code>flush</code></a></h2>
+<p><code>place()</code>は現在時刻に初代のVoiceをただちに配置し、安定した<code>Population</code>への参照を
+返します。<code>wait(seconds)</code>は保留中の更新を発行して時刻を進めます。<code>flush()</code>は
+時刻を進めずに保留中の更新だけを発行します。</p>
+<pre><code class="language-rhai">let spec = harmonic()
+    .amp(0.04)
+    .brightness(0.35)
+    .sustain();
+
+let population = place(spec, consonance(220.0).count(3));
+population.amp(0.025); // Live patch at the same script time.
+flush();               // Emit it; the cursor does not move.
+wait(2.0);             // Advance two seconds.
+release(population);
+</code></pre>
+<p>意味上の境界は<code>wait()</code>や<code>flush()</code>ではなく<code>place()</code>です。発音体、振る舞い、生存過程、
+再生成の初期設定は<code>PopulationSpec</code>に属し、実行中の更新と終了だけが<code>Population</code>に属します。</p>
+<h2 id="releasesectionplay"><a class="header" href="#releasesectionplay"><code>release</code>、<code>section</code>、<code>play</code></a></h2>
+<p><code>release(population)</code>は明示的なreleaseです。<code>section(name, callback)</code>と
+<code>play(callback, ...)</code>は有効範囲を作り、関数が戻ると内部で作られたPopulationを
+自動的にreleaseします。有効範囲の終了時にはreleaseより前に保留中の更新を発行します。</p>
+<p>名前の付いたformには<code>section</code>を使います。名前はreportの<code>scene_marker</code>になります。
+引数を取る再利用可能なgestureには<code>play</code>を使います。</p>
+<pre><code class="language-rhai">let gesture = |root_hz, duration_sec| {
+    place(
+        harmonic().amp(0.035).sustain(),
+        consonance(root_hz).peak().count(3)
+    );
+    wait(duration_sec);
+};
+
+section("two gestures", || {
+    play(gesture, 110.0, 2.0);
+    play(gesture, 165.0, 2.0);
+});
+</code></pre>
+<p>各<code>play</code>が作るPopulationは呼び出しの終了時にreleaseされます。外側の<code>section</code>はレポートの印を
+提供し、その直下で作ったものを所有します。</p>
+<h2 id="parallel-timeline"><a class="header" href="#parallel-timeline">Parallel timeline</a></h2>
+<p><code>parallel([callbacks])</code>は現在時刻から複数のcursorをforkします。全branchは同時に始まり、
+記述後の主時刻は最長の分岐の終端へ進みます。各分岐も一つの有効範囲であり、戻ると内部の
+Populationをreleaseします。</p>
+<pre><code class="language-rhai">section("overlap", || {
+    parallel([
+        || {
+            place(sine().amp(0.05).sustain(), at(220.0));
+            wait(3.0);
+        },
+        || {
+            wait(1.0);
+            place(harmonic().amp(0.03).sustain(), at(330.0));
+            wait(1.0);
+        }
+    ]);
+});
+</code></pre>
+<p>第一branchはforkから3秒後、第二branchは2秒後に終わるため、main cursorは3秒進みます。
+両分岐の有効範囲が重なる区間だけ、両方のVoiceが同時に鳴ります。</p>
+<h2 id="スクリプト上の時刻と実行時の振る舞い"><a class="header" href="#スクリプト上の時刻と実行時の振る舞い">スクリプト上の時刻と実行時の振る舞い</a></h2>
+<p>スクリプト上の時刻は制御事象の時刻を決めます。その時刻のLandscapeを予測するものでは
+ありません。<code>wait()</code>でscenarioが進む間も、movement、coupled rhythm、death、respawnは
+実行中も続きます。</p>
+<ul>
+<li>scriptはmacro structureを書く。</li>
+<li>Communityは瞬間ごとの振る舞いを生成する。</li>
+<li>レポートは、記述された区間で実際に起きたことを示す。</li>
+</ul>
+<p><a href="#演奏">演奏</a>で説明した手順を使って結果を確かめ、scenarioを修正します。
+特定の実現を再現するときだけ<code>seed(...)</code>または<code>--seed</code>を使います。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="apiリファレンス"><a class="header" href="#apiリファレンス">APIリファレンス</a></h1>
+<!-- Auto-generated by `cargo run --bin gen_rhai_defs`. DO NOT EDIT. -->
+<p>このページは、engineに登録されたスクリプティング面とドキュメントregistry （<code>src/scripting/docs.rs</code>）から生成されます。engineとの差異はCIテストで検出されます。再生成するには次を実行します：</p>
+<pre><code class="language-bash">cargo run --bin gen_rhai_defs
+</code></pre>
+<p>構築用のメソッドは操作対象を返すため、続けて呼び出せます。整数と小数は、両方のoverloadが登録されている箇所では交換可能です。正確なoverloadは生成されたLSP定義（<code>rhai-defs/conchordal.d.rhai</code>）に記載されています。</p>
+<p>スクリプティング面は四層に分かれます。<strong>Core API</strong>は選別された作曲用の面で、すべてのサンプルを記述できます。<strong>Experimental</strong>は試聴中のCore候補です。<strong>Mechanism Tuning</strong>は、Coreでは表せない挙動を作品が必要とするとき、動詞の背後にある機構を調整します。<strong>Research Controls</strong>は作曲ではなく、instrumentを研究するためのものです。関数ごとの技術説明は、LSP hoverと同じ英語の単一ソースを掲載しています。</p>
+<h2 id="型"><a class="header" href="#型">型</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>型</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>PopulationSpec</code></td><td>再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。</td></tr>
+<tr><td><code>Population</code></td><td><code>place()</code>が返すPopulation。Voiceが死亡し世代交代しても、同一性を保つ安定した参照。</td></tr>
+<tr><td><code>Placement</code></td><td>初代のVoiceをどこへ配置するかを表す。<code>at()</code>、<code>consonance()</code>、<code>dissonance()</code>、<code>edge()</code>、<code>gap()</code>、<code>random()</code>、<code>line()</code>で作る。</td></tr>
+<tr><td><code>ModePattern</code></td><td>モーダル合成の発音体に使う周波数構成。<code>*_modes()</code>関数で作る。</td></tr>
+<tr><td><code>Bus</code></td><td>二つのmono出力busの一つ。`</td></tr>
+<tr><td><code>BusSet</code></td><td>`bus</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="組み込み定数"><a class="header" href="#組み込み定数">組み込み定数</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>定数</th><th>型</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>habitat_bus</code></td><td><code>Bus</code></td><td>解析bus：NSGTからLandscapeへ送られ、生態系が知覚する。</td></tr>
+<tr><td><code>presentation_bus</code></td><td><code>Bus</code></td><td>提示bus：cpal出力、録音、UI meterへ送られ、聴き手が耳にする。</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="core-api"><a class="header" href="#core-api">Core API</a></h2>
+<p>選別された作曲用の面です。すべてのサンプルは、ここにある動詞だけで記述できます。</p>
+<h3 id="populationspec"><a class="header" href="#populationspec">PopulationSpec</a></h3>
+<p>PopulationSpecは、初代のVoiceの特性とPopulation全体の生存規則を定める。生成関数で作り、構築用メソッドで調整し、<code>place()</code>でPopulationにする。</p>
+<h4 id="sine"><a class="header" href="#sine"><code>sine</code></a></h4>
+<pre><code class="language-rhai ignore">sine() -&gt; PopulationSpec
+</code></pre>
+<p>PopulationSpec whose founder voices use a pure sine body.</p>
+<h4 id="harmonic"><a class="header" href="#harmonic"><code>harmonic</code></a></h4>
+<pre><code class="language-rhai ignore">harmonic() -&gt; PopulationSpec
+</code></pre>
+<p>PopulationSpec whose founder voices use a harmonic-series body.</p>
+<h4 id="modal"><a class="header" href="#modal"><code>modal</code></a></h4>
+<pre><code class="language-rhai ignore">modal() -&gt; PopulationSpec
+</code></pre>
+<p>PopulationSpec whose founder voices use a resonator-based modal body; shape it with <code>modes()</code>.</p>
+<h4 id="saw"><a class="header" href="#saw"><code>saw</code></a></h4>
+<pre><code class="language-rhai ignore">saw() -&gt; PopulationSpec
+</code></pre>
+<p>Harmonic-body preset with brightness 0.85.</p>
+<h4 id="square"><a class="header" href="#square"><code>square</code></a></h4>
+<pre><code class="language-rhai ignore">square() -&gt; PopulationSpec
+</code></pre>
+<p>Harmonic-body preset with brightness 0.65.</p>
+<h4 id="noise"><a class="header" href="#noise"><code>noise</code></a></h4>
+<pre><code class="language-rhai ignore">noise() -&gt; PopulationSpec
+</code></pre>
+<p>Harmonic-body preset with full brightness and maximal spectral motion (jitter).</p>
+<h4 id="variant"><a class="header" href="#variant"><code>variant</code></a></h4>
+<pre><code class="language-rhai ignore">variant(population_spec) -&gt; PopulationSpec
+</code></pre>
+<p>Clone a PopulationSpec so the copy can be modified independently.</p>
+<h3 id="配置"><a class="header" href="#配置">配置</a></h3>
+<p>Placementは、初代のVoiceが周波数空間へ入る場所を決める。生成関数で作り、<code>place()</code>へ渡す前に調整する。</p>
+<h4 id="at"><a class="header" href="#at"><code>at</code></a></h4>
+<pre><code class="language-rhai ignore">at(freq_hz) -&gt; Placement
+</code></pre>
+<p>Place at a fixed frequency in Hz.</p>
+<h4 id="consonance"><a class="header" href="#consonance"><code>consonance</code></a></h4>
+<pre><code class="language-rhai ignore">consonance(root_hz) -&gt; Placement
+consonance(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Target consonance maxima. Density cloud by default; <code>.peak()</code> for the extremum. <code>consonance(root)</code> takes a harmonic window around a root (default 1x-4x, set multiples with <code>range()</code>); <code>consonance(min, max)</code> takes an absolute range. Default spacing is 1.0 ERB.</p>
+<h4 id="dissonance"><a class="header" href="#dissonance"><code>dissonance</code></a></h4>
+<pre><code class="language-rhai ignore">dissonance(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Target consonance minima (tension, clusters). Density cloud by default; <code>.peak()</code> for the most dissonant point.</p>
+<h4 id="edge"><a class="header" href="#edge"><code>edge</code></a></h4>
+<pre><code class="language-rhai ignore">edge(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Target the consonance/dissonance boundary (C near its midpoint). The metastable region between fusion and beating. Density band by default; <code>.peak()</code> for the point closest to the boundary.</p>
+<h4 id="gap"><a class="header" href="#gap"><code>gap</code></a></h4>
+<pre><code class="language-rhai ignore">gap(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Target empty registers (low subjective intensity); fill the room. Density cloud by default; <code>.peak()</code> for the emptiest position.</p>
+<h4 id="peak"><a class="header" href="#peak"><code>peak</code></a></h4>
+<pre><code class="language-rhai ignore">peak()
+</code></pre>
+<p>適用対象：<code>Placement</code>。</p>
+<p>Realize a field target as its deterministic extremum.</p>
+<h4 id="density"><a class="header" href="#density"><code>density</code></a></h4>
+<pre><code class="language-rhai ignore">density()
+</code></pre>
+<p>適用対象：<code>Placement</code>。</p>
+<p>Realize a field target as a stochastic cloud (the default).</p>
+<h4 id="tension"><a class="header" href="#tension"><code>tension</code></a></h4>
+<pre><code class="language-rhai ignore">tension(degree)
+</code></pre>
+<p>適用対象：<code>Placement</code>。</p>
+<p>Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1). Consonance placement only. 0 leaves ordinary Consonance placement unchanged: <code>peak()</code> selects the strongest peak, while the default density remains the ordinary Consonance cloud. Higher values target a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).</p>
+<h4 id="random"><a class="header" href="#random"><code>random</code></a></h4>
+<pre><code class="language-rhai ignore">random(min_hz, max_hz) -&gt; Placement
+</code></pre>
+<p>Log-uniform random placement inside a frequency range.</p>
+<h4 id="line"><a class="header" href="#line"><code>line</code></a></h4>
+<pre><code class="language-rhai ignore">line(start_hz, end_hz) -&gt; Placement
+</code></pre>
+<p>Linear interpolation of positions between two frequencies.</p>
+<h4 id="count"><a class="header" href="#count"><code>count</code></a></h4>
+<pre><code class="language-rhai ignore">count(n)
+</code></pre>
+<p>適用対象：<code>Placement</code>。</p>
+<p>Positive number of founder voices to place (default 1).</p>
+<h4 id="range"><a class="header" href="#range"><code>range</code></a></h4>
+<pre><code class="language-rhai ignore">range(min_mul, max_mul)
+</code></pre>
+<p>適用対象：<code>Placement</code>。</p>
+<p>Multiplier range relative to the root; only valid on <code>consonance(root)</code>.</p>
+<h4 id="spacing"><a class="header" href="#spacing"><code>spacing</code></a></h4>
+<pre><code class="language-rhai ignore">spacing(min_erb)
+</code></pre>
+<p>適用対象：<code>Placement</code>。</p>
+<p>Minimum ERB distance between placed voices; valid on field placements.</p>
+<h3 id="timelineとpopulation"><a class="header" href="#timelineとpopulation">TimelineとPopulation</a></h3>
+<p><code>place()</code>は現在のスクリプト時刻にPopulationを配置する。<code>wait()</code>は時刻を進め、<code>flush()</code>は時刻を進めずに保留中の更新を発行する。有効範囲が終わると、内部のPopulationは自動的に解放される。</p>
+<h4 id="place"><a class="header" href="#place"><code>place</code></a></h4>
+<pre><code class="language-rhai ignore">place(population_spec, placement) -&gt; Population
+</code></pre>
+<p>Create a Population at the current script time. <code>place()</code> is the sole Population boundary. Configure initial-only properties on the PopulationSpec first; the returned Population exposes only live patches and release.</p>
+<h4 id="wait"><a class="header" href="#wait"><code>wait</code></a></h4>
+<pre><code class="language-rhai ignore">wait(seconds)
+</code></pre>
+<p>Emit pending live patches, then advance the timeline cursor.</p>
+<h4 id="flush"><a class="header" href="#flush"><code>flush</code></a></h4>
+<pre><code class="language-rhai ignore">flush()
+</code></pre>
+<p>Emit pending live patches without advancing time.</p>
+<h4 id="release"><a class="header" href="#release"><code>release</code></a></h4>
+<pre><code class="language-rhai ignore">release(population)
+</code></pre>
+<p>Close a live Population; its voices enter their release phase and fade out. Release is terminal at the scripting surface: later live patches on the same Population are ignored.</p>
+<h4 id="section"><a class="header" href="#section"><code>section</code></a></h4>
+<pre><code class="language-rhai ignore">section(name, callback)
+</code></pre>
+<p>Named scope; populations placed inside are released when the callback returns.</p>
+<h4 id="play"><a class="header" href="#play"><code>play</code></a></h4>
+<pre><code class="language-rhai ignore">play(callback)
+play(callback, arg1)
+play(callback, arg1, arg2)
+play(callback, arg1, arg2, arg3)
+play(callback, [args])
+</code></pre>
+<p>Scoped callback execution with automatic population release. Accepts 0-3 positional arguments, or an array of arguments.</p>
+<h4 id="parallel"><a class="header" href="#parallel"><code>parallel</code></a></h4>
+<pre><code class="language-rhai ignore">parallel(callbacks)
+</code></pre>
+<p>Run an array of closures on parallel timelines from the current cursor. Each branch starts at the current cursor; the cursor advances to the latest branch end.</p>
+<h4 id="seed"><a class="header" href="#seed"><code>seed</code></a></h4>
+<pre><code class="language-rhai ignore">seed(value)
+</code></pre>
+<p>Set the random seed for reproducible scenarios.</p>
+<h3 id="bodyと音色"><a class="header" href="#bodyと音色">Bodyと音色</a></h3>
+<p>Voiceの音響bodyを構成するlevel、spectrum、detuning、envelope。</p>
+<h4 id="amp"><a class="header" href="#amp"><code>amp</code></a></h4>
+<pre><code class="language-rhai ignore">amp(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Amplitude in 0.0-1.0.</p>
+<h4 id="freq"><a class="header" href="#freq"><code>freq</code></a></h4>
+<pre><code class="language-rhai ignore">freq(hz)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Frequency lock in Hz; implies an anchored pitch (see <code>anchor()</code>).</p>
+<h4 id="brightness"><a class="header" href="#brightness"><code>brightness</code></a></h4>
+<pre><code class="language-rhai ignore">brightness(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Spectral brightness in 0.0-1.0 (harmonic/modal bodies).</p>
+<h4 id="spread"><a class="header" href="#spread"><code>spread</code></a></h4>
+<pre><code class="language-rhai ignore">spread(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Detuning spread.</p>
+<h4 id="unison"><a class="header" href="#unison"><code>unison</code></a></h4>
+<pre><code class="language-rhai ignore">unison(count)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Number of unison detuning copies.</p>
+<h4 id="modes"><a class="header" href="#modes"><code>modes</code></a></h4>
+<pre><code class="language-rhai ignore">modes(pattern)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Set the mode pattern of a modal body. See the Mode Patterns section for constructors and modifiers.</p>
+<h4 id="adsr"><a class="header" href="#adsr"><code>adsr</code></a></h4>
+<pre><code class="language-rhai ignore">adsr(attack_sec, decay_sec, sustain_level, release_sec)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>ADSR amplitude envelope.</p>
+<h3 id="phonationとリズム"><a class="header" href="#phonationとリズム">Phonationとリズム</a></h3>
+<p>Voiceがいつ、どれだけの間鳴るかを決める。Tier 1はリズム結合連続体の領域を選び、Tier 2はwhen/durationを明示し、Tier 3は専門的な調整を行う。同じ軸では最後の指定が優先される。</p>
+<h4 id="brain"><a class="header" href="#brain"><code>brain</code></a></h4>
+<pre><code class="language-rhai ignore">brain(name)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm coupling continuum (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
+<h4 id="sustain"><a class="header" href="#sustain"><code>sustain</code></a></h4>
+<pre><code class="language-rhai ignore">sustain()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Sustain phonation mode (default).</p>
+<h4 id="repeat"><a class="header" href="#repeat"><code>repeat</code></a></h4>
+<pre><code class="language-rhai ignore">repeat()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Repeated/pulsed phonation mode.</p>
+<h4 id="metric"><a class="header" href="#metric"><code>metric</code></a></h4>
+<pre><code class="language-rhai ignore">metric()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>High coupling to the shared emergent meter: deep attractor, stable pulse. Takes no rate argument: the tempo region is director-level terrain (<code>temporal_basin</code>).</p>
+<h4 id="entrained"><a class="header" href="#entrained"><code>entrained</code></a></h4>
+<pre><code class="language-rhai ignore">entrained()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Medium coupling: synchronization emerges over time, still drifts.</p>
+<h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
+<pre><code class="language-rhai ignore">flow()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Near-zero coupling: free renewal process, non-metric texture.</p>
+<h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
+<pre><code class="language-rhai ignore">entrainment(strength)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Override coupling strength in 0-1 (free .. locked). Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
+<h4 id="rhythm_role"><a class="header" href="#rhythm_role"><code>rhythm_role</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_role(name)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Metrical job: <code>"beat"</code>, <code>"subdivision"</code>, <code>"accent"</code>, or <code>"texture"</code>. <code>accent</code> emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.</p>
+<h4 id="microtiming"><a class="header" href="#microtiming"><code>microtiming</code></a></h4>
+<pre><code class="language-rhai ignore">microtiming(amount)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.</p>
+<h4 id="cycles"><a class="header" href="#cycles"><code>cycles</code></a></h4>
+<pre><code class="language-rhai ignore">cycles(n)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Duration of n rhythm cycles.</p>
+<h3 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h3>
+<p>VoiceがConsonance Field内をどう移動するかを決める。<code>seek_consonance()</code>、<code>glide()</code>、<code>temperature()</code>が基本の作曲用APIで、残りは山登り探索とpeak samplerを調整する。</p>
+<h4 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h4>
+<pre><code class="language-rhai ignore">anchor()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Hold the voice at its pitch: an anchored voice never moves. Voices placed with <code>at()</code> or given <code>freq()</code> are anchored implicitly; use <code>anchor()</code> to hold strategy-placed voices (<code>consonance()</code>, <code>dissonance()</code>, …) at their settled position, or to state the intent explicitly.</p>
+<h4 id="seek_consonance"><a class="header" href="#seek_consonance"><code>seek_consonance</code></a></h4>
+<pre><code class="language-rhai ignore">seek_consonance()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at placement unless <code>pitch_apply_mode()</code> was called: sustained voices glide, re-attacking voices (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap at onsets.</p>
+<h4 id="glide"><a class="header" href="#glide"><code>glide</code></a></h4>
+<pre><code class="language-rhai ignore">glide(tau_sec)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Pitch glide time constant in seconds.</p>
+<h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
+<pre><code class="language-rhai ignore">temperature(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory. The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler’s candidate choice. Musically the movement-tension dial; its placement twin is <code>tension()</code>.</p>
+<h3 id="近傍の知覚"><a class="header" href="#近傍の知覚">近傍の知覚</a></h3>
+<p>Fieldを評価するとき、ほかのVoiceと自分自身のspectrum footprintをどう知覚するかを決める。</p>
+<h4 id="avoid_neighbors"><a class="header" href="#avoid_neighbors"><code>avoid_neighbors</code></a></h4>
+<pre><code class="language-rhai ignore">avoid_neighbors(strength)
+avoid_neighbors(strength, sigma_cents)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Crowding repulsion from neighboring voices. With one argument the repulsion width uses the default; the two-argument form sets it explicitly in cents.</p>
+<h3 id="lifecycleとviability"><a class="header" href="#lifecycleとviability">LifecycleとViability</a></h3>
+<p>時間に沿った生存と回復。<code>endurance()</code>は適合度がゼロのときの寿命、<code>recovery()</code>は最大の連続回復に要する時間を表す。<code>consonance_viability()</code>は回復範囲を定め、既定では環境相対評価を使う。</p>
+<h4 id="endurance"><a class="header" href="#endurance"><code>endurance</code></a></h4>
+<pre><code class="language-rhai ignore">endurance(seconds)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Nominal survival time at zero field fit, excluding the release tail. Energy is normalized to 0-1. The runtime drain rate is derived at spawn; actual lifetime varies with field fit, attacks, recovery, and release time.</p>
+<h4 id="recovery"><a class="header" href="#recovery"><code>recovery</code></a></h4>
+<pre><code class="language-rhai ignore">recovery(seconds)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Time to refill normalized energy from empty at full viability. Optional. If omitted, continuous recovery is disabled. This does not govern the separate per-attack economy.</p>
+<h4 id="attack_cost_fraction"><a class="header" href="#attack_cost_fraction"><code>attack_cost_fraction</code></a></h4>
+<pre><code class="language-rhai ignore">attack_cost_fraction(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Fraction of normalized energy spent by a full-strength attack.</p>
+<h4 id="attack_recharge_fraction"><a class="header" href="#attack_recharge_fraction"><code>attack_recharge_fraction</code></a></h4>
+<pre><code class="language-rhai ignore">attack_recharge_fraction(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Maximum normalized energy restored by a fully consonant attack.</p>
+<h4 id="sustain_drive"><a class="header" href="#sustain_drive"><code>sustain_drive</code></a></h4>
+<pre><code class="language-rhai ignore">sustain_drive(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Continuous drive level for sustained voices.</p>
+<h4 id="consonance_viability"><a class="header" href="#consonance_viability"><code>consonance_viability</code></a></h4>
+<pre><code class="language-rhai ignore">consonance_viability(low, high)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Consonance window used for viability scoring. Enables environment-relative scoring by default: a voice is evaluated against the field with its own footprint approximately removed (see <code>viability_scope()</code>).</p>
+<h4 id="dissonance_penalty"><a class="header" href="#dissonance_penalty"><code>dissonance_penalty</code></a></h4>
+<pre><code class="language-rhai ignore">dissonance_penalty(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>How strongly good field fit extends life beyond zero-fit endurance. The zero-fit endurance remains fixed; the penalty changes how much longer a well-fit voice survives.</p>
+<h3 id="respawn"><a class="header" href="#respawn">Respawn</a></h3>
+<p>Populationの世代交代。respawn policyはVoiceが死亡したときのreplacementの出現位置を決め、capacityとacceptance thresholdが生態系規模の挙動を形づくる。</p>
+<h4 id="respawn_random"><a class="header" href="#respawn_random"><code>respawn_random</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_random()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Respawn without parent inheritance. Candidates come from the Population’s original Placement and, when set, <code>respawn_settle()</code> adds alternative candidates. The current scene score weights the final choice, so this is not uniform random placement.</p>
+<h4 id="respawn_hereditary"><a class="header" href="#respawn_hereditary"><code>respawn_hereditary</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_hereditary(sigma_oct)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Respawn near an energy-weighted living parent, with frequency variance in octaves. Candidates share one selected parent. The candidate with the highest current Consonance Field level is used.</p>
+<h4 id="respawn_consonance"><a class="header" href="#respawn_consonance"><code>respawn_consonance</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_consonance()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Respawn from high field-score peaks, biased around an energy-weighted living parent. When living members exist, one parent is selected by energy. Candidate peaks come from the current Consonance Field and are weighted by scene score and their relation to the parent; without a usable peak, the policy falls back to the parent or original Placement.</p>
+<h4 id="respawn_capacity"><a class="header" href="#respawn_capacity"><code>respawn_capacity</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_capacity(count)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Maximum number of living members in the Population. Defaults to the number of founder Voices created by <code>place()</code> and cannot be lower than that founder count.</p>
+<h4 id="respawn_settle"><a class="header" href="#respawn_settle"><code>respawn_settle</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_settle(placement)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Add a Placement source to the replacement candidate pool. The policy’s own baseline still supplies one candidate; this Placement supplies the remaining alternatives. Requires a strategy-bearing placement: <code>consonance()</code>, <code>dissonance()</code>, <code>edge()</code>, <code>gap()</code>, <code>random()</code>, or <code>line()</code> (not <code>at()</code>).</p>
+<h4 id="respawn_min_c_level"><a class="header" href="#respawn_min_c_level"><code>respawn_min_c_level</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_min_c_level(level)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Minimum consonance level for respawn acceptance.</p>
+<h4 id="respawn_background_death_rate"><a class="header" href="#respawn_background_death_rate"><code>respawn_background_death_rate</code></a></h4>
+<pre><code class="language-rhai ignore">respawn_background_death_rate(rate)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Background turnover rate per second.</p>
+<h3 id="mode-pattern"><a class="header" href="#mode-pattern">Mode Pattern</a></h3>
+<p><code>modal()</code>の発音体に使う周波数関係。生成関数は<code>ModePattern</code>を返し、構築用メソッドで調整できる。Landscape-awareな構成は実行中のLandscapeから値を取る。</p>
+<h4 id="harmonic_modes"><a class="header" href="#harmonic_modes"><code>harmonic_modes</code></a></h4>
+<pre><code class="language-rhai ignore">harmonic_modes() -&gt; ModePattern
+</code></pre>
+<p>Harmonic series: f, 2f, 3f, …</p>
+<h4 id="odd_modes"><a class="header" href="#odd_modes"><code>odd_modes</code></a></h4>
+<pre><code class="language-rhai ignore">odd_modes() -&gt; ModePattern
+</code></pre>
+<p>Odd harmonics: f, 3f, 5f, …</p>
+<h4 id="power_modes"><a class="header" href="#power_modes"><code>power_modes</code></a></h4>
+<pre><code class="language-rhai ignore">power_modes(beta) -&gt; ModePattern
+</code></pre>
+<p>Power law: f * n^beta.</p>
+<h4 id="stiff_string_modes"><a class="header" href="#stiff_string_modes"><code>stiff_string_modes</code></a></h4>
+<pre><code class="language-rhai ignore">stiff_string_modes(stiffness) -&gt; ModePattern
+</code></pre>
+<p>Stiffness-adjusted harmonics.</p>
+<h4 id="custom_modes"><a class="header" href="#custom_modes"><code>custom_modes</code></a></h4>
+<pre><code class="language-rhai ignore">custom_modes(ratios) -&gt; ModePattern
+</code></pre>
+<p>Custom frequency ratios from an array.</p>
+<h4 id="modal_table"><a class="header" href="#modal_table"><code>modal_table</code></a></h4>
+<pre><code class="language-rhai ignore">modal_table(name) -&gt; ModePattern
+</code></pre>
+<p>Named mode table lookup. Falls back to <code>harmonic_modes()</code> with a warning if the name is unknown.</p>
+<h4 id="landscape_density_modes"><a class="header" href="#landscape_density_modes"><code>landscape_density_modes</code></a></h4>
+<pre><code class="language-rhai ignore">landscape_density_modes() -&gt; ModePattern
+</code></pre>
+<p>Modes selected from the strongest live landscape density-mass positions. Selection is deterministic: after each strongest position is chosen, nearby weights are suppressed according to <code>spacing()</code>. Falls back to harmonic modes when live landscape data yields no usable position.</p>
+<h4 id="landscape_peaks_modes"><a class="header" href="#landscape_peaks_modes"><code>landscape_peaks_modes</code></a></h4>
+<pre><code class="language-rhai ignore">landscape_peaks_modes() -&gt; ModePattern
+</code></pre>
+<p>Modes selected from the strongest local peaks of the live Consonance Field level. Selection is deterministic and enforces the ERB separation from <code>spacing()</code>. Falls back to harmonic modes when live landscape data yields no usable peak.</p>
+<h4 id="count-1"><a class="header" href="#count-1"><code>count</code></a></h4>
+<pre><code class="language-rhai ignore">count(n)
+</code></pre>
+<p>適用対象：<code>ModePattern</code>。</p>
+<p>Number of modes.</p>
+<h4 id="range-1"><a class="header" href="#range-1"><code>range</code></a></h4>
+<pre><code class="language-rhai ignore">range(min_mul, max_mul)
+</code></pre>
+<p>適用対象：<code>ModePattern</code>。</p>
+<p>Frequency range; only valid on <code>landscape_*_modes()</code>.</p>
+<h4 id="spacing-1"><a class="header" href="#spacing-1"><code>spacing</code></a></h4>
+<pre><code class="language-rhai ignore">spacing(min_erb)
+</code></pre>
+<p>適用対象：<code>ModePattern</code>。</p>
+<p>Minimum ERB distance between modes; only valid on <code>landscape_*_modes()</code>.</p>
+<h4 id="gamma"><a class="header" href="#gamma"><code>gamma</code></a></h4>
+<pre><code class="language-rhai ignore">gamma(g)
+</code></pre>
+<p>適用対象：<code>ModePattern</code>。</p>
+<p>Density sharpening exponent; only valid on <code>landscape_density_modes()</code>.</p>
+<h4 id="jitter"><a class="header" href="#jitter"><code>jitter</code></a></h4>
+<pre><code class="language-rhai ignore">jitter(cents)
+</code></pre>
+<p>適用対象：<code>ModePattern</code>。</p>
+<p>Randomize mode frequencies by up to the given cents.</p>
+<h4 id="seed-1"><a class="header" href="#seed-1"><code>seed</code></a></h4>
+<pre><code class="language-rhai ignore">seed(value)
+</code></pre>
+<p>適用対象：<code>ModePattern</code>。</p>
+<p>Random seed for jittered patterns (&gt;= 0).</p>
+<h3 id="routing"><a class="header" href="#routing">Routing</a></h3>
+<p>各Voiceは、独立した二つのモノラルバスへ寄与する。presentation busは作品として聴かれる音、habitat busはNSGT解析を通じて生態系が知覚する音である。初期状態では両方へ送る。</p>
+<h4 id="send"><a class="header" href="#send"><code>send</code></a></h4>
+<pre><code class="language-rhai ignore">send(bus)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。</p>
+<p>Route the voice to specific buses; accepts a <code>Bus</code> or a <code>BusSet</code>. PopulationSpec only. <code>send(habitat_bus)</code> makes a voice sensed by the ecology but absent from the presented sound; <code>send(presentation_bus)</code> is heard without perturbing the ecology; <code>send(habitat_bus | presentation_bus)</code> feeds both (the default).</p>
+<h3 id="directorとglobal-parameter"><a class="header" href="#directorとglobal-parameter">Directorとglobal parameter</a></h3>
+<p>scene全体の地形形成と研究用control。director verbはsoft priorであり、地形を形づくるが、beatをscheduleしたりmeasureを強制したりはしない。</p>
+<h4 id="meter_stability"><a class="header" href="#meter_stability"><code>meter_stability</code></a></h4>
+<pre><code class="language-rhai ignore">meter_stability(value)
+</code></pre>
+<p>Attractor depth in 0-1: how readily a pulse forms. A soft prior: it only deepens the basin for a real periodicity; it never fabricates a beat from non-metric input.</p>
+<h4 id="temporal_basin"><a class="header" href="#temporal_basin"><code>temporal_basin</code></a></h4>
+<pre><code class="language-rhai ignore">temporal_basin(min_hz, max_hz)
+</code></pre>
+<p>Tempo region the emergent beat gravitates toward. The time-axis analogue of <code>consonance(min, max)</code>: it shapes the terrain, does not place a beat, and never forces a measure.</p>
+<h2 id="experimental"><a class="header" href="#experimental">Experimental</a></h2>
+<p>Core候補として試聴中の動詞です。作曲用ですが、検証が済むまでは研究段階の安定性です。</p>
+<h3 id="phonationとリズム-1"><a class="header" href="#phonationとリズム-1">Phonationとリズム</a></h3>
+<h4 id="phonate_when_viable"><a class="header" href="#phonate_when_viable"><code>phonate_when_viable</code></a></h4>
+<pre><code class="language-rhai ignore">phonate_when_viable()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Withhold the first onset until perceived consonance is viable. Silently settles into the field until consonance reaches the low bound of the voice’s consonance-viability window (<code>consonance_viability()</code>, or always-viable if that window was never set), then phonates normally and never re-gates. A voice that never settles dies unheard and the respawn policy replaces it – there is no timeout parameter, the energy economy is the timeout.</p>
+<h2 id="mechanism-tuning"><a class="header" href="#mechanism-tuning">Mechanism Tuning</a></h2>
+<p>Core動詞の背後にある機構を細かく制御します。既定値は調整済みです。Coreでは表せない特定の挙動を作品が必要とするときに使います。</p>
+<h3 id="phonationとリズム-2"><a class="header" href="#phonationとリズム-2">Phonationとリズム</a></h3>
+<h4 id="once"><a class="header" href="#once"><code>once</code></a></h4>
+<pre><code class="language-rhai ignore">once()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Single trigger.</p>
+<h4 id="pulse"><a class="header" href="#pulse"><code>pulse</code></a></h4>
+<pre><code class="language-rhai ignore">pulse(rate_hz)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Pulse at an explicit rate in Hz.</p>
+<h4 id="while_alive"><a class="header" href="#while_alive"><code>while_alive</code></a></h4>
+<pre><code class="language-rhai ignore">while_alive()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Hold/sustain until release.</p>
+<h4 id="adaptive_duration"><a class="header" href="#adaptive_duration"><code>adaptive_duration</code></a></h4>
+<pre><code class="language-rhai ignore">adaptive_duration()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Duration follows field support.</p>
+<h4 id="pulse_lock"><a class="header" href="#pulse_lock"><code>pulse_lock</code></a></h4>
+<pre><code class="language-rhai ignore">pulse_lock(depth)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Low-level pulse phase weighting in 0-1.</p>
+<h4 id="social"><a class="header" href="#social"><code>social</code></a></h4>
+<pre><code class="language-rhai ignore">social(coupling)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Social coupling for <code>entrained()</code> or <code>pulse()</code>, in 0-1.</p>
+<h4 id="duration_range"><a class="header" href="#duration_range"><code>duration_range</code></a></h4>
+<pre><code class="language-rhai ignore">duration_range(min_cycles, max_cycles)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Adaptive duration range in rhythm cycles.</p>
+<h4 id="duration_curve"><a class="header" href="#duration_curve"><code>duration_curve</code></a></h4>
+<pre><code class="language-rhai ignore">duration_curve(k, x0)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Adaptive duration curve parameters.</p>
+<h4 id="shorten_on_drop"><a class="header" href="#shorten_on_drop"><code>shorten_on_drop</code></a></h4>
+<pre><code class="language-rhai ignore">shorten_on_drop(gain)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Shorten adaptive duration when field support drops.</p>
+<h4 id="rhythm_freq"><a class="header" href="#rhythm_freq"><code>rhythm_freq</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_freq(freq_hz)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Internal theta/rhythm oscillator frequency.</p>
+<h4 id="rhythm_coupling_vitality"><a class="header" href="#rhythm_coupling_vitality"><code>rhythm_coupling_vitality</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_coupling_vitality(lambda_v, v_floor)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Vitality-modulated rhythm coupling.</p>
+<h4 id="rhythm_reward"><a class="header" href="#rhythm_reward"><code>rhythm_reward</code></a></h4>
+<pre><code class="language-rhai ignore">rhythm_reward(rho_t, metric)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Energy reward for timing fit; metric is <code>"attack_phase_match"</code> or <code>"none"</code>.</p>
+<h3 id="pitch-movement-1"><a class="header" href="#pitch-movement-1">Pitch Movement</a></h3>
+<h4 id="pitch_smooth"><a class="header" href="#pitch_smooth"><code>pitch_smooth</code></a></h4>
+<pre><code class="language-rhai ignore">pitch_smooth(tau_sec)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Pitch smoothing time constant in seconds.</p>
+<h4 id="pitch_apply_mode"><a class="header" href="#pitch_apply_mode"><code>pitch_apply_mode</code></a></h4>
+<pre><code class="language-rhai ignore">pitch_apply_mode(name)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p><code>"gate_snap"</code> or <code>"glide"</code>: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at placement from their phonation: sustained voices glide, re-attacking voices snap at onsets.</p>
+<h4 id="landscape_weight"><a class="header" href="#landscape_weight"><code>landscape_weight</code></a></h4>
+<pre><code class="language-rhai ignore">landscape_weight(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Weight of the landscape objective.</p>
+<h4 id="neighbor_step_cents"><a class="header" href="#neighbor_step_cents"><code>neighbor_step_cents</code></a></h4>
+<pre><code class="language-rhai ignore">neighbor_step_cents(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Step size for neighbor exploration in cents.</p>
+<h4 id="move_cost"><a class="header" href="#move_cost"><code>move_cost</code></a></h4>
+<pre><code class="language-rhai ignore">move_cost(coeff)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Cost multiplier for pitch changes.</p>
+<h4 id="move_cost_exp"><a class="header" href="#move_cost_exp"><code>move_cost_exp</code></a></h4>
+<pre><code class="language-rhai ignore">move_cost_exp(exp)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Exponent for the move cost.</p>
+<h4 id="proposal_interval"><a class="header" href="#proposal_interval"><code>proposal_interval</code></a></h4>
+<pre><code class="language-rhai ignore">proposal_interval(seconds)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Proposal generation interval in seconds.</p>
+<h4 id="tessitura_gravity"><a class="header" href="#tessitura_gravity"><code>tessitura_gravity</code></a></h4>
+<pre><code class="language-rhai ignore">tessitura_gravity(value)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Gravity toward the tessitura center.</p>
+<h4 id="window_cents"><a class="header" href="#window_cents"><code>window_cents</code></a></h4>
+<pre><code class="language-rhai ignore">window_cents(width)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Peak-sampler search window width in cents.</p>
+<h4 id="top_k"><a class="header" href="#top_k"><code>top_k</code></a></h4>
+<pre><code class="language-rhai ignore">top_k(count)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Number of top candidates kept by the peak sampler.</p>
+<h4 id="sigma_cents"><a class="header" href="#sigma_cents"><code>sigma_cents</code></a></h4>
+<pre><code class="language-rhai ignore">sigma_cents(spread)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Gaussian spread of the peak sampler in cents.</p>
+<h4 id="random_candidates"><a class="header" href="#random_candidates"><code>random_candidates</code></a></h4>
+<pre><code class="language-rhai ignore">random_candidates(count)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Number of random candidates considered.</p>
+<h4 id="global_peaks"><a class="header" href="#global_peaks"><code>global_peaks</code></a></h4>
+<pre><code class="language-rhai ignore">global_peaks(count)
+global_peaks(count, min_sep_cents)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Global field peaks as movement candidates, with optional minimum separation.</p>
+<h4 id="ratio_candidates"><a class="header" href="#ratio_candidates"><code>ratio_candidates</code></a></h4>
+<pre><code class="language-rhai ignore">ratio_candidates(count)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Ratio-based movement candidates; 0 disables.</p>
+<h3 id="近傍の知覚-1"><a class="header" href="#近傍の知覚-1">近傍の知覚</a></h3>
+<h4 id="crowding_target"><a class="header" href="#crowding_target"><code>crowding_target</code></a></h4>
+<pre><code class="language-rhai ignore">crowding_target(same_visible, other_visible)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Which voices are visible to crowding: own population, other populations (booleans).</p>
+<h4 id="leave_self_out"><a class="header" href="#leave_self_out"><code>leave_self_out</code></a></h4>
+<pre><code class="language-rhai ignore">leave_self_out(enabled)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Subtract the voice’s own spectral contribution when evaluating the field.</p>
+<h4 id="leave_self_out_harmonics"><a class="header" href="#leave_self_out_harmonics"><code>leave_self_out_harmonics</code></a></h4>
+<pre><code class="language-rhai ignore">leave_self_out_harmonics(count)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p>Number of harmonics used for approximate self-subtraction.</p>
+<h3 id="lifecycleとviability-1"><a class="header" href="#lifecycleとviability-1">LifecycleとViability</a></h3>
+<h4 id="viability_scope"><a class="header" href="#viability_scope"><code>viability_scope</code></a></h4>
+<pre><code class="language-rhai ignore">viability_scope(name)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p><code>"environment"</code> (default) or <code>"total"</code> viability scoring scope. Use <code>"total"</code> only when the selection question should include the voice’s own contribution.</p>
+<h3 id="directorとglobal-parameter-1"><a class="header" href="#directorとglobal-parameter-1">Directorとglobal parameter</a></h3>
+<h4 id="set_roughness_k"><a class="header" href="#set_roughness_k"><code>set_roughness_k</code></a></h4>
+<pre><code class="language-rhai ignore">set_roughness_k(value)
+</code></pre>
+<p>Roughness tolerance of the landscape.</p>
+<h4 id="set_global_coupling"><a class="header" href="#set_global_coupling"><code>set_global_coupling</code></a></h4>
+<pre><code class="language-rhai ignore">set_global_coupling(value)
+</code></pre>
+<p>Voice interaction strength.</p>
+<h2 id="research-controls"><a class="header" href="#research-controls">Research Controls</a></h2>
+<p>instrumentを研究するための面であり、作曲用ではありません。通常の作曲では触れません。研究上の問いが定まるにつれて変更または削除される可能性があります。</p>
+<h3 id="pitch-movement-2"><a class="header" href="#pitch-movement-2">Pitch Movement</a></h3>
+<h4 id="pitch_core"><a class="header" href="#pitch_core"><code>pitch_core</code></a></h4>
+<pre><code class="language-rhai ignore">pitch_core(name)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p><code>"hill_climb"</code> or <code>"peak_sampler"</code>. Research control.</p>
+<h4 id="move_cost_time_scale"><a class="header" href="#move_cost_time_scale"><code>move_cost_time_scale</code></a></h4>
+<pre><code class="language-rhai ignore">move_cost_time_scale(name)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p><code>"legacy"</code>/<code>"integration_window"</code> or <code>"proposal"</code>/<code>"proposal_interval"</code>.</p>
+<h3 id="近傍の知覚-2"><a class="header" href="#近傍の知覚-2">近傍の知覚</a></h3>
+<h4 id="leave_self_out_mode"><a class="header" href="#leave_self_out_mode"><code>leave_self_out_mode</code></a></h4>
+<pre><code class="language-rhai ignore">leave_self_out_mode(name)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
+<p><code>"approx"</code>/<code>"approx_harmonics"</code> or <code>"exact"</code>/<code>"exact_scan"</code>.</p>
+<h3 id="lifecycleとviability-2"><a class="header" href="#lifecycleとviability-2">LifecycleとViability</a></h3>
+<h4 id="selection_approx_loo"><a class="header" href="#selection_approx_loo"><code>selection_approx_loo</code></a></h4>
+<pre><code class="language-rhai ignore">selection_approx_loo(enabled)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。</p>
+<p>Override environment-relative viability scoring; research/reference control. PopulationSpec only. Use only for older reference assays that need the previous implementation-level control.</p>
+<h3 id="directorとglobal-parameter-2"><a class="header" href="#directorとglobal-parameter-2">Directorとglobal parameter</a></h3>
+<h4 id="set_pitch_objective"><a class="header" href="#set_pitch_objective"><code>set_pitch_objective</code></a></h4>
+<pre><code class="language-rhai ignore">set_pitch_objective(name)
+</code></pre>
+<p><code>"consonance"</code>/<code>"positive"</code> or <code>"dissonance"</code>/<code>"negative"</code>. Research control.</p>
+<h4 id="set_control_update_mode"><a class="header" href="#set_control_update_mode"><code>set_control_update_mode</code></a></h4>
+<pre><code class="language-rhai ignore">set_control_update_mode(name)
+</code></pre>
+<p><code>"snapshot_phased"</code>/<code>"snapshot"</code> (default) or <code>"sequential_rotating"</code>/<code>"sequential"</code>. Research control.</p>
+<h4 id="set_scaffold_off"><a class="header" href="#set_scaffold_off"><code>set_scaffold_off</code></a></h4>
+<pre><code class="language-rhai ignore">set_scaffold_off()
+</code></pre>
+<p>Disable the external rhythm scaffold. Scaffolds are external comparison controls for demos and assays, not the rhythm-composition abstraction.</p>
+<h4 id="set_scaffold_shared"><a class="header" href="#set_scaffold_shared"><code>set_scaffold_shared</code></a></h4>
+<pre><code class="language-rhai ignore">set_scaffold_shared(freq_hz)
+</code></pre>
+<p>Shared external scaffold pulse.</p>
+<h4 id="set_scaffold_scrambled"><a class="header" href="#set_scaffold_scrambled"><code>set_scaffold_scrambled</code></a></h4>
+<pre><code class="language-rhai ignore">set_scaffold_scrambled(freq_hz, seed)
+</code></pre>
+<p>Per-voice scrambled scaffold pulse.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="サンプル"><a class="header" href="#サンプル">サンプル</a></h1>
+<p>12個の小さなサンプルを、順番に並べています。実行してscriptを読み、instrumentの主な機能を
+一つずつ確認するためのものです。音楽作品ではなく、APIと挙動のデモです。</p>
+<pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
+</code></pre>
+<ol>
+<li><strong>A Single Voice</strong> — 一つのVoiceが現れ、息を保ち、去る。</li>
+<li><strong>Constellation</strong> — line、peak、density、strain、gap、chanceという六つの入り方。</li>
+<li><strong>Gravity</strong> — 二つのsunの下の同じroot。peakはchartではなく現在の音を聴く。</li>
+<li><strong>Tension</strong> — Voiceが協和へ落ち着き、不安定になって離れ、再び冷えて落ち着く。</li>
+<li><strong>Settling</strong> — 散らばったVoiceが、Consonance Fieldに支えられる場所へ滑らかに移る。</li>
+<li><strong>Bells</strong> — 打撃されるbody。最後のbellはpartialをFieldに選ばせる。</li>
+<li><strong>Heartbeat</strong> — 外部の足場なしにPopulationが共有pulseへ同期する。</li>
+<li><strong>Murmuration</strong> — flockが命令されずに同期へ漂う。</li>
+<li><strong>Rain</strong> — beatを持たず、Fieldに沿って落ちる時間。</li>
+<li><strong>Generations</strong> — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。</li>
+<li><strong>Autumn Cycle</strong> — directionを持つharmony。季節が巡り戻る。</li>
+<li><strong>Emergence and Resolution</strong> — すべてを一つのarcへ曲げる。</li>
+</ol>
+<p>サンプル1–6はConsonance terrain（placement、gravity、tension、movement、timbre）、
+7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–12は複数の
+mechanismを組み合わせます。全サンプルはtest suiteでcompile-checkされ、現在のAPIとの
+不一致を検出します。最上位のサンプルは意図的に<code>seed(...)</code>を呼ばず、毎runを新しい
+scenario seedで始めます。
+比較を再現可能にする必要があるresearch assayだけが固定seedを使います。</p>
+<p>一つのcraft ruleが全体を貫きます：<strong>scaffoldingは聞こえないか、embodyされる</strong>。
+terrain anchorは、drone自体が主題でない限りpresentationではなくhabitat busへ歌います。
+pulse carrierには共鳴するbodyとlifeを与えるか、colonyからpulseが凝結するに任せます。</p>
+<h2 id="research-assay"><a class="header" href="#research-assay">Research assay</a></h2>
+<p><code>samples/research/</code>にはheredity/selection ablation、external-scaffold rhythm control、
+mechanism studyなどの比較fixtureがあります。instrumentを演奏するのではなく研究するもので、
+上の道筋には含まれません。</p>
+<h2 id="offline-rendering"><a class="header" href="#offline-rendering">Offline rendering</a></h2>
+<p><code>conchordal</code> instrumentはaudioをdiskへ書きません。演奏は、音が鳴り終わるとinstrument内には
+残らない一過的な出来事（ephemeral）として設計されています。offline WAVには、同じcore engineを
+共有する別binaryの<code>conchordal-render</code>を使います。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/rhai-highlight-f40c858c.js"></script>
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

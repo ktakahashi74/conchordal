@@ -1,4 +1,4 @@
-# The Life of a Voice
+# Population — A Persistent Unit of Voices
 
 The shortest useful mental model of conchordal is not a note followed by
 another note. It is a population definition becoming a persistent population of living
@@ -143,5 +143,5 @@ result: one living Voice exhausts its energy, after which the Population's
 respawn policy may replace it. A `section` or `play` scope also releases the
 Populations it created when the scope ends.
 
-The next chapter follows a Voice through the complete
-[Ecological Loop](ecological_loop.md).
+The next chapter explains
+[Voice and Landscape — Sound–Environment Feedback](ecological_loop.md).

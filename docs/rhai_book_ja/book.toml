@@ -1,0 +1,10 @@
+[book]
+title = "Conchordal スクリプトリファレンス"
+language = "ja"
+src = "src"
+
+[build]
+build-dir = "../../web/static/ja/docs/rhai"
+
+[output.html]
+additional-js = ["theme/rhai-highlight.js"]

@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-365c20a8.js";
+            window.path_to_searchindex_js = "../searchindex-bcf94908.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-7940c472.js"></script>
+        <script src="../toc-e3932d17.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,7 +202,7 @@ voices exist from that boundary; live methods update the current voices.</li>
 <p>A Population is one stable handle for a placed population. A placement with <code>.count(6)</code>
 creates six founder voices under that handle. If voices later die and respawn,
 the Population remains the same while its members and generations change. See
-<a href="../concepts/voice_life.html">The Life of a Voice</a> for the complete object and
+<a href="../concepts/voice_life.html">Population — A Persistent Unit of Voices</a> for the complete object and
 lifecycle model.</p>
 <pre><code class="language-rhai">let population_spec = harmonic()
     .amp(0.08)
@@ -237,7 +237,7 @@ section("field placement", || {
 });
 </code></pre>
 <p>How the field works — and how voices move, survive, and respawn inside it — is
-the subject of <a href="../concepts/consonance.html">The Consonance Field</a>.</p>
+the subject of <a href="../concepts/consonance.html">Consonance Field — A Terrain for Evaluating Pitch</a>.</p>
 <h2 id="live-patching"><a class="header" href="#live-patching">Live Patching</a></h2>
 <p>Configure body, behavior, lifecycle, and respawn on a <code>PopulationSpec</code> before
 calling <code>place()</code>. The returned <code>Population</code> exposes only operations that make
@@ -280,13 +280,13 @@ section("emergence", || {
 <ul>
 <li><a href="editor_setup.html">Editor Setup</a> — completion, hover docs, and diagnostics
 for the whole scripting surface.</li>
-<li><a href="observing.html">Observing a Performance</a> — reports, filtering, and
+<li><a href="observing.html">Performance</a> — reports, filtering, and
 replaying a run with <code>--seed</code>.</li>
-<li><a href="../concepts/voice_life.html">The Life of a Voice</a> — population specs, voices, brains,
+<li><a href="../concepts/voice_life.html">Population — A Persistent Unit of Voices</a> — population specs, voices, brains,
 phonation, survival, and release.</li>
-<li><a href="../concepts/ecological_loop.html">The Ecological Loop</a> — how sound changes
+<li><a href="../concepts/ecological_loop.html">Voice and Landscape — Sound–Environment Feedback</a> — how sound changes
 the terrain that changes the voices.</li>
-<li><a href="../concepts/consonance.html">The Consonance Field</a> — field, density,
+<li><a href="../concepts/consonance.html">Consonance Field — A Terrain for Evaluating Pitch</a> — field, density,
 movement, viability, respawn.</li>
 <li><a href="../concepts/rhythm.html">Rhythm</a> — the coupling continuum and the director’s
 rhythmic terrain.</li>

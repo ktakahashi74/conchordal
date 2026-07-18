@@ -233,10 +233,10 @@ fn harmonic_modes() -> ModePattern;
 /// Randomize mode frequencies by up to the given cents.
 fn jitter(arg0: ModePattern, arg1: f64) -> ModePattern;
 
-/// Modes sampled from the live landscape density.
+/// Modes selected from the strongest live landscape density-mass positions.
 fn landscape_density_modes() -> ModePattern;
 
-/// Modes sampled from live landscape peaks.
+/// Modes selected from the strongest local peaks of the live Consonance Field level.
 fn landscape_peaks_modes() -> ModePattern;
 
 /// [tuning] Weight of the landscape objective.
@@ -453,12 +453,12 @@ fn respawn_capacity(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Maximum number of living members in the Population.
 fn respawn_capacity(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Respawn from consonance-biased parental peaks.
+/// Respawn from high field-score peaks, biased around an energy-weighted living parent.
 fn respawn_consonance(arg0: PopulationSpec) -> PopulationSpec;
 
-/// Hereditary respawn with frequency variance in octaves.
+/// Respawn near an energy-weighted living parent, with frequency variance in octaves.
 fn respawn_hereditary(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// Hereditary respawn with frequency variance in octaves.
+/// Respawn near an energy-weighted living parent, with frequency variance in octaves.
 fn respawn_hereditary(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Minimum consonance level for respawn acceptance.
@@ -466,10 +466,10 @@ fn respawn_min_c_level(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Minimum consonance level for respawn acceptance.
 fn respawn_min_c_level(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Respawn at random locations.
+/// Respawn without parent inheritance.
 fn respawn_random(arg0: PopulationSpec) -> PopulationSpec;
 
-/// Placement used for replacements.
+/// Add a Placement source to the replacement candidate pool.
 fn respawn_settle(arg0: PopulationSpec, arg1: Placement) -> PopulationSpec;
 
 /// [tuning] Vitality-modulated rhythm coupling.
@@ -609,9 +609,9 @@ fn temporal_basin(arg0: i64, arg1: f64);
 /// Tempo region the emergent beat gravitates toward.
 fn temporal_basin(arg0: i64, arg1: i64);
 
-/// Place at a metastable consonance below the strongest (degree 0..1).
+/// Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1).
 fn tension(arg0: Placement, arg1: f64) -> Placement;
-/// Place at a metastable consonance below the strongest (degree 0..1).
+/// Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1).
 fn tension(arg0: Placement, arg1: i64) -> Placement;
 
 /// [tuning] Gravity toward the tessitura center.

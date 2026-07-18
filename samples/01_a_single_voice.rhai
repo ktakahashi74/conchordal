@@ -1,4 +1,4 @@
-// Étude 1 — A Single Voice
+// Sample 1 — A Single Voice
 // One voice appears, holds its breath, and leaves.
 
 let voice = sine()

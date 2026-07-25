@@ -1,4 +1,3 @@
-print("TEST_OK: listener_twin_tension_resolution");
 
 seed(21);
 
@@ -78,3 +77,5 @@ section("Listener Twin Settled Presentation", || {
     place(audible_reference, at(root_hz * 2.0).count(1));
     wait(2.20);
 });
+
+print("TEST_OK: listener_twin_tension_resolution");

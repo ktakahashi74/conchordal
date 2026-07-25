@@ -1,4 +1,5 @@
 use crate::core::erb::hz_to_erb;
+use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
@@ -498,7 +499,7 @@ impl ModePattern {
     }
 }
 
-pub fn modal_table_ratios(name: &str) -> Option<&'static [f32]> {
+fn modal_table_ratios(name: &str) -> Option<&'static [f32]> {
     let key = name.trim().to_ascii_lowercase();
     match key.as_str() {
         "uniform_aluminum_bar" => Some(MODAL_TABLE_UNIFORM_ALUMINUM_BAR),
@@ -518,10 +519,6 @@ fn sanitized_range(min_mul: f32, max_mul: f32) -> (f32, f32) {
         std::mem::swap(&mut min_mul, &mut max_mul);
     }
     (min_mul, max_mul)
-}
-
-fn sanitize_nonnegative_finite(x: f32) -> f32 {
-    if x.is_finite() { x.max(0.0) } else { 0.0 }
 }
 
 fn sanitize_positive_finite(x: f32, fallback: f32) -> f32 {

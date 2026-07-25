@@ -111,6 +111,12 @@ fn habituation_is_deterministic() {
     run(&cfg, &r2);
     let s1 = hab_series(&r1);
     let s2 = hab_series(&r2);
+    // hab_series drops unparseable lines, so an empty series would make the
+    // comparison below vacuously true. Guard before comparing.
+    assert!(
+        !s1.is_empty(),
+        "habituation series is empty — the report format likely drifted"
+    );
     assert_eq!(s1.len(), s2.len(), "record counts differ across runs");
     for (i, (a, b)) in s1.iter().zip(s2.iter()).enumerate() {
         assert_eq!(

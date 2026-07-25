@@ -9,26 +9,7 @@ pub struct RoughnessRef {
     pub peak: f32,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct HarmonicityRef {
-    pub max: f32,
-}
-
-#[inline]
-pub fn clamp01(x: f32) -> f32 {
-    sanitize01(x)
-}
-
-#[inline]
-pub fn sanitize01(x: f32) -> f32 {
-    if x.is_finite() {
-        x.clamp(0.0, 1.0)
-    } else if x.is_infinite() {
-        if x.is_sign_positive() { 1.0 } else { 0.0 }
-    } else {
-        0.0
-    }
-}
+pub use crate::core::float::sanitize01;
 
 /// Normalize a density curve for potential scans, returning (normalized, mass).
 pub fn normalize_density(density_vals: &[f32], du: &[f32], eps: f32) -> (Vec<f32>, f32) {
@@ -98,11 +79,11 @@ pub fn h_pot_scan_to_h_state01_scan(h_pot_scan: &[f32], h_ref_max: f32, out: &mu
         1.0
     };
     for i in 0..out.len() {
-        out[i] = clamp01(h_pot_scan[i] / denom);
+        out[i] = sanitize01(h_pot_scan[i] / denom);
     }
 }
 
-pub fn roughness_ref_from_r_pot_scan(r_pot_scan: &[f32], du: &[f32]) -> RoughnessRef {
+fn roughness_ref_from_r_pot_scan(r_pot_scan: &[f32], du: &[f32]) -> RoughnessRef {
     assert_eq!(r_pot_scan.len(), du.len(), "roughness/du length mismatch");
     let peak = r_pot_scan.iter().copied().fold(0.0f32, f32::max);
     let total = density::density_to_mass(r_pot_scan, du);

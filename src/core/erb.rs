@@ -1,4 +1,4 @@
-//! core/erb.rs — ERB scale utilities and ErbSpace definition.
+//! core/erb.rs — ERB scale conversions (Glasberg & Moore).
 
 use std::f32::consts::LN_10;
 
@@ -22,96 +22,6 @@ pub fn erb_bw_hz(f_hz: f32) -> f32 {
     24.7 * (4.37e-3 * f_hz + 1.0)
 }
 
-/// Represents a frequency axis linearly spaced in ERB domain.
-#[derive(Clone, Debug)]
-pub struct ErbSpace {
-    pub f_min: f32,
-    pub f_max: f32,
-    pub erb_step: f32,
-    pub erb_min: f32,
-    pub erb_max: f32,
-    pub freqs_hz: Vec<f32>,
-}
-
-impl ErbSpace {
-    /// Create a new ERB-space axis.
-    ///
-    /// # Arguments
-    /// * `f_min` - lowest frequency [Hz]
-    /// * `f_max` - highest frequency [Hz]
-    /// * `erb_step` - ERB step (smaller → denser sampling)
-    pub fn new(f_min: f32, f_max: f32, erb_step: f32) -> Self {
-        assert!(
-            f_min.is_finite()
-                && f_max.is_finite()
-                && erb_step.is_finite()
-                && f_min > 0.0
-                && f_max > f_min
-                && erb_step > 0.0,
-            "ErbSpace bounds and step must be finite and ordered"
-        );
-        let erb_min = hz_to_erb(f_min);
-        let erb_max = hz_to_erb(f_max);
-
-        let n_points = ((erb_max - erb_min) / erb_step).floor() as usize + 1;
-
-        let mut freqs_hz = Vec::with_capacity(n_points);
-        for i in 0..n_points {
-            let e = erb_min + i as f32 * erb_step;
-            freqs_hz.push(erb_to_hz(e));
-        }
-
-        Self {
-            f_min,
-            f_max,
-            erb_step,
-            erb_min,
-            erb_max,
-            freqs_hz,
-        }
-    }
-
-    /// Convert frequency [Hz] to ERB coordinate.
-    #[inline]
-    pub fn to_erb(&self, f_hz: f32) -> f32 {
-        hz_to_erb(f_hz)
-    }
-
-    /// Convert ERB coordinate to frequency [Hz].
-    #[inline]
-    pub fn to_hz(&self, e: f32) -> f32 {
-        erb_to_hz(e)
-    }
-
-    /// Return number of ERB bins.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.freqs_hz.len()
-    }
-
-    /// Returns true if there are no ERB bins.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.freqs_hz.is_empty()
-    }
-
-    /// Return reference to frequency vector [Hz].
-    #[inline]
-    pub fn freqs_hz(&self) -> &[f32] {
-        &self.freqs_hz
-    }
-
-    pub fn index_of_freq(&self, f_hz: f32) -> usize {
-        if self.freqs_hz.is_empty() || !f_hz.is_finite() {
-            return 0;
-        }
-        self.freqs_hz
-            .iter()
-            .position(|&f| f >= f_hz)
-            .unwrap_or(self.freqs_hz.len() - 1)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,27 +39,6 @@ mod tests {
                 "roundtrip mismatch: f={f}, f2={f2}, rel_err={rel_err}"
             );
         }
-    }
-
-    /// Check monotonicity and range of ErbSpace.
-    #[test]
-    fn test_erbspace_creation() {
-        let space = ErbSpace::new(50.0, 8000.0, 0.5);
-        // Even with a coarse ERB step there should be ample bins.
-        assert!(
-            space.freqs_hz.len() > 10,
-            "too few bins: {}",
-            space.freqs_hz.len()
-        );
-        assert!(space.freqs_hz[0] >= 50.0);
-        assert!(
-            *space.freqs_hz.last().unwrap() <= 8000.0 + 1e-3 * 8000.0,
-            "max freq exceeded"
-        );
-
-        // Frequency axis must be strictly increasing.
-        let diffs: Vec<f32> = space.freqs_hz.windows(2).map(|w| w[1] - w[0]).collect();
-        assert!(diffs.iter().all(|&d| d > 0.0), "non-monotonic freqs");
     }
 
     /// Validate that hz_to_erb is monotonic and increasing.
@@ -172,25 +61,6 @@ mod tests {
         assert!((bw_1k - 132.6).abs() < 1.0, "bw(1kHz) mismatch: {bw_1k}");
         assert!((bw_4k - 456.4).abs() < 1.0, "bw(4kHz) mismatch: {bw_4k}");
         assert!(bw_4k > bw_1k);
-    }
-
-    /// Extreme range test (very wide band)
-    #[test]
-    fn test_erbspace_extreme_range() {
-        let space = ErbSpace::new(20.0, 20000.0, 0.25);
-        let n = space.len();
-        assert!(n > 100, "unexpectedly few bins for wide band: {n}");
-        // Ensure ERB min/max are consistent.
-        let e_min = hz_to_erb(20.0);
-        let e_max = hz_to_erb(20000.0);
-        assert!(
-            (space.erb_min - e_min).abs() < 1e-4 && (space.erb_max - e_max).abs() < 1e-4,
-            "erb range mismatch: min {} vs {}, max {} vs {}",
-            space.erb_min,
-            e_min,
-            space.erb_max,
-            e_max
-        );
     }
 
     #[test]

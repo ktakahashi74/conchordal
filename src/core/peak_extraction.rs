@@ -2,7 +2,6 @@
 //! density: per-ERB (or per-u) power density; mass: sum(density * du).
 
 use crate::core::db;
-use crate::core::density;
 use crate::core::log2space::Log2Space;
 use crate::core::roughness_kernel::erb_grid;
 
@@ -290,11 +289,6 @@ pub fn extract_peaks_density_with_grid(
     }
 
     peaks
-}
-
-pub fn peaks_to_delta_density(peaks: &[Peak], du: &[f32], len: usize) -> Vec<f32> {
-    let peak_masses: Vec<(usize, f32)> = peaks.iter().map(|p| (p.bin_idx, p.mass)).collect();
-    density::peaks_mass_to_delta_density(len, &peak_masses, du)
 }
 
 #[cfg(test)]

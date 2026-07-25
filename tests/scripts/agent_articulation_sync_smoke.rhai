@@ -1,4 +1,3 @@
-print("TEST_OK: agent_articulation_sync_smoke");
 let ghost = sine()
     .amp(0.3)
     .repeat()
@@ -8,3 +7,5 @@ flush();
 for i in 0..4 {
     wait(0.5);
 }
+
+print("TEST_OK: agent_articulation_sync_smoke");

@@ -1,4 +1,3 @@
-print("TEST_OK: rhythm_timing_validation");
 let metro = place(sine().amp(0.6).repeat(), at(440.0).count(1));
 flush();
 for i in 0..4 {
@@ -6,3 +5,5 @@ for i in 0..4 {
 }
 release(metro);
 wait(0.2);
+
+print("TEST_OK: rhythm_timing_validation");

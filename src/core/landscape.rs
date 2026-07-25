@@ -4,6 +4,7 @@
 //! Processing lives in the Dorsal (rhythm) and Roughness/Harmonicity streams.
 
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
+use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::log2space::{Log2Space, sample_scan_linear_at_pos};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::psycho_state::sanitize01;
@@ -234,7 +235,8 @@ impl Landscape {
         self.sample_linear(&self.consonance_field_score_eff, freq_hz)
     }
 
-    /// Layer 1 score. Prefer `evaluate_pitch_level_log2` for normalized usage.
+    /// Layer 1 score in log2 coordinates. Unbounded; see `evaluate_pitch_level`
+    /// for the `[0,1]` view.
     pub fn evaluate_pitch_score_log2(&self, log_freq: f32) -> f32 {
         self.assert_scan_lengths();
         self.sample_linear_log2(&self.consonance_field_score_eff, log_freq)
@@ -244,22 +246,6 @@ impl Landscape {
         self.assert_scan_lengths();
         self.sample_linear(&self.consonance_field_level_eff, freq_hz)
             .clamp(0.0, 1.0)
-    }
-
-    pub fn evaluate_pitch_level_log2(&self, log_freq: f32) -> f32 {
-        self.assert_scan_lengths();
-        self.sample_linear_log2(&self.consonance_field_level_eff, log_freq)
-            .clamp(0.0, 1.0)
-    }
-
-    pub fn consonance_field_score_at(&self, freq_hz: f32) -> f32 {
-        self.assert_scan_lengths();
-        self.evaluate_pitch_score(freq_hz)
-    }
-
-    pub fn consonance_field_level_at(&self, freq_hz: f32) -> f32 {
-        self.assert_scan_lengths();
-        self.evaluate_pitch_level(freq_hz)
     }
 
     pub fn freq_bounds(&self) -> (f32, f32) {
@@ -336,7 +322,7 @@ impl Landscape {
         normalize_or_uniform(&mut self.consonance_density[..n]);
     }
 
-    pub fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
+    fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
         let n = self.consonance_field_score.len();
         for i in 0..n {
@@ -349,7 +335,7 @@ impl Landscape {
         }
     }
 
-    pub fn recompute_consonance_density_mass(&mut self, params: &LandscapeParams) {
+    fn recompute_consonance_density_mass(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
         let density_kernel =
             ConsonanceKernel::density_with_rho(params.consonance_density_roughness_gain);
@@ -420,11 +406,6 @@ fn reset_if_len_mismatch(scan: &mut Vec<f32>, expected_len: usize) {
     if scan.len() != expected_len {
         *scan = vec![0.0; expected_len];
     }
-}
-
-#[inline]
-fn sanitize_nonnegative_finite(x: f32) -> f32 {
-    if x.is_finite() { x.max(0.0) } else { 0.0 }
 }
 
 fn normalize_or_uniform(out: &mut [f32]) {

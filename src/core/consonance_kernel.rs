@@ -1,3 +1,4 @@
+use crate::core::float::finite_or;
 use crate::core::psycho_state::sanitize01;
 
 #[derive(Clone, Copy, Debug)]
@@ -24,12 +25,12 @@ impl ConsonanceKernel {
     pub fn score(&self, h01: f32, r01: f32) -> f32 {
         let h01 = sanitize01(h01);
         let r01 = sanitize01(r01);
-        let a = sanitize_finite(self.a);
-        let b = sanitize_finite(self.b);
-        let c = sanitize_finite(self.c);
-        let d = sanitize_finite(self.d);
+        let a = finite_or(self.a, 0.0);
+        let b = finite_or(self.b, 0.0);
+        let c = finite_or(self.c, 0.0);
+        let d = finite_or(self.d, 0.0);
         let score = a * h01 + b * r01 + c * h01 * r01 + d;
-        sanitize_finite(score)
+        finite_or(score, 0.0)
     }
 
     /// Density preset kernel: H * (1 - rho * R) = 1*H + 0*R + (-rho)*(H*R) + 0.
@@ -73,14 +74,14 @@ impl ConsonanceRepresentationParams {
         } else {
             0.0
         };
-        let theta = sanitize_finite(self.theta);
-        let score = sanitize_finite(score);
+        let theta = finite_or(self.theta, 0.0);
+        let score = finite_or(score, 0.0);
         sigmoid01_stable(beta * (score - theta))
     }
 
     #[inline]
     pub fn energy(&self, score: f32) -> f32 {
-        -sanitize_finite(score)
+        -finite_or(score, 0.0)
     }
 }
 
@@ -100,17 +101,12 @@ pub fn compose_consonance_field_level_scan(
 }
 
 #[inline]
-pub fn sigmoid01_stable(x: f32) -> f32 {
+fn sigmoid01_stable(x: f32) -> f32 {
     if x.is_nan() {
         return 0.0;
     }
     let x = x.clamp(-80.0, 80.0);
     1.0 / (1.0 + (-x).exp())
-}
-
-#[inline]
-fn sanitize_finite(x: f32) -> f32 {
-    if x.is_finite() { x } else { 0.0 }
 }
 
 #[cfg(test)]

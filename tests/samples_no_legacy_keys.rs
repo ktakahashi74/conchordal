@@ -41,6 +41,28 @@ fn is_identifier_char(ch: char) -> bool {
     ch == '_' || ch.is_ascii_alphanumeric()
 }
 
+/// Match a call-shaped token such as `create(` only when it starts an identifier.
+/// A plain `contains` would also flag `recreate(`; `contains_identifier` cannot be
+/// used because the trailing `(` makes it inspect the first argument character.
+fn contains_call(contents: &str, needle: &str) -> bool {
+    contents.match_indices(needle).any(|(idx, _)| {
+        let before = contents[..idx].chars().next_back();
+        !before.is_some_and(is_identifier_char)
+    })
+}
+
+#[test]
+fn call_matching_respects_identifier_boundaries() {
+    assert!(!contains_call("let x = recreate(1);", "create("));
+    assert!(!contains_call("let y = nonlinear(2);", "linear("));
+    assert!(contains_call("let z = create(3);", "create("));
+    assert!(contains_call("let w = linear(4);", "linear("));
+    // Still matches when the call is the first thing on a line.
+    assert!(contains_call("create(5);", "create("));
+    // And when preceded by a non-identifier character.
+    assert!(contains_call("place(create(6));", "create("));
+}
+
 #[test]
 fn samples_have_no_legacy_keys() {
     let mut files = Vec::new();
@@ -56,7 +78,6 @@ fn samples_have_no_legacy_keys() {
         ".mode(".to_string(),
         ".pitch_apply(".to_string(),
         ".voices(".to_string(),
-        "create(".to_string(),
         "sine(\"".to_string(),
         "harmonic(\"".to_string(),
         "modal(\"".to_string(),
@@ -82,7 +103,6 @@ fn samples_have_no_legacy_keys() {
         ".pitch_glide(".to_string(),
         "consonance_density(".to_string(),
         "random_log(".to_string(),
-        "linear(".to_string(),
         ".field_only(".to_string(),
         ".presentation_only(".to_string(),
         // Replaced by anchor() (lock) / default (free).
@@ -104,6 +124,9 @@ fn samples_have_no_legacy_keys() {
     ];
     let phonation_key = ["pho", "nation"].concat();
     let banned_identifiers = ["field_bus", "generator_field_bus"];
+    // Call-shaped tokens need a start-of-identifier boundary so that
+    // `recreate(` / `nonlinear(` are not mistaken for `create(` / `linear(`.
+    let banned_calls = ["create(", "linear("];
     let quote = "\"";
     let mut banned_compact = Vec::new();
     let timing_key = format!("{TIMING_A}{TIMING_B}");
@@ -129,6 +152,12 @@ fn samples_have_no_legacy_keys() {
             assert!(
                 !contains_identifier(&contents, token),
                 "legacy identifier \"{token}\" found in {path:?}"
+            );
+        }
+        for token in &banned_calls {
+            assert!(
+                !contains_call(&contents, token),
+                "legacy call \"{token}\" found in {path:?}"
             );
         }
         let compact: String = contents.chars().filter(|c| !c.is_whitespace()).collect();

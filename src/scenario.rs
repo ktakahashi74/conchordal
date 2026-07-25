@@ -306,9 +306,9 @@ impl CoupledTimingSpec {
             },
             role: self.role,
             social: self.social.clamp(0.0, 1.0),
-            vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda, 0.0),
+            vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda),
             vitality_floor: sanitize_v_floor(self.vitality_floor),
-            reward: sanitize_nonnegative_finite(self.reward, 0.0),
+            reward: sanitize_nonnegative_finite(self.reward),
         }
     }
 }
@@ -455,7 +455,7 @@ impl RhythmCouplingMode {
             RhythmCouplingMode::TemporalOnly => RhythmCouplingMode::TemporalOnly,
             RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor } => {
                 RhythmCouplingMode::TemporalTimesVitality {
-                    lambda_v: sanitize_nonnegative_finite(lambda_v, 0.0),
+                    lambda_v: sanitize_nonnegative_finite(lambda_v),
                     v_floor: sanitize_v_floor(v_floor),
                 }
             }
@@ -477,7 +477,7 @@ pub struct MetabolismRhythmReward {
 impl MetabolismRhythmReward {
     pub fn sanitized(self) -> Self {
         Self {
-            rho_t: sanitize_nonnegative_finite(self.rho_t, 0.0),
+            rho_t: sanitize_nonnegative_finite(self.rho_t),
             metric: self.metric,
         }
     }

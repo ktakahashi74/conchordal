@@ -28,6 +28,7 @@
 //! Uses a "Shift-and-Add" approach with pre-calculated bounds
 //! to ensure O(N) efficiency and SIMD-friendly loops.
 
+use crate::core::float::finite_or;
 use crate::core::log2space::Log2Space;
 
 #[derive(Clone, Copy, Debug)]
@@ -328,11 +329,6 @@ impl HarmonicityKernel {
     fn absfreq_gate(f_hz: f32, p: &HarmonicityParams) -> f32 {
         1.0 / (1.0 + (f_hz / p.tfs_f_pl_hz).powf(p.tfs_eta))
     }
-}
-
-#[inline]
-fn finite_or(x: f32, fallback: f32) -> f32 {
-    if x.is_finite() { x } else { fallback }
 }
 
 #[cfg(test)]

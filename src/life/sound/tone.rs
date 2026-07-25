@@ -152,7 +152,9 @@ impl Tone {
             decay_lambda,
             release_ticks,
             planned_kick_pending: None,
-            pending_updates: VecDeque::new(),
+            // Pre-sized so the common worker_loop insert path does not reallocate.
+            // Deeper queues still grow; the capacity is a budget, not a bound.
+            pending_updates: VecDeque::with_capacity(16),
             pending_trigger: None,
             current_amp,
             target_amp,

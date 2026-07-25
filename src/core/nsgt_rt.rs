@@ -178,12 +178,6 @@ impl RtNsgtKernelLog2 {
         }
     }
 
-    /// Current smoothed band power/PSD without processing new samples.
-    #[inline]
-    pub fn current_envelope(&self) -> &[f32] {
-        &self.out_env
-    }
-
     /// Accessors
     #[inline]
     pub fn hop(&self) -> usize {
@@ -209,25 +203,6 @@ impl RtNsgtKernelLog2 {
     #[inline]
     pub fn space(&self) -> &Log2Space {
         self.nsgt.space()
-    }
-
-    /// Reconfigure τ mapping and recompute α (no allocation).
-    pub fn reconfigure_smoothing(&mut self, tau_min: f32, tau_max: f32, f_ref: f32) {
-        let cfg = sanitize_rt_config(RtConfig {
-            tau_min,
-            tau_max,
-            f_ref,
-        });
-        let tau_min = cfg.tau_min;
-        let tau_max = cfg.tau_max;
-        for (b, state) in self.nsgt.bands().iter().zip(self.bands_state.iter_mut()) {
-            let f = b.f_hz.max(1e-6);
-            let ratio = (cfg.f_ref / f).clamp(0.0, 1.0);
-            let mut tau = tau_min + (tau_max - tau_min) * ratio;
-            tau = tau.clamp(tau_min, tau_max);
-            state.tau = tau;
-            state.alpha = (-self.dt / tau).exp();
-        }
     }
 
     /// Reset smoothing states and ring buffer.

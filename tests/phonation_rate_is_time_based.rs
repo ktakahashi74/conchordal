@@ -21,8 +21,7 @@ fn phonation_rate_is_time_based() {
             onsets += 1;
         }
     }
-    assert!(
-        (1..=3).contains(&onsets),
-        "expected 1..=3 onsets, got {onsets}"
-    );
+    // rate 1.0 Hz over 24 gates of dt=1/12 s is deterministic: exactly 2 onsets.
+    // A range here would also pass if the rate drifted by 50%.
+    assert_eq!(onsets, 2, "expected exactly 2 onsets, got {onsets}");
 }

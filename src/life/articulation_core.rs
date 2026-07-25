@@ -1,4 +1,4 @@
-use crate::core::float::clamp01_finite;
+use crate::core::float::sanitize01;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::phase::{SlidingPlv, angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
@@ -121,7 +121,7 @@ impl ArticulationWrapper {
 
     pub fn vitality_scalar(&self) -> f32 {
         match &self.core {
-            AnyArticulationCore::Entrain(core) => clamp01_finite(core.vitality_level),
+            AnyArticulationCore::Entrain(core) => sanitize01(core.vitality_level),
             AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 1.0,
         }
     }
@@ -302,7 +302,7 @@ fn coupling_multiplier_from_mode(mode: RhythmCouplingMode, vitality: f32) -> f32
         RhythmCouplingMode::TemporalTimesVitality { lambda_v, v_floor } => {
             debug_assert!(lambda_v.is_finite() && lambda_v >= 0.0);
             debug_assert!(v_floor.is_finite() && (0.0..1.0).contains(&v_floor));
-            let vitality = clamp01_finite(vitality);
+            let vitality = sanitize01(vitality);
             let denom = (1.0 - v_floor).max(1e-6);
             let g = ((vitality - v_floor) / denom).clamp(0.0, 1.0);
             (lambda_v * g).clamp(0.0, MAX_COUPLING_MULT)
@@ -313,9 +313,7 @@ fn coupling_multiplier_from_mode(mode: RhythmCouplingMode, vitality: f32) -> f32
 #[inline]
 fn attack_metric_value(metric: RhythmRewardMetric, phase_err_at_attack: f32) -> f32 {
     match metric {
-        RhythmRewardMetric::AttackPhaseMatch => {
-            clamp01_finite(0.5 + 0.5 * phase_err_at_attack.cos())
-        }
+        RhythmRewardMetric::AttackPhaseMatch => sanitize01(0.5 + 0.5 * phase_err_at_attack.cos()),
     }
 }
 
@@ -328,7 +326,7 @@ fn recharge_multiplier_from_reward(
         return 1.0;
     };
     debug_assert!(reward.rho_t.is_finite() && reward.rho_t >= 0.0);
-    let t = clamp01_finite(attack_metric.unwrap_or(0.0));
+    let t = sanitize01(attack_metric.unwrap_or(0.0));
     (1.0 + reward.rho_t * t).clamp(0.0, MAX_RECHARGE_MULT)
 }
 
@@ -453,7 +451,7 @@ impl KuramotoCore {
         } else {
             0.0
         };
-        let vitality = clamp01_finite(self.vitality_level);
+        let vitality = sanitize01(self.vitality_level);
         let coupling_mult = coupling_multiplier_from_mode(self.rhythm_coupling, vitality);
         let k_eff = k_time * coupling_mult;
         let k_eff = if k_eff.is_finite() {

@@ -1,4 +1,4 @@
-use crate::core::float::clamp01_finite;
+use crate::core::float::sanitize01;
 use crate::life::constants::MAX_RECHARGE_MULT;
 use crate::life::lifecycle::LifecycleConfig;
 
@@ -67,7 +67,7 @@ impl MetabolismPolicy {
     }
 
     pub fn basal_delta(&self, dt: f32, consonance: f32) -> f32 {
-        let c = clamp01_finite(consonance);
+        let c = sanitize01(consonance);
         let factor = 1.0 + self.dissonance_penalty * (1.0 - c);
         -self.basal_cost_per_sec * factor * dt.max(0.0)
     }
@@ -84,7 +84,7 @@ impl MetabolismPolicy {
                 let hi = if high > low { high } else { low + 1e-6 };
                 ((selection_score - low) / (hi - low)).clamp(0.0, 1.0)
             }
-            _ => clamp01_finite(consonance_level),
+            _ => sanitize01(consonance_level),
         }
     }
 
@@ -112,7 +112,7 @@ impl MetabolismPolicy {
         } else {
             1.0
         };
-        -self.action_cost_per_attack + self.recharge_per_attack * clamp01_finite(consonance) * mult
+        -self.action_cost_per_attack + self.recharge_per_attack * sanitize01(consonance) * mult
     }
 }
 

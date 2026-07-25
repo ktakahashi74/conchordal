@@ -33,23 +33,29 @@ impl PressureStats {
         self.n += 1;
         self.max_tension_pressure = self
             .max_tension_pressure
-            .max(record["tension_pressure"].as_f64().unwrap_or(0.0));
+            .max(required_f64(record, "tension_pressure"));
         self.max_temperature_bonus = self
             .max_temperature_bonus
-            .max(record["temperature_bonus"].as_f64().unwrap_or(0.0));
+            .max(required_f64(record, "temperature_bonus"));
     }
+}
+
+/// Fixture fields are required. `unwrap_or(0.0)` would turn a renamed key into a
+/// silent zero, which makes the `< 1e-6` leak assertions pass vacuously.
+fn required_f64(record: &Value, key: &str) -> f64 {
+    record[key]
+        .as_f64()
+        .unwrap_or_else(|| panic!("fixture record missing numeric field {key:?}: {record}"))
 }
 
 impl ListenerStats {
     fn push(&mut self, record: &Value) {
         self.n += 1;
-        self.stability_sum += record["stability_level"].as_f64().unwrap_or(0.0);
-        self.resolvability_sum += record["resolvability_level"].as_f64().unwrap_or(0.0);
-        self.tension_sum += record["tension_level"].as_f64().unwrap_or(0.0);
-        self.attention_sum += record["attention_level"].as_f64().unwrap_or(0.0);
-        self.max_tension = self
-            .max_tension
-            .max(record["tension_level"].as_f64().unwrap_or(0.0));
+        self.stability_sum += required_f64(record, "stability_level");
+        self.resolvability_sum += required_f64(record, "resolvability_level");
+        self.tension_sum += required_f64(record, "tension_level");
+        self.attention_sum += required_f64(record, "attention_level");
+        self.max_tension = self.max_tension.max(required_f64(record, "tension_level"));
     }
 
     fn avg_stability(&self) -> f64 {

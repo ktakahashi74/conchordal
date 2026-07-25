@@ -1,12 +1,12 @@
 //! Shared spectral front-end for landscape processing.
 //! NSGT power -> peak extraction -> delta + loudness -> leaky normalization.
 
-use crate::core::a_weighting;
 use crate::core::density;
 use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
 use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density_with_grid};
 use crate::core::roughness_kernel::erb_grid;
+use crate::core::utils::a_weighting_gain_pow;
 
 #[derive(Clone, Debug)]
 pub struct SpectralFrame {
@@ -29,7 +29,7 @@ impl SpectralFrontEnd {
         let loudness_weights_pow = space
             .centers_hz
             .iter()
-            .map(|&f| a_weighting::a_weighting_gain_pow(f))
+            .map(|&f| a_weighting_gain_pow(f))
             .collect::<Vec<f32>>();
         let n = space.n_bins();
         Self {
@@ -166,7 +166,7 @@ mod tests {
         let (frontend, _params) = build_frontend(fs);
         let i = frontend.loudness_weights_pow.len() / 2;
         let f = frontend.space.centers_hz[i];
-        let expected = a_weighting::a_weighting_gain_pow(f);
+        let expected = a_weighting_gain_pow(f);
         let got = frontend.loudness_weights_pow[i];
         assert!(
             (got - expected).abs() < 1e-6,

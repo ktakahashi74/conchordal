@@ -119,6 +119,14 @@ wait(0.2);
     let reader =
         hound::WavReader::open(&wav_path).unwrap_or_else(|e| panic!("invalid wav output: {e}"));
     assert!(reader.duration() > 0, "wav has no samples");
+    // Duration alone passes on digital silence; require actual signal.
+    let peak = reader
+        .into_samples::<i16>()
+        .filter_map(Result::ok)
+        .map(|s| s.unsigned_abs())
+        .max()
+        .unwrap_or(0);
+    assert!(peak > 0, "rendered wav is digital silence");
 
     let _ = fs::remove_file(&scenario);
     let _ = fs::remove_file(&wav_path);

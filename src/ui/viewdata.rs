@@ -51,7 +51,7 @@ pub struct VoiceStateInfo {
     pub consonance: f32,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PlaybackState {
     #[default]
     NotStarted,

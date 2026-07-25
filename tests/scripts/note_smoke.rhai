@@ -1,4 +1,3 @@
-print("TEST_OK: note_smoke");
 let tone = place(sine(), at(440.0).count(1)).amp(0.5);
 flush();
 for i in 0..10 {
@@ -6,3 +5,5 @@ for i in 0..10 {
 }
 release(tone);
 wait(0.2);
+
+print("TEST_OK: note_smoke");

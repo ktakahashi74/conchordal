@@ -92,17 +92,6 @@ fn finalize_win_len(mut len: usize, nfft: usize) -> usize {
     len
 }
 
-/// Band descriptor on log2 axis.
-#[derive(Clone, Debug)]
-pub struct NsgtBand {
-    pub f_hz: f32,
-    pub win_len: usize,
-    pub hop: usize,
-    pub window: Vec<f32>,
-    pub log2_hz: f32,
-    pub q: f32,
-}
-
 /// Analysis result for one band.
 #[derive(Clone, Debug)]
 pub struct BandCoeffs {
@@ -337,7 +326,7 @@ impl NsgtKernelLog2 {
         self.fft.clone()
     }
     #[inline]
-    pub fn time_ref_sample_in_frame(&self) -> usize {
+    fn time_ref_sample_in_frame(&self) -> usize {
         match self.cfg.kernel_align {
             KernelAlign::Center => self.nfft / 2,
             KernelAlign::Right => self.nfft.saturating_sub(1),
@@ -413,29 +402,6 @@ impl NsgtKernelLog2 {
         }
 
         out
-    }
-
-    /// Mean magnitude (envelope). No per-L or per-Hz normalization; caller defines it.
-    pub fn analyze_envelope(&self, x: &[f32]) -> Vec<f32> {
-        let bands = self.analyze(x);
-        bands
-            .into_iter()
-            .map(|b| {
-                let m = b.coeffs.len();
-                if m == 0 {
-                    0.0
-                } else {
-                    // Drop one frame at each edge to reduce boundary effects.
-                    let (start, end) = if m > 2 { (1, m - 1) } else { (0, m) };
-                    let slice = &b.coeffs[start..end];
-                    if slice.is_empty() {
-                        0.0
-                    } else {
-                        slice.iter().map(|z| z.norm()).sum::<f32>() / (slice.len() as f32)
-                    }
-                }
-            })
-            .collect()
     }
 
     /// Power spectral density [power/Hz] with ENBW correction (**one-sided**).

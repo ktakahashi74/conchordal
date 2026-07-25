@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tracing::*;
 
-use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
+use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
 use ringbuf::traits::Observer;
 
 use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
@@ -343,6 +343,9 @@ fn listener_frame_from_states(
     frame
 }
 
+/// Returns `(updated, disconnected)`. `disconnected` means the analysis thread is
+/// gone: the caller's wait loop spins until `analysis_ok` turns true, which can no
+/// longer happen, so swallowing it would hang the worker instead of ending the run.
 fn merge_latest_analysis_results(
     analysis_result_rx: &Receiver<(u64, Landscape)>,
     current_landscape: &mut LandscapeFrame,
@@ -351,14 +354,24 @@ fn merge_latest_analysis_results(
     lparams: &LandscapeParams,
     last_analysis_frame: &mut Option<u64>,
     frame_idx: u64,
-) -> bool {
+) -> (bool, bool) {
     let mut latest_audio: Option<(u64, Landscape)> = None;
-    while let Ok((analyzed_id, frame)) = analysis_result_rx.try_recv() {
-        *last_analysis_frame = Some(analyzed_id);
-        latest_audio = Some((analyzed_id, frame));
+    let mut disconnected = false;
+    loop {
+        match analysis_result_rx.try_recv() {
+            Ok((analyzed_id, frame)) => {
+                *last_analysis_frame = Some(analyzed_id);
+                latest_audio = Some((analyzed_id, frame));
+            }
+            Err(TryRecvError::Empty) => break,
+            Err(TryRecvError::Disconnected) => {
+                disconnected = true;
+                break;
+            }
+        }
     }
     let Some((_analysis_id, frame)) = latest_audio else {
-        return false;
+        return (false, disconnected);
     };
 
     let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
@@ -428,7 +441,7 @@ fn merge_latest_analysis_results(
         );
     }
 
-    true
+    (true, disconnected)
 }
 
 /// Advance a habituation field one hop from the landscape's raw views, then
@@ -461,14 +474,30 @@ fn merge_latest_listener_analysis_results(
     timebase: crate::core::timebase::Timebase,
     generated_frame_id: u64,
     last_listener_analysis_frame: &mut Option<u64>,
-) -> Option<ListenerState> {
-    let rx = listener_result_rx?;
+) -> (Option<ListenerState>, bool) {
+    let Some(rx) = listener_result_rx else {
+        return (None, false);
+    };
     let mut latest_audio: Option<(u64, Landscape)> = None;
-    while let Ok((analyzed_id, frame)) = rx.try_recv() {
-        *last_listener_analysis_frame = Some(analyzed_id);
-        latest_audio = Some((analyzed_id, frame));
+    let mut disconnected = false;
+    loop {
+        match rx.try_recv() {
+            Ok((analyzed_id, frame)) => {
+                *last_listener_analysis_frame = Some(analyzed_id);
+                latest_audio = Some((analyzed_id, frame));
+            }
+            Err(TryRecvError::Empty) => break,
+            // Same hazard as the main analysis path: under deterministic render the
+            // caller waits on `analysis_ok`, so a dead listener thread would hang it.
+            Err(TryRecvError::Disconnected) => {
+                disconnected = true;
+                break;
+            }
+        }
     }
-    let (analysis_frame_id, mut frame) = latest_audio?;
+    let Some((analysis_frame_id, mut frame)) = latest_audio else {
+        return (None, disconnected);
+    };
 
     frame.recompute_consonance(lparams);
     // Listener habituation advances per processed presentation frame; under the
@@ -478,12 +507,13 @@ fn merge_latest_listener_analysis_results(
     // exactly once per hop (deterministic).
     drive_and_apply_habituation(&mut frame, hab_listener, lparams, dt_sec);
     let analysis_time_sec = timebase.tick_to_sec(timebase.frame_end_tick(analysis_frame_id));
-    Some(listener_twin.observe_presentation_landscape(
+    let state = listener_twin.observe_presentation_landscape(
         analysis_time_sec,
         generated_frame_id,
         analysis_frame_id,
         &frame,
-    ))
+    );
+    (Some(state), disconnected)
 }
 
 pub(crate) struct RuntimeInit {
@@ -1011,14 +1041,25 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
     let rt = init_runtime(args, config, stop_flag);
     rt.start_flag.store(true, Ordering::SeqCst);
     let _audio = rt.audio_out;
-    if let Some(handle) = rt.worker_handle {
-        let _ = handle.join();
+    // Discarding the join result would let a panicked worker exit 0, which makes
+    // headless script tests pass on a dead run. Surface it as a failure instead.
+    let mut failures = Vec::new();
+    for (name, handle) in [
+        ("worker", rt.worker_handle),
+        ("analysis", rt.analysis_handle),
+        ("listener-analysis", rt.listener_analysis_handle),
+    ] {
+        if let Some(handle) = handle
+            && let Err(err) = join_thread(name, handle)
+        {
+            failures.push(err);
+        }
     }
-    if let Some(handle) = rt.analysis_handle {
-        let _ = handle.join();
-    }
-    if let Some(handle) = rt.listener_analysis_handle {
-        let _ = handle.join();
+    if !failures.is_empty() {
+        for err in &failures {
+            eprintln!("{err}");
+        }
+        std::process::exit(1);
     }
 }
 
@@ -1192,16 +1233,16 @@ pub fn run_render(
         })
         .expect("spawn worker");
 
-    join_render_thread("worker", worker_handle)?;
-    join_render_thread("wav", wav_handle)?;
-    join_render_thread("analysis", analysis_handle)?;
+    join_thread("worker", worker_handle)?;
+    join_thread("wav", wav_handle)?;
+    join_thread("analysis", analysis_handle)?;
     if let Some(handle) = listener_analysis_handle {
-        join_render_thread("listener-analysis", handle)?;
+        join_thread("listener-analysis", handle)?;
     }
     Ok(())
 }
 
-fn join_render_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String> {
+fn join_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String> {
     handle.join().map_err(|payload| {
         let detail = if let Some(msg) = payload.downcast_ref::<&str>() {
             (*msg).to_string()
@@ -1210,7 +1251,7 @@ fn join_render_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), 
         } else {
             "unknown panic payload".to_string()
         };
-        format!("render {name} thread failed: {detail}")
+        format!("{name} thread failed: {detail}")
     })
 }
 
@@ -1301,7 +1342,7 @@ fn worker_loop(
         &pop,
         &current_landscape,
         current_time,
-        playback_state.clone(),
+        playback_state,
         fs,
     ));
 
@@ -1357,7 +1398,7 @@ fn worker_loop(
             // Spec: landscape may lag analysis by <= MAX_LANDSCAPE_LAG_FRAMES.
             let mut analysis_updated = false;
             loop {
-                if merge_latest_analysis_results(
+                let (merged, analysis_disconnected) = merge_latest_analysis_results(
                     &analysis_result_rx,
                     &mut current_landscape,
                     &mut log_space,
@@ -1365,11 +1406,17 @@ fn worker_loop(
                     &lparams,
                     &mut last_analysis_frame,
                     frame_idx,
-                ) {
+                );
+                if merged {
                     analysis_updated = true;
                 }
 
                 if analysis_ok(frame_idx, last_analysis_frame, MAX_LANDSCAPE_LAG_FRAMES) {
+                    break;
+                }
+                if analysis_disconnected {
+                    eprintln!("Analysis thread stopped delivering results; ending run.");
+                    exiting.store(true, Ordering::SeqCst);
                     break;
                 }
                 if exiting.load(Ordering::SeqCst) {
@@ -1398,7 +1445,7 @@ fn worker_loop(
                 let obs_tick = timebase.frame_end_tick(analysis_id);
                 generator_model.observe_consonance_field_level(
                     obs_tick,
-                    Arc::from(current_landscape.consonance_field_level_eff.clone()),
+                    Arc::from(&current_landscape.consonance_field_level_eff[..]),
                 );
             }
 
@@ -1410,16 +1457,18 @@ fn worker_loop(
             // stalling the generator on listener-analysis latency.
             let mut listener_state_update: Option<ListenerState> = None;
             loop {
-                if let Some(state) = merge_latest_listener_analysis_results(
-                    listener_result_rx.as_ref(),
-                    &mut listener_twin,
-                    &lparams,
-                    &mut hab_listener,
-                    hop_duration.as_secs_f32(),
-                    timebase,
-                    frame_idx,
-                    &mut last_listener_analysis_frame,
-                ) {
+                let (listener_state, listener_disconnected) =
+                    merge_latest_listener_analysis_results(
+                        listener_result_rx.as_ref(),
+                        &mut listener_twin,
+                        &lparams,
+                        &mut hab_listener,
+                        hop_duration.as_secs_f32(),
+                        timebase,
+                        frame_idx,
+                        &mut last_listener_analysis_frame,
+                    );
+                if let Some(state) = listener_state {
                     listener_state_update = Some(state);
                 }
                 if !deterministic_analysis || listener_result_rx.is_none() {
@@ -1430,6 +1479,11 @@ fn worker_loop(
                     last_listener_analysis_frame,
                     MAX_LANDSCAPE_LAG_FRAMES,
                 ) {
+                    break;
+                }
+                if listener_disconnected {
+                    eprintln!("Listener analysis thread stopped delivering results; ending run.");
+                    exiting.store(true, Ordering::SeqCst);
                     break;
                 }
                 if exiting.load(Ordering::SeqCst) {
@@ -1723,7 +1777,7 @@ fn worker_loop(
                     listener_fast_state: latest_listener_fast_state,
                     listener_state: latest_listener_state,
                     current_time,
-                    playback_state: playback_state.clone(),
+                    playback_state,
                     peak_level,
                     channel_peak,
                     now_tick,

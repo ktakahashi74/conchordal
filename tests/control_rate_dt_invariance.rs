@@ -99,4 +99,25 @@ fn control_rate_dt_invariance() {
         (env_fine - env_coarse).abs() <= tol,
         "env_level delta fine={env_fine:.6} coarse={env_coarse:.6}"
     );
+
+    // The comparisons above would also hold if update_articulation became a no-op,
+    // since both sides would stay at their initial state. Require actual movement.
+    let untouched = prepare_agent(build_agent());
+    let env_initial = match &untouched.articulation.core {
+        AnyArticulationCore::Entrain(core) => core.env_level,
+        _ => panic!("expected entrain articulation core"),
+    };
+    let gate_initial = untouched.articulation.gate();
+    // Separate epsilon from `tol`: `tol` is the fine/coarse agreement budget, while
+    // this only has to exclude "the state never moved at all". Reusing `tol` would
+    // fail a correct implementation that advances by a genuinely small amount.
+    let moved_eps = 1e-6;
+    assert!(
+        (gate_fine - gate_initial).abs() > moved_eps,
+        "gate did not advance: {gate_initial:.6} -> {gate_fine:.6}"
+    );
+    assert!(
+        (env_fine - env_initial).abs() > moved_eps,
+        "env_level did not advance: {env_initial:.6} -> {env_fine:.6}"
+    );
 }

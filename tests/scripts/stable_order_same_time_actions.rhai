@@ -1,7 +1,8 @@
-print("TEST_OK: stable_order_same_time_actions");
 let drones = place(sine(), at(440.0).count(1)).amp(0.2);
 flush();
 drones.freq(200.0);
 drones.freq(300.0);
 flush();
 wait(0.2);
+
+print("TEST_OK: stable_order_same_time_actions");

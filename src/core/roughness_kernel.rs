@@ -5,6 +5,7 @@
 
 use crate::core::density;
 use crate::core::erb::hz_to_erb;
+use crate::core::float::finite_or;
 use crate::core::log2space::Log2Space;
 
 // ======================================================================
@@ -65,11 +66,6 @@ impl Default for KernelParams {
 /// This is the masking-off reference family:
 ///   gain * max(0, exp(-b*u) - exp(-c*u)), u = |d_erb| / kappa_erb.
 #[inline]
-fn finite_or(x: f32, fallback: f32) -> f32 {
-    if x.is_finite() { x } else { fallback }
-}
-
-#[inline]
 fn sethares_shape_params(params: &KernelParams) -> (f32, f32, f32, f32) {
     let defaults = KernelParams::default();
     let gain = finite_or(params.sethares_gain, defaults.sethares_gain).max(0.0);
@@ -103,7 +99,7 @@ fn eval_kernel_base_no_dip(params: &KernelParams, d_erb: f32) -> f32 {
 }
 
 #[inline]
-pub fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
+fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     if !d_erb.is_finite() {
         return 0.0;
     }
@@ -157,7 +153,7 @@ pub fn crowding_runtime_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     (1.0 - r_at_compressed / r_peak).clamp(0.0, 1.0)
 }
 
-pub fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
+fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
     assert!(
         erb_step.is_finite() && erb_step > 0.0,
         "erb_step must be finite and positive"
@@ -257,6 +253,20 @@ impl RoughnessKernel {
         amps_density: &[f32],
         space: &Log2Space,
     ) -> (Vec<f32>, f32) {
+        let (erb, du) = erb_grid(space);
+        self.potential_r_from_log2_spectrum_density_with_grid(amps_density, space, &erb, &du)
+    }
+
+    /// Same as `potential_r_from_log2_spectrum_density`, but takes a precomputed ERB
+    /// grid. `erb_grid` depends only on `space`, so hot paths that call this more than
+    /// once per frame should cache the grid and use this variant.
+    pub fn potential_r_from_log2_spectrum_density_with_grid(
+        &self,
+        amps_density: &[f32],
+        space: &Log2Space,
+        erb: &[f32],
+        du: &[f32],
+    ) -> (Vec<f32>, f32) {
         use crate::core::erb::erb_to_hz;
 
         if amps_density.is_empty() || space.centers_hz.is_empty() {
@@ -267,11 +277,14 @@ impl RoughnessKernel {
             space.centers_hz.len(),
             "amps and space length mismatch"
         );
+        debug_assert_eq!(
+            erb.len(),
+            space.centers_hz.len(),
+            "erb grid length mismatch"
+        );
+        debug_assert_eq!(du.len(), space.centers_hz.len(), "du grid length mismatch");
 
         let n = amps_density.len();
-
-        // (1) Map to ERB axis
-        let (erb, du) = erb_grid(space);
 
         // (2) Convolution over ERB axis
         let half_width_erb = finite_or(
@@ -301,7 +314,7 @@ impl RoughnessKernel {
         }
 
         // (3) Integration over ERB axis
-        let r_total = density::density_to_mass(&r, &du);
+        let r_total = density::density_to_mass(&r, du);
 
         (r, r_total)
     }

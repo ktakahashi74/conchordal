@@ -3,11 +3,11 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "bc4fe81"
+source_commit = "aefd992"
 author = "Koichi Takahashi"
-last_updated = "2026-06-10"
-source_version = "0.4.0-dev"
-source_snapshot = "2026-06-10T22:00:12+09:00"
+last_updated = "2026-08-16"
+source_version = "0.4.0"
+source_snapshot = "2026-08-14T13:28:14+09:00"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -113,21 +113,32 @@ $$ h_k[n] = w_k[n] \cdot e^{-j 2\pi f_k n / f_s} $$
 
 $$ C_k = \frac{1}{N_{fft}} \sum_{\nu} X[\nu] \cdot K_k^*[\nu] $$
 
-この「1回のFFT、多数のカーネル」アプローチにより、Conchordal は各帯域ごとに個別のDFTを計算したり再帰フィルタバンクを使用したりする計算コストなしに、20Hzから20kHzまでをカバーする高分解能の対数間隔スペクトルを生成できる。
+この「1回のFFT、多数のカーネル」アプローチにより、帯域ごとに個別のDFTを計算したり、再帰フィルタバンクを用いたりすることなく、高分解能の対数間隔スペクトルを得られる。現在のinstrument runtimeは55 Hzから8 kHzまでを1オクターブ96ビンで解析する。`Log2Space`自体は、実験やtestで別の正の上下限も扱える。
 
 ### 3.1.2 リアルタイム時間平滑化
 
-NSGTから得られる生のスペクトル係数 $C_k$ は、オーディオ入力の確率的性質（特にノイズベースのエージェント）により高い分散を示す。エージェントがサンプリングする安定したフィールドを作るため、`RtNsgtKernelLog2` 構造体はNSGTを時間平滑化層でラップする。
+瞬時帯域power $p_k=|C_k|^2$ は、オーディオ入力の確率的性質（特にノイズベースのエージェント）により高い分散を示す。エージェントが読む安定したフィールドを作るため、`RtNsgtKernelLog2` 構造体はNSGTを時間平滑化層でラップする。
 
 帯域ごとのリーキー積分器（指数平滑化）が実装される。重要なのは、時定数 $\tau$ が周波数依存であることだ。緩やかに変化する低周波はより長い $\tau$ で平滑化され、過渡的な詳細を含む高周波はより短い $\tau$ を持つ。
 
-$$ y_k[t] = (1 - \alpha_k) \cdot |C_k[t]| + \alpha_k \cdot y_k[t-1] $$
+$$ y_k[t] = (1 - \alpha_k) \cdot p_k[t] + \alpha_k \cdot y_k[t-1] $$
 
 ここで平滑化係数 $\alpha_k$ はフレーム間隔 $\Delta t$ から導出される。
 
 $$ \alpha_k = e^{-\Delta t / \tau(f_k)} $$
 
-これは耳の「積分時間」をモデル化し、ランドスケープが瞬時の信号パワーではなく心理音響的な知覚を反映することを保証する。
+これは耳の「積分時間」をモデル化する。ただし、この出力がそのままroughnessとharmonicityへ入るわけではない。平滑化されたpowerは、次の知覚前処理で疎なsubjective-intensity densityへ変換される。
+
+### 3.1.3 NSGT powerからsubjective intensityへ
+
+`SpectralFrontEnd`（`core/landscape_spectral.rs`）は、平滑化されたNSGT powerをそのままLandscape kernelへ渡さない。各hopで次の処理を行う。
+
+1.  Log2Spaceに対応するERB cell幅を使い、ビンごとのpowerをpower densityへ変換する。
+2.  有意なスペクトルpeakを抽出する。各解析ビンを独立したpartialとはみなさず、peakの積分massを保存する。
+3.  各peak massへA-weightingの**power** gainと圧縮指数`loudness_exp`を適用する。
+4.  変換後のmassを、Log2Spaceに揃った疎なsubjective-intensity densityへ戻し、`analysis.tau_ms`を時定数とする二段目のleaky normalizationを施す。
+
+以下のroughnessとharmonicityが共通して読むのは、生の$|C_k|$でもNSGT powerでもなく、この`subjective_intensity` scanである。その積分値は`loudness_mass`として別に保持される。
 
 ## 3.2 粗さ（$R$）計算：Plomp-Levelt モデル
 
@@ -135,19 +146,24 @@ $$ \alpha_k = e^{-\Delta t / \tau(f_k)} $$
 
 ### 3.2.1 干渉カーネル
 
-計算の核心は `core/roughness_kernel.rs` で定義される粗さカーネルである。このカーネル $K_{rough}(\Delta z)$ は、$\Delta z$ ERB離れた2つの部分音間の干渉曲線をモデル化する。この曲線は、部分音が離れるにつれて急速に上昇するペナルティを作り出し、約0.25 ERB（最大粗さ）でピークに達し、さらに離れると減衰する。
+計算の核心は`core/roughness_kernel.rs`で定義されるroughness kernelである。$K_{rough}(\Delta z)$は、ERB-rate上で$\Delta z$だけ離れた2つのpartialの干渉曲線を表す。デフォルトのSethares coreは約4分の1 ERB-rate付近にpeakを持ち、参照正規化用の刺激は0.25 ERB間隔を使う。
 
-実装では、パラメータ化された関数 `eval_kernel_delta_erb` を使用してこの形状を生成する。
+実装は、Setharesの指数差core、小さな方向性masking asymmetry、中心抑制dip、任意のneural Gaussian成分を組み合わせる。$u=|\Delta z|/\kappa$とすると、
 
-$$ g(\Delta z) = e^{-\frac{\Delta z^2}{2\sigma^2}} \cdot (1 - e^{-(\frac{\Delta z}{\sigma_{suppress}})^p}) $$
+$$ S(\Delta z) = G\,\max(0, e^{-bu} - e^{-cu})\,A(\Delta z) $$
 
-第2項は抑制因子であり、$\Delta z \to 0$ でカーネルがゼロに向かうことを保証し、単一の純音が自己粗さを生成することを防ぐ。
+$$ M(\Delta z) = \left(1-e^{-\Delta z^2/(2\sigma_{sup}^2)}\right)^p, \qquad
+N(\Delta z)=e^{-\Delta z^2/(2\sigma_n^2)} $$
+
+$$ K_{rough}(\Delta z)=(1-w_n)\,S(\Delta z)M(\Delta z)+w_nN(\Delta z) $$
+
+$A(\Delta z)$は`mix_tail`と`tau_erb`が制御する正負方向の非対称項である。デフォルトの$w_n=0$ではcochlear Sethares pathだけを用いる。$M(0)=0$が純音の自己roughnessを抑え、$w_n$を上げた場合にはneural成分が意図的にそのdipを埋める。
 
 ### 3.2.2 畳み込みアプローチ
 
 すべてのスペクトルビンに対するペアワイズの粗さ計算（$N^2$ の計算量）はリアルタイム応用には計算上不可能である。Conchordal は粗さの計算を線形畳み込みとして扱うことでこれを解決する。
 
-1.  **マッピング**: NSGTからの対数間隔振幅スペクトルを線形ERBグリッドにマッピング（または補間）する。
+1.  **マッピング**: 3.1.3節のLog2Space-aligned subjective-intensity densityを線形ERBグリッドへ移す。
 2.  **畳み込み**: この密度 $A(z)$ を事前計算された粗さカーネル $K_{rough}$ と畳み込む。
 
 $$ R_{shape}(z) = (A * K_{rough})(z) = \int A(z-\tau) K_{rough}(\tau) d\tau $$
@@ -222,16 +238,6 @@ $$
 
 したがって、西洋音楽理論のハードコードされた知識なしに、システムは倍音列の物理法則の帰結として、長3度および完全5度の関係に自然に安定性ピークを生成する。200 Hz のエージェントは 300 Hz と 500 Hz に「重力井戸」を作り出し、他のエージェントを長三和音の形成へと誘引する。
 
-### 3.3.3 単一の倍音パス（と、撤去されたミラー）
-
-調波地形は単一の「下方→上方」投影から構築される。各スペクトル成分を候補となる仮想基音へ下方投影し、その倍音へと上方投影し直す（3.3.2節）。これは仮想ピッチを周波数領域で実現したものにあたる。下倍音側の対応物は持たない。それは意図した選択である。
-
-かつての実装は、これを反転した第二のパス「上方→下方」を `mirror_weight`（$\alpha$）で重み付けしてブレンドしていた——$H = (1-\alpha)H_{overtone} + \alpha H_{undertone}$、短調を長調の鏡像とみなす Riemann の*和声二元論*である。これは二つの独立した理由から撤去された。
-
-**二元論は構造的に誤っている。** 三点ある。第一に物理。下倍音列は自然界に存在せず（振動体が放射するのは倍音である）、下倍音地形には刺激側の対応物がない。第二に知覚。「共通倍音による束縛」に相当する知覚機構は、仮想ピッチに比肩するものとして知られていない。現代の心理音響学は短三和音を「仮想基音が弱く曖昧な和音」と説明し、長三和音の鏡像とは説明しない。第三に、最も決定的な生態学。この系は閉ループであり、二元論は生成側で破れる。倍音位置に引き寄せられたエージェントは、自分を引き寄せた基音構造を放射スペクトルでさらに強める（アトラクタの自己安定化）。ところが下倍音位置のエージェントが放射するのもやはり倍音であって、自分を引き寄せた共通倍音構造を強めはせず、帰還ループが閉じない。論文の統制実験でも、倍音側のクラスタリングは再現されたが、下倍音（短調）側の再組織化は再現されなかった。
-
-**そして第二のパスは数学的に冗長だった。** log2 周波数上の畳み込みとして書くと、各パスは同一の*偶カーネル* $h_\rho(s) = \sum_{\log_2(k/m)=s} (mk)^{-\rho}$ による $\text{env} \circledast h_\rho$ である（$m \leftrightarrow k$ を入れ替えるとシフト $\log_2(k/m)$ は符号が反転するが重み $(mk)^{-\rho}$ は不変なので、このカーネルは偶関数になる）。パスAは $\rho = \rho_{root}$、パスBは $\rho = \rho_{overtone}$ を使う。両者は指数が一致すれば同一であり、異なっても単一の偶カーネルの減衰指数が二つあるにすぎない。偶カーネルには倍音/下倍音の*方向*が存在しないため、パスBはパスAにない情報を何も担っておらず、ブレンド $(1-\alpha)h_{\rho_{root}} + \alpha\,h_{\rho_{overtone}}$ は単一の実効カーネルに潰れる。$\alpha$ を動かすだけの `harmonic_tension` ダイアルは、可聴な緊張を制御しないことも確認された。エコシステムが実際に読む協和ピークを、全音域にわたって動かさなかったのである。第二のパスもダイアルも撤去された（第7章の台帳を参照）。残るのは単一の倍音パスである。
-
 ## 3.4 協和性：フィールドの統合
 
 $R_{01}$ と $H_{01}$ が揃えば、協和性は二段階で導出できる。まず**協和性カーネル**が二つの観測量を単一の適応度スコアへ融合し、次に**表現変換**の組がそのスコアを、ライフエンジン（第5章）の各利用先に合わせた形へ変形する。
@@ -247,14 +253,33 @@ $$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 | 名前 | 式 | 範囲 | 意味 |
 | :--- | :--- | :--- | :--- |
 | $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | カーネルからの生の適応度 |
-| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | 代謝ゲート（シグモイド） |
-| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | 生の密度質量（$\rho$-カーネル） |
-| $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass})$ | $[0,1],\;\Sigma=1$ | ピッチ選択PMF |
+| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | 馴化のdriveと非浸食viewに使うbase level |
+| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | 浸食前のbase density mass |
+| $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass}^{eff})$ | $[0,1],\;\Sigma=1$ | `Landscape`に残る全域正規化view |
 | $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | 最小化用エネルギー |
+| $C_{score}^{eff}$ | $\theta+(C_{score}-\theta)(1-h)$ | $(-\infty,+\infty)$ | 移動と予測が読む馴化浸食後のscore |
+| $C_{level01}^{eff}$ | $\sigma(\beta(C_{score}^{eff}-\theta))$ | $[0,1]$ | behaviorとlistenerが読む浸食後のlevel |
+| $C_{density\_mass}^{eff}$ | $(1-h)C_{density\_mass}$ | $[0,+\infty)$ | density placementが読む浸食後のmass |
 
-ここで $\sigma(x) = 1/(1+e^{-x})$、$\beta$ はシグモイドの急峻度（デフォルト 2.0）、$\theta$ はその閾値（デフォルト 0.0）である。各表現にはそれぞれ決まった利用先がある。$C_{level01}$ はエージェントの代謝をゲートし（5.2節）、$C_{density\_pmf}$ はスポーン時に新しいエージェントの周波数を引くための確率分布となる。密度質量には係数 $a{=}1, b{=}0, c{=}{-}\rho, d{=}0$ の別個の $\rho$-カーネルを用い、$C_{density\_mass} = H_{01}(1 - \rho R_{01})$ を $\geq 0$ にクランプする。パラメータ $\rho$（`consonance_density_roughness_gain`、デフォルト 1.0）は、粗さがスポーン確率をどれだけ抑えるかを決める。
+ここで$\sigma(x) = 1/(1+e^{-x})$、$\beta$はシグモイドの急峻度（デフォルト2.0）、$\theta$はその閾値（デフォルト0.0）である。density massには係数$a{=}1, b{=}0, c{=}{-}\rho, d{=}0$の別個の$\rho$-kernelを用いる。$\rho$（`consonance_density_roughness_gain`、デフォルト1.0）は、roughnessがdensity placementをどれだけ抑えるかを決める。
 
-最後に、この地形はすべてのエージェントにとって同一というわけではない。各 Voice は固有の知覚コンテキスト（`PerceptualContext`）を持ち、自分自身の飽き（boredom）と馴化（familiarity）を追跡して、ピッチ選択時のスコアに補正を加える（知覚的適応）。
+spawnは全域の$C_{density\_pmf}$を直接サンプルしない。`SpawnStrategy::Field`は、まず指定された周波数範囲だけを切り出し、effective viewから対象別のlocal massを作る。そこへ占有maskをかけ、その局所vectorだけを正規化する。massが全て0なら未占有ビン上の一様分布へ、全ビン占有なら範囲全体の一様分布へfallbackする。peak placementは$C_{score}^{eff}$を決定論的に読む。全域PMFは正規化されたLandscape表現として残るが、現在これを直接使うのはcore testだけである。
+
+この共有地形とは別に、Voiceごとの適応もある。`AdaptationContext`は共有された**基音占有場**に対する速いboredomと遅いfamiliarityを追跡し、pitch candidateごとのscoreを補正する。これは次節のLandscape-level habituationと併存する。adaptationはエージェント固有の記憶であり、habituationは共有された知覚地形の浸食である。
+
+## 3.5 Landscape-level habituation
+
+協和は無尽蔵な場所ではない。`[psychoacoustics.habituation]`を有効にすると、`HabituationField`が各ビンの状態$h_i\in[0,1]$を保持する。ecologyのhabitat解析と、`ListenerTwin`のpresentation解析には、それぞれ独立した状態がある。raw driveはbase consonance level $L_i$と新たに計算したcommon-root projection $P_i$を組み合わせる。
+
+$$ d_i^{raw}=L_iP_i, \qquad d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}} $$
+
+状態はこのdriveへ非対称に緩和する。
+
+$$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
+
+driveが上昇するときは$\tau=\tau_e$、下降するときは$\tau=\tau_r$を使う。`satiation_sec`は90%浸食まで、`recovery_sec`は90%回復までの時間として定義されるため、実装は$\tau_e=T_s/\ln 10$、$\tau_r=T_r/\ln 10$とする。effective scoreはsigmoidの中立閾値$\theta$へ近づき、density massは上表のとおり乗算的に浸食される。
+
+デフォルトは`enabled=false`、`satiation_sec=5.0`、`recovery_sec=8.0`、`ref_drive=0.25`である。無効時のhabituationは完全な恒等写像で、全effective viewはbase viewとbit単位で一致する。有効時には、移動、予測、代謝、respawn、density placement、listenerがeffective viewを読む。一方、UIのterrainとdiagnosticsは意図的に非浸食のbase viewを表示する。
 
 # 4. 時間軸：創発するメーター
 
@@ -373,11 +398,11 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 エネルギー枯渇は再トリガを止め、エンベロープの余韻を開始する。このためレポートは設定endurance、エネルギー枯渇時刻、可聴上の寿命を分けて記録する。
 
-このメカニクスはダーウィン的圧力を生み出す：**協和なるものの生存（Survival of the Consonant）**。
+このメカニクスはダーウィン的圧力を生み出す：**協和なるものの生存（Survival of the Consonant）**。不協和な場所、すなわち$C_{level01}^{eff}$が低い場所ではenergyが減り、Voiceは衰えて死ぬ。高い場所ではenergyを保ち、または回復できる。Landscape habituationを有効にすると、かつて支えとなった場所も、活動が続けばeffective valueを失い、音が退いた後に回復する。生存は音響的な適合だけでなく、直近の知覚履歴にも左右される。
 
 ## 5.3 ピッチリターゲティングとクラウディング
 
-エージェントは静的ではない。適応度を改善するために周波数空間を移動する。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
+エージェントは静的ではない。適応度を改善するために周波数空間を移動する。candidate評価はhabituationで浸食されたscoreを読む。exact leave-self-outでは、自己成分を除いたraw scoreを計算し直した後、比較前に同じlocal erosionを適用する。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
 
 **GateSnap vs. Glide**: ピッチ移動は `PitchApplyMode` が決める。`GateSnap` はノートの境界でピッチを離散的に切り替え（各ノートは一つの安定した周波数で鳴る）、`Glide` は連続的なポルタメントで移る。`seek_consonance()` を使うボイスでは、スクリプトが明示しない限りモードは発声タイミングから自動的に決まる。持続するボイス（`once()`）はグライドし、打ち直すボイス（pulse / coupled）はオンセットで切り替わる。
 
@@ -441,7 +466,7 @@ Conchordal はリアルタイムオーディオの厳格な要件（レイテン
 
 3.  **リスナー解析スレッド**:
     *   プレゼンテーションバスのホップに対して `ListenerTwin` 知覚パイプラインを実行する。
-    *   **責務**: 聴衆が知覚するもの——知覚メーターのビート確信度を含む——をモデル化し、UI、ヘッドレスレポート、DCC 圧力カプラに供給する。
+    *   **責務**: 独立したhabituation fieldと知覚メーターのビート確信度を含め、聴衆が知覚するものをモデル化し、UI、ヘッドレスレポート、DCC圧力カプラに供給する。
 
 4.  **ワーカースレッド（シミュレーションループ）**:
     *   `app.rs` で `"worker"` と命名される。
@@ -456,12 +481,13 @@ Conchordal はリアルタイムオーディオの厳格な要件（レイテン
 オーディオスレッドをロックせずにデータの一貫性を保つため、Conchordal はランドスケープを複数チャネル経由で更新する。レンダリングされたオーディオは二つのバスに分かれる。**ハビタットバス**はエコシステムが感じ取る環境であり、**プレゼンテーションバス**は聴衆が実際に聴く音である。ドローンをハビタットバスだけに送れば、聴かせることなく地形だけを形づくることもできる。
 
 1.  **ワーカースレッド**がバスごとにオーディオをレンダリングし、ハビタットホップを**解析スレッド**へ、プレゼンテーションホップを**リスナー解析スレッド**へ送信する。
-2.  **解析スレッド**がNSGT + 粗さ + 調波性パイプラインを実行し、`Landscape` スナップショットを返送する。
-3.  **ワーカースレッド**が解析結果を `LandscapeFrame` にマージし、協和性フィールドを再計算する。
-4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）と集団自身の発声オンセット強度で生成 `MeterNetwork` を駆動し、結果の `MeterState` を `NeuralRhythms::from_meter_state` 経由で `landscape.rhythm` に射影する。
-5.  `Population` が地形をピッチ選択、代謝、エージェントライフサイクルのために評価する。
-6.  `PhonationEngine` が `ToneCmd` バッチを生成し、`ScheduleRenderer` がトーンの生成・更新・リリースを実行する。
-7.  レンダリングされたプレゼンテーションオーディオが**オーディオスレッド**が消費するロックフリーリングバッファにプッシュされる。
+2.  **解析スレッド**がNSGT + subjective intensity + roughness + harmonicityパイプラインを実行し、raw `Landscape`スナップショットを返送する。
+3.  **ワーカースレッド**が解析結果を`LandscapeFrame`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
+4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）と集団自身の発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
+5.  `Community`がeffective Landscapeを、ピッチ選択、代謝、spawn、respawn、Voiceのライフサイクルに使う。
+6.  DCC couplingが有効なら、`ListenerTwin`のtensionとresolvabilityから上限つきのtemperature bonusを作り、Voiceのpitch searchへ戻す。デフォルトのcoupling strengthは0であり、明示的に有効化しない限り挙動は変わらない。
+7.  `PhonationEngine`が`ToneCmd` batchを生成し、`ScheduleRenderer`がToneの生成・更新・releaseを実行する。
+8.  レンダリングされたpresentation audioを、**オーディオスレッド**が消費するロックフリーring bufferへpushする。
 
 この疎結合アーキテクチャにより、解析スレッドがリアルタイムからわずかに遅延しても、オーディオスレッドは常に一貫したサンプルストリームを参照できる。
 
@@ -476,7 +502,7 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。
 *   **リズム（カップリング連続体、5.4節）**: プリセット `metric()`, `entrained()`, `flow()` が連続体上の領域を選択する——Hz 引数はない。テンポはディレクターの `temporal_basin` の管轄である。微調整は `entrainment(v)`（ロック強度 0–1）, `rhythm_role("beat"|"subdivision"|"accent"|"texture")`, `microtiming(v)`。呼吸レベルの結合は `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, `rhythm_reward(rho_t, "attack_phase_match")`。
-*   ライフサイクル/生存可能性: `endurance(sec)`, 任意の `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`。
+*   ライフサイクル/生存可能性: `endurance(sec)`, 任意の`recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, `phonate_when_viable()`（viability windowが開くまで最初のonsetを保留）。
 *   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
 
 **モードパターン**: モーダル合成のためのモード比率生成関数。
@@ -490,7 +516,7 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   `edge(min, max)`: 協和/不協和の境界（準安定な中点）。
 *   `gap(min, max)`: 空き帯域（低 subjective intensity）。
 *   場非依存: `random(min, max)`（対数一様）, 幾何の `at(freq)` / `line(start, end)`。
-*   修飾子: `.count(n)`, `.peak()`, `.range(min_mul, max_mul)`, `.spacing(d)`（最小ERB距離）。
+*   修飾子: `.count(n)`, `.peak()`, `.density()`, `.range(min_mul, max_mul)`, `.spacing(d)`（最小ERB距離）。Consonance placementだけは`.tension(degree)`で、範囲内の最強peakより一段低いfield-scoreを狙える。
 
 **Population の配置とライブ操作**:
 *   `place(population_spec, placement)`: 現在のカーソルで創始 Voice を即座にスケジュールし、安定した Population を返す。
@@ -518,17 +544,19 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 
 三つの関連サンプルは、同じ一つの結合機構（5.4節）から質的に異なる時間性が生まれることを示す。
 
-1.  **Metric**（`07_heartbeat.rhai`）: ボイスたちは `metric()` を宣言し、ダウンビート担当のボイスがアクセントロールを持つ。そのオンセットが共有の生成メーターを駆動してメーターの確信度が上がり、高い結合が全員のオンセットを深くなったアトラクタへ引き込む。こうして聴き取れるパルスが立ち上がるが、クロックはどこにも存在しない。あるのは、テンポの落ち着き先を地形に告げる `temporal_basin` だけである。
+1.  **Metric**（`07_heartbeat.rhai`）: ボイスたちは`metric()`を宣言し、ダウンビート担当のボイスがアクセントロールを持つ。そのオンセットが共有の生成メーターを駆動してメーターの確信度が上がり、高い結合が全員のオンセットを深くなったアトラクタへ引き込む。こうして聴き取れるパルスが立ち上がる。外部のmaster clockはなく、あるのはVoiceごとのcoupling clockと、テンポの落ち着き先を地形に告げる`temporal_basin`だけである。
 2.  **Entrained**（`08_murmuration.rhai`）: 中程度の結合に、活力結合とアタック報酬を加えたもの。同期は即座には起こらず、確信度が積み上がるにつれて数十秒かけて*創発*し、コロニーが弱れば崩れていく。リズムのまとまりが、生態系の健康と結びついているのである。
 3.  **Flow**（`09_rain.rhai`）: 結合をほぼゼロにし、`flow_depth` を高くしたもの。オンセットはクラスタ化された更新過程に従う。屋根を打つ雨のように、作りからして非拍節でありながら、ピッチの挙動は協和性フィールドに乗り続ける。
 
 ## 7.2 ケーススタディ：漂流と流れ（`samples/research/drift_flow.rhai`）
 
-このスクリプトはホップベースの移動ロジックを検証する。
+このファイルは、初期の短い歴史的fixtureとして残してある。現在は自律的なhop-based driftを検証するものではない。
 
-1.  **操作**: 強い不協和のエージェント（C#3）が強力なアンカー（C2）の隣に配置される。
-2.  **観察**: C#3 エージェントはピッチの離散的なホップを行う。調波性フィールドに「引かれ」、フェードアウトして近傍の調波的「安定井戸」（おそらく E3 または G3）にスナップする。
-3.  **ダイナミクス**: エージェントごとの飽きが有効な場合、エージェントは E3 に数秒間留まった後「飽きて」（知覚的適応によりローカル協和性が低下し）、再び別の安定音程を見つけるためにホップする。これにより、引力と斥力の単純な物理法則によって生成される、終わりのない非反復のメロディが生じる。
+1.  **明示的patch**: 持続anchorをC2（65.41 Hz）へ、もう一つの持続VoiceをC#3（138.59 Hz）へ置く。後者は`population.freq(220.0)`で直接220 Hzへ変更し、その後releaseする。
+2.  **Field query**: `consonance(130.0).peak().range(1.0, 4.0)`を使い、一つのVoiceからなるswarmを5回続けて配置する。live fieldに対する決定論的なqueryを反復するfixtureである。
+3.  **Terrain change**: 最後にanchorをF2（87.31 Hz）へpatchし、配置後のfieldを変える。
+
+したがって、このfixtureが示すのはPopulationへのlive patchとfield-relative placementの反復である。自律的なsettlingは`samples/05_settling.rhai`が担う。`drift_flow.rhai`自体がboredomによる終わりのないhopを生むという旧記述は、現行scriptと一致しないため削除した。
 
 ## 7.3 ケーススタディ：Emergence and Resolution（`samples/12_emergence_and_resolution.rhai`）
 
@@ -540,7 +568,7 @@ Conchordal は生体模倣的計算音響のプルーフオブコンセプトを
 
 `Log2Space` 座標系と「シブリング投影」アルゴリズムに支えられた技術アーキテクチャは、この新しいパラダイムに堅牢な数学的基盤を提供する。Rust の採用により、これらの複雑な生物学的シミュレーションがリアルタイムで実行可能となり、ALife研究と演奏的楽器の間の溝を橋渡しする。
 
-v0.4.0 は論文の知見を楽器そのものに統合し、アーキテクチャの時間軸側を完成させた。固定のリズムフィルタバンクは、ヘッブ的なテンポ学習と PLV 確信度を備えた強制リミットサイクル振動子——創発メーター——に置き換わった。ボイスのタイミングは、metric / entrained / flow の三族を張る単一のカップリング連続体に統一された。そして作曲家による時間の制御は、パルスをスケジュールすることなくその形成場所だけを形づくる地形事前分布（`meter_stability`、`temporal_basin`）へと還元された。さらにデュアルバス設計がハビタット（エコシステムが感じるもの）とプレゼンテーション（聴衆が聴くもの）を分離し、`ListenerTwin` の知覚モデルが Direct Cognitive Coupling の最初のループを閉じる。
+v0.4.0は論文の知見を楽器そのものに統合し、アーキテクチャの時間軸側を完成させた。固定のリズムフィルタバンクは、ヘッブ的なテンポ学習とPLV確信度を備えた強制リミットサイクル振動子——創発メーター——に置き換わった。ボイスのタイミングは、metric / entrained / flowの三族を張る単一のカップリング連続体に統一された。そして作曲家による時間の制御は、パルスをスケジュールすることなくその形成場所だけを形づくる地形事前分布（`meter_stability`、`temporal_basin`）へと還元された。デュアルバス設計は、ハビタット（エコシステムが感じるもの）とプレゼンテーション（聴衆が聴くもの）を分離する。このreleaseには、任意で有効化するLandscape habituationと、pitch-search temperatureを上げられる`ListenerTwin`の模擬feedback pathも含まれる。どちらもデフォルトでは挙動を変えない。
 
 第9章は、Manifesto の公約とこの実装の距離——果たされたもの、未解決のもの、そして実装が逆に教えたもの——を監査して本書を閉じる。
 
@@ -555,29 +583,29 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 | 記号媒介なしの生成 | `Log2Space`+ランドスケープ。音名・音階・拍子記号はエンジンのどこにも存在しない | §2–4 | 実装済み |
 | 周波数軸の地形（蝸牛/脳幹モデル） | 粗さ・調波性・協和性カーネル | §3 | 実装済み |
 | 時間軸の地形（神経振動） | 創発メーター：強制リミットサイクル、ヘッブ的テンポ学習、PLV 確信度 | §4 | 実装済み。機構スケッチは改訂（9.3）。小節レベルのアクセント*生成*は未解決 |
-| 地形の可変性（文化・個人・未知の原理） | `roughness_k`、協和性カーネル係数 | §3.4, §6.3.6 | 部分——文化的音律体系は未取込 |
-| 順応と期待 | ボイスごとの `PerceptualContext` のみ | — | **未解決——最大のギャップ（9.2）** |
+| 地形の可変性（文化・個人・未知の原理） | `roughness_k`、協和性カーネル係数、任意のhabituation erosion | §3.4–3.5, §6.3.6 | 部分——文化的音律体系は未取込 |
+| 順応と期待 | Voiceごとの`AdaptationContext` + ecology/listenerの`HabituationField` | §3.5, §5 | 部分——順応は実装済み。phrase/sceneの明示的な期待モデルは未解決（9.2） |
 | 音響生命：知覚・代謝・自律 | Voice：異なるアーティキュレーション生命コア、正規化エネルギー、時間領域のendurance/recovery、生存可能性 | §5 | 実装済み |
 | 集団：ニッチ・共生・地形変形 | クラウディング、リスポーン、閉ループ | §5 | 実装済み |
 | 中央指揮者の不在 | ローカルな知覚のみ。メーターは集団自身のオンセットから創発する | §4–5 | 実装済み（temporal scaffolding は明示的な実験として残存） |
 | シナリオ=マクロの演出 | ディレクターの地形操作 | §6.3.6 | 実装済み。シーン窓（9.2）が基礎づける |
-| DCC 第2段階：生体信号閉ループ | `ListenerTwin`+report-only の DCC 圧力がシミュレートされた前駆体 | §4.1 | 未解決——方向のみ |
+| DCC 第2段階：生体信号閉ループ | `[dcc]` coupling有効時、`ListenerTwin`圧力をpitch-search temperatureへ戻す | §4.1, §6.2 | 模擬loopは実装済み・デフォルト無効。実生体信号loopは未解決 |
 | 役割の溶解・空間ランドスケープ・音色の遺伝・他領域 | 遺伝的リスポーンはアッセイとして存在 | — | 地平 |
 
-## 9.2 欠けている機構：順応
+## 9.2 実装された順応と、残る期待のギャップ
 
 人間の時間認知は、経験を三つの窓に階層化して処理する。**知覚的現在**（約3秒、上限およそ8秒）の内側では変化は要らない。テクスチャそのものが「いま」を満たす。音楽のフレーズが住まう**予測窓**（3–8秒）では、退屈とは「更新する対象を失った予測エンジン」の動作状態である。知覚できる変化のないまま8秒ほどを過ぎると、注意は手を離す。さらに**シーン窓**（15–30秒）では、このスケールで分節の境界が訪れなければ心はさまよい始める。そして三つの窓すべての下に馴化がある。聴覚野は繰り返されるスペクトルに順応し（刺激特異的順応）、変化しない知覚対象は文字通り顕著性から色あせ、取り去られれば回復する。
 
-地形が知覚のモデル*そのもの*であるシステムにとって、この帰結は構造的である。すなわち、**協和は場所ではなく食事である**。聴き手をモデル化するランドスケープは、鳴り続けてきたものを減価させ（予測窓程度の時定数を持つ、馴化としての地形浸食）、鳴り止んだ後には回復させなければならない。そうなれば停滞の回避は、演出で作る「間」ではなく生態系自身の性質になる。三つの窓は明確な分業を与える。ミクロ層（ジッター、呼吸、うなり）は**身体**が、メソ層（順応に駆動される移動、生と死）は**生態系**が、そしてマクロ層は**シナリオ**が受け持つ。マクロ層は Manifesto が人間のディレクターに明示的に割り当てた唯一の窓であり、ディレクターはこのスケールの境界を聴き手に対して負っている。これは委譲できない。
+地形が知覚のモデル*そのもの*であるシステムにとって、この帰結は構造的である。すなわち、**協和は場所ではなく食事である**。現在の実装は、この命題を二つの水準で実現している。各Voiceの`AdaptationContext`は基音占有場の速いtraceと遅いtraceを持ち、pitch選択へboredomとfamiliarityの補正を加える。共有環境の側では、任意の`HabituationField`が、持続するperceived-consonance activityを減価し、音が退いた後に回復する（3.5節）。habitat busとpresentation busの内容は一致するとは限らないため、ecologyと`ListenerTwin`は別々の状態を持つ。
 
-断片はすでにある。`PerceptualContext` が持つボイスごとの飽きと馴化はエージェント側での予告編であり、`ListenerTwin` の緊張・注意レポート（現在は report-only の DCC 圧力経路を含む）は、いずれループを閉じることになるフィードバックチャネルである。ランドスケープレベルの馴化フィールドは今後の課題として残る。それが実現するまでは、「知覚できる変化なしに8秒を超えない」はサンプル列の*診断基準*であって、システムの性質ではない。
+残るギャップは、順応の不在ではなく**期待**である。次にどのeventが起きるはずかを表すphrase-level predictorはまだなく、scene境界を自律的に作り、評価する機構もない。したがって分業は残る。ミクロ層（jitter、呼吸、うなり）は**body**が、メソ層（順応に駆動される移動、生と死）は**ecology**が、マクロ層は**scenario**が受け持つ。`ListenerTwin`のtensionとresolvabilityは、`[dcc].coupling_strength > 0`ならpitch-search temperatureを加算し、模擬feedback loopをすでに閉じられる。デフォルトは0であり、実際の聴き手の生体信号との接続は今後の課題である。habituation無効時には、「知覚できる変化なしに約8秒を超えない」は依然として有用なsample診断であり、システムの不変条件ではない。
 
 ## 9.3 上流への改訂
 
 実装の結果は、Manifesto の原理を裏づけながら、その機構レベルのスケッチを更新してきた。
 
 *   **固定4帯域のテーブルから、創発するメトリカル階層へ。** Manifesto は delta/theta/alpha/beta の固定帯域に音楽的役割を割り当てるスケッチを描いていた。実際に作ってみて分かったのは逆で、固定フィルタバンクは姿を変えた「課されたグリッド」だった。知覚研究に照らして生き残るのは原理の方——神経振動が音楽的時間を構造化する——であり、それは確信度を備え自己組織化する、拍・サブディビジョン・小節の階層として実現された（第4章）。
-*   **鏡像双対性から、生成ループの不動点要件へ。** 下倍音地形は計算できるのに、短調の調性は創発しなかった。この分析は一般化できる。知覚的な対称性が音楽として実在するのは、それに引き寄せられたエージェントの放射スペクトルが、その対称性を強め返す場合に限られる。知覚は鏡像化できても、生成はできない。あらゆる身体は倍音を放射するからである（3.3.3節）。したがって今後のあらゆる地形操作は、二つの試験に合格しなければならない——知覚機構が実在すること、そして生成側でループが閉じること。緊張ノブとして一時的に生き残った `harmonic_tension` ダイアルも撤去された（v0.4）。二試験のいずれも満たさず、エコシステムが読む協和ピークを動かさないことが確認され、そもそも数学的に冗長だったからである——二つの投影パスは、減衰指数が二つある単一の偶畳み込みカーネルにすぎない（3.3.3節）。両試験を満たす緊張軸は、その後構築された（v0.5）——運動の緊張はピッチ探索の*温度*（実ポテンシャル上の Boltzmann 探索。熱い探索は協和から外れ、冷たい探索は落ち着く）であり、配置の緊張は*相対的な協和レベル*（最強ピークより一段下の準安定点へ配置する）である。いずれもエコシステムが築いた実地形を歪めずに読むため、両試験を満たす。`docs/design-notes/tension.md` を参照。
+*   **知覚上の対称性から、生成loopの不動点要件へ。** 地形操作が生態学的に意味を持つには、知覚機構が実在し、そこへ引き寄せられたエージェントの放射スペクトルがその地形を強め返さなければならない。現在の緊張制御は地形を歪めず、ecologyが作った地形を読む。運動の緊張はpitch-search *temperature*、配置の緊張は*相対的なconsonance level*である。`docs/design-notes/tension.md`を参照。
 *   **rateの考古学から、観測可能な時間契約へ。** 生のエネルギープールと毎秒rateを公開すると、エコロジーが導出できる次元まで作曲家に手計算させることになる。実装アッセイにより、独立した契約は `initial_energy` や `energy_cap` ではなく公称enduranceだと分かった。エネルギーは $[0,1]$ に正規化でき、ゼロ適合時の消費rateはenduranceと不協和形状から導出できる。一方、毎秒の連続回復とアタックごとの回復は次元が異なるため、回復時間と離散割合として分離した。同じアッセイは `Entrain`・`Seq`・`Drone` の統合も退けた。オンセット時のリセット、死亡規則、telemetry、render modulatorが観測可能に異なり、単一コア化はenumをフラグの背後へ隠すだけだからである。
 *   **曖昧なオブジェクト名から、寿命を担うオントロジーへ。** `Material`、`Participant`、公開ドラフト Population は、どれも自分が表す寿命を名指さないため、説明に例外を必要とした。現在の遷移は `PopulationSpec + Placement --place()--> Population` と明示され、その生きた構成員が Voice、Landscape を共有する全 Population の集約が Community である。集団方針は PopulationSpec に、ライブ操作は Population に属し、`place()` は創始 Voice を即座にスケジュールする。`Species` は遺伝と種分化が実在する不変条件を与えるまで予約する。命名は観測可能な同一性に支えられる。Population は構成員の死とリスポーンをまたいで残るが、Voice とその世代は残らない。
 
@@ -595,6 +623,12 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 | `beta` | `ConsonanceRepresentationParams` | Float | $C_{level01}$ のシグモイド急峻度（デフォルト 2.0）。 |
 | `theta` | `ConsonanceRepresentationParams` | Float | $C_{level01}$ のシグモイド閾値（デフォルト 0.0）。 |
 | `consonance_density_roughness_gain` | `LandscapeParams` | Float | 密度カーネルにおける $\rho$（デフォルト 1.0）。 |
+| `habituation.enabled` | `HabituationParams` | Bool | Landscape erosionを有効化。デフォルトはfalseで、effective viewはbase viewと同一。 |
+| `habituation.satiation_sec` | `HabituationParams` | 秒 | 単位driveが持続したとき90% erosionへ達する時間（デフォルト 5.0）。 |
+| `habituation.recovery_sec` | `HabituationParams` | 秒 | driveがなくなってから90%回復する時間（デフォルト 8.0）。 |
+| `habituation.ref_drive` | `HabituationParams` | Float | habituationの伝達関数における半飽和drive（デフォルト 0.25）。 |
+| `loudness_exp` | `LandscapeParams` | Float | subjective-intensity front endでA-weighted peak powerに適用する圧縮指数（デフォルト 0.23）。 |
+| `tau_ms` | `LandscapeParams` | ミリ秒 | peak抽出後のleaky normalization時定数（`[analysis].tau_ms`）。 |
 | `stability` | `MeterShaping` | 0.0-1.0 | ビートアトラクタ深度（`meter_stability`）：強制力とテンポ学習をスケール。 |
 | `basin_hz` | `MeterShaping` | Hz ペア | テンポ事前領域（`temporal_basin`）：ビート周波数学習のシードと制限。 |
 | `coupling` | `CoupledTimingSpec` | 0.0-1.0 | 共有ビートへのボイスごとのロック強度（`entrainment`）。 |
@@ -609,6 +643,8 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 | `attack_cost_fraction` | `LifecycleConfig::Sustain` | 正規化エネルギー / attack | 最大強度アタックが消費する容量。 |
 | `attack_recharge_fraction` | `LifecycleConfig::Sustain` | 正規化エネルギー / attack | 完全に協和したアタックが回復する最大容量。 |
 | `dissonance_penalty` | `LifecycleConfig::Sustain` | Float ≥ 0 | ゼロ適合enduranceを保ったまま、良好な適合による寿命延長を形づくる。 |
+| `dcc.coupling_strength` | `DccConfig` | 0.0-1.0 | ListenerTwinのtension feedback強度。デフォルトは0.0（挙動上は無効）。 |
+| `dcc.max_temperature_bonus` | `DccConfig` | Float ≥ 0 | listener pressureがpitch-search temperatureへ加える最大値（デフォルト 0.10）。 |
 | `attack_step` | `KuramotoCore` | Float | アタックエンベロープのステップサイズ。 |
 | `decay_rate` | `KuramotoCore` | Float | ディケイエンベロープのレート。 |
 
@@ -626,6 +662,16 @@ $$ C_{level01} = \frac{1}{1 + e^{-\beta(C_{score} - \theta)}} $$
 
 $$ C_{density\_mass} = \max(0,\; H_{01}(1 - \rho R_{01})) $$
 
+**Landscape habituationとeffective view：**
+
+$$ d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
+h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}} $$
+
+$$ C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad
+C_{density\_mass,i}^{eff}=C_{density\_mass,i}(1-h_i) $$
+
+$$ C_{level01,i}^{eff}=\frac{1}{1+e^{-\beta(C_{score,i}^{eff}-\theta)}} $$
+
 **粗さ飽和マッピング**（参照正規化された比 $x$ から $R_{01} \in [0,1]$）：
 
 $$
@@ -641,15 +687,21 @@ $$
 **時間領域ライフサイクル**（正規化エネルギー $E\in[0,1]$）：
 
 $$ b = \frac{1}{T_e(1+p_d)}, \qquad
-\Delta E_{basal} = -b\,[1+p_d(1-C_{level01})]\,\Delta t $$
+\Delta E_{basal} = -b\,[1+p_d(1-C_{level01}^{eff})]\,\Delta t $$
 
-$$ \Delta E_{recovery} = \frac{V(C)}{T_r}\,\Delta t, \qquad
-\Delta E_{attack} = -f_c + f_r C_{level01}m_r $$
+$$ \Delta E_{recovery} = \frac{V(C^{eff})}{T_r}\,\Delta t, \qquad
+\Delta E_{attack} = -f_c + f_r C_{level01}^{eff}m_r $$
 
-$T_e$ はendurance、$T_r$ はrecovery、$p_d$ は不協和penalty、$V(C)$ は生存可能性window信号、$f_c/f_r$ はアタックcost/recharge割合、$m_r$ は上限つきリズム報酬乗数である。
+$T_e$ はendurance、$T_r$ はrecovery、$p_d$ は不協和penalty、$V(C^{eff})$ は生存可能性window信号、$f_c/f_r$ はアタックcost/recharge割合、$m_r$ は上限つきリズム報酬乗数である。
 
-**調波性投影（シブリングアルゴリズム）：**
-$$ H[i] = (1-\alpha)\sum_m \left( \sum_k A[i+\log_2(k)] \right)[i-\log_2(m)] + \alpha \sum_m \left( \sum_k A[i-\log_2(k)] \right)[i+\log_2(m)] $$
+**調波性投影（単一路のシブリングアルゴリズム）：**
+
+$$ Roots[i]=\left(\sum_k k^{-\rho}A[i+\log_2(k)]\right)^{\gamma} $$
+
+$$ H[i]=\max\left(0,\;\sum_m m^{-\rho}Roots[i-\log_2(m)]
+-(1-w_{diag})\left(\sum_{k=1}^{K}k^{-2\rho}\right)A[i]\right) $$
+
+実装はこの後、任意の絶対周波数TFS gateを適用し、デフォルトではscanをpeak normalizeする。
 
 **粗さ畳み込み：**
-$$ R_{shape}(z) = \int A(\tau) \cdot K_{plomp}(|z-\tau|_{ERB}) d\tau $$
+$$ R_{shape}(z) = \int A(\tau) \cdot K_{rough}(z-\tau) d\tau $$

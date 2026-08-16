@@ -2,41 +2,60 @@
 
 **A bio-acoustic instrument for generative composition.**
 
-> **Note: Research Alpha** — An early preview for researchers and developers. Features are incomplete and may be unstable. Composers and creators: please wait for beta.
+> **v0.4.0 Alpha** — August 2026, accompanying an
+> [oral presentation at ALIFE 2026](https://2026.alife.org/wp-content/uploads/sites/2/2026/08/ALIFE2026-Program-Semifinal-2026-08-10-Rev5-1.pdf#page=8).
+> This is an early preview for researchers and developers: features are
+> incomplete and APIs may change. Composers and creators should wait for beta.
+
+Read the [paper](https://doi.org/10.48550/arXiv.2603.25637), explore the
+[technical note](https://www.conchordal.org/technote/), or start with the
+[Rhai scripting guide](https://www.conchordal.org/docs/rhai/).
 
 ![Conchordal Interface](assets/screenshot1.png)
 
 ## Concept: Emergence over Composition
 
-Conchordal is a computational ecosystem where sound is treated as a living organism.
+Conchordal is a computational ecosystem where sound is treated as living
+material.
 
-It does not rely on fixed grids—no equal temperament, no metronomic time. Instead, it simulates a **physiological environment** based on human auditory perception. Within this environment, autonomous "Individuals" struggle, coexist, and evolve.
+It does not rely on equal temperament or a metronomic grid. Instead, autonomous
+**Voices** inhabit a continuous perceptual **Landscape** derived from the sound
+they collectively produce. Scenario scripts place Voices as persistent
+**Populations**; all Populations sharing the runtime terrain form the
+**Community**.
 
-Their survival depends on finding **Spectral Consonance** (minimizing sensory roughness) and establishing **Virtual Pitch** (maximizing harmonic stability). The resulting music is not composed by a human; it *emerges* from the physical interactions of sound itself.
+Harmony emerges as Voices reshape and respond to a Consonance Field built from
+sensory roughness and harmonicity. Rhythm emerges as their onset oscillators
+couple to a shared meter driven by the Community itself. When lifecycle and
+viability policies are enabled, perceptual fit also affects energy, death, and
+respawn. The artist shapes the conditions and the arc; the exact pitches,
+timing, and turnover emerge during performance.
 
 ## The Architecture
 
-The system models a dynamic feedback loop across three layers, unifying Pitch (Space) and Rhythm (Time) under biological principles:
+The generative core has three interacting layers. A separate listener-side loop
+observes the sound presented to the audience.
 
 ### 1. The Landscape (The Cognitive Environment)
 
-The environment represents the structure of human hearing in both frequency and time domains:
+The Landscape represents auditory structure in frequency and time:
 
-* **Spectral Potential (Pitch):** Using a Non-Stationary Gabor Transform (NSGT) on a Log2 axis—simulating the **Cochlear Tonotopic Map**—it calculates potentials corresponding to physiological mechanisms:
-    * **Roughness (R):** Simulates **Basilar Membrane Interference** (Critical Bands).
-    * **Harmonicity (H):** Simulates **Neural Phase-Locking** (Temporal Periodicity detection).
-    * **Consonance (C):** Simulates **Cognitive Integration** calculated from roughness (R) and harmonicity (H).
+* **Consonance Field (Pitch):** A Non-Stationary Gabor Transform (NSGT)
+  analyzes the habitat bus on a Log2-frequency axis. Dedicated kernels compute:
+    * **Roughness (R):** sensory dissonance from interference within critical bands.
+    * **Harmonicity (H):** periodicity and virtual-pitch template matching.
+    * **Consonance (C):** an evaluation field derived from roughness and harmonicity.
 
-* **Neural Rhythms (Time):** Instead of a grid, rhythm emerges from entrainment to simulated **Neural Oscillations (Brainwaves)**:
+* **Emergent Meter (Time):** Instead of a fixed filterbank or imposed clock,
+  a forced limit-cycle oscillator listens to the Community's own onsets, learns
+  a shared beat, and reports confidence through phase locking. Each Voice has a
+  coupling clock on a single continuum:
+    * **Metric:** strong attraction to the shared beat.
+    * **Entrained:** synchronization emerges as confidence grows.
+    * **Flow:** weakly coupled, clustered renewal timing without a beat grid.
 
-	* **Delta Band (~0.5-4Hz):** Governs the macroscopic **Pulse** and musical **Phrasing**.
-
-    * **Theta Band (~4-8Hz):** Dictates **Articulation** and syllabic grouping.
-
-    * **Alpha Band (~8-13Hz):** Influences **Texture** and timbral fluctuation (e.g., unison detuning).
-
-    * **Beta Band (~13-30Hz):** Controls micro-timing (groove) and ensemble tightness.
-	
+  The Director shapes where a pulse can form through soft priors such as
+  `meter_stability` and `temporal_basin`; it does not schedule the beat.
 
 ### 2. The Community (The Collective)
 
@@ -49,46 +68,73 @@ generations change.
 ### 3. The Voice (The Agent)
 
 The atomic unit of the system. Each **Voice** is an autonomous entity:
-* **Proprioception:** It senses the Landscape's spectral potentials and synchronizes its internal clock to the environmental Neural Rhythms.
-* **Metabolism:** It consumes energy to sustain articulation.
-* **Autonomy:** It makes local decisions—moving away from dissonance (segregation) or locking onto harmonic peaks (fusion)—without a central conductor.
+* **Perception–action coupling:** It reads the effective Consonance Field and
+  couples its onset phase to the shared emergent meter.
+* **Metabolism:** Configured lifecycle policies can make articulation consume
+  energy and consonance replenish it.
+* **Autonomy:** Configured pitch, rhythm, phonation, and respawn policies act
+  locally without a central note sequencer.
+
+### 4. Presentation and the Listener
+
+Every Voice can feed two independent buses. The **habitat bus** drives NSGT
+analysis and the Landscape; the **presentation bus** is what the audience,
+offline renderer, and ListenerTwin receive. Both are enabled by default, while
+scripts may route a Voice to either side deliberately.
+
+The **ListenerTwin** estimates stability, resolvability, tension, attention,
+and meter from the presented sound only. Optional Direct Cognitive Coupling
+(DCC) can feed a bounded listener-derived exploration pressure back into pitch
+behavior. It is report/UI-only by default (`coupling_strength = 0.0`).
 
 ## The Role of the Artist: Scenarios as Macro-Structure
 
 While the *micro-structure* (harmony, rhythm, articulation) emerges autonomously, the **macro-structure** (the timeline and narrative arc) is crafted by the artist.
 
-Using **Rhai** scripts, the creator acts not as a composer of notes, but as a **Director of Ecosystems**. Through the scenario file, you define:
+Using **Rhai** scripts, the creator acts not as a composer of notes, but as a
+**Director of Ecosystems**. Through a scenario file, you define:
 
-* **Phases:** The sectional progression of the piece (e.g., "Genesis", "Conflict", "Resolution").
-* **Interventions:** Injecting new populations or altering environmental constants (e.g., changing the system's "temperature" or consonance sensitivity).
-* **Constraints:** Setting boundaries within which the system evolves.
+* **Phases:** sectional progression with `section`, `play`, `parallel`, and `wait`.
+* **Interventions:** placing or releasing Populations and live-patching controls
+  such as search `temperature`.
+* **Terrain:** placement strategies, routing, `meter_stability`, and
+  `temporal_basin` shape where harmony and pulse can form.
+* **Constraints:** bodies, registers, lifecycles, and respawn policies define
+  the space in which the system evolves.
 
 This allows for the creation of structured "works" where the overall form is deliberate, but the momentary details are emergent.
 
 ## Technical Stack
 
-* Written entirely in **Rust** for high performance and memory safety.
-* **Multi-platform** support (Linux, macOS, and Windows).
-* Multi-threaded architecture with **lock-free concurrency** to ensure real-time DSP stability.
+* The core instrument, DSP, ALife runtime, and GUI are written in **Rust**.
+* CI covers **Linux, macOS, and Windows**.
+* A multi-threaded runtime isolates the audio callback with an SPSC ring buffer
+  and uses channels for rendering, analysis, UI, and reporting handoffs.
 * High-performance **Non-stationary Gabor transform (NSGT)** analysis engine, complemented by dedicated psychoacoustic evaluation and synthesis kernels.
-* Extensible **ALife engine** utilizing energy metabolism and Kuramoto-style entrainment for emergent behavior.
+* **ALife engine** with configurable energy metabolism, lifecycle, respawn,
+  local pitch search, and Kuramoto-style entrainment.
 * Scenario scripting via an embedded **Rhai** interpreter for dynamic control.
-* Real-time psychoacoustic monitoring and visualization via `egui`.
+* Real-time psychoacoustic and ListenerTwin visualization via `egui`.
 
 ## Getting Started
 
 ### Installation & Run
 
+Install a current stable Rust toolchain. On Ubuntu, also install the native
+dependencies used by CI:
 
-Run a sample scenario.
+```bash
+sudo apt-get install libasound2-dev libudev-dev libwayland-dev \
+    libxkbcommon-dev libfontconfig1-dev pkg-config
+```
+
+Then run a sample scenario in release mode (recommended for real-time DSP):
 
 ```bash
 git clone https://github.com/ktakahashi74/conchordal.git
 cd conchordal
 cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
-
-On Linux, you need `libasound2-dev` installed (ALSA headers required by `cpal`).
 
 The alpha ships with twelve ordered samples under `samples/`. Each is a small
 demonstration of one or more instrument capabilities:
@@ -107,7 +153,7 @@ and behavior samples, not musical works; compositions arrive with the beta.
 
 Create a scenario using Rhai scripts as follows and save it as `sample.rhai`.
 
-```rust
+```rhai
 let soft = sine()
     .amp(0.08)
     .sustain();
@@ -116,80 +162,107 @@ place(soft, line(220.0, 440.0).count(3));
 wait(2.0);
 ```
 
-then run the script with
+Then run the script with:
 
-``` bash
-cargo run -- sample.rhai
+```bash
+cargo run --release -- sample.rhai
 ```
 
 ### Testing and other commands
 
-Run the test suite with:
+Before submitting code changes, run:
 
 ```bash
+cargo fmt --all -- --check
+cargo clippy -- -D warnings
 cargo test
 ```
 
-If you want to pass the GitHub CI checks after code changes, run:
-
-```bash
-cargo fmt --all
-cargo clippy -- -D warnings
-```
-
-The following command generates plot images under `target/plots/` for visual kernel checks.
+The following command generates plot images under `target/plots/` for visual
+kernel checks.
 
 ```bash
 cargo test --features plotcheck plot_
 ```
 
-
 ### Running options
 
-Config file path: `--config config.toml`
-
-Headless execution (no GUI): `--nogui`
+See the complete current CLI surface with:
 
 ```bash
-cargo run -- --nogui sample.rhai
+cargo run --release -- --help
 ```
 
-Compile-only (no GUI/audio execution) for script syntax check: `--compile-only`
+Common operations:
+
+* Config file: `--config config.toml`
+* Headless playback: `--nogui`
+* Silent simulation: `--play=false`
+* Compile without GUI, audio, or execution: `--compile-only`
+* Write a JSONL runtime report: `--report run.jsonl`
+* Replay a logged run: `--seed <SEED>`
+* Start on a performance cue: `--wait-user-start`
+* Exit when the scenario ends: `--wait-user-exit=false`
+
+For example, run headless while recording a report:
 
 ```bash
-cargo run -- --compile-only sample.rhai
+cargo run --release -- sample.rhai --nogui --report run.jsonl
+```
+
+Compile-only checking:
+
+```bash
+cargo run --release -- sample.rhai --compile-only
 ```
 
 Setting log levels with `RUST_LOG`:
 
 ```bash
-RUST_LOG=debug cargo run -- sample.rhai
+RUST_LOG=debug cargo run --release -- sample.rhai
 ```
 
-log levels are either `error`, `warn`, `info`, `debug`, or `trace`.
+Log levels are `error`, `warn`, `info`, `debug`, and `trace`.
 
+### Offline WAV rendering
 
+The `conchordal` instrument never writes audio to disk. Render a kept scenario
+with the separate `conchordal-render` binary:
 
+```bash
+cargo run --release --bin conchordal-render -- \
+    samples/12_emergence_and_resolution.rhai -o performance.wav --seed <SEED>
+```
+
+The renderer shares the core engine but is not the real-time instrument.
 
 ## Timeline & Roadmap
 
-- **circa 1994** — Core concept conceived 
-- **Aug 25, 2025** — Project started 
+- **circa 1994** — Core concept conceived
+- **Aug 25, 2025** — Project started
 - **Dec 25, 2025** — Source & web release (pre-alpha)
 - **Mar 2026** — v0.3.0 pre-alpha paper release
-- **Jun 2026** — v0.4.0 alpha: emergent-meter rhythm/harmony ecology, listener twin, tiered scripting API ← *current*
-- **Summer 2026** — Beta, featuring first compositions
+- **Aug 2026** — v0.4.0 Alpha for the ALIFE 2026 oral presentation: emergent-meter rhythm/harmony ecology, ListenerTwin, and a tiered scripting API ← *current*
+- **2026–2027** — Beta with first compositions
 
+## Contributing
 
+We invite engineers and artists exploring Auditory Scene Analysis and
+Computational Creativity. Check the
+[Issue Tracker](https://github.com/ktakahashi74/conchordal/issues) for open
+research topics.
 
-### Contributing
-
-We invite engineers and artists who are exploring the frontiers of Auditory Scene Analysis and Computational Creativity. Check the Issue Tracker for open research topics.
-
-### License
+## License
 
 Distributed under the terms of both the MIT license and the Apache License (Version 2.0).
 
-### Author
+## Citation
+
+For research use, see [`CITATION.cff`](CITATION.cff). The preferred citation is
+the accompanying paper, “Conchordal: Emergent Harmony via Direct Cognitive
+Coupling in a Psychoacoustic Landscape”
+([arXiv:2603.25637](https://doi.org/10.48550/arXiv.2603.25637)).
+
+## Author
 
 Created by Koichi Takahashi <contact@conchordal.org>

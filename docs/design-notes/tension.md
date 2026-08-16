@@ -1,6 +1,6 @@
 # Tension: Temperature in Movement, Relative Level in Placement
 
-Status: Design (v0.5 candidate). Final form; supersedes the rung / level /
+Status: Implemented in v0.4.0. Final form; supersedes the rung / level /
 temperature-only sketches in this file's history.
 Scope: make the *degree* of harmonic tension a composer parameter across both
 phases — where a voice is placed, and how it moves — without warping the terrain

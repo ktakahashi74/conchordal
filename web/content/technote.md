@@ -3,11 +3,11 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "bc4fe81"
+source_commit = "aefd992"
 author = "Koichi Takahashi"
-last_updated = "2026-06-10"
-source_version = "0.4.0-dev"
-source_snapshot = "2026-06-10T22:00:12+09:00"
+last_updated = "2026-08-16"
+source_version = "0.4.0"
+source_snapshot = "2026-08-14T13:28:14+09:00"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -113,21 +113,32 @@ During runtime, the system performs a single FFT on the input audio buffer to ob
 
 $$ C_k = \frac{1}{N_{fft}} \sum_{\nu} X[\nu] \cdot K_k^*[\nu] $$
 
-This "one FFT, many kernels" approach allows Conchordal to generate a high-resolution, logarithmically spaced spectrum covering 20Hz to 20kHz without the computational overhead of calculating separate DFTs for each band or using recursive filter banks.
+This "one FFT, many kernels" approach generates a high-resolution, logarithmically spaced spectrum without the cost of calculating a separate DFT for every band or using recursive filter banks. The current instrument runtime constructs a 96-bin-per-octave analysis space from 55 Hz to 8 kHz; `Log2Space` itself supports other positive, ordered bounds for experiments and tests.
 
 ### 3.1.2 Real-Time Temporal Smoothing
 
-The raw spectral coefficients $C_k$ exhibit high variance due to the stochastic nature of the audio input (especially with noise-based agents). To create a stable field for agents to sample, the `RtNsgtKernelLog2` struct wraps the NSGT with a temporal smoothing layer.
+The instantaneous band powers $p_k = |C_k|^2$ exhibit high variance due to the stochastic nature of the audio input (especially with noise-based agents). To create a stable field for agents to sample, the `RtNsgtKernelLog2` struct wraps the NSGT with a temporal smoothing layer.
 
 It implements a per-band leaky integrator (exponential smoothing). Crucially, the time constant $\tau$ is frequency-dependent. Low frequencies, which evolve slowly, are smoothed with a longer $\tau$, while high frequencies, which carry transient details, have a shorter $\tau$.
 
-$$ y_k[t] = (1 - \alpha_k) \cdot |C_k[t]| + \alpha_k \cdot y_k[t-1] $$
+$$ y_k[t] = (1 - \alpha_k) \cdot p_k[t] + \alpha_k \cdot y_k[t-1] $$
 
 where the smoothing factor $\alpha_k$ is derived from the frame interval $\Delta t$:
 
 $$ \alpha_k = e^{-\Delta t / \tau(f_k)} $$
 
-This models the "integration time" of the ear, ensuring that the Landscape reflects a psychoacoustic percept rather than instantaneous signal power.
+This models the "integration time" of the ear. It is only the first perceptual stage: the smoothed power is subsequently converted into a sparse subjective-intensity density before the Roughness and Harmonicity kernels read it.
+
+### 3.1.3 From NSGT Power to Subjective Intensity
+
+`SpectralFrontEnd` (`core/landscape_spectral.rs`) does not pass the smoothed NSGT power directly to the Landscape kernels. For each hop it:
+
+1.  Converts per-bin power to power density using the Log2Space-aligned ERB cell widths.
+2.  Extracts significant spectral peaks, preserving their integrated mass rather than treating every analysis bin as an independent partial.
+3.  Applies an A-weighting **power** gain and the compressive exponent `loudness_exp` to each peak mass.
+4.  Scatters the resulting masses back onto a sparse Log2Space-aligned subjective-intensity density and applies a second leaky normalization with time constant `analysis.tau_ms`.
+
+The resulting `subjective_intensity` scan—not raw $|C_k|$ or raw NSGT power—is the common input to the Roughness and Harmonicity computations below. Its integral is retained separately as `loudness_mass`.
 
 ## 3.2 Roughness ($R$) Calculation: The Plomp-Levelt Model
 
@@ -135,19 +146,24 @@ Roughness is the sensation of "harshness" or "buzzing" caused by the interferenc
 
 ### 3.2.1 The Interference Kernel
 
-The core of the calculation is the Roughness Kernel, defined in `core/roughness_kernel.rs`. This kernel $K_{rough}(\Delta z)$ models the interference curve between two partials separated by $\Delta z$ ERB. The curve creates a penalty that rises rapidly as partials separate, peaks at approximately 0.25 ERB (maximum roughness), and then decays as they separate further.
+The core of the calculation is the Roughness Kernel, defined in `core/roughness_kernel.rs`. This kernel $K_{rough}(\Delta z)$ models the interference curve between two partials separated by $\Delta z$ ERB-rate units. The default Sethares core peaks near a quarter ERB-rate unit; the reference-normalization stimulus uses a separation of 0.25 ERB.
 
-The implementation uses a parameterized function `eval_kernel_delta_erb` to generate this shape:
+The implementation uses a Sethares difference-of-exponentials core, a small directional masking asymmetry, a center-suppression dip, and an optional neural Gaussian component. With $u=|\Delta z|/\kappa$:
 
-$$ g(\Delta z) = e^{-\frac{\Delta z^2}{2\sigma^2}} \cdot (1 - e^{-(\frac{\Delta z}{\sigma_{suppress}})^p}) $$
+$$ S(\Delta z) = G\,\max(0, e^{-bu} - e^{-cu})\,A(\Delta z) $$
 
-The second term is a suppression factor that ensures the kernel goes to zero as $\Delta z \to 0$, preventing a single pure tone from generating self-roughness.
+$$ M(\Delta z) = \left(1-e^{-\Delta z^2/(2\sigma_{sup}^2)}\right)^p, \qquad
+N(\Delta z)=e^{-\Delta z^2/(2\sigma_n^2)} $$
+
+$$ K_{rough}(\Delta z)=(1-w_n)\,S(\Delta z)M(\Delta z)+w_nN(\Delta z) $$
+
+Here $A(\Delta z)$ is the exponentially decaying positive/negative-side asymmetry controlled by `mix_tail` and `tau_erb`. The default $w_n=0$ selects the cochlear Sethares path. $M(0)=0$ suppresses self-roughness for a single pure tone; raising $w_n$ deliberately fills that dip with the neural component.
 
 ### 3.2.2 Convolutional Approach
 
 Calculating roughness pairwise for all spectral bins ($N^2$ complexity) is computationally prohibitive for real-time applications. Conchordal solves this by treating the Roughness calculation as a linear convolution.
 
-1.  **Mapping**: The log-spaced amplitude spectrum from the NSGT is mapped (or interpolated) onto a linear ERB grid.
+1.  **Mapping**: The Log2Space-aligned subjective-intensity density from Section 3.1.3 is mapped onto a linear ERB grid.
 2.  **Convolution**: This density $A(z)$ is convolved with the pre-calculated roughness kernel $K_{rough}$.
 
 $$ R_{shape}(z) = (A * K_{rough})(z) = \int A(z-\tau) K_{rough}(\tau) d\tau $$
@@ -222,16 +238,6 @@ The algorithm operates on the `Log2Space` spectrum in two passes, utilizing the 
 
 Thus, without any hardcoded knowledge of Western music theory, the system naturally generates stability peaks at the Major 3rd and Perfect 5th relationships, simply as a consequence of the physics of the harmonic series. An agent at 200 Hz creates a "gravity well" at 300 Hz and 500 Hz, inviting other agents to form a major triad.
 
-### 3.3.3 A Single Overtone Path (and the Mirror That Was Removed)
-
-The harmonicity terrain is built from a single "Down-then-Up" projection: each spectral component is projected down to its candidate virtual roots and back up to their harmonics (Section 3.3.2), the frequency-domain counterpart of virtual pitch. It has no undertone counterpart, and that is deliberate.
-
-An earlier implementation blended in a second, inverted "Up-then-Down" path weighted by `mirror_weight` ($\alpha$), $H = (1-\alpha)H_{overtone} + \alpha H_{undertone}$ — Riemann's *harmonic dualism*, minor as the mirror image of major. It was removed on two independent grounds.
-
-**The dualism is structurally wrong**, on three counts. *Physically*, there is no undertone series—every vibrating body radiates overtones—so the undertone terrain has no stimulus counterpart. *Perceptually*, no mechanism comparable to virtual pitch binds tones by common overtones; modern psychoacoustics models the minor triad as a chord with a weak, ambiguous virtual root, not as a mirror image of the major. And *ecologically*, the closed loop breaks the dualism on the production side: an agent attracted to an overtone position radiates a spectrum that *reinforces* the root structure that attracted it (a self-stabilizing attractor), whereas an agent at an undertone position radiates overtones that do *not* reinforce the common-overtone structure that attracted it—the feedback loop does not close. The paper's controlled experiments reproduced overtone clustering but not an undertone (minor) reorganization.
-
-**And the second path was mathematically redundant.** Written as a log2-frequency convolution, each path is $\text{env} \circledast h_\rho$ with the *same even kernel* $h_\rho(s) = \sum_{\log_2(k/m)=s} (mk)^{-\rho}$ — even because exchanging $m \leftrightarrow k$ negates the shift $\log_2(k/m)$ while leaving the weight $(mk)^{-\rho}$ unchanged. Path A used $\rho = \rho_{root}$ and Path B used $\rho = \rho_{overtone}$: identical when the exponents match, and otherwise merely two decay exponents of one even kernel. An even kernel has no overtone/undertone *direction*, so Path B carried no information Path A did not, and the blend $(1-\alpha)h_{\rho_{root}} + \alpha\,h_{\rho_{overtone}}$ collapses to a single effective kernel. The `harmonic_tension` dial (which only varied $\alpha$) was additionally confirmed not to control audible tension: it left the consonant peaks the ecology actually reads unchanged across the whole register. Both the second path and the dial were removed (see the ledger in Section 7); what remains is the single overtone path.
-
 ## 3.4 Consonance: Integrating the Fields
 
 With $R_{01}$ and $H_{01}$ in hand, Consonance is derived in two layers: a **Consonance Kernel** that fuses the two observables into a single fitness score, and a set of **representation transforms** that reshape that score for its different consumers in the Life Engine (Section 5).
@@ -247,14 +253,33 @@ Default coefficients: $a = 1.0$, $b = -1.35$, $c = 1.0$, $d = 0.0$. Because $b <
 | Name | Formula | Range | Meaning |
 | :--- | :--- | :--- | :--- |
 | $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | raw fitness from the kernel |
-| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | metabolism gate (sigmoid) |
-| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | raw density mass ($\rho$-kernel) |
-| $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass})$ | $[0,1],\;\Sigma=1$ | pitch-selection PMF |
+| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | base sigmoid level; habituation drive and un-eroded view |
+| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | base density mass before erosion |
+| $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass}^{eff})$ | $[0,1],\;\Sigma=1$ | normalized global view retained in `Landscape` |
 | $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | energy for minimization |
+| $C_{score}^{eff}$ | $\theta+(C_{score}-\theta)(1-h)$ | $(-\infty,+\infty)$ | habituation-eroded score read by movement and prediction |
+| $C_{level01}^{eff}$ | $\sigma(\beta(C_{score}^{eff}-\theta))$ | $[0,1]$ | habituation-eroded level read by behavior and the listener |
+| $C_{density\_mass}^{eff}$ | $(1-h)C_{density\_mass}$ | $[0,+\infty)$ | habituation-eroded mass read by density placement |
 
-where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0). Each representation serves one consumer: $C_{level01}$ gates agent metabolism (Section 5.2), and $C_{density\_pmf}$ is the probability distribution from which new agents' frequencies are drawn at spawn time. The density mass uses a separate $\rho$-kernel with coefficients $a{=}1, b{=}0, c{=}{-}\rho, d{=}0$, so that $C_{density\_mass} = H_{01}(1 - \rho R_{01})$ clamped to $\geq 0$; the parameter $\rho$ (`consonance_density_roughness_gain`, default 1.0) controls how strongly roughness suppresses spawn probability.
+where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0). The density mass uses a separate $\rho$-kernel with coefficients $a{=}1, b{=}0, c{=}{-}\rho, d{=}0$; $\rho$ (`consonance_density_roughness_gain`, default 1.0) controls how strongly roughness suppresses density placement.
 
-Finally, the terrain is not identical for every agent: each Voice maintains its own perceptual context (`PerceptualContext`) tracking per-agent boredom and familiarity, which adds score adjustments during pitch selection (perceptual adaptation).
+Spawn does **not** sample the global $C_{density\_pmf}$. A `SpawnStrategy::Field` first slices the requested frequency range, derives target-specific local mass from the effective views, masks occupied bins, and normalizes only that local vector. A zero-mass range falls back to an unoccupied-uniform distribution and then to full-range uniform if every bin is occupied. Peak placement reads $C_{score}^{eff}$ deterministically. The global PMF remains a normalized Landscape representation but is currently exercised only by core tests.
+
+There is also a distinct, per-Voice adaptation mechanism. `AdaptationContext` tracks fast boredom and slow familiarity over the shared **fundamental-occupancy** field and adds a candidate-specific score adjustment during pitch selection. It coexists with the Landscape-level habituation below: adaptation is agent-relative memory; habituation is a shared perceptual erosion field.
+
+## 3.5 Landscape-Level Habituation
+
+Consonance is not treated as an inexhaustible place. When `[psychoacoustics.habituation]` is enabled, `HabituationField` maintains a per-bin state $h_i\in[0,1]$ for both the ecology's habitat analysis and the `ListenerTwin`'s presentation analysis. The raw drive combines the base consonance level $L_i$ with a fresh common-root projection $P_i$:
+
+$$ d_i^{raw}=L_iP_i, \qquad d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}} $$
+
+The state relaxes asymmetrically toward that drive:
+
+$$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
+
+with $\tau=\tau_e$ while the drive is rising and $\tau=\tau_r$ while it is falling. `satiation_sec` and `recovery_sec` are defined as the times to reach 90% erosion and 90% recovery respectively, so the implementation uses $\tau_e=T_s/\ln 10$ and $\tau_r=T_r/\ln 10$. The effective score relaxes toward the neutral sigmoid threshold $\theta$, while density mass is eroded multiplicatively, as shown in the table above.
+
+The default is `enabled=false`, with `satiation_sec=5.0`, `recovery_sec=8.0`, and `ref_drive=0.25`. Disabled habituation is an exact identity: every effective view equals its base view bit-for-bit. When enabled, movement, prediction, metabolism, respawn, density placement, and the listener read effective views; the UI terrain and diagnostics intentionally retain the un-eroded base views.
 
 # 4. The Temporal Axis: The Emergent Meter
 
@@ -395,11 +420,11 @@ Agents in Conchordal are governed by energy dynamics modeled on biological metab
 
 Energy depletion disables retriggering and starts the envelope tail. Reports therefore distinguish configured endurance, energy-depletion time, and observable lifetime.
 
-This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Agents in dissonant (low $C_{level01}$) regions starve—energy depletes, amplitude fades, and they die. Agents in consonant (high $C_{level01}$) regions thrive—they maintain or gain energy, allowing them to sing louder and live longer. The musical structure emerges because only agents that find harmonic relationships survive to be heard.
+This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Agents in dissonant (low $C_{level01}^{eff}$) regions starve—energy depletes, amplitude fades, and they die. Agents in consonant (high $C_{level01}^{eff}$) regions thrive—they maintain or gain energy, allowing them to sing louder and live longer. With Landscape habituation enabled, a formerly supportive region can lose effective value under sustained activity and recover after withdrawal, so survival depends on both acoustic fit and recent perceptual history.
 
 ## 5.3 Pitch Retargeting Logic
 
-Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target.
+Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target. Candidate evaluation reads the habituation-eroded score; exact leave-self-out recomputes the raw self-subtracted score and then applies the same local erosion before comparison.
 
 ### 5.3.1 Pitch Application Modes
 
@@ -473,7 +498,7 @@ The application creates four primary thread contexts, plus the GUI event loop:
 
 3.  **Listener-Analysis Thread**:
     *   Runs the `ListenerTwin` perception pipeline on presentation-bus hops.
-    *   **Responsibility**: Models what an audience member perceives—including the perception meter's beat confidence—for the UI, the headless report, and the DCC pressure coupler.
+    *   **Responsibility**: Models what an audience member perceives—including its own habituation field and the perception meter's beat confidence—for the UI, the headless report, and the DCC pressure coupler.
 
 4.  **Worker Thread (Simulation Loop)**:
     *   Named `"worker"` in `app.rs`.
@@ -488,12 +513,13 @@ The application creates four primary thread contexts, plus the GUI event loop:
 To maintain data consistency without locking the audio thread, Conchordal uses a multi-channel update strategy for the Landscape. Rendered audio is split across two buses: the **habitat bus** (the environment the ecosystem senses) and the **presentation bus** (what the audience hears). A drone can be routed to the habitat bus only—shaping the landscape without being presented.
 
 1.  The **Worker Thread** renders audio per bus and sends each habitat hop to the **Analysis Thread**; presentation hops go to the **Listener-Analysis Thread**.
-2.  The **Analysis Thread** runs the full NSGT + Roughness + Harmonicity pipeline and sends the resulting `Landscape` snapshot back.
-3.  The **Worker Thread** merges the analysis result into the current `LandscapeFrame`, recomputing the combined Consonance field.
+2.  The **Analysis Thread** runs the NSGT + subjective-intensity + Roughness + Harmonicity pipeline and sends the resulting raw `Landscape` snapshot back.
+3.  The **Worker Thread** merges the analysis result into the current `LandscapeFrame`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
 4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the population's own phonation onset strengths; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
-5.  The `Population` evaluates the current Landscape for pitch selection, metabolism, and agent lifecycle.
-6.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders audio through ADSR-shaped backends.
-7.  Rendered presentation audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
+5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
+6.  When DCC coupling is enabled, `ListenerTwin` tension and resolvability produce a bounded temperature bonus that feeds the Voices' pitch search. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
+7.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders audio through ADSR-shaped backends.
+8.  Rendered presentation audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
 
 This decoupled architecture ensures that the audio thread always sees a consistent stream of samples, even if the analysis thread lags slightly behind real-time. The analysis thread processes all hops in-order to maintain NSGT time continuity.
 
@@ -519,7 +545,7 @@ A PopulationSpec begins with a preset and is refined through method chaining. It
 
 **Rhythm (the coupling continuum, Section 5.4)**: presets `metric()`, `entrained()`, `flow()` select a region of the continuum—no Hz argument, since tempo belongs to the director's `temporal_basin`. Fine control: `entrainment(v)` (lock strength 0–1), `rhythm_role("beat"|"subdivision"|"accent"|"texture")`, `microtiming(v)`. Breath-level coupling: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, `rhythm_reward(rho_t, "attack_phase_match")`.
 
-**Lifecycle/Viability**: `endurance(sec)`, optional `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`.
+**Lifecycle/Viability**: `endurance(sec)`, optional `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, and `phonate_when_viable()` (withhold the first onset until the viability window opens).
 
 **Respawn**: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)` (maximum living membership; founder count by default and never lower than it), `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`.
 
@@ -533,7 +559,7 @@ Modifiers: `.count(n)`, `.range(min, max)`, `.spacing(d)`, `.gamma(g)`, `.jitter
 
 ### 6.3.3 Placements
 
-Placements determine the founder Voices' initial frequency allocation when a PopulationSpec enters the ecosystem. A field-relative placement names a target — `consonance`, `dissonance`, `edge` (the consonance/dissonance boundary), `gap` (low-intensity registers) — realized as a density cloud by default or a deterministic extremum with `.peak()`; `consonance(root)` takes a harmonic window, the others an absolute `(min, max)` range. Field-agnostic placements are `random(min, max)` (log-uniform) and the geometric `at(freq)` / `line(start, end)`. Modifiers: `.count(n)`, `.range(min_mul, max_mul)`, `.spacing(d)` (minimum ERB distance).
+Placements determine the founder Voices' initial frequency allocation when a PopulationSpec enters the ecosystem. A field-relative placement names a target — `consonance`, `dissonance`, `edge` (the consonance/dissonance boundary), `gap` (low-intensity registers) — realized as a density cloud by default (`.density()`) or a deterministic extremum with `.peak()`; `consonance(root)` takes a harmonic window, the others an absolute `(min, max)` range. Field-agnostic placements are `random(min, max)` (log-uniform) and the geometric `at(freq)` / `line(start, end)`. Modifiers: `.count(n)`, `.range(min_mul, max_mul)`, `.spacing(d)` (minimum ERB distance), and Consonance-only `.tension(degree)`, which targets an in-range field-score step below the strongest peak.
 
 ### 6.3.4 Population Placement and Live Control
 
@@ -569,17 +595,19 @@ The following examples, derived from the `samples/` directory, illustrate how sp
 
 Three sibling samples demonstrate that one coupling mechanism (Section 5.4) spans qualitatively different temporalities:
 
-1.  **Metric** (`07_heartbeat.rhai`): voices declare `metric()` with an accent role on the downbeat voice. Their onsets drive the shared production meter; the meter's confidence rises; high coupling pulls every onset into the now-deep attractor. A legible pulse appears—yet there is no clock anywhere, only a `temporal_basin` telling the terrain *where* a tempo may settle.
+1.  **Metric** (`07_heartbeat.rhai`): voices declare `metric()` with an accent role on the downbeat voice. Their onsets drive the shared production meter; the meter's confidence rises; high coupling pulls every onset into the now-deep attractor. A legible pulse appears—yet there is no external master clock, only per-Voice coupling clocks and a `temporal_basin` telling the terrain *where* a tempo may settle.
 2.  **Entrained** (`08_murmuration.rhai`): medium coupling plus vitality coupling and attack reward. Synchronization is not immediate; it *emerges* over tens of seconds as confidence accumulates, and degrades if the colony weakens—rhythmic coherence is tied to ecological health.
 3.  **Flow** (`09_rain.rhai`): near-zero coupling with high `flow_depth`. Onsets follow a clustered renewal process—rain on a roof—non-metric by construction, while pitch behavior still rides the consonance field.
 
 ## 7.2 Case Study: Drift and Flow (`samples/research/drift_flow.rhai`)
 
-This script validates the hop-based movement logic.
+This file is retained as an early, compact historical fixture; it no longer validates autonomous hop-based drift.
 
-1.  **Action**: A strongly dissonant agent (C#3) is placed next to a strong anchor (C2).
-2.  **Observation**: The C#3 agent makes discrete hops in pitch. It is "pulled" by the Harmonicity field, fading out and snapping to a nearby harmonic "well" (likely E3 or G3).
-3.  **Dynamics**: If per-agent boredom is enabled, the agent will settle at E3 for a few seconds, then "get bored" (local consonance drops due to perceptual adaptation), and hop away again to find a new stable interval. This results in an endless, non-repeating melody generated by simple physical rules of attraction and repulsion.
+1.  **Explicit patch**: A sustained anchor enters at C2 (65.41 Hz), while a second sustained Voice enters at C#3 (138.59 Hz). The script then patches that Voice directly to 220 Hz with `population.freq(220.0)` and releases it.
+2.  **Field query**: Five one-Voice swarms are placed in sequence with `consonance(130.0).peak().range(1.0, 4.0)`, demonstrating repeated deterministic queries against the live field.
+3.  **Terrain change**: The anchor is finally patched to F2 (87.31 Hz), changing the field after those placements.
+
+The fixture therefore demonstrates live Population patches plus repeated field-relative placement. Autonomous settling is demonstrated by `samples/05_settling.rhai`; the old claim that `drift_flow.rhai` itself produces boredom-driven, endless hopping was stale and has been removed.
 
 ## 7.3 Case Study: Emergence and Resolution (`samples/12_emergence_and_resolution.rhai`)
 
@@ -591,7 +619,7 @@ Conchordal establishes a foundation for Bio-Mimetic Computational Audio. By repl
 
 The paper "Conchordal: Emergent Harmony via Direct Cognitive Coupling in a Psychoacoustic Landscape" (arXiv:2603.25637) validated the psychoacoustic landscape as an effective ALife terrain through controlled experiments demonstrating self-organization, selection, synchronization, and hereditary accumulation. These results confirm that the Roughness-Harmonicity-Consonance pipeline and the Kuramoto entrainment model produce musically coherent emergent behavior under a range of initial conditions.
 
-Version 0.4.0 integrates the paper findings into the instrument itself and completes the temporal half of the architecture: the fixed rhythm filterbank is replaced by an emergent meter (a forced limit-cycle oscillator with Hebbian tempo learning and PLV confidence), voice timing is unified on a single coupling continuum spanning metric, entrained, and flow families, and the composer's temporal control is reduced to terrain priors (`meter_stability`, `temporal_basin`) that shape where a pulse forms without ever scheduling one. A dual-bus design separates the habitat (what the ecosystem senses) from the presentation (what the audience hears), with a `ListenerTwin` perception model closing the first loop of Direct Cognitive Coupling.
+Version 0.4.0 integrates the paper findings into the instrument itself and completes the temporal half of the architecture: the fixed rhythm filterbank is replaced by an emergent meter (a forced limit-cycle oscillator with Hebbian tempo learning and PLV confidence), voice timing is unified on a single coupling continuum spanning metric, entrained, and flow families, and the composer's temporal control is reduced to terrain priors (`meter_stability`, `temporal_basin`) that shape where a pulse forms without ever scheduling one. A dual-bus design separates the habitat (what the ecosystem senses) from the presentation (what the audience hears). The release also includes opt-in Landscape habituation and a simulated `ListenerTwin` feedback path that can raise pitch-search temperature; both default to behaviorally inert settings.
 
 The technical architecture—anchored by the `Log2Space` coordinate system and the "Sibling Projection" algorithm—provides a robust mathematical foundation for this paradigm. The use of Rust ensures that these complex biological simulations can run in real-time, bridging the gap between ALife research and performative musical instruments.
 
@@ -608,29 +636,29 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 | Generation without symbolic intermediaries | `Log2Space` + landscape; no note names, scales, or time signatures anywhere in the engine | §2–4 | Implemented |
 | Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, Hebbian tempo learning, PLV confidence | §4 | Implemented; mechanism sketch revised (9.3). Measure-level accent *production* remains open |
-| Landscape variability (culture, individual, unknown principles) | `roughness_k`, consonance kernel coefficients | §3.4, §6.3.6 | Partial — cultural tuning systems not yet absorbed |
-| Adaptation and expectation | per-voice `PerceptualContext` only | — | **Open — the largest gap (9.2)** |
+| Landscape variability (culture, individual, unknown principles) | `roughness_k`, consonance kernel coefficients, optional habituation erosion | §3.4–3.5, §6.3.6 | Partial — cultural tuning systems not yet absorbed |
+| Adaptation and expectation | per-Voice `AdaptationContext` + ecology/listener `HabituationField` | §3.5, §5 | Partial — adaptation is implemented; explicit phrase/scene expectation remains open (9.2) |
 | Acoustic life: perception, metabolism, autonomy | The Voice: distinct articulation-life cores plus normalized energy, time-domain endurance/recovery, and viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5 | Implemented (temporal scaffolding remains an explicit experiment) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented; grounded by the scene window (9.2) |
-| DCC stage two: biosignal closed loop | `ListenerTwin` + report-only DCC pressure as the simulated precursor | §4.1 | Open — direction only |
+| DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented and off by default; physical biosignal loop remains open |
 | Dissolution of roles; spatial landscapes; heredity of timbre; other domains | Hereditary respawn exists as assays | — | Horizon |
 
-## 9.2 The Missing Mechanism: Adaptation
+## 9.2 Implemented Adaptation and the Remaining Expectation Gap
 
 Human temporal cognition layers experience in three windows. Within the **perceptual present** (~3 s, upper bound ~8 s) no change is needed; texture itself carries. In the **prediction window** (3–8 s)—where musical phrases live—boredom is the operational state of a prediction engine with nothing left to update: beyond roughly eight seconds without a *perceptible* change, attention releases. And at the **scene window** (15–30 s), segmentation boundaries must arrive or the mind wanders. Beneath all three sits habituation: auditory cortex adapts to repeated spectra (stimulus-specific adaptation), so an unchanging percept literally fades from salience and recovers after withdrawal.
 
-For a system whose terrain *is* a model of perception, the consequence is structural: **consonance is a meal, not a place**. A landscape that models the listener must devalue what has been sounding—habituation as terrain erosion, with a time constant on the order of the prediction window—and let it recover after release. Stasis avoidance then belongs to the ecology rather than to authored pacing, and the three windows assign a clean division of labor: the **body** owns the micro layer (jitter, breath, beating), the **ecology** owns the meso layer (adaptation-driven movement, life and death), and the **scenario** owns the macro layer—the one window the Manifesto explicitly assigns to the human director, who owes the listener a boundary at this scale and cannot delegate it.
+For a system whose terrain *is* a model of perception, the consequence is structural: **consonance is a meal, not a place**. The current implementation now realizes that claim at two levels. Each Voice's `AdaptationContext` keeps fast and slow traces over the fundamental-occupancy field, producing boredom and familiarity adjustments during pitch choice. At the shared-environment level, the optional `HabituationField` devalues sustained perceived-consonance activity and recovers after withdrawal (Section 3.5). The ecology and `ListenerTwin` keep separate states because the habitat and presentation buses can contain different sounds.
 
-Fragments exist: the per-voice boredom/familiarity of `PerceptualContext` is the agent-side preview, and the `ListenerTwin`'s tension and attention reporting—with its currently report-only DCC pressure path—is the feedback channel that would close the loop. A landscape-level habituation field is future work; until it lands, "no more than ~8 s without perceptible change" serves as a *diagnostic* for the sample sequence, not a property of the system.
+The remaining gap is **expectation**, not the absence of adaptation. No phrase-level predictor yet represents what event should occur next, and no scene-level mechanism autonomously creates or evaluates segmentation boundaries. The division of labor therefore remains: the **body** owns the micro layer (jitter, breath, beating), the **ecology** owns the meso layer (adaptation-driven movement, life and death), and the **scenario** owns the macro layer. `ListenerTwin` tension and resolvability can already close a simulated feedback loop by adding pitch-search temperature when `[dcc].coupling_strength > 0`; the default is zero, and connection to a physical listener's biosignals remains future work. With habituation disabled, "no more than ~8 s without perceptible change" remains a useful sample diagnostic rather than a system invariant.
 
 ## 9.3 Upstream Revisions
 
 Implementation results have revised the Manifesto's mechanism-level sketches while confirming its principles:
 
 *   **The four-band table → an emergent metrical hierarchy.** The Manifesto sketches fixed delta/theta/alpha/beta bands with assigned musical roles. Building that taught otherwise: a fixed filterbank is an imposed grid in disguise. What survives the perception research is the principle—neural oscillation structures musical time—realized as a self-organizing beat–subdivision–measure hierarchy with confidence (Section 4).
-*   **Mirror dualism → the production-loop fixed-point requirement.** The undertone terrain is computable, but no minor tonality emerged, and the analysis generalizes: a perceptual symmetry is musically real only if the agents it attracts radiate spectra that reinforce it. Perception can be mirrored; production cannot—every body radiates overtones (Section 3.3.3). Any future terrain operation must pass both tests: a perceptual mechanism must exist, and the loop must close on the production side. The `harmonic_tension` dial that briefly survived as a tension knob was itself removed (v0.4): it passed neither test, was confirmed not to move the consonant peaks the ecology reads, and was in any case mathematically redundant—its two projection paths are one even convolution kernel at two decay exponents (Section 3.3.3). A tension axis that passes both tests was then built (v0.5): movement tension is the pitch-search *temperature* (Boltzmann exploration over the real potential — a hot search strays off consonance, a cold one settles), and placement tension is a *relative consonance level* (spawn a metastable step below the strongest peak). Both read the real, ecology-built terrain rather than warping it, so both pass. See `docs/design-notes/tension.md`.
+*   **Perceptual symmetry → the production-loop fixed-point requirement.** A terrain operation is ecologically meaningful only when a perceptual mechanism exists and the agents it attracts radiate spectra that reinforce it. Current tension controls therefore read the ecology-built terrain instead of warping it: movement tension is pitch-search *temperature*, and placement tension is a *relative consonance level*. See `docs/design-notes/tension.md`.
 *   **Rate archaeology → observable time contracts.** Exposing raw energy pools and per-second rates made the composer balance dimensions that the ecology could derive. The implementation assay showed that the independent contract is nominal endurance, not `initial_energy` or `energy_cap`: energy can be normalized to $[0,1]$, while zero-fit drain is derived from endurance and the dissonance shape. Continuous recovery remains a separate time contract because per-second recovery and per-attack recharge have different dimensions. The same assay rejected collapsing `Entrain`, `Seq`, and `Drone`: their onset resets, death rules, telemetry, and render modulators are observably different, so one configured core would only hide the enum behind flags.
 *   **Ambiguous object nouns → lifetime-bearing ontology.** `Material`, `Participant`, and a public draft Population each required prose exceptions because none named the lifetime it represented. The implementation now makes the transition explicit: `PopulationSpec + Placement --place()--> Population`, whose living members are Voices; all Populations sharing the Landscape form the Community. Population policy belongs to PopulationSpec, live control belongs to Population, and `place()` schedules founders immediately. `Species` is reserved until heredity and speciation give it an actual biological invariant. The naming is therefore guarded by observable identity: a Population survives member death and respawn, while a Voice and its generation do not.
 
@@ -648,6 +676,12 @@ Implementation results have revised the Manifesto's mechanism-level sketches whi
 | `beta` | `ConsonanceRepresentationParams` | Float | Sigmoid steepness for $C_{level01}$ (default 2.0). |
 | `theta` | `ConsonanceRepresentationParams` | Float | Sigmoid threshold for $C_{level01}$ (default 0.0). |
 | `consonance_density_roughness_gain` | `LandscapeParams` | Float | $\rho$ in density kernel $H(1-\rho R)$ (default 1.0). |
+| `habituation.enabled` | `HabituationParams` | Bool | Enable Landscape erosion; default false, making effective views identical to base views. |
+| `habituation.satiation_sec` | `HabituationParams` | Seconds | Time to reach 90% erosion under sustained unit drive (default 5.0). |
+| `habituation.recovery_sec` | `HabituationParams` | Seconds | Time to recover 90% after drive withdrawal (default 8.0). |
+| `habituation.ref_drive` | `HabituationParams` | Float | Half-saturation drive in the habituation transfer function (default 0.25). |
+| `loudness_exp` | `LandscapeParams` | Float | Compressive exponent applied to A-weighted peak power in the subjective-intensity front end (default 0.23). |
+| `tau_ms` | `LandscapeParams` | Milliseconds | Leaky normalization time constant after peak extraction (`[analysis].tau_ms`). |
 | `stability` | `MeterShaping` | 0.0-1.0 | Beat attractor depth (`meter_stability`): scales entrainment forcing and tempo learning. |
 | `basin_hz` | `MeterShaping` | Hz pair | Tempo prior region (`temporal_basin`): seeds and confines beat-frequency learning. |
 | `coupling` | `CoupledTimingSpec` | 0.0-1.0 | Per-voice lock strength onto the shared beat (`entrainment`). |
@@ -662,6 +696,8 @@ Implementation results have revised the Manifesto's mechanism-level sketches whi
 | `attack_cost_fraction` | `LifecycleConfig::Sustain` | Normalized energy / attack | Capacity spent by a full-strength attack. |
 | `attack_recharge_fraction` | `LifecycleConfig::Sustain` | Normalized energy / attack | Maximum capacity restored by a fully consonant attack. |
 | `dissonance_penalty` | `LifecycleConfig::Sustain` | Float ≥ 0 | Extends well-fit lifetime while preserving the zero-fit endurance contract. |
+| `dcc.coupling_strength` | `DccConfig` | 0.0-1.0 | Strength of ListenerTwin tension feedback; default 0.0 (behaviorally off). |
+| `dcc.max_temperature_bonus` | `DccConfig` | Float ≥ 0 | Maximum pitch-search temperature added by listener pressure (default 0.10). |
 | `attack_step` | `KuramotoCore` | Float | Envelope attack step size. |
 | `decay_rate` | `KuramotoCore` | Float | Envelope decay rate. |
 
@@ -679,6 +715,16 @@ $$ C_{level01} = \frac{1}{1 + e^{-\beta(C_{score} - \theta)}} $$
 
 $$ C_{density\_mass} = \max(0,\; H_{01}(1 - \rho R_{01})) $$
 
+**Landscape habituation and effective views:**
+
+$$ d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
+h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}} $$
+
+$$ C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad
+C_{density\_mass,i}^{eff}=C_{density\_mass,i}(1-h_i) $$
+
+$$ C_{level01,i}^{eff}=\frac{1}{1+e^{-\beta(C_{score,i}^{eff}-\theta)}} $$
+
 **Roughness Saturation Mapping** (from reference-normalized ratio $x$ to $R_{01} \in [0,1]$):
 
 $$
@@ -694,17 +740,23 @@ where $k$ is `roughness_k` (default $\approx 0.4286$). The function is continuou
 **Time-domain lifecycle** (normalized energy $E\in[0,1]$):
 
 $$ b = \frac{1}{T_e(1+p_d)}, \qquad
-\Delta E_{basal} = -b\,[1+p_d(1-C_{level01})]\,\Delta t $$
+\Delta E_{basal} = -b\,[1+p_d(1-C_{level01}^{eff})]\,\Delta t $$
 
-$$ \Delta E_{recovery} = \frac{V(C)}{T_r}\,\Delta t, \qquad
-\Delta E_{attack} = -f_c + f_r C_{level01}m_r $$
+$$ \Delta E_{recovery} = \frac{V(C^{eff})}{T_r}\,\Delta t, \qquad
+\Delta E_{attack} = -f_c + f_r C_{level01}^{eff}m_r $$
 
 where $T_e$ is endurance, $T_r$ is recovery, $p_d$ is the dissonance penalty,
-$V(C)$ is the viability-window signal, $f_c/f_r$ are attack cost/recharge
+$V(C^{eff})$ is the viability-window signal, $f_c/f_r$ are attack cost/recharge
 fractions, and $m_r$ is the bounded rhythm-reward multiplier.
 
-**Harmonicity Projection (Sibling Algorithm):**
-$$ H[i] = (1-\alpha)\sum_m \left( \sum_k A[i+\log_2(k)] \right)[i-\log_2(m)] + \alpha \sum_m \left( \sum_k A[i-\log_2(k)] \right)[i+\log_2(m)] $$
+**Harmonicity Projection (single-path Sibling Algorithm):**
+
+$$ Roots[i]=\left(\sum_k k^{-\rho}A[i+\log_2(k)]\right)^{\gamma} $$
+
+$$ H[i]=\max\left(0,\;\sum_m m^{-\rho}Roots[i-\log_2(m)]
+-(1-w_{diag})\left(\sum_{k=1}^{K}k^{-2\rho}\right)A[i]\right) $$
+
+The implementation then applies the optional absolute-frequency TFS gate and, by default, peak-normalizes the scan.
 
 **Roughness Convolution:**
-$$ R_{shape}(z) = \int A(\tau) \cdot K_{plomp}(|z-\tau|_{ERB}) d\tau $$
+$$ R_{shape}(z) = \int A(\tau) \cdot K_{rough}(z-\tau) d\tau $$

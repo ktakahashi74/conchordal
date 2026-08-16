@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use Conchordal in research, please cite the software and its accompanying paper."
+title: "Conchordal"
+type: software
+authors:
+  - family-names: "Takahashi"
+    given-names: "Koichi"
+version: 0.4.0
+date-released: 2026-08-16
+repository-code: "https://github.com/ktakahashi74/conchordal"
+url: "https://www.conchordal.org/"
+license:
+  - Apache-2.0
+  - MIT
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Takahashi"
+      given-names: "Koichi"
+  title: "Conchordal: Emergent Harmony via Direct Cognitive Coupling in a Psychoacoustic Landscape"
+  year: 2026
+  doi: "10.48550/arXiv.2603.25637"
+  url: "https://arxiv.org/abs/2603.25637"

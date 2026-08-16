@@ -14,7 +14,7 @@ psychoacoustics (roughness and harmonicity); rhythm emerges from coupled
 oscillators on a shared meter the Community itself drives. The script is a
 director, not a sequencer.
 
-Conchordal v0.4.0 is a research alpha for researchers and developers who want
+Conchordal v0.4.0 is an alpha release for researchers and developers who want
 to examine these concepts directly. Features are incomplete and may be
 unstable; composers and creators should wait for the beta release. The model
 is intentionally described in its own terms rather than hidden behind common

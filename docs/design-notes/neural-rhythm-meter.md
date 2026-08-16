@@ -1,8 +1,9 @@
 # Neural Rhythm and Meter Design
 
-Status: Phases 1-4 landed (emergent meter core, accent/measure shaping, coupling-
-continuum composer API, backend collapse); musical audition of the curated demos
-is the remaining acceptance step. In scope for v0.4.0
+Status: Implemented for v0.4.0 Alpha (emergent meter core,
+accent/measure shaping, coupling-continuum composer API, backend collapse).
+The functional alpha gate is accepted; a musically convincing showcase remains
+beta work.
 Scope: conchordal rhythm architecture, DCC time-axis coupling, composer API
 Date: 2026-06-04 (Phase 1-2 outcomes appended 2026-06-05; Phases 3-4 landed 2026-06-10)
 

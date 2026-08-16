@@ -12,4 +12,3 @@ Conchordal is a bio-mimetic ecosystem where cognition becomes terrain, and sound
 Why that sound, there? We reclaim the lost gravity of music.
 
 [→ Manifesto](/manifesto/)
-

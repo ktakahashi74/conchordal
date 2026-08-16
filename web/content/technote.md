@@ -3,11 +3,11 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "aefd992"
+source_commit = "404a3a1"
 author = "Koichi Takahashi"
 last_updated = "2026-08-16"
 source_version = "0.4.0"
-source_snapshot = "2026-08-14T13:28:14+09:00"
+source_snapshot = "2026-08-16T13:25:15+09:00"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm

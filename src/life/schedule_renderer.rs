@@ -83,7 +83,7 @@ impl ScheduleRenderer {
             let idx = (tick - now) as usize;
             let mut acc_presentation = 0.0f32;
             let mut acc_habitat = 0.0f32;
-            for (_key, rt) in self.tones.iter_mut() {
+            for rt in self.tones.values_mut() {
                 rt.tone.apply_updates_if_due(tick);
                 rt.tone.kick_planned_if_due(tick);
                 let sample = rt.tone.render_tick(tick, fs, dt, &rhythms);

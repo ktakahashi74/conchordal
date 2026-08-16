@@ -563,7 +563,7 @@ pub fn spectrum_time_freq_axes(
         plot_ui.line(
             Line::new("flux", flux_points)
                 .color(Color32::from_rgb(140, 140, 140))
-                .width(1.5),
+                .width(1.5_f32),
         );
     });
 }
@@ -681,7 +681,7 @@ fn draw_mandala(
     painter.circle_stroke(
         center,
         outer_r,
-        Stroke::new(1.0, d_color.gamma_multiply(0.2)),
+        Stroke::new(1.0_f32, d_color.gamma_multiply(0.2)),
     );
     if beat_phase > 0.01 {
         let steps = (beat_phase * 12.0).max(2.0) as usize;
@@ -700,7 +700,7 @@ fn draw_mandala(
 
     // Subdivision (tatum): base ring plus a fast cursor.
     let base_circle = Color32::from_gray(180);
-    painter.circle_stroke(center, radius, Stroke::new(2.5, base_circle));
+    painter.circle_stroke(center, radius, Stroke::new(2.5_f32, base_circle));
     let (t_color, t_weight) = get_visuals(meter.subdivision.confidence, color_sub);
     let sub_angle = start_angle + wrap(meter.subdivision.phase);
     let sub_pos = center + egui::vec2(sub_angle.cos(), sub_angle.sin()) * radius;
@@ -709,7 +709,7 @@ fn draw_mandala(
     painter.circle_stroke(
         sub_pos,
         dot_radius + 1.0,
-        Stroke::new(1.0, t_color.gamma_multiply(0.5)),
+        Stroke::new(1.0_f32, t_color.gamma_multiply(0.5)),
     );
     let (center_radius, center_color) = if let Some(stability) = listener_levels.stability {
         let stability = stability.clamp(0.0, 1.0);
@@ -724,7 +724,7 @@ fn draw_mandala(
     painter.circle_stroke(
         center,
         center_radius + 1.0,
-        Stroke::new(1.0, center_color.gamma_multiply(0.7)),
+        Stroke::new(1.0_f32, center_color.gamma_multiply(0.7)),
     );
 
     // Measure: a downbeat hand pointing at the measure phase, shown only when an
@@ -785,7 +785,7 @@ fn draw_mandala(
             let r = entrain_order_r.unwrap_or(0.0).clamp(0.0, 1.0);
             let mean_angle = start_angle + wrap(sy.atan2(sx));
             let tip = center + egui::vec2(mean_angle.cos(), mean_angle.sin()) * (radius * r);
-            painter.line_segment([center, tip], Stroke::new(2.0, voice_color));
+            painter.line_segment([center, tip], Stroke::new(2.0_f32, voice_color));
             painter.circle_filled(tip, 2.8, voice_color);
         }
     }

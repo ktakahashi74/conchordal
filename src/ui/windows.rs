@@ -108,7 +108,7 @@ fn draw_level_meters(
         p.rect_stroke(
             m_rect,
             2.0,
-            egui::Stroke::new(1.0, window_stroke_color),
+            egui::Stroke::new(1.0_f32, window_stroke_color),
             egui::StrokeKind::Inside,
         );
         let inst_rect = egui::Rect::from_min_size(
@@ -123,7 +123,7 @@ fn draw_level_meters(
                 egui::pos2(m_rect.left() + 2.5, win_y),
                 egui::pos2(m_rect.right() - 2.5, win_y),
             ],
-            egui::Stroke::new(2.0, color_for(win)),
+            egui::Stroke::new(2.0_f32, color_for(win)),
         );
 
         p.text(
@@ -584,11 +584,11 @@ pub fn main_window(
                 PlaybackState::Finished => {
                     painter.add(egui::Shape::line_segment(
                         [rect.left_top(), rect.right_bottom()],
-                        egui::Stroke::new(2.0, egui::Color32::RED),
+                        egui::Stroke::new(2.0_f32, egui::Color32::RED),
                     ));
                     painter.add(egui::Shape::line_segment(
                         [rect.right_top(), rect.left_bottom()],
-                        egui::Stroke::new(2.0, egui::Color32::RED),
+                        egui::Stroke::new(2.0_f32, egui::Color32::RED),
                     ));
                     "Exit"
                 }

@@ -1,4 +1,6 @@
-use rand::{Rng, RngExt, SeedableRng};
+#[cfg(test)]
+use rand::SeedableRng;
+use rand::{Rng, RngExt};
 
 #[cfg(all(test, feature = "plotcheck"))]
 pub(crate) fn ensure_plots_dir() -> std::io::Result<()> {
@@ -45,12 +47,14 @@ pub fn pink_noise_tick<R: Rng + ?Sized>(
 }
 
 // --- noise generators ---
+#[cfg(test)]
 pub fn white_noise(n: usize, seed: u64) -> Vec<f32> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     (0..n).map(|_| rng.random_range(-1.0..1.0)).collect()
 }
 
 /// Pink noise via simple 3-pole filter approximation (Voss–McCartney not required)
+#[cfg(test)]
 pub fn pink_noise(n: usize, seed: u64) -> Vec<f32> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut b0 = 0.0f32;
@@ -64,6 +68,7 @@ pub fn pink_noise(n: usize, seed: u64) -> Vec<f32> {
 }
 
 /// Brown (red) noise via single-pole low-pass filter (−6 dB/oct)
+#[cfg(test)]
 pub fn brown_noise(n: usize, seed: u64) -> Vec<f32> {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut y = 0.0f32;

@@ -9,10 +9,13 @@ use crate::life::sound::mode_utils::{
 use crate::life::sound::{BodyKind, BodySnapshot, ModalEngine, ModeShape};
 use crate::life::voice::ArticulationSignal;
 use crate::life::voice::sound_body::{
-    AnySoundBody, SoundBody, SoundBodyBuildInput, SoundBodyFactory, register_sound_body_factory,
+    AnySoundBody, SineBody, SoundBody, SoundBodyBuildInput, SoundBodyFactory,
+    register_sound_body_factory,
 };
+use rand::RngExt;
 use rand::rngs::SmallRng;
 use std::sync::{Arc, Once};
+use tracing::warn;
 
 #[derive(Debug)]
 pub struct ModalBody {
@@ -29,6 +32,9 @@ pub struct ModalBody {
 impl ModalBody {
     const TIMBRE_EPS: f32 = 1.0e-4;
 
+    /// `None` when the resonator bank rejects the engine parameters. Callers are on
+    /// the voice spawn path, which the audio thread reaches, so they fall back to a
+    /// simpler body instead of panicking.
     fn new(
         fs: f32,
         base_freq_hz: f32,
@@ -37,7 +43,7 @@ impl ModalBody {
         brightness: f32,
         spread: f32,
         unison: usize,
-    ) -> Self {
+    ) -> Option<Self> {
         let fs = if fs.is_finite() && fs > 0.0 {
             fs
         } else {
@@ -53,20 +59,18 @@ impl ModalBody {
             cluster_spread_cents,
             cluster_unison,
         );
-        let shape = ModeShape::Modal { modes };
-        let engine = ModalEngine::new(fs, shape).unwrap_or_else(|_| {
-            ModalEngine::new(
-                fs,
-                ModeShape::Sine {
-                    t60_s: 0.8,
-                    out_gain: 1.0,
-                    in_gain: 1.0,
-                },
-            )
-            .expect("modal sine fallback")
-        });
+        // The bank only rejects a non-finite/non-positive sample rate, which `fs` is
+        // sanitized against above.
+        let engine = match ModalEngine::new(fs, ModeShape::Modal { modes }) {
+            Ok(engine) => engine,
+            Err(err) => {
+                debug_assert!(false, "modal engine rejected sanitized fs {fs}: {err:?}");
+                warn!("Modal engine init failed ({err:?}); falling back to a sine body");
+                return None;
+            }
+        };
 
-        Self {
+        Some(Self {
             base_freq_hz: base_freq_hz.max(1.0),
             amp,
             fs,
@@ -75,7 +79,7 @@ impl ModalBody {
             cluster_unison,
             base_ratios,
             engine,
-        }
+        })
     }
 
     fn control_block(&self, amp: f32) -> ToneControlBlock {
@@ -220,7 +224,7 @@ impl SoundBodyFactory for ModalBodyFactory {
             .unwrap_or_else(ModePattern::harmonic_modes);
         let ratios = pattern.eval(input.base_freq_hz, eval_space, input.landscape, rng);
         let timbre = &input.control.body.timbre;
-        let body = ModalBody::new(
+        let Some(mut body) = ModalBody::new(
             input.fs,
             input.base_freq_hz,
             input.control.body.amp,
@@ -228,8 +232,13 @@ impl SoundBodyFactory for ModalBodyFactory {
             timbre.brightness,
             timbre.spread,
             timbre.unison,
-        );
-        let mut body = body;
+        ) else {
+            return AnySoundBody::Sine(SineBody {
+                freq_hz: input.base_freq_hz.max(1.0),
+                amp: input.control.body.amp,
+                audio_phase: rng.random_range(0.0..std::f32::consts::TAU),
+            });
+        };
         body.seed_modal_phases(rand::Rng::next_u64(rng));
         AnySoundBody::from_dyn(Box::new(body))
     }
@@ -248,7 +257,8 @@ mod tests {
 
     #[test]
     fn modal_snapshot_keeps_base_ratios() {
-        let body = ModalBody::new(48_000.0, 220.0, 0.2, vec![1.0, 2.756, 5.404], 0.62, 0.35, 5);
+        let body = ModalBody::new(48_000.0, 220.0, 0.2, vec![1.0, 2.756, 5.404], 0.62, 0.35, 5)
+            .expect("modal body");
         let snapshot = body.snapshot();
         let ratios = snapshot.ratios.expect("ratios");
         assert_eq!(snapshot.kind, BodyKind::Modal);

@@ -89,7 +89,20 @@ impl HabituationField {
     /// Advance `h` one step. `drive_raw[i] = level[i] * proj[i]` (perceived-
     /// consonance activity in root coordinate); asymmetric relaxation:
     /// rising uses tau_e (satiation), falling uses tau_r (recovery).
+    ///
+    /// F2: both inputs must be aligned to the field's bins. Call `ensure_len`
+    /// first when the space can change.
     pub fn advance_from_parts(&mut self, level: &[f32], proj: &[f32], dt: f32) {
+        assert_eq!(
+            level.len(),
+            self.h.len(),
+            "habituation level scan length mismatch"
+        );
+        assert_eq!(
+            proj.len(),
+            self.h.len(),
+            "habituation proj scan length mismatch"
+        );
         if !self.enabled || self.h.is_empty() {
             return;
         }
@@ -97,9 +110,7 @@ impl HabituationField {
         let a_e = (-dt / self.tau_e).exp();
         let a_r = (-dt / self.tau_r).exp();
         for i in 0..self.h.len() {
-            let lvl = level.get(i).copied().unwrap_or(0.0);
-            let pj = proj.get(i).copied().unwrap_or(0.0);
-            let d = self.transfer(lvl * pj).clamp(0.0, 1.0);
+            let d = self.transfer(level[i] * proj[i]).clamp(0.0, 1.0);
             let a = if d > self.h[i] { a_e } else { a_r };
             self.h[i] = (a * self.h[i] + (1.0 - a) * d).clamp(0.0, 1.0);
         }
@@ -182,6 +193,20 @@ mod tests {
             t += dt;
         }
         assert!((t - 8.0).abs() < 0.2, "fell to 0.1 at t={t}");
+    }
+
+    #[test]
+    #[should_panic(expected = "habituation level scan length mismatch")]
+    fn advance_panics_on_level_len_mismatch() {
+        let mut f = HabituationField::new(&full_drive_params(), 0.0, 3);
+        f.advance_from_parts(&[1.0, 1.0], &[1.0, 1.0, 1.0], 0.05);
+    }
+
+    #[test]
+    #[should_panic(expected = "habituation proj scan length mismatch")]
+    fn advance_panics_on_proj_len_mismatch() {
+        let mut f = HabituationField::new(&full_drive_params(), 0.0, 3);
+        f.advance_from_parts(&[1.0, 1.0, 1.0], &[1.0, 1.0], 0.05);
     }
 
     #[test]

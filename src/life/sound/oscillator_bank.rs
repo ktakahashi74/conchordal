@@ -374,6 +374,8 @@ impl OscillatorBank {
         }
     }
 
+    /// Reference kernel. Both callers are cfg-gated away from the default lib
+    /// build: the non-SIMD `process_sample` and `render_block_for_test`.
     #[allow(dead_code)]
     fn process_sample_basic(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
         let mut out = 0.0;

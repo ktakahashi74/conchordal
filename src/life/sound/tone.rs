@@ -1,11 +1,11 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::lifecycle::default_decay_attack;
 use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
 use crate::life::sound::any_backend::{AnyBackend, DriveMode};
 use crate::life::sound::control::{ControlRamp, ToneControlBlock};
 use crate::life::sound::{BodyKind, BodySnapshot, RenderModulator, RenderModulatorSpec};
 use crate::life::voice::ArticulationSignal;
+use crate::scenario::lifecycle::default_decay_attack;
 use std::collections::VecDeque;
 
 const SINE_IMPULSE_BOOST_GAIN: f32 = 0.2;
@@ -210,23 +210,6 @@ impl Tone {
         self.pending_impulse_energy += energy;
     }
 
-    pub fn set_target(&mut self, pitch_hz: f32, amp: f32, tau_sec: f32) {
-        self.set_smoothing_tau_sec(tau_sec);
-        if pitch_hz.is_finite() && pitch_hz > 0.0 {
-            self.target_pitch_hz = pitch_hz;
-            if self.pitch_alpha >= 1.0 {
-                self.current_pitch_hz = pitch_hz;
-            }
-        }
-        if amp.is_finite() {
-            let amp = amp.max(0.0);
-            self.target_amp = amp;
-            if self.amp_alpha >= 1.0 {
-                self.current_amp = amp;
-            }
-        }
-    }
-
     pub fn kick_planned(&mut self, kick: OnsetKick) -> bool {
         if let Some(render_modulator) = self.render_modulator.as_mut() {
             render_modulator.kick_planned(kick);
@@ -253,11 +236,11 @@ impl Tone {
     }
 
     pub fn apply_updates_if_due(&mut self, tick: Tick) {
-        while let Some(pending) = self.pending_updates.front().copied() {
+        while let Some(pending) = self.pending_updates.pop_front() {
             if pending.at_tick > tick {
+                self.pending_updates.push_front(pending);
                 break;
             }
-            let pending = self.pending_updates.pop_front().expect("pending update");
             self.apply_update(&pending.update);
         }
         if tick >= self.hold_end {
@@ -749,6 +732,35 @@ mod tests {
 
         assert!((tone.debug_target_amp() - 0.25).abs() < 1e-6);
         assert!((tone.debug_current_amp() - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn pending_updates_past_the_tick_stay_queued_until_due() {
+        let tb = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let mut tone = Tone::from_parts(tb, 0, 1_000, 440.0, 0.5, None, None, None).expect("tone");
+        tone.set_smoothing_tau_sec(0.0);
+        let amp_update = |amp: f32| ToneUpdate {
+            target_freq_hz: None,
+            target_amp: Some(amp),
+            continuous_drive: None,
+        };
+        tone.schedule_update(4, amp_update(0.25));
+        tone.schedule_update(12, amp_update(0.75));
+
+        tone.apply_updates_if_due(4);
+        assert!(
+            (tone.debug_target_amp() - 0.25).abs() < 1e-6,
+            "only the due update applies"
+        );
+
+        tone.apply_updates_if_due(12);
+        assert!(
+            (tone.debug_target_amp() - 0.75).abs() < 1e-6,
+            "the deferred update must survive the earlier pass"
+        );
     }
 
     #[test]

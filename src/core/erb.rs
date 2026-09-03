@@ -18,6 +18,7 @@ pub fn erb_to_hz(e: f32) -> f32 {
 
 /// Returns ERB bandwidth in Hz (Glasberg & Moore 1990)
 #[inline]
+#[cfg(test)]
 pub fn erb_bw_hz(f_hz: f32) -> f32 {
     24.7 * (4.37e-3 * f_hz + 1.0)
 }

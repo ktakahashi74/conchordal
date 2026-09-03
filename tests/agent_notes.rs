@@ -2,10 +2,10 @@ use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::timebase::{Tick, Timebase};
 use conchordal::life::community::Community;
-use conchordal::life::control::VoiceControl;
 use conchordal::life::generator_model::GeneratorModel;
 use conchordal::life::schedule_renderer::ScheduleRenderer;
 use conchordal::life::voice::VoiceMetadata;
+use conchordal::scenario::control::VoiceControl;
 use conchordal::scenario::{
     ArticulationCoreConfig, DurationSpec, PhonationSpec, PhonationTiming, VoiceSpec,
 };

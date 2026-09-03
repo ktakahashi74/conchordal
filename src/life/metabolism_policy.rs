@@ -1,9 +1,8 @@
 use crate::core::float::sanitize01;
 use crate::life::constants::MAX_RECHARGE_MULT;
-use crate::life::lifecycle::LifecycleConfig;
-
-pub const DEFAULT_ATTACK_COST_FRACTION: f32 = 0.02;
-pub const DEFAULT_ATTACK_RECHARGE_FRACTION: f32 = 0.5;
+use crate::scenario::lifecycle::{
+    DEFAULT_ATTACK_COST_FRACTION, DEFAULT_ATTACK_RECHARGE_FRACTION, LifecycleConfig,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct MetabolismPolicy {

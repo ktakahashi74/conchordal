@@ -3,7 +3,7 @@ use crate::ui::plots::{
     draw_listener_mandala, draw_roughness_harmonicity, log2_plot_hz, neural_activity_plot,
     plot_population_dynamics, spectrum_time_freq_axes, time_plot,
 };
-use crate::ui::viewdata::{PlaybackState, UiFrame};
+use crate::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Color32, Panel, Vec2};
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -359,7 +359,7 @@ fn draw_listener_dashboard(
     ui: &mut egui::Ui,
     frame: &UiFrame,
     rhythm_history: &VecDeque<(f64, crate::core::meter::MeterState)>,
-    dorsal_history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
+    dorsal_history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
     window_start: f64,
     window_end: f64,
     time_link_id: &str,
@@ -510,7 +510,7 @@ pub fn main_window(
     root_ui: &mut egui::Ui,
     frame: &UiFrame,
     rhythm_history: &VecDeque<(f64, crate::core::meter::MeterState)>,
-    dorsal_history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
+    dorsal_history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
     audio_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,
     start_flag: &Arc<AtomicBool>,

@@ -148,11 +148,6 @@ impl AudioOutput {
         ))
     }
 
-    #[allow(dead_code)]
-    pub fn stop(&mut self) {
-        self.stream.take();
-    }
-
     /// Worker loop pushes new samples.
     pub fn push_samples(prod: &mut HeapProd<f32>, samples: &[f32]) {
         let mut offset = 0;

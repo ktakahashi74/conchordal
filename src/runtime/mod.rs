@@ -24,19 +24,19 @@ use crate::core::phase::wrap_pm_pi;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
 use crate::core::timebase::Tick;
-use crate::dcc_coupler::DccCoupler;
+use crate::dcc_coupler::{DccCoupler, ListenerPressure};
 use crate::life::community::Community;
 use crate::life::conductor::Conductor;
 use crate::life::report::{
-    JsonlReporter, RhythmObservation, onset_samples_from_batches, scaffold_phase_0_1,
-    summarize_populations,
+    JsonlReporter, ListenerStateSample, RhythmObservation, onset_samples_from_batches,
+    scaffold_phase_0_1, summarize_populations,
 };
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::voice::{PhonationBatch, SoundBody};
 use crate::listener_twin::{ListenerFastState, ListenerState, ListenerTwin};
 use crate::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::scripting::ScriptHost;
-use crate::ui::viewdata::{
+use crate::viewdata::{
     DorsalFrame, ListenerFrame, PlaybackState, PredictionFrame, SimulationMeta, SpecFrame, UiFrame,
     VoiceStateInfo, WaveFrame,
 };
@@ -45,6 +45,7 @@ use crate::{
 };
 
 const MAX_LANDSCAPE_LAG_FRAMES: u64 = 1;
+const UI_MIN_INTERVAL: Duration = Duration::from_millis(33);
 
 struct AudioMonitor {
     min_occupancy: Option<usize>,
@@ -242,7 +243,6 @@ fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
                 freq_hz,
                 target_freq: 2.0f32.powf(agent.target_pitch_log2()),
                 integration_window: agent.integration_window(),
-                breath_gain: agent.articulation.gate(),
                 consonance: input.current_landscape.evaluate_pitch_level(freq_hz),
             }
         })
@@ -709,7 +709,7 @@ pub fn compile_scenario_from_script(
     })
 }
 
-pub fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
+pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     if scenario.events.is_empty() {
         return Err("Scenario has no events".to_string());
     }
@@ -809,13 +809,7 @@ pub fn run_compile_only(args: crate::cli::Args, config: AppConfig) {
     );
 }
 
-pub(crate) fn init_runtime(
-    args: crate::cli::Args,
-    config: AppConfig,
-    stop_flag: Arc<AtomicBool>,
-) -> RuntimeInit {
-    crate::life::modal::register_modal();
-    let latency_ms = config.audio.latency_ms;
+fn resolve_limiter_mode(config: &AppConfig) -> LimiterMode {
     let guard_mode = match config.audio.limiter {
         crate::config::LimiterSetting::None => LimiterMode::None,
         crate::config::LimiterSetting::SoftClip => {
@@ -825,7 +819,204 @@ pub(crate) fn init_runtime(
             LimiterMode::PeakLimiter(crate::audio::limiter::PeakLimiterParams::default())
         }
     };
-    let guard_mode = Limiter::from_env_or(guard_mode);
+    Limiter::from_env_or(guard_mode)
+}
+
+fn load_scenario_or_exit(
+    path: &Path,
+    args: &crate::cli::Args,
+    config: &AppConfig,
+) -> (String, Scenario) {
+    let scenario_label = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("scenario")
+        .to_string();
+    let scenario = compile_scenario_from_script(path, args, config).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
+    info!(
+        "scenario seed: {} (replay with --seed {})",
+        scenario.seed, scenario.seed
+    );
+    (scenario_label, scenario)
+}
+
+/// Path-specific wiring knobs. Every field is an actual difference between the
+/// GUI/headless path (`init_runtime`) and the offline render path (`run_render`).
+struct WiringOptions {
+    ui_channel_capacity: usize,
+    /// Enables listener analysis even without DCC coupling (GUI display / report).
+    listener_forced: bool,
+    wait_user_exit: bool,
+    start_playing: bool,
+    audio_prod: Option<ringbuf::HeapProd<f32>>,
+    wav_tx: Option<Sender<Arc<[f32]>>>,
+    reporter: Option<JsonlReporter>,
+    reserve_voice_ids_through: Option<u64>,
+    deterministic_analysis: bool,
+    guard_meter: Option<Arc<LimiterMeter>>,
+}
+
+struct RuntimeWiring {
+    ui_frame_rx: Receiver<UiFrame>,
+    start_flag: Arc<AtomicBool>,
+    worker_handle: thread::JoinHandle<()>,
+    analysis_handle: thread::JoinHandle<()>,
+    listener_analysis_handle: Option<thread::JoinHandle<()>>,
+}
+
+/// Wiring shared by both runtime paths: analysis core, channels, analysis
+/// worker threads, Community/Conductor setup, and the worker thread spawn.
+fn wire_runtime(
+    config: &AppConfig,
+    runtime_sample_rate: u32,
+    scenario_label: String,
+    scenario: Scenario,
+    stop_flag: Arc<AtomicBool>,
+    opts: WiringOptions,
+) -> RuntimeWiring {
+    let WiringOptions {
+        ui_channel_capacity,
+        listener_forced,
+        wait_user_exit,
+        start_playing,
+        audio_prod,
+        wav_tx,
+        reporter,
+        reserve_voice_ids_through,
+        deterministic_analysis,
+        guard_meter,
+    } = opts;
+
+    let core = build_analysis_runtime_core(config, runtime_sample_rate);
+    let fs = core.fs;
+    let hop = core.hop;
+    let hop_duration = core.hop_duration;
+    let lparams_runtime = core.lparams.clone();
+
+    let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
+    let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
+    let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+    let (analysis_result_tx, analysis_result_rx) = bounded::<(u64, Landscape)>(4);
+
+    // NSGT-RT based audio analysis thread.
+    let analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
+    let analysis_handle = spawn_analysis_worker(
+        "field-analysis",
+        analysis_stream,
+        audio_to_analysis_rx,
+        analysis_result_tx,
+        analysis_update_rx,
+    );
+
+    let dcc_coupler = DccCoupler::new(config.dcc);
+    let listener_analysis_enabled = listener_forced || dcc_coupler.coupling_strength() > 0.0;
+    let (
+        presentation_to_listener_tx,
+        listener_result_rx,
+        listener_analysis_update_tx,
+        listener_analysis_handle,
+    ) = if listener_analysis_enabled {
+        let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
+        let (presentation_tx, presentation_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+        let (result_tx, result_rx) = bounded::<(u64, Landscape)>(4);
+        let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
+        let handle = spawn_analysis_worker(
+            "listener-analysis",
+            listener_stream,
+            presentation_rx,
+            result_tx,
+            update_rx,
+        );
+        (
+            Some(presentation_tx),
+            Some(result_rx),
+            Some(update_tx),
+            Some(handle),
+        )
+    } else {
+        (None, None, None, None)
+    };
+
+    let landscape = core.landscape;
+    let dorsal = core.dorsal;
+
+    let mut pop = Community::new(crate::core::timebase::Timebase { fs, hop });
+    if let Some(max_id) = reserve_voice_ids_through {
+        pop.reserve_runtime_ids_through(max_id);
+    }
+    pop.set_seed(scenario.seed);
+    pop.set_control_update_mode(scenario.control_update_mode);
+    if reporter.is_some() {
+        pop.enable_auto_observe();
+    }
+    let scaffold = scenario.scaffold;
+    let meter_shaping = scenario.meter_shaping;
+    let conductor = Conductor::from_scenario(scenario);
+
+    let start_flag = Arc::new(AtomicBool::new(start_playing));
+
+    let cfg = WorkerConfig {
+        scenario_name: scenario_label,
+        wait_user_exit,
+        start_flag: start_flag.clone(),
+        exiting: stop_flag,
+        scaffold,
+        meter_shaping,
+        guard_meter,
+        dcc_coupler,
+        hop,
+        hop_duration,
+        fs,
+        deterministic_analysis,
+    };
+    let channels = WorkerChannels {
+        ui_tx: ui_frame_tx,
+        audio_prod,
+        wav_tx,
+        audio_to_analysis_tx,
+        analysis_result_rx,
+        analysis_update_tx,
+        presentation_to_listener_tx,
+        listener_result_rx,
+        listener_analysis_update_tx,
+    };
+
+    let worker_handle = thread::Builder::new()
+        .name("worker".into())
+        .spawn(move || {
+            let state = WorkerState::new(
+                pop,
+                conductor,
+                landscape,
+                lparams_runtime,
+                dorsal,
+                reporter,
+                &cfg,
+            );
+            worker_loop(cfg, channels, state)
+        })
+        .expect("spawn worker");
+
+    RuntimeWiring {
+        ui_frame_rx,
+        start_flag,
+        worker_handle,
+        analysis_handle,
+        listener_analysis_handle,
+    }
+}
+
+pub(crate) fn init_runtime(
+    args: crate::cli::Args,
+    config: AppConfig,
+    stop_flag: Arc<AtomicBool>,
+) -> RuntimeInit {
+    crate::life::modal::register_modal();
+    let latency_ms = config.audio.latency_ms;
+    let guard_mode = resolve_limiter_mode(&config);
     let guard_meter = if args.play {
         Some(Arc::new(LimiterMeter::default()))
     } else {
@@ -863,11 +1054,7 @@ pub(crate) fn init_runtime(
         config.audio.sample_rate
     };
 
-    let core = build_analysis_runtime_core(&config, runtime_sample_rate);
-    let fs = core.fs;
-    let hop = core.hop;
-    let hop_duration = core.hop_duration;
-    let hop_ms = hop_duration.as_secs_f32() * 1000.0;
+    let hop_ms = config.analysis.hop_size as f32 / runtime_sample_rate as f32 * 1000.0;
     let visual_delay_frames = 0;
     debug!(
         "Visual delay frames: {} (latency_ms={:.1}, hop_ms={:.2})",
@@ -875,73 +1062,8 @@ pub(crate) fn init_runtime(
     );
     let ui_channel_capacity = (visual_delay_frames + 4).max(16);
 
-    // Channels
-    let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
-    let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
-    let dcc_coupler = DccCoupler::new(config.dcc);
-    let listener_analysis_enabled =
-        !args.nogui || args.report.is_some() || dcc_coupler.coupling_strength() > 0.0;
-
-    let analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
-    let lparams_runtime = core.lparams.clone();
-
-    // Analysis pipeline channels
-    let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-    let (analysis_result_tx, analysis_result_rx) = bounded::<(u64, Landscape)>(4);
-
-    // Spawn analysis thread (NSGT-RT based audio analysis).
-    let analysis_handle = Some(spawn_analysis_worker(
-        "field-analysis",
-        analysis_stream,
-        audio_to_analysis_rx,
-        analysis_result_tx,
-        analysis_update_rx,
-    ));
-
-    let (
-        presentation_to_listener_tx,
-        listener_result_rx,
-        listener_analysis_update_tx,
-        listener_analysis_handle,
-    ) = if listener_analysis_enabled {
-        let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
-        let (presentation_tx, presentation_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-        let (result_tx, result_rx) = bounded::<(u64, Landscape)>(4);
-        let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
-        let handle = spawn_analysis_worker(
-            "listener-analysis",
-            listener_stream,
-            presentation_rx,
-            result_tx,
-            update_rx,
-        );
-        (
-            Some(presentation_tx),
-            Some(result_rx),
-            Some(update_tx),
-            Some(handle),
-        )
-    } else {
-        (None, None, None, None)
-    };
-
-    let landscape = core.landscape;
-    let dorsal = core.dorsal;
-
     let path = Path::new(&args.scenario_path);
-    let scenario_label = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("scenario")
-        .to_string();
-    let scenario = compile_scenario_from_script(path, &args, &config).unwrap_or_else(|e| {
-        eprintln!("{e}");
-        std::process::exit(1);
-    });
-    info!(
-        "scenario seed: {} (replay with --seed {})",
-        scenario.seed, scenario.seed
-    );
+    let (scenario_label, scenario) = load_scenario_or_exit(path, &args, &config);
     let max_scenario_voice_id = scenario
         .events
         .iter()
@@ -966,71 +1088,34 @@ pub(crate) fn init_runtime(
     report_try(&mut reporter, "scene markers", |writer| {
         writer.write_scene_markers(&scenario.scene_markers)
     });
-    let mut pop = Community::new(crate::core::timebase::Timebase {
-        fs: runtime_sample_rate as f32,
-        hop,
-    });
-    if let Some(max_id) = max_scenario_voice_id {
-        pop.reserve_runtime_ids_through(max_id);
-    }
-    pop.set_seed(scenario.seed);
-    pop.set_control_update_mode(scenario.control_update_mode);
     let deterministic_analysis = reporter.is_some() && !args.play;
-    if reporter.is_some() {
-        pop.enable_auto_observe();
-    }
-    let scaffold = scenario.scaffold;
-    let meter_shaping = scenario.meter_shaping;
-    let conductor = Conductor::from_scenario(scenario);
 
-    // Spawn worker thread
-    let stop_flag_worker = stop_flag.clone();
-    let start_flag = Arc::new(AtomicBool::new(!config.playback.wait_user_start));
-    let start_flag_for_worker = start_flag.clone();
-
-    let worker_handle = Some(
-        thread::Builder::new()
-            .name("worker".into())
-            .spawn(move || {
-                worker_loop(
-                    scenario_label,
-                    config.playback.wait_user_exit,
-                    start_flag_for_worker,
-                    ui_frame_tx,
-                    pop,
-                    conductor,
-                    landscape,
-                    lparams_runtime,
-                    dorsal,
-                    audio_prod,
-                    None,
-                    reporter,
-                    scaffold,
-                    meter_shaping,
-                    guard_meter.clone(),
-                    dcc_coupler,
-                    stop_flag_worker,
-                    audio_to_analysis_tx,
-                    analysis_result_rx,
-                    analysis_update_tx,
-                    presentation_to_listener_tx,
-                    listener_result_rx,
-                    listener_analysis_update_tx,
-                    hop,
-                    hop_duration,
-                    fs,
-                    deterministic_analysis,
-                )
-            })
-            .expect("spawn worker"),
+    let wiring = wire_runtime(
+        &config,
+        runtime_sample_rate,
+        scenario_label,
+        scenario,
+        stop_flag,
+        WiringOptions {
+            ui_channel_capacity,
+            listener_forced: !args.nogui || args.report.is_some(),
+            wait_user_exit: config.playback.wait_user_exit,
+            start_playing: !config.playback.wait_user_start,
+            audio_prod,
+            wav_tx: None,
+            reporter,
+            reserve_voice_ids_through: max_scenario_voice_id,
+            deterministic_analysis,
+            guard_meter,
+        },
     );
 
     RuntimeInit {
-        ui_frame_rx,
-        worker_handle,
-        analysis_handle,
-        listener_analysis_handle,
-        start_flag,
+        ui_frame_rx: wiring.ui_frame_rx,
+        worker_handle: Some(wiring.worker_handle),
+        analysis_handle: Some(wiring.analysis_handle),
+        listener_analysis_handle: wiring.listener_analysis_handle,
+        start_flag: wiring.start_flag,
         audio_out,
         audio_init_error,
         visual_delay_frames,
@@ -1086,16 +1171,7 @@ pub fn run_render(
 ) -> Result<(), String> {
     crate::life::modal::register_modal();
 
-    let guard_mode = match config.audio.limiter {
-        crate::config::LimiterSetting::None => LimiterMode::None,
-        crate::config::LimiterSetting::SoftClip => {
-            LimiterMode::SoftClip(crate::audio::limiter::SoftClipParams::default())
-        }
-        crate::config::LimiterSetting::PeakLimiter => {
-            LimiterMode::PeakLimiter(crate::audio::limiter::PeakLimiterParams::default())
-        }
-    };
-    let guard_mode = Limiter::from_env_or(guard_mode);
+    let guard_mode = resolve_limiter_mode(&config);
     let guard_meter = Some(Arc::new(LimiterMeter::default()));
 
     // Render mode never opens an audio device: use configured sample-rate directly.
@@ -1109,134 +1185,42 @@ pub fn run_render(
         guard_meter.clone(),
     );
 
-    let core = build_analysis_runtime_core(&config, runtime_sample_rate);
-    let fs = core.fs;
-    let hop = core.hop;
-    let hop_duration = core.hop_duration;
-
-    let (ui_frame_tx, _ui_frame_rx) = bounded::<UiFrame>(1);
-    let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
-    let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-    let (analysis_result_tx, analysis_result_rx) = bounded::<(u64, Landscape)>(4);
-
-    let analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
-    let landscape = core.landscape;
-    let dorsal = core.dorsal;
-    let lparams_runtime = core.lparams.clone();
-
-    let analysis_handle = spawn_analysis_worker(
-        "field-analysis",
-        analysis_stream,
-        audio_to_analysis_rx,
-        analysis_result_tx,
-        analysis_update_rx,
-    );
-
     let path = Path::new(scenario_path);
     if let Err(e) = validate_scenario_script_extension(path) {
         eprintln!("{e}");
         std::process::exit(1);
     }
-    let scenario_label = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("scenario")
-        .to_string();
     let compile_args = render_compile_args(scenario_path, seed);
-    let scenario = compile_scenario_from_script(path, &compile_args, &config).unwrap_or_else(|e| {
-        eprintln!("{e}");
-        std::process::exit(1);
-    });
-    info!(
-        "scenario seed: {} (replay with --seed {})",
-        scenario.seed, scenario.seed
-    );
+    let (scenario_label, scenario) = load_scenario_or_exit(path, &compile_args, &config);
     if let Err(e) = validate_scenario(&scenario) {
         eprintln!("{e}");
         std::process::exit(1);
     }
 
-    let mut pop = Community::new(crate::core::timebase::Timebase {
-        fs: runtime_sample_rate as f32,
-        hop,
-    });
-    pop.set_seed(scenario.seed);
-    pop.set_control_update_mode(scenario.control_update_mode);
-    let scaffold = scenario.scaffold;
-    let meter_shaping = scenario.meter_shaping;
-    let conductor = Conductor::from_scenario(scenario);
+    let wiring = wire_runtime(
+        &config,
+        runtime_sample_rate,
+        scenario_label,
+        scenario,
+        stop_flag,
+        WiringOptions {
+            ui_channel_capacity: 1,
+            listener_forced: false,
+            wait_user_exit: false,
+            start_playing: true,
+            audio_prod: None,
+            wav_tx: Some(wav_tx),
+            reporter: None,
+            reserve_voice_ids_through: None,
+            deterministic_analysis: true,
+            guard_meter,
+        },
+    );
 
-    let stop_flag_worker = stop_flag.clone();
-    let start_flag = Arc::new(AtomicBool::new(true));
-    let start_flag_for_worker = start_flag.clone();
-    let dcc_coupler = DccCoupler::new(config.dcc);
-    let listener_analysis_enabled = dcc_coupler.coupling_strength() > 0.0;
-    let (
-        presentation_to_listener_tx,
-        listener_result_rx,
-        listener_analysis_update_tx,
-        listener_analysis_handle,
-    ) = if listener_analysis_enabled {
-        let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
-        let (presentation_tx, presentation_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-        let (result_tx, result_rx) = bounded::<(u64, Landscape)>(4);
-        let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
-        let handle = spawn_analysis_worker(
-            "listener-analysis",
-            listener_stream,
-            presentation_rx,
-            result_tx,
-            update_rx,
-        );
-        (
-            Some(presentation_tx),
-            Some(result_rx),
-            Some(update_tx),
-            Some(handle),
-        )
-    } else {
-        (None, None, None, None)
-    };
-
-    let worker_handle = thread::Builder::new()
-        .name("worker".into())
-        .spawn(move || {
-            worker_loop(
-                scenario_label,
-                false,
-                start_flag_for_worker,
-                ui_frame_tx,
-                pop,
-                conductor,
-                landscape,
-                lparams_runtime,
-                dorsal,
-                None,
-                Some(wav_tx),
-                None,
-                scaffold,
-                meter_shaping,
-                guard_meter,
-                dcc_coupler,
-                stop_flag_worker,
-                audio_to_analysis_tx,
-                analysis_result_rx,
-                analysis_update_tx,
-                presentation_to_listener_tx,
-                listener_result_rx,
-                listener_analysis_update_tx,
-                hop,
-                hop_duration,
-                fs,
-                true,
-            )
-        })
-        .expect("spawn worker");
-
-    join_thread("worker", worker_handle)?;
+    join_thread("worker", wiring.worker_handle)?;
     join_thread("wav", wav_handle)?;
-    join_thread("analysis", analysis_handle)?;
-    if let Some(handle) = listener_analysis_handle {
+    join_thread("analysis", wiring.analysis_handle)?;
+    if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener-analysis", handle)?;
     }
     Ok(())
@@ -1255,113 +1239,177 @@ fn join_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String>
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-fn worker_loop(
+/// Immutable per-run settings and shared control flags for the worker thread.
+struct WorkerConfig {
     scenario_name: String,
     wait_user_exit: bool,
     start_flag: Arc<AtomicBool>,
-    ui_tx: Sender<UiFrame>,
-    mut pop: Community,
-    mut conductor: Conductor,
-    current_landscape: Landscape,
-    mut lparams: LandscapeParams,
-    mut dorsal: DorsalStream,
-    mut audio_prod: Option<ringbuf::HeapProd<f32>>,
-    mut wav_tx: Option<Sender<Arc<[f32]>>>,
-    mut reporter: Option<JsonlReporter>,
+    exiting: Arc<AtomicBool>,
     scaffold: ScaffoldConfig,
     meter_shaping: crate::core::meter::MeterShaping,
     guard_meter: Option<Arc<LimiterMeter>>,
     dcc_coupler: DccCoupler,
-    exiting: Arc<AtomicBool>,
-    audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
-    analysis_result_rx: Receiver<(u64, Landscape)>,
-    analysis_update_tx: Sender<LandscapeUpdate>,
-    mut presentation_to_listener_tx: Option<Sender<(u64, Arc<[f32]>)>>,
-    listener_result_rx: Option<Receiver<(u64, Landscape)>>,
-    listener_analysis_update_tx: Option<Sender<LandscapeUpdate>>,
     hop: usize,
     hop_duration: Duration,
     fs: f32,
-    // Offline/report paths consume analysis with a fixed lag so results do not
-    // depend on worker scheduling. Real-time leaves the listener best-effort.
+    /// Offline/report paths consume analysis with a fixed lag so results do not
+    /// depend on worker scheduling. Real-time leaves the listener best-effort.
     deterministic_analysis: bool,
-) {
-    let mut current_landscape: LandscapeFrame = current_landscape;
-    let mut playback_state = if start_flag.load(Ordering::SeqCst) {
-        PlaybackState::Playing
-    } else {
-        PlaybackState::NotStarted
-    };
-    let mut finish_logged = false;
-    let mut finished = false;
-    let mut log_space = current_landscape.space.clone();
+}
 
-    let mut current_time: f32 = 0.0;
-    let mut frame_idx: u64 = 0;
-    let mut monitor = AudioMonitor::new();
-    let mut last_guard_log = Instant::now() - Duration::from_millis(200);
-    let mut last_ui_update = Instant::now();
-    let ui_min_interval = Duration::from_millis(33);
-    let mut last_analysis_frame: Option<u64> = None;
-    let mut last_listener_analysis_frame: Option<u64> = None;
-    let mut listener_twin =
-        ListenerTwin::with_sample_rate(fs, crate::listener_twin::ListenerTwinConfig::default());
-    let mut latest_listener_fast_state: Option<ListenerFastState> = None;
-    let mut latest_listener_state: Option<ListenerState> = None;
-    let timebase = crate::core::timebase::Timebase { fs, hop };
+/// Channel endpoints and the audio ring-buffer producer owned by the worker.
+struct WorkerChannels {
+    ui_tx: Sender<UiFrame>,
+    audio_prod: Option<ringbuf::HeapProd<f32>>,
+    wav_tx: Option<Sender<Arc<[f32]>>>,
+    audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
+    analysis_result_rx: Receiver<(u64, Landscape)>,
+    analysis_update_tx: Sender<LandscapeUpdate>,
+    presentation_to_listener_tx: Option<Sender<(u64, Arc<[f32]>)>>,
+    listener_result_rx: Option<Receiver<(u64, Landscape)>>,
+    listener_analysis_update_tx: Option<Sender<LandscapeUpdate>>,
+}
+
+/// Mutable worker state. Built once before the loop; hop phases take it `&mut`.
+struct WorkerState {
+    pop: Community,
+    conductor: Conductor,
+    current_landscape: LandscapeFrame,
+    lparams: LandscapeParams,
+    dorsal: DorsalStream,
+    reporter: Option<JsonlReporter>,
+    timebase: crate::core::timebase::Timebase,
+    playback_state: PlaybackState,
+    finish_logged: bool,
+    finished: bool,
+    log_space: Log2Space,
+    current_time: f32,
+    frame_idx: u64,
+    monitor: AudioMonitor,
+    last_guard_log: Instant,
+    last_ui_update: Instant,
+    last_tick_log: Instant,
+    last_analysis_frame: Option<u64>,
+    last_listener_analysis_frame: Option<u64>,
+    listener_twin: ListenerTwin,
+    latest_listener_fast_state: Option<ListenerFastState>,
+    latest_listener_state: Option<ListenerState>,
     // Production-side meter core (auditory-motor coupling), separate from the
     // perception meter inside ListenerTwin. See "Perception vs Production".
     // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
-    let mut prod_meter = MeterNetwork::new();
-    prod_meter.set_shaping(meter_shaping);
-    let mut generator_model =
-        crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
-    let hab_bins = current_landscape.space.n_bins();
-    let mut hab_ecology = crate::core::habituation::HabituationField::new(
-        &lparams.habituation,
-        lparams.consonance_representation.theta,
-        hab_bins,
-    );
-    let mut hab_listener = crate::core::habituation::HabituationField::new(
-        &lparams.habituation,
-        lparams.consonance_representation.theta,
-        hab_bins,
-    );
-    let mut schedule_renderer = ScheduleRenderer::new(timebase);
-    let init_now_tick = timebase.frame_start_tick(frame_idx);
-    generator_model.advance_to(init_now_tick);
-    let mut last_tick_log = Instant::now();
-    let idle_silence = vec![0.0f32; hop];
-    let mut scenario_end_tick: Option<Tick> = None;
-    let mut phonation_batches_buf: Vec<PhonationBatch> = Vec::new();
+    prod_meter: MeterNetwork,
+    generator_model: crate::life::generator_model::GeneratorModel,
+    hab_ecology: crate::core::habituation::HabituationField,
+    hab_listener: crate::core::habituation::HabituationField,
+    schedule_renderer: ScheduleRenderer,
+    scenario_end_tick: Option<Tick>,
+    phonation_batches_buf: Vec<PhonationBatch>,
+}
 
-    let _ = ui_tx.try_send(build_initial_ui_frame(
-        &scenario_name,
-        &conductor,
-        &pop,
-        &current_landscape,
-        current_time,
-        playback_state,
-        fs,
+impl WorkerState {
+    fn new(
+        pop: Community,
+        conductor: Conductor,
+        landscape: Landscape,
+        lparams: LandscapeParams,
+        dorsal: DorsalStream,
+        reporter: Option<JsonlReporter>,
+        cfg: &WorkerConfig,
+    ) -> Self {
+        let current_landscape: LandscapeFrame = landscape;
+        let log_space = current_landscape.space.clone();
+        let timebase = crate::core::timebase::Timebase {
+            fs: cfg.fs,
+            hop: cfg.hop,
+        };
+        let mut prod_meter = MeterNetwork::new();
+        prod_meter.set_shaping(cfg.meter_shaping);
+        let mut generator_model =
+            crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
+        generator_model.advance_to(timebase.frame_start_tick(0));
+        let hab_bins = current_landscape.space.n_bins();
+        let hab_ecology = crate::core::habituation::HabituationField::new(
+            &lparams.habituation,
+            lparams.consonance_representation.theta,
+            hab_bins,
+        );
+        let hab_listener = crate::core::habituation::HabituationField::new(
+            &lparams.habituation,
+            lparams.consonance_representation.theta,
+            hab_bins,
+        );
+        let now = Instant::now();
+        Self {
+            pop,
+            conductor,
+            current_landscape,
+            lparams,
+            dorsal,
+            reporter,
+            timebase,
+            playback_state: PlaybackState::NotStarted,
+            finish_logged: false,
+            finished: false,
+            log_space,
+            current_time: 0.0,
+            frame_idx: 0,
+            monitor: AudioMonitor::new(),
+            last_guard_log: now - Duration::from_millis(200),
+            last_ui_update: now,
+            last_tick_log: now,
+            last_analysis_frame: None,
+            last_listener_analysis_frame: None,
+            listener_twin: ListenerTwin::with_sample_rate(
+                cfg.fs,
+                crate::listener_twin::ListenerTwinConfig::default(),
+            ),
+            latest_listener_fast_state: None,
+            latest_listener_state: None,
+            prod_meter,
+            generator_model,
+            hab_ecology,
+            hab_listener,
+            schedule_renderer: ScheduleRenderer::new(timebase),
+            scenario_end_tick: None,
+            phonation_batches_buf: Vec::new(),
+        }
+    }
+}
+
+fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: WorkerState) {
+    if cfg.start_flag.load(Ordering::SeqCst) {
+        state.playback_state = PlaybackState::Playing;
+    }
+    let idle_silence = vec![0.0f32; cfg.hop];
+
+    let _ = channels.ui_tx.try_send(build_initial_ui_frame(
+        &cfg.scenario_name,
+        &state.conductor,
+        &state.pop,
+        &state.current_landscape,
+        state.current_time,
+        state.playback_state,
+        cfg.fs,
     ));
 
     loop {
-        if exiting.load(Ordering::SeqCst) {
+        if cfg.exiting.load(Ordering::SeqCst) {
             eprintln!("Stopping worker thread.");
             break;
         }
 
-        if playback_state == PlaybackState::NotStarted && !start_flag.load(Ordering::SeqCst) {
+        if state.playback_state == PlaybackState::NotStarted
+            && !cfg.start_flag.load(Ordering::SeqCst)
+        {
             thread::sleep(Duration::from_millis(10));
             continue;
-        } else if playback_state == PlaybackState::NotStarted {
-            playback_state = PlaybackState::Playing;
+        } else if state.playback_state == PlaybackState::NotStarted {
+            state.playback_state = PlaybackState::Playing;
         }
 
-        if finished && wait_user_exit {
-            if let Some(prod) = audio_prod.as_mut() {
-                while prod.vacant_len() >= hop {
+        if state.finished && cfg.wait_user_exit {
+            if let Some(prod) = channels.audio_prod.as_mut() {
+                while prod.vacant_len() >= cfg.hop {
                     AudioOutput::push_samples(prod, &idle_silence);
                 }
             }
@@ -1369,456 +1417,23 @@ fn worker_loop(
             continue;
         }
 
-        let buffer_capacity = audio_prod
-            .as_ref()
-            .map(|p| p.capacity().get())
-            .unwrap_or(hop);
-
         let mut produced_any = false;
-        let mut process_frame = |mut prod_opt: Option<&mut ringbuf::HeapProd<f32>>| {
-            produced_any = true;
-            let (_free, occupancy) = if let Some(prod) = prod_opt.as_ref() {
-                let free = prod.vacant_len();
-                (free, buffer_capacity.saturating_sub(free))
-            } else {
-                (hop, 0)
-            };
-            let now_tick = timebase.frame_start_tick(frame_idx);
-            let now_sec = timebase.tick_to_sec(now_tick);
-            generator_model.advance_to(now_tick);
-            if frame_idx == 0 || last_tick_log.elapsed() >= Duration::from_secs(1) {
-                debug!(
-                    "[tick] frame_idx={} now_tick={} now_sec={:.6}",
-                    frame_idx, now_tick, now_sec
-                );
-                last_tick_log = Instant::now();
-            }
-            pop.set_current_frame(frame_idx);
-
-            // Spec: landscape may lag analysis by <= MAX_LANDSCAPE_LAG_FRAMES.
-            let mut analysis_updated = false;
-            loop {
-                let (merged, analysis_disconnected) = merge_latest_analysis_results(
-                    &analysis_result_rx,
-                    &mut current_landscape,
-                    &mut log_space,
-                    &mut generator_model,
-                    &lparams,
-                    &mut last_analysis_frame,
-                    frame_idx,
-                );
-                if merged {
-                    analysis_updated = true;
-                }
-
-                if analysis_ok(frame_idx, last_analysis_frame, MAX_LANDSCAPE_LAG_FRAMES) {
-                    break;
-                }
-                if analysis_disconnected {
-                    eprintln!("Analysis thread stopped delivering results; ending run.");
-                    exiting.store(true, Ordering::SeqCst);
-                    break;
-                }
-                if exiting.load(Ordering::SeqCst) {
-                    break;
-                }
-                thread::sleep(Duration::from_micros(200));
-            }
-
-            let landscape_params_updated = apply_pending_landscape_update(
-                &mut pop,
-                &mut lparams,
-                &mut current_landscape,
-                &analysis_update_tx,
-                listener_analysis_update_tx.as_ref(),
-            );
-            drive_and_apply_habituation(
-                &mut current_landscape,
-                &mut hab_ecology,
-                &lparams,
-                hop_duration.as_secs_f32(),
-            );
-            if (analysis_updated || landscape_params_updated)
-                && let Some(analysis_id) = last_analysis_frame
+        if channels.audio_prod.is_some() {
+            while channels
+                .audio_prod
+                .as_ref()
+                .is_some_and(|prod| prod.vacant_len() >= cfg.hop)
             {
-                // NSGT is right-aligned; the observed scan is stamped at the analysis frame end.
-                let obs_tick = timebase.frame_end_tick(analysis_id);
-                generator_model.observe_consonance_field_level(
-                    obs_tick,
-                    Arc::from(&current_landscape.consonance_field_level_eff[..]),
-                );
-            }
-
-            apply_scaffold(&mut current_landscape.rhythm, scaffold, now_sec, frame_idx);
-            generator_model.update_gate_from_rhythm(now_tick, &current_landscape.rhythm);
-            // Deterministic render mirrors the main-analysis fixed-lag wait so the
-            // listener frame consumed at render-frame N does not depend on worker
-            // scheduling. Real-time keeps the single best-effort drain to avoid
-            // stalling the generator on listener-analysis latency.
-            let mut listener_state_update: Option<ListenerState> = None;
-            loop {
-                let (listener_state, listener_disconnected) =
-                    merge_latest_listener_analysis_results(
-                        listener_result_rx.as_ref(),
-                        &mut listener_twin,
-                        &lparams,
-                        &mut hab_listener,
-                        hop_duration.as_secs_f32(),
-                        timebase,
-                        frame_idx,
-                        &mut last_listener_analysis_frame,
-                    );
-                if let Some(state) = listener_state {
-                    listener_state_update = Some(state);
-                }
-                if !deterministic_analysis || listener_result_rx.is_none() {
-                    break;
-                }
-                if analysis_ok(
-                    frame_idx,
-                    last_listener_analysis_frame,
-                    MAX_LANDSCAPE_LAG_FRAMES,
-                ) {
-                    break;
-                }
-                if listener_disconnected {
-                    eprintln!("Listener analysis thread stopped delivering results; ending run.");
-                    exiting.store(true, Ordering::SeqCst);
-                    break;
-                }
-                if exiting.load(Ordering::SeqCst) {
-                    break;
-                }
-                thread::sleep(Duration::from_micros(200));
-            }
-            if let Some(state) = listener_state_update {
-                latest_listener_state = Some(state);
-            }
-            let listener_pressure = dcc_coupler.pressure(latest_listener_state);
-            let listener_pressure_update =
-                listener_state_update.map(|state| dcc_coupler.pressure(Some(state)));
-
-            let t_start = Instant::now();
-            conductor.dispatch_until(
-                current_time,
-                frame_idx,
-                &current_landscape,
-                None::<&mut crate::core::stream::analysis::AnalysisStream>,
-                &mut pop,
-            );
-            let phonation_count = if scenario_end_tick.is_none() {
-                pop.collect_phonation_batches_into(
-                    &mut generator_model,
-                    &current_landscape,
-                    now_tick,
-                    &mut phonation_batches_buf,
-                )
-            } else {
-                0
-            };
-            let phonation_batches = &phonation_batches_buf[..phonation_count];
-
-            if scenario_end_tick.is_none() && conductor.is_done() {
-                scenario_end_tick = Some(now_tick);
-                pop.voices.clear();
-                schedule_renderer.shutdown_at(now_tick);
-            }
-
-            pop.advance_with_listener_pressure(
-                hop,
-                frame_idx,
-                hop_duration.as_secs_f32(),
-                &current_landscape,
-                listener_pressure,
-            );
-            pop.cleanup_dead(
-                frame_idx,
-                hop_duration.as_secs_f32(),
-                conductor.is_done(),
-                &current_landscape,
-            );
-            if reporter.is_some() {
-                let onset_samples = onset_samples_from_batches(
-                    &pop.voices,
-                    phonation_batches,
-                    now_sec,
-                    scaffold,
-                    frame_idx,
-                );
-                let runtime_events = pop.drain_runtime_events();
-                let phonation_gate_open_events = pop.drain_phonation_gate_open_events();
-                let death_records = pop.take_death_records();
-                let active_population_ids = pop.active_population_ids();
-                let population_steps = summarize_populations(
-                    &pop.voices,
-                    &active_population_ids,
-                    &current_landscape,
-                    now_sec,
-                );
-                let kuramoto = pop.kuramoto_order_parameter();
-                let rhythm_observation = RhythmObservation {
-                    time_sec: now_sec,
-                    kuramoto_order_r: kuramoto.map(|(r, _)| r),
-                    kuramoto_active_count: kuramoto.map(|(_, n)| n).unwrap_or(0),
-                    onsets_in_hop: onset_samples.len(),
-                    theta_hz: positive_hz(current_landscape.rhythm.theta.freq_hz),
-                    delta_hz: positive_hz(current_landscape.rhythm.delta.freq_hz),
-                    env_open: current_landscape.rhythm.env_open.clamp(0.0, 1.0),
-                    env_level: current_landscape.rhythm.env_level.clamp(0.0, 1.0),
-                };
-                report_try(&mut reporter, "runtime events", |writer| {
-                    writer.write_runtime_events(&runtime_events)
-                });
-                report_try(&mut reporter, "phonation gate open", |writer| {
-                    writer.write_phonation_gate_opens(&phonation_gate_open_events)
-                });
-                report_try(&mut reporter, "deaths", |writer| {
-                    writer.write_deaths(&death_records, hop, fs)
-                });
-                report_try(&mut reporter, "onsets", |writer| {
-                    writer.write_onsets(&onset_samples)
-                });
-                report_try(&mut reporter, "population steps", |writer| {
-                    writer.write_population_steps(&population_steps)
-                });
-                report_try(&mut reporter, "rhythm observation", |writer| {
-                    writer.write_rhythm_observation(rhythm_observation)
-                });
-                let hstate = &current_landscape.perc_habituation_state_scan;
-                let n = hstate.len().max(1);
-                let mean_h = hstate.iter().sum::<f32>() / n as f32;
-                let max_h = hstate.iter().copied().fold(0.0f32, f32::max);
-                let mut mean_erosion = 0.0f32;
-                for i in 0..current_landscape.consonance_field_score.len() {
-                    mean_erosion += current_landscape.consonance_field_score[i]
-                        - current_landscape.consonance_field_score_eff[i];
-                }
-                mean_erosion /= n as f32;
-                let tracked_bin = current_landscape
-                    .consonance_field_score
-                    .iter()
-                    .enumerate()
-                    .fold(
-                        (0usize, f32::MIN),
-                        |(bi, bv), (i, &v)| {
-                            if v > bv { (i, v) } else { (bi, bv) }
-                        },
-                    )
-                    .0;
-                report_try(&mut reporter, "habituation", |w| {
-                    w.write_habituation(
-                        now_sec,
-                        mean_h,
-                        max_h,
-                        mean_erosion,
-                        tracked_bin,
-                        current_landscape.perc_habituation_state_scan[tracked_bin],
-                        current_landscape.consonance_field_score[tracked_bin],
-                        current_landscape.consonance_field_score_eff[tracked_bin],
-                    )
-                });
-                if let Some(listener_state) = listener_state_update {
-                    report_try(&mut reporter, "listener state", |writer| {
-                        writer.write_listener_state(listener_state)
-                    });
-                }
-                if let Some(pressure) = listener_pressure_update {
-                    report_try(&mut reporter, "dcc pressure", |writer| {
-                        writer.write_dcc_pressure(now_sec, pressure)
-                    });
-                }
-            }
-            // Two mono buses:
-            //   presentation_chunk -> cpal output + wav + UI metering
-            //   habitat_chunk -> generator rhythm + NSGT analysis
-            let (presentation_chunk, habitat_chunk, max_abs, channel_peak) = {
-                let frame = schedule_renderer.render(
-                    phonation_batches,
-                    now_tick,
-                    &current_landscape.rhythm,
-                );
-
-                let mut max_p = 0.0f32;
-                for &s in frame.presentation {
-                    let abs_s = s.abs();
-                    if abs_s > max_p {
-                        max_p = abs_s;
-                    }
-                }
-
-                if let Some(prod) = prod_opt.as_deref_mut() {
-                    AudioOutput::push_samples(prod, frame.presentation);
-                }
-
-                let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);
-                let habitat_chunk: Arc<[f32]> = Arc::from(frame.habitat);
-                if let Some(tx) = wav_tx.as_ref()
-                    && let Err(err) = tx.send(Arc::clone(&presentation_chunk))
-                {
-                    warn!("WAV render output disconnected: {err}");
-                    exiting.store(true, Ordering::SeqCst);
-                }
-                if let Some(tx) = presentation_to_listener_tx.as_ref() {
-                    if deterministic_analysis {
-                        // Never drop a presentation hop: the listener worker must
-                        // observe the same hop sequence every run. Blocking applies
-                        // backpressure but cannot deadlock, because the fixed-lag
-                        // consume above keeps the worker at most one frame behind.
-                        if let Err(err) = tx.send((frame_idx, Arc::clone(&presentation_chunk))) {
-                            warn!("listener analysis worker disconnected: {err}");
-                            presentation_to_listener_tx = None;
-                        }
-                    } else {
-                        match tx.try_send((frame_idx, Arc::clone(&presentation_chunk))) {
-                            Ok(()) => {}
-                            Err(TrySendError::Full(_)) => {
-                                debug!("listener analysis backlog full; dropped presentation hop");
-                            }
-                            Err(TrySendError::Disconnected(_)) => {
-                                warn!("listener analysis worker disconnected");
-                                presentation_to_listener_tx = None;
-                            }
-                        }
-                    }
-                }
-
-                (presentation_chunk, habitat_chunk, max_p, [max_p, max_p])
-            };
-
-            // Drive the production meter from both the habitat-bus flux and the
-            // population's own onsets (low-latency auditory-motor reinforcement).
-            // Combined via max() and kept weak to avoid closed-loop wobble; flux
-            // alone is the fallback when no onset fires.
-            if !finished {
-                dorsal.process(habitat_chunk.as_ref());
-                let flux_drive = (dorsal.last_metrics().flux.max(0.0) * 500.0)
-                    .tanh()
-                    .clamp(0.0, 1.0);
-                const ONSET_DRIVE_GAIN: f32 = 0.25;
-                let onset_drive = (pop.last_phonation_onset_strength_in_hop().unwrap_or(0.0)
-                    * ONSET_DRIVE_GAIN)
-                    .clamp(0.0, 1.0);
-                let drive = flux_drive.max(onset_drive);
-                let meter_state = prod_meter.process(hop_duration.as_secs_f32(), drive);
-                current_landscape.rhythm = NeuralRhythms::from_meter_state(&meter_state);
-            }
-            latest_listener_fast_state = Some(listener_twin.observe_presentation_audio(
-                now_sec,
-                frame_idx,
-                presentation_chunk.as_ref(),
-            ));
-
-            // Feed every habitat hop to NSGT-RT. Dropping hops breaks time continuity.
-            if let Err(err) = audio_to_analysis_tx.send((frame_idx, Arc::clone(&habitat_chunk))) {
-                warn!("analysis worker disconnected: {err}");
-                exiting.store(true, Ordering::SeqCst);
-            }
-
-            // Lag is measured against generated frames, because population dynamics depend on
-            // the landscape evolution in the generated timebase (not wall-clock playback).
-            // landscape_age in frames (spec: <= MAX_LANDSCAPE_LAG_FRAMES after warmup).
-            let analysis_lag = last_analysis_frame.map(|id| frame_idx.saturating_sub(id));
-
-            let finished_now = if pop.abort_requested {
-                true
-            } else {
-                scenario_end_tick.is_some() && schedule_renderer.is_idle()
-            };
-            if finished_now {
-                playback_state = PlaybackState::Finished;
-            }
-            if finished_now && wav_tx.is_some() {
-                wav_tx.take();
-                info!("[t={:.6}] WAV closed.", current_time);
-            }
-
-            let must_send_ui =
-                conductor.is_done() || pop.abort_requested || scenario_end_tick.is_some();
-            let should_send_ui = must_send_ui || last_ui_update.elapsed() >= ui_min_interval;
-
-            let elapsed = t_start.elapsed();
-            let peak_level = monitor.update(
-                current_time,
-                frame_idx,
-                hop,
-                hop_duration,
-                buffer_capacity,
-                occupancy,
-                max_abs,
-                elapsed,
-                analysis_lag,
-                conductor.is_done(),
-            );
-
-            if let Some(meter) = guard_meter.as_ref()
-                && last_guard_log.elapsed() >= Duration::from_millis(200)
-                && let Some(stats) = meter.take_snapshot()
-            {
-                warn!(
-                    "[t={:.6}] Limiter: over={} max_red_db={:.2} in={:.3} out={:.3}",
-                    current_time,
-                    stats.num_over,
-                    stats.max_reduction_db,
-                    stats.max_abs_in,
-                    stats.max_abs_out
-                );
-                last_guard_log = Instant::now();
-            }
-
-            if should_send_ui {
-                let _ = ui_tx.try_send(build_runtime_ui_frame(RuntimeUiFrameInput {
-                    scenario_name: &scenario_name,
-                    conductor: &conductor,
-                    pop: &pop,
-                    generator_model: &generator_model,
-                    current_landscape: &current_landscape,
-                    log_space: &log_space,
-                    presentation_chunk: Arc::clone(&presentation_chunk),
-                    listener_fast_state: latest_listener_fast_state,
-                    listener_state: latest_listener_state,
-                    current_time,
-                    playback_state,
-                    peak_level,
-                    channel_peak,
-                    now_tick,
-                    hop,
-                    fs,
-                }));
-                last_ui_update = Instant::now();
-            }
-
-            if finished_now {
-                finished = true;
-                if !finish_logged {
-                    let note = if wait_user_exit {
-                        "Waiting for user exit."
-                    } else {
-                        "Exiting."
-                    };
-                    info!("[t={:.6}] Scenario finished. {note}", current_time);
-                    finish_logged = true;
-                }
-                if !wait_user_exit {
-                    exiting.store(true, Ordering::SeqCst);
-                }
-            }
-
-            if !finished {
-                current_time += hop_duration.as_secs_f32();
-                frame_idx += 1;
-            }
-        };
-
-        if let Some(prod) = audio_prod.as_mut() {
-            while prod.vacant_len() >= hop {
-                process_frame(Some(prod));
+                process_hop(&cfg, &mut channels, &mut state);
+                produced_any = true;
             }
         } else {
             // Offline/render-only mode: progress even without audio output.
-            process_frame(None);
+            process_hop(&cfg, &mut channels, &mut state);
+            produced_any = true;
         }
 
-        if exiting.load(Ordering::SeqCst) || (finished && !wait_user_exit) {
+        if cfg.exiting.load(Ordering::SeqCst) || (state.finished && !cfg.wait_user_exit) {
             break;
         }
 
@@ -1826,13 +1441,604 @@ fn worker_loop(
             thread::sleep(Duration::from_millis(1));
         }
     }
-    report_try(&mut reporter, "rhythm summary", |writer| {
+    report_try(&mut state.reporter, "rhythm summary", |writer| {
         writer.write_rhythm_summary()
     });
-    report_try(&mut reporter, "listener confidence summary", |writer| {
-        writer.write_listener_confidence_summary()
+    report_try(
+        &mut state.reporter,
+        "listener confidence summary",
+        |writer| writer.write_listener_confidence_summary(),
+    );
+    report_try(&mut state.reporter, "flush", |writer| writer.flush());
+}
+
+/// One generated hop: analysis merge, ecology step, render, routing, telemetry.
+fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut WorkerState) {
+    let buffer_capacity = channels
+        .audio_prod
+        .as_ref()
+        .map(|prod| prod.capacity().get())
+        .unwrap_or(cfg.hop);
+    let occupancy = channels
+        .audio_prod
+        .as_ref()
+        .map(|prod| buffer_capacity.saturating_sub(prod.vacant_len()))
+        .unwrap_or(0);
+
+    let now_tick = state.timebase.frame_start_tick(state.frame_idx);
+    let now_sec = state.timebase.tick_to_sec(now_tick);
+    state.generator_model.advance_to(now_tick);
+    if state.frame_idx == 0 || state.last_tick_log.elapsed() >= Duration::from_secs(1) {
+        debug!(
+            "[tick] frame_idx={} now_tick={} now_sec={:.6}",
+            state.frame_idx, now_tick, now_sec
+        );
+        state.last_tick_log = Instant::now();
+    }
+    state.pop.set_current_frame(state.frame_idx);
+
+    let analysis_updated = wait_for_analysis(state, &channels.analysis_result_rx, &cfg.exiting);
+    apply_landscape_updates(state, channels, cfg, analysis_updated, now_tick, now_sec);
+
+    let listener_state_update = wait_for_listener(state, channels, cfg);
+    if let Some(listener_state) = listener_state_update {
+        state.latest_listener_state = Some(listener_state);
+    }
+    let listener_pressure = cfg.dcc_coupler.pressure(state.latest_listener_state);
+    let listener_pressure_update =
+        listener_state_update.map(|listener_state| cfg.dcc_coupler.pressure(Some(listener_state)));
+
+    let t_start = Instant::now();
+    let phonation_count = advance_population(state, cfg, now_tick, listener_pressure);
+    emit_hop_reports(
+        state,
+        cfg,
+        now_sec,
+        phonation_count,
+        listener_state_update,
+        listener_pressure_update,
+    );
+
+    let (presentation_chunk, habitat_chunk, max_abs) =
+        render_and_route_audio(state, channels, cfg, now_tick, phonation_count);
+    let channel_peak = [max_abs, max_abs];
+
+    drive_production_meter(state, cfg, habitat_chunk.as_ref());
+    state.latest_listener_fast_state = Some(state.listener_twin.observe_presentation_audio(
+        now_sec,
+        state.frame_idx,
+        presentation_chunk.as_ref(),
+    ));
+
+    // Feed every habitat hop to NSGT-RT. Dropping hops breaks time continuity.
+    if let Err(err) = channels
+        .audio_to_analysis_tx
+        .send((state.frame_idx, Arc::clone(&habitat_chunk)))
+    {
+        warn!("analysis worker disconnected: {err}");
+        cfg.exiting.store(true, Ordering::SeqCst);
+    }
+
+    // Lag is measured against generated frames, because population dynamics depend on
+    // the landscape evolution in the generated timebase (not wall-clock playback).
+    // landscape_age in frames (spec: <= MAX_LANDSCAPE_LAG_FRAMES after warmup).
+    let analysis_lag = state
+        .last_analysis_frame
+        .map(|id| state.frame_idx.saturating_sub(id));
+
+    let finished_now = if state.pop.abort_requested {
+        true
+    } else {
+        state.scenario_end_tick.is_some() && state.schedule_renderer.is_idle()
+    };
+    if finished_now {
+        state.playback_state = PlaybackState::Finished;
+    }
+    if finished_now && channels.wav_tx.is_some() {
+        channels.wav_tx.take();
+        info!("[t={:.6}] WAV closed.", state.current_time);
+    }
+
+    let must_send_ui =
+        state.conductor.is_done() || state.pop.abort_requested || state.scenario_end_tick.is_some();
+    let should_send_ui = must_send_ui || state.last_ui_update.elapsed() >= UI_MIN_INTERVAL;
+
+    let elapsed = t_start.elapsed();
+    let peak_level = state.monitor.update(
+        state.current_time,
+        state.frame_idx,
+        cfg.hop,
+        cfg.hop_duration,
+        buffer_capacity,
+        occupancy,
+        max_abs,
+        elapsed,
+        analysis_lag,
+        state.conductor.is_done(),
+    );
+
+    log_guard_meter(cfg, &mut state.last_guard_log, state.current_time);
+
+    if should_send_ui {
+        send_runtime_ui_frame(
+            state,
+            channels,
+            cfg,
+            presentation_chunk,
+            peak_level,
+            channel_peak,
+            now_tick,
+        );
+    }
+
+    if finished_now {
+        state.finished = true;
+        if !state.finish_logged {
+            let note = if cfg.wait_user_exit {
+                "Waiting for user exit."
+            } else {
+                "Exiting."
+            };
+            info!("[t={:.6}] Scenario finished. {note}", state.current_time);
+            state.finish_logged = true;
+        }
+        if !cfg.wait_user_exit {
+            cfg.exiting.store(true, Ordering::SeqCst);
+        }
+    }
+
+    if !state.finished {
+        state.current_time += cfg.hop_duration.as_secs_f32();
+        state.frame_idx += 1;
+    }
+}
+
+/// Drain analysis results into the landscape.
+/// Spec: landscape may lag analysis by <= MAX_LANDSCAPE_LAG_FRAMES; block until
+/// the landscape is fresh enough or the run is ending.
+fn wait_for_analysis(
+    state: &mut WorkerState,
+    analysis_result_rx: &Receiver<(u64, Landscape)>,
+    exiting: &AtomicBool,
+) -> bool {
+    let mut analysis_updated = false;
+    loop {
+        let (merged, analysis_disconnected) = merge_latest_analysis_results(
+            analysis_result_rx,
+            &mut state.current_landscape,
+            &mut state.log_space,
+            &mut state.generator_model,
+            &state.lparams,
+            &mut state.last_analysis_frame,
+            state.frame_idx,
+        );
+        if merged {
+            analysis_updated = true;
+        }
+
+        if analysis_ok(
+            state.frame_idx,
+            state.last_analysis_frame,
+            MAX_LANDSCAPE_LAG_FRAMES,
+        ) {
+            break;
+        }
+        if analysis_disconnected {
+            eprintln!("Analysis thread stopped delivering results; ending run.");
+            exiting.store(true, Ordering::SeqCst);
+            break;
+        }
+        if exiting.load(Ordering::SeqCst) {
+            break;
+        }
+        thread::sleep(Duration::from_micros(200));
+    }
+    analysis_updated
+}
+
+/// Apply pending kernel-parameter updates, advance ecology habituation, and
+/// refresh the generator model's observed field and rhythm gate.
+fn apply_landscape_updates(
+    state: &mut WorkerState,
+    channels: &WorkerChannels,
+    cfg: &WorkerConfig,
+    analysis_updated: bool,
+    now_tick: Tick,
+    now_sec: f32,
+) {
+    let landscape_params_updated = apply_pending_landscape_update(
+        &mut state.pop,
+        &mut state.lparams,
+        &mut state.current_landscape,
+        &channels.analysis_update_tx,
+        channels.listener_analysis_update_tx.as_ref(),
+    );
+    drive_and_apply_habituation(
+        &mut state.current_landscape,
+        &mut state.hab_ecology,
+        &state.lparams,
+        cfg.hop_duration.as_secs_f32(),
+    );
+    if (analysis_updated || landscape_params_updated)
+        && let Some(analysis_id) = state.last_analysis_frame
+    {
+        // NSGT is right-aligned; the observed scan is stamped at the analysis frame end.
+        let obs_tick = state.timebase.frame_end_tick(analysis_id);
+        state.generator_model.observe_consonance_field_level(
+            obs_tick,
+            Arc::from(&state.current_landscape.consonance_field_level_eff[..]),
+        );
+    }
+
+    apply_scaffold(
+        &mut state.current_landscape.rhythm,
+        cfg.scaffold,
+        now_sec,
+        state.frame_idx,
+    );
+    state
+        .generator_model
+        .update_gate_from_rhythm(now_tick, &state.current_landscape.rhythm);
+}
+
+/// Drain listener analysis results. Deterministic render mirrors the
+/// main-analysis fixed-lag wait so the listener frame consumed at render-frame
+/// N does not depend on worker scheduling. Real-time keeps the single
+/// best-effort drain to avoid stalling the generator on listener-analysis
+/// latency.
+fn wait_for_listener(
+    state: &mut WorkerState,
+    channels: &WorkerChannels,
+    cfg: &WorkerConfig,
+) -> Option<ListenerState> {
+    let mut listener_state_update: Option<ListenerState> = None;
+    loop {
+        let (listener_state, listener_disconnected) = merge_latest_listener_analysis_results(
+            channels.listener_result_rx.as_ref(),
+            &mut state.listener_twin,
+            &state.lparams,
+            &mut state.hab_listener,
+            cfg.hop_duration.as_secs_f32(),
+            state.timebase,
+            state.frame_idx,
+            &mut state.last_listener_analysis_frame,
+        );
+        if let Some(listener_state) = listener_state {
+            listener_state_update = Some(listener_state);
+        }
+        if !cfg.deterministic_analysis || channels.listener_result_rx.is_none() {
+            break;
+        }
+        if analysis_ok(
+            state.frame_idx,
+            state.last_listener_analysis_frame,
+            MAX_LANDSCAPE_LAG_FRAMES,
+        ) {
+            break;
+        }
+        if listener_disconnected {
+            eprintln!("Listener analysis thread stopped delivering results; ending run.");
+            cfg.exiting.store(true, Ordering::SeqCst);
+            break;
+        }
+        if cfg.exiting.load(Ordering::SeqCst) {
+            break;
+        }
+        thread::sleep(Duration::from_micros(200));
+    }
+    listener_state_update
+}
+
+/// Dispatch scenario events, collect phonation batches, and step the ecology.
+/// Returns the number of valid batches in `state.phonation_batches_buf`.
+fn advance_population(
+    state: &mut WorkerState,
+    cfg: &WorkerConfig,
+    now_tick: Tick,
+    listener_pressure: ListenerPressure,
+) -> usize {
+    state.conductor.dispatch_until(
+        state.current_time,
+        state.frame_idx,
+        &state.current_landscape,
+        None::<&mut crate::core::stream::analysis::AnalysisStream>,
+        &mut state.pop,
+    );
+    let phonation_count = if state.scenario_end_tick.is_none() {
+        state.pop.collect_phonation_batches_into(
+            &mut state.generator_model,
+            &state.current_landscape,
+            now_tick,
+            &mut state.phonation_batches_buf,
+        )
+    } else {
+        0
+    };
+
+    if state.scenario_end_tick.is_none() && state.conductor.is_done() {
+        state.scenario_end_tick = Some(now_tick);
+        state.pop.voices.clear();
+        state.schedule_renderer.shutdown_at(now_tick);
+    }
+
+    state.pop.advance_with_listener_pressure(
+        cfg.hop,
+        state.frame_idx,
+        cfg.hop_duration.as_secs_f32(),
+        &state.current_landscape,
+        listener_pressure,
+    );
+    state.pop.cleanup_dead(
+        state.frame_idx,
+        cfg.hop_duration.as_secs_f32(),
+        state.conductor.is_done(),
+        &state.current_landscape,
+    );
+    phonation_count
+}
+
+/// Emit per-hop JSONL report records. No-op without a reporter.
+fn emit_hop_reports(
+    state: &mut WorkerState,
+    cfg: &WorkerConfig,
+    now_sec: f32,
+    phonation_count: usize,
+    listener_state_update: Option<ListenerState>,
+    listener_pressure_update: Option<ListenerPressure>,
+) {
+    if state.reporter.is_none() {
+        return;
+    }
+    let onset_samples = onset_samples_from_batches(
+        &state.pop.voices,
+        &state.phonation_batches_buf[..phonation_count],
+        now_sec,
+        cfg.scaffold,
+        state.frame_idx,
+    );
+    let runtime_events = state.pop.drain_runtime_events();
+    let phonation_gate_open_events = state.pop.drain_phonation_gate_open_events();
+    let death_records = state.pop.take_death_records();
+    let active_population_ids = state.pop.active_population_ids();
+    let population_steps = summarize_populations(
+        &state.pop.voices,
+        &active_population_ids,
+        &state.current_landscape,
+        now_sec,
+    );
+    let kuramoto = state.pop.kuramoto_order_parameter();
+    let rhythm_observation = RhythmObservation {
+        time_sec: now_sec,
+        kuramoto_order_r: kuramoto.map(|(r, _)| r),
+        kuramoto_active_count: kuramoto.map(|(_, n)| n).unwrap_or(0),
+        onsets_in_hop: onset_samples.len(),
+        theta_hz: positive_hz(state.current_landscape.rhythm.theta.freq_hz),
+        delta_hz: positive_hz(state.current_landscape.rhythm.delta.freq_hz),
+        env_open: state.current_landscape.rhythm.env_open.clamp(0.0, 1.0),
+        env_level: state.current_landscape.rhythm.env_level.clamp(0.0, 1.0),
+    };
+    report_try(&mut state.reporter, "runtime events", |writer| {
+        writer.write_runtime_events(&runtime_events)
     });
-    report_try(&mut reporter, "flush", |writer| writer.flush());
+    report_try(&mut state.reporter, "phonation gate open", |writer| {
+        writer.write_phonation_gate_opens(&phonation_gate_open_events)
+    });
+    report_try(&mut state.reporter, "deaths", |writer| {
+        writer.write_deaths(&death_records, cfg.hop, cfg.fs)
+    });
+    report_try(&mut state.reporter, "onsets", |writer| {
+        writer.write_onsets(&onset_samples)
+    });
+    report_try(&mut state.reporter, "population steps", |writer| {
+        writer.write_population_steps(&population_steps)
+    });
+    report_try(&mut state.reporter, "rhythm observation", |writer| {
+        writer.write_rhythm_observation(rhythm_observation)
+    });
+    let hstate = &state.current_landscape.perc_habituation_state_scan;
+    let n = hstate.len().max(1);
+    let mean_h = hstate.iter().sum::<f32>() / n as f32;
+    let max_h = hstate.iter().copied().fold(0.0f32, f32::max);
+    let mut mean_erosion = 0.0f32;
+    for i in 0..state.current_landscape.consonance_field_score.len() {
+        mean_erosion += state.current_landscape.consonance_field_score[i]
+            - state.current_landscape.consonance_field_score_eff[i];
+    }
+    mean_erosion /= n as f32;
+    let tracked_bin = state
+        .current_landscape
+        .consonance_field_score
+        .iter()
+        .enumerate()
+        .fold(
+            (0usize, f32::MIN),
+            |(bi, bv), (i, &v)| {
+                if v > bv { (i, v) } else { (bi, bv) }
+            },
+        )
+        .0;
+    let tracked_state = state.current_landscape.perc_habituation_state_scan[tracked_bin];
+    let tracked_score = state.current_landscape.consonance_field_score[tracked_bin];
+    let tracked_score_eff = state.current_landscape.consonance_field_score_eff[tracked_bin];
+    report_try(&mut state.reporter, "habituation", |w| {
+        w.write_habituation(
+            now_sec,
+            mean_h,
+            max_h,
+            mean_erosion,
+            tracked_bin,
+            tracked_state,
+            tracked_score,
+            tracked_score_eff,
+        )
+    });
+    if let Some(listener_state) = listener_state_update {
+        let sample = ListenerStateSample {
+            time_sec: listener_state.time_sec,
+            generated_frame_id: listener_state.generated_frame_id,
+            analysis_frame_id: listener_state.analysis_frame_id,
+            analysis_lag_frames: listener_state.analysis_lag_frames,
+            stability_level: listener_state.stability_level,
+            resolvability_level: listener_state.resolvability_level,
+            tension_level: listener_state.tension_level,
+            attention_level: listener_state.attention_level,
+            beat_hz: listener_state.beat_hz,
+            beat_phase: listener_state.beat_phase,
+            beat_confidence: listener_state.beat_confidence,
+            subdivision_ratio: listener_state.subdivision_ratio,
+            subdivision_confidence: listener_state.subdivision_confidence,
+            measure_hz: listener_state.measure_hz,
+            measure_ratio: listener_state.measure_ratio,
+            measure_confidence: listener_state.measure_confidence,
+        };
+        report_try(&mut state.reporter, "listener state", |writer| {
+            writer.write_listener_state(&sample)
+        });
+    }
+    if let Some(pressure) = listener_pressure_update {
+        report_try(&mut state.reporter, "dcc pressure", |writer| {
+            writer.write_dcc_pressure(now_sec, pressure)
+        });
+    }
+}
+
+/// Render one hop and route it to the two mono buses:
+///   presentation_chunk -> cpal output + wav + UI metering
+///   habitat_chunk -> generator rhythm + NSGT analysis
+/// Returns `(presentation_chunk, habitat_chunk, max_abs)`.
+fn render_and_route_audio(
+    state: &mut WorkerState,
+    channels: &mut WorkerChannels,
+    cfg: &WorkerConfig,
+    now_tick: Tick,
+    phonation_count: usize,
+) -> (Arc<[f32]>, Arc<[f32]>, f32) {
+    let frame = state.schedule_renderer.render(
+        &state.phonation_batches_buf[..phonation_count],
+        now_tick,
+        &state.current_landscape.rhythm,
+    );
+
+    let mut max_p = 0.0f32;
+    for &s in frame.presentation {
+        let abs_s = s.abs();
+        if abs_s > max_p {
+            max_p = abs_s;
+        }
+    }
+
+    if let Some(prod) = channels.audio_prod.as_mut() {
+        AudioOutput::push_samples(prod, frame.presentation);
+    }
+
+    let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);
+    let habitat_chunk: Arc<[f32]> = Arc::from(frame.habitat);
+    if let Some(tx) = channels.wav_tx.as_ref()
+        && let Err(err) = tx.send(Arc::clone(&presentation_chunk))
+    {
+        warn!("WAV render output disconnected: {err}");
+        cfg.exiting.store(true, Ordering::SeqCst);
+    }
+    if let Some(tx) = channels.presentation_to_listener_tx.as_ref() {
+        if cfg.deterministic_analysis {
+            // Never drop a presentation hop: the listener worker must
+            // observe the same hop sequence every run. Blocking applies
+            // backpressure but cannot deadlock, because the fixed-lag
+            // consume above keeps the worker at most one frame behind.
+            if let Err(err) = tx.send((state.frame_idx, Arc::clone(&presentation_chunk))) {
+                warn!("listener analysis worker disconnected: {err}");
+                channels.presentation_to_listener_tx = None;
+            }
+        } else {
+            match tx.try_send((state.frame_idx, Arc::clone(&presentation_chunk))) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_)) => {
+                    debug!("listener analysis backlog full; dropped presentation hop");
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    warn!("listener analysis worker disconnected");
+                    channels.presentation_to_listener_tx = None;
+                }
+            }
+        }
+    }
+
+    (presentation_chunk, habitat_chunk, max_p)
+}
+
+/// Drive the production meter from both the habitat-bus flux and the
+/// population's own onsets (low-latency auditory-motor reinforcement).
+/// Combined via max() and kept weak to avoid closed-loop wobble; flux
+/// alone is the fallback when no onset fires.
+fn drive_production_meter(state: &mut WorkerState, cfg: &WorkerConfig, habitat_chunk: &[f32]) {
+    if state.finished {
+        return;
+    }
+    state.dorsal.process(habitat_chunk);
+    let flux_drive = (state.dorsal.last_metrics().flux.max(0.0) * 500.0)
+        .tanh()
+        .clamp(0.0, 1.0);
+    const ONSET_DRIVE_GAIN: f32 = 0.25;
+    let onset_drive = (state
+        .pop
+        .last_phonation_onset_strength_in_hop()
+        .unwrap_or(0.0)
+        * ONSET_DRIVE_GAIN)
+        .clamp(0.0, 1.0);
+    let drive = flux_drive.max(onset_drive);
+    let meter_state = state
+        .prod_meter
+        .process(cfg.hop_duration.as_secs_f32(), drive);
+    state.current_landscape.rhythm = NeuralRhythms::from_meter_state(&meter_state);
+}
+
+fn log_guard_meter(cfg: &WorkerConfig, last_guard_log: &mut Instant, current_time: f32) {
+    if let Some(meter) = cfg.guard_meter.as_ref()
+        && last_guard_log.elapsed() >= Duration::from_millis(200)
+        && let Some(stats) = meter.take_snapshot()
+    {
+        warn!(
+            "[t={:.6}] Limiter: over={} max_red_db={:.2} in={:.3} out={:.3}",
+            current_time,
+            stats.num_over,
+            stats.max_reduction_db,
+            stats.max_abs_in,
+            stats.max_abs_out
+        );
+        *last_guard_log = Instant::now();
+    }
+}
+
+fn send_runtime_ui_frame(
+    state: &mut WorkerState,
+    channels: &WorkerChannels,
+    cfg: &WorkerConfig,
+    presentation_chunk: Arc<[f32]>,
+    peak_level: f32,
+    channel_peak: [f32; 2],
+    now_tick: Tick,
+) {
+    let _ = channels
+        .ui_tx
+        .try_send(build_runtime_ui_frame(RuntimeUiFrameInput {
+            scenario_name: &cfg.scenario_name,
+            conductor: &state.conductor,
+            pop: &state.pop,
+            generator_model: &state.generator_model,
+            current_landscape: &state.current_landscape,
+            log_space: &state.log_space,
+            presentation_chunk,
+            listener_fast_state: state.latest_listener_fast_state,
+            listener_state: state.latest_listener_state,
+            current_time: state.current_time,
+            playback_state: state.playback_state,
+            peak_level,
+            channel_peak,
+            now_tick,
+            hop: cfg.hop,
+            fs: cfg.fs,
+        }));
+    state.last_ui_update = Instant::now();
 }
 
 #[derive(Clone, Copy, Debug, Default)]

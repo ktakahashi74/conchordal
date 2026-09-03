@@ -11,11 +11,6 @@ const DEFAULT_UPDATE_PERIOD_SAMPLES: usize = 64;
 
 #[derive(Debug, Clone)]
 pub enum ModeShape {
-    Sine {
-        t60_s: f32,
-        out_gain: f32,
-        in_gain: f32,
-    },
     Harmonic {
         partials: usize,
         base_t60_s: f32,
@@ -133,9 +128,6 @@ impl ModalEngine {
         }
         let amp_scale = signal.amplitude;
         match &self.shape {
-            ModeShape::Sine { out_gain, .. } => {
-                add_log2_energy(amps, space, pitch_hz, amp_scale * out_gain.max(0.0));
-            }
             ModeShape::Harmonic {
                 partials, genotype, ..
             } => {
@@ -161,7 +153,6 @@ impl ModalEngine {
 impl ModeShape {
     fn max_modes(&self) -> usize {
         match self {
-            ModeShape::Sine { .. } => 1,
             ModeShape::Harmonic { partials, .. } => (*partials).max(1),
             ModeShape::Modal { modes } => modes.len().max(1),
         }
@@ -170,18 +161,6 @@ impl ModeShape {
     fn build_modes(&self, pitch_hz: f32, limit: usize, scratch: &mut Vec<ModeParams>) {
         scratch.clear();
         match self {
-            ModeShape::Sine {
-                t60_s,
-                out_gain,
-                in_gain,
-            } => {
-                scratch.push(ModeParams {
-                    freq_hz: pitch_hz,
-                    t60_s: t60_s.max(1e-3),
-                    gain: *out_gain,
-                    in_gain: *in_gain,
-                });
-            }
             ModeShape::Harmonic {
                 partials,
                 base_t60_s,

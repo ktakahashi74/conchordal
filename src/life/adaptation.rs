@@ -1,3 +1,5 @@
+use crate::core::log2space::Log2Space;
+
 #[derive(Debug, Clone, Default)]
 pub struct AdaptationConfig {
     pub tau_fast: Option<f32>,
@@ -21,7 +23,10 @@ impl FeaturesNow {
     /// fundamental-occupancy scan. `mass` is the pre-normalization total, used to
     /// detect silence. The input must be on fundamentals, not the full spectrum,
     /// so that shared harmonics of consonant intervals are not counted as occupied.
-    pub fn from_occupancy_scan(raw: &[f32]) -> Self {
+    ///
+    /// `space` is taken only to enforce the F2 scan-alignment boundary.
+    pub fn from_occupancy_scan(space: &Log2Space, raw: &[f32]) -> Self {
+        space.assert_scan_len_named(raw, "occupancy_scan");
         let mut density = Vec::with_capacity(raw.len());
         let mut sum = 0.0f32;
         for &v in raw {

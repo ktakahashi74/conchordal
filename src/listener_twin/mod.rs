@@ -2,14 +2,13 @@ use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::core::meter::{MeterNetwork, MeterState};
 use crate::core::stream::dorsal::{DorsalMetrics, DorsalStream};
-use serde::Serialize;
 
 const ATTENTION_ATTACK_TAU_SEC: f32 = 0.04;
 const ATTENTION_RELEASE_TAU_SEC: f32 = 0.18;
 const AUDIBLE_EVIDENCE_EPS: f32 = 1e-7;
 const NEUTRAL_STABILITY_LEVEL: f32 = 0.5;
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct ListenerState {
     pub(crate) time_sec: f32,
     pub(crate) generated_frame_id: u64,
@@ -231,9 +230,11 @@ fn weighted_resolution_gain(landscape: &LandscapeFrame, config: &ListenerTwinCon
 }
 
 fn weighted_scan_mean(values: &[f32], weights: &[f32]) -> f32 {
-    if values.is_empty() || values.len() != weights.len() {
-        return 0.0;
-    }
+    assert_eq!(
+        values.len(),
+        weights.len(),
+        "listener weighted-mean scan length mismatch"
+    );
 
     let mut sum = 0.0f32;
     let mut weight_sum = 0.0f32;
@@ -312,6 +313,12 @@ mod tests {
             landscape.subjective_intensity[idx] = weight;
         }
         landscape
+    }
+
+    #[test]
+    #[should_panic(expected = "listener weighted-mean scan length mismatch")]
+    fn weighted_scan_mean_panics_on_len_mismatch() {
+        weighted_scan_mean(&[0.5, 0.5, 0.5], &[1.0, 1.0]);
     }
 
     #[test]

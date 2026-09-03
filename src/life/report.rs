@@ -10,7 +10,6 @@ use crate::life::community::{PhonationGateOpenEvent, RuntimeEvent, SpawnReason};
 use crate::life::telemetry::LifeRecord;
 use crate::life::voice::sound_body::SoundBody;
 use crate::life::voice::{AnyArticulationCore, Voice};
-use crate::listener_twin::ListenerState;
 use crate::scenario::{ScaffoldConfig, SceneMarker};
 
 #[derive(Debug)]
@@ -56,6 +55,28 @@ pub struct RhythmObservation {
     pub delta_hz: Option<f32>,
     pub env_open: f32,
     pub env_level: f32,
+}
+
+/// Listener-side per-hop sample, filled in by the caller so this module does not
+/// depend on the perception layer's own state type.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ListenerStateSample {
+    pub(crate) time_sec: f32,
+    pub(crate) generated_frame_id: u64,
+    pub(crate) analysis_frame_id: u64,
+    pub(crate) analysis_lag_frames: u64,
+    pub(crate) stability_level: f32,
+    pub(crate) resolvability_level: f32,
+    pub(crate) tension_level: f32,
+    pub(crate) attention_level: f32,
+    pub(crate) beat_hz: f32,
+    pub(crate) beat_phase: f32,
+    pub(crate) beat_confidence: f32,
+    pub(crate) subdivision_ratio: u8,
+    pub(crate) subdivision_confidence: f32,
+    pub(crate) measure_hz: f32,
+    pub(crate) measure_ratio: u8,
+    pub(crate) measure_confidence: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,24 +168,7 @@ enum ReportRecord<'a> {
         env_open: f32,
         env_level: f32,
     },
-    ListenerState {
-        time_sec: f32,
-        generated_frame_id: u64,
-        analysis_frame_id: u64,
-        analysis_lag_frames: u64,
-        stability_level: f32,
-        resolvability_level: f32,
-        tension_level: f32,
-        attention_level: f32,
-        beat_hz: f32,
-        beat_phase: f32,
-        beat_confidence: f32,
-        subdivision_ratio: u8,
-        subdivision_confidence: f32,
-        measure_hz: f32,
-        measure_ratio: u8,
-        measure_confidence: f32,
-    },
+    ListenerState(&'a ListenerStateSample),
     DccPressure {
         time_sec: f32,
         tension_pressure: f32,
@@ -364,25 +368,11 @@ impl JsonlReporter {
         Ok(())
     }
 
-    pub(crate) fn write_listener_state(&mut self, state: ListenerState) -> Result<(), String> {
-        self.write_record(&ReportRecord::ListenerState {
-            time_sec: state.time_sec,
-            generated_frame_id: state.generated_frame_id,
-            analysis_frame_id: state.analysis_frame_id,
-            analysis_lag_frames: state.analysis_lag_frames,
-            stability_level: state.stability_level,
-            resolvability_level: state.resolvability_level,
-            tension_level: state.tension_level,
-            attention_level: state.attention_level,
-            beat_hz: state.beat_hz,
-            beat_phase: state.beat_phase,
-            beat_confidence: state.beat_confidence,
-            subdivision_ratio: state.subdivision_ratio,
-            subdivision_confidence: state.subdivision_confidence,
-            measure_hz: state.measure_hz,
-            measure_ratio: state.measure_ratio,
-            measure_confidence: state.measure_confidence,
-        })?;
+    pub(crate) fn write_listener_state(
+        &mut self,
+        state: &ListenerStateSample,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::ListenerState(state))?;
         if state.time_sec.is_finite() && state.beat_confidence.is_finite() {
             self.listener_beat_confidence
                 .push((state.time_sec, state.beat_confidence));
@@ -525,6 +515,7 @@ impl JsonlReporter {
     }
 }
 
+#[cfg(test)]
 pub fn summarize_rhythm_onsets(
     onsets: &[OnsetSample],
     population_id: Option<u64>,
@@ -1152,6 +1143,35 @@ mod tests {
             summary
                 .ioi_one_over_f_slope
                 .is_some_and(|slope| slope.is_finite())
+        );
+    }
+
+    /// The record is a newtype variant, so serde injects the tag and then flattens
+    /// the sample's fields. Pin the encoding: consumers parse these key names.
+    #[test]
+    fn listener_state_record_stays_flat_and_tagged() {
+        let sample = ListenerStateSample {
+            time_sec: 1.25,
+            generated_frame_id: 7,
+            analysis_frame_id: 5,
+            analysis_lag_frames: 2,
+            stability_level: 0.5,
+            resolvability_level: 0.125,
+            tension_level: 0.0625,
+            attention_level: 0.75,
+            beat_hz: 2.5,
+            beat_phase: 0.375,
+            beat_confidence: 0.875,
+            subdivision_ratio: 2,
+            subdivision_confidence: 0.25,
+            measure_hz: 0.625,
+            measure_ratio: 4,
+            measure_confidence: 0.1875,
+        };
+        let json = serde_json::to_string(&ReportRecord::ListenerState(&sample)).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"listener_state","time_sec":1.25,"generated_frame_id":7,"analysis_frame_id":5,"analysis_lag_frames":2,"stability_level":0.5,"resolvability_level":0.125,"tension_level":0.0625,"attention_level":0.75,"beat_hz":2.5,"beat_phase":0.375,"beat_confidence":0.875,"subdivision_ratio":2,"subdivision_confidence":0.25,"measure_hz":0.625,"measure_ratio":4,"measure_confidence":0.1875}"#
         );
     }
 }

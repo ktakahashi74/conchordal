@@ -39,7 +39,7 @@ right one?
 - The "roughness + crowding" sum in `plot_roughness_plus_crowding_matches_no_dip`
   is a **diagnostic proxy** for the near-field cost, not a live landscape.
 - Defaults are conservative: `crowding_strength = 0`, `anneal_temp = 0`,
-  `exploration = 0`, `temperature = None` (`src/life/control.rs`). Candidate
+  `exploration = 0`, `temperature = None` (`src/scenario/control.rs`). Candidate
   generation is independently stochastic: 3 Gaussian random candidates at σ=30
   cents every frame; `ratio_candidates` / `global_peaks` default **off**
   (`pitch_core.rs:13–20, 296–323`).
@@ -147,6 +147,17 @@ Conclusions below held across the parameters swept.
   roughness beating-moat. This is intrinsic to harmonic-timbre consonance, not a
   crowding defect; it is bypassed in practice by candidate jumps and made
   globally non-optimal by crowding strength.
+
+**Update (2026-09-03).** The ERB crowding path this memo evaluates is gone. Stage 2
+of `docs/design-notes/voice-movement-redesign.md` (2026-06-20) replaced it with the
+cents/occupancy mechanism, and `crowding_runtime_delta_erb` /
+`CROWDING_REACH_FACTOR` — plus the tests and the `plotcheck` diagnostic that
+exercised them — have now been removed from `src/core/roughness_kernel.rs`. The
+"keep as-is" decision and the symbol and line references throughout this memo are
+therefore historical, describing the code as it stood in June 2026. What survives is
+the structural finding: the crowding *shape* is nearly irrelevant to behavior, and
+the effective levers are crowding strength plus candidate jumps across the beating
+moat.
 
 ## Open direction: unison as search modulation (promising, not yet adopted)
 

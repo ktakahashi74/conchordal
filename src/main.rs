@@ -19,7 +19,13 @@ fn main() -> eframe::Result<()> {
         .try_init();
 
     let args = Args::parse();
-    let mut config = AppConfig::load_or_default(&args.config);
+    let mut config = match AppConfig::load_or_default(&args.config) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("{err:#}");
+            std::process::exit(1);
+        }
+    };
     if let Some(val) = args.wait_user_exit {
         config.playback.wait_user_exit = val;
     }

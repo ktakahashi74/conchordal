@@ -186,7 +186,13 @@ impl Limiter {
             LimiterMode::PeakLimiter(params) => {
                 let ceiling = params.ceiling.abs().max(1e-6);
                 let n_frames = frames.len() / channels;
-                let state = self.limiter_state.as_mut().expect("limiter state");
+                // Invariant: `mode` is fixed at construction and `limiter_state` is
+                // `Some` for PeakLimiter, so this is unreachable. Bail out instead of
+                // panicking because this runs on the cpal audio callback thread.
+                let Some(state) = self.limiter_state.as_mut() else {
+                    debug_assert!(false, "PeakLimiter mode without limiter state");
+                    return;
+                };
                 if params.link_channels {
                     for frame in 0..n_frames {
                         let mut peak = 0.0f32;
@@ -289,11 +295,6 @@ impl Limiter {
         if let Some(meter) = self.meter.as_ref() {
             meter.record(&self.stats);
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn stats(&self) -> LimiterStats {
-        self.stats
     }
 
     pub fn from_env_or(config_mode: LimiterMode) -> LimiterMode {

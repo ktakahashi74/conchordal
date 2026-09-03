@@ -47,14 +47,16 @@ impl Log2Space {
         self.centers_hz.len()
     }
 
+    /// F2 boundary check. Hard `assert` in every profile: the comparison is O(1)
+    /// and a misaligned scan is a programming error, not a runtime condition.
     #[inline]
     pub fn assert_scan_len<T>(&self, scan: &[T]) {
-        debug_assert_eq!(scan.len(), self.n_bins());
+        assert_eq!(scan.len(), self.n_bins(), "scan length mismatch");
     }
 
     #[inline]
     pub fn assert_scan_len_named<T>(&self, scan: &[T], name: &str) {
-        debug_assert_eq!(scan.len(), self.n_bins(), "scan length mismatch: {name}");
+        assert_eq!(scan.len(), self.n_bins(), "scan length mismatch: {name}");
     }
 
     /// Return Δlog2 per bin (1/bins_per_oct).
@@ -159,10 +161,11 @@ pub(crate) fn sample_scan_linear_at_pos(scan: &[f32], pos: f32) -> f32 {
 }
 
 /// Sample a Log2Space-aligned scan by linear interpolation in log2-frequency.
+///
+/// `NEG_INFINITY` is the "no value here" sentinel for frequencies outside the
+/// space; a misaligned `scan` is a caller bug and panics instead.
 pub fn sample_scan_linear_log2(space: &Log2Space, scan: &[f32], freq_hz: f32) -> f32 {
-    if scan.is_empty() || scan.len() != space.n_bins() {
-        return f32::NEG_INFINITY;
-    }
+    space.assert_scan_len_named(scan, "sample_scan_linear_log2");
     if !freq_hz.is_finite() || freq_hz <= 0.0 {
         return f32::NEG_INFINITY;
     }
@@ -273,6 +276,21 @@ mod tests {
         assert_eq!(space.bin_range_of_freqs(20.0, 20_000.0), Some((0, last)));
         assert_eq!(space.bin_range_of_freqs(20_000.0, 20.0), Some((0, last)));
         assert_eq!(space.bin_range_of_freqs(f32::NAN, 200.0), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "scan length mismatch: sample_scan_linear_log2")]
+    fn sample_scan_linear_log2_panics_on_len_mismatch() {
+        let space = Log2Space::new(100.0, 6400.0, 24);
+        let scan = vec![0.5f32; space.n_bins() - 1];
+        let _ = sample_scan_linear_log2(&space, &scan, 200.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "scan length mismatch: probe")]
+    fn assert_scan_len_named_reports_the_scan_name() {
+        let space = Log2Space::new(100.0, 6400.0, 24);
+        space.assert_scan_len_named(&[0.0f32; 2], "probe");
     }
 
     #[test]

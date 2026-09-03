@@ -41,7 +41,13 @@ fn main() {
         .try_init();
 
     let args = Args::parse();
-    let config = conchordal::config::AppConfig::load_or_default(&args.config);
+    let config = match conchordal::config::AppConfig::load_or_default(&args.config) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("{err:#}");
+            std::process::exit(1);
+        }
+    };
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_ctrlc = stop_flag.clone();

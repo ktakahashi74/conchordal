@@ -10,10 +10,10 @@ use tracing::debug;
 
 use crate::audio::output::AudioOutput;
 use crate::config::AppConfig;
-use crate::ui::viewdata::{DorsalFrame, PlaybackState, UiFrame};
+use crate::viewdata::{DorsalFrame, PlaybackState, UiFrame};
 
 pub use crate::runtime::{
-    compile_scenario_from_script, run_compile_only, run_headless, run_render, validate_scenario,
+    compile_scenario_from_script, run_compile_only, run_headless, run_render,
     validate_scenario_script_extension,
 };
 

@@ -1,3 +1,7 @@
+pub mod defs_gen;
+pub(crate) mod docs;
+mod engine;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::sync::{Arc, Mutex};
@@ -10,12 +14,12 @@ use crate::core::landscape::PitchObjectiveMode;
 use crate::core::mode_pattern::ModePattern;
 
 use crate::core::meter::MeterShaping;
-use crate::life::control::{
+use crate::scenario::PhonationTiming;
+use crate::scenario::control::{
     BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PhonationGate, PitchApplyMode,
     PitchCoreKind, PitchMode, Routing, VoiceControl,
 };
-use crate::life::lifecycle::LifecycleConfig;
-use crate::scenario::PhonationTiming;
+use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, CoupledTimingSpec, DurationSpec,
     EnvelopeConfig, FieldDurationSpec, FieldSampling, FieldTarget, MetabolismRhythmReward,
@@ -1866,10 +1870,6 @@ fn patch_timbre_unison(update: &mut ControlUpdate, value: f32) {
 }
 
 pub struct ScriptHost;
-
-pub mod defs_gen;
-pub mod docs;
-mod engine;
 
 #[derive(Debug, Clone)]
 pub struct ScriptError {

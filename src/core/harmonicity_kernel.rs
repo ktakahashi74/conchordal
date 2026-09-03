@@ -28,7 +28,7 @@
 //! Uses a "Shift-and-Add" approach with pre-calculated bounds
 //! to ensure O(N) efficiency and SIMD-friendly loops.
 
-use crate::core::float::finite_or;
+use crate::core::float::{finite_or, unit_gaussian};
 use crate::core::log2space::Log2Space;
 
 #[derive(Clone, Copy, Debug)]
@@ -81,8 +81,6 @@ pub struct HarmonicityKernel {
     pad_bins: usize, // Internal padding size
     sub_limit: u32,
     harm_limit: u32,
-    #[allow(dead_code)]
-    max_limit: u32,
 }
 
 impl HarmonicityKernel {
@@ -101,7 +99,7 @@ impl HarmonicityKernel {
             let mut sum = 0.0;
             for (i, kv) in k.iter_mut().enumerate().take(width) {
                 let x = (i as isize - half_width as isize) as f32;
-                *kv = (-0.5 * (x / sigma_bins).powi(2)).exp();
+                *kv = unit_gaussian(x, sigma_bins);
                 sum += *kv;
             }
             for v in &mut k {
@@ -122,7 +120,6 @@ impl HarmonicityKernel {
             pad_bins,
             sub_limit,
             harm_limit,
-            max_limit,
         }
     }
 

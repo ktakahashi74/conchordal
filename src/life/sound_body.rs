@@ -2,8 +2,6 @@ use super::articulation_core::{ArticulationSignal, PinkNoise};
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
-use crate::life::control::DEFAULT_TIMBRE_UNISON;
-use crate::life::control::{BodyMethod, VoiceControl};
 use crate::life::sound::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
     public_spread_from_cluster_spread_cents, sanitize_cluster_unison,
@@ -13,6 +11,8 @@ use crate::life::sound::spectral::{
     spectral_slope_from_brightness,
 };
 use crate::life::sound::{BodyKind, BodySnapshot};
+use crate::scenario::control::DEFAULT_TIMBRE_UNISON;
+use crate::scenario::control::{BodyMethod, VoiceControl};
 use crate::scenario::{SoundBodyConfig, TimbreGenotype};
 use rand::{Rng, RngExt, rngs::SmallRng};
 use std::collections::HashMap;
@@ -509,9 +509,13 @@ fn global_factory_registry() -> &'static Mutex<SoundBodyFactoryRegistry> {
 }
 
 pub fn register_sound_body_factory(id: &str, factory: Arc<dyn SoundBodyFactory>) {
-    let mut registry = global_factory_registry()
-        .lock()
-        .expect("sound body factory registry");
+    let mut registry = match global_factory_registry().lock() {
+        Ok(registry) => registry,
+        Err(poisoned) => {
+            warn!("Sound body factory registry lock was poisoned; recovering");
+            poisoned.into_inner()
+        }
+    };
     registry.register(id, factory);
 }
 
@@ -524,9 +528,16 @@ pub fn build_sound_body_from_control(
 ) -> AnySoundBody {
     let method_id = body_method_id(control.body.method);
     let factory = {
-        let registry = global_factory_registry()
-            .lock()
-            .expect("sound body factory registry");
+        // The registry is a plain map, so a poisoned lock leaves it usable. Recovering
+        // beats panicking: this runs on the voice spawn path, which the audio thread
+        // reaches during a performance.
+        let registry = match global_factory_registry().lock() {
+            Ok(registry) => registry,
+            Err(poisoned) => {
+                warn!("Sound body factory registry lock was poisoned; recovering");
+                poisoned.into_inner()
+            }
+        };
         registry.get(method_id)
     };
     let input = SoundBodyBuildInput {

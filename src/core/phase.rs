@@ -73,10 +73,12 @@ impl SlidingPlv {
         (mean_cos * mean_cos + mean_sin * mean_sin).sqrt()
     }
 
+    #[cfg(test)]
     pub fn is_full(&self) -> bool {
         self.len >= self.buf_cos.len()
     }
 
+    #[cfg(test)]
     pub fn window(&self) -> usize {
         self.buf_cos.len()
     }

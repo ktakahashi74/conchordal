@@ -101,7 +101,7 @@ pub fn compose_consonance_field_level_scan(
 }
 
 #[inline]
-fn sigmoid01_stable(x: f32) -> f32 {
+pub(crate) fn sigmoid01_stable(x: f32) -> f32 {
     if x.is_nan() {
         return 0.0;
     }

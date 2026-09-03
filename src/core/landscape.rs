@@ -283,7 +283,7 @@ impl Landscape {
         for i in 0..n {
             self.consonance_density[i] = self.consonance_density_mass[i];
         }
-        normalize_or_uniform(&mut self.consonance_density[..n]);
+        normalize_or_uniform(&mut self.consonance_density[..n], None);
 
         // Seed effective views to raw (identity) until apply_habituation runs.
         self.consonance_field_score_eff
@@ -319,7 +319,7 @@ impl Landscape {
         for i in 0..n {
             self.consonance_density[i] = self.consonance_density_mass_eff[i];
         }
-        normalize_or_uniform(&mut self.consonance_density[..n]);
+        normalize_or_uniform(&mut self.consonance_density[..n], None);
     }
 
     fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
@@ -379,7 +379,7 @@ impl Landscape {
                 self.consonance_density_mass[i]
             };
         }
-        normalize_or_uniform_masked(out_n, occupied_n, unoccupied_count);
+        normalize_or_uniform(out_n, Some((occupied_n, unoccupied_count)));
     }
 
     fn sample_linear(&self, data: &[f32], freq_hz: f32) -> f32 {
@@ -408,24 +408,18 @@ fn reset_if_len_mismatch(scan: &mut Vec<f32>, expected_len: usize) {
     }
 }
 
-fn normalize_or_uniform(out: &mut [f32]) {
-    let mut sum = 0.0f32;
-    for v in out.iter_mut() {
-        *v = sanitize_nonnegative_finite(*v);
-        sum += *v;
+/// Sanitizes `out` in place and scales it to sum 1.
+///
+/// When the total is unusable (zero or non-finite), falls back to a uniform PMF:
+/// over the unoccupied bins when `mask` is `Some((occupied, unoccupied_count))` and
+/// at least one bin is free, otherwise over every bin. `None` means no occupancy
+/// constraint; it is passed instead of a materialized all-free mask to keep the
+/// per-hop callers allocation-free.
+fn normalize_or_uniform(out: &mut [f32], mask: Option<(&[bool], usize)>) {
+    if let Some((occupied, _)) = mask {
+        assert_eq!(out.len(), occupied.len(), "mask/output length mismatch");
     }
-    if sum > 0.0 && sum.is_finite() {
-        let inv = 1.0 / sum;
-        for v in out.iter_mut() {
-            *v *= inv;
-        }
-    } else if !out.is_empty() {
-        out.fill(1.0 / out.len() as f32);
-    }
-}
 
-fn normalize_or_uniform_masked(out: &mut [f32], occupied: &[bool], unoccupied_count: usize) {
-    assert_eq!(out.len(), occupied.len(), "mask/output length mismatch");
     let mut sum = 0.0f32;
     for v in out.iter_mut() {
         *v = sanitize_nonnegative_finite(*v);
@@ -439,12 +433,16 @@ fn normalize_or_uniform_masked(out: &mut [f32], occupied: &[bool], unoccupied_co
         return;
     }
 
-    if unoccupied_count > 0 {
+    if let Some((occupied, unoccupied_count)) = mask
+        && unoccupied_count > 0
+    {
         let uniform = 1.0 / unoccupied_count as f32;
-        for (i, v) in out.iter_mut().enumerate() {
-            *v = if occupied[i] { 0.0 } else { uniform };
+        for (v, &is_occupied) in out.iter_mut().zip(occupied) {
+            *v = if is_occupied { 0.0 } else { uniform };
         }
-    } else if !out.is_empty() {
+        return;
+    }
+    if !out.is_empty() {
         out.fill(1.0 / out.len() as f32);
     }
 }
@@ -1006,6 +1004,11 @@ mod tests {
     fn plot_consonance_variants_scan_png() -> Result<(), Box<dyn std::error::Error>> {
         use plotters::prelude::*;
 
+        // Shared x-axis tick label: the axis is log2(Hz), the label is Hz.
+        fn hz_label(x_log2: &f32) -> String {
+            format!("{:.0}", 2.0f32.powf(*x_log2))
+        }
+
         std::fs::create_dir_all("target/plots")?;
 
         let space = Log2Space::new(20.0, 8000.0, 96);
@@ -1152,7 +1155,7 @@ mod tests {
         chart_h
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
-            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .x_label_formatter(&hz_label)
             .y_desc("H01")
             .draw()?;
         chart_h.draw_series(LineSeries::new(
@@ -1169,7 +1172,7 @@ mod tests {
         chart_r
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
-            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .x_label_formatter(&hz_label)
             .y_desc("R01")
             .draw()?;
         chart_r.draw_series(LineSeries::new(
@@ -1195,7 +1198,7 @@ mod tests {
         chart_score
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
-            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .x_label_formatter(&hz_label)
             .y_desc("score")
             .draw()?;
         chart_score.draw_series(LineSeries::new(
@@ -1215,7 +1218,7 @@ mod tests {
         chart_level
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
-            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .x_label_formatter(&hz_label)
             .y_desc("level")
             .draw()?;
         chart_level.draw_series(LineSeries::new(
@@ -1240,7 +1243,7 @@ mod tests {
         chart_weight
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
-            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .x_label_formatter(&hz_label)
             .y_desc("density weight raw")
             .draw()?;
         chart_weight.draw_series(LineSeries::new(
@@ -1265,7 +1268,7 @@ mod tests {
         chart_density
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
-            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .x_label_formatter(&hz_label)
             .y_desc("density pmf")
             .draw()?;
         chart_density.draw_series(LineSeries::new(
@@ -1294,7 +1297,7 @@ mod tests {
         chart_energy
             .configure_mesh()
             .x_desc("frequency (Hz, log2 axis)")
-            .x_label_formatter(&|x| format!("{:.0}", 2.0f32.powf(*x)))
+            .x_label_formatter(&hz_label)
             .y_desc("energy")
             .draw()?;
         chart_energy.draw_series(LineSeries::new(

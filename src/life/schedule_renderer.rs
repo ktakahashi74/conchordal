@@ -1,9 +1,9 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
-use crate::life::control::Routing;
 use crate::life::phonation_engine::ToneCmd;
 use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
+use crate::scenario::control::Routing;
 use std::collections::BTreeMap;
 use tracing::debug;
 
@@ -107,10 +107,6 @@ impl ScheduleRenderer {
 
     pub fn is_idle(&self) -> bool {
         self.tones.is_empty()
-    }
-
-    pub fn set_cutoff_tick(&mut self, cutoff: Option<Tick>) {
-        self.cutoff_tick = cutoff;
     }
 
     pub fn shutdown_at(&mut self, tick: Tick) {
@@ -249,7 +245,7 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
-            routing: crate::life::control::Routing::default(),
+            routing: crate::scenario::control::Routing::default(),
             cmds: vec![
                 ToneCmd::Update {
                     tone_id,
@@ -306,7 +302,7 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 2,
-            routing: crate::life::control::Routing::default(),
+            routing: crate::scenario::control::Routing::default(),
             cmds: vec![
                 ToneCmd::Update {
                     tone_id,
@@ -371,7 +367,7 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             source_id: 1,
-            routing: crate::life::control::Routing::default(),
+            routing: crate::scenario::control::Routing::default(),
             cmds: vec![ToneCmd::On {
                 tone_id,
                 kick: OnsetKick { strength: 1.0 },

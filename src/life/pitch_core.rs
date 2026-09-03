@@ -1,3 +1,4 @@
+use crate::core::float::unit_gaussian;
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, ratio_to_f32};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::Landscape;
@@ -5,7 +6,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::psycho_state::{normalize_density, roughness_ratio_to_state01};
 use crate::core::roughness_kernel::{RoughnessKernel, erb_grid};
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::life::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
+use crate::scenario::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
 use rand::{Rng, RngExt};
 use std::sync::Arc;
 
@@ -733,7 +734,7 @@ pub(crate) fn occupancy_contribution(
     let eps = sigma * DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC;
     let split = split_sign.clamp(-1.0, 1.0);
     let d = candidate_log2 - (neighbor_log2 - split * eps);
-    (-0.5 * (d / sigma).powi(2)).exp()
+    unit_gaussian(d, sigma)
 }
 
 /// Fill `out` with the fundamental-occupancy scan (the leave-self-out spatial
@@ -1026,6 +1027,24 @@ fn exact_loo_consonance_score_scan(
         return None;
     }
     let n = landscape.space.n_bins();
+    // F2: a misaligned landscape is a bug, but the exact-LOO path degrades to the
+    // approximate score rather than panicking mid-proposal. Flag it in dev builds,
+    // one scan at a time so the offender is identifiable.
+    debug_assert_eq!(
+        landscape.subjective_intensity.len(),
+        n,
+        "exact-LOO scan length mismatch: subjective_intensity"
+    );
+    debug_assert_eq!(
+        landscape.roughness01.len(),
+        n,
+        "exact-LOO scan length mismatch: roughness01"
+    );
+    debug_assert_eq!(
+        landscape.harmonicity01.len(),
+        n,
+        "exact-LOO scan length mismatch: harmonicity01"
+    );
     if n == 0
         || landscape.subjective_intensity.len() != n
         || landscape.roughness01.len() != n
@@ -2194,7 +2213,8 @@ mod tests {
     fn crowding_strength_zero_keeps_behavior_with_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
         core.set_crowding(0.0, 20.0);
 
@@ -2231,7 +2251,8 @@ mod tests {
     fn peak_sampler_crowding_zero_ignores_neighbors() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let mut core =
             PitchPeakSamplerCore::new(120.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
         core.set_crowding(0.0, 20.0);
@@ -2269,7 +2290,8 @@ mod tests {
     fn peak_sampler_crowding_penalizes_close_neighbor_selection() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let mut no_crowding =
             PitchPeakSamplerCore::new(24.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.001, 0.0, 0);
         let mut with_crowding = no_crowding.clone();
@@ -2327,7 +2349,8 @@ mod tests {
             landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
 
         for seed in 0..256u64 {
             let mut core = PitchHillClimbPitchCore::new(30.0, current, 0.0);
@@ -2365,7 +2388,8 @@ mod tests {
             landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let trials = 256u64;
         let mut moved_with_temp = 0usize;
         let mut moved_without_temp = 0usize;
@@ -2432,7 +2456,8 @@ mod tests {
             landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
 
         let mut without_crowding = PitchHillClimbPitchCore::new(24.0, center_log2, 0.0);
         let mut with_crowding = without_crowding.clone();
@@ -2477,7 +2502,8 @@ mod tests {
         let distant_hz = 330.0;
         let landscape = test_landscape(&[(current_hz, 0.4), (distant_hz, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let current_log2 = current_hz.log2();
 
         let mut local_only = PitchHillClimbPitchCore::new(120.0, current_log2, 0.0);
@@ -2523,7 +2549,8 @@ mod tests {
         let peak_hz = 330.0;
         let landscape = test_landscape(&[(peak_hz, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let mut rng = SmallRng::seed_from_u64(17);
 
         let mut core =
@@ -2560,7 +2587,8 @@ mod tests {
         right_peak_hz: f32,
     ) -> f32 {
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let mut rng = SmallRng::seed_from_u64(seed);
         let mut right_hits = 0u32;
         let trials = 512u32;
@@ -2640,7 +2668,8 @@ mod tests {
         let peak_hz = 347.0;
         let landscape = test_landscape(&[(peak_hz, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
 
         let mut hill_rng = SmallRng::seed_from_u64(123);
         let mut hill = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
@@ -2776,7 +2805,8 @@ mod tests {
     fn peak_sampler_proposal_unchanged_after_refactor() {
         let landscape = test_landscape(&[(330.0, 1.0)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let mut core_a =
             PitchPeakSamplerCore::new(120.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
         core_a.set_leave_self_out(true);
@@ -2816,7 +2846,8 @@ mod tests {
     fn propose_with_scorer_default_matches_trait_method() {
         let landscape = test_landscape(&[(330.0, 1.0), (440.0, 0.6)]);
         let perceptual = test_adaptation(landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(&landscape.subjective_intensity);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
         let core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
         let current = 330.0f32.log2();
 

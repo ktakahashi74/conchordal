@@ -12,6 +12,7 @@ pub fn db_to_power_ratio(db: f32) -> f32 {
 }
 
 /// Convert dB to an amplitude ratio.
+#[cfg(test)]
 pub fn db_to_amp_ratio(db: f32) -> f32 {
     10.0_f32.powf(db / 20.0)
 }

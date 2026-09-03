@@ -7,6 +7,7 @@ use crate::core::roughness_kernel::erb_grid;
 
 #[derive(Clone, Debug)]
 pub struct Peak {
+    #[allow(dead_code)]
     pub u_erb: f32,
     pub mass: f32,
     pub bin_idx: usize,
@@ -45,6 +46,7 @@ impl Default for PeakExtractConfig {
 }
 
 impl PeakExtractConfig {
+    #[cfg(test)]
     pub fn strict() -> Self {
         Self {
             min_mass_fraction: Some(0.05),

@@ -4,9 +4,9 @@ use crate::core::phase::{SlidingPlv, angle_diff_pm_pi, wrap_0_tau};
 use crate::core::utils::pink_noise_tick;
 use crate::life::articulation_envelope::step_attack_decay_envelope;
 use crate::life::constants::{MAX_COUPLING_MULT, MAX_RECHARGE_MULT};
-use crate::life::lifecycle::LifecycleConfig;
 use crate::life::metabolism_policy::MetabolismPolicy;
 use crate::life::sound::{AutonomousPulseSpec, RenderModulatorSpec, RenderModulatorStateKind};
+use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{
     ArticulationCoreConfig, MetabolismRhythmReward, PhonationMode, RhythmCouplingMode,
     RhythmRewardMetric,
@@ -379,13 +379,6 @@ impl KuramotoCore {
 
     pub fn plv(&self) -> Option<f32> {
         self.telemetry.sliding_plv.as_ref().map(|p| p.plv())
-    }
-
-    pub fn plv_is_full(&self) -> bool {
-        self.telemetry
-            .sliding_plv
-            .as_ref()
-            .is_some_and(|p| p.is_full())
     }
 
     pub fn enable_plv(&mut self, window: usize) {

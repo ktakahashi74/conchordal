@@ -1,8 +1,8 @@
 use conchordal::core::landscape::Landscape;
 use conchordal::core::log2space::Log2Space;
 use conchordal::core::modulation::{NeuralRhythms, RhythmBand};
-use conchordal::life::control::VoiceControl;
 use conchordal::life::voice::{AnyArticulationCore, ArticulationState, Voice, VoiceMetadata};
+use conchordal::scenario::control::VoiceControl;
 use conchordal::scenario::{ArticulationCoreConfig, VoiceSpec};
 
 fn build_agent() -> Voice {

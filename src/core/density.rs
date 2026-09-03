@@ -8,6 +8,7 @@ pub fn density_to_mass(density: &[f32], du: &[f32]) -> f32 {
 
 /// Convert peak masses into a delta density vector.
 /// peaks: (idx, mass)
+#[cfg(test)]
 pub fn peaks_mass_to_delta_density(len: usize, peaks: &[(usize, f32)], du: &[f32]) -> Vec<f32> {
     let mut out = vec![0.0f32; len];
     if du.len() < len {

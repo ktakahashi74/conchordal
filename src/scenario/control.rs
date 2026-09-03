@@ -21,14 +21,6 @@ pub struct VoiceControl {
 }
 
 impl VoiceControl {
-    pub fn validate(&self) -> Result<(), String> {
-        let freq = self.pitch.freq;
-        if !freq.is_finite() || freq < MIN_FREQ_HZ {
-            return Err("pitch.freq must be finite and > 0".to_string());
-        }
-        Ok(())
-    }
-
     #[inline]
     pub fn set_amp_clamped(&mut self, amp: f32) {
         self.body.amp = amp.clamp(0.0, 1.0);

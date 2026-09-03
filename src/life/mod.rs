@@ -1,22 +1,20 @@
 pub(crate) mod articulation_envelope;
-pub mod conductor;
-pub mod constants;
-pub mod control;
+pub(crate) mod conductor;
+pub(crate) mod constants;
 mod control_adapters;
 pub mod gate_clock;
 pub mod voice;
-pub use voice::articulation_core;
-pub mod adaptation;
+pub(crate) use voice::articulation_core;
+pub(crate) mod adaptation;
 pub mod community;
 pub mod generator_model;
-pub mod lifecycle;
-pub mod metabolism_policy;
-pub mod modal;
+pub(crate) mod metabolism_policy;
+pub(crate) mod modal;
 pub mod phonation_engine;
-pub mod report;
+pub(crate) mod report;
 pub mod schedule_renderer;
-pub mod social_density;
-pub mod telemetry;
+pub(crate) mod social_density;
+pub(crate) mod telemetry;
 
 pub mod sound;
 #[cfg(test)]

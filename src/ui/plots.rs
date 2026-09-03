@@ -1,4 +1,4 @@
-use crate::ui::viewdata::VoiceStateInfo;
+use crate::viewdata::VoiceStateInfo;
 use egui::{Color32, Id, Stroke, Vec2, Vec2b};
 use egui_plot::{
     Bar, BarChart, Line, LineStyle, Plot, PlotPoints, Points, Polygon, log_grid_spacer,
@@ -40,13 +40,6 @@ pub fn log2_plot_hz(
     line_color: Option<Color32>,
     overlay: Option<(&[f32], &str, Color32)>,
 ) {
-    assert_eq!(
-        xs_hz.len(),
-        ys.len(),
-        "x/y length mismatch: {} vs {}",
-        xs_hz.len(),
-        ys.len()
-    );
     debug_assert!(
         xs_hz
             .windows(2)
@@ -55,6 +48,8 @@ pub fn log2_plot_hz(
     );
 
     // === Convert X axis to log2(Hz) ===
+    // zip truncates to the shorter slice, so a length mismatch degrades the
+    // drawing instead of panicking.
     let points: PlotPoints = xs_hz
         .iter()
         .zip(ys.iter())
@@ -67,13 +62,6 @@ pub fn log2_plot_hz(
         line = line.color(color);
     }
     let overlay_line = overlay.map(|(ys2, label, color)| {
-        assert_eq!(
-            xs_hz.len(),
-            ys2.len(),
-            "x/overlay length mismatch: {} vs {}",
-            xs_hz.len(),
-            ys2.len()
-        );
         let points: PlotPoints = xs_hz
             .iter()
             .zip(ys2.iter())
@@ -129,24 +117,12 @@ pub fn draw_roughness_harmonicity(
     height: f32,
     link_population: Option<&str>,
 ) {
-    assert_eq!(
-        xs_hz.len(),
-        harmonicity.len(),
-        "x/h length mismatch: {} vs {}",
-        xs_hz.len(),
-        harmonicity.len()
-    );
-    assert_eq!(
-        xs_hz.len(),
-        roughness.len(),
-        "x/r length mismatch: {} vs {}",
-        xs_hz.len(),
-        roughness.len()
-    );
     if xs_hz.is_empty() {
         return;
     }
 
+    // zip truncates to the shorter slice, so a length mismatch degrades the
+    // drawing instead of panicking.
     let points_h: PlotPoints = xs_hz
         .iter()
         .zip(harmonicity.iter())
@@ -458,7 +434,7 @@ pub fn plot_population_dynamics(
 
 pub fn spectrum_time_freq_axes(
     ui: &mut egui::Ui,
-    history: &VecDeque<(f64, crate::ui::viewdata::DorsalFrame)>,
+    history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
     height: f32,
     window_start: f64,
     window_end: f64,
@@ -501,7 +477,7 @@ pub fn spectrum_time_freq_axes(
     plot.show(ui, |plot_ui| {
         plot_ui.set_plot_bounds_x(window_start..=window_end);
         plot_ui.set_plot_bounds_y(0.0..=3.0);
-        let samples: Vec<(f64, crate::ui::viewdata::DorsalFrame)> = history
+        let samples: Vec<(f64, crate::viewdata::DorsalFrame)> = history
             .iter()
             .filter(|(t, _)| *t >= window_start && *t <= window_end)
             .map(|(t, d)| (*t, *d))
@@ -583,7 +559,7 @@ struct ListenerMandalaLevels {
 /// the same compass as the listener meter.
 pub fn draw_listener_mandala(
     ui: &mut egui::Ui,
-    listener: &crate::ui::viewdata::ListenerFrame,
+    listener: &crate::viewdata::ListenerFrame,
     entrain_phases: &[f32],
     entrain_order_r: Option<f32>,
     size: Vec2,

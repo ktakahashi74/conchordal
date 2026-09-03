@@ -43,14 +43,8 @@ impl Default for RtConfig {
 /// Per-band persistent state.
 #[derive(Clone, Debug)]
 pub struct BandState {
-    /// Center frequency [Hz].
-    pub f_hz: f32,
-    /// Time constant [s].
-    pub tau: f32,
     /// α = exp(−dt/τ).
     pub alpha: f32,
-    /// ENBW [Hz] (sourced from the band kernel; Blackman-Harris ≈ 2.0*fs/Lk).
-    pub enbw_hz: f32,
     /// Smoothed band power (running state).
     pub smooth: f32,
 }
@@ -97,7 +91,7 @@ impl RtNsgtKernelLog2 {
         // Reuse nsgt's forward FFT plan (same nfft); avoids a duplicate plan.
         let fft = nsgt.fft();
 
-        // Build band states (τ mapping and ENBW precompute).
+        // Build band states (tau mapping).
         let bands_state = nsgt
             .bands()
             .iter()
@@ -107,16 +101,7 @@ impl RtNsgtKernelLog2 {
                 let mut tau = cfg.tau_min + (cfg.tau_max - cfg.tau_min) * ratio;
                 tau = tau.clamp(cfg.tau_min, cfg.tau_max);
                 let alpha = (-dt / tau).exp();
-                // Reuse the kernel's correct ENBW (matches the Blackman-Harris window)
-                // instead of a Hann approximation.
-                let enbw_hz = b.enbw_hz;
-                BandState {
-                    f_hz: b.f_hz,
-                    tau,
-                    alpha,
-                    enbw_hz,
-                    smooth: 0.0,
-                }
+                BandState { alpha, smooth: 0.0 }
             })
             .collect::<Vec<_>>();
 

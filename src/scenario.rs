@@ -1,11 +1,13 @@
+pub mod control;
+pub(crate) mod lifecycle;
+
 use std::fmt;
 
 use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeUpdate;
 use crate::core::meter::MeterShaping;
-use crate::life::control::{ControlUpdate, VoiceControl};
-use crate::life::lifecycle::LifecycleConfig;
-use crate::life::voice::{Voice, VoiceMetadata};
+use control::{BodyMethod, ControlUpdate, VoiceControl};
+use lifecycle::LifecycleConfig;
 
 #[derive(Debug, Clone)]
 pub struct Scenario {
@@ -74,8 +76,7 @@ impl Default for EnvelopeConfig {
 }
 
 impl EnvelopeConfig {
-    pub fn for_body_method(method: crate::life::control::BodyMethod) -> Self {
-        use crate::life::control::BodyMethod;
+    pub fn for_body_method(method: BodyMethod) -> Self {
         match method {
             BodyMethod::Sine => Self {
                 attack_sec: 0.005,
@@ -506,39 +507,8 @@ impl Default for ArticulationCoreConfig {
 
 // Scenes are represented by SceneMarker and do not own events.
 
-impl VoiceSpec {
-    pub fn spawn(
-        &self,
-        assigned_id: u64,
-        start_frame: u64,
-        metadata: VoiceMetadata,
-        fs: f32,
-        seed_offset: u64,
-    ) -> Voice {
-        self.spawn_with_landscape(assigned_id, start_frame, metadata, fs, None, seed_offset)
-    }
-
-    pub fn spawn_with_landscape(
-        &self,
-        assigned_id: u64,
-        start_frame: u64,
-        metadata: VoiceMetadata,
-        fs: f32,
-        landscape: Option<&crate::core::landscape::LandscapeFrame>,
-        seed_offset: u64,
-    ) -> Voice {
-        Voice::spawn_from_control(
-            self.control.clone(),
-            self.articulation.clone(),
-            assigned_id,
-            start_frame,
-            metadata,
-            fs,
-            landscape,
-            seed_offset,
-        )
-    }
-}
+// VoiceSpec -> Voice construction (`spawn`, `spawn_with_landscape`) lives in
+// `src/life/voice.rs`: the domain layer consumes the IR, never the reverse.
 
 impl fmt::Display for VoiceSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

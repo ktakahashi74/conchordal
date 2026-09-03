@@ -4,6 +4,7 @@ use std::collections::BinaryHeap;
 use std::f32::consts::TAU;
 use std::fmt;
 
+use crate::core::consonance_kernel::sigmoid01_stable;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::Tick;
 use crate::life::control_adapters::phonation_config_from_spec;
@@ -80,19 +81,33 @@ pub struct ThetaGrid {
 }
 
 impl ThetaGrid {
-    /// Input candidates must be sorted by tick ascending.
+    #[cfg(test)]
     pub fn from_candidates(candidates: &[CandidatePoint]) -> Self {
+        let mut grid = Self::default();
+        grid.rebuild_from_candidates(candidates);
+        grid
+    }
+
+    /// Rebuild the grid in place, reusing the boundary buffer. Runs every hop on
+    /// the audio thread, so it must not allocate once warm.
+    /// Input candidates must be sorted by tick ascending.
+    pub fn rebuild_from_candidates(&mut self, candidates: &[CandidatePoint]) {
         debug_assert!(
             candidates.windows(2).all(|p| p[0].tick <= p[1].tick),
             "candidates must be sorted by tick"
         );
-        let mut boundaries = Vec::with_capacity(candidates.len());
+        self.boundaries.clear();
         let mut last_gate = None;
         let mut last_tick = None;
         for candidate in candidates {
             if let Some(prev_gate) = last_gate {
                 if candidate.gate < prev_gate {
-                    panic!("candidate gates must be non-decreasing");
+                    // A clock emitting a decreasing gate is a producer bug. Drop
+                    // the candidate instead of aborting the performance; dev
+                    // builds trip the assert. A repeated gate is legitimate and
+                    // is skipped silently below.
+                    debug_assert!(false, "candidate gates must be non-decreasing");
+                    continue;
                 }
                 if candidate.gate == prev_gate || candidate.gate != prev_gate.saturating_add(1) {
                     continue;
@@ -101,14 +116,13 @@ impl ThetaGrid {
                     continue;
                 }
             }
-            boundaries.push(GateBoundary {
+            self.boundaries.push(GateBoundary {
                 gate: candidate.gate,
                 tick: candidate.tick,
             });
             last_gate = Some(candidate.gate);
             last_tick = Some(candidate.tick);
         }
-        Self { boundaries }
     }
 
     fn boundaries_for_gate(&self, gate: u64) -> Option<(GateBoundary, GateBoundary)> {
@@ -204,7 +218,7 @@ impl ThetaGrid {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct TimingField {
     pub start_gate: u64,
     pub e_gate: Vec<f32>,
@@ -215,36 +229,46 @@ impl TimingField {
         Self { start_gate, e_gate }
     }
 
-    /// Uniform field (weight 1.0 at every gate), ignoring `env_open`/social.
-    /// Used by fixed-rate clocks so their onsets are not gated by the adaptive
-    /// theta envelope.
-    pub fn flat(grid: &ThetaGrid) -> Self {
-        let Some(start_gate) = grid.boundaries.first().map(|b| b.gate) else {
-            return Self {
-                start_gate: 0,
-                e_gate: Vec::new(),
-            };
-        };
-        let last_gate = grid.boundaries.last().map(|b| b.gate).unwrap_or(start_gate);
-        let len = (last_gate.saturating_sub(start_gate) as usize).saturating_add(1);
-        Self {
-            start_gate,
-            e_gate: vec![1.0; len],
-        }
-    }
-
+    #[cfg(test)]
     pub fn build_from(
         ctx: &CoreTickCtx,
         grid: &ThetaGrid,
         social: Option<(&SocialDensityTrace, f32)>,
         extra_gate_gain: f32,
     ) -> Self {
+        let mut field = Self::default();
+        field.rebuild_from(ctx, grid, social, extra_gate_gain);
+        field
+    }
+
+    /// Uniform field (weight 1.0 at every gate), ignoring `env_open`/social.
+    /// Used by fixed-rate clocks so their onsets are not gated by the adaptive
+    /// theta envelope. Rebuilt in place: this runs every hop on the audio thread.
+    pub fn rebuild_flat(&mut self, grid: &ThetaGrid) {
+        self.e_gate.clear();
+        let Some(start_gate) = grid.boundaries.first().map(|b| b.gate) else {
+            self.start_gate = 0;
+            return;
+        };
+        let last_gate = grid.boundaries.last().map(|b| b.gate).unwrap_or(start_gate);
+        let len = (last_gate.saturating_sub(start_gate) as usize).saturating_add(1);
+        self.start_gate = start_gate;
+        self.e_gate.resize(len, 1.0);
+    }
+
+    /// Rebuild in place, reusing the gate buffer (per-hop audio-thread path).
+    pub fn rebuild_from(
+        &mut self,
+        ctx: &CoreTickCtx,
+        grid: &ThetaGrid,
+        social: Option<(&SocialDensityTrace, f32)>,
+        extra_gate_gain: f32,
+    ) {
         const MAX_GATES_PER_HOP: u64 = 4096;
+        self.e_gate.clear();
         if grid.boundaries.is_empty() {
-            return Self {
-                start_gate: 0,
-                e_gate: Vec::new(),
-            };
+            self.start_gate = 0;
+            return;
         }
         debug_assert!(
             grid.boundaries
@@ -258,7 +282,6 @@ impl TimingField {
         );
         let mut rhythms = ctx.rhythms;
         let mut cursor_tick = ctx.now_tick;
-        let mut e_gate = Vec::with_capacity(grid.boundaries.len());
         let mut expected_gate = grid.boundaries[0].gate;
         let mut last_weight = None;
         for boundary in &grid.boundaries {
@@ -294,19 +317,23 @@ impl TimingField {
                 let fill_weight = last_weight.unwrap_or(1.0);
                 let missing = boundary.gate - expected_gate;
                 if missing > MAX_GATES_PER_HOP {
-                    panic!("timing field gap too large: missing={missing}");
+                    // Pathological gap: stop filling instead of aborting the
+                    // performance. Gates past the end of `e_gate` read the 1.0
+                    // fallback in `e()`, so truncating costs nothing a clamped
+                    // fill would have preserved, and it keeps the reused buffer
+                    // from growing by thousands of dead entries.
+                    debug_assert!(false, "timing field gap too large");
+                    break;
                 }
                 // Fill gaps to keep gate-indexed lookups contiguous.
-                e_gate.extend(std::iter::repeat_n(fill_weight, missing as usize));
+                self.e_gate
+                    .extend(std::iter::repeat_n(fill_weight, missing as usize));
             }
-            e_gate.push(weight);
+            self.e_gate.push(weight);
             last_weight = Some(weight);
             expected_gate = boundary.gate.saturating_add(1);
         }
-        Self {
-            start_gate: grid.boundaries[0].gate,
-            e_gate,
-        }
+        self.start_gate = grid.boundaries[0].gate;
     }
 
     pub fn e(&self, gate: u64) -> f32 {
@@ -844,7 +871,7 @@ impl DurationRule {
                 let exc_gate = onset.exc_gate.clamp(0.0, 1.0);
                 let min = hold_min_theta.max(0.0);
                 let max = hold_max_theta.max(min);
-                let p = 1.0 / (1.0 + (-(*curve_k * (exc_gate - *curve_x0))).exp());
+                let p = sigmoid01_stable(*curve_k * (exc_gate - *curve_x0));
                 let mut hold = min + (max - min) * p;
                 if *drop_gain > 0.0 && onset.exc_slope.is_finite() {
                     let drop_val = (-onset.exc_slope).max(0.0).clamp(0.0, 1.0);
@@ -940,6 +967,8 @@ pub struct PhonationEngine {
     pending_off: BinaryHeap<Reverse<PendingOff>>,
     scratch_candidates: Vec<CandidatePoint>,
     scratch_merged: Vec<CandidatePoint>,
+    scratch_grid: ThetaGrid,
+    scratch_field: TimingField,
 }
 
 impl fmt::Debug for PhonationEngine {
@@ -980,6 +1009,8 @@ impl PhonationEngine {
 
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
+            scratch_grid: ThetaGrid::default(),
+            scratch_field: TimingField::default(),
         }
     }
 
@@ -1133,22 +1164,24 @@ impl PhonationEngine {
             .gather_candidates(ctx, &mut self.scratch_candidates);
         Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
         let merged = std::mem::take(&mut self.scratch_merged);
-        let mut timing_grid = ThetaGrid::from_candidates(&merged);
+        let mut timing_grid = std::mem::take(&mut self.scratch_grid);
+        timing_grid.rebuild_from_candidates(&merged);
         // Fixed-rate and coupling clocks own their own timing (an external grid
         // or an internal entrained oscillator): their onsets must not be gated by
         // the adaptive `env_open`, or they would re-couple to theta (metric loses
         // its steady pulse; flow droplets lock to one period; the coupling clock's
         // entrainment is double-counted). Use a flat field.
-        let timing_field = if self.clock.uses_flat_field() {
-            TimingField::flat(&timing_grid)
+        let mut timing_field = std::mem::take(&mut self.scratch_field);
+        if self.clock.uses_flat_field() {
+            timing_field.rebuild_flat(&timing_grid);
         } else {
-            TimingField::build_from(
+            timing_field.rebuild_from(
                 ctx,
                 &timing_grid,
                 social.map(|trace| (trace, social_coupling)),
                 extra_gate_gain,
-            )
-        };
+            );
+        }
         self.process_candidates(
             ctx,
             &merged,
@@ -1161,6 +1194,8 @@ impl PhonationEngine {
             out_onsets,
         );
         self.scratch_merged = merged;
+        self.scratch_grid = timing_grid;
+        self.scratch_field = timing_field;
     }
 
     fn step_for_candidate(
@@ -1285,7 +1320,9 @@ impl PhonationEngine {
     }
 
     fn merge_candidates_into(out: &mut Vec<CandidatePoint>, candidates: &mut Vec<CandidatePoint>) {
-        candidates.sort_by(|a, b| a.tick.cmp(&b.tick).then_with(|| a.gate.cmp(&b.gate)));
+        // Unstable sort: equal (tick, gate) keys are identical points, and it
+        // avoids the stable sort's scratch allocation on the per-hop path.
+        candidates.sort_unstable_by(|a, b| a.tick.cmp(&b.tick).then_with(|| a.gate.cmp(&b.gate)));
         out.clear();
         out.reserve(candidates.len());
         for candidate in candidates.drain(..) {
@@ -1323,6 +1360,8 @@ mod tests {
             pending_off: BinaryHeap::new(),
             scratch_candidates: Vec::new(),
             scratch_merged: Vec::new(),
+            scratch_grid: ThetaGrid::default(),
+            scratch_field: TimingField::default(),
         }
     }
 
@@ -1742,14 +1781,40 @@ mod tests {
     }
 
     #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic]
-    fn theta_grid_panics_on_reverse_gates() {
+    #[cfg(not(debug_assertions))]
+    fn theta_grid_repairs_reverse_gates_without_panic() {
+        // Release behaviour: a decreasing gate must not stop the performance. It
+        // is dropped, leaving a grid whose gates still increase by one. Debug
+        // builds trip `debug_assert!` first, hence the cfg gate.
         let candidates = vec![
             CandidatePoint { tick: 0, gate: 1 },
             CandidatePoint { tick: 1, gate: 0 },
+            CandidatePoint { tick: 2, gate: 2 },
         ];
-        let _ = ThetaGrid::from_candidates(&candidates);
+        let grid = ThetaGrid::from_candidates(&candidates);
+        assert_eq!(
+            grid.boundaries,
+            vec![
+                GateBoundary { gate: 1, tick: 0 },
+                GateBoundary { gate: 2, tick: 2 },
+            ]
+        );
+    }
+
+    #[test]
+    fn theta_grid_rebuild_clears_previous_boundaries() {
+        let mut grid = ThetaGrid::default();
+        grid.rebuild_from_candidates(&[
+            CandidatePoint { tick: 0, gate: 0 },
+            CandidatePoint { tick: 5, gate: 1 },
+        ]);
+        assert_eq!(grid.boundaries.len(), 2);
+        grid.rebuild_from_candidates(&[CandidatePoint { tick: 9, gate: 7 }]);
+        assert_eq!(
+            grid.boundaries,
+            vec![GateBoundary { gate: 7, tick: 9 }],
+            "rebuild must not keep stale boundaries"
+        );
     }
 
     #[test]
@@ -1798,6 +1863,65 @@ mod tests {
         assert_eq!(timing_field.e(0), 0.5);
         assert_eq!(timing_field.e(1), 0.5);
         assert_eq!(timing_field.e(2), 0.5);
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn timing_field_truncates_oversized_gate_gap() {
+        // Release behaviour: a pathological gate gap truncates the fill instead
+        // of aborting the hop, and the gates past the truncation read the 1.0
+        // fallback. Debug builds trip `debug_assert!` first, hence the cfg gate.
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.env_open = 0.5;
+        rhythms.env_level = 1.0;
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 16,
+            fs: 1000.0,
+            rhythms,
+        };
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 0, tick: 0 },
+                GateBoundary {
+                    gate: 100_000,
+                    tick: 10,
+                },
+            ],
+        };
+        let timing_field = TimingField::build_from(&ctx, &grid, None, 1.0);
+        assert_eq!(
+            timing_field.e(0),
+            0.5,
+            "gates before the gap keep their weight"
+        );
+        assert_eq!(
+            timing_field.e(1),
+            1.0,
+            "gates inside the gap fall back to 1.0"
+        );
+        assert_eq!(
+            timing_field.e(100_000),
+            1.0,
+            "the far boundary falls back to 1.0 instead of panicking"
+        );
+    }
+
+    #[test]
+    fn timing_field_rebuild_flat_reuses_buffer_and_clears() {
+        let mut field = TimingField::default();
+        let grid = ThetaGrid {
+            boundaries: vec![
+                GateBoundary { gate: 4, tick: 0 },
+                GateBoundary { gate: 5, tick: 10 },
+            ],
+        };
+        field.rebuild_flat(&grid);
+        assert_eq!(field.start_gate, 4);
+        assert_eq!(field.e_gate, vec![1.0, 1.0]);
+        field.rebuild_flat(&ThetaGrid::default());
+        assert_eq!(field.start_gate, 0);
+        assert!(field.e_gate.is_empty());
     }
 
     #[test]
@@ -2599,6 +2723,79 @@ mod tests {
         assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
         assert_eq!(events.len(), 1);
         assert!(engine.hold.note_on_sent);
+    }
+
+    #[test]
+    fn tick_reuses_scratch_buffers_across_hops() {
+        // The per-hop path must settle into its buffers: once warm, no scratch
+        // buffer capacity grows again (i.e. no per-hop heap allocation).
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.env_open = 1.0;
+        rhythms.env_level = 1.0;
+        rhythms.theta.freq_hz = 5.0;
+        rhythms.theta.phase = 0.0;
+        let mut engine = test_engine(
+            OnsetRule::Always { strength: 1.0 },
+            DurationRule::fixed_gate(1),
+        );
+        let mut gate = 0u64;
+        engine.clock = PhonationClock::Custom(Box::new(
+            move |ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>| {
+                out.push(CandidatePoint {
+                    tick: ctx.now_tick,
+                    gate,
+                });
+                gate += 1;
+                out.push(CandidatePoint {
+                    tick: ctx.now_tick + 50,
+                    gate,
+                });
+                gate += 1;
+            },
+        ));
+        let state = CoreState {
+            is_alive: true,
+            onset_allowed: true,
+        };
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+        let mut caps = None;
+        for hop in 0..4u64 {
+            let ctx = CoreTickCtx {
+                now_tick: hop * 100,
+                frame_end: hop * 100 + 100,
+                fs: 1000.0,
+                rhythms,
+            };
+            cmds.clear();
+            events.clear();
+            onsets.clear();
+            engine.tick(
+                &ctx,
+                &state,
+                None,
+                0.0,
+                1.0,
+                None,
+                &mut cmds,
+                &mut events,
+                &mut onsets,
+            );
+            assert_eq!(events.len(), 2, "hop {hop} should emit both onsets");
+            let now = (
+                engine.scratch_candidates.capacity(),
+                engine.scratch_merged.capacity(),
+                engine.scratch_grid.boundaries.capacity(),
+                engine.scratch_field.e_gate.capacity(),
+            );
+            if hop == 1 {
+                assert!(now.0 > 0 && now.1 > 0 && now.2 > 0 && now.3 > 0);
+                caps = Some(now);
+            } else if hop > 1 {
+                assert_eq!(caps, Some(now), "scratch buffers reallocated on hop {hop}");
+            }
+        }
     }
 
     #[test]

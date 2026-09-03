@@ -63,17 +63,6 @@ impl Conductor {
         }
     }
 
-    pub fn from_events(events: Vec<QueuedEvent>) -> Self {
-        let mut events = events;
-        events.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
-        let total_duration = events.last().map(|ev| ev.time).unwrap_or(0.0);
-        Self {
-            event_queue: events.into(),
-            total_duration,
-            scenes: Vec::new(),
-        }
-    }
-
     /// Apply any events scheduled up to and including current time.
     ///
     /// Note: spawn placement rules (e.g. minimum ERB distance between fundamentals) are enforced
@@ -86,15 +75,17 @@ impl Conductor {
         mut analysis_rt: Option<&mut crate::core::stream::analysis::AnalysisStream>,
         community: &mut Community,
     ) {
-        while let Some(ev) = self.event_queue.front() {
+        // Audio thread: pop-then-restore avoids an `expect`, and logging one line per
+        // action avoids joining descriptions into a temporary `String`.
+        while let Some(ev) = self.event_queue.pop_front() {
             if ev.time > time_sec {
+                self.event_queue.push_front(ev);
                 break;
             }
 
-            let ev = self.event_queue.pop_front().expect("front exists");
-            let action_descs: Vec<String> = ev.actions.iter().map(ToString::to_string).collect();
-            info!("[t={:.3}] Event: {}", ev.time, action_descs.join(" | "));
+            let time = ev.time;
             for action in ev.actions {
+                info!("[t={time:.3}] Event: {action}");
                 community.apply_action(action, landscape, analysis_rt.as_deref_mut());
             }
         }

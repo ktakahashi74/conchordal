@@ -101,14 +101,6 @@ impl DorsalStream {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.lp_low_state = 0.0;
-        self.lp_mid_state = 0.0;
-        self.prev_band_energy = [0.0; 3];
-        self.last_metrics = DorsalMetrics::default();
-        self.debug_timer = 0.0;
-    }
-
     pub fn last_metrics(&self) -> DorsalMetrics {
         self.last_metrics
     }

@@ -194,7 +194,7 @@ fn config_load_custom_values() {
     let text = toml::to_string_pretty(&custom).expect("serialize custom");
     fs::write(&path, text).expect("write custom config");
 
-    let loaded = AppConfig::load_or_default(&path_str);
+    let loaded = AppConfig::load_or_default(&path_str).expect("load custom config");
     assert_config_eq(&loaded, &custom);
 
     let _ = fs::remove_file(&path);
@@ -206,7 +206,7 @@ fn config_missing_file_fallback() {
     let path_str = path.to_string_lossy().to_string();
     let _ = fs::remove_file(&path);
 
-    let loaded = AppConfig::load_or_default(&path_str);
+    let loaded = AppConfig::load_or_default(&path_str).expect("write and load defaults");
     let defaults = AppConfig::default();
     assert!(path.exists(), "missing config should be created");
     assert_config_eq(&loaded, &defaults);

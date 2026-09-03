@@ -1,14 +1,13 @@
 //! Black-box checks for the Log2Space invariants F1/F2 (see AGENTS.md).
 //!
-//! `Log2Space::assert_scan_len` is a `debug_assert`, so calling it is a no-op in
-//! release builds. These tests therefore assert lengths directly, which holds in
-//! every profile, and cover the boundary-panic requirement separately.
+//! `Log2Space::assert_scan_len` and its `_named` sibling are hard `assert_eq!`s,
+//! so every boundary covered here panics in release as well as in debug.
 
 use conchordal::core::consonance_kernel::{
     ConsonanceKernel, ConsonanceRepresentationParams, compose_consonance_field_level_scan,
 };
 use conchordal::core::landscape::Landscape;
-use conchordal::core::log2space::Log2Space;
+use conchordal::core::log2space::{Log2Space, sample_scan_linear_log2};
 use conchordal::core::psycho_state::{h_pot_scan_to_h_state01_scan, r_pot_scan_to_r_state01_scan};
 
 /// F1: every `_scan` on a Landscape is aligned to the space's bins.
@@ -95,6 +94,45 @@ fn pot_to_state_scans_preserve_length() {
         c_level.iter().all(|v| (0.0..=1.0).contains(v)),
         "consonance_field_level must be bounded in [0,1]"
     );
+}
+
+/// F2: the generic Log2Space boundary check itself panics, in any profile.
+#[test]
+#[should_panic(expected = "scan length mismatch")]
+fn assert_scan_len_panics_on_short_scan() {
+    let space = Log2Space::new(55.0, 4000.0, 24);
+    space.assert_scan_len(&vec![0.0f32; space.n_bins() - 1]);
+}
+
+/// F2: the named variant names the offending scan.
+#[test]
+#[should_panic(expected = "scan length mismatch: probe_scan")]
+fn assert_scan_len_named_panics_on_long_scan() {
+    let space = Log2Space::new(55.0, 4000.0, 24);
+    space.assert_scan_len_named(&vec![0.0f32; space.n_bins() + 1], "probe_scan");
+}
+
+/// F2: sampling a misaligned scan panics instead of returning a sentinel, and
+/// the panic names the boundary it came from.
+#[test]
+#[should_panic(expected = "scan length mismatch: sample_scan_linear_log2")]
+fn sample_scan_linear_log2_panics_on_misaligned_scan() {
+    let space = Log2Space::new(55.0, 4000.0, 24);
+    let scan = vec![0.5f32; space.n_bins() / 2];
+    let _ = sample_scan_linear_log2(&space, &scan, 220.0);
+}
+
+/// Sampling an aligned scan still uses `NEG_INFINITY` as the out-of-space
+/// sentinel; only length mismatch was promoted to a panic.
+#[test]
+fn sample_scan_linear_log2_keeps_out_of_range_sentinel() {
+    let space = Log2Space::new(55.0, 4000.0, 24);
+    let scan = vec![0.5f32; space.n_bins()];
+    assert_eq!(
+        sample_scan_linear_log2(&space, &scan, 20.0),
+        f32::NEG_INFINITY
+    );
+    assert_eq!(sample_scan_linear_log2(&space, &scan, 220.0), 0.5);
 }
 
 /// F2: boundaries reject mismatched scans. `compose_consonance_field_level_scan`

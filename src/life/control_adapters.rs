@@ -1,5 +1,5 @@
 use crate::life::adaptation::AdaptationConfig;
-use crate::life::control::AdaptationControl;
+use crate::scenario::control::AdaptationControl;
 use crate::scenario::{
     DurationConfig, DurationSpec, OnsetConfig, PhonationClockConfig, PhonationConfig,
     PhonationMode, PhonationSpec, PhonationTiming, RhythmRole,

@@ -52,7 +52,6 @@ pub struct ResonatorBank {
     theta: Vec<f32>,
 }
 
-#[allow(dead_code)]
 impl ResonatorBank {
     /// Create a new bank with a fixed capacity.
     pub fn new(fs: f32, max_modes: usize) -> Result<Self, SynthError> {
@@ -92,22 +91,19 @@ impl ResonatorBank {
         })
     }
 
-    /// Sample rate in Hz.
-    pub fn fs(&self) -> f32 {
-        self.fs
-    }
-
     /// Maximum number of modes.
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
     /// Active number of modes.
+    #[cfg(test)]
     pub fn active_len(&self) -> usize {
         self.active_len
     }
 
     /// Reset all internal states to zero.
+    #[cfg(test)]
     pub fn reset_state(&mut self) {
         for v in &mut self.x {
             *v = 0.0;
@@ -131,6 +127,8 @@ impl ResonatorBank {
     }
 
     /// Set mode parameters and compile coefficients, resetting state to zero.
+    /// Runtime paths use `set_modes_preserve_state`; this stays for tests only.
+    #[cfg(test)]
     pub fn set_modes(&mut self, modes: &[ModeParams]) -> Result<(), SynthError> {
         if modes.len() > self.capacity {
             return Err(SynthError::TooManyModes {
@@ -186,7 +184,7 @@ impl ResonatorBank {
     }
 
     /// Reference scalar MCF update (no denormal flushing).
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn process_sample_ref(&mut self, u: f32) -> f32 {
         let mut out = 0.0;
         for i in 0..self.active_len {
@@ -212,6 +210,8 @@ impl ResonatorBank {
     }
 
     /// Scalar MCF update with unchecked indexing to remove bounds checks.
+    /// Reached only when the SIMD path is unavailable (see `process_sample`),
+    /// so it is dead in the default build but must keep compiling.
     #[allow(dead_code)]
     fn process_sample_magic_scalar_unsafe(&mut self, u: f32) -> f32 {
         let n = self.active_len;
@@ -375,6 +375,7 @@ impl ResonatorBank {
     }
 
     /// Process a mono block; input and output slices must be same length.
+    #[cfg(test)]
     pub fn process_block_mono(&mut self, input: &[f32], output: &mut [f32]) {
         assert_eq!(input.len(), output.len());
         for (u, y) in input.iter().copied().zip(output.iter_mut()) {

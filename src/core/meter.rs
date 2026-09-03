@@ -407,12 +407,9 @@ impl MeterNetwork {
         }
     }
 
+    #[cfg(test)]
     pub fn state(&self) -> MeterState {
         self.last
-    }
-
-    pub fn reset(&mut self) {
-        *self = Self::default();
     }
 }
 

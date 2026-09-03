@@ -3,7 +3,7 @@ use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::life::control::{PitchControl, PitchMode};
+use crate::scenario::control::{PitchControl, PitchMode};
 use rand::rngs::SmallRng;
 
 #[derive(Debug)]
@@ -191,8 +191,7 @@ impl PitchController {
                 neighbor_salience,
                 pitch.crowding_sigma_cents,
             );
-            let features = FeaturesNow::from_occupancy_scan(&self.occupancy_scan);
-            debug_assert_eq!(features.density.len(), landscape.space.n_bins());
+            let features = FeaturesNow::from_occupancy_scan(&landscape.space, &self.occupancy_scan);
             self.adaptation.ensure_len(features.density.len());
             let proposal = self.core.propose_target_with_crowding_salience(
                 current_pitch_log2,

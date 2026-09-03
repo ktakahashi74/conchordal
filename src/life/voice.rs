@@ -3,27 +3,29 @@ use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::dcc_coupler::ListenerPressure;
-use crate::life::control::{
-    BodyControl, BodyMethod, ControlUpdate, PhonationGate, PitchApplyMode, PitchMode, VoiceControl,
-};
 use crate::life::control_adapters::adaptation_config_from_control;
-use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, OnsetEvent, PhonationEngine, ToneCmd, ToneId, ToneOnEvent, ToneUpdate,
 };
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::{BodySnapshot, RenderModulatorSpec};
-use crate::scenario::{ArticulationCoreConfig, PhonationMode, PhonationTimingUpdateKind};
+use crate::scenario::control::{
+    BodyControl, BodyMethod, ControlUpdate, PhonationGate, PitchApplyMode, PitchMode, VoiceControl,
+};
+use crate::scenario::lifecycle::LifecycleConfig;
+use crate::scenario::{
+    ArticulationCoreConfig, PhonationMode, PhonationTimingUpdateKind, VoiceSpec,
+};
 use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
-pub mod articulation_core;
+pub(crate) mod articulation_core;
 #[path = "pitch_controller.rs"]
-pub mod pitch_controller;
+pub(crate) mod pitch_controller;
 #[path = "pitch_core.rs"]
-pub mod pitch_core;
+pub(crate) mod pitch_core;
 #[path = "sound_body.rs"]
-pub mod sound_body;
+pub(crate) mod sound_body;
 
 use self::pitch_core::approx_loo_pitch_score;
 pub use articulation_core::{
@@ -104,7 +106,7 @@ struct TrackedRenderNote {
 #[derive(Clone, Debug, Default)]
 pub struct PhonationBatch {
     pub source_id: u64,
-    pub routing: crate::life::control::Routing,
+    pub routing: crate::scenario::control::Routing,
     pub cmds: Vec<ToneCmd>,
     pub tones: Vec<ToneSpec>,
     pub onsets: Vec<OnsetEvent>,
@@ -1053,6 +1055,42 @@ impl Voice {
     }
 }
 
+// Spec -> Voice construction lives here so the IR layer (`scenario`) never
+// depends on the domain layer: life consumes the IR, not the reverse.
+impl VoiceSpec {
+    pub fn spawn(
+        &self,
+        assigned_id: u64,
+        start_frame: u64,
+        metadata: VoiceMetadata,
+        fs: f32,
+        seed_offset: u64,
+    ) -> Voice {
+        self.spawn_with_landscape(assigned_id, start_frame, metadata, fs, None, seed_offset)
+    }
+
+    pub fn spawn_with_landscape(
+        &self,
+        assigned_id: u64,
+        start_frame: u64,
+        metadata: VoiceMetadata,
+        fs: f32,
+        landscape: Option<&LandscapeFrame>,
+        seed_offset: u64,
+    ) -> Voice {
+        Voice::spawn_from_control(
+            self.control.clone(),
+            self.articulation.clone(),
+            assigned_id,
+            start_frame,
+            metadata,
+            fs,
+            landscape,
+            seed_offset,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1151,7 +1189,7 @@ mod tests {
     /// `ArticulationWrapper::consonance_viability_low()` returns `low` instead
     /// of the always-open (0.0) default.
     fn entrain_voice_with_viability_low(control: VoiceControl, low: f32) -> Voice {
-        let lifecycle = crate::life::lifecycle::LifecycleConfig::Sustain {
+        let lifecycle = crate::scenario::lifecycle::LifecycleConfig::Sustain {
             endurance_sec: Some(10.0),
             recovery_sec: None,
             attack_cost_fraction: None,

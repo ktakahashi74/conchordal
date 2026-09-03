@@ -17,14 +17,32 @@
     - `writer.rs`: Disk recording (WAV).
   - `synth/` (Synthesis engine):
     - Modal resonator bank and mode-table primitives (Hz/sec domain).
-  - `ui/` (UI and visualization):
-    - Egui views, plots, and visualization logic.
+  - `ui/` (Egui views and plots):
+    - `windows.rs` and `plots.rs` only. The frame types the worker publishes live in
+      `src/viewdata.rs`, not here.
   - `life/` (Voices and behaviors):
-    - Voice/Community models, temporal cores, fields, and scenario scripting.
+    - Voice/Community models, temporal cores, fields, and phonation.
+    - `community.rs` holds the hop-path core; the `community/` submodules split out
+      action dispatch (`actions.rs`), spawn-frequency choice (`frequency.rs`),
+      respawn/inheritance (`respawn.rs`), and the Kuramoto/social paths (`social.rs`).
+    - `voice.rs` owns the `#[path]` submodules `articulation_core.rs`,
+      `pitch_controller.rs`, `pitch_core.rs`, `sound_body.rs` (files stay flat
+      under `src/life/`).
   - `scripting/` (Rhai engine, API registration, generated docs).
   - `runtime/` (thread wiring, `worker_loop`, scenario execution).
+    - `wire_runtime(WiringOptions)` is the single wiring path shared by
+      `init_runtime` (GUI/headless) and `run_render` (offline).
+    - `worker_loop` owns `WorkerConfig` / `WorkerChannels` / `WorkerState` and
+      delegates one hop to `process_hop`, which calls the phase functions
+      (`wait_for_analysis`, `apply_landscape_updates`, `wait_for_listener`,
+      `advance_population`, `emit_hop_reports`, `render_and_route_audio`,
+      `drive_production_meter`, `log_guard_meter`, `send_runtime_ui_frame`).
   - `listener_twin/` (listener-side model).
-  - `scenario.rs` / `config.rs` / `dcc_coupler.rs`: scenario IR, TOML config, DCC coupling.
+  - `scenario.rs` + `scenario/control.rs` / `scenario/lifecycle.rs`: scenario IR,
+    voice control config, lifecycle config.
+  - `viewdata.rs`: worker -> UI snapshot contract (`UiFrame` and friends). It is
+    deliberately outside `ui/` so `runtime/` has no dependency on `ui/`.
+  - `config.rs` / `dcc_coupler.rs`: TOML config, DCC coupling.
   - `bin/`: `render.rs` (conchordal-render) and `gen_rhai_defs.rs`.
 - Entrypoints: `src/main.rs` (binary) and `src/app.rs` (GUI/Thread wiring).
 - `web/` (Zola site sources) lives at the repository root, not under `src/`.
@@ -78,15 +96,46 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 - **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.
 - **DSP Efficiency**: Prefer `f32`. Minimize allocations in the audio thread (`worker_loop`)
   and the cpal callback. Use `Vec::with_capacity` or pre-allocated ringbuffers.
-  This is a budget, not an absolute. `worker_loop` still allocates where a channel
-  handoff needs an owned buffer — for example the two audio `Arc<[f32]>` chunks per hop
-  (`src/runtime/mod.rs:1610-1611`, feeding the WAV and analysis channels) and the
-  terrain `Arc` on each analysis update (`:1412`). Prediction scans, UI snapshots and
-  report emission allocate too; this list is illustrative, not exhaustive. The rule is
-  "do not add allocations beyond what the handoff requires", not "zero allocations".
+  This is a budget, not an absolute. After the decomposition into `process_hop` + phase
+  functions, the runtime layer's own steady-state per-hop allocations are exactly these
+  five:
+  - the two audio `Arc<[f32]>` chunks in `render_and_route_audio`
+    (`src/runtime/mod.rs:1934-1935`), handed to the WAV, listener and analysis channels;
+  - the terrain `Arc` in `apply_landscape_updates` (`src/runtime/mod.rs:1669`), fed to
+    `GeneratorModel::observe_consonance_field_level`, and only when analysis or
+    landscape params actually changed;
+  - the UI snapshot built by `build_runtime_ui_frame` (`src/runtime/mod.rs:221`), reached
+    through `send_runtime_ui_frame` (`:2012`) and rate-limited by `UI_MIN_INTERVAL`;
+  - the report path (`emit_hop_reports`, `src/runtime/mod.rs:1781`), which early-returns
+    unless `--report` attached a reporter;
+  - the harmonicity projection in `drive_and_apply_habituation`
+    (`src/runtime/mod.rs:460`, `potential_h_from_log2_spectrum` returns an owned `Vec`),
+    which only runs when `[psychoacoustics.habituation]` is enabled (default off).
+  Two more sit off the steady-state path: the analysis-lag warning string in
+  `AudioMonitor::update` (`src/runtime/mod.rs:125`, at most once a second) and the space
+  clones in `merge_latest_analysis_results` (`src/runtime/mod.rs:382-384`, only on a
+  Log2Space reconfiguration). `idle_silence` (`src/runtime/mod.rs:1383`) is allocated
+  once before the loop, not per hop. The rule is "do not add allocations beyond what the
+  handoff requires", not "zero allocations".
+  Downstream of `runtime/`, the `life` layer allocates too, and that list is
+  representative rather than exhaustive — audit the call path, do not trust this
+  paragraph as a census. Known live examples: the prediction scan in
+  `TerrainPredictor::predict_consonance_field_level_at`
+  (`src/life/generator_model.rs:80`, once per theta gate because
+  `cache_pred_next_gate` memoizes the gate tick); the visit-order permutation in
+  `Community::advance_substep_sequential_current` (`src/life/community.rs:840`, once per
+  control substep); and `dying_ids` in `Community::apply_background_turnover`
+  (`src/life/community.rs:899`, which only reaches the heap when a death actually fires).
+  Where a hop path has already been made allocation-free it stays that way: the
+  `Community` / `Voice` / `PhonationEngine` paths reuse pre-allocated scratch buffers
+  (`Community::advance_scratch` / `gate_open_scratch` / `dead_id_scratch`,
+  `src/life/community.rs:103-107`; `scratch_candidates` / `scratch_merged` /
+  `scratch_grid` / `scratch_field`, `src/life/phonation_engine.rs:968-971`). Clear and
+  refill those instead of introducing a new `Vec` in a hop path.
   The analysis worker (`src/core/analysis_worker.rs`) runs on its own thread and is not
   bound by this rule; it allocates roughly 30 times per hop, dominated by the
-  `Landscape` snapshot it sends over the channel.
+  `Landscape` snapshot `AnalysisStream::process` clones
+  (`src/core/stream/analysis.rs:63`) and sends over the channel.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
 
 ## Anti-Bloat Rules
@@ -95,6 +144,15 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 - Do not add comments that only restate code; keep comments for intent/constraints only.
 - Inline helpers unless they are used in 3 or more places.
 - Prefer plain structs and existing types over new nominal wrapper types.
+- Keep the crate's external surface at what `tests/`, `src/bin/` and `examples/`
+  actually consume. Most submodules under `core/` and `life/` are `pub(crate)`
+  (see `src/core.rs`, `src/life/mod.rs`); `src/lib.rs`, `src/scenario.rs` and
+  `src/scripting/mod.rs` restrict their own submodules the same way. Widen a module or
+  item to `pub` only when an out-of-crate consumer needs it, and say which one.
+- Shared scalar helpers live in `src/core/float.rs` (`sanitize01`, `finite_or`,
+  `sanitize_nonnegative_finite`, `unit_gaussian`). Call them instead of respelling the
+  formula; the documented exception is `core::roughness_kernel`, whose Gaussian
+  spelling is pinned bit-exact by its own tests.
 
 ## Testing Policy
 - **Inline tests** (`#[cfg(test)] mod tests` in the same source file) are for module-internal logic and private APIs.
@@ -142,7 +200,9 @@ distinguishes nothing.
 Potential/representation is orthogonal to pred/perc. Real examples from the tree:
 - unprefixed kernel scans: `r_pot_scan`, `h_pot_scan`, `c_score_scan`,
   `c_level_scan`, `c_density_scan`, `c_energy_scan`
-- state views: `r_state01_scan`, `h_state01_scan` (`src/core/psycho_state.rs:80,93`)
+- state views: `r_state01_scan`, `h_state01_scan`, produced by
+  `r_pot_scan_to_r_state01_scan` / `h_pot_scan_to_h_state01_scan`
+  (`src/core/psycho_state.rs:61,74`)
 - prefixed, where both origins coexist: `pred_c_field_level_scan`,
   `perc_c_field_level_scan`, `perc_habituation_state_scan`
 
@@ -162,8 +222,9 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - Usage: hill-climb evaluation in `src/life/pitch_core.rs`.
 2. `consonance_field_level`
 - Definition: `sigmoid(beta*(score-theta))`.
-- Usage: base value. Consumed as the habituation drive (`src/runtime/mod.rs:450`) and as
-  the source for the eroded view. Behavior and the listener read variant 6, not this one.
+- Usage: base value. Consumed as the habituation drive in
+  `drive_and_apply_habituation` (`src/runtime/mod.rs:463`) and as the source for the
+  eroded view. Behavior and the listener read variant 6, not this one.
 3. `consonance_field_energy`
 - Definition: `-score`.
 - Usage: retained for minimization view and consistency checks.
@@ -180,11 +241,15 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   `SpawnStrategy::Field` (see the Rhai Spawn API section), not through this PMF.
 6. `consonance_field_score_eff` / `consonance_field_level_eff` / `consonance_density_mass_eff`
 - Definition: variants 1, 2 and 4 after habituation erosion is applied.
-- Implementation: `src/core/landscape.rs:99,101,103`; driven per hop from
-  `src/runtime/mod.rs` when `[psychoacoustics.habituation]` is enabled.
+- Implementation: fields at `src/core/landscape.rs:100,102,104`, written by
+  `Landscape::apply_habituation` (`src/core/landscape.rs:300`); driven per hop from
+  `apply_landscape_updates` (`src/runtime/mod.rs:1656`) when
+  `[psychoacoustics.habituation]` is enabled.
 - Usage split:
-  - Behavior, listener and spawn read the eroded views: `src/life/community.rs:32,37,68`,
-    `src/life/pitch_core.rs`, `src/listener_twin/mod.rs:182,188`.
+  - Behavior, listener and spawn read the eroded views:
+    `src/life/community/frequency.rs:16,21,52`, `src/life/pitch_core.rs` (through
+    `Landscape::evaluate_pitch_score_log2`, `src/core/landscape.rs:240`),
+    `src/listener_twin/mod.rs:181,187`.
   - UI and diagnostics read the base views (`src/ui/windows.rs:708,830`), so the display
     shows the un-eroded terrain.
 - With habituation disabled (the default) the `_eff` views equal their base variants
@@ -207,27 +272,31 @@ Other top-level sections exist and are defined in `src/config.rs`:
 `[audio]`, `[analysis]`, `[dcc]`, `[playback]`. They are not enumerated here —
 read `src/config.rs` for their keys and defaults.
 
-Note: `AppConfig` uses `#[serde(default)]` throughout, so a misspelled TOML key is
-silently ignored and the default is used. There is no unknown-key rejection.
+Note: every config struct carries `#[serde(deny_unknown_fields)]`, so a misspelled TOML
+key is a hard error rather than a silent fallback. `#[serde(default)]` still fills in
+*missing* keys. `AppConfig::load_or_default` (`src/config.rs:403`) returns
+`anyhow::Result`: an absent file still writes and returns defaults, but an existing file
+that is unreadable, malformed, or carries an unknown key fails the run.
 
 ## Rhai Spawn API
-Placement builders produce a `Placement` (defined in `src/scripting/mod.rs:941`,
+Placement builders produce a `Placement` (defined in `src/scripting/mod.rs:945`,
 registered in `src/scripting/engine.rs:749-817`), which lowers to `SpawnStrategy`
-in `src/scenario.rs:575`.
+in `src/scenario.rs:545`.
 
 - Range form `(lo, hi)`: `consonance` / `dissonance` / `edge` / `gap` / `random`
   build `SpawnStrategy::Field` with `FieldTarget::Consonance` / `Dissonance` /
-  `Edge` / `Gap` / `Uniform` respectively (`src/scenario.rs:551`).
+  `Edge` / `Gap` / `Uniform` respectively (`src/scenario.rs:521`).
 - `line(lo, hi)` builds `SpawnStrategy::Linear`.
 - `at(freq)` places at a fixed frequency.
 - `consonance(root)` also has a one-argument root form; `.range(min_mul, max_mul)`
   is the multiplier band around that root.
-- Modifiers: `.peak()` / `.density()` set `FieldSampling` (`src/scenario.rs:566`;
+- Modifiers: `.peak()` / `.density()` set `FieldSampling` (`src/scenario.rs:536`;
   `Density` is the default), `.tension(t)` sets the tension degree in `[0,1]`
   (Consonance target only), `.count(n)` sets the batch size, `.spacing(erb)` sets the
   minimum separation.
-- Spawn sampling is range-local in `Community` (`src/life/community.rs`): it builds
-  local masses with occupancy masks and normalizes in-range.
+- Spawn sampling is range-local in `Community::decide_frequency`
+  (`src/life/community/frequency.rs:116`): it builds local masses with occupancy masks
+  and normalizes in-range.
 - If range-local total mass is zero, fallback stays in-range and remains well-defined
   (unoccupied-uniform first, then full-range uniform if all occupied).
 
@@ -254,8 +323,19 @@ We represent frequency-direction terrains as **Log2Space-aligned scans**.
 ### Rules
 - **F1**: Any vector suffixed with `_scan` MUST be aligned to Log2Space bins:
   `scan.len() == space.n_bins()`.
-- **F2**: Any function that accepts/returns a `_scan` MUST assert the invariant at boundaries
-  (debug_assert is acceptable; tests must cover it).
+- **F2**: Any function that accepts/returns a `_scan` MUST assert the invariant at boundaries.
+  The O(1) length comparison is a hard `assert`, live in release as well as debug:
+  call `Log2Space::assert_scan_len_named` (`src/core/log2space.rs:58`) so the panic
+  identifies the offending scan. (A bare `assert_scan_len` also exists,
+  `src/core/log2space.rs:53`, but it has no production callers — do not reach for it.)
+  Never return a sentinel for a length mismatch — it is a
+  programming error, not a runtime condition (`sample_scan_linear_log2`,
+  `src/core/log2space.rs:167`, panics rather than yielding `NEG_INFINITY`).
+  Per-element and per-bin checks stay `debug_assert`. A hop-path function that can
+  degrade instead of aborting the performance may keep a `debug_assert` plus a graceful
+  fallback, but it must say so: see `exact_loo_consonance_score_scan`
+  (`src/life/pitch_core.rs:1033`), which falls back to the approximate score.
+  Tests must cover every boundary (`tests/log2space_scan_invariants.rs`).
 - **F3**: Hz / ERB (or other psychoacoustic coordinates) are allowed as internal representations
   (e.g. oscillators, note events, intermediate grids), but any exposed terrain field is converted to
   Log2Space bins.

@@ -4,8 +4,6 @@ use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::community::Community;
 use crate::life::conductor::Conductor;
-use crate::life::control::{ControlUpdate, PitchApplyMode, PitchMode, VoiceControl};
-use crate::life::lifecycle::LifecycleConfig;
 use crate::life::phonation_engine::{
     CandidatePoint, OnsetKick, OnsetRule, PhonationClock, ToneCmd,
 };
@@ -14,6 +12,8 @@ use crate::life::voice::{
     AnyArticulationCore, ArticulationCore, ArticulationWrapper, PhonationBatch, SoundBody, Voice,
     VoiceMetadata,
 };
+use crate::scenario::control::{ControlUpdate, PitchApplyMode, PitchMode, VoiceControl};
+use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{
     Action, ArticulationCoreConfig, DurationSpec, EnvelopeConfig, PhonationSpec, PhonationTiming,
     Scenario, TimedEvent, VoiceSpec,
@@ -160,6 +160,61 @@ fn conductor_dispatches_finish_on_time() {
         &mut pop,
     );
     assert!(pop.abort_requested);
+}
+
+#[test]
+fn conductor_keeps_future_events_queued_in_order() {
+    let scenario = Scenario {
+        seed: 0,
+        control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
+        scaffold: crate::scenario::ScaffoldConfig::Off,
+        meter_shaping: crate::core::meter::MeterShaping::default(),
+        scene_markers: Vec::new(),
+        events: vec![
+            TimedEvent {
+                time: 1.5,
+                order: 2,
+                actions: vec![Action::Finish],
+            },
+            TimedEvent {
+                time: 0.5,
+                order: 1,
+                actions: vec![Action::ReleasePopulation {
+                    population_id: 1,
+                    fade_sec: 0.01,
+                }],
+            },
+        ],
+        duration_sec: 2.0,
+    };
+
+    let mut conductor = Conductor::from_scenario(scenario);
+    let mut pop = Community::new(test_timebase());
+    let landscape = LandscapeFrame::default();
+
+    conductor.dispatch_until(
+        1.0,
+        0,
+        &landscape,
+        None::<&mut crate::core::stream::analysis::AnalysisStream>,
+        &mut pop,
+    );
+    assert_eq!(
+        conductor.remaining_events(),
+        1,
+        "the t=1.5 event must stay queued"
+    );
+    assert!(!pop.abort_requested);
+
+    conductor.dispatch_until(
+        2.0,
+        100,
+        &landscape,
+        None::<&mut crate::core::stream::analysis::AnalysisStream>,
+        &mut pop,
+    );
+    assert!(pop.abort_requested);
+    assert!(conductor.is_done());
 }
 
 #[test]

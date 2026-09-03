@@ -1,8 +1,10 @@
-use crate::life::metabolism_policy::{
-    DEFAULT_ATTACK_COST_FRACTION, DEFAULT_ATTACK_RECHARGE_FRACTION,
-};
 use crate::scenario::EnvelopeConfig;
 use std::fmt;
+
+// Defaults that define the meaning of the unset `Option` fields in
+// `LifecycleConfig::Sustain`; the metabolism policy resolves against them.
+pub const DEFAULT_ATTACK_COST_FRACTION: f32 = 0.02;
+pub const DEFAULT_ATTACK_RECHARGE_FRACTION: f32 = 0.5;
 
 #[derive(Debug, Clone)]
 pub enum LifecycleConfig {

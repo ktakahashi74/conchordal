@@ -1,9 +1,11 @@
 use crate::core::nsgt_kernel::KernelAlign;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AudioConfig {
     #[serde(default = "AudioConfig::default_latency_ms")]
     pub latency_ms: f32,
@@ -42,6 +44,7 @@ pub enum LimiterSetting {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AnalysisConfig {
     #[serde(default = "AnalysisConfig::default_nfft")]
     pub nfft: usize,
@@ -82,6 +85,7 @@ impl Default for AnalysisConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConsonanceKernelConfig {
     #[serde(default = "ConsonanceKernelConfig::default_a")]
     pub a: f32,
@@ -120,6 +124,7 @@ impl Default for ConsonanceKernelConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConsonanceLevelConfig {
     #[serde(default = "ConsonanceLevelConfig::default_beta")]
     pub beta: f32,
@@ -146,6 +151,7 @@ impl Default for ConsonanceLevelConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ConsonanceFieldConfig {
     #[serde(default)]
     pub kernel: ConsonanceKernelConfig,
@@ -154,6 +160,7 @@ pub struct ConsonanceFieldConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConsonanceDensityConfig {
     /// rho in density kernel H * (1 - rho * R). Used to absorb roughness scale arbitrariness.
     #[serde(default = "ConsonanceDensityConfig::default_roughness_gain")]
@@ -175,6 +182,7 @@ impl Default for ConsonanceDensityConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HabituationConfig {
     #[serde(default = "HabituationConfig::default_enabled")]
     pub enabled: bool,
@@ -213,6 +221,7 @@ impl Default for HabituationConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ConsonanceConfig {
     #[serde(default)]
     pub field: ConsonanceFieldConfig,
@@ -221,6 +230,7 @@ pub struct ConsonanceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PsychoAcousticsConfig {
     #[serde(default = "PsychoAcousticsConfig::default_loudness_exp")]
     pub loudness_exp: f32,
@@ -259,6 +269,7 @@ impl Default for PsychoAcousticsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AppConfig {
     #[serde(default)]
     pub audio: AudioConfig,
@@ -273,6 +284,7 @@ pub struct AppConfig {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DccConfig {
     #[serde(default = "DccConfig::default_coupling_strength")]
     pub coupling_strength: f32,
@@ -300,6 +312,7 @@ impl Default for DccConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PlaybackConfig {
     #[serde(default = "PlaybackConfig::default_wait_user_exit")]
     pub wait_user_exit: bool,
@@ -384,24 +397,18 @@ impl AppConfig {
         self
     }
 
-    pub fn load_or_default(path: &str) -> Self {
+    /// Loads `path`, or writes and returns defaults when the file is absent.
+    /// An existing but unreadable or malformed file (including unknown keys)
+    /// is a hard error: a mistyped key must not silently fall back to a default.
+    pub fn load_or_default(path: &str) -> Result<Self> {
         let path_obj = Path::new(path);
         if path_obj.exists() {
-            match fs::read_to_string(path_obj) {
-                Ok(contents) => match toml::from_str::<Self>(&contents) {
-                    Ok(mut cfg) => {
-                        cfg.round_f32_inplace();
-                        return cfg;
-                    }
-                    Err(err) => {
-                        eprintln!("Failed to parse config {path}: {err}. Using defaults.");
-                    }
-                },
-                Err(err) => {
-                    eprintln!("Failed to read config {path}: {err}. Using defaults.");
-                }
-            }
-            return Self::default();
+            let contents = fs::read_to_string(path_obj)
+                .with_context(|| format!("failed to read config file '{path}'"))?;
+            let mut cfg: Self = toml::from_str(&contents)
+                .with_context(|| format!("failed to parse config file '{path}'"))?;
+            cfg.round_f32_inplace();
+            return Ok(cfg);
         }
 
         // File does not exist: write defaults and return them.
@@ -444,7 +451,7 @@ impl AppConfig {
         } else {
             eprintln!("Failed to serialize default config; continuing with defaults");
         }
-        default_cfg
+        Ok(default_cfg)
     }
 }
 
@@ -473,7 +480,7 @@ mod tests {
         // Ensure clean slate
         let _ = fs::remove_file(&path);
 
-        let cfg = AppConfig::load_or_default(&path_str);
+        let cfg = AppConfig::load_or_default(&path_str).expect("write and load defaults");
         assert!(path.exists(), "config file should be created");
         assert_eq!(cfg.audio.latency_ms, 50.0);
         assert_eq!(cfg.audio.sample_rate, 48_000);
@@ -516,6 +523,9 @@ mod tests {
             contents.contains("# coupling_strength = 0.0"),
             "should write commented dcc.coupling_strength"
         );
+
+        // Written defaults must survive a reload under deny_unknown_fields.
+        AppConfig::load_or_default(&path_str).expect("written defaults must reload");
 
         let _ = fs::remove_file(&path);
     }
@@ -571,7 +581,7 @@ mod tests {
         let text = toml::to_string_pretty(&custom).unwrap();
         fs::write(&path, text).unwrap();
 
-        let cfg = AppConfig::load_or_default(&path_str);
+        let cfg = AppConfig::load_or_default(&path_str).expect("load existing config");
         assert_eq!(cfg.audio.latency_ms, 75.0);
         assert_eq!(cfg.audio.sample_rate, 44_100);
         assert_eq!(cfg.audio.limiter, LimiterSetting::SoftClip);
@@ -594,6 +604,71 @@ mod tests {
         assert!(cfg.playback.wait_user_start);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rejects_unknown_top_level_key() {
+        let path = unique_path("unknown_top.toml");
+        let path_str = path.to_string_lossy().to_string();
+        fs::write(&path, "[features]\nmulti_agent = true\n").unwrap();
+
+        let err = AppConfig::load_or_default(&path_str).expect_err("unknown section must fail");
+        let msg = format!("{err:#}");
+        assert!(msg.contains(&path_str), "error must name the file: {msg}");
+        assert!(
+            msg.contains("unknown field `features`"),
+            "error must name the offending key: {msg}"
+        );
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rejects_unknown_nested_key() {
+        let path = unique_path("unknown_nested.toml");
+        let path_str = path.to_string_lossy().to_string();
+        fs::write(&path, "[audio]\nlatency_msec = 30.0\n").unwrap();
+
+        let err = AppConfig::load_or_default(&path_str).expect_err("mistyped key must fail");
+        let msg = format!("{err:#}");
+        assert!(msg.contains(&path_str), "error must name the file: {msg}");
+        assert!(
+            msg.contains("unknown field `latency_msec`"),
+            "error must name the offending key: {msg}"
+        );
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn missing_keys_fall_back_to_defaults() {
+        let path = unique_path("partial.toml");
+        let path_str = path.to_string_lossy().to_string();
+        fs::write(&path, "[audio]\nsample_rate = 44100\n").unwrap();
+
+        let cfg = AppConfig::load_or_default(&path_str).expect("partial config must load");
+        assert_eq!(cfg.audio.sample_rate, 44_100);
+        assert_eq!(cfg.audio.latency_ms, AudioConfig::default_latency_ms());
+        assert_eq!(cfg.audio.limiter, LimiterSetting::default());
+        assert_eq!(cfg.analysis.nfft, AnalysisConfig::default_nfft());
+        assert_eq!(
+            cfg.psychoacoustics.loudness_exp,
+            PsychoAcousticsConfig::default_loudness_exp()
+        );
+        assert!(cfg.playback.wait_user_exit);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn repo_config_toml_has_no_unknown_keys() {
+        // config.toml is gitignored, so a fresh checkout may not have one.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config.toml");
+        if !path.exists() {
+            return;
+        }
+        let contents = fs::read_to_string(&path).expect("read repo config.toml");
+        toml::from_str::<AppConfig>(&contents).expect("repo config.toml must have no unknown keys");
     }
 
     #[test]

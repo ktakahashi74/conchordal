@@ -32,14 +32,6 @@ pub struct KernelParams {
     pub w_neural: f32,
 }
 
-/// Crowding reach scale: how many times further than the roughness peak
-/// the crowding kernel extends.  At scale=1.0 crowding is the exact
-/// complement of the roughness kernel (half-power ≈ 0.24 st).
-/// The default 2.0 widens this to ≈ 0.48 st, bridging the zone where
-/// roughness exists but its landscape gradient is too flat for effective
-/// agent dispersal.
-const CROWDING_REACH_FACTOR: f32 = 2.1;
-
 impl Default for KernelParams {
     fn default() -> Self {
         Self {
@@ -116,41 +108,6 @@ fn eval_kernel_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
     let g_coch = base * suppress.powf(suppress_pow);
     let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
     (1.0 - w_neural) * g_coch + w_neural * g_neural
-}
-
-/// Runtime crowding profile used for behavior-side anti-unison pressure.
-///
-/// Shape is the analytic complement of the roughness kernel:
-///   crowding(d) = 1 − R(d/scale) / R_peak
-/// where R is the full roughness kernel (including suppress dip) and
-/// scale = [`CROWDING_REACH_FACTOR`].  This ensures a smooth, parameter-free
-/// handoff: crowding dominates where roughness is weak (near unison) and
-/// vanishes where roughness is strong (at the Sethares peak).
-///
-/// The transition at d = scale × peak_erb is C¹-smooth because
-/// R′(peak) ≈ 0.
-#[inline]
-pub fn crowding_runtime_delta_erb(params: &KernelParams, d_erb: f32) -> f32 {
-    if !d_erb.is_finite() {
-        return 0.0;
-    }
-    let (_, b, c, kappa_erb) = sethares_shape_params(params);
-    let denom = (c - b).max(1e-6);
-    let ratio = (c / b).max(1.0 + 1e-6);
-    let peak_erb = (ratio.ln() / denom * kappa_erb).max(params.suppress_sigma_erb.max(1e-6));
-
-    let d = d_erb.abs();
-    let scaled_peak = peak_erb * CROWDING_REACH_FACTOR;
-    if d >= scaled_peak {
-        return 0.0;
-    }
-
-    let r_at_compressed = eval_kernel_delta_erb(params, d / CROWDING_REACH_FACTOR);
-    let r_peak = eval_kernel_delta_erb(params, peak_erb);
-    if r_peak <= 1e-12 {
-        return 0.0;
-    }
-    (1.0 - r_at_compressed / r_peak).clamp(0.0, 1.0)
 }
 
 fn build_kernel_erbstep(params: &KernelParams, erb_step: f32) -> (Vec<f32>, usize) {
@@ -522,56 +479,6 @@ mod tests {
         assert!(
             rel_err < 1e-7,
             "Sethares family mismatch: base={base}, explicit={explicit}, rel_err={rel_err}"
-        );
-    }
-
-    #[test]
-    fn runtime_crowding_stays_strong_through_peak_then_drops_fast() {
-        let p = KernelParams::default();
-        let (_gain, b, c, kappa_erb) = sethares_shape_params(&p);
-        let peak_erb =
-            ((c / b).ln() / (c - b).max(1e-6) * kappa_erb).max(p.suppress_sigma_erb.max(1e-6));
-        let near_peak = crowding_runtime_delta_erb(&p, peak_erb);
-        let at_cutoff = crowding_runtime_delta_erb(&p, peak_erb * CROWDING_REACH_FACTOR);
-        // With the roughness-complement shape, crowding at the roughness
-        // peak is ~0.37 (significant bridging), and zero at the cutoff.
-        assert!(
-            (0.25..=0.50).contains(&near_peak),
-            "crowding near roughness peak should bridge roughness gap (got {near_peak})"
-        );
-        assert!(
-            at_cutoff < 1e-6,
-            "crowding should be zero at reach-factor cutoff (got {at_cutoff})"
-        );
-    }
-
-    #[test]
-    fn runtime_crowding_keeps_combined_profile_open_around_peak_band() {
-        let p = KernelParams::default();
-        let (_gain, b, c, kappa_erb) = sethares_shape_params(&p);
-        let peak_erb =
-            ((c / b).ln() / (c - b).max(1e-6) * kappa_erb).max(p.suppress_sigma_erb.max(1e-6));
-        let band_max = peak_erb * 1.05;
-        let step = 0.0025f32;
-
-        let mut no_dip_peak = 0.0f32;
-        for i in 0..=((band_max / step).ceil() as usize) {
-            let d = i as f32 * step;
-            let no_dip = eval_kernel_base_no_dip(&p, d);
-            no_dip_peak = no_dip_peak.max(no_dip);
-        }
-
-        let mut band_min = f32::INFINITY;
-        for i in -((band_max / step).ceil() as i32)..=((band_max / step).ceil() as i32) {
-            let d = i as f32 * step;
-            let combined = eval_kernel_delta_erb(&p, d) + crowding_runtime_delta_erb(&p, d);
-            band_min = band_min.min(combined);
-        }
-
-        let floor = 0.08 * no_dip_peak.max(1e-6);
-        assert!(
-            band_min >= floor,
-            "combined roughness+crowding should not open a gap near the roughness peak band (band_min={band_min}, floor={floor})"
         );
     }
 
@@ -1099,123 +1006,6 @@ mod tests {
             .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], RED));
         chart.configure_series_labels().border_style(BLACK).draw()?;
         root.present()?;
-        Ok(())
-    }
-
-    #[test]
-    #[cfg(feature = "plotcheck")]
-    fn plot_roughness_plus_crowding_matches_no_dip() -> Result<(), Box<dyn std::error::Error>> {
-        ensure_plots_dir()?;
-        let params = KernelParams::default();
-        let erb_step = 0.005;
-        let hw = (params.half_width_erb / erb_step).ceil() as i32;
-        let d_erb: Vec<f32> = (-hw..=hw).map(|i| i as f32 * erb_step).collect();
-
-        let sig_n = params.sigma_neural_erb.max(1e-6);
-
-        let mut roughness_with_dip = Vec::with_capacity(d_erb.len());
-        let mut crowding_runtime = Vec::with_capacity(d_erb.len());
-        let mut roughness_no_dip = Vec::with_capacity(d_erb.len());
-        let mut sum_runtime = Vec::with_capacity(d_erb.len());
-        let mut abs_err_runtime = Vec::with_capacity(d_erb.len());
-
-        for &d in &d_erb {
-            let desq = d * d;
-            let base = eval_kernel_base_no_dip(&params, d);
-            let g_neural = (-desq / (2.0 * sig_n * sig_n)).exp();
-
-            let dipped = eval_kernel_delta_erb(&params, d);
-            let no_dip = (1.0 - params.w_neural) * base + params.w_neural * g_neural;
-            let runtime = crowding_runtime_delta_erb(&params, d);
-            let summed_runtime = dipped + runtime;
-
-            roughness_with_dip.push(dipped);
-            crowding_runtime.push(runtime);
-            roughness_no_dip.push(no_dip);
-            sum_runtime.push(summed_runtime);
-            abs_err_runtime.push((summed_runtime - no_dip).abs());
-        }
-
-        let mae_runtime = abs_err_runtime.iter().sum::<f32>() / abs_err_runtime.len().max(1) as f32;
-        let max_err_runtime = abs_err_runtime.iter().copied().fold(0.0f32, f32::max);
-        let mid = d_erb.len() / 2;
-        assert!(
-            sum_runtime[mid] > roughness_with_dip[mid] + 1e-6,
-            "runtime crowding should raise the center around ΔERB=0"
-        );
-
-        let y_max = roughness_no_dip
-            .iter()
-            .copied()
-            .fold(0.0f32, f32::max)
-            .max(sum_runtime.iter().copied().fold(0.0f32, f32::max))
-            * 1.1;
-        let out_path = "target/plots/it_roughness_plus_crowding_matches_no_dip.png";
-        let root = BitMapBackend::new(out_path, (1600, 1000)).into_drawing_area();
-        root.fill(&WHITE)?;
-        let mut chart = ChartBuilder::on(&root)
-            .caption(
-                format!(
-                    "Roughness + Runtime Crowding (runtime_mae={:.4}, runtime_max={:.4})",
-                    mae_runtime, max_err_runtime
-                ),
-                ("sans-serif", 30),
-            )
-            .margin(10)
-            .build_cartesian_2d(d_erb[0]..d_erb[d_erb.len() - 1], 0.0f32..y_max.max(1e-6))
-            .unwrap();
-
-        chart
-            .configure_mesh()
-            .x_desc("ΔERB")
-            .y_desc("Amplitude")
-            .draw()?;
-        chart
-            .draw_series(LineSeries::new(
-                d_erb
-                    .iter()
-                    .zip(roughness_with_dip.iter())
-                    .map(|(&x, &y)| (x, y)),
-                &BLUE,
-            ))?
-            .label("roughness (with dip)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLUE));
-        chart
-            .draw_series(LineSeries::new(
-                d_erb
-                    .iter()
-                    .zip(crowding_runtime.iter())
-                    .map(|(&x, &y)| (x, y)),
-                &GREEN,
-            ))?
-            .label("crowding (runtime)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], GREEN));
-        chart
-            .draw_series(DashedLineSeries::new(
-                d_erb.iter().zip(sum_runtime.iter()).map(|(&x, &y)| (x, y)),
-                8,
-                8,
-                ShapeStyle {
-                    color: RED.mix(1.0),
-                    filled: false,
-                    stroke_width: 2,
-                },
-            ))?
-            .label("roughness + runtime crowding (reference)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], RED));
-        chart
-            .draw_series(LineSeries::new(
-                d_erb
-                    .iter()
-                    .zip(roughness_no_dip.iter())
-                    .map(|(&x, &y)| (x, y)),
-                &BLACK,
-            ))?
-            .label("roughness (no dip)")
-            .legend(|(x, y)| PathElement::new([(x, y), (x + 20, y)], BLACK));
-        chart.configure_series_labels().border_style(BLACK).draw()?;
-        root.present()?;
-        assert!(std::path::Path::new(out_path).exists());
         Ok(())
     }
 

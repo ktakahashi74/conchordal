@@ -1,5 +1,5 @@
-use crate::life::control::{DEFAULT_TIMBRE_SPREAD, DEFAULT_TIMBRE_UNISON, MAX_TIMBRE_UNISON};
 use crate::life::sound::modal_engine::ModalMode;
+use crate::scenario::control::{DEFAULT_TIMBRE_SPREAD, DEFAULT_TIMBRE_UNISON, MAX_TIMBRE_UNISON};
 
 pub(crate) fn modal_tilt_from_brightness(brightness: f32) -> f32 {
     brightness.clamp(0.0, 1.0)

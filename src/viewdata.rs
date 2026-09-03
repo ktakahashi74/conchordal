@@ -46,8 +46,6 @@ pub struct VoiceStateInfo {
     pub freq_hz: f32,
     pub target_freq: f32,
     pub integration_window: f32,
-    #[allow(dead_code)]
-    pub breath_gain: f32,
     pub consonance: f32,
 }
 

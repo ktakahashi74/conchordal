@@ -17,20 +17,8 @@ let field_anchor = harmonic()
     .sustain_drive(0.0015)
     .adsr(0.7, 1.3, 0.96, 2.6);
 
-// The heartbeat: a strongly-locked accent on the root that drives the shared
-// meter hard, so a deep beat attractor forms for everything else to lock onto.
-let metric_body = harmonic()
-    .amp(0.045)
-    .metric()
-    .rhythm_role("accent")
-    .cycles(2)
-    .anchor()
-    .modes(odd_modes().count(5))
-    .brightness(0.32)
-    .adsr(0.010, 0.170, 0.52, 0.32);
-
-// The living colony: fires on the shared pulse grid, climbs toward consonance,
-// and survives the dissonant peak through consonance-biased respawn.
+// The colony drives the shared meter with its own onsets, climbs toward
+// consonance, and survives the strain through consonance-biased respawn.
 let consonance_colony = harmonic()
     .amp(0.038)
     .metric()
@@ -70,32 +58,25 @@ section("emergence and resolution", || {
     let root = place(field_anchor, at(root_hz).count(1));
     wait(2.3);
 
-    // II. Pulse: the heartbeat enters alone over the ground.
-    let pulse = place(metric_body, at(root_hz).count(1));
-    wait(3.7);
-
-    // III. The colony: it fires on the shared pulse grid and climbs toward
-    // consonance.
+    // II. The colony: its own onsets provide the rhythmic input.
     let colony = place(consonance_colony, consonance(80.0, 900.0).count(8).spacing(0.84));
     wait(9.4);
 
-    // IV. Tension peak: the search heats up so the colony grows restless and
+    // III. Tension peak: the search heats up so the colony grows restless and
     // strays off consonance; the register lifts and flow shimmers over it.
     colony.temperature(0.85);
     root.freq(root_hz * 1.5);
-    pulse.freq(root_hz * 1.5);
     colony.amp(0.034);
     wait(3.3);
     let flow = place(flow_particles, consonance(200.0, 1500.0).count(9).spacing(0.66));
     wait(5.3);
 
-    // V. Resolution: cool the search and enable glide while the reference returns.
+    // IV. Resolution: cool the search and enable glide while the reference returns.
     colony.temperature(0.0);
     flow.amp(0.014);
     colony.pitch_apply_mode("glide");
     colony.glide(0.22);
     root.freq(root_hz);
-    pulse.freq(root_hz);
     wait(3.3);
     release(flow);
     wait(1.3);
@@ -103,8 +84,6 @@ section("emergence and resolution", || {
     wait(5.3);
     release(colony);
     wait(2.0);
-    release(pulse);
-    wait(1.3);
     release(root);
     wait(4.0);
 });

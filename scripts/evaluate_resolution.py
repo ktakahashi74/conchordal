@@ -21,36 +21,34 @@ import evaluate_beta as beta
 
 FACTORS = {
     "temperature": ("    colony.temperature(0.85);\n", "    colony.temperature(0.0);\n"),
-    "pitch_shift": ("    root.freq(root_hz * 1.5);\n", "    pulse.freq(root_hz * 1.5);\n",
-                    "    root.freq(root_hz);\n", "    pulse.freq(root_hz);\n"),
+    "pitch_shift": ("    root.freq(root_hz * 1.5);\n", "    root.freq(root_hz);\n"),
     "flow": ("    let flow = place(flow_particles, consonance(200.0, 1500.0).count(9).spacing(0.66));\n",
              "    flow.amp(0.014);\n", "    release(flow);\n"),
 }
 COMMON_PLACEMENTS = (
     "    let root = place(field_anchor, at(root_hz).count(1));\n",
-    "    let pulse = place(metric_body, at(root_hz).count(1));\n",
     "    let colony = place(consonance_colony, consonance(80.0, 900.0).count(8).spacing(0.84));\n",
 )
-RESERVE_RUNTIME_IDS_THROUGH = 19
-FLOW_START_SEC = 18.7
+RESERVE_RUNTIME_IDS_THROUGH = 18
+COLONY_POPULATION_ID = 2
+FLOW_START_SEC = 15.0
 STATE_RECORDS = {"spawn", "respawn", "death", "onset", "population_step", "rhythm_observation",
                  "listener_state", "dcc_pressure", "habituation", "phonation_gate_open"}
-WAIT_SEQUENCE = ["2.3", "3.7", "9.4", "3.3", "5.3", "3.3", "1.3", "5.3", "2.0", "1.3", "4.0"]
+WAIT_SEQUENCE = ["2.3", "9.4", "3.3", "5.3", "3.3", "1.3", "5.3", "2.0", "4.0"]
 OPERATION_WAIT_COUNTS = [
-    *zip(COMMON_PLACEMENTS, (0, 1, 2)),
-    *zip(FACTORS["temperature"], (3, 5)),
-    *zip(FACTORS["pitch_shift"], (3, 3, 5, 5)),
-    *zip(FACTORS["flow"], (4, 5, 6)),
-    ("    colony.amp(0.034);\n", 3),
-    ('    colony.pitch_apply_mode("glide");\n', 5),
-    ("    colony.glide(0.22);\n", 5),
-    ("    colony.amp(0.028);\n", 7),
-    ("    release(colony);\n", 8),
-    ("    release(pulse);\n", 9),
-    ("    release(root);\n", 10),
+    *zip(COMMON_PLACEMENTS, (0, 1)),
+    *zip(FACTORS["temperature"], (2, 4)),
+    *zip(FACTORS["pitch_shift"], (2, 4)),
+    *zip(FACTORS["flow"], (3, 4, 5)),
+    ("    colony.amp(0.034);\n", 2),
+    ('    colony.pitch_apply_mode("glide");\n', 4),
+    ("    colony.glide(0.22);\n", 4),
+    ("    colony.amp(0.028);\n", 6),
+    ("    release(colony);\n", 7),
+    ("    release(root);\n", 8),
 ]
-WINDOWS = {"baseline": (6.0, 15.4), "tension": (18.7, 24.0),
-           "early_resolution": (24.0, 27.3), "late_resolution": (28.6, 33.9)}
+WINDOWS = {"baseline": (2.3, 11.7), "tension": (15.0, 20.3),
+           "early_resolution": (20.3, 23.6), "late_resolution": (24.9, 30.2)}
 LISTENER_FIELDS = ["tension_level", "stability_level", "resolvability_level", "attention_level", "beat_confidence"]
 MEASURES = [f"listener_{key}_mean" for key in LISTENER_FIELDS] + [
     "audio_rms", "audio_peak", "audio_silence_fraction", "colony_alive_count_mean",
@@ -63,9 +61,9 @@ def variant_source(source, factors):
         for fragment in fragments:
             if source.count(fragment) != 1:
                 raise ValueError(f"sample 12 drift: expected exactly one {fragment.strip()!r}")
-    # The ID reservation is tied to these four placements: 1 + 1 + 8 + 9.
+    # The ID reservation is tied to these three placements: 1 + 8 + 9.
     if (any(source.count(fragment) != 1 for fragment in COMMON_PLACEMENTS)
-            or len(re.findall(r"\bplace\s*\(", source)) != 4):
+            or len(re.findall(r"\bplace\s*\(", source)) != 3):
         raise ValueError("sample 12 placements changed; review the runtime ID reservation")
     waits = re.findall(r"(?m)^\s*wait\(([^)]+)\);$", source)
     if waits != WAIT_SEQUENCE:
@@ -88,7 +86,7 @@ def mean(values):
 def window_metrics(listener, population, wav_path, label):
     lo, hi = WINDOWS[label]
     listener = [r for r in listener if lo <= r["time_sec"] < hi]
-    population = [r for r in population if r["population_id"] == 3 and lo <= r["time_sec"] < hi]
+    population = [r for r in population if r["population_id"] == COLONY_POPULATION_ID and lo <= r["time_sec"] < hi]
     if not listener or not population:
         raise ValueError(f"{label}: missing listener or colony observations")
     alive = [r for r in population if r["alive_count"] > 0]
@@ -235,9 +233,9 @@ def aggregate(output, variants, seeds):
         "variantは温度・音高移動・flowの順にON=1/OFF=0を並べた値です。111が原本の対照条件です。"
         "OFFでは対象操作だけを削除し、wait、colonyのamp/glide、その他の操作を維持しています。"
         "`manifest.json` に要因値、生成元と各scriptのSHA256を保存しています。"
-        "全variantでVoice ID 1〜19を予約し、flow登場前[0,18.7)秒のPCMと決定的な状態記録の一致を"
+        f"全variantでVoice ID 1〜{RESERVE_RUNTIME_IDS_THROUGH}を予約し、flow登場前[0,{FLOW_START_SEC:g})秒のPCMと決定的な状態記録の一致を"
         "`flow_pre_intervention.json` で検査します。不一致や欠落はcampaign失敗です。\n\n"
-        "`resolution_windows.csv/json` は4つの共通操作窓の平均、PCM音声、population 3の状態を保持します。"
+        f"`resolution_windows.csv/json` は4つの共通操作窓の平均、PCM音声、population {COLONY_POPULATION_ID}の状態を保持します。"
         "mean_freqとmean_c_field_levelはalive_count>0の標本のみ、alive_count平均は0も含みます。"
         "窓は脚本操作時刻であり、知覚的な相とは未確認です。ListenerTwinは解析遅延を含みます。\n\n"
         "`resolution_effects.csv/json` は各seedでearly_resolution−tensionを計算し、さらに同seedの111との差を記録します。"
@@ -245,7 +243,8 @@ def aggregate(output, variants, seeds):
         "比較対象はこの実装に対する脚本操作の効果です。内部指標の変化を人の知覚への因果効果と同一視しません。"
         "介入前のID予約を揃えても、flow登場後は集団構成・配置抽選・相互作用が変わります。"
         "これはflow集団を加える効果の比較であり、flow音だけの効果や介入後も完全な共通乱数の対照ではありません。"
-        "全ONと既存baseline-r2のWAV一致は別途確認が必要です。\n\n"
+        "現行sampleには専用の拍打ちVoiceがありません。旧baseline-r2やpulseあり版とは構成と時刻が異なるため、"
+        "そのWAVや操作窓を現行版の結果として扱いません。\n\n"
         "[試聴ページ](index.html) / [共通測定条件](README.md) / [窓CSV](resolution_windows.csv) / "
         "[対応差CSV](resolution_effects.csv) / [介入前の一致](flow_pre_intervention.json)\n", encoding="utf-8")
     return failures
@@ -292,7 +291,8 @@ def main(argv=None):
             "source_sample": str(source_path), "source_sha256": source_sha256,
             "factor_order": list(FACTORS), "variants": variants, "control": "111",
             "reserve_runtime_ids_through": RESERVE_RUNTIME_IDS_THROUGH,
-            "windows": WINDOWS, "baseline_r2_wav_match": "not_checked",
+            "colony_population_id": COLONY_POPULATION_ID,
+            "windows": WINDOWS, "dedicated_beat_carrier": False,
             "scope": "script interventions with identical pre-flow PCM/state required; post-flow trajectories may diverge; perceptual effects unreviewed"}
         beta.dump_json(output / "manifest.json", manifest)
         failures = aggregate(output, variants, args.seeds)

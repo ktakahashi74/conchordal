@@ -21,10 +21,12 @@ python3 scripts/evaluate_beta.py
 | [07 Heartbeat](../../samples/07_heartbeat.rhai) | 拍の可聴性、声部追加とoffbeatの影響 | 1: habitatのroot、2: beat、3: voices、4: cross |
 | [08 Murmuration](../../samples/08_murmuration.rhai) | 同期の立ち上がり、集団の生存と交代 | 1: habitatのroot、2: colony a、3: colony b |
 | [09 Rain](../../samples/09_rain.rhai) | 非拍節的なまとまり、間隔のばらつき | 1: habitatのroot、2: low stream、3: high drops |
-| [12 Emergence and Resolution](../../samples/12_emergence_and_resolution.rhai) | 拍、緊張と解放、構成の区切り | 1: habitatのroot、2: pulse、3: colony、4: flow |
+| [12 Emergence and Resolution](../../samples/12_emergence_and_resolution.rhai) | 集団自身のリズム、緊張と解放、構成の区切り | 1: habitatのroot、2: colony、3: flow |
 
 Population番号は保存したsampleの配置順に対応する。sampleを変更した場合は対応も確認する。
 複数seedの結果を個別に残し、一つのseedの成功をsample全体の成功へ置き換えない。
+sample 12は専用pulseを除去済みである。pulseあり版のbaseline・試聴記録は当時のsourceと結び付け、
+現行版の時刻やPopulation番号へ読み替えない。
 
 ## 実行と成果物
 
@@ -145,22 +147,20 @@ releaseと減衰尾部を含みうる。立ち上がり、声部が揃った区�
 ## Sample 12の操作窓
 
 次の時刻は現行scriptの`wait()`から求めた名目時刻である。実行時のhop境界と分析遅延も併記する。
-I〜Vはscriptのコメント上の段階であり、独立した`scene_marker`としては記録されない。
+I〜IVはscriptのコメント上の段階であり、独立した`scene_marker`としては記録されない。
 全体を一つの`section("emergence and resolution", ...)`が囲む。
 
 | 開始秒 | 終了秒 | 操作と意図 |
 |---:|---:|---|
 | 0.0 | 2.3 | Genesis。habitat-onlyのrootを配置。presentationはまだ無音 |
-| 2.3 | 6.0 | Pulse。pulseを配置 |
-| 6.0 | 15.4 | Colony。8 Voiceのcolonyを追加 |
-| 15.4 | 18.7 | Tension操作。colony temperatureを0.85へ上げ、rootとpulseを1.5倍の周波数へ移す |
-| 18.7 | 24.0 | flowを追加し、Tension段階を継続 |
-| 24.0 | 27.3 | Resolution操作。temperatureを0へ戻し、flowを減音、rootとpulseを元の周波数へ戻す |
-| 27.3 | 28.6 | flowをrelease |
-| 28.6 | 33.9 | colonyをさらに減音 |
-| 33.9 | 35.9 | colonyをrelease |
-| 35.9 | 37.2 | pulseをrelease |
-| 37.2 | 41.2 | rootをreleaseし、section終端まで待機 |
+| 2.3 | 11.7 | Colony。8 Voiceのcolonyを追加。その発音で共有meterを駆動 |
+| 11.7 | 15.0 | Tension操作。colony temperatureを0.85へ上げ、rootを1.5倍の周波数へ移す |
+| 15.0 | 20.3 | flowを追加し、Tension段階を継続 |
+| 20.3 | 23.6 | Resolution操作。temperatureを0へ戻し、flowを減音、Glideモードを有効化、rootを元の周波数へ戻す |
+| 23.6 | 24.9 | flowをrelease |
+| 24.9 | 30.2 | colonyをさらに減音 |
+| 30.2 | 32.2 | colonyをrelease |
+| 32.2 | 36.2 | rootをreleaseし、section終端まで待機 |
 
 Tension/Resolutionは操作意図のラベルである。対応する窓でListenerTwinのtensionがどう変化したか、
 試聴でどの時刻に緊張と解放を感じたかをそれぞれ記録する。
@@ -171,7 +171,7 @@ Tension/Resolutionは操作意図のラベルである。対応する窓でListe
 
 `index.html`から同じ条件のWAVと記録をたどり、まず音を聴いて、変化を感じた時刻を残す。
 07〜09は拍の可聴性、同期の立ち上がり、非拍節的なまとまりを評価する。
-12は拍、緊張から解放への変化、曲全体の区切りを別々に評価する。
+12は専用の拍打ちを置かず、集団自身のリズム、緊張から解放への変化、曲全体の区切りを別々に評価する。
 その後に操作時刻と指標を照合し、一致と不一致の両方を残す。
 未試聴の条件は未判定のまま保持する。
 
@@ -179,7 +179,7 @@ hop時間統計のwarmup除外は先頭2秒を既定とする。対象は`time_s
 p95/p99は順位`(n - 1) * p`の線形補間で計算する。除外後の標本がない場合は`null`となる。
 この除外はListenerTwinとrhythmの集計には適用しない。
 頭2秒を除くだけでは音楽的な定常状態を保証しない。
-たとえば12でcolonyが入るのは6秒、flowが入るのは18.7秒である。
+たとえば12でcolonyが入るのは2.3秒、flowが入るのは15秒である。
 比較するPopulationと操作窓を合わせて指定する。
 
 オフライン生成では実機の出力callbackが動かない。処理時間や待ち時間を測れても、

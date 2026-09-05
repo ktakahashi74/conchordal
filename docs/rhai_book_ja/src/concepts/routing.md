@@ -32,8 +32,9 @@ wait(4.0);
 初期状態ですべてのVoiceを両方のバスへ送るのは、それがDirect Cognitive Couplingだからです。
 聴き手が聴くものと生態系が知覚するものが同じ物理eventになります。分離は意図的な逸脱です。
 `send(habitat_bus)`は聞こえずにFieldを形づくるterrain、`send(presentation_bus)`は
-聞こえるが生態系の世界の外にあるdecorです。サンプルでは、scaffoldingは聞こえないか、
-Voiceとしての発音体と生を与えられます。
+聞こえるが生態系の世界の外にあるdecorです。音高の基準を作るanchorと、専用の同期補助は
+区別します。拍を打つ専用Voiceや時間的scaffoldを置くのは、明示的な同期が不可欠な
+サンプルだけです。habitat busだけへ送る場合にも、この制限を適用します。
 
 ## ListenerTwin
 

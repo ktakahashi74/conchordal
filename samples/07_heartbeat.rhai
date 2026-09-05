@@ -14,6 +14,7 @@ let field_anchor = harmonic()
     .sustain_drive(0.0015)
     .adsr(0.35, 0.90, 0.96, 1.6);
 
+// This synchronization demonstration explicitly needs a dedicated beat carrier.
 let downbeat = harmonic()
     .amp(0.060)
     .metric()

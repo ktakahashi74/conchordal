@@ -38,8 +38,10 @@ Cognitive Coupling: what the listener hears and what the ecology senses are
 the same physical event. Splitting the buses is a deliberate departure.
 `send(habitat_bus)` casts terrain — the director's work, shaping the field
 without being heard. `send(presentation_bus)` casts decor — heard, but outside
-the ecology's world. The samples' design rule applies: scaffolding is inaudible
-or embodied.
+the ecology's world. Pitch-reference anchors are distinct from dedicated
+synchronization support: beat carriers or temporal scaffolds belong only in
+samples where explicit synchronization is essential, even when they feed
+only the habitat bus.
 
 ## The Listener Twin
 

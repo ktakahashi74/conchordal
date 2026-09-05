@@ -359,6 +359,16 @@ Scenarios should be approachable for newcomers while remaining expressive for ad
 - Complex behaviors emerge from composition, not configuration bloat
 - The full parameter space remains accessible for those who need it
 
+Dedicated beat-carrier Voices or temporal scaffolds may be used in samples only
+when explicit synchronization is essential to the demonstration or assay.
+Do not add them as general musical support or merely to make synchronization
+easier. Routing a beat carrier only to the habitat bus does not exempt it.
+The current top-level exception is `07_heartbeat.rhai`, which demonstrates
+explicit synchronization. Research scaffolds require synchronization to be an
+explicit experimental variable, as in `temporal_scaffolding_*`.
+This restriction concerns dedicated synchronization support, not pitch-only
+`anchor()` or the collective's own `metric()` / `entrained()` behavior.
+
 
 ## Other
 - Don't touch `web/` when editing sourcecode. Don't touch `src/` when editing `web/`, unless otherwise specified.

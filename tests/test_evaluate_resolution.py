@@ -59,7 +59,7 @@ class ResolutionTests(unittest.TestCase):
             records = [dict(type="spawn", time_sec=0.0, voice_id=1),
                        dict(type="population_step", time_sec=6.0, alive_count=8),
                        dict(type="listener_state", time_sec=6.0, tension_level=.1),
-                       dict(type="respawn", time_sec=13.7, voice_id=20)]
+                       dict(type="respawn", time_sec=13.7, voice_id=19)]
             for index, label in enumerate(variants):
                 directory = output / label
                 directory.mkdir()
@@ -67,20 +67,20 @@ class ResolutionTests(unittest.TestCase):
                     stream.setnchannels(1)
                     stream.setsampwidth(2)
                     stream.setframerate(10)
-                    samples = [100] * 187 + [index] * 13
+                    samples = [100] * 150 + [index] * 50
                     stream.writeframes(struct.pack("<200h", *samples))
                 rows = records + [dict(type="hop_timing", time_sec=6.0, elapsed_us=index),
-                                  dict(type="spawn", time_sec=18.7, voice_id=index)]
+                                  dict(type="spawn", time_sec=15.0, voice_id=index)]
                 (directory / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
             self.assertEqual(resolution.flow_pre_intervention_checks(output, variants, [42]), [])
             check = json.loads((output / "flow_pre_intervention.json").read_text())["checks"][0]
             self.assertTrue(check["matched"])
-            self.assertEqual(check["off_prefix"]["audio_frames"], 187)
-            self.assertEqual(check["off_prefix"]["respawns"][0]["voice_id"], 20)
+            self.assertEqual(check["off_prefix"]["audio_frames"], 150)
+            self.assertEqual(check["off_prefix"]["respawns"][0]["voice_id"], 19)
 
             path = output / "001" / "report.jsonl"
             original = path.read_text()
-            path.write_text(original.replace('"voice_id": 20', '"voice_id": 11'))
+            path.write_text(original.replace('"voice_id": 19', '"voice_id": 11'))
             self.assertTrue(resolution.flow_pre_intervention_checks(output, variants, [42]))
             path.write_text(original)
             with wave.open(str(output / "001" / "audio.wav"), "wb") as stream:
@@ -103,10 +103,12 @@ class ResolutionTests(unittest.TestCase):
                 stream.writeframes(struct.pack("<" + "h" * 400, *([16384] * 400)))
             listener = [dict(time_sec=t, analysis_lag_frames=1,
                              **dict.fromkeys(resolution.LISTENER_FIELDS, value))
-                        for t, value in [(18.7, .2), (23.9, .4), (24.0, .9)]]
-            population = [dict(time_sec=t, population_id=3, alive_count=alive,
+                        for t, value in [(15.0, .2), (20.2, .4), (20.3, .9)]]
+            population = [dict(time_sec=t, population_id=2, alive_count=alive,
                                mean_freq_hz=freq, mean_c_field_level=score)
-                          for t, alive, freq, score in [(18.7, 2, 220, .8), (23.9, 0, 0, 0), (24., 3, 900, 1.)]]
+                          for t, alive, freq, score in [(15.0, 2, 220, .8), (20.2, 0, 0, 0), (20.3, 3, 900, 1.)]]
+            population.append(dict(time_sec=15.0, population_id=3, alive_count=9,
+                                   mean_freq_hz=1400, mean_c_field_level=.1))
             row = resolution.window_metrics(listener, population, wav, "tension")
             self.assertEqual(row["listener_count"], 2)
             self.assertAlmostEqual(row["listener_tension_level_mean"], .3)
@@ -142,7 +144,7 @@ class ResolutionTests(unittest.TestCase):
 
             def fake_beta(_args):
                 reserve_index = _args.index("--reserve-runtime-ids-through")
-                self.assertEqual(_args[reserve_index + 1], "19")
+                self.assertEqual(_args[reserve_index + 1], "18")
                 output.mkdir()
                 (output / "manifest.json").write_text('{"status":"complete"}', encoding="utf-8")
                 source_path.write_text("changed during rendering", encoding="utf-8")

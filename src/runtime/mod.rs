@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -28,12 +28,13 @@ use crate::dcc_coupler::{DccCoupler, ListenerPressure};
 use crate::life::community::Community;
 use crate::life::conductor::Conductor;
 use crate::life::report::{
-    JsonlReporter, ListenerStateSample, RhythmObservation, onset_samples_from_batches,
-    scaffold_phase_0_1, summarize_populations,
+    HopTimingSample, JsonlReporter, ListenerStateSample, RhythmObservation,
+    onset_samples_from_batches, scaffold_phase_0_1, summarize_populations,
 };
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::voice::{PhonationBatch, SoundBody};
 use crate::listener_twin::{ListenerFastState, ListenerState, ListenerTwin};
+use crate::runtime_profile::{HopProfile, RunProfile, begin_allocations, finish_allocations};
 use crate::scenario::{Action, ScaffoldConfig, Scenario};
 use crate::scripting::ScriptHost;
 use crate::viewdata::{
@@ -51,6 +52,9 @@ struct AudioMonitor {
     min_occupancy: Option<usize>,
     max_peak: f32,
     slow_chunks: u32,
+    max_analysis_wait: Duration,
+    max_listener_wait: Duration,
+    last_underrun_frames: u64,
     last_stats_log: Instant,
     last_clip_log: Instant,
     last_lag_warn: Instant,
@@ -63,6 +67,9 @@ impl AudioMonitor {
             min_occupancy: None,
             max_peak: 0.0,
             slow_chunks: 0,
+            max_analysis_wait: Duration::ZERO,
+            max_listener_wait: Duration::ZERO,
+            last_underrun_frames: 0,
             last_stats_log: now,
             last_clip_log: now,
             last_lag_warn: now,
@@ -80,14 +87,19 @@ impl AudioMonitor {
         buffer_occupancy: usize,
         chunk_peak: f32,
         chunk_elapsed: Duration,
+        analysis_wait: Duration,
+        listener_wait: Duration,
+        underrun_frames: Option<&AtomicU64>,
         analysis_lag: Option<u64>,
         conductor_done: bool,
-    ) -> f32 {
+    ) {
         self.min_occupancy = Some(
             self.min_occupancy
                 .map_or(buffer_occupancy, |m| m.min(buffer_occupancy)),
         );
         self.max_peak = self.max_peak.max(chunk_peak);
+        self.max_analysis_wait = self.max_analysis_wait.max(analysis_wait);
+        self.max_listener_wait = self.max_listener_wait.max(listener_wait);
 
         if self.last_clip_log.elapsed() > Duration::from_millis(200) {
             if chunk_peak > 0.98 {
@@ -114,8 +126,8 @@ impl AudioMonitor {
         if chunk_elapsed > hop_duration {
             self.slow_chunks += 1;
             warn!(
-                "[t={:.6}] Audio chunk compute slow: {:?} (hop {:?}) frame_idx={}",
-                current_time, chunk_elapsed, hop_duration, frame_idx
+                "[t={:.6}] Audio hop slow: {:?} (budget {:?}, analysis_wait {:?}, listener_wait {:?}) frame_idx={}",
+                current_time, chunk_elapsed, hop_duration, analysis_wait, listener_wait, frame_idx
             );
         }
 
@@ -131,21 +143,35 @@ impl AudioMonitor {
             self.last_lag_warn = Instant::now();
         }
 
-        let peak_level = self.max_peak;
-
         if self.last_stats_log.elapsed() > Duration::from_secs(1) {
+            let underrun_total = underrun_frames.map_or(0, |count| count.load(Ordering::Relaxed));
+            let underrun_frames = underrun_total.saturating_sub(self.last_underrun_frames);
+            self.last_underrun_frames = underrun_total;
+            if underrun_frames > 0 {
+                warn!(
+                    "Audio output underrun: {underrun_frames} missing mono frames in stats interval"
+                );
+            }
             if let Some(min_occ) = self.min_occupancy.take() {
                 debug!(
-                    "[t={:.6}] Audio stats: min_occ={}, cap={}, hop={}, max_peak={:.3}, slow_chunks={}",
-                    current_time, min_occ, buffer_capacity, hop, peak_level, self.slow_chunks
+                    "[t={:.6}] Audio stats: min_occ={}, cap={}, hop={}, max_peak={:.3}, slow_chunks={}, max_analysis_wait={:?}, max_listener_wait={:?}, underrun_frames={}",
+                    current_time,
+                    min_occ,
+                    buffer_capacity,
+                    hop,
+                    self.max_peak,
+                    self.slow_chunks,
+                    self.max_analysis_wait,
+                    self.max_listener_wait,
+                    underrun_frames
                 );
             }
             self.max_peak = 0.0;
             self.slow_chunks = 0;
+            self.max_analysis_wait = Duration::ZERO;
+            self.max_listener_wait = Duration::ZERO;
             self.last_stats_log = Instant::now();
         }
-
-        peak_level
     }
 }
 
@@ -343,11 +369,11 @@ fn listener_frame_from_states(
     frame
 }
 
-/// Returns `(updated, disconnected)`. `disconnected` means the analysis thread is
-/// gone: the caller's wait loop spins until `analysis_ok` turns true, which can no
-/// longer happen, so swallowing it would hang the worker instead of ending the run.
+/// Returns `(updated, unavailable)`. `unavailable` means the analysis thread is
+/// gone or invalidated: fixed-lag field analysis cannot generate the recovery
+/// window while waiting, so the caller must end the run instead of waiting.
 fn merge_latest_analysis_results(
-    analysis_result_rx: &Receiver<(u64, Landscape)>,
+    analysis_result_rx: &Receiver<analysis_worker::AnalysisResult>,
     current_landscape: &mut LandscapeFrame,
     log_space: &mut Log2Space,
     generator_model: &mut crate::life::generator_model::GeneratorModel,
@@ -356,22 +382,27 @@ fn merge_latest_analysis_results(
     frame_idx: u64,
 ) -> (bool, bool) {
     let mut latest_audio: Option<(u64, Landscape)> = None;
-    let mut disconnected = false;
+    let mut unavailable = false;
     loop {
         match analysis_result_rx.try_recv() {
-            Ok((analyzed_id, frame)) => {
+            Ok((analyzed_id, Some(frame))) => {
                 *last_analysis_frame = Some(analyzed_id);
                 latest_audio = Some((analyzed_id, frame));
             }
+            Ok((_, None)) => {
+                unavailable = true;
+                *last_analysis_frame = None;
+                latest_audio = None;
+            }
             Err(TryRecvError::Empty) => break,
             Err(TryRecvError::Disconnected) => {
-                disconnected = true;
+                unavailable = true;
                 break;
             }
         }
     }
     let Some((_analysis_id, frame)) = latest_audio else {
-        return (false, disconnected);
+        return (false, unavailable);
     };
 
     let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
@@ -441,7 +472,7 @@ fn merge_latest_analysis_results(
         );
     }
 
-    (true, disconnected)
+    (true, unavailable)
 }
 
 /// Advance a habituation field one hop from the landscape's raw views, then
@@ -466,24 +497,26 @@ fn drive_and_apply_habituation(
 
 #[allow(clippy::too_many_arguments)]
 fn merge_latest_listener_analysis_results(
-    listener_result_rx: Option<&Receiver<(u64, Landscape)>>,
+    listener_result_rx: Option<&Receiver<analysis_worker::AnalysisResult>>,
     listener_twin: &mut ListenerTwin,
     lparams: &LandscapeParams,
     hab_listener: &mut crate::core::habituation::HabituationField,
     dt_sec: f32,
     timebase: crate::core::timebase::Timebase,
     generated_frame_id: u64,
+    min_valid_frame: u64,
     last_listener_analysis_frame: &mut Option<u64>,
-) -> (Option<ListenerState>, bool) {
+) -> (Option<Option<ListenerState>>, bool) {
     let Some(rx) = listener_result_rx else {
         return (None, false);
     };
-    let mut latest_audio: Option<(u64, Landscape)> = None;
+    let mut latest_audio: Option<analysis_worker::AnalysisResult> = None;
     let mut disconnected = false;
     loop {
         match rx.try_recv() {
+            Ok((analyzed_id, Some(_))) if analyzed_id < min_valid_frame => continue,
             Ok((analyzed_id, frame)) => {
-                *last_listener_analysis_frame = Some(analyzed_id);
+                *last_listener_analysis_frame = frame.as_ref().map(|_| analyzed_id);
                 latest_audio = Some((analyzed_id, frame));
             }
             Err(TryRecvError::Empty) => break,
@@ -495,8 +528,11 @@ fn merge_latest_listener_analysis_results(
             }
         }
     }
-    let Some((analysis_frame_id, mut frame)) = latest_audio else {
+    let Some((analysis_frame_id, frame)) = latest_audio else {
         return (None, disconnected);
+    };
+    let Some(mut frame) = frame else {
+        return (Some(None), disconnected);
     };
 
     frame.recompute_consonance(lparams);
@@ -513,11 +549,12 @@ fn merge_latest_listener_analysis_results(
         analysis_frame_id,
         &frame,
     );
-    (Some(state), disconnected)
+    (Some(Some(state)), disconnected)
 }
 
 pub(crate) struct RuntimeInit {
     pub(crate) ui_frame_rx: Receiver<UiFrame>,
+    pub(crate) report_error_rx: Option<Receiver<String>>,
     pub(crate) worker_handle: Option<std::thread::JoinHandle<()>>,
     pub(crate) analysis_handle: Option<std::thread::JoinHandle<()>>,
     pub(crate) listener_analysis_handle: Option<std::thread::JoinHandle<()>>,
@@ -542,8 +579,12 @@ where
     let Some(writer) = reporter.as_mut() else {
         return;
     };
+    if writer.failure.is_some() {
+        return;
+    }
     if let Err(err) = f(writer) {
         warn!("report {label} failed: {err}");
+        writer.failure = Some(err);
     }
 }
 
@@ -657,7 +698,7 @@ fn spawn_analysis_worker(
     name: &'static str,
     analysis_stream: AnalysisStream,
     audio_to_analysis_rx: Receiver<(u64, Arc<[f32]>)>,
-    analysis_result_tx: Sender<(u64, Landscape)>,
+    analysis_result_tx: Sender<analysis_worker::AnalysisResult>,
     analysis_update_rx: Receiver<LandscapeUpdate>,
 ) -> thread::JoinHandle<()> {
     thread::Builder::new()
@@ -854,13 +895,17 @@ struct WiringOptions {
     audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Arc<[f32]>>>,
     reporter: Option<JsonlReporter>,
-    reserve_voice_ids_through: Option<u64>,
     deterministic_analysis: bool,
     guard_meter: Option<Arc<LimiterMeter>>,
+    underrun_frames: Option<Arc<AtomicU64>>,
+    reserve_runtime_ids_through: u64,
+    profile: Option<RunProfile>,
+    audio_counters: Option<Arc<crate::audio::output::AudioCallbackCounters>>,
 }
 
 struct RuntimeWiring {
     ui_frame_rx: Receiver<UiFrame>,
+    report_error_rx: Option<Receiver<String>>,
     start_flag: Arc<AtomicBool>,
     worker_handle: thread::JoinHandle<()>,
     analysis_handle: thread::JoinHandle<()>,
@@ -885,9 +930,12 @@ fn wire_runtime(
         audio_prod,
         wav_tx,
         reporter,
-        reserve_voice_ids_through,
         deterministic_analysis,
         guard_meter,
+        underrun_frames,
+        reserve_runtime_ids_through,
+        profile,
+        audio_counters,
     } = opts;
 
     let core = build_analysis_runtime_core(config, runtime_sample_rate);
@@ -897,9 +945,15 @@ fn wire_runtime(
     let lparams_runtime = core.lparams.clone();
 
     let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
+    let (report_error_tx, report_error_rx) = if reporter.is_some() || profile.is_some() {
+        let (tx, rx) = bounded(1);
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
     let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
     let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-    let (analysis_result_tx, analysis_result_rx) = bounded::<(u64, Landscape)>(4);
+    let (analysis_result_tx, analysis_result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
 
     // NSGT-RT based audio analysis thread.
     let analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
@@ -921,7 +975,7 @@ fn wire_runtime(
     ) = if listener_analysis_enabled {
         let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
         let (presentation_tx, presentation_rx) = bounded::<(u64, Arc<[f32]>)>(64);
-        let (result_tx, result_rx) = bounded::<(u64, Landscape)>(4);
+        let (result_tx, result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
         let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
         let handle = spawn_analysis_worker(
             "listener-analysis",
@@ -944,9 +998,17 @@ fn wire_runtime(
     let dorsal = core.dorsal;
 
     let mut pop = Community::new(crate::core::timebase::Timebase { fs, hop });
-    if let Some(max_id) = reserve_voice_ids_through {
-        pop.reserve_runtime_ids_through(max_id);
-    }
+    let scenario_max_id = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .filter_map(|action| match action {
+            Action::Spawn { ids, .. } => ids.iter().copied().max(),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+    pop.reserve_runtime_ids_through(scenario_max_id.max(reserve_runtime_ids_through));
     pop.set_seed(scenario.seed);
     pop.set_control_update_mode(scenario.control_update_mode);
     if reporter.is_some() {
@@ -966,6 +1028,8 @@ fn wire_runtime(
         scaffold,
         meter_shaping,
         guard_meter,
+        underrun_frames,
+        audio_counters,
         dcc_coupler,
         hop,
         hop_duration,
@@ -974,6 +1038,7 @@ fn wire_runtime(
     };
     let channels = WorkerChannels {
         ui_tx: ui_frame_tx,
+        report_error_tx,
         audio_prod,
         wav_tx,
         audio_to_analysis_tx,
@@ -987,7 +1052,7 @@ fn wire_runtime(
     let worker_handle = thread::Builder::new()
         .name("worker".into())
         .spawn(move || {
-            let state = WorkerState::new(
+            let mut state = WorkerState::new(
                 pop,
                 conductor,
                 landscape,
@@ -996,12 +1061,14 @@ fn wire_runtime(
                 reporter,
                 &cfg,
             );
+            state.profile = profile;
             worker_loop(cfg, channels, state)
         })
         .expect("spawn worker");
 
     RuntimeWiring {
         ui_frame_rx,
+        report_error_rx,
         start_flag,
         worker_handle,
         analysis_handle,
@@ -1014,6 +1081,10 @@ pub(crate) fn init_runtime(
     config: AppConfig,
     stop_flag: Arc<AtomicBool>,
 ) -> RuntimeInit {
+    if let Err(err) = config.validate() {
+        eprintln!("{err:#}");
+        std::process::exit(1);
+    }
     crate::life::modal::register_modal();
     let latency_ms = config.audio.latency_ms;
     let guard_mode = resolve_limiter_mode(&config);
@@ -1025,11 +1096,19 @@ pub(crate) fn init_runtime(
 
     // Audio
     let (audio_out, audio_prod, audio_init_error) = if args.play {
-        match AudioOutput::new(latency_ms, guard_mode, guard_meter.clone()) {
+        match AudioOutput::new(
+            latency_ms,
+            config.analysis.hop_size,
+            guard_mode,
+            guard_meter.clone(),
+        ) {
             Ok((out, prod)) => (Some(out), Some(prod), None),
             Err(e) => {
                 let msg = e.to_string();
                 eprintln!("Audio init failed: {msg}");
+                if args.nogui {
+                    std::process::exit(1);
+                }
                 (None, None, Some(msg))
             }
         }
@@ -1053,6 +1132,14 @@ pub(crate) fn init_runtime(
     } else {
         config.audio.sample_rate
     };
+    if runtime_sample_rate != config.audio.sample_rate {
+        let mut device_config = config.clone();
+        device_config.audio.sample_rate = runtime_sample_rate;
+        if let Err(err) = device_config.validate() {
+            eprintln!("Audio device configuration invalid: {err:#}");
+            std::process::exit(1);
+        }
+    }
 
     let hop_ms = config.analysis.hop_size as f32 / runtime_sample_rate as f32 * 1000.0;
     let visual_delay_frames = 0;
@@ -1064,15 +1151,6 @@ pub(crate) fn init_runtime(
 
     let path = Path::new(&args.scenario_path);
     let (scenario_label, scenario) = load_scenario_or_exit(path, &args, &config);
-    let max_scenario_voice_id = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .filter_map(|action| match action {
-            Action::Spawn { ids, .. } => ids.iter().copied().max(),
-            _ => None,
-        })
-        .max();
     let mut reporter = args
         .report
         .as_deref()
@@ -1089,6 +1167,37 @@ pub(crate) fn init_runtime(
         writer.write_scene_markers(&scenario.scene_markers)
     });
     let deterministic_analysis = reporter.is_some() && !args.play;
+    let profile = args.profile.as_deref().map(|path| {
+        if let Some(report_path) = args.report.as_deref()
+            && (Path::new(path) == Path::new(report_path)
+                || Path::new(path)
+                    .canonicalize()
+                    .ok()
+                    .is_some_and(|profile_path| {
+                        Path::new(report_path).canonicalize().ok().as_ref() == Some(&profile_path)
+                    }))
+        {
+            eprintln!("profile and report paths must differ");
+            std::process::exit(1);
+        }
+        let coupling = DccCoupler::new(config.dcc).coupling_strength();
+        RunProfile::create(
+            path,
+            scenario.seed,
+            reporter.is_some(),
+            coupling,
+            !args.nogui || args.report.is_some() || coupling > 0.0,
+            runtime_sample_rate,
+            config.analysis.hop_size,
+            audio_out
+                .as_ref()
+                .map(|out| (out.device_info(), out.counters())),
+        )
+        .unwrap_or_else(|err| {
+            eprintln!("{err}");
+            std::process::exit(1);
+        })
+    });
 
     let wiring = wire_runtime(
         &config,
@@ -1104,14 +1213,18 @@ pub(crate) fn init_runtime(
             audio_prod,
             wav_tx: None,
             reporter,
-            reserve_voice_ids_through: max_scenario_voice_id,
             deterministic_analysis,
             guard_meter,
+            underrun_frames: audio_out.as_ref().map(AudioOutput::underrun_frames),
+            reserve_runtime_ids_through: 0,
+            profile,
+            audio_counters: audio_out.as_ref().map(AudioOutput::counters),
         },
     );
 
     RuntimeInit {
         ui_frame_rx: wiring.ui_frame_rx,
+        report_error_rx: wiring.report_error_rx,
         worker_handle: Some(wiring.worker_handle),
         analysis_handle: Some(wiring.analysis_handle),
         listener_analysis_handle: wiring.listener_analysis_handle,
@@ -1140,6 +1253,20 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
             failures.push(err);
         }
     }
+    if let Some(rx) = rt.report_error_rx
+        && let Ok(err) = rx.try_recv()
+    {
+        failures.push(err);
+    }
+    if let Some(audio) = _audio.as_ref() {
+        let errors = audio
+            .counters()
+            .callback_errors_total
+            .load(Ordering::Relaxed);
+        if errors > 0 {
+            failures.push(format!("audio callback failed: {errors} stream errors"));
+        }
+    }
     if !failures.is_empty() {
         for err in &failures {
             eprintln!("{err}");
@@ -1158,6 +1285,7 @@ fn render_compile_args(scenario_path: &str, seed: Option<u64>) -> crate::cli::Ar
         nogui: true,
         compile_only: false,
         report: None,
+        profile: None,
         seed,
     }
 }
@@ -1168,22 +1296,17 @@ pub fn run_render(
     config: AppConfig,
     stop_flag: Arc<AtomicBool>,
     seed: Option<u64>,
+    report_path: Option<&str>,
+    reserve_runtime_ids_through: u64,
 ) -> Result<(), String> {
+    if reserve_runtime_ids_through == u64::MAX {
+        return Err("reserve-runtime-ids-through must be less than u64::MAX".to_string());
+    }
+    config.validate().map_err(|err| format!("{err:#}"))?;
     crate::life::modal::register_modal();
 
     let guard_mode = resolve_limiter_mode(&config);
     let guard_meter = Some(Arc::new(LimiterMeter::default()));
-
-    // Render mode never opens an audio device: use configured sample-rate directly.
-    let runtime_sample_rate = config.audio.sample_rate;
-    let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
-    let wav_handle = crate::audio::writer::WavOutput::run(
-        wav_rx,
-        wav_path,
-        runtime_sample_rate,
-        guard_mode,
-        guard_meter.clone(),
-    );
 
     let path = Path::new(scenario_path);
     if let Err(e) = validate_scenario_script_extension(path) {
@@ -1196,6 +1319,22 @@ pub fn run_render(
         eprintln!("{e}");
         std::process::exit(1);
     }
+    let mut reporter = report_path.map(JsonlReporter::create).transpose()?;
+    if let Some(writer) = reporter.as_mut() {
+        writer.write_meta(scenario.seed)?;
+        writer.write_scene_markers(&scenario.scene_markers)?;
+    }
+
+    // Render mode never opens an audio device: use configured sample-rate directly.
+    let runtime_sample_rate = config.audio.sample_rate;
+    let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
+    let wav_handle = crate::audio::writer::WavOutput::run(
+        wav_rx,
+        wav_path,
+        runtime_sample_rate,
+        guard_mode,
+        guard_meter.clone(),
+    );
 
     let wiring = wire_runtime(
         &config,
@@ -1205,15 +1344,18 @@ pub fn run_render(
         stop_flag,
         WiringOptions {
             ui_channel_capacity: 1,
-            listener_forced: false,
+            listener_forced: reporter.is_some(),
             wait_user_exit: false,
             start_playing: true,
             audio_prod: None,
             wav_tx: Some(wav_tx),
-            reporter: None,
-            reserve_voice_ids_through: None,
+            reporter,
             deterministic_analysis: true,
             guard_meter,
+            underrun_frames: None,
+            reserve_runtime_ids_through,
+            profile: None,
+            audio_counters: None,
         },
     );
 
@@ -1222,6 +1364,11 @@ pub fn run_render(
     join_thread("analysis", wiring.analysis_handle)?;
     if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener-analysis", handle)?;
+    }
+    if let Some(rx) = wiring.report_error_rx
+        && let Ok(err) = rx.try_recv()
+    {
+        return Err(err);
     }
     Ok(())
 }
@@ -1248,6 +1395,8 @@ struct WorkerConfig {
     scaffold: ScaffoldConfig,
     meter_shaping: crate::core::meter::MeterShaping,
     guard_meter: Option<Arc<LimiterMeter>>,
+    underrun_frames: Option<Arc<AtomicU64>>,
+    audio_counters: Option<Arc<crate::audio::output::AudioCallbackCounters>>,
     dcc_coupler: DccCoupler,
     hop: usize,
     hop_duration: Duration,
@@ -1260,13 +1409,14 @@ struct WorkerConfig {
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
 struct WorkerChannels {
     ui_tx: Sender<UiFrame>,
+    report_error_tx: Option<Sender<String>>,
     audio_prod: Option<ringbuf::HeapProd<f32>>,
     wav_tx: Option<Sender<Arc<[f32]>>>,
     audio_to_analysis_tx: Sender<(u64, Arc<[f32]>)>,
-    analysis_result_rx: Receiver<(u64, Landscape)>,
+    analysis_result_rx: Receiver<analysis_worker::AnalysisResult>,
     analysis_update_tx: Sender<LandscapeUpdate>,
     presentation_to_listener_tx: Option<Sender<(u64, Arc<[f32]>)>>,
-    listener_result_rx: Option<Receiver<(u64, Landscape)>>,
+    listener_result_rx: Option<Receiver<analysis_worker::AnalysisResult>>,
     listener_analysis_update_tx: Option<Sender<LandscapeUpdate>>,
 }
 
@@ -1278,6 +1428,7 @@ struct WorkerState {
     lparams: LandscapeParams,
     dorsal: DorsalStream,
     reporter: Option<JsonlReporter>,
+    profile: Option<RunProfile>,
     timebase: crate::core::timebase::Timebase,
     playback_state: PlaybackState,
     finish_logged: bool,
@@ -1291,6 +1442,7 @@ struct WorkerState {
     last_tick_log: Instant,
     last_analysis_frame: Option<u64>,
     last_listener_analysis_frame: Option<u64>,
+    listener_min_valid_frame: u64,
     listener_twin: ListenerTwin,
     latest_listener_fast_state: Option<ListenerFastState>,
     latest_listener_state: Option<ListenerState>,
@@ -1346,6 +1498,7 @@ impl WorkerState {
             lparams,
             dorsal,
             reporter,
+            profile: None,
             timebase,
             playback_state: PlaybackState::NotStarted,
             finish_logged: false,
@@ -1359,6 +1512,7 @@ impl WorkerState {
             last_tick_log: now,
             last_analysis_frame: None,
             last_listener_analysis_frame: None,
+            listener_min_valid_frame: 0,
             listener_twin: ListenerTwin::with_sample_rate(
                 cfg.fs,
                 crate::listener_twin::ListenerTwinConfig::default(),
@@ -1379,6 +1533,9 @@ impl WorkerState {
 fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: WorkerState) {
     if cfg.start_flag.load(Ordering::SeqCst) {
         state.playback_state = PlaybackState::Playing;
+        if let Some(count) = cfg.underrun_frames.as_ref() {
+            count.store(0, Ordering::Relaxed);
+        }
     }
     let idle_silence = vec![0.0f32; cfg.hop];
 
@@ -1393,6 +1550,13 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
     ));
 
     loop {
+        if cfg
+            .audio_counters
+            .as_ref()
+            .is_some_and(|counters| counters.callback_errors_total.load(Ordering::Relaxed) > 0)
+        {
+            cfg.exiting.store(true, Ordering::SeqCst);
+        }
         if cfg.exiting.load(Ordering::SeqCst) {
             eprintln!("Stopping worker thread.");
             break;
@@ -1405,6 +1569,9 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
             continue;
         } else if state.playback_state == PlaybackState::NotStarted {
             state.playback_state = PlaybackState::Playing;
+            if let Some(count) = cfg.underrun_frames.as_ref() {
+                count.store(0, Ordering::Relaxed);
+            }
         }
 
         if state.finished && cfg.wait_user_exit {
@@ -1423,6 +1590,8 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                 .audio_prod
                 .as_ref()
                 .is_some_and(|prod| prod.vacant_len() >= cfg.hop)
+                && !cfg.exiting.load(Ordering::SeqCst)
+                && !state.finished
             {
                 process_hop(&cfg, &mut channels, &mut state);
                 produced_any = true;
@@ -1450,10 +1619,32 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
         |writer| writer.write_listener_confidence_summary(),
     );
     report_try(&mut state.reporter, "flush", |writer| writer.flush());
+    let mut failure = state
+        .reporter
+        .as_mut()
+        .and_then(|writer| writer.failure.take());
+    if let Some(profile) = state.profile.take()
+        && let Err(err) = profile.write()
+    {
+        failure = Some(match failure {
+            Some(previous) => format!("{previous}; {err}"),
+            None => err,
+        });
+    }
+    if let Some(tx) = channels.report_error_tx
+        && let Some(err) = failure
+    {
+        let _ = tx.send(err);
+    }
 }
 
 /// One generated hop: analysis merge, ecology step, render, routing, telemetry.
 fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut WorkerState) {
+    let t_start = Instant::now();
+    if state.profile.is_some() {
+        begin_allocations();
+    }
+    let frame_idx = state.frame_idx;
     let buffer_capacity = channels
         .audio_prod
         .as_ref()
@@ -1477,25 +1668,28 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     }
     state.pop.set_current_frame(state.frame_idx);
 
+    let analysis_wait_start = Instant::now();
     let analysis_updated = wait_for_analysis(state, &channels.analysis_result_rx, &cfg.exiting);
+    let analysis_wait = analysis_wait_start.elapsed();
     apply_landscape_updates(state, channels, cfg, analysis_updated, now_tick, now_sec);
 
+    let listener_wait_start = Instant::now();
     let listener_state_update = wait_for_listener(state, channels, cfg);
+    let listener_wait = listener_wait_start.elapsed();
     if let Some(listener_state) = listener_state_update {
-        state.latest_listener_state = Some(listener_state);
+        state.latest_listener_state = listener_state;
     }
     let listener_pressure = cfg.dcc_coupler.pressure(state.latest_listener_state);
     let listener_pressure_update =
-        listener_state_update.map(|listener_state| cfg.dcc_coupler.pressure(Some(listener_state)));
+        listener_state_update.map(|listener_state| cfg.dcc_coupler.pressure(listener_state));
 
-    let t_start = Instant::now();
     let phonation_count = advance_population(state, cfg, now_tick, listener_pressure);
     emit_hop_reports(
         state,
         cfg,
         now_sec,
         phonation_count,
-        listener_state_update,
+        listener_state_update.flatten(),
         listener_pressure_update,
     );
 
@@ -1543,19 +1737,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         state.conductor.is_done() || state.pop.abort_requested || state.scenario_end_tick.is_some();
     let should_send_ui = must_send_ui || state.last_ui_update.elapsed() >= UI_MIN_INTERVAL;
 
-    let elapsed = t_start.elapsed();
-    let peak_level = state.monitor.update(
-        state.current_time,
-        state.frame_idx,
-        cfg.hop,
-        cfg.hop_duration,
-        buffer_capacity,
-        occupancy,
-        max_abs,
-        elapsed,
-        analysis_lag,
-        state.conductor.is_done(),
-    );
+    let peak_level = state.monitor.max_peak.max(max_abs);
 
     log_guard_meter(cfg, &mut state.last_guard_log, state.current_time);
 
@@ -1587,9 +1769,68 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         }
     }
 
+    state.monitor.update(
+        state.current_time,
+        state.frame_idx,
+        cfg.hop,
+        cfg.hop_duration,
+        buffer_capacity,
+        occupancy,
+        max_abs,
+        t_start.elapsed(),
+        analysis_wait,
+        listener_wait,
+        cfg.underrun_frames.as_deref(),
+        analysis_lag,
+        state.conductor.is_done(),
+    );
+
     if !state.finished {
         state.current_time += cfg.hop_duration.as_secs_f32();
         state.frame_idx += 1;
+    }
+    // Include preceding telemetry in the hop cost, but exclude this record's own write.
+    report_try(&mut state.reporter, "hop timing", |writer| {
+        writer.write_hop_timing(&HopTimingSample {
+            frame_idx,
+            time_sec: now_sec,
+            elapsed_us: t_start.elapsed().as_secs_f64() * 1_000_000.0,
+            analysis_wait_us: analysis_wait.as_secs_f64() * 1_000_000.0,
+            listener_wait_us: listener_wait.as_secs_f64() * 1_000_000.0,
+            hop_budget_us: cfg.hop_duration.as_secs_f64() * 1_000_000.0,
+            audio_output: if cfg.underrun_frames.is_some() {
+                "device"
+            } else {
+                "no_device"
+            },
+            underrun_frames_total: cfg
+                .underrun_frames
+                .as_ref()
+                .map(|count| count.load(Ordering::Relaxed)),
+        })
+    });
+    if let Some(profile) = state.profile.as_mut() {
+        let alive_voice_count = state
+            .pop
+            .voices
+            .iter()
+            .filter(|voice| voice.is_alive())
+            .count();
+        let elapsed_us = t_start.elapsed().as_secs_f64() * 1_000_000.0;
+        let worker_allocations = finish_allocations();
+        profile.record(HopProfile {
+            frame_idx,
+            time_sec: now_sec,
+            alive_voice_count,
+            elapsed_us,
+            analysis_wait_us: analysis_wait.as_secs_f64() * 1_000_000.0,
+            listener_wait_us: listener_wait.as_secs_f64() * 1_000_000.0,
+            worker_allocations,
+            underrun_frames_total: cfg
+                .underrun_frames
+                .as_ref()
+                .map(|count| count.load(Ordering::Relaxed)),
+        });
     }
 }
 
@@ -1598,12 +1839,12 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
 /// the landscape is fresh enough or the run is ending.
 fn wait_for_analysis(
     state: &mut WorkerState,
-    analysis_result_rx: &Receiver<(u64, Landscape)>,
+    analysis_result_rx: &Receiver<analysis_worker::AnalysisResult>,
     exiting: &AtomicBool,
 ) -> bool {
     let mut analysis_updated = false;
     loop {
-        let (merged, analysis_disconnected) = merge_latest_analysis_results(
+        let (merged, analysis_unavailable) = merge_latest_analysis_results(
             analysis_result_rx,
             &mut state.current_landscape,
             &mut state.log_space,
@@ -1623,8 +1864,8 @@ fn wait_for_analysis(
         ) {
             break;
         }
-        if analysis_disconnected {
-            eprintln!("Analysis thread stopped delivering results; ending run.");
+        if analysis_unavailable {
+            eprintln!("Field analysis disconnected or invalidated; ending run.");
             exiting.store(true, Ordering::SeqCst);
             break;
         }
@@ -1690,8 +1931,8 @@ fn wait_for_listener(
     state: &mut WorkerState,
     channels: &WorkerChannels,
     cfg: &WorkerConfig,
-) -> Option<ListenerState> {
-    let mut listener_state_update: Option<ListenerState> = None;
+) -> Option<Option<ListenerState>> {
+    let mut listener_state_update: Option<Option<ListenerState>> = None;
     loop {
         let (listener_state, listener_disconnected) = merge_latest_listener_analysis_results(
             channels.listener_result_rx.as_ref(),
@@ -1701,12 +1942,18 @@ fn wait_for_listener(
             cfg.hop_duration.as_secs_f32(),
             state.timebase,
             state.frame_idx,
+            state.listener_min_valid_frame,
             &mut state.last_listener_analysis_frame,
         );
         if let Some(listener_state) = listener_state {
             listener_state_update = Some(listener_state);
         }
         if !cfg.deterministic_analysis || channels.listener_result_rx.is_none() {
+            break;
+        }
+        if matches!(listener_state, Some(None)) {
+            eprintln!("Deterministic listener analysis invalidated; ending run.");
+            cfg.exiting.store(true, Ordering::SeqCst);
             break;
         }
         if analysis_ok(
@@ -1953,11 +2200,15 @@ fn render_and_route_audio(
             match tx.try_send((state.frame_idx, Arc::clone(&presentation_chunk))) {
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) => {
+                    state.latest_listener_state = None;
+                    state.last_listener_analysis_frame = None;
+                    state.listener_min_valid_frame = state.frame_idx.saturating_add(1);
                     debug!("listener analysis backlog full; dropped presentation hop");
                 }
                 Err(TrySendError::Disconnected(_)) => {
                     warn!("listener analysis worker disconnected");
                     channels.presentation_to_listener_tx = None;
+                    state.latest_listener_state = None;
                 }
             }
         }
@@ -2183,6 +2434,75 @@ mod tests {
             roughness_ref_mass_split: 0.5,
             roughness_ref_eps: 1e-12,
         }
+    }
+
+    #[test]
+    fn listener_analysis_gap_clears_state_instead_of_reusing_prior_pressure() {
+        let space = Log2Space::new(200.0, 4_000.0, 12);
+        let params = build_test_params(&space);
+        let mut listener = ListenerTwin::with_sample_rate(params.fs, Default::default());
+        let mut hab = crate::core::habituation::HabituationField::new(
+            &params.habituation,
+            params.consonance_representation.theta,
+            space.n_bins(),
+        );
+        let timebase = Timebase {
+            fs: params.fs,
+            hop: 128,
+        };
+        let mut last_frame = Some(0);
+        let (tx, rx) = bounded(2);
+        tx.send((1, Some(Landscape::new(space.clone())))).unwrap();
+        tx.send((3, None)).unwrap();
+        let (update, disconnected) = merge_latest_listener_analysis_results(
+            Some(&rx),
+            &mut listener,
+            &params,
+            &mut hab,
+            128.0 / params.fs,
+            timebase,
+            4,
+            0,
+            &mut last_frame,
+        );
+        assert!(
+            matches!(update, Some(None)),
+            "a gap must invalidate the previous observation"
+        );
+        assert!(!disconnected);
+        assert!(last_frame.is_none());
+        let (update, _) = merge_latest_listener_analysis_results(
+            Some(&rx),
+            &mut listener,
+            &params,
+            &mut hab,
+            128.0 / params.fs,
+            timebase,
+            5,
+            0,
+            &mut last_frame,
+        );
+        assert!(
+            update.is_none(),
+            "an empty queue is distinct from invalidation"
+        );
+        tx.send((4, Some(Landscape::new(space)))).unwrap();
+        let (update, _) = merge_latest_listener_analysis_results(
+            Some(&rx),
+            &mut listener,
+            &params,
+            &mut hab,
+            128.0 / params.fs,
+            timebase,
+            6,
+            5,
+            &mut last_frame,
+        );
+        assert!(
+            update.is_none(),
+            "late pre-gap results must not restore pressure"
+        );
+        assert!(last_frame.is_none());
     }
 
     #[test]

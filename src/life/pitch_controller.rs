@@ -3,7 +3,7 @@ use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::scenario::control::{PitchControl, PitchMode};
+use crate::scenario::control::{MAX_FREQ_HZ, MIN_FREQ_HZ, PitchControl, PitchMode};
 use rand::rngs::SmallRng;
 
 #[derive(Debug)]
@@ -214,18 +214,19 @@ impl PitchController {
             }
         }
 
-        let (fmin, fmax) = landscape.freq_bounds_log2();
         if matches!(pitch.mode, PitchMode::Lock) {
             let freq = if pitch.freq.is_finite() && pitch.freq > 0.0 {
                 pitch.freq
             } else {
                 current_freq
             };
-            let lock_log2 = freq.log2();
-            self.target_pitch_log2 = lock_log2.clamp(fmin, fmax);
+            // Anchored pitches belong to the sound body's range, independently
+            // of which frequencies the current landscape can evaluate.
+            self.target_pitch_log2 = freq.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ).log2();
             self.last_target_salience = 1.0;
             return;
         }
+        let (fmin, fmax) = landscape.freq_bounds_log2();
         let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {
             pitch.freq.log2()
         } else {

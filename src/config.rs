@@ -1,5 +1,5 @@
 use crate::core::nsgt_kernel::KernelAlign;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -339,6 +339,45 @@ impl Default for PlaybackConfig {
 }
 
 impl AppConfig {
+    /// Validate the dimensions shared by the runtime and the NSGT kernel.
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.audio.sample_rate > 0,
+            "audio.sample_rate must be positive"
+        );
+        ensure!(
+            self.audio.latency_ms.is_finite() && self.audio.latency_ms > 0.0,
+            "audio.latency_ms must be finite and positive"
+        );
+        let buffer_frames =
+            self.audio.sample_rate as f64 * self.audio.latency_ms as f64 / 1000.0 * 2.0;
+        ensure!(
+            buffer_frames < (isize::MAX as usize / std::mem::size_of::<f32>()) as f64,
+            "audio.latency_ms exceeds the addressable audio buffer size"
+        );
+        ensure!(
+            (1..=1 << 18).contains(&self.analysis.nfft),
+            "analysis.nfft must be between 1 and 262144 (the NSGT limit)"
+        );
+        ensure!(
+            self.analysis.hop_size > 0 && self.analysis.hop_size <= self.analysis.nfft,
+            "analysis.hop_size must be positive and no greater than analysis.nfft"
+        );
+        let overlap = 1.0 - self.analysis.hop_size as f32 / self.analysis.nfft as f32;
+        ensure!(
+            (0.0..0.99).contains(&overlap),
+            "analysis.hop_size is too small for analysis.nfft: NSGT overlap must be below 0.99"
+        );
+        ensure!(
+            !std::time::Duration::from_secs_f32(
+                self.analysis.hop_size as f32 / self.audio.sample_rate as f32
+            )
+            .is_zero(),
+            "analysis.hop_size / audio.sample_rate must produce a nonzero hop duration"
+        );
+        Ok(())
+    }
+
     fn round_f32(x: f32) -> f32 {
         (x * 1_000_000.0).round() / 1_000_000.0
     }
@@ -408,6 +447,8 @@ impl AppConfig {
             let mut cfg: Self = toml::from_str(&contents)
                 .with_context(|| format!("failed to parse config file '{path}'"))?;
             cfg.round_f32_inplace();
+            cfg.validate()
+                .with_context(|| format!("invalid config file '{path}'"))?;
             return Ok(cfg);
         }
 
@@ -658,6 +699,84 @@ mod tests {
         assert!(cfg.playback.wait_user_exit);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rejects_invalid_runtime_dimensions_when_loading() {
+        for (name, contents, key) in [
+            (
+                "zero_rate",
+                "[audio]\nsample_rate = 0\n",
+                "audio.sample_rate",
+            ),
+            (
+                "zero_latency",
+                "[audio]\nlatency_ms = 0.0\n",
+                "audio.latency_ms",
+            ),
+            (
+                "negative_latency",
+                "[audio]\nlatency_ms = -1.0\n",
+                "audio.latency_ms",
+            ),
+            (
+                "nan_latency",
+                "[audio]\nlatency_ms = nan\n",
+                "audio.latency_ms",
+            ),
+            (
+                "infinite_latency",
+                "[audio]\nlatency_ms = inf\n",
+                "audio.latency_ms",
+            ),
+            (
+                "huge_latency",
+                "[audio]\nlatency_ms = 1e30\n",
+                "audio.latency_ms",
+            ),
+            ("zero_fft", "[analysis]\nnfft = 0\n", "analysis.nfft"),
+            ("capped_fft", "[analysis]\nnfft = 262145\n", "analysis.nfft"),
+            (
+                "zero_hop",
+                "[analysis]\nhop_size = 0\n",
+                "analysis.hop_size",
+            ),
+            (
+                "oversized_hop",
+                "[analysis]\nnfft = 256\nhop_size = 257\n",
+                "analysis.hop_size",
+            ),
+            (
+                "excess_overlap",
+                "[analysis]\nnfft = 16384\nhop_size = 163\n",
+                "analysis.hop_size",
+            ),
+            (
+                "zero_duration",
+                "[audio]\nsample_rate = 4294967295\n[analysis]\nnfft = 1\nhop_size = 1\n",
+                "analysis.hop_size",
+            ),
+        ] {
+            let path = unique_path(name);
+            fs::write(&path, contents).unwrap();
+            let err = AppConfig::load_or_default(path.to_str().unwrap())
+                .expect_err("invalid dimensions must fail before runtime startup");
+            let message = format!("{err:#}");
+            assert!(message.contains(key), "{name}: {message}");
+            assert!(message.contains(path.to_str().unwrap()), "{message}");
+            fs::remove_file(path).unwrap();
+        }
+    }
+
+    #[test]
+    fn accepts_supported_fft_and_overlap_boundaries() {
+        let mut cfg = AppConfig::default();
+        cfg.validate().unwrap();
+        for (nfft, hop_size) in [(16384, 164), (256, 256), (262144, 2622), (100, 2)] {
+            cfg.analysis.nfft = nfft;
+            cfg.analysis.hop_size = hop_size;
+            cfg.validate().unwrap();
+        }
     }
 
     #[test]

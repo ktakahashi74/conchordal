@@ -304,10 +304,12 @@ impl Landscape {
         repr: &ConsonanceRepresentationParams,
     ) {
         self.assert_scan_lengths();
+        self.space
+            .assert_scan_len_named(h, "habituation_state_scan");
         let n = self.consonance_field_score.len();
         self.consonance_theta = theta;
         for i in 0..n {
-            let hi = h.get(i).copied().unwrap_or(0.0);
+            let hi = h[i];
             self.perc_habituation_state_scan[i] = hi.clamp(0.0, 1.0);
             let score_eff =
                 crate::core::habituation::erode_score(self.consonance_field_score[i], hi, theta);

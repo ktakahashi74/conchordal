@@ -27,6 +27,15 @@ realized either as a cloud (the default) or as a deterministic extremum with
 `consonance(root)` takes a harmonic window around a root (multiples via
 `range()`); every target also takes an absolute `(min_hz, max_hz)` range.
 
+Range bounds must be finite and within the synthesizer's 1–20000 Hz range;
+reversed bounds are accepted. Initial placement stays inside those bounds,
+including jitter and all-zero or fully occupied fallbacks. Field targets use
+the intersection with the analysis band (currently 55–8000 Hz). If there is
+no intersection, placement falls back to log-uniform sampling in the requested
+range because no field evidence is available there. `random()` samples the
+requested range directly. Placement does not constrain subsequent
+`seek_consonance()` movement to that range.
+
 ```rhai
 let anchor = harmonic()
     .brain("drone")

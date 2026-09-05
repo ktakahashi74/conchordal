@@ -7,6 +7,7 @@ pub(crate) mod dcc_coupler;
 pub mod life;
 pub(crate) mod listener_twin;
 pub(crate) mod runtime;
+pub(crate) mod runtime_profile;
 pub mod scenario;
 pub mod scripting;
 pub(crate) mod synth;

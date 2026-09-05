@@ -123,6 +123,85 @@ fn collect_pressure_stats(report: &str) -> PressureStats {
 }
 
 #[test]
+fn dcc_feedback_uses_listener_tension_once_and_changes_pitch() {
+    let mut pitch_traces = Vec::new();
+    let mut listener_traces = Vec::new();
+    for strength in [0.0, 1.0] {
+        let report_path = report_path();
+        let config_path = config_path();
+        // Amplify feedback for a causal fixture, not a recommended listening preset.
+        fs::write(
+            &config_path,
+            format!("[dcc]\ncoupling_strength = {strength:.1}\nmax_temperature_bonus = 10.0\n"),
+        )
+        .expect("write coupling config");
+        let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
+            .args(["--nogui", "--play=false", "--config"])
+            .arg(&config_path)
+            .arg("--report")
+            .arg(&report_path)
+            .arg("tests/scripts/dcc_pitch_feedback.rhai")
+            .output()
+            .expect("run DCC feedback fixture");
+        assert!(
+            output.status.success(),
+            "feedback fixture failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = fs::read_to_string(&report_path).expect("read feedback report");
+        let _ = fs::remove_file(&report_path);
+        let _ = fs::remove_file(&config_path);
+        let records: Vec<Value> = report
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("valid feedback JSON"))
+            .collect();
+        let listener: Vec<_> = records
+            .iter()
+            .filter(|record| record["type"] == "listener_state")
+            .collect();
+        let pressures: Vec<_> = records
+            .iter()
+            .filter(|record| record["type"] == "dcc_pressure")
+            .collect();
+        assert!(listener.len() > 100, "missing listener evidence");
+        assert_eq!(listener.len(), pressures.len());
+        for (state, pressure) in listener.iter().zip(&pressures) {
+            assert_eq!(state["time_sec"], pressure["time_sec"]);
+            let expected = required_f64(state, "tension_level") * strength;
+            assert!((required_f64(pressure, "tension_pressure") - expected).abs() < 1e-6);
+            assert!((required_f64(pressure, "temperature_bonus") - expected * 10.0).abs() < 1e-5);
+        }
+        let tension: Vec<_> = listener
+            .iter()
+            .map(|record| required_f64(record, "tension_level"))
+            .collect();
+        assert!(tension.iter().any(|&level| level > 0.01));
+        listener_traces.push(tension);
+        let pitches: Vec<_> = records
+            .iter()
+            .filter(|record| {
+                record["type"] == "population_step"
+                    && record["population_id"] == 5
+                    && record["alive_count"] == 1
+            })
+            .map(|record| required_f64(record, "mean_freq_hz"))
+            .collect();
+        assert!(pitches.len() > 100, "missing seeker observations");
+        pitch_traces.push(pitches);
+    }
+    // Bus separation fixes the cause while only the coupling strength changes.
+    assert_eq!(listener_traces[0], listener_traces[1]);
+    assert_eq!(pitch_traces[0].len(), pitch_traces[1].len());
+    assert!(
+        pitch_traces[0]
+            .iter()
+            .zip(&pitch_traces[1])
+            .any(|(off, on)| (off - on).abs() > 0.001),
+        "nonzero listener feedback did not affect pitch exploration"
+    );
+}
+
+#[test]
 fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
     let exe = env!("CARGO_BIN_EXE_conchordal");
     let report_path = report_path();

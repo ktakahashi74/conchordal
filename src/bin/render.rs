@@ -29,6 +29,14 @@ struct Args {
     /// Override the fresh scenario seed (a script-level seed() still wins)
     #[arg(long)]
     seed: Option<u64>,
+
+    /// Write JSONL telemetry alongside this render's WAV
+    #[arg(long, value_name = "PATH")]
+    report: Option<String>,
+
+    /// Keep runtime-generated Voice IDs above this bound for matched scenario comparisons
+    #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u64).range(..u64::MAX))]
+    reserve_runtime_ids_through: u64,
 }
 
 fn main() {
@@ -56,9 +64,15 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    if let Err(err) =
-        conchordal::app::run_render(&args.scenario, args.output, config, stop_flag, args.seed)
-    {
+    if let Err(err) = conchordal::app::run_render(
+        &args.scenario,
+        args.output,
+        config,
+        stop_flag,
+        args.seed,
+        args.report.as_deref(),
+        args.reserve_runtime_ids_through,
+    ) {
         eprintln!("{err}");
         std::process::exit(1);
     }

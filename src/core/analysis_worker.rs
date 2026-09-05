@@ -6,8 +6,8 @@ use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::core::stream::analysis::AnalysisStream;
 
 /// Result payload from the analysis worker:
-/// `(frame_id, landscape_snapshot)`.
-pub type AnalysisResult = (u64, Landscape);
+/// `(frame_id, landscape_snapshot)`, with `None` invalidating pre-gap observations.
+pub type AnalysisResult = (u64, Option<Landscape>);
 
 /// Analysis worker: receives time-domain hops, runs NSGT-based audio analysis,
 /// and publishes the latest analysis for the main thread to merge.
@@ -17,16 +17,13 @@ pub fn run(
     result_tx: Sender<AnalysisResult>,
     update_rx: Receiver<LandscapeUpdate>,
 ) {
-    while let Ok((mut frame_id, audio_hop)) = hop_rx.recv() {
-        // Drain backlog but *do not* skip audio hops.
-        // NSGT-RT maintains an internal ring buffer and assumes time continuity; dropping hops
-        // effectively deletes samples and can create broadband artifacts ("mystery peaks").
+    let mut next_frame_id = 0;
+    let mut warmup_samples = 0;
+    while let Ok(first_hop) = hop_rx.recv() {
+        // Preserve frame IDs through backlog draining so gaps cannot splice audio together.
         let mut hops = Vec::with_capacity(8);
-        hops.push(audio_hop);
-        for (latest_id, latest_hop) in hop_rx.try_iter() {
-            frame_id = latest_id;
-            hops.push(latest_hop);
-        }
+        hops.push(first_hop);
+        hops.extend(hop_rx.try_iter());
 
         // Apply parameter updates (landscape params primarily; others are harmless here).
         for upd in update_rx.try_iter() {
@@ -34,13 +31,26 @@ pub fn run(
         }
 
         // Process each hop in-order to preserve the per-hop dt used by the normalizers.
-        let mut analysis = stream.process(hops[0].as_ref());
-        for hop in &hops[1..] {
-            analysis = stream.process(hop.as_ref());
+        let mut analysis = None;
+        for (frame_id, hop) in hops {
+            if frame_id != next_frame_id {
+                stream.reset();
+                warmup_samples = stream.window_samples();
+                // Invalidation must arrive even when old snapshots fill the result queue.
+                if result_tx.send((frame_id, None)).is_err() {
+                    return;
+                }
+            }
+            next_frame_id = frame_id.wrapping_add(1);
+            let frame = stream.process(hop.as_ref());
+            warmup_samples = warmup_samples.saturating_sub(hop.len());
+            analysis = (warmup_samples == 0).then_some((frame_id, Some(frame)));
         }
         // Result snapshots are latest-observed state. The main runtime merges only the newest
         // available snapshot, so dropping a stale result under backpressure is acceptable here.
-        let _ = result_tx.try_send((frame_id, analysis));
+        if let Some(analysis) = analysis {
+            let _ = result_tx.try_send(analysis);
+        }
     }
 }
 
@@ -77,6 +87,60 @@ mod tests {
             roughness_ref_sep_erb: 0.25,
             roughness_ref_mass_split: 0.5,
             roughness_ref_eps: 1e-12,
+        }
+    }
+
+    #[test]
+    fn analysis_gap_invalidates_results_until_a_full_window_is_refilled() {
+        let fs = 48_000.0;
+        let hop = 128;
+        for recovery_hops in [1, 3, 4] {
+            let space = Log2Space::new(200.0, 4_000.0, 12);
+            let params = build_params(&space);
+            let nsgt = NsgtKernelLog2::new(
+                NsgtLog2Config {
+                    fs,
+                    overlap: 0.75,
+                    nfft_override: Some(512),
+                    ..Default::default()
+                },
+                space,
+                None,
+                PowerMode::Coherent,
+            );
+            let mut stream = AnalysisStream::new(params, RtNsgtKernelLog2::new(nsgt));
+            let tone: Arc<[f32]> = (0..hop)
+                .map(|i| (2.0 * PI * 440.0 * i as f32 / fs).sin() * 0.1)
+                .collect();
+            for _ in 0..4 {
+                stream.process(&tone);
+            }
+            assert!(stream.last().nsgt_power.iter().any(|power| *power > 0.0));
+
+            let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
+            let (result_tx, result_rx) = crossbeam_channel::unbounded();
+            let (_update_tx, update_rx) = crossbeam_channel::unbounded();
+            hop_tx.send((0, tone)).unwrap();
+            // A gap inside the already-queued backlog must reset the complete history.
+            let silence: Arc<[f32]> = vec![0.0; hop].into();
+            for frame_id in 2..2 + recovery_hops {
+                hop_tx.send((frame_id, Arc::clone(&silence))).unwrap();
+            }
+            drop(hop_tx);
+            run(stream, hop_rx, result_tx, update_rx);
+
+            let (gap_id, invalidated) = result_rx.recv().unwrap();
+            assert_eq!(gap_id, 2);
+            assert!(invalidated.is_none());
+            if recovery_hops == 4 {
+                let (frame_id, frame) = result_rx.recv().unwrap();
+                assert_eq!(frame_id, 5);
+                assert!(frame.unwrap().nsgt_power.iter().all(|power| *power == 0.0));
+            }
+            assert!(
+                result_rx.try_recv().is_err(),
+                "warmup must not publish a partial window"
+            );
         }
     }
 

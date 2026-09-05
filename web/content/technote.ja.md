@@ -3,11 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "404a3a1"
+source_commit = "390ae1e"
 author = "Koichi Takahashi"
-last_updated = "2026-08-16"
+last_updated = "2026-09-05"
 source_version = "0.4.0"
-source_snapshot = "2026-08-16T13:25:15+09:00"
+source_snapshot = "390ae1e plus local improvements, 2026-09-05"
+revision_scope = "Runtime continuity, placement bounds, DCC and Chapter 9; not a complete re-audit"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -485,7 +486,7 @@ Conchordal はリアルタイムオーディオの厳格な要件（レイテン
 3.  **ワーカースレッド**が解析結果を`LandscapeFrame`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
 4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）と集団自身の発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
 5.  `Community`がeffective Landscapeを、ピッチ選択、代謝、spawn、respawn、Voiceのライフサイクルに使う。
-6.  DCC couplingが有効なら、`ListenerTwin`のtensionとresolvabilityから上限つきのtemperature bonusを作り、Voiceのpitch searchへ戻す。デフォルトのcoupling strengthは0であり、明示的に有効化しない限り挙動は変わらない。
+6.  DCC couplingが有効なら、`tension_pressure = tension_level * coupling_strength`から上限つきのtemperature bonusを作り、Voiceのpitch searchへ戻す。Listenerのtensionにはすでにresolvabilityが含まれるため、couplerでは重ねて掛けない。デフォルトのcoupling strengthは0であり、明示的に有効化しない限り挙動は変わらない。
 7.  `PhonationEngine`が`ToneCmd` batchを生成し、`ScheduleRenderer`がToneの生成・更新・releaseを実行する。
 8.  レンダリングされたpresentation audioを、**オーディオスレッド**が消費するロックフリーring bufferへpushする。
 
@@ -590,6 +591,8 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 | 中央指揮者の不在 | ローカルな知覚のみ。メーターは集団自身のオンセットから創発する | §4–5 | 実装済み（temporal scaffolding は明示的な実験として残存） |
 | シナリオ=マクロの演出 | ディレクターの地形操作 | §6.3.6 | 実装済み。シーン窓（9.2）が基礎づける |
 | DCC 第2段階：生体信号閉ループ | `[dcc]` coupling有効時、`ListenerTwin`圧力をpitch-search temperatureへ戻す | §4.1, §6.2 | 模擬loopは実装済み・デフォルト無効。実生体信号loopは未解決 |
+| 実際に提示された音との認知的結合 | presentation専用分析。入力欠落時は観測を無効化し、NSGT履歴を消去。連続した1窓分の入力が揃うまでDCC圧力を停止 | §6.2 | 実装済み。実機での過負荷検証は未完了 |
+| 生きた演奏としての音楽 | 楽器は音声ファイル出力を持たず、別バイナリ`conchordal-render`がオフライン検証を担う | §6 | バイナリ境界として実装済み |
 | 役割の溶解・空間ランドスケープ・音色の遺伝・他領域 | 遺伝的リスポーンはアッセイとして存在 | — | 地平 |
 
 ## 9.2 実装された順応と、残る期待のギャップ
@@ -600,6 +603,12 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 
 残るギャップは、順応の不在ではなく**期待**である。次にどのeventが起きるはずかを表すphrase-level predictorはまだなく、scene境界を自律的に作り、評価する機構もない。したがって分業は残る。ミクロ層（jitter、呼吸、うなり）は**body**が、メソ層（順応に駆動される移動、生と死）は**ecology**が、マクロ層は**scenario**が受け持つ。`ListenerTwin`のtensionとresolvabilityは、`[dcc].coupling_strength > 0`ならpitch-search temperatureを加算し、模擬feedback loopをすでに閉じられる。デフォルトは0であり、実際の聴き手の生体信号との接続は今後の課題である。habituation無効時には、「知覚できる変化なしに約8秒を超えない」は依然として有用なsample診断であり、システムの不変条件ではない。
 
+現行の`ListenerTwin`が測るのは、presentation由来の協和性地形における局所的な改善余地である。
+探索中はその地形を固定し、Voiceが移動した後の地形を予測しない。帰還先のrootや直前のphraseも記憶しない。
+したがって、既存の`tension_level = (1 - stability_level) * resolvability_level`は、
+帰還感やphraseの終止を測る値ではない。近傍の改善余地が増えれば、stabilityが上がってもtensionは上がりうる。
+この期待のギャップは未解決である。
+
 ## 9.3 上流への改訂
 
 実装の結果は、Manifesto の原理を裏づけながら、その機構レベルのスケッチを更新してきた。
@@ -608,6 +617,25 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 *   **知覚上の対称性から、生成loopの不動点要件へ。** 地形操作が生態学的に意味を持つには、知覚機構が実在し、そこへ引き寄せられたエージェントの放射スペクトルがその地形を強め返さなければならない。現在の緊張制御は地形を歪めず、ecologyが作った地形を読む。運動の緊張はpitch-search *temperature*、配置の緊張は*相対的なconsonance level*である。`docs/design-notes/tension.md`を参照。
 *   **rateの考古学から、観測可能な時間契約へ。** 生のエネルギープールと毎秒rateを公開すると、エコロジーが導出できる次元まで作曲家に手計算させることになる。実装アッセイにより、独立した契約は `initial_energy` や `energy_cap` ではなく公称enduranceだと分かった。エネルギーは $[0,1]$ に正規化でき、ゼロ適合時の消費rateはenduranceと不協和形状から導出できる。一方、毎秒の連続回復とアタックごとの回復は次元が異なるため、回復時間と離散割合として分離した。同じアッセイは `Entrain`・`Seq`・`Drone` の統合も退けた。オンセット時のリセット、死亡規則、telemetry、render modulatorが観測可能に異なり、単一コア化はenumをフラグの背後へ隠すだけだからである。
 *   **曖昧なオブジェクト名から、寿命を担うオントロジーへ。** `Material`、`Participant`、公開ドラフト Population は、どれも自分が表す寿命を名指さないため、説明に例外を必要とした。現在の遷移は `PopulationSpec + Placement --place()--> Population` と明示され、その生きた構成員が Voice、Landscape を共有する全 Population の集約が Community である。集団方針は PopulationSpec に、ライブ操作は Population に属し、`place()` は創始 Voice を即座にスケジュールする。`Species` は遺伝と種分化が実在する不変条件を与えるまで予約する。命名は観測可能な同一性に支えられる。Population は構成員の死とリスポーンをまたいで残るが、Voice とその世代は残らない。
+
+*   **音源の許容域と、知覚できる範囲は別の契約である。** 初期配置は代替の抽選も含め、指定Hz範囲を守る。anchorにしたVoiceは、音源の許容域内なら解析帯域外の周波数も保持できる。Field配置に解析帯域との共通部分がなければ、指定域内の対数一様分布を使い、そこでの協和性は主張しない。その後の自由な音高探索は、利用できるLandscape上で行う。
+*   **音声の欠落は、証拠の欠落である。** 失われたhopの前後をつなぐと、実際には提示されていない音を分析することになる。Listenerの回復処理はスペクトル履歴を消去し、古い観測を無効化し、連続した分析窓が揃うまで圧力を止める。同じ欠落が決定的実行で起きた場合は終了する。固定遅延で進む実行では、回復待ちのまま次の入力を生成できないためである。
+*   **Listenerの集計では、intensity密度を質量へ戻す。** スペクトルfront endはLog2Spaceの各binにERB密度$d_i$を保存する。Listenerの重みは、ERB積分幅$\Delta u_i$を掛けたintensity質量$w_i=d_i\,\Delta u_i$である。stabilityとbinごとの最大到達gainは$\sum_i w_i x_i/\sum_i w_i$で平均し、無音・観測証拠の判定にも同じ総質量$\sum_i w_i$を使う。以前の密度による加重を補正し、bin幅に由来する意図しない偏りを除く。協和性の係数とtension式は変えず、記憶や期待のモデルも追加しない。実装契約は`docs/design-notes/listener-twin.md`に記録する。
+
+## 9.4 整合と拡張の順序
+
+実施計画は`docs/roadmap/manifesto-alignment-and-beta.md`に記録する。
+最初に現行版と指定seedによる比較を作り、拍、緊張と解放、曲全体の形を別々に判定する。
+次の対象は小節アクセントの生成、同一領域におけるhabituationの回復と再訪、
+DCCを非ゼロにした場合の結合強度の調整である。修正後の結合式は
+`tension_pressure = tension_level * coupling_strength`であり、Listenerのtensionに
+含まれるresolvabilityを二度掛けない。
+
+短期の期待と境界・終止は、まずpresentationの実音から得る受動的な観測として計画する。
+これらは未実装である。Scenarioは作者のマクロの演出を担い続ける。phraseや長編formには、
+単にmeterを低速化するのではなく、それぞれの表現が必要になる。個人差、生体信号入力、
+長時間の記憶には、それぞれ比較条件と受入条件を設ける。対応する機構と証拠が揃うまで、
+これらの拡張を台帳上の「実装済み」へ変更しない。
 
 # 付録A：主要システムパラメータ
 

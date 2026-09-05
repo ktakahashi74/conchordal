@@ -332,6 +332,56 @@ fn lock_mode_keeps_pitch_and_target() {
 }
 
 #[test]
+fn lock_mode_preserves_placements_outside_analysis_range() {
+    use crate::scenario::{FieldSampling, FieldTarget, SpawnStrategy};
+
+    let fs = 48_000.0;
+    let landscape = Landscape::new(Log2Space::new(100.0, 400.0, 24));
+    for (lo, hi) in [(50.0, 60.0), (500.0, 600.0)] {
+        for target in [
+            None,
+            Some(FieldTarget::Uniform),
+            Some(FieldTarget::Consonance),
+        ] {
+            let mut pop = Community::new(test_timebase());
+            let mut control = VoiceControl::default();
+            control.pitch.freq = (lo + hi) * 0.5;
+            control.pitch.mode = PitchMode::Lock;
+            pop.apply_action(
+                Action::Spawn {
+                    population_id: 1,
+                    ids: vec![1],
+                    spec: spawn_spec_with_control(control),
+                    strategy: target.map(|target| SpawnStrategy::Field {
+                        target,
+                        sampling: FieldSampling::Density,
+                        min_freq: lo,
+                        max_freq: hi,
+                        min_dist_erb: 0.0,
+                        tension: 0.0,
+                    }),
+                },
+                &landscape,
+                None,
+            );
+            let initial_freq = pop.voices[0].body.base_freq_hz();
+            assert!((lo..=hi).contains(&initial_freq));
+
+            let dt = 0.01;
+            let samples_per_hop = (fs * dt) as usize;
+            for frame in 0..50 {
+                pop.advance(samples_per_hop, fs, frame, dt, &landscape);
+                let voice = &pop.voices[0];
+                let freq = voice.body.base_freq_hz();
+                assert!((lo..=hi).contains(&freq), "{target:?}: {freq} Hz");
+                assert!((freq / initial_freq - 1.0).abs() < 1e-6);
+                assert!((voice.target_pitch_log2() - initial_freq.log2()).abs() < 1e-6);
+            }
+        }
+    }
+}
+
+#[test]
 fn lock_mode_prevents_snapback() {
     let landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 48));
     let mut pop = Community::new(test_timebase());

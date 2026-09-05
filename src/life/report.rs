@@ -19,6 +19,7 @@ pub struct JsonlReporter {
     rhythm_observations: Vec<RhythmObservation>,
     listener_beat_confidence: Vec<(f32, f32)>,
     rhythm_summary_written: bool,
+    pub(crate) failure: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +80,19 @@ pub(crate) struct ListenerStateSample {
     pub(crate) measure_confidence: f32,
 }
 
+/// Wall-clock telemetry only; never used by the synthesis or ecology controls.
+#[derive(Debug, Serialize)]
+pub(crate) struct HopTimingSample {
+    pub(crate) frame_idx: u64,
+    pub(crate) time_sec: f32,
+    pub(crate) elapsed_us: f64,
+    pub(crate) analysis_wait_us: f64,
+    pub(crate) listener_wait_us: f64,
+    pub(crate) hop_budget_us: f64,
+    pub(crate) audio_output: &'static str,
+    pub(crate) underrun_frames_total: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RhythmSummary {
     pub time_sec: f32,
@@ -104,6 +118,7 @@ pub struct RhythmSummary {
 enum ReportRecord<'a> {
     Meta {
         seed: u64,
+        hop_timing_scope: &'static str,
     },
     SceneMarker {
         time_sec: f32,
@@ -169,6 +184,7 @@ enum ReportRecord<'a> {
         env_level: f32,
     },
     ListenerState(&'a ListenerStateSample),
+    HopTiming(&'a HopTimingSample),
     DccPressure {
         time_sec: f32,
         tension_pressure: f32,
@@ -226,13 +242,21 @@ impl JsonlReporter {
             rhythm_observations: Vec::new(),
             listener_beat_confidence: Vec::new(),
             rhythm_summary_written: false,
+            failure: None,
         })
     }
 
     /// Header record identifying the effective scenario seed, written first
     /// so a report can be matched back to a `--seed` replay.
     pub fn write_meta(&mut self, seed: u64) -> Result<(), String> {
-        self.write_record(&ReportRecord::Meta { seed })
+        self.write_record(&ReportRecord::Meta {
+            seed,
+            hop_timing_scope: "process_hop entry through end; excludes hop_timing serialization/write",
+        })
+    }
+
+    pub(crate) fn write_hop_timing(&mut self, sample: &HopTimingSample) -> Result<(), String> {
+        self.write_record(&ReportRecord::HopTiming(sample))
     }
 
     pub fn write_scene_markers(&mut self, markers: &[SceneMarker]) -> Result<(), String> {

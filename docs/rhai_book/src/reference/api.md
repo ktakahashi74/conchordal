@@ -497,7 +497,7 @@ glide(tau_sec)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Pitch glide time constant in seconds.
+Pitch glide time constant in seconds. This changes the time constant, not the pitch apply mode. For a voice that snaps at onsets, call `pitch_apply_mode("glide")` to enable continuous pitch movement.
 
 #### `temperature`
 

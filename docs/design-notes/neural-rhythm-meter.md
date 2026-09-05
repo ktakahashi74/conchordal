@@ -456,11 +456,10 @@ Calibration decisions:
   `listener-twin.md`.
 - Production coupling strength: what keeps the generator-side engine from
   re-creating the closed-loop wobble while still allowing emergent entrainment?
-- DccCoupler applies resolvability twice: `tension_level =
-  (1-stability)*resolvability` (`listener-twin.md`) then `tension_pressure =
-  tension_level * resolvability * coupling_strength` (`src/dcc_coupler.rs:32`),
-  giving `resolvability^2`. Collapse to a single resolvability term before
-  raising `coupling_strength` above 0. Currently inert (default 0.0).
+- Resolved 2026-09-05: DccCoupler now uses
+  `tension_pressure = tension_level * coupling_strength`, preserving the single
+  resolvability factor already present in listener tension. Coupling remains
+  off by default; perceptual calibration of nonzero gain remains open.
 
 ## Reference Anchors
 

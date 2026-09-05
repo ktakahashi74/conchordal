@@ -35,6 +35,10 @@ pub struct Args {
     #[arg(long)]
     pub report: Option<String>,
 
+    /// Save worker hop timings and device counters as JSON after execution (no audio)
+    #[arg(long, requires = "nogui", conflicts_with = "compile_only")]
+    pub profile: Option<String>,
+
     /// Override the fresh scenario seed (a script-level seed() still wins)
     #[arg(long)]
     pub seed: Option<u64>,

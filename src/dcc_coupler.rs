@@ -1,4 +1,5 @@
 use crate::config::DccConfig;
+use crate::core::float::{finite_or, sanitize_nonnegative_finite, sanitize01};
 use crate::listener_twin::ListenerState;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -16,8 +17,11 @@ pub(crate) struct DccCoupler {
 impl DccCoupler {
     pub(crate) fn new(config: DccConfig) -> Self {
         Self {
-            coupling_strength: sanitize_unit(config.coupling_strength),
-            max_temperature_bonus: sanitize_nonnegative(config.max_temperature_bonus, 0.10),
+            coupling_strength: sanitize01(finite_or(config.coupling_strength, 0.0)),
+            max_temperature_bonus: sanitize_nonnegative_finite(finite_or(
+                config.max_temperature_bonus,
+                0.10,
+            )),
         }
     }
 
@@ -29,29 +33,13 @@ impl DccCoupler {
         let Some(state) = state else {
             return ListenerPressure::default();
         };
-        let tension_pressure = sanitize_unit(state.tension_level)
-            * sanitize_unit(state.resolvability_level)
-            * self.coupling_strength;
+        // Listener tension already includes resolvability; apply it only once.
+        let tension_pressure =
+            sanitize01(finite_or(state.tension_level, 0.0)) * self.coupling_strength;
         ListenerPressure {
             tension_pressure,
             temperature_bonus: tension_pressure * self.max_temperature_bonus,
         }
-    }
-}
-
-fn sanitize_unit(value: f32) -> f32 {
-    if value.is_finite() {
-        value.clamp(0.0, 1.0)
-    } else {
-        0.0
-    }
-}
-
-fn sanitize_nonnegative(value: f32, fallback: f32) -> f32 {
-    if value.is_finite() {
-        value.max(0.0)
-    } else {
-        fallback
     }
 }
 
@@ -89,16 +77,16 @@ mod tests {
     }
 
     #[test]
-    fn pressure_requires_tension_and_resolvability() {
+    fn pressure_preserves_the_resolvability_already_in_tension() {
         let coupler = DccCoupler::new(DccConfig {
             coupling_strength: 0.5,
             max_temperature_bonus: 0.2,
         });
 
-        let pressure = coupler.pressure(Some(listener_state(0.8, 0.25)));
+        let pressure = coupler.pressure(Some(listener_state(0.4 * 0.25, 0.25)));
 
-        assert!((pressure.tension_pressure - 0.1).abs() < 1e-6);
-        assert!((pressure.temperature_bonus - 0.02).abs() < 1e-6);
+        assert!((pressure.tension_pressure - 0.05).abs() < 1e-6);
+        assert!((pressure.temperature_bonus - 0.01).abs() < 1e-6);
     }
 
     #[test]
@@ -108,10 +96,16 @@ mod tests {
             max_temperature_bonus: f32::NAN,
         });
 
-        let pressure = coupler.pressure(Some(listener_state(2.0, -1.0)));
-
         assert_eq!(coupler.coupling_strength(), 1.0);
-        assert_eq!(pressure.tension_pressure, 0.0);
-        assert_eq!(pressure.temperature_bonus, 0.0);
+        let pressure = coupler.pressure(Some(listener_state(2.0, 1.0)));
+        assert_eq!(pressure.tension_pressure, 1.0);
+        assert_eq!(pressure.temperature_bonus, 0.1);
+        for tension in [f32::NAN, f32::INFINITY, -1.0] {
+            assert_eq!(
+                coupler.pressure(Some(listener_state(tension, 1.0))),
+                ListenerPressure::default()
+            );
+        }
+        assert_eq!(coupler.pressure(None), ListenerPressure::default());
     }
 }

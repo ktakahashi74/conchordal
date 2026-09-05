@@ -3,11 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "404a3a1"
+source_commit = "390ae1e"
 author = "Koichi Takahashi"
-last_updated = "2026-08-16"
+last_updated = "2026-09-05"
 source_version = "0.4.0"
-source_snapshot = "2026-08-16T13:25:15+09:00"
+source_snapshot = "390ae1e plus local improvements, 2026-09-05"
+revision_scope = "Runtime continuity, placement bounds, DCC and Chapter 9; not a complete re-audit"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -517,7 +518,7 @@ To maintain data consistency without locking the audio thread, Conchordal uses a
 3.  The **Worker Thread** merges the analysis result into the current `LandscapeFrame`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
 4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the population's own phonation onset strengths; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
 5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
-6.  When DCC coupling is enabled, `ListenerTwin` tension and resolvability produce a bounded temperature bonus that feeds the Voices' pitch search. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
+6.  When DCC coupling is enabled, `tension_pressure = tension_level * coupling_strength` produces a bounded temperature bonus that feeds the Voices' pitch search. Listener tension already includes resolvability; the coupler applies no second factor. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
 7.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders audio through ADSR-shaped backends.
 8.  Rendered presentation audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
 
@@ -643,6 +644,8 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5 | Implemented (temporal scaffolding remains an explicit experiment) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented; grounded by the scene window (9.2) |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented and off by default; physical biosignal loop remains open |
+| Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations, reset NSGT history and suspend DCC pressure until a complete window is available | §6.2 | Implemented; physical-device overload validation remains open |
+| Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |
 | Dissolution of roles; spatial landscapes; heredity of timbre; other domains | Hereditary respawn exists as assays | — | Horizon |
 
 ## 9.2 Implemented Adaptation and the Remaining Expectation Gap
@@ -653,6 +656,13 @@ For a system whose terrain *is* a model of perception, the consequence is struct
 
 The remaining gap is **expectation**, not the absence of adaptation. No phrase-level predictor yet represents what event should occur next, and no scene-level mechanism autonomously creates or evaluates segmentation boundaries. The division of labor therefore remains: the **body** owns the micro layer (jitter, breath, beating), the **ecology** owns the meso layer (adaptation-driven movement, life and death), and the **scenario** owns the macro layer. `ListenerTwin` tension and resolvability can already close a simulated feedback loop by adding pitch-search temperature when `[dcc].coupling_strength > 0`; the default is zero, and connection to a physical listener's biosignals remains future work. With habituation disabled, "no more than ~8 s without perceptible change" remains a useful sample diagnostic rather than a system invariant.
 
+`ListenerTwin` currently measures local improvement potential in the presentation-derived
+consonance field. Its search holds that field fixed; it does not predict a moved Voice's
+new field or remember a home root or preceding phrase. The existing
+`tension_level = (1 - stability_level) * resolvability_level` therefore does not measure
+homecoming or phrase closure. A more stable presentation can still have higher tension
+when nearby improvement potential increases. This expectation gap remains open.
+
 ## 9.3 Upstream Revisions
 
 Implementation results have revised the Manifesto's mechanism-level sketches while confirming its principles:
@@ -661,6 +671,25 @@ Implementation results have revised the Manifesto's mechanism-level sketches whi
 *   **Perceptual symmetry → the production-loop fixed-point requirement.** A terrain operation is ecologically meaningful only when a perceptual mechanism exists and the agents it attracts radiate spectra that reinforce it. Current tension controls therefore read the ecology-built terrain instead of warping it: movement tension is pitch-search *temperature*, and placement tension is a *relative consonance level*. See `docs/design-notes/tension.md`.
 *   **Rate archaeology → observable time contracts.** Exposing raw energy pools and per-second rates made the composer balance dimensions that the ecology could derive. The implementation assay showed that the independent contract is nominal endurance, not `initial_energy` or `energy_cap`: energy can be normalized to $[0,1]$, while zero-fit drain is derived from endurance and the dissonance shape. Continuous recovery remains a separate time contract because per-second recovery and per-attack recharge have different dimensions. The same assay rejected collapsing `Entrain`, `Seq`, and `Drone`: their onset resets, death rules, telemetry, and render modulators are observably different, so one configured core would only hide the enum behind flags.
 *   **Ambiguous object nouns → lifetime-bearing ontology.** `Material`, `Participant`, and a public draft Population each required prose exceptions because none named the lifetime it represented. The implementation now makes the transition explicit: `PopulationSpec + Placement --place()--> Population`, whose living members are Voices; all Populations sharing the Landscape form the Community. Population policy belongs to PopulationSpec, live control belongs to Population, and `place()` schedules founders immediately. `Species` is reserved until heredity and speciation give it an actual biological invariant. The naming is therefore guarded by observable identity: a Population survives member death and respawn, while a Voice and its generation do not.
+*   **Sound-body range and perceptual coverage are different contracts.** Initial placement must respect its requested Hz bounds, including fallback sampling. An anchored Voice can retain a frequency outside the current analysis band but inside the synthesizer range. A Field placement with no overlap uses a log-uniform fallback inside the request; it makes no consonance claim there. Subsequent free pitch search still operates on the available Landscape.
+*   **Missing audio is missing evidence.** Joining the audio before and after a dropped hop creates a signal that was never presented. Listener recovery therefore resets the spectral history, invalidates old observations and suppresses pressure until a continuous analysis window is available. The same unexpected gap ends deterministic runs, whose fixed-lag schedule cannot advance through recovery.
+*   **Intensity density must be integrated before listener aggregation.** The spectral front end stores ERB density $d_i$ on Log2Space bins. Listener weights are intensity masses $w_i=d_i\,\Delta u_i$, where $\Delta u_i$ is the ERB integration width. Stability and per-bin best reachable gain use $\sum_i w_i x_i/\sum_i w_i$; the silence/evidence check uses the same total mass $\sum_i w_i$. Correcting the earlier density-weighted aggregation removes an unintended bin-width bias. It changes neither the consonance coefficients nor the tension formula, and adds no memory or expectation model. The implementation contract is recorded in `docs/design-notes/listener-twin.md`.
+
+## 9.4 Alignment and Extension Sequence
+
+The implementation plan is recorded in `docs/roadmap/manifesto-alignment-and-beta.md`.
+It starts with current-version, seeded comparisons and separate judgments of audible pulse,
+tension/resolution and form. The next targets are measure-accent production, same-region
+habituation recovery/return, and calibration of nonzero DCC gain. The corrected coupler uses
+`tension_pressure = tension_level * coupling_strength`: resolvability is already present
+in listener tension and is not applied twice.
+
+Short-term expectation and boundary/closure are planned first as passive listener observations
+derived from presentation audio. They are not implemented. Scenario remains the artist's
+macro direction; phrase and long-form models need their own representations, not merely
+slower meter oscillators. Personalization, real biosignal input and long-form memory each
+require their own comparison and acceptance conditions. These extensions do not change
+the ledger to “implemented” until the corresponding mechanism and evidence exist.
 
 # Appendix A: Key System Parameters
 

@@ -16,8 +16,8 @@ use crate::core::mode_pattern::ModePattern;
 use crate::core::meter::MeterShaping;
 use crate::scenario::PhonationTiming;
 use crate::scenario::control::{
-    BodyMethod, ControlUpdate, LeaveSelfOutMode, MoveCostTimeScale, PhonationGate, PitchApplyMode,
-    PitchCoreKind, PitchMode, Routing, VoiceControl,
+    BodyMethod, ControlUpdate, LeaveSelfOutMode, MAX_FREQ_HZ, MIN_FREQ_HZ, MoveCostTimeScale,
+    PhonationGate, PitchApplyMode, PitchCoreKind, PitchMode, Routing, VoiceControl,
 };
 use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{
@@ -1383,6 +1383,29 @@ impl ScriptContext {
                 "population count must be >= 1".into(),
                 position,
             )));
+        }
+        for strategy in [
+            strategy.as_ref(),
+            population_spec.spec.respawn_settle_strategy.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let SpawnStrategy::Field {
+                min_freq, max_freq, ..
+            } = strategy
+                && [min_freq, max_freq]
+                    .iter()
+                    .any(|&&freq| !(MIN_FREQ_HZ..=MAX_FREQ_HZ).contains(&freq))
+            {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    format!(
+                        "field placement bounds must be finite and within {MIN_FREQ_HZ}..={MAX_FREQ_HZ} Hz"
+                    )
+                    .into(),
+                    position,
+                )));
+            }
         }
         let count = count as usize;
         if let Some(capacity) = population_spec.spec.respawn_capacity

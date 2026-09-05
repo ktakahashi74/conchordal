@@ -122,25 +122,45 @@ impl Community {
     ) -> f32 {
         let space = &landscape.space;
         let n_bins = space.n_bins();
-        if n_bins == 0 {
-            return 440.0;
-        }
-
         let (min_freq, max_freq) = strategy.freq_range_hz();
-
-        let mut idx_min = space.index_of_freq(min_freq).unwrap_or(0);
-        let mut idx_max = space
-            .index_of_freq(max_freq)
-            .unwrap_or_else(|| n_bins.saturating_sub(1));
-        if idx_min > idx_max {
-            std::mem::swap(&mut idx_min, &mut idx_max);
-        }
-        idx_max = idx_max.min(n_bins.saturating_sub(1));
-        if idx_min >= n_bins || idx_min > idx_max {
-            return space.freq_of_index(n_bins / 2);
-        }
-
+        let (min_freq, max_freq) = (min_freq.min(max_freq), min_freq.max(max_freq));
         let min_dist_erb = strategy.min_dist_erb();
+        let sample_range = |lo: f32, hi: f32, rng: &mut R| -> f32 {
+            let (lo_log2, hi_log2) = (lo.log2(), hi.log2());
+            if lo_log2 >= hi_log2 {
+                return lo;
+            }
+            2.0f32
+                .powf(rng.random_range(lo_log2..hi_log2))
+                .clamp(lo, hi)
+        };
+        // Without field evidence, keep the uniform fallback inside the requested
+        // range. Uniform placement itself does not depend on the analysis space.
+        if n_bins == 0
+            || max_freq < space.fmin
+            || min_freq > space.fmax
+            || matches!(
+                strategy,
+                SpawnStrategy::Field {
+                    target: FieldTarget::Uniform,
+                    ..
+                }
+            )
+        {
+            for _ in 0..32 {
+                let f = sample_range(min_freq, max_freq, rng);
+                if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
+                    return f;
+                }
+            }
+            return sample_range(min_freq, max_freq, rng);
+        }
+
+        let min_freq = min_freq.max(space.fmin);
+        let max_freq = max_freq.min(space.fmax);
+        let idx_min = space.nearest_index(min_freq);
+        let idx_max = space.nearest_index(max_freq);
+        let bin_freq = |idx| space.freq_of_index(idx).clamp(min_freq, max_freq);
 
         // Tension (Consonance only): aim at a metastable step below the strongest
         // peak — target = L_max - tension*(L_max - L_min) in field_score over the
@@ -178,17 +198,26 @@ impl Community {
         };
 
         let jitter_bin = |idx: usize, rng: &mut R| -> f32 {
-            let idx = idx.min(n_bins - 1);
             let center = space.freq_of_index(idx);
-            let step = space.step();
-            let half = step * 0.5;
+            let half = space.step() * 0.5;
             let center_log2 = center.log2();
-            let sample_log2 = rng.random_range((center_log2 - half)..(center_log2 + half));
-            2.0f32.powf(sample_log2).clamp(space.fmin, space.fmax)
+            let lo = if idx == 0 {
+                min_freq
+            } else {
+                2.0f32.powf(center_log2 - half).max(min_freq)
+            };
+            let hi = if idx == n_bins - 1 {
+                max_freq
+            } else {
+                2.0f32.powf(center_log2 + half).min(max_freq)
+            };
+            if lo >= hi {
+                return bin_freq(idx);
+            }
+            sample_range(lo, hi, rng)
         };
 
         let jitter_free_bin = |idx: usize, rng: &mut R| -> f32 {
-            let center = space.freq_of_index(idx.min(n_bins - 1));
             // Try a few times to jitter within the bin while avoiding occupied bands.
             for _ in 0..16 {
                 let f = jitter_bin(idx, rng);
@@ -196,29 +225,10 @@ impl Community {
                     return f;
                 }
             }
-            center
+            bin_freq(idx)
         };
 
         let pick_idx = match strategy {
-            // Flat (log-uniform) measure: sample continuously, retrying occupancy.
-            SpawnStrategy::Field {
-                target: FieldTarget::Uniform,
-                ..
-            } => {
-                let min_l = min_freq.log2();
-                let max_l = max_freq.log2();
-                if !min_l.is_finite() || !max_l.is_finite() || min_l >= max_l {
-                    return min_freq.max(1e-6);
-                }
-                for _ in 0..32 {
-                    let r = rng.random_range(min_l..max_l);
-                    let f = 2.0f32.powf(r);
-                    if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
-                        return f;
-                    }
-                }
-                return 2.0f32.powf(rng.random_range(min_l..max_l));
-            }
             // Deterministic extremum of the target (higher score = better).
             SpawnStrategy::Field {
                 target,
@@ -242,7 +252,7 @@ impl Community {
                     if score > best_any.1 {
                         best_any = (i, score);
                     }
-                    let f = space.freq_of_index(i);
+                    let f = bin_freq(i);
                     if !self.is_range_occupied_with(f, min_dist_erb, reserved)
                         && score > best_free.map_or(f32::MIN, |(_, v)| v)
                     {
@@ -266,7 +276,7 @@ impl Community {
                 let mut has_unoccupied = false;
                 let mut sum = 0.0f32;
                 for i in idx_min..=idx_max {
-                    let f = space.freq_of_index(i);
+                    let f = bin_freq(i);
                     let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
                     if !occupied {
                         has_unoccupied = true;
@@ -344,6 +354,116 @@ mod tests {
     use crate::core::log2space::Log2Space;
     use rand::SeedableRng;
     use std::collections::HashSet;
+
+    #[test]
+    fn field_placement_keeps_narrow_and_clipped_ranges_in_hz() {
+        let space = Log2Space::new(100.0, 410.0, 24);
+        let landscape = LandscapeFrame::new(space.clone());
+        let pop = test_pop();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+        for target in [
+            FieldTarget::Consonance,
+            FieldTarget::Dissonance,
+            FieldTarget::Edge,
+            FieldTarget::Gap,
+        ] {
+            for sampling in [FieldSampling::Peak, FieldSampling::Density] {
+                for (min_freq, max_freq) in [
+                    (220.0f32, 220.1f32),
+                    (220.1, 220.0),
+                    (220.0, 220.0),
+                    (90.0, 100.1),
+                    (408.0, 420.0),
+                ] {
+                    let lo = min_freq.min(max_freq).max(space.fmin);
+                    let hi = min_freq.max(max_freq).min(space.fmax);
+                    for min_dist_erb in [0.0, 100.0] {
+                        let strategy = SpawnStrategy::Field {
+                            target,
+                            sampling,
+                            min_freq,
+                            max_freq,
+                            min_dist_erb,
+                            tension: 0.0,
+                        };
+                        // The large spacing forces the all-occupied fallback.
+                        for _ in 0..32 {
+                            let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[lo]);
+                            assert!(
+                                (lo..=hi).contains(&freq),
+                                "{target:?}/{sampling:?}: {freq} Hz outside [{lo}, {hi}]"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn field_placement_without_analysis_overlap_stays_in_requested_range() {
+        let landscape = LandscapeFrame::new(Log2Space::new(100.0, 400.0, 24));
+        let pop = test_pop();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+        for target in [
+            FieldTarget::Consonance,
+            FieldTarget::Dissonance,
+            FieldTarget::Edge,
+            FieldTarget::Gap,
+            FieldTarget::Uniform,
+        ] {
+            for (min_freq, max_freq) in [(50.0f32, 60.0f32), (600.0, 500.0)] {
+                let strategy = SpawnStrategy::Field {
+                    target,
+                    sampling: FieldSampling::Density,
+                    min_freq,
+                    max_freq,
+                    min_dist_erb: 0.0,
+                    tension: 0.0,
+                };
+                let lo = min_freq.min(max_freq);
+                let hi = min_freq.max(max_freq);
+                let mut seen = HashSet::new();
+                for _ in 0..32 {
+                    let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[]);
+                    assert!((lo..=hi).contains(&freq), "{target:?}: {freq} Hz");
+                    seen.insert(freq.to_bits());
+                }
+                assert!(seen.len() > 1, "fallback must sample the requested range");
+            }
+        }
+    }
+
+    #[test]
+    fn field_placement_checks_spacing_at_clipped_bin_frequency() {
+        let space = Log2Space::new(100.0, 400.0, 24);
+        let mut landscape = LandscapeFrame::new(space.clone());
+        let min_freq = 219.0;
+        let idx_min = space.nearest_index(min_freq);
+        let next_freq = space.freq_of_index(idx_min + 1);
+        landscape.consonance_field_level_eff[idx_min] = 1.0;
+        landscape.consonance_density_mass_eff[idx_min] = 1.0;
+        landscape.consonance_field_level_eff[idx_min + 1] = 0.5;
+        landscape.consonance_density_mass_eff[idx_min + 1] = 0.5;
+        let pop = test_pop();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(3);
+        for sampling in [FieldSampling::Peak, FieldSampling::Density] {
+            let strategy = SpawnStrategy::Field {
+                target: FieldTarget::Consonance,
+                sampling,
+                min_freq,
+                max_freq: next_freq,
+                min_dist_erb: 0.01,
+                tension: 0.0,
+            };
+            for _ in 0..32 {
+                let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[min_freq]);
+                assert!((min_freq..=next_freq).contains(&freq));
+                assert_eq!(space.nearest_index(freq), idx_min + 1);
+                assert!(!pop.is_range_occupied_with(freq, 0.01, &[min_freq]));
+            }
+        }
+    }
 
     #[test]
     fn decide_frequency_uses_consonance_field_level() {
@@ -448,11 +568,13 @@ mod tests {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
         landscape.consonance_density_mass.fill(1.0);
+        landscape.consonance_density_mass_eff.fill(1.0);
 
         let idx_min = 6usize;
         let idx_max = 12usize;
         for i in idx_min..=idx_max {
             landscape.consonance_density_mass[i] = 0.0;
+            landscape.consonance_density_mass_eff[i] = 0.0;
         }
 
         let pop = test_pop();
@@ -469,6 +591,7 @@ mod tests {
 
         for _ in 0..64 {
             let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[]);
+            assert!((space.freq_of_index(idx_min)..=space.freq_of_index(idx_max)).contains(&freq));
             let picked_idx = space.index_of_freq(freq).expect("picked idx");
             assert!(
                 (idx_min..=idx_max).contains(&picked_idx),
@@ -509,6 +632,7 @@ mod tests {
 
         for _ in 0..64 {
             let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &reserved);
+            assert!((space.freq_of_index(idx_min)..=space.freq_of_index(idx_max)).contains(&freq));
             let picked_idx = space.index_of_freq(freq).expect("picked idx");
             assert!(
                 (idx_min..=idx_max).contains(&picked_idx),
@@ -559,11 +683,13 @@ mod tests {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = LandscapeFrame::new(space.clone());
         landscape.consonance_density_mass.fill(1.0);
+        landscape.consonance_density_mass_eff.fill(1.0);
 
         let idx_min = 5usize;
         let idx_max = 11usize;
         for i in idx_min..=idx_max {
             landscape.consonance_density_mass[i] = 0.0;
+            landscape.consonance_density_mass_eff[i] = 0.0;
         }
         let idx_occupied = 8usize;
         let reserved = vec![space.freq_of_index(idx_occupied)];

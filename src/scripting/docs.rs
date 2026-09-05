@@ -937,7 +937,8 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
         patch: Patch::Live,
         usage: &["glide(tau_sec)"],
         summary: "Pitch glide time constant in seconds.",
-        details: "",
+        details: "This changes the time constant, not the pitch apply mode. For a voice that \
+snaps at onsets, call `pitch_apply_mode(\"glide\")` to enable continuous pitch movement.",
     },
     FnDoc {
         name: "pitch_smooth",

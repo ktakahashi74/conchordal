@@ -73,8 +73,9 @@ report有効時に`listener_state` recordを出し、GUIにも同じstateを表�
 
 - `coupling_strength`（`0.0`–`1.0`、既定値`0.0`）：`0.0`ではレポートとUI専用で、
   generationは変わりません。値を上げると
-  `tension_pressure = tension_level * resolvability_level * coupling_strength`を
-  一時的な音高探索の加算値としてだけ使います。目標音高やリズム同期を
+  `tension_pressure = tension_level * coupling_strength`を
+  一時的な音高探索の加算値としてだけ使います。ListenerTwinの緊張度にはすでに
+  解決可能性が含まれるため、結合時に重ねて掛けません。目標音高やリズム同期を
   直接設定しません。
 - `max_temperature_bonus`（既定値`0.10`）：一時的な加算値の上限。
 

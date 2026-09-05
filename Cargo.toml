@@ -85,6 +85,7 @@ eframe = { version = "0.34", default-features = false, features = ["default_font
 
 [features]
 default = ["simd-wide"]
+profile-alloc = []
 simd-wide = ["dep:wide"]
 plotcheck = ["dep:plotters"]
 

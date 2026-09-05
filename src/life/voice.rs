@@ -68,6 +68,7 @@ pub struct Voice {
     pub(crate) selection_approx_loo: bool,
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
+    amp_update_pending: bool,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
     voice_adsr: Option<super::sound::ToneAdsr>,
     /// One-way latch for `phonate_when_viable()`: starts open for
@@ -329,6 +330,7 @@ impl Voice {
             selection_approx_loo,
             phonation_scratch: Default::default(),
             active_render_notes: Vec::new(),
+            amp_update_pending: false,
             life_accumulator: None,
             voice_adsr,
             phonation_gate_open,
@@ -337,6 +339,7 @@ impl Voice {
 
     fn apply_body_runtime(&mut self) {
         let runtime = BodyRuntime::from_control(&self.effective_control.body);
+        self.amp_update_pending |= runtime.amp != self.body.amp();
         self.body.set_amp(runtime.amp);
         self.body.apply_timbre_controls(
             runtime.brightness,
@@ -944,8 +947,9 @@ impl Voice {
         out_cmds: &mut Vec<ToneCmd>,
     ) {
         for tracked in &mut self.active_render_notes {
-            let amp_changed =
-                (target_amp - tracked.last_target_amp).abs() >= Self::PHONATION_AMP_UPDATE_EPS;
+            // Explicit amplitude controls bypass the threshold for autonomous vitality drift.
+            let amp_changed = self.amp_update_pending
+                || (target_amp - tracked.last_target_amp).abs() >= Self::PHONATION_AMP_UPDATE_EPS;
             let freq_changed = freq_hz.is_finite()
                 && freq_hz > 0.0
                 && (freq_hz - tracked.last_target_freq_hz).abs() > 0.01;
@@ -976,6 +980,7 @@ impl Voice {
                 tracked.last_continuous_drive = continuous_drive;
             }
         }
+        self.amp_update_pending = false;
     }
 
     fn prune_tracked_render_notes(&mut self, cmds: &[ToneCmd]) {
@@ -1183,6 +1188,76 @@ mod tests {
             None,
             0,
         )
+    }
+
+    #[test]
+    fn live_amp_controls_update_quiet_held_notes_including_mute_and_resume() {
+        let mut control = VoiceControl::default();
+        control.body.amp = 0.008;
+        let mut voice = drone_voice_with_control(control);
+        let timebase = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let rhythms = NeuralRhythms::default();
+        let mut batch = PhonationBatch::default();
+        voice.tick_phonation_into(&timebase, 0, &rhythms, None, 0.0, 1.0, 0.5, &mut batch);
+        let tone_id = batch.tones.first().expect("held tone").tone_id;
+
+        for (index, amp) in [0.006, 0.0, 0.004].into_iter().enumerate() {
+            voice
+                .apply_patch(&ControlUpdate {
+                    amp: Some(amp),
+                    ..Default::default()
+                })
+                .unwrap();
+            let expected = voice.compute_target_amp();
+            voice.tick_phonation_into(
+                &timebase,
+                (index as Tick * 2 + 1) * 64,
+                &rhythms,
+                None,
+                0.0,
+                1.0,
+                0.5,
+                &mut batch,
+            );
+            assert!(
+                batch.tones.is_empty(),
+                "control changes must update the existing tone"
+            );
+            assert!(
+                batch.cmds.iter().any(|cmd| matches!(cmd,
+                    ToneCmd::Update { tone_id: id, update, .. }
+                        if *id == tone_id && update.target_amp == Some(expected)
+                )),
+                "the amplitude command must reach the held tone even below the drift threshold"
+            );
+
+            voice
+                .apply_patch(&ControlUpdate {
+                    amp: Some(amp),
+                    ..Default::default()
+                })
+                .unwrap();
+            voice.tick_phonation_into(
+                &timebase,
+                (index as Tick * 2 + 2) * 64,
+                &rhythms,
+                None,
+                0.0,
+                1.0,
+                0.5,
+                &mut batch,
+            );
+            assert!(
+                !batch
+                    .cmds
+                    .iter()
+                    .any(|cmd| matches!(cmd, ToneCmd::Update { .. })),
+                "an unchanged amplitude must not keep emitting updates"
+            );
+        }
     }
 
     /// Entrain-brained voice with a consonance-viability window, so

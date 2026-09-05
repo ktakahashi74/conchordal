@@ -122,6 +122,24 @@ fn sample_scan_linear_log2_panics_on_misaligned_scan() {
     let _ = sample_scan_linear_log2(&space, &scan, 220.0);
 }
 
+#[test]
+#[should_panic(expected = "scan length mismatch: habituation_state_scan")]
+fn apply_habituation_panics_on_short_state_scan() {
+    let space = Log2Space::new(55.0, 4000.0, 24);
+    let h = vec![0.5; space.n_bins() - 1];
+    let mut landscape = Landscape::new(space);
+    landscape.apply_habituation(&h, 0.0, &ConsonanceRepresentationParams::default());
+}
+
+#[test]
+#[should_panic(expected = "scan length mismatch: habituation_state_scan")]
+fn apply_habituation_panics_on_long_state_scan() {
+    let space = Log2Space::new(55.0, 4000.0, 24);
+    let h = vec![0.5; space.n_bins() + 1];
+    let mut landscape = Landscape::new(space);
+    landscape.apply_habituation(&h, 0.0, &ConsonanceRepresentationParams::default());
+}
+
 /// Sampling an aligned scan still uses `NEG_INFINITY` as the out-of-space
 /// sentinel; only length mismatch was promoted to a panic.
 #[test]

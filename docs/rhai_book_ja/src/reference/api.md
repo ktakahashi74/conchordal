@@ -497,7 +497,7 @@ glide(tau_sec)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Pitch glide time constant in seconds.
+Pitch glide time constant in seconds. This changes the time constant, not the pitch apply mode. For a voice that snaps at onsets, call `pitch_apply_mode("glide")` to enable continuous pitch movement.
 
 #### `temperature`
 

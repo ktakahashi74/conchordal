@@ -25,6 +25,14 @@ Consonance Fieldに応じたPlacementでは、Field内の**対象領域**を指�
 `consonance(root)`はroot周辺のharmonic windowを取り、`range()`で倍音範囲を指定します。
 どの配置先にも、絶対周波数の`(min_hz, max_hz)`範囲を渡せます。
 
+範囲の両端には、音源が扱える1〜20000 Hz内の有限値を指定します。大小が逆でも使えます。
+初期配置は微小な揺らぎ（jitter）を加える場合も、重みがすべてゼロ、または全域が占有済みで
+代替の抽選を行う場合も、指定範囲を守ります。Consonance Fieldに基づくPlacementは
+解析帯域（現在55〜8000 Hz）との共通部分を使います。共通部分がなければ評価の根拠を
+得られないため、指定範囲内の対数一様分布へ
+切り替わります。`random()`は指定範囲を直接使います。この範囲は初期配置の指定であり、
+その後の`seek_consonance()`による移動を同じ範囲へ制限するものではありません。
+
 ```rhai
 let anchor = harmonic()
     .brain("drone")

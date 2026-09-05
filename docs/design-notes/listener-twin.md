@@ -2,7 +2,7 @@
 
 Status: Phases 1-4 implemented; in scope for v0.4.0 (Phase 5 deferred)
 Scope: conchordal architecture, DCC coupling, tension/resolution model
-Date: 2026-05-19 (scope update 2026-06-02)
+Date: 2026-05-19 (scope update 2026-06-02; mass-weighting contract update 2026-09-05)
 
 This memo records the proposed design before implementation. It intentionally
 does not define a public scripting API yet.
@@ -110,8 +110,8 @@ ListenerState {
 Recommended meanings:
 
 - `stability_level`: how stable / consonant the current audible presentation is.
-- `resolvability_level`: whether nearby audible states offer a plausible
-  improvement.
+- `resolvability_level`: the available local improvement in the current
+  presentation-derived consonance field, after movement cost.
 - `tension_level`: unstable now, but with an available path toward improvement.
 - `attention_level`: presentation-derived onset / spectral-flux salience.
 - `neural_rhythms`: presentation-derived listener-side rhythm model.
@@ -119,6 +119,25 @@ Recommended meanings:
 Low or absent presentation evidence should not be reported as instability.
 When the presentation-derived intensity mass is effectively zero, the first
 implementation reports neutral stability, zero resolvability, and zero tension.
+
+The spectral front end stores `subjective_intensity` as an ERB density, not a
+mass per Log2Space bin. Let `d_i` be this nonnegative density and `du_i` the
+bin's ERB integration width from `erb_grid`. Use the same intensity mass for
+stability, resolution gain, and the silence/evidence check:
+
+```text
+w_i = d_i * du_i
+M = sum_i(w_i)
+L_i = consonance_field_level_eff[i]
+
+stability_level = sum_i(w_i * L_i) / M
+```
+
+The weighted mean applies when `M` exceeds the internal evidence threshold.
+Otherwise the state is `(stability, resolvability, tension) = (0.5, 0.0, 0.0)`.
+Using `d_i` directly as a weight would give equal-mass peaks unequal influence
+when their ERB bin widths differ. This unit correction preserves the existing
+consonance coefficients, movement-cost parameters, and tension formula.
 
 Derived values should not be stored in Phase 1:
 
@@ -176,25 +195,34 @@ The first approximation can be:
 resolvability = reachable_stability_gain(current_audio_landscape)
 ```
 
-Where reachable gain is the best local improvement in `consonance_field_level`
-after subtracting a movement cost. This makes dominant-like resolution possible
-when the consonance landscape and the current audible tones create that affordance,
-without encoding a tonal grammar rule.
+Where reachable gain is the best local improvement in
+`consonance_field_level_eff` after subtracting a movement cost. The current
+presentation-derived field remains fixed during this search. This measures
+nearby improvement potential without encoding a tonal grammar rule.
 
 Use a simple log-frequency cost first:
 
 ```text
-candidate_gain =
-  candidate_stability_level
-  - current_stability_level
-  - movement_cost_per_oct * abs(candidate_log2 - current_log2)
+candidate_gain(i, j) =
+  L_j - L_i - movement_cost_per_oct * abs(log2_f_j - log2_f_i)
 
-resolvability_level = clamp(best_positive_gain / gain_scale, 0, 1)
+best_positive_gain_i = max(0, max_j_in_reachable_window(candidate_gain(i, j)))
+resolution_gain = sum_i(w_i * best_positive_gain_i) / M
+resolvability_level = clamp(resolution_gain / gain_scale, 0, 1)
 ```
 
-For a multi-bin audible region, compute this per active bin and average by
-presentation-derived intensity. Keep `movement_cost_per_oct` and `gain_scale`
-internal constants until reports show that they need to be configurable.
+For a multi-bin audible region, compute the gain per active bin and average by
+the intensity mass `w_i`, using the same `M` and evidence threshold as stability.
+Keep `movement_cost_per_oct` and `gain_scale` internal constants until reports
+show that they need to be configurable.
+
+The search does not resynthesize a moved Voice or predict the resulting field.
+It also has no memory of a home root, preceding phrase, or expected return.
+Consequently, `tension_level` combines local instability and improvement potential;
+it does not establish perceived homecoming, phrase closure, or fulfillment of
+an expectation. Stability can improve while tension rises if the available
+local gain increases enough. Those components must remain separately visible
+in comparisons.
 
 Later versions can add idiom-specific expectation, learned cadence statistics,
 or listener feedback, but those should be separate layers.
@@ -406,7 +434,10 @@ windows lower tension.
 
 - Implemented as `src/dcc_coupler.rs`.
 - Reads `ListenerState` and computes:
-  `tension_pressure = tension_level * resolvability_level * coupling_strength`.
+  `tension_pressure = tension_level * coupling_strength`.
+  Listener tension already includes resolvability; the duplicate factor was
+  removed on 2026-09-05. A fixed-presentation, moving-habitat fixture checks
+  that nonzero coupling changes pitch while listener evidence stays identical.
 - Applies pressure only as a transient exploration bonus in population pitch
   decisions. It does not set target pitches or change rhythm synchronization.
 - Reports `dcc_pressure` records beside `listener_state` records.

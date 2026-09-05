@@ -1,6 +1,6 @@
 // Sample 12 — Emergence and Resolution
-// One arc: the terrain bends toward tension and the register lifts;
-// life survives the strain, and gravity returns.
+// One arc: the search heats up and the reference register lifts;
+// then the search cools as the reference returns.
 
 let root_hz = 110.0;
 
@@ -89,10 +89,10 @@ section("emergence and resolution", || {
     let flow = place(flow_particles, consonance(200.0, 1500.0).count(9).spacing(0.66));
     wait(5.3);
 
-    // V. Resolution: the search cools, the register falls home, and the colony
-    // settles back onto stable consonant peaks -- the return of tonal gravity.
+    // V. Resolution: cool the search and enable glide while the reference returns.
     colony.temperature(0.0);
     flow.amp(0.014);
+    colony.pitch_apply_mode("glide");
     colony.glide(0.22);
     root.freq(root_hz);
     pulse.freq(root_hz);

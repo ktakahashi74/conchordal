@@ -63,14 +63,15 @@ impl SlidingPlv {
         }
     }
 
-    pub fn plv(&self) -> f32 {
+    /// No estimate exists until at least one phase difference has been observed.
+    pub fn plv(&self) -> Option<f32> {
         if self.len == 0 {
-            return 0.0;
+            return None;
         }
         let n = self.len as f32;
         let mean_cos = self.sum_cos / n;
         let mean_sin = self.sum_sin / n;
-        (mean_cos * mean_cos + mean_sin * mean_sin).sqrt()
+        Some((mean_cos * mean_cos + mean_sin * mean_sin).sqrt())
     }
 
     #[cfg(test)]
@@ -131,7 +132,7 @@ mod tests {
         }
         assert!(plv.is_full());
         assert!(
-            (plv.plv() - 1.0).abs() < 1e-5,
+            (plv.plv().unwrap() - 1.0).abs() < 1e-5,
             "PLV should be ~1.0 for identical angles"
         );
     }
@@ -142,10 +143,10 @@ mod tests {
         for i in 0..100 {
             plv.push(TAU * i as f32 / 100.0);
         }
+        let observed = plv.plv().unwrap();
         assert!(
-            plv.plv() < 0.1,
-            "PLV should be ~0 for uniform spread, got {}",
-            plv.plv()
+            observed < 0.1,
+            "PLV should be ~0 for uniform spread, got {observed}"
         );
     }
 
@@ -156,12 +157,12 @@ mod tests {
         for i in 0..5 {
             plv.push(TAU * i as f32 / 5.0);
         }
-        let scattered = plv.plv();
+        let scattered = plv.plv().unwrap();
         // Now push 5 identical angles to replace the scattered ones
         for _ in 0..5 {
             plv.push(1.0);
         }
-        let coherent = plv.plv();
+        let coherent = plv.plv().unwrap();
         assert!(
             coherent > scattered + 0.5,
             "PLV should increase after coherent input"
@@ -170,13 +171,23 @@ mod tests {
     }
 
     #[test]
-    fn plv_empty() {
+    fn plv_distinguishes_no_observations_from_zero_locking() {
+        let mut plv = SlidingPlv::new(4);
+        assert_eq!(plv.plv(), None);
+        for angle in [0.0, PI, -PI, 0.0] {
+            plv.push(angle);
+        }
+        assert_eq!(plv.plv(), Some(0.0));
+    }
+
+    #[test]
+    fn plv_zero_window_has_no_observations() {
         let plv = SlidingPlv::new(0);
-        assert_eq!(plv.plv(), 0.0);
+        assert_eq!(plv.plv(), None);
         assert_eq!(plv.window(), 0);
 
         let mut plv_zero = SlidingPlv::new(0);
         plv_zero.push(1.0); // should not panic
-        assert_eq!(plv_zero.plv(), 0.0);
+        assert_eq!(plv_zero.plv(), None);
     }
 }

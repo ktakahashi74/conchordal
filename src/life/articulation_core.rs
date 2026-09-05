@@ -378,7 +378,10 @@ impl KuramotoCore {
     }
 
     pub fn plv(&self) -> Option<f32> {
-        self.telemetry.sliding_plv.as_ref().map(|p| p.plv())
+        self.telemetry
+            .sliding_plv
+            .as_ref()
+            .and_then(SlidingPlv::plv)
     }
 
     pub fn enable_plv(&mut self, window: usize) {

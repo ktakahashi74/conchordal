@@ -228,6 +228,35 @@ fn placement_count_must_be_positive() {
 }
 
 #[test]
+fn field_placement_bounds_must_fit_sound_body_frequency_limits() {
+    for placement in [
+        "consonance(30000.0, 31000.0)",
+        "dissonance(0.5, 100.0)",
+        "edge(-100.0, 100.0)",
+        "gap(100.0, 0.0)",
+        "random(100.0, 20001.0)",
+        "consonance(10000.0).range(1.0, 3.0)",
+        "consonance(1e100, 100.0)",
+    ] {
+        let err = run_script_err(&format!("place(sine(), {placement});"));
+        assert!(
+            err.message
+                .contains("field placement bounds must be finite"),
+            "{placement}: {}",
+            err.message
+        );
+    }
+    let err = run_script_err(
+        "place(sine().respawn_random().respawn_settle(consonance(30000.0, 31000.0)), at(220.0));",
+    );
+    assert!(
+        err.message
+            .contains("field placement bounds must be finite")
+    );
+    run_script("place(sine(), consonance(20000.0, 1.0));");
+}
+
+#[test]
 fn respawn_capacity_cannot_be_below_founder_count() {
     let err = run_script_err(
         r#"

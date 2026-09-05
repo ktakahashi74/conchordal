@@ -58,6 +58,10 @@ impl AnalysisStream {
         &self.last_landscape
     }
 
+    pub(crate) fn window_samples(&self) -> usize {
+        self.nsgt_rt.nfft()
+    }
+
     /// Process audio chunk asynchronously.
     /// Returns the updated Landscape.
     pub fn process(&mut self, audio: &[f32]) -> Landscape {
@@ -165,6 +169,7 @@ impl AnalysisStream {
         self.nsgt_rt.reset();
         self.spectral_frontend.reset();
         let mut landscape = Landscape::new(self.nsgt_rt.space().clone());
+        landscape.pitch_objective_mode = self.last_landscape.pitch_objective_mode;
         landscape.roughness_suppress_sigma_erb = self
             .params
             .roughness_kernel

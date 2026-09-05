@@ -84,8 +84,9 @@ selected with `--config`), not in script:
 
 - `coupling_strength` (`0.0`–`1.0`, default `0.0`): at `0.0` the twin is
   report/UI-only and generation is unchanged. Above `0.0` it applies
-  `tension_pressure = tension_level * resolvability_level * coupling_strength`
-  as a transient pitch-exploration bonus only. It never sets target pitches or
+  `tension_pressure = tension_level * coupling_strength`
+  as a transient pitch-exploration bonus only. Listener tension already includes
+  resolvability, so the coupler does not apply it again. It never sets target pitches or
   changes rhythm synchronization.
 - `max_temperature_bonus` (default `0.10`): ceiling on that transient bonus.
 

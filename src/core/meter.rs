@@ -14,7 +14,12 @@
 
 use std::f32::consts::TAU;
 
+use crate::core::onset::OnsetDetector;
 use crate::core::phase::wrap_pm_pi;
+
+#[cfg(test)]
+#[path = "meter_assay.rs"]
+mod audio_assay;
 
 // Beat (tactus) range. Faster onset streams lock the beat at the top of this
 // band; anything faster is subdivision territory, not a separate beat.
@@ -36,11 +41,6 @@ const BETA: f32 = -1.0;
 const FORCE_AMP: f32 = 1.0; // drive -> amplitude pumping (in phase)
 const FORCE_PHASE: f32 = 1.0; // drive -> phase entrainment
 const ETA_OMEGA: f32 = 3.0; // Hebbian frequency-learning rate
-
-// Onset detector (adaptive threshold + refractory).
-const ONSET_TAU: f32 = 1.0;
-const ONSET_K: f32 = 2.0;
-const REFRACTORY: f32 = 0.06;
 
 // Confidence accumulators decay over this timescale, so confidence persists
 // through short gaps (a beat or two) but fades in sustained silence.
@@ -115,11 +115,7 @@ pub struct MeterNetwork {
     beat_omega: f32,
     beat_r: f32,
 
-    // Onset detector state.
-    onset_baseline: f32,
-    onset_var: f32,
-    onset_timer: f32,
-    prev_drive: f32,
+    onset_detector: OnsetDetector,
 
     // Leaky resultant accumulators (numerator complex sum + count denominator),
     // all decayed at PERSIST_TAU so PLV is rate-independent and silence-fading.
@@ -150,10 +146,7 @@ impl Default for MeterNetwork {
             beat_phi: 0.0,
             beat_omega: TAU * F_BEAT_INIT,
             beat_r: 0.1,
-            onset_baseline: 0.0,
-            onset_var: 0.0,
-            onset_timer: 0.0,
-            prev_drive: 0.0,
+            onset_detector: OnsetDetector::default(),
             plv_count: 0.0,
             beat_re: 0.0,
             beat_im: 0.0,
@@ -195,7 +188,7 @@ impl MeterNetwork {
         let dt = dt.max(1e-4);
         let drive = drive.clamp(0.0, 1.0);
 
-        let onset = self.detect_onset(dt, drive);
+        let onset = self.onset_detector.process(dt, drive);
 
         // Attractor depth: a deeper basin (higher stability) forces phase and
         // amplitude harder toward the stimulus. The forcing only acts in the
@@ -297,26 +290,6 @@ impl MeterNetwork {
         self.last
     }
 
-    fn detect_onset(&mut self, dt: f32, drive: f32) -> Onset {
-        let a = (-dt / ONSET_TAU).exp();
-        self.onset_baseline = a * self.onset_baseline + (1.0 - a) * drive;
-        let dev = drive - self.onset_baseline;
-        self.onset_var = a * self.onset_var + (1.0 - a) * dev * dev;
-        let std = self.onset_var.max(1e-6).sqrt();
-        let th = (self.onset_baseline + ONSET_K * std).clamp(0.01, 0.95);
-        self.onset_timer = (self.onset_timer - dt).max(0.0);
-
-        let mut out = Onset::default();
-        if self.onset_timer <= 0.0 && self.prev_drive < th && drive >= th {
-            let denom = (drive - self.prev_drive).max(1e-6);
-            out.frac = ((th - self.prev_drive) / denom).clamp(0.0, 1.0);
-            out.fired = true;
-            self.onset_timer = REFRACTORY;
-        }
-        self.prev_drive = drive;
-        out
-    }
-
     fn build_state(&self) -> MeterState {
         let count = self.plv_count.max(1e-6);
         // Presence gate: a resultant from too few onsets is statistically
@@ -391,7 +364,11 @@ impl MeterNetwork {
             0
         };
         let measure = MeterBand {
-            phase: wrap_pm_pi(TAU * self.beat_cycles / MEASURE_RATIOS[best_m] as f32),
+            // Zero phase follows observed accents, not the arbitrary beat-count origin.
+            phase: wrap_pm_pi(
+                TAU * self.beat_cycles / MEASURE_RATIOS[best_m] as f32
+                    - self.meas_im[best_m].atan2(self.meas_re[best_m]),
+            ),
             freq_hz: beat_freq / MEASURE_RATIOS[best_m] as f32,
             amplitude: accent_presence,
             confidence: meas_conf,
@@ -411,12 +388,6 @@ impl MeterNetwork {
     pub fn state(&self) -> MeterState {
         self.last
     }
-}
-
-#[derive(Clone, Copy, Default)]
-struct Onset {
-    fired: bool,
-    frac: f32,
 }
 
 /// Sanitize a basin `(min, max)` into an ordered, finite, in-band pair.
@@ -710,6 +681,44 @@ mod tests {
             "accent recurrence should register a measure, got {}",
             s.measure.confidence
         );
+    }
+
+    #[test]
+    fn measure_phase_tracks_the_observed_accent_position() {
+        for strong_parity in [0, 1] {
+            let mut net = MeterNetwork::new();
+            let mut strong_cos = Vec::new();
+            let mut weak_cos = Vec::new();
+            for step in 0..16000 {
+                let beat = step / 100;
+                let strong = beat % 2 == strong_parity;
+                let drive = if step % 100 < 4 {
+                    if strong { 1.0 } else { 0.55 }
+                } else {
+                    0.0
+                };
+                let state = net.process(DT, drive);
+                if step >= 8000 && step % 100 == 4 {
+                    assert_eq!(state.measure_ratio, 2);
+                    if strong {
+                        strong_cos.push(state.measure.phase.cos());
+                    } else {
+                        weak_cos.push(state.measure.phase.cos());
+                    }
+                }
+            }
+            let mean = |values: &[f32]| values.iter().sum::<f32>() / values.len() as f32;
+            assert!(
+                mean(&strong_cos) > 0.7,
+                "strong parity {strong_parity}: {}",
+                mean(&strong_cos)
+            );
+            assert!(
+                mean(&weak_cos) < -0.7,
+                "weak parity {strong_parity}: {}",
+                mean(&weak_cos)
+            );
+        }
     }
 
     #[test]

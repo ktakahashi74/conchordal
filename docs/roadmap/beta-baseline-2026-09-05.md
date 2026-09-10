@@ -5,6 +5,7 @@
 
 これは下記snapshotの測定記録である。後続の[Sample 12操作分解比較](resolution-assay-2026-09-05.md)で、
 ListenerTwinの質量重み、小幅な音量操作、sampleのglide指定を修正した。以下の旧測定値は変更せず、修正版と区別して参照する。
+修正後の07〜09については、[現行版の3seed再測定と試聴](rhythm-three-seed-audition-2026-09-05.md)を参照する。
 
 ## 成果物と再現条件
 

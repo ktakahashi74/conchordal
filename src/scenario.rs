@@ -3,7 +3,7 @@ pub(crate) mod lifecycle;
 
 use std::fmt;
 
-use crate::core::float::sanitize_nonnegative_finite;
+use crate::core::float::{sanitize_nonnegative_finite, sanitize01};
 use crate::core::landscape::LandscapeUpdate;
 use crate::core::meter::MeterShaping;
 use control::{BodyMethod, ControlUpdate, VoiceControl};
@@ -172,11 +172,7 @@ pub(crate) enum PhonationClockConfig {
     #[default]
     ThetaGate,
     /// Per-voice phase oscillator that entrains its onset phase to the shared
-    /// production meter beat with a coupling strength `coupling`. This is the
-    /// single mechanism behind the rhythm family continuum: `coupling -> 0` is a
-    /// free renewal process (flow), medium coupling entrains loosely over time
-    /// (entrained beat), and high coupling locks into the shared beat as a deep
-    /// attractor (metric beat). `base_rate_hz` is the intrinsic onset rate the
+    /// production meter beat for explicit synchronization. `base_rate_hz` is the intrinsic onset rate the
     /// voice free-runs at before/while it entrains; `flow_depth` shapes the
     /// renewal clustering (0 = regular); `microtiming` is a signed beat-phase
     /// offset applied to the lock target.
@@ -185,6 +181,12 @@ pub(crate) enum PhonationClockConfig {
         base_rate_hz: f32,
         flow_depth: f32,
         microtiming: f32,
+    },
+    /// Bodily pace with learned acoustic context, without a shared onset phase.
+    Participation {
+        coupling: f32,
+        base_rate_hz: f32,
+        flow_depth: f32,
     },
 }
 
@@ -221,6 +223,7 @@ pub(crate) struct PhonationConfig {
     pub(crate) onset: OnsetConfig,
     pub(crate) duration: DurationConfig,
     pub(crate) clock: PhonationClockConfig,
+    pub(crate) measure_accent: f32,
 }
 
 // --- Rhythm intention and phonation specification ---
@@ -234,10 +237,7 @@ pub enum PhonationTiming {
         sync: f32,
         social: f32,
     },
-    /// The rhythm-family continuum. One phase-coupling clock whose `coupling`
-    /// selects the family on the shared emergent meter: low = flow (free
-    /// renewal), medium = entrained (lock emerges over time), high = metric
-    /// (deep attractor). See `PhonationClockConfig::Coupling`.
+    /// A bodily timing policy with an explicit relation to temporal evidence.
     Coupled(CoupledTimingSpec),
 }
 
@@ -257,18 +257,27 @@ pub enum RhythmRole {
     Texture,
 }
 
+/// Sharing temporal evidence and aligning onsets are separate musical intentions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RhythmRelation {
+    #[default]
+    Synchronized,
+    Participating,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CoupledTimingSpec {
-    /// Entrainment strength in [0, 1]: free renewal (0) .. locked beat (1).
+    pub relation: RhythmRelation,
+    /// Influence in [0, 1]: acoustic context for participation, phase attraction for synchronization.
     pub coupling: f32,
-    /// Intrinsic onset rate the voice free-runs at before/while it entrains, and
-    /// the renewal mean for flow. The shared meter (shaped by `temporal_basin`)
-    /// is the real tempo authority once the voice locks.
+    /// Intrinsic bodily rate and renewal mean. Only synchronized timing can lock to the shared meter.
     pub base_rate_hz: f32,
     /// Renewal clustering for the low-coupling (flow) limit; 0 = regular.
     pub flow_depth: f32,
-    /// Signed beat-phase offset (timing elasticity) in [-0.5, 0.5].
+    /// Signed beat-phase offset in [-0.5, 0.5], used only by synchronized timing.
     pub microtiming: f32,
+    /// Confidence-weighted measure emphasis, 0..1; zero leaves onset strength unchanged.
+    pub measure_accent: f32,
     pub role: RhythmRole,
     /// Survival coupling. Non-zero only when the voice's timing should feed its
     /// life cycle (the entrained preset); zero leaves the life cycle untouched.
@@ -281,10 +290,12 @@ pub struct CoupledTimingSpec {
 impl Default for CoupledTimingSpec {
     fn default() -> Self {
         Self {
+            relation: RhythmRelation::Synchronized,
             coupling: 0.5,
             base_rate_hz: 2.0,
             flow_depth: 0.0,
             microtiming: 0.0,
+            measure_accent: 0.0,
             role: RhythmRole::Beat,
             social: 0.0,
             vitality_lambda: 0.0,
@@ -297,6 +308,7 @@ impl Default for CoupledTimingSpec {
 impl CoupledTimingSpec {
     pub fn sanitized(self) -> Self {
         Self {
+            relation: self.relation,
             coupling: self.coupling.clamp(0.0, 1.0),
             base_rate_hz: sanitize_positive_rate_hz(self.base_rate_hz),
             flow_depth: self.flow_depth.clamp(0.0, 1.0),
@@ -306,6 +318,7 @@ impl CoupledTimingSpec {
                 0.0
             },
             role: self.role,
+            measure_accent: sanitize01(self.measure_accent),
             social: self.social.clamp(0.0, 1.0),
             vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda),
             vitality_floor: sanitize_v_floor(self.vitality_floor),

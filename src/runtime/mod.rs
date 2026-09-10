@@ -23,13 +23,16 @@ use crate::core::nsgt_rt::{RtConfig, RtNsgtKernelLog2};
 use crate::core::phase::wrap_pm_pi;
 use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 use crate::core::stream::{analysis::AnalysisStream, dorsal::DorsalStream};
+use crate::core::temporal_expectation::TemporalObservation;
 use crate::core::timebase::Tick;
 use crate::dcc_coupler::{DccCoupler, ListenerPressure};
 use crate::life::community::Community;
 use crate::life::conductor::Conductor;
+use crate::life::phonation_engine::ParticipationPrediction;
 use crate::life::report::{
-    HopTimingSample, JsonlReporter, ListenerStateSample, RhythmObservation,
-    onset_samples_from_batches, scaffold_phase_0_1, summarize_populations,
+    HopTimingSample, JsonlReporter, ListenerContourSample, ListenerStateSample,
+    ParticipationOutcomeSample, RhythmObservation, onset_samples_from_batches, scaffold_phase_0_1,
+    summarize_populations,
 };
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::voice::{PhonationBatch, SoundBody};
@@ -391,6 +394,7 @@ fn merge_latest_analysis_results(
             }
             Ok((_, None)) => {
                 unavailable = true;
+                current_landscape.spectral_history = None;
                 *last_analysis_frame = None;
                 latest_audio = None;
             }
@@ -433,6 +437,7 @@ fn merge_latest_analysis_results(
     current_landscape.roughness_ref_eps = frame.roughness_ref_eps;
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
+    current_landscape.spectral_history = frame.spectral_history;
     current_landscape.recompute_consonance(lparams);
 
     if cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
@@ -496,12 +501,11 @@ fn drive_and_apply_habituation(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn merge_latest_listener_analysis_results(
+fn observe_listener_analysis_results(
     listener_result_rx: Option<&Receiver<analysis_worker::AnalysisResult>>,
     listener_twin: &mut ListenerTwin,
     lparams: &LandscapeParams,
     hab_listener: &mut crate::core::habituation::HabituationField,
-    dt_sec: f32,
     timebase: crate::core::timebase::Timebase,
     generated_frame_id: u64,
     min_valid_frame: u64,
@@ -510,14 +514,35 @@ fn merge_latest_listener_analysis_results(
     let Some(rx) = listener_result_rx else {
         return (None, false);
     };
-    let mut latest_audio: Option<analysis_worker::AnalysisResult> = None;
+    let mut latest_state = None;
     let mut disconnected = false;
-    loop {
+    // Finish the queued batch without chasing an active producer on the audio thread.
+    let pending = rx.len().max(1);
+    for _ in 0..pending {
         match rx.try_recv() {
             Ok((analyzed_id, Some(_))) if analyzed_id < min_valid_frame => continue,
             Ok((analyzed_id, frame)) => {
                 *last_listener_analysis_frame = frame.as_ref().map(|_| analyzed_id);
-                latest_audio = Some((analyzed_id, frame));
+                let Some(mut frame) = frame else {
+                    listener_twin.spectral_history = None;
+                    latest_state = Some(None);
+                    continue;
+                };
+                frame.recompute_consonance(lparams);
+                // Each observed hop advances memory once, including observed silence.
+                drive_and_apply_habituation(
+                    &mut frame,
+                    hab_listener,
+                    lparams,
+                    timebase.hop as f32 / timebase.fs,
+                );
+                let analysis_time_sec = timebase.tick_to_sec(timebase.frame_end_tick(analyzed_id));
+                latest_state = Some(Some(listener_twin.observe_presentation_landscape(
+                    analysis_time_sec,
+                    generated_frame_id,
+                    analyzed_id,
+                    &frame,
+                )));
             }
             Err(TryRecvError::Empty) => break,
             // Same hazard as the main analysis path: under deterministic render the
@@ -528,28 +553,7 @@ fn merge_latest_listener_analysis_results(
             }
         }
     }
-    let Some((analysis_frame_id, frame)) = latest_audio else {
-        return (None, disconnected);
-    };
-    let Some(mut frame) = frame else {
-        return (Some(None), disconnected);
-    };
-
-    frame.recompute_consonance(lparams);
-    // Listener habituation advances per processed presentation frame; under the
-    // deterministic-render catch-up loop this can advance >1x per hop. Accepted:
-    // with the default dcc coupling_strength = 0.0 the listener field feeds only
-    // ListenerTwin telemetry, not pre-synth ALIFE. The ecology field advances
-    // exactly once per hop (deterministic).
-    drive_and_apply_habituation(&mut frame, hab_listener, lparams, dt_sec);
-    let analysis_time_sec = timebase.tick_to_sec(timebase.frame_end_tick(analysis_frame_id));
-    let state = listener_twin.observe_presentation_landscape(
-        analysis_time_sec,
-        generated_frame_id,
-        analysis_frame_id,
-        &frame,
-    );
-    (Some(Some(state)), disconnected)
+    (latest_state, disconnected)
 }
 
 pub(crate) struct RuntimeInit {
@@ -700,6 +704,7 @@ fn spawn_analysis_worker(
     audio_to_analysis_rx: Receiver<(u64, Arc<[f32]>)>,
     analysis_result_tx: Sender<analysis_worker::AnalysisResult>,
     analysis_update_rx: Receiver<LandscapeUpdate>,
+    delivery: analysis_worker::AnalysisDelivery,
 ) -> thread::JoinHandle<()> {
     thread::Builder::new()
         .name(name.into())
@@ -709,6 +714,7 @@ fn spawn_analysis_worker(
                 audio_to_analysis_rx,
                 analysis_result_tx,
                 analysis_update_rx,
+                delivery,
             )
         })
         .expect("spawn analysis worker")
@@ -963,6 +969,7 @@ fn wire_runtime(
         audio_to_analysis_rx,
         analysis_result_tx,
         analysis_update_rx,
+        analysis_worker::AnalysisDelivery::Latest,
     );
 
     let dcc_coupler = DccCoupler::new(config.dcc);
@@ -983,6 +990,7 @@ fn wire_runtime(
             presentation_rx,
             result_tx,
             update_rx,
+            analysis_worker::AnalysisDelivery::Ordered,
         );
         (
             Some(presentation_tx),
@@ -1434,7 +1442,6 @@ struct WorkerState {
     finish_logged: bool,
     finished: bool,
     log_space: Log2Space,
-    current_time: f32,
     frame_idx: u64,
     monitor: AudioMonitor,
     last_guard_log: Instant,
@@ -1450,6 +1457,8 @@ struct WorkerState {
     // perception meter inside ListenerTwin. See "Perception vs Production".
     // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
     prod_meter: MeterNetwork,
+    temporal_expectation: Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
+    participation_predictions: Vec<(u64, ParticipationPrediction)>,
     generator_model: crate::life::generator_model::GeneratorModel,
     hab_ecology: crate::core::habituation::HabituationField,
     hab_listener: crate::core::habituation::HabituationField,
@@ -1459,6 +1468,11 @@ struct WorkerState {
 }
 
 impl WorkerState {
+    fn current_time(&self) -> f32 {
+        self.timebase
+            .tick_to_sec(self.timebase.frame_start_tick(self.frame_idx))
+    }
+
     fn new(
         pop: Community,
         conductor: Conductor,
@@ -1490,6 +1504,13 @@ impl WorkerState {
             lparams.consonance_representation.theta,
             hab_bins,
         );
+        let mut listener_twin = ListenerTwin::with_sample_rate(
+            cfg.fs,
+            crate::listener_twin::ListenerTwinConfig::default(),
+        );
+        if reporter.is_some() && !listener_twin.enable_contour_reporting(cfg.fs) {
+            warn!("listener contour reporting unavailable below 2400 Hz sample rate");
+        }
         let now = Instant::now();
         Self {
             pop,
@@ -1504,7 +1525,6 @@ impl WorkerState {
             finish_logged: false,
             finished: false,
             log_space,
-            current_time: 0.0,
             frame_idx: 0,
             monitor: AudioMonitor::new(),
             last_guard_log: now - Duration::from_millis(200),
@@ -1513,13 +1533,13 @@ impl WorkerState {
             last_analysis_frame: None,
             last_listener_analysis_frame: None,
             listener_min_valid_frame: 0,
-            listener_twin: ListenerTwin::with_sample_rate(
-                cfg.fs,
-                crate::listener_twin::ListenerTwinConfig::default(),
-            ),
+            listener_twin,
             latest_listener_fast_state: None,
             latest_listener_state: None,
             prod_meter,
+            temporal_expectation:
+                crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32),
+            participation_predictions: Vec::new(),
             generator_model,
             hab_ecology,
             hab_listener,
@@ -1544,7 +1564,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
         &state.conductor,
         &state.pop,
         &state.current_landscape,
-        state.current_time,
+        state.current_time(),
         state.playback_state,
         cfg.fs,
     ));
@@ -1610,6 +1630,13 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
             thread::sleep(Duration::from_millis(1));
         }
     }
+    for (voice_id, prediction) in state.participation_predictions.drain(..) {
+        let sample = participation_outcome(voice_id, cfg.fs as u32, prediction, None)
+            .expect("end of input closes every pending observation");
+        report_try(&mut state.reporter, "participation outcome", |writer| {
+            writer.write_participation_outcome(&sample)
+        });
+    }
     report_try(&mut state.reporter, "rhythm summary", |writer| {
         writer.write_rhythm_summary()
     });
@@ -1671,7 +1698,11 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     let analysis_wait_start = Instant::now();
     let analysis_updated = wait_for_analysis(state, &channels.analysis_result_rx, &cfg.exiting);
     let analysis_wait = analysis_wait_start.elapsed();
+    let landscape_start = state.profile.as_ref().map(|_| Instant::now());
     apply_landscape_updates(state, channels, cfg, analysis_updated, now_tick, now_sec);
+    let landscape_update = landscape_start
+        .map(|start| start.elapsed())
+        .unwrap_or_default();
 
     let listener_wait_start = Instant::now();
     let listener_state_update = wait_for_listener(state, channels, cfg);
@@ -1683,7 +1714,12 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     let listener_pressure_update =
         listener_state_update.map(|listener_state| cfg.dcc_coupler.pressure(listener_state));
 
+    let population_start = state.profile.as_ref().map(|_| Instant::now());
     let phonation_count = advance_population(state, cfg, now_tick, listener_pressure);
+    let population_elapsed = population_start
+        .map(|start| start.elapsed())
+        .unwrap_or_default();
+    let reports_start = state.profile.as_ref().map(|_| Instant::now());
     emit_hop_reports(
         state,
         cfg,
@@ -1692,9 +1728,17 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         listener_state_update.flatten(),
         listener_pressure_update,
     );
+    let reports_elapsed = reports_start
+        .map(|start| start.elapsed())
+        .unwrap_or_default();
 
-    let (presentation_chunk, habitat_chunk, max_abs) =
+    let render_start = state.profile.as_ref().map(|_| Instant::now());
+    let (presentation_chunk, habitat_chunk, max_abs, synthesis_elapsed) =
         render_and_route_audio(state, channels, cfg, now_tick, phonation_count);
+    let render_route = render_start
+        .map(|start| start.elapsed())
+        .unwrap_or_default();
+    let post_render_start = state.profile.as_ref().map(|_| Instant::now());
     let channel_peak = [max_abs, max_abs];
 
     drive_production_meter(state, cfg, habitat_chunk.as_ref());
@@ -1703,6 +1747,32 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         state.frame_idx,
         presentation_chunk.as_ref(),
     ));
+    state.listener_twin.observe_contour_audio(
+        state.timebase.frame_start_tick(state.frame_idx),
+        presentation_chunk.as_ref(),
+        |event| {
+            let sample = ListenerContourSample {
+                generated_frame_id: state.frame_idx,
+                time_sec: event.available_sec,
+                event: event.kind,
+                onset_sec: event.onset_sec,
+                periodic_frequency_hz: event.periodic_frequency_hz,
+                periodicity: event.periodicity,
+                delta_log2: event.score.and_then(|score| score.delta_log2),
+                gain_bits: event.score.and_then(|score| score.gain_bits),
+                loss_bits: event.score.and_then(|score| score.loss_bits),
+                context_support: event.score.map(|score| score.context_support),
+                error_threshold_bits: event.score.and_then(|score| score.error_threshold_bits),
+                calibration_events: event.score.map(|score| score.calibration_events),
+                error_candidate: event.score.is_some_and(|score| score.error_candidate),
+                gap_threshold_sec: event.gap_threshold_sec,
+                missing_start_sec: event.missing_start_sec,
+            };
+            report_try(&mut state.reporter, "listener contour", |writer| {
+                writer.write_listener_contour(&sample)
+            });
+        },
+    );
 
     // Feed every habitat hop to NSGT-RT. Dropping hops breaks time continuity.
     if let Err(err) = channels
@@ -1730,7 +1800,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     }
     if finished_now && channels.wav_tx.is_some() {
         channels.wav_tx.take();
-        info!("[t={:.6}] WAV closed.", state.current_time);
+        info!("[t={:.6}] WAV closed.", state.current_time());
     }
 
     let must_send_ui =
@@ -1739,7 +1809,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
 
     let peak_level = state.monitor.max_peak.max(max_abs);
 
-    log_guard_meter(cfg, &mut state.last_guard_log, state.current_time);
+    log_guard_meter(cfg, &mut state.last_guard_log, now_sec);
 
     if should_send_ui {
         send_runtime_ui_frame(
@@ -1761,7 +1831,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
             } else {
                 "Exiting."
             };
-            info!("[t={:.6}] Scenario finished. {note}", state.current_time);
+            info!("[t={:.6}] Scenario finished. {note}", state.current_time());
             state.finish_logged = true;
         }
         if !cfg.wait_user_exit {
@@ -1770,7 +1840,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     }
 
     state.monitor.update(
-        state.current_time,
+        state.current_time(),
         state.frame_idx,
         cfg.hop,
         cfg.hop_duration,
@@ -1786,7 +1856,6 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     );
 
     if !state.finished {
-        state.current_time += cfg.hop_duration.as_secs_f32();
         state.frame_idx += 1;
     }
     // Include preceding telemetry in the hop cost, but exclude this record's own write.
@@ -1816,6 +1885,9 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
             .iter()
             .filter(|voice| voice.is_alive())
             .count();
+        let post_render_us = post_render_start
+            .map(|start| start.elapsed().as_secs_f64() * 1_000_000.0)
+            .unwrap_or_default();
         let elapsed_us = t_start.elapsed().as_secs_f64() * 1_000_000.0;
         let worker_allocations = finish_allocations();
         profile.record(HopProfile {
@@ -1825,6 +1897,13 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
             elapsed_us,
             analysis_wait_us: analysis_wait.as_secs_f64() * 1_000_000.0,
             listener_wait_us: listener_wait.as_secs_f64() * 1_000_000.0,
+            landscape_update_us: landscape_update.as_secs_f64() * 1_000_000.0,
+            population_us: population_elapsed.as_secs_f64() * 1_000_000.0,
+            reports_us: reports_elapsed.as_secs_f64() * 1_000_000.0,
+            render_route_us: render_route.as_secs_f64() * 1_000_000.0,
+            synthesis_us: synthesis_elapsed.as_secs_f64() * 1_000_000.0,
+            rendered_tone_count: state.schedule_renderer.active_tone_count(),
+            post_render_us,
             worker_allocations,
             underrun_frames_total: cfg
                 .underrun_frames
@@ -1925,8 +2004,9 @@ fn apply_landscape_updates(
 /// Drain listener analysis results. Deterministic render mirrors the
 /// main-analysis fixed-lag wait so the listener frame consumed at render-frame
 /// N does not depend on worker scheduling. Real-time keeps the single
-/// best-effort drain to avoid stalling the generator on listener-analysis
-/// latency.
+/// best-effort batch to avoid stalling the generator on listener-analysis
+/// latency. Memory processes every received observation before publishing the
+/// latest state; input backpressure still invalidates dropped presentation audio.
 fn wait_for_listener(
     state: &mut WorkerState,
     channels: &WorkerChannels,
@@ -1934,12 +2014,11 @@ fn wait_for_listener(
 ) -> Option<Option<ListenerState>> {
     let mut listener_state_update: Option<Option<ListenerState>> = None;
     loop {
-        let (listener_state, listener_disconnected) = merge_latest_listener_analysis_results(
+        let (listener_state, listener_disconnected) = observe_listener_analysis_results(
             channels.listener_result_rx.as_ref(),
             &mut state.listener_twin,
             &state.lparams,
             &mut state.hab_listener,
-            cfg.hop_duration.as_secs_f32(),
             state.timebase,
             state.frame_idx,
             state.listener_min_valid_frame,
@@ -1985,12 +2064,58 @@ fn advance_population(
     listener_pressure: ListenerPressure,
 ) -> usize {
     state.conductor.dispatch_until(
-        state.current_time,
+        state.current_time(),
         state.frame_idx,
         &state.current_landscape,
         None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut state.pop,
     );
+    if let Some(observer) = state.temporal_expectation.as_mut() {
+        // Track from birth, including before a later switch into participation.
+        state.schedule_renderer.prepare_self_sound(
+            state.pop.voices.iter().map(|voice| voice.id()),
+            now_tick,
+            observer,
+        );
+        for voice in &mut state.pop.voices {
+            let id = voice.id();
+            if let Some(own) = state.schedule_renderer.self_sound_history(id) {
+                voice
+                    .phonation_engine
+                    .observe_participation_context(own, |update| {
+                        report_try(&mut state.reporter, "participation context", |writer| {
+                            writer.write_participation_context(id, cfg.fs as u32, &update)
+                        });
+                    });
+            }
+        }
+        let frame_end = now_tick.saturating_add(cfg.hop as Tick);
+        let needs_forecast = state.pop.voices.iter().any(|voice| {
+            voice
+                .phonation_engine
+                .needs_temporal_context(now_tick, frame_end)
+        });
+        let shared = needs_forecast.then(|| observer.forecast()).flatten();
+        for voice in &mut state.pop.voices {
+            if voice
+                .phonation_engine
+                .needs_temporal_context(now_tick, frame_end)
+            {
+                let mut local = shared;
+                // Audit the unmodified habitat forecast; leave-self-out is a decision view.
+                voice
+                    .phonation_engine
+                    .set_outcome_forecast(state.reporter.as_ref().and(shared.as_ref()));
+                let mut own = state.schedule_renderer.self_sound_history(voice.id());
+                if let (Some(local), Some(own)) = (local.as_mut(), own.as_deref_mut()) {
+                    observer.use_external_energy(local, &mut own.external);
+                }
+                voice
+                    .phonation_engine
+                    .set_temporal_context(local.as_ref(), own.map_or([0.0; 3], |own| own.profile));
+            }
+        }
+    }
     let phonation_count = if state.scenario_end_tick.is_none() {
         state.pop.collect_phonation_batches_into(
             &mut state.generator_model,
@@ -2001,6 +2126,18 @@ fn advance_population(
     } else {
         0
     };
+
+    if state.reporter.is_some() {
+        for voice in &mut state.pop.voices {
+            let id = voice.id();
+            state.participation_predictions.extend(
+                voice
+                    .phonation_engine
+                    .drain_participation_predictions()
+                    .map(|prediction| (id, prediction)),
+            );
+        }
+    }
 
     if state.scenario_end_tick.is_none() && state.conductor.is_done() {
         state.scenario_end_tick = Some(now_tick);
@@ -2036,10 +2173,30 @@ fn emit_hop_reports(
     if state.reporter.is_none() {
         return;
     }
+    // Only reporting is decimated; each analysis hop has already advanced history.
+    let report_hops = (0.1 * cfg.fs / cfg.hop as f32).ceil().max(1.0) as u64;
+    if state.frame_idx.is_multiple_of(report_hops) {
+        for (bus, history) in [
+            (
+                "habitat",
+                state.current_landscape.spectral_history.as_deref(),
+            ),
+            (
+                "presentation",
+                state.listener_twin.spectral_history.as_deref(),
+            ),
+        ] {
+            if let Some(snapshot) = history {
+                report_try(&mut state.reporter, "spectral history", |writer| {
+                    writer.write_spectral_history(bus, state.frame_idx * cfg.hop as u64, snapshot)
+                });
+            }
+        }
+    }
     let onset_samples = onset_samples_from_batches(
         &state.pop.voices,
         &state.phonation_batches_buf[..phonation_count],
-        now_sec,
+        cfg.fs,
         cfg.scaffold,
         state.frame_idx,
     );
@@ -2063,6 +2220,10 @@ fn emit_hop_reports(
         delta_hz: positive_hz(state.current_landscape.rhythm.delta.freq_hz),
         env_open: state.current_landscape.rhythm.env_open.clamp(0.0, 1.0),
         env_level: state.current_landscape.rhythm.env_level.clamp(0.0, 1.0),
+        measure_hz: positive_hz(state.current_landscape.rhythm.measure.freq_hz),
+        measure_phase: state.current_landscape.rhythm.measure.phase,
+        measure_confidence: state.current_landscape.rhythm.measure.alpha,
+        measure_ratio: state.current_landscape.rhythm.measure_ratio,
     };
     report_try(&mut state.reporter, "runtime events", |writer| {
         writer.write_runtime_events(&runtime_events)
@@ -2119,6 +2280,15 @@ fn emit_hop_reports(
             tracked_score_eff,
         )
     });
+    let now_tick = state.timebase.frame_start_tick(state.frame_idx);
+    let second_ticks = state.timebase.sec_to_tick(1.0).max(1);
+    if state.frame_idx == 0
+        || now_tick / second_ticks != now_tick.saturating_sub(cfg.hop as Tick) / second_ticks
+    {
+        report_try(&mut state.reporter, "habituation scan", |writer| {
+            writer.write_habituation_scan(now_sec, &state.current_landscape)
+        });
+    }
     if let Some(listener_state) = listener_state_update {
         let sample = ListenerStateSample {
             time_sec: listener_state.time_sec,
@@ -2152,19 +2322,28 @@ fn emit_hop_reports(
 /// Render one hop and route it to the two mono buses:
 ///   presentation_chunk -> cpal output + wav + UI metering
 ///   habitat_chunk -> generator rhythm + NSGT analysis
-/// Returns `(presentation_chunk, habitat_chunk, max_abs)`.
+/// Returns both buses, their peak, and renderer time (including own observation and match reports).
 fn render_and_route_audio(
     state: &mut WorkerState,
     channels: &mut WorkerChannels,
     cfg: &WorkerConfig,
     now_tick: Tick,
     phonation_count: usize,
-) -> (Arc<[f32]>, Arc<[f32]>, f32) {
-    let frame = state.schedule_renderer.render(
+) -> (Arc<[f32]>, Arc<[f32]>, f32, Duration) {
+    let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
+    let frame = state.schedule_renderer.render_with_prediction_matches(
         &state.phonation_batches_buf[..phonation_count],
         now_tick,
         &state.current_landscape.rhythm,
+        |id, start, window, matched| {
+            report_try(&mut state.reporter, "local prediction match", |writer| {
+                writer.write_local_prediction_match(id, cfg.fs as u32, start, window, matched)
+            });
+        },
     );
+    let synthesis_elapsed = synthesis_start
+        .map(|start| start.elapsed())
+        .unwrap_or_default();
 
     let mut max_p = 0.0f32;
     for &s in frame.presentation {
@@ -2180,6 +2359,23 @@ fn render_and_route_audio(
 
     let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);
     let habitat_chunk: Arc<[f32]> = Arc::from(frame.habitat);
+    if state.reporter.is_some() {
+        // Drain after actual rendering, before a later hop can retire a Voice.
+        state
+            .schedule_renderer
+            .drain_prediction_errors(|id, from, through, window, errors| {
+                report_try(&mut state.reporter, "local prediction errors", |writer| {
+                    writer.write_local_prediction_errors(
+                        id,
+                        cfg.fs as u32,
+                        from,
+                        through,
+                        window,
+                        errors,
+                    )
+                });
+            });
+    }
     if let Some(tx) = channels.wav_tx.as_ref()
         && let Err(err) = tx.send(Arc::clone(&presentation_chunk))
     {
@@ -2201,6 +2397,7 @@ fn render_and_route_audio(
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) => {
                     state.latest_listener_state = None;
+                    state.listener_twin.spectral_history = None;
                     state.last_listener_analysis_frame = None;
                     state.listener_min_valid_frame = state.frame_idx.saturating_add(1);
                     debug!("listener analysis backlog full; dropped presentation hop");
@@ -2209,21 +2406,69 @@ fn render_and_route_audio(
                     warn!("listener analysis worker disconnected");
                     channels.presentation_to_listener_tx = None;
                     state.latest_listener_state = None;
+                    state.listener_twin.spectral_history = None;
                 }
             }
         }
     }
 
-    (presentation_chunk, habitat_chunk, max_p)
+    (presentation_chunk, habitat_chunk, max_p, synthesis_elapsed)
 }
 
-/// Drive the production meter from both the habitat-bus flux and the
-/// population's own onsets (low-latency auditory-motor reinforcement).
-/// Combined via max() and kept weak to avoid closed-loop wobble; flux
-/// alone is the fallback when no onset fires.
+fn participation_outcome(
+    voice_id: u64,
+    sample_rate: u32,
+    prediction: ParticipationPrediction,
+    observation: Option<TemporalObservation>,
+) -> Option<ParticipationOutcomeSample> {
+    if observation.is_some_and(|o| o.end_frame <= prediction.target_start_frame) {
+        return None;
+    }
+    let matched = observation.is_some_and(|o| {
+        o.start_frame == prediction.target_start_frame && o.end_frame == prediction.target_end_frame
+    });
+    Some(ParticipationOutcomeSample {
+        voice_id,
+        sample_rate,
+        prediction,
+        status: if matched {
+            "observed"
+        } else if observation.is_some() {
+            "input_gap"
+        } else {
+            "end_of_input"
+        },
+        observed_start_frame: observation.map(|o| o.start_frame),
+        observed_end_frame: observation.map(|o| o.end_frame),
+        observed_habitat_band_energy: observation.filter(|_| matched).map(|o| o.band_energy),
+    })
+}
+
+/// Drive the production meter from habitat flux and weak onset reinforcement.
 fn drive_production_meter(state: &mut WorkerState, cfg: &WorkerConfig, habitat_chunk: &[f32]) {
     if state.finished {
         return;
+    }
+    if let Some(observer) = state.temporal_expectation.as_mut() {
+        let now = state.timebase.frame_start_tick(state.frame_idx);
+        observer.process(now, habitat_chunk, |observation| {
+            state
+                .participation_predictions
+                .retain(|(voice_id, prediction)| {
+                    let Some(sample) = participation_outcome(
+                        *voice_id,
+                        cfg.fs as u32,
+                        *prediction,
+                        Some(observation),
+                    ) else {
+                        return true;
+                    };
+                    report_try(&mut state.reporter, "participation outcome", |writer| {
+                        writer.write_participation_outcome(&sample)
+                    });
+                    false
+                });
+        });
     }
     state.dorsal.process(habitat_chunk);
     let flux_drive = (state.dorsal.last_metrics().flux.max(0.0) * 500.0)
@@ -2281,7 +2526,7 @@ fn send_runtime_ui_frame(
             presentation_chunk,
             listener_fast_state: state.latest_listener_fast_state,
             listener_state: state.latest_listener_state,
-            current_time: state.current_time,
+            current_time: state.current_time(),
             playback_state: state.playback_state,
             peak_level,
             channel_peak,
@@ -2374,11 +2619,152 @@ fn compose_consonance_field_score_level_with_params(
 }
 
 #[cfg(test)]
+mod perceptual_action_assay;
+
+#[cfg(test)]
 mod tests {
+    #[test]
+    fn participation_outcome_waits_for_actual_audio_and_keeps_gaps_unknown() {
+        let prediction = super::ParticipationPrediction {
+            issued_frame: 5,
+            onset_frame: 11,
+            forecast_observed_frame: 0,
+            target_start_frame: 20,
+            target_end_frame: 30,
+            pred_continuation_habitat_band_energy: [0.4; 3],
+        };
+        let mut observer =
+            crate::core::temporal_expectation::AcousticTemporalExpectation::new(1000).unwrap();
+        let mut observations = Vec::new();
+        observer.process(0, &[0.0; 30], |o| observations.push(o));
+        assert!(super::participation_outcome(1, 1000, prediction, Some(observations[1])).is_none());
+        let observed =
+            super::participation_outcome(1, 1000, prediction, Some(observations[2])).unwrap();
+        assert_eq!(observed.status, "observed");
+        assert_eq!(observed.observed_habitat_band_energy, Some([0.0; 3]));
+        let mut shifted = observations[2];
+        shifted.start_frame += 1;
+        shifted.end_frame += 1;
+        let gap = super::participation_outcome(1, 1000, prediction, Some(shifted)).unwrap();
+        assert_eq!(gap.status, "input_gap");
+        assert_eq!(gap.observed_habitat_band_energy, None);
+        let unfinished = super::participation_outcome(1, 1000, prediction, None).unwrap();
+        assert_eq!(unfinished.status, "end_of_input");
+        assert_eq!(unfinished.observed_habitat_band_energy, None);
+    }
     use super::*;
     use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
     use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
     use crate::core::timebase::Timebase;
+
+    #[test]
+    #[ignore = "offline spectral evidence export; set CONCHORDAL_SPECTRAL_ASSAY_PLAN"]
+    fn export_listener_spectral_evidence() -> anyhow::Result<()> {
+        use std::io::{BufWriter, Write};
+
+        let plan_path = std::env::var_os("CONCHORDAL_SPECTRAL_ASSAY_PLAN")
+            .ok_or_else(|| anyhow::anyhow!("CONCHORDAL_SPECTRAL_ASSAY_PLAN is required"))?;
+        let plan: serde_json::Value = serde_json::from_slice(&std::fs::read(plan_path)?)?;
+        let config_path = plan["config"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("config path is required"))?;
+        anyhow::ensure!(Path::new(config_path).is_file(), "config must exist");
+        let config = AppConfig::load_or_default(config_path)?;
+        let cases = plan["cases"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("cases array is required"))?;
+        anyhow::ensure!(!cases.is_empty(), "no cases");
+        for case in cases {
+            let input = case["input"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("input path is required"))?;
+            let output = case["output"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("output path is required"))?;
+            let mut reader = hound::WavReader::open(input)?;
+            let spec = reader.spec();
+            anyhow::ensure!(
+                spec.channels == 1
+                    && spec.bits_per_sample == 16
+                    && spec.sample_format == hound::SampleFormat::Int,
+                "expected mono PCM16"
+            );
+            let audio = reader
+                .samples::<i16>()
+                .map(|sample| sample.map(|value| value as f32 / 32768.0))
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut input_config = config.clone();
+            input_config.audio.sample_rate = spec.sample_rate;
+            input_config.validate()?;
+            let core = build_analysis_runtime_core(&input_config, spec.sample_rate);
+            let space = core.nsgt.space().clone();
+            let mut stream = AnalysisStream::new(core.lparams, core.nsgt);
+            let mut spectral_history = crate::core::spectral_history::SpectralHistory::new(
+                space.clone(),
+                spec.sample_rate as f64,
+                stream.window_samples(),
+            );
+            let mut writer = BufWriter::new(
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(output)?,
+            );
+            serde_json::to_writer(
+                &mut writer,
+                &serde_json::json!({
+                    "type": "analysis_contract", "sample_rate": spec.sample_rate,
+                    "hop_samples": core.hop, "window_samples": stream.window_samples(),
+                    "input_samples": audio.len(), "trailing_samples": audio.len() % core.hop,
+                    "frequency_hz": space.centers_hz,
+                    "scope": "Native analysis features, including startup. Only complete hops are processed; the trailing input remains pending, without synthesized silence. full_window describes the FFT container, not per-band latency, confidence, or runtime eligibility. No stream identity or cognitive memory duration."
+                }),
+            )?;
+            writeln!(writer)?;
+            let mut end_sample = 0;
+            for chunk in audio.chunks_exact(core.hop) {
+                end_sample += chunk.len();
+                let frame = stream.process(chunk);
+                spectral_history.observe(
+                    (end_sample - chunk.len()) as u64,
+                    end_sample as u64,
+                    &frame.nsgt_power,
+                );
+                let history = (end_sample / core.hop % 10 == 0
+                    || end_sample + core.hop > audio.len())
+                .then(|| spectral_history.snapshot())
+                .flatten();
+                space.assert_scan_len_named(&frame.nsgt_power, "nsgt_power");
+                space.assert_scan_len_named(&frame.subjective_intensity, "subjective_intensity");
+                anyhow::ensure!(
+                    frame
+                        .nsgt_power
+                        .iter()
+                        .chain(&frame.subjective_intensity)
+                        .all(|value| value.is_finite() && *value >= 0.0),
+                    "invalid spectral evidence"
+                );
+                serde_json::to_writer(
+                    &mut writer,
+                    &serde_json::json!({
+                        "type": "spectral_evidence", "available_sec": end_sample as f64 / spec.sample_rate as f64,
+                        "full_window": end_sample >= stream.window_samples(),
+                        "nsgt_power_scan": frame.nsgt_power,
+                        "subjective_intensity_scan": frame.subjective_intensity,
+                        "history_ages_sec": crate::core::temporal_history::HISTORY_AGES_SEC,
+                        "history_post_order": history.as_ref().map(|h| h.post_order),
+                        "history_observed_through_sample": history.as_ref().map(|h| h.observed_through_sample),
+                        "known_rms_by_age_scan": history.as_ref().map(|h| &h.known_rms_by_age_scan),
+                        "known_coverage_by_age": history.as_ref().map(|h| h.known_coverage_by_age),
+                    }),
+                )?;
+                writeln!(writer)?;
+            }
+            writer.flush()?;
+            println!("observed {input}");
+        }
+        Ok(())
+    }
 
     #[test]
     fn analysis_ok_truth_table() {
@@ -2437,6 +2823,127 @@ mod tests {
     }
 
     #[test]
+    fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
+        let fs = 48_000.0;
+        let hop = 512;
+        let timebase = Timebase { fs, hop };
+        let cfg = WorkerConfig {
+            scenario_name: "clock regression".into(),
+            wait_user_exit: false,
+            start_flag: Arc::new(AtomicBool::new(true)),
+            exiting: Arc::new(AtomicBool::new(false)),
+            scaffold: Default::default(),
+            meter_shaping: Default::default(),
+            guard_meter: None,
+            underrun_frames: None,
+            audio_counters: None,
+            dcc_coupler: DccCoupler::new(Default::default()),
+            hop,
+            hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
+            fs,
+            deterministic_analysis: true,
+        };
+        let scenario = crate::scenario::Scenario {
+            seed: 1,
+            control_update_mode: Default::default(),
+            scaffold: Default::default(),
+            meter_shaping: Default::default(),
+            scene_markers: Vec::new(),
+            events: vec![crate::scenario::TimedEvent {
+                time: 605.0,
+                order: 0,
+                actions: vec![Action::Finish],
+            }],
+            duration_sec: 605.0,
+        };
+        let space = Log2Space::new(200.0, 4_000.0, 12);
+        let mut state = WorkerState::new(
+            Community::new(timebase),
+            Conductor::from_scenario(scenario),
+            Landscape::new(space.clone()),
+            build_test_params(&space),
+            DorsalStream::new(fs),
+            None,
+            &cfg,
+        );
+        for frame in [56_680, 56_718, 56_719] {
+            state.frame_idx = frame;
+            let now_tick = timebase.frame_start_tick(frame);
+            state.generator_model.advance_to(now_tick);
+            advance_population(&mut state, &cfg, now_tick, ListenerPressure::default());
+            assert_eq!(state.pop.abort_requested, frame == 56_719);
+        }
+    }
+
+    #[test]
+    fn listener_memory_is_independent_of_receive_batching() {
+        let space = Log2Space::new(200.0, 4_000.0, 12);
+        let mut params = build_test_params(&space);
+        params.habituation.enabled = true;
+        params.habituation.satiation_sec = 0.5;
+        params.habituation.recovery_sec = 1.0;
+        let timebase = Timebase {
+            fs: params.fs,
+            hop: 4_800,
+        };
+        let mut outcomes = Vec::new();
+        for batch_size in [1, 3, 24] {
+            let mut listener = ListenerTwin::with_sample_rate(params.fs, Default::default());
+            let mut hab = crate::core::habituation::HabituationField::new(
+                &params.habituation,
+                params.consonance_representation.theta,
+                space.n_bins(),
+            );
+            let (tx, rx) = bounded(batch_size);
+            let mut last_frame = None;
+            let mut last_state = None;
+            for start in (0..24).step_by(batch_size) {
+                let end = (start + batch_size).min(24);
+                for frame_id in start..end {
+                    let mut frame = Landscape::new(space.clone());
+                    if frame_id < 18 {
+                        frame.subjective_intensity[10] = 1.0;
+                        frame.harmonicity[10] = 10.0;
+                    }
+                    tx.send((frame_id as u64, Some(frame))).unwrap();
+                }
+                let (update, disconnected) = observe_listener_analysis_results(
+                    Some(&rx),
+                    &mut listener,
+                    &params,
+                    &mut hab,
+                    timebase,
+                    end as u64,
+                    0,
+                    &mut last_frame,
+                );
+                assert!(!disconnected);
+                let state = update.unwrap().unwrap();
+                assert_eq!(state.analysis_frame_id, end as u64 - 1);
+                last_state = Some(state);
+            }
+            let retained = hab.state().to_vec();
+            assert!(retained.iter().any(|&value| value > 0.0));
+            let (update, _) = observe_listener_analysis_results(
+                Some(&rx),
+                &mut listener,
+                &params,
+                &mut hab,
+                timebase,
+                25,
+                0,
+                &mut last_frame,
+            );
+            assert!(update.is_none());
+            assert_eq!(hab.state(), retained);
+            let state = last_state.unwrap();
+            outcomes.push((retained, state.stability_level, state.tension_level));
+        }
+        assert_eq!(outcomes[0], outcomes[1]);
+        assert_eq!(outcomes[0], outcomes[2]);
+    }
+
+    #[test]
     fn listener_analysis_gap_clears_state_instead_of_reusing_prior_pressure() {
         let space = Log2Space::new(200.0, 4_000.0, 12);
         let params = build_test_params(&space);
@@ -2452,14 +2959,33 @@ mod tests {
         };
         let mut last_frame = Some(0);
         let (tx, rx) = bounded(2);
-        tx.send((1, Some(Landscape::new(space.clone())))).unwrap();
-        tx.send((3, None)).unwrap();
-        let (update, disconnected) = merge_latest_listener_analysis_results(
+        let coupler = DccCoupler::new(crate::config::DccConfig {
+            coupling_strength: 0.25,
+            max_temperature_bonus: 0.1,
+        });
+        let mut evidence = Landscape::new(space.clone());
+        evidence.subjective_intensity[2] = 1.0;
+        evidence.harmonicity[3] = 10.0;
+        tx.send((1, Some(evidence.clone()))).unwrap();
+        let (update, _) = observe_listener_analysis_results(
             Some(&rx),
             &mut listener,
             &params,
             &mut hab,
-            128.0 / params.fs,
+            timebase,
+            2,
+            0,
+            &mut last_frame,
+        );
+        let mut current = update.expect("initial evidence update");
+        let initial_pressure = coupler.pressure(current);
+        assert!(initial_pressure.temperature_bonus > 0.0);
+        tx.send((3, None)).unwrap();
+        let (update, disconnected) = observe_listener_analysis_results(
+            Some(&rx),
+            &mut listener,
+            &params,
+            &mut hab,
             timebase,
             4,
             0,
@@ -2471,12 +2997,13 @@ mod tests {
         );
         assert!(!disconnected);
         assert!(last_frame.is_none());
-        let (update, _) = merge_latest_listener_analysis_results(
+        current = update.unwrap();
+        assert_eq!(coupler.pressure(current), ListenerPressure::default());
+        let (update, _) = observe_listener_analysis_results(
             Some(&rx),
             &mut listener,
             &params,
             &mut hab,
-            128.0 / params.fs,
             timebase,
             5,
             0,
@@ -2486,13 +3013,13 @@ mod tests {
             update.is_none(),
             "an empty queue is distinct from invalidation"
         );
+        assert_eq!(coupler.pressure(current), ListenerPressure::default());
         tx.send((4, Some(Landscape::new(space)))).unwrap();
-        let (update, _) = merge_latest_listener_analysis_results(
+        let (update, _) = observe_listener_analysis_results(
             Some(&rx),
             &mut listener,
             &params,
             &mut hab,
-            128.0 / params.fs,
             timebase,
             6,
             5,
@@ -2503,6 +3030,237 @@ mod tests {
             "late pre-gap results must not restore pressure"
         );
         assert!(last_frame.is_none());
+        assert_eq!(coupler.pressure(current), ListenerPressure::default());
+        tx.send((5, Some(evidence))).unwrap();
+        let (update, _) = observe_listener_analysis_results(
+            Some(&rx),
+            &mut listener,
+            &params,
+            &mut hab,
+            timebase,
+            6,
+            5,
+            &mut last_frame,
+        );
+        current = update.expect("post-gap evidence update");
+        assert_eq!(last_frame, Some(5));
+        assert_eq!(coupler.pressure(current), initial_pressure);
+    }
+
+    #[test]
+    #[ignore = "27-case research campaign; writes reports under target/habituation-isolation"]
+    fn habituation_isolation_campaign() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let output = Path::new("target/habituation-isolation").join(stamp.to_string());
+        std::fs::create_dir_all(&output).unwrap();
+        std::fs::copy(file!(), output.join("runtime.rs")).unwrap();
+        std::fs::copy(
+            "samples/research/habituation_field_assay.rhai",
+            output.join("scenario.rhai"),
+        )
+        .unwrap();
+        for (control, adaptation_off, exploration_off) in [
+            ("baseline", false, false),
+            ("adaptation_off", true, false),
+            ("joint_off", true, true),
+        ] {
+            for seed in [1, 21, 42] {
+                for (condition, enabled, recovery_sec) in [
+                    ("off", false, 8.0),
+                    ("normal", true, 8.0),
+                    ("slow", true, 80.0),
+                ] {
+                    let mut config = AppConfig::default();
+                    config.psychoacoustics.habituation.enabled = enabled;
+                    config.psychoacoustics.habituation.recovery_sec = recovery_sec;
+                    let script = "samples/research/habituation_field_assay.rhai";
+                    let mut scenario = compile_scenario_from_script(
+                        Path::new(script),
+                        &render_compile_args(script, Some(seed)),
+                        &config,
+                    )
+                    .unwrap();
+                    scenario.seed = seed;
+                    let mut mover_count = 0;
+                    for action in scenario.events.iter_mut().flat_map(|e| &mut e.actions) {
+                        if let Action::Spawn {
+                            population_id: 3,
+                            ids,
+                            spec,
+                            ..
+                        } = action
+                        {
+                            mover_count += ids.len();
+                            assert!(spec.control.adaptation.enabled);
+                            if adaptation_off {
+                                spec.control.adaptation.enabled = false;
+                            }
+                            if exploration_off {
+                                spec.control.pitch.temperature = Some(0.0);
+                                spec.control.pitch.crowding_strength = 0.0;
+                            }
+                        }
+                    }
+                    assert_eq!(
+                        mover_count, 5,
+                        "review the assay if its mover population changes"
+                    );
+                    let case = output.join(format!("{control}-{condition}-seed-{seed}"));
+                    std::fs::create_dir(&case).unwrap();
+                    std::fs::write(case.join("scenario-ir.txt"), format!("{scenario:#?}")).unwrap();
+                    std::fs::write(
+                        case.join("config.toml"),
+                        toml::to_string_pretty(&config).unwrap(),
+                    )
+                    .unwrap();
+                    let report = case.join("report.jsonl");
+                    let mut reporter = JsonlReporter::create(report.to_str().unwrap()).unwrap();
+                    reporter.write_meta(seed).unwrap();
+                    reporter
+                        .write_scene_markers(&scenario.scene_markers)
+                        .unwrap();
+                    let wiring = wire_runtime(
+                        &config,
+                        config.audio.sample_rate,
+                        "habituation isolation".into(),
+                        scenario,
+                        Arc::new(AtomicBool::new(false)),
+                        WiringOptions {
+                            ui_channel_capacity: 1,
+                            listener_forced: true,
+                            wait_user_exit: false,
+                            start_playing: true,
+                            audio_prod: None,
+                            wav_tx: None,
+                            reporter: Some(reporter),
+                            deterministic_analysis: true,
+                            guard_meter: None,
+                            underrun_frames: None,
+                            reserve_runtime_ids_through: 0,
+                            profile: None,
+                            audio_counters: None,
+                        },
+                    );
+                    join_thread("worker", wiring.worker_handle).unwrap();
+                    join_thread("analysis", wiring.analysis_handle).unwrap();
+                    join_thread("listener", wiring.listener_analysis_handle.unwrap()).unwrap();
+                    assert!(wiring.report_error_rx.unwrap().try_recv().is_err());
+                    println!("isolation report: {}", report.display());
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "fixed-input DCC research campaign; writes reports and offline WAVs under target/dcc-isolation"]
+    fn dcc_fixed_input_campaign() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let output = Path::new("target/dcc-isolation").join(stamp.to_string());
+        std::fs::create_dir_all(&output).unwrap();
+        std::fs::copy(file!(), output.join("runtime.rs")).unwrap();
+        std::fs::copy(
+            "tests/scripts/dcc_pitch_feedback.rhai",
+            output.join("scenario.rhai"),
+        )
+        .unwrap();
+        let seeds = std::env::var("CONCHORDAL_RESEARCH_SEEDS").unwrap_or_else(|_| "1,21,42".into());
+        for seed in seeds.split(',').map(|value| value.parse::<u64>().unwrap()) {
+            let mut baseline_audio = None;
+            let mut baseline_listener = None;
+            for strength in [0.0, 0.1, 0.25, 0.5, 1.0] {
+                let mut config = AppConfig::default();
+                config.dcc.coupling_strength = strength;
+                let script = "tests/scripts/dcc_pitch_feedback.rhai";
+                let mut scenario = compile_scenario_from_script(
+                    Path::new(script),
+                    &render_compile_args(script, Some(seed)),
+                    &config,
+                )
+                .unwrap();
+                scenario.seed = seed;
+                for action in scenario.events.iter_mut().flat_map(|e| &mut e.actions) {
+                    if let Action::Spawn {
+                        population_id,
+                        spec,
+                        ..
+                    } = action
+                        && *population_id <= 4
+                    {
+                        // Drone sway reads the shared rhythm; SeqGate makes the
+                        // presentation reference independent of habitat feedback.
+                        spec.articulation = crate::scenario::ArticulationCoreConfig::Seq {
+                            duration: 20.0,
+                            breath_gain_init: None,
+                        };
+                    }
+                }
+                let name = format!("strength-{strength}-seed-{seed}");
+                let report = output.join(format!("{name}.jsonl"));
+                let wav = output.join(format!("{name}.wav"));
+                let mut reporter = JsonlReporter::create(report.to_str().unwrap()).unwrap();
+                reporter.write_meta(seed).unwrap();
+                reporter
+                    .write_scene_markers(&scenario.scene_markers)
+                    .unwrap();
+                let (wav_tx, wav_rx) = bounded(16);
+                let writer = crate::audio::writer::WavOutput::run(
+                    wav_rx,
+                    wav.to_str().unwrap().to_string(),
+                    config.audio.sample_rate,
+                    resolve_limiter_mode(&config),
+                    None,
+                );
+                let wiring = wire_runtime(
+                    &config,
+                    config.audio.sample_rate,
+                    "DCC fixed input".into(),
+                    scenario,
+                    Arc::new(AtomicBool::new(false)),
+                    WiringOptions {
+                        ui_channel_capacity: 1,
+                        listener_forced: true,
+                        wait_user_exit: false,
+                        start_playing: true,
+                        audio_prod: None,
+                        wav_tx: Some(wav_tx),
+                        reporter: Some(reporter),
+                        deterministic_analysis: true,
+                        guard_meter: None,
+                        underrun_frames: None,
+                        reserve_runtime_ids_through: 0,
+                        profile: None,
+                        audio_counters: None,
+                    },
+                );
+                join_thread("worker", wiring.worker_handle).unwrap();
+                join_thread("writer", writer).unwrap();
+                join_thread("analysis", wiring.analysis_handle).unwrap();
+                join_thread("listener", wiring.listener_analysis_handle.unwrap()).unwrap();
+                assert!(wiring.report_error_rx.unwrap().try_recv().is_err());
+                let audio = std::fs::read(&wav).unwrap();
+                let listener: Vec<serde_json::Value> = std::fs::read_to_string(&report)
+                    .unwrap()
+                    .lines()
+                    .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                    .filter(|row| row["type"] == "listener_state")
+                    .collect();
+                assert!(listener.len() > 100);
+                if let Some(baseline) = baseline_audio.as_ref() {
+                    assert_eq!(&audio, baseline, "presentation audio changed at {name}");
+                    assert_eq!(Some(&listener), baseline_listener.as_ref());
+                } else {
+                    baseline_audio = Some(audio);
+                    baseline_listener = Some(listener);
+                }
+                println!("fixed input report: {}", report.display());
+            }
+        }
     }
 
     #[test]

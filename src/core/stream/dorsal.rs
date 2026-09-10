@@ -7,6 +7,7 @@ use tracing::debug;
 /// Features:
 /// - Low-latency synchronous processing.
 /// - 3-Band Crossover Flux detection (Low/Mid/High).
+#[derive(Clone)]
 pub struct DorsalStream {
     // IIR Filter States
     lp_low_state: f32, // ~200Hz

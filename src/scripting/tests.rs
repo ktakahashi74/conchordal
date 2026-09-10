@@ -2266,6 +2266,33 @@ fn rhythm_modulators_are_sanitized_at_core_boundary() {
 }
 
 #[test]
+fn measure_accent_tuning_is_bounded_and_order_independent() {
+    for preset in ["metric", "entrained", "flow"] {
+        for chain in [
+            format!("{preset}().measure_accent(0.6)"),
+            format!("measure_accent(0.6).{preset}()"),
+        ] {
+            let spawn = first_spawn_spec_for_script(&format!(
+                "create(sine().{chain}.cycles(1), 1); flush();"
+            ));
+            let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
+                panic!("expected coupled timing");
+            };
+            assert!((spec.measure_accent - 0.6).abs() < 1e-6);
+        }
+    }
+    for (amount, expected) in [("-1.0", 0.0), ("2.0", 1.0)] {
+        let spawn = first_spawn_spec_for_script(&format!(
+            "create(sine().measure_accent({amount}), 1); flush();"
+        ));
+        let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
+            panic!("expected coupled timing");
+        };
+        assert_eq!(spec.measure_accent, expected);
+    }
+}
+
+#[test]
 fn metric_and_pulse_tuning_are_order_independent() {
     for (label, script) in [
         (
@@ -2381,6 +2408,10 @@ fn entrained_sets_defaults_and_accepts_prior_social_tuning() {
         panic!("expected coupled timing intent");
     };
     assert!(spec.coupling > 0.0 && spec.coupling < 1.0);
+    assert_eq!(
+        spec.relation,
+        crate::scenario::RhythmRelation::Participating
+    );
     assert!(spec.social > 0.0);
     let ArticulationCoreConfig::Entrain {
         rhythm_coupling,
@@ -2496,6 +2527,10 @@ fn flow_sets_low_coupling_intent() {
         panic!("expected coupled timing intent");
     };
     assert!(spec.coupling < 0.2, "flow should be near-zero coupling");
+    assert_eq!(
+        spec.relation,
+        crate::scenario::RhythmRelation::Participating
+    );
     assert!(spec.flow_depth > 0.0, "flow should jitter its renewal");
     assert_eq!(spec.role, RhythmRole::Texture);
 }

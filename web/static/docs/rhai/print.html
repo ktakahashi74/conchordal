@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-18b944b8.js";
+            window.path_to_searchindex_js = "searchindex-69ac5d88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e3932d17.js"></script>
@@ -204,7 +204,7 @@ ecological and temporal structure:
 <a href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a>,
 <a href="#voice-and-landscape--soundenvironment-feedback">Voice and Landscape — Sound–Environment Feedback</a>,
 <a href="#consonance-field--a-terrain-for-evaluating-pitch">Consonance Field — A Terrain for Evaluating Pitch</a>,
-<a href="#rhythm-one-coupling-continuum">Rhythm</a>, and
+<a href="#rhythm-evidence-and-participation">Rhythm</a>, and
 <a href="#routing-and-the-listener-twin">Routing and the Listener Twin</a>, followed by
 <a href="#timeline-and-structure">Timeline and Structure</a>.</li>
 <li><strong>Reference</strong> contains the generated
@@ -336,7 +336,7 @@ phonation, survival, and release.</li>
 the terrain that changes the voices.</li>
 <li><a href="#consonance-field--a-terrain-for-evaluating-pitch">Consonance Field — A Terrain for Evaluating Pitch</a> — field, density,
 movement, viability, respawn.</li>
-<li><a href="#rhythm-one-coupling-continuum">Rhythm</a> — the coupling continuum and the director’s
+<li><a href="#rhythm-evidence-and-participation">Rhythm</a> — the coupling continuum and the director’s
 rhythmic terrain.</li>
 <li><a href="#routing-and-the-listener-twin">Routing and the Listener Twin</a> — what the ecology
 senses, what the audience hears, and what is observed.</li>
@@ -822,6 +822,14 @@ realized either as a cloud (the default) or as a deterministic extremum with
 </ul>
 <p><code>consonance(root)</code> takes a harmonic window around a root (multiples via
 <code>range()</code>); every target also takes an absolute <code>(min_hz, max_hz)</code> range.</p>
+<p>Range bounds must be finite and within the synthesizer’s 1–20000 Hz range;
+reversed bounds are accepted. Initial placement stays inside those bounds,
+including jitter and all-zero or fully occupied fallbacks. Field targets use
+the intersection with the analysis band (currently 55–8000 Hz). If there is
+no intersection, placement falls back to log-uniform sampling in the requested
+range because no field evidence is available there. <code>random()</code> samples the
+requested range directly. Placement does not constrain subsequent
+<code>seek_consonance()</code> movement to that range.</p>
 <pre><code class="language-rhai">let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
@@ -990,26 +998,37 @@ wait(8.0);
 and <code>landscape_peaks_modes()</code> — see the
 <a href="#mode-patterns">API Reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="rhythm-one-coupling-continuum"><a class="header" href="#rhythm-one-coupling-continuum">Rhythm: One Coupling Continuum</a></h1>
-<p>Rhythm in conchordal is <strong>one coupling continuum on a shared emergent meter</strong>,
-not a set of independent clocks. The Community drives a single production
-meter (a coupled-oscillator beat); each voice is a phase oscillator that
-entrains its onset phase to that emergent beat with a coupling strength. There
-is no externally imposed grid — coherence (or its absence) emerges from how
-tightly each voice locks to the meter the Community itself drives.</p>
-<p>The three rhythm “families” are just three regions of the continuum:</p>
+<h1 id="rhythm-evidence-and-participation"><a class="header" href="#rhythm-evidence-and-participation">Rhythm: Evidence and Participation</a></h1>
+<p>A beat is a recurrent temporal reference inferred from sound. Sharing that
+reference does not require every Voice to attack at the same phase.</p>
+<p>The three presets express different timing intentions:</p>
 <ul>
-<li><strong>metric</strong>: high coupling — a deep attractor, reads as a stable pulse.</li>
-<li><strong>entrained</strong>: medium coupling — synchronization emerges over time, still
-drifts.</li>
-<li><strong>flow</strong>: near-zero coupling — a free renewal process, non-metric texture.</li>
+<li><strong>metric</strong>: explicit attraction to the shared production beat. Strong coupling
+favors synchronized onsets.</li>
+<li><strong>entrained</strong>: a bodily pace adjusted by remembered acoustic context and a
+prediction of energetic overlap with surrounding sound.</li>
+<li><strong>flow</strong>: weak acoustic participation with clustered renewal intervals around
+an intrinsic scale that does not follow recurrence.</li>
 </ul>
-<p>Rhythm is part of the same ecology as consonance, viability, movement, and
-respawn: timing can affect survival, and survival reorganizes timing.</p>
+<p>For entrained and flow timing, a causal observer reads past habitat audio. Each
+Voice also retains the sound it rendered, so the energy attributed to itself can
+be excluded from a predicted competitor. The Voice compares sounding near its due
+time, waiting up to a participation cycle, and omitting the current event. Overlap is
+integrated across an estimate of the planned hold and ADSR release. Successive
+omissions become more costly, so overlap alone cannot prescribe permanent silence.
+Temporal memory changes only after an onset is emitted. For entrained timing, the cadence
+can follow a supported recurrence near the Voice’s intrinsic scale, while preserving
+its own cycle position. The observer does not prescribe a common onset phase.
+Hold lengths remain tied to the intrinsic period, so cadence adaptation does not
+stretch each sound. The overlap preview uses the same hold duration.
+Flow keeps its intrinsic renewal scale while still waiting or omitting events in
+response to surrounding sound; its executed intervals therefore remain variable.
+This three-band energy proxy is an engineering approximation, with musical
+acceptance still under evaluation.</p>
 <h2 id="director-level-terrain"><a class="header" href="#director-level-terrain">Director-level terrain</a></h2>
 <p>The director shapes the rhythmic terrain, symmetric to the consonance-field
-operations. These are soft priors, never a schedule — emergence still does the
-work:</p>
+operations. These operations shape the production meter used by metric timing. They do not
+set the bodily rate or recurrence candidates of entrained/flow participants:</p>
 <ul>
 <li><code>meter_stability(value)</code> — attractor depth in <code>[0,1]</code>: how readily a pulse
 forms. It only deepens the basin for a <em>real</em> periodicity; it never
@@ -1020,21 +1039,30 @@ the terrain; it does not place a beat, and it never forces a measure.</li>
 </ul>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
 <p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
-<code>flow()</code>. The tempo region is a property of the terrain, set once at the
-director level, not per voice. Configure them on a <code>PopulationSpec</code> before
-calling <code>place()</code>.</p>
+<code>flow()</code>. Configure them on a <code>PopulationSpec</code> before calling <code>place()</code>. The temporal
+basin shapes metric timing. Entrained/flow participants begin with their own
+2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
+changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
+scale for its irregular renewal intervals.</p>
 <p>Do not confuse <code>.entrained()</code> with <code>brain("entrain")</code>. The preset controls
 onset timing; the brain selects the voice’s articulation life and metabolism.
 They are independent and may be used together. See
 <a href="#population--a-persistent-unit-of-voices">Population — A Persistent Unit of Voices</a>.</p>
-<p>Per-voice modifiers refine where on the continuum a voice sits:</p>
+<p>Per-voice modifiers refine these intentions:</p>
 <ul>
-<li><code>entrainment(strength)</code> — coupling in <code>[0,1]</code>, free (<code>0</code>) .. locked (<code>1</code>).</li>
+<li><code>entrainment(strength)</code> — influence in <code>[0,1]</code>: acoustic context for
+entrained/flow, beat-phase attraction for metric. Zero keeps intrinsic pacing.</li>
 <li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — the voice’s
 metrical job. <code>accent</code> emits a stronger onset that drives the shared meter
 harder, so a recurring downbeat can seed an emergent measure.</li>
-<li><code>microtiming(amount)</code> — a signed beat-phase offset in <code>[-0.5, 0.5]</code>. <code>0.5</code>
-places a voice a half-beat off, reading as syncopation.</li>
+<li><code>microtiming(amount)</code> — a signed metric beat-phase offset in <code>[-0.5, 0.5]</code>.
+A value of <code>0.5</code> targets the half-beat. It does not assign fixed positions to
+entrained/flow participants.</li>
+<li><code>measure_accent(amount)</code> — weak onset emphasis following the detected measure,
+in <code>[0,1]</code> (default <code>0</code>). The onset strength multiplier is
+<code>1 + 0.35 * amount * confidence * cos(phase)</code>. The phase origin follows observed
+accents, and no detected measure means no emphasis. It changes strength, not
+onset scheduling, and works independently of <code>rhythm_role</code>.</li>
 </ul>
 <pre><code class="language-rhai">meter_stability(0.85);     // attractor depth: how readily a pulse forms
 temporal_basin(1.8, 2.2);   // tempo region the emergent beat gravitates toward
@@ -1064,7 +1092,9 @@ place(offbeat, at(220.0));
 wait(12.0);
 </code></pre>
 <p>Calls on the same axis are last-write-wins: the last timing mode and the last
-duration mode determine the final behavior. Modifiers are remembered and
+duration mode determine the final behavior. <code>cycles(n)</code> counts the intrinsic
+bodily period for entrained/flow and the effective beat period for metric timing;
+flow retains its existing threefold hold multiplier. Modifiers are remembered and
 applied when their matching preset is selected, so <code>entrainment(0.8).metric()</code>
 and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
@@ -1076,7 +1106,9 @@ and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <p>Use <code>rhythm_coupling_vitality(lambda_v, v_floor)</code> and
 <code>rhythm_reward(rho_t, "attack_phase_match")</code> when timing should affect
 survival and reorganization, and <code>rhythm_freq(freq_hz)</code> to set the internal
-oscillator directly:</p>
+articulation oscillator directly. These are legacy articulation controls:
+Gated phonation disables autonomous attacks and applies ordinary consonance
+recharge to emitted onsets, without the phase-match reward:</p>
 <pre><code class="language-rhai">let pulse_voice = harmonic()
     .repeat()
     .pulse(2.0)
@@ -1095,7 +1127,8 @@ set_scaffold_shared(2.0);
 set_scaffold_scrambled(2.0, 17);
 </code></pre>
 <p>They are useful for demos and assays. They are not the rhythm-composition
-abstraction: composed rhythm should come from the continuum and the terrain.</p>
+abstraction: use them only when explicit synchronization is essential to the demo or assay.
+A dedicated beat carrier is not required for entrained/flow participation.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="routing-and-the-listener-twin"><a class="header" href="#routing-and-the-listener-twin">Routing and the Listener Twin</a></h1>
 <h2 id="two-buses"><a class="header" href="#two-buses">Two buses</a></h2>
@@ -1131,8 +1164,10 @@ Cognitive Coupling: what the listener hears and what the ecology senses are
 the same physical event. Splitting the buses is a deliberate departure.
 <code>send(habitat_bus)</code> casts terrain — the director’s work, shaping the field
 without being heard. <code>send(presentation_bus)</code> casts decor — heard, but outside
-the ecology’s world. The samples’ design rule applies: scaffolding is inaudible
-or embodied.</p>
+the ecology’s world. Pitch-reference anchors are distinct from dedicated
+synchronization support: beat carriers or temporal scaffolds belong only in
+samples where explicit synchronization is essential, even when they feed
+only the habitat bus.</p>
 <h2 id="the-listener-twin"><a class="header" href="#the-listener-twin">The Listener Twin</a></h2>
 <p>conchordal keeps a <code>ListenerTwin</code>: a listener-side model of the <em>presented</em>
 sound only. It never reads the habitat bus, so hidden scaffolds cannot create
@@ -1170,8 +1205,9 @@ selected with <code>--config</code>), not in script:</p>
 <ul>
 <li><code>coupling_strength</code> (<code>0.0</code>–<code>1.0</code>, default <code>0.0</code>): at <code>0.0</code> the twin is
 report/UI-only and generation is unchanged. Above <code>0.0</code> it applies
-<code>tension_pressure = tension_level * resolvability_level * coupling_strength</code>
-as a transient pitch-exploration bonus only. It never sets target pitches or
+<code>tension_pressure = tension_level * coupling_strength</code>
+as a transient pitch-exploration bonus only. Listener tension already includes
+resolvability, so the coupler does not apply it again. It never sets target pitches or
 changes rhythm synchronization.</li>
 <li><code>max_temperature_bonus</code> (default <code>0.10</code>): ceiling on that transient bonus.</li>
 </ul>
@@ -1466,12 +1502,12 @@ play(callback, [args])
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
 <p>ADSR amplitude envelope.</p>
 <h3 id="phonation--rhythm"><a class="header" href="#phonation--rhythm">Phonation &amp; Rhythm</a></h3>
-<p>When and how long a voice sounds. Tier 1 picks a region on the rhythm coupling continuum (<code>metric()</code>, <code>entrained()</code>, <code>flow()</code>); Tier 2 sets explicit when/duration; Tier 3 is expert tuning. Calls on the same axis are last-write-wins, and modifiers are remembered and applied when their matching preset is selected.</p>
+<p>When and how long a voice sounds. Tier 1 picks a region on the rhythm timing presets (<code>metric()</code>, <code>entrained()</code>, <code>flow()</code>); Tier 2 sets explicit when/duration; Tier 3 is expert tuning. Calls on the same axis are last-write-wins, and modifiers are remembered and applied when their matching preset is selected.</p>
 <h4 id="brain"><a class="header" href="#brain"><code>brain</code></a></h4>
 <pre><code class="language-rhai ignore">brain(name)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm coupling continuum (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
+<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm timing presets (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
 <h4 id="sustain"><a class="header" href="#sustain"><code>sustain</code></a></h4>
 <pre><code class="language-rhai ignore">sustain()
 </code></pre>
@@ -1491,32 +1527,37 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">entrained()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Medium coupling: synchronization emerges over time, still drifts.</p>
+<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation.</p>
 <h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
 <pre><code class="language-rhai ignore">flow()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Near-zero coupling: free renewal process, non-metric texture.</p>
+<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period.</p>
 <h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
 <pre><code class="language-rhai ignore">entrainment(strength)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Override coupling strength in 0-1 (free .. locked). Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
+<p>Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric. Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
 <h4 id="rhythm_role"><a class="header" href="#rhythm_role"><code>rhythm_role</code></a></h4>
 <pre><code class="language-rhai ignore">rhythm_role(name)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
 <p>Metrical job: <code>"beat"</code>, <code>"subdivision"</code>, <code>"accent"</code>, or <code>"texture"</code>. <code>accent</code> emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.</p>
+<h4 id="measure_accent"><a class="header" href="#measure_accent"><code>measure_accent</code></a></h4>
+<pre><code class="language-rhai ignore">measure_accent(amount)
+</code></pre>
+<p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
+<p>Weak onset emphasis following the emergent measure, amount 0-1 (default 0). Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/flow presets.</p>
 <h4 id="microtiming"><a class="header" href="#microtiming"><code>microtiming</code></a></h4>
 <pre><code class="language-rhai ignore">microtiming(amount)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.</p>
+<p>Signed beat-phase offset for metric timing, in -0.5..0.5. A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/flow participants at fixed offsets.</p>
 <h4 id="cycles"><a class="header" href="#cycles"><code>cycles</code></a></h4>
 <pre><code class="language-rhai ignore">cycles(n)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Duration of n rhythm cycles.</p>
+<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier.</p>
 <h3 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h3>
 <p>How a voice moves through the consonance field. <code>seek_consonance()</code>, <code>glide()</code>, and <code>temperature()</code> (movement tension) form the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.</p>
 <h4 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h4>
@@ -1533,7 +1574,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">glide(tau_sec)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> and <code>Population</code>. Live-patchable: updates running voices in a <code>Population</code>.</p>
-<p>Pitch glide time constant in seconds.</p>
+<p>Pitch glide time constant in seconds. This changes the time constant, not the pitch apply mode. For a voice that snaps at onsets, call <code>pitch_apply_mode("glide")</code> to enable continuous pitch movement.</p>
 <h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
 <pre><code class="language-rhai ignore">temperature(value)
 </code></pre>
@@ -1940,15 +1981,15 @@ then cool and settle again.</li>
 <li><strong>Settling</strong> — scattered voices glide to where the field can hold them.</li>
 <li><strong>Bells</strong> — struck bodies; the last bell lets the field choose its
 partials.</li>
-<li><strong>Heartbeat</strong> — no external scaffold is imposed; the population locks into a
-shared pulse.</li>
+<li><strong>Heartbeat</strong> — a dedicated downbeat Voice supports an explicit
+synchronization demonstration.</li>
 <li><strong>Murmuration</strong> — a flock drifts into step, never commanded.</li>
 <li><strong>Rain</strong> — time without a beat, falling along the field.</li>
 <li><strong>Generations</strong> — voices live, starve, and are reborn where harmony can
 hold them.</li>
 <li><strong>Autumn Cycle</strong> — a directed harmony; the season turns and comes home.</li>
-<li><strong>Emergence and Resolution</strong> — everything at once, bent into a single
-arc.</li>
+<li><strong>Emergence and Resolution</strong> — a colony heats up and settles, with rhythmic
+input from its own onsets and no dedicated beat carrier.</li>
 </ol>
 <p>Samples 1–6 walk the consonance terrain (placement, gravity, tension,
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
@@ -1957,15 +1998,17 @@ are compile-checked by the test suite, so they always match the current API.
 Top-level samples intentionally do not call <code>seed(...)</code>: each run starts from
 a fresh scenario seed. Research assays keep fixed seeds so comparisons remain
 reproducible.</p>
-<p>One craft rule holds across the path: <strong>scaffolding is inaudible or
-embodied</strong>. Terrain anchors sing to the habitat bus, not to the audience,
-unless the drone is itself the subject, as with the suns of <em>Gravity</em>. Pulse
-carriers get resonant bodies and lives of their own, or the pulse is left to
-condense from the colony.</p>
+<p>Terrain anchors generally feed the habitat bus without being heard; in
+<em>Gravity</em>, the sounding drone is itself the subject. <em>Heartbeat</em> includes a
+dedicated beat carrier because synchronization is the demonstration’s subject.
+The other top-level samples have no dedicated beat carrier.</p>
 <h2 id="research-assays"><a class="header" href="#research-assays">Research assays</a></h2>
 <p><code>samples/research/</code> holds comparison fixtures — heredity/selection ablations,
 external-scaffold rhythm controls, and mechanism studies. They study the
-instrument rather than play it, and are not part of the path.</p>
+instrument rather than play it, and are not part of the path.
+Dedicated synchronization support is limited to demonstrations or assays
+where explicit synchronization is essential. Sending that support only to
+the habitat bus does not make it suitable for other samples.</p>
 <h2 id="offline-rendering"><a class="header" href="#offline-rendering">Offline rendering</a></h2>
 <p>The <code>conchordal</code> instrument never writes audio to disk — performances are
 ephemeral by design. For offline WAV rendering use the separate

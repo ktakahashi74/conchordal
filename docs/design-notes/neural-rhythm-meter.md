@@ -7,6 +7,23 @@ beta work.
 Scope: conchordal rhythm architecture, DCC time-axis coupling, composer API
 Date: 2026-06-04 (Phase 1-2 outcomes appended 2026-06-05; Phases 3-4 landed 2026-06-10)
 
+Current implementation boundary (2026-09-09): the phase outcomes below are
+historical. Normal Voice timing now uses `ParticipationClock` and
+`TemporalParticipation`, with intrinsic pace, acoustic participation and sound
+duration separated. The shared meter still supplies diagnostics and optional
+measure accents; it does not reset all onset phases. The
+[temporal hierarchy specification](dcc-neurocognitive-hierarchy.md) defines the
+remaining grouping, groove, phrase and long-context work. The old alpha phase
+status is not acceptance of those functions.
+
+Design reconsideration (2026-09-06): [Beat, phase, and temporal niches](rhythm-temporal-niche.md)
+separates inferred temporal references from bodily readiness and onset decisions.
+The earlier equivalence between a deep metrical attractor and a common onset
+target is no longer the proposed design principle. Numeric phase is an internal
+coordinate, not inherently a symbolic score; first-order onset PLV is not a
+general measure of rhythmic predictability. The proposal preserves this memo as
+the implementation history and records the upstream revision in technote §9.
+
 Phase 3-4 outcome (2026-06-10): the externally-imposed fixed clock is gone.
 Production timing is now a per-voice phase-coupling clock (`CouplingClock`) that
 entrains to the shared production meter; one `coupling` strength spans the

@@ -20,10 +20,13 @@ def profile_fixture(mode="device", report=False, dcc=0.0):
     device = mode == "device"
     hops = [dict(frame_idx=i, time_sec=i * .25, elapsed_us=100.0 + i, alive_voice_count=4,
                  analysis_wait_us=10.0, listener_wait_us=0.0,
+                 landscape_update_us=1.0, population_us=20.0, reports_us=5.0,
+                 render_route_us=40.0, post_render_us=10.0,
+                 synthesis_us=30.0, rendered_tone_count=4,
                  worker_allocations=dict(count=i + 1, bytes=(i + 1) * 16),
                  underrun_frames_total=(9 if i < 12 else 99) if device else None)
             for i in range(20)]
-    return dict(schema_version=1, scope="process_hop", allocation_scope="worker thread Rust requests",
+    return dict(schema_version=2, scope="process_hop", allocation_scope="worker thread Rust requests",
                 seed=1, report_enabled=report, dcc_coupling_strength=dcc, listener_enabled=report or dcc > 0,
                 sample_rate=4, hop_size=1, hop_budget_us=250000.0, allocation_instrumented=True,
                 truncated=False, dropped_hops=0, hop_capacity=100000, audio_output="device" if device else "no_device",
@@ -61,6 +64,22 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual((metrics["window_start_sec"], metrics["window_end_sec"]), (1.25, 2.75))
         self.assertEqual(metrics["hop_count"], 6)
         self.assertEqual(metrics["underrun_counter_start"], 9)
+
+    def test_phase_timings_are_complete_nonoverlapping_and_summarized(self):
+        data = profile_fixture()
+        self.assertEqual(self.parse(data)["render_route_us"]["max"], 40.0)
+        for key in rt.PHASE_FIELDS:
+            missing = copy.deepcopy(data)
+            del missing["hops"][0][key]
+            with self.assertRaisesRegex(ValueError, "missing"):
+                self.parse(missing)
+        data["hops"][0]["render_route_us"] = 100.0
+        with self.assertRaisesRegex(ValueError, "phase durations"):
+            self.parse(data)
+        data = profile_fixture()
+        data["hops"][0]["synthesis_us"] = 50.0
+        with self.assertRaisesRegex(ValueError, "synthesis duration"):
+            self.parse(data)
 
     def test_fixed_population_required_only_during_measurement(self):
         data = profile_fixture()
@@ -150,7 +169,7 @@ class ProfileTests(unittest.TestCase):
 
     def test_mode_seed_report_dcc_and_listener_must_match_request(self):
         for key, value in [("seed", 2), ("report_enabled", True), ("dcc_coupling_strength", .25),
-                           ("listener_enabled", True), ("schema_version", 2), ("audio_output", "no_device")]:
+                           ("listener_enabled", True), ("schema_version", 1), ("audio_output", "no_device")]:
             data = profile_fixture()
             data[key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
@@ -296,6 +315,122 @@ class CampaignTests(unittest.TestCase):
         self.assertTrue(all(c["device_rt_pass"] is None and c["status"] == "ok" for c in cases))
         self.assertEqual([c["listener_enabled"] for c in cases], [False, True, True, True])
         self.assertFalse(list(output.rglob("*.wav")))
+
+    def test_recovery_campaign_checks_three_populations_and_actual_onsets(self):
+        output = self.directory / "recovery"
+
+        def execute(command, cwd, log, timeout):
+            data = profile_fixture(report=True)
+            data["hops"] = [dict(frame_idx=i, time_sec=i * .25,
+                elapsed_us=300000.0 if 12 <= i < 16 else 100.0,
+                alive_voice_count=8 if 12 <= i < 16 else 4,
+                analysis_wait_us=0.0, listener_wait_us=0.0,
+                landscape_update_us=0.0, population_us=20.0, reports_us=0.0,
+                render_route_us=40.0, post_render_us=0.0,
+                synthesis_us=30.0, rendered_tone_count=4,
+                worker_allocations=dict(count=1, bytes=16),
+                underrun_frames_total=max(0, min(i - 11, 4)) * 10) for i in range(40)]
+            data["summary"].update(hop_count=40, elapsed_p99_us=300000.0,
+                                   elapsed_max_us=300000.0, over_budget_hops=4)
+            data["audio"].update(callback_frames_total=48, underrun_frames_total=40)
+            Path(command[command.index("--profile") + 1]).write_text(json.dumps(data))
+            events = [dict(type="onset", time_sec=i / 8, voice_id=v)
+                      for i in range(80) for v in range(8 if 24 <= i < 32 else 4)]
+            Path(command[command.index("--report") + 1]).write_text(
+                "\n".join(json.dumps(e) for e in events) + "\n")
+            log.write_text("")
+            return {"status": "ok", "returncode": 0, "wall_sec": 10}
+
+        with patch.object(rt.beta, "snapshot", side_effect=self.snapshot), \
+                patch.object(rt.subprocess, "check_output", return_value="fixture"), \
+                patch.object(rt.beta, "execute", side_effect=execute) as run:
+            args = self.args(output) + ["--workload", "recovery", "--reports", "1", "--dcc", "0",
+                                        "--stress-sec", "1", "--overload-voices", "8"]
+            self.assertEqual(rt.main(args), 0)
+        self.assertEqual(run.call_count, 1)
+        case = json.loads((output / "summary.json").read_text())["cases"][0]
+        self.assertTrue(case["recovery_pass"])
+        self.assertTrue(case["overload_observed"])
+        self.assertIsNone(case["device_rt_pass"])
+        self.assertFalse(case["phases"]["overloaded"]["device_rt_pass"])
+        self.assertEqual([p["onsets_per_voice_sec"] for p in case["phases"].values()], [8, 8, 8])
+        self.assertEqual(case["phases"]["recovered"]["underrun_frames_delta"], 0)
+
+    def test_missing_attacks_or_voice_coverage_reject_dense_label(self):
+        path = self.directory / "report.jsonl"
+        path.write_text(json.dumps(dict(type="onset", time_sec=1, voice_id=1)) + "\n")
+        with self.assertRaisesRegex(ValueError, "density/Voice"):
+            rt.onset_windows(path, [(1, 3, 4)])
+        path.write_text("\n".join(json.dumps(dict(type="onset", time_sec=1+i/32, voice_id=1))
+                                  for i in range(64)) + "\n")
+        with self.assertRaisesRegex(ValueError, "density/Voice"):
+            rt.onset_windows(path, [(1, 3, 4)])
+
+    def test_overload_must_occur_and_recovery_must_pass(self):
+        good = dict(device_rt_pass=True, underrun_frames_delta=0, elapsed_p99_us=100, hop_budget_us=200)
+        overloaded = dict(good, device_rt_pass=False, underrun_frames_delta=50)
+        self.assertIsNone(rt.recovery_assessment(good, good, good)["recovery_pass"])
+        self.assertFalse(rt.recovery_assessment(good, overloaded, overloaded)["recovery_pass"])
+        self.assertFalse(rt.recovery_assessment(overloaded, overloaded, good)["recovery_pass"])
+        self.assertTrue(rt.recovery_assessment(good, overloaded, good)["recovery_pass"])
+        self.assertIsNone(rt.recovery_assessment(good, overloaded, dict(good, device_rt_pass=None))["recovery_pass"])
+
+    def test_onset_bursts_cannot_substitute_for_a_dense_repeating_workload(self):
+        path = self.directory / "report.jsonl"
+        path.write_text("\n".join(json.dumps(dict(type="onset", time_sec=1, voice_id=v))
+                                  for v in range(4) for _ in range(16)) + "\n")
+        with self.assertRaisesRegex(ValueError, "one report hop"):
+            rt.onset_windows(path, [(1, 3, 4)])
+
+    def test_synchronized_assay_requires_shared_scaffold_and_regular_8_hz(self):
+        path = self.directory / "report.jsonl"
+        rows = [dict(type="onset", time_sec=1+i/8, voice_id=v, scaffold_mode="shared")
+                for i in range(16) for v in range(4)]
+        def check(events):
+            path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+            return rt.onset_windows(path, [(1, 3, 4)], timing="synchronized", hop_sec=512/48000)
+        self.assertEqual(check(rows)[0]["onsets_per_voice_sec"], 8)
+        with self.assertRaisesRegex(ValueError, "shared scaffold"):
+            check([dict(r, scaffold_mode="off") for r in rows])
+        with self.assertRaisesRegex(ValueError, "8 Hz onset count and intervals"):
+            check([r for i,r in enumerate(rows) if i not in (8, 12)])
+        with self.assertRaisesRegex(ValueError, "8 Hz onset count and intervals"):
+            check([dict(r, time_sec=r["time_sec"] + (.02 if i // 4 == 3 else 0))
+                   for i,r in enumerate(rows)])
+
+    def test_participation_requires_repeated_activity_without_a_dense_clock(self):
+        path = self.directory / "participation.jsonl"
+        rows = [dict(type="onset", time_sec=t + v * .02, voice_id=v)
+                for v in range(4) for t in (1.0, 1.7, 2.5)]
+        path.write_text("\n".join(map(json.dumps, rows)))
+        for timing in ("entrained", "flow"):
+            result = rt.onset_windows(path, [(1, 3, 4)], timing=timing)[0]
+            self.assertEqual(result["onset_count"], 12)
+            self.assertLess(result["onsets_per_voice_sec"], 4)
+        with self.assertRaisesRegex(ValueError, "dense workload"):
+            rt.onset_windows(path, [(1, 3, 4)])
+        path.write_text("\n".join(map(json.dumps, rows[:10])))
+        with self.assertRaisesRegex(ValueError, "repeated onsets"):
+            rt.onset_windows(path, [(1, 3, 4)], timing="flow")
+
+    def test_participation_presets_cannot_be_replaced_by_a_synchronized_scaffold(self):
+        for mode in ("entrained", "flow"):
+            script = rt.scenario_text(4, "modal", 21, 5, 10, workload=mode)
+            self.assertIn(f".{mode}().cycles(1)", script)
+            self.assertNotIn(".pulse(", script)
+            self.assertNotIn("set_scaffold", script)
+            with self.assertRaises(SystemExit):
+                rt.main(self.args(self.directory / ("invalid-" + mode)) + ["--workload", mode, "--timing", "synchronized"])
+
+    def test_synchronization_is_explicit_and_requires_onset_evidence(self):
+        adaptive = rt.scenario_text(4, "modal", 1, 5, 10, workload="dense")
+        synchronized = rt.scenario_text(4, "modal", 1, 5, 10, workload="dense", timing="synchronized")
+        self.assertNotIn("set_scaffold_shared", adaptive)
+        self.assertIn("set_scaffold_shared(16.0)", synchronized)
+        self.assertIn(".pulse(32.0)", synchronized)
+        self.assertIn(".pulse(8.0)", adaptive)
+        with self.assertRaises(SystemExit):
+            rt.main(self.args(self.directory / "invalid-sync") + ["--timing", "synchronized"])
 
 
 if __name__ == "__main__":

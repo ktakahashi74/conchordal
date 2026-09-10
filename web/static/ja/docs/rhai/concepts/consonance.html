@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6217a7fd.js";
+            window.path_to_searchindex_js = "../searchindex-03a4b3da.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -196,6 +196,13 @@ potential、score、level、mass、densityの関係は
 </ul>
 <p><code>consonance(root)</code>はroot周辺のharmonic windowを取り、<code>range()</code>で倍音範囲を指定します。
 どの配置先にも、絶対周波数の<code>(min_hz, max_hz)</code>範囲を渡せます。</p>
+<p>範囲の両端には、音源が扱える1〜20000 Hz内の有限値を指定します。大小が逆でも使えます。
+初期配置は微小な揺らぎ（jitter）を加える場合も、重みがすべてゼロ、または全域が占有済みで
+代替の抽選を行う場合も、指定範囲を守ります。Consonance Fieldに基づくPlacementは
+解析帯域（現在55〜8000 Hz）との共通部分を使います。共通部分がなければ評価の根拠を
+得られないため、指定範囲内の対数一様分布へ
+切り替わります。<code>random()</code>は指定範囲を直接使います。この範囲は初期配置の指定であり、
+その後の<code>seek_consonance()</code>による移動を同じ範囲へ制限するものではありません。</p>
 <pre><code class="language-rhai">let anchor = harmonic()
     .brain("drone")
     .amp(0.06)

@@ -108,6 +108,8 @@ pub struct Landscape {
     pub consonance_theta: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
+    pub(crate) spectral_history:
+        Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
     /// perc_state_R (summary statistics).
     pub roughness_total: f32,
     pub roughness_scalar_raw: f32,
@@ -150,6 +152,7 @@ impl Landscape {
             consonance_theta: 0.0,
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
+            spectral_history: None,
             roughness_total: 0.0,
             roughness_scalar_raw: 0.0,
             roughness_norm: 0.0,
@@ -166,6 +169,7 @@ impl Landscape {
     }
 
     pub fn resize_to_space(&mut self, space: Log2Space) {
+        self.spectral_history = None;
         let n = space.n_bins();
         self.space = space;
         self.roughness.resize(n, 0.0);

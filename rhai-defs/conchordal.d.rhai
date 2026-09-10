@@ -167,15 +167,15 @@ fn endurance(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Nominal survival time at zero field fit, excluding the release tail.
 fn endurance(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Medium coupling: synchronization emerges over time, still drifts.
+/// Bodily pacing with remembered acoustic context and predicted overlap avoidance.
 fn entrained(arg0: PopulationSpec) -> PopulationSpec;
 
-/// Override coupling strength in 0-1 (free .. locked).
+/// Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric.
 fn entrainment(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// Override coupling strength in 0-1 (free .. locked).
+/// Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric.
 fn entrainment(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Near-zero coupling: free renewal process, non-metric texture.
+/// Clustered bodily renewal with weak acoustic participation, for non-metric texture.
 fn flow(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Emit pending live patches without advancing time.
@@ -272,6 +272,11 @@ fn line(arg0: i64, arg1: f64) -> Placement;
 /// Linear interpolation of positions between two frequencies.
 fn line(arg0: i64, arg1: i64) -> Placement;
 
+/// Weak onset emphasis following the emergent measure, amount 0-1 (default 0).
+fn measure_accent(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
+/// Weak onset emphasis following the emergent measure, amount 0-1 (default 0).
+fn measure_accent(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
+
 /// Attractor depth in 0-1: how readily a pulse forms.
 fn meter_stability(arg0: f64);
 /// Attractor depth in 0-1: how readily a pulse forms.
@@ -280,9 +285,9 @@ fn meter_stability(arg0: i64);
 /// High coupling to the shared emergent meter: deep attractor, stable pulse.
 fn metric(arg0: PopulationSpec) -> PopulationSpec;
 
-/// Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
+/// Signed beat-phase offset for metric timing, in -0.5..0.5.
 fn microtiming(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
+/// Signed beat-phase offset for metric timing, in -0.5..0.5.
 fn microtiming(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// PopulationSpec whose founder voices use a resonator-based modal body; shape it with `modes()`.

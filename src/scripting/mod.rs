@@ -10,6 +10,7 @@ use rand::random;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, FLOAT, FnPtr, INT, NativeCallContext, Position};
 use tracing::warn;
 
+use crate::core::float::sanitize01;
 use crate::core::landscape::PitchObjectiveMode;
 use crate::core::mode_pattern::ModePattern;
 
@@ -95,6 +96,7 @@ struct PopulationSpec {
     entrainment: Option<f32>,
     rhythm_role: Option<RhythmRole>,
     microtiming: Option<f32>,
+    measure_accent: f32,
     endurance_sec: Option<f32>,
     recovery_sec: Option<f32>,
     attack_cost_fraction: Option<f32>,
@@ -134,6 +136,7 @@ impl PopulationSpec {
             entrainment: None,
             rhythm_role: None,
             microtiming: None,
+            measure_accent: 0.0,
             endurance_sec: None,
             recovery_sec: None,
             attack_cost_fraction: None,
@@ -556,6 +559,7 @@ impl PopulationSpec {
                 coupling: self.entrainment_or(0.95),
                 role: self.rhythm_role_or(RhythmRole::Beat),
                 microtiming: self.microtiming_or(0.0),
+                measure_accent: self.measure_accent,
                 ..CoupledTimingSpec::default()
             }
             .sanitized(),
@@ -563,14 +567,15 @@ impl PopulationSpec {
         self.ensure_gated_duration(DEFAULT_GATE_COUNT);
     }
 
-    /// Entrained preset: medium coupling, so synchronization emerges over time
-    /// while timing still feeds the life cycle (vitality + attack reward).
+    /// Acoustic participation; legacy vitality and attack reward remain for comparison.
     fn set_entrained(&mut self) {
         self.clear_rhythm_preset_controls();
         let spec = CoupledTimingSpec {
+            relation: crate::scenario::RhythmRelation::Participating,
             coupling: self.entrainment_or(0.5),
             role: self.rhythm_role_or(RhythmRole::Beat),
             microtiming: self.microtiming_or(0.0),
+            measure_accent: self.measure_accent,
             social: self.social_coupling_or(0.6),
             vitality_lambda: 0.8,
             vitality_floor: 0.35,
@@ -596,10 +601,12 @@ impl PopulationSpec {
         self.clear_rhythm_preset_controls();
         self.phonation_spec.timing = PhonationTiming::Coupled(
             CoupledTimingSpec {
+                relation: crate::scenario::RhythmRelation::Participating,
                 coupling: self.entrainment_or(0.05),
                 flow_depth: 0.65,
                 role: self.rhythm_role_or(RhythmRole::Texture),
                 microtiming: self.microtiming_or(0.0),
+                measure_accent: self.measure_accent,
                 ..CoupledTimingSpec::default()
             }
             .sanitized(),
@@ -646,6 +653,12 @@ impl PopulationSpec {
         };
         self.microtiming = Some(amount);
         self.coupled_spec_mut().microtiming = amount;
+    }
+
+    fn set_measure_accent(&mut self, amount: f32) {
+        let amount = sanitize01(amount);
+        self.measure_accent = amount;
+        self.coupled_spec_mut().measure_accent = amount;
     }
 
     fn set_when_once(&mut self) {

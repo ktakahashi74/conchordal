@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-18b944b8.js";
+            window.path_to_searchindex_js = "../searchindex-69ac5d88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -174,26 +174,37 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="rhythm-one-coupling-continuum"><a class="header" href="#rhythm-one-coupling-continuum">Rhythm: One Coupling Continuum</a></h1>
-<p>Rhythm in conchordal is <strong>one coupling continuum on a shared emergent meter</strong>,
-not a set of independent clocks. The Community drives a single production
-meter (a coupled-oscillator beat); each voice is a phase oscillator that
-entrains its onset phase to that emergent beat with a coupling strength. There
-is no externally imposed grid — coherence (or its absence) emerges from how
-tightly each voice locks to the meter the Community itself drives.</p>
-<p>The three rhythm “families” are just three regions of the continuum:</p>
+                        <h1 id="rhythm-evidence-and-participation"><a class="header" href="#rhythm-evidence-and-participation">Rhythm: Evidence and Participation</a></h1>
+<p>A beat is a recurrent temporal reference inferred from sound. Sharing that
+reference does not require every Voice to attack at the same phase.</p>
+<p>The three presets express different timing intentions:</p>
 <ul>
-<li><strong>metric</strong>: high coupling — a deep attractor, reads as a stable pulse.</li>
-<li><strong>entrained</strong>: medium coupling — synchronization emerges over time, still
-drifts.</li>
-<li><strong>flow</strong>: near-zero coupling — a free renewal process, non-metric texture.</li>
+<li><strong>metric</strong>: explicit attraction to the shared production beat. Strong coupling
+favors synchronized onsets.</li>
+<li><strong>entrained</strong>: a bodily pace adjusted by remembered acoustic context and a
+prediction of energetic overlap with surrounding sound.</li>
+<li><strong>flow</strong>: weak acoustic participation with clustered renewal intervals around
+an intrinsic scale that does not follow recurrence.</li>
 </ul>
-<p>Rhythm is part of the same ecology as consonance, viability, movement, and
-respawn: timing can affect survival, and survival reorganizes timing.</p>
+<p>For entrained and flow timing, a causal observer reads past habitat audio. Each
+Voice also retains the sound it rendered, so the energy attributed to itself can
+be excluded from a predicted competitor. The Voice compares sounding near its due
+time, waiting up to a participation cycle, and omitting the current event. Overlap is
+integrated across an estimate of the planned hold and ADSR release. Successive
+omissions become more costly, so overlap alone cannot prescribe permanent silence.
+Temporal memory changes only after an onset is emitted. For entrained timing, the cadence
+can follow a supported recurrence near the Voice’s intrinsic scale, while preserving
+its own cycle position. The observer does not prescribe a common onset phase.
+Hold lengths remain tied to the intrinsic period, so cadence adaptation does not
+stretch each sound. The overlap preview uses the same hold duration.
+Flow keeps its intrinsic renewal scale while still waiting or omitting events in
+response to surrounding sound; its executed intervals therefore remain variable.
+This three-band energy proxy is an engineering approximation, with musical
+acceptance still under evaluation.</p>
 <h2 id="director-level-terrain"><a class="header" href="#director-level-terrain">Director-level terrain</a></h2>
 <p>The director shapes the rhythmic terrain, symmetric to the consonance-field
-operations. These are soft priors, never a schedule — emergence still does the
-work:</p>
+operations. These operations shape the production meter used by metric timing. They do not
+set the bodily rate or recurrence candidates of entrained/flow participants:</p>
 <ul>
 <li><code>meter_stability(value)</code> — attractor depth in <code>[0,1]</code>: how readily a pulse
 forms. It only deepens the basin for a <em>real</em> periodicity; it never
@@ -204,21 +215,30 @@ the terrain; it does not place a beat, and it never forces a measure.</li>
 </ul>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
 <p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
-<code>flow()</code>. The tempo region is a property of the terrain, set once at the
-director level, not per voice. Configure them on a <code>PopulationSpec</code> before
-calling <code>place()</code>.</p>
+<code>flow()</code>. Configure them on a <code>PopulationSpec</code> before calling <code>place()</code>. The temporal
+basin shapes metric timing. Entrained/flow participants begin with their own
+2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
+changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
+scale for its irregular renewal intervals.</p>
 <p>Do not confuse <code>.entrained()</code> with <code>brain("entrain")</code>. The preset controls
 onset timing; the brain selects the voice’s articulation life and metabolism.
 They are independent and may be used together. See
 <a href="voice_life.html">Population — A Persistent Unit of Voices</a>.</p>
-<p>Per-voice modifiers refine where on the continuum a voice sits:</p>
+<p>Per-voice modifiers refine these intentions:</p>
 <ul>
-<li><code>entrainment(strength)</code> — coupling in <code>[0,1]</code>, free (<code>0</code>) .. locked (<code>1</code>).</li>
+<li><code>entrainment(strength)</code> — influence in <code>[0,1]</code>: acoustic context for
+entrained/flow, beat-phase attraction for metric. Zero keeps intrinsic pacing.</li>
 <li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — the voice’s
 metrical job. <code>accent</code> emits a stronger onset that drives the shared meter
 harder, so a recurring downbeat can seed an emergent measure.</li>
-<li><code>microtiming(amount)</code> — a signed beat-phase offset in <code>[-0.5, 0.5]</code>. <code>0.5</code>
-places a voice a half-beat off, reading as syncopation.</li>
+<li><code>microtiming(amount)</code> — a signed metric beat-phase offset in <code>[-0.5, 0.5]</code>.
+A value of <code>0.5</code> targets the half-beat. It does not assign fixed positions to
+entrained/flow participants.</li>
+<li><code>measure_accent(amount)</code> — weak onset emphasis following the detected measure,
+in <code>[0,1]</code> (default <code>0</code>). The onset strength multiplier is
+<code>1 + 0.35 * amount * confidence * cos(phase)</code>. The phase origin follows observed
+accents, and no detected measure means no emphasis. It changes strength, not
+onset scheduling, and works independently of <code>rhythm_role</code>.</li>
 </ul>
 <pre><code class="language-rhai">meter_stability(0.85);     // attractor depth: how readily a pulse forms
 temporal_basin(1.8, 2.2);   // tempo region the emergent beat gravitates toward
@@ -248,7 +268,9 @@ place(offbeat, at(220.0));
 wait(12.0);
 </code></pre>
 <p>Calls on the same axis are last-write-wins: the last timing mode and the last
-duration mode determine the final behavior. Modifiers are remembered and
+duration mode determine the final behavior. <code>cycles(n)</code> counts the intrinsic
+bodily period for entrained/flow and the effective beat period for metric timing;
+flow retains its existing threefold hold multiplier. Modifiers are remembered and
 applied when their matching preset is selected, so <code>entrainment(0.8).metric()</code>
 and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
@@ -260,7 +282,9 @@ and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <p>Use <code>rhythm_coupling_vitality(lambda_v, v_floor)</code> and
 <code>rhythm_reward(rho_t, "attack_phase_match")</code> when timing should affect
 survival and reorganization, and <code>rhythm_freq(freq_hz)</code> to set the internal
-oscillator directly:</p>
+articulation oscillator directly. These are legacy articulation controls:
+Gated phonation disables autonomous attacks and applies ordinary consonance
+recharge to emitted onsets, without the phase-match reward:</p>
 <pre><code class="language-rhai">let pulse_voice = harmonic()
     .repeat()
     .pulse(2.0)
@@ -279,7 +303,8 @@ set_scaffold_shared(2.0);
 set_scaffold_scrambled(2.0, 17);
 </code></pre>
 <p>They are useful for demos and assays. They are not the rhythm-composition
-abstraction: composed rhythm should come from the continuum and the terrain.</p>
+abstraction: use them only when explicit synchronization is essential to the demo or assay.
+A dedicated beat carrier is not required for entrained/flow participation.</p>
 
                     </main>
 

@@ -5,6 +5,10 @@ use crate::core::meter::{MeterNetwork, MeterState};
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::stream::dorsal::{DorsalMetrics, DorsalStream};
 
+mod contour;
+pub(crate) use contour::ContourEvent;
+use contour::ContourObserver;
+
 const ATTENTION_ATTACK_TAU_SEC: f32 = 0.04;
 const ATTENTION_RELEASE_TAU_SEC: f32 = 0.18;
 const AUDIBLE_EVIDENCE_EPS: f32 = 1e-7;
@@ -64,6 +68,9 @@ pub(crate) struct ListenerTwin {
     fast_state: ListenerFastState,
     erb_grid_key: Option<(u32, u32, u32, usize)>,
     erb_du_scan: Vec<f32>,
+    contour: Option<ContourObserver>,
+    pub(crate) spectral_history:
+        Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
 }
 
 impl ListenerTwin {
@@ -80,6 +87,24 @@ impl ListenerTwin {
             fast_state: ListenerFastState::default(),
             erb_grid_key: None,
             erb_du_scan: Vec::new(),
+            contour: None,
+            spectral_history: None,
+        }
+    }
+
+    pub(crate) fn enable_contour_reporting(&mut self, fs: f32) -> bool {
+        self.contour = ContourObserver::new(fs);
+        self.contour.is_some()
+    }
+
+    pub(crate) fn observe_contour_audio(
+        &mut self,
+        start_sample: u64,
+        audio: &[f32],
+        emit: impl FnMut(ContourEvent),
+    ) {
+        if let Some(observer) = self.contour.as_mut() {
+            observer.process(start_sample, audio, emit);
         }
     }
 
@@ -121,6 +146,7 @@ impl ListenerTwin {
         analysis_frame_id: u64,
         landscape: &LandscapeFrame,
     ) -> ListenerState {
+        self.spectral_history = landscape.spectral_history.clone();
         let space = &landscape.space;
         space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity");
         space.assert_scan_len_named(

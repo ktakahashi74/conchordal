@@ -90,7 +90,7 @@ class ResolutionTests(unittest.TestCase):
                 stream.writeframes(struct.pack("<200h", 101, *([100] * 199)))
             self.assertTrue(resolution.flow_pre_intervention_checks(output, variants, [42]))
             path.write_text("".join(json.dumps(r) + "\n" for r in records if r["type"] != "listener_state"))
-            with self.assertRaisesRegex(ValueError, "missing pre-flow"):
+            with self.assertRaisesRegex(ValueError, "missing pre-intervention"):
                 resolution.flow_pre_intervention_checks(output, variants, [42])
 
     def test_window_excludes_dead_colony_scores_and_half_open_end(self):

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6217a7fd.js";
+            window.path_to_searchindex_js = "../searchindex-03a4b3da.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -186,12 +186,12 @@
 <li><strong>Tension</strong> — Voiceが協和へ落ち着き、不安定になって離れ、再び冷えて落ち着く。</li>
 <li><strong>Settling</strong> — 散らばったVoiceが、Consonance Fieldに支えられる場所へ滑らかに移る。</li>
 <li><strong>Bells</strong> — 打撃されるbody。最後のbellはpartialをFieldに選ばせる。</li>
-<li><strong>Heartbeat</strong> — 外部の足場なしにPopulationが共有pulseへ同期する。</li>
+<li><strong>Heartbeat</strong> — 拍を打つ専用Voiceを使い、同期を実演する。</li>
 <li><strong>Murmuration</strong> — flockが命令されずに同期へ漂う。</li>
 <li><strong>Rain</strong> — beatを持たず、Fieldに沿って落ちる時間。</li>
 <li><strong>Generations</strong> — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。</li>
 <li><strong>Autumn Cycle</strong> — directionを持つharmony。季節が巡り戻る。</li>
-<li><strong>Emergence and Resolution</strong> — すべてを一つのarcへ曲げる。</li>
+<li><strong>Emergence and Resolution</strong> — Populationの探索が強まり、再び落ち着く。専用の拍打ちは置かず、Voice自身の発音がリズムの入力を担う。</li>
 </ol>
 <p>サンプル1–6はConsonance terrain（placement、gravity、tension、movement、timbre）、
 7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–12は複数の
@@ -199,13 +199,15 @@ mechanismを組み合わせます。全サンプルはtest suiteでcompile-check
 不一致を検出します。最上位のサンプルは意図的に<code>seed(...)</code>を呼ばず、毎runを新しい
 scenario seedで始めます。
 比較を再現可能にする必要があるresearch assayだけが固定seedを使います。</p>
-<p>一つのcraft ruleが全体を貫きます：<strong>scaffoldingは聞こえないか、embodyされる</strong>。
-terrain anchorは、drone自体が主題でない限りpresentationではなくhabitat busへ歌います。
-pulse carrierには共鳴するbodyとlifeを与えるか、colonyからpulseが凝結するに任せます。</p>
+<p>音高の基準を作るanchorは、通常はhabitat busだけへ送られ、直接は聞こえません。
+Gravityでは、聞こえる持続音そのものが主題です。Heartbeatは同期を実演するため、拍を打つ
+専用Voiceを置いています。他の公開サンプルには専用の拍打ちVoiceはありません。</p>
 <h2 id="research-assay"><a class="header" href="#research-assay">Research assay</a></h2>
 <p><code>samples/research/</code>にはheredity/selection ablation、external-scaffold rhythm control、
 mechanism studyなどの比較fixtureがあります。instrumentを演奏するのではなく研究するもので、
-上の道筋には含まれません。</p>
+上の道筋には含まれません。
+専用の同期補助は、明示的な同期が実演や実験に不可欠な場合だけ使います。
+habitat busだけへ送って聞こえなくしても、他のサンプルで使える理由にはなりません。</p>
 <h2 id="offline-rendering"><a class="header" href="#offline-rendering">Offline rendering</a></h2>
 <p><code>conchordal</code> instrumentはaudioをdiskへ書きません。演奏は、音が鳴り終わるとinstrument内には
 残らない一過的な出来事（ephemeral）として設計されています。offline WAVには、同じcore engineを

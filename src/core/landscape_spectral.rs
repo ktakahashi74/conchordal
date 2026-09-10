@@ -14,6 +14,7 @@ pub struct SpectralFrame {
     pub loudness_mass: f32,
 }
 
+#[cfg_attr(test, derive(Clone))]
 pub struct SpectralFrontEnd {
     space: Log2Space,
     erb: Vec<f32>,

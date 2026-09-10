@@ -9,21 +9,34 @@ use crate::core::stream::analysis::AnalysisStream;
 /// `(frame_id, landscape_snapshot)`, with `None` invalidating pre-gap observations.
 pub type AnalysisResult = (u64, Option<Landscape>);
 
+#[derive(Clone, Copy)]
+pub(crate) enum AnalysisDelivery {
+    Latest,
+    Ordered,
+}
+
 /// Analysis worker: receives time-domain hops, runs NSGT-based audio analysis,
-/// and publishes the latest analysis for the main thread to merge.
-pub fn run(
+/// and publishes either current state or every observation for listener memory.
+pub(crate) fn run(
     mut stream: AnalysisStream,
     hop_rx: Receiver<(u64, Arc<[f32]>)>,
     result_tx: Sender<AnalysisResult>,
     update_rx: Receiver<LandscapeUpdate>,
+    delivery: AnalysisDelivery,
 ) {
     let mut next_frame_id = 0;
     let mut warmup_samples = 0;
+    let hop_samples = stream.hop_samples();
+    let mut spectral_history = crate::core::spectral_history::SpectralHistory::new(
+        stream.last().space.clone(),
+        stream.sample_rate() as f64,
+        stream.window_samples(),
+    );
     while let Ok(first_hop) = hop_rx.recv() {
         // Preserve frame IDs through backlog draining so gaps cannot splice audio together.
         let mut hops = Vec::with_capacity(8);
         hops.push(first_hop);
-        hops.extend(hop_rx.try_iter());
+        hops.extend(hop_rx.try_iter().take(hop_rx.len()));
 
         // Apply parameter updates (landscape params primarily; others are harmless here).
         for upd in update_rx.try_iter() {
@@ -33,6 +46,11 @@ pub fn run(
         // Process each hop in-order to preserve the per-hop dt used by the normalizers.
         let mut analysis = None;
         for (frame_id, hop) in hops {
+            assert_eq!(
+                hop.len(),
+                hop_samples,
+                "analysis delivery requires complete NSGT hops"
+            );
             if frame_id != next_frame_id {
                 stream.reset();
                 warmup_samples = stream.window_samples();
@@ -43,13 +61,26 @@ pub fn run(
             }
             next_frame_id = frame_id.wrapping_add(1);
             let frame = stream.process(hop.as_ref());
+            spectral_history.observe(
+                frame_id * hop_samples as u64,
+                (frame_id + 1) * hop_samples as u64,
+                &frame.nsgt_power,
+            );
             warmup_samples = warmup_samples.saturating_sub(hop.len());
-            analysis = (warmup_samples == 0).then_some((frame_id, Some(frame)));
+            analysis = (warmup_samples == 0).then_some((frame_id, frame));
+            if matches!(delivery, AnalysisDelivery::Ordered)
+                && let Some((id, mut frame)) = analysis.take()
+            {
+                frame.spectral_history = spectral_history.snapshot();
+                if result_tx.send((id, Some(frame))).is_err() {
+                    return;
+                }
+            }
         }
-        // Result snapshots are latest-observed state. The main runtime merges only the newest
-        // available snapshot, so dropping a stale result under backpressure is acceptable here.
-        if let Some(analysis) = analysis {
-            let _ = result_tx.try_send(analysis);
+        // Only the generator's current-state delivery may discard older snapshots.
+        if let Some((id, mut frame)) = analysis {
+            frame.spectral_history = spectral_history.snapshot();
+            let _ = result_tx.try_send((id, Some(frame)));
         }
     }
 }
@@ -91,10 +122,152 @@ mod tests {
     }
 
     #[test]
+    fn listener_memory_receives_every_analysis_in_a_backlog() {
+        let fs = 48_000.0;
+        let hop = 128;
+        let space = Log2Space::new(200.0, 4_000.0, 12);
+        let params = build_params(&space);
+        let nsgt = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs,
+                overlap: 0.75,
+                nfft_override: Some(512),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Coherent,
+        );
+        let mut reference =
+            AnalysisStream::new(params.clone(), RtNsgtKernelLog2::new(nsgt.clone()));
+        let mut expected = Vec::new();
+        let mut hops = Vec::new();
+        for frame_id in 0..24 {
+            let audio: Arc<[f32]> = (0..hop)
+                .map(|i| {
+                    let time = (frame_id as usize * hop + i) as f32 / fs;
+                    let frequency = if frame_id < 12 { 440.0 } else { 660.0 };
+                    0.1 * (2.0 * PI * frequency * time).sin()
+                })
+                .collect();
+            expected.push(reference.process(&audio));
+            hops.push((frame_id, audio));
+        }
+        let mut final_history = None;
+        for capacity in [1, 4, 24] {
+            let stream = AnalysisStream::new(params.clone(), RtNsgtKernelLog2::new(nsgt.clone()));
+            let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
+            let (result_tx, result_rx) = crossbeam_channel::bounded(capacity);
+            let (_update_tx, update_rx) = crossbeam_channel::unbounded();
+            for row in &hops {
+                hop_tx.send(row.clone()).unwrap();
+            }
+            drop(hop_tx);
+            let handle = thread::spawn(move || {
+                run(
+                    stream,
+                    hop_rx,
+                    result_tx,
+                    update_rx,
+                    AnalysisDelivery::Ordered,
+                );
+            });
+            for (index, reference) in expected.iter().enumerate() {
+                let (frame_id, frame) = result_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                assert_eq!(frame_id, index as u64);
+                let frame = frame.expect("contiguous evidence");
+                assert_eq!(frame.nsgt_power, reference.nsgt_power);
+                assert_eq!(frame.subjective_intensity, reference.subjective_intensity);
+                assert_eq!(frame.spectral_history.is_some(), index >= 3);
+                if let Some(history) = frame.spectral_history {
+                    assert_eq!(
+                        history.observed_through_sample,
+                        (index as u64 + 1) * hop as u64
+                    );
+                    if index == expected.len() - 1 {
+                        if let Some(previous) = &final_history {
+                            let previous: &Arc<
+                                crate::core::spectral_history::SpectralHistorySnapshot,
+                            > = previous;
+                            assert_eq!(
+                                history.known_rms_by_age_scan,
+                                previous.known_rms_by_age_scan
+                            );
+                            assert_eq!(
+                                history.known_coverage_by_age,
+                                previous.known_coverage_by_age
+                            );
+                        }
+                        final_history = Some(history);
+                    }
+                }
+            }
+            handle.join().unwrap();
+            assert!(result_rx.try_recv().is_err());
+        }
+
+        // Coalescing may discard deliveries, but not the observations in their history.
+        let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
+        let (result_tx, result_rx) = crossbeam_channel::unbounded();
+        let (_update_tx, update_rx) = crossbeam_channel::unbounded();
+        for row in &hops {
+            hop_tx.send(row.clone()).unwrap();
+        }
+        drop(hop_tx);
+        run(
+            AnalysisStream::new(params.clone(), RtNsgtKernelLog2::new(nsgt.clone())),
+            hop_rx,
+            result_tx,
+            update_rx,
+            AnalysisDelivery::Latest,
+        );
+        let (id, frame) = result_rx.recv().unwrap();
+        assert_eq!(id, 23);
+        assert!(result_rx.try_recv().is_err());
+        let history = frame.unwrap().spectral_history.unwrap();
+        let expected_history = final_history.unwrap();
+        assert_eq!(
+            history.known_rms_by_age_scan,
+            expected_history.known_rms_by_age_scan
+        );
+        assert_eq!(
+            history.known_coverage_by_age,
+            expected_history.known_coverage_by_age
+        );
+
+        // A blocked ordered publisher must stop when its consumer goes away.
+        let stream = AnalysisStream::new(params, RtNsgtKernelLog2::new(nsgt));
+        let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
+        let (result_tx, result_rx) = crossbeam_channel::bounded(1);
+        let (_update_tx, update_rx) = crossbeam_channel::unbounded();
+        for row in hops {
+            hop_tx.send(row).unwrap();
+        }
+        let (done_tx, done_rx) = crossbeam_channel::bounded(1);
+        let handle = thread::spawn(move || {
+            run(
+                stream,
+                hop_rx,
+                result_tx,
+                update_rx,
+                AnalysisDelivery::Ordered,
+            );
+            done_tx.send(()).unwrap();
+        });
+        result_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        drop(result_rx);
+        done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        handle.join().unwrap();
+        drop(hop_tx);
+    }
+
+    #[test]
     fn analysis_gap_invalidates_results_until_a_full_window_is_refilled() {
         let fs = 48_000.0;
         let hop = 128;
-        for recovery_hops in [1, 3, 4] {
+        for (recovery_hops, delivery) in [1, 3, 4].into_iter().flat_map(|hops| {
+            [AnalysisDelivery::Latest, AnalysisDelivery::Ordered].map(|delivery| (hops, delivery))
+        }) {
             let space = Log2Space::new(200.0, 4_000.0, 12);
             let params = build_params(&space);
             let nsgt = NsgtKernelLog2::new(
@@ -127,8 +300,13 @@ mod tests {
                 hop_tx.send((frame_id, Arc::clone(&silence))).unwrap();
             }
             drop(hop_tx);
-            run(stream, hop_rx, result_tx, update_rx);
+            run(stream, hop_rx, result_tx, update_rx, delivery);
 
+            if matches!(delivery, AnalysisDelivery::Ordered) {
+                let (frame_id, frame) = result_rx.recv().unwrap();
+                assert_eq!(frame_id, 0);
+                assert!(frame.unwrap().nsgt_power.iter().any(|&power| power > 0.0));
+            }
             let (gap_id, invalidated) = result_rx.recv().unwrap();
             assert_eq!(gap_id, 2);
             assert!(invalidated.is_none());
@@ -147,7 +325,7 @@ mod tests {
     #[test]
     fn analysis_landscape_age_at_most_one_after_warmup() {
         let fs = 48_000.0;
-        let hop = 256usize;
+        let hop = 128usize;
         let space = Log2Space::new(200.0, 4000.0, 12);
         let params = build_params(&space);
         let nsgt = NsgtKernelLog2::new(
@@ -169,7 +347,15 @@ mod tests {
         let (result_tx, result_rx) = crossbeam_channel::unbounded::<AnalysisResult>();
         let (_update_tx, update_rx) = crossbeam_channel::unbounded::<LandscapeUpdate>();
 
-        let handle = thread::spawn(move || run(stream, hop_rx, result_tx, update_rx));
+        let handle = thread::spawn(move || {
+            run(
+                stream,
+                hop_rx,
+                result_tx,
+                update_rx,
+                AnalysisDelivery::Latest,
+            )
+        });
 
         let warmup = 2u64;
         let steps = 8u64;

@@ -828,6 +828,7 @@ impl Voice {
             is_alive: self.is_alive() && !self.remove_pending,
             onset_allowed,
         };
+        self.phonation_engine.set_sound_adsr(self.voice_adsr);
         self.phonation_engine.tick(
             &ctx,
             &state,
@@ -870,14 +871,15 @@ impl Voice {
         let freq_hz = self.body.base_freq_hz();
         let continuous_drive = self.effective_control.body.continuous_drive;
         self.emit_phonation_updates(now, target_amp, freq_hz, continuous_drive, &mut out.cmds);
-        self.prune_tracked_render_notes(&out.cmds);
         if self.phonation_scratch.events.is_empty() {
+            self.prune_tracked_render_notes(&out.cmds);
             if had_tone_on {
                 Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
             return;
         }
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
+            self.prune_tracked_render_notes(&out.cmds);
             if had_tone_on {
                 Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
@@ -913,6 +915,9 @@ impl Voice {
             });
         }
         self.track_new_render_notes(&out.tones);
+        // An onset and its note-off can share a hop. Track first, then remove
+        // every note already scheduled to end, including the newly added ones.
+        self.prune_tracked_render_notes(&out.cmds);
         debug_assert!(
             !out.cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })) || !out.tones.is_empty(),
             "ToneCmd::On emitted without tone specs"
@@ -1114,6 +1119,55 @@ mod tests {
             None,
             0,
         )
+    }
+
+    #[test]
+    fn note_ending_in_its_onset_hop_does_not_remain_tracked_for_release() {
+        use crate::life::phonation_engine::{CandidatePoint, PhonationClock};
+        use crate::scenario::{DurationConfig, OnsetConfig, PhonationClockConfig, PhonationConfig};
+
+        let mut voice = test_voice();
+        voice.phonation_engine = PhonationEngine::from_config(
+            &PhonationConfig {
+                measure_accent: 0.0,
+                mode: PhonationMode::Gated,
+                onset: OnsetConfig::Always { strength: 1.0 },
+                duration: DurationConfig::FixedGate { length_gates: 0 },
+                clock: PhonationClockConfig::ThetaGate,
+            },
+            0,
+        );
+        voice.phonation_engine.clock = PhonationClock::Custom(Box::new(|ctx, out| {
+            out.push(CandidatePoint {
+                tick: ctx.now_tick,
+                gate: 0,
+            });
+        }));
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.env_open = 1.0;
+        let batch = voice.tick_phonation(
+            &Timebase {
+                fs: 48_000.0,
+                hop: 512,
+            },
+            0,
+            &rhythms,
+            None,
+            0.0,
+            1.0,
+            1.0,
+        );
+        assert_eq!(batch.tones.len(), 1);
+        assert!(
+            batch
+                .cmds
+                .iter()
+                .any(|cmd| matches!(cmd, ToneCmd::Off { .. }))
+        );
+        assert!(voice.active_render_notes.is_empty());
+        let mut release = Vec::new();
+        voice.emit_release_note_offs(512, &mut release);
+        assert!(release.is_empty());
     }
 
     #[test]
@@ -1384,10 +1438,12 @@ mod tests {
         control.phonation.gate = PhonationGate::WhenViable;
         control.phonation.spec = crate::scenario::PhonationSpec {
             timing: crate::scenario::PhonationTiming::Coupled(crate::scenario::CoupledTimingSpec {
+                relation: crate::scenario::RhythmRelation::Synchronized,
                 coupling: 0.0,
                 base_rate_hz: 20.0,
                 flow_depth: 0.0,
                 microtiming: 0.0,
+                measure_accent: 0.0,
                 role: crate::scenario::RhythmRole::Beat,
                 social: 0.0,
                 vitality_lambda: 0.0,

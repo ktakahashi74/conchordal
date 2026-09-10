@@ -25,6 +25,7 @@ pub struct JsonlReporter {
 #[derive(Debug, Clone)]
 pub struct OnsetSample {
     pub time_sec: f32,
+    pub onset_frame: u64,
     pub population_id: u64,
     pub voice_id: u64,
     pub generation: u32,
@@ -56,6 +57,10 @@ pub struct RhythmObservation {
     pub delta_hz: Option<f32>,
     pub env_open: f32,
     pub env_level: f32,
+    pub measure_hz: Option<f32>,
+    pub measure_phase: f32,
+    pub measure_confidence: f32,
+    pub measure_ratio: u8,
 }
 
 /// Listener-side per-hop sample, filled in by the caller so this module does not
@@ -114,6 +119,37 @@ pub struct RhythmSummary {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct ListenerContourSample {
+    pub(crate) generated_frame_id: u64,
+    pub(crate) time_sec: f64,
+    pub(crate) event: &'static str,
+    pub(crate) onset_sec: Option<f64>,
+    pub(crate) periodic_frequency_hz: Option<f32>,
+    pub(crate) periodicity: Option<f32>,
+    pub(crate) delta_log2: Option<f32>,
+    pub(crate) gain_bits: Option<f32>,
+    pub(crate) loss_bits: Option<f32>,
+    pub(crate) context_support: Option<f32>,
+    pub(crate) error_threshold_bits: Option<f32>,
+    pub(crate) calibration_events: Option<usize>,
+    pub(crate) error_candidate: bool,
+    pub(crate) gap_threshold_sec: Option<f64>,
+    pub(crate) missing_start_sec: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ParticipationOutcomeSample {
+    pub(crate) voice_id: u64,
+    pub(crate) sample_rate: u32,
+    #[serde(flatten)]
+    pub(crate) prediction: crate::life::phonation_engine::ParticipationPrediction,
+    pub(crate) status: &'static str,
+    pub(crate) observed_start_frame: Option<u64>,
+    pub(crate) observed_end_frame: Option<u64>,
+    pub(crate) observed_habitat_band_energy: Option<[f32; 3]>,
+}
+
+#[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
     Meta {
@@ -155,6 +191,7 @@ enum ReportRecord<'a> {
     },
     Onset {
         time_sec: f32,
+        onset_frame: u64,
         population_id: u64,
         voice_id: u64,
         generation: u32,
@@ -182,13 +219,59 @@ enum ReportRecord<'a> {
         delta_hz: Option<f32>,
         env_open: f32,
         env_level: f32,
+        measure_hz: Option<f32>,
+        measure_phase: f32,
+        measure_confidence: f32,
+        measure_ratio: u8,
     },
     ListenerState(&'a ListenerStateSample),
+    ListenerContour(&'a ListenerContourSample),
+    ParticipationOutcome(&'a ParticipationOutcomeSample),
+    ParticipationContext {
+        voice_id: u64,
+        sample_rate: u32,
+        #[serde(flatten)]
+        update: &'a crate::life::temporal_participation::ParticipationContextUpdate,
+    },
+    LocalPredictionError {
+        voice_id: u64,
+        sample_rate: u32,
+        observed_from_frame: u64,
+        observed_through_frame: u64,
+        window_frames: usize,
+        horizon_frames: [usize; 7],
+        #[serde(flatten)]
+        errors: &'a crate::core::history_prediction::PredictionErrorTotals,
+    },
+    LocalPredictionMatch {
+        voice_id: u64,
+        sample_rate: u32,
+        window_frames: usize,
+        forecast_observed_frame: u64,
+        target_start_frame: u64,
+        target_end_frame: u64,
+        #[serde(flatten)]
+        matched: &'a crate::core::history_prediction::PredictionMatch<'a>,
+    },
     HopTiming(&'a HopTimingSample),
     DccPressure {
         time_sec: f32,
         tension_pressure: f32,
         temperature_bonus: f32,
+    },
+    SpectralHistory {
+        bus: &'static str,
+        generated_through_sample: u64,
+        observed_through_sample: u64,
+        sample_rate: f64,
+        window_samples: usize,
+        fmin_hz: f32,
+        fmax_hz: f32,
+        bins_per_octave: u32,
+        ages_sec: [f32; 8],
+        post_order: usize,
+        known_rms_by_age_scan: &'a [[f32; 8]],
+        known_coverage_by_age: [f32; 8],
     },
     Habituation {
         time_sec: f32,
@@ -199,6 +282,15 @@ enum ReportRecord<'a> {
         tracked_h: f32,
         tracked_raw_score: f32,
         tracked_eff_score: f32,
+    },
+    HabituationScan {
+        time_sec: f32,
+        fmin_hz: f32,
+        bins_per_octave: u32,
+        n_bins: usize,
+        state_scan: &'a [f32],
+        raw_score_scan: &'a [f32],
+        eff_score_scan: &'a [f32],
     },
     RhythmSummary {
         time_sec: f32,
@@ -257,6 +349,92 @@ impl JsonlReporter {
 
     pub(crate) fn write_hop_timing(&mut self, sample: &HopTimingSample) -> Result<(), String> {
         self.write_record(&ReportRecord::HopTiming(sample))
+    }
+
+    pub(crate) fn write_spectral_history(
+        &mut self,
+        bus: &'static str,
+        generated_through_sample: u64,
+        snapshot: &crate::core::spectral_history::SpectralHistorySnapshot,
+    ) -> Result<(), String> {
+        let space = &snapshot.space;
+        space.assert_scan_len_named(&snapshot.known_rms_by_age_scan, "known_rms_by_age_scan");
+        assert!(snapshot.observed_through_sample <= generated_through_sample);
+        self.write_record(&ReportRecord::SpectralHistory {
+            bus,
+            generated_through_sample,
+            observed_through_sample: snapshot.observed_through_sample,
+            sample_rate: snapshot.sample_rate,
+            window_samples: snapshot.window_samples,
+            fmin_hz: space.fmin,
+            fmax_hz: space.fmax,
+            bins_per_octave: space.bins_per_oct,
+            ages_sec: crate::core::temporal_history::HISTORY_AGES_SEC,
+            post_order: snapshot.post_order,
+            known_rms_by_age_scan: &snapshot.known_rms_by_age_scan,
+            known_coverage_by_age: snapshot.known_coverage_by_age,
+        })
+    }
+
+    pub(crate) fn write_participation_outcome(
+        &mut self,
+        sample: &ParticipationOutcomeSample,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::ParticipationOutcome(sample))
+    }
+
+    pub(crate) fn write_participation_context(
+        &mut self,
+        voice_id: u64,
+        sample_rate: u32,
+        update: &crate::life::temporal_participation::ParticipationContextUpdate,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::ParticipationContext {
+            voice_id,
+            sample_rate,
+            update,
+        })
+    }
+
+    pub(crate) fn write_local_prediction_match(
+        &mut self,
+        voice_id: u64,
+        sample_rate: u32,
+        target_start_frame: u64,
+        window_frames: usize,
+        matched: &crate::core::history_prediction::PredictionMatch<'_>,
+    ) -> Result<(), String> {
+        let horizon_frames = (matched.target_step - matched.issued_step) * window_frames as u64;
+        self.write_record(&ReportRecord::LocalPredictionMatch {
+            voice_id,
+            sample_rate,
+            window_frames,
+            forecast_observed_frame: target_start_frame - horizon_frames,
+            target_start_frame,
+            target_end_frame: target_start_frame + window_frames as u64,
+            matched,
+        })
+    }
+
+    pub(crate) fn write_local_prediction_errors(
+        &mut self,
+        voice_id: u64,
+        sample_rate: u32,
+        observed_from_frame: u64,
+        observed_through_frame: u64,
+        window_frames: usize,
+        errors: &crate::core::history_prediction::PredictionErrorTotals,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::LocalPredictionError {
+            voice_id,
+            sample_rate,
+            observed_from_frame,
+            observed_through_frame,
+            window_frames,
+            horizon_frames: crate::core::history_prediction::SCORE_LEADS
+                .map(|lead| lead * 2 * window_frames),
+            errors,
+        })
     }
 
     pub fn write_scene_markers(&mut self, markers: &[SceneMarker]) -> Result<(), String> {
@@ -323,6 +501,7 @@ impl JsonlReporter {
         for onset in onsets {
             self.write_record(&ReportRecord::Onset {
                 time_sec: onset.time_sec,
+                onset_frame: onset.onset_frame,
                 population_id: onset.population_id,
                 voice_id: onset.voice_id,
                 generation: onset.generation,
@@ -386,6 +565,10 @@ impl JsonlReporter {
             delta_hz: observation.delta_hz,
             env_open: observation.env_open,
             env_level: observation.env_level,
+            measure_hz: observation.measure_hz,
+            measure_phase: observation.measure_phase,
+            measure_confidence: observation.measure_confidence,
+            measure_ratio: observation.measure_ratio,
         })?;
         self.rhythm_observations.push(observation);
         self.rhythm_summary_written = false;
@@ -402,6 +585,13 @@ impl JsonlReporter {
                 .push((state.time_sec, state.beat_confidence));
         }
         Ok(())
+    }
+
+    pub(crate) fn write_listener_contour(
+        &mut self,
+        sample: &ListenerContourSample,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::ListenerContour(sample))
     }
 
     pub(crate) fn write_dcc_pressure(
@@ -437,6 +627,31 @@ impl JsonlReporter {
             tracked_h,
             tracked_raw_score,
             tracked_eff_score,
+        })
+    }
+
+    pub(crate) fn write_habituation_scan(
+        &mut self,
+        time_sec: f32,
+        landscape: &crate::core::landscape::Landscape,
+    ) -> Result<(), String> {
+        let space = &landscape.space;
+        for (scan, name) in [
+            (&landscape.perc_habituation_state_scan, "state_scan"),
+            (&landscape.consonance_field_score, "raw_score_scan"),
+            (&landscape.consonance_field_score_eff, "eff_score_scan"),
+        ] {
+            space.assert_scan_len_named(scan, name);
+        }
+        // Borrow the scans; reporting must not add a per-hop snapshot allocation.
+        self.write_record(&ReportRecord::HabituationScan {
+            time_sec,
+            fmin_hz: space.fmin,
+            bins_per_octave: space.bins_per_oct,
+            n_bins: space.n_bins(),
+            state_scan: &landscape.perc_habituation_state_scan,
+            raw_score_scan: &landscape.consonance_field_score,
+            eff_score_scan: &landscape.consonance_field_score_eff,
         })
     }
 
@@ -906,7 +1121,7 @@ pub fn scaffold_phase_0_1(config: ScaffoldConfig, time_sec: f32, frame_idx: u64)
 pub fn onset_samples_from_batches(
     voices: &[Voice],
     batches: &[crate::life::voice::PhonationBatch],
-    time_sec: f32,
+    sample_rate: f32,
     scaffold: ScaffoldConfig,
     frame_idx: u64,
 ) -> Vec<OnsetSample> {
@@ -916,7 +1131,6 @@ pub fn onset_samples_from_batches(
     }
 
     let scaffold_mode = scaffold_mode_name(scaffold);
-    let scaffold_phase = scaffold_phase_0_1(scaffold, time_sec, frame_idx);
     let mut out = Vec::new();
     for batch in batches {
         let Some(agent) = by_agent.get(&batch.source_id).copied() else {
@@ -928,8 +1142,10 @@ pub fn onset_samples_from_batches(
         };
         let freq_hz = agent.body.base_freq_hz();
         for onset in &batch.onsets {
+            let time_sec = (onset.onset_tick as f64 / sample_rate as f64) as f32;
             out.push(OnsetSample {
                 time_sec,
+                onset_frame: onset.onset_tick,
                 population_id: agent.metadata.population_id,
                 voice_id: agent.id(),
                 generation: agent.metadata.generation,
@@ -937,7 +1153,7 @@ pub fn onset_samples_from_batches(
                 strength: onset.strength,
                 plv,
                 scaffold_mode,
-                scaffold_phase_0_1: scaffold_phase,
+                scaffold_phase_0_1: scaffold_phase_0_1(scaffold, time_sec, frame_idx),
             });
         }
     }
@@ -960,6 +1176,7 @@ mod tests {
     fn onset(time_sec: f32, plv: Option<f32>) -> OnsetSample {
         OnsetSample {
             time_sec,
+            onset_frame: (time_sec as f64 * 48_000.0).round() as u64,
             population_id: 1,
             voice_id: 1,
             generation: 0,
@@ -992,7 +1209,64 @@ mod tests {
             delta_hz: Some(1.0),
             env_open: 1.0,
             env_level: 1.0,
+            measure_hz: None,
+            measure_phase: 0.0,
+            measure_confidence: 0.0,
+            measure_ratio: 0,
         }
+    }
+
+    #[test]
+    fn habituation_scan_serializes_fixed_coordinates_and_rejects_misalignment() {
+        use crate::core::landscape::Landscape;
+        use crate::core::log2space::Log2Space;
+        let path = std::env::temp_dir().join(format!(
+            "conchordal-hab-scan-{}-{}.jsonl",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut reporter = JsonlReporter::create(path.to_str().unwrap()).unwrap();
+        let mut landscape = Landscape::new(Log2Space::new(55.0, 110.0, 1));
+        landscape.perc_habituation_state_scan = vec![0.25, 0.5];
+        landscape.consonance_field_score = vec![-0.2, 0.8];
+        landscape.consonance_field_score_eff = vec![-0.15, 0.4];
+        reporter.write_habituation_scan(2.0, &landscape).unwrap();
+        reporter.flush().unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(value["fmin_hz"], 55.0);
+        assert_eq!(value["bins_per_octave"], 1);
+        assert_eq!(value["n_bins"], 2);
+        for key in ["state_scan", "raw_score_scan", "eff_score_scan"] {
+            assert_eq!(value[key].as_array().unwrap().len(), 2);
+        }
+        assert_eq!(value["state_scan"][1], 0.5);
+        assert_eq!(value["eff_score_scan"][1], 0.4);
+        for index in 0..3 {
+            let mut broken = landscape.clone();
+            match index {
+                0 => {
+                    broken.perc_habituation_state_scan.pop();
+                }
+                1 => {
+                    broken.consonance_field_score.pop();
+                }
+                _ => {
+                    broken.consonance_field_score_eff.pop();
+                }
+            }
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    reporter.write_habituation_scan(3.0, &broken).unwrap();
+                }))
+                .is_err()
+            );
+        }
+        drop(reporter);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

@@ -65,5 +65,7 @@ spawn記録はroot 1 Voice、colony 8 Voice、flowありの場合だけ9 Voice�
 - [検証記録](../../target/resolution-evaluation/2026-09-05-no-beat-carrier/validation.json)
 - [介入前の一致](../../target/resolution-evaluation/2026-09-05-no-beat-carrier/flow_pre_intervention.json)
 
-今回のrender確認はseed 1だけであり、3seedの再評価は未実施である。
+この8条件のrender確認はseed 1だけである。その後、現行sample本体の
+[seed 1・21・42の比較](sample12-three-seed-audition-2026-09-05.md)を生成した。
+8条件の操作分解を3seedで再実行した結果ではない。
 オフライン生成の成功を、実機性能や音楽的な受入判定へ読み替えない。

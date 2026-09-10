@@ -2,13 +2,9 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
-// Deterministic habituation-field assay. Asserts the robust closure signatures:
-// causal control (off vs on), erosion occurs, erosion stays bounded (no global
-// runaway), and reproducibility. Single-basin recovery/return is NOT asserted
-// here: the `tracked_bin` telemetry is the per-hop argmax of the raw score and
-// moves between bins, so it cannot cleanly measure one basin recovering. The
-// full closure verdict (recovery + return-to-vacated-basin) is the manual
-// research campaign recorded in the design docs.
+// Test bounded, reproducible erosion and controlled recovery at fixed Log2Space
+// coordinates. Re-exposure is scripted; autonomous return remains a separate
+// causal research assay and is not inferred from the moving `tracked_bin`.
 
 const SCENARIO: &str = "samples/research/habituation_field_assay.rhai";
 
@@ -33,9 +29,9 @@ fn write_config(enabled: bool) -> PathBuf {
     path
 }
 
-fn run(config: &PathBuf, report: &PathBuf) {
+fn run(config: &PathBuf, report: &PathBuf, scenario: &str) {
     let status = Command::new(env!("CARGO_BIN_EXE_conchordal"))
-        .arg(SCENARIO)
+        .arg(scenario)
         .arg("--config")
         .arg(config)
         .args(["--nogui", "--play=false", "--report"])
@@ -68,7 +64,7 @@ fn hab_series(report: &PathBuf) -> Vec<(f32, f32)> {
 fn habituation_off_is_the_causal_control() {
     let cfg = write_config(false);
     let rep = temp_path("off.jsonl");
-    run(&cfg, &rep);
+    run(&cfg, &rep, SCENARIO);
     let s = hab_series(&rep);
     assert!(!s.is_empty(), "no habituation records emitted");
     for (mean_h, max_h) in &s {
@@ -85,7 +81,7 @@ fn habituation_off_is_the_causal_control() {
 fn habituation_on_erodes_and_stays_bounded() {
     let cfg = write_config(true);
     let rep = temp_path("on.jsonl");
-    run(&cfg, &rep);
+    run(&cfg, &rep, SCENARIO);
     let s = hab_series(&rep);
     assert!(s.len() > 1000, "expected a long series, got {}", s.len());
     let peak_max_h = s.iter().map(|(_, x)| *x).fold(0.0f32, f32::max);
@@ -107,8 +103,8 @@ fn habituation_is_deterministic() {
     let cfg = write_config(true);
     let r1 = temp_path("det1.jsonl");
     let r2 = temp_path("det2.jsonl");
-    run(&cfg, &r1);
-    run(&cfg, &r2);
+    run(&cfg, &r1, SCENARIO);
+    run(&cfg, &r2, SCENARIO);
     let s1 = hab_series(&r1);
     let s2 = hab_series(&r2);
     // hab_series drops unparseable lines, so an empty series would make the
@@ -127,4 +123,88 @@ fn habituation_is_deterministic() {
     let _ = std::fs::remove_file(&r1);
     let _ = std::fs::remove_file(&r2);
     let _ = std::fs::remove_file(&cfg);
+}
+
+#[test]
+fn a_fixed_region_recovers_after_withdrawal_and_responds_to_reexposure() {
+    let mut traces = Vec::new();
+    for condition in ["off", "normal", "slow"] {
+        let cfg = write_config(condition != "off");
+        if condition == "slow" {
+            std::fs::write(
+                &cfg,
+                "[psychoacoustics.habituation]\nenabled = true\nrecovery_sec = 80.0\n",
+            )
+            .unwrap();
+        }
+        let report = temp_path("fixed-region.jsonl");
+        run(
+            &cfg,
+            &report,
+            "samples/research/habituation_recovery_probe.rhai",
+        );
+        let rows: Vec<serde_json::Value> = std::fs::read_to_string(&report)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("valid JSONL"))
+            .filter(|row| row["type"] == "habituation_scan")
+            .collect();
+        assert!(rows.len() >= 36, "missing one-second observations");
+        let reference = &rows[0];
+        let fmin = reference["fmin_hz"].as_f64().unwrap();
+        let bins_per_octave = reference["bins_per_octave"].as_f64().unwrap();
+        let bin = ((220.0 / fmin).log2() * bins_per_octave).round() as usize;
+        for row in &rows {
+            assert_eq!(row["fmin_hz"], reference["fmin_hz"]);
+            assert_eq!(row["bins_per_octave"], reference["bins_per_octave"]);
+            assert_eq!(row["n_bins"], reference["n_bins"]);
+            for key in ["state_scan", "raw_score_scan", "eff_score_scan"] {
+                assert_eq!(
+                    row[key].as_array().unwrap().len(),
+                    row["n_bins"].as_u64().unwrap() as usize
+                );
+            }
+            if condition == "off" {
+                assert!(
+                    row["state_scan"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|h| h.as_f64() == Some(0.0))
+                );
+                assert_eq!(row["raw_score_scan"], row["eff_score_scan"]);
+            }
+        }
+        let state_at = |sec: f64| {
+            rows.iter()
+                .find(|row| {
+                    let time = row["time_sec"].as_f64().unwrap();
+                    time >= sec && time < sec + 0.03
+                })
+                .expect("reference time observed")["state_scan"][bin]
+                .as_f64()
+                .unwrap()
+        };
+        traces.push([state_at(9.0), state_at(25.0), state_at(35.0)]);
+        std::fs::remove_file(report).unwrap();
+        std::fs::remove_file(cfg).unwrap();
+    }
+    let [exposed, recovered, reexposed] = traces[1];
+    assert!(exposed > 0.15, "weak initial exposure: {traces:?}");
+    assert!(
+        recovered < exposed * 0.15,
+        "fixed region did not recover: {traces:?}"
+    );
+    assert!(
+        reexposed > exposed * 0.7,
+        "fixed region did not respond again: {traces:?}"
+    );
+    assert!(
+        traces[2][1] > traces[2][0] * 0.5,
+        "slow recovery did not retain state: {traces:?}"
+    );
+    assert!(
+        traces[2][1] > recovered * 3.0,
+        "recovery-rate intervention had no effect: {traces:?}"
+    );
 }

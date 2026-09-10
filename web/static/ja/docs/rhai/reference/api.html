@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6217a7fd.js";
+            window.path_to_searchindex_js = "../searchindex-03a4b3da.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -383,7 +383,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">brain(name)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm coupling continuum (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
+<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm timing presets (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
 <h4 id="sustain"><a class="header" href="#sustain"><code>sustain</code></a></h4>
 <pre><code class="language-rhai ignore">sustain()
 </code></pre>
@@ -403,32 +403,37 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">entrained()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Medium coupling: synchronization emerges over time, still drifts.</p>
+<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation.</p>
 <h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
 <pre><code class="language-rhai ignore">flow()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Near-zero coupling: free renewal process, non-metric texture.</p>
+<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period.</p>
 <h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
 <pre><code class="language-rhai ignore">entrainment(strength)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Override coupling strength in 0-1 (free .. locked). Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
+<p>Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric. Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
 <h4 id="rhythm_role"><a class="header" href="#rhythm_role"><code>rhythm_role</code></a></h4>
 <pre><code class="language-rhai ignore">rhythm_role(name)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
 <p>Metrical job: <code>"beat"</code>, <code>"subdivision"</code>, <code>"accent"</code>, or <code>"texture"</code>. <code>accent</code> emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.</p>
+<h4 id="measure_accent"><a class="header" href="#measure_accent"><code>measure_accent</code></a></h4>
+<pre><code class="language-rhai ignore">measure_accent(amount)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Weak onset emphasis following the emergent measure, amount 0-1 (default 0). Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/flow presets.</p>
 <h4 id="microtiming"><a class="header" href="#microtiming"><code>microtiming</code></a></h4>
 <pre><code class="language-rhai ignore">microtiming(amount)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.</p>
+<p>Signed beat-phase offset for metric timing, in -0.5..0.5. A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/flow participants at fixed offsets.</p>
 <h4 id="cycles"><a class="header" href="#cycles"><code>cycles</code></a></h4>
 <pre><code class="language-rhai ignore">cycles(n)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Duration of n rhythm cycles.</p>
+<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier.</p>
 <h3 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h3>
 <p>VoiceがConsonance Field内をどう移動するかを決める。<code>seek_consonance()</code>、<code>glide()</code>、<code>temperature()</code>が基本の作曲用APIで、残りは山登り探索とpeak samplerを調整する。</p>
 <h4 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h4>
@@ -445,7 +450,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">glide(tau_sec)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
-<p>Pitch glide time constant in seconds.</p>
+<p>Pitch glide time constant in seconds. This changes the time constant, not the pitch apply mode. For a voice that snaps at onsets, call <code>pitch_apply_mode("glide")</code> to enable continuous pitch movement.</p>
 <h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
 <pre><code class="language-rhai ignore">temperature(value)
 </code></pre>

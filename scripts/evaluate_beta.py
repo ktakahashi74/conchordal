@@ -21,6 +21,8 @@ import sys
 import time
 import wave
 
+import sample12
+
 
 DEFAULT_SAMPLES = ["07_heartbeat", "08_murmuration", "09_rain", "12_emergence_and_resolution"]
 RHYTHM_FIELDS = "time_sec window_start_sec window_end_sec onset_density_hz".split()
@@ -32,6 +34,8 @@ LISTENER_FLOATS = ("stability_level resolvability_level tension_level attention_
                    "measure_confidence").split()
 LISTENER_INTS = ("generated_frame_id analysis_frame_id analysis_lag_frames subdivision_ratio "
                  "measure_ratio").split()
+CONTOUR_FLOATS = ("onset_sec periodic_frequency_hz periodicity delta_log2 gain_bits loss_bits "
+                  "context_support error_threshold_bits gap_threshold_sec missing_start_sec").split()
 # Each schema lists required fields, including required nullable fields.
 SCHEMAS = {
     "meta": {"seed": "i", "hop_timing_scope": "s"},
@@ -54,10 +58,34 @@ SCHEMAS = {
         | dict.fromkeys("kuramoto_active_count onsets_in_hop".split(), "i"),
     "listener_state": dict.fromkeys(["time_sec"] + LISTENER_FLOATS, "n")
         | dict.fromkeys(LISTENER_INTS, "i"),
+    "listener_contour": dict.fromkeys(CONTOUR_FLOATS, "?n")
+        | {"time_sec": "n", "generated_frame_id": "i", "event": "s",
+           "calibration_events": "?i", "error_candidate": "b"},
+    "participation_outcome": dict.fromkeys(
+        "voice_id sample_rate issued_frame onset_frame forecast_observed_frame target_start_frame target_end_frame".split(), "i")
+        | {"status": "s", "pred_continuation_habitat_band_energy": "bands",
+           "observed_start_frame": "?i", "observed_end_frame": "?i", "observed_habitat_band_energy": "?bands"},
+    "participation_context": dict.fromkeys(
+        "voice_id sample_rate onset_frame forecast_observed_frame observed_through_frame".split(), "i")
+        | {"status": "s", "target_start_frames": "frame_pair", "target_end_frames": "frame_pair",
+           "pred_external_band_energy": "context", "observed_external_band_energy": "?context",
+           "memory_external_band_energy": "?context", "decision_external_history": "?history",
+           "energy_prediction_model": "s"},
     "dcc_pressure": dict.fromkeys("time_sec tension_pressure temperature_bonus".split(), "n"),
+    "local_prediction_error": dict.fromkeys(
+        "voice_id sample_rate observed_from_frame observed_through_frame window_frames issued".split(), "i")
+        | {"horizon_frames": "seven_counts", "completed": "seven_counts",
+           "recurrence_squared_error": "seven_bands", "history_squared_error": "seven_bands",
+           "mixed_squared_error": "seven_bands"},
+    "local_prediction_match": dict.fromkeys(
+        "voice_id sample_rate window_frames forecast_observed_frame requested_frame target_start_frame target_end_frame issued_step target_step completed_before_issue".split(), "i")
+        | dict.fromkeys("history_weight recurrence history mixed observed".split(), "bands")
+        | {"issued_features": "?history_features"},
     "habituation": dict.fromkeys(
         "time_sec mean_h max_h mean_erosion tracked_h tracked_raw_score tracked_eff_score".split(), "n")
         | {"tracked_bin": "i"},
+    "habituation_scan": {"time_sec": "n", "fmin_hz": "n", "bins_per_octave": "i", "n_bins": "i",
+                         "state_scan": "scan", "raw_score_scan": "scan", "eff_score_scan": "scan"},
     "rhythm_summary": dict.fromkeys(RHYTHM_FIELDS, "n")
         | dict.fromkeys(RHYTHM_OPTIONAL, "?n") | {"population_id": "?i", "onset_count": "i"},
     "listener_confidence_summary": dict.fromkeys(
@@ -146,10 +174,122 @@ def parse_report(path, seed, warmup_sec):
                         continue
                     spec = spec.lstrip("?")
                     valid = ((spec == "s" and isinstance(value, str))
+                             or (spec == "b" and type(value) is bool)
                              or (spec == "i" and type(value) is int and value >= 0)
-                             or (spec == "n" and type(value) in (int, float) and math.isfinite(value)))
+                             or (spec == "n" and type(value) in (int, float) and math.isfinite(value))
+                             or (spec == "bands" and isinstance(value, list) and len(value) == 3
+                                 and all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in value))
+                             or (spec == "history_features" and isinstance(value, list) and len(value) == 57
+                                 and all(type(v) in (int, float) and math.isfinite(v) for v in value)
+                                 and value[0] == 1 and all(v >= 0 for v in value[1:28])
+                                 and all(0 <= v <= 1.000001 for v in value[28:36])
+                                 and all(abs(v) <= .500001 for v in value[36:]))
+                             or (spec == "frame_pair" and isinstance(value, list) and len(value) == 2
+                                 and all(type(v) is int and v >= 0 for v in value))
+                             or (spec == "seven_counts" and isinstance(value, list) and len(value) == 7
+                                 and all(type(v) is int and v >= 0 for v in value))
+                             or (spec == "seven_bands" and isinstance(value, list) and len(value) == 7
+                                 and all(isinstance(row, list) and len(row) == 3
+                                         and all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in row)
+                                         for row in value))
+                             or (spec == "context" and isinstance(value, list) and len(value) == 2
+                                 and all(isinstance(row, list) and len(row) == 3
+                                         and all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in row)
+                                         for row in value))
+                             or (spec == "scan" and isinstance(value, list) and value
+                                 and all(type(v) in (int, float) and math.isfinite(v) for v in value)))
+                    if spec == "history" and isinstance(value, dict):
+                        ages = value.get("ages_sec", [])
+                        rms = value.get("known_band_rms_by_age", [])
+                        coverage = value.get("known_coverage_by_age", [])
+                        valid = (isinstance(ages, list) and bool(ages)
+                                 and all(type(a) in (int, float) and math.isfinite(a) and a > 0 for a in ages)
+                                 and all(a < b for a, b in zip(ages, ages[1:]))
+                                 and type(value.get("post_order")) is int and value["post_order"] > 0
+                                 and isinstance(rms, list) and len(rms) == len(ages)
+                                 and all(isinstance(row, list) and len(row) == 3
+                                         and all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in row)
+                                         for row in rms)
+                                 and isinstance(coverage, list) and len(coverage) == len(ages)
+                                 and all(type(v) in (int, float) and math.isfinite(v) and 0 <= v <= 1 for v in coverage))
                     if not valid:
                         raise ValueError(f"{kind}: invalid {name}={value!r}")
+                if kind == "local_prediction_match":
+                    window = record["window_frames"]
+                    steps = record["target_step"] - record["issued_step"]
+                    if (not window or not record["sample_rate"]
+                            or steps not in (0, 10, 20, 50, 100, 200, 400)
+                            or record["target_end_frame"] - record["target_start_frame"] != window
+                            or record["target_start_frame"] - record["forecast_observed_frame"] != steps * window
+                            or not (record["forecast_observed_frame"] <= record["requested_frame"] < record["target_end_frame"])
+                            or any(w > 1 for w in record["history_weight"])):
+                        raise ValueError("local prediction match: inconsistent issued/observed evidence")
+                if kind == "local_prediction_error":
+                    window = record["window_frames"]
+                    span = record["observed_through_frame"] - record["observed_from_frame"]
+                    if (not window or not record["sample_rate"] or span < 0 or span % window
+                            or record["horizon_frames"] != [h * 2 * window for h in (0, 5, 10, 25, 50, 100, 200)]
+                            or not (record["issued"] or any(record["completed"]))
+                            or any(n > span // window for n in record["completed"])
+                            or any(not n and any(record[key][i])
+                                   for i, n in enumerate(record["completed"])
+                                   for key in ("recurrence_squared_error", "history_squared_error", "mixed_squared_error"))):
+                        raise ValueError("local prediction error: inconsistent completed evidence")
+                if kind == "listener_contour":
+                    event = record["event"]
+                    episode = event in ("periodic_episode", "unresolved_episode")
+                    if (event not in ("periodic_episode", "unresolved_episode", "silence_gap", "input_gap")
+                            or record["time_sec"] < 0
+                            or ((record["onset_sec"] is not None) != (event != "input_gap"))
+                            or (record["onset_sec"] is not None and not 0 <= record["onset_sec"] <= record["time_sec"])
+                            or ((record["periodic_frequency_hz"] is not None) != (event == "periodic_episode"))
+                            or ((record["periodicity"] is not None) != (event == "periodic_episode"))
+                            or (record["periodic_frequency_hz"] is not None and record["periodic_frequency_hz"] <= 0)
+                            or (record["periodicity"] is not None and not 0 <= record["periodicity"] <= 1)
+                            or ((record["context_support"] is not None) != episode)
+                            or ((record["calibration_events"] is not None) != episode)
+                            or (record["context_support"] is not None and record["context_support"] < 0)
+                            or ((record["gap_threshold_sec"] is not None) != (event == "silence_gap"))
+                            or (record["gap_threshold_sec"] is not None and record["gap_threshold_sec"] <= 0)
+                            or ((record["missing_start_sec"] is not None) != (event == "input_gap"))
+                            or (record["missing_start_sec"] is not None and not 0 <= record["missing_start_sec"] <= record["time_sec"])
+                            or len({record[key] is None for key in ("delta_log2", "gain_bits", "loss_bits")}) != 1
+                            or (event != "periodic_episode" and record["delta_log2"] is not None)
+                            or (record["error_candidate"] and (
+                                record["loss_bits"] is None or record["error_threshold_bits"] is None
+                                or record["loss_bits"] <= record["error_threshold_bits"]))):
+                        raise ValueError("listener contour: inconsistent event evidence")
+                if kind == "habituation_scan":
+                    if (record["fmin_hz"] <= 0 or not record["bins_per_octave"] or not record["n_bins"]
+                            or any(len(record[key]) != record["n_bins"] for key in (
+                                "state_scan", "raw_score_scan", "eff_score_scan"))
+                            or any(not 0 <= h <= 1 for h in record["state_scan"])):
+                        raise ValueError("habituation scan: invalid Log2Space dimensions or state bounds")
+                if kind == "participation_outcome":
+                    observed = record["status"] == "observed"
+                    ended = record["status"] == "end_of_input"
+                    if (record["status"] not in ("observed", "input_gap", "end_of_input")
+                            or not record["sample_rate"]
+                            or not record["forecast_observed_frame"] <= record["issued_frame"] <= record["onset_frame"] <= record["target_start_frame"] < record["target_end_frame"]
+                            or (record["observed_habitat_band_energy"] is not None) != observed
+                            or (record["observed_start_frame"] is None) != ended
+                            or (record["observed_end_frame"] is None) != ended
+                            or (not ended and record["observed_start_frame"] >= record["observed_end_frame"])
+                            or (observed and (record["target_start_frame"] != record["observed_start_frame"]
+                                              or record["target_end_frame"] != record["observed_end_frame"]))):
+                        raise ValueError("participation outcome: inconsistent observation window")
+                if kind == "participation_context":
+                    starts, ends = record["target_start_frames"], record["target_end_frames"]
+                    observed = record["status"] == "observed"
+                    if (record["status"] not in ("observed", "outside_observed_history")
+                            or record["energy_prediction_model"] not in ("local_history_mix", "shared_recurrence_mix")
+                            or not record["sample_rate"]
+                            or not record["forecast_observed_frame"] <= record["onset_frame"] <= starts[0] <= starts[1]
+                            or not starts[0] < ends[0] <= ends[1] <= record["observed_through_frame"]
+                            or ends[0] - starts[0] != ends[1] - starts[1]
+                            or (record["observed_external_band_energy"] is not None) != observed
+                            or (observed and record["memory_external_band_energy"] is None)):
+                        raise ValueError("participation context: inconsistent observation windows")
                 if number == 1 and kind != "meta":
                     raise ValueError("first record must be meta")
                 records[kind].append(record)
@@ -407,6 +547,8 @@ def main(argv=None):
             if not dest.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, dest)
+            if source.stem == "12_emergence_and_resolution":
+                sample12.validate_source(dest.read_text(encoding="utf-8"))
             selected.append({"original_path": str(source), "snapshot_path": str(relative),
                              "sha256": sha256(dest), "sample": source.stem,
                              "slug": f"{index:02d}_" + re.sub(r"[^a-zA-Z0-9_-]", "_", source.stem)})
@@ -474,10 +616,10 @@ def main(argv=None):
                         raise ValueError("WAV frame count does not match reported hop timings")
                     if sample["sample"] == "12_emergence_and_resolution":
                         windows = []
-                        for label, lo, hi in [("baseline_colony", 6, 15.4), ("tension_before_flow", 15.4, 18.7),
-                                               ("tension_with_flow", 18.7, 24), ("resolution_with_flow", 24, 27.3),
-                                               ("resolution_after_flow", 28.6, 33.9)]:
+                        for label, (lo, hi) in sample12.STANDARD_WINDOWS.items():
                             series = [r for r in case["report"]["listener"]["series"] if lo <= r["time_sec"] < hi]
+                            if not series:
+                                raise ValueError(f"sample 12 window lacks listener observations: {label}")
                             windows.append({"label": label, "start_sec": lo, "end_sec": hi, "count": len(series),
                                             "stats": {key: stats([r[key] for r in series]) for key in
                                                       ("tension_level", "beat_confidence", "analysis_lag_frames")}})

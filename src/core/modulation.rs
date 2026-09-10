@@ -24,6 +24,8 @@ pub struct RhythmBand {
 pub struct NeuralRhythms {
     pub theta: RhythmBand,
     pub delta: RhythmBand,
+    pub measure: RhythmBand,
+    pub measure_ratio: u8,
     pub env_open: f32,
     pub env_level: f32,
 }
@@ -68,6 +70,18 @@ impl NeuralRhythms {
         NeuralRhythms {
             theta,
             delta,
+            measure: if state.measure_ratio > 0 {
+                RhythmBand {
+                    phase: state.measure.phase,
+                    freq_hz: state.measure.freq_hz,
+                    mag: state.measure.amplitude,
+                    alpha: state.measure.confidence,
+                    beta: 1.0 - state.measure.confidence,
+                }
+            } else {
+                RhythmBand::default()
+            },
+            measure_ratio: state.measure_ratio,
             env_open,
             env_level: conf,
         }
@@ -79,6 +93,7 @@ impl NeuralRhythms {
         }
         self.theta.phase = wrap_pm_pi(self.theta.phase + TAU * self.theta.freq_hz * dt);
         self.delta.phase = wrap_pm_pi(self.delta.phase + TAU * self.delta.freq_hz * dt);
+        self.measure.phase = wrap_pm_pi(self.measure.phase + TAU * self.measure.freq_hz * dt);
         self.env_open = compute_env_open(self.delta.phase, self.delta.mag, self.delta.alpha);
     }
 }
@@ -86,6 +101,24 @@ impl NeuralRhythms {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn undetected_measure_is_neutral_and_detected_measure_advances() {
+        let mut state = MeterState::default();
+        state.measure.phase = 0.3;
+        state.measure.freq_hz = 1.0;
+        state.measure.confidence = 0.04;
+        let rhythms = NeuralRhythms::from_meter_state(&state);
+        assert_eq!(rhythms.measure.alpha, 0.0);
+        assert_eq!(rhythms.measure.freq_hz, 0.0);
+        state.measure_ratio = 2;
+        state.measure.confidence = 0.8;
+        let mut rhythms = NeuralRhythms::from_meter_state(&state);
+        assert_eq!(rhythms.measure.alpha, 0.8);
+        assert_eq!(rhythms.measure_ratio, 2);
+        rhythms.advance_in_place(0.25);
+        assert!((rhythms.measure.phase - (0.3 + TAU * 0.25)).abs() < 1e-6);
+    }
 
     #[test]
     fn neuralrhythms_advance_wraps_phase() {
@@ -106,6 +139,7 @@ mod tests {
             },
             env_open: 1.0,
             env_level: 0.5,
+            ..NeuralRhythms::default()
         };
         for _ in 0..4 {
             rhythms.advance_in_place(0.25);
@@ -139,6 +173,7 @@ mod tests {
             },
             env_open: 1.0,
             env_level: 0.5,
+            ..NeuralRhythms::default()
         };
         let env_before = rhythms.env_open;
         rhythms.advance_in_place(0.1);

@@ -9,6 +9,7 @@ use crate::core::roughness_kernel::erb_grid;
 
 /// Analysis Stream (formerly Roughness Stream).
 /// Handles slow spectral analysis for roughness and harmonicity.
+#[cfg_attr(test, derive(Clone))]
 pub struct AnalysisStream {
     nsgt_rt: RtNsgtKernelLog2,
     params: LandscapeParams,
@@ -60,6 +61,14 @@ impl AnalysisStream {
 
     pub(crate) fn window_samples(&self) -> usize {
         self.nsgt_rt.nfft()
+    }
+
+    pub(crate) fn hop_samples(&self) -> usize {
+        self.nsgt_rt.hop()
+    }
+
+    pub(crate) fn sample_rate(&self) -> f32 {
+        self.params.fs
     }
 
     /// Process audio chunk asynchronously.

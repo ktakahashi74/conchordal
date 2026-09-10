@@ -124,3 +124,77 @@ fn prediction_decay_reduces_far_extrapolation() {
     let delta_far = (pred_far[0] - 0.4).abs();
     assert!(delta_far < delta_near);
 }
+
+#[test]
+fn prediction_rejects_queries_outside_observed_time_and_horizon() {
+    let timebase = Timebase {
+        fs: 48_000.0,
+        hop: 512,
+    };
+    let rhythm = NeuralRhythms {
+        theta: RhythmBand {
+            freq_hz: 4.0,
+            ..Default::default()
+        },
+        delta: RhythmBand {
+            freq_hz: 1.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    for has_previous in [false, true] {
+        let space = Log2Space::new(55.0, 8000.0, 96);
+        let n_bins = space.n_bins();
+        let mut world = GeneratorModel::new(timebase, space);
+        world.update_gate_from_rhythm(0, &rhythm);
+        let (tau, horizon) = world.predictor_tau_horizon_ticks(&rhythm);
+        if has_previous {
+            world.observe_consonance_field_level(0, Arc::from(vec![0.2; n_bins]));
+        }
+        world.observe_consonance_field_level(tau, Arc::from(vec![0.4; n_bins]));
+        assert!(world.predict_consonance_field_level_at(tau - 1).is_none());
+        let current = world
+            .predict_consonance_field_level_at(tau)
+            .expect("current observation");
+        assert!(current.iter().all(|&level| level == 0.4));
+        assert!(
+            world
+                .predict_consonance_field_level_at(tau + horizon)
+                .is_some()
+        );
+        for unsupported in [tau + horizon + 1, tau + 100 * horizon, u64::MAX] {
+            assert!(
+                world
+                    .predict_consonance_field_level_at(unsupported)
+                    .is_none()
+            );
+        }
+    }
+}
+
+#[test]
+fn stale_observations_do_not_supply_a_next_gate_prediction() {
+    let timebase = Timebase {
+        fs: 48_000.0,
+        hop: 512,
+    };
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    let n_bins = space.n_bins();
+    let mut world = GeneratorModel::new(timebase, space);
+    let mut rhythm = NeuralRhythms::default();
+    rhythm.theta.freq_hz = 4.0;
+    rhythm.theta.phase = 0.0;
+    rhythm.delta.freq_hz = 1.0;
+    world.update_gate_from_rhythm(0, &rhythm);
+    world.observe_consonance_field_level(0, Arc::from(vec![0.4; n_bins]));
+    assert!(world.predict_consonance_field_level_next_gate().is_some());
+
+    let (_, horizon) = world.predictor_tau_horizon_ticks(&rhythm);
+    world.advance_to(horizon + 1);
+    world.update_gate_from_rhythm(horizon + 1, &rhythm);
+    assert!(world.predict_consonance_field_level_next_gate().is_none());
+    assert!(world.last_pred_next_gate().is_none());
+
+    world.observe_consonance_field_level(horizon + 1, Arc::from(vec![0.5; n_bins]));
+    assert!(world.predict_consonance_field_level_next_gate().is_some());
+}

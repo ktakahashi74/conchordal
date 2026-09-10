@@ -239,7 +239,7 @@ populations automatically.",
         id: "phonation",
         title: "Phonation & Rhythm",
         intro: "When and how long a voice sounds. Tier 1 picks a region on the rhythm \
-coupling continuum (`metric()`, `entrained()`, `flow()`); Tier 2 sets explicit when/duration; \
+timing presets (`metric()`, `entrained()`, `flow()`); Tier 2 sets explicit when/duration; \
 Tier 3 is expert tuning. Calls on the same axis are last-write-wins, and modifiers are \
 remembered and applied when their matching preset is selected.",
     },
@@ -672,7 +672,7 @@ branch end.",
         usage: &["brain(name)"],
         summary: "Articulation life: `\"entrain\"` (default), `\"seq\"`, or `\"drone\"`.",
         details: "Selects how the voice lives while sounding; orthogonal to the rhythm \
-coupling continuum (`metric`/`entrained`/`flow`). `entrain` is a living articulation whose \
+timing presets (`metric`/`entrained`/`flow`). `entrain` is a living articulation whose \
 vitality responds to consonance and rhythm fit, subject to the metabolism economy. `seq` \
 holds for a fixed lifetime, ignoring the field and metabolism. `drone` is undying, sustaining \
 forever with a slow sway -- useful as terrain material.",
@@ -715,8 +715,9 @@ forever with a slow sway -- useful as terrain material.",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["entrained()"],
-        summary: "Medium coupling: synchronization emerges over time, still drifts.",
-        details: "",
+        summary: "Bodily pacing with remembered acoustic context and predicted overlap avoidance.",
+        details: "Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. \
+Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation.",
     },
     FnDoc {
         name: "flow",
@@ -725,8 +726,9 @@ forever with a slow sway -- useful as terrain material.",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["flow()"],
-        summary: "Near-zero coupling: free renewal process, non-metric texture.",
-        details: "",
+        summary: "Clustered bodily renewal with weak acoustic participation, for non-metric texture.",
+        details: "Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. \
+Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period.",
     },
     FnDoc {
         name: "entrainment",
@@ -735,7 +737,7 @@ forever with a slow sway -- useful as terrain material.",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["entrainment(strength)"],
-        summary: "Override coupling strength in 0-1 (free .. locked).",
+        summary: "Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric.",
         details: "Order-independent with presets: `entrainment(0.8).metric()` and \
 `metric().entrainment(0.8)` are equivalent.",
     },
@@ -751,14 +753,27 @@ forever with a slow sway -- useful as terrain material.",
 recurring downbeat can seed an emergent measure.",
     },
     FnDoc {
+        name: "measure_accent",
+        owner: Owner::Population,
+        category: "phonation",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["measure_accent(amount)"],
+        summary: "Weak onset emphasis following the emergent measure, amount 0-1 (default 0).",
+        details: "Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). \
+Zero phase follows observed accents. With no detected measure, strength stays unchanged. \
+Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/flow presets.",
+    },
+    FnDoc {
         name: "microtiming",
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
         patch: Patch::Initial,
         usage: &["microtiming(amount)"],
-        summary: "Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.",
-        details: "",
+        summary: "Signed beat-phase offset for metric timing, in -0.5..0.5.",
+        details: "A value of 0.5 offsets the synchronized target by half a beat. \
+Does not place entrained/flow participants at fixed offsets.",
     },
     FnDoc {
         name: "once",
@@ -812,7 +827,7 @@ economy is the timeout.",
         patch: Patch::Initial,
         usage: &["cycles(n)"],
         summary: "Duration of n rhythm cycles.",
-        details: "",
+        details: "For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier.",
     },
     FnDoc {
         name: "adaptive_duration",

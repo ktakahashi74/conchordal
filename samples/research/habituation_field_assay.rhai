@@ -1,19 +1,19 @@
 // Habituation field assay — deterministic, seeded.
-// Verifies production-loop closure: mobile consonance-seeking voices erode the
-// basin they occupy, depart, the basin recovers after they leave, and voices
-// re-approach. A persistent anchored terrain keeps the raw attractors alive so
-// closure is even possible (a lone voice that is its own only source cannot
-// close the loop).
+// Probes production-loop closure: erosion, departure, recovery and autonomous
+// return must be measured at fixed coordinates, not a moving score maximum.
+// Persistent anchors preserve attractors but also continue to drive habituation;
+// a mobile Voice leaving does not necessarily withdraw the regional stimulus.
 //
 // Enable habituation via config (see tests/habituation_field_assay.rs):
 //   [psychoacoustics.habituation]
 //   enabled = true
-// With habituation disabled this scenario settles (causal control).
+// Compare disabled, normal recovery and slow recovery with matched seeds.
 seed(20260717);
 
 // Persistent shared terrain: anchored sustained harmonics on the habitat bus
 // create consonant basins that survive any single mobile voice leaving.
 let terrain = harmonic()
+    .brain("drone")
     .send(habitat_bus)
     .amp(0.04)
     .sustain()

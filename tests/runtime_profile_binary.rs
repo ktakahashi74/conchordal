@@ -67,7 +67,7 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
             assert_success(&cmd.output().unwrap());
             let profile: serde_json::Value =
                 serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-            assert_eq!(profile["schema_version"], 1);
+            assert_eq!(profile["schema_version"], 2);
             assert_eq!(profile["seed"], 42);
             assert_eq!(profile["report_enabled"], report);
             assert_eq!(profile["listener_enabled"], dcc || report);
@@ -89,9 +89,28 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
                 let expected_time = idx as f64 * 512.0 / 48_000.0;
                 assert!((hop["time_sec"].as_f64().unwrap() - expected_time).abs() < 1e-6);
                 let elapsed = hop["elapsed_us"].as_f64().unwrap();
-                let waits = hop["analysis_wait_us"].as_f64().unwrap()
-                    + hop["listener_wait_us"].as_f64().unwrap();
-                assert!(elapsed.is_finite() && elapsed >= waits);
+                let phases: f64 = [
+                    "analysis_wait_us",
+                    "listener_wait_us",
+                    "landscape_update_us",
+                    "population_us",
+                    "reports_us",
+                    "render_route_us",
+                    "post_render_us",
+                ]
+                .iter()
+                .map(|key| {
+                    let value = hop[key].as_f64().unwrap();
+                    assert!(value.is_finite() && value >= 0.0);
+                    value
+                })
+                .sum();
+                assert!(elapsed.is_finite() && elapsed >= phases);
+                assert!(
+                    hop["synthesis_us"].as_f64().unwrap()
+                        <= hop["render_route_us"].as_f64().unwrap()
+                );
+                assert!(hop["rendered_tone_count"].as_u64().is_some());
                 assert!(hop["underrun_frames_total"].is_null());
                 if cfg!(feature = "profile-alloc") {
                     total_allocations += hop["worker_allocations"]["count"].as_u64().unwrap();

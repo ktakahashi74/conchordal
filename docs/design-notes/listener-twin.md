@@ -4,15 +4,22 @@ Status: Phases 1-4 implemented; in scope for v0.4.0 (Phase 5 deferred)
 Scope: conchordal architecture, DCC coupling, tension/resolution model
 Date: 2026-05-19 (scope update 2026-06-02; mass-weighting contract update 2026-09-05)
 
+Scope correction (2026-09-09): the phase status above describes the original
+instantaneous listener/field coupling. It does not mean that ordered melodic
+expectation, phrase closure or long-context memory are implemented. The current
+[temporal hierarchy specification](dcc-neurocognitive-hierarchy.md) supersedes
+the old numbered-layer mapping. Its boundary, closure and context targets require
+new representations and consumers; existing tension is a local field quantity.
+
 This memo records the proposed design before implementation. It intentionally
 does not define a public scripting API yet.
 
 This memo is the implementation-facing companion to
 `docs/design-notes/dcc-neurocognitive-hierarchy.md`. That hierarchy memo states
 the broad DCC position across time scales. This memo narrows the first
-implementation target to a listener-side view of Layers 1, 3, and 4: acoustic
-feature stability, local pitch/field affordance, and phrase-like tension or
-closure signals.
+implementation target to a listener-side view of acoustic feature stability and
+local pitch/field affordance. The resulting instantaneous tension was an early
+proxy; it supplies no evidence that a phrase has continued or closed.
 
 ## Problem
 
@@ -88,9 +95,10 @@ distributed selection or movement pressure.
 The first implementation should only need the presentation landscape. Prediction
 and memory can be added after the first real use appears.
 
-For Phase 1, pitch-contour expectation is approximated by local field affordance:
-reachable improvement in the presentation-derived consonance field. This is a
-temporary Layer-3 approximation, not a full pitch-contour prediction model.
+Phase 1 computes local field affordance: reachable improvement in the
+presentation-derived consonance field. The earlier description of this as a
+pitch-contour expectation approximation is retired. It represents neither the
+order of heard pitches nor an expectation of the next trajectory.
 
 ## First State Model
 

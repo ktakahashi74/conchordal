@@ -32,6 +32,7 @@ struct PendingTrigger {
     energy: f32,
 }
 
+#[derive(Clone)]
 pub struct Tone {
     backend: AnyBackend,
     render_modulator: Option<RenderModulator>,

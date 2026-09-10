@@ -1129,6 +1129,7 @@ fn articulation_snapshot_kuramoto_decay_signature() {
         },
         env_level: 1.0,
         env_open: 1.0,
+        ..NeuralRhythms::default()
     };
     let dt = 1.0 / fs;
     let consonance = 0.7;

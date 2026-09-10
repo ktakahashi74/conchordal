@@ -279,6 +279,7 @@ impl ScriptHost {
             &[
                 ("entrainment", PopulationSpec::set_entrainment),
                 ("microtiming", PopulationSpec::set_microtiming),
+                ("measure_accent", PopulationSpec::set_measure_accent),
             ],
         );
         // Tier 2: explicit when/duration

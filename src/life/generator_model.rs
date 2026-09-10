@@ -66,17 +66,20 @@ impl TerrainPredictor {
     ) -> Option<Arc<[f32]>> {
         let (last_tick, last_scan) = self.last_obs.as_ref()?;
         space.assert_scan_len_named(last_scan, "perc_c_field_level_scan_last");
+        let ahead_tick = tick.checked_sub(*last_tick)?;
+        let (tau_tick, horizon_tick) = Self::tau_horizon_ticks(time, rhythm);
+        if ahead_tick > horizon_tick {
+            return None;
+        }
         if let Some((prev_tick, prev_scan)) = self.prev_obs.as_ref() {
             space.assert_scan_len_named(prev_scan, "perc_c_field_level_scan_prev");
             if prev_scan.len() != last_scan.len() {
                 return Some(Arc::clone(last_scan));
             }
             let dt = last_tick.saturating_sub(*prev_tick).max(1) as f32;
-            let a = tick.saturating_sub(*last_tick) as f32;
+            let a = ahead_tick as f32;
             let scale = a / dt;
-            let (tau_tick, horizon_tick) = Self::tau_horizon_ticks(time, rhythm);
-            let dist_tick = tick.saturating_sub(*last_tick).min(horizon_tick);
-            let decay = (-(dist_tick as f32) / (tau_tick as f32)).exp();
+            let decay = (-a / tau_tick as f32).exp();
             let mut out = Vec::with_capacity(last_scan.len());
             for (&last, &prev) in last_scan.iter().zip(prev_scan.iter()) {
                 let pred = last + (last - prev) * scale * decay;
@@ -150,6 +153,7 @@ impl GeneratorModel {
         self.last_pred_next_gate = None;
     }
 
+    /// Available from the latest observation through the current prediction horizon.
     pub fn predict_consonance_field_level_at(&self, tick: Tick) -> Option<Arc<[f32]>> {
         self.terrain_predictor.predict_consonance_field_level_at(
             tick,
@@ -159,6 +163,7 @@ impl GeneratorModel {
         )
     }
 
+    /// Engineering limits tied to rhythm; not an identified cognitive memory duration.
     pub fn predictor_tau_horizon_ticks(&self, rhythm: &NeuralRhythms) -> (Tick, Tick) {
         TerrainPredictor::tau_horizon_ticks(&self.time, rhythm)
     }

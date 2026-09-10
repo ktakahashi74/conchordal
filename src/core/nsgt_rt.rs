@@ -6,6 +6,7 @@
 //! - Uses NsgtKernelLog2’s sparse frequency-domain kernels (no per-hop heap alloc).
 //! - Per-band exponential integrator: y[n] = (1−α)x[n] + α y[n−1], α = exp(−dt/τ(f)).
 //! - τ(f) is mapped low→slow, high→fast via simple f-dependent rule.
+//! - Subnormal smoothed power is flushed to zero at f32's normal-range boundary.
 //!
 //! Notes
 //! -----
@@ -308,6 +309,10 @@ impl RtNsgtKernelLog2 {
             // Exponential smoothing
             let state = &mut self.bands_state[bi];
             state.smooth = (1.0 - state.alpha) * p + state.alpha * state.smooth;
+            // Rounding can pin a decaying subnormal at a positive fixed point.
+            if state.smooth.is_subnormal() {
+                state.smooth = 0.0;
+            }
             self.out_env[bi] = state.smooth;
         }
     }
@@ -371,6 +376,77 @@ mod tests {
             var += d * d;
         }
         (var / data.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn rt_silent_decay_preserves_normal_power_and_reaches_zero() {
+        for mode in [PowerMode::Coherent, PowerMode::Incoherent] {
+            let kernel = NsgtKernelLog2::new(
+                NsgtLog2Config {
+                    fs: 48_000.0,
+                    overlap: 0.5,
+                    nfft_override: Some(256),
+                    ..Default::default()
+                },
+                Log2Space::new(200.0, 4000.0, 12),
+                None,
+                mode,
+            );
+            let mut rt = RtNsgtKernelLog2::new(kernel);
+            let tone = mk_sine(rt.nfft() * 4, 1000.0, rt.fs(), 0.5);
+            rt.process_hop(&tone);
+            rt.process_hop(&vec![0.0; rt.nfft()]);
+            assert!(rt.ring.iter().all(|&x| x == 0.0));
+            let mut reference = rt.bands_state.clone();
+            assert!(reference.iter().any(|s| s.smooth > 1e-6));
+            let quiet = vec![0.0; rt.hop()];
+            let hops = (110.0 * RtConfig::default().tau_max / rt.dt()).ceil() as usize;
+            let mut normal_comparisons = 0;
+            for _ in 0..hops {
+                let observed = rt.process_hop(&quiet);
+                for (state, &power) in reference.iter_mut().zip(observed) {
+                    state.smooth *= state.alpha;
+                    if state.smooth.is_normal() {
+                        assert_eq!(power.to_bits(), state.smooth.to_bits());
+                        normal_comparisons += 1;
+                    }
+                    assert!(power.is_finite() && power >= 0.0);
+                }
+            }
+            assert!(normal_comparisons > 1000);
+            assert!(rt.out_env.iter().all(|&power| power == 0.0));
+            rt.process_hop(&tone);
+            assert!(rt.out_env.iter().any(|&power| power > 1e-6));
+            rt.reset();
+            assert!(rt.process_hop(&quiet).iter().all(|&power| power == 0.0));
+        }
+    }
+
+    #[test]
+    fn rt_subnormal_power_cannot_become_a_fixed_point() {
+        let kernel = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs: 48_000.0,
+                nfft_override: Some(256),
+                ..Default::default()
+            },
+            Log2Space::new(200.0, 4000.0, 12),
+            None,
+            PowerMode::Coherent,
+        );
+        let mut rt = RtNsgtKernelLog2::new(kernel);
+        for value in [
+            f32::from_bits(1),
+            f32::MIN_POSITIVE / 2.0,
+            f32::MIN_POSITIVE,
+        ] {
+            for state in &mut rt.bands_state {
+                state.alpha = 0.75;
+                state.smooth = value;
+            }
+            assert!(rt.process_hop(&[]).iter().all(|&power| power == 0.0));
+            assert!(rt.bands_state.iter().all(|s| s.smooth == 0.0));
+        }
     }
 
     #[test]

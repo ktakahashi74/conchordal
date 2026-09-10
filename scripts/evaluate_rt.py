@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile fixed populations on an audio device or in explicit offline-check mode."""
+"""Profile sustained, dense-onset and overload/recovery workloads."""
 
 import argparse
 import copy
@@ -27,9 +27,12 @@ PROFILE_SCHEMA = {
     **dict.fromkeys("report_enabled listener_enabled allocation_instrumented truncated".split(), "b"),
     "dcc_coupling_strength": "n", "hop_budget_us": "n", "audio": "?o", "summary": "o", "hops": "l",
 }
+PHASE_FIELDS = ("analysis_wait_us listener_wait_us landscape_update_us population_us "
+                "reports_us render_route_us post_render_us").split()
 HOP_SCHEMA = {
+    "synthesis_us": "n", "rendered_tone_count": "i",
     "frame_idx": "i", "alive_voice_count": "i", "worker_allocations": "?o", "underrun_frames_total": "?i",
-    **dict.fromkeys("time_sec elapsed_us analysis_wait_us listener_wait_us".split(), "n"),
+    **dict.fromkeys(["time_sec", "elapsed_us", *PHASE_FIELDS], "n"),
 }
 AUDIO_SCHEMA = {
     "backend": "s", "device_name": "s",
@@ -37,6 +40,7 @@ AUDIO_SCHEMA = {
                      "underrun_frames_total callback_errors_total").split(), "i"),
 }
 POLICY = {
+    "timing": "adaptive is the instrument theta clock with accumulator rate 8; synchronized explicitly uses a 16 Hz shared scaffold, accumulator drive 32 and the existing two-gate refractory interval to maintain 8 Hz simultaneous onsets despite gate weighting; no musical emergence acceptance",
     "window": "complete hops contained in [warmup, warmup + duration); release tail excluded",
     "percentiles": "linear interpolation at (n-1)*p; process_hop includes enabled report work",
     "underruns": "difference of post-hop cumulative missing mono-frame snapshots around the retained window; not hardware xruns",
@@ -46,13 +50,17 @@ POLICY = {
     "acceptance": "fixed live Voice count, device callback observed, counters present, allocations instrumented, plausible wall pacing, window underruns zero, callback errors zero and hop p99 within budget; no musical acceptance",
     "device_identity": "known null/dummy/loopback sinks excluded; backend/device names alone do not independently verify the physical output, especially ALSA default",
     "offline": "offline-check never establishes device RT acceptance; device failure is not silently retried offline",
+    "recovery": "temporary added population; require baseline pass, observed overload and post-release pass; allow two simulated seconds for release/queue settling; never claim the overloaded interval passed",
+    "dense": "pulse accumulator on the selected theta clock, one-cycle holds and 50 ms release; reject multiple onsets for a Voice in one report hop; adaptive requires all Voices and mean >=4 onsets/Voice/sec; synchronized additionally requires each Voice's 8 Hz count and 125 ms intervals within report-hop precision",
+    "participation": "entrained/flow workloads use the actual participation presets with one-cycle holds, intrinsic renewal for flow and acoustic cadence for entrained; report-enabled windows require at least two onsets from every Voice, without imposing a common onset rate or phase; report-off activity is not independently verified",
 }
 SUMMARY_FIELDS = ("case mode voices body seed report_enabled dcc_coupling_strength status listener_enabled "
                   "device_rt_pass assessment_reason sample_rate hop_size hop_budget_us hop_count "
                   "window_start_sec window_end_sec alive_voice_count_min alive_voice_count_max elapsed_p95_us elapsed_p99_us elapsed_max_us over_budget_hops "
                   "worker_alloc_count worker_alloc_bytes allocations_per_hop bytes_per_hop "
                   "underrun_frames_delta callback_count callback_frames_total callback_errors_total "
-                  "backend device_name device_channels ring_capacity_frames generated_frames minimum_dequeued_frames execution_wall_sec minimum_device_wall_sec physical_output_verification error").split()
+                  "backend device_name device_channels ring_capacity_frames generated_frames minimum_dequeued_frames execution_wall_sec minimum_device_wall_sec physical_output_verification "
+                  "workload timing recovery_pass overload_observed onset_count onsets_per_voice_sec error").split()
 
 
 def require(record, schema, label):
@@ -79,7 +87,7 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
     data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=beta.strict_object,
                       parse_float=beta.finite_float, parse_constant=beta.finite_float)
     require(data, PROFILE_SCHEMA, "profile")
-    if data["schema_version"] != 1:
+    if data["schema_version"] != 2:
         raise ValueError("unsupported profile schema_version")
     if (data["seed"] != seed or data["report_enabled"] != report_enabled
             or data["dcc_coupling_strength"] != dcc
@@ -108,6 +116,10 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
     previous_underruns = 0
     for index, row in enumerate(hops):
         require(row, HOP_SCHEMA, f"hop {index}")
+        if sum(row[key] for key in PHASE_FIELDS) > row["elapsed_us"] + 1e-6:
+            raise ValueError("hop phase durations exceed total elapsed time")
+        if row["synthesis_us"] > row["render_route_us"] + 1e-6:
+            raise ValueError("synthesis duration exceeds render/route duration")
         if (row["frame_idx"] != index or not math.isclose(row["time_sec"], index * hop_sec,
                                                          rel_tol=2e-7, abs_tol=2e-6)):
             raise ValueError("hop sequence/time is incomplete or unordered")
@@ -191,33 +203,109 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
             "execution_wall_sec": wall_sec, "minimum_device_wall_sec": minimum_wall,
             "physical_output_verification": "known_virtual" if known_virtual else "not_independently_verified" if audio else "no_device",
             "device_limitations": POLICY["device_identity"],
-            "analysis_wait_us": beta.stats([r["analysis_wait_us"] for r in selected]),
-            "listener_wait_us": beta.stats([r["listener_wait_us"] for r in selected]),
+            **{key: beta.stats([r[key] for r in selected]) for key in PHASE_FIELDS},
+            "synthesis_us": beta.stats([r["synthesis_us"] for r in selected]),
+            "rendered_tone_count": beta.stats([r["rendered_tone_count"] for r in selected]),
             **{key: audio[key] if audio else None for key in (
                 "callback_count", "callback_frames_total", "callback_errors_total", "backend", "device_name", "ring_capacity_frames")},
             "device_channels": audio["channels"] if audio else None, "device": audio}
 
 
-def scenario_text(voices, body, seed, warmup_sec, duration_sec):
+def scenario_text(voices, body, seed, warmup_sec, duration_sec, *, workload="sustain", overload_voices=512, stress_sec=5, timing="adaptive"):
     modes = ".modes(harmonic_modes().count(8))" if body == "harmonic" else ""
-    return f'''// Fixed-population workload; no respawn and no audio-file output.
+    accumulator_rate = 32.0 if timing == "synchronized" else 8.0
+    phonation = ".sustain()" if workload == "sustain" else (
+        f".pulse({accumulator_rate:.1f}).pulse_lock(0.0).social(0.0).cycles(1)\n"
+        "    .attack_cost_fraction(0.0).rhythm_coupling_vitality(0.0, 1.0)")
+    if workload in ("entrained", "flow"):
+        phonation = f".{workload}().cycles(1).attack_cost_fraction(0.0)"
+    envelope = "0.02, 0.10, 0.85, 0.25" if workload == "sustain" else "0.003, 0.025, 0.30, 0.05"
+    amplitude_count = overload_voices if workload == "recovery" else voices
+    scaffold = "set_scaffold_shared(16.0); // Explicit synchronization performance assay.\n" if timing == "synchronized" else ""
+    stress = f'''
+    let extra = place(voice, line(110.0, 880.0).count({overload_voices - voices}));
+    wait({stress_sec:.9f});
+    release(extra);
+    wait(2.0);
+    wait({duration_sec:.9f});
+''' if workload == "recovery" else ""
+    return f'''// Performance assay; no respawn, dedicated beat carrier or audio-file output.
 seed({seed});
+{scaffold}\
 let voice = {body}()
     {modes}
-    .sustain()
+    {phonation}
     .endurance(1000000.0)
     .sustain_drive(0.002)
-    .amp({0.06 / math.sqrt(voices):.12f})
+    .amp({0.06 / math.sqrt(amplitude_count):.12f})
     .seek_consonance()
-    .adsr(0.02, 0.10, 0.85, 0.25);
+    .adsr({envelope});
 section("RT workload", || {{
     let population = place(voice, line(110.0, 880.0).count({voices}));
     wait({warmup_sec:.9f});
     wait({duration_sec:.9f});
+{stress}
     release(population);
     wait(2.0);
 }});
 '''
+
+
+def onset_windows(path, windows, *, timing="adaptive", hop_sec=None):
+    counts = [0] * len(windows)
+    voices = [set() for _ in windows]
+    voice_counts = [{} for _ in windows]
+    last_onset_times = [{} for _ in windows]
+    intervals = [[] for _ in windows]
+    with path.open(encoding="utf-8") as stream:
+        for line in stream:
+            row = json.loads(line, object_pairs_hook=beta.strict_object,
+                             parse_float=beta.finite_float, parse_constant=beta.finite_float)
+            if not isinstance(row, dict):
+                raise ValueError("report record must be an object")
+            if row.get("type") != "onset":
+                continue
+            require(row, {"time_sec": "n", "voice_id": "i"}, "onset")
+            for index, (start, end, _) in enumerate(windows):
+                if start <= row["time_sec"] < end:
+                    if timing == "synchronized" and row.get("scaffold_mode") != "shared":
+                        raise ValueError("synchronized workload did not report the shared scaffold")
+                    previous = last_onset_times[index].get(row["voice_id"])
+                    if previous is not None and row["time_sec"] <= previous:
+                        raise ValueError("dense workload repeats a Voice onset within one report hop or has unordered onsets")
+                    if previous is not None:
+                        intervals[index].append(row["time_sec"] - previous)
+                    last_onset_times[index][row["voice_id"]] = row["time_sec"]
+                    counts[index] += 1
+                    voices[index].add(row["voice_id"])
+                    voice_counts[index][row["voice_id"]] = voice_counts[index].get(row["voice_id"], 0) + 1
+    result = []
+    for (start, end, expected_voices), count, observed, gaps, per_voice in zip(windows, counts, voices, intervals, voice_counts):
+        rate = count / ((end - start) * expected_voices)
+        if timing in ("entrained", "flow"):
+            if len(observed) != expected_voices or min(per_voice.values(), default=0) < 2:
+                raise ValueError("participation workload did not demonstrate repeated onsets from every Voice")
+        elif len(observed) != expected_voices or rate < 4.0:
+            raise ValueError("dense workload did not demonstrate the required onset density/Voice coverage")
+        if timing == "synchronized":
+            if hop_sec is None or not math.isfinite(hop_sec) or hop_sec <= 0:
+                raise ValueError("synchronized onset checks require the actual hop duration")
+            if (any(abs(n - 8 * (end - start)) > 1.0 for n in per_voice.values())
+                    or not gaps or any(abs(gap - .125) > hop_sec + 1e-4 for gap in gaps)):
+                raise ValueError("synchronized workload did not maintain 8 Hz onset count and intervals")
+        result.append({"onset_count": count, "onsets_per_voice_sec": rate,
+                       "onset_voice_count": len(observed), "one_onset_per_voice_per_hop": True,
+                       "onset_interval_sec": beta.stats(gaps) if gaps else None})
+    return result
+
+
+def recovery_assessment(baseline, overloaded, recovered):
+    if any(window["device_rt_pass"] is None for window in (baseline, overloaded, recovered)):
+        return {"recovery_pass": None, "overload_observed": None, "assessment_reason": "recovery_device_evidence_incomplete"}
+    observed = overloaded["underrun_frames_delta"] > 0 or overloaded["elapsed_p99_us"] > overloaded["hop_budget_us"]
+    passed = baseline["device_rt_pass"] and recovered["device_rt_pass"] if observed else None
+    return {"recovery_pass": passed, "overload_observed": observed,
+            "assessment_reason": "overload_not_observed" if not observed else "recovery_criteria_met" if passed else "recovery_criteria_failed"}
 
 
 def config_text(base, dcc):
@@ -259,6 +347,13 @@ def main(argv=None):
     parser.add_argument("--mode", choices=("device", "offline-check"), default="device")
     parser.add_argument("--voices", type=int, nargs="+", choices=(4, 16, 64), default=[4, 16, 64])
     parser.add_argument("--bodies", nargs="+", choices=("sine", "harmonic", "modal"), default=["sine", "harmonic", "modal"])
+    parser.add_argument("--workload", choices=("sustain", "dense", "recovery", "entrained", "flow"), default="sustain")
+    parser.add_argument("--timing", choices=("adaptive", "synchronized"), default="adaptive",
+                        help="synchronized uses an explicit 16 Hz theta scaffold for 8 Hz simultaneous-onset load")
+    parser.add_argument("--reports", type=int, nargs="+", choices=(0, 1), default=[0, 1])
+    parser.add_argument("--dcc", type=float, nargs="+", choices=(0.0, 0.25), default=[0.0, 0.25])
+    parser.add_argument("--overload-voices", type=int, default=512, help="total live Voices during recovery workload overload")
+    parser.add_argument("--stress-sec", type=float, default=5, help="overloaded interval before release and two-second settling")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--warmup-sec", type=float, default=5)
     parser.add_argument("--duration-sec", type=float, default=10, help="measurement duration, excluding warmup and two-second tail")
@@ -270,12 +365,19 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.binary and not args.skip_build:
         parser.error("--binary requires --skip-build")
+    if args.timing == "synchronized" and (args.workload not in ("dense", "recovery") or args.reports != [1]):
+        parser.error("synchronized timing requires dense/recovery and --reports 1 to verify actual onsets")
     if (args.seed < 0 or args.seed >= 2**64 or len(set(args.voices)) != len(args.voices)
             or len(set(args.bodies)) != len(args.bodies) or not math.isfinite(args.warmup_sec)
+            or len(set(args.reports)) != len(args.reports) or len(set(args.dcc)) != len(args.dcc)
             or args.warmup_sec < 0 or not math.isfinite(args.duration_sec) or args.duration_sec <= 0
             or not math.isfinite(args.timeout) or args.timeout <= 0
             or args.warmup_sec + args.duration_sec >= 100000):
         parser.error("require distinct conditions, u64 seed, finite nonnegative warmup, positive duration/timeout and total < 100000 s")
+    if (not math.isfinite(args.stress_sec) or args.stress_sec <= 0
+            or not 1 <= args.overload_voices <= 4096
+            or (args.workload == "recovery" and args.overload_voices <= max(args.voices))):
+        parser.error("require positive finite stress duration and overload Voices above baseline and at most 4096")
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     requested_output = args.output or root / "target" / "rt-evaluation" / stamp
     if requested_output.exists() or requested_output.is_symlink():
@@ -285,8 +387,11 @@ def main(argv=None):
     cases, manifest = [], {"created_utc": stamp, "status": "running", "mode": args.mode,
                           "metric_policy": POLICY, "commands": [], "seed": args.seed,
                           "warmup_sec": args.warmup_sec, "duration_sec": args.duration_sec, "release_tail_sec": 2,
-                          "voices": args.voices, "bodies": args.bodies, "report_enabled": [False, True],
-                          "dcc_coupling_strength": [0.0, 0.25], "device_blocker": None}
+                          "voices": args.voices, "bodies": args.bodies, "report_enabled": [bool(r) for r in args.reports],
+                          "dcc_coupling_strength": args.dcc, "device_blocker": None,
+                          "workload": args.workload, "timing": args.timing, "overload_voices": args.overload_voices if args.workload == "recovery" else None,
+                          "stress_sec": args.stress_sec if args.workload == "recovery" else None,
+                          "recovery_settle_sec": 2 if args.workload == "recovery" else None}
     try:
         manifest.update(beta.snapshot(root, output))
         base_path = args.config.resolve(strict=True)
@@ -349,10 +454,20 @@ def main(argv=None):
             "その後の機器不要の確認は、新しい出力先と明示的な --mode offline-check で別に実行する。\n"
             "device_rt_passは記載した性能条件だけの判定であり、試聴合格ではない。実行成功と性能合格を分けて読む。\n",
             encoding="utf-8")
-        for voices, body, report, dcc in itertools.product(args.voices, args.bodies, (False, True), (0.0, 0.25)):
+        with (output / "README.md").open("a", encoding="utf-8") as stream:
+            stream.write(f"\n今回のworkloadは`{args.workload}`。dense/recoveryはpulseと短いenvelopeを使う。adaptiveの蓄積率は8 Hzで、実際のonsetは適応的θ時計に依存する。\n"
+                         "report有効時は、各窓で全Voiceの発音とVoiceあたり平均4回/秒以上を確認する。report無効時の発音密度は未検証。\n"
+                         "recoveryは測定窓と同じ長さのbaseline・回復窓を持つ。追加Voiceを指定秒数後にreleaseし、2秒待って回復窓を開始する。\n"
+                         "baselineの合格、負荷区間のp99超過または出力不足、回復窓の合格が揃えばrecovery_pass=true。\n"
+                         "負荷超過なしは未判定。負荷区間を含む全体のdevice_rt_passはnullとし、phasesに各窓の数値を残す。\n")
+            stream.write(f"\ntimingは`{args.timing}`。synchronizedは同期が目的の性能アッセイ。16 Hzの共有θ scaffold、蓄積率32、既存の2ゲート間隔制限で8回/秒を駆動し、各Voiceの回数・間隔を検査する。音楽的な創発の合否には使わない。\n")
+            if args.workload in ("entrained", "flow"):
+                stream.write("\nentrained/flowでは対応する参加プリセットを使い、拍送りを追加しない。上記のpulse用4回/秒基準は適用せず、report有効時は全Voiceが窓内で2回以上発音したことを要求する。共通の間隔や位相を強制する試験ではない。report無効時の発音の継続は未検証。\n")
+        for voices, body, report, dcc in itertools.product(args.voices, args.bodies, map(bool, args.reports), args.dcc):
             slug = f"v{voices:02d}_{body}_report-{int(report)}_dcc-{dcc:.2f}"
             case = {"case": slug, "mode": args.mode, "voices": voices, "body": body, "seed": args.seed,
-                    "report_enabled": report, "dcc_coupling_strength": dcc, "status": "pending", "device_rt_pass": None}
+                    "report_enabled": report, "dcc_coupling_strength": dcc, "status": "pending", "device_rt_pass": None,
+                    "workload": args.workload, "timing": args.timing}
             if manifest["device_blocker"]:
                 case.update(status="skipped_device_unavailable", error="see device_blocker.json")
                 cases.append(case)
@@ -360,12 +475,15 @@ def main(argv=None):
             directory = output / slug
             directory.mkdir()
             script, config = directory / "scenario.rhai", directory / "config.toml"
-            script.write_text(scenario_text(voices, body, args.seed, args.warmup_sec, args.duration_sec), encoding="utf-8")
+            script.write_text(scenario_text(voices, body, args.seed, args.warmup_sec, args.duration_sec,
+                                           workload=args.workload, overload_voices=args.overload_voices,
+                                           stress_sec=args.stress_sec, timing=args.timing), encoding="utf-8")
             config.write_text(config_text(base_config, dcc), encoding="utf-8")
             command = [saved_binary, script, "--nogui", f"--play={'true' if args.mode == 'device' else 'false'}",
                        "--config", config, "--seed", str(args.seed), "--profile", directory / "profile.json"]
             if report:
                 command += ["--report", directory / "report.jsonl"]
+            print(f"start {slug} ({args.workload})", flush=True)
             try:
                 run = beta.execute(command, output / "source", directory / "run.log", args.timeout)
                 case["execution"] = run
@@ -376,18 +494,40 @@ def main(argv=None):
                     beta.dump_json(output / "device_blocker.json", manifest["device_blocker"])
                 if run["status"] != "ok":
                     raise ValueError(f"instrument {run['status']} (exit {run['returncode']}); see run.log")
-                case.update(parse_profile(directory / "profile.json", mode=args.mode, voices=voices, seed=args.seed,
-                                          report_enabled=report, dcc=dcc, warmup_sec=args.warmup_sec,
-                                          duration_sec=args.duration_sec, wall_sec=run.get("wall_sec")))
+                baseline = parse_profile(directory / "profile.json", mode=args.mode, voices=voices, seed=args.seed,
+                                         report_enabled=report, dcc=dcc, warmup_sec=args.warmup_sec,
+                                         duration_sec=args.duration_sec, wall_sec=run.get("wall_sec"))
+                case.update(baseline)
                 if report and (not (directory / "report.jsonl").is_file() or not (directory / "report.jsonl").stat().st_size):
                     raise ValueError("requested report missing or empty")
+                windows = [(args.warmup_sec, args.warmup_sec + args.duration_sec, voices)]
+                if args.workload == "recovery":
+                    stress_start = args.warmup_sec + args.duration_sec
+                    recovery_start = stress_start + args.stress_sec + 2
+                    windows.extend([(stress_start, stress_start + args.stress_sec, args.overload_voices),
+                                    (recovery_start, recovery_start + args.duration_sec, voices)])
+                    phases = {"baseline": baseline}
+                    for label, (start, end, count) in zip(("overloaded", "recovered"), windows[1:]):
+                        phases[label] = parse_profile(directory / "profile.json", mode=args.mode, voices=count,
+                            seed=args.seed, report_enabled=report, dcc=dcc, warmup_sec=start,
+                            duration_sec=end - start, wall_sec=run.get("wall_sec"))
+                    case.update(recovery_assessment(phases["baseline"], phases["overloaded"], phases["recovered"]))
+                    case.update(device_rt_pass=None, phases=phases)
+                if args.workload != "sustain" and report:
+                    onset_timing = args.workload if args.workload in ("entrained", "flow") else args.timing
+                    onsets = onset_windows(directory / "report.jsonl", windows, timing=onset_timing,
+                                           hop_sec=baseline["hop_size"] / baseline["sample_rate"])
+                    case.update(onsets[0])
+                    if args.workload == "recovery":
+                        for phase, onset in zip(case["phases"].values(), onsets):
+                            phase.update(onset)
                 case["status"] = "ok"
                 if args.mode == "device" and case["assessment_reason"] in (
                         "device_callback_not_observed", "known_virtual_audio_sink", "device_pacing_not_demonstrated"):
                     manifest["device_blocker"] = {"case": slug, "reason": case["assessment_reason"], "log": str(directory / "run.log")}
                     beta.dump_json(output / "device_blocker.json", manifest["device_blocker"])
             except (OSError, ValueError, TypeError, OverflowError) as error:
-                case.update(status="error", device_rt_pass=None, error=str(error))
+                case.update(status="error", device_rt_pass=None, recovery_pass=None, error=str(error))
             case["artifact_sha256"] = {p.name: beta.sha256(p) for p in directory.iterdir() if p.is_file()}
             beta.dump_json(directory / "metrics.json", case)
             cases.append(case)

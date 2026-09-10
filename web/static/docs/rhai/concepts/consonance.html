@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-18b944b8.js";
+            window.path_to_searchindex_js = "../searchindex-69ac5d88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -198,6 +198,14 @@ realized either as a cloud (the default) or as a deterministic extremum with
 </ul>
 <p><code>consonance(root)</code> takes a harmonic window around a root (multiples via
 <code>range()</code>); every target also takes an absolute <code>(min_hz, max_hz)</code> range.</p>
+<p>Range bounds must be finite and within the synthesizer’s 1–20000 Hz range;
+reversed bounds are accepted. Initial placement stays inside those bounds,
+including jitter and all-zero or fully occupied fallbacks. Field targets use
+the intersection with the analysis band (currently 55–8000 Hz). If there is
+no intersection, placement falls back to log-uniform sampling in the requested
+range because no field evidence is available there. <code>random()</code> samples the
+requested range directly. Placement does not constrain subsequent
+<code>seek_consonance()</code> movement to that range.</p>
 <pre><code class="language-rhai">let anchor = harmonic()
     .brain("drone")
     .amp(0.06)

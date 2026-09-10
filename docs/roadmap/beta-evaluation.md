@@ -149,6 +149,8 @@ releaseと減衰尾部を含みうる。立ち上がり、声部が揃った区�
 次の時刻は現行scriptの`wait()`から求めた名目時刻である。実行時のhop境界と分析遅延も併記する。
 I〜IVはscriptのコメント上の段階であり、独立した`scene_marker`としては記録されない。
 全体を一つの`section("emergence and resolution", ...)`が囲む。
+比較ツールの窓定義と脚本検査は`scripts/sample12.py`で共有する。標準runnerも保存したsampleの配置・操作順・waitを検査し、
+契約から変わっていればrender前に停止する。以下の現行時刻を使う[3seedの測定記録](sample12-three-seed-audition-2026-09-05.md)を保存済みである。
 
 | 開始秒 | 終了秒 | 操作と意図 |
 |---:|---:|---|

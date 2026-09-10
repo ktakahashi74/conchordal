@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6217a7fd.js";
+            window.path_to_searchindex_js = "../searchindex-03a4b3da.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -202,8 +202,9 @@ wait(4.0);
 <p>初期状態ですべてのVoiceを両方のバスへ送るのは、それがDirect Cognitive Couplingだからです。
 聴き手が聴くものと生態系が知覚するものが同じ物理eventになります。分離は意図的な逸脱です。
 <code>send(habitat_bus)</code>は聞こえずにFieldを形づくるterrain、<code>send(presentation_bus)</code>は
-聞こえるが生態系の世界の外にあるdecorです。サンプルでは、scaffoldingは聞こえないか、
-Voiceとしての発音体と生を与えられます。</p>
+聞こえるが生態系の世界の外にあるdecorです。音高の基準を作るanchorと、専用の同期補助は
+区別します。拍を打つ専用Voiceや時間的scaffoldを置くのは、明示的な同期が不可欠な
+サンプルだけです。habitat busだけへ送る場合にも、この制限を適用します。</p>
 <h2 id="listenertwin"><a class="header" href="#listenertwin">ListenerTwin</a></h2>
 <p>Conchordalは、<strong>提示された音だけ</strong>をmodel化するlistener側の<code>ListenerTwin</code>を持ちます。
 habitat busは読まないため、hidden scaffoldが偽のlistener tensionを作ることはありません。
@@ -236,8 +237,9 @@ report有効時に<code>listener_state</code> recordを出し、GUIにも同じs
 <ul>
 <li><code>coupling_strength</code>（<code>0.0</code>–<code>1.0</code>、既定値<code>0.0</code>）：<code>0.0</code>ではレポートとUI専用で、
 generationは変わりません。値を上げると
-<code>tension_pressure = tension_level * resolvability_level * coupling_strength</code>を
-一時的な音高探索の加算値としてだけ使います。目標音高やリズム同期を
+<code>tension_pressure = tension_level * coupling_strength</code>を
+一時的な音高探索の加算値としてだけ使います。ListenerTwinの緊張度にはすでに
+解決可能性が含まれるため、結合時に重ねて掛けません。目標音高やリズム同期を
 直接設定しません。</li>
 <li><code>max_temperature_bonus</code>（既定値<code>0.10</code>）：一時的な加算値の上限。</li>
 </ul>

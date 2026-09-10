@@ -11,44 +11,16 @@ import itertools
 import json
 import math
 from pathlib import Path
-import re
 import sys
 import tempfile
 import wave
 
 import evaluate_beta as beta
+from sample12 import COLONY_POPULATION_ID, FACTORS, FLOW_START_SEC, RESERVE_RUNTIME_IDS_THROUGH, WINDOWS, validate_source
 
 
-FACTORS = {
-    "temperature": ("    colony.temperature(0.85);\n", "    colony.temperature(0.0);\n"),
-    "pitch_shift": ("    root.freq(root_hz * 1.5);\n", "    root.freq(root_hz);\n"),
-    "flow": ("    let flow = place(flow_particles, consonance(200.0, 1500.0).count(9).spacing(0.66));\n",
-             "    flow.amp(0.014);\n", "    release(flow);\n"),
-}
-COMMON_PLACEMENTS = (
-    "    let root = place(field_anchor, at(root_hz).count(1));\n",
-    "    let colony = place(consonance_colony, consonance(80.0, 900.0).count(8).spacing(0.84));\n",
-)
-RESERVE_RUNTIME_IDS_THROUGH = 18
-COLONY_POPULATION_ID = 2
-FLOW_START_SEC = 15.0
 STATE_RECORDS = {"spawn", "respawn", "death", "onset", "population_step", "rhythm_observation",
                  "listener_state", "dcc_pressure", "habituation", "phonation_gate_open"}
-WAIT_SEQUENCE = ["2.3", "9.4", "3.3", "5.3", "3.3", "1.3", "5.3", "2.0", "4.0"]
-OPERATION_WAIT_COUNTS = [
-    *zip(COMMON_PLACEMENTS, (0, 1)),
-    *zip(FACTORS["temperature"], (2, 4)),
-    *zip(FACTORS["pitch_shift"], (2, 4)),
-    *zip(FACTORS["flow"], (3, 4, 5)),
-    ("    colony.amp(0.034);\n", 2),
-    ('    colony.pitch_apply_mode("glide");\n', 4),
-    ("    colony.glide(0.22);\n", 4),
-    ("    colony.amp(0.028);\n", 6),
-    ("    release(colony);\n", 7),
-    ("    release(root);\n", 8),
-]
-WINDOWS = {"baseline": (2.3, 11.7), "tension": (15.0, 20.3),
-           "early_resolution": (20.3, 23.6), "late_resolution": (24.9, 30.2)}
 LISTENER_FIELDS = ["tension_level", "stability_level", "resolvability_level", "attention_level", "beat_confidence"]
 MEASURES = [f"listener_{key}_mean" for key in LISTENER_FIELDS] + [
     "audio_rms", "audio_peak", "audio_silence_fraction", "colony_alive_count_mean",
@@ -56,22 +28,7 @@ MEASURES = [f"listener_{key}_mean" for key in LISTENER_FIELDS] + [
 
 
 def variant_source(source, factors):
-    # Validate every intervention even when enabled, so the control cannot hide drift.
-    for fragments in FACTORS.values():
-        for fragment in fragments:
-            if source.count(fragment) != 1:
-                raise ValueError(f"sample 12 drift: expected exactly one {fragment.strip()!r}")
-    # The ID reservation is tied to these three placements: 1 + 8 + 9.
-    if (any(source.count(fragment) != 1 for fragment in COMMON_PLACEMENTS)
-            or len(re.findall(r"\bplace\s*\(", source)) != 3):
-        raise ValueError("sample 12 placements changed; review the runtime ID reservation")
-    waits = re.findall(r"(?m)^\s*wait\(([^)]+)\);$", source)
-    if waits != WAIT_SEQUENCE:
-        raise ValueError("sample 12 wait sequence changed; review the measurement windows")
-    for fragment, count in OPERATION_WAIT_COUNTS:
-        if (source.count(fragment) != 1 or re.findall(r"(?m)^\s*wait\(([^)]+)\);$",
-                                                     source[:source.index(fragment)]) != waits[:count]):
-            raise ValueError(f"sample 12 operation timing changed: {fragment.strip()}")
+    validate_source(source)
     for name, fragments in FACTORS.items():
         if not factors[name]:
             for fragment in fragments:
@@ -144,7 +101,8 @@ def save_table(path, rows):
         writer.writerows(rows)
 
 
-def flow_pre_intervention_checks(output, variants, seeds):
+def flow_pre_intervention_checks(output, variants, seeds, *, end_sec=FLOW_START_SEC,
+                                 pairs=None, filename="flow_pre_intervention.json"):
     cases = {(r["sample"], r["seed"]): r for r in
              json.loads((output / "summary.json").read_text(encoding="utf-8"))["cases"]}
     prefixes, failures = {}, []
@@ -155,28 +113,29 @@ def flow_pre_intervention_checks(output, variants, seeds):
                 continue
             directory = output / case["case"]
             with wave.open(str(directory / "audio.wav"), "rb") as stream:
-                frames = math.ceil(FLOW_START_SEC * stream.getframerate())
+                frames = math.ceil(end_sec * stream.getframerate())
                 audio = stream.readframes(frames)
                 if len(audio) != frames * stream.getnchannels() * stream.getsampwidth():
-                    raise ValueError("audio does not cover the pre-flow interval")
+                    raise ValueError("audio does not cover the pre-intervention interval")
                 audio_format = [stream.getframerate(), stream.getnchannels(), stream.getsampwidth()]
             digest, counts, respawns = hashlib.sha256(), collections.Counter(), []
             with (directory / "report.jsonl").open(encoding="utf-8") as stream:
                 for line in stream:
                     row = json.loads(line)
-                    if row["type"] in STATE_RECORDS and row["time_sec"] < FLOW_START_SEC:
+                    if row["type"] in STATE_RECORDS and row["time_sec"] < end_sec:
                         digest.update((json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n").encode())
                         counts[row["type"]] += 1
                         if row["type"] == "respawn":
                             respawns.append(row)
             if not counts["listener_state"] or not counts["population_step"] or not counts["spawn"]:
-                raise ValueError("missing pre-flow state observations")
+                raise ValueError("missing pre-intervention state observations")
             prefixes[(label, seed)] = {"pcm_sha256": hashlib.sha256(audio).hexdigest(),
                                        "state_sha256": digest.hexdigest(), "audio_format": audio_format,
                                        "audio_frames": frames, "record_counts": dict(counts), "respawns": respawns}
     checks = []
-    for off in sorted(label for label in variants if label.endswith("0")):
-        on = off[:2] + "1"
+    if pairs is None:
+        pairs = [(off, off[:2] + "1") for off in sorted(variants) if off.endswith("0")]
+    for off, on in pairs:
         for seed in seeds:
             a, b = prefixes.get((off, seed)), prefixes.get((on, seed))
             matched = a is not None and b is not None and a == b
@@ -185,8 +144,8 @@ def flow_pre_intervention_checks(output, variants, seeds):
             if not matched:
                 failures.append({"off": off, "on": on, "seed": seed,
                                  "error": "flow comparison differs or lacks observations before intervention"})
-    beta.dump_json(output / "flow_pre_intervention.json", {
-        "interval": [0.0, FLOW_START_SEC], "interval_end_exclusive": True,
+    beta.dump_json(output / filename, {
+        "interval": [0.0, end_sec], "interval_end_exclusive": True,
         "reserve_runtime_ids_through": RESERVE_RUNTIME_IDS_THROUGH,
         "state_scope": sorted(STATE_RECORDS), "excludes": "wall-clock hop timing and final summaries",
         "checks": checks, "failures": failures})

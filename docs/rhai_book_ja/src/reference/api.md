@@ -373,7 +373,7 @@ brain(name)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`. Selects how the voice lives while sounding; orthogonal to the rhythm coupling continuum (`metric`/`entrained`/`flow`). `entrain` is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. `seq` holds for a fixed lifetime, ignoring the field and metabolism. `drone` is undying, sustaining forever with a slow sway -- useful as terrain material.
+Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`. Selects how the voice lives while sounding; orthogonal to the rhythm timing presets (`metric`/`entrained`/`flow`). `entrain` is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. `seq` holds for a fixed lifetime, ignoring the field and metabolism. `drone` is undying, sustaining forever with a slow sway -- useful as terrain material.
 
 #### `sustain`
 
@@ -413,7 +413,7 @@ entrained()
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Medium coupling: synchronization emerges over time, still drifts.
+Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation.
 
 #### `flow`
 
@@ -423,7 +423,7 @@ flow()
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Near-zero coupling: free renewal process, non-metric texture.
+Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period.
 
 #### `entrainment`
 
@@ -433,7 +433,7 @@ entrainment(strength)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Override coupling strength in 0-1 (free .. locked). Order-independent with presets: `entrainment(0.8).metric()` and `metric().entrainment(0.8)` are equivalent.
+Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric. Order-independent with presets: `entrainment(0.8).metric()` and `metric().entrainment(0.8)` are equivalent.
 
 #### `rhythm_role`
 
@@ -445,6 +445,16 @@ rhythm_role(name)
 
 Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`. `accent` emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.
 
+#### `measure_accent`
+
+```rhai,ignore
+measure_accent(amount)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Weak onset emphasis following the emergent measure, amount 0-1 (default 0). Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/flow presets.
+
 #### `microtiming`
 
 ```rhai,ignore
@@ -453,7 +463,7 @@ microtiming(amount)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.
+Signed beat-phase offset for metric timing, in -0.5..0.5. A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/flow participants at fixed offsets.
 
 #### `cycles`
 
@@ -463,7 +473,7 @@ cycles(n)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Duration of n rhythm cycles.
+Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier.
 
 ### Pitch Movement
 

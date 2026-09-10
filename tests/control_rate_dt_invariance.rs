@@ -61,6 +61,7 @@ fn control_rate_dt_invariance() {
         },
         env_open: 1.0,
         env_level: 1.0,
+        ..NeuralRhythms::default()
     };
 
     let mut fine = prepare_agent(build_agent());

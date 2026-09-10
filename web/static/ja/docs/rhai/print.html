@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6217a7fd.js";
+            window.path_to_searchindex_js = "searchindex-03a4b3da.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ddfde326.js"></script>
@@ -203,7 +203,7 @@ Beta版を待ってください。一般的な音楽制作の語彙で覆い隠�
 <a href="#population--voiceをまとめる持続単位">Population — Voiceをまとめる持続単位</a>、
 <a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a>、
 <a href="#consonance-field--音高を評価する地形">Consonance Field — 音高を評価する地形</a>、
-<a href="#リズム一つの結合連続体">リズム</a>、
+<a href="#リズム時間の知覚と個体の参加">リズム</a>、
 <a href="#ルーティングとlistenertwin">ルーティングとListenerTwin</a>、
 <a href="#タイムラインと構造">タイムラインと構造</a>。</li>
 <li><strong>リファレンス</strong>には、生成された<a href="#apiリファレンス">APIリファレンス</a>と、
@@ -322,7 +322,7 @@ section("emergence", || {
 <li><a href="#population--voiceをまとめる持続単位">Population — Voiceをまとめる持続単位</a> — PopulationSpec、Voice、brain、phonation、生存、release。</li>
 <li><a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a> — 音と知覚環境がfeedbackを作る仕組み。</li>
 <li><a href="#consonance-field--音高を評価する地形">Consonance Field — 音高を評価する地形</a> — Field、density、movement、viability、respawn。</li>
-<li><a href="#リズム一つの結合連続体">リズム</a> — 結合連続体とdirectorが形づくるリズム地形。</li>
+<li><a href="#リズム時間の知覚と個体の参加">リズム</a> — 結合連続体とdirectorが形づくるリズム地形。</li>
 <li><a href="#ルーティングとlistenertwin">ルーティングとListenerTwin</a> — 生態系が知覚する音、聴衆が聴く音、観測される状態。</li>
 <li><a href="#タイムラインと構造">タイムラインと構造</a> — 配置境界、有効範囲、再利用可能な身振り、並行する流れ。</li>
 <li><a href="#サンプル">サンプル</a> — 機能を順番に試すための道筋。</li>
@@ -746,6 +746,13 @@ potential、score、level、mass、densityの関係は
 </ul>
 <p><code>consonance(root)</code>はroot周辺のharmonic windowを取り、<code>range()</code>で倍音範囲を指定します。
 どの配置先にも、絶対周波数の<code>(min_hz, max_hz)</code>範囲を渡せます。</p>
+<p>範囲の両端には、音源が扱える1〜20000 Hz内の有限値を指定します。大小が逆でも使えます。
+初期配置は微小な揺らぎ（jitter）を加える場合も、重みがすべてゼロ、または全域が占有済みで
+代替の抽選を行う場合も、指定範囲を守ります。Consonance Fieldに基づくPlacementは
+解析帯域（現在55〜8000 Hz）との共通部分を使います。共通部分がなければ評価の根拠を
+得られないため、指定範囲内の対数一様分布へ
+切り替わります。<code>random()</code>は指定範囲を直接使います。この範囲は初期配置の指定であり、
+その後の<code>seek_consonance()</code>による移動を同じ範囲へ制限するものではありません。</p>
 <pre><code class="language-rhai">let anchor = harmonic()
     .brain("drone")
     .amp(0.06)
@@ -887,23 +894,25 @@ wait(8.0);
 <code>stiff_string_modes(stiffness)</code>、<code>custom_modes([ratios])</code>、<code>modal_table(name)</code>、
 <code>landscape_density_modes()</code>、<code>landscape_peaks_modes()</code>があります。</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="リズム一つの結合連続体"><a class="header" href="#リズム一つの結合連続体">リズム：一つの結合連続体</a></h1>
-<p>Conchordalのリズムは、別々の時計を寄せ集めたものではありません。<strong>Communityから生まれる
-共有拍の上に、一つの結合連続体があります。</strong> Communityは、結合振動子からなる一つの拍を
-駆動します。個々のVoiceは位相振動子として働き、結合の強さに応じて発音位置をその拍へ
-近づけます。外から押し付ける格子はありません。VoiceがCommunity自身の拍へどれほど強く
-同期するかによって、まとまりも、その欠如も生まれます。</p>
-<p>三つのrhythm「family」は連続体上の三領域にすぎません。</p>
+<h1 id="リズム時間の知覚と個体の参加"><a class="header" href="#リズム時間の知覚と個体の参加">リズム：時間の知覚と個体の参加</a></h1>
+<p>拍は、音から推定する反復的な時間の基準です。同じ音を参照するVoiceが、同じ拍位置で
+発音する必要はありません。三つのプリセットは、異なる参加の仕方を選びます。</p>
 <ul>
-<li><strong>metric</strong> — 強い結合。深いattractorとして安定したpulseに聞こえる。</li>
-<li><strong>entrained</strong> — 中程度の結合。時間とともに同期するがdriftも残る。</li>
-<li><strong>flow</strong> — ほぼゼロの結合。自由なrenewal processによる非metric texture。</li>
+<li><strong>metric</strong> — 共有された拍への同期を意図します。結合を強めるほど発音位置が拍へ近づきます。</li>
+<li><strong>entrained</strong> — 自身のペースを持ち、参加時に記憶した周囲の音の特徴と、音が重なる予測から発音時刻を調整します。</li>
+<li><strong>flow</strong> — 不規則な発音間隔の基準を保ち、弱い結合で周囲の音に応答します。基準の速さを反復周期へ寄せません。</li>
 </ul>
-<p>リズムはconsonance、viability、movement、respawnと同じ生態系に属します。timingが生存へ
-影響し、生存がtimingを再編成できます。</p>
+<p>entrainedとflowは、過去のhabitat音声から得た短い未来の予期を使います。Voice自身が
+合成した音も記録し、自分の反復を競合相手として扱わないようにします。発音予定の近傍で
+鳴る、参加の1周期まで待つ、今回は見送る、を比較します。重なりは予定する保持時間と
+ADSRのreleaseを含む範囲で評価します。見送りを続けるほどコストが増すため、重なりだけを
+理由に永続的な沈黙へ落ち着くことはありません。実際に発音を指令したときだけ周囲との
+関係を記憶します。証拠が乏しいときは
+身体のペースを保ち、共通位相へ置き換えません。重なりの評価は三つの帯域のエネルギーを
+使う工学的な近似であり、音楽的な受入は検証中です。</p>
 <h2 id="director水準の地形"><a class="header" href="#director水準の地形">Director水準の地形</a></h2>
-<p>directorはConsonance Fieldの操作と対称的にrhythmic terrainを形づくります。これらは
-scheduleではなくsoft priorであり、創発が働き続けます。</p>
+<p>演出者は次の操作で、metricが参照する生成側の拍の地形を調整します。
+entrainedとflowの身体の速さや、反復予測の周期候補を直接指定する操作ではありません。</p>
 <ul>
 <li><code>meter_stability(value)</code> — <code>[0,1]</code>のattractor depth。実在するperiodicityに対する
 basinを深くするだけで、非metric inputからbeatを捏造しない。</li>
@@ -911,18 +920,23 @@ basinを深くするだけで、非metric inputからbeatを捏造しない。</
 <code>consonance(min, max)</code>の時間軸版で、beatを配置したりmeasureを強制したりはしない。</li>
 </ul>
 <h2 id="voiceごとのプリセットと調整"><a class="header" href="#voiceごとのプリセットと調整">Voiceごとのプリセットと調整</a></h2>
-<p>Tier 1 presetの<code>metric()</code>、<code>entrained()</code>、<code>flow()</code>はrate引数を取りません。tempo領域は
-Voiceごとではなく、演出者が一度だけ設定する地形の性質です。<code>place()</code>より前に
-<code>PopulationSpec</code>へ設定します。</p>
+<p><code>metric()</code>、<code>entrained()</code>、<code>flow()</code>は速さの引数を取りません。<code>place()</code>より前に
+PopulationSpecへ設定します。metricは地形が誘導する拍へ近づきます。entrainedとflowは
+2 Hzの固有ペースから始まります。entrainedは周囲の反復から参加の周期を更新します。
+flowは不規則な間隔を作る基準を保ち、周囲の音に応じて待つ・見送る判断を続けます。
+実際の発音間隔は変わり得ますが、全Voiceが従う共通テンポや発音位置は指定しません。</p>
 <p><code>.entrained()</code>と<code>brain("entrain")</code>を混同しないでください。前者はonset timing、後者は
 Voiceの発音上の生と代謝を選びます。独立しており併用できます。</p>
-<p>Voiceごとの設定で、結合連続体上の位置を細かく調整できます。</p>
+<p>Voiceごとの設定で、参加の仕方を調整できます。</p>
 <ul>
-<li><code>entrainment(strength)</code> — <code>[0,1]</code>の結合。free（<code>0</code>）からlocked（<code>1</code>）。</li>
+<li><code>entrainment(strength)</code> — <code>[0,1]</code>の影響の強さ。entrainedとflowでは音から得た文脈、metricでは拍位相への引力に作用します。<code>0</code>なら固有のペースを保ちます。</li>
 <li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — metrical role。
 <code>accent</code>は共有meterを強く駆動するonsetを出し、反復downbeatからmeasureを創発できる。</li>
-<li><code>microtiming(amount)</code> — <code>[-0.5, 0.5]</code>のsigned beat-phase offset。<code>0.5</code>は半beatずれ、
-syncopationとして聞こえる。</li>
+<li><code>microtiming(amount)</code> — metricの目標位置を拍位相でずらします。範囲は<code>[-0.5, 0.5]</code>、<code>0.5</code>は半拍です。entrainedとflowへ固定された発音位置を割り当てる設定ではありません。</li>
+<li><code>measure_accent(amount)</code> — 検出したmeasureに沿って、発音ごとの強弱を弱く変える設定です。
+範囲は<code>[0,1]</code>、既定値は<code>0</code>。強度の倍率は<code>1 + 0.35 * amount * confidence * cos(phase)</code>です。
+位相の原点は観測した強拍に合わせ、measureが未検出なら強度を変えません。
+発音時刻は指定せず、<code>rhythm_role</code>とは独立して働きます。</li>
 </ul>
 <pre><code class="language-rhai">meter_stability(0.85);     // attractor depth: how readily a pulse forms
 temporal_basin(1.8, 2.2);   // tempo region the emergent beat gravitates toward
@@ -959,9 +973,9 @@ wait(12.0);
 <code>adaptive_duration()</code>があり、<code>duration_range</code>、<code>duration_curve</code>、<code>shorten_on_drop</code>で
 調整できます。</p>
 <h2 id="生存としてのtimingtier-3"><a class="header" href="#生存としてのtimingtier-3">生存としてのtiming（Tier 3）</a></h2>
-<p>timingを生存と再編成へ影響させるには<code>rhythm_coupling_vitality(lambda_v, v_floor)</code>と
-<code>rhythm_reward(rho_t, "attack_phase_match")</code>を使い、internal oscillatorの直接設定には
-<code>rhythm_freq(freq_hz)</code>を使います。</p>
+<p>既存のアーティキュレーション制御には、<code>rhythm_coupling_vitality(lambda_v, v_floor)</code>、
+<code>rhythm_reward(rho_t, "attack_phase_match")</code>、<code>rhythm_freq(freq_hz)</code>があります。
+Gated発音では位相一致報酬を使いません。下の例でも、この報酬による同期は起きません。</p>
 <pre><code class="language-rhai">let pulse_voice = harmonic()
     .repeat()
     .pulse(2.0)
@@ -979,8 +993,18 @@ wait(8.0);
 set_scaffold_shared(2.0);
 set_scaffold_scrambled(2.0, 17);
 </code></pre>
-<p>demoやassayには有用ですが、リズム作曲の抽象ではありません。作曲されたリズムは結合連続体と
-地形から生じるべきです。</p>
+<p>同期が比較や実演に不可欠な場合だけ使います。entrainedとflowの参加を成立させる補助として
+専用の拍打ちを追加しません。</p>
+<h2 id="身体の周期と既存の代謝制御"><a class="header" href="#身体の周期と既存の代謝制御">身体の周期と既存の代謝制御</a></h2>
+<p><code>cycles(n)</code>は、entrainedとflowでは設定された固有周期、metricでは実効的な拍周期を使います。
+entrainedの参加周期は音響の反復へ追従しますが、保持時間とその重なり予測の音長は固有周期から求めます。
+したがって、周囲のペースが変わっても一音の保持を自動的に引き延ばしません。
+周期への追従では自分の周期内の位置を保ち、共有の発音位相を指定しません。
+flowの音長には既存の3倍の係数も適用します。<code>rhythm_freq()</code>はアーティキュレーションの
+内部振動子を設定し、参加方策の固有ペースを直接設定しません。</p>
+<p>Gated発音では自律attackが無効になります。発行したonsetは協和度に基づく通常の回復を
+受け、<code>attack_phase_match</code>による位相一致報酬は使いません。共有リズムを読む音高探索や
+振幅変調は別の経路として残ります。専用の拍打ちは、同期の実演や比較に必須の場合だけ使います。</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="ルーティングとlistenertwin"><a class="header" href="#ルーティングとlistenertwin">ルーティングとListenerTwin</a></h1>
 <h2 id="二つのbus"><a class="header" href="#二つのbus">二つのbus</a></h2>
@@ -1010,8 +1034,9 @@ wait(4.0);
 <p>初期状態ですべてのVoiceを両方のバスへ送るのは、それがDirect Cognitive Couplingだからです。
 聴き手が聴くものと生態系が知覚するものが同じ物理eventになります。分離は意図的な逸脱です。
 <code>send(habitat_bus)</code>は聞こえずにFieldを形づくるterrain、<code>send(presentation_bus)</code>は
-聞こえるが生態系の世界の外にあるdecorです。サンプルでは、scaffoldingは聞こえないか、
-Voiceとしての発音体と生を与えられます。</p>
+聞こえるが生態系の世界の外にあるdecorです。音高の基準を作るanchorと、専用の同期補助は
+区別します。拍を打つ専用Voiceや時間的scaffoldを置くのは、明示的な同期が不可欠な
+サンプルだけです。habitat busだけへ送る場合にも、この制限を適用します。</p>
 <h2 id="listenertwin"><a class="header" href="#listenertwin">ListenerTwin</a></h2>
 <p>Conchordalは、<strong>提示された音だけ</strong>をmodel化するlistener側の<code>ListenerTwin</code>を持ちます。
 habitat busは読まないため、hidden scaffoldが偽のlistener tensionを作ることはありません。
@@ -1044,8 +1069,9 @@ report有効時に<code>listener_state</code> recordを出し、GUIにも同じs
 <ul>
 <li><code>coupling_strength</code>（<code>0.0</code>–<code>1.0</code>、既定値<code>0.0</code>）：<code>0.0</code>ではレポートとUI専用で、
 generationは変わりません。値を上げると
-<code>tension_pressure = tension_level * resolvability_level * coupling_strength</code>を
-一時的な音高探索の加算値としてだけ使います。目標音高やリズム同期を
+<code>tension_pressure = tension_level * coupling_strength</code>を
+一時的な音高探索の加算値としてだけ使います。ListenerTwinの緊張度にはすでに
+解決可能性が含まれるため、結合時に重ねて掛けません。目標音高やリズム同期を
 直接設定しません。</li>
 <li><code>max_temperature_bonus</code>（既定値<code>0.10</code>）：一時的な加算値の上限。</li>
 </ul>
@@ -1334,7 +1360,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">brain(name)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm coupling continuum (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
+<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm timing presets (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
 <h4 id="sustain"><a class="header" href="#sustain"><code>sustain</code></a></h4>
 <pre><code class="language-rhai ignore">sustain()
 </code></pre>
@@ -1354,32 +1380,37 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">entrained()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Medium coupling: synchronization emerges over time, still drifts.</p>
+<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation.</p>
 <h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
 <pre><code class="language-rhai ignore">flow()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Near-zero coupling: free renewal process, non-metric texture.</p>
+<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period.</p>
 <h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
 <pre><code class="language-rhai ignore">entrainment(strength)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Override coupling strength in 0-1 (free .. locked). Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
+<p>Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric. Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
 <h4 id="rhythm_role"><a class="header" href="#rhythm_role"><code>rhythm_role</code></a></h4>
 <pre><code class="language-rhai ignore">rhythm_role(name)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
 <p>Metrical job: <code>"beat"</code>, <code>"subdivision"</code>, <code>"accent"</code>, or <code>"texture"</code>. <code>accent</code> emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.</p>
+<h4 id="measure_accent"><a class="header" href="#measure_accent"><code>measure_accent</code></a></h4>
+<pre><code class="language-rhai ignore">measure_accent(amount)
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Weak onset emphasis following the emergent measure, amount 0-1 (default 0). Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/flow presets.</p>
 <h4 id="microtiming"><a class="header" href="#microtiming"><code>microtiming</code></a></h4>
 <pre><code class="language-rhai ignore">microtiming(amount)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Signed beat-phase offset in -0.5..0.5; 0.5 reads as syncopation.</p>
+<p>Signed beat-phase offset for metric timing, in -0.5..0.5. A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/flow participants at fixed offsets.</p>
 <h4 id="cycles"><a class="header" href="#cycles"><code>cycles</code></a></h4>
 <pre><code class="language-rhai ignore">cycles(n)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Duration of n rhythm cycles.</p>
+<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier.</p>
 <h3 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h3>
 <p>VoiceがConsonance Field内をどう移動するかを決める。<code>seek_consonance()</code>、<code>glide()</code>、<code>temperature()</code>が基本の作曲用APIで、残りは山登り探索とpeak samplerを調整する。</p>
 <h4 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h4>
@@ -1396,7 +1427,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">glide(tau_sec)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
-<p>Pitch glide time constant in seconds.</p>
+<p>Pitch glide time constant in seconds. This changes the time constant, not the pitch apply mode. For a voice that snaps at onsets, call <code>pitch_apply_mode("glide")</code> to enable continuous pitch movement.</p>
 <h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
 <pre><code class="language-rhai ignore">temperature(value)
 </code></pre>
@@ -1798,12 +1829,12 @@ global_peaks(count, min_sep_cents)
 <li><strong>Tension</strong> — Voiceが協和へ落ち着き、不安定になって離れ、再び冷えて落ち着く。</li>
 <li><strong>Settling</strong> — 散らばったVoiceが、Consonance Fieldに支えられる場所へ滑らかに移る。</li>
 <li><strong>Bells</strong> — 打撃されるbody。最後のbellはpartialをFieldに選ばせる。</li>
-<li><strong>Heartbeat</strong> — 外部の足場なしにPopulationが共有pulseへ同期する。</li>
+<li><strong>Heartbeat</strong> — 拍を打つ専用Voiceを使い、同期を実演する。</li>
 <li><strong>Murmuration</strong> — flockが命令されずに同期へ漂う。</li>
 <li><strong>Rain</strong> — beatを持たず、Fieldに沿って落ちる時間。</li>
 <li><strong>Generations</strong> — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。</li>
 <li><strong>Autumn Cycle</strong> — directionを持つharmony。季節が巡り戻る。</li>
-<li><strong>Emergence and Resolution</strong> — すべてを一つのarcへ曲げる。</li>
+<li><strong>Emergence and Resolution</strong> — Populationの探索が強まり、再び落ち着く。専用の拍打ちは置かず、Voice自身の発音がリズムの入力を担う。</li>
 </ol>
 <p>サンプル1–6はConsonance terrain（placement、gravity、tension、movement、timbre）、
 7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–12は複数の
@@ -1811,13 +1842,15 @@ mechanismを組み合わせます。全サンプルはtest suiteでcompile-check
 不一致を検出します。最上位のサンプルは意図的に<code>seed(...)</code>を呼ばず、毎runを新しい
 scenario seedで始めます。
 比較を再現可能にする必要があるresearch assayだけが固定seedを使います。</p>
-<p>一つのcraft ruleが全体を貫きます：<strong>scaffoldingは聞こえないか、embodyされる</strong>。
-terrain anchorは、drone自体が主題でない限りpresentationではなくhabitat busへ歌います。
-pulse carrierには共鳴するbodyとlifeを与えるか、colonyからpulseが凝結するに任せます。</p>
+<p>音高の基準を作るanchorは、通常はhabitat busだけへ送られ、直接は聞こえません。
+Gravityでは、聞こえる持続音そのものが主題です。Heartbeatは同期を実演するため、拍を打つ
+専用Voiceを置いています。他の公開サンプルには専用の拍打ちVoiceはありません。</p>
 <h2 id="research-assay"><a class="header" href="#research-assay">Research assay</a></h2>
 <p><code>samples/research/</code>にはheredity/selection ablation、external-scaffold rhythm control、
 mechanism studyなどの比較fixtureがあります。instrumentを演奏するのではなく研究するもので、
-上の道筋には含まれません。</p>
+上の道筋には含まれません。
+専用の同期補助は、明示的な同期が実演や実験に不可欠な場合だけ使います。
+habitat busだけへ送って聞こえなくしても、他のサンプルで使える理由にはなりません。</p>
 <h2 id="offline-rendering"><a class="header" href="#offline-rendering">Offline rendering</a></h2>
 <p><code>conchordal</code> instrumentはaudioをdiskへ書きません。演奏は、音が鳴り終わるとinstrument内には
 残らない一過的な出来事（ephemeral）として設計されています。offline WAVには、同じcore engineを

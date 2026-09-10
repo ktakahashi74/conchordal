@@ -15,6 +15,7 @@ pub(crate) mod report;
 pub mod schedule_renderer;
 pub(crate) mod social_density;
 pub(crate) mod telemetry;
+pub(crate) mod temporal_participation;
 
 pub mod sound;
 #[cfg(test)]

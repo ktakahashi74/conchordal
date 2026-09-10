@@ -5,11 +5,14 @@ use std::f32::consts::TAU;
 use std::fmt;
 
 use crate::core::consonance_kernel::sigmoid01_stable;
+use crate::core::float::sanitize01;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::temporal_expectation::TemporalForecast;
 use crate::core::timebase::Tick;
 use crate::life::control_adapters::phonation_config_from_spec;
 use crate::life::gate_clock::next_gate_tick;
 use crate::life::social_density::SocialDensityTrace;
+use crate::life::temporal_participation::TemporalParticipation;
 use crate::scenario::{
     DurationConfig, OnsetConfig, PhonationClockConfig, PhonationConfig, PhonationMode,
     PhonationSpec,
@@ -191,8 +194,11 @@ impl ThetaGrid {
                     cursor_tick.saturating_add(step)
                 }
                 None => {
-                    let search_tick = cursor_tick.saturating_add(1);
-                    match next_gate_tick(search_tick, ctx.fs, ctx.rhythms.theta, 0.0) {
+                    // The cursor is already a gate boundary, so the next gate
+                    // is a full theta cycle away, not the frame's phase remainder.
+                    let mut theta = ctx.rhythms.theta;
+                    theta.phase = 0.0;
+                    match next_gate_tick(cursor_tick, ctx.fs, theta, 0.0) {
                         Some(tick) => tick,
                         None => break,
                     }
@@ -391,7 +397,7 @@ impl ThetaGateClock {
             if gate_tick < ctx.now_tick || gate_tick >= ctx.frame_end {
                 return;
             }
-            if self.last_gate_tick == Some(gate_tick) {
+            if self.last_gate_tick.is_some_and(|last| gate_tick <= last) {
                 cursor = gate_tick.saturating_add(1);
                 continue;
             }
@@ -414,7 +420,19 @@ impl ThetaGateClock {
 impl ThetaGateClock {
     fn gather_candidates_impl(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
         self.gather_candidates_core(ctx, out, |cursor, ctx| {
-            next_gate_tick(cursor, ctx.fs, ctx.rhythms.theta, 0.0)
+            let mut theta = ctx.rhythms.theta;
+            // The observation is stamped at frame start; advance it to the
+            // search cursor before predicting another crossing in this hop.
+            let elapsed_sec = cursor.saturating_sub(ctx.now_tick) as f64 / ctx.fs as f64;
+            theta.phase = (theta.phase as f64 + TAU as f64 * theta.freq_hz as f64 * elapsed_sec)
+                .rem_euclid(TAU as f64) as f32;
+            next_gate_tick(cursor, ctx.fs, theta, 0.0).map(|next| {
+                if cursor == ctx.now_tick && theta.phase == 0.0 {
+                    cursor
+                } else {
+                    next
+                }
+            })
         });
     }
 }
@@ -422,7 +440,7 @@ impl ThetaGateClock {
 /// Upper bound on a clock's effective onset rate. Caps candidate density so a
 /// pathological base/meter rate cannot collapse the period to ~1 tick and emit
 /// a candidate at every sample.
-const MAX_ONSET_RATE_HZ: f32 = 200.0;
+pub(crate) const MAX_ONSET_RATE_HZ: f32 = 200.0;
 
 /// Strength of the phase pull toward the shared meter beat. Kept at 1.0 so the
 /// effective-frequency factor `1 + lock * PULL_K * err` stays in `[0.5, 1.5]`
@@ -581,9 +599,97 @@ impl CouplingClock {
     }
 }
 
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub(crate) struct ParticipationPrediction {
+    pub(crate) issued_frame: u64,
+    pub(crate) onset_frame: u64,
+    pub(crate) forecast_observed_frame: u64,
+    pub(crate) target_start_frame: u64,
+    pub(crate) target_end_frame: u64,
+    pub(crate) pred_continuation_habitat_band_energy: [f32; 3],
+}
+
+/// Public as the payload of PhonationClock; observations remain crate-internal.
+pub struct ParticipationClock {
+    base_rate_hz: f32,
+    coupling: f32,
+    flow_depth: f32,
+    seed: u64,
+    policy: Option<TemporalParticipation>,
+    forecast: Option<TemporalForecast>,
+    outcome_forecast: Option<TemporalForecast>,
+    pending_prediction: Option<ParticipationPrediction>,
+    issued_predictions: Vec<ParticipationPrediction>,
+    own_profile: [f32; 3],
+    hold_theta: f32,
+    adsr: Option<crate::life::sound::ToneAdsr>,
+    gate_index: u64,
+}
+
+impl ParticipationClock {
+    fn candidate(
+        &mut self,
+        ctx: &CoreTickCtx,
+        cursor: Tick,
+        allowed: bool,
+    ) -> Option<CandidatePoint> {
+        if !ctx.fs.is_finite() || ctx.fs < 1.0 {
+            return None;
+        }
+        let policy = self.policy.get_or_insert_with(|| {
+            let mut policy = TemporalParticipation::new(
+                ctx.fs as u32,
+                self.base_rate_hz,
+                self.coupling,
+                ctx.now_tick,
+                self.seed,
+                ctx.frame_end.saturating_sub(ctx.now_tick),
+            );
+            policy.set_flow_depth(self.flow_depth);
+            policy
+        });
+        if policy.needs_forecast(cursor, ctx.frame_end) {
+            policy.update_reference(cursor, self.forecast.as_ref());
+        }
+        policy.set_overlap(0.8, self.own_profile);
+        policy.set_sound_duration(self.hold_theta / self.base_rate_hz, self.adsr);
+        let tick = policy.candidate(cursor, ctx.frame_end, allowed, self.forecast.as_ref())?;
+        self.pending_prediction = self.outcome_forecast.as_ref().and_then(|forecast| {
+            let (start, end, energy) = forecast.energy_window_after(tick)?;
+            Some(ParticipationPrediction {
+                issued_frame: ctx.now_tick,
+                onset_frame: tick,
+                forecast_observed_frame: forecast.observed_frame(),
+                target_start_frame: start,
+                target_end_frame: end,
+                pred_continuation_habitat_band_energy: energy,
+            })
+        });
+        Some(CandidatePoint {
+            tick,
+            gate: self.gate_index,
+        })
+    }
+
+    fn resolve(&mut self, tick: Tick, sounded: bool) {
+        self.policy
+            .as_mut()
+            .expect("selected participation candidate")
+            .resolve(tick, sounded);
+        // A scheduled onset is an intention; its acoustic outcome is observed later.
+        if let Some(prediction) = self.pending_prediction.take()
+            && sounded
+        {
+            self.issued_predictions.push(prediction);
+        }
+        self.gate_index = self.gate_index.saturating_add(1);
+    }
+}
+
 pub enum PhonationClock {
     ThetaGate(ThetaGateClock),
     Coupling(CouplingClock),
+    Participation(Box<ParticipationClock>),
     #[cfg(test)]
     Custom(Box<dyn FnMut(&CoreTickCtx, &mut Vec<CandidatePoint>) + Send>),
 }
@@ -597,6 +703,14 @@ impl PhonationClock {
             PhonationClock::Coupling(clock) => {
                 clock.gather_candidates_impl(ctx, out);
             }
+            PhonationClock::Participation(clock) => {
+                let mut cursor = ctx.now_tick;
+                while let Some(candidate) = clock.candidate(ctx, cursor, false) {
+                    clock.resolve(candidate.tick, false);
+                    cursor = candidate.tick.saturating_add(1);
+                    out.push(candidate);
+                }
+            }
             #[cfg(test)]
             PhonationClock::Custom(f) => f(ctx, out),
         }
@@ -607,7 +721,10 @@ impl PhonationClock {
     /// entrained oscillator); gating it by theta would double-count the
     /// entrainment and destroy the renewal / lock continuum it produces.
     fn uses_flat_field(&self) -> bool {
-        matches!(self, PhonationClock::Coupling(_))
+        matches!(
+            self,
+            PhonationClock::Coupling(_) | PhonationClock::Participation(_)
+        )
     }
 
     /// Nominal tick spacing used to extend the duration grid without falling back
@@ -616,6 +733,7 @@ impl PhonationClock {
     fn fixed_period_ticks(&self, fs: f32) -> Option<f64> {
         match self {
             PhonationClock::Coupling(clock) => clock.nominal_period_ticks(fs),
+            PhonationClock::Participation(clock) => Some(fs as f64 / clock.base_rate_hz as f64),
             _ => None,
         }
     }
@@ -635,6 +753,29 @@ impl PhonationClock {
                 *microtiming,
                 seed,
             )),
+            PhonationClockConfig::Participation {
+                coupling,
+                base_rate_hz,
+                flow_depth,
+            } => Self::Participation(Box::new(ParticipationClock {
+                base_rate_hz: if base_rate_hz.is_finite() {
+                    base_rate_hz.clamp(0.01, MAX_ONSET_RATE_HZ)
+                } else {
+                    1.0
+                },
+                coupling: sanitize01(*coupling),
+                flow_depth: sanitize01(*flow_depth),
+                seed,
+                policy: None,
+                forecast: None,
+                own_profile: [0.0; 3],
+                outcome_forecast: None,
+                pending_prediction: None,
+                issued_predictions: Vec::new(),
+                hold_theta: 1.0,
+                adsr: None,
+                gate_index: 0,
+            })),
         }
     }
 }
@@ -672,7 +813,7 @@ impl OnsetRule {
     /// Renewal inter-onset interval used by the coupling clock to shape the
     /// free-running (low-coupling) limit: a regular period when `depth == 0` and
     /// a clustered, gappy non-metric texture as `depth` rises.
-    fn flow_next_ioi(
+    pub(crate) fn flow_next_ioi(
         mean_rate_hz: f32,
         depth: f32,
         cluster_remaining: &mut u8,
@@ -857,10 +998,16 @@ impl DurationRule {
     }
 
     pub fn on_note_on(&mut self, onset: OnsetContext) -> DurationPlan {
+        #[cfg(test)]
+        if let DurationRule::Custom(f) = self {
+            return f(onset);
+        }
+        DurationPlan::HoldTheta(self.estimate_hold(onset.exc_gate, onset.exc_slope).unwrap())
+    }
+
+    fn estimate_hold(&self, exc_gate: f32, exc_slope: f32) -> Option<f32> {
         match self {
-            DurationRule::FixedGate { length_gates } => {
-                DurationPlan::HoldTheta(*length_gates as f32)
-            }
+            DurationRule::FixedGate { length_gates } => Some(*length_gates as f32),
             DurationRule::Field {
                 hold_min_theta,
                 hold_max_theta,
@@ -868,19 +1015,19 @@ impl DurationRule {
                 curve_x0,
                 drop_gain,
             } => {
-                let exc_gate = onset.exc_gate.clamp(0.0, 1.0);
+                let exc_gate = exc_gate.clamp(0.0, 1.0);
                 let min = hold_min_theta.max(0.0);
                 let max = hold_max_theta.max(min);
                 let p = sigmoid01_stable(*curve_k * (exc_gate - *curve_x0));
                 let mut hold = min + (max - min) * p;
-                if *drop_gain > 0.0 && onset.exc_slope.is_finite() {
-                    let drop_val = (-onset.exc_slope).max(0.0).clamp(0.0, 1.0);
+                if *drop_gain > 0.0 && exc_slope.is_finite() {
+                    let drop_val = (-exc_slope).max(0.0).clamp(0.0, 1.0);
                     hold *= 1.0 - drop_gain.clamp(0.0, 1.0) * drop_val;
                 }
-                DurationPlan::HoldTheta(hold.max(0.0))
+                Some(hold.max(0.0))
             }
             #[cfg(test)]
-            DurationRule::Custom(f) => f(onset),
+            DurationRule::Custom(_) => None,
         }
     }
 
@@ -959,6 +1106,7 @@ pub struct PhonationEngine {
     pub onset_rule: OnsetRule,
     pub duration_rule: DurationRule,
     pub mode: PhonationMode,
+    measure_accent: f32,
     hold: HoldCore,
     initial_seed: u64,
     pub next_tone_id: ToneId,
@@ -982,6 +1130,61 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
+    pub(crate) fn observe_participation_context(
+        &mut self,
+        own: &crate::core::temporal_expectation::OwnSoundHistory,
+        emit: impl FnMut(crate::life::temporal_participation::ParticipationContextUpdate),
+    ) {
+        if let PhonationClock::Participation(clock) = &mut self.clock
+            && let Some(policy) = clock.policy.as_mut()
+        {
+            policy.observe_context(own, emit);
+        }
+    }
+
+    pub(crate) fn set_outcome_forecast(&mut self, forecast: Option<&TemporalForecast>) {
+        if let PhonationClock::Participation(clock) = &mut self.clock {
+            clock.outcome_forecast = forecast.copied();
+        }
+    }
+
+    pub(crate) fn drain_participation_predictions(
+        &mut self,
+    ) -> impl Iterator<Item = ParticipationPrediction> + '_ {
+        match &mut self.clock {
+            PhonationClock::Participation(clock) => Some(&mut clock.issued_predictions),
+            _ => None,
+        }
+        .into_iter()
+        .flat_map(|predictions| predictions.drain(..))
+    }
+
+    pub(crate) fn uses_participation(&self) -> bool {
+        matches!(self.clock, PhonationClock::Participation(_))
+    }
+
+    pub(crate) fn needs_temporal_context(&self, now: Tick, end: Tick) -> bool {
+        matches!(&self.clock, PhonationClock::Participation(clock)
+            if clock.coupling > 0.0 && clock.policy.as_ref().is_none_or(|p| p.needs_forecast(now, end)))
+    }
+
+    pub(crate) fn set_sound_adsr(&mut self, adsr: Option<crate::life::sound::ToneAdsr>) {
+        if let PhonationClock::Participation(clock) = &mut self.clock {
+            clock.adsr = adsr;
+        }
+    }
+
+    pub(crate) fn set_temporal_context(
+        &mut self,
+        forecast: Option<&TemporalForecast>,
+        own_profile: [f32; 3],
+    ) {
+        if let PhonationClock::Participation(clock) = &mut self.clock {
+            clock.forecast = forecast.copied();
+            clock.own_profile = own_profile;
+        }
+    }
+
     pub fn from_spec(spec: &PhonationSpec, seed: u64) -> Self {
         let config = phonation_config_from_spec(spec);
         Self::from_config(&config, seed)
@@ -1000,6 +1203,7 @@ impl PhonationEngine {
             onset_rule,
             duration_rule,
             mode: config.mode,
+            measure_accent: sanitize01(config.measure_accent),
             hold: HoldCore::default(),
             initial_seed: seed,
             next_tone_id: 0,
@@ -1016,9 +1220,58 @@ impl PhonationEngine {
 
     pub(crate) fn update_from_config(&mut self, config: &PhonationConfig) {
         self.mode = config.mode;
+        self.measure_accent = sanitize01(config.measure_accent);
         let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
         self.onset_rule.update_config(&config.onset, seed);
         self.duration_rule.update_config(&config.duration);
+        match (&mut self.clock, &config.clock) {
+            (PhonationClock::ThetaGate(_), PhonationClockConfig::ThetaGate) => {}
+            (
+                PhonationClock::Coupling(clock),
+                PhonationClockConfig::Coupling {
+                    coupling,
+                    base_rate_hz,
+                    flow_depth,
+                    microtiming,
+                },
+            ) => {
+                clock.coupling = sanitize01(*coupling);
+                clock.base_rate_hz = if base_rate_hz.is_finite() {
+                    base_rate_hz.clamp(0.01, MAX_ONSET_RATE_HZ)
+                } else {
+                    1.0
+                };
+                clock.flow_depth = sanitize01(*flow_depth);
+                clock.microtiming = if microtiming.is_finite() {
+                    *microtiming
+                } else {
+                    0.0
+                };
+                if clock.flow_depth == 0.0 {
+                    clock.intrinsic_rate_hz = clock.base_rate_hz;
+                }
+            }
+            (
+                PhonationClock::Participation(clock),
+                PhonationClockConfig::Participation {
+                    coupling,
+                    base_rate_hz,
+                    flow_depth,
+                },
+            ) => {
+                clock.coupling = sanitize01(*coupling);
+                clock.base_rate_hz = if base_rate_hz.is_finite() {
+                    base_rate_hz.clamp(0.01, MAX_ONSET_RATE_HZ)
+                } else {
+                    1.0
+                };
+                clock.flow_depth = sanitize01(*flow_depth);
+                if let Some(policy) = clock.policy.as_mut() {
+                    policy.update_parameters(clock.base_rate_hz, clock.coupling, clock.flow_depth);
+                }
+            }
+            _ => self.clock = PhonationClock::from_config(&config.clock, seed),
+        }
     }
 
     pub fn has_active_notes(&self) -> bool {
@@ -1159,6 +1412,52 @@ impl PhonationEngine {
             );
             return;
         }
+        if self.uses_participation() {
+            if let PhonationClock::Participation(clock) = &mut self.clock {
+                clock.hold_theta = self.duration_rule.estimate_hold(1.0, 0.0).unwrap_or(0.0);
+            }
+            let mut timing_grid = std::mem::take(&mut self.scratch_grid);
+            let mut timing_field = std::mem::take(&mut self.scratch_field);
+            let mut cursor = ctx.now_tick;
+            while cursor < ctx.frame_end {
+                let PhonationClock::Participation(clock) = &mut self.clock else {
+                    unreachable!()
+                };
+                let Some(candidate) =
+                    clock.candidate(ctx, cursor, state.is_alive && state.onset_allowed)
+                else {
+                    break;
+                };
+                timing_grid.rebuild_from_candidates(&[candidate]);
+                timing_field.rebuild_flat(&timing_grid);
+                let before = out_onsets.len();
+                // Process in timestamp order so earlier outcomes inform later candidates.
+                let segment = CoreTickCtx {
+                    frame_end: candidate.tick.saturating_add(1),
+                    ..*ctx
+                };
+                self.process_candidates(
+                    &segment,
+                    &[candidate],
+                    &mut timing_grid,
+                    &timing_field,
+                    state,
+                    min_allowed_onset_tick,
+                    out_cmds,
+                    out_events,
+                    out_onsets,
+                );
+                let PhonationClock::Participation(clock) = &mut self.clock else {
+                    unreachable!()
+                };
+                clock.resolve(candidate.tick, out_onsets.len() > before);
+                cursor = candidate.tick.saturating_add(1);
+            }
+            self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
+            self.scratch_grid = timing_grid;
+            self.scratch_field = timing_field;
+            return;
+        }
         self.scratch_candidates.clear();
         self.clock
             .gather_candidates(ctx, &mut self.scratch_candidates);
@@ -1281,8 +1580,21 @@ impl PhonationEngine {
             };
             if allow_onset
                 && state.onset_allowed
-                && let Some(kick) = self.onset_rule.on_candidate(&input, state)
+                && let Some(mut kick) = self.onset_rule.on_candidate(&input, state)
             {
+                let measure = ctx.rhythms.measure;
+                if self.measure_accent > 0.0
+                    && ctx.rhythms.measure_ratio > 0
+                    && measure.freq_hz > 0.0
+                    && measure.freq_hz.is_finite()
+                    && measure.phase.is_finite()
+                {
+                    let dt = c.tick.saturating_sub(ctx.now_tick) as f32 / ctx.fs;
+                    let phase = measure.phase + TAU * measure.freq_hz * dt;
+                    // Weak, symmetric emphasis; no onset is scheduled by the measure.
+                    kick.strength *=
+                        1.0 + 0.35 * self.measure_accent * sanitize01(measure.alpha) * phase.cos();
+                }
                 let tone_id = self.next_tone_id;
                 self.next_tone_id = self.next_tone_id.wrapping_add(1);
                 out_cmds.push(ToneCmd::On { tone_id, kick });
@@ -1342,6 +1654,367 @@ mod tests {
     use super::*;
     use std::collections::BinaryHeap;
 
+    #[test]
+    fn participation_predictions_require_issued_onsets_and_keep_the_original_forecast() {
+        let forecast = TemporalForecast::energy_fixture(1000, 1000, |_| [0.4, 0.2, 0.1]);
+        for allowed in [false, true] {
+            let mut engine = test_engine(
+                OnsetRule::Always { strength: 1.0 },
+                DurationRule::fixed_gate(1),
+            );
+            engine.clock = PhonationClock::from_config(
+                &PhonationClockConfig::Participation {
+                    coupling: 0.8,
+                    base_rate_hz: 20.0,
+                    flow_depth: 0.0,
+                },
+                21,
+            );
+            engine.set_outcome_forecast(Some(&forecast));
+            let ctx = CoreTickCtx {
+                now_tick: 1000,
+                frame_end: 1200,
+                fs: 1000.0,
+                rhythms: NeuralRhythms::default(),
+            };
+            let (mut cmds, mut events, mut onsets) = (Vec::new(), Vec::new(), Vec::new());
+            engine.tick(
+                &ctx,
+                &CoreState {
+                    is_alive: true,
+                    onset_allowed: allowed,
+                },
+                None,
+                0.0,
+                1.0,
+                None,
+                &mut cmds,
+                &mut events,
+                &mut onsets,
+            );
+            engine.set_outcome_forecast(Some(&TemporalForecast::energy_fixture(
+                1000,
+                1200,
+                |_| [9.0; 3],
+            )));
+            let predictions: Vec<_> = engine.drain_participation_predictions().collect();
+            assert_eq!(predictions.len(), onsets.len());
+            if allowed {
+                assert!(predictions.len() >= 3);
+            } else {
+                assert!(predictions.is_empty());
+            }
+            for (prediction, onset) in predictions.iter().zip(onsets) {
+                assert_eq!(prediction.onset_frame, onset.onset_tick);
+                assert_eq!(prediction.issued_frame, 1000);
+                assert_eq!(prediction.forecast_observed_frame, 1000);
+                assert_eq!(
+                    prediction.target_start_frame,
+                    onset.onset_tick.div_ceil(10) * 10
+                );
+                assert_eq!(
+                    prediction.target_end_frame,
+                    prediction.target_start_frame + 10
+                );
+                assert_eq!(
+                    prediction.pred_continuation_habitat_band_energy,
+                    [0.4, 0.2, 0.1]
+                );
+            }
+            assert_eq!(engine.drain_participation_predictions().count(), 0);
+        }
+    }
+
+    #[test]
+    fn acoustic_cadence_changes_only_periodic_pacing_without_stretching_holds() {
+        let fs = 48_000;
+        let mut observer =
+            crate::core::temporal_expectation::AcousticTemporalExpectation::new(fs).unwrap();
+        for hop in 0..2000 {
+            let now = hop * 480;
+            let audio: [f32; 480] = std::array::from_fn(|i| {
+                let age = ((now + i) % 28_800) as f32 / fs as f32;
+                0.5 * (std::f32::consts::TAU * 180.0 * age).sin() * (-age / 0.012).exp()
+            });
+            observer.process(now as u64, &audio, |_| {});
+        }
+        let forecast = observer.forecast().unwrap();
+        for (flow_depth, hold_cycles) in [(0.0, 1), (0.8, 3)] {
+            let mut engine = test_engine(
+                OnsetRule::Always { strength: 1.0 },
+                DurationRule::fixed_gate(hold_cycles),
+            );
+            engine.clock = PhonationClock::from_config(
+                &PhonationClockConfig::Participation {
+                    coupling: 0.8,
+                    base_rate_hz: 2.0,
+                    flow_depth,
+                },
+                21,
+            );
+            engine.set_temporal_context(Some(&forecast), [0.0; 3]);
+            let ctx = CoreTickCtx {
+                now_tick: 20 * fs as u64,
+                frame_end: 23 * fs as u64,
+                fs: fs as f32,
+                rhythms: NeuralRhythms::default(),
+            };
+            let mut cmds = Vec::new();
+            let mut events = Vec::new();
+            let mut onsets = Vec::new();
+            engine.tick(
+                &ctx,
+                &CoreState {
+                    is_alive: true,
+                    onset_allowed: true,
+                },
+                None,
+                0.0,
+                1.0,
+                None,
+                &mut cmds,
+                &mut events,
+                &mut onsets,
+            );
+            let PhonationClock::Participation(clock) = &engine.clock else {
+                panic!("participation clock expected")
+            };
+            let period = clock.policy.as_ref().unwrap().period_frames();
+            if flow_depth == 0.0 {
+                assert!(period > 24_000.0);
+            } else {
+                assert_eq!(period, 24_000.0);
+            }
+            let mut ended = 0;
+            for cmd in cmds {
+                if let ToneCmd::Off { tone_id, off_tick } = cmd {
+                    let event = events.iter().find(|e| e.tone_id == tone_id).unwrap();
+                    assert_eq!(off_tick - event.onset_tick, hold_cycles as u64 * 24_000);
+                    ended += 1;
+                }
+            }
+            assert!(ended > 0, "each clock must emit and finish a sound");
+        }
+    }
+
+    #[test]
+    fn participation_releases_acoustic_cadence_through_silence_and_reacquires() {
+        let fs = 48_000;
+        let hop_size = 480;
+        let mut observer =
+            crate::core::temporal_expectation::AcousticTemporalExpectation::new(fs).unwrap();
+        let mut own = crate::core::temporal_expectation::OwnSoundHistory::new(&observer, 0);
+        let mut engine = test_engine(
+            OnsetRule::Always { strength: 1.0 },
+            DurationRule::fixed_gate(1),
+        );
+        engine.clock = PhonationClock::from_config(
+            &PhonationClockConfig::Participation {
+                coupling: 0.8,
+                base_rate_hz: 2.0,
+                flow_depth: 0.0,
+            },
+            21,
+        );
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+        for hop in 0..10_100 {
+            let now = hop * hop_size;
+            let allowed = hop < 3000 || (7000..10_000).contains(&hop);
+            let forecast = observer.forecast();
+            engine.set_temporal_context(forecast.as_ref(), [0.0; 3]);
+            engine.tick(
+                &CoreTickCtx {
+                    now_tick: now,
+                    frame_end: now + hop_size,
+                    fs: fs as f32,
+                    rhythms: NeuralRhythms::default(),
+                },
+                &CoreState {
+                    is_alive: true,
+                    onset_allowed: allowed,
+                },
+                None,
+                0.0,
+                1.0,
+                Some(1000),
+                &mut cmds,
+                &mut events,
+                &mut onsets,
+            );
+            // The reference is controlled sound; actions never supply future evidence.
+            let audio: [f32; 480] = std::array::from_fn(|i| {
+                if !allowed {
+                    return 0.0;
+                }
+                let (origin, period) = if hop < 3000 {
+                    (0, 28_800)
+                } else {
+                    (70 * fs as u64, 19_200)
+                };
+                let age = ((now + i as u64 - origin) % period) as f32 / fs as f32;
+                0.5 * (std::f32::consts::TAU * 180.0 * age).sin() * (-age / 0.012).exp()
+            });
+            own.process(now, &[0.0; 480], &[0.0; 480], &audio, |_, _, _| {});
+            engine.observe_participation_context(&own, |_| {});
+            observer.process(now, &audio, |_| {});
+            if let Some(expected) = match hop {
+                2999 => Some(0.6),
+                6999 => Some(0.5),
+                9999 => Some(0.4),
+                _ => None,
+            } {
+                let PhonationClock::Participation(clock) = &engine.clock else {
+                    unreachable!();
+                };
+                let period = clock.policy.as_ref().unwrap().period_frames() / fs as f64;
+                assert!((period - expected).abs() < 0.01, "hop {hop}: {period}");
+            }
+        }
+        assert!(onsets.len() > 100);
+        assert!(onsets.iter().all(|e| {
+            e.onset_tick < 30 * fs as u64
+                || (70 * fs as u64..100 * fs as u64).contains(&e.onset_tick)
+        }));
+        assert!(onsets.windows(2).all(|w| w[0].onset_tick < w[1].onset_tick));
+        let resumed = onsets
+            .iter()
+            .find(|e| e.onset_tick >= 70 * fs as u64)
+            .unwrap();
+        assert!(resumed.onset_tick < 71 * fs as u64);
+        let mut ended = 0;
+        for cmd in cmds {
+            if let ToneCmd::Off { tone_id, off_tick } = cmd {
+                let onset = events.iter().find(|e| e.tone_id == tone_id).unwrap();
+                assert_eq!(off_tick - onset.onset_tick, (fs / 2) as u64);
+                ended += 1;
+            }
+        }
+        assert_eq!(ended, onsets.len());
+    }
+
+    #[test]
+    fn participation_execution_is_independent_of_hop_size_and_shared_phase() {
+        for (rate, depth) in [(40.0, 0.0), (40.0, 0.8), (200.0, 0.0)] {
+            let run = |hop: u64, shared_phase: f32| {
+                let mut engine = test_engine(
+                    OnsetRule::Always { strength: 1.0 },
+                    DurationRule::fixed_gate(1),
+                );
+                engine.clock = PhonationClock::from_config(
+                    &PhonationClockConfig::Participation {
+                        coupling: 0.7,
+                        base_rate_hz: rate,
+                        flow_depth: depth,
+                    },
+                    21,
+                );
+                let mut cmds = Vec::new();
+                let mut events = Vec::new();
+                let mut onsets = Vec::new();
+                for now in (0..4000).step_by(hop as usize) {
+                    let mut rhythms = NeuralRhythms::default();
+                    rhythms.theta.phase = shared_phase + now as f32 * 0.07;
+                    rhythms.theta.freq_hz = 7.3;
+                    rhythms.delta.phase = shared_phase - now as f32 * 0.03;
+                    rhythms.env_open = if shared_phase == 0.0 { 0.0 } else { 1.0 };
+                    let ctx = CoreTickCtx {
+                        now_tick: now,
+                        frame_end: (now + hop).min(4000),
+                        fs: 1000.0,
+                        rhythms,
+                    };
+                    let before = onsets.len();
+                    engine.tick(
+                        &ctx,
+                        &CoreState {
+                            is_alive: true,
+                            onset_allowed: true,
+                        },
+                        None,
+                        0.0,
+                        1.0,
+                        Some(1000),
+                        &mut cmds,
+                        &mut events,
+                        &mut onsets,
+                    );
+                    assert!(
+                        onsets[before..]
+                            .iter()
+                            .all(|event| (now..ctx.frame_end).contains(&event.onset_tick))
+                    );
+                }
+                assert!(onsets.len() > 50);
+                assert!(onsets.iter().all(|event| event.onset_tick >= 1000));
+                assert!(
+                    onsets
+                        .windows(2)
+                        .all(|pair| pair[1].onset_tick - pair[0].onset_tick >= 5)
+                );
+                for cmd in &cmds {
+                    if let ToneCmd::Off { tone_id, off_tick } = cmd {
+                        let event = events
+                            .iter()
+                            .find(|event| event.tone_id == *tone_id)
+                            .unwrap();
+                        assert_eq!(*off_tick - event.onset_tick, (1000.0 / rate) as u64);
+                    }
+                }
+                (
+                    cmds,
+                    onsets
+                        .iter()
+                        .map(|event| event.onset_tick)
+                        .collect::<Vec<_>>(),
+                )
+            };
+            let reference = run(1, 0.0);
+            assert_eq!(reference, run(17, 1.7));
+            assert_eq!(reference, run(1000, 4.2));
+        }
+    }
+
+    #[test]
+    fn participation_config_updates_preserve_clock_progress_until_relation_changes() {
+        let mut config = PhonationConfig {
+            clock: PhonationClockConfig::Participation {
+                coupling: 0.7,
+                base_rate_hz: 10.0,
+                flow_depth: 0.0,
+            },
+            ..PhonationConfig::default()
+        };
+        let mut engine = PhonationEngine::from_config(&config, 21);
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 1000,
+            fs: 1000.0,
+            rhythms: NeuralRhythms::default(),
+        };
+        engine.clock.gather_candidates(&ctx, &mut Vec::new());
+        let PhonationClock::Participation(clock) = &engine.clock else {
+            panic!("participation")
+        };
+        let gate = clock.gate_index;
+        assert_eq!(gate, 10);
+        config.clock = PhonationClockConfig::Participation {
+            coupling: 0.4,
+            base_rate_hz: 20.0,
+            flow_depth: 0.8,
+        };
+        engine.update_from_config(&config);
+        let PhonationClock::Participation(clock) = &engine.clock else {
+            panic!("participation")
+        };
+        assert_eq!(clock.gate_index, gate);
+        assert_eq!(clock.policy.as_ref().unwrap().period_frames(), 50.0);
+        config.clock = PhonationClockConfig::ThetaGate;
+        engine.update_from_config(&config);
+        assert!(matches!(engine.clock, PhonationClock::ThetaGate(_)));
+    }
+
     fn candidate_at_gate(gate: u64) -> CandidatePoint {
         CandidatePoint { tick: gate, gate }
     }
@@ -1352,6 +2025,7 @@ mod tests {
             onset_rule,
             duration_rule,
             mode: PhonationMode::Gated,
+            measure_accent: 0.0,
             hold: HoldCore::default(),
             initial_seed: 0,
             next_tone_id: 0,
@@ -1363,6 +2037,134 @@ mod tests {
             scratch_grid: ThetaGrid::default(),
             scratch_field: TimingField::default(),
         }
+    }
+
+    #[test]
+    fn measure_accent_changes_strength_at_each_onset_without_rescheduling() {
+        for (amount, confidence, ratio, expected) in [
+            (1.0, 1.0, 2, [1.35, 1.0, 0.65, 1.0]),
+            (1.0, 0.5, 2, [1.175, 1.0, 0.825, 1.0]),
+            (0.0, 1.0, 2, [1.0; 4]),
+            (1.0, 0.0, 2, [1.0; 4]),
+            (1.0, 1.0, 0, [1.0; 4]),
+        ] {
+            let mut engine = test_engine(
+                OnsetRule::Always { strength: 1.0 },
+                DurationRule::Custom(Box::new(|_| DurationPlan::None)),
+            );
+            engine.measure_accent = amount;
+            engine.clock = PhonationClock::Custom(Box::new(|ctx, out| {
+                for gate in 0..4 {
+                    out.push(CandidatePoint {
+                        tick: ctx.now_tick + gate * 250,
+                        gate,
+                    });
+                }
+            }));
+            let mut rhythms = NeuralRhythms::default();
+            rhythms.env_open = 1.0;
+            rhythms.measure_ratio = ratio;
+            rhythms.measure.freq_hz = 1.0;
+            rhythms.measure.alpha = confidence;
+            let ctx = CoreTickCtx {
+                now_tick: 1000,
+                frame_end: 2000,
+                fs: 1000.0,
+                rhythms,
+            };
+            let mut cmds = Vec::new();
+            let mut events = Vec::new();
+            let mut onsets = Vec::new();
+            engine.tick(
+                &ctx,
+                &CoreState {
+                    is_alive: true,
+                    onset_allowed: true,
+                },
+                None,
+                0.0,
+                1.0,
+                None,
+                &mut cmds,
+                &mut events,
+                &mut onsets,
+            );
+            assert_eq!(
+                events.iter().map(|e| e.onset_tick).collect::<Vec<_>>(),
+                [1000, 1250, 1500, 1750]
+            );
+            assert_eq!(cmds.len(), 4);
+            for ((command, onset), strength) in cmds.iter().zip(&onsets).zip(expected) {
+                let ToneCmd::On { kick, .. } = command else {
+                    panic!("expected onset")
+                };
+                assert_eq!(kick.strength, onset.strength);
+                assert!((kick.strength - strength).abs() < 1e-6);
+            }
+        }
+    }
+
+    #[test]
+    fn measure_feedback_does_not_invent_grouping_for_uniform_onsets() {
+        use crate::core::meter::MeterNetwork;
+        use crate::scenario::{CoupledTimingSpec, DurationSpec, PhonationTiming};
+        let mut engine = PhonationEngine::from_spec(
+            &PhonationSpec {
+                timing: PhonationTiming::Coupled(CoupledTimingSpec {
+                    coupling: 0.0,
+                    base_rate_hz: 2.0,
+                    measure_accent: 1.0,
+                    ..Default::default()
+                }),
+                duration: DurationSpec::Gates(1),
+            },
+            1,
+        );
+        let mut meter = MeterNetwork::new();
+        let mut rhythms = NeuralRhythms::default();
+        let mut cmds = Vec::new();
+        let mut events = Vec::new();
+        let mut onsets = Vec::new();
+        let mut late_onsets = 0;
+        for hop in 0..12000 {
+            let ctx = CoreTickCtx {
+                now_tick: hop * 5,
+                frame_end: (hop + 1) * 5,
+                fs: 1000.0,
+                rhythms,
+            };
+            cmds.clear();
+            events.clear();
+            onsets.clear();
+            engine.tick(
+                &ctx,
+                &CoreState {
+                    is_alive: true,
+                    onset_allowed: true,
+                },
+                None,
+                0.0,
+                1.0,
+                None,
+                &mut cmds,
+                &mut events,
+                &mut onsets,
+            );
+            let drive = onsets.iter().map(|onset| onset.strength).sum::<f32>() * 0.25;
+            let state = meter.process(0.005, drive);
+            rhythms = NeuralRhythms::from_meter_state(&state);
+            if hop >= 8000 {
+                assert_eq!(
+                    state.measure_ratio, 0,
+                    "uniform feedback created a measure at hop {hop}"
+                );
+                for onset in &onsets {
+                    assert_eq!(onset.strength, 1.0);
+                    late_onsets += 1;
+                }
+            }
+        }
+        assert!(late_onsets >= 39);
     }
 
     #[test]
@@ -1566,6 +2368,76 @@ mod tests {
             exc_slope: 0.0,
         });
         assert_eq!(plan, DurationPlan::HoldTheta(0.0));
+    }
+
+    #[test]
+    fn theta_clock_preserves_crossings_on_frame_boundaries() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.freq_hz = 16.0;
+        rhythms.theta.phase = 0.0;
+        let mut clock = ThetaGateClock::default();
+        for now_tick in [0, 128, 256] {
+            let ctx = CoreTickCtx {
+                now_tick,
+                frame_end: now_tick + 128,
+                fs: 1024.0,
+                rhythms,
+            };
+            let mut candidates = Vec::new();
+            clock.gather_candidates_impl(&ctx, &mut candidates);
+            assert_eq!(
+                candidates.iter().map(|c| c.tick).collect::<Vec<_>>(),
+                vec![now_tick, now_tick + 64]
+            );
+            candidates.clear();
+            clock.gather_candidates_impl(&ctx, &mut candidates);
+            assert!(
+                candidates.is_empty(),
+                "repeated frames must not emit old crossings"
+            );
+        }
+    }
+
+    #[test]
+    fn theta_clock_near_a_crossing_does_not_repeat_the_phase_remainder() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.freq_hz = 8.0;
+        rhythms.theta.phase = TAU * (1.0 - 10.0 / 6000.0);
+        let ctx = CoreTickCtx {
+            now_tick: 912_384,
+            frame_end: 912_896,
+            fs: 48_000.0,
+            rhythms,
+        };
+        let mut clock = ThetaGateClock::default();
+        let mut candidates = Vec::new();
+        clock.gather_candidates_impl(&ctx, &mut candidates);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].tick, ctx.now_tick + 10);
+        let mut grid = ThetaGrid::from_candidates(&candidates);
+        grid.ensure_boundaries_until(&ctx, 2, None);
+        assert_eq!(grid.boundaries[1].tick - grid.boundaries[0].tick, 6000);
+        assert_eq!(grid.boundaries[2].tick - grid.boundaries[1].tick, 6000);
+    }
+
+    #[test]
+    fn theta_clock_multiple_crossings_are_one_cycle_apart() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.freq_hz = 100.0;
+        rhythms.theta.phase = TAU * 0.8;
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 32,
+            fs: 1000.0,
+            rhythms,
+        };
+        let mut clock = ThetaGateClock::default();
+        let mut candidates = Vec::new();
+        clock.gather_candidates_impl(&ctx, &mut candidates);
+        assert_eq!(
+            candidates.iter().map(|c| c.tick).collect::<Vec<_>>(),
+            vec![2, 12, 22]
+        );
     }
 
     #[test]
@@ -1981,7 +2853,7 @@ mod tests {
     }
 
     #[test]
-    fn theta_grid_ensure_boundaries_until_uses_next_gate_tick_after_boundary() {
+    fn theta_grid_ensure_boundaries_until_adds_a_full_cycle() {
         let mut rhythms = NeuralRhythms::default();
         rhythms.theta.freq_hz = 1.0;
         rhythms.theta.phase = 0.0;
@@ -1992,8 +2864,7 @@ mod tests {
             rhythms,
         };
         let t0 = 0;
-        let expected =
-            next_gate_tick(t0 + 1, ctx.fs, ctx.rhythms.theta, 0.0).expect("expected tick");
+        let expected = 100;
         let mut grid = ThetaGrid {
             boundaries: vec![GateBoundary { gate: 0, tick: t0 }],
         };
@@ -2288,6 +3159,7 @@ mod tests {
     #[test]
     fn update_from_config_falls_back_on_mismatch() {
         let base = PhonationConfig {
+            measure_accent: 0.0,
             mode: PhonationMode::Gated,
             onset: OnsetConfig::None,
             duration: DurationConfig::FixedGate { length_gates: 1 },
@@ -2460,13 +3332,8 @@ mod tests {
         rhythms.theta.freq_hz = 1.0;
         rhythms.theta.phase = 0.0;
         let fs = 100.0;
-        let expected_gate1_tick =
-            next_gate_tick(1, fs, rhythms.theta, 0.0).expect("expected gate1 tick");
-        let mut expected_off_tick = ((expected_gate1_tick as f64) * 0.5).round() as Tick;
-        let lo = 1;
-        let hi = expected_gate1_tick.saturating_sub(1);
-        assert!(lo <= hi);
-        expected_off_tick = expected_off_tick.clamp(lo, hi);
+        // Half a 1 Hz cycle at 100 samples/sec is exactly 50 ticks.
+        let expected_off_tick: Tick = 50;
         let ctx = CoreTickCtx {
             now_tick: 0,
             frame_end: expected_off_tick.saturating_add(1),

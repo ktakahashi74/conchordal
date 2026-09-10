@@ -72,11 +72,7 @@ fn onset_strength_for_role(role: RhythmRole) -> f32 {
 pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfig {
     let duration = duration_config_from_spec(&spec.duration);
 
-    // The rhythm families are one coupling continuum on the shared production
-    // meter: each voice is a phase oscillator that entrains its onset phase to
-    // the emergent beat with a per-voice coupling strength. There is no
-    // externally imposed grid -- coherence (or its absence) emerges from how
-    // tightly each voice locks to the meter the population itself drives.
+    // Sharing acoustic evidence does not require aligning onset phases.
     if let PhonationTiming::Coupled(coupled) = spec.timing {
         let coupled = coupled.sanitized();
         // The low-coupling (flow) renewal droplets are short; scale the
@@ -88,16 +84,26 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
             duration
         };
         return PhonationConfig {
+            measure_accent: coupled.measure_accent,
             mode: PhonationMode::Gated,
             onset: OnsetConfig::Always {
                 strength: onset_strength_for_role(coupled.role),
             },
             duration,
-            clock: PhonationClockConfig::Coupling {
-                coupling: coupled.coupling,
-                base_rate_hz: coupled.base_rate_hz,
-                flow_depth: coupled.flow_depth,
-                microtiming: coupled.microtiming,
+            clock: match coupled.relation {
+                crate::scenario::RhythmRelation::Synchronized => PhonationClockConfig::Coupling {
+                    coupling: coupled.coupling,
+                    base_rate_hz: coupled.base_rate_hz,
+                    flow_depth: coupled.flow_depth,
+                    microtiming: coupled.microtiming,
+                },
+                crate::scenario::RhythmRelation::Participating => {
+                    PhonationClockConfig::Participation {
+                        coupling: coupled.coupling,
+                        base_rate_hz: coupled.base_rate_hz,
+                        flow_depth: coupled.flow_depth,
+                    }
+                }
             },
         };
     }
@@ -106,6 +112,7 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
         PhonationTiming::Once => match &spec.duration {
             // once() + while_alive() = sustain: Hold mode, NoteOff on death.
             DurationSpec::WhileAlive => PhonationConfig {
+                measure_accent: 0.0,
                 mode: PhonationMode::Hold,
                 onset: OnsetConfig::None,
                 duration,
@@ -113,6 +120,7 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
             },
             // once() + cycles(n) / adaptive_duration(): fire immediately, never repeat.
             _ => PhonationConfig {
+                measure_accent: 0.0,
                 mode: PhonationMode::Gated,
                 onset: OnsetConfig::Accumulator {
                     rate: 1e6,
@@ -125,6 +133,7 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
         // `sync` does not shape onset timing; it only mixes the predictive gate
         // gain (`prediction_sync`) read by the population layer.
         PhonationTiming::Pulse { rate_hz, .. } => PhonationConfig {
+            measure_accent: 0.0,
             mode: PhonationMode::Gated,
             onset: OnsetConfig::Accumulator {
                 rate: rate_hz.max(0.01),

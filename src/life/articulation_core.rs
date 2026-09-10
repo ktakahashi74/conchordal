@@ -1195,6 +1195,7 @@ mod tests {
             delta: crate::core::modulation::RhythmBand::default(),
             env_level: 0.81,
             env_open: 0.95,
+            ..NeuralRhythms::default()
         };
 
         let dt = 0.01;
@@ -1236,6 +1237,7 @@ mod tests {
             delta: crate::core::modulation::RhythmBand::default(),
             env_level: 0.81,
             env_open: 0.95,
+            ..NeuralRhythms::default()
         };
 
         let dt = 0.01;
@@ -1287,6 +1289,7 @@ mod tests {
             delta: crate::core::modulation::RhythmBand::default(),
             env_level: 1.0,
             env_open: 0.0,
+            ..NeuralRhythms::default()
         };
 
         core.update_phase(&theta, &rhythms, 0.01, 0.7, false);
@@ -1319,6 +1322,7 @@ mod tests {
             delta: crate::core::modulation::RhythmBand::default(),
             env_level: -1.0,
             env_open: 1.0,
+            ..NeuralRhythms::default()
         };
 
         core.update_phase(&theta, &rhythms, 0.01, 0.7, false);

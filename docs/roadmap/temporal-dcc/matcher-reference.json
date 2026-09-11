@@ -1,0 +1,328 @@
+{
+  "schema": "temporal-dcc-matcher-reference-v1",
+  "registered_at": "2026-09-10T20:58:57.968073+00:00",
+  "status": "bounded_numerical_query_coarse_DTW_and_commit_interfaces_verified; full_model_not_fit_ready",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "sections": [
+      "9.3",
+      "10.1"
+    ]
+  },
+  "source": {
+    "path": "scripts/temporal_matcher_reference.py",
+    "sha256": "cd2c2a162e542b310f33d561ec776577d3b33dbba65b103c54554ec4ad73037e",
+    "functions": [
+      "descriptor_query",
+      "committed_episode",
+      "anchor_transform",
+      "coarse_cost",
+      "refine_anchor",
+      "subsequence_dtw",
+      "match_query",
+      "coarse_commit_snapshot"
+    ],
+    "dependencies": [
+      {
+        "path": "scripts/temporal_descriptor_reference.py",
+        "sha256": "9b8c427bff35215d187dc4a34042b04e494356a710b36031e1cb5902b951c88b"
+      }
+    ]
+  },
+  "interfaces": {
+    "query": "Detached copy of the bounded bank, flushed partial/gap records, original identities and scales. Live bank/pairing untouched. Whole-prefix query_end and last_supported_audio_end stay separate. Old cuts require saved queries; issued_at never supplies acoustic freshness. Also exports the exact packed knot bytes. Group generation is retained through match_query and coarse_commit_snapshot.",
+    "episode": "committed_episode binds a positive sealed occurrence to exactly its original span, freezes update APIs, and exports original first_observed_end, commitment and actual delivered_at availability separately. No new assignment or bank lifecycle is inferred.",
+    "coarse": "Every fourth retained knot, up to32 anchors/episode. Pair first up to8 cue steps without skipping masked positions. Median cue-minus-reference centroid and log2(reference/cue positive interval) use at most8/7 samples and49 insertion-sort comparisons. Gaps/all-masked endpoints cannot identify tempo. Round1/16, lower ties.",
+    "transform": "Centroid transposition only; tempo maps original cue times into reference times. Other values remain residuals. Missing dimensions apply0 with explicit unidentified masks. Outside/boundary estimates are unknown, never novelty. Median sample counts and residual RMS remain explicit.",
+    "refine": "Up to4 bracketing1/64 combinations per selected best anchor; no full transformation cross product. Stable coarse-cost/grid-ID ranking, then selected transformation cap.",
+    "coarse_cache": "Mean squared scaled common raw-value residuals across paired steps. Cache min supported cost and exp(-cost) for every eligible episode, including non-top16. Retain generation, anchor, masks/counts and bound/cap flags. Dictionary exports are not the24-byte runtime cache layout.",
+    "dtw": "Banded subsequence recurrence: diagonal+mean common-coordinate residual, cue insertion cost, reference deletion cost. Free outside-subsequence reference. Missing pair contributes0 residual and0 evidence; it is not automatically an edit. Normalize full numerator by positive-acquisition cue steps; no supported pair gives unknown. Ties diagonal/insertion/deletion, then earlier endpoint.",
+    "band": "Binary nearest-time lookup on affine-mapped original representative times with earlier ties. At most33 reference cells per cue row; disconnected paths unknown and boundary hits explicit. No proportional index mapping.",
+    "diagnostics": "Keep per-coordinate residuals, matched/observed steps, missing pairs, inserts/deletes, path and original reference position. Consecutive supported diagonal pairs report separate relative-pitch-motion and interval-ratio RMS; never bridge gaps/edits or add these as new cost coefficients.",
+    "cutoff": "Rank episodes by supported best coarse cost then stable ID, retain16. Record excluded IDs and exact cutoff ties; ambiguous_cutoff feeds existing section unresolved classification. Search coverage excludes anchor-cap loss or band-edge hits for nonrecurrence claims.",
+    "commit_adapter": "Explicit (episode ID,generation) to existing distinct opaque ledger-handle mapping. Missing/retired bindings stay absent. Required received_at must be finite and>=worker completion; the snapshot stores this actual receipt and original query/generation/full-audio endpoints. Late delivery cannot supply an earlier commitment."
+  },
+  "parameters": {
+    "candidate_episodes": 16,
+    "bank_episode_limit": 256,
+    "anchor_spacing": 4,
+    "anchors_per_episode": 32,
+    "initial_log2_bounds": [
+      2,
+      2
+    ],
+    "coarse_log2_grid": 0.0625,
+    "fine_log2_grid": 0.015625,
+    "transform_limit": 4,
+    "band_radius": 16,
+    "dtw_insertion_penalty": 1,
+    "dtw_deletion_penalty": 1,
+    "coordinate_standard_deviations": "caller-supplied frozen global scales; real development fitting pending"
+  },
+  "sensitivity": {
+    "anchor_spacing": [
+      2,
+      4,
+      8
+    ],
+    "anchor_count": [
+      16,
+      32,
+      64
+    ],
+    "band_radius": [
+      8,
+      16,
+      32
+    ],
+    "candidate_limit": [
+      8,
+      16,
+      32
+    ],
+    "transform_limit": [
+      2,
+      4,
+      8
+    ],
+    "log2_bounds_magnitude": [
+      1,
+      2,
+      4
+    ],
+    "coarse_grid": [
+      0.03125,
+      0.0625,
+      0.125
+    ],
+    "selected_penalties_separately_and_jointly": [
+      0.5,
+      1,
+      2
+    ],
+    "status": "Small numerical width, penalty and spacing fixtures run; full joint sensitivity, fitted margins, miss-rate envelopes and T4/T6 decisions remain open."
+  },
+  "verification": {
+    "tests": 33,
+    "test_source": "tests/test_evaluate_temporal_matcher_reference.py",
+    "test_sha256": "cc97af80724befe0ff5f2182aacb698023c96fa435d1d755cd20889b9ed3605c",
+    "status": "passed",
+    "exhaustive_short_path_cases": 50,
+    "seed": 47013,
+    "short_path_agreement": "13 decimal places against independent enumeration with random costs and0.5/1/2 penalties",
+    "search_fixtures": 15,
+    "resource_case": {
+      "episodes": 256,
+      "reference_knots": 128,
+      "cue_knots": 128,
+      "anchor_evaluations": 8192,
+      "median_comparisons": 121349,
+      "refinement_evaluations": 62,
+      "matches": 62,
+      "dp_cells": 179392,
+      "elapsed_sec": 0.2764606608543545
+    },
+    "counterexample": "Spacing8 loses the transposed mid-episode fixture and biases exact/faster/masked pitch estimates by-0.1875. Spacing2/4 recover these four fixtures exactly; the shared-multiset shuffle retains positive cost. No spacing or cognitive tolerance adopted from this small assay.",
+    "suite_status": "passed",
+    "suite_tests": 659,
+    "suite_elapsed_sec": 28.88,
+    "suite_log": "target/temporal-dcc/m0-python-tests-query-scheduler-final-20260911.log",
+    "suite_exit_record": "target/temporal-dcc/m0-python-tests-query-scheduler-final-status.txt",
+    "rust": {
+      "passed": 746,
+      "failed": 0,
+      "ignored": 12,
+      "exit": 0,
+      "log": "target/temporal-dcc/m0-rust-tests-query-scheduler-final-20260911.log",
+      "exit_record": "target/temporal-dcc/m0-rust-tests-query-scheduler-final-status.txt",
+      "scope": "Existing engine regression; no Rust change or production numerical-equivalence claim."
+    },
+    "site_build": "target/temporal-dcc/m0-site-query-scheduler-final-20260911"
+  },
+  "resource_scope": {
+    "dp_numeric_payload_bytes_at_128_by_128_band33": 7824,
+    "query_bank_and_insertion_payload_bytes": 41280,
+    "counts": "DP cell/read counters exclude raw extraction, query-copy/decoded output, validation, diagnostics, queue/cache/bank, dictionary/object/allocator costs. Audit elapsed_sec covers one numerical match_query including its own validations and diagnostics.",
+    "not_measured": "Complete simultaneous workers/64Voices, actual transport/allocators, full bank/ledger and all retained state. Fixed numerical queue/cache buffers now have a separate registration.",
+    "measured_single_query_exceeds_total_worker_40ms_budget": true,
+    "single_query_to_total_worker_budget_ratio": 6.9115165213588625,
+    "decision": "This offline Python implementation cannot be installed directly on the declared real-time cadence. Implement and measure production kernels and the full simultaneous workload; single-query correctness/counters do not pass O04."
+  },
+  "remaining": [
+    "Actual NSGT/ridge/group inference, all beam activity/ownership and real worker transport. Numerical cadence/latest queue/eight-snapshot cache are in query-scheduler-reference.json.",
+    "Complete bank/edge lifecycle and sizing, global memory clock, strength/availability, bounds for unknown gaps and real ancestry.",
+    "Uncompressed versus compressed/unequal-density/full-transform exhaustive retrieval, broad mid-episode recall and complete sensitivity decision rules before freezing index/scales.",
+    "Actual development scales, all feature inventories and controls including orderless/recent/time-only, full O12 fit/replay/calibration and predictive stability.",
+    "Full O04 kernel/performance/memory preflight, real waveform/task feasibility and human/institution gates."
+  ],
+  "production_integration": false,
+  "fitted_development_scales": false,
+  "human_collection_authorized": false,
+  "archive": {
+    "directory": "target/temporal-dcc/m0-query-scheduler-reference-final-20260911",
+    "artifacts": {
+      "counterexamples-before.json": "d71b2b33feb7e9f1bb37c48f086b5172025bdfda6f20b52054c39c9c4ebc4681",
+      "descriptor-pre-receipt-reference.json": "53926da053d532d5b54251a7b1d100aec019fd799511a0a0f52e7382f8bd7bfd",
+      "descriptor-reference-before.json": "ba4e3a6140768832ffe66310ff1f1afd14d2e0ada7a7d96d529b2d0aeacc586a",
+      "feature-manifest-after.json": "c3204ee64bbee302f350eb9d2032a56437fc5e122d505b55e7e7a3a959d9531d",
+      "feature-manifest-before.json": "c16b82e61f2336de01bd1483585d941468512483c2acea2b82f43c9403309fbd",
+      "feature-manifest-verified.json": "9456d66b4322b09930936bf246042c1fed29056a5868c7b6e68f84fde1c624fd",
+      "matcher-pre-receipt-reference.json": "02817e46b720550cd60dfc78c50034bfa268743dcc4e49d0eb8e3cb0a4e6519a",
+      "matcher-reference-before.json": "d4e5a1ffa42fe0cf6007279f192cae1f17f1b0fb33326adeb476a28af49a5c52",
+      "occurrence-pre-receipt-reference.json": "22ce83beb4a0c825c233e15ad2f7f7aab7e58e075afe030a61d51839a578e4c9",
+      "occurrence-reference-before.json": "f30be41a5a8d0cbd57c4efb549b5f954d190063c0298910db3a2002e25922472",
+      "query-scheduler-pre-receipt-reference.json": "31e151f08d301d0a032739d8eea256373848172102439018b03e488d122ecbb4",
+      "queue-audit.json": "27a6511d792a4a20f52e6a53628b3cc16218a4e19f5132e3399dda4b586aa104",
+      "queue-audit.py": "3bcb2fc7291b538986bec8f53d301c95726cd48ab0c398d051cd8f7d0c1e7807",
+      "specification-before.md": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+      "specification.md": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "temporal_accent_reference.py": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+      "temporal_cognition_reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+      "temporal_descriptor_reference-before.py": "5bb4e75692beb8a5e2b0512df045c29b00fc26ac6f22ded15a59fdf9b17d821a",
+      "temporal_descriptor_reference.py": "d4f482a6217a4d91813d47459ebc43bfd2d401a6b9d15d67dd8bd8c61d7ab13d",
+      "temporal_matcher_reference-before.py": "a4d4a78da08e97ddc600254fdca1693b09a5001a66f940dabc052b3e3c0adbe2",
+      "temporal_matcher_reference.py": "cd2c2a162e542b310f33d561ec776577d3b33dbba65b103c54554ec4ad73037e",
+      "temporal_occurrence_reference-before.py": "3faa156702b2795b38a9a2f2eab31605eede5560bdd59e43ecbe1c88f51146cf",
+      "temporal_occurrence_reference.py": "6dc8a9a5beae18d0f9c422074236bb2340c9af8c2a47bce50a20b4356c596e0f",
+      "temporal_query_scheduler_reference.py": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+      "temporal_section_reference.py": "4e320c0fffb48f67128b502c67f009467cf27226f364bb3a8382702603a2f3ac",
+      "test_evaluate_temporal_descriptor_reference.py": "a5db83f0a83d19d0fd9c81b39b0957bb331d414e9bc3d1b8def4cf66dbfe9de6",
+      "test_evaluate_temporal_matcher_reference-before.py": "06c0be8324e3c4b00eb22210813b46a192da17ba4e729c676f8a99d64306db05",
+      "test_evaluate_temporal_matcher_reference.py": "cc97af80724befe0ff5f2182aacb698023c96fa435d1d755cd20889b9ed3605c",
+      "test_evaluate_temporal_occurrence_reference-before.py": "055e82fab982a9734904c226f1f85790074fa1441cfdb3c6e9ff9c4afe252e63",
+      "test_evaluate_temporal_occurrence_reference.py": "be73b4e0ad4b1047821b839849de557077bbd3d79ada1591606477dfae191af7",
+      "test_evaluate_temporal_query_scheduler_reference.py": "2fa35c4c31181279932163fa9cadd72a53e375f31f45b856aae02824e6463c23"
+    },
+    "final_feature_manifest": "feature-manifest-verified.json"
+  },
+  "specification_history": [
+    {
+      "sha256": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+      "reason": "Bounded acquired-sample query scheduling, one worker ticket per bus, packed eight-snapshot cache and receipt availability; original full-audio/generation commitment cuts. Section9.3 only; full M0 gates remain open."
+    },
+    {
+      "sha256": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "reason": "Bounded global acquisition-gap clock, original-time episode retention, rate-envelope overflow and frozen pre-target assay copy; section9.3 only. Full bank/graph, fitting and simultaneous runtime remain open."
+    },
+    {
+      "sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+      "reason": "Fixed bank/anchor/shared-edge payload, fresh reservations, explicit eviction, unrenormalized membership loss and actual bank-receipt cut. Section9.3 only; inferred relations/ancestry, full transport, fitting and O04 remain open."
+    },
+    {
+      "sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a",
+      "reason": "Fixed128-byte endpoint headers, bounded heap/free/ID indexes, immutable claims and original deadline/actual delivery, ticket-safe acknowledgment and explicit cycle/backlog loss. Section9.3 only; referenced pools and complete ledger/inference/runtime remain open."
+    },
+    {
+      "sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5",
+      "reason": "Fixed immutable byte-payload pool, original paired-ID issuer and typed endpoint ownership/rollback/retirement. Section9.3 only. Explicit sharing passes header capacity, but distinct snapshots exhaust half/base/double pools; full inference, structural sharing, consumer integration and M0 gates remain open."
+    },
+    {
+      "sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+      "reason": "Exact320-byte knot structural sharing, fixed version vectors/hash indexes and split-pool endpoint ownership. Section9.3 only. Conditional fixed1024-path half/base/double sizing and unrelated-content failures retained; real producers, churn, all payloads, consumers and full M0 gates remain open."
+    },
+    {
+      "sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit."
+    },
+    {
+      "sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open."
+    },
+    {
+      "sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+      "reason": "Actual finite host-clock arrivals expose aggregate delivery backlog and separate bank-entry versus final publication cuts; numerical sources and model unchanged."
+    },
+    {
+      "sha256": "4097a4f651dba073f4848bf25fa9a2ff90e936584f481ae68dc43ba625c7d4ec",
+      "reason": "Section9.3 only: R1/S1 typed consumer records preserve u64 identities, f64 values and independent masks; fixed-driver maximum-load timed work falls33.2%, but aggregate throughput and full O04 remain unmet."
+    },
+    {
+      "sha256": "fea51b989b51ca6e25150af98d3c3e19420bdd21dbfbab949b1a918d366096e3",
+      "reason": "Section9.3 only: retain private section preparation, merge only sealed regions after intervening observations, count1408 staging bytes per target. Same-inventory finite cost improves; full O04 and M0 remain unmet."
+    },
+    {
+      "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
+      "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    }
+  ],
+  "updated_at": "2026-09-11T11:40:42.701331+00:00",
+  "previous_versions": [
+    {
+      "directory": "target/temporal-dcc/m0-matcher-reference-20260911",
+      "artifacts": {
+        "descriptor-reference-before.json": "48f147f6e2e948f68fa871663e3d9e375b818c514bc9b33c057a2eef316a98ff",
+        "feature-manifest-after.json": "c16b82e61f2336de01bd1483585d941468512483c2acea2b82f43c9403309fbd",
+        "feature-manifest-before.json": "4c20f0b422b5cd41bad4788b4f33c7d408827428fa0fc37ca9d948ae1d428c1d",
+        "search-audit.json": "8a2d943fe4296fbb98c03b2a3caf6ed13bde0deb812f678a96d35979e21037cc",
+        "search-audit.py": "5e8f16b9b202b5ead63c80a09853167c46de14247952079fedb3280950e23fb9",
+        "specification-before.md": "5f60772cb8d366e5875cd354c84d547193f32a01621091116cda6725cb84ea85",
+        "specification.md": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+        "temporal_accent_reference.py": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+        "temporal_cognition_reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+        "temporal_descriptor_reference-before.py": "b1422ca18057d59b920790f45c0fcccd55efebe99a23e91429c9f9a9422f0ff8",
+        "temporal_descriptor_reference.py": "5bb4e75692beb8a5e2b0512df045c29b00fc26ac6f22ded15a59fdf9b17d821a",
+        "temporal_matcher_reference.py": "a4d4a78da08e97ddc600254fdca1693b09a5001a66f940dabc052b3e3c0adbe2",
+        "temporal_occurrence_reference.py": "3faa156702b2795b38a9a2f2eab31605eede5560bdd59e43ecbe1c88f51146cf",
+        "temporal_section_reference.py": "4e320c0fffb48f67128b502c67f009467cf27226f364bb3a8382702603a2f3ac",
+        "test_evaluate_temporal_descriptor_reference.py": "a5db83f0a83d19d0fd9c81b39b0957bb331d414e9bc3d1b8def4cf66dbfe9de6",
+        "test_evaluate_temporal_matcher_reference.py": "06c0be8324e3c4b00eb22210813b46a192da17ba4e729c676f8a99d64306db05"
+      },
+      "source_sha256": "a4d4a78da08e97ddc600254fdca1693b09a5001a66f940dabc052b3e3c0adbe2",
+      "reason": "Bounded acquired-sample query scheduling, one worker ticket per bus, packed eight-snapshot cache and receipt availability; original full-audio/generation commitment cuts. Section9.3 only; full M0 gates remain open."
+    },
+    {
+      "directory": "target/temporal-dcc/m0-query-scheduler-reference-20260911",
+      "artifacts": {
+        "counterexamples-before.json": "d71b2b33feb7e9f1bb37c48f086b5172025bdfda6f20b52054c39c9c4ebc4681",
+        "descriptor-reference-before.json": "ba4e3a6140768832ffe66310ff1f1afd14d2e0ada7a7d96d529b2d0aeacc586a",
+        "feature-manifest-after.json": "c3204ee64bbee302f350eb9d2032a56437fc5e122d505b55e7e7a3a959d9531d",
+        "feature-manifest-before.json": "c16b82e61f2336de01bd1483585d941468512483c2acea2b82f43c9403309fbd",
+        "matcher-reference-before.json": "d4e5a1ffa42fe0cf6007279f192cae1f17f1b0fb33326adeb476a28af49a5c52",
+        "occurrence-reference-before.json": "f30be41a5a8d0cbd57c4efb549b5f954d190063c0298910db3a2002e25922472",
+        "queue-audit.json": "27a6511d792a4a20f52e6a53628b3cc16218a4e19f5132e3399dda4b586aa104",
+        "queue-audit.py": "3bcb2fc7291b538986bec8f53d301c95726cd48ab0c398d051cd8f7d0c1e7807",
+        "specification-before.md": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+        "specification.md": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+        "temporal_accent_reference.py": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+        "temporal_cognition_reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+        "temporal_descriptor_reference-before.py": "5bb4e75692beb8a5e2b0512df045c29b00fc26ac6f22ded15a59fdf9b17d821a",
+        "temporal_descriptor_reference.py": "d4f482a6217a4d91813d47459ebc43bfd2d401a6b9d15d67dd8bd8c61d7ab13d",
+        "temporal_matcher_reference-before.py": "a4d4a78da08e97ddc600254fdca1693b09a5001a66f940dabc052b3e3c0adbe2",
+        "temporal_matcher_reference.py": "eb2bc94edc2e78ae95313ea11cb6f32376509e2afde6af275a2168cd0d204d6e",
+        "temporal_occurrence_reference-before.py": "3faa156702b2795b38a9a2f2eab31605eede5560bdd59e43ecbe1c88f51146cf",
+        "temporal_occurrence_reference.py": "6dc8a9a5beae18d0f9c422074236bb2340c9af8c2a47bce50a20b4356c596e0f",
+        "temporal_query_scheduler_reference.py": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+        "temporal_section_reference.py": "4e320c0fffb48f67128b502c67f009467cf27226f364bb3a8382702603a2f3ac",
+        "test_evaluate_temporal_descriptor_reference.py": "a5db83f0a83d19d0fd9c81b39b0957bb331d414e9bc3d1b8def4cf66dbfe9de6",
+        "test_evaluate_temporal_matcher_reference-before.py": "06c0be8324e3c4b00eb22210813b46a192da17ba4e729c676f8a99d64306db05",
+        "test_evaluate_temporal_matcher_reference.py": "04234927d1f96a758ceae39a8534bf52b564174e5bb90f6446ba2082ecb4484e",
+        "test_evaluate_temporal_occurrence_reference-before.py": "055e82fab982a9734904c226f1f85790074fa1441cfdb3c6e9ff9c4afe252e63",
+        "test_evaluate_temporal_occurrence_reference.py": "be73b4e0ad4b1047821b839849de557077bbd3d79ada1591606477dfae191af7",
+        "test_evaluate_temporal_query_scheduler_reference.py": "2fa35c4c31181279932163fa9cadd72a53e375f31f45b856aae02824e6463c23",
+        "feature-manifest-verified.json": "e567a6cd1fd4b8c9eeec319f90bf162c2a94a3d379136ba038b4398d9f12de6c"
+      },
+      "final_feature_manifest": "feature-manifest-verified.json",
+      "source_sha256": "eb2bc94edc2e78ae95313ea11cb6f32376509e2afde6af275a2168cd0d204d6e",
+      "reason": "Before requiring explicit actual receipt time on the standalone coarse_commit_snapshot adapter; earlier queue/clock/cache numerical checks retained."
+    }
+  ],
+  "queue_integration": "query-scheduler-reference.json; bounded numerical controller only, full runtime/ancestry/bank/ledger remain open.",
+  "retention_integration": {
+    "numeric_reference": "memory-reference.json",
+    "status": "Finite global gap/strength/availability and pre-target copy implemented; complete bank/graph and production transport remain open.",
+    "historical_verification": "Prior component tests and archives remain pinned to their original runs; later full suite belongs to memory-reference.json."
+  },
+  "bank_integration": {
+    "numeric_reference": "bank-reference.json",
+    "status": "Fixed descriptor/anchor/shared-edge storage and fresh handle/eviction/focus conventions verified on finite inputs; full inferred relation graph and transport remain open."
+  }
+}

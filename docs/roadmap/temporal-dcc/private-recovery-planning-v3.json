@@ -1,0 +1,50 @@
+{
+  "schema": "temporal-dcc-private-allocation-global-separation-v3",
+  "registered_at": "2026-09-10T16:33:26.968303+00:00",
+  "base_design": {
+    "path": "docs/roadmap/temporal-dcc/private-recovery-design-v2.json",
+    "sha256": "9647906fcbf94a2e55ef99bd9a455a3e1a927a79859cdec4878e3ca54ceda150"
+  },
+  "reason": "v2 fails two complete-observation cap=1.5 truth points. Some estimates enter cap<one-credit, where cap cancels completely from normalized timing; local Fisher constraints at truth do not distinguish that branch.",
+  "retained_scope": "All v2 exposure cells, nuisance conditions, truth points and error criteria. Keep all v2 counts; add independent probes only at N=4, delay=0.125 seconds, interference=0.",
+  "separation_model": "For complete-observation one-mode prefixes and cap below the one-event increment, both reference first-pattern fractions are <=0.5. Compare each truth distribution at the calibration cell with the entire two-fraction box [0,0.5]^2.",
+  "distance": "Minimum Bhattacharyya distance: -log(sum_record sqrt(p_truth*p_alternative)), including missing detection. Maximize affinity over the two-fraction box with analytic gradients. This is an engineering separation criterion, not an error guarantee for a continuous composite alternative.",
+  "solver": {
+    "method": "L-BFGS-B",
+    "start": [
+      0.5,
+      0.5
+    ],
+    "bounds": [
+      [
+        0,
+        0.5
+      ],
+      [
+        0,
+        0.5
+      ]
+    ],
+    "maxiter": 1000,
+    "ftol": 1e-14,
+    "gtol": 1e-10
+  },
+  "count_candidates": [
+    256,
+    1024,
+    4096,
+    16384,
+    65536
+  ],
+  "selection": "Smallest candidate total count at the calibration cell yielding expected distance >=8 for every one of the 36 complete-condition truth points. Apply this same count to all three nuisance conditions and preserve all other counts.",
+  "fit_revision": "After selecting the lowest-loss converged interior candidate with the v2 procedures, require rank three in its expected physical-record Fisher information at the actual allocation. A rank-deficient best candidate is a failed fit, not replaced by a higher-loss identifiable candidate or clipped to a new cap bound.",
+  "seed": 2026091103,
+  "replicates_per_point": 100,
+  "forward_law_changed": false,
+  "recovery_tolerances_changed": false,
+  "budget": {
+    "wall_sec": 600,
+    "cpu_sec": 600
+  },
+  "empirical_allocation_adopted": false
+}

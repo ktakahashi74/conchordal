@@ -1,0 +1,59 @@
+{
+  "schema": "temporal-dcc-private-fisher-allocation-v8",
+  "registered_at": "2026-09-10T17:32:57.119533+00:00",
+  "base_design": {
+    "path": "docs/roadmap/temporal-dcc/private-recovery-exposure-v8.json",
+    "sha256": "d5f3185c423113cc4c2f9886926ff46ab479117307de63b6fd6d6a1c0ef01ebd"
+  },
+  "study_version": 8,
+  "seed": 2026091108,
+  "minimum_probes_per_cell": 2,
+  "maximum_log_parameter_se": [
+    0.12,
+    0.12,
+    0.12
+  ],
+  "objective": "Minimize complete prefix replay time with every old and added cell retained and all108 truth/condition Fisher SE constraints. Keep even per-cell counts balancing the target heads.",
+  "solver": {
+    "method": "SLSQP",
+    "maxiter": 1000,
+    "ftol": 1e-10
+  },
+  "budget": {
+    "wall_sec": 600,
+    "cpu_sec": 600
+  },
+  "selection": "Fisher-optimize and round upward to even counts, with the original uniform fallback. Before Monte Carlo, require the separate deterministic unsaturated-branch check below.",
+  "separation_gate": {
+    "points": [
+      [
+        "fractional",
+        2
+      ],
+      [
+        "ambiguous_missing",
+        2
+      ],
+      [
+        "ambiguous_missing",
+        5
+      ],
+      [
+        "ambiguous_missing",
+        8
+      ]
+    ],
+    "minimum_total_bhattacharyya_distance": 8,
+    "fully_supported_prefix_count_factors": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "alternative": "unsaturated cap=2*max(A_counts); profile tau/kappa over original fit bounds with the v6 multistart method; include each truth tau/kappa start",
+    "scope": "Finite multistart planning heuristic, not global identification proof. Retain baseline counts and multiply added-cell counts only. Pick the first passing factor; no recovery if none passes."
+  },
+  "full_recovery": "All original108 truth/condition points x100 independent datasets; v5 fit and original error thresholds. No old run relabelled.",
+  "empirical_allocation_adopted": false
+}

@@ -1,0 +1,103 @@
+{
+  "schema": "temporal-dcc-private-cut-allocation-planning-v9",
+  "registered_at": "2026-09-10T17:49:33.949803+00:00",
+  "parent_plan": {
+    "path": "docs/roadmap/temporal-dcc/private-recovery-separation-planning-v8.json",
+    "sha256": "362456b6c7a0e62e83aa26091bff9a40533bbc37f0f4f645ea8fd5221469eecb"
+  },
+  "base_design": {
+    "path": "target/temporal-dcc/m0-private-allocation-v8/selected-design.json",
+    "sha256": "63c7cc8e819ae04fc13e789470c7a842c2f166b74403a1a1c237b1a628814351"
+  },
+  "study_version": 9,
+  "truth_points": [
+    [
+      "fractional",
+      2
+    ],
+    [
+      "ambiguous_missing",
+      2
+    ],
+    [
+      "ambiguous_missing",
+      5
+    ],
+    [
+      "ambiguous_missing",
+      8
+    ]
+  ],
+  "minimum_total_distance": 8,
+  "profile_starts": [
+    [
+      0.5,
+      0.25
+    ],
+    [
+      0.5,
+      4
+    ],
+    [
+      0.5,
+      64
+    ],
+    [
+      20,
+      0.25
+    ],
+    [
+      20,
+      4
+    ],
+    [
+      20,
+      64
+    ],
+    [
+      4800,
+      0.25
+    ],
+    [
+      4800,
+      4
+    ],
+    [
+      4800,
+      64
+    ]
+  ],
+  "include_truth_tau_kappa_start": true,
+  "solver": {
+    "method": "L-BFGS-B",
+    "maxiter": 300,
+    "maxls": 40,
+    "ftol": 1e-12,
+    "gtol": 1e-08
+  },
+  "budget": {
+    "wall_sec": 600,
+    "cpu_sec": 600
+  },
+  "full_recovery": {
+    "seed": 2026091109,
+    "conditions": "all original three",
+    "truths": "all original 36",
+    "replicates_per_point": 100,
+    "fit": "unchanged v5",
+    "thresholds": "unchanged"
+  },
+  "alternative": "unsaturated cap=2*max(A_counts); profile tau/kappa over original fit bounds with the v6 multistart method; include each truth tau/kappa start",
+  "selection": "Begin with the v8 Fisher allocation. Profile all four registered v7 failed points. If all valid minima are >=8, select. Otherwise add per-cell Bhattacharyya-distance cuts at each valid minimizing unsaturated alternative; minimize full-prefix replay time with each cut >=8.1, allowing additions only to the72 fully supported first-prefix cells. Round upward to even counts and reprofile. Retain every prior cut. Stop without recovery on invalid/unresolved profile, infeasible LP, replay-cost bound, time or16-round budget. The8.1 LP target is prospective slack above the unchanged8 acceptance threshold.",
+  "scope": "Finite multistart exchange heuristic with even rounded LP allocation, not a global separation certificate or an empirical collection plan. Preserve all v8 exposure cells and baseline counts, original truths, conditions, fit, 100 replicates and error thresholds.",
+  "empirical_allocation_adopted": false,
+  "maximum_profile_rounds": 16,
+  "linear_cut_target": 8.1,
+  "maximum_replay_hours_per_condition": 10000,
+  "linear_solver": {
+    "method": "scipy.optimize.linprog highs",
+    "objective": "physical full-prefix replay seconds",
+    "variables": "nonnegative added counts in fully supported first-prefix cells; original492 base counts lower bounds",
+    "rounding": "upward to even totals; verify all retained cuts afterward"
+  }
+}

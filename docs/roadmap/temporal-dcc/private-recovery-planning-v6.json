@@ -1,0 +1,107 @@
+{
+  "schema": "temporal-dcc-private-high-cap-separation-planning-v6",
+  "registered_at": "2026-09-10T16:56:21.868405+00:00",
+  "base_design": {
+    "path": "docs/roadmap/temporal-dcc/private-recovery-design-v5.json",
+    "sha256": "a4c7dd4575162234e9755ec0098ec4ee0f82965212371b217a2d7b8e0a35e26c"
+  },
+  "reason": "v4 and fit-corrected v5 retain failures at short tau/high cap under ambiguous missing observation. Diagnose the no-saturation alternative directly instead of scaling all exposures.",
+  "condition": "ambiguous_missing",
+  "truth_ids": [
+    2,
+    5,
+    8
+  ],
+  "calibration_cells": [
+    [
+      128,
+      4,
+      0
+    ],
+    [
+      128,
+      4,
+      1
+    ],
+    [
+      128,
+      4,
+      4
+    ],
+    [
+      128,
+      4,
+      16
+    ]
+  ],
+  "count_candidates": [
+    256,
+    1024,
+    4096,
+    16384,
+    65536
+  ],
+  "criterion": "Minimum profiled total Bhattacharyya distance >=8 at each of the three short-tau/high-cap stress truths, including all baseline cells and missing detection. This is a finite multistart engineering planning heuristic, not a global certificate or recovery pass.",
+  "minimum_total_distance": 8,
+  "alternative": "The unsaturated timing filter: cap=2*max(prefix_counts), exceeding every reachable per-bin mass for all allowed tau/kappa. Profile log(tau),log(kappa) over original fit bounds. This relaxes the fitted high-cap flat branch.",
+  "profile_starts": [
+    [
+      0.5,
+      0.25
+    ],
+    [
+      0.5,
+      4
+    ],
+    [
+      0.5,
+      64
+    ],
+    [
+      20,
+      0.25
+    ],
+    [
+      20,
+      4
+    ],
+    [
+      20,
+      64
+    ],
+    [
+      4800,
+      0.25
+    ],
+    [
+      4800,
+      4
+    ],
+    [
+      4800,
+      64
+    ]
+  ],
+  "include_truth_tau_kappa_start": true,
+  "solver": {
+    "method": "L-BFGS-B",
+    "maxiter": 300,
+    "maxls": 40,
+    "ftol": 1e-12,
+    "gtol": 1e-08
+  },
+  "selection": "Smallest candidate total count at each of the four cells passing all three deterministic profiles. Apply same count vector to all nuisance conditions; retain all v5 counts elsewhere. No random outcomes used for selection. Stop without new recovery if none passes or a profile has no valid solution.",
+  "full_recovery": {
+    "seed": 2026091106,
+    "conditions": "all original three",
+    "truths": "all original 36",
+    "replicates_per_point": 100,
+    "fit": "unchanged v5",
+    "thresholds": "unchanged"
+  },
+  "budget": {
+    "wall_sec": 600,
+    "cpu_sec": 600
+  },
+  "empirical_allocation_adopted": false
+}

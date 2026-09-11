@@ -1,0 +1,15 @@
+{
+  "schema": "temporal-dcc-private-recovery-fit-v5",
+  "registered_at": "2026-09-10T16:51:18.386408+00:00",
+  "diagnostic": "target/temporal-dcc/m0-private-recovery-v4/fitting-branch-diagnostic.json",
+  "problem": "A converged higher-loss smooth/flat solution suppressed refinement of a lower-loss nonsmooth cap corner. Some other failed datasets still prefer an unidentifiable flat branch.",
+  "procedure": [
+    "Retain the original three L-BFGS-B attempts and validity checks.",
+    "Consider finite attempts in ascending NLL order. Refine an attempt with the existing bounded Nelder-Mead settings whenever no candidate passes or its NLL is below the best valid candidate by more than 1e-12.",
+    "Keep the existing finite 26-direction, two-scale local optimality check. If a failed refinement leaves an attempt more than 1e-10 below the selected candidate, report unresolved_lower_loss_fit.",
+    "Select the lowest-loss valid candidate. Keep the full-rank information guard, original bounds and all recovery tolerances."
+  ],
+  "independent_recovery_seed": 2026091105,
+  "model_or_allocation_change": false,
+  "previous_runs_relabelled": false
+}

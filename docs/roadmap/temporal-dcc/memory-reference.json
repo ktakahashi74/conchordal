@@ -1,0 +1,252 @@
+{
+  "schema": "temporal-dcc-memory-reference-v1",
+  "registered_at": "2026-09-10T22:17:24.992401+00:00",
+  "status": "bounded_metadata_and_gap_reference_verified; full_bank_and_model_not_fit_ready",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "sections": [
+      "9.3",
+      "10.1"
+    ]
+  },
+  "source": {
+    "path": "scripts/temporal_memory_reference.py",
+    "sha256": "a65e73a8ddff93792b44cf9b462a18792251ed96e7f27118cbcb764e5ddf7b24",
+    "classes": [
+      "GapClock",
+      "InterferenceWindow",
+      "EpisodeRetention"
+    ],
+    "functions": [
+      "assay_recognition",
+      "fit_gap_rate_envelope"
+    ],
+    "dependencies": [
+      {
+        "path": "scripts/temporal_cognition_reference.py",
+        "sha256": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6"
+      },
+      {
+        "path": "scripts/temporal_occurrence_reference.py",
+        "sha256": "ac0458faca720797f32a5ebd05bfcad97fd3f3ad3c42f635584eefca804e9a69"
+      }
+    ]
+  },
+  "interfaces": {
+    "clock": "One canonical integer-sample acquisition union per bus. Known silence acquired; explicit/skipped gaps count once. 128 fixed bitmap records plus cumulative missing seconds. Before evicted masks, historical prefix returns physical-duration-constrained bounds.",
+    "causality": "Complete chronological sealed occurrence sequence. Preserve original endpoint, commitment deadline and actual delivery separately. Live application/availability/assay issuance cannot precede either bank or acquisition-clock observation cut. Reject supported fractions impossible under known acquisition loss.",
+    "reinforcement": "Explicit positive-support admission; recurrence adds support to capped strength and uncapped membership. Reset previous interference/gap baseline at original endpoint, then add current competing fraction. Same-end distinct occurrences can reinforce; first-end strictly earlier still controls interference. Retrieval/replay does not reinforce.",
+    "interference": "Use existing sealed per-write coarse/unknown interference oracle, plus one shared physical gap since each episode last reinforcement. Known content, uncertain coarse support and unknown gap contribution remain separate. No retroactive metadata-only rewrite.",
+    "rate": "Exact positive known increments in (t-1,t], with endpoint ties, original-time expiry and slot birth sequences. Recurrence does not erase this diagnostic. Overflow does not drop retention increments; rate envelope remains unverified through epoch. Observed envelope excess is sticky invalid.",
+    "availability": "Compute f64 log bounds; known I contributes to upper, coarse unknown and r_max*gap upper contribute to lower. Unverified/invalid envelope with unresolved gap gives true zero lower. Last observed recurrence can clear its prior gap uncertainty without claiming the global envelope valid.",
+    "recognition": "Stable existing cue-score competition; only supported retained handles participate. Frozen pre-target copy advances elapsed time through actual query end, with no target content reinforcement/interference/storage. Later live updates cannot change the issued copy.",
+    "capacity": "Fixed metadata+staging scratch. New handles require explicit free slots; otherwise reject atomically until caller evicts and invalidates graph references. Evict lowest upper log availability, ties oldest first commitment then handle. Absent handles never implicitly return.",
+    "ownership": "Opaque nonzero globally fresh episode-generation handles and graph/descriptor lifecycle are caller-owned. This reference does not allocate true identities, derive ancestry, or implement complete bank/edge/worker transport."
+  },
+  "parameters": {
+    "episode_slots": 256,
+    "metadata_bytes_per_slot": 256,
+    "gap_clock_records": 128,
+    "sample_rate": 48000,
+    "hop_samples": 512,
+    "rate_rows": 144,
+    "tau_sec": "positive, stage-1 fit pending",
+    "kappa": "positive, stage-1 fit pending",
+    "strength_max": "at least1, stage-1 fit pending",
+    "r_max": "max(1,2*maximum complete development one-second observed interference); actual calibration pending"
+  },
+  "sensitivity": {
+    "rate_rows": [
+      72,
+      144,
+      288
+    ],
+    "r_max_multiplier": [
+      0.5,
+      1,
+      2
+    ],
+    "status": "Nine finite rate-capacity stress cases recorded. 144 is an engineering candidate and can overflow the registered maximum endpoint workload. Full capacity/retrieval/fit/runtime comparison remains open."
+  },
+  "verification": {
+    "tests": 27,
+    "test_source": "tests/test_evaluate_temporal_memory_reference.py",
+    "test_sha256": "55efbcc3e994841a2c0174148c092c775d8704856f988a1106e598113f8bae46",
+    "status": "passed",
+    "component_log": "target/temporal-dcc/m0-memory-reference-components-20260911.log",
+    "independent_sample_union": {
+      "streams": 75,
+      "hops_per_stream": 20,
+      "capacities": [
+        3,
+        8,
+        32
+      ],
+      "seed": 47015,
+      "queries": "All integer sample prefixes after every hop, compared with full acquired-sample history."
+    },
+    "independent_rate_windows": {
+      "streams": 50,
+      "events_per_stream": 100,
+      "seed": 47016
+    },
+    "independent_scalar_retention": {
+      "streams": 50,
+      "updates_after_initialization": 59,
+      "seed": 47017
+    },
+    "counterexample": "clock-cut-counterexample-before.json; old implementation accepted backdated live retention and assay issue after future acquisition.",
+    "algebraic_grid": {
+      "conditions": 162,
+      "maximum_absolute_error": 2.7755575615628914e-17,
+      "tolerance": 1e-12,
+      "dimensions": "strength cap1.5/3/6, exposure count1/2/4, gap0/.1/.5s, recurrence0/.5/1, r_max1/4",
+      "source": "memory-audit.py",
+      "result": "memory-audit.json",
+      "parameter_fit": false
+    },
+    "integration": "Actual finite OccurrenceLedger -> committed episode -> QueryScheduler -> matcher -> coarse cache -> sealed ledger -> retention; original-time once-only recurrence checked.",
+    "suite_status": "passed",
+    "suite_tests": 686,
+    "suite_elapsed_sec": 29.754,
+    "suite_log": "target/temporal-dcc/m0-python-tests-memory-clock-final-20260911.log",
+    "suite_exit_record": "target/temporal-dcc/m0-python-tests-memory-clock-final-status.txt",
+    "rust": {
+      "passed": 746,
+      "failed": 0,
+      "ignored": 12,
+      "exit": 0,
+      "log": "target/temporal-dcc/m0-rust-tests-memory-clock-final-20260911.log",
+      "exit_record": "target/temporal-dcc/m0-rust-tests-memory-clock-final-status.txt",
+      "scope": "Existing engine regression; no Rust change or production numerical-equivalence claim."
+    },
+    "site_build": "target/temporal-dcc/m0-site-memory-clock-final-20260911",
+    "archive_package_log": "target/temporal-dcc/m0-memory-archive-tests-20260911.log",
+    "archive_package_exit_record": "target/temporal-dcc/m0-memory-archive-tests-status.txt",
+    "cross_record_verifier": "target/temporal-dcc/m0-memory-clock-verifier-20260911.py",
+    "cross_record_result": "target/temporal-dcc/m0-memory-clock-verification-20260911.json"
+  },
+  "resource_scope": {
+    "metadata_stride_bytes": 256,
+    "episode_metadata": 65536,
+    "metadata_scratch": 65536,
+    "gap_clock": 12288,
+    "rate_window": 297216,
+    "rate_totals": 2048,
+    "slot_birth_and_increment_arrays": 4096,
+    "total_fixed_buffers_per_bus": 446720,
+    "two_bus_fixed_buffers": 893440,
+    "additional_to_already_budgeted_bank_per_bus": 381184,
+    "assay_copy_bytes": 6176,
+    "excludes": "Python objects/counters and temporary validation/exports, descriptors/anchors/edges, full bank/ledger and worker transport. Metadata is already within the full bank budget; do not double count."
+  },
+  "remaining": [
+    "Complete descriptor/bank/edge lifecycle and actual context membership, globally fresh handles, graph invalidation and real acoustic ancestry.",
+    "All inferred beam activity/ownership, bounded128-byte endpoint records, ordered ledger transport and complete epoch recovery.",
+    "Batch/cache competing support and similarity once; current Python calls the finite oracle per stored episode and repeats exp, outside the promised O04 work census.",
+    "Prove or revise rate-row/clock-history capacity against maximum endpoint workload; actual r_max development calibration and all sensitivity decision rules.",
+    "Real waveform NSGT/ridge/group inference, all feature/control/fit inventories, development scales and production equivalence.",
+    "Complete simultaneous O04 preflight; earlier276ms single-query versus40ms whole-worker failure remains unresolved.",
+    "Full O12 finite fits/OOF/calibration and100 datasets/condition predictive stability;162 algebraic cases are not that gate.",
+    "Actual material/body/opportunity feasibility and human/institution collection gates."
+  ],
+  "production_integration": false,
+  "full_preflight_passed": false,
+  "human_collection_authorized": false,
+  "fitted_development_scales": false,
+  "full_predictive_stability_run": false,
+  "archive": {
+    "directory": "target/temporal-dcc/m0-memory-clock-reference-20260911",
+    "artifacts": {
+      "accent-reference-before.json": "fb451db059c911c090b3c756de2ca655eda3d81a286c46d9d408d7fbb191cef5",
+      "clock-cut-counterexample-before.json": "33fa7c402039401bfccc3477a4086f6b298de3a8e4e49708ccd6f3f728d6fbc3",
+      "control-comparisons-before.json": "e1e6746aa3d450e8a4db2c63d9362e854db49813b2c8af705b8f30a8fa849858",
+      "descriptor-reference-before.json": "c9d72b0b3f97765f88d97f2813241b5f3d2993f2659560ddc1582ae92b1df2a9",
+      "event-head-reference-before.json": "74cf582ed93ced208bf1a64361116f211118247dca5353fe17fcc7a03b619bae",
+      "feasibility-preflight-before.json": "ea887d6726bd28b7fc6c1056e82ce81778b2a57328c505328b2ee0e0975a1400",
+      "feature-manifest-before.json": "9456d66b4322b09930936bf246042c1fed29056a5868c7b6e68f84fde1c624fd",
+      "feature-manifest-verified.json": "9581c33057a81c0aefc62d246e638f79450c3c41497881f37172e57e9c966d43",
+      "matcher-reference-before.json": "7ef99b040eb68fbe93639797bb46cf03df07d5c40e8c47c411ddc55f034ffdc2",
+      "memory-audit.json": "ed77184d2a3698d606594851482a0f21dd4c54d7ec1edb504d6a1cc032340ec9",
+      "memory-audit.py": "20d128bab7f5859e739a7fb0990b3a60677cbc4534ce355009de18d440b18914",
+      "occurrence-reference-before.json": "7b61c7ed7b75d6ed8f3cb1b6706ce5adc8d5ab20886b8e553f173c3d02f3bff2",
+      "private-trace-reference-before.json": "5a1069a399feb7cf743d7dcaf76c13216f7a07ee1b94167824ef9e112f9c473d",
+      "query-scheduler-reference-before.json": "d72b5e8a8124fcab06b4188c6ed0e139f84254225086704ea9b9aaf919cfb190",
+      "recognition-instrument-before.json": "b8bd45ddffa7c387276fe61bd20a2d01f11c3ff52f365da795c019a0167088ee",
+      "relation-instrument-before.json": "56f2ef8fd14c58c8df3377deac83c77bb11f98ee41191d53035ef896090eba91",
+      "section-feature-reference-before.json": "836622cffa5a2f756e3d7dabd0f5855f7e20650f389998ab185d2dc8a816180d",
+      "specification-before.md": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "specification.md": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+      "temporal_accent_reference.py": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+      "temporal_cognition_reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+      "temporal_descriptor_reference.py": "d4f482a6217a4d91813d47459ebc43bfd2d401a6b9d15d67dd8bd8c61d7ab13d",
+      "temporal_matcher_reference.py": "cd2c2a162e542b310f33d561ec776577d3b33dbba65b103c54554ec4ad73037e",
+      "temporal_memory_reference-before-clock-cut.py": "b7ae54a753c3fbf4eacca213900aa503f0745510668c5688e494eb2de42ff10b",
+      "temporal_memory_reference.py": "a65e73a8ddff93792b44cf9b462a18792251ed96e7f27118cbcb764e5ddf7b24",
+      "temporal_occurrence_reference.py": "6dc8a9a5beae18d0f9c422074236bb2340c9af8c2a47bce50a20b4356c596e0f",
+      "temporal_query_scheduler_reference.py": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+      "temporal_section_reference.py": "4e320c0fffb48f67128b502c67f009467cf27226f364bb3a8382702603a2f3ac",
+      "test_evaluate_temporal_memory_reference-before-clock-cut.py": "9d9dfb07646b624a70419bc583388864ae6ea31769ddabeb97abc5b5cbb98d20",
+      "test_evaluate_temporal_memory_reference.py": "55efbcc3e994841a2c0174148c092c775d8704856f988a1106e598113f8bae46",
+      "test_evaluate_temporal_occurrence_reference.py": "be73b4e0ad4b1047821b839849de557077bbd3d79ada1591606477dfae191af7",
+      "test_evaluate_temporal_query_scheduler_reference.py": "2fa35c4c31181279932163fa9cadd72a53e375f31f45b856aae02824e6463c23"
+    },
+    "final_feature_manifest": "feature-manifest-verified.json"
+  },
+  "specification_history": [
+    {
+      "sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+      "reason": "Fixed bank/anchor/shared-edge payload, fresh reservations, explicit eviction, unrenormalized membership loss and actual bank-receipt cut. Section9.3 only; inferred relations/ancestry, full transport, fitting and O04 remain open."
+    },
+    {
+      "sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a",
+      "reason": "Fixed128-byte endpoint headers, bounded heap/free/ID indexes, immutable claims and original deadline/actual delivery, ticket-safe acknowledgment and explicit cycle/backlog loss. Section9.3 only; referenced pools and complete ledger/inference/runtime remain open."
+    },
+    {
+      "sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5",
+      "reason": "Fixed immutable byte-payload pool, original paired-ID issuer and typed endpoint ownership/rollback/retirement. Section9.3 only. Explicit sharing passes header capacity, but distinct snapshots exhaust half/base/double pools; full inference, structural sharing, consumer integration and M0 gates remain open."
+    },
+    {
+      "sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+      "reason": "Exact320-byte knot structural sharing, fixed version vectors/hash indexes and split-pool endpoint ownership. Section9.3 only. Conditional fixed1024-path half/base/double sizing and unrelated-content failures retained; real producers, churn, all payloads, consumers and full M0 gates remain open."
+    },
+    {
+      "sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit."
+    },
+    {
+      "sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open."
+    },
+    {
+      "sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+      "reason": "Actual finite host-clock arrivals expose aggregate delivery backlog and separate bank-entry versus final publication cuts; numerical sources and model unchanged."
+    },
+    {
+      "sha256": "4097a4f651dba073f4848bf25fa9a2ff90e936584f481ae68dc43ba625c7d4ec",
+      "reason": "Section9.3 only: R1/S1 typed consumer records preserve u64 identities, f64 values and independent masks; fixed-driver maximum-load timed work falls33.2%, but aggregate throughput and full O04 remain unmet."
+    },
+    {
+      "sha256": "fea51b989b51ca6e25150af98d3c3e19420bdd21dbfbab949b1a918d366096e3",
+      "reason": "Section9.3 only: retain private section preparation, merge only sealed regions after intervening observations, count1408 staging bytes per target. Same-inventory finite cost improves; full O04 and M0 remain unmet."
+    },
+    {
+      "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
+      "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    }
+  ],
+  "updated_at": "2026-09-11T11:40:42.701331+00:00",
+  "bank_integration": {
+    "numeric_reference": "bank-reference.json",
+    "status": "Fixed descriptor/anchor/shared-edge storage and fresh handle/eviction/focus conventions verified on finite inputs; full inferred relation graph and transport remain open."
+  }
+}

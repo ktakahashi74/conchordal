@@ -1,12 +1,139 @@
 # Temporal DCC design review record
 
 Date: 2026-09-09
-Status: design review complete; round 39 returned no actionable issues. Implementation and cognitive validation remain incomplete.
+Status: the round-39 baseline review completed with no actionable issues; subsequent M0 numerical revisions are not covered by that response. Implementation and cognitive validation remain incomplete.
 
 Scope: complete the [hierarchy specification](dcc-neurocognitive-hierarchy.md),
 then finish the delivery plan from the audited current implementation through
 all temporal functions. This record distinguishes design review from cognitive,
 implementation and artistic validation.
+
+The 2026-09-10 M0 revision retains the original eight-second recognition task and
+adds 1/2/4-second auxiliary queries to identify short retention. Allocation v1
+failed 90 of 324 stress-condition points, including all two-second cases. The
+prospectively selected v2 allocation passed all 324 points across 32,400 synthetic
+datasets. This changes the query protocol, not the retention equation or its
+error thresholds. See [M0](../roadmap/temporal-dcc/m0.md) and its frozen design,
+sample-size search and complete results. The actual source waveforms, task pilots,
+institutional requirements and human transfer remain unverified. No new external
+review has been performed for this revision; do not extend round 39's result to it.
+
+The 2026-09-11 M0 private-trace revision specifies per-bin retained-mass
+accumulation, saturation, integrated observation time and simultaneous fractional
+interference. Its numerical reference also exposes a quantization problem in the
+previous soft-bin fitting score: even infinite observations can favor a biased
+bin distribution. The joint physical-outcome likelihood was unfinished at that
+point, and O13 remains open. These changes likewise have no new external review and do
+not change the production participation template or episode-retention equation.
+
+The next M0 revision supplies a joint physical-record likelihood over frozen
+reference/anchor alternatives, nonperiodic overflow and missing detection within
+a declared opportunity window. An exact observation matrix and independent
+integration checks support that conditional assay law. Recovery v1 completed
+10,800 fits but passed only 107/108 condition points; all 73 failed fits remain.
+The uniform allocation also requires impractical full-prefix replay. A new
+cost-based Fisher allocation and nonsmooth-solver fallback are registered before
+the v2 run. Actual waveform/body/opportunity feasibility remains unverified;
+no external review or production adoption follows these numerical results.
+
+Subsequent v2/v3/v4/v5 recovery runs passed 106/105/106/106 of 108 points,
+respectively. They distinguish low-cap cancellation, a high-cap unsaturated
+branch, and a solver error that ignored lower-loss nonsmooth candidates when a
+higher-loss smooth candidate converged. The solver is corrected prospectively;
+failed historical fits remain failed. A v6 deterministic allocation search found
+no eligible allocation and therefore triggered no recovery. The exact records
+and current remaining work are in M0, not inferred from round-39 acceptance.
+O03 also registers the source-defined 39-component section descriptor; the full
+section-head registration and its synthetic predictive gate remain unfinished.
+
+Later M0 work preserves all failed recovery runs, including v7 (104/108 points),
+and records a failed v8 separation search without launching recovery. A v9
+allocation adds observations to two fully supported exposure cells while keeping
+the v8 baseline, all stress truths and error thresholds. Its deterministic
+separation gate passes; independent recovery completes 10,800 datasets and passes
+all 108 condition/truth points, retaining four failed fits as infinite errors.
+This is conditional on the registered augmented exposure design; empirical
+waveform/body support and an adopted replay allocation remain unverified.
+The section head's full 82 covariates and intercept are registered. A finite-hop
+mixture-first-event reference agrees with exhaustive joint histories, and the
+observed-hop hazard integral agrees with independent quadrature on its registered
+envelope. The reference suite has 51 checks. These do not replace O12's full
+predictive-stability simulations, upstream feature extraction, production lifecycle
+or human tests. No new external review covers these M0 numerical additions.
+
+An additional section-input oracle supplies 21 cached-input checks for ending
+observables, path-local correspondence/adjacency, activity statistics and exact
+cue/query provenance. The shared six-observable layout is registered, and a
+contiguous-span fixture reaches the 39/82 inputs. General overlap/ring integration,
+upstream acoustic/history estimators, actual lineage ownership and resource/fitting
+gates remain open. The specification hash is unchanged by this implementation;
+it does not extend round-39 acceptance or establish a completed section model.
+
+A subsequent gap-survival component adds seven checks (58 in the general
+reference suite). Bounded step doubling uses both successive differences and a
+fourth-derivative bound to reject a missed narrow initial hazard. Of 600 audited
+cases, 416 agree with independent integration and 184 exhaust the 64-evaluation
+budget, remaining unresolved. Missing-interval exits are unknown-current-state
+mass, not observed or typed boundaries. The implementation preserves all prior
+functions and the specification hash. Its tolerances are registered, but fitted
+coverage, production lifecycle/cost and full O12 stability remain unverified.
+This local numerical work is not another external acceptance round.
+
+The next local M0 revision makes section-support ownership explicit: shares of
+one physical interval or accent are conserved before scalar sealed membership,
+and the recent ring sums sufficient statistics while cumulative observation uses
+physical support once. The section suite now has33 checks, including overlapping
+span39/82 assembly and all20 prefixes for2/4/8-span windows. A packed640-byte record
+uses54 f64 sums and six f64 ending descriptors; the two-f32 prototype reversed a
+90% validity decision, with a saved reproducer. Explicit generation inheritance
+keeps parent records unchanged, while fresh slots/epochs inherit no evidence.
+The memo change is confined to§9.5; earlier sections and§9.6 onward are byte-identical.
+Upstream provisional assignments, sealing/late-accent delivery, full resource
+accounting and O12 fits remain unverified. This clarification likewise has no
+new external acceptance and does not alter earlier recovery results.
+
+The following local revision adds20 accent checks: conserved assigned energy,
+four-hop admission, full raw-support causal cuts and bounded once-only delivery.
+An archived counterexample shows the old section cache interface admitting an
+event before its right-context evidence. The three extractors now require the
+original raw/availability endpoints. A generation-local delivery watermark uses
+existing bookkeeping slot15 without increasing the640-byte payload. Scalar
+inventory inclusion uses the middle-hop endpoint while timing integrations retain
+its full uncertain interval; inclusion-time controls are registered but unrun.
+This changes memo§9.2/§9.5, not the earlier recovery laws or results. Pending span
+ownership/sealing, arbitrary delivery reordering, waveform inference, real lineage,
+complete runtime costs, fitted scales and human gates remain incomplete. No new
+external acceptance covers this change.
+
+A subsequent finite-input commitment oracle adds21 checks for original
+occurrence/support identity, provisional joint assignment, deadline sealing,
+metadata-only revision, context totals and eviction, late owned accents and
+same-cue coarse interference bounds. Independent prefix sums cover100 finite
+streams; the payload-conditioned section projection reaches39/82 coordinates.
+The memo clarifies the conditional support fraction and revision-distance/count
+convention in§9.3, and links that boundary from§9.5. Exhaustive audit retention is
+not the128-byte bounded runtime ledger, and the full beam/activity, memory-clock,
+bank, runtime, fitting and human gates remain incomplete. This does not revise
+the historical recovery results or acquire new external acceptance.
+
+The next numerical addition leaves the memo byte-identical at 5f6077 and adds 29
+raw-descriptor/cadence/compression checks. Fixed 320-byte knot payloads and bounded
+span buffers are compared with direct uncompressed moments over 100 finite streams
+and 54 cadence/capacity fixtures. Partial acquisition preserves physical observed
+seconds, while unavailable acoustic values and merged gap location remain masked
+or flagged. Actual waveform inference, ordered matching/query integration, full
+worker memory/performance and human gates remain open. This is local numerical
+evidence, not a new external review or a fitted neurocognitive claim.
+
+The following local numerical addition specifies only section 9.3's initial
+subsequence cell/normalization/tie contract, detached query prefixes and original
+versus delivery episode time. Thirty-two checks cover coarse/refined transforms,
+original-time bands, exhaustive short-path agreement and the existing sealed
+ledger/section interface. Fifteen search fixtures retain a failed spacing-eight
+control; full-inventory work counters do not prove the two-worker/64-Voice gate.
+The memo changes from 5f6077 to 15cca0; all other sections remain byte-identical.
+Query scheduling, bank/memory lifecycle, full fitting and human evidence remain
+incomplete. This is not a new external acceptance.
 
 The user explicitly approved sending the memo, Manifesto and current implementation
 audit summary to `https://api.anthropic.com`, including revised versions in the same
@@ -484,8 +611,10 @@ ledger use the same promotion scope and cap distinction.
 
 Round 39 independently reviewed the full specification and returned
 `no_actionable_issues` with an empty issues list. Process exit was zero and the
-substantive response model was `claude-fable-5`. The current memo's SHA-256 matches
-the accepted input `8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9`; it was not edited after this response.
+substantive response model was `claude-fable-5`. At that review-stage endpoint the
+memo matched the accepted input `8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9`.
+The subsequent M0 revisions recorded above are different versions and do not
+inherit that acceptance.
 Remaining empirical work in the response is future implementation/identification
 work, not evidence that those gates have passed. The
 [delivery plan](../roadmap/temporal-dcc-completion.md) covers the audited current
@@ -499,6 +628,427 @@ separate future implementation boundary. The seven T rows still show all four
 implementation/cognitive/audible/author gates as unmet. Historical technote/roadmap
 sections and the 107-file Rust/Cargo snapshot remain unchanged. The accepted memo
 SHA-256 remains `8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9`.
-No Rust tests were needed for this documents-only task; no implementation, commit
-or publication is claimed. The next authorized implementation task, when started,
-begins at M0 of the completed delivery plan.
+No Rust tests were needed for that documents-only review task; it claimed no
+implementation, commit or publication. M0 subsequently started, with its distinct
+code changes, tests and remaining conditions recorded in the M0 ledger.
+
+M0 subsequently clarifies section 9.3 with an acquired-sample query scheduler,
+one outstanding worker ticket per bus and eight packed coarse snapshots per
+group. Pending supersession is separate from active-job invalidation on group
+retirement or epoch restart. The finite occurrence reference now rejects future
+full-source audio, trailing-gap freshness and wrong-generation snapshots, and
+the scheduler records cache receipt rather than backdating delayed delivery to
+worker completion. These revisions have numerical fixtures and a distinct saved
+source/specification archive; they are not covered by round-39 acceptance.
+The full M0 fitting, performance and human gates remain open.
+
+The next M0 section-9.3 revision adds a bounded shared acquisition-gap clock and
+sealed-occurrence retention metadata. It fixes a prototype's backdated pre-target
+copy after future clock input, preserves original occurrence time, and separates
+strength renewal, competing interference, missing acquisition and rate-history
+overflow. Frozen recognition copies advance only elapsed time through the query.
+Twenty-seven component checks and 162 independent closed-form conditions pass;
+the full suite has 686 Python checks and 746 Rust passes with 12 ignored. These
+are numerical/reference results, not an additional external review or validation
+of human memory. The 144-row rate capacity can overflow the maximum endpoint
+workload, and repeated Python oracle work is outside the promised cached-worker
+census. Full bank/graph lifecycle, production equivalence, O04, fitting and human
+gates remain open. Exact source/specification and the counterexample are registered
+in `../roadmap/temporal-dcc/memory-reference.json`.
+
+A further M0 section-9.3 revision implements the fixed bank/anchor/shared-edge
+container, nonreused handle reservations and explicit computational eviction.
+Context membership retains unresolved mass across edge loss and representative
+eviction; focus reads do not transfer ownership or reinforce memory. A saved
+counterexample separates actual bank receipt from earlier upstream ledger delivery.
+Eighteen component checks, 30 independent joint-membership streams and a full
+256-slot synthetic storage/eviction audit pass; the complete Python suite has
+704 checks, and Rust regression has 746 passes with 12 ignored. This adds neither
+external review acceptance nor inference of real context/ancestry/correspondence.
+Full ledger/worker integration, capacity sensitivity, fitting and O04/human gates
+remain open. The exact revision is registered in `../roadmap/temporal-dcc/bank-reference.json`.
+
+M0 next adds the actual128-byte pending endpoint queue, fixed heap/free/ID indexes,
+original deadlines versus actual claim delivery, immutable in-flight headers and
+epoch/ticket-safe acknowledgment. The queue returns replaced/released payload
+references but does not implement their bounded pools or prove a consumer commit.
+Thirteen checks and a full65,536-header capacity/order/reuse audit cover this
+container. Inferred activity/joint/receipt production, original-ID allocation,
+pool ownership, bank/section consumption and complete runtime/fitting/human gates
+remain open. This section-9.3 clarification has no new external review acceptance.
+Its registration is `../roadmap/temporal-dcc/endpoint-reference.json`.
+
+M0 then adds a fixed immutable byte-payload pool, paired original-ID issuer and
+typed endpoint ownership adapter. Sixteen checks cover independent finite
+byte/owner streams, failed-allocation rollback, immutable revisions, stale claims,
+retirement and real packed descriptor/SectionRecord round trips. Explicitly shared
+payloads support all65,536 headers; distinct128-knot copies exhaust the initial
+pool at1,985 endpoints (992/3,971 at half/double block capacity). This exposes a
+sizing failure, not a completed resource gate. Structural sharing, real beam/receipt
+production, semantic codecs, consumer atomicity, fitting and O04/human gates remain.
+The revision changes section9.3 only and has no new external review acceptance.
+Its registration is `../roadmap/temporal-dcc/payload-reference.json`.
+
+M0 next adds exact-knot structural sharing and a split-pool ownership adapter.
+Fifteen checks include 50 independent byte-union/owner streams, forced hash
+collisions and 80 versions from the actual moment compressor. For 1,024 fixed
+paths with six changed knots per later version, the doubled leaf capacity stores
+all 65,536 versions byte-exactly; the base capacity fails at 22,869. Completely
+unrelated descriptors still fail at 2,048 base-capacity versions. The conditional
+fixture is not real path inference or a full two-bus resource acceptance. Actual
+churn/lineage, auxiliary payloads, consumers, fitting and O04/human gates remain.
+Only section9.3 changes; no new external review acceptance is claimed. The record
+is `../roadmap/temporal-dcc/shared-descriptor-reference.json`.
+
+The next M0 reference connects an immutable claimed endpoint to actual bank and
+declared section consumers. Seventeen checks cover prevalidation, original
+identity and membership, interrupted receipts and no-effect aborts. An unequal
+1,024-target audit loses bank, section and queue responses, yet applies every
+section once and releases all queue owners. Its fixed journal is33,024 bytes;
+the decoded batch, previews, hashing and all consumers remain additional.
+The first call reaches48.490351997315884 ms, exceeding the40 ms worker budget.
+This is a diagnosed scheduling/ownership cost, not O04 acceptance. Semantic
+payload production, complete routing, runtime publication and restart, full
+fitting and human gates remain open. Only section9.3 changes, without a new
+external review acceptance. See `../roadmap/temporal-dcc/consumer-reference.json`.
+
+M0 now owns immutable typed consumer packets and validates section projections
+in bounded slices before any bank effects. Fifteen packet tests join the17
+updated consumer tests. The1,024-target diagnostic preserves every original
+weight and lost-response guarantee; maximum consumer call time falls to7.18 ms,
+with34.83 ms of separately measured packet construction. This is a one-admission
+fixture. The legal256-admission/128-knot bank still needs478 ms encoding,1,148 ms
+finalization,748 ms consumer decoding and653 ms application; each exceeds40 ms.
+The next requirement is compact bank-input representation and staged bank work,
+including producer costs and actual-cycle latency. Local typed encoding is not
+actual queue payload provenance or complete inferred routing. Section9.3 alone
+changes; prior external-review acceptance is not extended. See
+`../roadmap/temporal-dcc/consumer-packet-reference.json`.
+
+M0 now connects compact320-byte descriptor input to staged bank preparation and
+one final publication. Bank24, consumer19 and packet19 checks pass, including
+cancellation, late validation failures, exact shared bytes and final-cut availability.
+Both full256x128-knot fixtures preserve every descriptor and membership in67
+consumer calls; maxima are16.59/13.76ms for shared/distinct contents. The separate
+maximum1024-joint4096-proposal header exposes a57.98ms bank call above40ms.
+The next step is header/proposal slicing and decode ownership, not O04 acceptance.
+Numerical tests total352; Python792 and Rust746 pass with12 ignored. Section9.3
+alone changes; full inference/fit/human gates and the earlier review boundary remain.
+See the updated bank, consumer and consumer-packet registrations and the frozen
+`m0-bank-staging-reference-20260911` audits.
+
+M0 now shares one private header decode between consumer and bank and validates
+individually encoded relation records in 64-row slices. The maximum header
+fixture falls to 5.53 ms per call, with byte-exact agreement against the previous
+frozen bank implementation. A finite two-write integration combines 1,024 joint
+cells, 4,096 proposals and 1,024 section recipients, recovering three lost
+responses with one header decode and every proposal decoded exactly once.
+Its maximum call is 8.75 ms, but total work remains 219.30 ms; actual arrival,
+queue throughput and simultaneous-worker O04 remain unproven. Numerical tests
+now total 360, with Python 800 passing. The three updated registrations and
+m0-header-staging-reference-20260911 retain all prior failures. Only section 9.3
+changes; prior external-review acceptance is not extended.
+
+A host-clock delivery audit now releases eight synthetic100ms endings into the
+actual owned queue/packet/bank/section path. Under a100ms period and40ms work-start
+window, the maximum256-episode/1024-joint/4096-proposal/1024-section condition
+accumulates0.635–5.224s of deadline-to-publication delay. Unpaced delivery still
+accumulates0.284–1.747s. Original weights and once-only effects remain exact;
+a separate four-slot diagnostic loses four of eight arrivals explicitly.
+The bank-call cut precedes final publication by127–201ms in the paced maximum.
+The dispatcher records the final barrier's actual return time independently.
+This is a finite100Hz synthetic source audit, not actual audio, two simultaneous
+workers, live action-evidence age or full O04. The separate profile identifies
+recursive codec work and duplicated section assembly as the next optimization
+targets. Frozen traces and sources: m0-delivery-clock-audit-20260911. No source
+algorithm or earlier externally reviewed claim is promoted by this measurement.
+
+The subsequent R1/S1 codec revision preserves full declared inventories with typed
+u64/f64 fields and independent absence/validity masks. Generic assignment maps
+remain complete; the endpoint queue's inferred semantic provenance is still
+unimplemented. Five new packet tests plus a320-row frozen-generic-codec comparison
+preserve all cumulative/ring bytes, including nullable endings and unknown matches.
+The same host-clock driver measures33.2% less timed work at maximum paced load,
+with deadline-to-publication delays0.420–3.234s; unpaced delays are0.182–0.937s.
+This still fails sustained throughput. The805-test Python suite and365 numerical
+checks do not establish full two-worker/device O04 or human gates. Source and
+evidence: m0-typed-consumer-codec-20260911. Mathematical mechanisms and earlier
+external-review acceptance are unchanged; that revision left repeated section preparation next.
+
+The subsequent section staging revision computes each target once, retains its
+sealed update in 1,408 fixed bytes and merges it into the current cumulative
+record at application. Canonical observations, acquisition cuts and accent
+receipts arriving after validation survive. Expected sealed state and owner
+identity are bound; arbitrary competing mutations are outside this private
+single-owner contract. A zero-weight target never consumes stale staging bytes.
+The journal plus preparation now uses 1,474,816 bytes per bus; object/temporary
+and full transport costs remain separate. A frozen old direct-commit oracle
+matches 1,152 cumulative and 4,426 ring buffers through 2,304 intervening deltas,
+96 inheritances and replayed accents. Six regressions include actual consumer
+interleaving and receipt loss; the Python suite passes 811 tests (371 numerical).
+The unchanged host-clock driver measures 23.4% less maximum-paced work than the
+typed-only revision, with 0.323–2.324 s deadline-to-publication delay; an initial
+run measured 22.4% improvement and is also preserved. Backlog and full 128-knot
+admission still fail sustained throughput. Evidence: m0-section-preparation-20260911.
+The remaining full O04, fit and human gates, mathematical mechanisms and prior
+external-review acceptance are unchanged.
+
+The subsequent scalar-to-block f64 implementation revision leaves this design
+memo unchanged. It preserves coordinate-wise arithmetic order, rounded shared
+denominator checks (including signed zero) and rejection before any record
+mutation. A frozen scalar oracle agrees on 12,000 updates and 96,000 block reads;
+1,099 rejected cases agree, and the 1,152-write interleaving oracle still matches.
+Three new tests bring the Python suite to 814 tests (374 numerical). The same
+maximum-load host-clock driver measures another 10.2% timed-work reduction;
+deadline-to-publication delay is 0.312–2.031 s. Record and consumer fixed layouts
+are unchanged, while global format objects and transient lists/bytes remain O04
+accounting obligations. Sources and evidence: m0-section-record-blocks-20260911.
+Backlog, the 40 ms window, full admission/matcher/inference/fit and human gates
+still prevent M0 completion. No previous external acceptance is extended.
+
+Activity-statistic assembly is subsequently fused across the three existing
+observation/commit/occurrence-staging paths. All 29 logical values are validated
+before the 23 stored f64 values change; physical clock gaps remain cumulative-only
+and original span ownership/membership is preserved. Predecessor statistics and
+ending masks are each read once. The model and fixed layouts remain unchanged.
+The fieldwise oracle agrees on 4,000 outcomes (1,263 unchanged rejections), 768
+ledger writes, 1,536 payload buffers and 2,304 section projections. Existing
+scalar/interleaving comparisons still agree. The Python suite passes 817 checks
+(377 numerical); 144 checks pass from the frozen five-component package.
+The unchanged maximum-paced driver measures 4.6% less work and 0.305–1.919 s
+deadline-to-publication delay; sparse work rises 0.7%. The earlier assembly-only
+3.1% improvement run is retained separately. These finite timings do not establish
+an all-case speedup or sustained delivery. Evidence: m0-activity-blocks-20260911.
+Full O04, waveform/inference/fit and human obligations remain unmet.
+
+Sealed section sums are subsequently assembled as one31-f64 block, preserving
+zero additions, all previous rejection outcomes and original ending bytes/masks.
+The4,000-case comparison matches2,240 full preparations/cumulative records and
+6,748 ring buffers, with1,575 no-effects and185 unchanged rejections.
+A full-admission diagnostic then motivated batched DescriptorKnot snapshots:
+38f64 values and two full-width u64 IDs retain all nested bits/types/masks across
+another4,000 cases, including236 zero-duration errors. No invalid input is newly
+admitted. The complete design memo and fixed layouts remain byte-identical.
+The suite passes820 checks (380 numerical); the frozen six-component package
+passes176. Maximum-paced work falls5.7% and deadline-to-publication delay is
+0.302–1.722s. Full256x128-knot admissions fall to262.971/266.644ms; the maximum
+paced cycle rises to46.521ms. The initial sealed-only version and diagnostic
+profile remain frozen separately. Evidence: m0-sealed-sums-20260911. These finite
+equivalence/performance results do not complete O04, M0 or human validation.
+
+Validated packed bank admissions subsequently reuse their original immutable
+320-byte rows after all source/order/moment/gap checks. Native expanded input
+still reconstructs and compares derived views. The changed bank path matches
+its frozen predecessor across720 transactions,1,775 states,296 accepted outcomes
+and424 unchanged rejections, including failed free-slot cleanup. Real compressed
+lengths1/2/8/128, staged packets and mixed input orders are covered.
+The suite passes823 checks (383 numerical);179 frozen component checks pass.
+Full admissions decrease to154.701/152.413ms, while maximum one-knot arrival work
+increases0.2%, with0.302–1.729s publication delay and47.354ms maximum cycle.
+No sustained-throughput or full O04 claim follows. The model/fixed layouts remain
+identical. The initial fixture-count error and corrected audit are preserved in
+m0-packed-bank-admission-20260911. All remaining M0 obligations stay open.
+
+The next implementation-only revision uses binary lookup on the sorted unique
+paths already owned by a sealed occurrence. No index or fixed-layout increase is
+introduced; membership, original cuts and detached returned views are preserved.
+The exhaustive before-image matches all6,882 probes:5,658 exact S1 packets and
+1,224 rejections, with72 unchanged sealed states across36 streams. New tests cover
+pending/post-seal revision boundaries, full-width IDs, missing paths/correspondence
+and mutation isolation. Numerical386/Python826/frozen109 tests pass. Maximum
+arrival work falls8.6% to923.122ms; deadline delay is0.232–1.538s and maximum cycle
+43.721ms. Sparse work increases2.9%. The previously measured full-bank/header
+diagnostics remain historical evidence, not new measurements. Model and fixed
+buffers are unchanged; the original Fable review remains scoped to its original
+memo. Full O04, fit and human gates remain open. Evidence: m0-section-path-search-20260911.
+
+The generic consumer codec now shares71 schema spellings and literal/scalar
+decoding tables without changing its wire format or validation.9,774 encodes
+and13,312 decodes match the frozen implementation, including3,050/8,739 rejections.
+Numerical388/Python828/frozen84 tests pass. Literal tables add2,053 bytes per Python
+module, excluding table/string/object and compiled-format overhead; fixed packets
+and consumer buffers are unchanged. The selected finite maximum run is2.8% lower
+in total work, but its47.001ms maximum cycle still exceeds40ms. An encoder-only
+alternative was retained after an instrumented profile suggested slower decoding;
+15 randomized paired samples without profiling favor the original decoder-reuse
+variant (header decode medians7.174/6.277ms for baseline/selected). The final source
+is exactly that already-tested initial variant, with both candidates and all
+evidence retained. This implementation-only change leaves the memo and original
+Fable-review scope unchanged. Full M0 remains open. Evidence: m0-schema-key-codec-20260911.
+
+A standalone Rust experiment now computes original-time band search, coordinate
+residuals and the two-row DTW recurrence. It does not replace the registered
+Python matcher or the instrument. Nine additional tests cover 700 randomized
+inputs, all 1,024 masks, full capacities, scratch reuse and boundary cases;
+the existing 33 matcher tests also pass through native DTW, including independent
+short-path enumeration. All 837 Python tests pass in 31.111 s, and Rust remains
+746 passed / 12 ignored. Nine randomly ordered paired full-query comparisons
+preserve 256 episodes of 128 knots, a 128-knot cue, 16 candidates, 8,192 anchors
+and 62 transforms. Python/native-adapter medians are 269.573/152.566 ms
+with one observed coordinate and 426.318/189.972 ms with ten, reductions
+of 43.4%/55.4%. Every output value, path and diagnostic agrees,
+including binary64 bits. Both queries still exceed 40 ms. These timings include
+Python validation, packing, traceback and diagnostics; prepared native-call
+timings are a separate local measurement. Fixed ctypes payloads occupy 41,624
+bytes per instance, plus 2,064 bytes for the two DP arrays. Python objects,
+temporary results, allocator/ABI stack overhead, RSS and simultaneous real-audio
+workloads remain unmeasured. The registered 388 numerical tests, feature version
+29 and design memo remain unchanged. The initial measurement and a corrected
+test-side expectation for an all-missing path are retained. Full M0 remains open.
+Evidence: m0-matcher-kernel-20260911.
+
+The native experiment now batches coarse anchor search and packs descriptor
+rows in blocks. All 8,192 anchors retain original-time intervals, masks, ordered
+f64 sums, median comparison counts, transformations and ties. Detailed transform
+diagnostics use the Python reference at each episode's winning anchor. Sixteen
+experiment tests include every anchor in 500 randomized pairs and 90 whole
+queries; the existing 33 matcher tests also pass through the native driver.
+All 844 Python tests pass in 29.404 s; Rust reports 746 passed / 12 ignored.
+Nine randomly ordered three-version comparisons preserve 256 episodes of 128
+knots, 128 cue knots, 16 candidates and 62 transforms. Python/DTW-only/new-anchor
+whole-query medians are 270.968/147.211/74.521 ms for one coordinate
+and 425.345/184.874/94.553 ms for ten. The new version reduces
+DTW-only time by 49.4%/48.9%, with matching types, binary64 bits,
+paths and diagnostics across all 54 comparisons; both still exceed 40 ms.
+Fixed ctypes payloads occupy 53,008 bytes, the two DP arrays 2,064 bytes and the
+anchor sample array 128 bytes. Python objects, temporary packing lists, outputs,
+allocator/ABI stack overhead and RSS remain additional. Two counterexamples
+showed that the initial candidate hid an unused anchor's RMS overflow and
+rejected NaN diagnostics produced by the reference under extreme time differences.
+Extreme arithmetic now takes the exact reference path. Its guard derives from
+the f64 maximum and eight samples, not a cognitive threshold. Both failures and
+an initial audit fixture that failed to distinguish one of them are retained.
+Reproducing a NaN diagnostic does not adopt that input as production evidence.
+The registered Python model, feature version 29, memo and instrument are unchanged.
+Input validation/transfer, simultaneous real-device workloads, fit and human
+gates remain open. Evidence: m0-native-anchor-20260911.
+
+Native input validation and optional CPython transfer now preserve the original
+observation cuts and rejection behavior. Exact builtin floats/lists/dicts transfer
+through GIL-held PyDLL into fixed storage; other types retain the Python path.
+The default numeric library has no Python dependency. Twenty-six experiment tests
+include 1,200 validation cases, 320 byte comparisons, fallbacks, object release
+and untouched buffer tails. Existing 33 matcher tests and all 854 Python
+tests (32.151 s) pass; Rust reports 746 passed / 12 ignored. Nine four-version
+comparisons retain 256 episodes x 128 knots, 128 cue knots and 16 candidates.
+Whole-query medians change from 73.531 to 23.433 ms for one coordinate
+and 95.701 to 37.477 ms for ten, with exact types, binary64 bits,
+paths and diagnostics in 72 comparisons. These single-query medians below 40 ms
+do not establish p99 under two workers and 64 Voices. Fixed ctypes payload is
+67,344 bytes; DP arrays, anchor samples, validation metadata and transfer pointer
+arrays are separate inventories of 2,064, 128, 56 and 144 bytes. Python objects,
+outputs, allocator overhead, total stack and RSS remain outside these figures.
+The registered model, feature version 29, memo and instrument are unchanged.
+Consumer throughput, actual producers, simultaneous workloads, fit and human
+gates remain open. Evidence: m0-native-input-validation-20260911.
+
+A subsequent caller-tail diagnostic uses 10 warmup and 200 timed calls per
+caller. One-coordinate p99 is 23.460 ms for one caller and 57.322 ms for two;
+ten-coordinate p99 is 49.625 ms and 87.469 ms. Two Python threads use separate
+native scratch and share the GIL; all 200 pairs overlap. Exact output checks pass
+for 1,260 calls and run outside timed intervals after a barrier. This diagnostic
+still exceeds 40 ms. Next, move remaining traceback and diagnostic computation
+and construction out of Python loops and remeasure concurrent callers. It is
+not the real two-worker/64-Voice/6,000-cycle O04 workload.
+
+Native traceback now preserves reverse-order coordinate accumulation and
+computes adjacent-pair motion/interval errors. Python retains math.fsum and final
+result construction. Tests cover pow-versus-multiplication rounding, 320 wide
+magnitudes, overflow, lazy/custom gap evaluation and reuse after fallback. An
+initial Config layout mismatch was corrected; all five ABI structure sizes are
+checked before buffer use. The initial source and failure log remain archived.
+All 30 experiment tests, existing 33 matcher tests and 858 Python tests (32.917 s)
+pass; Rust reports 746 passed / 12 ignored. Nine three-version comparisons retain
+the full query inventory. Input-transfer/new-traceback medians are
+23.744/16.484 ms for one coordinate and 38.226/21.222 ms for ten,
+with exact types, binary64 bits, paths and diagnostics in 54 comparisons.
+Single/two-caller p99 is 17.303/42.039 ms for one coordinate and
+32.859/50.261 ms for ten. All 1,260 outputs agree, but concurrent callers
+still exceed 40 ms. Fixed ctypes payload is 73,152 bytes, including 1,536 bytes
+for paths, 2,048 for diagnostic arrays and 120 for coordinate sums/counts.
+Python objects, outputs, allocator/stack/RSS and full O04 remain additional.
+The registered model, feature version 29, memo and instrument are unchanged.
+Next: winning-anchor diagnostics. Actual producers, consumer throughput, fit and
+human gates remain open. Evidence: m0-native-traceback-20260911.
+
+Native coarse search now selects the winning anchor, aggregates comparison and
+boundary counts, and retains only its residual samples in original order. Pow
+rounding and Python math.fsum are preserved. All 8,192 anchors, 16 candidates,
+62 transformations and complete diagnostics remain. The 500-pair anchor audit
+now includes winner selection, totals and RMS; tests cover ties, missingness,
+reuse and sample order. All 32 experiment tests, existing 33 matcher tests and
+860 Python tests (32.544 s) pass; Rust reports 746 passed / 12 ignored.
+Nine three-version comparisons give previous/new full-query medians of
+15.650/13.588 ms for one coordinate and 20.710/18.567 ms for ten.
+All 54 comparisons retain types, binary64 bits, paths and diagnostics.
+Single/two-caller p99 is 13.594/28.807 ms for one coordinate and
+30.016/44.354 ms for ten. All 1,260 outputs agree. Two one-coordinate callers
+meet 40 ms in this diagnostic, but the ten-coordinate condition still exceeds it.
+The added coarse-call argument requires ABI v2; both mismatched old/new pairings
+are rejected before buffer calls. Fixed ctypes payload is 73,296 bytes, including
+144 bytes for the winning diagnostic. Original/winning/sort sample arrays total
+320 bytes; Python objects, outputs, allocator, total stack and RSS are additional.
+The registered model, feature version 29, memo and instrument are unchanged.
+Next: query-scoped transfer and call batching with bounded ownership, original
+cuts, rejection order and measured copies. Actual producers, consumer throughput,
+full O04, fit and human gates remain open. Evidence: m0-native-anchor-diagnostics-20260911.
+
+Query-scoped owned buffers replace repeated descriptor transfers. Three native
+calls cover transfer, all-episode coarse search, and refinement/DTW. Full-query
+medians improve from 13.811 to 11.355 ms (one coordinate) and
+18.482 to 15.380 ms (ten). Two-caller p99 is 30.454/39.974 ms;
+the ten-coordinate assay still has four of 400 calls above 40 ms, maximum 44.548 ms.
+Fixed ctypes storage is 6,997,808 bytes per caller and full-query numeric transfer
+writes 5,526,528 bytes. All 54 query, 1,260 caller-tail and 42 resource-audit outputs
+agree, including original identities, generations, cuts, scales and diagnostics.
+All 38 native, 33 original matcher, 866 Python and 746 Rust tests pass (12 Rust ignored).
+GIL-held transfer takes 6.286/7.371 ms in separate stage measurements;
+owned packed input is the next target. Evidence: m0-native-query-batch-20260911.
+The registered model, feature version 29, design memo and instrument are unchanged.
+Actual producers, consumer throughput, full O04, fit and human gates remain open.
+
+Owned immutable 320-byte descriptors now feed native matching without dictionary
+expansion. Full-query medians change from 11.416/15.158 ms for the object-batched
+path to 5.042/7.221 ms for packed input; copying all blobs each time gives
+5.718/7.831 ms. Across eight copy/no-copy, one/two-caller and one/ten-coordinate
+conditions, all 2,400 timed calls stay below 40 ms and all 2,520 outputs agree.
+Two-caller p99 is 21.580/22.513 ms without copies and 8.944/11.087 ms with copies;
+these differently ordered conditions do not establish that copying reduces tails.
+Fixed ctypes storage is 7,001,928 bytes per caller. Original blobs occupy
+10,526,720 bytes, copied again in the copy condition. Projection writes
+5,526,528 numeric bytes. Borrowed addresses are invalidated before owners can die.
+All 43 native, 33 original matcher, 871 Python and 746 Rust tests pass (12 Rust ignored).
+All 72 query and 84 resource-audit outputs agree. Evidence: m0-native-packed-input-20260911.
+Next: connect packed exports to scheduler dispatch, native matching and receipts.
+The registered reference, feature version 29, memo and instrument are unchanged;
+actual producers, consumer throughput, full O04, fit and human gates remain open.
+
+
+### Model replacement boundary registration (2026-09-11)
+
+The architecture addendum in memo §8.1 and O03/O09/O12 distinguishes evidence for
+a cognitive phenomenon, a neural mechanism, a chosen algorithm and a generative
+effect. The [replacement record](../roadmap/temporal-dcc/model-replacement.md)
+registers stable semantics, private model representations, exchange units,
+dependency-based refits/calibration, version/state isolation and MR1–MR3.
+The small MR1 ordered/orderless reference exchange belongs to M0 before production
+wiring; MR2 and MR3 retain their M2 and M1–M2 implementation ownership.
+
+This is a local architecture revision, not a new Fable review or evidence that a
+replacement works. No reference equation in §§9–10.3, feature layout, capacity or
+source implementation changes in this task. Feature version remains 29. The earlier
+packed scheduler/worker edits remain unverified; their registrations and test
+results are not refreshed by this documentation task. MR1–MR3, full O04, fitting,
+human collection and full M0 completion remain open.
+
+Memo before: `901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96`.
+Memo after: `afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85`.
+Boundary record: `d377eedba0023af20bf25476ae8c5d681a5de210f216aee89c5d986b655dd2e5`.
+Registration snapshots and documentation checks: `target/temporal-dcc/m0-model-boundaries-20260911/`.
+
+Documentation validation passes: all 47 JSON registrations parse, 20 current memo
+references carry the new hash, and 13 added local links resolve. The audit confirms
+that §§9–10.3 and all 318 files under `src/`, `scripts/` and `tests/` are unchanged
+from this task's starting snapshot. The EN/JA site builds with Zola and
+`git diff --check` passes. These checks establish documentation consistency only;
+no model exchange experiment or source-code test was run in this task.

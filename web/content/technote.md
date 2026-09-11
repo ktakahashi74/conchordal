@@ -724,7 +724,7 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5, §7 | Implemented; dedicated beat carriers and temporal scaffolds are restricted to explicit synchronization demonstrations or assays (sample 07 among the public samples) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition; distinct from internally perceiving and remembering long structure (9.3.55) |
-| Temporal structure grounded in auditory cognition | Interactions among articulation, groove, beat/meter, phrase, repetition/variation, section and whole-piece context | §9.3.55 | Design specification and M0–M9 delivery plan complete; final Fable review has no actionable issues. Short-time participation/history partly implemented; persistent relations, boundary/closure and long-context effects on generation remain incomplete |
+| Temporal structure grounded in auditory cognition | Interactions among articulation, groove, beat/meter, phrase, repetition/variation, section and whole-piece context | §9.3.55 | Baseline design reviewed; subsequent M0 numerical and model-boundary revisions have no new external review. Replacement contracts and experiments are registered, not implemented or passed. Short-time participation/history partly implemented; persistent relations, boundary/closure and long-context effects on generation remain incomplete |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented and off by default; physical biosignal loop remains open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations, reset NSGT history and suspend DCC pressure until a complete window is available | §6.2 | Implemented; physical-device overload validation remains open |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |
@@ -5096,12 +5096,1151 @@ audible distinction of the intended relation and artistic preference remain sepa
 acceptance claims. Existing short-time participation/history does not complete the
 whole hierarchy.
 
+#### M0 public-claim reconciliation (2026-09-10)
+
+The Japanese and English Manifestos were compared with baseline commit
+`ec67b50c303d930a3d4c810333e3742f111c6ac8` and the actual source, then revised.
+In `src/core/modulation.rs`, `NeuralRhythms::from_meter_state` maps beat/subdivision
+to delta/theta and stores confidence and its complement as alpha/beta. This is not
+four-band neural extraction. `TemporalParticipation` and `ParticipationClock`
+implement intrinsic-period/sound-duration separation and sounding, waiting or
+skipping from short acoustic context; they do not implement the new relational
+memory or whole-piece cognition.
+
+The four numbered clauses from memo section 3 retain their IDs. The exact adopted
+Japanese text and canonical English are fixed below. The English Manifesto conveys
+the same four commitments in its surrounding prose.
+
+| ID | Exact adopted Japanese wording | Canonical English |
+|---|---|---|
+| 1 | 2026年9月時点の実装では、拍と細分拍の推定からデルタ・シータと名づけた周期信号を作り、アルファ・ベータは推定の確かさと予測誤差の指標を表す数値として扱っている。 | The current implementation derives delta/theta bands from meter estimates and represents alpha/beta as precision/error scalars. |
+| 2 | 音響信号や脳信号から四つの神経帯域を抽出しているわけではない。 | It does not extract four neural bands from audio or brain signals. |
+| 3 | Conchordalは、これらを支える神経認知的な時間構造とその相互作用を内部で表現することを設計目標とする。 | Representing interacting neurocognitive time structures is a design goal. |
+| 4 | 以下の四帯域への機能配分は初期の案であり、再検討の対象である。 | The four-band allocation remains a revisable proposal. |
+
+The sentence-level comparison covers 18 bilingual paragraph pairs, not only the
+extraction sentence. `docs/roadmap/temporal-dcc/manifesto-audit.json` stores the old
+and new text, dispositions, line locations, and SHA-256 hashes of both Manifestos
+and 15 inspected source/specification files. IDs below follow the record's `O02-`
+prefix.
+
+| Location / IDs | Disposition |
+|---|---|
+| `intro`, `dcc_mapping` | Retain autonomous sound agents and DCC principles. Biological feedback was already future work; existing model-to-audio mapping does not complete temporal cognition. |
+| `landscape` | Replace completed real-time two-axis terrain with current frequency terrain, short history and meter, plus the temporal design goal. |
+| `temporal_mechanism`, `current_mechanism`, `allocation` | Remove four-band extraction and cross-band entrainment as completed mechanisms. State current signal provenance and proposed relational memory, expectation and return to generation. |
+| `delta`, `theta`, `alpha`, `beta` | Mark large-scale phrasing, articulation, phrase accents and groove/microtiming allocations individually as revisable proposals. |
+| `long_context` | Register order, retrieval, boundaries and closure as future representational and listener-comparison work; do not reduce all scales to slow oscillators. |
+| `individual`, `population`, `emergence` | Replace neural entrainment with implemented local participation. Separate frequency niches from future temporal roles; sustained handoff, phrase and whole-piece emergence remain goals. |
+| `scenario_scope`, `scenario_controls` | Retain the authored large-scale arc. Describe available period, duration and synchronization controls; coexistence with perceived long context remains future work. |
+| `closing`, `name` | Retain autonomous agents, ephemeral performance and the coral metaphor as commitments, not proof of completed temporal cognition. |
+
+This reconciled public source text; it did not deploy the site or demonstrate a
+new cognitive mechanism. The memo at that initial reconciliation had SHA-256
+`8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9`.
+Its description of the old public claims refers to the baseline commit; this
+ledger records their correction and the subsequent numerical revision below. M0's remaining obligations are tracked in
+`docs/roadmap/temporal-dcc/m0.md`.
+
+#### M0 episode-recovery allocation failure
+
+The first conditional recovery design, `episode-allocation-1`, was registered in
+`docs/roadmap/temporal-dcc/episode-recovery-design-v1.json` before simulation. It
+crosses delay, observed interfering-content mass, occurrence count, assignment
+support and cue quality in 720 cells, with four responses per cell: 2,880 targets
+under a candidate 960-listener allocation. No listeners or waveforms were collected.
+Acoustic scores are fixed engineering nuisances. Three conditions cover complete
+responses, 10% independent missing responses, and weaker cues with competing
+episodes and ambiguity-dependent missing responses. These do not yet cover
+acquisition gaps or fitted acoustic scales.
+
+All 108 parameter stress points were simulated 100 times in each condition,
+yielding 32,400 fits. Of 324 grid-condition points, 234 pass the registered
+parameter-wise error criteria and 90 fail. All 81 points with a two-second
+retention constant fail; the other nine failures have a twenty-second constant.
+The 3,272 failed fits remain infinite errors in acceptance statistics. No criterion
+or grid point was removed. `docs/roadmap/temporal-dcc/parameter-recovery.json` links
+the complete results, exact runner, seeds, assignment and joint-error figures.
+This candidate allocation does not pass O11 and cannot authorize human collection.
+
+The failure exposes a task-design issue rather than establishing a human memory
+limit. The shortest registered delay is four seconds before the eight-second
+query, so the earliest scoring time is twelve seconds after reinforcement.
+At that time, `tau=2, bias=0` and `tau=3, bias=2` give the primary retrieved
+episode the same time-plus-bias penalty; later observations must separate them. With `kappa=4, strength_max=3`,
+the expected conditional-response log-likelihood ratio over the entire allocation
+is only 0.310 nats with clear cues and 0.038 nats in the weak-cue condition.
+This is a post-run explanatory diagnostic, not an acceptance threshold. An
+independent expected-count oracle recovers the short-retention parameters when
+information is sufficient; optimizer correctness alone does not make this
+allocation adequate. M0 must revise the observation/task allocation or register
+an explicit scoring-model revision and repeat the full gate, retaining the short
+retention stress points. The accepted design memo and live instrument remain
+unchanged at the end of that first allocation's evaluation.
+
+#### M0 auxiliary-query recovery and remaining private-trace semantics
+
+The revised allocation keeps every primary eight-second cell and adds 1/2/4-second
+queries, with shorter delays only where observed intervening spans can commit
+before query start. A registered expected-Fisher search compared 4/8/16/32 ratings
+per cell before any new simulated responses were drawn. Six, two, zero and zero
+stress-condition points respectively failed its planning precision limits, so it
+selected sixteen. These planning limits do not replace the unchanged recovery
+criteria. The resulting 2,640 cells require 42,240 responses from a candidate
+3,840 participants, eleven distinct source families each. Estimated audio alone
+averages 32.52 minutes and reaches 44.54 minutes per participant, before instructions,
+responses or breaks. This is a material study burden, not an approved recruitment.
+
+`episode-allocation-2` then passed all 324 truth/nuisance points in 32,400 independent
+synthetic fits. The full grid, all fit errors, assignment, exact executed runner,
+planning search and figures remain linked from `parameter-recovery.json`.
+The run took about 62.14 seconds and 488.64 measured simulation/parent CPU seconds;
+the latter excludes process startup. This is neither an audio real-time benchmark
+nor a human-memory result. The registered engineering cue scores, homogeneous
+participant model and absence of acquisition gaps limit the result.
+
+The hierarchy memo and completion plan now include the auxiliary identification
+queries while retaining the original primary task and retention equation.
+`recognition-instrument.json` fixes the duration-specific questions, no-replay and
+bank-copy rules. `control-comparisons.json` registers a primary eight-second transfer
+check against fitting eight-second queries alone; its human split, power and final
+meaningful margin remain unfinished. Actual short-query correspondence, duration-
+specific pilots and recovery after acoustic-scale fitting remain prerequisites.
+The old round-39 Fable result applies to its recorded earlier memo hash, not this
+numerically motivated revision. The live instrument remains unchanged.
+
+The independent private-trace work has verified fractional executed credit,
+missing/retired-reference mass, exact uniform timestamp-difference bin integration,
+multiple frozen anchor modes, overflow and conditional normalization. Shared extra
+wait/interference multiplies every retained bin by the same factor, which cancels
+on normalization; waiting-only probes cannot identify private tau/kappa.
+The stateful reference must therefore specify recurrence accumulation and saturation,
+the reinforcement/interference order under fractional assignments, and each bin's
+observed timestamp support before recovery. Literal independent one-occurrence
+strengths never activate a cap above one, so they cannot establish strength-cap
+identification. `private-trace-reference.json` records these unresolved semantics.
+The subsequent stateful reference resolves accumulation with capped **retained
+mass per bin**: decay old mass, add the integral of observed timing credit, cap
+the bin, then apply competing-reference interference to both heads. It integrates
+the exponential timing moment over known uniform outcome/anchor supports rather
+than substituting a mean or delivery time. This explicit private-filter revision
+leaves episode-strength renewal unchanged. Tests cover scalar recurrence,
+independent timestamp quadrature, head separation, lost support, capacity eviction
+and long waits without converting log-space retained mass into an empty trace.
+
+A separate exact observation audit finds a fitting defect. With two phase-bin
+masses (0.8,0.2), four quarter-period observation intervals offset by one eighth
+period have probabilities (0.4,0.25,0.1,0.25). Their uniform soft-bin assignments
+average to (0.65,0.35), so the earlier soft-bin cross-entropy favors a biased
+distribution even with infinite data. A likelihood obtained by integrating the
+phase density over each observed interval has its population optimum at the
+true distribution. The same bias is verified with 32 bins and 512-sample observed
+intervals at 48 kHz, including the known partial last interval of a one-second
+period. These diagnostics do not replace the full 32/33-bin parameter grid.
+The multiple-reference physical-outcome law, including
+anchor alternatives, nonperiodic overflow and missingness, still needs completion
+before the recovery simulation; independently drawing outcomes for each
+reference would fabricate observations. All 32 reference tests pass, but no
+private parameter recovery or production-template replacement had passed at that
+point. The next revision supplies the missing joint observation law.
+
+Each probe freezes a finite physical opportunity window, its target head and
+detector intervals at issue. Within that window, each reference lifts its complete
+32/33-bin distribution to physical time, retaining the frozen anchor alternatives.
+Nonperiodic overflow occupies the union of the available outside regions. Missing
+reference/anchor weight and bins with no legal intersection use a shared uniform
+physical-time baseline for this assay, with no live memory/action support. The
+reference densities are mixed using the original issue-time weights. Only one
+physical outcome is sampled; observed result credit neither changes that frozen
+prediction nor creates independent observations for each reference.
+
+The fitting likelihood integrates the mixed density over each known detector
+interval and retains missing detection as one additional category. The old
+fractional soft-bin loss remains a separate diagnostic. Analytic integration of
+affine overlap-length ratios keeps uncertain anchor priors normalized before
+mixing; adaptive quadrature and the earlier single-period calculation agree.
+The reduced recovery forward and its analytic gradient also match actual
+sequential updates of both heads, including fractional credit, missing exposure,
+multiple timing modes, overflow and competing references.
+
+The first private recovery allocation selected 1,024 independent probes for each
+of 140 exposure cells in each of three nuisance conditions. It retained all 36
+tau/kappa/cap truth points and 100 datasets per point. Of 108 condition points,
+107 passed; all 73 failed fits count as infinite errors. The failing point is
+tau=2 seconds, kappa=1 and cap=3 under ambiguous anchors/missingness. Its 11 failed
+fits prevent a finite 90th-percentile error. Every fit was saved, but a NumPy
+boolean serialization error prevented the final timing/result JSON. Summaries
+were reconstructed without rerunning fits; exact final CPU/wall counters remain
+unavailable, and the last captured progress line reports 99.4 seconds. No complete
+cost gate is claimed for that run.
+
+The uniform design would require about 45,883 hours per nuisance condition if
+every prefix were replayed separately, so it is not an empirical collection plan.
+A prospectively registered Fisher optimization retains all 140 exposure cells,
+at least two probes per cell and all truth/condition constraints. It selects
+9,086 probes per condition, reducing the same replay bound to about 554 hours.
+The maximum expected log-parameter standard errors remain below 0.2. A separate
+registered nonsmooth fallback refines fits that stop at the retained-mass cap;
+it changes neither the forward law nor the recovery tolerances.
+
+The new v2 run passed 106/108 points. Its local Fisher criterion did not separate
+a globally different low-cap branch: when every addition saturates a bin, cap
+cancels from normalized timing. V3 added a calibrated separation probe against
+that branch and required full-rank fitted information. It passed 105/108 points;
+the rank check exposed another flat branch where accumulated mass never reaches
+the cap. V4 doubled all probe counts and passed 106/108 points, retaining 43 failed
+fits, including 40 with deficient rank. These failures remain in all denominators.
+
+V5 fixes a solver error: a higher-loss converged candidate must not suppress
+refinement of a lower-loss nonsmooth cap corner. Unresolved lower-loss attempts
+and rank-deficient best fits still fail. With independent random outcomes, the
+unchanged 50,932-probe allocation again passed 106/108 points. The remaining failed
+points have tau=2 seconds, cap=6 and kappa=4/16 under ambiguous/missing observation.
+Thus the fitting correction does not establish sufficient experimental information.
+A registered v6 allocation search added probes only to four existing late-exposure
+cells and profiled the unsaturated alternative over tau/kappa. None of its five
+candidate counts met the advance distance criterion at all three stress truths.
+The search selected no allocation and launched no new recovery. Finite multistart
+profiles are a planning heuristic, not a global certificate. The next revision
+must reconsider informative exposure timing; merely meeting a local Fisher
+standard-error target is insufficient.
+
+All independent recovery runs retain their exact designs, sources, fit records,
+plots and failure counts. Actual acquisition-aligned timing, body/opportunity
+feasibility, waveform-derived references and an accepted replay method remain
+outstanding. Separately, O03 now registers the section descriptor's exact
+39-coordinate order, support-weighted edge/transition statistics, unresolved
+mass, four-span ring, periodic-proposal union and resolved-only overlap. The full
+82-coordinate head and O12 mixture-first-event simulation were still outstanding
+at that point; descriptor registration is not a fitted section model.
+
+V7 changes the exposure schedule: after the original A prefix and independent
+delay/interference, it prescribes 1/4/16 B outcomes before a single physical probe.
+Both target heads and their actual counterparts use the original credit and
+observation rules; elapsed decay continues between every B outcome, including
+missing ones. All original A/delay/interference cells remain at B=1. The expanded
+420-cell design passes sequential-filter and analytic-gradient checks. A
+registered Fisher allocation with maximum log-parameter SE 0.12 selects 14,382
+probes per nuisance condition, with a full independent-prefix replay bound of
+about 1,034 hours per condition. The complete 10,800-fit recovery passes 104/108
+points, retaining 152 failed fits, including 133 with deficient rank. All three
+short-tau/high-cap ambiguous points still fail; a fractional-observation point
+also narrowly exceeds the cap-error bound. No tolerance is relaxed.
+
+Diagnostic starts near the true parameters find identifiable local optima, but
+the retained datasets can favor a lower-loss unsaturated branch. Choosing the
+higher-loss identified solution would conceal this failure. Under the ambiguous
+prefix at tau=2 seconds, the maximum unsaturated cycle mass is only about 7.8995
+per bin: a 0.6 credit split over two modes, one missing outcome in five and
+62.5 ms spacing constrain accumulation. The cap=6 stress point lies near that
+exposure ceiling. A future revision must examine genuinely informative exposure
+support as well as timing; neither the new B count nor local Fisher precision
+establishes global identification. These are assay diagnostics, not evidence
+for a biological memory constant or an accepted empirical replay plan.
+
+The section-head registration now includes the full 82 covariates and separately
+fitted bias (83 hazard coefficients). Three exit logits use coefficient-wise
+sum-to-zero constraints, including bias (166 free coefficients). Recent-only
+uses 41 covariates plus bias; elapsed-only has two inputs including bias. Raw
+recent-minus-cumulative differences precede global development standardization.
+The missing-support feature is one minus the observed physical support union's
+fraction of the clipped candidate-section window: known inactivity is observed,
+overlapping intervals count once, and fractional association weight is not
+missing time. Contrast masks require both descriptors; no extra learned mask
+coordinates are added. Forecasts advance duration with frozen context, and stale
+matcher audio masks the two retrieval coordinates at the existing 0.5 s limit.
+Four new numerical assembly checks cover these conventions, future-input rejection
+and support partitioning. Full descriptor extraction, lineage/cue selection,
+fitted scales and all O12 event-head simulations remain required. The exact
+pre/post specification snapshots retain the earlier private/episode clauses
+byte-for-byte; the section clarification has no new external review.
+
+V8 retains the 420 ambient exposure cells and adds 72 cells with fully supported
+first-prefix observations, preserving multiple modes, periodic missing outcomes,
+the weaker later prefix and ambiguous probes. Its Fisher allocation passes the
+local precision gate, but even multiplying all added counts by 16 fails the
+registered unsaturated-alternative separation check. No v8 recovery is run.
+V9 instead preserves every v8 count and minimizes replay cost against successive
+profiled-alternative distance constraints, adding observations only in the new
+stratum. Three profile rounds select 23,794 probes per condition, with the four
+minimum profiled distances all above the unchanged threshold of eight. The
+additional counts concentrate in two cells. This finite multistart planning result
+is not a global identification certificate. The separate v9 recovery completes
+all 10,800 datasets and passes all 108 condition/truth points. Four failed fits
+(two rank-deficient, two unresolved lower-loss cases) remain infinite errors;
+none are discarded. The maximum condition/parameter median and 90th-percentile
+absolute log errors are about 0.09599 and 0.26284, below the unchanged limits.
+The run takes about 534.41 seconds and 4,198.61 CPU seconds, excluding worker
+startup from CPU accounting. Exact records, source, plots and all point summaries
+are verified and retained. About 1,844 hours of independent-prefix replay
+per condition also remain an unadopted empirical burden. The fully supported
+stratum is explicit: this success does not establish recovery from weak exposure alone.
+
+O12 now has a finite-hop first-event aggregation reference. Independent exhaustive
+joint histories verify context/path marginalization, all-group loss before exits,
+stable-handle tie ownership, initial unknown, retained first events and the
+unconditional event/survival/unresolved identity. Issued forecasts and retrospective
+heard-prefix scores carry distinct frozen-snapshot metadata; this interface does
+not implement production issuance retention. A separate two-point Gauss–Legendre
+reference integrates the duration-dependent hazard over each original observed
+hop, applying calibration locally before aggregation. Its registered 135-case
+envelope agrees with independent adaptive integration and step doubling within
+absolute 1e-9 plus relative 1e-7 error. Nine added checks bring the reference suite
+to 51 at that stage. Production history/register lifecycle, all
+generating vectors and the full stage-2 fitting/OOF/calibration and 100-dataset
+predictive gate remain required. This establishes numerical conventions, not
+auditory segmentation or a fitted neural rate.
+
+The section input work now provides six cached-input oracle functions with 21
+checks. Original assigned acoustic hops supply the six ending observables, clipped
+to epoch, ending generation, span start and the original support endpoint. Cached
+correspondence alternatives remain path-local: multiplying separate marginal
+category probabilities would invent an unregistered cross-record independence.
+The 30 edge/transition coordinates retain unresolved adjacencies, fractional
+support and excluded pair weight. The nine activity components retain admitted
+nonuniform words, all supported outgoing/within-group timing histories and
+resolved-only overlap. Cue selection uses actual supplied generation handles and
+returns the whole selected prefix to the reused query; publication time and
+availability cannot refresh or replace acoustic match evidence. O03 registers
+the shared six-observable order and scaling rules. A contiguous-span fixture
+connects these components to the 39/82 layouts. These exhaustive oracles consume
+earlier-stage acoustic, detector, matcher and timing caches; they do not implement
+those upstream estimators. At that stage, general overlapping-span/ring assembly, real lineage
+ownership, the 640-byte record and all finite fitting/predictive-stability gates
+remain incomplete. Numerical component checks do not establish heard sections,
+cognitive parameter identification or real-time feasibility.
+
+The gap-survival reference now uses bounded panel doubling of the same two-point
+quadrature, holding the last supported context fixed. Endpoint evaluations count
+toward its 64-evaluation limit. Successive small estimates alone can miss a sharp
+initial hazard, so acceptance also requires a fourth-derivative quadrature bound
+with a rounding allowance, using Bernstein bounds over the endpoint sigmoid range.
+Absolute 1e-9 plus relative 1e-7 tolerances and the failure convention are frozen
+in the feature manifest. Of 600 numerical audit cases, 416 return a supported
+prior integral within the independent adaptive-quadrature tolerance; 184 exhaust
+the conservative budget and remain unresolved. The largest accepted error is
+about 0.05756 times tolerance. All cases remain in the archive. Exits during a
+missing interval supply unknown-current-state mass, including unobserved multiple
+transitions, never observed boundaries or inactivity evidence. Failed integration
+leaves survival itself unresolved. Seven additional checks cover analytic cases,
+calibration, partitioning, a missed initial hazard and retained unknown mass in
+a subsequent observed first-event window. Existing reference functions remain
+AST-identical. This brings that suite to 58 checks without changing the recovery
+models. The 184 unresolved cases are not successful predictions; fitted-envelope
+coverage, live lineage/epoch integration, O04 cost and full O12 stability remain
+required. The record is `docs/roadmap/temporal-dcc/event-head-reference.json`.
+
+The section reference now conserves the frozen ownership of each physical hop
+fragment and admitted accent across overlapping spans. Each sealed span's scalar
+membership multiplies its numerators, denominators and valid durations once;
+the recent ring sums those sufficient statistics. Cumulative activity and missing
+audio support still count new physical group observations once. Missing clock
+records cannot disappear from a span's denominator, and a clipped fragment cannot
+use a raw hop that extends beyond the observation cut. Twelve added checks bring
+the section suite to 33, including overlapping-span 39/82 assembly, exact
+correspondence and hand-summed occupancy for all 20 prefixes of 2/4/8-span rings,
+replay handling, section starts and independent generation inheritance.
+
+Each packed section record contains 54 f64 sums, six f64 original ending
+descriptors, 32 padding bytes and 128 bookkeeping bytes, fitting the unchanged
+640-byte limit. Five records use 3,200 bytes per local path. A prototype using
+two f32 values per sum changed the 90% adjacency-validity decision; a saved
+counterexample reproduces that failure, and f64 storage agrees with the
+exhaustive reference on this case. Lower precision requires renewed validity
+checks as well as scalar-error checks. These are payload measurements and
+conditional cache-input tests. At that stage provisional ownership and sealing,
+late accent delivery, live topology/ancestry and additional state/scratch costs
+remained unimplemented or unmeasured. That clarification changes only memo §9.5, preserves
+earlier recovery results and has no new external acceptance. Full O12 fitting,
+real-time feasibility and cognitive evidence remain required. The exact record
+is `docs/roadmap/temporal-dcc/section-feature-reference.json`.
+
+The subsequent accent reference conserves assigned group energy, compares three
+saliences using four canonical raw hops, and retains the uncertain middle-hop
+event separately from the full supporting-audio endpoint and availability.
+Twenty added checks cover fractional energy assignment, all four acquisition
+and component masks, sample-support union, spectral-only flux, plateau peaks,
+the strict threshold and a causal counterexample. The old cache interface could
+include a recent event whose right-context audio was still in the future. All
+three section extractors now enforce the complete evidence cut; perturbing only
+the right context leaves the original ending descriptor and counts unchanged.
+
+An ordered admission ledger retains at most 128 accents in 32 seconds, preserving
+chronological/ID eviction and per-window capacity masks. Its independent totals
+and section cumulative delivery path count an accent once even when its event
+precedes the current acoustic delta. Replays add nothing, saved snapshots remain
+unchanged, and explicit generation continuation preserves totals while resetting
+the generation-local delivery watermark in existing bookkeeping slot 15. The
+scalar inventory timestamp is the middle-hop endpoint; timing integrations keep
+its full uniform interval. This convention and unrun inclusion-time controls are
+registered in `docs/roadmap/temporal-dcc/accent-reference.json`. The 20 new checks
+plus 33 section and 58 general checks total 111 numerical checks. This does not
+finish pending-span ownership/sealing, arbitrary packet reordering, waveform
+NSGT/group inference, real ancestry, O12 fitting or O04 runtime measurement. The
+memo changes have no new external acceptance or human-listening evidence.
+
+The next finite-input reference implements provisional occurrence commitment.
+Stable original occurrence/support identities, ending descriptors and acoustic
+payloads survive reinterpretation. Joint path weights are integrated once with
+original observed support at the 0.5-second deadline; later processing time is
+separate. Sealed writes and uncapped episode/context membership totals cannot be
+rewritten by retrieval, duplicate reads or later interpretation. A strict change
+above 0.25 in a joint support cell or unassigned support flags the original
+occurrence once, measured against its sealed write. Missing lag support remains
+uncertain, and late accent receipts can update pending activity without changing
+the original ending descriptor. Post-seal receipts report support loss.
+
+Twenty-one additional checks cover exact joint support, missing/unknown mass,
+deadline and threshold sensitivities, original-time retention, metadata-only
+revision, context eviction, same-cue coarse snapshots and bounded interference
+increments. All 12 prefixes of 100 finite streams match independently summed
+episode/context support. Conserved overlapping-span accent ownership reaches
+the existing 39/82 section interface without counting acoustic support twice;
+adjacency uses the original sample-support union. The numerical total is now 132
+checks, recorded in `docs/roadmap/temporal-dcc/occurrence-reference.json`.
+This oracle is conditional on supplied activity/path inputs and retains finite
+audit history exhaustively. Its pending-count guard does not satisfy the
+128-byte runtime endpoint layout. Full beam-dependent activity production, global
+memory-clock/bank lifecycle, runtime bounds, O12 fitting and human gates remain
+incomplete. The earlier recovery laws/results and external-review boundary remain.
+
+The raw-descriptor reference next implements the ten assigned-hop observables,
+generation-aligned 1/2/4-hop blocks and bounded moment compression. Twenty-nine
+checks cover source/availability cuts, partial-acquisition sample unions, clipped
+span supports, missing coordinates, immutable update APIs and generation isolation.
+Ten f64 W/mean/error triples and timing/provenance occupy an actual 320-byte payload.
+The 128-knot bank plus insertion, partial and gap scratch uses 41,920 payload bytes
+per active span, or 85,852,160 for 1,024 independent paths on each of two buses.
+Python headers, raw caches, outputs, beam state and matching/edge costs are extra;
+this is not the full O04 memory/performance census.
+
+All 54 combinations of six assigned-hop fixtures, 64/128/256-knot caps and 1/2/4-hop
+cadence agree with direct uncompressed f64 reconstruction to a maximum absolute
+rounding discrepancy of 8.53e-14. Independent moment tests cover 100 finite streams.
+At the default cap/cadence a 43.69-second sustain has zero reconstruction error;
+a rapid gesture has integrated standardized squared error about 21.676 and maximum
+pointwise error about 1.307 standard deviations. A gapped fixture retains missing
+weight and its gap flag but loses precise gap location in one merged block.
+Compression is a reported approximation, not auditory forgetting or a measured
+cognitive timescale. The numerical total is 161 checks, recorded in
+`docs/roadmap/temporal-dcc/descriptor-reference.json`. The memo itself is unchanged.
+Real waveform/group inference, original-time matching, ongoing query/episode
+integration, fitted scales, T4/T6 evidence and the full M0 gates remain incomplete.
+
+The next reference connects detached pending-prefix queries, coarse anchor
+selection, original-time subsequence matching and sealed episode descriptors.
+Thirty-two checks preserve the live descriptor's cadence, distinguish a trailing
+gap from fresh supporting audio, and keep original occurrence age separate from
+late delivery availability. Fifty small random inputs agree with independent
+exhaustive edit-path enumeration to 13 decimal places. Missing pairs contribute
+no residual evidence; unmatched cue/reference steps retain their explicit costs,
+and outside-subsequence reference material is free. Pitch-motion and interval
+residuals remain separate diagnostics, not new fitted cost terms.
+
+Every eligible episode retains a generation-qualified coarse cost, including
+those outside the 16 full-match candidates. The explicit handle adapter reaches
+the existing occurrence ledger and section classification; late completion cannot
+supply an earlier commitment, and an ambiguous cutoff remains unresolved.
+Across 15 small searches, anchor spacing 2/4 recovers the exact, transposed,
+faster and masked middle quotation. Spacing 8 misses the transposed quotation
+and biases the other three pitch estimates by -0.1875 octave. The failed control
+is retained and not adopted; the default's small-fixture success does not establish
+broad or compression-density-invariant retrieval. The same-value shuffled control
+retains positive cost, without establishing human order recognition.
+
+One 256-episode/128-knot query visits 8,192 anchors, makes 121,349 median
+comparisons, evaluates 62 refinements and 179,392 DP cells. The numerical DP
+arrays have a maximum 7,824-byte payload at the default dimensions. Its roughly
+0.276-second offline query already exceeds the entire worker's 40 ms budget.
+This Python reference cannot be installed directly on that real-time cadence;
+production kernels and the complete two-worker/64-Voice load still require O04 verification.
+Query copies/exports, raw inference, cadence/queues, bounded cache layout,
+bank/edge/memory-clock state and allocator costs remain unmeasured or incomplete.
+The numerical total is 193 checks; records and the failed sensitivity fixture are
+in `docs/roadmap/temporal-dcc/matcher-reference.json`. Memo section 9.3 clarifies
+these numerical contracts; full fitting, real audio and human gates remain open.
+
+The next reference adds acquired-sample query scheduling and fixed coarse-cache
+storage. Each group retains one pending query and eight completed snapshots;
+each bus has one outstanding worker ticket. Missing acquisition and repeated
+delivery add no cadence credit. Pending replacement preserves waiting priority
+and leaves a running job valid; group retirement and epoch restart invalidate
+the result while holding the worker occupied until acknowledgment. This avoids
+both stale-generation reuse and starvation caused by discarding every slow job.
+
+Three saved counterexamples expose and fix earlier occurrence-ledger acceptance
+of future full-source audio, stale audio refreshed by a trailing gap, and a query
+from the wrong generation. The supporting-audio tracker retains the maximum full
+source endpoint across observations. Cache receipt must precede the original
+commitment deadline: an earlier worker finish cannot backdate late delivery.
+Frozen writes remain unchanged after later cache eviction or group retirement.
+
+The new component has 22 checks, alongside three additional occurrence checks
+and one source-window check: 219 numerical checks in total. An independent
+full-history oracle agrees with eight-snapshot retention across 100 streams of
+80 insertions, including ties, older endpoints and replay. Nine virtual schedules
+compare 0.05/0.1/0.2-second cadence and three stipulated worker delays. At the
+default cadence, a 5 ms per-query delay completes 152 jobs in two seconds; a
+276.46 ms delay completes six, with maximum completed support age about 286 ms.
+These are simulated delays with empty result scans, not measured performance or
+retrieval quality. Pending slots stay at most eight and cache slots at most 64.
+
+The actual fixed buffers use 411,360 bytes for pending/active/query scratch,
+401,408 for coarse records, 6,272 for shared coarse scratch and 808 for controller
+arrays/occupancy: 819,848 bytes per bus. Scalar/object overhead, temporary capture
+and exports, raw inference, bank/edges, memory clock, full ledger and worker
+transport remain separate. Records are in
+`docs/roadmap/temporal-dcc/query-scheduler-reference.json`. Full O04 performance,
+all feature inventories/fits, real waveforms and human gates remain incomplete;
+the earlier 40 ms budget failure still stands.
+
+The memory reference now connects sealed occurrences to capped strength, uncapped
+membership and elapsed/interference availability bounds. One bus acquisition clock
+counts physical missing samples once across groups. Late delivery preserves the
+original occurrence time; a recurrence clears its previous interference interval
+before adding the same write's competing share. Retrieval and replay add no exposure.
+The exact observed-rate window is (t-1,t]; rate overflow preserves actual retention
+increments but leaves the gap envelope unverified. Affected availability then has
+zero lower bound while retaining known interference in its upper bound.
+
+A saved counterexample showed that the first prototype accepted a backdated assay
+copy after observing later clock input. Live updates and new assay copies now honor
+both bank and acquisition observation cuts. The pre-target recognition copy retains
+only prior eligible episodes and advances elapsed time through the actual query;
+query content cannot reinforce or interfere with its own scoring history.
+
+The new component passes 27 checks, bringing the numerical total to 246. Independent
+uncompressed sample unions cover 75 streams, exact one-second sums cover 50 streams,
+and scalar recurrence updates cover another 50. A 162-condition closed-form grid
+combines exposure count, strength cap, recurrence support, missing duration and rate
+envelope; maximum absolute error is 2.78e-17. This is numerical agreement, not fitted
+memory parameters, human recognition or the O12 predictive-stability gate. The full
+Python suite passes 686 checks; existing Rust regression passes 746 with 12 ignored.
+
+Fixed metadata, staging scratch, gap clock and rate buffers total 446,720 bytes per
+bus, of which 65,536 metadata bytes already belong to the full bank budget. An assay
+copy adds 6,176 bytes. These counts exclude objects, temporary exports, descriptors,
+edges and transport. Nine capacity stresses compare 72/144/288 rate rows: overflow
+is explicit, and 144 rows do not establish maximum-workload support. The current
+Python retention loop also repeats finite competing-support and similarity work;
+cached batch updates remain necessary for O04. Complete bank/edge/handle lifetime,
+bounded endpoints, actual waveform inference, fitted scales and human gates remain
+open. Records are in `docs/roadmap/temporal-dcc/memory-reference.json`; the 40 ms
+worker-budget failure has not been resolved. Harmony and production audio are unchanged.
+
+The next M0 container owns episode handles, frozen descriptors, anchors and a
+shared-cap edge store. Reservations are bounded and are not heard episodes;
+cancelled or evicted handles never return through slot reuse. Recurrence updates
+strength and membership while preserving the first admitted ordered descriptor.
+Context and supplied correspondence edges share 16 slots. Dropped membership
+keeps its denominator, and eviction leaves incoming links explicitly unretrieved.
+Splitting or pruning a context path therefore does not assign its past to another
+surviving path. A later recurrence can add new support without recovering lost totals.
+
+A saved counterexample exposed another delivery boundary: actual bank receipt at
+3.0 s was reported as the ledger's 0.6 s delivery and accepted for a 0.7 s relation
+deadline. Bank availability now uses actual receipt, retaining ledger delivery
+separately. Ordered links require a retained earlier target and original source/
+target times. Eighteen checks cover these contracts; 30 independent membership
+streams agree with full sealed joint sums. A capacity audit fills all 256 slots
+with 128-knot/32-anchor descriptors, evicts the representative, marks 255 incoming
+links unretrieved and reuses its slot for a fresh handle. Full compressed moments
+and anchor members survive storage exactly. These synthetic inputs do not establish
+long-return recognition or an inferred relation graph.
+
+The implemented default bank is 11,862,016 bytes including retention metadata.
+Edge scratch, scales/reservations and additional retention/clock state bring the
+fixed partial subsystem to 12,769,616 bytes per bus at the default acquisition
+layout. Objects, temporary exports, inference, full endpoint ledger and transport
+remain extra. Numerical checks total 264; the full Python suite passes 704 and
+Rust regression passes 746 with 12 ignored. Records are in
+`docs/roadmap/temporal-dcc/bank-reference.json`. Real relation/ancestry producers,
+packed-index worker integration, capacity sensitivity, all fitting and O04/human
+gates remain open; the earlier 40 ms budget failure is unchanged.
+
+The pending-endpoint reference now stores actual 128-byte headers with a fixed
+deadline heap, free list and two ID indexes. It distinguishes the original
+commitment deadline from delayed delivery, freezes one claimed header until
+acknowledgment, and rejects stale tickets after slot reuse. Capacity overflow is
+unsealed computational loss. Provisional revisions return replaced activity/joint
+references without changing the original span or deadline. Their immutable/versioned
+payload storage and original-ID production are separate components; the byte-pool
+and ownership adapter below now cover storage while inferred producers remain open.
+
+Thirteen checks include 60 independent sorted-order streams with ties and deliberate
+hash collisions, tombstone churn, replay, revision and finite-ledger comparisons.
+A full-capacity audit retains 65,536 headers, rejects an extra ending, and drains
+six 10,240-commit cycles plus one 4,096-commit cycle, preserving original order.
+Successful acknowledgments are supplied by this synthetic test; it is not evidence
+of actual inferred writes. The fixed buffers use 8,388,608 header bytes, 262,144
+each for heap/free arrays and 1,048,576 for indexes: 9,961,472 bytes per bus.
+Referenced payloads, claims, receipt state and transport remain additional.
+
+The header record is `docs/roadmap/temporal-dcc/endpoint-reference.json`.
+
+The immutable payload pool now uses fixed 320-byte blocks, 24-byte object metadata,
+versioned handles and typed owner counts. A queue entry retains its own four
+references; aliases add no owners. Revisions acquire new versions before releasing
+old ones. Failed bundle allocation rolls back partial ownership, active claims
+keep their bytes alive, and retirement releases pending/active owners as explicit
+unsealed loss. A monotone paired ID issuer is provided, but inference must still
+identify original spans and propagate their aliases. No byte-pool operation proves
+that a real bank/section consumer has committed once.
+
+The initial pool uses 87,818,240 fixed bytes per bus, or 97,779,712 including the
+endpoint queue. Other workers, caller inputs, detached copies and object/allocator
+overhead are additional. The existing 85,852,160-byte active-descriptor estimate
+counts both buses together. Copying 128 knots for every pending endpoint instead
+would use 2,684,354,560 bytes per bus for descriptors alone. Sharing in this pool
+is explicit reuse of a complete immutable object, not automatic interning or
+structural sharing of interior knots.
+
+Sixteen additional checks cover 50 independent finite byte/owner streams, failures,
+epoch retirement and actual packed descriptor/SectionRecord round trips. A shared
+fixture holds all 65,536 headers with four objects and 132 blocks, then releases all
+owners. A distinct-copy fixture exhausts half/base/double block capacities at
+992/1,985/3,971 endpoints. Thus bounded storage exposes a sizing failure: actual
+retained inference, structural sharing and/or revised capacities must resolve it
+before full O04 validation. It does not justify losing required musical histories.
+The audit uses synthetic bytes and supplied acknowledgments, not inferred writes.
+
+After the byte-pool step, numerical checks totaled 293; Python passed 733 checks and Rust regression passed
+746 with 12 ignored. The new record is `docs/roadmap/temporal-dcc/payload-reference.json`.
+Semantic payload codecs, late receipts, all beam producers, consumer atomicity,
+genuine runtime-cycle budgets and complete O04 accounting remain required. The full
+ledger, fitting and human gates remain open, including the earlier 40 ms failure.
+
+The next storage step shares individual immutable 320-byte knots. Each descriptor
+version holds an ordered u32 reference vector, preserving shifted-but-unchanged
+knots across compression. A hash match requires complete byte equality, including
+all f64 moments, original times, coverage inputs and generations. Root owners and
+leaf owners are separate: retaining one version does not multiply its child
+references. Partial insertion rolls back acquired leaves, and final root release
+frees only leaves no longer referenced by any version.
+
+A split-pool adapter sends descriptor references to shared storage and the other
+three payload kinds to the byte pool. Kind and epoch disambiguate equal integer
+handles. The existing queue can retain, read and release these roots while
+receiving the original packed descriptor bytes. This does not supply semantic
+beam/receipt producers or prove an actual bank/section transaction.
+
+Fifteen added checks cover 50 independent finite byte-union/owner streams, forced
+hash collisions, tombstone saturation, rollback, namespace routing and retirement.
+Eighty versions produced by the actual moment compressor over 640 assigned raw
+records round-trip byte-exactly. This preserves existing numeric results; it adds
+no new musical inference or acoustic evidence.
+
+The sizing construction retains 64 versions for each of 1,024 fixed paths. Each
+path starts with 128 unique knots and changes six knots per later version. The
+half capacity of 131,072 leaves stops at 1,024 versions, the initial 262,144-leaf
+capacity stops at 22,869, and the 524,288-leaf comparison
+holds all 65,536 with 518,144 distinct knots. Descriptor buffers alone total
+128,713,216 and 222,036,480 bytes per bus respectively. Auxiliary pools, queue,
+active mutable descriptors, other workers and transient allocation remain extra.
+The all-new-knot condition still exhausts the initial capacity at 2,048 versions.
+These byte constructions establish conditional storage behavior; real path births,
+churn, lineage, complete payloads and simultaneous two-bus performance remain
+required before accepting capacities. A fixed-path success does not cover them.
+
+Numerical checks now total 308; Python passes 748 checks and Rust regression passes
+746 with 12 ignored. The record is `docs/roadmap/temporal-dcc/shared-descriptor-reference.json`.
+Complete producer/consumer integration, O04, fitting and human gates remain open.
+
+The next reference delivers a frozen claimed endpoint to the actual episode bank
+and a declared list of section histories. Every projection is validated before
+bank effects, and a fixed receipt journal preserves original identities, joint
+weights and delivery times. Lost bank responses are reconciled against the
+completed-write digest; lost section responses use generation, sequence and
+original occurrence times, including spans outside the recent ring. Success
+booleans without applied state are rejected. Queue acknowledgment and payload
+release wait for all declared targets; the combined summary remains unpublished
+until completion. Only a transaction without bank effects may be aborted as
+explicit loss. A later write then uses the next committed sequence.
+
+The journal uses33,024 fixed bytes per bus: a256-byte current receipt and1,024
+target records of32 bytes. Seventeen checks include30 independent streams of20
+writes and interrupted bank/section/queue acknowledgments. An audit with1,024
+unequal target weights recovers all three lost responses in67 calls, with at most
+16 section applications per call, exactly1,024 applications overall, zero error
+against independently weighted statistics and all queue payload owners released.
+These checks cover call/receipt boundaries under single ownership; they do not
+establish process-crash recovery or arbitrary internal consumer atomicity.
+
+The decoded batch, target map, preview copies and hashing are additional storage
+and work. Its Python representation alone takes1,248,569 bytes. The first call
+validates every target and the implementation hashes the full batch repeatedly:
+the maximum call took48.490351997315884 ms, above the40 ms whole-worker budget.
+All67 calls took568.5904265847057 ms. These are single-owner diagnostics, not a
+simultaneous-worker preflight. The budget16 currently limits section applications
+only. Bounded semantic payload ownership, validation scheduling and copy/hash
+costs must be resolved before production adoption. Actual beam/lineage/receipt
+generation, complete routing and runtime publication remain unimplemented.
+
+Numerical checks now total325; Python passes765 checks and Rust regression passes
+746 with12 ignored. The record is `docs/roadmap/temporal-dcc/consumer-reference.json`.
+Previous matcher and payload-capacity failures, full O04, fitting and human gates
+remain open. No instrument audio or harmony implementation changes in this step.
+
+The consumer now owns immutable input packets and validates section projections
+in slices before any bank effect. A local tagged encoding preserves exact f64
+bits, signed/unsigned 64-bit identities, tuple joint keys, list windows and masks.
+The builder copies each section row independently and cannot finish an incomplete
+declared fanout. Packet fingerprints include the original claim; later producer
+or decoded-result mutations cannot change the accepted bytes. Each advance
+validates or applies at most 16 section projections, while preserving original
+times, weights, the publication barrier and lost-response recovery. Private bank
+decodes and lookup sets are released after completion or abort. Input encoding
+does not itself infer routing or link the queue's joint/lineage/receipt payloads
+to the decoded semantics; that provenance remains required.
+
+The journal still uses 33,024 bytes. Initial input limits are 67,108,864 bank
+bytes, 16,384 bytes per section row, 1,024 targets and nesting depth 16. These
+limits are not an accepted full-model storage census. The same unequal-target
+audit now takes 131 calls: 1,024 validations followed by exactly 1,024 section
+applications, with all three lost responses recovered and zero weighted error.
+Maximum consumer call time is 7.179675158113241 ms; total call time is
+141.72862633131444 ms. Packet construction is measured separately at
+34.825715236365795 ms total, including 8.344630943611264 ms finalization. The
+packet has 273,968 bank bytes and 1,260,544 section bytes, plus the claim/digests
+and additional object, allocator and scratch costs. Call counts do not establish
+physical-cycle or audio latency; this fixture has only one bank admission.
+
+The legal maximum of 256 bank admissions, each with 128 knots, preserves every
+descriptor byte and original membership through the capsule and actual bank.
+However, its bank packet alone occupies 26,982,619 bytes. Encoding takes
+477.75619593448937 ms, finalization 1,147.6100960280746 ms, consumer decoding
+747.8895240928978 ms and application 652.5812409818172 ms: all exceed the 40 ms
+whole-worker budget. Expanded descriptor views and unsplit bank processing must
+be replaced, while retaining one publication/receipt boundary. Producer work,
+all copies and actual arrival latency belong in the renewed O04 measurement.
+
+Fifteen new packet checks include independent wire vectors, f64 bit preservation,
+mutation isolation, incomplete/failed construction and 500 seeded native-record
+round trips. Together with the 17 updated consumer checks, numerical tests total
+340; Python passes 780 and Rust regression passes 746 with 12 ignored. The new
+record is `docs/roadmap/temporal-dcc/consumer-packet-reference.json`. Previous
+failures, full waveform/inference/fit integration and human gates remain open.
+
+
+The next revision accepts compact320-byte knots directly, encodes admission
+metadata incrementally and shares exactly equal whole descriptors. Preparation
+writes only unused knot/anchor slots and edge scratch; published memory stays
+unchanged until one final unit. The default budget is8 bank units per call,
+separate from16 section rows, with one phase per call. Abort or late validation
+failure releases unpublished work. Final bank availability uses the actual final
+admission cut while retaining original ledger delivery and acoustic timestamps.
+
+Two full256x128-knot fixtures use shared or entirely distinct real compressed
+descriptors. Header/admission/descriptor bytes total186,311 and10,631,111, before
+claim/digests and object/scratch costs. Each uses67 consumer calls and514 bank
+units; maxima are16.592381987720728 and13.762363931164145 ms. Separate packet
+construction takes6.20/11.25ms. Every byte and original1/256 membership matches,
+with final publication and complete queue release. Controlled fixture cuts27.0s
+and27.65s are not a measurement of audio arrival latency. The unequal1024-target
+audit retains all three lost responses and zero weighted error across132 calls.
+
+A separate maximum header with1024 joint cells and4096 relation proposals still
+exceeds the budget: its first bank call reaches57.98464617691934 ms. Header
+encoding/finalization/detached decoding take23.47/37.68/34.79ms; these remain
+unsplit. The bank-only fixture preserves memberships and the shared16-edge cap,
+including1024 dropped edges. It has no section fanout or real inferred routing.
+Header/proposal slicing and duplicate decode ownership are the next requirement.
+The24 bank,19 consumer and19 packet checks pass, giving352 numerical tests;
+Python792 and Rust746 pass with12 ignored. The three updated registrations retain
+previous failures and freeze sources/audits under m0-bank-staging-reference-20260911.
+Full O04, waveform/inference/fit integration and human gates remain open.
+
+
+The next revision encodes relation proposals independently and shares one private
+header decode between consumer and bank. Joint/proposal validation yields every
+64 rows; the default eight bank units allow at most 512 relation decodes per call.
+All rows remain required before publication. A native dictionary cannot replace
+the packet-bound input owner, and public decoded reads stay detached.
+
+The maximum header fixture now takes 5.531514063477516 ms per call across 43 calls,
+with exact agreement against the previous frozen bank implementation's memory,
+knots, anchors and edges. An additional finite integration sends two chronological
+writes through the actual ledger, bank, 1,024 section histories and owned queue.
+The second combines 1,024 joint cells, all 4,096 proposals and all 1,024 recipients.
+It recovers bank/section/queue response losses, decodes its header once and every
+proposal once, and preserves all weights with no duplicate effects or ownership
+leaks. Its maximum call is 8.745113853365183 ms, but total work remains
+219.30024586617947 ms across 174 calls. The full 256-by-128-knot fixtures remain
+separate and still require about 371–374 ms total despite calls below 12 ms.
+These are controlled finite inputs, not inferred waveforms, measured physical
+arrival/queue latency or simultaneous-worker O04. Numerical tests total 360;
+Python 800 and Rust 746 pass (12 ignored). Sources and four audits are frozen
+under m0-header-staging-reference-20260911. Earlier matcher, rate-window, capacity,
+full fitting and human gates remain open.
+
+A subsequent host-clock audit releases eight synthetic100ms endings into the
+actual delivery path, with a100ms period and40ms work-start window. The maximum
+256-episode/1024-joint/4096-proposal/1024-section condition retains every weight
+and once-only effect, but accumulates0.635–5.224s of deadline-to-publication delay.
+Unpaced delivery still accumulates0.284–1.747s. A diagnostic four-slot queue
+explicitly rejects four of eight arrivals; all retained payload owners are released.
+The bank-call cut precedes the complete consumer barrier by127–201ms in the paced
+maximum, so external publication must use a separately sampled completion cut.
+The separate profile points to recursive codec work and repeated section assembly;
+the next change must reduce aggregate work while preserving validation and original
+support. Traces and sources are frozen under m0-delivery-clock-audit-20260911.
+This is a finite100Hz synthetic source measurement, not a48kHz audio/device run,
+two simultaneous workers, live action-evidence age or full O04. The mathematical
+model, instrument and harmonic path are unchanged; M0 remains in progress.
+
+Typed R1 relation records now use107 bytes each; S1 section records have a534-byte
+fixed prefix plus the full bounded correspondence map. u64 identities, f64 values,
+presence and validity remain separate, and supplied views are not reconstructed
+or repaired. The complete maximum inventory now uses438,272 relation bytes and
+694,272 section bytes. A frozen-generic-codec comparison preserves all320
+cumulative section buffers and1,184 ring buffers byte-for-byte. Five new packet
+checks cover literal layouts, masks, invalid storage and200 seeded round trips;
+the full Python evaluation suite passes805 tests, including365 numerical checks.
+With the unchanged host-clock arrival driver, maximum paced timed work falls33.2%,
+and deadline-to-publication delay falls to0.420–3.234s (unpaced0.182–0.937s).
+All original weights and once-only effects survive. The queue still grows, and
+full128-knot admissions still require about372ms total. This is a representation
+improvement, not full O04 readiness. The next target is repeated section preparation,
+preserving intervening observations. Sources and comparisons are frozen under
+m0-typed-consumer-codec-20260911; model, instrument and harmonic behavior are unchanged.
+
+Section delivery now retains each prepared sealed update once. Applying it merges
+only commit-owned statistics into the current cumulative record, preserving later
+acoustic observations, acquisition cuts and accent receipts. Zero-weight targets
+cannot reuse stale staging data. The private single-owner format adds 1,408 bytes
+per recipient; receipt and preparation buffers total 1,474,816 bytes per bus.
+This excludes temporary copies, Python objects and other worker/transport state.
+A frozen old-algorithm comparison matches all 1,152 cumulative and 4,426 ring
+buffers across 2,304 intervening observations, generation inheritance and accent
+replays. Six new regressions bring the Python suite to 811 checks (371 numerical).
+The unchanged maximum-load arrival driver measures 23.4% less timed work than the
+typed-only revision and 0.323–2.324 s deadline-to-publication delay; unpaced delay
+is 0.145–0.559 s. The initial 22.4% improvement run is also preserved. Full
+inventories and weights remain, but backlog and work-window overruns persist.
+Combined consumer work falls to 95.230 ms; full 256-by-128-knot admissions still
+take 371.016/366.019 ms. Sources and evidence: m0-section-preparation-20260911.
+Remaining preparation/observation/encoding and bank/ledger work, actual audio,
+both workers, fit and human gates still prevent full O04 and M0 completion.
+The mathematical model, instrument and harmonic path are unchanged.
+
+The next implementation revision batches SectionRecord's contiguous f64 reads
+and writes. Each coordinate still computes old + scale * value in the same order;
+shared articulation denominators must have identical rounded bytes, including
+signed zero. Invalid input or overflow leaves the full record unchanged. The
+640-byte record and 1,474,816-byte consumer staging/receipt layout stay the same.
+A frozen scalar implementation agrees on all 12,000 updates and 96,000 read
+blocks, including 1,099 rejected cases; the 1,152-write interleaving oracle still
+matches every cumulative/ring byte. Three regression tests bring the Python
+evaluation suite to 814 tests (374 numerical). The unchanged maximum-load arrival
+driver measures another 10.2% timed-work reduction, with 0.312–2.031 s
+deadline-to-publication delay; unpaced delay is 0.132–0.435 s. Combined consumer
+work is 83.532 ms, while full 256-by-128-knot admissions still take about 371 ms.
+The 44.858 ms maximum paced cycle and remaining backlog still fail sustained
+delivery. Source and evidence: m0-section-record-blocks-20260911. The design memo
+is unchanged; this is numerical implementation equivalence and finite performance
+evidence, not full O04, waveform inference, fit or human validation.
+
+Activity assembly is now shared by section observation, prepared commits and
+occurrence payload staging. One operation validates 29 logical values before
+writing their 23 stored f64 values; cumulative observation explicitly includes
+elapsed missing-clock support, while sealed spans keep their original owned
+window and membership. Rounded shared denominators, signed zero, invalid values
+and overflow retain their checks. Adjacent classification reads its predecessor
+statistics once, and an ending read loads its mask once. The stored layout and
+model are unchanged; 232-byte expanded/184-byte compact activity temporaries and
+Python object costs remain outside the fixed-buffer count.
+A frozen fieldwise oracle matches all 4,000 activity outcomes, including 1,263
+rejections without mutation, and 768 ledger writes with 1,536 pending/sealed
+payload byte comparisons and 2,304 section projections. Earlier scalar and
+interleaving oracles still agree. Three tests bring the Python suite to 817
+checks (377 numerical); the frozen five-component package passes 144 checks.
+The identical maximum-paced arrival driver measures 4.6% less work and
+0.305–1.919 s deadline-to-publication delay; unpaced delay is 0.128–0.377 s.
+The sparse case uses 0.7% more timed work, so this is not an all-case speedup.
+The initial assembly-only 3.1% improvement run is also preserved. Combined
+consumer work is 78.317 ms; full admissions still take 370.486/367.011 ms.
+Backlog and the 44.669 ms maximum paced cycle remain above the required budget.
+Sources and evidence: m0-activity-blocks-20260911. Full O04, actual inferred
+payload/routing, waveform/fit and human requirements remain unmet.
+
+Sealed section preparation now combines its 31 edge/transition/pair sums in one
+248-byte block, retaining every addition, including zero additions that normalize
+signed zero or reveal nonfinite old state. The validated original ending bytes
+and mask are reused. A frozen comparison covers 4,000 cases: 2,240 exact complete
+preparations and cumulative records, 6,748 exact ring buffers, 1,575 no-effects
+and 185 unchanged rejections, including 337 predecessor-only preparations.
+The full-admission profile then identified scalar descriptor reads as a major
+remaining cost. DescriptorKnot snapshots now read 38 f64 values and two u64 IDs
+in one operation. Another 4,000-case comparison preserves every nested float bit,
+type, mask and rejection outcome, including 236 zero-duration errors; these
+invalid-state stress cases do not become newly admissible input.
+Three new tests bring the numerical total to 380 and the Python suite to 820;
+176 checks pass from the frozen six-component package. The model, record layouts
+and 1,474,816-byte consumer buffers remain unchanged. Additional packed temporaries
+and Python containers still require complete O04 allocation accounting.
+The unchanged maximum-paced driver measures 5.7% less work than the preceding
+activity revision, with 0.302–1.722 s deadline-to-publication delay; unpaced delay
+is 0.127–0.348 s. Sparse work is 6.6% lower, but the maximum paced cycle grows
+from 44.669 to 46.521 ms. Full256-by128-knot admissions fall from 370.486/367.011
+to 262.971/266.644 ms, still above budget. Combined consumer work is 70.530 ms.
+The sealed-sums-only version, its 5.8% maximum-work reduction and full-admission
+profile are retained separately. These finite measurements establish neither
+confidence intervals nor sustainable throughput. Evidence: m0-sealed-sums-20260911.
+All remaining inference, waveform, fit, human and full O04 obligations stay open.
+
+Bank admission now retains a readonly view of each immutable packed descriptor,
+runs the existing source/order/duration/moment/gap checks, and copies the original
+validated 320-byte rows into unpublished free slots. It avoids reconstructing
+and re-exporting views that came from those same immutable bytes. Expanded native
+input still reconstructs every knot and checks all derived views for consistency.
+A frozen-bank comparison covers 720 transactions over 1/2/8/128 real compressed
+knots: 240 staged packets and 480 mixed native/packed transactions in both orders.
+All 1,775 intermediate/final states agree. The 296 successful outcomes preserve
+every buffer and receipt; 424 rejections preserve existing memory and reservations
+and clear prepared free slots. Hidden nonfinite moments, full-width IDs, source
+and final-memory failures are included. Three new tests bring the numerical total
+to 383 and the Python suite to 823; 179 frozen component checks pass.
+Full256-by128-knot admissions decrease from 262.971/266.644 to 154.701/152.413 ms.
+The unchanged maximum arrival case, mostly using one-knot descriptors, measures
+0.2% more work and 0.302–1.729 s deadline-to-publication delay, with a 47.354 ms
+maximum paced cycle. Unpaced delay is 0.122–0.310 s; sparse work falls 2.8%.
+Combined consumer work is 70.600 ms. These finite results improve full-descriptor
+admission, not sustained maximum delivery. The model and fixed layouts remain
+unchanged; all O04 and other M0 requirements still apply. The initial oracle-fixture
+error and its correction to actual compressed-knot counts are also retained.
+Evidence: m0-packed-bank-admission-20260911.
+
+Section projection now uses binary lookup on the already sorted, deduplicated
+paths owned by each sealed write. It adds no persistent index and preserves
+original membership, cuts, cached correspondence, and detached output copies.
+An exhaustive-before-image comparison covered 6,882 probes across 36 streams
+with 0/1/2/8/64/1,024 paths: 5,658 successful S1 packets were byte-identical,
+1,224 failures matched, and all 72 before/after sealed states were unchanged.
+Pending revisions, post-seal reinterpretation, sparse full-width IDs, missing
+correspondence, and mutation of external views were included. The regression
+totals are 386 numerical tests, 826 Python tests, and 109 frozen component tests.
+Under the unchanged maximum arrival driver, measured work fell from 1,010.042 to
+923.122 ms (8.6%); deadline-to-publication delay was 0.232–1.538 s and the maximum
+cycle was 43.721 ms. Sparse work increased 2.9%; capacity-four and unpaced work
+fell 8.2% and 7.5%. These are finite measurements, not confidence intervals or
+sustained-throughput acceptance. The previous full-bank/header diagnostics were
+retained rather than rerun; their drivers have no section-projection recipients.
+Model, fixed layouts and the 1,474,816-byte consumer buffers per bus are unchanged.
+The 40 ms window, complete kernels, allocation/device workloads, real audio and
+other M0 requirements remain unmet. Evidence: m0-section-path-search-20260911.
+
+The generic consumer codec now shares spellings for 71 existing schema keys and
+reuses literal/scalar decoding tables. The format and all capacity, depth, type,
+UTF-8 and map-key checks remain unchanged. A frozen-before-image comparison
+covered 9,774 encodes and 13,312 decodes: 6,724 encoded byte strings and 4,573
+decoded values matched exactly, while 3,050/8,739 rejections also matched. The
+suite totals are 388 numerical, 828 Python and 84 frozen component tests.
+The shared encoded/UTF-8 spellings occupy 1,204/849 literal bytes per module;
+Python table, string, object and compiled-format overhead remains additional.
+Fixed packet and 1,474,816-byte consumer buffers per bus are unchanged.
+The selected finite maximum-arrival measurement used 897.324 ms of timed work,
+2.8% below the preceding version, with 0.227–1.509 s deadline-to-publication
+delay. Its maximum cycle increased to 47.001 ms, so the 40 ms gate remains unmet.
+Sparse, capacity-four and unpaced work fell 9.8%, 4.2% and 3.6%, respectively;
+full-bank admissions were 152.868/152.954 ms. All results remain finite diagnostics.
+An instrumented profile initially suggested a decoder regression. Removing the
+decoder changes was tested and retained as a separate alternative. Fifteen
+randomly rotated paired samples without profiling instead favored the original
+reuse variant: maximum-header encode medians were 4.964/3.572 ms and decode
+medians 7.174/6.277 ms for the preceding/selected implementations. The selected
+source and delivery measurement are exactly the already-tested initial variant;
+both candidates, the paired evidence and an invocation-path error are retained.
+These changes do not establish semantic payload provenance, full O04, fits or
+human gates. Evidence: m0-schema-key-codec-20260911.
+
+A standalone Rust experiment now computes original-time band search, coordinate
+residuals and the two-row DTW recurrence. It does not replace the registered
+Python matcher or the instrument. Nine additional tests cover 700 randomized
+inputs, all 1,024 masks, full capacities, scratch reuse and boundary cases;
+the existing 33 matcher tests also pass through native DTW, including independent
+short-path enumeration. All 837 Python tests pass in 31.111 s, and Rust remains
+746 passed / 12 ignored. Nine randomly ordered paired full-query comparisons
+preserve 256 episodes of 128 knots, a 128-knot cue, 16 candidates, 8,192 anchors
+and 62 transforms. Python/native-adapter medians are 269.573/152.566 ms
+with one observed coordinate and 426.318/189.972 ms with ten, reductions
+of 43.4%/55.4%. Every output value, path and diagnostic agrees,
+including binary64 bits. Both queries still exceed 40 ms. These timings include
+Python validation, packing, traceback and diagnostics; prepared native-call
+timings are a separate local measurement. Fixed ctypes payloads occupy 41,624
+bytes per instance, plus 2,064 bytes for the two DP arrays. Python objects,
+temporary results, allocator/ABI stack overhead, RSS and simultaneous real-audio
+workloads remain unmeasured. The registered 388 numerical tests, feature version
+29 and design memo remain unchanged. The initial measurement and a corrected
+test-side expectation for an all-missing path are retained. Full M0 remains open.
+Evidence: m0-matcher-kernel-20260911.
+
+The native experiment now batches coarse anchor search and packs descriptor
+rows in blocks. All 8,192 anchors retain original-time intervals, masks, ordered
+f64 sums, median comparison counts, transformations and ties. Detailed transform
+diagnostics use the Python reference at each episode's winning anchor. Sixteen
+experiment tests include every anchor in 500 randomized pairs and 90 whole
+queries; the existing 33 matcher tests also pass through the native driver.
+All 844 Python tests pass in 29.404 s; Rust reports 746 passed / 12 ignored.
+Nine randomly ordered three-version comparisons preserve 256 episodes of 128
+knots, 128 cue knots, 16 candidates and 62 transforms. Python/DTW-only/new-anchor
+whole-query medians are 270.968/147.211/74.521 ms for one coordinate
+and 425.345/184.874/94.553 ms for ten. The new version reduces
+DTW-only time by 49.4%/48.9%, with matching types, binary64 bits,
+paths and diagnostics across all 54 comparisons; both still exceed 40 ms.
+Fixed ctypes payloads occupy 53,008 bytes, the two DP arrays 2,064 bytes and the
+anchor sample array 128 bytes. Python objects, temporary packing lists, outputs,
+allocator/ABI stack overhead and RSS remain additional. Two counterexamples
+showed that the initial candidate hid an unused anchor's RMS overflow and
+rejected NaN diagnostics produced by the reference under extreme time differences.
+Extreme arithmetic now takes the exact reference path. Its guard derives from
+the f64 maximum and eight samples, not a cognitive threshold. Both failures and
+an initial audit fixture that failed to distinguish one of them are retained.
+Reproducing a NaN diagnostic does not adopt that input as production evidence.
+The registered Python model, feature version 29, memo and instrument are unchanged.
+Input validation/transfer, simultaneous real-device workloads, fit and human
+gates remain open. Evidence: m0-native-anchor-20260911.
+
+Native input validation and optional CPython transfer now preserve the original
+observation cuts and rejection behavior. Exact builtin floats/lists/dicts transfer
+through GIL-held PyDLL into fixed storage; other types retain the Python path.
+The default numeric library has no Python dependency. Twenty-six experiment tests
+include 1,200 validation cases, 320 byte comparisons, fallbacks, object release
+and untouched buffer tails. Existing 33 matcher tests and all 854 Python
+tests (32.151 s) pass; Rust reports 746 passed / 12 ignored. Nine four-version
+comparisons retain 256 episodes x 128 knots, 128 cue knots and 16 candidates.
+Whole-query medians change from 73.531 to 23.433 ms for one coordinate
+and 95.701 to 37.477 ms for ten, with exact types, binary64 bits,
+paths and diagnostics in 72 comparisons. These single-query medians below 40 ms
+do not establish p99 under two workers and 64 Voices. Fixed ctypes payload is
+67,344 bytes; DP arrays, anchor samples, validation metadata and transfer pointer
+arrays are separate inventories of 2,064, 128, 56 and 144 bytes. Python objects,
+outputs, allocator overhead, total stack and RSS remain outside these figures.
+The registered model, feature version 29, memo and instrument are unchanged.
+Consumer throughput, actual producers, simultaneous workloads, fit and human
+gates remain open. Evidence: m0-native-input-validation-20260911.
+
+A subsequent caller-tail diagnostic uses 10 warmup and 200 timed calls per
+caller. One-coordinate p99 is 23.460 ms for one caller and 57.322 ms for two;
+ten-coordinate p99 is 49.625 ms and 87.469 ms. Two Python threads use separate
+native scratch and share the GIL; all 200 pairs overlap. Exact output checks pass
+for 1,260 calls and run outside timed intervals after a barrier. This diagnostic
+still exceeds 40 ms. Next, move remaining traceback and diagnostic computation
+and construction out of Python loops and remeasure concurrent callers. It is
+not the real two-worker/64-Voice/6,000-cycle O04 workload.
+
+Native traceback now preserves reverse-order coordinate accumulation and
+computes adjacent-pair motion/interval errors. Python retains math.fsum and final
+result construction. Tests cover pow-versus-multiplication rounding, 320 wide
+magnitudes, overflow, lazy/custom gap evaluation and reuse after fallback. An
+initial Config layout mismatch was corrected; all five ABI structure sizes are
+checked before buffer use. The initial source and failure log remain archived.
+All 30 experiment tests, existing 33 matcher tests and 858 Python tests (32.917 s)
+pass; Rust reports 746 passed / 12 ignored. Nine three-version comparisons retain
+the full query inventory. Input-transfer/new-traceback medians are
+23.744/16.484 ms for one coordinate and 38.226/21.222 ms for ten,
+with exact types, binary64 bits, paths and diagnostics in 54 comparisons.
+Single/two-caller p99 is 17.303/42.039 ms for one coordinate and
+32.859/50.261 ms for ten. All 1,260 outputs agree, but concurrent callers
+still exceed 40 ms. Fixed ctypes payload is 73,152 bytes, including 1,536 bytes
+for paths, 2,048 for diagnostic arrays and 120 for coordinate sums/counts.
+Python objects, outputs, allocator/stack/RSS and full O04 remain additional.
+The registered model, feature version 29, memo and instrument are unchanged.
+Next: winning-anchor diagnostics. Actual producers, consumer throughput, fit and
+human gates remain open. Evidence: m0-native-traceback-20260911.
+
+Native coarse search now selects the winning anchor, aggregates comparison and
+boundary counts, and retains only its residual samples in original order. Pow
+rounding and Python math.fsum are preserved. All 8,192 anchors, 16 candidates,
+62 transformations and complete diagnostics remain. The 500-pair anchor audit
+now includes winner selection, totals and RMS; tests cover ties, missingness,
+reuse and sample order. All 32 experiment tests, existing 33 matcher tests and
+860 Python tests (32.544 s) pass; Rust reports 746 passed / 12 ignored.
+Nine three-version comparisons give previous/new full-query medians of
+15.650/13.588 ms for one coordinate and 20.710/18.567 ms for ten.
+All 54 comparisons retain types, binary64 bits, paths and diagnostics.
+Single/two-caller p99 is 13.594/28.807 ms for one coordinate and
+30.016/44.354 ms for ten. All 1,260 outputs agree. Two one-coordinate callers
+meet 40 ms in this diagnostic, but the ten-coordinate condition still exceeds it.
+The added coarse-call argument requires ABI v2; both mismatched old/new pairings
+are rejected before buffer calls. Fixed ctypes payload is 73,296 bytes, including
+144 bytes for the winning diagnostic. Original/winning/sort sample arrays total
+320 bytes; Python objects, outputs, allocator, total stack and RSS are additional.
+The registered model, feature version 29, memo and instrument are unchanged.
+Next: query-scoped transfer and call batching with bounded ownership, original
+cuts, rejection order and measured copies. Actual producers, consumer throughput,
+full O04, fit and human gates remain open. Evidence: m0-native-anchor-diagnostics-20260911.
+
+Query-scoped owned buffers replace repeated descriptor transfers. Three native
+calls cover transfer, all-episode coarse search, and refinement/DTW. Full-query
+medians improve from 13.811 to 11.355 ms (one coordinate) and
+18.482 to 15.380 ms (ten). Two-caller p99 is 30.454/39.974 ms;
+the ten-coordinate assay still has four of 400 calls above 40 ms, maximum 44.548 ms.
+Fixed ctypes storage is 6,997,808 bytes per caller and full-query numeric transfer
+writes 5,526,528 bytes. All 54 query, 1,260 caller-tail and 42 resource-audit outputs
+agree, including original identities, generations, cuts, scales and diagnostics.
+All 38 native, 33 original matcher, 866 Python and 746 Rust tests pass (12 Rust ignored).
+GIL-held transfer takes 6.286/7.371 ms in separate stage measurements;
+owned packed input is the next target. Evidence: m0-native-query-batch-20260911.
+The registered model, feature version 29, design memo and instrument are unchanged.
+Actual producers, consumer throughput, full O04, fit and human gates remain open.
+
+Owned immutable 320-byte descriptors now feed native matching without dictionary
+expansion. Full-query medians change from 11.416/15.158 ms for the object-batched
+path to 5.042/7.221 ms for packed input; copying all blobs each time gives
+5.718/7.831 ms. Across eight copy/no-copy, one/two-caller and one/ten-coordinate
+conditions, all 2,400 timed calls stay below 40 ms and all 2,520 outputs agree.
+Two-caller p99 is 21.580/22.513 ms without copies and 8.944/11.087 ms with copies;
+these differently ordered conditions do not establish that copying reduces tails.
+Fixed ctypes storage is 7,001,928 bytes per caller. Original blobs occupy
+10,526,720 bytes, copied again in the copy condition. Projection writes
+5,526,528 numeric bytes. Borrowed addresses are invalidated before owners can die.
+All 43 native, 33 original matcher, 871 Python and 746 Rust tests pass (12 Rust ignored).
+All 72 query and 84 resource-audit outputs agree. Evidence: m0-native-packed-input-20260911.
+Next: connect packed exports to scheduler dispatch, native matching and receipts.
+The registered reference, feature version 29, memo and instrument are unchanged;
+actual producers, consumer throughput, full O04, fit and human gates remain open.
+
+#### Model evidence and replacement boundaries (2026-09-11)
+
+Evidence for a perceived relation, a neural mechanism, a selected estimator and
+its effect on generation are separate claims. Even R/H contain model choices:
+[Marjieh et al. (2024)](https://www.nature.com/articles/s41467-024-45812-z)
+demonstrate timbre-dependent consonance judgments and compare revised models.
+For timing, [Damsma et al. (2025)](https://academic.oup.com/cercor/article/35/9/bhaf258/8263582)
+show that both oscillator and evoked-response models reproduce selective beat
+enhancement. These findings motivate replaceable estimators; they do not select
+Conchordal's DTW, semi-Markov state, graph or ordinal heads as neural laws.
+
+The M0 replacement record, `docs/roadmap/temporal-dcc/model-replacement.md`, and
+memo §8.1 now define stable observation/support/time/output semantics, model-owned
+representations and exchange units. Runtime and Voice consumers must not depend
+on ten-coordinate knots, packed layouts, DTW paths or beams. Coupled memory,
+matcher and decoder may be replaced together, and the joint inference scheme is
+also a candidate. Preserve cross-scale interaction with the specified causal
+ownership; an unchanged output type alone does not justify reusing a fitted scale.
+
+O03/O09/O12 record dependency-based feature replay, affected fits and calibration,
+fresh state at run start, incompatible-version rejection and resource remeasurement.
+MR1 is a small ordered/orderless exchange before production wiring; MR2 compares
+timing models in M2; MR3 checks version/state isolation at the first M1–M2 boundary.
+All three are registered and unrun. A weaker cognitive control can test the
+exchange boundary without being promoted. Python/Rust numerical equivalence is
+an implementation substitution and does not satisfy MR1.
+
+This architecture revision changes no reference equation, feature layout or
+capacity and keeps feature version 29. Instrument code and existing harmonic
+kernels are unchanged. Prior tests and external reviews retain their saved-version
+scope; the in-progress packed worker integration is still unverified. Neither the
+replacement experiments nor full M0, fitting or human gates have passed.
+
 ## 9.4 Alignment and Extension Sequence
 
 The overall roadmap remains `docs/roadmap/manifesto-alignment-and-beta.md`; the
 complete temporal-DCC delivery plan is `docs/roadmap/temporal-dcc-completion.md`.
-With the §9.3.55 design review complete, the next work is M0: register T1–T7 tasks,
-controls, the feature manifest, data splits and acceptance criteria, preserving
+With the §9.3.55 design review complete, M0 baseline capture and public-claim
+reconciliation have started. T1–T7 tasks, controls, the feature manifest, data
+splits, acceptance criteria, numerical preflight and synthetic gates remain M0
+work, preserving
 shared local audio under changed prior context. M1 then wires independent passive
 relation instances to the existing ordered analysis paths. The following records existing implementation and audition
 outcomes; it does not restrict the next work to short-time prediction. Current-version,

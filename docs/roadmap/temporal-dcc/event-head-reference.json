@@ -1,0 +1,246 @@
+{
+  "schema": "temporal-dcc-first-event-reference-v3",
+  "registered_at": "2026-09-10T17:54:27.333096+00:00",
+  "status": "finite_hop_aggregation_observed_and_bounded_gap_quadrature_verified; predictive_stability_not_run",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "section": "9.4"
+  },
+  "source": {
+    "path": "scripts/temporal_cognition_reference.py",
+    "sha256": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+    "functions": [
+      "mixture_first_event",
+      "duration_hazard_increment",
+      "gap_survival"
+    ]
+  },
+  "archive": {
+    "directory": "target/temporal-dcc/m0-first-event-reference-v3-gap-20260911",
+    "artifacts": {
+      "existing-functions-check.json": "af93cc27cc459d73aba1ce8cb0fbf8138c70a9dcca90339bb6a73d601a419b53",
+      "feature-manifest-after.json": "1e2d30f523a52042bd089f774f4ab99e5050a875cb431becfeb4c5bad0457266",
+      "feature-manifest-before.json": "f8d47957eecbc0afa5c05d290d8be775dc08816626523c7ea2a68d96b721a479",
+      "gap-audit.json": "eafa8399aa0fe3141b9da0ce0438ac809366427062b8e21e40dab17d1d85c31e",
+      "previous-reference-manifest.json": "6b475f41f85d46cb75e5078e2e4f40ea1b2c7af7f2ce46b9e9f7d5ee88ed485d",
+      "reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+      "specification.md": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+      "tests.py": "cb466d1097a1109faee4aa00347f53944cc57e9b1d0508770547c8eb23c54230"
+    }
+  },
+  "inputs": "One explicit issued_forecast or heard_prefix_annotation snapshot; context and conditional local-path weights, stable group handles, known-at-start flags, integrated hazard increments, exit-type PMFs and required-history retention per original hop. Missing weights remain unknown.",
+  "conventions": [
+    "Marginalize local paths inside each group and context before combining groups; do not average hazards or pool shared contexts.",
+    "All same-hop history loss precedes exits. Stable smallest group handle owns an exit tie, independent of array order.",
+    "Preserve earlier resolved first events across later observation loss; no unresolved-history readmission fabricates an earlier event.",
+    "Return R, unconditional per-hop/type event mass and CDF, survival, mid-window unresolved and total unresolved; event/no-event/unresolved mass sums to one.",
+    "The same aggregation accepts separate phrase and section hazards/types without forcing their boundaries to coincide."
+  ],
+  "verification": {
+    "new_tests": 16,
+    "total_reference_tests": 58,
+    "status": "passed",
+    "evidence": "Independent exhaustive terminal-history enumeration across shared contexts, three groups and local path mixtures; analytic 1/2/4/8-group survival; ties, loss order, initial unknown, no-event/inactivity and explicit snapshot distinction. Three observed-hop checks compare135 registered coefficient/start/hop combinations with independent adaptive integration and step doubling, plus calibration, section standardization and unknown starts. Seven gap checks add bounded convergence/failure, independent600-case quadrature, a missed narrow initial hazard, calibrated/partitioned priors and unknown mass in a subsequent observed first-event window.",
+    "suite_log": "target/temporal-dcc/m0-python-tests-gap-20260911.log",
+    "suite_status": "target/temporal-dcc/m0-python-tests-gap-status.txt"
+  },
+  "remaining": [
+    "Implement upstream provisional span ownership and sealing, canonical once-only hop/accent delivery, actual topology/ancestry ownership and adjacency coverage; the bounded cache-input aggregate does not implement those producers. The section reference now has33 checks and a640-byte packed record; O12 is not complete.",
+    "Complete all generating coefficient/feature vectors, interval-censoring and target allocation.",
+    "Finite regularized stage-2 fits, OOF and calibration, then100 independent datasets per condition with unchanged CDF/type thresholds.",
+    "Production grouping lifecycle, overlap successor/link clocks, epoch isolation and ancestry/register pruning; the algebra-only snapshot interface does not prove delivery or issuance retention."
+  ],
+  "human_collection_authorized": false,
+  "production_integration": false,
+  "observed_quadrature": {
+    "method": "two-point Gauss-Legendre on each original observed hop with context frozen and duration advancing",
+    "time_unit_sec": 1,
+    "test_intercepts": [
+      -8,
+      -2,
+      4
+    ],
+    "test_raw_log_duration_slopes": [
+      -4,
+      0,
+      4
+    ],
+    "test_start_durations_sec": [
+      0,
+      0.125,
+      8,
+      32,
+      1200
+    ],
+    "test_hop_samples_at_48khz": [
+      256,
+      512,
+      1024
+    ],
+    "absolute_error_tolerance": 1e-09,
+    "relative_error_tolerance": 1e-07,
+    "oracle": "independent adaptive integration epsabs1e-13/epsrel1e-12 and original-step doubling",
+    "calibration_multipliers": [
+      0.25,
+      1,
+      4
+    ],
+    "scope": "Numerical reference over registered observed-hop envelope; no duration preset or human rate estimate. Unknown foreground start returns unsupported. Gap survival has a separate bounded component audit below."
+  },
+  "section_input_reference": "section-feature-reference.json",
+  "previous_versions": [
+    {
+      "directory": "target/temporal-dcc/m0-first-event-reference-20260911",
+      "artifacts": {
+        "reference.py": "858253037b826e038b3c3585612027467fa6bb00afa06ea959e902b4fa76e8c6",
+        "specification.md": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+        "tests.py": "63f5105e9a859219a59e927b73d67d725625f630c8ded3046d9786a17773af3c"
+      }
+    },
+    {
+      "directory": "target/temporal-dcc/m0-first-event-reference-v2-20260911",
+      "artifacts": {
+        "specification.md": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+        "tests.py": "ff0fef7716a21e7e8b6bbcd8d55e58d4271b8655eeb1733f0f9d7c0c3564746d",
+        "previous-reference-manifest.json": "1f405d9e5c712d550fef7b24bbbd7295679c1e9233c9c3583c061893f7a0a82b",
+        "reference.py": "1826015df8c6717e9ed7ce4a2838444a5be091fe62c929daca3b4c5a601e9727"
+      }
+    }
+  ],
+  "updated_at": "2026-09-11T11:40:42.701331+00:00",
+  "gap_quadrature": {
+    "reference": "event-head-reference.json",
+    "method": "Composite two-point Gauss-Legendre with panel doubling and a fourth-derivative Bernstein bound; hold last supported context fixed.",
+    "time_unit_sec": 1,
+    "absolute_error_tolerance": 1e-09,
+    "relative_error_tolerance": 1e-07,
+    "maximum_evaluations": 64,
+    "evaluation_accounting": "Two endpoint sigmoid evaluations plus quadrature at1,2,4,8,16 panels costs2+2+4+8+16+32=64 in total.",
+    "acceptance": "Both absolute successive-integral difference and derivative bound with rounding allowance <= absolute + relative*integral.",
+    "gap_exit_semantics": "Prior survival retains the old foreground; its complement is unknown-current-state mass, including unobserved multiple transitions, with zero observed or typed exit mass.",
+    "fallback": "Unknown start, exhausted integration budget or non-finite arithmetic leaves survival unresolved; no approximate integral is promoted to a supported prediction.",
+    "scope": "Numerical convention; neither learned coefficients nor a fitted duration or complete runtime resource result.",
+    "test_intercepts": [
+      -8,
+      -2,
+      4
+    ],
+    "test_raw_log_duration_slopes": [
+      -8,
+      -4,
+      0,
+      4,
+      8
+    ],
+    "test_start_durations_sec": [
+      0,
+      0.125,
+      8,
+      32,
+      1200
+    ],
+    "test_gap_durations_sec": [
+      0.01,
+      0.1,
+      0.5,
+      2,
+      8,
+      32,
+      128,
+      1200
+    ],
+    "oracle": "SciPy adaptive quadrature with epsabs1e-13/epsrel1e-12 and independently placed endpoint-region splits; all600 cases retained, including unresolved results.",
+    "results": {
+      "counts": {
+        "prior_survival": 416,
+        "unresolved_budget": 184
+      },
+      "max_accepted_error_over_tolerance": 0.05755342260156038,
+      "max_evaluations": 64,
+      "full_predictive_stability_passed": false
+    },
+    "narrow_initial_hazard_fixture": {
+      "intercept": 20,
+      "slope": -40,
+      "start_sec": 0,
+      "gap_sec": 1200,
+      "result": "unresolved_budget after64 evaluations; small step-doubling differences alone must not establish survival"
+    },
+    "limitation": "184/600 cases exhaust the conservative numerical budget. They remain fully unresolved, not successful predictions. Actual fitted-envelope coverage and resource cost must be measured under O12/O04."
+  },
+  "specification_history": [
+    {
+      "sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+      "reason": "Before explicit conserved section-support ownership and the640-byte f64 record layout; sections before9.5 and after9.6 are byte-identical."
+    },
+    {
+      "sha256": "e00c1c71ea2346a62180f5989233c6c79f987cd11a168f80827bf0131a5dab40",
+      "reason": "Register four-hop accent provenance, scalar inventory endpoint versus uncertain interval, full raw/availability cuts and generation-local cumulative delivery; pending occurrence sealing remains open."
+    },
+    {
+      "sha256": "adb1ba89ce87642018f94bdf0af2acd0900f9302dc099cfd2eacfea45c7659e0",
+      "reason": "Finite payload-conditioned occurrence commitment: original identity/deadline, joint support, metadata-only revision metric, late owned accents, context totals and coarse interference bounds. Full beam/runtime/memory lifecycle remains open."
+    },
+    {
+      "sha256": "5f60772cb8d366e5875cd354c84d547193f32a01621091116cda6725cb84ea85",
+      "reason": "Initial raw-value subsequence recurrence, missing/normalization/tie rules, separate transform diagnostics, detached pending-prefix queries and original versus delivery episode time. Numerical reference only; full fitting/runtime/human gates remain open."
+    },
+    {
+      "sha256": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+      "reason": "Bounded acquired-sample query scheduling, one worker ticket per bus, packed eight-snapshot cache and receipt availability; original full-audio/generation commitment cuts. Section9.3 only; full M0 gates remain open."
+    },
+    {
+      "sha256": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "reason": "Bounded global acquisition-gap clock, original-time episode retention, rate-envelope overflow and frozen pre-target assay copy; section9.3 only. Full bank/graph, fitting and simultaneous runtime remain open."
+    },
+    {
+      "sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+      "reason": "Fixed bank/anchor/shared-edge payload, fresh reservations, explicit eviction, unrenormalized membership loss and actual bank-receipt cut. Section9.3 only; inferred relations/ancestry, full transport, fitting and O04 remain open."
+    },
+    {
+      "sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a",
+      "reason": "Fixed128-byte endpoint headers, bounded heap/free/ID indexes, immutable claims and original deadline/actual delivery, ticket-safe acknowledgment and explicit cycle/backlog loss. Section9.3 only; referenced pools and complete ledger/inference/runtime remain open."
+    },
+    {
+      "sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5",
+      "reason": "Fixed immutable byte-payload pool, original paired-ID issuer and typed endpoint ownership/rollback/retirement. Section9.3 only. Explicit sharing passes header capacity, but distinct snapshots exhaust half/base/double pools; full inference, structural sharing, consumer integration and M0 gates remain open."
+    },
+    {
+      "sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+      "reason": "Exact320-byte knot structural sharing, fixed version vectors/hash indexes and split-pool endpoint ownership. Section9.3 only. Conditional fixed1024-path half/base/double sizing and unrelated-content failures retained; real producers, churn, all payloads, consumers and full M0 gates remain open."
+    },
+    {
+      "sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit."
+    },
+    {
+      "sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open."
+    },
+    {
+      "sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+      "reason": "Actual finite host-clock arrivals expose aggregate delivery backlog and separate bank-entry versus final publication cuts; numerical sources and model unchanged."
+    },
+    {
+      "sha256": "4097a4f651dba073f4848bf25fa9a2ff90e936584f481ae68dc43ba625c7d4ec",
+      "reason": "Section9.3 only: R1/S1 typed consumer records preserve u64 identities, f64 values and independent masks; fixed-driver maximum-load timed work falls33.2%, but aggregate throughput and full O04 remain unmet."
+    },
+    {
+      "sha256": "fea51b989b51ca6e25150af98d3c3e19420bdd21dbfbab949b1a918d366096e3",
+      "reason": "Section9.3 only: retain private section preparation, merge only sealed regions after intervening observations, count1408 staging bytes per target. Same-inventory finite cost improves; full O04 and M0 remain unmet."
+    },
+    {
+      "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
+      "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    }
+  ]
+}

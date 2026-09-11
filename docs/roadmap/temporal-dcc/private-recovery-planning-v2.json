@@ -1,0 +1,31 @@
+{
+  "schema": "temporal-dcc-private-allocation-optimization-v2",
+  "registered_at": "2026-09-10T16:12:39.853269+00:00",
+  "reason": "Uniform allocation is impractical. Expected Fisher analysis, before inspecting Monte Carlo outcomes, shows that 256 probes miss the SE bound by only 0.000448 at two points. Optimize physical replay cost instead of accepting 1024 everywhere.",
+  "base_design": {
+    "path": "docs/roadmap/temporal-dcc/private-recovery-design-v1.json",
+    "sha256": "b20d2a3b168e30e74b091b57cc3887aa20e76f1bfe7f815a995443bb42d060cb"
+  },
+  "truth_grid_and_nuisance_conditions": "All 36 truth points and all three conditions retained, with the same 140 exposure cells.",
+  "allocation": "One shared vector of counts across conditions. At least two independent probes per cell, equally split across target onset/release heads. No timing, interference, recurrence or truth cell removed.",
+  "information": "Use per-cell expected Fisher matrices for the registered physical-record likelihood, including missing detection. No simulated or empirical response enters this optimization.",
+  "objective": "Minimize sum of allocated probe count times full-prefix-plus-probe physical duration, summed across the three conditions.",
+  "constraints": "For every truth/condition and all three log parameters, Fisher covariance diagonal <=0.04.",
+  "solver": {
+    "name": "SLSQP",
+    "start": "smallest even uniform count satisfying every expected Fisher SE bound",
+    "variable_scale": "divide counts by that feasible start count",
+    "analytic_jacobian": true,
+    "maxiter": 400,
+    "ftol": 1e-10
+  },
+  "rounding": "Round each count upward to the next even integer, then recompute all constraints. If numerical violations remain, multiply all counts by the maximum variance ratio with factor 1+1e-9 and round upward again.",
+  "failure": "Keep the feasible uniform start if the optimizer returns invalid/nonfinite/infeasible or higher-cost allocation. Do not relax constraints. Preserve solver status and both candidates.",
+  "budget": {
+    "wall_sec": 600,
+    "cpu_sec": 600,
+    "threads": 1
+  },
+  "acceptance": "This selects a numerical allocation candidate only. Validate empirical replay/opportunity feasibility before using it as an actual collection plan. Run the same 100-dataset-per-point Monte Carlo gate for any selected revision.",
+  "monte_carlo_results_used": false
+}

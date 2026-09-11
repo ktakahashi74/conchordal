@@ -1,0 +1,341 @@
+{
+  "schema": "temporal-dcc-relation-instrument-v1",
+  "version": "m0-draft-1",
+  "registered_at": "2026-09-10T13:59:54.318933+00:00",
+  "status": "wording_and_analysis_method_registered_before_pilot; deployment_and_recruitment_not_ready",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "section": "10.3"
+  },
+  "prompt": {
+    "ja": "いま聞いた音の流れに最も近い説明を一つ選ぶ。判断できなければ「判別できない」を選ぶ。好みや音のよさを答える課題ではない。",
+    "en": "Choose the description closest to the musical flow you just heard, or choose cannot tell. This question asks about the heard relation, not preference or sound quality."
+  },
+  "cannot_tell": {
+    "id": "cannot_tell",
+    "ja": "判別できない",
+    "en": "Cannot tell"
+  },
+  "prefix_instruction": {
+    "ja": "再生が止まる位置は実験上の区切りであり、曲の終わりを意味しない。止まる前に実際に聞こえた音について答える。",
+    "en": "Playback stops are experimental cuts, not necessarily musical endings. Judge the material actually heard before the cut."
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "descriptions": [
+        {
+          "id": "intended",
+          "en": "The parts pass a gesture through overlapping releases",
+          "ja": "音の担い手が余韻を重ねながら、一つの身振りを受け渡す"
+        },
+        {
+          "id": "foil_1",
+          "en": "The parts stop and start together",
+          "ja": "音の担い手が一緒に止まり、一緒に鳴り始める"
+        },
+        {
+          "id": "foil_2",
+          "en": "Long sounds overlap without a shared gesture",
+          "ja": "長い音が重なるが、共通する身振りは聞こえない"
+        }
+      ],
+      "directional_contrast": "context_on minus context_off in intended-description choice rate",
+      "denominator": "all assigned responses in that arm, including cannot_tell, missing and invalid; report each separately"
+    },
+    {
+      "id": "T2",
+      "descriptions": [
+        {
+          "id": "intended",
+          "en": "The parts keep distinct positions around an anticipated recurrence",
+          "ja": "繰り返しを予期しながら、音の担い手がそれぞれ違う位置で鳴る"
+        },
+        {
+          "id": "foil_1",
+          "en": "The parts converge on the same repeated onset",
+          "ja": "音の担い手が同じ繰り返しの発音時刻へ揃っていく"
+        },
+        {
+          "id": "foil_2",
+          "en": "Timing changes without a recurring reference",
+          "ja": "繰り返しの参照がないまま、鳴る時刻が変わる"
+        }
+      ],
+      "directional_contrast": "context_on minus context_off in intended-description choice rate",
+      "denominator": "all assigned responses in that arm, including cannot_tell, missing and invalid; report each separately"
+    },
+    {
+      "id": "T3",
+      "descriptions": [
+        {
+          "id": "intended",
+          "en": "Parts keep different timing positions and fit their entries together",
+          "ja": "音の担い手が異なる時間的位置を保ち、入り方が噛み合う"
+        },
+        {
+          "id": "foil_1",
+          "en": "Parts align their entries on the same timing position",
+          "ja": "音の担い手が同じ時間的位置に入り方を揃える"
+        },
+        {
+          "id": "foil_2",
+          "en": "Parts shift their entries without a persistent timing relation",
+          "ja": "持続する時間的関係がないまま、音の担い手が入り方を変える"
+        }
+      ],
+      "directional_contrast": "context_on minus context_off in intended-description choice rate",
+      "denominator": "all assigned responses in that arm, including cannot_tell, missing and invalid; report each separately"
+    },
+    {
+      "id": "T4",
+      "descriptions": [
+        {
+          "id": "intended",
+          "en": "Earlier material returns with a changed realization",
+          "ja": "以前の素材が、形を変えて戻ってくる"
+        },
+        {
+          "id": "foil_1",
+          "en": "Earlier material repeats without a heard transformation",
+          "ja": "以前の素材が、聞き取れる変化なしに繰り返される"
+        },
+        {
+          "id": "foil_2",
+          "en": "Material arrives without a heard return",
+          "ja": "戻ってきたとは聞こえない素材が現れる"
+        }
+      ],
+      "directional_contrast": "context_on minus context_off in intended-description choice rate",
+      "denominator": "all assigned responses in that arm, including cannot_tell, missing and invalid; report each separately"
+    },
+    {
+      "id": "T5",
+      "descriptions": [
+        {
+          "id": "intended",
+          "en": "The local ending resolves an earlier expectation",
+          "ja": "この終わり方が、それ以前からの期待を解決する"
+        },
+        {
+          "id": "foil_1",
+          "en": "The local ending interrupts an ongoing expectation",
+          "ja": "この終わり方が、続いていた期待を途中で断ち切る"
+        },
+        {
+          "id": "foil_2",
+          "en": "The local ending continues the ongoing expectation",
+          "ja": "この終わり方の先にも、それまでの期待が続く"
+        }
+      ],
+      "directional_contrast": "context_on minus context_off in intended-description choice rate",
+      "denominator": "all assigned responses in that arm, including cannot_tell, missing and invalid; report each separately"
+    },
+    {
+      "id": "T6",
+      "descriptions": [
+        {
+          "id": "intended",
+          "en": "A returning section brings back an earlier way of participating",
+          "ja": "以前の区間が戻り、それ以前の音の参加の仕方も戻る"
+        },
+        {
+          "id": "foil_1",
+          "en": "A new section brings a different way of participating",
+          "ja": "新しい区間になり、音の参加の仕方も変わる"
+        },
+        {
+          "id": "foil_2",
+          "en": "The parts continue their current way through the change",
+          "ja": "区間が変わっても、それまでの音の参加の仕方が続く"
+        }
+      ],
+      "directional_contrast": "context_on minus context_off in intended-description choice rate",
+      "denominator": "all assigned responses in that arm, including cannot_tell, missing and invalid; report each separately"
+    },
+    {
+      "id": "T7",
+      "descriptions": [
+        {
+          "id": "intended",
+          "en": "Earlier returns alter later participation across the piece",
+          "ja": "曲の中で以前の素材が戻ると、その後の音の参加の仕方も変わる"
+        },
+        {
+          "id": "foil_1",
+          "en": "The same local response recurs regardless of the earlier course",
+          "ja": "それ以前の流れにかかわらず、同じ局所的な応答が繰り返される"
+        },
+        {
+          "id": "foil_2",
+          "en": "Participation changes without a heard relation to earlier material",
+          "ja": "以前の素材との関係が聞こえないまま、音の参加の仕方が変わる"
+        }
+      ],
+      "directional_contrast": "context_on minus context_off in intended-description choice rate",
+      "denominator": "all assigned responses in that arm, including cannot_tell, missing and invalid; report each separately"
+    }
+  ],
+  "assignment": {
+    "seed": 2026091008,
+    "unit": "participant x source_family",
+    "arm": "randomly assign only one member of a matched on/off pair per listener; balance by passage and participant",
+    "description_order": "uniform random permutation of the three descriptions per assigned trial; cannot_tell remains available",
+    "pair_preconditions": [
+      "identical model prehistory and body",
+      "same candidate times for pressure-only comparison",
+      "context state intervention separated from identical-input on/off",
+      "preserve full preceding context for long-form trials"
+    ],
+    "withheld_from_listener": [
+      "model and condition names",
+      "scenario/source labels",
+      "which description is intended",
+      "author preference"
+    ],
+    "withheld_from_model": [
+      "task labels and intended descriptions",
+      "participant answers during validation",
+      "EOF as an inferred musical boundary"
+    ]
+  },
+  "cohorts": {
+    "pilot_minimum_per_language": 12,
+    "languages": [
+      "ja",
+      "en"
+    ],
+    "validation_minimum": 48,
+    "validation_final_n": null,
+    "validation_rule": "fix N before recruitment, at least 48 and enough for >=80% simulated joint power at an on/off difference of 0.15; no interim-result stopping",
+    "validation_exclusions": "independent listeners not used in fitting or calibration",
+    "correspondence_recognition_cohorts": "disjoint; one prefix per source family per listener"
+  },
+  "pilot": {
+    "procedural_checks_both_pass_rate_min": 0.9,
+    "description_selected_rate_min": 0.7,
+    "denominator": "all assignments; do not exclude failed comprehension checks to inflate rate",
+    "intended_agreement_is_not_pilot_criterion": true,
+    "failure": "revise wording/instructions on development and use a new cohort; do not relax criteria"
+  },
+  "joint_acceptance": {
+    "null": "(foil_1_count+foil_2_count)/(2*all_assigned_on)",
+    "rule_1": "95% passage/participant-clustered CI lower bound for intended_on-null must be >0",
+    "rule_2": "intended_on-intended_off >=0.15 and its own 95% clustered CI lower bound >0",
+    "interval_method": "two-way crossed bootstrap: independently resample participants and source families with replacement; use product multiplicities for each assigned cell; recompute per-arm rates each draw; percentile interval",
+    "bootstrap_draws": 10000,
+    "bootstrap_seed": 2026091009,
+    "empty_arm_draw": "invalid analysis design; report and revise allocation before validation, never silently discard draws",
+    "power_method": "development-based crossed participant/passage simulation including observed abstention; estimate probability both rules pass at 0.15 contrast; freeze final N and nuisance distributions before validation",
+    "author_acceptance": "separate Gate 4; never inferred from Gate 3"
+  },
+  "collection_gate": {
+    "enabled": false,
+    "required": [
+      "institutional approval or procedural determination",
+      "consent, compensation, response-data handling",
+      "all corresponding M0 numerical and synthetic gates",
+      "validated stimulus delivery and channel mapping",
+      "adequate language pilots",
+      "frozen sample-size simulation and recruitment count"
+    ],
+    "authority_record": null
+  },
+  "limitations": [
+    "No human responses collected.",
+    "Japanese wording is a pre-pilot adaptation, not established comprehension.",
+    "This registers Gate 3; it does not replace the distinct Gate 2 instruments or their metrics."
+  ],
+  "specification_history": [
+    {
+      "sha256": "8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9",
+      "reason": "Original registration; relevant feature/Gate-3 clauses unchanged by auxiliary recognition-query revision."
+    },
+    {
+      "sha256": "8eee217e943a91bee158aaef2601eb836441945925b403666ae5e71abddcc029",
+      "reason": "Private-filter and observation audit revision; this artifact remains partial and its own task clauses are unchanged."
+    },
+    {
+      "sha256": "df2787e8a6b2e44b2831d049796c62f6c6824a68f81e1a738d0f22096bcaeedf",
+      "reason": "Joint private-outcome likelihood revision; this artifact task remains partial and its own clauses unchanged."
+    },
+    {
+      "sha256": "1f87855f5868037995cf7e4c40ebf248803976e5513512e524afe97e373b142f",
+      "reason": "Before explicit section 82-covariate/bias, support union, contrast masks and matcher-age conventions; private/episode clauses unchanged."
+    },
+    {
+      "sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+      "reason": "Before explicit conserved section-support ownership and the640-byte f64 record layout; sections before9.5 and after9.6 are byte-identical."
+    },
+    {
+      "sha256": "e00c1c71ea2346a62180f5989233c6c79f987cd11a168f80827bf0131a5dab40",
+      "reason": "Register four-hop accent provenance, scalar inventory endpoint versus uncertain interval, full raw/availability cuts and generation-local cumulative delivery; pending occurrence sealing remains open."
+    },
+    {
+      "sha256": "adb1ba89ce87642018f94bdf0af2acd0900f9302dc099cfd2eacfea45c7659e0",
+      "reason": "Finite payload-conditioned occurrence commitment: original identity/deadline, joint support, metadata-only revision metric, late owned accents, context totals and coarse interference bounds. Full beam/runtime/memory lifecycle remains open."
+    },
+    {
+      "sha256": "5f60772cb8d366e5875cd354c84d547193f32a01621091116cda6725cb84ea85",
+      "reason": "Initial raw-value subsequence recurrence, missing/normalization/tie rules, separate transform diagnostics, detached pending-prefix queries and original versus delivery episode time. Numerical reference only; full fitting/runtime/human gates remain open."
+    },
+    {
+      "sha256": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+      "reason": "Bounded acquired-sample query scheduling, one worker ticket per bus, packed eight-snapshot cache and receipt availability; original full-audio/generation commitment cuts. Section9.3 only; full M0 gates remain open."
+    },
+    {
+      "sha256": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "reason": "Bounded global acquisition-gap clock, original-time episode retention, rate-envelope overflow and frozen pre-target assay copy; section9.3 only. Full bank/graph, fitting and simultaneous runtime remain open."
+    },
+    {
+      "sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+      "reason": "Fixed bank/anchor/shared-edge payload, fresh reservations, explicit eviction, unrenormalized membership loss and actual bank-receipt cut. Section9.3 only; inferred relations/ancestry, full transport, fitting and O04 remain open."
+    },
+    {
+      "sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a",
+      "reason": "Fixed128-byte endpoint headers, bounded heap/free/ID indexes, immutable claims and original deadline/actual delivery, ticket-safe acknowledgment and explicit cycle/backlog loss. Section9.3 only; referenced pools and complete ledger/inference/runtime remain open."
+    },
+    {
+      "sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5",
+      "reason": "Fixed immutable byte-payload pool, original paired-ID issuer and typed endpoint ownership/rollback/retirement. Section9.3 only. Explicit sharing passes header capacity, but distinct snapshots exhaust half/base/double pools; full inference, structural sharing, consumer integration and M0 gates remain open."
+    },
+    {
+      "sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+      "reason": "Exact320-byte knot structural sharing, fixed version vectors/hash indexes and split-pool endpoint ownership. Section9.3 only. Conditional fixed1024-path half/base/double sizing and unrelated-content failures retained; real producers, churn, all payloads, consumers and full M0 gates remain open."
+    },
+    {
+      "sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit."
+    },
+    {
+      "sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open."
+    },
+    {
+      "sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+      "reason": "Actual finite host-clock arrivals expose aggregate delivery backlog and separate bank-entry versus final publication cuts; numerical sources and model unchanged."
+    },
+    {
+      "sha256": "4097a4f651dba073f4848bf25fa9a2ff90e936584f481ae68dc43ba625c7d4ec",
+      "reason": "Section9.3 only: R1/S1 typed consumer records preserve u64 identities, f64 values and independent masks; fixed-driver maximum-load timed work falls33.2%, but aggregate throughput and full O04 remain unmet."
+    },
+    {
+      "sha256": "fea51b989b51ca6e25150af98d3c3e19420bdd21dbfbab949b1a918d366096e3",
+      "reason": "Section9.3 only: retain private section preparation, merge only sealed regions after intervening observations, count1408 staging bytes per target. Same-inventory finite cost improves; full O04 and M0 remain unmet."
+    },
+    {
+      "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
+      "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    }
+  ],
+  "updated_at": "2026-09-11T11:40:42.701331+00:00"
+}

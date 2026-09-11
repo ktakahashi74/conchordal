@@ -1,0 +1,101 @@
+{
+  "schema": "temporal-dcc-private-high-cap-separation-planning-v8",
+  "registered_at": "2026-09-10T17:41:19.905182+00:00",
+  "parent_plan": {
+    "path": "docs/roadmap/temporal-dcc/private-recovery-planning-v8.json",
+    "sha256": "a74b16a63f398bd0292e93e4286ccd601d96e035228f6dc2a4698bcdd037d12c"
+  },
+  "base_design": {
+    "path": "target/temporal-dcc/m0-private-allocation-v8/selected-design.json",
+    "sha256": "63c7cc8e819ae04fc13e789470c7a842c2f166b74403a1a1c237b1a628814351"
+  },
+  "study_version": 8,
+  "truth_points": [
+    [
+      "fractional",
+      2
+    ],
+    [
+      "ambiguous_missing",
+      2
+    ],
+    [
+      "ambiguous_missing",
+      5
+    ],
+    [
+      "ambiguous_missing",
+      8
+    ]
+  ],
+  "count_factors": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ],
+  "minimum_total_distance": 8,
+  "profile_starts": [
+    [
+      0.5,
+      0.25
+    ],
+    [
+      0.5,
+      4
+    ],
+    [
+      0.5,
+      64
+    ],
+    [
+      20,
+      0.25
+    ],
+    [
+      20,
+      4
+    ],
+    [
+      20,
+      64
+    ],
+    [
+      4800,
+      0.25
+    ],
+    [
+      4800,
+      4
+    ],
+    [
+      4800,
+      64
+    ]
+  ],
+  "include_truth_tau_kappa_start": true,
+  "solver": {
+    "method": "L-BFGS-B",
+    "maxiter": 300,
+    "maxls": 40,
+    "ftol": 1e-12,
+    "gtol": 1e-08
+  },
+  "budget": {
+    "wall_sec": 600,
+    "cpu_sec": 600
+  },
+  "full_recovery": {
+    "seed": 2026091108,
+    "conditions": "all original three",
+    "truths": "all original 36",
+    "replicates_per_point": 100,
+    "fit": "unchanged v5",
+    "thresholds": "unchanged"
+  },
+  "alternative": "unsaturated cap=2*max(A_counts); profile tau/kappa over original fit bounds with the v6 multistart method; include each truth tau/kappa start",
+  "selection": "Finite multistart planning heuristic, not global identification proof. Retain baseline counts and multiply added-cell counts only. Pick the first passing factor; no recovery if none passes.",
+  "scope": "Prospective refinement of the already registered v8 gate after deterministic Fisher allocation, before any v8 random outcomes. Increase only added fully supported first-prefix cell counts; retain all original ambient cells and counts. Passing does not establish globally identifiable or empirical recovery.",
+  "empirical_allocation_adopted": false
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "temporal-dcc-private-recovery-fit-revision-v2",
+  "registered_at": "2026-09-10T16:19:39.973650+00:00",
+  "reason": "Version 1 retains 73 failed fits and fails one condition point. Its best failed diagnostic estimates are near truth but stop before the declared smooth gradient criterion; the hard per-bin cap makes the likelihood nonsmooth.",
+  "base_fit": "Keep the three registered bounded L-BFGS-B starts and all successful smooth interior candidates.",
+  "fallback_trigger": "Only if no smooth candidate passes the original convergence, finite, interior and gradient checks.",
+  "fallback": {
+    "method": "Nelder-Mead",
+    "start": "Lowest finite loss among the three bounded L-BFGS-B results",
+    "bounds": "same original log bounds",
+    "xatol": 1e-09,
+    "fatol": 1e-12,
+    "maxiter": 4000,
+    "maxfev": 8000
+  },
+  "acceptance": "Converged finite interior fallback, plus no lower mean NLL by more than 1e-10 over the 26 directions in {-1,0,1}^3 excluding zero at log-parameter step sizes 1e-4 and 1e-5. This is a declared finite local check, not a proof of a global optimum.",
+  "recovery_threshold_change": false,
+  "forward_law_change": false,
+  "prior_or_penalty_added": false,
+  "scope": "Apply prospectively to the version-2 allocation and a full new 100-dataset-per-point simulation. Do not relabel version-1 failed fits."
+}

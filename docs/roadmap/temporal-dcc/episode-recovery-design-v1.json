@@ -1,0 +1,245 @@
+{
+  "schema": "temporal-dcc-episode-recovery-design-v1",
+  "version": "episode-allocation-1",
+  "registered_at": "2026-09-10T14:18:04.015391+00:00",
+  "status": "candidate_allocation_for_simulation; no_human_recruitment_authorized",
+  "specification_sha256": "8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9",
+  "parameters": [
+    "tau_sec",
+    "kappa",
+    "strength_max",
+    "bias"
+  ],
+  "truth_grid": [
+    [
+      2,
+      20,
+      200,
+      1200
+    ],
+    [
+      1,
+      4,
+      16
+    ],
+    [
+      1.5,
+      3,
+      6
+    ],
+    [
+      -2,
+      0,
+      2
+    ]
+  ],
+  "datasets_per_point_condition": 100,
+  "seed": 2026091011,
+  "seed_derivation": "numpy SeedSequence([seed, condition_index, grid_index, replicate])",
+  "factorial": {
+    "delay_to_target_start_sec": [
+      4,
+      16,
+      64,
+      256,
+      1024,
+      2048
+    ],
+    "interference_units": [
+      0,
+      1,
+      4,
+      16
+    ],
+    "prior_occurrences": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "support_per_occurrence": [
+      0.5,
+      1.0
+    ],
+    "cue_kind": [
+      "exact",
+      "transformed",
+      "novel_foil"
+    ]
+  },
+  "allocation": {
+    "cells": 720,
+    "ratings_per_cell": 4,
+    "assigned_targets": 2880,
+    "candidate_participants": 960,
+    "targets_per_participant": 3,
+    "source_families": 720,
+    "assignment_seed": 2026091012,
+    "rule": "One cell per source family. Independently permute the 960 ratings in each delay block [4,16], [64,256], [1024,2048] onto participants 0..959; each participant receives one per block, hence three different families. Randomize block order per participant.",
+    "participant_effect": "zero in this first conditional simulator; not an empirical human assumption"
+  },
+  "query": {
+    "duration_sec": 8,
+    "minimum_prefix_sec": 16,
+    "elapsed_at_scoring": "delay_to_target_start_sec + 8",
+    "censoring": "prefix ends at the end of the target window; no subsequent audio; only the observed query score is supplied",
+    "bank_copy": "only episodes committed before target start; no query reinforcement, new episode or competing-content update",
+    "occurrence_duration_sec_for_delivery_estimate": 2,
+    "prefix_duration_estimate": "max(16, 2*prior_occurrences + delay_to_target_start_sec + 8)",
+    "delivery_status": "No waveform has yet established this candidate allocation. Interference values are conditional observed weighted-span totals, not authored labels or proof of stimulus feasibility."
+  },
+  "conditions": [
+    {
+      "id": "clear_complete",
+      "cue_scores": [
+        4,
+        2,
+        -4
+      ],
+      "missing_base": 0,
+      "missing_ambiguity_gain": 0,
+      "distractors": []
+    },
+    {
+      "id": "clear_mcar10",
+      "cue_scores": [
+        4,
+        2,
+        -4
+      ],
+      "missing_base": 0.1,
+      "missing_ambiguity_gain": 0,
+      "distractors": []
+    },
+    {
+      "id": "weak_competition_ambiguous_missing",
+      "cue_scores": [
+        2,
+        0,
+        -6
+      ],
+      "missing_base": 0.1,
+      "missing_ambiguity_gain": 0.2,
+      "distractors": [
+        {
+          "extra_age_sec": 10,
+          "extra_interference": 1,
+          "score": -6
+        },
+        {
+          "extra_age_sec": 40,
+          "extra_interference": 2,
+          "score": -7
+        },
+        {
+          "extra_age_sec": 160,
+          "extra_interference": 4,
+          "score": -8
+        }
+      ]
+    }
+  ],
+  "forward": {
+    "primary_strength": "min(strength_max, prior_occurrences*support_per_occurrence)",
+    "primary_log_availability": "log(strength) - (delay+8)/tau_sec - interference/kappa",
+    "distractor_strength": 1,
+    "distractor_elapsed": "delay+8+2*(prior_occurrences+1)+extra_age_sec",
+    "distractor_interference": "interference+extra_interference",
+    "epsilon_avail": 1e-300,
+    "recognition": "sigmoid(logsumexp(logaddexp(log_availability_i, log(epsilon_avail))+score_i)-bias)",
+    "missing_probability": "missing_base + missing_ambiguity_gain * 4*p_yes*(1-p_yes), applied independently before sampling answers",
+    "sampling": "n_usable~Binomial(4,1-missing_probability); yes~Binomial(n_usable,p_yes). Missing contributes no binary target; retain all assigned counts.",
+    "acquisition_gaps": "none; this does not qualify the bounded-unknown-interference branch",
+    "nuisance_origin": "fixed simulation-only engineering scores; repeat after separately fitted acoustic/correspondence scales"
+  },
+  "fit": {
+    "solver": "L-BFGS-B; analytic gradient of summed binary log loss",
+    "coordinates": [
+      "log(tau_sec)",
+      "log(kappa)",
+      "log(strength_max)",
+      "bias"
+    ],
+    "physical_bounds": [
+      [
+        0.05,
+        100000
+      ],
+      [
+        0.05,
+        10000
+      ],
+      [
+        1,
+        32
+      ],
+      [
+        -12,
+        12
+      ]
+    ],
+    "starts": [
+      [
+        20,
+        4,
+        3,
+        0
+      ],
+      [
+        2,
+        1,
+        1.25,
+        -2
+      ],
+      [
+        1200,
+        16,
+        8,
+        2
+      ]
+    ],
+    "selection": "minimum penalized loss among converged starts; retain start failures",
+    "ridge_lambda": 1e-06,
+    "ridge": "0.5*lambda*sum(transformed_parameter**2); no true-parameter centering",
+    "options": {
+      "maxiter": 400,
+      "ftol": 1e-12,
+      "gtol": 1e-06,
+      "maxls": 40
+    },
+    "saturation_kink": "use unsaturated derivative exactly at equal accumulated support and cap",
+    "information": "unpenalized expected Fisher J.T @ diag(n*p*(1-p)) @ J",
+    "failure": "no converged start, nonfinite result, boundary distance <=1e-7 in fitted coordinates, smallest Fisher eigenvalue <=1e-9, or Fisher condition number >1e12"
+  },
+  "acceptance": {
+    "positive_absolute_log_ratio": {
+      "median_max": 0.22314355131420976,
+      "p90_max": 0.6931471805599453
+    },
+    "bias_absolute_error": {
+      "median_max": 0.25,
+      "p90_max": 0.75
+    },
+    "quantiles": "empirical inverse CDF: sorted_error[ceil(q*n)-1]",
+    "failed_fit_error": "positive infinity for all four parameters; never exclude a dataset",
+    "unit": "every parameter in every truth-grid point and condition; no pooling",
+    "on_failure": "retain all failures; revise allocation/task/model in a new registration; never relax tolerance or delete a grid point"
+  },
+  "compute_envelope": {
+    "datasets": 32400,
+    "optimizer_starts_max": 97200,
+    "workers_max": 8,
+    "blas_threads_per_worker": 1,
+    "wall_hours_max": 2,
+    "cpu_core_hours_max": 8,
+    "exhaustion": "stop and preserve incomplete result; no recovery pass",
+    "separate_from_stage3_budget": true
+  },
+  "limitations": [
+    "This is a conditional episode-law gate, not the complete O11 gate.",
+    "No participant, passage random effect or unheard acquisition-gap distribution is inferred.",
+    "No human recruitment, expense, consent, waveform feasibility or cognitive validity is established.",
+    "O12 event-head and O13 private-trace recovery remain separate."
+  ]
+}

@@ -55,7 +55,7 @@ When this closed loop is realized, the distinctions among composer, performer, a
 
 ### The Cognitive Landscape of Music
 
-The "landscape" that forms Conchordal's foundation is a potential field modeled on the characteristics of human auditory cognition. Whereas conventional composition fits sounds into grid-like scales and fixed notes, Conchordal recreates human auditory physiology itself as a virtual environment. The system analyzes the acoustic signal occurring in real time, constructing this internal topography across two dimensions: frequency and time.
+The "landscape" that forms Conchordal's foundation is a potential field modeled on the characteristics of human auditory cognition. Whereas conventional composition fits sounds into grid-like scales and fixed notes, Conchordal recreates human auditory physiology itself as a virtual environment. The current system computes frequency-space terrain from actual audio and uses short acoustic histories and meter estimates for temporal behavior. Its goal is to extend this terrain through time, retaining relations from individual gestures to whole pieces and returning them to sound generation.
 
 #### The Frequency Axis: Topography of Pitch and Harmony
 
@@ -69,15 +69,21 @@ Modeled on the physical structure of the inner ear's cochlea, a tonotopic map (f
 
 #### The Temporal Axis: Topography of Rhythm and Groove
 
-Music cognition is deeply linked to neural oscillations in the brain. Conchordal analyzes the temporal evolution of the frequency-axis landscape, extracting in real time a four-layer periodic structure based on brainwave models. Sound agents synchronize with these periods, forming organic rhythms spontaneously rather than through externally imposed meter.
+Musical time includes a sound's attack and lingering release, the relative positions of responses within a beat, phrase continuation and closure, and repetition or variation across long intervening passages. Representing the neurocognitive time structures underlying these relations and their interactions is a design goal for Conchordal. The proposed connection across scales retains heard relations, anticipates what may follow, and returns those expectations to each Individual's local decisions about sounding.
 
-**Delta band (~0.5–4 Hz)** governs the slow pulse pervading an entire piece—metrical structure and large-scale phrasing (the breath of musical phrases).
+As of September 2026, the implementation derives periodic signals named delta and theta from beat and subdivision estimates, while alpha and beta are numerical indicators of precision and prediction error. It does not extract four neural bands from audio or brain signals. Individuals have their own phonation periods and sound durations, and use short heard contexts to choose whether to sound, wait, or skip an opportunity. Beat entrainment is used when explicit synchronization is requested.
 
-**Theta band (~4–8 Hz)** contributes to articulation and the formation of syllabic-scale groupings—the layer that carves the contours of individual sound events.
+The following four-band allocation is an initial, revisable proposal. These band names and frequency ranges do not identify implemented extractors or cognitive functions.
 
-**Alpha band (~8–13 Hz)** shapes pulse and accent patterns within phrases—the intermediate layer forming rhythm's skeleton.
+**Delta band (~0.5–4 Hz):** a proposed association with slow pulses, metrical structure and large-scale phrasing, or the breath of musical phrases.
 
-**Beta band (~13–30 Hz)** controls groove feel and synchronization precision among multiple sounds (microtiming)—the finest layer where temporal "fluctuation" and "sharpness" coexist.
+**Theta band (~4–8 Hz):** a proposed association with articulation, syllabic-scale groupings and the contours of individual sound events.
+
+**Alpha band (~8–13 Hz):** a proposed association with pulse and accent patterns within phrases.
+
+**Beta band (~13–30 Hz):** a proposed association with groove and fine temporal relations among sounds, or microtiming.
+
+Longer time structures require mechanisms for remembering order, retrieving transformed relations, and interpreting boundaries and closure. Representations will be chosen by examining their neurocognitive foundations and comparing them with listeners' judgments, rather than replacing every structure with a slower oscillator. The goal includes audible distinctions between simultaneous attacks on a beat, responses at different positions, and flow without a beat reference.
 
 The landscape thus constructed is based on current findings in psychoacoustics and neuroscience. However, it is not presented as fixed, universal truth. Music perception varies by culture, era, and individual, and the meaning of "consonance" is likewise diverse. Conchordal's landscape is variable as a parameter, leaving room to incorporate tuning systems from different cultures, individual auditory characteristics, or as-yet-unknown perceptual principles. This is not a system that imposes a specific aesthetic but an open foundation for exploring the direct coupling of cognition and sound.
 
@@ -85,17 +91,17 @@ The landscape thus constructed is based on current findings in psychoacoustics a
 
 Even if a particular landscape is specified, the music it suggests is not singular. With one parameter setting, Mozartean balance might emerge; with another, punk-rock impulse. The landscape is a space of possibility, and its exploration requires some kind of "inhabitant." Conchordal adopts artificial life (ALife) agents as these inhabitants.
 
-**Individual** is the basic unit operating on the landscape. Each Individual is an autonomous acoustic synthesizer that perceives the potential gradients around it, synchronizes with neural rhythms along the time axis, and survives by expending energy. Individuals seek regions of high consonance as they traverse frequency space; in dissonant regions they rapidly deplete. There is no central conductor. Everything is determined by local perception and reaction.
+**Individual** is the basic unit operating on the landscape. Each Individual is an autonomous acoustic synthesizer that perceives the potential gradients around it, chooses opportunities to sound according to its own phonation state and short acoustic context, and survives by expending energy. Individuals seek regions of high consonance as they traverse frequency space; in dissonant regions they rapidly deplete. There is no central conductor. Everything is determined by local perception and reaction.
 
-**Population** is the acoustic community formed by multiple Individuals. Individuals interfere with one another, differentiating their niches to avoid competition or symbiotically fusing in regions with overtone relationships. Population density dynamically deforms the landscape itself; environment and inhabitants mutually define each other. A Population is not merely the sum of Individuals but possesses emergent properties as a collective.
+**Population** is the acoustic community formed by multiple Individuals. Individuals interfere with one another, differentiating their niches in frequency space to avoid competition or symbiotically fusing in regions with overtone relationships. Population density dynamically deforms the landscape itself; environment and inhabitants mutually define each other. In time, the goal is a community that maintains different roles and produces handoffs, repetition and variation. A Population is not merely the sum of Individuals but possesses emergent properties as a collective.
 
-In this way, musical structures—harmony, melody, rhythm—emerge bottom-up from the local behaviors of Individuals. It is not the composer placing notes but the dynamics of an acoustic ecosystem that generate music.
+The ecosystem's goal is to produce musical structures, including harmony, melody and rhythm, from the local behaviors of Individuals. Current pitch adaptation and short-term phonation decisions provide a starting point for sustained handoffs and relations across phrases and whole pieces. It is not the composer placing notes but the dynamics of an acoustic ecosystem that generate music.
 
 ### Scenario: Giving Shape to Time
 
 Music is the act of carving from infinite, uniform physical time a finite duration with beginning and end, and endowing it with structure—tension and release, rise and fall, climax and silence. In Conchordal, harmony and rhythm at the micro level emerge autonomously, but this temporal structure—the arc that makes a work cohere as an experience—is designed by a human creator. The composer acts not as a micromanager placing each note but as a director of the ecosystem.
 
-The tool for this direction is the *Scenario*: a set of instructions that modulates the ecosystem's environmental conditions along the time axis. The creator specifies not individual sounds but state transitions of the entire system—deforming the landscape's topography, controlling the generation and extinction of populations, shifting emphasis among rhythm layers. Through these operations, the creator can trace macroscopic trajectories from chaos to order, or from silence to saturation.
+The tool for this direction is the *Scenario*: a set of instructions that modulates the ecosystem's environmental conditions along the time axis. The creator specifies not individual sounds but state transitions of the entire system: deforming the landscape's topography, controlling the generation and extinction of populations, and changing phonation periods, sound durations and synchronization settings over time. Through these operations, the creator can trace macroscopic trajectories from chaos to order, or from silence to saturation. Future local generation should also respond to perceived phrases and longer contexts while coexisting with this authored direction.
 
 ### The Reach of Direct Cognitive Coupling
 

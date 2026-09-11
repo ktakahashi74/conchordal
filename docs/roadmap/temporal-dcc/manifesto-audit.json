@@ -1,0 +1,561 @@
+{
+  "schema": "temporal-dcc-manifesto-audit-v1",
+  "date": "2026-09-10",
+  "baseline_commit": "ec67b50c303d930a3d4c810333e3742f111c6ac8",
+  "review_kind": "Source inspection and bilingual editorial comparison; hash verification alone does not prove semantic completeness.",
+  "status": "source_reconciled_local_build_passed",
+  "public_deployment": "not_performed",
+  "sources": {
+    "src/core/modulation.rs": "625645d47510fc7eacd71315062294e78e8bd23d003e1fada4f043d3047908ce",
+    "src/core/meter.rs": "25d881da29f4734da10bd8177b19fd383cca3939b445209cf35248ff7e6b5a0e",
+    "src/core/landscape.rs": "b46af9587fbdfc12445aa39b5826122ca83ebdcaf30d4078dce8cfeefe9de897",
+    "src/life/temporal_participation.rs": "79d9d6fe8a6d0a0e3c1a52c408b8553ebe75ad352c733784d68660fc0fde8a6e",
+    "src/life/phonation_engine.rs": "5994f0442b46d652457b04f899f6fff65cb587adc7edb6d8d6b4363942b66ee6",
+    "src/scenario.rs": "f38a6b25b4dbcb3ccc29e10553c6ec653ec0565904feac8da741d518e895ea90",
+    "src/scripting/engine.rs": "fc2f36b8afaf9d7bed2eb1aa6e6c7ea998fda341d25f90f5ef05cce9f4b1a64d",
+    "src/runtime/mod.rs": "400cba0c455434863c8d86e6f4de404a76fcce27b624c3c7e435b1afead2a591",
+    "src/cli.rs": "fdc4adf50fb9cc8ff6b3deacb2d9d219c784f633b6986803731675d4729da0b1",
+    "src/main.rs": "1a37c8530b8704c8b049587d3d0221b0e0b438ad99272671e62af5456a6be1e4",
+    "samples/07_heartbeat.rhai": "0c12ac3f4cd91d626a6bca0d9d5c8d12a9a679c7ae56d83c1c3e9bd702420531",
+    "samples/08_murmuration.rhai": "33b31a34db9cc8cfbaee144c298a980d79c412106b780fb3426d60d3a44d408d",
+    "samples/09_rain.rhai": "8dbfea3a5fa7e955d6fbabafd33f5a2b04774c1e4c2d98de9d1dd798ade82a5b",
+    "samples/12_emergence_and_resolution.rhai": "662a6c0e05aa5573f604b6569357e6c7c7eeefa94d13a59360fba695cf8732d9",
+    "docs/design-notes/dcc-neurocognitive-hierarchy.md": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+    "web/content/manifesto.md": "de5270abcbad2d33d8744adc01bdd51da6b96b7785d68268a4e3cc2834f11585",
+    "web/content/manifesto.ja.md": "9be2f2d2166ffc177133b5c3138f70d506872654d4d87bb7da3a5459148df1e7"
+  },
+  "clauses": [
+    {
+      "id": 1,
+      "adopted_ja": "2026年9月時点の実装では、拍と細分拍の推定からデルタ・シータと名づけた周期信号を作り、アルファ・ベータは推定の確かさと予測誤差の指標を表す数値として扱っている。",
+      "canonical_en": "The current implementation derives delta/theta bands from meter estimates and represents alpha/beta as precision/error scalars."
+    },
+    {
+      "id": 2,
+      "adopted_ja": "音響信号や脳信号から四つの神経帯域を抽出しているわけではない。",
+      "canonical_en": "It does not extract four neural bands from audio or brain signals."
+    },
+    {
+      "id": 3,
+      "adopted_ja": "Conchordalは、これらを支える神経認知的な時間構造とその相互作用を内部で表現することを設計目標とする。",
+      "canonical_en": "Representing interacting neurocognitive time structures is a design goal."
+    },
+    {
+      "id": 4,
+      "adopted_ja": "以下の四帯域への機能配分は初期の案であり、再検討の対象である。",
+      "canonical_en": "The four-band allocation remains a revisable proposal."
+    }
+  ],
+  "claims": [
+    {
+      "id": "O02-intro",
+      "decision": "retain_principle",
+      "rationale": "The opening describes the project and autonomous sound agents; it does not identify a completed temporal hierarchy. The temporal section now supplies the implementation boundary.",
+      "comparison": {
+        "ja": {
+          "before": "Conchordal(コンコーダル)は、そうした既存の枠組みを解体し、直接認知結合(Direct Cognitive Coupling)の原理に基づいて、人間の聴覚認知メカニズムそのものをランドスケープとして仮想空間上に再構築する試みである。ここでは、音は配置されるものではなく、自律的なエージェントとして環境内を移動し、互いに干渉し合いながら調和を見つけ出す。これは、人間がコントロールする「作曲」から、システムが自ら美を生成する「創発」へのパラダイムシフトであり、音楽を静的な構造物から動的な生命現象へと還す挑戦である。",
+          "after": "Conchordal(コンコーダル)は、そうした既存の枠組みを解体し、直接認知結合(Direct Cognitive Coupling)の原理に基づいて、人間の聴覚認知メカニズムそのものをランドスケープとして仮想空間上に再構築する試みである。ここでは、音は配置されるものではなく、自律的なエージェントとして環境内を移動し、互いに干渉し合いながら調和を見つけ出す。これは、人間がコントロールする「作曲」から、システムが自ら美を生成する「創発」へのパラダイムシフトであり、音楽を静的な構造物から動的な生命現象へと還す挑戦である。",
+          "line": 18
+        },
+        "en": {
+          "before": "Conchordal dismantles these existing frameworks. Based on the principle of *Direct Cognitive Coupling*, it reconstructs the mechanisms of human auditory cognition themselves as a landscape within virtual space. Here, sounds are not placed; they are autonomous agents that traverse their environment, interfere with one another, and discover their own harmonies. This represents a paradigm shift from human-controlled \"composition\" to system-generated \"emergence\"—a challenge to restore music from static structure to living phenomenon.",
+          "after": "Conchordal dismantles these existing frameworks. Based on the principle of *Direct Cognitive Coupling*, it reconstructs the mechanisms of human auditory cognition themselves as a landscape within virtual space. Here, sounds are not placed; they are autonomous agents that traverse their environment, interfere with one another, and discover their own harmonies. This represents a paradigm shift from human-controlled \"composition\" to system-generated \"emergence\"—a challenge to restore music from static structure to living phenomenon.",
+          "line": 18
+        }
+      }
+    },
+    {
+      "id": "O02-dcc_mapping",
+      "decision": "retain_scoped_implementation",
+      "rationale": "The model-to-audio mapping includes implemented frequency terrain; biological feedback is explicitly future. Temporal completion is not inferred from this mapping.",
+      "comparison": {
+        "ja": {
+          "before": "この原理は、本来、音響生成と聴覚認知との双方向的な連動を志向する。現在のConchordalは、その第一段階として、認知モデルから音響環境への写像を実装している。将来的には、聴取者の生体信号（脳波、心拍、皮膚電気反応等）をリアルタイムでシステムへフィードバックし、聴く者の内的状態に応じて音楽が変容し、その音楽がさらに聴く者を変容させる閉ループを実現することを目指す。",
+          "after": "この原理は、本来、音響生成と聴覚認知との双方向的な連動を志向する。現在のConchordalは、その第一段階として、認知モデルから音響環境への写像を実装している。将来的には、聴取者の生体信号（脳波、心拍、皮膚電気反応等）をリアルタイムでシステムへフィードバックし、聴く者の内的状態に応じて音楽が変容し、その音楽がさらに聴く者を変容させる閉ループを実現することを目指す。",
+          "line": 52
+        },
+        "en": {
+          "before": "This principle inherently aims at bidirectional linkage between sound generation and auditory cognition. The current Conchordal implements the first stage: mapping from cognitive model to acoustic environment. In the future, it aims to realize a closed loop—feeding back the listener's biosignals (brainwaves, heart rate, galvanic skin response, etc.) to the system in real time, so that music transforms according to the listener's internal state, and that music in turn transforms the listener.",
+          "after": "This principle inherently aims at bidirectional linkage between sound generation and auditory cognition. The current Conchordal implements the first stage: mapping from cognitive model to acoustic environment. In the future, it aims to realize a closed loop—feeding back the listener's biosignals (brainwaves, heart rate, galvanic skin response, etc.) to the system in real time, so that music transforms according to the listener's internal state, and that music in turn transforms the listener.",
+          "line": 52
+        }
+      }
+    },
+    {
+      "id": "O02-landscape",
+      "decision": "revise_current_and_goal",
+      "rationale": "Replace the completed two-axis terrain claim with frequency terrain, short audio history and meter, plus the full temporal design goal.",
+      "comparison": {
+        "ja": {
+          "before": "Conchordalの基盤となる「ランドスケープ」は、人間の聴覚認知特性を模したポテンシャル場である。従来の作曲が格子状の音階や固定された音符に音を当てはめるのに対し、Conchordalは人間の聴覚生理そのものを仮想環境として再現する。システムは現在発生している音響信号をリアルタイムで解析し、周波数軸と時間軸の二次元でこの内的地形を構築する。",
+          "after": "Conchordalの基盤となる「ランドスケープ」は、人間の聴覚認知特性を模したポテンシャル場である。従来の作曲が格子状の音階や固定された音符に音を当てはめるのに対し、Conchordalは人間の聴覚生理そのものを仮想環境として再現する。現在は実音から周波数方向の地形を計算し、短時間の音響履歴と拍の推定を時間的な振る舞いに用いている。時間方向にも、音の輪郭から楽曲全体までの関係を保持し、生成へ返す地形を構築することを目指す。",
+          "line": 58
+        },
+        "en": {
+          "before": "The \"landscape\" that forms Conchordal's foundation is a potential field modeled on the characteristics of human auditory cognition. Whereas conventional composition fits sounds into grid-like scales and fixed notes, Conchordal recreates human auditory physiology itself as a virtual environment. The system analyzes the acoustic signal occurring in real time, constructing this internal topography across two dimensions: frequency and time.",
+          "after": "The \"landscape\" that forms Conchordal's foundation is a potential field modeled on the characteristics of human auditory cognition. Whereas conventional composition fits sounds into grid-like scales and fixed notes, Conchordal recreates human auditory physiology itself as a virtual environment. The current system computes frequency-space terrain from actual audio and uses short acoustic histories and meter estimates for temporal behavior. Its goal is to extend this terrain through time, retaining relations from individual gestures to whole pieces and returning them to sound generation.",
+          "line": 58
+        }
+      }
+    },
+    {
+      "id": "O02-temporal_mechanism",
+      "decision": "revise_to_goal",
+      "rationale": "Remove four-band extraction and cross-band entrainment as completed mechanisms. Memory, expectation and local return are stated as design goals.",
+      "comparison": {
+        "ja": {
+          "before": "音楽認知は脳内の神経振動と深く結びついている。Conchordalは周波数軸ランドスケープの時間的推移を解析し、脳波モデルに基づく四階層の周期構造をリアルタイムで抽出する。音のエージェントはこれらの周期と同調することで、外部から与えられた拍子ではなく、自発的に有機的なリズムを形成する。",
+          "after": "音楽の時間構造には、一音の立ち上がりや余韻、拍の中で音が応答する位置、フレーズの継続と終止、長い隔たりを越えた反復や変奏がある。Conchordalは、これらを支える神経認知的な時間構造とその相互作用を内部で表現することを設計目標とする。聞こえた関係を保持して次の音を期待し、その期待が個体の局所的な発音判断へ戻ることで、異なる時間尺度をつなぐ構想である。",
+          "line": 75
+        },
+        "en": {
+          "before": "Music cognition is deeply linked to neural oscillations in the brain. Conchordal analyzes the temporal evolution of the frequency-axis landscape, extracting in real time a four-layer periodic structure based on brainwave models. Sound agents synchronize with these periods, forming organic rhythms spontaneously rather than through externally imposed meter.",
+          "after": "Musical time includes a sound's attack and lingering release, the relative positions of responses within a beat, phrase continuation and closure, and repetition or variation across long intervening passages. Representing the neurocognitive time structures underlying these relations and their interactions is a design goal for Conchordal. The proposed connection across scales retains heard relations, anticipates what may follow, and returns those expectations to each Individual's local decisions about sounding.",
+          "line": 72
+        }
+      }
+    },
+    {
+      "id": "O02-current_mechanism",
+      "decision": "add_implementation_boundary",
+      "rationale": "Meter supplies beat/subdivision; alpha/beta are confidence and its complement. ParticipationClock delegates sounding/waiting/skipping to short acoustic history; explicit coupling clocks supply synchronization.",
+      "comparison": {
+        "ja": {
+          "before": null,
+          "after": "2026年9月時点の実装では、拍と細分拍の推定からデルタ・シータと名づけた周期信号を作り、アルファ・ベータは推定の確かさと予測誤差の指標を表す数値として扱っている。音響信号や脳信号から四つの神経帯域を抽出しているわけではない。個体は自身の発声周期と音長を持ち、聞こえた音の短い文脈を使って発音・待機・見送りを選ぶ。明示的な同期が指定された場合には拍への同調を使う。",
+          "line": 77
+        },
+        "en": {
+          "before": null,
+          "after": "As of September 2026, the implementation derives periodic signals named delta and theta from beat and subdivision estimates, while alpha and beta are numerical indicators of precision and prediction error. It does not extract four neural bands from audio or brain signals. Individuals have their own phonation periods and sound durations, and use short heard contexts to choose whether to sound, wait, or skip an opportunity. Beat entrainment is used when explicit synchronization is requested.",
+          "line": 74
+        }
+      }
+    },
+    {
+      "id": "O02-allocation",
+      "decision": "add_revisable_proposal",
+      "rationale": "Band names and Hz ranges are not identified with implemented neural extractors or validated cognitive roles.",
+      "comparison": {
+        "ja": {
+          "before": null,
+          "after": "以下の四帯域への機能配分は初期の案であり、再検討の対象である。帯域の名称や周波数範囲は、実装された抽出器や認知機能を示すものではない。",
+          "line": 79
+        },
+        "en": {
+          "before": null,
+          "after": "The following four-band allocation is an initial, revisable proposal. These band names and frequency ranges do not identify implemented extractors or cognitive functions.",
+          "line": 76
+        }
+      }
+    },
+    {
+      "id": "O02-delta",
+      "decision": "revise_to_proposal",
+      "rationale": "Large-scale phrasing is not a current delta-band function.",
+      "comparison": {
+        "ja": {
+          "before": "* **デルタ帯域 (~0.5–4 Hz)**\n  楽曲全体を貫く緩やかなパルス。拍節構造や大局的なフレージング（楽句の呼吸）を司る。",
+          "after": "* **デルタ帯域 (~0.5–4 Hz)**\n  緩やかなパルスと拍節構造、大局的なフレージング（楽句の呼吸）を対応づける案。",
+          "line": 81
+        },
+        "en": {
+          "before": "**Delta band (~0.5–4 Hz)** governs the slow pulse pervading an entire piece—metrical structure and large-scale phrasing (the breath of musical phrases).",
+          "after": "**Delta band (~0.5–4 Hz):** a proposed association with slow pulses, metrical structure and large-scale phrasing, or the breath of musical phrases.",
+          "line": 78
+        }
+      }
+    },
+    {
+      "id": "O02-theta",
+      "decision": "revise_to_proposal",
+      "rationale": "The name of the subdivision signal does not establish neural articulation or grouping.",
+      "comparison": {
+        "ja": {
+          "before": "* **シータ帯域 (~4–8 Hz)**\n  音のアーティキュレーション、音節単位のまとまりの形成に寄与する。個々の音事象の輪郭を刻む層。",
+          "after": "* **シータ帯域 (~4–8 Hz)**\n  音のアーティキュレーションや音節単位のまとまり、個々の音事象の輪郭を対応づける案。",
+          "line": 84
+        },
+        "en": {
+          "before": "**Theta band (~4–8 Hz)** contributes to articulation and the formation of syllabic-scale groupings—the layer that carves the contours of individual sound events.",
+          "after": "**Theta band (~4–8 Hz):** a proposed association with articulation, syllabic-scale groupings and the contours of individual sound events.",
+          "line": 80
+        }
+      }
+    },
+    {
+      "id": "O02-alpha",
+      "decision": "revise_to_proposal",
+      "rationale": "Current alpha is a confidence scalar, not a phrase-accent oscillator.",
+      "comparison": {
+        "ja": {
+          "before": "* **アルファ帯域 (~8–13 Hz)**\n  フレーズ内部の拍動やアクセントのパターンを形作る。リズムの骨格となる中間層。",
+          "after": "* **アルファ帯域 (~8–13 Hz)**\n  フレーズ内部の拍動やアクセントのパターンを対応づける案。",
+          "line": 87
+        },
+        "en": {
+          "before": "**Alpha band (~8–13 Hz)** shapes pulse and accent patterns within phrases—the intermediate layer forming rhythm's skeleton.",
+          "after": "**Alpha band (~8–13 Hz):** a proposed association with pulse and accent patterns within phrases.",
+          "line": 82
+        }
+      }
+    },
+    {
+      "id": "O02-beta",
+      "decision": "revise_to_proposal",
+      "rationale": "Current beta is a confidence-complement scalar, not a demonstrated groove or microtiming controller.",
+      "comparison": {
+        "ja": {
+          "before": "* **ベータ帯域 (~13–30 Hz)**\n  グルーヴ感、複数音の同期精度（マイクロタイミング）を制御する。時間的な「揺らぎ」と「鋭さ」が共存する最も細かい層。",
+          "after": "* **ベータ帯域 (~13–30 Hz)**\n  グルーヴ感や複数音の細かな時間関係（マイクロタイミング）を対応づける案。",
+          "line": 90
+        },
+        "en": {
+          "before": "**Beta band (~13–30 Hz)** controls groove feel and synchronization precision among multiple sounds (microtiming)—the finest layer where temporal \"fluctuation\" and \"sharpness\" coexist.",
+          "after": "**Beta band (~13–30 Hz):** a proposed association with groove and fine temporal relations among sounds, or microtiming.",
+          "line": 84
+        }
+      }
+    },
+    {
+      "id": "O02-long_context",
+      "decision": "add_goal",
+      "rationale": "Ordered memory, retrieval, segmentation and listener comparisons remain future requirements.",
+      "comparison": {
+        "ja": {
+          "before": null,
+          "after": "長い時間構造には、順序の記憶、変形した関係の想起、まとまりの境界と終止を扱う仕組みが必要になる。全てを遅い振動子へ置き換えるのではなく、それぞれの神経認知的な基盤を整理し、聴取者の判断と照合しながら表現を選ぶ。拍への同時発音、異なる位置での応答、拍を参照しない流れを区別し、その違いが音楽として聞こえるところまでを目標に据える。",
+          "line": 93
+        },
+        "en": {
+          "before": null,
+          "after": "Longer time structures require mechanisms for remembering order, retrieving transformed relations, and interpreting boundaries and closure. Representations will be chosen by examining their neurocognitive foundations and comparing them with listeners' judgments, rather than replacing every structure with a slower oscillator. The goal includes audible distinctions between simultaneous attacks on a beat, responses at different positions, and flow without a beat reference.",
+          "line": 86
+        }
+      }
+    },
+    {
+      "id": "O02-individual",
+      "decision": "revise_to_implementation",
+      "rationale": "Replace neural entrainment with the implemented body/short-context participation decision.",
+      "comparison": {
+        "ja": {
+          "before": "* **個体 (Individual)**\n  ランドスケープ上で活動する基本単位。各個体は自律的な音響シンセサイザーであり、周囲のポテンシャル勾配を知覚し、時間軸上の神経リズムに同調し、エネルギーを消費しながら生存する。個体は協和度の高い領域を求めて周波数空間を移動し、不協和な領域では急速に消耗する。中央集権的な指揮者は存在しない。全ては局所的な知覚と反応によって決定される。",
+          "after": "* **個体 (Individual)**\n  ランドスケープ上で活動する基本単位。各個体は自律的な音響シンセサイザーであり、周囲のポテンシャル勾配を知覚し、自身の発声状態と短い音響文脈に応じて発音の機会を選び、エネルギーを消費しながら生存する。個体は協和度の高い領域を求めて周波数空間を移動し、不協和な領域では急速に消耗する。中央集権的な指揮者は存在しない。全ては局所的な知覚と反応によって決定される。",
+          "line": 101
+        },
+        "en": {
+          "before": "**Individual** is the basic unit operating on the landscape. Each Individual is an autonomous acoustic synthesizer that perceives the potential gradients around it, synchronizes with neural rhythms along the time axis, and survives by expending energy. Individuals seek regions of high consonance as they traverse frequency space; in dissonant regions they rapidly deplete. There is no central conductor. Everything is determined by local perception and reaction.",
+          "after": "**Individual** is the basic unit operating on the landscape. Each Individual is an autonomous acoustic synthesizer that perceives the potential gradients around it, chooses opportunities to sound according to its own phonation state and short acoustic context, and survives by expending energy. Individuals seek regions of high consonance as they traverse frequency space; in dissonant regions they rapidly deplete. There is no central conductor. Everything is determined by local perception and reaction.",
+          "line": 94
+        }
+      }
+    },
+    {
+      "id": "O02-population",
+      "decision": "separate_frequency_and_temporal_goal",
+      "rationale": "Frequency niches remain current; persistent temporal roles, handoffs and variation are explicit goals.",
+      "comparison": {
+        "ja": {
+          "before": "* **ポピュレーション (Population)**\n  複数の個体が形成する音響の群集。個体は互いに干渉し、競合を避けてニッチを分化させるか、倍音関係にある領域で共生的に融合する。群集の密度はランドスケープ自体を動的に変形させ、環境と住人は相互に規定し合う。ポピュレーションは単なる個体の総和ではなく、集団としての創発的性質を持つ。",
+          "after": "* **ポピュレーション (Population)**\n  複数の個体が形成する音響の群集。個体は互いに干渉し、周波数空間で競合を避けてニッチを分化させるか、倍音関係にある領域で共生的に融合する。群集の密度はランドスケープ自体を動的に変形させ、環境と住人は相互に規定し合う。時間方向にも異なる役割を保ち、受け渡しや反復・変奏を生み出す群集を目指す。ポピュレーションは単なる個体の総和ではなく、集団としての創発的性質を持つ。",
+          "line": 104
+        },
+        "en": {
+          "before": "**Population** is the acoustic community formed by multiple Individuals. Individuals interfere with one another, differentiating their niches to avoid competition or symbiotically fusing in regions with overtone relationships. Population density dynamically deforms the landscape itself; environment and inhabitants mutually define each other. A Population is not merely the sum of Individuals but possesses emergent properties as a collective.",
+          "after": "**Population** is the acoustic community formed by multiple Individuals. Individuals interfere with one another, differentiating their niches in frequency space to avoid competition or symbiotically fusing in regions with overtone relationships. Population density dynamically deforms the landscape itself; environment and inhabitants mutually define each other. In time, the goal is a community that maintains different roles and produces handoffs, repetition and variation. A Population is not merely the sum of Individuals but possesses emergent properties as a collective.",
+          "line": 96
+        }
+      }
+    },
+    {
+      "id": "O02-emergence",
+      "decision": "revise_to_goal",
+      "rationale": "Broad rhythm emergence is no longer evidence of sustained handoff, phrase or form cognition.",
+      "comparison": {
+        "ja": {
+          "before": "こうして、個体の局所的行動から、和声、旋律、リズムといった音楽的構造がボトムアップに創発する。作曲者が音符を配置するのではなく、音響生態系の力学が音楽を生み出すのである。",
+          "after": "個体の局所的行動から、和声、旋律、リズムといった音楽的構造をボトムアップに生み出すことが、この生態系の目標である。現在の音高の適応と短時間の発音判断を足場に、持続する受け渡し、フレーズや楽曲全体の関係へと広げていく。作曲者が音符を配置するのではなく、音響生態系の力学が音楽を生み出すのである。",
+          "line": 107
+        },
+        "en": {
+          "before": "In this way, musical structures—harmony, melody, rhythm—emerge bottom-up from the local behaviors of Individuals. It is not the composer placing notes but the dynamics of an acoustic ecosystem that generate music.",
+          "after": "The ecosystem's goal is to produce musical structures, including harmony, melody and rhythm, from the local behaviors of Individuals. Current pitch adaptation and short-term phonation decisions provide a starting point for sustained handoffs and relations across phrases and whole pieces. It is not the composer placing notes but the dynamics of an acoustic ecosystem that generate music.",
+          "line": 98
+        }
+      }
+    },
+    {
+      "id": "O02-scenario_scope",
+      "decision": "retain_authored_scope",
+      "rationale": "Local pitch adaptation and onset choice exist. The work-level arc in this paragraph is explicitly authored by a human, not generated by inferred form.",
+      "comparison": {
+        "ja": {
+          "before": "音楽とは、無限に続く均一な物理的時間を、始まりと終わりを持つ有限な持続として切り取り、そしてそこに緊張と解放、上昇と下降、クライマックスと静寂といった構造をもたらす行為である。Conchordalにおいて、マイクロなレベルでの調和やリズムは自律的に創発するが、この時間的構造、つまり作品をひとつの体験として成立させる弧、は人間の創作者によってデザインされる。作曲者は音符を一つ一つ配置するマイクロマネージャーではなく、生態系の演出家として振る舞う。",
+          "after": "音楽とは、無限に続く均一な物理的時間を、始まりと終わりを持つ有限な持続として切り取り、そしてそこに緊張と解放、上昇と下降、クライマックスと静寂といった構造をもたらす行為である。Conchordalにおいて、マイクロなレベルでの調和やリズムは自律的に創発するが、この時間的構造、つまり作品をひとつの体験として成立させる弧、は人間の創作者によってデザインされる。作曲者は音符を一つ一つ配置するマイクロマネージャーではなく、生態系の演出家として振る舞う。",
+          "line": 111
+        },
+        "en": {
+          "before": "Music is the act of carving from infinite, uniform physical time a finite duration with beginning and end, and endowing it with structure—tension and release, rise and fall, climax and silence. In Conchordal, harmony and rhythm at the micro level emerge autonomously, but this temporal structure—the arc that makes a work cohere as an experience—is designed by a human creator. The composer acts not as a micromanager placing each note but as a director of the ecosystem.",
+          "after": "Music is the act of carving from infinite, uniform physical time a finite duration with beginning and end, and endowing it with structure—tension and release, rise and fall, climax and silence. In Conchordal, harmony and rhythm at the micro level emerge autonomously, but this temporal structure—the arc that makes a work cohere as an experience—is designed by a human creator. The composer acts not as a micromanager placing each note but as a director of the ecosystem.",
+          "line": 102
+        }
+      }
+    },
+    {
+      "id": "O02-scenario_controls",
+      "decision": "revise_to_implementation_and_goal",
+      "rationale": "Replace neural rhythm-layer emphasis with available phonation period, duration and sync controls. Perceived phrase/context influence is future.",
+      "comparison": {
+        "ja": {
+          "before": "この演出のための道具が時間軸に沿って生態系の環境条件を変化させる指示書である「シナリオ」である。創作者は個々の音を指定するのではなく、系全体の状態遷移を記述する。ランドスケープの地形を変形させ、個体群の生成と消滅を制御し、リズム層の強調を移り変わらせる。これらの操作を通じて、創作者は混沌から秩序へ、あるいは静寂から飽和へといった巨視的な軌道を描くことができる。",
+          "after": "この演出のための道具が時間軸に沿って生態系の環境条件を変化させる指示書である「シナリオ」である。創作者は個々の音を指定するのではなく、系全体の状態遷移を記述する。ランドスケープの地形を変形させ、個体群の生成と消滅を制御し、発声の周期、音長、同期の設定を時間に沿って変える。これらの操作を通じて、創作者は混沌から秩序へ、あるいは静寂から飽和へといった巨視的な軌道を描くことができる。将来は、知覚されたフレーズや長い文脈が局所生成へ及ぼす作用も、作者の演出と共存させる。",
+          "line": 113
+        },
+        "en": {
+          "before": "The tool for this direction is the *Scenario*: a set of instructions that modulates the ecosystem's environmental conditions along the time axis. The creator specifies not individual sounds but state transitions of the entire system—deforming the landscape's topography, controlling the generation and extinction of populations, shifting emphasis among rhythm layers. Through these operations, the creator can trace macroscopic trajectories from chaos to order, or from silence to saturation.",
+          "after": "The tool for this direction is the *Scenario*: a set of instructions that modulates the ecosystem's environmental conditions along the time axis. The creator specifies not individual sounds but state transitions of the entire system: deforming the landscape's topography, controlling the generation and extinction of populations, and changing phonation periods, sound durations and synchronization settings over time. Through these operations, the creator can trace macroscopic trajectories from chaos to order, or from silence to saturation. Future local generation should also respond to perceived phrases and longer contexts while coexisting with this authored direction.",
+          "line": 104
+        }
+      }
+    },
+    {
+      "id": "O02-closing",
+      "decision": "retain_principle",
+      "rationale": "Autonomous agents and ephemeral performance express the manifesto commitment; no specific temporal inference mechanism is asserted. The instrument CLI has no audio output file path.",
+      "comparison": {
+        "ja": {
+          "before": "我々は今、原点に立ち返る。調和の原理は抽象的な数式の中だけにあるのではない。それは物理現象の中に、そしてそれを受け取る人間の耳と脳の中にこそ宿っている。Conchordalは、この事実を工学的に体現する試みである。ここでは音はもはや記号ではなく、自律的に振る舞う存在だ。音の生態系と人間の知覚という大地とが直接結びつき、機械と人間の真の共創が始まる。音楽は固定された録音物から、「生きた現象」へと還る。",
+          "after": "我々は今、原点に立ち返る。調和の原理は抽象的な数式の中だけにあるのではない。それは物理現象の中に、そしてそれを受け取る人間の耳と脳の中にこそ宿っている。Conchordalは、この事実を工学的に体現する試みである。ここでは音はもはや記号ではなく、自律的に振る舞う存在だ。音の生態系と人間の知覚という大地とが直接結びつき、機械と人間の真の共創が始まる。音楽は固定された録音物から、「生きた現象」へと還る。",
+          "line": 138
+        },
+        "en": {
+          "before": "We now return to the origin. The principles of harmony do not reside solely in abstract formulas. They dwell in physical phenomena—and in the human ear and brain that receive them. Conchordal is an attempt to embody this fact through engineering. Here, sound is no longer symbol but an entity that behaves autonomously. The acoustic ecosystem and the terrain of human perception are directly bound; true co-creation between machine and human begins. Music returns from fixed recording to living phenomenon.",
+          "after": "We now return to the origin. The principles of harmony do not reside solely in abstract formulas. They dwell in physical phenomena—and in the human ear and brain that receive them. Conchordal is an attempt to embody this fact through engineering. Here, sound is no longer symbol but an entity that behaves autonomously. The acoustic ecosystem and the terrain of human perception are directly bound; true co-creation between machine and human begins. Music returns from fixed recording to living phenomenon.",
+          "line": 126
+        }
+      }
+    },
+    {
+      "id": "O02-name",
+      "decision": "retain_metaphor",
+      "rationale": "Local-agent emergence is a naming metaphor, not evidence for a completed cognitive hierarchy.",
+      "comparison": {
+        "ja": {
+          "before": "「Conchordal」という名称には複数の響きが重なる。調和を意味する concord、和声を示す chordal、内耳の蝸牛を想起させる conch、そして珊瑚の coral。珊瑚礁が無数のポリプの自律的な営みから創発するように、Conchordalの音楽は個々のエージェントの局所的行動から立ち現れる。その調和は、人間の聴覚器官である巻貝状の蝸牛に直接根差している。",
+          "after": "「Conchordal」という名称には複数の響きが重なる。調和を意味する concord、和声を示す chordal、内耳の蝸牛を想起させる conch、そして珊瑚の coral。珊瑚礁が無数のポリプの自律的な営みから創発するように、Conchordalの音楽は個々のエージェントの局所的行動から立ち現れる。その調和は、人間の聴覚器官である巻貝状の蝸牛に直接根差している。",
+          "line": 140
+        },
+        "en": {
+          "before": "The name \"Conchordal\" resonates with multiple meanings: *concord* (harmony), *chordal* (pertaining to harmony), *conch* (evoking the spiral cochlea of the inner ear), and *coral*. Just as a coral reef emerges from the autonomous activity of countless polyps, Conchordal's music arises from the local behaviors of individual agents. Its harmony is rooted directly in the spiral, shell-like cochlea—the human organ of hearing.",
+          "after": "The name \"Conchordal\" resonates with multiple meanings: *concord* (harmony), *chordal* (pertaining to harmony), *conch* (evoking the spiral cochlea of the inner ear), and *coral*. Just as a coral reef emerges from the autonomous activity of countless polyps, Conchordal's music arises from the local behaviors of individual agents. Its harmony is rooted directly in the spiral, shell-like cochlea—the human organ of hearing.",
+          "line": 128
+        }
+      }
+    }
+  ],
+  "sweep_exclusions": [
+    "Historical discussion of other composers and music-generation systems is not a claim about current Conchordal capability.",
+    "Frequency-axis harmonicity and roughness remain outside the temporal redesign.",
+    "Visual art, literature and architecture are illustrative DCC extensions, not claimed Conchordal implementations."
+  ],
+  "new_cognitive_or_audition_evidence": false,
+  "verification": {
+    "site_builder": "/snap/zola/1447/bin/zola",
+    "command": "/snap/zola/1447/bin/zola --root web build --output-dir /home/shafi/lwrk/conchordal/target/temporal-dcc/m0-site-20260910",
+    "exit": 0,
+    "all_source_hashes_and_paragraph_locations_match": true,
+    "four_numbered_ja_and_canonical_en_clauses_present_in_rendered_site": true,
+    "reader_order_review": "Temporal goals precede the implementation boundary and historical band proposal; local participation is explained before Individual/Population and authored Scenario controls.",
+    "style_review": "Read-only style scan; retained required negative capability clauses. Unrelated historical prose was not rewritten."
+  },
+  "source_revisions": [
+    {
+      "date": "2026-09-10",
+      "reason": "M0 auxiliary recognition-query specification; temporal public capability claims and implemented source unchanged",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9",
+          "after_sha256": "8eee217e943a91bee158aaef2601eb836441945925b403666ae5e71abddcc029"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T15:38:32.434232+00:00",
+      "reason": "M0 private retained-mass filter and quantized-observation audit; public capability scope and instrument source unchanged",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "8eee217e943a91bee158aaef2601eb836441945925b403666ae5e71abddcc029",
+          "after_sha256": "df2787e8a6b2e44b2831d049796c62f6c6824a68f81e1a738d0f22096bcaeedf"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T16:22:18.921392+00:00",
+      "reason": "M0 joint private-outcome likelihood; instrument source and Manifesto capability claims unchanged",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "df2787e8a6b2e44b2831d049796c62f6c6824a68f81e1a738d0f22096bcaeedf",
+          "after_sha256": "1f87855f5868037995cf7e4c40ebf248803976e5513512e524afe97e373b142f"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T17:18:06.700596+00:00",
+      "reason": "Section head input clarification only; public Manifesto wording and production code unchanged.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "1f87855f5868037995cf7e4c40ebf248803976e5513512e524afe97e373b142f",
+          "after_sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T19:11:15.813565+00:00",
+      "reason": "Section support-ownership and packed-record clarification; public Manifesto wording and production code unchanged.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+          "after_sha256": "e00c1c71ea2346a62180f5989233c6c79f987cd11a168f80827bf0131a5dab40"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T19:39:41.138322+00:00",
+      "reason": "Register four-hop accent provenance, scalar inventory endpoint versus uncertain interval, full raw/availability cuts and generation-local cumulative delivery; pending occurrence sealing remains open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "e00c1c71ea2346a62180f5989233c6c79f987cd11a168f80827bf0131a5dab40",
+          "after_sha256": "adb1ba89ce87642018f94bdf0af2acd0900f9302dc099cfd2eacfea45c7659e0"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T20:11:28.567993+00:00",
+      "reason": "Finite payload-conditioned occurrence commitment: original identity/deadline, joint support, metadata-only revision metric, late owned accents, context totals and coarse interference bounds. Full beam/runtime/memory lifecycle remains open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "adb1ba89ce87642018f94bdf0af2acd0900f9302dc099cfd2eacfea45c7659e0",
+          "after_sha256": "5f60772cb8d366e5875cd354c84d547193f32a01621091116cda6725cb84ea85"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T20:58:57.968073+00:00",
+      "reason": "Initial raw-value subsequence recurrence, missing/normalization/tie rules, separate transform diagnostics, detached pending-prefix queries and original versus delivery episode time. Numerical reference only; full fitting/runtime/human gates remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "5f60772cb8d366e5875cd354c84d547193f32a01621091116cda6725cb84ea85",
+          "after_sha256": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T22:17:24.992401+00:00",
+      "reason": "Bounded global acquisition-gap clock, original-time episode retention, rate-envelope overflow and frozen pre-target assay copy; section9.3 only. Full bank/graph, fitting and simultaneous runtime remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+          "after_sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T22:40:03.851437+00:00",
+      "reason": "Fixed bank/anchor/shared-edge payload, fresh reservations, explicit eviction, unrenormalized membership loss and actual bank-receipt cut. Section9.3 only; inferred relations/ancestry, full transport, fitting and O04 remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+          "after_sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T22:57:22.903621+00:00",
+      "reason": "Fixed128-byte endpoint headers, bounded heap/free/ID indexes, immutable claims and original deadline/actual delivery, ticket-safe acknowledgment and explicit cycle/backlog loss. Section9.3 only; referenced pools and complete ledger/inference/runtime remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a",
+          "after_sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T23:18:51.039322+00:00",
+      "reason": "Fixed immutable byte-payload pool, original paired-ID issuer and typed endpoint ownership/rollback/retirement. Section9.3 only. Explicit sharing passes header capacity, but distinct snapshots exhaust half/base/double pools; full inference, structural sharing, consumer integration and M0 gates remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5",
+          "after_sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-10T23:40:08.317246+00:00",
+      "reason": "Exact320-byte knot structural sharing, fixed version vectors/hash indexes and split-pool endpoint ownership. Section9.3 only. Conditional fixed1024-path half/base/double sizing and unrelated-content failures retained; real producers, churn, all payloads, consumers and full M0 gates remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+          "after_sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-11T00:09:54.122441+00:00",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+          "after_sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-11T00:32:39.336440+00:00",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+          "after_sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-11T01:03:33.080282+00:00",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+          "after_sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-11T01:23:23.550623+00:00",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+          "after_sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf"
+        }
+      ]
+    }
+  ]
+}

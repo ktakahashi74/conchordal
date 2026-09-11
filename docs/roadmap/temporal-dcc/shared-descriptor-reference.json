@@ -1,0 +1,356 @@
+{
+  "schema": "temporal-dcc-shared-descriptor-reference-v1",
+  "registered_at": "2026-09-10T23:40:08.317246+00:00",
+  "status": "exact_knot_sharing_verified; conditional_doubled_capacity_passed; full_model_sizing_unproven",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "sections": [
+      "9.3",
+      "10.1"
+    ]
+  },
+  "source": {
+    "path": "scripts/temporal_shared_descriptor_reference.py",
+    "sha256": "337c37207e1f148caf7d83d3c1aed30f716ba0ca076d475e581e338cd0773fb9",
+    "classes": [
+      "SharedDescriptorPool",
+      "SplitPayloadPool"
+    ],
+    "dependencies": [
+      {
+        "path": "scripts/temporal_payload_reference.py",
+        "sha256": "c4efef988e5665ca3b6e7e639da3656bc63146b992a7128dd8509e2191563d62",
+        "dependencies": [
+          {
+            "path": "scripts/temporal_endpoint_reference.py",
+            "sha256": "9606d530bf5fd9aa8f3a219a8fc9feebcd1b0245a2e86cb5406fd4c1c3c1234a"
+          }
+        ]
+      }
+    ]
+  },
+  "interfaces": {
+    "root": "24-byte metadata:u64 nonreused serial/slot handle;u32 knot count,owner count,two reserved. Fixed ordered max128 u32 leaf indices. Retaining a root does not multiply child references.",
+    "leaf": "Original320-byte knot;24-byte metadata:128-bit BLAKE2b digest,u32 owner count,index location. Fixed open-address index at least2x leaf capacity, full byte equality on hash match. No approximate musical deduplication.",
+    "transaction": "Acquire leaves into fixed scratch before publishing root. Partial failure/owner overflow releases every acquisition. Root/leaf/table capacity loss cannot evict another live version. Final root release frees only unreferenced leaves.",
+    "identity": "Epoch-qualified nonreused root allocation serial/slot handles. Stale roots cannot access reused slots. Exhaustion requires new epoch. Per-kind namespaces may share integer handles; callers must preserve kind and epoch.",
+    "adapter": "SplitPayloadPool routes descriptor to shared roots and activity/joint/lineage to original byte pool. Existing OwnedEndpointQueue retains and releases typed references unchanged. Reads return original packed descriptor bytes, not root encoding.",
+    "ownership": "Single owner thread; independent producer/queue roots. Bundle rollback and queue retirement tested across both pools. No real concurrent transport, crash recovery or proof of an actual once-only consumer transaction.",
+    "numerical_scope": "Bit-exact packed representation only. Descriptor coordinate values, f64 moments, timestamps, compression and recovery equations unchanged. Complete semantic metadata and inferred producers remain external."
+  },
+  "parameters": {
+    "root_capacity": 65536,
+    "leaf_capacity": 262144,
+    "max_knots_per_root": 128,
+    "root_metadata_bytes": 24,
+    "root_index_bytes": 4,
+    "leaf_bytes": 320,
+    "leaf_metadata_bytes": 24,
+    "hash_bits": 128,
+    "index_capacity": 524288,
+    "maximum_owner_count": 4294967295,
+    "status": "Initial engineering capacities; doubled leaf candidate only conditionally verified, not adopted as full workload capacity."
+  },
+  "resource_scope": {
+    "root_metadata": 1572864,
+    "root_vectors": 33554432,
+    "free_roots": 262144,
+    "knot_data": 83886080,
+    "knot_metadata": 6291456,
+    "free_knots": 1048576,
+    "hash_index": 2097152,
+    "insertion_scratch": 512,
+    "total_fixed_buffers": 128713216,
+    "excludes": "Python objects/scalars, hash temporaries, max_knots index-slice scratch, producer input, detached read copies, auxiliary payloads and other worker state."
+  },
+  "sizing": {
+    "audit": {
+      "schema": "temporal-shared-descriptor-capacity-v1",
+      "cases": [
+        {
+          "knot_capacity": 131072,
+          "paths": 1024,
+          "changed_knots_per_version_after_initial": 6,
+          "accepted_versions": 1024,
+          "requested_versions": 65536,
+          "full_header_capacity_supported": false,
+          "capacity_losses": 1,
+          "live_distinct_knots_at_stop": 131072,
+          "peak_knots_including_failed_insertion": 131072,
+          "all_retained_versions_byte_exact": true,
+          "all_references_released": true,
+          "elapsed_sec_including_fixture_and_checks": 0.31451213802210987,
+          "index_probes": 196990,
+          "maximum_probe": 33,
+          "shared_leaf_hits": 122,
+          "leaf_allocations": 131072,
+          "data_copy_bytes_including_reads": 83886080,
+          "root_vector_entries_written": 131072,
+          "fixed_buffers": {
+            "root_metadata": 1572864,
+            "root_vectors": 33554432,
+            "free_roots": 262144,
+            "knot_data": 41943040,
+            "knot_metadata": 3145728,
+            "free_knots": 524288,
+            "hash_index": 1048576,
+            "insertion_scratch": 512,
+            "total_fixed_buffers": 82051584,
+            "excludes": "Python objects/scalars, hash temporaries, max_knots index-slice scratch, producer input, detached read copies, auxiliary payloads and other worker state."
+          },
+          "fixture_storage_outside_pool": "Original mutable descriptors per path and finite retained handle/SHA256 list; not part of claimed runtime state."
+        },
+        {
+          "knot_capacity": 262144,
+          "paths": 1024,
+          "changed_knots_per_version_after_initial": 6,
+          "accepted_versions": 22869,
+          "requested_versions": 65536,
+          "full_header_capacity_supported": false,
+          "capacity_losses": 1,
+          "live_distinct_knots_at_stop": 262142,
+          "peak_knots_including_failed_insertion": 262144,
+          "all_retained_versions_byte_exact": true,
+          "all_references_released": true,
+          "elapsed_sec_including_fixture_and_checks": 7.013914180919528,
+          "index_probes": 3495346,
+          "maximum_probe": 39,
+          "shared_leaf_hits": 2665212,
+          "leaf_allocations": 262144,
+          "data_copy_bytes_including_reads": 1020600320,
+          "root_vector_entries_written": 2927232,
+          "fixed_buffers": {
+            "root_metadata": 1572864,
+            "root_vectors": 33554432,
+            "free_roots": 262144,
+            "knot_data": 83886080,
+            "knot_metadata": 6291456,
+            "free_knots": 1048576,
+            "hash_index": 2097152,
+            "insertion_scratch": 512,
+            "total_fixed_buffers": 128713216,
+            "excludes": "Python objects/scalars, hash temporaries, max_knots index-slice scratch, producer input, detached read copies, auxiliary payloads and other worker state."
+          },
+          "fixture_storage_outside_pool": "Original mutable descriptors per path and finite retained handle/SHA256 list; not part of claimed runtime state."
+        },
+        {
+          "knot_capacity": 524288,
+          "paths": 1024,
+          "changed_knots_per_version_after_initial": 6,
+          "accepted_versions": 65536,
+          "requested_versions": 65536,
+          "full_header_capacity_supported": true,
+          "capacity_losses": 0,
+          "live_distinct_knots_at_stop": 518144,
+          "peak_knots_including_failed_insertion": 518144,
+          "all_retained_versions_byte_exact": true,
+          "all_references_released": true,
+          "elapsed_sec_including_fixture_and_checks": 19.950425914954394,
+          "index_probes": 9195504,
+          "maximum_probe": 37,
+          "shared_leaf_hits": 7870464,
+          "leaf_allocations": 518144,
+          "data_copy_bytes_including_reads": 2850160640,
+          "root_vector_entries_written": 8388608,
+          "fixed_buffers": {
+            "root_metadata": 1572864,
+            "root_vectors": 33554432,
+            "free_roots": 262144,
+            "knot_data": 167772160,
+            "knot_metadata": 12582912,
+            "free_knots": 2097152,
+            "hash_index": 4194304,
+            "insertion_scratch": 512,
+            "total_fixed_buffers": 222036480,
+            "excludes": "Python objects/scalars, hash temporaries, max_knots index-slice scratch, producer input, detached read copies, auxiliary payloads and other worker state."
+          },
+          "fixture_storage_outside_pool": "Original mutable descriptors per path and finite retained handle/SHA256 list; not part of claimed runtime state."
+        },
+        {
+          "knot_capacity": 262144,
+          "paths": 1,
+          "changed_knots_per_version_after_initial": 128,
+          "accepted_versions": 2048,
+          "requested_versions": 65536,
+          "full_header_capacity_supported": false,
+          "capacity_losses": 1,
+          "live_distinct_knots_at_stop": 262144,
+          "peak_knots_including_failed_insertion": 262144,
+          "all_retained_versions_byte_exact": true,
+          "all_references_released": true,
+          "elapsed_sec_including_fixture_and_checks": 0.5968377699609846,
+          "index_probes": 393732,
+          "maximum_probe": 39,
+          "shared_leaf_hits": 0,
+          "leaf_allocations": 262144,
+          "data_copy_bytes_including_reads": 167772160,
+          "root_vector_entries_written": 262144,
+          "fixed_buffers": {
+            "root_metadata": 1572864,
+            "root_vectors": 33554432,
+            "free_roots": 262144,
+            "knot_data": 83886080,
+            "knot_metadata": 6291456,
+            "free_knots": 1048576,
+            "hash_index": 2097152,
+            "insertion_scratch": 512,
+            "total_fixed_buffers": 128713216,
+            "excludes": "Python objects/scalars, hash temporaries, max_knots index-slice scratch, producer input, detached read copies, auxiliary payloads and other worker state."
+          },
+          "fixture_storage_outside_pool": "Original mutable descriptors per path and finite retained handle/SHA256 list; not part of claimed runtime state."
+        }
+      ],
+      "baseline_unshared_full_descriptor_bytes": 2684354560,
+      "fixture": "1024 fixed paths,128 initial unique knots per path,64 retained versions per path. Each later version replaces six knots with unique bytes, matching an upper count of new knots after three compressor insertions. No real upstream beam/lineage production or numerical acoustic validity asserted.",
+      "conclusion": "Doubling the initial shared-leaf capacity holds all65536 versions under the declared six-change fixed-path construction. Base shared capacity fails; entirely unrelated descriptors also fail. This conditional sizing success is not full O04, actual generation feasibility or full-model capacity acceptance.",
+      "additional_required": "Actual path churn/new span creation, all activity/joint/lineage/receipt memory, root metadata/provenance, inference/consumer integration, two buses and64 Voices, allocator/RSS and timing preflight."
+    },
+    "full_model_capacity_passed": false,
+    "conditional_fixed_path_doubled_capacity_passed": true,
+    "required_resolution": "Measure actual retained path births/churn/lineage and all payloads, then select complete capacities and verify simultaneous two-bus runtime; preserve unrelated-content and prior generic-pool failures."
+  },
+  "verification": {
+    "status": "passed",
+    "tests": 15,
+    "test_source": "tests/test_evaluate_temporal_shared_descriptor_reference.py",
+    "test_sha256": "c3d07379890dd471d862fbe2792461812b242646043c289bd6b861a572a22995",
+    "component_log": "target/temporal-dcc/m0-shared-descriptor-archive-tests-20260911.log",
+    "archive_package_exit_record": "target/temporal-dcc/m0-shared-descriptor-archive-tests-status.txt",
+    "independent_oracle": {
+      "streams": 50,
+      "operations_per_stream": 200,
+      "seed": 47021,
+      "reference": "Finite exact byte sequences/root-owner counts; set union predicts distinct leaf occupancy and all admission outcomes independently."
+    },
+    "real_compressor": {
+      "input_records": 640,
+      "retained_versions": 80,
+      "max_knots": 128,
+      "result": "All packed versions byte-exact through creation/read/reverse release, with actual moment compression and masks."
+    },
+    "capacity_audit": "shared-audit.py/json;1024 fixed paths,64 versions each,six new knots after first;half/base/double and all-unrelated controls. Descriptor-only synthetic bytes, no inferred activity or complete worker.",
+    "suite_status": "passed",
+    "suite_tests": 748,
+    "suite_elapsed_sec": 30.359,
+    "suite_log": "target/temporal-dcc/m0-python-tests-shared-descriptor-final-20260911.log",
+    "suite_exit_record": "target/temporal-dcc/m0-python-tests-shared-descriptor-final-status.txt",
+    "rust": {
+      "passed": 746,
+      "failed": 0,
+      "ignored": 12,
+      "exit": 0,
+      "log": "target/temporal-dcc/m0-rust-tests-shared-descriptor-final-20260911.log",
+      "exit_record": "target/temporal-dcc/m0-rust-tests-shared-descriptor-final-status.txt",
+      "scope": "Existing Rust regression; no src changes or production-equivalence/O04 claim."
+    },
+    "site_build": "target/temporal-dcc/m0-site-shared-descriptor-final-20260911",
+    "cross_record_verifier": "target/temporal-dcc/m0-shared-descriptor-verifier-20260911.py",
+    "cross_record_result": "target/temporal-dcc/m0-shared-descriptor-verification-20260911.json"
+  },
+  "remaining": [
+    "Actual original-span/path/alias/lineage production and measured churn; full semantic metadata and auxiliary activity/joint/receipt payload inventory.",
+    "Full queue/descriptor/auxiliary consumer integration into once-only bank/section updates, causal availability validation, epoch restart and failure recovery.",
+    "Full capacity/copy/allocator/RSS/latency census with two buses and64 Voices, actual path churn and long-return sensitivity; fixed-path construction is conditional only.",
+    "Rate-window overflow, repeated matcher/memory work and existing276ms single-query versus40ms worker failure.",
+    "Full waveform/feature/control/fit inventory, development scales and O12 finite fits/OOF/calibration plus100datasets/condition predictive stability.",
+    "Actual waveform/body/opportunity feasibility and institutional/human collection gates."
+  ],
+  "production_integration": false,
+  "full_preflight_passed": false,
+  "human_collection_authorized": false,
+  "fitted_development_scales": false,
+  "full_predictive_stability_run": false,
+  "archive": {
+    "directory": "target/temporal-dcc/m0-shared-descriptor-reference-20260911",
+    "artifacts": {
+      "accent-reference-before.json": "113c21c57f03530c6f8fcd72a528593b4f561f9dcf65303834d5be8724eadca8",
+      "bank-reference-before.json": "c406f0c6986c5c63e210b27df3c43017c9f5d387355859ec379c1663c582d267",
+      "control-comparisons-before.json": "1d4135b2f67dbae12f98841efeca1c7ccc0fe9805782b24424d7e8a16f71cf4d",
+      "dcc-neurocognitive-hierarchy-before.md": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+      "descriptor-reference-before.json": "22821858f6e8070bd346721cb5b79d06fc199cb15c4f3283ba8811d71ac69e2c",
+      "endpoint-reference-before.json": "da9597a02627a8a937a829b1803b75aa5749283070e6554573e425e2af172db2",
+      "event-head-reference-before.json": "82a9b0ab68fc5c1765d66999911a484c308cba90e0d971e75ed3302385e6ca37",
+      "feasibility-preflight-before.json": "909901760e2f0bb90408f0a2c7f87c41ffc8806e70387ffb0244cff9a0a72a1e",
+      "feature-manifest-before.json": "be2defe337d9f3cc47fe7c9697e1925ee9906d03a4ed15455f88492bde24fa27",
+      "feature-manifest-verified.json": "de107658d439c70778a45ec5d3c3495d940d429bca9cfe074bd041896e1eb768",
+      "matcher-reference-before.json": "590f6266cae27a700ef0c38093d48bd901dec837fdb833375ba8678495badcce",
+      "memory-reference-before.json": "fb18cc3938738c013f6368800ff0f262275c31e6f49011ec46cbcf6f1057e7c8",
+      "occurrence-reference-before.json": "614696978616c57918fdf0fca43009460c116567b5ec272b327b8e012affbdc6",
+      "payload-reference-before.json": "b73337f6d2c0a19177f099706f5ee0fa2ea9b17b82ffe6293061168009e54c03",
+      "private-trace-reference-before.json": "486f307eaea7269d89580ede2602e90634e97f8aff70cb42942522094642155b",
+      "query-scheduler-reference-before.json": "5c5de3aff6d3a81fa39a9385a84506cd117593ce492d4028ceb61a255d9754f3",
+      "recognition-instrument-before.json": "c8cec58866ee5c05ff0fd76dc5016a2c5a41650ca08f8f7688b11471ff232ce9",
+      "relation-instrument-before.json": "5effc5d642033afce4c56da3bf539e64e4389b61ce56ea85cf33a5d5078e7e84",
+      "section-feature-reference-before.json": "ff60960a1d647d66dc3d26862226b3e3ae79055eb925cf5752dcd4087c190fbb",
+      "shared-audit.json": "bc9146274d4a6e56fa47dfe9b8854f63eefe716f3c648292223f0f9d17598af7",
+      "shared-audit.py": "ebc9abc9b1a0c673e65b07c92ae753535443a88989441cbb2e93d2750a1e86e7",
+      "specification.md": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "temporal_accent_reference.py": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+      "temporal_bank_reference.py": "fee9e7ac972ff97211640aac002f6d8c783ec04576c0a964acc6e5f47b37a85e",
+      "temporal_cognition_reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+      "temporal_credit_reference.py": "f6ba55db37307296af61f6b54df1b2b734f588d40f028d3269c8c1d7bddc6c02",
+      "temporal_descriptor_reference.py": "d4f482a6217a4d91813d47459ebc43bfd2d401a6b9d15d67dd8bd8c61d7ab13d",
+      "temporal_endpoint_reference.py": "9606d530bf5fd9aa8f3a219a8fc9feebcd1b0245a2e86cb5406fd4c1c3c1234a",
+      "temporal_matcher_reference.py": "cd2c2a162e542b310f33d561ec776577d3b33dbba65b103c54554ec4ad73037e",
+      "temporal_memory_reference.py": "a65e73a8ddff93792b44cf9b462a18792251ed96e7f27118cbcb764e5ddf7b24",
+      "temporal_occurrence_reference.py": "6dc8a9a5beae18d0f9c422074236bb2340c9af8c2a47bce50a20b4356c596e0f",
+      "temporal_payload_reference.py": "c4efef988e5665ca3b6e7e639da3656bc63146b992a7128dd8509e2191563d62",
+      "temporal_query_scheduler_reference.py": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+      "temporal_section_reference.py": "4e320c0fffb48f67128b502c67f009467cf27226f364bb3a8382702603a2f3ac",
+      "temporal_shared_descriptor_reference.py": "337c37207e1f148caf7d83d3c1aed30f716ba0ca076d475e581e338cd0773fb9",
+      "test_evaluate_temporal_accent_reference.py": "07fcd4aeb66bc478cf0ba8166566de175e7a7aa8d9c20b4da232b0643585c378",
+      "test_evaluate_temporal_bank_reference.py": "1e35f42de524cff208504fbebd75d9e42a04f564c8d3fd1bf773e86672f41624",
+      "test_evaluate_temporal_cognition_reference.py": "cb466d1097a1109faee4aa00347f53944cc57e9b1d0508770547c8eb23c54230",
+      "test_evaluate_temporal_descriptor_reference.py": "a5db83f0a83d19d0fd9c81b39b0957bb331d414e9bc3d1b8def4cf66dbfe9de6",
+      "test_evaluate_temporal_endpoint_reference.py": "815f550112c31f1ae0d06ebd3f8b3f0d76c15d3d4f6cf60a0aa2ce88239c2e0b",
+      "test_evaluate_temporal_matcher_reference.py": "cc97af80724befe0ff5f2182aacb698023c96fa435d1d755cd20889b9ed3605c",
+      "test_evaluate_temporal_memory_reference.py": "55efbcc3e994841a2c0174148c092c775d8704856f988a1106e598113f8bae46",
+      "test_evaluate_temporal_occurrence_reference.py": "be73b4e0ad4b1047821b839849de557077bbd3d79ada1591606477dfae191af7",
+      "test_evaluate_temporal_payload_reference.py": "eee755b96a2976f8e11fd0744d3725739f776e58d087d95f0ed36fe88b8edf96",
+      "test_evaluate_temporal_query_scheduler_reference.py": "2fa35c4c31181279932163fa9cadd72a53e375f31f45b856aae02824e6463c23",
+      "test_evaluate_temporal_section_reference.py": "e86b890ae49b9966af5a68ced9121e0e128b0413fa34b6e1dccf2886e7f30b1c",
+      "test_evaluate_temporal_shared_descriptor_reference.py": "c3d07379890dd471d862fbe2792461812b242646043c289bd6b861a572a22995"
+    },
+    "final_feature_manifest": "feature-manifest-verified.json"
+  },
+  "specification_history": [
+    {
+      "sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit."
+    },
+    {
+      "sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open."
+    },
+    {
+      "sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+      "reason": "Actual finite host-clock arrivals expose aggregate delivery backlog and separate bank-entry versus final publication cuts; numerical sources and model unchanged."
+    },
+    {
+      "sha256": "4097a4f651dba073f4848bf25fa9a2ff90e936584f481ae68dc43ba625c7d4ec",
+      "reason": "Section9.3 only: R1/S1 typed consumer records preserve u64 identities, f64 values and independent masks; fixed-driver maximum-load timed work falls33.2%, but aggregate throughput and full O04 remain unmet."
+    },
+    {
+      "sha256": "fea51b989b51ca6e25150af98d3c3e19420bdd21dbfbab949b1a918d366096e3",
+      "reason": "Section9.3 only: retain private section preparation, merge only sealed regions after intervening observations, count1408 staging bytes per target. Same-inventory finite cost improves; full O04 and M0 remain unmet."
+    },
+    {
+      "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
+      "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    }
+  ],
+  "updated_at": "2026-09-11T11:40:42.701331+00:00",
+  "consumer_delivery": {
+    "numeric_reference": "consumer-reference.json",
+    "status": "bounded_header_and_relation_validation_verified; combined_maximum_inventory_verified; aggregate_and_physical_runtime_unproven"
+  }
+}

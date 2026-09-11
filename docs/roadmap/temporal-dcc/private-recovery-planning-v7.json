@@ -1,0 +1,29 @@
+{
+  "schema": "temporal-dcc-private-fisher-allocation-v7",
+  "registered_at": "2026-09-10T17:07:06.922877+00:00",
+  "base_design": {
+    "path": "docs/roadmap/temporal-dcc/private-recovery-exposure-v7.json",
+    "sha256": "904ecb608271771fd82b8829b066890bf2a34037fed183550674930fcfd9448a"
+  },
+  "study_version": 7,
+  "seed": 2026091107,
+  "minimum_probes_per_cell": 2,
+  "maximum_log_parameter_se": [
+    0.12,
+    0.12,
+    0.12
+  ],
+  "objective": "Minimize independent complete prefix replay time subject to all 36 truth points x3 conditions expected Fisher diagonal SE <=0.12; include every one of 420 cells, even counts balancing the two target heads.",
+  "solver": {
+    "method": "SLSQP",
+    "maxiter": 1000,
+    "ftol": 1e-10
+  },
+  "selection": "Round each feasible lower-cost optimum upward to an even count, repair numerical variance violations only. Otherwise use the smallest even feasible uniform start. Preserve original fit and recovery thresholds; expected Fisher is only a planning heuristic and does not establish global identification.",
+  "budget": {
+    "wall_sec": 600,
+    "cpu_sec": 600
+  },
+  "post_selection": "Run 100 independent datasets at all original 108 truth/condition points only after forward/sequential conformance checks. Keep fit v5, all missingness conditions and original recovery thresholds.",
+  "empirical_allocation_adopted": false
+}

@@ -1,0 +1,603 @@
+{
+  "schema": "temporal-dcc-parameter-recovery-ledger-v1",
+  "collection_gate_passed": false,
+  "episode": {
+    "runs": [
+      {
+        "design_version": "episode-allocation-1",
+        "design_sha256": "33dbd2d170e33d9130c86b3ed503ec5fa82e629faccec5610cadb98af16d9eb9",
+        "run_directory": "target/temporal-dcc/m0-episode-recovery-v1-spawn",
+        "status": "recovery_failed",
+        "runner_sha256": "52cb8f296eb3dc7479c41e92b11d251e2e3f0ae86e4168720b554c06c7f16c78",
+        "reporter_sha256": "6c5733b7d79637cf34289e39550dbd80ec685633a4964e8912a5379e4f19226f",
+        "report_versions": {
+          "python": "3.14.4",
+          "numpy": "2.5.3",
+          "scipy": "1.18.1",
+          "matplotlib": "3.11.1"
+        },
+        "total_datasets": 32400,
+        "total_grid_condition_points": 324,
+        "passed_points": 234,
+        "wall_sec": 70.32841320894659,
+        "cpu_sec": 557.836312469,
+        "cpu_measurement_scope": "worker simulation loops plus parent; process startup is not included",
+        "conditions": [
+          {
+            "id": "clear_complete",
+            "datasets": 10800,
+            "failed_fits": 930,
+            "passed_grid_points": 80,
+            "total_grid_points": 108
+          },
+          {
+            "id": "clear_mcar10",
+            "datasets": 10800,
+            "failed_fits": 998,
+            "passed_grid_points": 80,
+            "total_grid_points": 108
+          },
+          {
+            "id": "weak_competition_ambiguous_missing",
+            "datasets": 10800,
+            "failed_fits": 1344,
+            "passed_grid_points": 74,
+            "total_grid_points": 108
+          }
+        ],
+        "post_run_diagnostics": [
+          {
+            "condition": "clear_complete",
+            "truth": [
+              2,
+              4,
+              3,
+              0
+            ],
+            "alternative": [
+              3,
+              4,
+              3,
+              2
+            ],
+            "expected_yes": 23.224805930984505,
+            "expected_conditional_response_log_likelihood_ratio_nats": 0.3102421225535804,
+            "role": "post-run explanatory diagnostic, not a new acceptance threshold; conditions on usable responses"
+          },
+          {
+            "condition": "clear_mcar10",
+            "truth": [
+              2,
+              4,
+              3,
+              0
+            ],
+            "alternative": [
+              3,
+              4,
+              3,
+              2
+            ],
+            "expected_yes": 20.902325337886055,
+            "expected_conditional_response_log_likelihood_ratio_nats": 0.27921791029822235,
+            "role": "post-run explanatory diagnostic, not a new acceptance threshold; conditions on usable responses"
+          },
+          {
+            "condition": "weak_competition_ambiguous_missing",
+            "truth": [
+              2,
+              4,
+              3,
+              0
+            ],
+            "alternative": [
+              3,
+              4,
+              3,
+              2
+            ],
+            "expected_yes": 3.288103051513729,
+            "expected_conditional_response_log_likelihood_ratio_nats": 0.037899941091553084,
+            "role": "post-run explanatory diagnostic, not a new acceptance threshold; conditions on usable responses"
+          }
+        ],
+        "artifacts": {
+          "result.json": "0322698b9b91bbef016ff67d03c96c2cb44664ffb0407a439902db26d736c163",
+          "fits.jsonl": "7cc9262f9f2a3aa5a5f27b04dc553062fe621b99a3e6d875e08d9ef182a04479",
+          "assignment.csv": "82c5d477697f8ab687388c07e6446f7166656544b263eb4c71a3b2f664044089",
+          "joint-errors.png": "1ef7647db96c7ef789d1b6af8be9b4588378b75fa48c5a001709bec1f5db771a",
+          "joint-errors.pdf": "f9e0b129959d737452985e52cf8b9213f5e17f72ddcad8343b9cb67565937277"
+        },
+        "required_next": [
+          "revise candidate allocation or task/model in a new registered version without dropping failed stress points",
+          "establish waveform feasibility and all human collection prerequisites",
+          "repeat with actual fitted acoustic/match scales",
+          "complete independent O12/O13 gates"
+        ]
+      },
+      {
+        "design_version": "episode-allocation-2",
+        "design_sha256": "fcd369bb64d407875a45e7cf5c43cd24ccb49f89e463cd1e36e261b5c87c36af",
+        "run_directory": "target/temporal-dcc/m0-episode-recovery-v2",
+        "status": "conditional_simulator_pass",
+        "runner_sha256": "9ebe8100a3bb5cca89409b45c4503b6eafd3c6a97a3a66dc5df756c1ba808605",
+        "reporter_sha256": "fc757b05aa799e224193966cc2657d307a4a9ac85eca8918c5205b03caaf9ca4",
+        "report_versions": {
+          "python": "3.14.4",
+          "numpy": "2.5.3",
+          "scipy": "1.18.1",
+          "matplotlib": "3.11.1"
+        },
+        "total_datasets": 32400,
+        "total_grid_condition_points": 324,
+        "passed_points": 324,
+        "wall_sec": 62.1458030520007,
+        "cpu_sec": 488.64675978700006,
+        "cpu_measurement_scope": "worker simulation loops plus parent; process startup is not included",
+        "conditions": [
+          {
+            "id": "clear_complete",
+            "datasets": 10800,
+            "failed_fits": 0,
+            "passed_grid_points": 108,
+            "total_grid_points": 108
+          },
+          {
+            "id": "clear_mcar10",
+            "datasets": 10800,
+            "failed_fits": 0,
+            "passed_grid_points": 108,
+            "total_grid_points": 108
+          },
+          {
+            "id": "weak_competition_ambiguous_missing",
+            "datasets": 10800,
+            "failed_fits": 0,
+            "passed_grid_points": 108,
+            "total_grid_points": 108
+          }
+        ],
+        "post_run_diagnostics": [
+          {
+            "condition": "clear_complete",
+            "truth": [
+              2,
+              4,
+              3,
+              0
+            ],
+            "alternative": [
+              3,
+              4,
+              3,
+              2
+            ],
+            "expected_yes": 6983.801544946509,
+            "expected_conditional_response_log_likelihood_ratio_nats": 1099.0466194138462,
+            "role": "post-run explanatory diagnostic, not a new acceptance threshold; conditions on usable responses"
+          },
+          {
+            "condition": "clear_mcar10",
+            "truth": [
+              2,
+              4,
+              3,
+              0
+            ],
+            "alternative": [
+              3,
+              4,
+              3,
+              2
+            ],
+            "expected_yes": 6285.421390451859,
+            "expected_conditional_response_log_likelihood_ratio_nats": 989.1419574724616,
+            "role": "post-run explanatory diagnostic, not a new acceptance threshold; conditions on usable responses"
+          },
+          {
+            "condition": "weak_competition_ambiguous_missing",
+            "truth": [
+              2,
+              4,
+              3,
+              0
+            ],
+            "alternative": [
+              3,
+              4,
+              3,
+              2
+            ],
+            "expected_yes": 2117.7980194283655,
+            "expected_conditional_response_log_likelihood_ratio_nats": 676.840207880445,
+            "role": "post-run explanatory diagnostic, not a new acceptance threshold; conditions on usable responses"
+          }
+        ],
+        "artifacts": {
+          "result.json": "e2f6af3c43879a2908f6072dc88d58f31f4efab5b2decd6f6b02dcd8705b0ef3",
+          "fits.jsonl": "7f7b027ceb662eb065652e8b6fb457b1259715d9b12bcbb3db9ed16667cc01fa",
+          "assignment.csv": "79bcc0837f4c3a56dc56aa0f7a0a17c4a224527ba42f88d2c999bbdb0824cf26",
+          "joint-errors.png": "867d7ed83b35300b65e546f6f13caf24ad4ebf906e30c7708b10b29ff4aba869",
+          "joint-errors.pdf": "d68331e0906a9b5f847b2b36cdfdf63cda6688695b16bcd1e75187789005bad8"
+        },
+        "required_next": [
+          "explicitly reconcile the auxiliary-query protocol with the specification; verify its burden and waveform support",
+          "establish waveform feasibility and all human collection prerequisites",
+          "repeat with actual fitted acoustic/match scales",
+          "complete independent O12/O13 gates"
+        ]
+      }
+    ],
+    "specification_reconciliation": {
+      "date": "2026-09-10T14:55:43.979518+00:00",
+      "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+      "sha256": "8eee217e943a91bee158aaef2601eb836441945925b403666ae5e71abddcc029",
+      "adopted_experimental_design": "episode-allocation-2",
+      "meaning": "Auxiliary query lengths are now part of the M0 experimental specification. This does not authorize recruitment, spending or a cognition claim.",
+      "original_design_reference": "8b88ebcc987e6a9b4a8923f68748469c544387b2ba38c1e1d47f094122d681d9",
+      "forward_law_or_recovery_threshold_changed": false,
+      "remaining": [
+        "waveform and acoustic-scale feasibility",
+        "query-duration pilots and held-out eight-second transfer",
+        "institutional and human-data prerequisites",
+        "O04 O12 O13 gates"
+      ]
+    },
+    "subsequent_specification_checks": [
+      {
+        "date": "2026-09-10T15:38:32.434232+00:00",
+        "sha256": "df2787e8a6b2e44b2831d049796c62f6c6824a68f81e1a738d0f22096bcaeedf",
+        "episode_forward_law_and_allocation_unchanged": true,
+        "reason": "Private-filter revision and observation-likelihood audit do not alter the frozen episode runs."
+      },
+      {
+        "date": "2026-09-10T16:22:18.921392+00:00",
+        "sha256": "1f87855f5868037995cf7e4c40ebf248803976e5513512e524afe97e373b142f",
+        "episode_forward_law_and_allocation_unchanged": true,
+        "reason": "Private physical-outcome fitting likelihood changes; frozen episode recovery unchanged."
+      },
+      {
+        "date": "2026-09-10T17:18:06.700596+00:00",
+        "sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+        "episode_forward_law_and_allocation_unchanged": true,
+        "reason": "Exact section-head input conventions; episode and private clauses checked byte-identical to the archived pre-revision memo."
+      }
+    ]
+  },
+  "private_trace": {
+    "status": "conditional_numerical_recovery_passed; empirical_allocation_not_adopted",
+    "reference": "private-trace-reference.json",
+    "observation_audit": "private-trace-observation-audit.json",
+    "specification": {
+      "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+      "sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343"
+    },
+    "human_collection_gate_passed": false,
+    "current_run": "target/temporal-dcc/m0-private-recovery-v9",
+    "result_sha256": "cefd2ff4074d1b2b2275a1ad05879d4f6493776a024459be60ca3de648eefac7",
+    "passed_points": 108,
+    "total_points": 108,
+    "fits": 10800,
+    "wall_sec": 534.4141560171265,
+    "measured_cpu_sec": 4198.6124571929995,
+    "allocation_cost": [
+      {
+        "condition": "complete",
+        "cells": 492,
+        "physical_probes": 23794,
+        "probes_per_head": 11897,
+        "independent_full_prefix_replay_hours_lower_bound": 1843.7082847222225,
+        "probe_windows_only_hours": 26.43777777777778
+      },
+      {
+        "condition": "fractional",
+        "cells": 492,
+        "physical_probes": 23794,
+        "probes_per_head": 11897,
+        "independent_full_prefix_replay_hours_lower_bound": 1843.7082847222225,
+        "probe_windows_only_hours": 26.43777777777778
+      },
+      {
+        "condition": "ambiguous_missing",
+        "cells": 492,
+        "physical_probes": 23794,
+        "probes_per_head": 11897,
+        "independent_full_prefix_replay_hours_lower_bound": 1843.7082847222225,
+        "probe_windows_only_hours": 26.43777777777778
+      }
+    ],
+    "remaining": [
+      "Reduce/validate empirical fixed-policy allocation cost without deleting the truth envelope.",
+      "Validate actual waveform-derived reference inputs, body/opportunity feasibility and acquisition-aligned timing.",
+      "Complete all other M0 registrations and numerical preflight; no collection or production promotion follows this result."
+    ],
+    "runs": [
+      {
+        "directory": "target/temporal-dcc/m0-private-recovery-v1",
+        "passed": false,
+        "result_sha256": "e0d0f47ffb86aeaa9b50d4793981d2b7ab55c32e82e70302895772e8a22c47cb"
+      },
+      {
+        "directory": "target/temporal-dcc/m0-private-recovery-v2",
+        "passed": false,
+        "result_sha256": "e30e573bd582323f0aaa64958c9a03780364c175ed1b55d595006af8eee89ffc"
+      },
+      {
+        "directory": "target/temporal-dcc/m0-private-recovery-v3",
+        "passed": false,
+        "result_sha256": "f54ae143505c2ad45773098426a88c05e4198e711c6b304ba94c9fcf885c7f8c"
+      },
+      {
+        "directory": "target/temporal-dcc/m0-private-recovery-v4",
+        "passed": false,
+        "result_sha256": "4da8d5989d676006adf4400dd47e894824708052521f80ed50e080c0d804bd48"
+      },
+      {
+        "directory": "target/temporal-dcc/m0-private-recovery-v5",
+        "passed": false,
+        "result_sha256": "d0a5ff0dfa5f91660c2c82add2cd7a6008e827dae25960a9824e6f99ab91a113"
+      },
+      {
+        "directory": "target/temporal-dcc/m0-private-recovery-v7",
+        "passed": false,
+        "result_sha256": "a3156e8fa724649eb54111a0056ecaa460cfed3c5a9692e1563100f25408d46f"
+      },
+      {
+        "directory": "target/temporal-dcc/m0-private-recovery-v9",
+        "passed": true,
+        "result_sha256": "cefd2ff4074d1b2b2275a1ad05879d4f6493776a024459be60ca3de648eefac7"
+      }
+    ],
+    "current_specification_check": {
+      "sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+      "prior_sha256": "1f87855f5868037995cf7e4c40ebf248803976e5513512e524afe97e373b142f",
+      "private_forward_law_unchanged": true,
+      "archive": "target/temporal-dcc/m0-section-feature-clarification-20260911"
+    },
+    "allocation_searches": [
+      {
+        "version": 6,
+        "status": "no_eligible_allocation; recovery_not_started",
+        "directory": "target/temporal-dcc/m0-private-allocation-v6",
+        "registered_plan": "private-recovery-planning-v6.json",
+        "candidate_counts": [
+          256,
+          1024,
+          4096,
+          16384,
+          65536
+        ],
+        "last_minimum_profiled_distances": [
+          4.136688505774893,
+          6.4322289219527695,
+          8.80963873262304
+        ],
+        "minimum_required": 8,
+        "scope": "Finite multistart separation heuristic; not a global certificate, recovery pass or empirical allocation.",
+        "wall_sec": 6.456230965908617,
+        "cpu_sec": 6.448509594000001,
+        "artifacts": {
+          "separation.json": "29dda94a73fdc8d13f4341a6f128e538ab72b581e2efdd5814b459e811bd2a36",
+          "temporal_cognition_reference.py": "c470295e902fe8c2fc26f3e3c99494b1c1b85bf1481bec952066ce5a58a2a1e2",
+          "base-design.json": "a4c7dd4575162234e9755ec0098ec4ee0f82965212371b217a2d7b8e0a35e26c",
+          "planner.py": "2b28903b01cf2acd1b6eacd5c73c37220cecb3ab8ad3435ebec747955455d6da",
+          "planning.json": "4e24746ea3a0a6a1a570385248bfec3c7ed4ed983d15fd8fc3aba2cf34d0a52a",
+          "evaluate_temporal_trace_recovery.py": "2910a8fe8c9e4758fab50b8d13e415ebb600bf7045141c8a467ccc480419d27d"
+        },
+        "timing_scope": "profile optimization only; excludes observation-kernel preparation and artifact IO"
+      },
+      {
+        "version": 7,
+        "status": "fisher_allocation_selected; completed_recovery_failed",
+        "directory": "target/temporal-dcc/m0-private-allocation-v7",
+        "registered_plan": "private-recovery-planning-v7.json",
+        "probes_per_condition": 14382,
+        "maximum_log_parameter_se": [
+          0.11880625407767567,
+          0.11988496128954566,
+          0.11976699100002829
+        ],
+        "wall_sec": 17.772631485015154,
+        "cpu_sec": 17.734987442999998,
+        "artifacts": {
+          "temporal_cognition_reference.py": "c470295e902fe8c2fc26f3e3c99494b1c1b85bf1481bec952066ce5a58a2a1e2",
+          "base-design.json": "904ecb608271771fd82b8829b066890bf2a34037fed183550674930fcfd9448a",
+          "selected-design.json": "fbe0a139d3f45ff65e0cb72e7e346f18e303c22008a0a0f6596ed8d90f56718c",
+          "information.npz": "052dfe4ee7e1bd3ab3a353dcd5b4e504b918ecd6e80b8172f46b68f1c59df871",
+          "optimizer.py": "12f4cd3efc93f1088c3034864bd451a399f816db6affecee288fea3a3bc2078e",
+          "optimization.json": "9356fe0fbb395edd799347dcacf9d4d9de1c0f83a6e9c6ada1be76eda39af1da",
+          "planning.json": "8beb0b5af4e6bdbc25be8a928a3f7576930778b5816f796d5ce2e36fb51e65db",
+          "evaluate_temporal_trace_recovery.py": "bb8ac39876fa956c8f9c1c2d25c26ca189c0ea43d21df787bb30bbc494fdca72"
+        }
+      },
+      {
+        "version": 8,
+        "status": "no_eligible_allocation; recovery_not_started",
+        "directory": "target/temporal-dcc/m0-private-separation-v8",
+        "registered_plan": "private-recovery-separation-planning-v8.json",
+        "parent_plan": "private-recovery-planning-v8.json",
+        "candidate_count_factors": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ],
+        "last_minimum_profiled_distances": [
+          21.13314622574865,
+          1.5909901310224208,
+          2.268146007533622,
+          2.6655414816048277
+        ],
+        "minimum_required": 8,
+        "scope": "Finite multistart separation heuristic; not a global certificate, recovery pass or empirical allocation.",
+        "wall_sec": 18.240790514973924,
+        "cpu_sec": 18.205726737,
+        "timing_scope": "profile optimization only; excludes observation-kernel preparation and artifact IO",
+        "artifacts": {
+          "base-design.json": "63c7cc8e819ae04fc13e789470c7a842c2f166b74403a1a1c237b1a628814351",
+          "evaluate_temporal_trace_recovery.py": "140159ae4d37e59af3039c2f46dcb95a8068c646801a1962897caa2c7252b93c",
+          "planner.py": "d787ee63423f2cf5e3a380f46cc978c4568d1dff87c4a4e1a1dc2dd29ad19146",
+          "planning.json": "362456b6c7a0e62e83aa26091bff9a40533bbc37f0f4f645ea8fd5221469eecb",
+          "separation.json": "821960909a65d15932ffc57da9e7fcf753c33cd9ee15b85793d6be0ee37335b4",
+          "temporal_cognition_reference.py": "82cf5d7fce0069d79f897eaa3b6874da8df3f678f1d8d73c01b104a1429313ff"
+        },
+        "fisher_allocation": {
+          "directory": "target/temporal-dcc/m0-private-allocation-v8",
+          "probes_per_condition": 15350,
+          "maximum_log_parameter_se": [
+            0.11719322550647819,
+            0.1195257831170511,
+            0.1186049559776814
+          ],
+          "wall_sec": 27.349878969136626,
+          "cpu_sec": 27.298615514999998,
+          "artifacts": {
+            "base-design.json": "d5f3185c423113cc4c2f9886926ff46ab479117307de63b6fd6d6a1c0ef01ebd",
+            "evaluate_temporal_trace_recovery.py": "140159ae4d37e59af3039c2f46dcb95a8068c646801a1962897caa2c7252b93c",
+            "information.npz": "01ecf19e59a25ab50c30a0d6c4ca7ee50dfc673b380d334f914133e27eb0d623",
+            "optimization.json": "2643f9b43624c47acdcbdc9b8ed9f04e9298f3014abd3a33df0d1009f8d6da2c",
+            "optimizer.py": "12f4cd3efc93f1088c3034864bd451a399f816db6affecee288fea3a3bc2078e",
+            "planning.json": "a74b16a63f398bd0292e93e4286ccd601d96e035228f6dc2a4698bcdd037d12c",
+            "selected-design.json": "63c7cc8e819ae04fc13e789470c7a842c2f166b74403a1a1c237b1a628814351",
+            "temporal_cognition_reference.py": "82cf5d7fce0069d79f897eaa3b6874da8df3f678f1d8d73c01b104a1429313ff"
+          }
+        }
+      },
+      {
+        "version": 9,
+        "status": "selected_by_finite_multistart_gate; independent_recovery_passed_all108_points",
+        "directory": "target/temporal-dcc/m0-private-allocation-v9",
+        "registered_plan": "private-recovery-planning-v9.json",
+        "result": "selected_by_finite_multistart_gate",
+        "profile_rounds": 3,
+        "last_minimum_profiled_distances": [
+          126.24164658277087,
+          8.079043165887333,
+          8.074955231038546,
+          8.087722506801637
+        ],
+        "minimum_required": 8,
+        "linear_cut_target": 8.1,
+        "scope": "Finite multistart exchange heuristic with even rounded LP allocation, not a global separation certificate or an empirical collection plan. Preserve all v8 exposure cells and baseline counts, original truths, conditions, fit, 100 replicates and error thresholds.",
+        "selection_validation": {
+          "cells": 492,
+          "probes_per_condition": 23794,
+          "added_probes": 8444,
+          "changed_cells": 2,
+          "maximum_log_parameter_se": [
+            0.11718367277045116,
+            0.11741737913975252,
+            0.11644865033978731
+          ],
+          "all_original_stress_points_and_thresholds_preserved": true,
+          "ambient_counts_unchanged": true,
+          "full_prefix_replay_hours_per_condition": 1843.7082847222225
+        },
+        "wall_sec": 11.182121198857203,
+        "cpu_sec": 11.262739809,
+        "timing_scope": "kernel preparation, profiles and LP; excludes archive/output IO",
+        "artifacts": {
+          "alternative-cuts.npz": "bd717549516e07920021cd1b25779f400281323a9a748c59fe5fa65431fca9f7",
+          "base-design.json": "63c7cc8e819ae04fc13e789470c7a842c2f166b74403a1a1c237b1a628814351",
+          "evaluate_temporal_trace_recovery.py": "140159ae4d37e59af3039c2f46dcb95a8068c646801a1962897caa2c7252b93c",
+          "optimizer.py": "0ad118ae742716a951287ddc1dd48fde13799cc172f9bfe9009064dc6a530865",
+          "plan_temporal_trace_separation.py": "d420d46c859f904dfaa2c6eeb3d873221be90da69e833678c62d481efe84874c",
+          "planning.json": "ba49ecd8d14a535d79112a4d296d46fc28649fad1e15bec4f06999944bdf2230",
+          "selected-design.json": "61e29ccd7fad68982973a4f382234bc2dea37e4c4f8638b31b3072e899620188",
+          "selection-validation.json": "313c43d42271e51dbf991e97e409f01c4227736c35b1472ac65f2f350f85c9ff",
+          "separation.json": "ea4f74b6cabb07a403935f2062e7fa4a53aac9473a4738a9f1543e22ac3c3cda",
+          "temporal_cognition_reference.py": "858253037b826e038b3c3585612027467fa6bb00afa06ea959e902b4fa76e8c6"
+        }
+      }
+    ],
+    "latest_allocation_search": {
+      "version": 9,
+      "status": "selected_by_finite_multistart_gate; independent_recovery_passed_all108_points",
+      "directory": "target/temporal-dcc/m0-private-allocation-v9",
+      "registered_plan": "private-recovery-planning-v9.json",
+      "result": "selected_by_finite_multistart_gate",
+      "profile_rounds": 3,
+      "last_minimum_profiled_distances": [
+        126.24164658277087,
+        8.079043165887333,
+        8.074955231038546,
+        8.087722506801637
+      ],
+      "minimum_required": 8,
+      "linear_cut_target": 8.1,
+      "scope": "Finite multistart exchange heuristic with even rounded LP allocation, not a global separation certificate or an empirical collection plan. Preserve all v8 exposure cells and baseline counts, original truths, conditions, fit, 100 replicates and error thresholds.",
+      "selection_validation": {
+        "cells": 492,
+        "probes_per_condition": 23794,
+        "added_probes": 8444,
+        "changed_cells": 2,
+        "maximum_log_parameter_se": [
+          0.11718367277045116,
+          0.11741737913975252,
+          0.11644865033978731
+        ],
+        "all_original_stress_points_and_thresholds_preserved": true,
+        "ambient_counts_unchanged": true,
+        "full_prefix_replay_hours_per_condition": 1843.7082847222225
+      },
+      "wall_sec": 11.182121198857203,
+      "cpu_sec": 11.262739809,
+      "timing_scope": "kernel preparation, profiles and LP; excludes archive/output IO",
+      "artifacts": {
+        "alternative-cuts.npz": "bd717549516e07920021cd1b25779f400281323a9a748c59fe5fa65431fca9f7",
+        "base-design.json": "63c7cc8e819ae04fc13e789470c7a842c2f166b74403a1a1c237b1a628814351",
+        "evaluate_temporal_trace_recovery.py": "140159ae4d37e59af3039c2f46dcb95a8068c646801a1962897caa2c7252b93c",
+        "optimizer.py": "0ad118ae742716a951287ddc1dd48fde13799cc172f9bfe9009064dc6a530865",
+        "plan_temporal_trace_separation.py": "d420d46c859f904dfaa2c6eeb3d873221be90da69e833678c62d481efe84874c",
+        "planning.json": "ba49ecd8d14a535d79112a4d296d46fc28649fad1e15bec4f06999944bdf2230",
+        "selected-design.json": "61e29ccd7fad68982973a4f382234bc2dea37e4c4f8638b31b3072e899620188",
+        "selection-validation.json": "313c43d42271e51dbf991e97e409f01c4227736c35b1472ac65f2f350f85c9ff",
+        "separation.json": "ea4f74b6cabb07a403935f2062e7fa4a53aac9473a4738a9f1543e22ac3c3cda",
+        "temporal_cognition_reference.py": "858253037b826e038b3c3585612027467fa6bb00afa06ea959e902b4fa76e8c6"
+      }
+    },
+    "v7_diagnostics": {
+      "scope": "Retained-data diagnostics, not independent recovery",
+      "artifacts": {
+        "branch-start-diagnostic.json": "56cf37b047bcf256d31315ae67a6ac8c8370031ba0ae3c9ba7ada0343231c1ff",
+        "exposure-ceiling-diagnostic.json": "55a20759c3bb15d694e74ae985e3d1056c8cf37c4cbb878ed4a8c26d928c8009"
+      }
+    },
+    "recovery_verification": {
+      "version": 9,
+      "verified_fits": 10800,
+      "verified_condition_points": 108,
+      "failed_fits": 4,
+      "failure_counts": {
+        "rank_deficient_fitted_timing_model": 2,
+        "unresolved_lower_loss_fit": 2
+      },
+      "all_failures_retained_as_infinite_error": true,
+      "maximum_condition_parameter_median_absolute_log_error": 0.09598576124656037,
+      "maximum_condition_parameter_p90_absolute_log_error": 0.2628353941198441,
+      "plot": "target/temporal-dcc/m0-private-recovery-v9/joint-errors.png",
+      "plot_visually_checked": true,
+      "scope": "All108 registered condition/truth points pass; four failed fits remain. Conditional simulator only; added fully supported first-prefix exposures are necessary parts of this design. No weak-only or empirical-replay claim."
+    }
+  },
+  "event_heads": {
+    "status": "finite_occurrence_commitment_section_accent_and_gap_components_verified; full_predictive_stability_not_run",
+    "feature_manifest": "feature-manifest.json",
+    "section_reference_scope": "Existing conserved39/82 input assembly, causal accent delivery and a finite-input occurrence ledger producing sealed payload-conditioned path projections. Full inferred beam activity and runtime lifecycle remain incomplete.",
+    "remaining": [
+      "Produce actual inferred provisional paths/ownership and all beam-dependent activity histories; the occurrence oracle conditions on one supplied activity payload and joint episode/context alternatives.",
+      "Implement bounded runtime endpoint/receipt/provenance storage including the128-byte pending endpoint requirement, the actual per-hop commit work bound and full O04 state/scratch census. Exhaustive finite-input audit history is not that implementation.",
+      "Integrate full episode strength renewal, physical gap uncertainty once per global memory clock, bank/index eviction and availability. Per-write interference bounds and uncapped context totals do not complete those state machines.",
+      "Connect waveform NSGT, ridge/group inference, actual topology/ancestry, arbitrary delivery reordering and source-derived timing/matcher caches; fit all development scales.",
+      "Register all generating vectors, target allocations, finite regularization/OOF/calibration and100-dataset-per-condition O12 predictive stability, plus all remaining M0 inventories and controls.",
+      "Complete actual body/waveform/opportunity and human/institution collection requirements; no collection or author adoption follows the numerical checks.",
+      "Propagate gap fallback into full O12/O04;184 of600 numerical gap audit cases remain unresolved."
+    ],
+    "first_event_reference": "event-head-reference.json",
+    "section_input_reference": "section-feature-reference.json",
+    "gap_reference": "event-head-reference.json#gap_quadrature",
+    "accent_reference": "accent-reference.json",
+    "occurrence_reference": "occurrence-reference.json"
+  }
+}

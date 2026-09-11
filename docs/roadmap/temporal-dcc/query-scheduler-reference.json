@@ -1,0 +1,307 @@
+{
+  "schema": "temporal-dcc-query-scheduler-reference-v1",
+  "registered_at": "2026-09-10T21:34:21.365362+00:00",
+  "status": "bounded_numerical_queue_and_cache_verified; full_model_not_fit_ready",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "sections": [
+      "9.3",
+      "10.1"
+    ]
+  },
+  "source": {
+    "path": "scripts/temporal_query_scheduler_reference.py",
+    "sha256": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+    "functions": [
+      "pack_coarse"
+    ],
+    "classes": [
+      "CoarseCache",
+      "QuerySlot",
+      "QueryScheduler"
+    ],
+    "dependencies": [
+      {
+        "path": "scripts/temporal_matcher_reference.py",
+        "sha256": "cd2c2a162e542b310f33d561ec776577d3b33dbba65b103c54554ec4ad73037e",
+        "functions": [
+          "descriptor_query",
+          "committed_episode",
+          "anchor_transform",
+          "coarse_cost",
+          "refine_anchor",
+          "subsequence_dtw",
+          "match_query",
+          "coarse_commit_snapshot"
+        ],
+        "dependencies": [
+          {
+            "path": "scripts/temporal_descriptor_reference.py",
+            "sha256": "9b8c427bff35215d187dc4a34042b04e494356a710b36031e1cb5902b951c88b"
+          }
+        ]
+      },
+      {
+        "path": "scripts/temporal_descriptor_reference.py",
+        "sha256": "9b8c427bff35215d187dc4a34042b04e494356a710b36031e1cb5902b951c88b",
+        "functions": [
+          "raw_descriptor"
+        ],
+        "classes": [
+          "DescriptorKnot",
+          "BoundedDescriptor",
+          "SpanDescriptor"
+        ]
+      }
+    ]
+  },
+  "interfaces": {
+    "clock": "Ordered canonical integer hops, actual acquired-sample union; silence counts, missing acquisition and replay do not. ceil(cadence*rate) samples per opportunity. After dispatch skip to the next multiple beyond accumulated samples; no catch-up burst.",
+    "queue": "One latest original endpoint/query-ID per represented group. Query IDs increase within generation. Older endpoints and replayed IDs are reported lost/stale. Replacement preserves admission priority; eligible groups dispatch oldest admission then slot.",
+    "worker": "One outstanding ticket per bus. New pending work does not supersede active or historical completed work. Explicit failure/incomplete result releases the ticket without caching.",
+    "lifecycle": "Retirement/rebinding clears pending/cache and invalidates active result, but holds the worker until acknowledgment. Stale tickets cannot release newer jobs. Increasing generations per reused slot and increasing restart epochs prevent ABA. Actual ancestry and bank handle allocation remain external.",
+    "query_payload": "176-byte header of6u64+16f64, including ten scales, plus<=128 original320-byte knots. Eight pending slots, one active and one reusable packing scratch. Decoded exports/capture intermediates are temporary and separately charged.",
+    "coarse_payload": "6272 bytes: fiveu64 IDs, threef64 endpoints;32-byte validity+32-byte approximation bitsets;256 entries ofu64 opaque episode-generation handle,f64cost,f64similarity. Handle0 absent; slot position supplies bank index. Packing uses existing matcher similarity without another exp scan.",
+    "generation_binding": "Caller supplies distinct (episode ID,generation)->(slot,nonzero stable handle). Current slot/handle must match on export. Missing/retired bindings stay absent/unknown; no identity invention.",
+    "cache": "Eight completed snapshots/group. Evict oldest original query endpoint then ID. High-water IDs prevent resurrection after eviction; exact retained replay no-op, conflict rejected. Loss counters distinguish computational eviction from cognition.",
+    "availability": "Cache stores actual result receipt time, not an earlier worker completion. Original full supporting-audio maximum, whole query end, exact occurrence/support and declared generation lineage must qualify at the original commitment cut. Gap tails and later source audio cannot refresh/backdate support.",
+    "exports": "Worker queries and ledger snapshots are detached. Later compression, replacement, retirement and cache eviction cannot change a frozen write. No threaded transport, full memory-bank lifecycle or bounded endpoint ledger is implemented here."
+  },
+  "parameters": {
+    "groups": 8,
+    "pending_per_group": 1,
+    "active_worker_jobs_per_bus": 1,
+    "completed_snapshots_per_group": 8,
+    "episode_slots": 256,
+    "knots": 128,
+    "cadence_sec": 0.1,
+    "cadence_samples_at_48k": 4800,
+    "bank_handle_zero": "reserved absent",
+    "current_episode_bindings": "caller-owned unique generation-qualified handles; never rebound during epoch"
+  },
+  "sensitivity": {
+    "cadence_sec": [
+      0.05,
+      0.1,
+      0.2
+    ],
+    "query_knots": [
+      64,
+      128,
+      256
+    ],
+    "snapshots_per_group": [
+      4,
+      8,
+      16
+    ],
+    "status": "Three cadences and virtual worker latencies exercised. Cache/capture sizes and default capacities verified; full joint capacity/retrieval/fit/performance sensitivity remains open."
+  },
+  "verification": {
+    "tests": 22,
+    "test_source": "tests/test_evaluate_temporal_query_scheduler_reference.py",
+    "test_sha256": "2fa35c4c31181279932163fa9cadd72a53e375f31f45b856aae02824e6463c23",
+    "status": "passed",
+    "independent_cache_oracle": {
+      "streams": 100,
+      "insertions_per_stream": 80,
+      "seed": 47014,
+      "oracle": "Retain the greatest eight(endpoint,ID) pairs of the complete finite history; include ties, older endpoints and replay."
+    },
+    "saved_prior_counterexamples": [
+      "future full-source audio accepted at earlier span",
+      "trailing-gap acoustic freshness",
+      "wrong query generation accepted on same occurrence/support"
+    ],
+    "additional_delivery_check": "Worker finish1.25s, cache receipt2.0s cannot supply commitment deadline1.5s.",
+    "virtual_schedule_cases": 9,
+    "virtual_schedule_scope": "Eight groups,200hops/group,2s actual acquired-time simulation; empty result scans and stipulated delays. Not real runtime or retrieval quality.",
+    "suite_status": "passed",
+    "suite_tests": 659,
+    "suite_elapsed_sec": 28.88,
+    "suite_log": "target/temporal-dcc/m0-python-tests-query-scheduler-final-20260911.log",
+    "suite_exit_record": "target/temporal-dcc/m0-python-tests-query-scheduler-final-status.txt",
+    "rust": {
+      "passed": 746,
+      "failed": 0,
+      "ignored": 12,
+      "exit": 0,
+      "log": "target/temporal-dcc/m0-rust-tests-query-scheduler-final-20260911.log",
+      "exit_record": "target/temporal-dcc/m0-rust-tests-query-scheduler-final-status.txt",
+      "scope": "Existing engine regression; no Rust change or production numerical-equivalence claim."
+    },
+    "site_build": "target/temporal-dcc/m0-site-query-scheduler-final-20260911",
+    "direct_adapter_receipt_check": "The standalone coarse_commit_snapshot also requires received_at, rejects pre-completion/nonfinite receipt and cannot backdate delayed delivery."
+  },
+  "resource_scope": {
+    "query_header_bytes": 176,
+    "coarse_record_bytes": 6272,
+    "coarse_entry_bytes": 24,
+    "query_buffers_including_active_and_scratch": 411360,
+    "coarse_snapshots": 401408,
+    "coarse_scratch": 6272,
+    "control_arrays": 808,
+    "total_fixed_buffers_per_bus": 819848,
+    "two_bus_fixed_buffers": 1639696,
+    "excludes": "Python objects/scalar counters, bounded temporary capture/decoded exports, raw inference, bank/edges/memory clock, complete endpoint ledger, worker transport, allocator and actual simultaneous runtime."
+  },
+  "remaining": [
+    "Actual worker/thread transport and all simultaneous O04 kernels/copies/allocations. Earlier276ms single-query versus40ms whole-worker failure unresolved.",
+    "Complete bank/edge handles/retirement and real group ancestry; connect the finite memory-reference.json clock/strength/availability component to full state and worker transport.",
+    "Full inferred provisional beam ownership/activity, bounded128-byte endpoints and complete receipt/commit state.",
+    "Real waveform NSGT/ridge/group inference, all feature inventories/controls and fitted development scales.",
+    "Uncompressed/unequal-density exhaustive retrieval, full O12 fits/OOF/calibration and100 datasets/condition predictive stability.",
+    "Actual material/body/opportunity feasibility and human/institution gates."
+  ],
+  "production_integration": false,
+  "full_preflight_passed": false,
+  "human_collection_authorized": false,
+  "fitted_development_scales": false,
+  "archive": {
+    "directory": "target/temporal-dcc/m0-query-scheduler-reference-final-20260911",
+    "artifacts": {
+      "counterexamples-before.json": "d71b2b33feb7e9f1bb37c48f086b5172025bdfda6f20b52054c39c9c4ebc4681",
+      "descriptor-pre-receipt-reference.json": "53926da053d532d5b54251a7b1d100aec019fd799511a0a0f52e7382f8bd7bfd",
+      "descriptor-reference-before.json": "ba4e3a6140768832ffe66310ff1f1afd14d2e0ada7a7d96d529b2d0aeacc586a",
+      "feature-manifest-after.json": "c3204ee64bbee302f350eb9d2032a56437fc5e122d505b55e7e7a3a959d9531d",
+      "feature-manifest-before.json": "c16b82e61f2336de01bd1483585d941468512483c2acea2b82f43c9403309fbd",
+      "feature-manifest-verified.json": "9456d66b4322b09930936bf246042c1fed29056a5868c7b6e68f84fde1c624fd",
+      "matcher-pre-receipt-reference.json": "02817e46b720550cd60dfc78c50034bfa268743dcc4e49d0eb8e3cb0a4e6519a",
+      "matcher-reference-before.json": "d4e5a1ffa42fe0cf6007279f192cae1f17f1b0fb33326adeb476a28af49a5c52",
+      "occurrence-pre-receipt-reference.json": "22ce83beb4a0c825c233e15ad2f7f7aab7e58e075afe030a61d51839a578e4c9",
+      "occurrence-reference-before.json": "f30be41a5a8d0cbd57c4efb549b5f954d190063c0298910db3a2002e25922472",
+      "query-scheduler-pre-receipt-reference.json": "31e151f08d301d0a032739d8eea256373848172102439018b03e488d122ecbb4",
+      "queue-audit.json": "27a6511d792a4a20f52e6a53628b3cc16218a4e19f5132e3399dda4b586aa104",
+      "queue-audit.py": "3bcb2fc7291b538986bec8f53d301c95726cd48ab0c398d051cd8f7d0c1e7807",
+      "specification-before.md": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+      "specification.md": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "temporal_accent_reference.py": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+      "temporal_cognition_reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+      "temporal_descriptor_reference-before.py": "5bb4e75692beb8a5e2b0512df045c29b00fc26ac6f22ded15a59fdf9b17d821a",
+      "temporal_descriptor_reference.py": "d4f482a6217a4d91813d47459ebc43bfd2d401a6b9d15d67dd8bd8c61d7ab13d",
+      "temporal_matcher_reference-before.py": "a4d4a78da08e97ddc600254fdca1693b09a5001a66f940dabc052b3e3c0adbe2",
+      "temporal_matcher_reference.py": "cd2c2a162e542b310f33d561ec776577d3b33dbba65b103c54554ec4ad73037e",
+      "temporal_occurrence_reference-before.py": "3faa156702b2795b38a9a2f2eab31605eede5560bdd59e43ecbe1c88f51146cf",
+      "temporal_occurrence_reference.py": "6dc8a9a5beae18d0f9c422074236bb2340c9af8c2a47bce50a20b4356c596e0f",
+      "temporal_query_scheduler_reference.py": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+      "temporal_section_reference.py": "4e320c0fffb48f67128b502c67f009467cf27226f364bb3a8382702603a2f3ac",
+      "test_evaluate_temporal_descriptor_reference.py": "a5db83f0a83d19d0fd9c81b39b0957bb331d414e9bc3d1b8def4cf66dbfe9de6",
+      "test_evaluate_temporal_matcher_reference-before.py": "06c0be8324e3c4b00eb22210813b46a192da17ba4e729c676f8a99d64306db05",
+      "test_evaluate_temporal_matcher_reference.py": "cc97af80724befe0ff5f2182aacb698023c96fa435d1d755cd20889b9ed3605c",
+      "test_evaluate_temporal_occurrence_reference-before.py": "055e82fab982a9734904c226f1f85790074fa1441cfdb3c6e9ff9c4afe252e63",
+      "test_evaluate_temporal_occurrence_reference.py": "be73b4e0ad4b1047821b839849de557077bbd3d79ada1591606477dfae191af7",
+      "test_evaluate_temporal_query_scheduler_reference.py": "2fa35c4c31181279932163fa9cadd72a53e375f31f45b856aae02824e6463c23"
+    },
+    "final_feature_manifest": "feature-manifest-verified.json"
+  },
+  "previous_versions": [
+    {
+      "directory": "target/temporal-dcc/m0-query-scheduler-reference-20260911",
+      "artifacts": {
+        "counterexamples-before.json": "d71b2b33feb7e9f1bb37c48f086b5172025bdfda6f20b52054c39c9c4ebc4681",
+        "descriptor-reference-before.json": "ba4e3a6140768832ffe66310ff1f1afd14d2e0ada7a7d96d529b2d0aeacc586a",
+        "feature-manifest-after.json": "c3204ee64bbee302f350eb9d2032a56437fc5e122d505b55e7e7a3a959d9531d",
+        "feature-manifest-before.json": "c16b82e61f2336de01bd1483585d941468512483c2acea2b82f43c9403309fbd",
+        "matcher-reference-before.json": "d4e5a1ffa42fe0cf6007279f192cae1f17f1b0fb33326adeb476a28af49a5c52",
+        "occurrence-reference-before.json": "f30be41a5a8d0cbd57c4efb549b5f954d190063c0298910db3a2002e25922472",
+        "queue-audit.json": "27a6511d792a4a20f52e6a53628b3cc16218a4e19f5132e3399dda4b586aa104",
+        "queue-audit.py": "3bcb2fc7291b538986bec8f53d301c95726cd48ab0c398d051cd8f7d0c1e7807",
+        "specification-before.md": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+        "specification.md": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+        "temporal_accent_reference.py": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+        "temporal_cognition_reference.py": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+        "temporal_descriptor_reference-before.py": "5bb4e75692beb8a5e2b0512df045c29b00fc26ac6f22ded15a59fdf9b17d821a",
+        "temporal_descriptor_reference.py": "d4f482a6217a4d91813d47459ebc43bfd2d401a6b9d15d67dd8bd8c61d7ab13d",
+        "temporal_matcher_reference-before.py": "a4d4a78da08e97ddc600254fdca1693b09a5001a66f940dabc052b3e3c0adbe2",
+        "temporal_matcher_reference.py": "eb2bc94edc2e78ae95313ea11cb6f32376509e2afde6af275a2168cd0d204d6e",
+        "temporal_occurrence_reference-before.py": "3faa156702b2795b38a9a2f2eab31605eede5560bdd59e43ecbe1c88f51146cf",
+        "temporal_occurrence_reference.py": "6dc8a9a5beae18d0f9c422074236bb2340c9af8c2a47bce50a20b4356c596e0f",
+        "temporal_query_scheduler_reference.py": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+        "temporal_section_reference.py": "4e320c0fffb48f67128b502c67f009467cf27226f364bb3a8382702603a2f3ac",
+        "test_evaluate_temporal_descriptor_reference.py": "a5db83f0a83d19d0fd9c81b39b0957bb331d414e9bc3d1b8def4cf66dbfe9de6",
+        "test_evaluate_temporal_matcher_reference-before.py": "06c0be8324e3c4b00eb22210813b46a192da17ba4e729c676f8a99d64306db05",
+        "test_evaluate_temporal_matcher_reference.py": "04234927d1f96a758ceae39a8534bf52b564174e5bb90f6446ba2082ecb4484e",
+        "test_evaluate_temporal_occurrence_reference-before.py": "055e82fab982a9734904c226f1f85790074fa1441cfdb3c6e9ff9c4afe252e63",
+        "test_evaluate_temporal_occurrence_reference.py": "be73b4e0ad4b1047821b839849de557077bbd3d79ada1591606477dfae191af7",
+        "test_evaluate_temporal_query_scheduler_reference.py": "2fa35c4c31181279932163fa9cadd72a53e375f31f45b856aae02824e6463c23",
+        "feature-manifest-verified.json": "e567a6cd1fd4b8c9eeec319f90bf162c2a94a3d379136ba038b4398d9f12de6c"
+      },
+      "final_feature_manifest": "feature-manifest-verified.json",
+      "source_sha256": "937629a490bd6cddc2d6e9349dc176b456e982d86d0b1dcfc4027ffc2941058f",
+      "reason": "Before requiring explicit actual receipt time on the standalone coarse_commit_snapshot adapter; earlier queue/clock/cache numerical checks retained."
+    }
+  ],
+  "specification_history": [
+    {
+      "sha256": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "reason": "Bounded global acquisition-gap clock, original-time episode retention, rate-envelope overflow and frozen pre-target assay copy; section9.3 only. Full bank/graph, fitting and simultaneous runtime remain open."
+    },
+    {
+      "sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+      "reason": "Fixed bank/anchor/shared-edge payload, fresh reservations, explicit eviction, unrenormalized membership loss and actual bank-receipt cut. Section9.3 only; inferred relations/ancestry, full transport, fitting and O04 remain open."
+    },
+    {
+      "sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a",
+      "reason": "Fixed128-byte endpoint headers, bounded heap/free/ID indexes, immutable claims and original deadline/actual delivery, ticket-safe acknowledgment and explicit cycle/backlog loss. Section9.3 only; referenced pools and complete ledger/inference/runtime remain open."
+    },
+    {
+      "sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5",
+      "reason": "Fixed immutable byte-payload pool, original paired-ID issuer and typed endpoint ownership/rollback/retirement. Section9.3 only. Explicit sharing passes header capacity, but distinct snapshots exhaust half/base/double pools; full inference, structural sharing, consumer integration and M0 gates remain open."
+    },
+    {
+      "sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+      "reason": "Exact320-byte knot structural sharing, fixed version vectors/hash indexes and split-pool endpoint ownership. Section9.3 only. Conditional fixed1024-path half/base/double sizing and unrelated-content failures retained; real producers, churn, all payloads, consumers and full M0 gates remain open."
+    },
+    {
+      "sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit."
+    },
+    {
+      "sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open."
+    },
+    {
+      "sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+      "reason": "Actual finite host-clock arrivals expose aggregate delivery backlog and separate bank-entry versus final publication cuts; numerical sources and model unchanged."
+    },
+    {
+      "sha256": "4097a4f651dba073f4848bf25fa9a2ff90e936584f481ae68dc43ba625c7d4ec",
+      "reason": "Section9.3 only: R1/S1 typed consumer records preserve u64 identities, f64 values and independent masks; fixed-driver maximum-load timed work falls33.2%, but aggregate throughput and full O04 remain unmet."
+    },
+    {
+      "sha256": "fea51b989b51ca6e25150af98d3c3e19420bdd21dbfbab949b1a918d366096e3",
+      "reason": "Section9.3 only: retain private section preparation, merge only sealed regions after intervening observations, count1408 staging bytes per target. Same-inventory finite cost improves; full O04 and M0 remain unmet."
+    },
+    {
+      "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
+      "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    }
+  ],
+  "updated_at": "2026-09-11T11:40:42.701331+00:00",
+  "retention_integration": {
+    "numeric_reference": "memory-reference.json",
+    "status": "Finite global gap/strength/availability and pre-target copy implemented; complete bank/graph and production transport remain open.",
+    "historical_verification": "Prior component tests and archives remain pinned to their original runs; later full suite belongs to memory-reference.json."
+  },
+  "bank_integration": {
+    "numeric_reference": "bank-reference.json",
+    "status": "Fixed descriptor/anchor/shared-edge storage and fresh handle/eviction/focus conventions verified on finite inputs; full inferred relation graph and transport remain open."
+  },
+  "endpoint_integration": {
+    "numeric_reference": "endpoint-reference.json",
+    "status": "Fixed header queue with heap/ID indexes verified; referenced payload pools, inferred receipts/writes and actual consumers remain open."
+  },
+  "payload_integration": {
+    "numeric_reference": "payload-reference.json",
+    "status": "Fixed byte pool and typed queue ownership verified. Distinct-copy sizing fails; semantic/inferred producers, structural sharing, receipts and actual consumers remain open."
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "schema": "temporal-dcc-private-trace-reference-v3",
+  "registered_at": "2026-09-10T15:01:02.881975+00:00",
+  "status": "joint_physical_observation_reference_verified; v9_conditional_recovery_passed_all108_points; empirical_allocation_not_adopted",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "section": "9.2"
+  },
+  "reference_source": "scripts/temporal_cognition_reference.py",
+  "inventory": {
+    "key": [
+      "bus_epoch",
+      "episode_handle",
+      "coordinate_family"
+    ],
+    "max_entries": 16,
+    "credit": "confirmed * observed_fraction * issue_time_weight * supported_anchor_fraction for a still-retained same-epoch key; zero otherwise",
+    "unassigned": "1-sum(eligible credits); no redistribution of lost/cutoff/missing mass",
+    "competing_interference": "For each existing retained trace j, sum credits assigned to i!=j; unassigned mass adds none.",
+    "creation": "Only positive credit from an actually rendered outcome creates a trace. Reading an inventory or an intended/unconfirmed action does not.",
+    "support_once": "Timing bins carry raw anchor-support mass. Condition those bins on supported anchors when multiplying by credit, which already contains that support fraction."
+  },
+  "timing": {
+    "periodic_bins": 32,
+    "linear_bins": 32,
+    "linear_range": [
+      0,
+      4
+    ],
+    "linear_overflow_bin": true,
+    "coordinate": "(observed outcome time - frozen anchor time) / frozen issue-time period; modulo one only for periodic references",
+    "timestamp_model": "Independent uniforms on known observed hop supports. Mix frozen anchor alternatives by their retained weights. Missing intervals remain unsupported.",
+    "integration": "Exact CDF of the difference of two uniforms, with point-timestamp cases handled explicitly; integrate every bin, retaining multiple modes and linear overflow.",
+    "lookup": "The separately tested center interpolation includes overflow in the denominator; queries outside the linear range remain unsupported."
+  },
+  "normalization": {
+    "formula": "softmax(log retained mass) over positive bins, including nonperiodic overflow; no pseudocount",
+    "zero_bin": "zero probability; no numerical retrieval floor becomes a timing-bin pseudocount",
+    "empty_trace": "unknown for action; only the stated assay may use its uniform initial prior",
+    "between_updates": "A common extra wait or competing-interference increment cancels from normalized probabilities. Waiting alone does not identify tau or kappa.",
+    "necessary_design": "Vary gaps/interference before later executed updates that change relative bin histories, and vary recurrence counts enough to activate the strength cap."
+  },
+  "unresolved_before_O13": [
+    "v9 passes all108 truth/condition points with four failed fits retained as infinite errors. This design adds fully supported first-prefix exposures; it does not establish recovery using only weak prefixes or empirical cognitive identification.",
+    "Validate or revise empirical replay cost while preserving the stress envelope. v9 uses23,794 probes per condition and about1,843.71 hours of independent full-prefix replay per condition; this allocation has not been adopted for collection.",
+    "Verify actual waveform-derived reference weights, physical body/opportunity windows and acquisition-aligned timing. Synthetic prefixes currently use engineered known supports.",
+    "Complete runtime issue-snapshot, repeated-ID, delayed-delivery and rendering correspondence tests; numerical references do not prove production integration."
+  ],
+  "human_memory_equivalence_claim": false,
+  "production_template_replacement": false,
+  "updated_at": "2026-09-11T11:40:42.701331+00:00",
+  "specification_history": [
+    {
+      "sha256": "8eee217e943a91bee158aaef2601eb836441945925b403666ae5e71abddcc029",
+      "reason": "Before explicit retained-mass filter and quantized-observation audit."
+    },
+    {
+      "sha256": "df2787e8a6b2e44b2831d049796c62f6c6824a68f81e1a738d0f22096bcaeedf",
+      "reason": "Before the joint physical-outcome observation law."
+    },
+    {
+      "sha256": "1f87855f5868037995cf7e4c40ebf248803976e5513512e524afe97e373b142f",
+      "reason": "Before explicit section 82-covariate/bias, support union, contrast masks and matcher-age conventions; private/episode clauses unchanged."
+    },
+    {
+      "sha256": "e04e41581b5b27e3943d6accad15fd9e910f6f0f210fa139b9fbeb9beb6c5343",
+      "reason": "Before explicit conserved section-support ownership and the640-byte f64 record layout; sections before9.5 and after9.6 are byte-identical."
+    },
+    {
+      "sha256": "e00c1c71ea2346a62180f5989233c6c79f987cd11a168f80827bf0131a5dab40",
+      "reason": "Register four-hop accent provenance, scalar inventory endpoint versus uncertain interval, full raw/availability cuts and generation-local cumulative delivery; pending occurrence sealing remains open."
+    },
+    {
+      "sha256": "adb1ba89ce87642018f94bdf0af2acd0900f9302dc099cfd2eacfea45c7659e0",
+      "reason": "Finite payload-conditioned occurrence commitment: original identity/deadline, joint support, metadata-only revision metric, late owned accents, context totals and coarse interference bounds. Full beam/runtime/memory lifecycle remains open."
+    },
+    {
+      "sha256": "5f60772cb8d366e5875cd354c84d547193f32a01621091116cda6725cb84ea85",
+      "reason": "Initial raw-value subsequence recurrence, missing/normalization/tie rules, separate transform diagnostics, detached pending-prefix queries and original versus delivery episode time. Numerical reference only; full fitting/runtime/human gates remain open."
+    },
+    {
+      "sha256": "15cca0bb510b7e53e608627e57b8977d956b95af37f09b99fc5dc36bbb1e9e56",
+      "reason": "Bounded acquired-sample query scheduling, one worker ticket per bus, packed eight-snapshot cache and receipt availability; original full-audio/generation commitment cuts. Section9.3 only; full M0 gates remain open."
+    },
+    {
+      "sha256": "0d59c5aea2142c6731b25e6645abcb95f4b601ed813e6f8a88c1b46c51b6cb52",
+      "reason": "Bounded global acquisition-gap clock, original-time episode retention, rate-envelope overflow and frozen pre-target assay copy; section9.3 only. Full bank/graph, fitting and simultaneous runtime remain open."
+    },
+    {
+      "sha256": "2e6e41da18c3dd3ba1c862f46d7a68bba430cc325ec6ecd68e1818ce46c56f14",
+      "reason": "Fixed bank/anchor/shared-edge payload, fresh reservations, explicit eviction, unrenormalized membership loss and actual bank-receipt cut. Section9.3 only; inferred relations/ancestry, full transport, fitting and O04 remain open."
+    },
+    {
+      "sha256": "35cf3cebe7206fffa7b431c6e874ac4d0ec231281cb559e256f678360352536a",
+      "reason": "Fixed128-byte endpoint headers, bounded heap/free/ID indexes, immutable claims and original deadline/actual delivery, ticket-safe acknowledgment and explicit cycle/backlog loss. Section9.3 only; referenced pools and complete ledger/inference/runtime remain open."
+    },
+    {
+      "sha256": "475714f465dbc5d3e9e4d409d877b779675688d6a81d2bcca195867d54ee54d5",
+      "reason": "Fixed immutable byte-payload pool, original paired-ID issuer and typed endpoint ownership/rollback/retirement. Section9.3 only. Explicit sharing passes header capacity, but distinct snapshots exhaust half/base/double pools; full inference, structural sharing, consumer integration and M0 gates remain open."
+    },
+    {
+      "sha256": "ed8772974493851532f70e204e18db7db2cd789d51d1e0fb4e573b51baab3d02",
+      "reason": "Exact320-byte knot structural sharing, fixed version vectors/hash indexes and split-pool endpoint ownership. Section9.3 only. Conditional fixed1024-path half/base/double sizing and unrelated-content failures retained; real producers, churn, all payloads, consumers and full M0 gates remain open."
+    },
+    {
+      "sha256": "7831bd112d9deadd3675fd09596d96f413b5a852322506b91950ec0a3d3aa77c",
+      "reason": "Section9.3 only: fixed endpoint consumer journal, actual once-only bank/section/queue receipts, preflight and publication barrier. Declared1024-target fanout recovers three lost receipts. The48.49ms initial-call budget failure and caller-owned semantic payload/producer/runtime requirements remain explicit."
+    },
+    {
+      "sha256": "e2f06bc3d16c05d6968b54c19be010bd4e9b75896f0dbc10c261b0cbdf8cd33f",
+      "reason": "Section9.3 only: immutable local consumer packets and sliced all-before-effects validation replace mutable whole-batch rehashing. One-admission1024-target calls improve; maximum256x128-knot bank encoding/finalization/decode/application all exceed40ms. Semantic queue payload provenance, actual routing and full M0 gates remain open."
+    },
+    {
+      "sha256": "c9fc03a6204727fbc4bae6076041ece81e79ecb974de40abbcd4f7ff41ffa0bb",
+      "reason": "Section9.3 only: compact admission metadata and exact320-byte descriptors; staged preparation with one final bank publication, abort cleanup and final-cut availability. Full256x128-knot delivery passes finite checks but maximum1024-joint4096-proposal header has a57.98ms bank call. Full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
+      "reason": "Section9.3 only: immutable per-relation records, one packet-bound private header decode shared by consumer/bank,64-row joint/proposal validation and per-source indexes. Maximum header and combined1024-joint4096-proposal1024-section fixtures pass finite checks; aggregate cost, physical arrivals, full O04/inference/fit/human gates remain open."
+    },
+    {
+      "sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+      "reason": "Actual finite host-clock arrivals expose aggregate delivery backlog and separate bank-entry versus final publication cuts; numerical sources and model unchanged."
+    },
+    {
+      "sha256": "4097a4f651dba073f4848bf25fa9a2ff90e936584f481ae68dc43ba625c7d4ec",
+      "reason": "Section9.3 only: R1/S1 typed consumer records preserve u64 identities, f64 values and independent masks; fixed-driver maximum-load timed work falls33.2%, but aggregate throughput and full O04 remain unmet."
+    },
+    {
+      "sha256": "fea51b989b51ca6e25150af98d3c3e19420bdd21dbfbab949b1a918d366096e3",
+      "reason": "Section9.3 only: retain private section preparation, merge only sealed regions after intervening observations, count1408 staging bytes per target. Same-inventory finite cost improves; full O04 and M0 remain unmet."
+    },
+    {
+      "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
+      "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    }
+  ],
+  "reference_sha256": "8ce6a34fcc5d02a0d3066c8815d68c0638d7c200cef0fc61c5809dbaa08b53b6",
+  "state_update": {
+    "model_revision": "Private retained assignment mass per bin, distinct from unchanged episode lifetime-strength renewal.",
+    "equation": "new_mass_i,b = min(S_private, old_mass_i,b*exp(-elapsed/tau_private) + r_i*E[bin_indicator*exp(-(observed_end-T)/tau_private)|supported anchors])*exp(-sum_other_reference_credit/kappa_private)",
+    "head_semantics": "Only the actually observed onset/release head receives added mass. Both heads receive elapsed decay and competing-reference interference.",
+    "representation": "f64 log masses; exact exponential times piecewise-linear timestamp-admission integration; numerical moments use a convergent series near zero.",
+    "order": "sealed (observed support end, onset before release, stable outcome ID); duplicate or earlier keys rejected; repeated-ID reconciliation and delivery reordering remain upstream responsibilities.",
+    "overlapping_support": "Integrate each known time interval, then use the declared endpoint order; do not infer a hidden within-hop event order.",
+    "capacity": "Apply all fractional assignments together, then evict minimum total retained mass over both heads, stable reference-key tie break, until <=16 traces. Lost handles are removed without redistribution.",
+    "issue_prediction": "Caller freezes probabilities at action issue. Returned before-update snapshots are diagnostics and must not replace an older issue-time prediction."
+  },
+  "verification": {
+    "tests": 58,
+    "command": "OPENBLAS_NUM_THREADS=1 /tmp/conchordal-context-scores-venv/bin/python -m unittest discover -s tests -p test_evaluate_temporal_cognition_reference.py -v",
+    "status": "passed",
+    "observation_audit": "private-trace-observation-audit.json",
+    "scope": "38 probability/private/observation checks, four section assembly checks, six first-event aggregation checks and three observed-hop hazard quadrature checks; production integration unverified; seven gap-survival checks added without changing any existing function/class (AST comparison archived in event-head v3)"
+  },
+  "observation_law": {
+    "scope": "Conditional on a target head executing in a finite, issue-time opportunity window; this is an explicit assay law, not a model of failed execution or a live scheduler.",
+    "baseline": "Uniform physical time within the declared window; unassigned reference/anchor mass and geometrically inaccessible bin mass remain here, with no live action support.",
+    "bin_lift": "For each frozen anchor/period alternative, q_bin selects a bin; physical time is uniform on its intersection with the opportunity window. Linear overflow uses the union of both outside regions. An empty intersection uses the baseline for that whole bin mass.",
+    "anchor_uncertainty": "Integrate the original uniform anchor time and alternative weights after normalizing each bin intersection for that anchor. Missing alternatives remain baseline, never redistributed onto survivors.",
+    "physical_mixture": "One arithmetic mixture over reference densities using issue-time z; unassigned z uses the same baseline. An empty trace head uses the declared 32/33-bin assay prior, staying unknown for live action.",
+    "observation": "For disjoint known intervals R_j and fixed detection d_j, P(Y=j)=d_j*integral_R_j p(t) dt; the last category is missing detection, including acquisition gaps.",
+    "fitting": "One categorical log-likelihood term per probe, including missing detection. Future result coverage o or credit r does not reweight or redefine the issued prediction.",
+    "learning": "The same one actually detected physical outcome updates every eligible trace with its frozen fractional r; no per-reference independent draws or posterior-responsibility reassignment.",
+    "numerics": "Complete 32/33-bin column-stochastic kernels. Integrate affine overlap-length ratios analytically across anchor breakpoints, with a convergent near-constant-denominator series.",
+    "original_soft_bin_score": "Retained only as a coverage-qualified composite diagnostic, not as the fitting likelihood.",
+    "required_empirical_checks": "Prespecified windows, body/policy feasibility, actual acquisition-aligned timing and waveform-derived references; a window violation is a reported protocol failure, not silent exclusion."
+  }
+}

@@ -4906,6 +4906,91 @@ The full-T-row, five-interaction and mandatory whole-piece protocols and JSON re
 below retain the old research conditions. Apply them only when that extension is selected,
 without restoring core dependencies. Re-register target/model/load/fit dependencies for a revised experiment.
 
+<a id="i10-sensorimotor-contract"></a>
+
+#### Next mechanism candidate: action-conditioned self-sound prediction (2026-09-13)
+
+After committing the I9 scope revision, the next step selects a first candidate that
+can be tested through I10's body and outcome inputs: predict the acoustic features and
+timing of self-produced sound from an executed action and body state, then update that
+relationship from subsequent audio. This is a development selection, not authorial
+adoption of the sound, an implementation, or cognitive validation. It addresses what a
+particular body will sound like when it acts before adding further phrase/section inference.
+
+**Primary evidence and limits of abstraction.** These studies constrain interactions;
+they do not identify a software update equation.
+
+| Primary study | Finding and design constraint |
+|---|---|
+| [Schneider et al. (2018)](https://doi.org/10.1038/s41586-018-0520-5) | In mice, action–sound experience produced selective suppression at the expected frequency and altered motor cortical recruitment of auditory inhibitory neurons. Keep motor input, acoustic features and learning history distinct. This is not direct evidence for human musical decisions |
+| [Audette et al. (2022)](https://doi.org/10.1016/j.cub.2022.09.064) | Mouse lever experiments found prediction-related and deviance responses specific to learned actions, acoustic features and position within movement. Compare an action–sound predictor against a generic action-time gate |
+| [SanMiguel et al. (2013)](https://pmc.ncbi.nlm.nih.gov/articles/PMC3725431/) | In a human button-press task, sound-omission responses differed between predictable identity and timing-only conditions. Include prediction violations during observed silence; do not identify a model error scalar with an ERP |
+| [Tast et al. (2025)](https://doi.org/10.1111/psyp.70094) | Manipulating sound-identity predictability changed human omission N1 but not ordinary N1 suppression in this task. Suppression alone does not establish a forward model; retain an unspecific action-related gate as a competing explanation |
+
+The design inference abstracts motor-related input, expected auditory features, actual
+auditory input and their learned correspondence. It does not assign neural populations
+one-to-one to Rust types or generalize these findings to melody, phrase or whole-piece
+memory. Local timing prediction is another candidate, but the mapping of I6's arrival
+head to a circuit mechanism needs its own test. This first candidate connects directly
+to existing body and self-audio paths without requiring every temporal layer first.
+
+**Difference from current code.** `src/life/schedule_renderer.rs` retains per-Voice
+body/habitat waveforms. `src/core/temporal_expectation.rs::OwnSoundHistory::process`
+subtracts known self PCM exactly from the mixture. This uses information available to
+the synthesizer; it is not learned motor prediction suppressing auditory responses.
+`src/life/temporal_participation.rs::resolve` receives whether a candidate entered the
+phonation output, and `observe_context` retains subsequent external energy in two windows
+and three bands. Neither establishes an action–sound mapping confirmed from actual self
+audio. `scripts/temporal_cognition_reference.py::PrivateTimingTrace` is a numerical
+reference for context-relative onset/release participation timing. Its retention law
+must not simply be relabelled as motor–auditory learning.
+
+**State, updates and ownership.** Fix these meanings and ordering before selecting the
+numerical model.
+
+| Element | Contract |
+|---|---|
+| Action and body | Freeze the legal action, body/recipe state, bus, generation and command time at issue. Distinguish a candidate, an accepted command and acoustic execution |
+| Predictive state | Bounded parameters $\theta$ and pending observation windows represent $p_\theta(y\mid a,b)$: future self-audio features $y$ conditioned on action $a$ and body $b$. Separate occurrence/timing prediction from features conditional on a sound occurring |
+| Sensory input | Match private audio after routing/gain with original sample interval, full input-support end and availability time. Distinguish this internal measurement before mixture/guard processing from sound delivered to a listener |
+| Learning order | Issue and freeze a prediction; score it after its observation window completes, then update state. A finite-parameter error update is the first numerical candidate, but loss, scales and learning rate require registration before implementation and are not identified with synaptic plasticity |
+| Unknown and failed outcomes | Observed silence following an executed command can test occurrence prediction. Acquisition gaps, unexecuted candidates and incomplete windows are not silence. Unconfirmed sound cannot earn positive trace credit |
+| Boundary | State is private to the Voice. Shared P and ListenerTwin do not receive Voice IDs, motor commands or isolated self audio as auditory evidence. The passive ListenerTwin is not the recipient of this motor input |
+| Memory and continuing operation | Bound parameters and pending windows rather than accumulating a piece-wide event list. Compare retention/forgetting scales for the selected task. Distinguish generation changes from ordinary missing input and process windows without EOF |
+
+The first technical unit is a diagnostic round trip from an onset command to actual
+self-audio outcome for one Voice with a fixed body and policy in the normal runtime.
+Onset-only success is not all of I10: release, arbitrary bodies, private traces,
+candidate-consequence tables and expansion to both buses remain. Do not assume the
+existing three-band profile distinguishes sound identity. Register its relation to I10's
+six descriptors, observation windows, feature scales, occurrence detection, support
+rules and finite model capacity before implementing this unit. Scheduled time is not
+the answer to acoustic event detection.
+
+**Use in generation.** A later I11 consumer compares body-legal onset-now and delayed-onset
+candidates using predicted self-sound duration/release tail and existing external-sound
+prediction over the same temporal support. Authored participation tendencies then affect
+onset timing. Test the concrete acoustic consequence that a long-ringing and a short body
+can prefer different onset times in the same external context. Neural-response suppression
+does not mean attenuating output amplitude; minimizing prediction error is not the objective
+of the whole music. Scenario retains authored structure while cognitive state affects
+local choices.
+
+| Comparison | Competing explanation or failure to distinguish |
+|---|---|
+| Transfer different learned mappings to identical external input, body and candidates | Does state alter prediction and later choice? Diverging generated input after intervention cannot substitute for the matched-input causal comparison |
+| Preserve/break action–sound pairing; replay the same audio without action; use an action-blind acoustic predictor | Distinguish repetition adaptation and external prediction. Separate identity from timing prediction and sound omission from acquisition gaps |
+| Generic action-time gate, fixed body predictor and frozen learned state | Retain suppression-only, known-body and learning-free explanations. Do not require added learning state if it supplies no additional predictive or generative function |
+| Change the body or action–sound mapping; include unseen bodies and routing | Avoid evaluating only retrieval of a known synthesizer's answer or excluding unsupported actors to claim success. Exact counterfactual synthesis is a separate engineering reference |
+| Reports on/off, gaps, delay, generation changes and additional unexecuted candidates | Check causal observation/learning, no learning from hypothetical actions, unchanged off-mode audio and bounded resources |
+
+This step ends with the candidate and its contract recorded. These comparisons have
+not been run. I10 owns implementation and numerical checks, the applicable R4/R5 own
+cognitive correspondence, and A1/A2 own audibility and author adoption. The literature
+review does not establish that Conchordal needs learning or that this candidate responds
+like a human. I9's scope revision is committed as `6a1a8c0`; this subsequent mechanism
+selection changes documents only, with no Rust or generated-audio changes.
+
 #### Engineering records before I9 reassignment
 
 **I9 engineering finding (2026-09-13): retention and retrieval are separate limits.**
@@ -6397,8 +6482,11 @@ above remain separate; no physical body law or R/H/C behavior changed.
 
 The current scope and execution order follow the [2026-09-13 decision](#i9-scope-decision).
 Core T1–T6 and four interactions are separate from optional I9/I12e/T7/O16 research.
-The preparation records below describe their respective historical stages; the next
-core task is to specify the selected mechanism and its concrete generative effect.
+The preparation records below describe their respective historical stages. The first
+mechanism candidate and its generative use are specified in the
+[self-sound prediction contract in §9.3.55](#i10-sensorimotor-contract).
+Next connect a fixed-policy Voice's command and private acoustic outcome to diagnostics;
+I10 runtime implementation remains incomplete.
 
 The ordinal preparation now also tests the specified whole-mixture loss and
 backoff order: temperature acts on the supported marginalized distribution,

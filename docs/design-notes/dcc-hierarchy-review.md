@@ -1,5 +1,13 @@
 # Temporal DCC design review record
 
+Current scope note (2026-09-13): the author moved I9/I12e/T7/O16 out of mandatory core
+completion into optional long-term listener research. See
+[the execution ledger](../roadmap/temporal-dcc/milestones.md) and
+[technote §9.3.55](../../web/content/technote.md#i9-scope-decision).
+The reviews and full-hierarchy conditions below are historical records. This scope
+change received authorial approval, not a new external review or cognitive validation.
+Their completed review status does not endorse the revised scope or pass the old I9 gates.
+
 Date: 2026-09-09
 Status: the round-39 baseline review completed with no actionable issues; subsequent M0 numerical revisions are not covered by that response. Implementation and cognitive validation remain incomplete.
 
@@ -1052,3 +1060,17 @@ that §§9–10.3 and all 318 files under `src/`, `scripts/` and `tests/` are un
 from this task's starting snapshot. The EN/JA site builds with Zola and
 `git diff --check` passes. These checks establish documentation consistency only;
 no model exchange experiment or source-code test was run in this task.
+
+
+### Rust preparation and MR1 implementation (2026-09-12)
+
+The user requested M0 implementation. The delivery revision now separates M0
+implementation preparation from its unchanged collection gates and makes Rust the
+numerical source shared by research tests and future runtime consumers. W0 adds
+an explicit author-interface contract; W1/W2 implement safe bounded matching and
+the small ordered/orderless exchange. Evidence and limits are in
+[the M0 preparation record](../roadmap/temporal-dcc/m0-rust-preparation.md).
+This is local implementation validation, not a new external design review or
+cognitive/music acceptance. MR2/MR3 and full O04/M0 remain open. Concurrent
+embodied-affordance requirements in §3.1/§10.2.1 are preserved as separate
+unimplemented requirements; these numerical checks do not validate them.

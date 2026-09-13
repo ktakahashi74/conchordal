@@ -2,6 +2,17 @@
 
 Status: Phases 1-4 implemented; in scope for v0.4.0 (Phase 5 deferred)
 Scope: conchordal architecture, DCC coupling, tension/resolution model
+
+
+Scope revision (2026-09-13): ListenerTwin models selected responses to the actual
+presentation, not a comprehensive human duplicate. Scenario owns authored macro
+structure. The generator's required state and the twin's required listening memory
+are determined by their respective functions; neither must reconstruct the whole piece.
+I9/T7 long-term listener research is optional and held for rescoping under
+[the current ledger](../roadmap/temporal-dcc/milestones.md) and
+[technote §9.3.55](../../web/content/technote.md#i9-scope-decision).
+Indefinitely running use is a design target, without a required planned endpoint or
+completion head. This does not establish current support or human-like responses.
 Date: 2026-05-19 (scope update 2026-06-02; mass-weighting contract update 2026-09-05)
 
 Scope correction (2026-09-09): the phase status above describes the original

@@ -2,8 +2,8 @@
 
 Status: design specification; reference algorithms selected, implementation and cognitive validation incomplete
 Created: 2026-05-18
-Revised: 2026-09-11
-Scope: temporal DCC, from articulation and groove to the experienced whole piece
+Revised: 2026-09-13 (authorial scope revision; no new external review)
+Scope: core temporal DCC through phrase/section relations; long-term listener responses and whole-piece judgments are an optional research extension
 
 The task is to represent the auditory-cognitive mechanisms of musical time inside
 Conchordal and let those representations shape generation. The existing harmonic
@@ -33,31 +33,71 @@ These numerical and feature clarifications likewise have no new external review.
 
 ## 1. Completion target
 
+### 1.1 Adopted scope revision (2026-09-13)
+
+The author removed I9 from the instrument's mandatory completion path. The canonical
+first-principles decision is recorded in [technote §9.3.55](../../web/content/technote.md#i9-scope-decision).
+Scenario owns authored macro direction; local generation uses the selected cognitive
+mechanisms and body constraints; ListenerTwin models selected responses to the actual
+presentation. Neither an autonomous reconstruction of whole form nor a comprehensive
+human twin is a prerequisite for the instrument.
+
+Select a target response and its candidate neurocognitive mechanism before expanding
+its implementation. Specify the primary evidence, the state/update/interactions being
+abstracted, the generator or listener consumer, the concrete effect on sound, and a
+comparison that distinguishes competing explanations. Circuit names, behavioral fit,
+and passing numerical tests do not by themselves establish this correspondence.
+The current graph, DTW retrieval, retention law and completion head remain engineering
+hypotheses; the functional circuit mapping in §3.1 does not validate their mechanisms.
+
+Core completion covers T1–T6 and I12a–I12d. I9, I12e, T7 and O16 are optional research
+work, held for rescoping; their failures and unmet gates remain recorded. O16 blocks
+adoption of its long-term capability, not core I10/I11/I12a–d/A4. Core memory contracts
+and T4/T6 tests still apply. Count all actually executed work in R2/A3 even if an
+existing diagnostic is outside the adopted core scope.
+
+Indefinitely running use is a design target alongside finite authored performances.
+Causal state updates do not require planned duration, EOF, whole-piece completion or
+storage of all past events. Bounded state may retain long-lived effects. Runtime and
+recovery acceptance for this use remains unverified. Retrospective whole-piece ratings
+belong to an explicitly bounded listening assay, not a universal runtime endpoint.
+
+The detailed full-hierarchy protocols and frozen JSON references below retain their
+original research conditions. Universal T1–T7, five-interaction and 30-minute T7
+requirements apply only when that research extension is selected; they do not restore
+I9 as a core dependency. Re-register target/model/load/fit dependencies before running
+a revised experiment; do not silently reuse a subset of the full-model fit.
+The I/R/A ledger records the active execution scope. This authorial revision is not a
+new external review, a passed I9/O16 gate, or a neural/cognitive validation result.
+
+### 1.2 Functional targets within the selected scope
+
 For every musical function below, the design must connect an observed cognitive
 phenomenon to an internal representation, an update rule, interactions with other
 functions, a consequence for generation, and a discriminating evaluation. Naming a
 brain area, adding a history buffer, or improving waveform prediction does not
 complete that connection.
 
-The full target includes:
+The core targets and optional research extension are:
 
 - articulation: attacks, continuation, release, overlap, gaps and gesture grouping;
 - groove: contextual timing relationships and their invitation to participate;
 - beat and meter: anticipated recurrence, subdivisions and grouping across beats;
 - phrases: continuing units, boundaries and closure, including nonperiodic phrasing;
 - repetition and variation: remembered relations across changed realizations;
-- sections and form: contrast, return, development and the evolving context of the
-  whole piece.
+- sections: contrast, return and development within the selected listening context;
+- optional long-term listener research: retained relations across extended histories
+  and, when selected, whole-piece judgments.
 
 These functions overlap. A phrase may cross a measure boundary, several streams
 may have different groupings, and variation can occur within a gesture or across
 sections. The list is not a mandatory chain of increasingly slow oscillators.
 
-Scenario continues to express the artist's direction. That does not remove the
-need for the system to perceive, remember and act within long temporal structure.
-An authored instruction to make room for a return is different from evidence that
-a return has been heard. Neither the runtime clock nor the file ending supplies
-that evidence.
+Scenario expresses the artist's macro direction without requiring the generator to
+reconstruct the entire form. A selected listener-response or contextual-generation
+mechanism may require retained heard relations. An authored return instruction is
+distinct from evidence that a return has been heard; the runtime clock and file
+ending do not supply that evidence.
 
 ## 2. Common principle and state contract
 
@@ -190,9 +230,57 @@ Correcting the extraction sentence while leaving unimplemented roles described a
 current capabilities does not pass O02. Record those sentence-level comparisons
 in the same ledger entry. A task entry alone does not complete this reconciliation.
 
+### 3.1 Adopted circuit and embodied-affordance interpretation (2026-09-12)
+
+The author adopted the following functional interpretation. Brain regions constrain
+candidate mechanisms through their interactions; they are not one-to-one software
+modules. P/M/A cut across these circuits. Authorial adoption of this direction does
+not establish neural validity, completed implementation or acceptance of generated music.
+
+| Circuit / primary evidence | Cognitive function relevant here | Design correspondence and limit |
+|---|---|---|
+| Auditory cortex / superior temporal gyrus; [Sankaran et al. (2024)](https://doi.org/10.1126/sciadv.adk0010) | Pitch, pitch change and contextual melodic expectation | Preserve trajectories and expectations; a spectral representation alone is not the measured cortical code. |
+| Auditory–premotor network; [auditory-motor association TMS study](https://pmc.ncbi.nlm.nih.gov/articles/PMC5042444/) | Learned correspondence between sounds and producing movements | Relate heard gestures to executable actions and predicted sound; this does not identify a complete affordance algorithm. |
+| Putamen, SMA, premotor and auditory cortex; [Grahn and Rowe (2009)](https://pmc.ncbi.nlm.nih.gov/articles/PMC2702750/) | Beat perception and beat-related network coupling | Maintain beat and participation expectations; regional activation does not prescribe global unison. |
+| Cerebellar timing systems; [Grube et al. (2010)](https://pmc.ncbi.nlm.nih.gov/articles/PMC2895141/) | Absolute interval timing, dissociable from relative beat-based timing in the tested degeneration group | Distinguish interval precision from beat phase; do not assign all timing error to a cerebellum-labelled module. |
+| Auditory and higher-order regions including mPFC, angular gyrus and precuneus; [Williams et al. (2022)](https://doi.org/10.1162/jocn_a_01815) | Musical event structure and boundaries | Test phrase/section hypotheses; boundary evidence alone does not identify closure. |
+| Hippocampus, posterior-medial cortex and angular gyrus; [context reactivation study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7614642/) | Context-dependent retrieval across naturalistic events | Motivate interrupted retrieval and return; this evidence is not music-specific and does not identify the proposed memory graph. |
+| Caudate and nucleus accumbens; [Salimpoor et al. (2011)](https://pubmed.ncbi.nlm.nih.gov/21217764/) | Anticipation and peak musical pleasure | Keep expectation, pleasure and participation motivation distinct; prediction accuracy is not an automatic survival reward. |
+
+Articulation means **the production of embodied gestures and their auditory
+perception and prediction**. It connects three interacting constraints:
+
+1. Body dynamics: feasible pace, amplitude, sustain, recovery and switching.
+2. Sensorimotor prediction: which audible consequences an executable gesture has.
+3. Musical context: what continuing, releasing or waiting means in retained context.
+
+An affordance is a relation between a particular body and its sound environment,
+not a body frequency alone. The same beat may afford every-beat, alternate-beat or
+sustained participation for different bodies. [Resonance Tuning in Rhythmic Arm
+Movements](https://pubmed.ncbi.nlm.nih.gov/12529219/) tests the relation between
+preferred movement frequency and muscle–limb resonance. It motivates a body-based
+comparison, not a universal articulation frequency or a theta-band assignment.
+
+For illustration, a linear mass–spring body's natural frequency is
+`f0 = sqrt(k / m) / (2*pi)`. Limb rotation additionally involves moment of inertia,
+gravity, posture, muscle/tendon stiffness, damping and active control. Mass alone
+does not determine pace. This illustrative equation is not a new production model.
+The current intrinsic-pace / participation-period / sound-duration separation is
+a starting point, not an identified mass/stiffness model of a human limb. Authored
+body settings, fitted perceptual parameters and engineering limits remain distinct.
+
+The author's stated Manifesto intent supplies this embodiment requirement. The
+current Manifesto time-axis text mentions intrinsic pace and sound duration but
+does not explicitly state the limb mass/resonance argument. Record that gap in
+technote §9.3.55 rather than claiming the argument is already explicit there.
+
 ## 4. Representations and their updates
 
 ### 4.1 Articulation and auditory gestures
+
+Apply the embodied-affordance contract in §3.1 to both gesture production and
+auditory grouping. Context changes the consequences of feasible actions; it does
+not bypass body dynamics or equate a perceived boundary with an instant release.
 
 Represent evolving sound trajectories: attack evidence, sustained change, release,
 relative overlap and gaps, with uncertain grouping into gestures. Retain alternative
@@ -446,6 +534,18 @@ parameters and unpassed comparisons remain delivery gates, rather than unspecifi
 architecture or evidence of completion. Replacing a reference estimator requires
 the same input/output semantics, the same falsification controls, and an updated
 decision record in the technote ledger.
+
+The 2026-09-12 delivery revision makes Rust the implementation source for new
+numerical/state transitions, reused by assays and later runtime consumers. Python
+remains an independent oracle and fitting/statistical tool. M0 preparation (pinned
+sources/inputs, initial contracts, numerical checks, MR1 and M1 causal fixtures)
+permits M1 technical wiring; it does not close M0 or permit human collection.
+O04 still owns the complete nonzero two-bus/64-Voice preflight, including numerical
+consequence/trace/candidate work before enabling those actions. O05–O08/O11–O13
+keep their existing collection/fitting gates. The author-interface contract is
+registered in W0; M1 owns shared status diagnostics, M6 actual action controls and
+M8–M9 final API/documentation acceptance. The implementation's current scope and
+unmet conditions live in the M0 ledger, not in the historical reference results.
 
 ### 8.1 Model replacement and software boundaries
 
@@ -1029,6 +1129,15 @@ A merge uses two former-parent subsets inside one final bundle; its key is the
 unordered parent pair, canonically sorted by stable former-parent handle, with
 each parent's exact member set kept attached to that handle. Swapping A/B is
 the same key, not a second directed proposal; this is why the bound is C(7,2)=21.
+Retain at most one persistence key per unordered parent pair across all final
+bundles. While that key satisfies its frozen membership and required conditions,
+continue it without replacing its former parents from newer associations. If no
+key can continue, choose among that pair's eligible bundle subsets by greatest
+minimum cross-pair correlation, then lexicographic sorted member union and attached
+member sets. Start a fresh counter for the chosen key. This per-pair selection is
+required because the same parent pair can have distinct subsets in multiple final
+bundles; treating each such subset as an independent retained key would invalidate
+the 21-key bound across changing association snapshots.
 Test swapped input order in O09. Use the minimum valid cross-pair
 correlation, requiring >=0.8 at each of three consecutive fully observed
 persistence-hop endpoints, with the same trailing 0.25 s window. Thus complete-link formation can already combine the
@@ -1354,7 +1463,11 @@ Consume each ordered detector admission once, independently of retrospective
 bank retention. A delivery retains original event/evidence times and receives a
 separate receive time and generation-local monotone sequence. Repeated delivery
 adds no credit; conflicting or older out-of-bank packets require upstream
-reconciliation, not silent re-admission. The bounded numerical ledger does not
+reconciliation, not silent re-admission. Order admissions by strictly increasing
+(event endpoint, stable accent ID) within a group generation, and require the
+complete raw-evidence ordering key to increase as well. Match retained or most
+recent IDs before comparing evidence keys: changing a repeated ID's support or
+weight is a conflict, never new evidence. The bounded numerical ledger does not
 implement arbitrary packet reordering or cross-generation ancestry resolution.
 Freeze issued snapshots as values. Later admission or bank eviction cannot
 rewrite an original ending descriptor or an already issued forecast.
@@ -1384,7 +1497,16 @@ Register this order with the pair-grid/grouping manifest and test a saturated
 bank with unequal weights and timestamp ties, exact pair removal and density
 masking against an uncapped reference. On a log-period
 grid from 0.125 to 4 s at 1/48-octave spacing, accumulate for each accent pair
-`i<j` with at least 90% observed intervening support:
+`i<j` with at least 90% observed intervening support. Here support counts each
+canonical acquired sample once when the hop is observed and its group association
+is known; NSGT window overlap adds no samples. Freeze that cumulative count at
+the original event endpoint, reset it on a new group generation, and use endpoint
+prefix differences over elapsed samples for the interval test. Missing or
+unusable intervals add no support and still consume elapsed time. The prefix
+is part of immutable accent provenance: it cannot exceed its event time or be
+smaller than the three fully acquired canonical raw intervals through that event.
+Inconsistent increments are rejected.
+The pair kernel is:
 `w_i*w_j*max(0, 1-abs(log2((t_j-t_i)/period))/(1/24))`.
 Normalize these nonnegative sums over the grid to define proposal support; an
 all-zero sum supplies no period. All period consumers use one peak-selection
@@ -1424,7 +1546,11 @@ newly rounded evaluations. This makes f32 contribution rounding a declared
 approximation distinct from f64 summation/subtraction drift. O09/O10 compare both
 with direct all-f64 kernel recomputation, including peak/admission changes near
 ties and tiny weights; O04 includes the conversions and actual 32-byte layout.
-Later gaps do not rewrite that already heard interval. On time/cap expiry remove
+Later gaps do not rewrite that already heard interval. Normalize the positive
+part of the maintained sums and report negative summation drift separately.
+When no nonzero cached contribution remains, clear the grid so cancellation
+residue cannot create a period. This exact empty-cache reset is separate from
+the scheduled rebuild. On time/cap expiry remove
 all pairs involving the expired accent once, subtracting their cached contributions.
 A gap admits no accent, advances the physical expiry window, and permits new
 cross-gap pairs only if their original intervening-coverage test passes. Cap
@@ -1436,10 +1562,11 @@ At ten hops per cycle, conservatively allow ten new accents per resolved group:
 1,270 inserted pairs and at most 8,128 initially retained plus 1,270 new pairs
 removed. Thus incremental work is at most `(8128+2*1270)*5 = 53,340` bin additions/
 subtractions per group/cycle. A periodic rebuild adds at most 40,640 bin additions
-and 241 clears; normalization each hop adds at most 2,410 bin visits. The total
-bound is 96,631 bin visits/group/cycle, or 676,417 across seven resolved groups;
+and 241 clears; two-pass normalization adds at most 4,820 bin visits per cycle.
+Allow another 2,410 clears for ten transitions to an empty contributing cache.
+The total bound is 101,451 bin visits/group/cycle, or 710,157 across seven resolved groups;
 residual has no estimator. These are operation counts, not measured CPU time,
-and belong in the same 50 ms worker budget and benchmark. Cache at most 8,128
+and belong in the registered 40 ms p99 worker budget and benchmark. Cache at most 8,128
 pair records of 32 bytes per group (endpoints, bin indices/contributions, support
 flags), or 1,820,672 bytes for seven groups, plus fixed grid/accent arrays. Layout,
 actual visits, rebuilds and expiry bursts are part of resource reporting.
@@ -1493,7 +1620,7 @@ on development, with separate approximation flags. The reference scans at most
 comparisons each) and `8*128*7=7,168` word cases (at most 16 intervals and nine
 step comparisons each), plus deterministic dedup/ranking per resolved group and
 cycle. Include these counts, cache age and the actual grouping-refresh duration
-in the 50 ms budget. A time jump refreshes once from the current bank and records
+in the registered 40 ms p99 worker budget. A time jump refreshes once from the current bank and records
 superseded refresh slots, rather than running an unbounded catch-up loop. Retain rotations as alternatives, cap proposals at 16 per
 group by support, and keep ungrouped/unknown separately. Maintain continuous
 timing residuals: these internal proposals never quantize actual sound or command
@@ -2535,6 +2662,29 @@ a bounded runtime implementation and complete allocation/work census. This M0
 clarification is not covered by the round-39 review.
 
 The initial index is a bounded flat descriptor array, not a new search framework.
+The following eight-step rule is the frozen MR1 starting/reference policy.
+I9's engineering replay found that preserving an episode does not preserve its
+accessibility under that prefix-only ranking. The current diagnostic runtime
+therefore retains the same every-fourth-knot anchors and bounded transformation
+estimates, but ranks each anchor using 16 midpoint quantiles of the query's valid
+observed duration. It maps those samples into original reference time with the
+estimated tempo ratio and linearly interpolates only common supported values,
+without crossing a missing/gap knot. A query sample outside reference support
+adds one unit of duration-weighted index loss; it supplies no positive or negative
+correspondence evidence. Final correspondence still uses the original masked DTW,
+four or fewer 1/64 refinements and 16-knot band. Index loss is not a new head feature
+or a calibrated match probability. Eight/16-sample engineering comparisons and
+the all-knot offline reference are recorded in `docs/roadmap/temporal-dcc/i9-whole-context.md`.
+At the candidate limit, retain only complete equal-score groups: if a tied group
+would cross 16, leave that entire group unrepresented and report its size, together
+with the total pruned count. Thus retained alternatives have no identity-based
+cutoff ambiguity; pruned alternatives remain unresolved. The frozen prefix-only
+policy remains an executable comparison control, not the current live selector.
+The runtime now allows an explicit bank capacity up to 8,192, with correspondingly
+sized transport and coarse snapshots. These are engineering changes pending the
+complete O16 gate and O03 fit/validation freeze, not permission to reuse the old
+256-entry operation/memory counts or claim long-form acceptance.
+
 Index eight-step descriptors at every fourth retained knot, at most 32 anchors
 per episode, including the episode beginning and later material. Score each
 anchor's relative pitch, interval, envelope and timbre with masks and the declared
@@ -4314,7 +4464,7 @@ nor dispatches section changes. Expected return and experienced completion may
 remain uncertain or absent. An open ending is valid; agreement with the artist's
 intended closure is measured, not imposed by the runtime ending.
 
-T7 includes a separately labeled retrospective whole-piece completion instrument.
+Optional research T7 includes the following retrospective whole-piece completion instrument when finite-piece completion is the selected response; it is not a core gate (§1.1).
 After one uninterrupted hearing of the complete registered performance, with no
 replay, ask: "Considering the whole musical course you just heard, how complete
 or resolved does it feel?" Use the same five fully enumerated completion anchors
@@ -5371,7 +5521,7 @@ another group's unknown slot. Compare half and double each limit, separately, be
 realtime promotion. These numbers do not bound musical duration. Exceeding them
 must expose pruning/eviction and widen uncertainty rather than silently assert
 novelty or forgetting.
-Before freezing a model for long-form validation, M5 performs a required capacity-
+Within the optional I9/O16 research extension (§1.1), before long-form validation M5 performs a required capacity-
 sizing study on the registered long-form development material. Measure new-episode
 commitments separately from reinforcement/metadata writes, per-bus commitment-rate
 profiles, occupancy, retained-edge pressure and eviction age. Project occupancy
@@ -5385,7 +5535,7 @@ capacity, edge cap and candidate/index cutoff separately from fitted availabilit
 If the check fails, increase/revise the declared capacity or index before validation,
 repeat long-return and runtime/memory checks, and record the choice and evidence
 in technote §9.3.55. A commitment-rate extrapolation alone cannot pass this gate.
-M5 completion and M9 validation entry require this sizing record; unforeseen
+Adoption and validation entry for that research extension require this sizing record; core completion does not. Unforeseen
 validation misses still fail the frozen model and are not excused afterward. A longer-duration evaluation may require a larger or
 indexed memory; accepted limits belong to the declared operating envelope.
 
@@ -5477,7 +5627,7 @@ establishes artistic acceptance for the declared conditions.
 | T4 | Exact recurrence, transposition/tempo/timbre variation, reordered control and interruption | Correspondence retains order and identified transformations; compare recent-only, orderless and no-retrieval variants | Retrieved relation changes a local response without compulsory replay |
 | T5 | Identical local ending after continuing, closing or interrupted contexts; variable phrase length and no-gap boundaries | Distinguish boundary, closure and change: §9.4's phrase_constant, phrase_fixed_duration, phrase_gap_only, phrase_local_change and phrase_rhc_only event-time controls, plus closure_rhc_only and closure_gap_energy_2s ordinal controls | Same local sound/body admits different supported continuation/release choices because of prior context |
 | T6 | Same local passage as first occurrence and return after contrast; transformed return; development within a section | Retrieve earlier context and preserve section identity despite local motion; compare time-only and recent-context models | Return/contrast context changes local participation without Scenario labels entering perception |
-| T7 | Longer evolving pieces, multiple returns, unresolved endings and overlapping groupings | Whole-context predictions depend on remembered order and return, not total elapsed time, EOF or one slow envelope | Multiple action dimensions coexist, with no forced final unison, consonance or silence |
+| T7 (optional research) | Longer evolving pieces, multiple returns, unresolved endings and overlapping groupings | Whole-context predictions depend on remembered order and return, not total elapsed time, EOF or one slow envelope | Multiple action dimensions coexist, with no forced final unison, consonance or silence |
 
 For each comparison, record input provenance, allowed prior information, target
 availability, competing model, expected direction, and a falsifying result before
@@ -5637,6 +5787,25 @@ numerical-equivalence, sensitivity and descriptive diagnostics retain their own
 registered rules and roles. No required superiority test may be reclassified as
 descriptive or have its threshold relaxed after its results are known.
 
+### 10.2.1 Body and context interventions
+
+For articulation and its contextual connections, register three comparisons:
+(a) change body properties with identical prior sound and inferred context;
+(b) change preceding context with identical body and matched local sound; and
+(c) cross those factors to test their interaction. At each decision, retain the
+body state, feasible candidates, predicted consequences and executed action.
+Keep nuisance timbre, gain, random draws and opportunity conditions matched where
+they are not the intervention; record unavoidable differences. Do not force the
+same feasible candidate set when the body intervention changes feasibility.
+
+First test the existing body controls. A physical extension requires its own
+specified law, units, parameter provenance, resource check and affected refits;
+merely renaming a pace parameter mass does not satisfy embodiment. A predictable
+change in feasible motion, and a context effect within that feasibility, are the
+engineering targets. The corresponding heard gesture requires independent
+listening evaluation. These comparisons supplement T1 and the articulation–phrase
+connection; they do not replace T1–T7 or the four gates, and have not yet been run.
+
 ### 10.3 Four independent gates
 
 1. **Causal implementation:** no future access or label leakage; observation,
@@ -5708,43 +5877,46 @@ whole-piece judgments remain separate endpoints.
 ### 10.4 Delivery obligation index
 
 The delivery plan must contain each stable obligation ID below, linking its memo
-section to the owning milestone, planned artifact and blocking condition. Creating
-the plan completes this index mapping, not the future artifacts or gates. M0 owns
-registration; later milestones own implementation and evidence. A missing ID blocks
-plan completion. Changes to this table require the plan's matching row to change.
-The milestone table in the [delivery plan](../roadmap/temporal-dcc-completion.md)
-is the authoritative definition of M0–M9. Each M-ID referenced here must resolve
-to exactly one milestone there. Renumbering or changing a milestone's scope in
-either document requires a matching revision in the other, including its owners,
-blocking and reopening assignments; plan completion checks this bidirectionally.
-The plan's pending completion status does not license silent milestone changes.
+section to the execution owner, planned artifact and blocking condition. Creating
+the plan completes this mapping, not the future artifacts or gates. Missing IDs
+block plan completion. Requirement or owner changes must be synchronized with the
+matching delivery-plan row.
+
+The 2026-09-12 user-authorized reorganization separates technical milestones I,
+research gates R and acceptance gates A in the [execution ledger](../roadmap/temporal-dcc/milestones.md).
+The [delivery plan](../roadmap/temporal-dcc-completion.md) retains every original
+M0–M9 requirement row for historical references; existing M-IDs keep their meaning.
+Their execution ownership is superseded by the I/R/A mapping below. I0 completion
+does not establish old M0 completion. That reorganization did not change acceptance criteria. The subsequent 2026-09-13
+authorial scope revision in §1.1 moves I9/I12e/T7/O16 to optional research and overrides
+universal full-hierarchy dependencies below; the ledger records the active boundary.
 
 | ID | Memo source and required obligation | Owner | Blocks until recorded/passed |
 |---|---|---|---|
-| O01 | §7–8: hash the actual worktree, settings, existing assays and accepted audition conditions | M0 | Comparable implementation baseline |
-| O02 | §3: all present-tense temporal capabilities throughout the Manifesto, including the landscape introduction, 時間軸 mechanisms and 個体/創発 entrainment; sweep other agent-behavior claims, four numbered clauses and source ledger | M0 | Public-document reconciliation |
-| O03 | §8.1, §9.1: feature/proposal manifest, formulas, units, masks, scaling, inventories, freezes, sensitivity decisions and model replacement boundaries/version map | M0; each fitting stage | Missing replacement contract or any fit with missing or changed inputs |
-| O04 | §9.1, §9.6: hardware/channel baseline and complete tuple/grouping/timing-history/worker/Voice-decision numerical preflight with CPU headroom | M0 | Stage-1 human collection and fitting investment |
-| O05 | §10.2–3: controlled material, idioms/textures, 20–90 s/3–5 min/30 min lengths, 2/10 min returns, source/participant splits, ethics/consent/compensation and response-data protocol | M0 | All human collection including pilots; approval/determination and protocol must precede collection |
-| O06 | §9.2–5, §10.1–2: instruments, translations, uncertainty/mappings, pilot adequacy, stimulus channel/analysis mapping, event-head synthetic gate and diagnostic-only secondary grouping | M0 | Corresponding collection; inadequate pilots require revision/re-pilot before freeze |
-| O07 | §10.2: per-T primary metrics/controls and every required non-primary control statistic, interval, threshold and failure owner; practical margins from adequate instruments, clustering and power simulation | M0 | Affected component freezes and Gate-2 study; method before pilot, numbers before validation, no margin from an inadequate pilot |
-| O08 | §10.3: relation descriptions/foils, cannot-tell handling, joint success rule and fixed recruitment | M0, M7–M9 | Gate-3 validation |
-| O09 | §8.1, §9.1–6: numerical reference and fixtures for support/gaps, epoch/label/route/private-state isolation, normalization, rates, quadrature, pulse and candidate evaluation; M0 small replacement MR1, M1–M2 version/state rejection MR3 | M0–M2 | MR1 before production wiring; feature/forecast interpretation or fitting; evidence/epoch isolation must pass |
-| O10 | §9.1–5, §10.1: exhaustive fixtures, cross-strand phrase misses and cap/window/threshold/clock/handoff/retention sensitivities with advance decision rules | M2–M5 | Model freeze for each affected T row |
-| O11 | §9.3, §10.1: pre-collection synthetic recovery, heard correspondence and independent time/content/exposure memory identification | M0, M3 | Stage-1 collection; episode parameters and long-context claims |
-| O12 | §8.1, §10.1: pre-collection event-head predictive stability, finite fit/compute, full/reduced protocols, OOF, calibration, consumer split and replacement dependency/refit record | M0, M2–M7 | Boundary/type collection; replacement promotion without affected refits; integrated freeze and calibrated action columns |
-| O13 | §9.2, §10.1: pre-collection synthetic trace recovery, fixed-policy executed-outcome fit and credit/coverage fixtures | M0, M3, M6 | Stage-1 collection/trace fitting; private action use and template promotion |
-| O14 | §9.1, §9.6: bus transfer, arbitrary live bodies' own-audio descriptors, prototype/actual-Voice projection and rendered counterfactual fidelity | M6, M8 | Ordinal generation columns |
-| O15 | §9.6, §10.3: distinct identical-input on/off and changed-prefix state-intervention experiments, fixed candidate pools for pressure ablations | M6–M7 | Causal relational-effect claim |
-| O16 | §10.1: complete long-form M5 capacity sizing, roomy-bank comparison, retention/index/edge revisions | M5 | M5 completion and M9 validation entry |
-| O17 | §9.6: complete two-bus 4/16/64-Voice resource, freshness, headroom, audio, fallback and recovery report, including novel/evolving/mutated bodies and private characterization | M8 | Runtime promotion |
-| O18 | §9.4, §9.6: T2 replay through actual publication/consumption with measured timing | M8 | Live anticipation/action acceptance |
-| O19 | §9.2, §10.3: T2/T3 four-gate decision for replacing the 2x3 template only in local participation; off/passive retain the unchanged legacy behavior | M7–M9 | Local-participation template replacement; no default or O21 baseline change |
-| O20 | §5, §10.2–3: all T1–T7 four gates, five cross-scale ablations, full-piece/return and accepted-sample regressions | M9 | Temporal-DCC implementation completion |
-| O21 | §8–9.6: narrow API with shipped default off, versioned legacy baseline retained after O19, separately authored/versioned default promotion, mode-isolation fixtures, report-independent enable, air-gap and document alignment | M8–M9 | Ordinary-use/documentation completion; expected-mode/baseline and mode-isolation fixtures must pass |
-| O22 | §7, §10.3: exact review/version record, declared validity envelope, limits and canonical technote status | Plan completion; M9 implementation update | Honest distinction of design, implemented and empirically accepted states |
+| O01 | §7–8: hash the actual worktree, settings, existing assays and accepted audition conditions | I0; 各Iの変更時 | Comparable implementation baseline |
+| O02 | §3: all present-tense temporal capabilities throughout the Manifesto, including the landscape introduction, 時間軸 mechanisms and 個体/創発 entrainment; sweep other agent-behavior claims, four numbered clauses and source ledger | I0; A4 | Public-document reconciliation |
+| O03 | §8.1, §9.1: feature/proposal manifest, formulas, units, masks, scaling, inventories, freezes, sensitivity decisions and model replacement boundaries/version map | I0–I13; R1; R4 | Missing replacement contract or any fit with missing or changed inputs |
+| O04 | §9.1, §9.6: hardware/channel baseline and complete tuple/grouping/timing-history/worker/Voice-decision numerical preflight with CPU headroom | R2 | Stage-1 human collection and fitting investment |
+| O05 | §10.2–3: controlled material, idioms/textures, 20–90 s/3–5 min lengths (30 min and 2/10 min returns for optional T7 research), source/participant splits, ethics/consent/compensation and response-data protocol | R1 | All human collection including pilots; approval/determination and protocol must precede collection |
+| O06 | §9.2–5, §10.1–2: instruments, translations, uncertainty/mappings, pilot adequacy, stimulus channel/analysis mapping, event-head synthetic gate and diagnostic-only secondary grouping | R1; R3; R5 | Corresponding collection; inadequate pilots require revision/re-pilot before freeze |
+| O07 | §10.2: per-T primary metrics/controls and every required non-primary control statistic, interval, threshold and failure owner; practical margins from adequate instruments, clustering and power simulation | R1; R4; R5 | Affected component freezes and Gate-2 study; method before pilot, numbers before validation, no margin from an inadequate pilot |
+| O08 | §10.3: relation descriptions/foils, cannot-tell handling, joint success rule and fixed recruitment | R1; A1 | Gate-3 validation |
+| O09 | §8.1, §9.1–6: numerical reference and fixtures for support/gaps, epoch/label/route/private-state isolation, normalization, rates, quadrature, pulse and candidate evaluation; M0 small replacement MR1, M1–M2 version/state rejection MR3 | I0–I13; R4 | MR1 before production wiring; feature/forecast interpretation or fitting; evidence/epoch isolation must pass |
+| O10 | §9.1–5, §10.1: exhaustive fixtures, cross-strand phrase misses and cap/window/threshold/clock/handoff/retention sensitivities with advance decision rules | R3; R4 | Model freeze for each affected T row |
+| O11 | §9.3, §10.1: pre-collection synthetic recovery, heard correspondence and independent time/content/exposure memory identification | I4; R3; R4 | Stage-1 collection; episode parameters and long-context claims |
+| O12 | §8.1, §10.1: pre-collection event-head predictive stability, finite fit/compute, full/reduced protocols, OOF, calibration, consumer split and replacement dependency/refit record | R3; R4; I5–I12 | Boundary/type collection; replacement promotion without affected refits; integrated freeze and calibrated action columns |
+| O13 | §9.2, §10.1: pre-collection synthetic trace recovery, fixed-policy executed-outcome fit and credit/coverage fixtures | I10; R3; R4 | Stage-1 collection/trace fitting; private action use and template promotion |
+| O14 | §9.1, §9.6: bus transfer, arbitrary live bodies' own-audio descriptors, prototype/actual-Voice projection and rendered counterfactual fidelity | I10; I11; A3 | Ordinal generation columns |
+| O15 | §9.6, §10.3: distinct identical-input on/off and changed-prefix state-intervention experiments, fixed candidate pools for pressure ablations | I11; I12a–d; A1 (I12e only for the extension) | Causal relational-effect claim |
+| O16 | §10.1: capacity, retrieval and retention comparison for the selected long-term listener capability; old 30-minute protocol retained | Optional research I9; R3 | Validation/adoption of that research capability; does not block core milestones or A4 |
+| O17 | §9.6: complete two-bus 4/16/64-Voice resource, freshness, headroom, audio, fallback and recovery report, including novel/evolving/mutated bodies and private characterization | A3 | Runtime promotion |
+| O18 | §9.4, §9.6: T2 replay through actual publication/consumption with measured timing | I6; I11; A3 | Live anticipation/action acceptance |
+| O19 | §9.2, §10.3: T2/T3 four-gate decision for replacing the 2x3 template only in local participation; off/passive retain the unchanged legacy behavior | R5; A1; A2; A4 | Local-participation template replacement; no default or O21 baseline change |
+| O20 | §1.1, §5, §10.2–3: core T1–T6 four gates, I12a–d ablations and accepted-sample regressions; T7/I12e audited separately if adopted | A4 | Declared core completion; no whole-piece capability claim |
+| O21 | §8–9.6: narrow API with shipped default off, versioned legacy baseline retained after O19, separately authored/versioned default promotion, mode-isolation fixtures, report-independent enable, air-gap and document alignment | I1; I11; I13; A2; A3; A4 | Ordinary-use/documentation completion; expected-mode/baseline and mode-isolation fixtures must pass |
+| O22 | §7, §10.3: exact review/version record, declared validity envelope, limits and canonical technote status | 再編計画; A4 | Honest distinction of design, implemented and empirically accepted states |
 
-A design specification is complete when each T1–T7 function has a representation,
+A design specification for the declared scope is complete when each included function (core T1–T6; optional research T7) has a representation,
 update and parameter-identification rule, cross-scale connection, local consumer,
 and falsifying comparison, and review finds no remaining actionable specification
 defect. It is not a completed instrument or an experimentally validated brain

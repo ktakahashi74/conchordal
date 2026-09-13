@@ -724,7 +724,7 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5, §7 | Implemented; dedicated beat carriers and temporal scaffolds are restricted to explicit synchronization demonstrations or assays (sample 07 among the public samples) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition; distinct from internally perceiving and remembering long structure (9.3.55) |
-| Temporal structure grounded in auditory cognition | Interactions among articulation, groove, beat/meter, phrase, repetition/variation, section and whole-piece context | §9.3.55 | Baseline design reviewed; subsequent M0 numerical and model-boundary revisions have no new external review. Replacement contracts and experiments are registered, not implemented or passed. Short-time participation/history partly implemented; persistent relations, boundary/closure and long-context effects on generation remain incomplete |
+| Temporal structure grounded in auditory cognition | Core articulation, groove, beat/meter, phrase, repetition/variation and section; whole-context work is optional research | §9.3.55 | Baseline design reviewed; subsequent M0 numerical and model-boundary revisions have no new external review. Replacement contracts and experiments are registered, not implemented or passed. Short-time participation/history partly implemented; persistent relations, boundary/closure and long-context effects on generation remain incomplete |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented and off by default; physical biosignal loop remains open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations, reset NSGT history and suspend DCC pressure until a complete window is available | §6.2 | Implemented; physical-device overload validation remains open |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |
@@ -4858,6 +4858,131 @@ audition. Evidence is stored under `target/phrase-expectation/2026-09-09-continu
 
 ### 9.3.55 Temporal DCC across the hierarchy and its connection to local generation
 
+<a id="i9-scope-decision"></a>
+
+#### Core cognitive mechanisms and long-term listener research (adopted 2026-09-13)
+
+The author removed whole-context I9 from mandatory instrument completion and reassigned
+it to research on long-term listener responses. DCC grounds the sound-generating
+environment in abstractions of neurocognitive states and dynamics. Functional circuit
+correspondences guide hypotheses, but the current episode graph, DTW retrieval,
+retention/eviction rules and whole-completion head have no established mechanistic
+mapping. Engineering success or agreement with ratings alone does not establish it.
+This decision withholds mandatory status from that implementation; it does not claim
+that such representations are inherently incompatible with DCC.
+
+Scenario supplies authored macro structure and environmental conditions. Local generation
+responds through bodies and the selected cognitive environment. ListenerTwin models
+selected responses to the actual presentation; an authored return is not evidence of a
+heard return. Autonomous reconstruction of the entire form and a comprehensive human
+twin are not instrument prerequisites.
+
+Before adding a mechanism, specify its target response, primary neurocognitive evidence,
+abstracted state/update/interactions, generator or listener consumer, concrete effect on
+sound, and a comparison that distinguishes competing explanations. Derive the necessary
+memory scope from that function. Retaining effects of a distant past need not mean
+storing every event, and an unidentified update law must not be presented as a neural mechanism.
+
+Indefinitely running use is a design target alongside finite performances. Causal state
+updates do not require planned duration, EOF or whole-piece completion. Consider bounded
+state that can retain long-lived effects without requiring the full history. Whole-piece
+completion belongs to research on an explicitly bounded listening interval. This scope
+adoption does not validate implementation, resources or realtime operation for indefinite use.
+
+| Item | Adopted scope and remaining evidence |
+|---|---|
+| Core | T1–T6, I12a–d and their applicable I/R/A and O obligations. Initial diagnostic technical completion through I8 stands; cognitive, generative and artistic adoption remain separate |
+| I9 / I12e / T7 | Optional long-term listener research, held for rescoping of mechanism, response and use case; does not block core continuation or A4 |
+| O16 | Capacity, retrieval and retention acceptance for the selected long-term capability. Preserve the old 30-minute material and failures; these block that research claim, not every use case |
+| O20 / A4 | Audit core T1–T6 and four interactions; do not claim completion of the old full-hierarchy research specification or whole-piece memory |
+| I4 / I8 / R2 / A3 | Retain core memory correctness/loss tests and resource, freshness and recovery checks for all actually executed work. Reassignment does not waive existing graph costs or defects |
+
+The execution authority is `docs/roadmap/temporal-dcc/milestones.md`; prior I9 evidence
+and unmet conditions remain in `docs/roadmap/temporal-dcc/i9-whole-context.md`.
+Existing Rust, numerical fixtures, captures and failures are preserved. This revision
+changes documentary scope, execution dependencies and the Manifesto's use cases; it adds
+no computational mechanism, cognitive validation or indefinite-operation capability.
+The full-T-row, five-interaction and mandatory whole-piece protocols and JSON registrations
+below retain the old research conditions. Apply them only when that extension is selected,
+without restoring core dependencies. Re-register target/model/load/fit dependencies for a revised experiment.
+
+#### Engineering records before I9 reassignment
+
+**I9 engineering finding (2026-09-13): retention and retrieval are separate limits.**
+A full 30-minute acoustic probe stored 4,489 episodes with a 256-entry bank and
+evicted 4,233. Keeping the finite history in a larger bank removed eviction, but
+the old first-eight-knot index still missed one of three fixed return queries
+whose correspondence was supported by exhaustive same-cue search. The diagnostic
+runtime was first expanded to 8,192 entries and ranks the original anchors with 16 samples
+spread over the query's observed duration. Boundary tie groups are omitted whole
+and their loss is reported; they are not broken by episode ID. On the captured
+queries, this selector reaches earlier material at all three returns while the
+original DTW remains unchanged. Both full acoustic bus replays now complete with
+5,841 episodes, no eviction, and earlier-material access at all three fixed queries
+supported by their same-cue exhaustive references. This is a synthetic engineering probe, not registered
+long-form acceptance, authorial adoption or a real-time operating-envelope result.
+The diagnostic graph now preserves source/query support and retained unsealed
+phrase ownership. A regression showed that expiring correspondence after two
+seconds lost early matches before a long phrase sealed. Owner-bound retention
+fixes that loss without extending the original matched support. Sixteen-edge
+pruning still occurs. The independent closure-only, recent-gap/energy and elapsed-time
+completion controls are now connected with supported-mixture calibration and causal
+pre-EOF snapshots; they remain uncalibrated diagnostic comparators. Graph sizing,
+the retrieved-continuation input, expanded-capacity development comparisons and
+the complete O16 sizing record remain open. Evidence and restart conditions are in
+`docs/roadmap/temporal-dcc/i9-whole-context.md`; I9 is not complete.
+
+The new development performance exposes a further limit: all 59 and 48
+reference-supported initial episodes remain in the bank at its first two fixed
+return queries, yet the 16-candidate search reaches none. Same-query capacity
+experiments first reach earlier material at 256 and 512 candidates respectively;
+these are measurements, not adopted runtime settings. The ongoing full replay
+also exceeds the 8,192-entry bank. Separately, graph selection now prefers an
+unambiguous refinement over a cheaper band-limited alternative of the same
+episode. A failing regression and captured alternatives demonstrate this loss;
+they do not settle graph capacity or later-query replacement.
+
+The development baseline has now completed on both buses: 11,888 stored
+episodes and 3,696 evictions. All 59 reference-supported initial targets of the
+third fixed return were evicted. Explicit capacity settings now reach 16,384
+episodes and 1,024 candidates, with the same capacity propagated through the
+transport, received caches, section score buffers and stored graph edges. The
+16-edge snapshot is a preview; query/owner edge buffers are pooled and recycled.
+A 1,024-candidate 165-second replay reaches all 59 reference-supported targets
+of its first fixed query. Full 16,384-entry/512-candidate replays are running with
+frozen inputs and source hashes. Their own exhaustive-query and graph checks
+must complete before O16 adopts these settings. The current checkpoint passes
+997 Rust tests, Clippy and the all-target check; this does not complete I9.
+
+A subsequent native acquisition clock counts physical acquired samples independently
+of spectral/group support, keeps silence and warmup acquired, and bounds old gap
+prefixes after mask eviction. It matches the existing Python clock and independent
+sample unions at 916 prefix checks. This supplies acquisition evidence, not the
+still-incomplete strength/interference lifecycle. Graph witnesses now prefer
+nonambiguous, lower-cost evidence over later, worse-matching cues; equal-quality
+evidence prefers longer original support. Edge-pressure replacement uses the same
+order, without claiming the unobserved remainder of a source matched.
+A 165-second replay preserves all 1,081 episode captures and 1,075 checkpoint
+source records from the prior 512-candidate run. At that checkpoint the first
+return retains initial-material correspondence on the same 92 sources; individual
+edges still change under the finite cap. The selected query's own source disappears
+from ongoing ownership before any endpoint commitment, so its absent graph node
+is not demonstrated edge-capacity loss. Source lifecycle and same-query exhaustive
+evidence are recorded separately. This checkpoint passes 1,001 Rust tests, Clippy
+and the all-target check. The older full-length runs predate these changes; full
+graph adoption, stage-1 retention and the remaining whole-piece input stay open.
+
+Native retention arithmetic is now checked against the existing Python oracle at
+56 chronological operations, including bounded strength, competing interference,
+gap uncertainty, generation-aware rate expiry, availability-based eviction and
+immutable pre-target recognition snapshots. This remains a test-only numerical
+component: runtime stage-1 assignment, bank/graph retirement and development rate
+calibration are not connected. The live commitment ledger now orders pending
+endpoints by original observation time before sealing. A 30-second replay preserves
+all 212 original source records but reorders 34 episode identities/sequences;
+old identity-based replay evidence therefore cannot be reused for this version.
+The checkpoint passes 1,006 Rust tests, Clippy and the all-target check.
+
 The present task is temporal DCC using the existing harmonic/consonance landscape
 as an input. It includes articulation, groove, beat/meter, phrases, repetition and
 variation, sections and experience of the whole piece. Work so far concentrated on
@@ -4946,12 +5071,12 @@ A candidate preview carries hypothetical feature support separately from heard
 support, while candidate/default differences share the issue-time coverage factor.
 Rendered counterfactual continuations must validate this transfer before ordinal
 consequences are enabled. T2 also has its own human omission-expectancy judgment;
-an oscillator continuing through missing sound is not that judgment. T7 includes
-a separate retrospective whole-piece completion judgment and fitted scoring head,
+an oscillator continuing through missing sound is not that judgment. Optional research T7,
+when finite-piece completion is selected, includes a retrospective completion judgment and fitted scoring head,
 compared with short-closure, recent-energy and elapsed-time controls; the ongoing
 return/context and retrospective-completion endpoints remain distinct. An open
-ending is valid, and EOF itself never enters the prediction. Before validation,
-M5 must size memory/index capacity against complete long-form development replays
+ending is valid, and EOF itself never enters the prediction. Before validation of that
+research extension, O16 sizes memory/index capacity against complete long-form development replays
 and a roomy offline reference, preserving supported return cues at the declared
 delays. Validation failures remain failures; a foreseeable capacity artifact must
 be resolved before that freeze.
@@ -6233,7 +6358,216 @@ kernels are unchanged. Prior tests and external reviews retain their saved-versi
 scope; the in-progress packed worker integration is still unverified. Neither the
 replacement experiments nor full M0, fitting or human gates have passed.
 
+#### Adopted embodied affordance and circuit correspondence (2026-09-12)
+
+The author adopted articulation as embodied gesture production together with its
+auditory perception and prediction. Body dynamics, sensorimotor prediction and
+musical context jointly constrain local action. An affordance relates a particular
+body to its sound environment; mass alone does not determine its preferred pace.
+[The hierarchy specification §3.1](../../docs/design-notes/dcc-neurocognitive-hierarchy.md#31-adopted-circuit-and-embodied-affordance-interpretation-2026-09-12)
+records circuit/function correspondences, primary evidence and their limits.
+P/M/A cross those circuits; this is not an anatomical implementation map.
+
+The Manifesto's current time-axis text states intrinsic pace and sound duration,
+but does not explicitly express the author's limb-resonance argument. This is a
+recorded explanatory gap. Existing body controls are a starting point, not a
+validated limb mechanics model. Section 10.2.1 registers body-only, context-only
+and crossed interventions for T1 and the articulation–phrase connection. These
+requirements enter the completion plan without changing fitted parameters or
+reference equations. They remain unimplemented/unvalidated requirements of this
+adoption; earlier experiments and reviews do not certify this addition.
+
+#### Rust numerical preparation and small model exchange (2026-09-12)
+
+M0 now has safe Rust anchor/DTW and bounded query functions plus the registered
+whole-descriptor orderless control. Both feed one model-independent, bounded
+contract consumer, which preserves original support and rejects stale, retired,
+wrong-model and future results before effects. Fixed Python oracles and small
+exhaustive paths test numerical behavior; the constructed order counterexample
+establishes an algorithmic distinction, not perceived recurrence or artistic value.
+The code currently compiles for crate tests and offline resource assays; runtime
+wiring, fitted recognition and real input production remain absent. The adopted
+plan permits M1 technical work after preparation while preserving all M0 collection
+gates. The [implementation record](../../docs/roadmap/temporal-dcc/m0-rust-preparation.md)
+keeps source/input/output provenance and single-caller resource limits. The result
+is not full O04, MR3, T4/T6 adoption or M0 completion. The embodiment requirements
+above remain separate; no physical body law or R/H/C behavior changed.
+
 ## 9.4 Alignment and Extension Sequence
+
+The current scope and execution order follow the [2026-09-13 decision](#i9-scope-decision).
+Core T1–T6 and four interactions are separate from optional I9/I12e/T7/O16 research.
+The preparation records below describe their respective historical stages; the next
+core task is to specify the selected mechanism and its concrete generative effect.
+
+The ordinal preparation now also tests the specified whole-mixture loss and
+backoff order: temperature acts on the supported marginalized distribution,
+while the training prior and unknown mass stay separate. A finite statistical
+optimizer and a crossed source-family/participant fold template are implemented.
+Constructed likelihood, gradient, budget-stop and prior-isolation fixtures pass;
+these are not fitted acoustic models or O12 stability evidence. The
+[fit preparation record](../../docs/roadmap/temporal-dcc/m0-ordinal-fit-preparation.md)
+retains the missing dataset/OOF provenance, complete job matrix, calibration and M0 gates.
+
+M0's rating preparation now pins the 109-coordinate groove/desire input order,
+the specified complexity, within-group-removal and network controls, and an
+unfitted proportional-odds numerical link. A 750-digit independent CDF oracle
+checks 56 constructed conditions, including narrow categories and saturated tails.
+This establishes feature packing and link arithmetic only; acoustic producers,
+fitting budgets, remaining comparisons, calibration and T3/M0 acceptance stay open.
+The [rating preparation record](../../docs/roadmap/temporal-dcc/m0-rating-preparation.md)
+preserves these limits and the distinction between old and newly registered layouts.
+
+The first M1 input path now taps both buses after NSGT and before result
+coalescing. `temporal_mode("observe")` enables independent bounded observers;
+the default remains off. Original sample support, warmup after source gaps,
+delivery loss and end of input reach a shared UI/report snapshot. A four-condition
+offline fixture compares off/observe with/without reporting byte for byte and
+checks silence on habitat against sound on presentation. This is an acoustic
+input and diagnostic path: grouping, relations, fitted models and new generative
+effects remain absent. The [observation record](../../docs/roadmap/temporal-dcc/m1-observation.md)
+keeps the remaining M1/MR3 and full O04/M0 limits explicit. Numerical matching
+still runs in crate tests, independently of this tap.
+
+The observer now also extracts the per-frame seven-peak/residual partition and
+conserves canonical-hop mono mean-square energy across its eight trajectory slots.
+An independent rational reference checks 106 input frames. Known silence, missing
+spectral mass with positive sample energy, and acquisition warmup stay distinct.
+Peak indices are frame-local candidates, not stable ridge or source identities;
+continuity, grouping and relation inference remain open. The
+[trajectory input record](../../docs/roadmap/temporal-dcc/m1-trajectory-input.md)
+records the source and the limited kernel-cost probe separately from full O04.
+
+The next numerical preparation implements bounded ridge continuity: two distinct
+predecessor links, explicit secants and gaps, fresh split/merge identities, and
+retirement measured only in observed no-continuation time. Decimal checks cover
+160 distances; lifecycle checks include the 98-comparison cap and a 3,000-hop
+sequence. Its development scales are caller-supplied and still unfitted, so the
+tracker remains a crate-test component, separate from the wired per-frame tap.
+The [ridge preparation record](../../docs/roadmap/temporal-dcc/m0-ridge-preparation.md)
+retains that boundary and the remaining grouping/full-workload requirements.
+
+The numerical group-assignment component now compares trajectories with saved
+member sets using weighted maxima, then normalizes once with residual support.
+All rows use the old references before any refresh. An independent Decimal oracle
+checks 64 configurations and 419 supported rows; per-bin allocation tests conserve
+bus energy and distinguish unknown allocation from known silence. The 896-distance
+cap is exercised separately from the per-bin energy kernel. This component still
+requires fitted development scales, full group lifecycle and production wiring;
+see the [assignment record](../../docs/roadmap/temporal-dcc/m0-group-assignment.md).
+
+Numerical grouping now has a bounded physical-support Pearson window and
+complete-link bundle formation. Missing pairs prevent a merge without becoming
+anticorrelation; a strong A–B and B–C does not bypass a weak A–C. Independent
+oracles cover 96 windows and 480 coefficient configurations. Lossless fixture
+inputs keep a JSON parsing discrepancy separate from the correlation arithmetic.
+This remains a crate-test component; its original scope and remaining lifecycle
+work are recorded in the
+[grouping-window record](../../docs/roadmap/temporal-dcc/m0-grouping-window.md).
+
+A subsequent crate-test component checks persistence and arbitration of supplied
+immutable birth/split/merge keys. Current fractional assignments determine support,
+while attached former-parent handles remain part of the key. Missing endpoints
+reset persistence; mature proposals consume each trajectory or parent at most
+once per hop. An independent rational/dictionary/set reference agrees over 576
+endpoints. This does not yet construct the keys from final bundles and previous-hop
+assignments, validate every required cross-pair, or mutate group generations and
+capacity. The [proposal record](../../docs/roadmap/temporal-dcc/m0-proposal-persistence.md)
+keeps those obligations separate from reducer acceptance and partial cost probes.
+
+The subsequent numerical producer now constructs those keys from complete-link
+bundles and previous-hop assignments, freezes per-key former parents, validates
+all required cross-pairs, and drives persistence/arbitration. It matches an
+independent reference over 864 endpoints and connects to the physical-support
+Pearson window in a separate test. A structural inventory finding also required
+an explicit §9.2 rule: retain one merge key per unordered parent pair globally;
+continue a valid frozen key first, otherwise select the greatest minimum
+cross-correlation, with member-handle ties. Independently retaining subsets in
+multiple bundles across changing assignment snapshots can produce 24 distinct
+keys for seven parents, contradicting the intended 21-key cap. This is an
+engineering bound, not source-recovery evidence. Group generation, capacity,
+retirement and production wiring remain open; see the
+[producer record](../../docs/roadmap/temporal-dcc/m0-proposal-generation.md).
+
+The numerical group lifecycle now separates assignment preparation from commit,
+preserves that hop's original weights, and seeds fresh generations for the next
+hop. Split admission reserves both child slots before superseding a parent;
+observed retirement and dormant capacity eviction have distinct records. Missing
+energy does not advance retirement, and recovery never restores a retired handle.
+An independent slot/clock oracle covers 768 endpoints; a separate test connects
+assignment, physical Pearson support, proposal generation and group mutation.
+These tests do not provide production low-energy calibration, initialize local
+beams, or preserve the complete episode/occurrence ledger. Those obligations and
+the partial timing scope remain in the
+[lifecycle record](../../docs/roadmap/temporal-dcc/m0-group-lifecycle.md).
+
+A composed numerical acoustic frontend now preserves peak/row identity through
+ridge tracking, fractional allocation, correlations, proposals and group commit.
+Energy views carry the pre-mutation group handles; zero-energy observations remain
+known without creating zero-energy bundles. Missing spectral shape does not become
+known group silence. A two-bus constructed-PCM test uses the actual NSGT kernel,
+respecting warmup and conserving mono energy, but it is not an independent source
+recovery or stability assay. Different synthetic scan grids produced different
+topology-update rates in partial timing probes, so those runs carry no musical or
+stability acceptance claim. Production wiring, fitted scales and beam/context
+ownership remain open in the
+[composed frontend record](../../docs/roadmap/temporal-dcc/m0-acoustic-frontend.md).
+
+The numerical frontend now extracts the registered ten raw descriptor coordinates
+and four-hop accents from assigned group energy. Event intervals retain the middle
+hop while evidence cuts include all source windows and right-side availability.
+Pre-mutation handles, superseded-parent masks and single missing intervals prevent
+new children or dropped audio from inheriting unsupported differences. The accent
+floor sensitivity does not alter the descriptor coordinates. Python-reference
+fixtures and constructed-PCM NSGT tests support this limited arithmetic and causal
+claim; bounded accent delivery, descriptor compression, beam/context ownership,
+production wiring and fitted scales remain open in the
+[raw feature record](../../docs/roadmap/temporal-dcc/m0-raw-features.md).
+
+A bounded Rust accent ledger now separates ordered once-only delivery from
+retrospective retention. Expiry precedes chronological capacity eviction; cap-loss
+watermarks mask affected density windows while cumulative credit survives both.
+Independent snapshots preserve issued evidence. A counterexample in the Python
+reference showed that extending the evidence window of an existing ID could add
+a second credit; ID checks and strict event/ID ordering now reject that packet.
+The detector and existing feature coordinates are unchanged. Period-pair removal,
+coverage, full group/context ownership and production wiring remain open in the
+[accent ledger record](../../docs/roadmap/temporal-dcc/m0-accent-ledger.md).
+
+The numerical recurrence estimator now uses original event-end acquisition/association
+prefixes and 32-byte pair records. It subtracts identical cached f32 contributions
+before slot reuse, rebuilds in f64 on the registered cadence, and shares one plateau
+peak rule. Empty contributing caches clear cancellation residue. Finite all-bin
+references agree on ordinary fixtures, while an explicit near-tie case changes
+P_best after f32 rounding; extremely small weights can lose all support. These
+are retained numerical limits, not accepted perceptual stability. Updated operation
+counts include both normalization passes and empty-cache clears; grouping, full
+workload and production duties remain in the
+[period grid record](../../docs/roadmap/temporal-dcc/m0-period-grid.md).
+
+The test-only grouping inventory now consumes that same recurrence bank. Integer
+proposals search both sides of each fixed predicted boundary; cyclic words use
+consecutive intervals with separate step, repetition-duration and original-support
+checks. A single stream-time cadence keeps at most sixteen fresh proposals and
+records skipped refresh slots, source age and capacity truncation. Independent
+exhaustive fixtures agree with the bounded scan. Summed endpoint support can rank
+longer words ahead of every integer proposal; this declared ranking effect still
+needs downstream evaluation. Beam/context ownership, waveform recovery and the
+complete workload remain open in the
+[grouping inventory record](../../docs/roadmap/temporal-dcc/m0-grouping-inventory.md).
+
+The numerical acoustic front end now owns seven reusable recurrence/grouping
+pools and a separate residual accent ledger. Each hop credits its old assignment
+handles before freezing evidence and rebinding newborn generations; same-hop
+capacity replacement preserves the old final counters. Missing time expires
+retrospective banks without advancing silence retirement. An initial inline
+layout overflowed a normal test stack; constructor-owned heap pools avoid that
+failure without adding per-hop allocations. Controlled NSGT pulse/silence/steady
+inputs exercise the connection, but loose salience scales also propose the target
+period on steady input. The preexisting numerical test scales distinguish that
+small control; neither result establishes fitted perceptual recovery. Long-term
+occurrence/context ownership and full workload validation remain in the
+[recurrence ownership record](../../docs/roadmap/temporal-dcc/m0-recurrence-ownership.md).
 
 The overall roadmap remains `docs/roadmap/manifesto-alignment-and-beta.md`; the
 complete temporal-DCC delivery plan is `docs/roadmap/temporal-dcc-completion.md`.

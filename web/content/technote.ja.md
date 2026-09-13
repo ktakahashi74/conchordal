@@ -652,7 +652,7 @@ Manifesto は公約を宣言する。本章はその公約を監査する。台�
 | 集団：ニッチ・共生・地形変形 | クラウディング、リスポーン、閉ループ | §5 | 実装済み |
 | 中央指揮者の不在 | ローカルな知覚のみ。メーターは集団自身のオンセットから創発する | §4–5, §7 | 実装済み。専用の拍打ちと時間的scaffoldは明示的な同期の実演・実験に限定（公開サンプルでは07） |
 | シナリオ=マクロの演出 | ディレクターの地形操作 | §6.3.6 | 作者による構成として実装済み。長い構造を内部で知覚・記憶する役割とは区別する（9.3.55） |
-| 時間構造を聴覚認知に根差させる | アーティキュレーション、グルーヴ、拍・小節、phrase、反復・変奏、section・全曲文脈の相互作用 | §9.3.55 | 基準設計はレビュー済み。その後のM0数値・モデル境界改訂には新たな外部レビューなし。交換契約と比較手順を登録し、実装・実験は未達。短期参加と履歴は部分実装。関係の持続、境界・終止、長い文脈の生成への接続は未達 |
+| 時間構造を聴覚認知に根差させる | 本体はアーティキュレーション、グルーヴ、拍・小節、phrase、反復・変奏、section。全曲文脈は研究拡張 | §9.3.55 | 基準設計はレビュー済み。その後のM0数値・モデル境界改訂には新たな外部レビューなし。交換契約と比較手順を登録し、実装・実験は未達。短期参加と履歴は部分実装。関係の持続、境界・終止、長い文脈の生成への接続は未達 |
 | DCC 第2段階：生体信号閉ループ | `[dcc]` coupling有効時、`ListenerTwin`圧力をpitch-search temperatureへ戻す | §4.1, §6.2 | 模擬loopは実装済み・デフォルト無効。実生体信号loopは未解決 |
 | 実際に提示された音との認知的結合 | presentation専用分析。入力欠落時は観測を無効化し、NSGT履歴を消去。連続した1窓分の入力が揃うまでDCC圧力を停止 | §6.2 | 実装済み。実機での過負荷検証は未完了 |
 | 生きた演奏としての音楽 | 楽器は音声ファイル出力を持たず、別バイナリ`conchordal-render`がオフライン検証を担う | §6 | バイナリ境界として実装済み |
@@ -3921,6 +3921,97 @@ phrase・終止、行動価値、作者採用は未達のままである。Rust/
 
 ### 9.3.55 時間構造DCCの全階層と、局所生成への結合
 
+<a id="i9-scope-decision"></a>
+
+#### 本体の認知機構と長期聴取研究の範囲（2026-09-13採用）
+
+著者の判断により、全曲文脈I9をConchordal本体の必須工程から外し、長期の聴取応答を扱う研究拡張へ再設定した。
+DCCの原理は、対応する認知神経機構の状態と動態を抽象化し、音響生成の環境へ結びつけることにある。
+神経領域の機能上の対応づけは設計の手がかりだが、現行のepisode graph、DTW照合、保持・退避則、
+全曲完了感headをその機構として裏づける対応は未確立である。工学的な動作や評定への適合だけでは、この隔たりは埋まらない。
+DCCと両立できないと断定する変更ではなく、機構対応が未確立な全曲機能を本体へ必須化しないという採否である。
+
+Scenarioは作者の巨視的な構成と環境条件、生成側は身体と認知環境に応じた局所判断、
+ListenerTwinは実際のpresentationに対する選択した聴取応答を担う。Scenarioの帰還指示を、
+Twinが聞いた帰還の証拠にしない。生成側が全曲構成を再認識することや、Twinを人間の包括的な複製にすることは前提にしない。
+
+新たな機構を導入するときは、対象応答、認知神経機構の一次根拠、抽象化する状態・更新・相互作用、
+利用先、音への具体的な作用、競合説明を区別する比較を先に定める。必要な記憶の範囲はそこから選ぶ。
+長い過去の影響を残すことと、全曲の出来事を保存することを区別し、未同定の更新則を神経機構として扱わない。
+
+終端を定めない継続運転（indefinitely running）も、有限作品と並ぶ設計対象とする。
+状態更新は観測済み入力に因果的に従い、予定曲長・EOF・全曲の完了感を要求しない。
+有限資源の状態で長い影響を残す方式を検討し、全履歴の保存は一般条件にしない。
+全曲完了感は有限の聴取区間を選んだ研究課題で扱う。継続運転の実装・資源・実時間受入は、この方針採用では確認していない。
+
+| 対象 | 今回採用した範囲と、残る判定 |
+|---|---|
+| 本体 | T1–T6、I12a–I12dの四接続、該当するI/R/A・O義務。I8までの初期診断版の技術完了は維持し、認知的採用・生成結合・作者採用は別に検証する |
+| I9・I12e・T7 | 長期聴取応答の研究拡張として保留。対象機構・応答・用途を再設定してから再開する。本体の次工程やA4を止めない |
+| O16 | 選んだ長期能力の容量・検索・保持の採用条件。旧30分素材と不合格は保存し、研究拡張の採用を止める。全用途への全帰還保持要件にはしない |
+| O20・A4 | 本体T1–T6と四接続を監査する。旧全階層研究仕様や全曲記憶の完成を主張しない |
+| I4/I8・R2/A3 | 本体が使う記憶の正しさ・損失検査と、実際に動く全処理の資源・鮮度・復旧検査を維持する。既存graphの費用や不具合を移管で免除しない |
+
+実行上の正本は`docs/roadmap/temporal-dcc/milestones.md`、旧I9の結果と未達は
+`docs/roadmap/temporal-dcc/i9-whole-context.md`へ保持する。既存Rust、数値fixture、capture、失敗結果は保存した。
+今回の変更は文書上の範囲・工程・Manifestoの利用形態に限り、新たな計算機構、認知実証、継続運転能力を追加したものではない。
+以下の全T行・五接続・全曲必須の記述とJSON登録は旧全階層研究の条件を保存する。
+研究拡張を採用する場合だけその条件を適用し、本体の依存へ戻さない。新スコープの実験では対象・依存・負荷・fitを再登録する。
+
+#### I9の移管前の工学的検査記録
+
+**I9の実装検査で得た区別（2026-09-13）：保存と検索には別の上限がある。**
+30分の実音probeでは、256件bankに4,489 episodeを書き込み、4,233件が退避した。
+有限履歴を大きいbankへ保持して退避をなくしても、先頭8 knotによる従来の索引は、
+同じqueryの全保存・全探索参照が支持する3帰還中1帰還を取り逃がした。
+最初の容量拡張では8,192件まで明示指定できるようにし、元のanchorをqueryの観測支持全体から
+取る16点で順位付けする。候補境界の同点群はID順で一部だけ選ばず、群全体を未解決へ残し、
+脱落数を報告する。保存済みqueryでは3帰還とも初期素材へ到達し、最終DTWは変更していない。
+新索引の30分実音replayは両busで完走し、5,841 episode・退避0、同一queryの全探索参照が
+支持する3帰還すべてへ到達した。これは合成音による工学的probeであり、登録長尺素材の受入、
+作者採用、実時間の運用範囲の確定ではない。対応graphも元のsource/query支持と未確定phraseの
+所有へ接続した。対応を2秒で捨てると長いphraseのseal前に初期の照合を失う回帰を修正し、
+照合済み支持を延長せずに所有期間中保持する。16辺の枝刈りは依然発生するため、graph容量、
+continuation入力、development素材の参照比較とO16全体の容量採用記録は未完了。
+独立した終止headのみ・直近gap/energy・経過時間の比較controlは、支持分布の混合後に校正し、
+EOF直前の因果的snapshotを保持する経路へ接続した。いずれも未校正の診断比較器である。
+証拠は`docs/roadmap/temporal-dcc/i9-whole-context.md`へ集約した。以下の進行状況は移管前の記録であり、現在の再開条件は本節冒頭の採用範囲に従う。
+
+新しいdevelopment演奏では別の上限も確認した。最初の2帰還の固定queryで、参照が支持する
+初期素材59件／48件はbankに残っていたが、16候補検索の到達はともに0だった。
+同一queryの容量比較では256候補／512候補で初めて到達した。これらは測定条件であり、
+runtimeへの採用値ではない。実行中の全replayも8,192件bankを超えた。
+別途、graphの同一episode内の変形選択を修正した。低costだが帯域端で曖昧な候補より、
+有効な変形候補を優先する。回帰テストの失敗と保存済み候補で欠落を確認したが、
+graph容量と後続queryによる上書きの検証は残る。
+
+このdevelopment baselineは両busで完走し、11,888 episode・3,696退避となった。
+第3帰還の固定queryでは、参照が支持する初期素材59件が全て退避していた。
+現在は16,384 episode・最大1,024候補を明示設定でき、transport、受領cache、sectionのscore buffer、
+graphの保存edgeまで同じ候補容量を通す。snapshotの16辺はpreviewに分け、query／ownerの辺bufferは
+poolで再利用する。1,024候補の165秒replayでは最初の固定queryで参照支持59件全てに到達した。
+入力とsource hashを固定し、16,384件／512候補で両busの全replayを実行中である。
+このrun自身の同一query全探索・graph検査を経てからO16の容量を採用する。
+現checkpointはRust 997成功、Clippy・全target check通過。I9全体の完了ではない。
+
+続いて、音響特徴の支持とは独立した取得時計を通常observerへ接続した。無音とwarmupも取得済みとして数え、
+mask退避後の古いgap prefixには上下限を出す。既存Python時計・独立sample unionと916 prefixを照合した。
+これは取得証拠の供給であり、strength／interference lifecycleの接続完了ではない。
+graphは後続queryの時刻だけで対応を置換せず、非曖昧・低costを優先し、同品質なら元の観測区間が長い証拠を保持する。
+辺容量超過時も同じ順序を使い、未照合のsource末尾まで一致したとは扱わない。
+165秒replayでは旧512候補runの1,081 episode captureとcheckpointの1,075 source recordが全て一致した。
+最初の帰還から初期素材への対応を持つsourceは修正前後とも92件で、有限容量による個々の辺の入替えは残る。
+固定queryの元sourceは確定endpointを持つ前にongoing所有から消えたため、そのnode欠如を辺容量損失とは分類しない。
+source追跡と同一query全探索を別に記録した。現checkpointはRust 1,001成功、Clippy・全target check通過。
+先行する全長runはこの変更前の版であり、全曲graph容量の採用、stage-1保持モデル、第3の全曲入力は未完了。
+
+保持計算のRust数値準備は、既存Python参照と56回の時系列操作で照合した。上限付きstrength、競合干渉、
+欠落による不確実性、generationを区別したrate履歴の失効、availabilityによる退避、固定した事前記憶の認識を含む。
+まだtest専用の数値部品であり、通常のstage-1割当、bank／graph退役、developmentのrate校正には未接続。
+通常経路では、確定待ちの終端を元観測時刻の順に整列してから封印するよう修正した。
+30秒replayの212件の元source証拠は一致したが、34件のepisode識別番号・確定sequenceが変わった。
+旧版の識別番号に基づくreplay証拠を新しい版へ流用しない。現checkpointはRust 1,006成功、Clippy・全target check通過。
+
 今回の対象は、既存の和声・協和性ランドスケープを入力として用いる時間構造DCCである。
 アーティキュレーションとグルーヴから、拍・小節、phrase、反復・変奏、section、
 曲全体の経験までを対象に含める。これまでの作業は短期参加と音響履歴・予測へ偏り、
@@ -3990,8 +4081,8 @@ Voice自身を除いたエネルギー予測だけで評価し、共有された
 候補previewでは仮想特徴の支持と実際に聞こえた支持を分け、候補と身体の既定動作の差に
 発行時の観測支持率を共通に使う。反実仮想のrender・再解析による移転検査を通してからordinal帰結を有効にする。
 T2には省略への期待を人に尋ねる独立の課題を設けた。音が省略されても振動子が続くという出力だけでは代替しない。
-T7には全曲の完了感の回顧判断と採点headを設け、短期の終止、直近の音、経過時間だけの対照と比較する。
-進行中の帰還・文脈の判定とは別の必要条件にする。開いた終わりも妥当な対象であり、EOFを予測の入力にしない。
+研究拡張T7で有限作品の完了感を対象に選ぶ場合、回顧判断と採点headを設け、短期の終止、直近の音、経過時間だけの対照と比較する。
+その研究の帰還・文脈判定と別に評価し、本体の必要条件にはしない。開いた終わりも妥当な対象であり、EOFを予測の入力にしない。
 M5では完全な長尺developmentと容量の十分なオフライン参照を比較し、必要な帰還を保持できる記憶・index容量を
 検証前に定める。予見できる容量不足を先に解消し、検証後に起きた失敗を容量の問題として免除しない。
 
@@ -4857,7 +4948,154 @@ Python/Rustの数値一致は同一モデルの実装交換であり、MR1の代
 過去の検査・外部レビューは保存版にだけ対応し、進行中のpacked worker接続は未検証のまま残す。
 交換実験、全M0、適合、人の判定が通過したとは扱わない。
 
+#### 身体アフォーダンスと脳回路・認知機能の対応の採用（2026-09-12）
+
+アーティキュレーションを、身体に根ざしたgestureの生成と、その聴覚的な知覚・予測として
+扱う方針を作者が採用した。身体力学、感覚運動的な予測、音楽的文脈が局所行動を制約する。
+アフォーダンスは特定の身体と音環境との関係であり、質量だけで動きやすい周期は決まらない。
+[設計メモ§3.1](../../docs/design-notes/dcc-neurocognitive-hierarchy.md#31-adopted-circuit-and-embodied-affordance-interpretation-2026-09-12)に
+脳回路と認知機能の対応、一次研究と限界を記録した。P/M/Aは回路を横断する機能であり、
+ソフトウェアの各部を脳領野へ一対一で対応づけるものではない。
+
+現行Manifestoの時間軸節には固有ペースと音長があるが、作者の意図する腕・脚の共振の説明は
+明記されていない。この説明上の不足を台帳に残す。既存の身体設定は出発点であり、検証済みの
+肢体力学モデルではない。メモ§10.2.1で身体だけ、文脈だけ、両者を交差させる介入を定め、
+T1とアーティキュレーション↔フレーズ接続の検証要件として完成計画へ接続した。
+参照式・適合パラメータは変更していない。今回採用した追加要件の実装・検証は未完了であり、
+以前の実験や外部レビューの合格をこの追加へ転用しない。
+
+#### Rust数値準備と小型モデル交換（2026-09-12）
+
+M0に安全なRustのanchor／DTW・有界queryと、全記述子の順序なし対照を実装した。
+同じ契約検査用consumerが二方式を受け取り、元の支持時刻を保持して、旧世代・退役・
+別モデル・未来・遅延の結果を作用前に拒否する。固定Python参照と小型の全経路列挙を照合した。
+同じ内容の順序反例は算法上の違いを示すが、聴取者の再認や作者の音楽的採用を示さない。
+現時点の呼出し元はcrate testとオフライン資源検査であり、実音生成・runtime・適合済み再認には
+未接続である。工程改訂は準備後のM1技術実装を可能にし、M0の収集開始条件は保持する。
+[source・入力・出力と資源の記録](../../docs/roadmap/temporal-dcc/m0-rust-preparation.md)に限界を残す。
+全O04、MR3、T4/T6の採用、M0全体の完了ではない。上記の身体要件は別の未達であり、
+新しい身体法則やR/H/Cの挙動は追加・変更していない。
+
 ## 9.4 整合と拡張の順序
+
+現在の範囲と実行順序は[2026-09-13の採用判断](#i9-scope-decision)に従う。
+本体T1–T6・四接続と、研究拡張I9/I12e/T7/O16を分ける。以下の数値準備は各記録時点の履歴であり、
+本体の次工程は対象機構と具体的な生成作用の対応を定める作業である。
+
+評定準備には混合後lossとbackoffの順序も追加した。temperatureは支持された周辺分布にだけ
+適用し、訓練priorとunknown質量を分けて保持する。有限の統計optimizerと、素材family／参加者の
+交差foldテンプレートを実装した。構成したloss・勾配・予算停止・prior隔離の検査であり、
+適合済み音響モデルやO12の予測安定性を示さない。[fit準備の記録](../../docs/roadmap/temporal-dcc/m0-ordinal-fit-preparation.md)に
+実際のデータ／OOF由来・全job一覧・校正とM0の未達を保持する。
+
+M0の評定準備として、groove／参加欲求の109入力の順序、complexity・群内history除去・
+networkの各対照と、未適合のproportional-odds数値部品を登録した。独立した750桁のCDF参照で、
+狭いカテゴリと飽和tailを含む構成済み56条件を照合する。入力の組立てとlinkの算術の検査であり、
+実音producer、fit予算、残る比較、校正、T3／M0の採用は未完である。
+[評定準備の記録](../../docs/roadmap/temporal-dcc/m0-rating-preparation.md)に限界と旧入力版の扱いを残す。
+
+M1の初期入力として、両busのNSGT処理後・結果間引き前に観測経路を接続した。
+`temporal_mode("observe")`で独立した有界observerを起動し、省略時はoffを維持する。
+元のsample支持、原音欠落後のwarmup、配送欠落、EOFを同じUI／reportの要約へ渡す。
+off／observeとreport有無の4条件でオフラインWAVをbyte比較し、habitatの無音と
+presentationの有音を区別する。音響入力と診断の経路であり、grouping・関係・適合済みモデル・
+新しい生成作用はまだない。[観測実装の記録](../../docs/roadmap/temporal-dcc/m1-observation.md)に
+M1／MR3と全O04／M0の残条件を保持する。数値照合は引き続きこのtapと独立したcrate testから呼ぶ。
+
+observerへ各frameの最大7ピークと残差への配分を追加し、canonical hopのmono平均二乗
+エネルギーを8個のtrajectory枠へ保存的に配分する。独立した有理数参照で106入力frameを照合する。
+既知の無音、有音でスペクトル質量ゼロの状態、取得後のwarmupを区別する。
+ピークbinはframe内の候補であり、持続するridgeや音源のIDではない。連続性・grouping・関係推論は残る。
+[trajectory入力の記録](../../docs/roadmap/temporal-dcc/m1-trajectory-input.md)に
+sourceと限定したkernel費用の測定を保存し、全O04と区別する。
+
+続く数値準備では、有界ridge連続性の2前身リンク、secantと欠落、分裂・合流時の新identity、
+観測済みの継続なし時間だけを使う退役を実装した。Decimal参照160条件と、98比較上限、
+3,000 hopのlifecycle列を検査する。development尺度は呼出側が渡す設計で、実測固定はまだない。
+したがってtrackerはcrate test用の部品に留め、実音接続済みのframe内tapと区別する。
+[ridge準備の記録](../../docs/roadmap/temporal-dcc/m0-ridge-preparation.md)に
+この境界と、残るgrouping・全負荷の条件を保存する。
+
+音群配分の数値部品では、保存memberへの重み付き最大一致度と残差を一度だけ正規化し、
+全trajectoryの配分後に参照を更新する。独立Decimal参照64配置・419有効行を照合し、
+bin別配分のエネルギー保存と、unknown配分・既知の無音の区別を検査する。
+896距離評価の上限とbin別エネルギーkernelは別々に測定する。development尺度の適合、
+全group lifecycle、本番接続は残る。[配分の記録](../../docs/roadmap/temporal-dcc/m0-group-assignment.md)に詳細を保存する。
+
+数値groupingには、物理的なsample支持を持つ有界Pearson窓とcomplete-link bundle形成を追加した。
+欠測pairは結合を禁じるが反相関にはならず、強いA–B・B–Cから弱いA–Cを飛び越えて結合しない。
+独立参照は96窓と480係数配置を検査する。fixture入力をbit表現で固定し、JSONデコード差を
+相関演算の誤差と分けた。crate test用の部品であり、当時の実装範囲と残るlifecycle工程を
+[相関窓の記録](../../docs/roadmap/temporal-dcc/m0-grouping-window.md)に保存する。
+
+続くcrate test部品では、供給済みの固定したbirth／split／mergeキーに対する持続判定と競合処理を検査する。
+現在の分率配分から支持量を計算し、付随するformer-parent handleはキー内に保持する。
+欠測終端では持続をリセットし、成熟候補の受理ではtrajectoryと親groupの二重消費を防ぐ。
+独立した有理数・辞書・集合ベースの参照と576終端で一致した。
+最終bundleと前hop配分からのキー生成、必要なcross-pair全数の検査、group世代・容量の変更は未実装である。
+[proposalの記録](../../docs/roadmap/temporal-dcc/m0-proposal-persistence.md)で、reducerの受理・部分的な負荷測定と
+これらの残る責務を区別する。
+
+続く数値producerで、complete-link bundleと前hop配分からのキー生成、キーごとのformer parent固定、
+必要な全cross-pairの検査を持続・競合処理へ接続した。独立参照864終端と一致し、別の検査では
+物理的支持を持つPearson窓からの入力も接続した。inventory上の発見として、親割当が変化する間に
+複数bundleのsubsetを独立に保持すると、7親でも24個のmergeキーが生じ得る。
+意図した21キー上限を守るため、9.2へ「全bundleを通じてunordered parent pairごとに一キーを保持する」
+規則を補足した。有効な固定キーを優先し、新規開始時は最小cross相関が最大の候補、同点はmember handle順で選ぶ。
+これは工学的な容量規則であり、実音源の回収を示さない。groupの世代・容量・退役と本番接続は
+[producerの記録](../../docs/roadmap/temporal-dcc/m0-proposal-generation.md)に残る。
+
+数値group lifecycleには配分のprepareとcommitを設け、現hopの重みを維持したまま次hop用の新世代を作る。
+splitは二子の置き場を確保してから親をsupersedeし、観測退役とdormant slotの容量evictionを区別して記録する。
+energy欠測で退役時間を進めず、回復時に退役したhandleを復活させない。
+独立したslot／観測時計の参照768終端と一致し、別の検査では配分・物理的Pearson支持・候補生成・
+group更新を接続した。本番のlow-energy尺度、local beamの初期化、episode／occurrence ledger全体の保存は
+この検査範囲に含まれない。[lifecycleの記録](../../docs/roadmap/temporal-dcc/m0-group-lifecycle.md)に残る責務と
+部分的な負荷測定の範囲を明示する。
+
+連結した数値音響Frontendは、peak／rowの対応をridge、分率配分、相関、proposal、group更新まで保持する。
+energy viewには更新前のgroup handleを付け、既知ゼロenergyを保持しつつゼロenergyだけのbundleを作らない。
+未知のspectral shapeをgroupの既知無音へ変換しない。構成PCMの二bus検査で実NSGTを使い、
+warmupとmono energy保存を確認したが、独立した音源回収・安定性assayではない。
+模擬scanの異なるgridで更新頻度も異なったため、部分的な費用測定に音楽的・安定性の合格を付与しない。
+本番接続、適合尺度、beam／context所有は[連結Frontendの記録](../../docs/roadmap/temporal-dcc/m0-acoustic-frontend.md)に残る。
+
+数値Frontendに、配分済みgroup energyから登録10座標と四hop支持のaccentを抽出する処理を接続した。
+event区間は中央hopを保持し、証拠のcutには全source窓と右側比較の利用可能時刻を含める。
+更新前handle、superseded親のmask、単一の欠測区間によって、子groupや失われた音声へ差分を補作しない。
+accentのfloor感度比較はdescriptor座標を変更しない。Python参照fixtureと構成PCMの実NSGT検査は、
+この数値・因果的な範囲を支える。boundedなaccent配送、descriptor圧縮、beam／context所有、
+本番接続と適合尺度は[raw featureの記録](../../docs/roadmap/temporal-dcc/m0-raw-features.md)に残る。
+
+Rustの有界accent ledgerは、一度だけの順序付き配送と過去bankの保持を分ける。
+通常expiryを先に行い、容量による欠落は密度windowをmaskする。累積creditは両方の削除後も保持する。
+独立したsnapshotは後の更新で書き換えない。旧Python参照では同じIDの証拠窓を延ばすと二重creditが入り、
+ID一致検査とevent／ID順序の制約で修正した。detectorと既存の特徴座標は不変である。
+period pairの除去、coverage、group／context全体の所有と本番接続は
+[accent ledgerの記録](../../docs/roadmap/temporal-dcc/m0-accent-ledger.md)に残る。
+
+数値的な周期候補器は、原event終端の取得・association支持counterと32-byteのpair recordを使う。
+slot再利用前に同じ保存済みf32寄与を減算し、登録cadenceでf64再構築を行い、共通のplateau規約でpeakを選ぶ。
+寄与cacheが空なら加減算残差を消す。通常の有限fixtureは全bin参照と一致したが、
+近接同点ではf32丸めによってP_bestが変わり、極小weightでは支持が失われた。知覚的安定性の合格へ読み替えない。
+正規化二passと空cache clearを費用に含める。grouping・全負荷・本番接続の残務は
+[period gridの記録](../../docs/roadmap/temporal-dcc/m0-period-grid.md)に残る。
+
+検査内のgrouping inventoryは、この同じ周期bankを使う。整数候補は固定した予測境界の前後を探索し、
+cyclic wordは連続区間に対してstep、二反復のduration、元の観測支持を個別に検査する。
+stream時刻の共通cadenceで最大16件を保持し、飛ばした更新slot、元の支持時刻、容量不足を記録する。
+有界な探索結果は独立全列挙fixtureと一致した。端点支持の総和では長いwordが整数候補全てを押し出す場合があり、
+この順位規則の影響は下流評価に残す。beam／context所有、実音回収、全負荷の残務は
+[grouping inventoryの記録](../../docs/roadmap/temporal-dcc/m0-grouping-inventory.md)に残る。
+
+音響Frontendの数値経路は、再利用する七組の周期／grouping poolと独立したresidual ledgerを所有する。
+各hopは更新前handleへcreditを付け、旧証拠frameを保存してから新世代へbindingを変える。
+同一hopの容量交換でも旧countを保持し、欠測のbank失効と無音退役を分ける。
+最初のinline配置で通常test stackがoverflowしたため、構築時にpoolをheap確保する配置へ変更した。
+実NSGTのパルス／無音／一定振幅対照では、緩いsalience尺度は一定振幅にも目標周期を提案した。
+既存testの基準尺度はこの小さな対照を区別したが、適合済みの知覚的回収とはしない。
+長期occurrence／context所有、全fitと全負荷の残務は
+[recurrence所有の記録](../../docs/roadmap/temporal-dcc/m0-recurrence-ownership.md)に残る。
 
 全体のroadmapは`docs/roadmap/manifesto-alignment-and-beta.md`、時間構造DCCの
 完成までの計画は`docs/roadmap/temporal-dcc-completion.md`に記録した。

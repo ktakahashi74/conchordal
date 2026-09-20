@@ -1,0 +1,383 @@
+{
+  "schema": "i10-shared-consumer-v1",
+  "status": "readonly_publication_and_rejection_path_verified_ordinary_positive_missing",
+  "artifact_directory": "target/i10-shared-consumer-20260918",
+  "plan": {
+    "scope": "Read-only consumer of compact immutable whole-cell prototype tables. Actual body descriptor binding is diagnostic association only; ordinal transfer remains unvalidated and action effects stay disabled. Keep both raw conditional distributions/support/provenance, reject stale/future/wrong-generation or unknown selected cells without neighbor search. Preserve actual-body energy and frozen private trace.",
+    "source_before_sha256": {
+      "src/temporal_cognition/action_profiles.rs": "f15833d940e5e8413762c192865b21252b0b5fc011912e26b486ea73de4c29ec",
+      "src/temporal_cognition/observation.rs": "aadb082e29b1c55cae6b872b282c81f6697ac7befb9aacda91b1b4bd28015bc3",
+      "src/life/action_candidates/energy.rs": "4940222eb3e05b75119c9c78aee8bd33ece6b77de8fb88847d92b698b133276d",
+      "src/life/action_candidates/live.rs": "23d9edfa3f56070887188872a124b089a486d0ac9acd94004725063abae052b7",
+      "src/life/action_observation.rs": "eb0c48f8bb5c2a27b1c578a9308874a5b4cf3135cad23da26b570cf3e7e94aee",
+      "src/life/schedule_renderer.rs": "f543a32789b6cc134731a76dd5842aa0d8839d3a2b9b72b27830d50b47bf4c31",
+      "src/runtime/mod.rs": "474f0243285ecee582b379173c61c435284dcf4940acc7f3f766b9f0d4365178",
+      "src/temporal_cognition/phrase.rs": "ffcfd1b76250fe43a0baa5c3960f2ad9a4b7324c64243167d24ef0795ccf7777",
+      "src/temporal_cognition/action_profiles/tests.rs": "a4b4f94b89c6a60609536673b554b6492ab4573ed1ee79a43c844ef668aa74ed"
+    },
+    "before_binary_sha256": "cf466e5a0f0713409745265e290189dfb93910bccefd7080d2d389f170d01dbc",
+    "ordinary_inputs_sha256": {
+      "target/i10-shared-consumer-20260918/inputs/config.toml": "e2c0e475b4ffba2e86abc8bcbdceee659ba7435e2967c05cb3489c2eb6c8a3e7",
+      "target/i10-shared-consumer-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+      "target/i10-shared-consumer-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+      "target/i10-shared-consumer-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+      "target/i10-shared-consumer-20260918/inputs/dev-sine-110-flow.rhai": "7544de4049222dfccd8a5c3f88ffed87c127e8426f7efd843214d72bb9bf0daf",
+      "target/i10-shared-consumer-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+      "target/i10-shared-consumer-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+      "target/i10-shared-consumer-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957"
+    },
+    "additional_case": "110 Hz/0.04 sine flow is fixed before rendering, to exercise association near the existing110 Hz medoids. It is not an eligible-transfer declaration."
+  },
+  "source_after_sha256": {
+    "src/temporal_cognition/action_profiles.rs": "658631c81966dcb482c90d298573e85c2fd68f0f63ab22ad2b6d16f6743e3c46",
+    "src/temporal_cognition/observation.rs": "f0e9032003b35f55dd76356b0fadaedf09a30a0ab166c46a6fc4c39eb2d96278",
+    "src/life/action_candidates/energy.rs": "b1d932677f21b471d2781542646481a95eab1ad2f20db26311bde9a3bd503885",
+    "src/life/action_candidates/live.rs": "64b8be8d1e0390063c18d7952e08ca0f29151a7b12b4233ac887023bea940592",
+    "src/life/action_observation.rs": "044880556e8e15875ced36c740ced82a5c0e9367e3fe8bb65615c19930f5c128",
+    "src/life/schedule_renderer.rs": "61556ba1b2f47f3013947f2166e1deea6ce1da758be123048dca6c53f78011d1",
+    "src/runtime/mod.rs": "95a3b3ac3bab32dd56d1d36493c082b643cf693564a39d6e28156fc38e98e23c",
+    "src/temporal_cognition/phrase.rs": "265c468d0f23d3c21ad87f0b9d34d9988d3765a5e2c5fe60a92c061a20ad2381",
+    "src/temporal_cognition/action_profiles/tests.rs": "57ad3078212e3d7284152bdb95e371365c30cc77ce1402866686832e058751aa",
+    "src/temporal_cognition/action_profiles/consumer.rs": "94bc31fa266393b1f7b1f82724d1858434f6385207b02dd6cae1c9a4602bc18f"
+  },
+  "contract": {
+    "publication": "Atomic immutable compact table published by the ordinary shared worker before deterministic acknowledgment. Report snapshot key and table key must match; retirement or EOF clears the publication. Runtime reads with try_lock and never falls back to a mismatching table.",
+    "freeze": "Clone at most two Arc handles and matching source/body-generation descriptor associations into each existing bounded request packet. Background work uses only the issue-time handles; it does not reload newer tables or issue a command.",
+    "lookup": "Validate routing, ownership, body and table models, bus, support availability, age below0.5s and group bus/epoch. Select the nearest actual rounded integer grid point with earlier ties; a missing chosen cell or either missing head stays unknown. No interpolation, neighbor search, extrapolation, calibration or joint reweighting.",
+    "raw_difference": "Return candidate and identical-body-default whole cells, both raw ordinal distributions, support and provenance. Per-head expected-rating difference exists only when both reported support masses are positive.",
+    "storage": "One compact boxed1792-cell publication is below1MiB in the unit fixture and normal reports, and below one quarter of the original full Cell table in the rebuild test. Publication remains shared by Arc; lookups allocate no per-query Box."
+  },
+  "verification": {
+    "candidate_records": 14,
+    "bindings": 4,
+    "table_origins": 28,
+    "origins_found_in_decimated_reports": 28,
+    "common_observations": 858,
+    "paired": 0,
+    "nonzero_raw_differences": 0,
+    "cases": 7,
+    "status_counts": {
+      "no_body_binding": 994,
+      "unrouted_default": 194
+    },
+    "body_descriptor_distances_checked": 816,
+    "all_wav_pairs_exact": true,
+    "existing_observation_and_learning_records_exact": true
+  },
+  "cases": [
+    {
+      "case": "dev-harmonic-entrained",
+      "wav_sha256": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+      "existing_records": {
+        "onset": 11,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 23,
+        "self_sound_descriptor_prediction": 23,
+        "population_step": 550,
+        "private_participation_trace": 23
+      },
+      "common_observations": 116,
+      "candidate_records": 1,
+      "bindings": 1,
+      "table_origins": 2,
+      "origins_found_in_decimated_reports": 2,
+      "status_counts": {
+        "no_body_binding": 47,
+        "unrouted_default": 47
+      },
+      "paired": 0,
+      "nonzero_raw_differences": 0
+    },
+    {
+      "case": "dev-harmonic-pulse",
+      "wav_sha256": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+      "existing_records": {
+        "onset": 10,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 20,
+        "self_sound_descriptor_prediction": 20,
+        "population_step": 550,
+        "private_participation_trace": 20
+      },
+      "common_observations": 116,
+      "candidate_records": 2,
+      "bindings": 0,
+      "table_origins": 4,
+      "origins_found_in_decimated_reports": 4,
+      "status_counts": {
+        "no_body_binding": 16
+      },
+      "paired": 0,
+      "nonzero_raw_differences": 0
+    },
+    {
+      "case": "dev-modal-flow",
+      "wav_sha256": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+      "existing_records": {
+        "onset": 12,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 25,
+        "self_sound_descriptor_prediction": 25,
+        "population_step": 550,
+        "private_participation_trace": 25
+      },
+      "common_observations": 116,
+      "candidate_records": 3,
+      "bindings": 3,
+      "table_origins": 6,
+      "origins_found_in_decimated_reports": 6,
+      "status_counts": {
+        "unrouted_default": 147,
+        "no_body_binding": 147
+      },
+      "paired": 0,
+      "nonzero_raw_differences": 0
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "wav_sha256": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+      "existing_records": {
+        "onset": 20,
+        "body_default": 156,
+        "body_descriptor": 156,
+        "self_sound_outcome": 41,
+        "self_sound_descriptor_prediction": 41,
+        "population_step": 778,
+        "private_participation_trace": 41
+      },
+      "common_observations": 162,
+      "candidate_records": 5,
+      "bindings": 0,
+      "table_origins": 10,
+      "origins_found_in_decimated_reports": 10,
+      "status_counts": {
+        "no_body_binding": 490
+      },
+      "paired": 0,
+      "nonzero_raw_differences": 0
+    },
+    {
+      "case": "dev-sine-flow",
+      "wav_sha256": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+      "existing_records": {
+        "onset": 13,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 27,
+        "self_sound_descriptor_prediction": 27,
+        "population_step": 550,
+        "private_participation_trace": 27
+      },
+      "common_observations": 116,
+      "candidate_records": 3,
+      "bindings": 0,
+      "table_origins": 6,
+      "origins_found_in_decimated_reports": 6,
+      "status_counts": {
+        "no_body_binding": 294
+      },
+      "paired": 0,
+      "nonzero_raw_differences": 0
+    },
+    {
+      "case": "dev-sine-hold",
+      "wav_sha256": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+      "existing_records": {
+        "onset": 1,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 2,
+        "self_sound_descriptor_prediction": 2,
+        "population_step": 550,
+        "private_participation_trace": 2
+      },
+      "common_observations": 116,
+      "candidate_records": 0,
+      "bindings": 0,
+      "table_origins": 0,
+      "origins_found_in_decimated_reports": 0,
+      "status_counts": {},
+      "paired": 0,
+      "nonzero_raw_differences": 0
+    },
+    {
+      "case": "dev-sine-silent",
+      "wav_sha256": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+      "existing_records": {
+        "onset": 0,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 0,
+        "self_sound_descriptor_prediction": 0,
+        "population_step": 550,
+        "private_participation_trace": 0
+      },
+      "common_observations": 116,
+      "candidate_records": 0,
+      "bindings": 0,
+      "table_origins": 0,
+      "origins_found_in_decimated_reports": 0,
+      "status_counts": {},
+      "paired": 0,
+      "nonzero_raw_differences": 0
+    }
+  ],
+  "binding_audit": "binding-audit.json",
+  "tests": {
+    "suites": 31,
+    "passed": 1186,
+    "failed": 0,
+    "ignored": 38,
+    "status": "cargo test exit=0 @ 2026-09-18T18:50:24+09:00"
+  },
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.9553431030362844
+    },
+    {
+      "command": [
+        "cargo",
+        "check",
+        "--all-targets"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.5446873899782076
+    },
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7029254889930598
+    },
+    {
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--bin",
+        "conchordal-render"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 53.211486436019186
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.046121181978378445
+    }
+  ],
+  "verification_adjustment": "Initial verifier incorrectly required exact equality between the hop-issued body_default Input and the onset-relative local energy default. They intentionally use different decision origins. Replaced with the same tone ID, granted opportunity time and excitation time checks; exact pre/post energy/private-trace comparison remains required.",
+  "limits": [
+    "No ordinary paired raw-head positive was observed: all24 routed candidate bus records were outside the frozen descriptor gate; four associations were on unrouted buses and rejected. Descriptor proximity is not physical body-transfer eligibility.",
+    "The connected output preserves raw closure/continuation distributions and their supports. It does not implement calibrated actual-body consequences, complete heads, joint inference or an ordinal action pressure.",
+    "The existing actual-body experiment is one granted onset recipe with retained tones and known release, assuming no subsequent policy commands. Full multi-command/default semantics and ungranted opportunities remain open.",
+    "Publication and lookup costs are included in existing worker/background meters, but whole-worker, all-Voice and live-audio acceptance remains unproven. Pending scope and evaluation choices are not resolved here.",
+    "I10 remains incomplete. I9 remains held and I11 generation effects remain disabled."
+  ],
+  "artifact_sha256": {
+    "target/i10-shared-consumer-20260918/acquire.py": "23ea468ab1d9e009672b83dda1c8d75ea1c42e144cfbbda4fc21f76a304329c5",
+    "target/i10-shared-consumer-20260918/after-render": "a5a64a65b406576b32e435b1c0c0aaa817a002adb72e28c587b1bca37c3f3f1b",
+    "target/i10-shared-consumer-20260918/before/src/life/action_candidates/energy.rs": "4940222eb3e05b75119c9c78aee8bd33ece6b77de8fb88847d92b698b133276d",
+    "target/i10-shared-consumer-20260918/before/src/life/action_candidates/live.rs": "23d9edfa3f56070887188872a124b089a486d0ac9acd94004725063abae052b7",
+    "target/i10-shared-consumer-20260918/before/src/life/action_observation.rs": "eb0c48f8bb5c2a27b1c578a9308874a5b4cf3135cad23da26b570cf3e7e94aee",
+    "target/i10-shared-consumer-20260918/before/src/life/schedule_renderer.rs": "f543a32789b6cc134731a76dd5842aa0d8839d3a2b9b72b27830d50b47bf4c31",
+    "target/i10-shared-consumer-20260918/before/src/runtime/mod.rs": "474f0243285ecee582b379173c61c435284dcf4940acc7f3f766b9f0d4365178",
+    "target/i10-shared-consumer-20260918/before/src/temporal_cognition/action_profiles/tests.rs": "a4b4f94b89c6a60609536673b554b6492ab4573ed1ee79a43c844ef668aa74ed",
+    "target/i10-shared-consumer-20260918/before/src/temporal_cognition/action_profiles.rs": "f15833d940e5e8413762c192865b21252b0b5fc011912e26b486ea73de4c29ec",
+    "target/i10-shared-consumer-20260918/before/src/temporal_cognition/observation.rs": "aadb082e29b1c55cae6b872b282c81f6697ac7befb9aacda91b1b4bd28015bc3",
+    "target/i10-shared-consumer-20260918/before/src/temporal_cognition/phrase.rs": "ffcfd1b76250fe43a0baa5c3960f2ad9a4b7324c64243167d24ef0795ccf7777",
+    "target/i10-shared-consumer-20260918/before-render": "cf466e5a0f0713409745265e290189dfb93910bccefd7080d2d389f170d01dbc",
+    "target/i10-shared-consumer-20260918/binding-audit.json": "06a71610815c389842e7aab8a9dfb4934ea464f60d0c786e77640e76ca05f302",
+    "target/i10-shared-consumer-20260918/check-0.log": "db88004edada17c05a71a160088d47f9a3f2db2224ae3e843622643c5e29b28b",
+    "target/i10-shared-consumer-20260918/check-1.log": "09068f156a40dc8311b62e1d00972dc1e8fe30f8c40a3127767b5eb8094adb96",
+    "target/i10-shared-consumer-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-shared-consumer-20260918/check-3.log": "39a297adbfec613de4d763ac730cc6b3db51ace13e1dc73523204f00ccd9df0b",
+    "target/i10-shared-consumer-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-shared-consumer-20260918/checks.json": "6aca5f3bdc7b7be18f102071b921133693fa7cf30442f46f21d1a1bbf465d7c2",
+    "target/i10-shared-consumer-20260918/checks.py": "beec1053ef3a07cb003e9c87efbb6c4ec5bc683da44b392cecd2e65eb1acac69",
+    "target/i10-shared-consumer-20260918/consumer-tests-fixed.log": "5d3bbde8064fa48a186405bee2495475a252ef60e74c8ac553b9d496fb7bc83f",
+    "target/i10-shared-consumer-20260918/consumer-tests.log": "4c5edfa9209da311a375380548070037bf0c45e472abe552b9e98b2c7d553053",
+    "target/i10-shared-consumer-20260918/dev-harmonic-entrained-after.jsonl": "e31cb05b5f358bde522e263f1154acda8988111293e5bf0b8e08fd6945da8eb2",
+    "target/i10-shared-consumer-20260918/dev-harmonic-entrained-after.log": "44b89c4665592a38656cd5f0e05cf8464135991007fbbd5dcd22c6a1ed474f89",
+    "target/i10-shared-consumer-20260918/dev-harmonic-entrained-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-shared-consumer-20260918/dev-harmonic-entrained-before.jsonl": "1d09ae71e7d9e1b96ee8e03e84ab633f07e63767b3a2f7784ba4735cba0b8073",
+    "target/i10-shared-consumer-20260918/dev-harmonic-entrained-before.log": "f4adcf6fd7dbd3ba9c04523045535a6099719702e89fc4010f8e22d2ec472018",
+    "target/i10-shared-consumer-20260918/dev-harmonic-entrained-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-shared-consumer-20260918/dev-harmonic-pulse-after.jsonl": "681fe90d7393e2e054e9480bfe432882c80f74ae59cb97a72c6997c5d29002a8",
+    "target/i10-shared-consumer-20260918/dev-harmonic-pulse-after.log": "2898d5f8e303b2777037f9e8340f9641b11aa56eb5d87b084077f4c5b0335ba8",
+    "target/i10-shared-consumer-20260918/dev-harmonic-pulse-after.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-shared-consumer-20260918/dev-harmonic-pulse-before.jsonl": "6482d9269e56ce44a20de55fe328ae310595e316c3c48df031ac5276f5dbbc89",
+    "target/i10-shared-consumer-20260918/dev-harmonic-pulse-before.log": "b006f23be459d2776ad4cdf35033b92d393618fbb7c16c0a27878a3ff4c52849",
+    "target/i10-shared-consumer-20260918/dev-harmonic-pulse-before.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-shared-consumer-20260918/dev-modal-flow-after.jsonl": "1204fcfcf705aeade3e13526b87b56f063c5ba473106101c882f888c3da93034",
+    "target/i10-shared-consumer-20260918/dev-modal-flow-after.log": "025b35232b5f9f6dcd85f81708aa11d078a46a7a94f8624cd651897a7b831721",
+    "target/i10-shared-consumer-20260918/dev-modal-flow-after.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-shared-consumer-20260918/dev-modal-flow-before.jsonl": "2ae443d01b8295b9b9e1222b5323a178ff5249c064f62e179436b3fe94fb792b",
+    "target/i10-shared-consumer-20260918/dev-modal-flow-before.log": "3597c6a8b50783e717aa2033fdd454d3240c69397e29eb699ea9dcf01736102e",
+    "target/i10-shared-consumer-20260918/dev-modal-flow-before.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-shared-consumer-20260918/dev-sine-110-flow-after.jsonl": "c3203f511bffc1b20f621a58066d98ff1aa7624a22f77b138239a3a61f04636c",
+    "target/i10-shared-consumer-20260918/dev-sine-110-flow-after.log": "bb43f25780f1f8ec20cd20ce532a1a9d9b2ae9c5d534c6d0316458c23559b214",
+    "target/i10-shared-consumer-20260918/dev-sine-110-flow-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-shared-consumer-20260918/dev-sine-110-flow-before.jsonl": "98f08b328e83e3d7df3ee1cafbe2930b2db44050e27b92b60d40e0f46aaf3aa1",
+    "target/i10-shared-consumer-20260918/dev-sine-110-flow-before.log": "4acbe51b05fda66243a192b880403c3ee14f30daef5a915b54b7f2a742430656",
+    "target/i10-shared-consumer-20260918/dev-sine-110-flow-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-shared-consumer-20260918/dev-sine-flow-after.jsonl": "50551b6cff2a236dbc453e8515cb3621935669352b644f57caec5d7466387804",
+    "target/i10-shared-consumer-20260918/dev-sine-flow-after.log": "8020e07d6076d72b060cceb187295105f2989e6fb0f1de1310653f88de0987d5",
+    "target/i10-shared-consumer-20260918/dev-sine-flow-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-shared-consumer-20260918/dev-sine-flow-before.jsonl": "87f79d90591cf2005ffd6c20a652f2f1bea7dc2765e5d9dbb4e53bb279656b92",
+    "target/i10-shared-consumer-20260918/dev-sine-flow-before.log": "8f33cee12c370ccf0e8bce60b235cb43c7eebb2eccc58286c2b5ad7ae5eba952",
+    "target/i10-shared-consumer-20260918/dev-sine-flow-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-shared-consumer-20260918/dev-sine-hold-after.jsonl": "cb69f55200f4355501f965c7e2afa07b10d95febe55f97fb973e22107148aa3f",
+    "target/i10-shared-consumer-20260918/dev-sine-hold-after.log": "c61e55d5885007c9ea8271191f4b2ce7f01136f5041c550911a26595e7ffd6ba",
+    "target/i10-shared-consumer-20260918/dev-sine-hold-after.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-shared-consumer-20260918/dev-sine-hold-before.jsonl": "88c8a366dd831a908c629d3d32b41d962360a624fec3e3e52cf1348a38775f65",
+    "target/i10-shared-consumer-20260918/dev-sine-hold-before.log": "14337b8b0ef1df3d2174bb24eb01b2a041426733d68f765e028c809209d01dd4",
+    "target/i10-shared-consumer-20260918/dev-sine-hold-before.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-shared-consumer-20260918/dev-sine-silent-after.jsonl": "ecff738ec21ff659673512ae6700855dc9fdae09ee6dbed1c56a401ad05a01f2",
+    "target/i10-shared-consumer-20260918/dev-sine-silent-after.log": "16bc7df90b7dc976e5a2ada7a15561e0ae5d560efbbe1c777c5546263adb0f9c",
+    "target/i10-shared-consumer-20260918/dev-sine-silent-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-shared-consumer-20260918/dev-sine-silent-before.jsonl": "ebf7363b5c03488fdb54b85787745678b129dc9ffa137b033460bd94202ec00c",
+    "target/i10-shared-consumer-20260918/dev-sine-silent-before.log": "3fbb36e7099771d202f1b7d7c4e06a1f69342c540cda02dd81838dda6f1fd5d6",
+    "target/i10-shared-consumer-20260918/dev-sine-silent-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-shared-consumer-20260918/initial-check.log": "f51a587247c898e3ba534a98bf105414dc2dcee15cf12862f20a37978103e0c2",
+    "target/i10-shared-consumer-20260918/initial-clippy.log": "e8e0d1b2af2f83b00492807b2dc78abd845e60786bc9834d9518ede1bdba372f",
+    "target/i10-shared-consumer-20260918/inputs/config.toml": "e2c0e475b4ffba2e86abc8bcbdceee659ba7435e2967c05cb3489c2eb6c8a3e7",
+    "target/i10-shared-consumer-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+    "target/i10-shared-consumer-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+    "target/i10-shared-consumer-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+    "target/i10-shared-consumer-20260918/inputs/dev-sine-110-flow.rhai": "7544de4049222dfccd8a5c3f88ffed87c127e8426f7efd843214d72bb9bf0daf",
+    "target/i10-shared-consumer-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+    "target/i10-shared-consumer-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+    "target/i10-shared-consumer-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957",
+    "target/i10-shared-consumer-20260918/inspect_bindings.py": "7c913e0c1151c1d13a2f3bd58734bdb936ac381fc6f46c89941f361936d88dc8",
+    "target/i10-shared-consumer-20260918/plan.json": "a86d61087667a30221f6da3669b832f08eb20e758398a3e2f0e526f0a7df946a",
+    "target/i10-shared-consumer-20260918/pre-routing-test-report.txt": "976103cf9ed72f0964245b83b10424f53f63452062e5f6945ee445942f2a41a7",
+    "target/i10-shared-consumer-20260918/pre-routing-test-status.txt": "14223fa3e2c942aec8423d077ff8694646e40ab8d2100ecb78d7735007dcf732",
+    "target/i10-shared-consumer-20260918/register.py": "ab15b2f398abfcc6f93afedf2daf783af657110638693b5229f03b73ec5d11d0",
+    "target/i10-shared-consumer-20260918/runs.json": "07705705bb5be5689d005b291c4bd0eb3294d6ee5e39440303062ee890446c76",
+    "target/i10-shared-consumer-20260918/test_report.txt": "9da832d5e085a9372a8e189eda57b9b3c5ab7344d42a3051916ce7b831ff04f5",
+    "target/i10-shared-consumer-20260918/test_status.txt": "832fb9f8bec166d73e084ba1c514656784bd6f57228ab8b38d10540d143a3e69",
+    "target/i10-shared-consumer-20260918/verification.json": "4a0b47dba3cf8bed30a61b2ea33be4232dfa7369af775fe70962dd9a38a7067e",
+    "target/i10-shared-consumer-20260918/verify.py": "9ea19f9f48c0a7ec52ad4228a93572f34ad094624764fd5f2ff61839dd372be4"
+  }
+}

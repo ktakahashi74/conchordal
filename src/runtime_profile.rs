@@ -27,6 +27,7 @@ pub(crate) struct HopProfile {
     pub(crate) reports_us: f64,
     pub(crate) render_route_us: f64,
     pub(crate) synthesis_us: f64,
+    pub(crate) rendering: Option<crate::life::schedule_renderer::RenderProfile>,
     pub(crate) rendered_tone_count: usize,
     pub(crate) post_render_us: f64,
     pub(crate) worker_allocations: Option<AllocationCounts>,
@@ -52,6 +53,37 @@ struct AudioProfile {
 }
 
 #[derive(Serialize)]
+pub(crate) struct SharedWorkerProfile {
+    pub bus: u8,
+    pub state: crate::temporal_cognition::observation::ObservationState,
+    pub received_frames: u64,
+    pub source_missing_samples: u64,
+    pub delivery_dropped_frames: u64,
+    pub rejected_frames: u64,
+    pub worker_resources: Option<crate::temporal_cognition::resources::Snapshot>,
+    pub action_profile_resources: Option<crate::temporal_cognition::action_profiles::Resources>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct BodyWorkerProfile {
+    pub finished: bool,
+    pub input_end: u64,
+    pub processed_frames: u64,
+    pub invalid_hops: u64,
+    pub capture_drops: u64,
+    pub outside_voice_hops: u64,
+    pub worker_resources: crate::temporal_cognition::resources::Snapshot,
+}
+
+#[derive(Serialize)]
+pub(crate) struct BackgroundProfile {
+    pub scope: &'static str,
+    pub shared: [Option<SharedWorkerProfile>; 2],
+    pub body: Option<BodyWorkerProfile>,
+    pub candidate_energy: Option<crate::life::action_candidates::energy::Stats>,
+}
+
+#[derive(Serialize)]
 pub(crate) struct RunProfile {
     #[serde(skip)]
     file: File,
@@ -59,6 +91,7 @@ pub(crate) struct RunProfile {
     audio_counters: Option<Arc<AudioCallbackCounters>>,
     schema_version: u32,
     scope: &'static str,
+    rendering_scope: &'static str,
     allocation_scope: &'static str,
     seed: u64,
     report_enabled: bool,
@@ -73,6 +106,7 @@ pub(crate) struct RunProfile {
     hop_capacity: usize,
     audio_output: &'static str,
     audio: Option<AudioProfile>,
+    pub(crate) background: Option<BackgroundProfile>,
     summary: ProfileSummary,
     hops: Vec<HopProfile>,
 }
@@ -109,8 +143,9 @@ impl RunProfile {
         Ok(Self {
             file,
             audio_counters,
-            schema_version: 2,
+            schema_version: 4,
             scope: "worker process_hop entry through return; includes report serialization/write; excludes profile row storage, final profile write, worker pacing sleep, and final report summaries",
+            rendering_scope: "sequential wall intervals nested inside synthesis_us: setup includes capture acquisition and retired-tone cleanup; commands includes body/default prediction and candidate submission; samples includes tone rendering and per-sample private capture; history includes own-sound matching and its report writes; observation includes source-energy accumulation and outcome/trace completion; capture_delivery publishes the private PCM frame; not separate CPU times or the combined decision budget",
             allocation_scope: "worker thread Rust alloc/alloc_zeroed/realloc successful calls and requested bytes during each hop; excludes profile storage, analysis/callback threads, native malloc, and final summaries",
             seed,
             report_enabled,
@@ -129,6 +164,7 @@ impl RunProfile {
                 "no_device"
             },
             audio,
+            background: None,
             summary: ProfileSummary::default(),
             hops,
         })
@@ -300,6 +336,7 @@ mod tests {
                 reports_us: 0.0,
                 render_route_us: 0.0,
                 synthesis_us: 0.0,
+                rendering: None,
                 rendered_tone_count: 0,
                 post_render_us: 0.0,
                 worker_allocations: None,
@@ -360,6 +397,7 @@ mod tests {
                 reports_us: 0.0,
                 render_route_us: 0.0,
                 synthesis_us: 0.0,
+                rendering: None,
                 rendered_tone_count: 0,
                 post_render_us: 0.0,
                 worker_allocations: None,

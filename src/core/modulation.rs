@@ -12,6 +12,7 @@ fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct RhythmBand {
     pub phase: f32,   // wrapped [-pi, pi]
     pub freq_hz: f32, // tracked tempo
@@ -21,6 +22,7 @@ pub struct RhythmBand {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct NeuralRhythms {
     pub theta: RhythmBand,
     pub delta: RhythmBand,

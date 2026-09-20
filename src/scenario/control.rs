@@ -83,6 +83,7 @@ pub enum BodyMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct Routing {
     pub to_presentation: bool,
     pub to_habitat: bool,

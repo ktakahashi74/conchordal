@@ -23,6 +23,7 @@ pub(crate) fn run(
     result_tx: Sender<AnalysisResult>,
     update_rx: Receiver<LandscapeUpdate>,
     delivery: AnalysisDelivery,
+    mut temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
 ) {
     let mut next_frame_id = 0;
     let mut warmup_samples = 0;
@@ -61,6 +62,11 @@ pub(crate) fn run(
             }
             next_frame_id = frame_id.wrapping_add(1);
             let frame = stream.process(hop.as_ref());
+            if let Some(tap) = temporal_tap.as_mut() {
+                let mono_energy =
+                    hop.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / hop.len() as f64;
+                tap.observe(frame_id, &frame.nsgt_power, mono_energy);
+            }
             spectral_history.observe(
                 frame_id * hop_samples as u64,
                 (frame_id + 1) * hop_samples as u64,
@@ -83,6 +89,8 @@ pub(crate) fn run(
             let _ = result_tx.try_send((id, Some(frame)));
         }
     }
+    // Publish the final observer state before disconnecting the analysis result channel.
+    drop(temporal_tap);
 }
 
 #[cfg(test)]
@@ -170,6 +178,7 @@ mod tests {
                     result_tx,
                     update_rx,
                     AnalysisDelivery::Ordered,
+                    None,
                 );
             });
             for (index, reference) in expected.iter().enumerate() {
@@ -214,13 +223,47 @@ mod tests {
             hop_tx.send(row.clone()).unwrap();
         }
         drop(hop_tx);
+        let tap = crate::temporal_cognition::observation::Tap::spawn(
+            0,
+            fs as u32,
+            hop,
+            512,
+            reference.last().space.clone(),
+            crate::temporal_cognition::observation::Options {
+                deterministic: true,
+                ..Default::default()
+            },
+        );
+        let observed = Arc::clone(&tap.snapshot);
         run(
             AnalysisStream::new(params.clone(), RtNsgtKernelLog2::new(nsgt.clone())),
             hop_rx,
             result_tx,
             update_rx,
             AnalysisDelivery::Latest,
+            Some(tap),
         );
+        let observation = *observed.lock().unwrap();
+        assert_eq!(
+            observation.state,
+            crate::temporal_cognition::observation::ObservationState::Finished
+        );
+        assert_eq!(observation.received_frames, 24);
+        assert_eq!(observation.fully_supported_frames, 21);
+        assert_eq!(observation.frame_id, Some(23));
+        assert_eq!(observation.support_start_sample, 24 * 128 - 512);
+        assert_eq!(observation.support_end_sample, 24 * 128);
+        assert!(observation.spectral_power_sum.unwrap() > 0.0);
+        assert_eq!(observation.hop_start_sample, 23 * 128);
+        let expected_energy: f64 = hops[23]
+            .1
+            .iter()
+            .map(|&value| f64::from(value) * f64::from(value) / 128.0)
+            .sum();
+        assert!((observation.mono_mean_square.unwrap() - expected_energy).abs() < 1e-15);
+        let trajectories = observation.trajectories.unwrap();
+        assert!(trajectories.peak_bins.iter().any(Option::is_some));
+        assert!((trajectories.energy.iter().sum::<f64>() - expected_energy).abs() < 1e-15);
         let (id, frame) = result_rx.recv().unwrap();
         assert_eq!(id, 23);
         assert!(result_rx.try_recv().is_err());
@@ -251,6 +294,7 @@ mod tests {
                 result_tx,
                 update_rx,
                 AnalysisDelivery::Ordered,
+                None,
             );
             done_tx.send(()).unwrap();
         });
@@ -300,7 +344,7 @@ mod tests {
                 hop_tx.send((frame_id, Arc::clone(&silence))).unwrap();
             }
             drop(hop_tx);
-            run(stream, hop_rx, result_tx, update_rx, delivery);
+            run(stream, hop_rx, result_tx, update_rx, delivery, None);
 
             if matches!(delivery, AnalysisDelivery::Ordered) {
                 let (frame_id, frame) = result_rx.recv().unwrap();
@@ -354,6 +398,7 @@ mod tests {
                 result_tx,
                 update_rx,
                 AnalysisDelivery::Latest,
+                None,
             )
         });
 

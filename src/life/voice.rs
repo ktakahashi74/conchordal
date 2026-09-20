@@ -79,7 +79,10 @@ pub struct Voice {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct ToneSpec {
+    /// Diagnostic receipt paired with this recipe; it does not authorize another onset.
+    pub opportunity: Option<super::action_candidates::OnsetOpportunity>,
     pub tone_id: ToneId,
     pub onset: Tick,
     pub hold_ticks: Option<Tick>,
@@ -105,8 +108,13 @@ struct TrackedRenderNote {
 }
 
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct PhonationBatch {
+    pub body_policy: Option<super::action_candidates::PolicySnapshot>,
+    pub body_opportunity: Option<super::action_candidates::Opportunity>,
+    pub intrinsic_period_sec: Option<f64>,
     pub source_id: u64,
+    pub source_generation: u32,
     pub routing: crate::scenario::control::Routing,
     pub cmds: Vec<ToneCmd>,
     pub tones: Vec<ToneSpec>,
@@ -115,6 +123,9 @@ pub struct PhonationBatch {
 
 impl PhonationBatch {
     pub(crate) fn clear(&mut self) {
+        self.body_policy = None;
+        self.body_opportunity = None;
+        self.intrinsic_period_sec = None;
         self.cmds.clear();
         self.tones.clear();
         self.onsets.clear();
@@ -804,6 +815,7 @@ impl Voice {
         out: &mut PhonationBatch,
     ) {
         out.source_id = self.id;
+        out.source_generation = self.metadata.generation;
         out.routing = self.effective_control.body.routing;
         out.clear();
         self.phonation_scratch.events.clear();
@@ -828,7 +840,16 @@ impl Voice {
             is_alive: self.is_alive() && !self.remove_pending,
             onset_allowed,
         };
+        out.body_policy = Some(super::action_candidates::PolicySnapshot {
+            at: now,
+            is_alive: state.is_alive,
+            gate_allows_onset: state.onset_allowed,
+        });
         self.phonation_engine.set_sound_adsr(self.voice_adsr);
+        if !matches!(self.phonation_engine.mode, PhonationMode::Hold) {
+            out.body_opportunity = self.phonation_engine.clock.opportunity(&ctx);
+            out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
+        }
         self.phonation_engine.tick(
             &ctx,
             &state,
@@ -903,6 +924,7 @@ impl Voice {
         };
         for event in self.phonation_scratch.events.drain(..) {
             out.tones.push(ToneSpec {
+                opportunity: event.opportunity,
                 tone_id: event.tone_id,
                 onset: event.onset_tick,
                 hold_ticks,

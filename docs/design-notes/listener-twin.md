@@ -10,7 +10,7 @@ structure. The generator's required state and the twin's required listening memo
 are determined by their respective functions; neither must reconstruct the whole piece.
 I9/T7 long-term listener research is optional and held for rescoping under
 [the current ledger](../roadmap/temporal-dcc/milestones.md) and
-[technote §9.3.55](../../web/content/technote.md#i9-scope-decision).
+[technote-ledger §9.3.55](technote-ledger.md#i9-scope-decision).
 Indefinitely running use is a design target, without a required planned endpoint or
 completion head. This does not establish current support or human-like responses.
 Date: 2026-05-19 (scope update 2026-06-02; mass-weighting contract update 2026-09-05)

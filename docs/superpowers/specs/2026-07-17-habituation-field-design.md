@@ -11,7 +11,7 @@ expectation").
 
 Scope: add a landscape-level habituation mechanism so that terrain the ecology
 has been sounding into loses value over time and recovers after release —
-"consonance is a meal, not a place" (technote §9.2). The consonance *evaluation
+"consonance is a meal, not a place" (technote-ledger §9.2). The consonance *evaluation
 terrain* erodes under sustained perceived consonance; the physical spectral
 analysis (H01/R01) is untouched. Assay precedes the core change, following the
 Phase A "assay-before-model-change" precedent of the lifecycle work — with one
@@ -50,7 +50,7 @@ its place rather than being merely nice to have.
    flagship audition failed across pulse, harmonic arch, and *form*; meso-scale
    stasis is a leading cause of the form failure.
 
-**The gate (technote §9.3).** Any terrain operation must pass both tests: a
+**The gate (technote-ledger §9.3).** Any terrain operation must pass both tests: a
 perceptual mechanism must exist, and the production loop must close. Habituation's
 perceptual mechanism is the best-attested of any terrain operation in the system.
 Loop closure is the central design risk and is what the assay must prove. Crucially
@@ -201,7 +201,7 @@ rate-archaeology fix) and by giving `recovery` a good default so the minimal
 scenario sets only `satiation`.
 
 - `satiation(sec)`: seconds until the terrain goes stale under a reference
-  continuous excitation. Default ~5 s (the prediction window, per technote §9.2).
+  continuous excitation. Default ~5 s (the prediction window, per technote-ledger §9.2).
 - `recovery(sec)`: seconds to recover after release. Secondary, with a physiology-
   motivated default. Unlike lifecycle's `recovery` (absence = disabled), habituation
   recovery cannot be "off" — permanent erosion drives everything dead — so it
@@ -367,7 +367,7 @@ The assay stays in the tree as the regression instrument for the core change.
   kernel names keep their CLAUDE.md meaning. No new Axis B representation family.
 - No-compat: alpha policy, but because habituation is opt-in and defaults to
   disabled, all existing samples are behaviorally unchanged.
-- Docs (after the assay passes): update the technote §9.1 ledger row "Adaptation and
+- Docs (after the assay passes): update the technote-ledger §9.1 ledger row "Adaptation and
   expectation" to **"partial — landscape habituation implemented"** (not fully
   discharged: expectation and the larger DCC path remain independent), and the §9.2
   prose; add the Rhai Book API; regenerate `.d.rhai` and `api.md` from the docs
@@ -415,7 +415,7 @@ so the result is not an artifact of the anchored terrain.
 (a periodic full `h`-scan snapshot, or a fixed reference-basin tracker) and re-run to
 measure erode→recover→return at a single basin directly; then run the robustness
 matrix (seeds, population sizes, `tau_e:tau_r` ratios, body spectra, gains). Until
-that lands, the technote §9.1 ledger row moves to **"partial — landscape habituation
+that lands, the technote-ledger §9.1 ledger row moves to **"partial — landscape habituation
 implemented"**, not fully discharged.
 
 **Deferred continuum verdict.** Habituation was implemented as a Landscape-level

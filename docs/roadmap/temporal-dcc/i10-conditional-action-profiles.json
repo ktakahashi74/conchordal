@@ -1,0 +1,123 @@
+{
+  "schema": "i10-conditional-action-profile-connection-v1",
+  "status": "live_primitive_windows_only_full_i10_incomplete",
+  "artifact_directory": "target/i10-compiled-profile-live-20260918",
+  "profile_file": "target/i10-action-profiles-20260918.bin",
+  "profile_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+  "body_model_version": "b3eb8cba69007e16aedb013d9ee8ba617b3ecb4d3420afb492768bfeba02fd28",
+  "source_sha256": {
+    "src/config.rs": "1fb9b2839fa00b0bcb1eb10ff3a2a4366ae479fb6895b3d6048fe79a142dff5c",
+    "src/runtime/mod.rs": "97c476c7ba8e51b29194f0cd622a6ec2e9fb7b0af953397272a2151776a81323",
+    "src/runtime/body_profiles.rs": "f0c2a3bc5e66139a36fd5447fcd4f09a79b1924e423ed8bac2198089d9bea281",
+    "src/temporal_cognition.rs": "87e72a700ed6d9f69a92ba70b57e6f65344ebce320fd51bc3be0424048be4555",
+    "src/temporal_cognition/action_profiles.rs": "181633903c52bfc66976027829f0039d2d8fca04e1a037bb8ec16956f2dc82ca",
+    "src/temporal_cognition/action_profiles/tests.rs": "b69ec240a02f11306228172cc9cd60e035ddd5ba903058ff110c4e85176d8db6",
+    "src/temporal_cognition/observation.rs": "9bbd02cf1c3e56e94f0b643cb158347591a256bedc781b96406d58676d2035a9",
+    "src/temporal_cognition/observation/replay.rs": "9d884a4aaa19c07e94372c1fe461ba2414e70fa430b919d6fd9149584e9751d5",
+    "src/temporal_cognition/phrase.rs": "b7fb7f285c4fa7fe992f38d44cf50e6d31c15818f3bf374d3e49d78c10724672",
+    "src/temporal_cognition/phrase/tests.rs": "4de566858c02539a39287acc633e595cde56a47425e183e2987ad6565874df20",
+    "src/temporal_cognition/feature_projection/window.rs": "fa8954ecaa7235ac9400e66e4a25e853d546cdefe6f5082777d184b2f8b01f5b",
+    "src/ui/windows.rs": "4e7aa31557a82ebe7c2d3f5dcceb831e18416bd3ab004ea3e49c3bb53e37b5ab",
+    "tests/config_restore.rs": "853b0fcecd9742538e33bc9bc4a1e84a0cc8a52376c6e4ec2e263a710b3b0815",
+    "Cargo.toml": "1e7a22fd56841df7a145aac4cdc778ce38a03bd6c1d061c5c4e15e4f34b8f5e5",
+    "Cargo.lock": "d71893b05065cf3cc545e00ccb6ab601d1eff8d371c6090357ec80369982e7b6",
+    "scripts/compile_temporal_action_profiles.py": "5de1ae7560bba7ea49cf8353ebff0cc7f93c8d3f166c04a0af97748485d53683",
+    "scripts/verify_temporal_compiled_profiles.py": "1c296c7944bbae82af1da62b83a30a3004ca51b438f06fd03fcf76bd5fcbaa97"
+  },
+  "renderer_sha256": "adcf5a2546b240fa6a88a8c128ff1efd9acd620998ab10db9e5a809a6fd41019",
+  "compiled_verification": {
+    "schema": "i10-compiled-profile-verification-v1",
+    "model_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+    "source_verification_sha256": "5538eb6e792836bfe966facd6d54bdc1709cd8fc7d0a8be434d89093d582ab18",
+    "profiles": 8,
+    "bindings": 1032,
+    "unique_trajectories": 442,
+    "compared_frames": 387000,
+    "compared_coordinates": 4257000,
+    "unknown_coordinates": 601255,
+    "known_zero_coordinates": 1124016,
+    "bit_exact": true
+  },
+  "live_verification": {
+    "schema": "i10-live-profile-verification-v1",
+    "common_observations_unchanged": 67,
+    "terminal_observations_unchanged": 2,
+    "existing_records_unchanged": {
+      "onset": 3,
+      "body_default": 152,
+      "body_descriptor": 384,
+      "self_sound_outcome": 6,
+      "self_sound_descriptor_prediction": 6,
+      "population_step": 750
+    },
+    "profile_snapshots": 70,
+    "nonempty_snapshots": 18,
+    "nonempty_by_bus": {
+      "0": 10,
+      "1": 8
+    },
+    "future_windows": 72,
+    "future_coordinates": 504,
+    "issue_coverage_checks": 0,
+    "wav_sha256": {
+      "baseline-final": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+      "profile-final": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+      "profile-final-no-report": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+      "off-final-missing": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90"
+    },
+    "limits": "Observed-prefix coordinates and exact issue-time coverage are covered by Rust causal/mixed-window tests, not reconstructed from decimated reports. Primitive at-action windows only; no full consequence score or action-time adoption."
+  },
+  "runtime_contract": {
+    "configuration": "temporal_action_profiles.file and lowercase sha256; requires temporal_body_prototypes and temporal_phrase",
+    "physical_grid": {
+      "sample_rate": 48000,
+      "nfft": 2048,
+      "hop_samples": 512,
+      "horizon_samples": 192000,
+      "offsets": 32,
+      "classes": 7,
+      "max_prototypes": 8
+    },
+    "validation": "32 MiB bound, SHA-256, schema/dimensions, physical grid, body model version, medoid order/mask/f64 descriptor bits, class/time bindings, finite values and masks",
+    "loaded_profile": "one immutable Arc shared by both workers; no file read or table allocation when temporal mode is off",
+    "assignment": "existing <=0.25 standardized shared-group gate; descriptors transfer between matching groups, without pitch/gain/rate interpolation",
+    "storage": "fixed 8*7*32 optional primitive window cells per bus; refreshed with shared assignment snapshot; retirement masks apply immediately",
+    "time": "action_at and evaluation_at separate API arguments; normal preview currently evaluates at action_at under existing specification",
+    "window": "last 2 s or group age; actual available prefix followed by conditional projected physical frames",
+    "boundary": "first-hop rise/decline recomputed from adjacent observed log RMS; first-hop flux unsupported",
+    "background": "held issue-time energy inferred from observed own energy/share; zero-own/zero-share stays unknown; stored explicitly per cell",
+    "coverage": "issue-time ordinal coverage frozen; observed and projected window coverage remain separate",
+    "report": "profile hash, model identity, group identities, clocks, memory sizes, cell/support counts and latest cell of each class",
+    "ui": "primitive window and projected coordinate counts; explicit uncalibrated at-action label"
+  },
+  "checks": {
+    "cargo_test": {
+      "passed": 1105,
+      "failed": 0,
+      "ignored": 33,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T05:10:13+09:00"
+    },
+    "clippy": "pass",
+    "all_target_check": "pass",
+    "fmt": "pass",
+    "diff_check": "pass",
+    "python_compile": "pass",
+    "off_missing_file": "success",
+    "observe_missing_file": "error"
+  },
+  "limits": [
+    "Conditional descriptor transfer is uncalibrated and is not an actual-Voice acoustic predictor.",
+    "Primitive windows are not full per-head inputs or scored consequence tables.",
+    "Normal at-action windows exclude later onset/release sound; the timing decision remains unresolved.",
+    "Mixed-prefix arithmetic, exact issue coverage and retirement are tested in Rust; decimated live reports cannot reconstruct every observed hop.",
+    "Both buses use the same prototype trajectories; no new future excitation permission or private schedule is inferred.",
+    "No I11 generation effect, memory reinforcement, R/A adoption or I9 restart."
+  ],
+  "remaining": [
+    "Resolve consequence evaluation timing without silently revising the contract.",
+    "Connect complete per-head projection policies and ordinal/consequence mixtures including unknown mass and fixed issue weights.",
+    "Connect actual-Voice/default correspondence including unreserved future opportunities, eligible paired differences and both buses.",
+    "Measure complete I10 resource use for 4/16/64 Voices and hand off to R2."
+  ]
+}

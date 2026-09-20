@@ -29,6 +29,7 @@ PROFILE_SCHEMA = {
 }
 PHASE_FIELDS = ("analysis_wait_us listener_wait_us landscape_update_us population_us "
                 "reports_us render_route_us post_render_us").split()
+RENDER_FIELDS = ("setup_us commands_us samples_us history_us observation_us capture_delivery_us").split()
 HOP_SCHEMA = {
     "synthesis_us": "n", "rendered_tone_count": "i",
     "frame_idx": "i", "alive_voice_count": "i", "worker_allocations": "?o", "underrun_frames_total": "?i",
@@ -87,8 +88,16 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
     data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=beta.strict_object,
                       parse_float=beta.finite_float, parse_constant=beta.finite_float)
     require(data, PROFILE_SCHEMA, "profile")
-    if data["schema_version"] != 2:
+    if data["schema_version"] not in (2, 3, 4):
         raise ValueError("unsupported profile schema_version")
+    # Keep schema 2 readable for the saved population baseline; it has no nested timings.
+    if data["schema_version"] >= 3:
+        require(data, {"rendering_scope": "s"}, "profile")
+    if data["schema_version"] == 4:
+        require(data, {"background": "o"}, "profile")
+        require(data["background"], {"scope": "s", "shared": "l", "body": "?o", "candidate_energy": "?o"}, "background")
+        if len(data["background"]["shared"]) != 2:
+            raise ValueError("background shared must contain both bus slots")
     if (data["seed"] != seed or data["report_enabled"] != report_enabled
             or data["dcc_coupling_strength"] != dcc
             or data["listener_enabled"] != (report_enabled or dcc > 0)):
@@ -120,6 +129,11 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
             raise ValueError("hop phase durations exceed total elapsed time")
         if row["synthesis_us"] > row["render_route_us"] + 1e-6:
             raise ValueError("synthesis duration exceeds render/route duration")
+        if data["schema_version"] >= 3:
+            require(row, {"rendering": "o"}, f"hop {index}")
+            require(row["rendering"], dict.fromkeys(RENDER_FIELDS, "n"), f"hop {index} rendering")
+            if sum(row["rendering"][key] for key in RENDER_FIELDS) > row["synthesis_us"] + 1e-6:
+                raise ValueError("renderer phase durations exceed synthesis time")
         if (row["frame_idx"] != index or not math.isclose(row["time_sec"], index * hop_sec,
                                                          rel_tol=2e-7, abs_tol=2e-6)):
             raise ValueError("hop sequence/time is incomplete or unordered")
@@ -205,6 +219,10 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
             "device_limitations": POLICY["device_identity"],
             **{key: beta.stats([r[key] for r in selected]) for key in PHASE_FIELDS},
             "synthesis_us": beta.stats([r["synthesis_us"] for r in selected]),
+            "rendering_scope": data.get("rendering_scope"),
+            "rendering": {key: beta.stats([r["rendering"][key] for r in selected])
+                          for key in RENDER_FIELDS} if data["schema_version"] >= 3 else None,
+            "background_terminal": data.get("background"),
             "rendered_tone_count": beta.stats([r["rendered_tone_count"] for r in selected]),
             **{key: audio[key] if audio else None for key in (
                 "callback_count", "callback_frames_total", "callback_errors_total", "backend", "device_name", "ring_capacity_frames")},

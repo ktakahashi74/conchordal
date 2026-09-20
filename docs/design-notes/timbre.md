@@ -37,7 +37,7 @@ The current state (v0.4/0.5):
   (`ExactScan`) — a voice judges the terrain with a generic template, not with
   its own partial set (`life/pitch_core.rs`).
 - The ledger already points here: "heredity of timbre" sits at Horizon
-  (technote §9.1) — hereditary respawn exists as assays but inherits only
+  (technote-ledger §9.1) — hereditary respawn exists as assays but inherits only
   pitch, and `ParentCandidate` stores no timbre genotype. §9.2 assigns the
   micro layer (jitter, breath, beating) to the **body**, but today the body's
   micro layer moves only amplitude and pitch (vibrato/jitter), never the

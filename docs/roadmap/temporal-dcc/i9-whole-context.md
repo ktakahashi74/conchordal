@@ -3,7 +3,7 @@
 2026-09-13の著者判断により、本体の必須工程から研究拡張へ移管し、現方式の自動継続を終了した。
 状態は保留・再設定待ち。I8の技術完了を維持し、I9完了、O16合格、R/A受入には変更しない。
 工程は[milestones.md §1.1](milestones.md#11-採用スコープと認知機構の選定2026-09-13)、
-第一原理の採否は[technote §9.3.55](../../../web/content/technote.ja.md#i9-scope-decision)に従う。
+第一原理の採否は[technote-ledger §9.3.55](../../design-notes/technote-ledger.ja.md#i9-scope-decision)に従う。
 
 ## 研究拡張としての再設定条件
 
@@ -447,6 +447,6 @@ r_maxは数値fixtureの明示値であり、新development素材からの校正
 2. 候補境界同点・途中開始位置・候補選別による帰還損失を修正し、別の素材でも再検査する。保存容量、edge、indexの損失を区別する。
 3. episode graphの全曲保持・edge損失を検査し、未解決continuationと第3入力をstage-1 retrieval割当に基づく因果的producerから供給する。比較controlの実装は接続済み。
 4. 新しい固定長尺素材の全replay・同一query参照を完走し、両busのcommitment-rate、reinforcement／metadataとの差、退避年齢、edge pressure、runtime／memoryを記録する。全strength/interference lifecycleの未供給を0件へ置き換えない。
-5. O16の容量・index採用根拠をtechnote §9.3.55へ反映し、必須の全体検査後にI9終了を判断する。
+5. O16の容量・index採用根拠をtechnote-ledger §9.3.55へ反映し、必須の全体検査後にI9終了を判断する。
 
 R/Aの係数適合、人間の全曲評定、作者採用、公開受入は別工程として残る。

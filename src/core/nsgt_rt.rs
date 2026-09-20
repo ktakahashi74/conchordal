@@ -53,8 +53,8 @@ pub struct BandState {
 /// Real-time kernel analyzer with per-hop update and leaky integration.
 #[derive(Clone)]
 pub struct RtNsgtKernelLog2 {
-    // analysis core
-    nsgt: NsgtKernelLog2,
+    // Immutable kernels are shared; clones own independent streaming state below.
+    nsgt: Arc<NsgtKernelLog2>,
     fs: f32,
     nfft: usize,
     hop: usize,
@@ -65,6 +65,7 @@ pub struct RtNsgtKernelLog2 {
     write_pos: usize, // next position to write
     fft: Arc<dyn rustfft::Fft<f32>>,
     fft_buf: Vec<Complex32>,
+    fft_scratch: Vec<Complex32>,
 
     // per-band states & cached meta
     bands_state: Vec<BandState>,
@@ -91,6 +92,7 @@ impl RtNsgtKernelLog2 {
 
         // Reuse nsgt's forward FFT plan (same nfft); avoids a duplicate plan.
         let fft = nsgt.fft();
+        let fft_scratch = vec![Complex32::new(0.0, 0.0); fft.get_inplace_scratch_len()];
 
         // Build band states (tau mapping).
         let bands_state = nsgt
@@ -107,7 +109,7 @@ impl RtNsgtKernelLog2 {
             .collect::<Vec<_>>();
 
         Self {
-            nsgt,
+            nsgt: Arc::new(nsgt),
             fs,
             nfft,
             hop,
@@ -116,6 +118,7 @@ impl RtNsgtKernelLog2 {
             write_pos: 0,
             fft,
             fft_buf: vec![Complex32::new(0.0, 0.0); nfft],
+            fft_scratch,
             out_env: vec![0.0; bands_state.len()],
             bands_state,
             power_mode,
@@ -268,7 +271,8 @@ impl RtNsgtKernelLog2 {
             self.fft_buf[left + i] = Complex32::new(s, 0.0);
         }
 
-        self.fft.process(&mut self.fft_buf);
+        self.fft
+            .process_with_scratch(&mut self.fft_buf, &mut self.fft_scratch);
 
         // Sparse inner products (same math as NsgtKernelLog2::analyze)
         let bands = self.nsgt.bands();
@@ -376,6 +380,145 @@ mod tests {
             var += d * d;
         }
         (var / data.len() as f32).sqrt()
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn rt_streaming_hops_reuse_fft_scratch_without_allocations() {
+        for nfft in [256, 2048] {
+            for mode in [PowerMode::Coherent, PowerMode::Incoherent] {
+                let mut rt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
+                    NsgtLog2Config {
+                        fs: 48_000.,
+                        overlap: 0.75,
+                        nfft_override: Some(nfft),
+                        ..Default::default()
+                    },
+                    Log2Space::new(200., 4000., 12),
+                    None,
+                    mode,
+                ));
+                let input = mk_two_sine(nfft + 1, 330., 790., rt.fs(), 0.2);
+                let hop = rt.hop();
+                // Account from the first hop, then again after reset and cloning.
+                for phase in 0..3 {
+                    if phase == 1 {
+                        rt.reset();
+                    } else if phase == 2 {
+                        rt = rt.clone();
+                    }
+                    crate::runtime_profile::begin_allocations();
+                    for len in [hop, 1, hop - 1, 0, nfft + 1] {
+                        std::hint::black_box(rt.process_hop(&input[..len]));
+                    }
+                    let mut emitted = 0;
+                    rt.process_block_emit(&input, |scan| {
+                        std::hint::black_box(scan);
+                        emitted += 1;
+                    });
+                    let counts = crate::runtime_profile::finish_allocations().unwrap();
+                    assert_eq!(emitted, 5);
+                    assert_eq!(
+                        (counts.count, counts.bytes),
+                        (0, 0),
+                        "nfft={nfft}, mode={mode:?}, phase={phase}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn rt_128_clones_allocate_only_independent_stream_state() {
+        let mut within_budget = true;
+        for mode in [PowerMode::Coherent, PowerMode::Incoherent] {
+            let rt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
+                NsgtLog2Config {
+                    fs: 48_000.,
+                    overlap: 0.75,
+                    nfft_override: Some(2048),
+                    ..Default::default()
+                },
+                Log2Space::new(55., 8000., 96),
+                None,
+                mode,
+            ));
+            let state_bytes = std::mem::size_of_val(rt.ring.as_slice())
+                + std::mem::size_of_val(rt.fft_buf.as_slice())
+                + std::mem::size_of_val(rt.fft_scratch.as_slice())
+                + std::mem::size_of_val(rt.bands_state.as_slice())
+                + std::mem::size_of_val(rt.out_env.as_slice());
+            let mut copies = Vec::with_capacity(128);
+            crate::runtime_profile::begin_allocations();
+            for _ in 0..128 {
+                copies.push(rt.clone());
+            }
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            let budget = state_bytes as u64 * copies.len() as u64;
+            println!(
+                "clone population mode={mode:?} count={} bytes={} stream_state_bytes={budget}",
+                counts.count, counts.bytes
+            );
+            within_budget &= counts.bytes == budget;
+            std::hint::black_box(copies);
+        }
+        assert!(within_budget, "cloning duplicated immutable analysis data");
+    }
+
+    #[test]
+    fn rt_cloned_streams_diverge_and_reset_independently() {
+        for mode in [PowerMode::Coherent, PowerMode::Incoherent] {
+            let kernel = NsgtKernelLog2::new(
+                NsgtLog2Config {
+                    fs: 48_000.,
+                    overlap: 0.75,
+                    nfft_override: Some(2048),
+                    ..Default::default()
+                },
+                Log2Space::new(100., 6000., 24),
+                None,
+                mode,
+            );
+            let mut original = RtNsgtKernelLog2::new(kernel.clone());
+            let mut reference_a = RtNsgtKernelLog2::new(kernel.clone());
+            let mut reference_b = RtNsgtKernelLog2::new(kernel);
+            let prefix = mk_two_sine(2085, 220., 590., original.fs(), 0.3);
+            for stream in [&mut original, &mut reference_a, &mut reference_b] {
+                stream.process_hop(&prefix);
+            }
+            let mut cloned = original.clone();
+            let a = mk_sine(1031, 410., original.fs(), 0.1);
+            let b = mk_sine(1031, 1190., original.fs(), 0.4);
+            for (round, len) in [512, 1, 1031, 511, 0, 512].into_iter().enumerate() {
+                if round == 2 {
+                    cloned.reset();
+                    reference_b.reset();
+                }
+                assert!(
+                    original
+                        .process_hop(&a[..len])
+                        .iter()
+                        .zip(reference_a.process_hop(&a[..len]))
+                        .all(|(x, y)| x.to_bits() == y.to_bits())
+                );
+                assert!(
+                    cloned
+                        .process_hop(&b[..len])
+                        .iter()
+                        .zip(reference_b.process_hop(&b[..len]))
+                        .all(|(x, y)| x.to_bits() == y.to_bits())
+                );
+            }
+            drop(original);
+            assert!(
+                cloned
+                    .process_hop(&b)
+                    .iter()
+                    .zip(reference_b.process_hop(&b))
+                    .all(|(x, y)| x.to_bits() == y.to_bits())
+            );
+        }
     }
 
     #[test]

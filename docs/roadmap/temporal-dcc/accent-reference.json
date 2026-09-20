@@ -4,7 +4,7 @@
   "status": "assigned-energy_four-hop_detector_ordered-delivery_and_causal-section-cuts_verified; waveform_and_pending-occurrence_pipeline_incomplete",
   "specification": {
     "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
-    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "sha256": "c3ef46176cbcc96766173deb1d5f44f3ce716ccee6d56516d9ea2dab0f2a6be5",
     "sections": [
       "9.2",
       "9.3",
@@ -15,7 +15,7 @@
   },
   "source": {
     "path": "scripts/temporal_accent_reference.py",
-    "sha256": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+    "sha256": "2c0cc2306eb2a4a39709c79cb9868d74dbc55de763058e50d934eecd935abc28",
     "functions": [
       "assigned_group_energy",
       "accent_at_cut",
@@ -31,13 +31,14 @@
     "assigned_energy": "E_gb=E_bus*s_b/sum(s)*sum_i(a_ig*v_ib); bin memberships and association rows normalized; positive sample energy with zero spectral mass remains residual, spectral components masked; known silence is zero.",
     "detector": "Raw rise=max(0,log2(max(RMS_now,1e-6))-log2(max(RMS_prev,1e-6))); flux=mean_b max(0,.5log2(max(E_now,1e-12))-.5log2(max(E_prev,1e-12))). Standardize separately with development mean/sd floor1e-6, positive clip, average. salience>1, strict left rise and >=right; weight=clamp(salience-1,0,1).",
     "event": "id=(epoch,generation,middle_sample_start,middle_sample_end); event_interval is the complete uncertain middle hop in seconds, uniform for timing integration. Scalar time is its end for deterministic inventory/window inclusion and point-based proposal rules.",
-    "causal": "raw_support_end covers all four raw hops; available_end is observation-time availability, equal to right-hop end in this detector. Both must precede the cut. Wall-clock publication and receipt are separate.",
+    "causal": "raw_support_end covers all four raw hops; available_end is observation-time availability, equal to right-hop end in this detector. Both must precede the cut. Wall-clock publication and receipt are separate. A composed extractor may supply a wider original source window and later availability; canonical raw hops remain distinct.",
     "bounded_stream": "Retain three raw hops between calls, compare four with one new hop; exact latest reread emits nothing, stale/conflicting support is rejected. Epoch/generation mismatch contributes nothing.",
     "bounded_bank": "128 accents in32 physical seconds. Expire by physical age first, then evict oldest timestamp/stable ID before full-bank insertion; never salience-based. A cap-loss timestamp masks every retrospective window it intersects; ordinary expiry never replaces it.",
-    "delivery": "Consume ordered positive admitted records once. Original event/evidence unchanged; separate delivered_at and generation-local sequence. Independent cumulative weight/count outlive bank expiry/eviction. Conflicting or stale out-of-bank admissions require upstream reconciliation; no catch-up or fresh credit.",
+    "delivery": "Consume ordered positive admitted records once. Original event/evidence unchanged; separate delivered_at and generation-local sequence. Independent cumulative weight/count outlive bank expiry/eviction. Conflicting or stale out-of-bank admissions require upstream reconciliation; no catch-up or fresh credit. Require strictly increasing (event endpoint, stable ID) and raw-evidence keys; compare retained/latest IDs before keys. Changed provenance of the same ID is a conflict.",
     "section": "Collect ledger deliveries and an accent-free acoustic delta, then call SectionHistory.observe once. Credit original section events even if earlier than the current delta; slot15 tracks sequence. Explicit generation continuation resets only this watermark. Pre-counted and delivered counts cannot be mixed.",
     "snapshots": "Copies retain original support. Ending descriptor and both section extractors enforce accent_at_cut. Delivery changes only current cumulative statistics; no retroactive rebuild of issued/frozen records.",
-    "synthetic_cache_fixture_migration": "Existing section fixtures now include event_interval, raw_support_end and available_end. Their three fixture inventories use earlier event endpoints while preserving the previously tested aggregate counts and all expected numerical values."
+    "synthetic_cache_fixture_migration": "Existing section fixtures now include event_interval, raw_support_end and available_end. Their three fixture inventories use earlier event endpoints while preserving the previously tested aggregate counts and all expected numerical values.",
+    "rust_observation_prefix": "Rust Stream additionally freezes a group-generation-local observed/associated sample prefix at the original event endpoint; Rust Ledger checks same-ID and monotone physical support. The stateless Python detector/ledger does not generate or validate this extra field; period oracle and connected Rust tests cover it separately."
   },
   "sensitivity": {
     "threshold": [
@@ -181,12 +182,41 @@
     {
       "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
       "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    },
+    {
+      "date": "2026-09-12",
+      "specification": {
+        "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+        "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+        "sections": [
+          "9.2",
+          "9.3",
+          "9.5",
+          "9.6",
+          "10.1"
+        ]
+      },
+      "reason": "Rust implementation preparation/MR1 and delivery gate ownership; concurrent embodied-affordance requirements retained separately. Section9 is byte-identical to the previous specification. Existing numerical evidence, fit version29, collection and O04 gates are not promoted."
     }
   ],
-  "updated_at": "2026-09-11T11:40:42.701331+00:00",
+  "updated_at": "2026-09-12T10:17:43.345898+00:00",
   "occurrence_reference": {
     "path": "occurrence-reference.json",
     "tests": 21,
     "scope": "Finite original-ID commitment, late owned accent activity and sealed payload-conditioned section projection; full runtime and beam-dependent production remain incomplete."
-  }
+  },
+  "ordered_delivery_repair": {
+    "record": "docs/roadmap/temporal-dcc/m0-accent-ledger.json",
+    "source_before_sha256": "c19722a6a5d39a1dfa80ce8cc5832e1853a2e9bc855def3e6bcee14b18de9191",
+    "source_after_sha256": "2c0cc2306eb2a4a39709c79cb9868d74dbc55de763058e50d934eecd935abc28",
+    "historical_source": "target/temporal-dcc/m0-accent-ledger-20260912/accent-reference-before.py",
+    "counterexample": "same ID with a later valid right-support endpoint previously gained a second credit",
+    "unchanged_functions": [
+      "assigned_group_energy",
+      "accent_at_cut",
+      "accent_window"
+    ],
+    "remaining": "arbitrary reordering and cross-generation ancestry remain upstream responsibilities"
+  },
+  "period_extension_record": "docs/roadmap/temporal-dcc/m0-period-grid.json"
 }

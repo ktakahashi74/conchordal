@@ -1,0 +1,242 @@
+{
+  "schema": "m1-initial-observation-v1",
+  "date": "2026-09-12T06:21:19.567143+00:00",
+  "status": "initial_W3_acoustic_input_and_diagnostics_passed; M1_and_M0_incomplete",
+  "baseline_commit": "559d02988c59fa41841ebefebf4ac130fd6d202a",
+  "M0_complete": false,
+  "M1_complete": false,
+  "MR3_complete": false,
+  "full_O04_passed": false,
+  "human_collection_permitted": false,
+  "implementation": {
+    "entry": "src/temporal_cognition/observation.rs",
+    "observation_version": 1,
+    "default_mode": "off",
+    "implemented_modes": [
+      "off",
+      "observe"
+    ],
+    "relations_implemented": false,
+    "action_enabled": false,
+    "buses": 2,
+    "queue_capacity_per_bus": 64,
+    "offline_delivery": "bounded backpressure",
+    "realtime_delivery": "try_send; counted loss",
+    "new_hop_heap_allocations": 0,
+    "additional_analysis_allocations": "one owned spectrum Arc per observed hop and channel management; full census and simultaneous costs not measured"
+  },
+  "source_inventory": {
+    "docs/rhai_book/src/reference/api.md": "98110af87b269b00e2af523d610631cb2d377bfb192f64421514ab193717e084",
+    "docs/rhai_book_ja/src/reference/api.md": "5bb6d03037ecc99a79387ebc28337725a7e4bea23359def20474c9acae64e095",
+    "rhai-defs/conchordal.d.rhai": "b4a9aa43693a2f0714a9737ffa196e7768546ebcf8c1831cb717ca1b275696e0",
+    "src/core/analysis_worker.rs": "c676f8972ff80a6ce353cf71f6d50e563a6bcaf0b66d4d2451be964ba6423919",
+    "src/lib.rs": "e38567fea0199161d4a96b3cfeb5d9f5530f87a57b666959232969be7f55096f",
+    "src/life/report.rs": "cfa23884dd4c6e758cbbb4eaf0d70c45d8e78352738e2f6ae5d211cb38081595",
+    "src/life/tests.rs": "1dea3064494dc8bdaa3bc154e0db69fe4b162b1c50a04c3369a32f0b0f5df02c",
+    "src/runtime/mod.rs": "4236c845fd901f1c9628172859f6a1de8356aac7d90b73f22db7d03d5d4d203a",
+    "src/scenario.rs": "cf0105821c67e8e20b78cbba4b794d33f0efb6254fe9f26a14b680fded8fdb1e",
+    "src/scripting/docs.rs": "7655963e9436f1f63d40a4d5aa0a7fc04d479f0169291b4d3a2ab4eb5ab91fe8",
+    "src/scripting/engine.rs": "b2559b8f4ae2524cc9d916403e39d1a42e02632759887f9827baf0b79193be7f",
+    "src/scripting/mod.rs": "d3e14280ec99d7432f28766b31f5a8342e31f58e5063ba8c435a8ebce10b4748",
+    "src/scripting/tests.rs": "71adfb4ff3d8de8d96231ca8ec8053c00d5bfca1b01d1bf393a67034d34a2f8f",
+    "src/temporal_cognition.rs": "b2221bf19ce9e42aba12cad70de9440df145d805925b9d9faa166b17b717e78f",
+    "src/temporal_cognition/matcher.rs": "a54b64b87114c442e3fa576aa43b92fc14962c958168d5f5b43bb5bc25b3aa79",
+    "src/temporal_cognition/memory.rs": "0986b439d45c1c01affc114bd80ad5abb4c89a5693d89ca5d38c8436fa4c9ccd",
+    "src/temporal_cognition/observation.rs": "3fe2551788344378cc40a999fe2ecbdbac659b55d792f8f1f9761e98a23021fa",
+    "src/temporal_cognition/tests.rs": "7dd734537076f2858600ddabb4fec132df31ce548647a4b3581e2368096ed711",
+    "src/temporal_cognition/transport.rs": "ba453c68d95b4e0c484c9f1b408a98c8e115af1e9893e30ed141fb1417127503",
+    "src/ui/windows.rs": "1820397db489fcefce1d3514602555a762577526481d6c2355db205893762ddb",
+    "src/viewdata.rs": "1459d9fb8e80c1e698ede5179298e8a321d6052eed28e70efdbc62531c3e086d",
+    "tests/fixtures/temporal_cognition/reference.json": "3cb9c6ff202bd74066adbc9535c69352747ea6460974270bd8051673048d4362",
+    "tests/render_binary.rs": "5c1dd271f67b637a1d56507f826cdb83d4a672982df7082fa7122cf8c3ba42e5",
+    "tests/runtime_profile_binary.rs": "9497b016b412b0c621a8cffcf2c0250825369dbf4ad6398d983b4fda64a4d2f8"
+  },
+  "source_archive": {
+    "path": "target/temporal-dcc/m1-observation-20260912/source-final.tar.gz",
+    "sha256": "ab177f023846518b176979f7b09a63c75a65682aa272c078d8145a3a0112410d",
+    "files": 310,
+    "inventory_member": "SOURCE_SHA256.json",
+    "scope": "current source, tests, scripts samples and author documentation; local ignored artifact, no audio device or human data"
+  },
+  "previous_preparation": {
+    "path": "docs/roadmap/temporal-dcc/m0-rust-preparation.json",
+    "sha256": "848788fdf952807db1994ef9dba5d49a50c25b7019e5a622fa36d11b8c4ac0dc",
+    "source_archive_verified": true,
+    "documentation_recovered_by_reversing_only_this_stage_edits_and_matching_prior_sha256": true,
+    "documentation_archive": "target/temporal-dcc/m1-observation-20260912/previous-documentation.tar.gz",
+    "documentation_archive_sha256": "25646e0d36008177e7eae4a62ab372e42626b255225656ea08490a50ba6b46ad",
+    "scope": "previous hashes remain historical; prior numerical resource assay not rerun or attributed to current wiring"
+  },
+  "verification": {
+    "cargo_test": {
+      "command": "RUST_BACKTRACE=1 cargo test -- --nocapture",
+      "passed": 766,
+      "failed": 0,
+      "ignored": 13,
+      "status": "cargo test exit=0 @ 2026-09-12T15:20:18+09:00",
+      "report": "target/temporal-dcc/m1-observation-20260912/test_report-final.txt",
+      "report_sha256": "b80b1349af1678463b54b576e6af31d44505486ce6710b57af604b2409475a70"
+    },
+    "cargo_clippy_default": {
+      "command": "cargo clippy -- -D warnings",
+      "exit": 0
+    },
+    "cargo_check_all_targets": {
+      "command": "cargo check --all-targets",
+      "exit": 0
+    },
+    "clippy_all_targets_with_two_preexisting_categories_allowed": {
+      "command": "cargo clippy --all-targets -- -D warnings -A clippy::unnecessary_cast -A clippy::manual_is_multiple_of",
+      "exit": 0,
+      "unqualified_all_targets_clippy_passed": false
+    },
+    "format_and_diff_check": true,
+    "generated_rhai_definitions_and_book_tests": true,
+    "english_book_preview": "target/temporal-dcc/m1-observation-20260912/rhai-en",
+    "japanese_book_preview": "target/temporal-dcc/m1-observation-20260912/rhai-ja",
+    "zola_preview": "target/temporal-dcc/m1-observation-20260912/site",
+    "live_gui_or_audio_device_checked": false,
+    "device_free_profile_observe_cases": "DCC on/off x report on/off x temporal off/observe: effective listener metadata, complete profile, and no instrument WAV output."
+  },
+  "retained_render_fixture": {
+    "schema": "m1-initial-observation-render-v1",
+    "source": "tests/render_binary.rs",
+    "source_sha256": "5c1dd271f67b637a1d56507f826cdb83d4a672982df7082fa7122cf8c3ba42e5",
+    "same_audio_all_four": true,
+    "conditions": [
+      {
+        "mode": "off",
+        "report": false,
+        "command": [
+          "target/debug/conchordal-render",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/off-report-false.rhai",
+          "-o",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/off-report-false.wav",
+          "--config",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/config.toml"
+        ],
+        "exit": 0,
+        "elapsed_sec": 0.2582915259990841,
+        "wav_sha256": "0b2e932c150175dc8afd0faf0321db871547b85aba4cf7f3c76f5188b5a91be6",
+        "wav_bytes": 59436
+      },
+      {
+        "mode": "off",
+        "report": true,
+        "command": [
+          "target/debug/conchordal-render",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/off-report-true.rhai",
+          "-o",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/off-report-true.wav",
+          "--config",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/config.toml",
+          "--report",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/off-report-true.jsonl"
+        ],
+        "exit": 0,
+        "elapsed_sec": 0.27688475511968136,
+        "wav_sha256": "0b2e932c150175dc8afd0faf0321db871547b85aba4cf7f3c76f5188b5a91be6",
+        "wav_bytes": 59436
+      },
+      {
+        "mode": "observe",
+        "report": false,
+        "command": [
+          "target/debug/conchordal-render",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/observe-report-false.rhai",
+          "-o",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/observe-report-false.wav",
+          "--config",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/config.toml"
+        ],
+        "exit": 0,
+        "elapsed_sec": 0.2765153618529439,
+        "wav_sha256": "0b2e932c150175dc8afd0faf0321db871547b85aba4cf7f3c76f5188b5a91be6",
+        "wav_bytes": 59436
+      },
+      {
+        "mode": "observe",
+        "report": true,
+        "command": [
+          "target/debug/conchordal-render",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/observe-report-true.rhai",
+          "-o",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/observe-report-true.wav",
+          "--config",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/config.toml",
+          "--report",
+          "target/temporal-dcc/m1-observation-20260912/render-fixture/observe-report-true.jsonl"
+        ],
+        "exit": 0,
+        "elapsed_sec": 0.2786695559043437,
+        "wav_sha256": "0b2e932c150175dc8afd0faf0321db871547b85aba4cf7f3c76f5188b5a91be6",
+        "wav_bytes": 59436,
+        "final_observations": [
+          {
+            "state": "finished",
+            "bus": 0,
+            "source_epoch": 0,
+            "sample_rate": 48000,
+            "frame_id": 57,
+            "support_start_sample": 13312,
+            "support_end_sample": 29696,
+            "available_sample": 29696,
+            "source_missing_samples": 0,
+            "delivery_dropped_frames": 0,
+            "received_frames": 58,
+            "fully_supported_frames": 27,
+            "rejected_frames": 0,
+            "delivery_delay_us": 4,
+            "spectral_power_sum": 0.0,
+            "relations_implemented": false,
+            "action_enabled": false
+          },
+          {
+            "state": "finished",
+            "bus": 1,
+            "source_epoch": 0,
+            "sample_rate": 48000,
+            "frame_id": 57,
+            "support_start_sample": 13312,
+            "support_end_sample": 29696,
+            "available_sample": 29696,
+            "source_missing_samples": 0,
+            "delivery_dropped_frames": 0,
+            "received_frames": 58,
+            "fully_supported_frames": 27,
+            "rejected_frames": 0,
+            "delivery_delay_us": 4,
+            "spectral_power_sum": 0.0016405792835832262,
+            "relations_implemented": false,
+            "action_enabled": false
+          }
+        ],
+        "known_habitat_power_max": 0.0,
+        "known_presentation_power_max": 0.005563268363625058
+      }
+    ],
+    "full_O04_passed": false,
+    "cognitive_or_audition_evidence": false
+  },
+  "remaining": [
+    "M1 causal/model boundaries, delayed relation deadlines, grouping and candidate consumers",
+    "M2-M5 numerical kernels and full nonzero simultaneous O04",
+    "full feature/proposal/interaction/fit inventory and real-audio recovery/stability",
+    "materials/splits/tasks/pilots and institution procedures",
+    "MR3 fit/features/storage rejection at their first real consumer",
+    "live UI/audition acceptance"
+  ],
+  "previous_stage_manifest": {
+    "path": "target/temporal-dcc/m1-observation-20260912/manifest-before-profile-fix.json",
+    "sha256": "d7f6b5ab23487f9d38eff79e5e824f6f8004eb8f617a34ee899e6ba08259c080",
+    "reason": "Before final audit fixed device-free observe delivery and effective-listener profile metadata."
+  },
+  "retained_render_source_archive": {
+    "path": "target/temporal-dcc/m1-observation-20260912/source.tar.gz",
+    "sha256": "becb72b51999db6d75f7953a6d99751d561cb9310f89921f5c4d6fc6f09030b3",
+    "files": 310,
+    "inventory_member": "SOURCE_SHA256.json",
+    "scope": "current source, tests, scripts samples and author documentation; local ignored artifact, no audio device or human data"
+  },
+  "retained_render_scope": "Retained four-condition outputs precede an init_runtime-only profile/device-free fix. The renderer does not use init_runtime; the final full test suite reruns its four-condition and bus-isolation checks on current source."
+}

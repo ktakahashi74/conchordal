@@ -1174,6 +1174,7 @@ pub struct ScriptContext {
     next_voice_id: u64,
     populations: BTreeMap<u64, PopulationState>,
     scopes: Vec<ScopeFrame>,
+    temporal_mode_declared: bool,
     #[cfg(test)]
     warnings: ScriptWarnings,
 }
@@ -1192,6 +1193,7 @@ impl ScriptContext {
             cursor: 0.0,
             scenario: Scenario {
                 seed,
+                temporal_mode: crate::scenario::TemporalMode::Off,
                 control_update_mode: ControlUpdateMode::SnapshotPhased,
                 scaffold: ScaffoldConfig::Off,
                 meter_shaping: MeterShaping::default(),
@@ -1205,6 +1207,7 @@ impl ScriptContext {
             next_voice_id: 1,
             populations: BTreeMap::new(),
             scopes: Vec::new(),
+            temporal_mode_declared: false,
             #[cfg(test)]
             warnings: ScriptWarnings,
         }

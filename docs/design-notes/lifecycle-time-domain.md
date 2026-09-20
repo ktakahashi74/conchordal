@@ -205,7 +205,7 @@ The brain enum is plausibly a discrete stand-in for a **life-coupling
 continuum**: terrain (coupling 0, immortal) ⇔ living voice (coupling 1,
 mortal), with interpolations such as partially field-coupled vitality
 and *mortal terrain*. Do not build it now. The concrete second use case
-arrives with the habituation field (technote §9.2 — terrain that erodes
+arrives with the habituation field (technote-ledger §9.2 — terrain that erodes
 under sustained excitation is exactly a mortal drone). Revisit this note
 when that work starts.
 

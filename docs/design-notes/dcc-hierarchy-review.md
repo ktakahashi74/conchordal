@@ -3,7 +3,7 @@
 Current scope note (2026-09-13): the author moved I9/I12e/T7/O16 out of mandatory core
 completion into optional long-term listener research. See
 [the execution ledger](../roadmap/temporal-dcc/milestones.md) and
-[technote §9.3.55](../../web/content/technote.md#i9-scope-decision).
+[technote-ledger §9.3.55](technote-ledger.md#i9-scope-decision).
 The reviews and full-hierarchy conditions below are historical records. This scope
 change received authorial approval, not a new external review or cognitive validation.
 Their completed review status does not endorse the revised scope or pass the old I9 gates.
@@ -255,7 +255,7 @@ stage-3 full-replay fitting loop with a delayed-replay sensitivity comparison
 (R4). They correct phrase/section component caps (R5), derive hop/cycle and queue
 budgets from the actual analysis interface (R6), specify both salience scales (R7),
 clarify period-relative trace transfer (R8), assign section statistics and copy
-budgets to local paths (R9), and verify the distinct existing technote §9.3.5
+budgets to local paths (R9), and verify the distinct existing technote-ledger §9.3.5
 P/M/A contract and §9.3.55 hierarchy ledger (R10).
 
 Round 7 corrections supply human phrase-exit type targets and conditional type

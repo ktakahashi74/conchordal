@@ -11,8 +11,8 @@ landscape is an input to this design; its roughness, harmonicity and consonance
 kernels are not being redesigned here. Harmonic relationships unfolding in time,
 including expectations relevant to phrasing, belong to the temporal task.
 
-The canonical scope and implementation ledger is [technote §9.3.55](../../web/content/technote.md),
-with a [Japanese account](../../web/content/technote.ja.md). This memo expands that
+The canonical scope and implementation ledger is [technote-ledger §9.3.55](technote-ledger.md),
+with a [Japanese account](technote-ledger.ja.md). This memo expands that
 contract into a design specification and evaluation plan. It replaces the earlier
 six-layer sketch; it does not certify a finished cognitive model. The [temporal-niche
 design](rhythm-temporal-niche.md) records the implemented short-time participation
@@ -36,7 +36,7 @@ These numerical and feature clarifications likewise have no new external review.
 ### 1.1 Adopted scope revision (2026-09-13)
 
 The author removed I9 from the instrument's mandatory completion path. The canonical
-first-principles decision is recorded in [technote §9.3.55](../../web/content/technote.md#i9-scope-decision).
+first-principles decision is recorded in [technote-ledger §9.3.55](technote-ledger.md#i9-scope-decision).
 Scenario owns authored macro direction; local generation uses the selected cognitive
 mechanisms and body constraints; ListenerTwin models selected responses to the actual
 presentation. Neither an autonomous reconstruction of whole form nor a comprehensive
@@ -69,6 +69,38 @@ I9 as a core dependency. Re-register target/model/load/fit dependencies before r
 a revised experiment; do not silently reuse a subset of the full-model fit.
 The I/R/A ledger records the active execution scope. This authorial revision is not a
 new external review, a passed I9/O16 gate, or a neural/cognitive validation result.
+
+### 1.1.1 Adopted mechanism-selection rule (2026-09-20)
+
+The author generalized the harmonic-side division of labor into an explicit rule for
+temporal structure. The canonical statement is
+[technote-ledger §9.3.55](technote-ledger.md#mechanism-selection-rule). On the
+harmonic side only mechanisms with established psychoacoustic models (roughness,
+harmonicity) are implemented as landscape, with habituation placed on the same side as an
+adaptation mechanism; order not derivable from them (crowding-based niche separation,
+macro form) is left to ALife emergence and the Scenario.
+
+A temporal function is placed on the DCC side only if (1) its target response has
+primary evidence and an identified neurocognitive mechanism, (2) its computational model
+is identified in existing literature or can be stated as an engineering rule with explicit
+thresholds and scales, and (3) its completion does not require new human data collection,
+so that the author's own audition decides adoption. For functions failing any condition,
+the prohibition is on creating or adopting a representation connected to core generation;
+preserved research code and default-off passive diagnostics may remain, and ListenerTwin
+keeps passive indicators only.
+
+Applied to §1.2: articulation (I5 shared observation, I10 Voice-private self-sound
+prediction), beat/meter (I6) and short-term recurrence expectation (existing
+recurrence/band-energy prediction plus the bounded causal references of I4) stay in the
+core, together with I12b restricted to two paths. The T3 groove rating head, correspondence
+through transformation and episodic retrieval, phrases and closure, and sections and return
+join whole-piece context in the research extension (I7, I8, I9, I12a/c/d/e); T3
+participation itself remains an ALife-side body/author disposition. R1, R4 and R5 are no
+longer core completion gates; core adoption runs through A1 (author audition), A2 and A4,
+which does not establish mechanism validity. The protocols, descriptors and fits in
+§9.4–§9.5 and §10 are retained as research-extension registrations, not core dependencies.
+"Core completion covers T1–T6 and I12a–I12d" in §1.1 above is the 2026-09-13 record; the
+current core is T1, T2, the short-term part of T4, and I12b.
 
 ### 1.2 Functional targets within the selected scope
 
@@ -106,7 +138,7 @@ the cognitive environment for local sound production.** Their common operation
 is to retain evidence, anticipate continuations, revise relationships, and change
 the opportunities available to a Voice. Each representation has its own dynamics.
 
-The P/M/A contract in technote §9.3.5, "Contract for Perception, Memory and Action
+The P/M/A contract in technote-ledger §9.3.5, "Contract for Perception, Memory and Action
 under DCC", applies throughout. It is intentionally distinct from §9.3.55,
 "Temporal DCC across the hierarchy and its connection to local generation": the
 latter is the hierarchy and decision ledger referenced in the header. Both
@@ -181,6 +213,7 @@ supports a constraint on a model; it does not identify the model's data structur
 | [Hołubowska et al. (2026)](https://doi.org/10.1111/ejn.70481): behavioral and EEG measures track phrases with regular and irregular lengths in Bach-derived stimuli. | Include irregular phrase durations in evaluation; timing regularity cannot be the only segmentation cue. | The stimuli retain tonal structure and modified boundary cues; this is not evidence for unrestricted genre-independent segmentation. |
 | [Harrison et al. (2020)](https://doi.org/10.1371/journal.pcbi.1008304): a memory-decay model accounts for effects of sequence length and speed in auditory pattern detection. | Separate elapsed time, intervening information and retrieval precision. | The symbolic input and fitted decay parameters are not a ready-made continuous-audio memory model. |
 | [Bianco et al. (2020)](https://elifesciences.org/articles/56073): sparse recurrences of arbitrary tone patterns leave lasting implicit memory effects. | Allow retrieval beyond the recent acoustic buffer; compare recurrence after interruption with a novel pattern. | This detection task does not establish motif identity under musical variation or a specific memory graph. |
+| [Ulanovsky et al. (2003)](https://doi.org/10.1038/nn1032): neurons in primary auditory cortex adapt to frequent tones and respond more strongly to rare ones (stimulus-specific adaptation). | Treat cortical stimulus-specific adaptation as the candidate mechanism for short-term recurrence expectation and habituation; keep it distinct from long-term episodic retrieval. | Recorded in anesthetized cats with simple tones; it does not identify musical recurrence detection or a decay constant for continuous audio. |
 | [Farbood et al. (2015)](https://doi.org/10.3389/fnins.2015.00157): scrambling an extended musical excerpt at different structural scales changes fMRI response reliability in experienced pianists. | Evaluate long context with local material controlled, including measure-, phrase- and section-scale order. | Music-specific long-timescale evidence exists, but this study does not fix cognitive windows or a whole-piece generative model. |
 | [Williams et al. (2022)](https://doi.org/10.1162/jocn_a_01815): neural event boundaries during music listening correspond to independently annotated meaningful changes. | Give section/event structure an internal representation and test it against listening evidence. | An HMM fitted to fMRI is an analysis method, not proof that an online auditory model or the brain uses that HMM. |
 | [Hannon and Trehub (2005)](https://doi.org/10.1111/j.0956-7976.2005.00779.x): metrical discrimination differs across exposure groups and infancy/adulthood. | Keep metrical expectations adaptable to experience; test beyond simple isochronous groupings. | Existing 2/3/4 candidates are an engineering restriction, not a universal cognitive inventory. |
@@ -195,7 +228,7 @@ Japanese Manifesto currently describes four-band real-time extraction as an
 implemented capability; that overstates the audited mechanism. In
 `src/core/modulation.rs`, delta/theta are meter-derived bands while alpha/beta are
 precision/error scalars, not four extracted neural bands. Route correction of this
-public capability wording through technote §9.3.55 and M0's documentation
+public capability wording through technote-ledger §9.3.55 and M0's documentation
 reconciliation item, preserving the broader commitment to neurocognitive grounding.
 The corrected public claim must explicitly preserve these four numbered clauses:
 
@@ -207,7 +240,7 @@ The corrected public claim must explicitly preserve these four numbered clauses:
 
 M0 checks the actual public wording against each numbered clause and records the
 source/version comparison in
-technote §9.3.55. The four clauses are normative content across languages. M0
+technote-ledger §9.3.55. The four clauses are normative content across languages. M0
 registers the exact Japanese wording adopted in manifesto.ja.md alongside the
 canonical English text and checks every clause for translation drift; the ledger
 records both wordings and their source/version comparison. The check covers every present-tense temporal mechanism/capability sentence
@@ -272,7 +305,7 @@ body settings, fitted perceptual parameters and engineering limits remain distin
 The author's stated Manifesto intent supplies this embodiment requirement. The
 current Manifesto time-axis text mentions intrinsic pace and sound duration but
 does not explicitly state the limb mass/resonance argument. Record that gap in
-technote §9.3.55 rather than claiming the argument is already explicit there.
+technote-ledger §9.3.55 rather than claiming the argument is already explicit there.
 
 ## 4. Representations and their updates
 
@@ -1876,7 +1909,7 @@ gates in §10.3, including causal correctness, the task-specific cognitive crite
 intended audible relations and author acceptance. Until then the current 2x3
 template remains the production reference; failure reopens the trace design on
 development. Record the tested conditions, comparison IDs and promotion decision
-in technote §9.3.55; better timing-bin loss alone cannot authorize replacement.
+in technote-ledger §9.3.55; better timing-bin loss alone cannot authorize replacement.
 O19's replacement is scoped to **local participation mode**: there the promoted
 trace substitutes for the old 2x3 participation-memory contribution, rather than
 adding a second copy of that contribution. Off and passive-observation modes
@@ -5534,7 +5567,7 @@ its return cue at the published bank/edge/index limits; identify loss to bank
 capacity, edge cap and candidate/index cutoff separately from fitted availability.
 If the check fails, increase/revise the declared capacity or index before validation,
 repeat long-return and runtime/memory checks, and record the choice and evidence
-in technote §9.3.55. A commitment-rate extrapolation alone cannot pass this gate.
+in technote-ledger §9.3.55. A commitment-rate extrapolation alone cannot pass this gate.
 Adoption and validation entry for that research extension require this sizing record; core completion does not. Unforeseen
 validation misses still fail the frozen model and are not excused afterward. A longer-duration evaluation may require a larger or
 indexed memory; accepted limits belong to the declared operating envelope.

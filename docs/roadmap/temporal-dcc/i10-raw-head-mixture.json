@@ -1,0 +1,204 @@
+{
+  "schema": "i10-raw-base-head-mixture-v1",
+  "status": "raw_issue_frozen_head_aggregation_connected_joint_consequence_incomplete",
+  "artifact_directory": "target/i10-raw-mixture-live-20260918",
+  "source_sha256": {
+    "src/temporal_cognition.rs": "99219d7f1c3bf7e255dc3c152a8fa73e3addc16133718b179c4c767970b4554b",
+    "src/temporal_cognition/ratings.rs": "0d3f54c44b64d3eec404f193339c50a9d31fb88b8829ba1d1bbb91e8e425f0c4",
+    "src/temporal_cognition/phrase.rs": "a9987c897ef6f1572b79b55d994daa34f7e193b3a16433e1cc966bb33de0cfd5",
+    "src/temporal_cognition/phrase/projection.rs": "2ef3f79b4ed14aebc45dee4fa9f93194f4ec55575f260433cc4638cf60713304",
+    "src/temporal_cognition/phrase/projection/tests.rs": "189cec890009095f8fa8d62138bf57bbcf579ff1ed6b41cb191f5c8294681136",
+    "src/temporal_cognition/phrase/tests.rs": "9ab6aa758af259acf2c414b9be32c85cd0cb96caf537fec8f9c228aa00048e95",
+    "src/temporal_cognition/action_profiles.rs": "c00ee666551d3af2e8a0e90f921a3d37c73a3ea7a7c06da8a0cec2f940798593",
+    "src/ui/windows.rs": "fc8f750cff00f65ba3c1c5278d4de0b192ab918e3d653f4cc30d37782022aa42",
+    "scripts/verify_temporal_projected_heads.py": "155918bdaa76d518d5e891bcf322bf822ee754b7eddcdd0f2bf4c34eacf91582"
+  },
+  "renderer_sha256": "d5f7253bc35ebef5f86878f679480a1b5679031293f425d714a13cbde88f3d67",
+  "before_renderer_sha256": "ab9593c5a94802a596295cd4c4a96461a375fc7cddddf3b51362ee3336c32da9",
+  "scope": "Existing base phrase diagnostics; original retained phrase paths, not the missing shared-context/local joint posterior.",
+  "frozen_issue": {
+    "window": "ordinary issue-time two-second or epoch-age window",
+    "fields": [
+      "observed coverage",
+      "acoustic group weights",
+      "original known mass",
+      "unselected group category marginals",
+      "head priors"
+    ],
+    "temperature": 1.0
+  },
+  "selected_group": "Only selected group raw head rows are replaced by candidate path predictions, each with original issue mass. No extra group, recovered unknown, score delta or reweighting is invented.",
+  "arithmetic": "Sum supported path/group categories; normalize supported marginal; base temperature one; reported distribution = e_issue*s*p_supported + (1-e_issue*s)*prior.",
+  "support": "Unsupported head rows retain their original mass as unsupported. report selected support, held-group support, total support and coverage-scaled support separately.",
+  "allocation": "At most seven held group rows plus fifteen selected path rows in stack scratch; issue record constructed once per table refresh. Table bytes include larger cells and snapshot.",
+  "implementation": "ratings::project_rating is now used by normal candidate diagnostics; other unused numerical kernels remain test-only.",
+  "runtime_verification": {
+    "sustain": {
+      "report_sha256": "f18dce3f94741bf9189d3108c379724b61e558a5f3ad456faa298f7683debe18",
+      "config_sha256": "b1eac91f2ca2e31f1319c56a3fc9c035d6e4c5fa26a8c8763602663dc385c7cc",
+      "model_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+      "unique_cells": 774,
+      "duplicate_cells": 0,
+      "future_residual_cells": 4,
+      "future_compared_samples": 1564,
+      "closure_distributions": 94,
+      "continuation_distributions": 11610,
+      "distinct_closure_distributions": 9,
+      "distinct_survival_values": 645,
+      "buses": [
+        0,
+        1
+      ],
+      "maximum_hazard_absolute_error": 1.4646088342118446e-08,
+      "hazard_tolerance": "1e-9 + 1e-7 * integrated hazard (existing numerical contract)",
+      "observed_residual_prefix": "reported mean; not independently reconstructed here",
+      "claim": "raw arithmetic and frozen support; no calibration or full mixture acceptance",
+      "raw_mixtures": {
+        "cells": 774,
+        "heads": 1548,
+        "prior_only": 666,
+        "mixed_groups": 0,
+        "fully_future_windows": 440,
+        "aligned_issue_heads": 12,
+        "frozen_issue_snapshots": 112,
+        "buses": [
+          0,
+          1
+        ],
+        "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+      },
+      "noninterference": {
+        "common_observations": 114,
+        "terminal_buses": [
+          0,
+          1
+        ],
+        "existing_records": {
+          "onset": 1,
+          "body_default": 119,
+          "body_descriptor": 118,
+          "self_sound_outcome": 2,
+          "self_sound_descriptor_prediction": 2,
+          "population_step": 591
+        },
+        "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "before_report_sha256": "134a48caaec6c811e356c5e8b839c1286a0ec84ecf179f085991e3a0c4a26596",
+        "after_report_sha256": "f18dce3f94741bf9189d3108c379724b61e558a5f3ad456faa298f7683debe18"
+      }
+    },
+    "stair": {
+      "report_sha256": "1ea6114e1e3b1523d042f500a25a643103f80754cc85ba46c8d091916a453552",
+      "config_sha256": "d68fb6bb90505a3447b8750e583c7e0298abfd639dc596eb766cf36494a1f201",
+      "model_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+      "unique_cells": 802,
+      "duplicate_cells": 0,
+      "future_residual_cells": 18,
+      "future_compared_samples": 7848,
+      "closure_distributions": 282,
+      "continuation_distributions": 12030,
+      "distinct_closure_distributions": 52,
+      "distinct_survival_values": 770,
+      "buses": [
+        0,
+        1
+      ],
+      "maximum_hazard_absolute_error": 1.4646088342118446e-08,
+      "hazard_tolerance": "1e-9 + 1e-7 * integrated hazard (existing numerical contract)",
+      "observed_residual_prefix": "reported mean; not independently reconstructed here",
+      "claim": "raw arithmetic and frozen support; no calibration or full mixture acceptance",
+      "raw_mixtures": {
+        "cells": 802,
+        "heads": 1604,
+        "prior_only": 506,
+        "mixed_groups": 0,
+        "fully_future_windows": 448,
+        "aligned_issue_heads": 0,
+        "frozen_issue_snapshots": 120,
+        "buses": [
+          0,
+          1
+        ],
+        "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+      },
+      "noninterference": {
+        "common_observations": 122,
+        "terminal_buses": [
+          0,
+          1
+        ],
+        "existing_records": {
+          "onset": 1,
+          "body_default": 134,
+          "body_descriptor": 134,
+          "self_sound_outcome": 2,
+          "self_sound_descriptor_prediction": 2,
+          "population_step": 668
+        },
+        "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "before_report_sha256": "9a325fba5827c0e1386ce690573c37379de4d32925305352772147ac561f92a3",
+        "after_report_sha256": "1ea6114e1e3b1523d042f500a25a643103f80754cc85ba46c8d091916a453552"
+      }
+    },
+    "multibody": {
+      "cells": 42,
+      "heads": 84,
+      "prior_only": 28,
+      "mixed_groups": 28,
+      "fully_future_windows": 24,
+      "aligned_issue_heads": 0,
+      "frozen_issue_snapshots": 46,
+      "buses": [
+        0,
+        1
+      ],
+      "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior",
+      "noninterference": {
+        "common_observations": 31,
+        "terminal_buses": [
+          0,
+          1
+        ],
+        "existing_records": {
+          "onset": 3,
+          "body_default": 152,
+          "body_descriptor": 384,
+          "self_sound_outcome": 6,
+          "self_sound_descriptor_prediction": 6,
+          "population_step": 750
+        },
+        "wav_sha256": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+        "before_report_sha256": "34e48ef32a268edce783ac1da54f324b2bf281769665faf317dd8c65e5fd1443",
+        "after_report_sha256": "137da933a83621989f013a1a9b2ce02c812b5890e7565141c36e904336bbfc26"
+      }
+    }
+  },
+  "checks": {
+    "cargo_test": {
+      "passed": 1115,
+      "failed": 0,
+      "ignored": 33,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T06:12:43+09:00"
+    },
+    "clippy": "pass",
+    "all_targets_check": "pass",
+    "fmt": "pass",
+    "diff_check": "pass"
+  },
+  "limits": [
+    "This is raw unreweighted head aggregation, not the required q(C)*q(local|C)*exp(delta_log_score) posterior.",
+    "The observed production model still lacks the registered shared-context/local joint beam; marginal diagnostic groups must not be relabeled as that posterior.",
+    "No candidate relation score, interpretation entropy, invitation distribution or calibrated action pressure is established.",
+    "The ordinary base head treatment of unknown articulation as missing input is preserved; it is not newly resolved shared interpretation mass.",
+    "The previous action/evaluation-time decision remains unresolved, and normal cells still use at-action windows.",
+    "Actual-Voice/default paired consequences, unreserved future opportunities and complete two-bus 4/16/64-Voice resources remain required.",
+    "Normal report decimation is asynchronous; only matching cuts and both terminal buses are claimed unchanged.",
+    "Run durations are not resource acceptance; I9 remains held and I11 effects disabled."
+  ],
+  "next": [
+    "Provide actual compatible shared/local alternatives and supported conditional feature-score differences for the normal consequence kernel.",
+    "Complete remaining timing/head inputs and invitation; preserve original/pruned unknown separately from head support.",
+    "Connect paired candidate/default consequences and actual-Voice compatibility.",
+    "Resolve evaluation timing and run the complete resource inventory."
+  ]
+}

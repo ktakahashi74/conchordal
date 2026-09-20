@@ -11,16 +11,16 @@
     "src/core/landscape.rs": "b46af9587fbdfc12445aa39b5826122ca83ebdcaf30d4078dce8cfeefe9de897",
     "src/life/temporal_participation.rs": "79d9d6fe8a6d0a0e3c1a52c408b8553ebe75ad352c733784d68660fc0fde8a6e",
     "src/life/phonation_engine.rs": "5994f0442b46d652457b04f899f6fff65cb587adc7edb6d8d6b4363942b66ee6",
-    "src/scenario.rs": "f38a6b25b4dbcb3ccc29e10553c6ec653ec0565904feac8da741d518e895ea90",
-    "src/scripting/engine.rs": "fc2f36b8afaf9d7bed2eb1aa6e6c7ea998fda341d25f90f5ef05cce9f4b1a64d",
-    "src/runtime/mod.rs": "400cba0c455434863c8d86e6f4de404a76fcce27b624c3c7e435b1afead2a591",
+    "src/scenario.rs": "cf0105821c67e8e20b78cbba4b794d33f0efb6254fe9f26a14b680fded8fdb1e",
+    "src/scripting/engine.rs": "b2559b8f4ae2524cc9d916403e39d1a42e02632759887f9827baf0b79193be7f",
+    "src/runtime/mod.rs": "4236c845fd901f1c9628172859f6a1de8356aac7d90b73f22db7d03d5d4d203a",
     "src/cli.rs": "fdc4adf50fb9cc8ff6b3deacb2d9d219c784f633b6986803731675d4729da0b1",
     "src/main.rs": "1a37c8530b8704c8b049587d3d0221b0e0b438ad99272671e62af5456a6be1e4",
     "samples/07_heartbeat.rhai": "0c12ac3f4cd91d626a6bca0d9d5c8d12a9a679c7ae56d83c1c3e9bd702420531",
     "samples/08_murmuration.rhai": "33b31a34db9cc8cfbaee144c298a980d79c412106b780fb3426d60d3a44d408d",
     "samples/09_rain.rhai": "8dbfea3a5fa7e955d6fbabafd33f5a2b04774c1e4c2d98de9d1dd798ade82a5b",
     "samples/12_emergence_and_resolution.rhai": "662a6c0e05aa5573f604b6569357e6c7c7eeefa94d13a59360fba695cf8732d9",
-    "docs/design-notes/dcc-neurocognitive-hierarchy.md": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+    "docs/design-notes/dcc-neurocognitive-hierarchy.md": "04143a6b4a24b21782ee1f2030483f7e3af5844fce3975081b57143b2f9e0714",
     "web/content/manifesto.md": "de5270abcbad2d33d8744adc01bdd51da6b96b7785d68268a4e3cc2834f11585",
     "web/content/manifesto.ja.md": "9be2f2d2166ffc177133b5c3138f70d506872654d4d87bb7da3a5459148df1e7"
   },
@@ -367,7 +367,13 @@
     "all_source_hashes_and_paragraph_locations_match": true,
     "four_numbered_ja_and_canonical_en_clauses_present_in_rendered_site": true,
     "reader_order_review": "Temporal goals precede the implementation boundary and historical band proposal; local participation is explained before Individual/Population and authored Scenario controls.",
-    "style_review": "Read-only style scan; retained required negative capability clauses. Unrelated historical prose was not rewritten."
+    "style_review": "Read-only style scan; retained required negative capability clauses. Unrelated historical prose was not rewritten.",
+    "m0_rust_preparation_audit": {
+      "date": "2026-09-12",
+      "all_registered_claim_texts_present": true,
+      "all_source_hashes_match": true,
+      "new_cognitive_or_audition_evidence": false
+    }
   },
   "source_revisions": [
     {
@@ -554,6 +560,49 @@
           "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
           "before_sha256": "701771820b7542b2ecda2e5d456e9001c5cbf0a0384651dd7725e564b138b7fe",
           "after_sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-12",
+      "reason": "Rust implementation preparation/MR1 and delivery gate ownership; concurrent embodied-affordance requirements retained separately. Section9 is byte-identical to the previous specification. Existing numerical evidence, fit version29, collection and O04 gates are not promoted.",
+      "changes": [
+        {
+          "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+          "before_sha256": "d1783c0f060c54dd38b03bbbba2fb50f14c84e3e8b7411020b80b6643f16fadf",
+          "after_sha256": "04143a6b4a24b21782ee1f2030483f7e3af5844fce3975081b57143b2f9e0714"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-12T06:14:21.178815+00:00",
+      "reason": "Initial M1 passive observation wiring and Scenario mode. Existing Manifesto clauses and capability claims remain unchanged; no relation or generative effect is adopted. Details and regression evidence in m1-observation.md.",
+      "changes": [
+        {
+          "path": "src/scenario.rs",
+          "before_sha256": "f38a6b25b4dbcb3ccc29e10553c6ec653ec0565904feac8da741d518e895ea90",
+          "after_sha256": "cf0105821c67e8e20b78cbba4b794d33f0efb6254fe9f26a14b680fded8fdb1e"
+        },
+        {
+          "path": "src/scripting/engine.rs",
+          "before_sha256": "fc2f36b8afaf9d7bed2eb1aa6e6c7ea998fda341d25f90f5ef05cce9f4b1a64d",
+          "after_sha256": "b2559b8f4ae2524cc9d916403e39d1a42e02632759887f9827baf0b79193be7f"
+        },
+        {
+          "path": "src/runtime/mod.rs",
+          "before_sha256": "400cba0c455434863c8d86e6f4de404a76fcce27b624c3c7e435b1afead2a591",
+          "after_sha256": "501d393d0c825f43eadb89adc0417d4c8f1aaba9d6c055373cc79997b01daede"
+        }
+      ]
+    },
+    {
+      "date": "2026-09-12T06:20:20.920413+00:00",
+      "reason": "Initial observation profile audit: record effective listener and use deterministic device-free observe delivery independently of report. Existing capability claims unchanged.",
+      "changes": [
+        {
+          "path": "src/runtime/mod.rs",
+          "before_sha256": "501d393d0c825f43eadb89adc0417d4c8f1aaba9d6c055373cc79997b01daede",
+          "after_sha256": "4236c845fd901f1c9628172859f6a1de8356aac7d90b73f22db7d03d5d4d203a"
         }
       ]
     }

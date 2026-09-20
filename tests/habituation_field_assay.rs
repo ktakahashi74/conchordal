@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // Test bounded, reproducible erosion and controlled recovery at fixed Log2Space
 // coordinates. Re-exposure is scripted; autonomous return remains a separate
@@ -9,12 +10,17 @@ use std::process::Command;
 const SCENARIO: &str = "samples/research/habituation_field_assay.rhai";
 
 fn temp_path(tag: &str) -> PathBuf {
+    static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
     let mut p = std::env::temp_dir();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    p.push(format!("conchordal_hab_{nanos}_{tag}"));
+    let serial = NEXT_PATH.fetch_add(1, Ordering::Relaxed);
+    p.push(format!(
+        "conchordal_hab_{}_{nanos}_{serial}_{tag}",
+        std::process::id()
+    ));
     p
 }
 

@@ -1,0 +1,31 @@
+{
+  "id": "i9-development-long-returns-1",
+  "status": "prepared_before_first_replay_not_yet_verified",
+  "purpose": "I9 engineering development and O16 capacity comparison; not human T7 validation or author acceptance",
+  "script": "samples/research/temporal_long_returns.rhai",
+  "seed": 2026091309,
+  "nominal_seconds": 1800,
+  "sample_rate": 48000,
+  "dcc_coupling_strength": 0.0,
+  "reference_target_end_max_seconds": 15,
+  "construction": {
+    "cell_seconds": 30,
+    "cells": 60,
+    "initial_motif": [0, 12],
+    "returns": [[150, 162], [810, 822], [1740, 1752]],
+    "intervening_seconds_since_previous_motif_end": [138, 648, 918],
+    "motif_frequencies_hz": [220.0, 275.0, 247.5],
+    "dedicated_synchronization_voices": false
+  },
+  "return_probe_rule": "Choose the first dispatched original-support query ending at least two seconds into each return and before that return ends, without looking at its match quality. Missing queries or unsupported roomy reference results remain explicit failures or unsupported cases.",
+  "reference": "Archive every finite episode from the same replay. Use identical captured query descriptors, every eligible earlier episode, every knot anchor and the existing exhaustive DTW reference. Separately compare graph edge retention; successful bank/index access alone does not pass graph capacity.",
+  "required_evidence": [
+    "Script and full config hashes frozen before rendering",
+    "Exact realized WAV length and hash from conchordal-render",
+    "Both buses, full uninterrupted replay, causal support and EOF snapshot preservation",
+    "New episode writes separated from reinforcement and metadata updates",
+    "Per-bus occupancy, eviction age, edge pressure, runtime and complete memory census",
+    "Same-cue exhaustive reference and losses attributed separately to bank, index and graph"
+  ],
+  "boundary": "Construction labels, return schedules, and final duration select offline diagnostics only. They must not enter phrase, section, retrieval, continuation or whole-head inference. Observer coefficients remain explicitly uncalibrated. Frozen human material, fits, cognitive judgments and artistic adoption remain separate."
+}

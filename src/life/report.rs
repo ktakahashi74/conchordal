@@ -152,6 +152,23 @@ pub(crate) struct ParticipationOutcomeSample {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
+    BodyDefault(&'a crate::life::action_candidates::live::Record),
+    BodyCandidateEnergy(&'a crate::life::action_candidates::energy::Record),
+    BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
+    BodyDescriptor {
+        #[serde(flatten)]
+        record: &'a crate::temporal_cognition::body::Record,
+        standardized: [Option<f64>; 6],
+        prototype_assignment: Option<crate::temporal_cognition::body_model::Assignment>,
+    },
+    SelfSoundOutcome(&'a crate::life::action_observation::Outcome),
+    SelfSoundDescriptorPrediction(&'a crate::life::self_prediction::DescriptorOutcome),
+    SelfSoundObservation(&'a crate::life::action_observation::Snapshot),
+    PrivateParticipationTrace(&'a crate::life::participation_trace::Record),
+    TemporalObservation {
+        time_sec: f32,
+        observation: &'a crate::temporal_cognition::observation::Snapshot,
+    },
     Meta {
         seed: u64,
         hop_timing_scope: &'static str,
@@ -326,6 +343,67 @@ enum ReportRecord<'a> {
 }
 
 impl JsonlReporter {
+    pub(crate) fn write_body_observation(
+        &mut self,
+        snapshot: &crate::temporal_cognition::body::Snapshot,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::BodyObservation(snapshot))?;
+        for (index, record) in snapshot
+            .records
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.active)
+        {
+            self.write_record(&ReportRecord::BodyDescriptor {
+                record,
+                standardized: record.standardized(snapshot.config),
+                prototype_assignment: snapshot.prototype_assignments[index],
+            })?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn write_self_sound_outcome(
+        &mut self,
+        outcome: &crate::life::action_observation::Outcome,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::SelfSoundOutcome(outcome))
+    }
+
+    pub(crate) fn write_private_trace(
+        &mut self,
+        record: &crate::life::participation_trace::Record,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::PrivateParticipationTrace(record))
+    }
+
+    pub(crate) fn write_body_default(
+        &mut self,
+        record: &crate::life::action_candidates::live::Record,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::BodyDefault(record))
+    }
+
+    pub(crate) fn write_candidate_energy(
+        &mut self,
+        record: &crate::life::action_candidates::energy::Record,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::BodyCandidateEnergy(record))
+    }
+
+    pub(crate) fn write_descriptor_prediction(
+        &mut self,
+        outcome: &crate::life::self_prediction::DescriptorOutcome,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::SelfSoundDescriptorPrediction(outcome))
+    }
+
+    pub(crate) fn write_self_sound_observation(
+        &mut self,
+        snapshot: &crate::life::action_observation::Snapshot,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::SelfSoundObservation(snapshot))
+    }
     pub fn create(path: &str) -> Result<Self, String> {
         let file = File::create(path).map_err(|err| format!("create report {path}: {err}"))?;
         Ok(Self {
@@ -340,6 +418,17 @@ impl JsonlReporter {
 
     /// Header record identifying the effective scenario seed, written first
     /// so a report can be matched back to a `--seed` replay.
+    pub(crate) fn write_temporal_observation(
+        &mut self,
+        time_sec: f32,
+        observation: &crate::temporal_cognition::observation::Snapshot,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::TemporalObservation {
+            time_sec,
+            observation,
+        })
+    }
+
     pub fn write_meta(&mut self, seed: u64) -> Result<(), String> {
         self.write_record(&ReportRecord::Meta {
             seed,

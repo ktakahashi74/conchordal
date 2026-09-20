@@ -1,0 +1,94 @@
+{
+  "schema": "temporal-ordinal-fit-plan-v1",
+  "registered_at": "2026-09-12T06:41:47.801984+00:00",
+  "status": "numerical_fit_protocol_registered; full_stage2_job_matrix_and_collection_not_ready",
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "04143a6b4a24b21782ee1f2030483f7e3af5844fce3975081b57143b2f9e0714",
+    "sections": [
+      "9.4",
+      "10.1"
+    ]
+  },
+  "feature_version": "m0-registration-30",
+  "scope": "stage-2 five-level heads only; stage-1, event-time heads and the separate stage-3 64-job envelope remain independent",
+  "objective": "mean negative log of the whole-mixture reported target probability plus lambda*sum(nonconstant_beta^2)/2; every judged response remains in the denominator including all-unknown backoff",
+  "target_weight": "one per individual usable five-level response; conflicting annotator responses retained separately",
+  "prior": "empirical training-response counts plus 0.5 in each category, normalized once per training partition; never estimated from validation or calibration responses",
+  "aggregation": {
+    "path_group_order": "fixed stage-1 OOF path/group/context factors multiply supported local category probabilities; unrepresented weight stays unknown",
+    "r": "observed physical coverage * supported head mass",
+    "reported": "r*temperature(normalized supported mixture,T)+(1-r)*fixed training prior",
+    "stage2_temperature": 1,
+    "stage4": "separate positive T; transform only supported already-marginalized probabilities, then add unchanged prior; not yet fitted"
+  },
+  "lambda_grid": [
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    1.0,
+    10.0,
+    100.0
+  ],
+  "solver": {
+    "name": "L-BFGS-B",
+    "gradient": "analytic mixture responsibility gradient; finite differences only in independent verification",
+    "initial_beta": 0,
+    "initial_cutpoints": "logit of cumulative half-count training marginal",
+    "cutpoint_parameterization": "alpha0, then cumulative softplus(delta_j)+1e-8",
+    "delta_bounds": [
+      -20.0,
+      20.0
+    ],
+    "guard_policy": "hitting a delta guard is incomplete, not an adopted bounded model",
+    "constant_coefficients": "intercept slot fixed zero; any additional documented constant columns fixed zero; no data-driven feature selection",
+    "max_iterations": 400,
+    "max_evaluations": 1000,
+    "max_line_search_steps": 30,
+    "ftol": 1e-10,
+    "gtol": 1e-06,
+    "max_elapsed_sec_per_job": 300,
+    "starts_per_job": 1,
+    "restart_policy": "none; failures retained, any extra start requires a new predeclared job",
+    "completion": "solver success, finite fully evaluated terminal vector, maximum absolute analytic gradient <=10*gtol and no delta guard contact within1e-8; fit_complete does not establish calibration or model acceptance",
+    "elapsed_guard": "check before and after each complete objective; one evaluation can overrun300s, which is recorded as incomplete; no partial objective is reported as complete",
+    "floating_mass_tolerance": 1e-12,
+    "floating_mass_correction": "only roundoff sums in(1,1+1e-12] are scaled to1; genuine missing support is never normalized onto survivors"
+  },
+  "development_splits": {
+    "source_family": "all transformations and linked performer/source records belong to one frozen source-family partition",
+    "participant": "independent participant partition",
+    "crossed_folds": [
+      5,
+      5
+    ],
+    "heldout": "intersection of one source-family fold and one participant fold",
+    "training": "exclude the union of their source families and participants",
+    "coverage": "25 intersections cover each eligible development response exactly once; cross cells are never silently discarded",
+    "hyperparameter_selection": "mean held-out NLL over the same eligible targets across all25 cells; failed/incomplete candidate is not selectable; exact loss ties prefer larger lambda",
+    "scales_and_earlier_stages": "OOF feature/scaling provenance must exclude the same held-out families and participants; downstream fold labels alone do not establish leakage isolation",
+    "calibration": "separate development split; never used for lambda selection",
+    "assignments": null
+  },
+  "job_accounting": {
+    "per_head_lambda_fold_jobs": 175,
+    "per_head_selected_full_refits": 1,
+    "head_list_and_sensitivity_jobs": null,
+    "status": "template_only; dataset rows, all heads/variants, fold assignments, wall/core costs and full job IDs must be frozen before real fits; no stage2 feasibility pass",
+    "per_head_nominal_solver_budget_sec": 52800,
+    "budget_scope": "Nominal sum of solver timeouts, not measured end-to-end upper cost; include preprocessing, serialization, failed-call overruns and all job variants in the required compute preflight."
+  },
+  "numerical_input_envelope": {
+    "max_response_count": 200000,
+    "max_supported_rows_per_response": 1024,
+    "max_total_supported_rows": 1000000,
+    "max_input_count": 256,
+    "max_feature_bytes": 2147483648
+  },
+  "on_failure": "retain best fully evaluated objective/vector as diagnostic only with failed/incomplete status; do not adopt coefficients, omit failed folds, extend bounds or add hidden restarts",
+  "human_collection_permitted": false,
+  "M0_complete": false,
+  "O12_complete": false,
+  "implementation": "scripts/temporal_ordinal_fit.py"
+}

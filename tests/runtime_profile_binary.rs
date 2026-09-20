@@ -56,9 +56,22 @@ fn assert_success(output: &Output) {
 
 #[test]
 fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() {
-    for dcc in [false, true] {
+    for (dcc, observe) in [(false, false), (true, false), (false, true), (true, true)] {
         for report in [false, true] {
             let dir = fixture(dcc);
+            if observe {
+                let config_path = dir.join("config.toml");
+                let mut config = fs::read_to_string(&config_path).unwrap();
+                config.push_str("\n[temporal_body]\nmeans = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]\ndeviations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]\naccent_means = [0.0, 0.0]\naccent_deviations = [1.0, 1.0]\n");
+                fs::write(config_path, config).unwrap();
+                let script_path = dir.join("scenario.rhai");
+                let script = fs::read_to_string(&script_path).unwrap();
+                fs::write(
+                    script_path,
+                    format!("temporal_mode(\"observe\");\n{script}"),
+                )
+                .unwrap();
+            }
             let path = dir.join("profile.json");
             let mut cmd = profile_command(&dir, &path);
             if report {
@@ -67,10 +80,56 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
             assert_success(&cmd.output().unwrap());
             let profile: serde_json::Value =
                 serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-            assert_eq!(profile["schema_version"], 2);
+            assert_eq!(profile["schema_version"], 4);
+            let background = &profile["background"];
+            assert!(background["scope"].as_str().unwrap().contains("terminal"));
+            for bus in 0..2 {
+                if observe {
+                    assert_eq!(background["shared"][bus]["state"], "finished");
+                    assert!(
+                        background["shared"][bus]["received_frames"]
+                            .as_u64()
+                            .unwrap()
+                            > 0
+                    );
+                } else {
+                    assert!(background["shared"][bus].is_null());
+                }
+            }
+            if observe {
+                let body = &background["body"];
+                assert_eq!(body["finished"], true);
+                let resources = &body["worker_resources"];
+                assert_eq!(resources["frames"]["count"], body["processed_frames"]);
+                assert_eq!(
+                    resources["windows"]["total_ns"],
+                    resources["frames"]["total_ns"]
+                );
+                assert_eq!(resources["finish"]["count"], 1);
+                assert!(resources["open_window"].is_null());
+                assert!(background["candidate_energy"].is_object());
+                if report {
+                    let rows: Vec<serde_json::Value> = fs::read_to_string(dir.join("report.jsonl"))
+                        .unwrap()
+                        .lines()
+                        .map(|line| serde_json::from_str(line).unwrap())
+                        .collect();
+                    let final_body = rows
+                        .iter()
+                        .rev()
+                        .find(|r| r["type"] == "body_observation")
+                        .unwrap();
+                    for (key, value) in body.as_object().unwrap() {
+                        assert_eq!(value, &final_body[key], "{key}");
+                    }
+                }
+            } else {
+                assert!(background["body"].is_null());
+                assert!(background["candidate_energy"].is_null());
+            }
             assert_eq!(profile["seed"], 42);
             assert_eq!(profile["report_enabled"], report);
-            assert_eq!(profile["listener_enabled"], dcc || report);
+            assert_eq!(profile["listener_enabled"], dcc || report || observe);
             assert_eq!(profile["audio_output"], "no_device");
             assert!(profile["audio"].is_null());
             assert_eq!(profile["truncated"], false);
@@ -110,6 +169,24 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
                     hop["synthesis_us"].as_f64().unwrap()
                         <= hop["render_route_us"].as_f64().unwrap()
                 );
+                let rendering = hop["rendering"].as_object().unwrap();
+                assert_eq!(rendering.len(), 6);
+                let renderer_phases: f64 = [
+                    "setup_us",
+                    "commands_us",
+                    "samples_us",
+                    "history_us",
+                    "observation_us",
+                    "capture_delivery_us",
+                ]
+                .iter()
+                .map(|key| {
+                    let elapsed = rendering[*key].as_f64().unwrap();
+                    assert!(elapsed.is_finite() && elapsed >= 0.0);
+                    elapsed
+                })
+                .sum();
+                assert!(renderer_phases <= hop["synthesis_us"].as_f64().unwrap());
                 assert!(hop["rendered_tone_count"].as_u64().is_some());
                 assert!(hop["underrun_frames_total"].is_null());
                 if cfg!(feature = "profile-alloc") {

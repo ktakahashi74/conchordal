@@ -65,6 +65,26 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(metrics["hop_count"], 6)
         self.assertEqual(metrics["underrun_counter_start"], 9)
 
+    def test_renderer_phases_require_schema3_support_and_stay_inside_synthesis(self):
+        data = profile_fixture()
+        self.assertIsNone(self.parse(data)["rendering"])
+        data.update(schema_version=3, rendering_scope="nested wall intervals")
+        for row in data["hops"]:
+            row["rendering"] = dict.fromkeys(rt.RENDER_FIELDS, 1.0)
+        metrics = self.parse(data)
+        self.assertEqual(metrics["rendering"]["samples_us"]["max"], 1.0)
+        self.assertEqual(metrics["synthesis_us"]["max"], 30.0)
+        self.assertEqual(metrics["elapsed_p99_us"], self.parse(profile_fixture())["elapsed_p99_us"])
+        for value in [None, {}, dict.fromkeys(rt.RENDER_FIELDS, -1.0),
+                      dict.fromkeys(rt.RENDER_FIELDS, 6.0)]:
+            broken = copy.deepcopy(data)
+            broken["hops"][5]["rendering"] = value
+            with self.assertRaises(ValueError):
+                self.parse(broken)
+        del data["rendering_scope"]
+        with self.assertRaisesRegex(ValueError, "rendering_scope"):
+            self.parse(data)
+
     def test_phase_timings_are_complete_nonoverlapping_and_summarized(self):
         data = profile_fixture()
         self.assertEqual(self.parse(data)["render_route_us"]["max"], 40.0)
@@ -79,6 +99,20 @@ class ProfileTests(unittest.TestCase):
         data = profile_fixture()
         data["hops"][0]["synthesis_us"] = 50.0
         with self.assertRaisesRegex(ValueError, "synthesis duration"):
+            self.parse(data)
+
+    def test_schema4_terminal_background_is_retained_without_changing_hop_acceptance(self):
+        data = profile_fixture()
+        data.update(schema_version=4, rendering_scope="nested wall intervals",
+                    background=dict(scope="terminal, whole-run wall distributions",
+                                    shared=[None, None], body=None, candidate_energy=None))
+        for row in data["hops"]:
+            row["rendering"] = dict.fromkeys(rt.RENDER_FIELDS, 1.0)
+        result = self.parse(data)
+        self.assertEqual(result["background_terminal"], data["background"])
+        self.assertEqual(result["elapsed_p99_us"], self.parse(profile_fixture())["elapsed_p99_us"])
+        data["background"]["shared"] = [None]
+        with self.assertRaisesRegex(ValueError, "both bus slots"):
             self.parse(data)
 
     def test_fixed_population_required_only_during_measurement(self):

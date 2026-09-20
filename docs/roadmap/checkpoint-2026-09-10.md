@@ -15,7 +15,7 @@
 | 完成までの計画 | 現行実装からM0–M9、全T1–T7と四判定までの依存、成果物、失敗時の戻り先を定めた | 計画の完成であり、時間構造DCC全体の完成ではない |
 
 短時間の採用範囲は[時間的ニッチの記録](../design-notes/rhythm-temporal-niche.md)を参照する。
-研究の経過と原理上の到達点は[日英技術ノートの第9章](../../web/content/technote.ja.md)に記録した。
+研究の経過と原理上の到達点は[日英の設計台帳（旧設計台帳（旧技術ノート第9章））](../design-notes/technote-ledger.ja.md)に記録した。
 
 [神経認知階層メモ](../design-notes/dcc-neurocognitive-hierarchy.md)はFable第39回で
 `no_actionable_issues`、`issues: []`となった。実際の応答と版の対応は

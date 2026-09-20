@@ -132,6 +132,7 @@ fn conductor_dispatches_finish_on_time() {
     };
     let scenario = Scenario {
         seed: 0,
+        temporal_mode: crate::scenario::TemporalMode::Off,
         control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
         scaffold: crate::scenario::ScaffoldConfig::Off,
         meter_shaping: crate::core::meter::MeterShaping::default(),
@@ -166,6 +167,7 @@ fn conductor_dispatches_finish_on_time() {
 fn conductor_keeps_future_events_queued_in_order() {
     let scenario = Scenario {
         seed: 0,
+        temporal_mode: crate::scenario::TemporalMode::Off,
         control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
         scaffold: crate::scenario::ScaffoldConfig::Off,
         meter_shaping: crate::core::meter::MeterShaping::default(),
@@ -1152,4 +1154,141 @@ fn articulation_snapshot_kuramoto_decay_signature() {
     assert!(early_active, "expected early attack during decay lifecycle");
     println!("articulation decay signature: {signature:016x}");
     assert_eq!(signature, 0xc1e9_43c6_d8f8_6b6d);
+}
+
+#[test]
+fn voice_freezes_clock_inputs_before_renewal_and_keeps_silent_opportunities() {
+    use crate::life::phonation_engine::CoreTickCtx;
+    use crate::scenario::{PhonationClockConfig, PhonationMode};
+    let mut voice = spawn_voice(440.0, 17);
+    voice.phonation_engine.mode = PhonationMode::Gated;
+    voice.phonation_engine.clock = PhonationClock::from_config(
+        &PhonationClockConfig::Coupling {
+            coupling: 0.0,
+            base_rate_hz: 20.0,
+            flow_depth: 0.8,
+            microtiming: 0.0,
+        },
+        13,
+    );
+    let tb = test_timebase();
+    let rhythms = NeuralRhythms::default();
+    let mut batch = PhonationBatch::default();
+    let mut bank = crate::life::action_candidates::live::Bank::new(tb.fs as u32);
+    let mut renewals = 0;
+    let mut records = 0;
+    for now in (0..128_000).step_by(tb.hop) {
+        let ctx = CoreTickCtx {
+            now_tick: now,
+            frame_end: now + tb.hop as u64,
+            fs: tb.fs,
+            rhythms,
+        };
+        let frozen = voice.phonation_engine.clock.opportunity(&ctx);
+        let period = voice.phonation_engine.clock.intrinsic_period_sec();
+        voice.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 0.5, &mut batch);
+        assert_eq!(batch.body_opportunity, frozen);
+        assert_eq!(batch.intrinsic_period_sec, period);
+        renewals += usize::from(period != voice.phonation_engine.clock.intrinsic_period_sec());
+        if bank.begin_source(&batch, now, Some(1)).is_some() {
+            bank.end_hop();
+            let record = bank.drain().next().unwrap();
+            assert_eq!(record.opportunity, frozen);
+            assert!(
+                record.candidate_times[..record.candidate_time_count].contains(&frozen.unwrap().at)
+            );
+            assert_eq!(
+                record.default_input, None,
+                "clock knowledge is not an emitted action"
+            );
+            records += 1;
+        }
+    }
+    assert!(renewals > 10 && records > 10);
+    voice.phonation_engine.mode = PhonationMode::Hold;
+    voice.tick_phonation_into(&tb, 128_000, &rhythms, None, 0.0, 1.0, 0.5, &mut batch);
+    assert_eq!(batch.body_opportunity, None);
+    assert_eq!(batch.intrinsic_period_sec, None);
+}
+
+#[test]
+fn real_onset_recipe_keeps_its_grant_and_rejects_stale_or_unmaterialized_receipts() {
+    use crate::life::action_candidates::live::Bank;
+    use crate::life::phonation_engine::{DurationRule, OnsetRule, ToneCmd};
+    use crate::scenario::{PhonationClockConfig, PhonationMode};
+    let mut voice = spawn_voice(440.0, 17);
+    voice.phonation_engine.mode = PhonationMode::Gated;
+    voice.phonation_engine.onset_rule = OnsetRule::Always { strength: 1.0 };
+    voice.phonation_engine.duration_rule = DurationRule::fixed_gate(1);
+    voice.phonation_engine.clock = PhonationClock::from_config(
+        &PhonationClockConfig::Participation {
+            coupling: 0.0,
+            base_rate_hz: 20.0,
+            flow_depth: 0.8,
+        },
+        13,
+    );
+    let tb = test_timebase();
+    let mut batch = PhonationBatch::default();
+    let (now, batch) = (0..128_000)
+        .step_by(tb.hop)
+        .find_map(|now| {
+            voice.tick_phonation_into(
+                &tb,
+                now,
+                &NeuralRhythms::default(),
+                None,
+                0.0,
+                1.0,
+                0.5,
+                &mut batch,
+            );
+            (!batch.tones.is_empty()).then(|| (now, batch.clone()))
+        })
+        .expect("real policy must materialize a recipe");
+    let spec = &batch.tones[0];
+    let receipt = spec.opportunity.unwrap();
+    assert_eq!((receipt.issued_at, receipt.at), (now, spec.onset));
+    assert_eq!(receipt.intrinsic_due_at, Some(spec.onset));
+    assert_eq!(receipt.intrinsic_period_ticks, Some((tb.fs / 20.) as u64));
+    assert_eq!(
+        receipt.planned_release_at,
+        Some(spec.onset + (tb.fs / 20.) as u64)
+    );
+    assert!(
+        voice
+            .phonation_engine
+            .planned_releases()
+            .any(|(tone, at)| tone == spec.tone_id && Some(at) == receipt.planned_release_at)
+            || batch
+                .cmds
+                .iter()
+                .any(|c| matches!(c, ToneCmd::Off { tone_id, off_tick }
+            if *tone_id == spec.tone_id && Some(*off_tick) == receipt.planned_release_at))
+    );
+    let mut bank = Bank::new(tb.fs as u32);
+    let record = bank.begin_source(&batch, now, Some(1)).unwrap();
+    assert_eq!(record.onset_opportunity, Some(receipt));
+    assert_eq!(record.onset_recipe_tone_id, Some(spec.tone_id));
+    assert_eq!(record.onset_recipe_count, batch.tones.len());
+    for fault in 0..5 {
+        let mut invalid = batch.clone();
+        match fault {
+            0 => invalid.cmds.retain(|c| !matches!(c, ToneCmd::On { .. })),
+            1 => invalid
+                .tones
+                .iter_mut()
+                .for_each(|t| t.opportunity.as_mut().unwrap().issued_at += 1),
+            2 => invalid
+                .tones
+                .iter_mut()
+                .for_each(|t| t.opportunity.as_mut().unwrap().at += 1),
+            3 => invalid.body_policy.as_mut().unwrap().gate_allows_onset = false,
+            _ => invalid.tones.clear(),
+        }
+        let mut bank = Bank::new(tb.fs as u32);
+        let record = bank.begin_source(&invalid, now, Some(1)).unwrap();
+        assert_eq!(record.onset_opportunity, None, "fault {fault}");
+        assert_eq!(record.onset_recipe_count, 0);
+    }
 }

@@ -1,3 +1,4 @@
+use super::envelope::Envelope;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
@@ -13,6 +14,7 @@ const SINE_IMPULSE_BOOST_MAX: f32 = 1.0;
 const SINE_IMPULSE_BOOST_DECAY_SEC: f32 = 0.08;
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct ToneAdsr {
     pub attack_sec: f32,
     pub decay_sec: f32,
@@ -37,14 +39,7 @@ pub struct Tone {
     backend: AnyBackend,
     render_modulator: Option<RenderModulator>,
     pending_impulse_energy: f32,
-    onset: Tick,
-    hold_end: Tick,
-    release_end: Tick,
-    attack_ticks: Tick,
-    decay_ticks: Tick,
-    sustain_level: f32,
-    decay_lambda: f32,
-    release_ticks: Tick,
+    envelope: Envelope,
     planned_kick_pending: Option<OnsetKick>,
     pending_updates: VecDeque<PendingUpdate>,
     pending_trigger: Option<PendingTrigger>,
@@ -144,14 +139,16 @@ impl Tone {
             backend,
             render_modulator: render_modulator.map(RenderModulator::from_spec),
             pending_impulse_energy: 0.0,
-            onset,
-            hold_end,
-            release_end,
-            attack_ticks,
-            decay_ticks,
-            sustain_level,
-            decay_lambda,
-            release_ticks,
+            envelope: Envelope {
+                onset,
+                hold_end,
+                release_end,
+                attack_ticks,
+                decay_ticks,
+                sustain_level,
+                decay_lambda,
+                release_ticks,
+            },
             planned_kick_pending: None,
             // Pre-sized so the common worker_loop insert path does not reallocate.
             // Deeper queues still grow; the capacity is a budget, not a bound.
@@ -178,18 +175,18 @@ impl Tone {
     }
 
     pub fn note_off(&mut self, tick: Tick) {
-        if tick < self.hold_end {
-            self.hold_end = tick;
-            self.release_end = self.hold_end.saturating_add(self.release_ticks);
-        }
+        self.envelope = self.envelope.with_release(tick);
     }
 
     pub fn note_on(&mut self, tick: Tick) {
-        if tick > self.onset {
-            self.onset = tick;
-            if self.hold_end < self.onset {
-                self.hold_end = self.onset;
-                self.release_end = self.hold_end.saturating_add(self.release_ticks);
+        if tick > self.envelope.onset {
+            self.envelope.onset = tick;
+            if self.envelope.hold_end < self.envelope.onset {
+                self.envelope.hold_end = self.envelope.onset;
+                self.envelope.release_end = self
+                    .envelope
+                    .hold_end
+                    .saturating_add(self.envelope.release_ticks);
             }
         }
     }
@@ -199,7 +196,7 @@ impl Tone {
             return;
         }
         self.pending_trigger = Some(PendingTrigger {
-            at_tick: self.onset,
+            at_tick: self.envelope.onset,
             energy,
         });
     }
@@ -244,7 +241,7 @@ impl Tone {
             }
             self.apply_update(&pending.update);
         }
-        if tick >= self.hold_end {
+        if tick >= self.envelope.hold_end {
             self.pending_updates.clear();
         }
     }
@@ -253,7 +250,7 @@ impl Tone {
         let Some(kick) = self.planned_kick_pending else {
             return false;
         };
-        if tick >= self.onset {
+        if tick >= self.envelope.onset {
             self.planned_kick_pending = None;
             return self.kick_planned(kick);
         }
@@ -403,16 +400,116 @@ impl Tone {
         self.current_pitch_hz
     }
 
+    pub(crate) fn prediction_sine(&self, now: Tick) -> Option<super::sine_forecast::SineForecast> {
+        if self.current_pitch_hz != self.target_pitch_hz
+            || self
+                .pending_updates
+                .iter()
+                .take(5)
+                .any(|u| u.update.target_freq_hz.is_some() || u.update.continuous_drive.is_some())
+            || (self.started
+                && (self.pending_trigger.is_some() || self.planned_kick_pending.is_some()))
+            || (self.pending_impulse_energy > 0. && self.pending_trigger.is_some())
+        {
+            return None;
+        }
+        let AnyBackend::Oscillator(backend) = &self.backend else {
+            return None;
+        };
+        let (state, rotation) = backend.sine_state(self.current_pitch_hz)?;
+        let first_sample = if self.started || self.pending_impulse_energy > 0. {
+            now
+        } else {
+            self.pending_trigger?.at_tick.max(now)
+        };
+        if first_sample < self.envelope.onset {
+            return None;
+        }
+        let impulse = if self.pending_impulse_energy > 0. {
+            self.pending_impulse_energy
+        } else {
+            self.pending_trigger.map_or(0., |t| t.energy)
+        };
+        Some(super::sine_forecast::SineForecast {
+            first_sample,
+            state,
+            rotation,
+            boost: (self.sine_impulse_boost + impulse * SINE_IMPULSE_BOOST_GAIN)
+                .clamp(0., SINE_IMPULSE_BOOST_MAX),
+            boost_decay: impulse_boost_decay(self.sample_dt),
+        })
+    }
+
+    pub(crate) fn prediction_control(
+        &self,
+        now: Tick,
+        rhythms: &NeuralRhythms,
+    ) -> super::control_forecast::ControlForecast {
+        use super::control_forecast::{
+            AmplitudeModel, AmplitudeSmoothing, AmplitudeUpdate, AmplitudeUpdates, ControlForecast,
+        };
+        let mut updates = AmplitudeUpdates::default();
+        let mut valid_until = None;
+        for (scanned, pending) in self.pending_updates.iter().enumerate() {
+            if scanned == updates.events.len()
+                || pending.update.target_freq_hz.is_some()
+                || pending.update.continuous_drive.is_some()
+            {
+                valid_until = Some(pending.at_tick.max(now));
+                break;
+            }
+            if let Some(target) = pending.update.target_amp.filter(|a| a.is_finite()) {
+                updates.events[updates.len] = AmplitudeUpdate {
+                    at_sample: pending.at_tick.max(now),
+                    target: target.max(0.),
+                };
+                updates.len += 1;
+            }
+        }
+        ControlForecast {
+            issued_at: now,
+            valid_until,
+            amplitude_smoothing: (self.current_amp != self.target_amp || updates.len > 0)
+                .then_some(AmplitudeSmoothing {
+                    current: self.current_amp,
+                    target: self.target_amp,
+                    alpha: self.amp_alpha,
+                }),
+            amplitude_updates: (updates.len > 0).then_some(updates),
+            sample_dt: self.sample_dt,
+            starts_at: if self.started || self.pending_impulse_energy > 0. {
+                Some(now)
+            } else {
+                self.pending_trigger.map(|t| t.at_tick.max(now))
+            },
+            kick_at: self
+                .planned_kick_pending
+                .filter(|k| k.strength > 0.)
+                .map(|_| self.envelope.onset.max(now)),
+            model: self.render_modulator.as_ref().map_or(
+                AmplitudeModel::Unmodulated {
+                    gain: 1. + 0.05 * rhythms.theta.beta.clamp(0., 1.),
+                },
+                |m| m.amplitude_model(rhythms),
+            ),
+        }
+    }
+
+    pub(crate) fn prediction_parameters(&self, release: Option<Tick>) -> (f32, f32, Envelope) {
+        let envelope = release.map_or(self.envelope, |at| self.envelope.with_release(at));
+        (self.current_pitch_hz, self.current_amp, envelope)
+    }
+
     pub fn end_tick(&self) -> Tick {
-        self.release_end
+        self.envelope.release_end
     }
 
     pub fn onset(&self) -> Tick {
-        self.onset
+        self.envelope.onset
     }
 
     pub fn is_done(&self, now: Tick) -> bool {
-        now >= self.release_end
+        now >= self.envelope.release_end
     }
 
     fn apply_update(&mut self, update: &ToneUpdate) {
@@ -461,37 +558,7 @@ impl Tone {
     }
 
     fn gain_at(&self, tick: Tick) -> f32 {
-        if tick < self.onset || tick >= self.release_end {
-            return 0.0;
-        }
-
-        let duration_ticks = self.hold_end.saturating_sub(self.onset).max(1);
-        let pos = tick.saturating_sub(self.onset);
-        let attack_len = self.attack_ticks.min(duration_ticks);
-
-        // Pre-release level: attack → decay → sustain
-        let level = if attack_len > 0 && pos < attack_len {
-            (pos.saturating_add(1) as f32 / attack_len as f32).clamp(0.0, 1.0)
-        } else if self.decay_ticks > 0 && pos < attack_len.saturating_add(self.decay_ticks) {
-            let decay_pos = pos.saturating_sub(attack_len);
-            self.sustain_level
-                + (1.0 - self.sustain_level) * (-self.decay_lambda * decay_pos as f32).exp()
-        } else {
-            self.sustain_level
-        };
-
-        let release = if tick >= self.hold_end {
-            if self.release_ticks == 0 {
-                0.0
-            } else {
-                let remain = self.release_end.saturating_sub(tick);
-                (remain as f32 / self.release_ticks as f32).clamp(0.0, 1.0)
-            }
-        } else {
-            1.0
-        };
-
-        (level * release).clamp(0.0, 1.0)
+        self.envelope.gain_at(tick)
     }
 }
 
@@ -572,6 +639,83 @@ fn default_body_snapshot() -> BodySnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn issued_envelope_preserves_attack_tail_and_snapshot_identity() {
+        let time = Timebase { fs: 1000., hop: 4 };
+        let mut tone = Tone::from_parts(
+            time,
+            10,
+            40,
+            220.,
+            0.2,
+            None,
+            None,
+            Some(ToneAdsr {
+                attack_sec: 0.01,
+                decay_sec: 0.,
+                sustain_level: 1.,
+                release_sec: 1.,
+            }),
+        )
+        .unwrap();
+        let frozen = tone.prediction_parameters(None).2;
+        let released = tone.prediction_parameters(Some(15)).2;
+        assert_eq!((frozen.hold_end, frozen.release_end), (50, 1050));
+        assert_eq!((released.hold_end, released.release_end), (15, 1015));
+        // The renderer shortens its attack to the actual hold duration.
+        for (tick, expected) in [
+            (9, 0.),
+            (10, 0.2),
+            (14, 1.),
+            (15, 1.),
+            (515, 0.5),
+            (1015, 0.),
+        ] {
+            assert_eq!(released.gain_at(tick), expected);
+        }
+        assert_eq!(frozen.gain_at(10), 0.1);
+        tone.note_off(15);
+        assert_eq!(tone.prediction_parameters(None).2, released);
+        assert_eq!(tone.prediction_parameters(Some(100)).2, released);
+        tone.note_on(20);
+        assert_eq!(frozen.onset, 10);
+        assert_eq!(released.onset, 10);
+        assert_eq!(tone.onset(), 20);
+    }
+
+    #[test]
+    fn indefinite_envelope_release_and_saturated_end_remain_bounded() {
+        let time = Timebase { fs: 1000., hop: 4 };
+        let mut tone = Tone::from_parts(
+            time,
+            10,
+            Tick::MAX,
+            220.,
+            0.2,
+            None,
+            None,
+            Some(ToneAdsr {
+                attack_sec: 0.01,
+                decay_sec: 0.,
+                sustain_level: 1.,
+                release_sec: 1.,
+            }),
+        )
+        .unwrap();
+        let held = tone.prediction_parameters(None).2;
+        assert_eq!((held.hold_end, held.release_end), (Tick::MAX, Tick::MAX));
+        assert_eq!(held.gain_at(Tick::MAX - 1), 1.);
+        let saturated = tone.prediction_parameters(Some(Tick::MAX - 10)).2;
+        assert_eq!(saturated.release_end, Tick::MAX);
+        assert_eq!(saturated.gain_at(Tick::MAX - 1), 0.001);
+        assert_eq!(saturated.gain_at(Tick::MAX), 0.);
+        tone.note_off(30);
+        assert_eq!(tone.end_tick(), 1030);
+        assert_eq!(tone.gain_at(530), 0.5);
+        assert_eq!(tone.gain_at(1030), 0.);
+        assert_eq!(held.gain_at(1030), 1.);
+    }
 
     #[test]
     fn spawn_does_not_sound_until_triggered() {
@@ -733,6 +877,267 @@ mod tests {
 
         assert!((tone.debug_target_amp() - 0.25).abs() < 1e-6);
         assert!((tone.debug_current_amp() - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn forecast_bounds_pending_updates_and_retains_amplitude_smoothing() {
+        let tb = Timebase {
+            fs: 8000.,
+            hop: 400,
+        };
+        let mut tone = Tone::from_parts(tb, 0, 4000, 440., 0.5, None, None, None).unwrap();
+        let rhythms = NeuralRhythms::default();
+        tone.trigger_impulse(1.);
+        let original = tone.prediction_control(0, &rhythms);
+        assert_eq!(original.valid_until, None);
+        tone.set_smoothing_tau_sec(0.05);
+        tone.schedule_update(
+            1600,
+            ToneUpdate {
+                target_freq_hz: Some(220.),
+                target_amp: None,
+                continuous_drive: None,
+            },
+        );
+        tone.schedule_update(
+            800,
+            ToneUpdate {
+                target_freq_hz: None,
+                target_amp: Some(0.25),
+                continuous_drive: None,
+            },
+        );
+        let bounded = tone.prediction_control(0, &rhythms);
+        assert_eq!(bounded.valid_until, Some(1600));
+        assert_eq!(bounded.gain_at(799), original.gain_at(799));
+        assert!(bounded.gain_at(799).unwrap() > 0.);
+        assert_eq!(bounded.gain_at(800), original.gain_at(800));
+        assert!(bounded.amplitude_at(800, 0.5).unwrap() < 0.5);
+        assert!(bounded.known_on([0, 1600]));
+        assert!(!bounded.known_on([0, 1601]));
+        assert_eq!(tone.prediction_control(0, &rhythms), bounded);
+        assert_eq!(
+            tone.prediction_control(900, &rhythms).valid_until,
+            Some(1600)
+        );
+        assert!(tone.prediction_sine(0).is_none());
+        assert_eq!(tone.pending_updates.len(), 2);
+        assert_eq!(tone.debug_target_amp(), 0.5);
+        tone.apply_updates_if_due(800);
+        assert_eq!(tone.debug_target_amp(), 0.25);
+        let smoothing = tone.prediction_control(800, &rhythms);
+        assert_eq!(smoothing.amplitude_smoothing.unwrap().current, 0.5);
+        assert_eq!(smoothing.amplitude_smoothing.unwrap().target, 0.25);
+        assert!(smoothing.amplitude_at(800, 0.5).unwrap() < 0.5);
+        assert_eq!(smoothing.amplitude_at(1600, 0.5), None);
+        tone.set_smoothing_tau_sec(0.);
+        tone.schedule_update(
+            800,
+            ToneUpdate {
+                target_freq_hz: None,
+                target_amp: Some(0.25),
+                continuous_drive: None,
+            },
+        );
+        tone.apply_updates_if_due(800);
+        assert_eq!(
+            tone.prediction_control(800, &rhythms).valid_until,
+            Some(1600)
+        );
+        assert_eq!(tone.pending_updates.len(), 1);
+    }
+
+    #[test]
+    fn scheduled_amplitude_forecast_matches_renderer_order_and_release_clearing() {
+        use crate::life::self_prediction::{ScheduledRelease, ToneEnergy};
+        let mut amplitude_error = 0_f64;
+        let mut waveform_error = 0_f64;
+        let mut cases = 0;
+        for fs in [8000., 48000.] {
+            for tau in [0., 0.001, 0.05, 1., f32::MAX] {
+                for onset in [0, 600] {
+                    for releases in [
+                        [None, None],
+                        [Some((400, 700)), None],
+                        [None, Some((700, 400))],
+                        [Some((400, 500)), None],
+                        [Some((600, 100)), Some((400, 900))],
+                        [Some((400, 900)), Some((600, 100))],
+                    ] {
+                        let mut tone = Tone::from_parts(
+                            Timebase { fs, hop: 64 },
+                            onset,
+                            1000 - onset,
+                            293.,
+                            0.2,
+                            None,
+                            None,
+                            Some(ToneAdsr {
+                                attack_sec: 0.,
+                                decay_sec: 0.,
+                                sustain_level: 1.,
+                                release_sec: 1.,
+                            }),
+                        )
+                        .unwrap();
+                        tone.seed_modal_phases(7731);
+                        tone.arm_onset_trigger(1.);
+                        let rhythms = NeuralRhythms::default();
+                        for tick in 0..256 {
+                            tone.render_tick(tick, fs, 1. / fs, &rhythms);
+                        }
+                        tone.set_smoothing_tau_sec(tau);
+                        // Out-of-order insertion, one overdue update, and two at the same sample.
+                        for (at, target) in [(1200, 0.3), (100, 0.05), (500, 0.6), (500, -0.1)] {
+                            tone.schedule_update(
+                                at,
+                                ToneUpdate {
+                                    target_freq_hz: None,
+                                    target_amp: Some(target),
+                                    continuous_drive: None,
+                                },
+                            );
+                        }
+                        let releases = releases.map(|r| {
+                            r.map(|(apply_at_sample, off_sample)| ScheduledRelease {
+                                apply_at_sample,
+                                off_sample,
+                            })
+                        });
+                        let (_, amplitude, envelope) = tone.prediction_parameters(None);
+                        let frozen = ToneEnergy {
+                            amplitude,
+                            envelope,
+                            control: Some(tone.prediction_control(256, &rhythms)),
+                            sine: tone.prediction_sine(256),
+                            scheduled_release: releases[0],
+                        };
+                        assert!(frozen.sine.is_some());
+                        assert_eq!(frozen.control.unwrap().amplitude_updates.unwrap().len, 4);
+                        let saved = tone.prediction_control(256, &rhythms);
+                        let control = frozen.control_for(releases[1]).unwrap();
+                        assert!(control.known_on([256, 4000]));
+                        let mut untouched = tone.clone();
+                        for tick in 256..4000 {
+                            for release in releases.into_iter().flatten() {
+                                if tick == release.apply_at_sample {
+                                    tone.note_off(release.off_sample);
+                                    untouched.note_off(release.off_sample);
+                                }
+                            }
+                            tone.apply_updates_if_due(tick);
+                            untouched.apply_updates_if_due(tick);
+                            let actual = tone.render_tick(tick, fs, 1. / fs, &rhythms);
+                            assert_eq!(actual, untouched.render_tick(tick, fs, 1. / fs, &rhythms));
+                            let error = (control.amplitude_at(tick, amplitude).unwrap()
+                                - f64::from(tone.current_amp))
+                            .abs();
+                            amplitude_error = amplitude_error.max(error);
+                            assert!(
+                                error < 0.001,
+                                "fs={fs}, tau={tau}, onset={onset}, tick={tick}, error={error}"
+                            );
+                            let error = (frozen.sine_point(tick, releases[1]).unwrap().0[1]
+                                - f64::from(actual))
+                            .abs();
+                            waveform_error = waveform_error.max(error);
+                            assert!(
+                                error < 0.002,
+                                "fs={fs}, tau={tau}, onset={onset}, tick={tick}, error={error}"
+                            );
+                        }
+                        assert_eq!(frozen.control.unwrap(), saved);
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "SCHEDULED_AMPLITUDE cases={cases} amplitude_error={amplitude_error} waveform_error={waveform_error} control_bytes={} tone_energy_bytes={}",
+            std::mem::size_of::<super::super::control_forecast::ControlForecast>(),
+            std::mem::size_of::<ToneEnergy>()
+        );
+    }
+
+    #[test]
+    fn scheduled_amplitude_overflow_and_unknown_controls_bound_support() {
+        use crate::life::self_prediction::{ScheduledRelease, ToneEnergy};
+        let mut tone = Tone::from_parts(
+            Timebase { fs: 8000., hop: 64 },
+            0,
+            4000,
+            293.,
+            0.2,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let rhythms = NeuralRhythms::default();
+        for at in [300, 400, 500, 600, 700, 800] {
+            tone.schedule_update(
+                at,
+                ToneUpdate {
+                    target_freq_hz: None,
+                    target_amp: Some(0.4),
+                    continuous_drive: None,
+                },
+            );
+        }
+        let (_, amplitude, envelope) = tone.prediction_parameters(None);
+        let frozen = ToneEnergy {
+            amplitude,
+            envelope,
+            control: Some(tone.prediction_control(256, &rhythms)),
+            sine: None,
+            scheduled_release: None,
+        };
+        let control = frozen.control_for(None).unwrap();
+        assert_eq!(control.valid_until, Some(700));
+        assert!(control.known_on([256, 700]));
+        assert!(!control.known_on([256, 701]));
+        for (off_sample, supported) in [(699, true), (700, false), (701, false)] {
+            let released = frozen
+                .control_for(Some(ScheduledRelease {
+                    apply_at_sample: 640,
+                    off_sample,
+                }))
+                .unwrap();
+            assert_eq!(released.known_on([256, 1000]), supported);
+        }
+        for update in [
+            ToneUpdate {
+                target_freq_hz: Some(220.),
+                target_amp: Some(0.1),
+                continuous_drive: None,
+            },
+            ToneUpdate {
+                target_freq_hz: None,
+                target_amp: Some(0.1),
+                continuous_drive: Some(0.1),
+            },
+        ] {
+            let mut unsupported = tone.clone();
+            unsupported.schedule_update(450, update);
+            assert_eq!(
+                unsupported.prediction_control(256, &rhythms).valid_until,
+                Some(450)
+            );
+        }
+        tone.pending_updates.clear();
+        tone.schedule_update(
+            300,
+            ToneUpdate {
+                target_freq_hz: None,
+                target_amp: Some(f32::NAN),
+                continuous_drive: None,
+            },
+        );
+        assert_eq!(
+            tone.prediction_control(256, &rhythms).amplitude_updates,
+            None
+        );
+        assert_eq!(tone.prediction_control(256, &rhythms).valid_until, None);
     }
 
     #[test]

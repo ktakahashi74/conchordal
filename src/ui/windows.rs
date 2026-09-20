@@ -453,7 +453,361 @@ fn draw_listener_dashboard(
             Vec2::new(right_width, dashboard_height),
             egui::Layout::top_down(egui::Align::LEFT),
             |ui| {
+                if let Some(observation) = &frame.self_sound {
+                    ui.heading("Voice self-sound observation");
+                    ui.label(format!("{} commands · {} complete · {} pending · {} rejected · {} capacity / {} output drops",
+                        observation.commands, observation.completed, observation.pending,
+                        observation.rejected, observation.capacity_dropped, observation.output_dropped));
+                    if let Some(prediction) = observation.prediction {
+                        if let Some(defaults) = observation.body_defaults {
+                            let energy = defaults.candidate_energy;
+                            ui.label(format!("Conditional body energy: {} submitted · {} completed · {} unsupported · {} input / {} output drops",
+                                energy.submitted, energy.completed, energy.unsupported + energy.worker_unsupported,
+                                energy.capacity_dropped, energy.output_dropped));
+                            if energy.worker_failed { ui.label("Conditional body energy worker failed"); }
+                            ui.label(format!("Body default: {} mapped · {} unknown · {} capacity / {} output drops",
+                                defaults.mapped, defaults.unknown, defaults.capacity_dropped, defaults.output_dropped));
+                            if let Some(record) = defaults.latest {
+                                ui.label(format!("Voice {} / generation {} · {:?} · {}",
+                                    record.source_id, record.source_generation,
+                                    record.default_input.map(|input| input.class), record.status));
+                                if let Some(opportunity) = record.opportunity {
+                                    ui.label(format!("Clock opportunity: {} ({:?}) · {} candidate times",
+                                        opportunity.at, opportunity.basis, record.candidate_time_count));
+                                }
+                                if let Some(receipt) = record.onset_opportunity {
+                                    ui.label(format!("Onset recipe {:?}: {} · intrinsic due {:?} · release {:?}",
+                                        record.onset_recipe_tone_id, receipt.at,
+                                        receipt.intrinsic_due_at, receipt.planned_release_at));
+                                }
+                            }
+                        }
+                        ui.label(format!("Self prediction: {} issued · {} bus outcomes scored · {} updated · {} unsupported",
+                            prediction.issued, prediction.matched, prediction.updated, prediction.unsupported));
+                        let d = prediction.descriptor;
+                        let energy = prediction.energy;
+                        ui.label(format!("Source energy: {} windows scored · {} updated · {} unsupported · {} retired",
+                            energy.scored_windows, energy.updated, energy.unsupported_windows, energy.retired));
+                        ui.label(format!("Habitat energy ratios: {} issued · {} supported · {} unknown",
+                            energy.ratio_previews, energy.ratio_supported, energy.ratio_unknown));
+                        ui.label(format!("Future body descriptors: {} issued · {} scored · {} updated · {} pending · {} unsupported",
+                            d.issued, d.matched, d.updated, d.pending, d.unsupported));
+                    }
+                    if let Some(trace) = observation.participation_trace {
+                        ui.label(format!("Private participation: {} issued · {} learned · {:.3} assigned · {} pending · {} errors",
+                            trace.issued, trace.learned, trace.assigned, trace.pending, trace.errors));
+                        ui.label(format!("Private timing fit: {} previews · {} queries · {} rate-limited",
+                            trace.timing_previews, trace.timing_queries, trace.timing_rate_limited));
+                    }
+                    if let Some(outcome) = observation.latest {
+                        ui.label(format!("Voice {} / generation {} · tone {} · {:?} {} · habitat {} · presentation {}",
+                            outcome.source_id, outcome.source_generation, outcome.tone_id,
+                            outcome.action, outcome.command_status, outcome.buses[0].status, outcome.buses[1].status));
+                        ui.label(format!("Command {:?} · detected {:?} / {:?} · {} observed samples",
+                            outcome.scheduled_action_sample, outcome.buses[0].first_activity_sample,
+                            outcome.buses[1].first_activity_sample, outcome.observed_samples));
+                        ui.label(format!("Last activity {:?} / {:?} · renderer end {:?}",
+                            outcome.buses[0].last_activity_sample, outcome.buses[1].last_activity_sample,
+                            outcome.renderer_end_sample));
+                    }
+                    ui.separator();
+                }
+                if let Some(body) = &frame.body {
+                    ui.heading("Private body descriptors (uncalibrated)");
+                    if let Some(version) = body.prototype_model_version {
+                        ui.label(format!("Prototype model {:02x}{:02x}{:02x}{:02x} (diagnostic)", version[0], version[1], version[2], version[3]));
+                    }
+                    ui.label(format!("{} frames · {} capture drops · {} outside-capacity voice hops · {} invalid bus hops",
+                        body.processed_frames, body.capture_drops, body.outside_voice_hops, body.invalid_hops));
+                    for (index, record) in body.records.iter().enumerate().filter(|(_, r)| r.active).take(4) {
+                        ui.label(format!("Voice {} / {} · body {} · bus {} · support {}..{} · mask {:06b}",
+                            record.source_id, record.source_generation, record.body_generation, record.bus,
+                            record.start, record.end, record.mask));
+                        if body.prototype_model_version.is_some() {
+                            if let Some(assignment) = body.prototype_assignments[index] {
+                                ui.label(format!("Descriptive medoid {} · distance {:.3} · {} coordinates", assignment.key.0, assignment.distance, assignment.common_coordinates));
+                            } else {
+                                ui.label("Descriptive medoid: unsupported");
+                            }
+                        }
+                    }
+                    ui.separator();
+                }
                 ui.heading("Listener Twin");
+                if frame.temporal.iter().any(|s| {
+                    s.state != crate::temporal_cognition::observation::ObservationState::Off
+                }) {
+                    ui.label("Temporal context: observing; relations unavailable");
+                    for observation in frame.temporal.iter() {
+                        let bus = if observation.bus == 0 {
+                            "Habitat"
+                        } else {
+                            "Presentation"
+                        };
+                        ui.label(format!(
+                            "{bus}: {:?} · {} frames · {} dropped",
+                            observation.state,
+                            observation.received_frames,
+                            observation.delivery_dropped_frames
+                        ));
+                        if let Some(trajectories) = observation.trajectories {
+                            ui.label(format!(
+                                "{} spectral peaks · residual energy {:.3e}",
+                                trajectories.peak_bins.iter().flatten().count(),
+                                trajectories.energy[7]
+                            ));
+                        }
+                        if observation.ridge_failed {
+                            ui.label("Ridge diagnostics: failed for this source epoch");
+                        } else if let Some(ridges) = observation.ridges {
+                            if ridges.observed {
+                                ui.label(format!(
+                                    "{} acoustic ridges · research scales, uncalibrated",
+                                    ridges.current.iter().flatten().count()
+                                ));
+                            } else {
+                                ui.label("Ridge diagnostics: awaiting supported audio");
+                            }
+                        }
+                        if let Some(context) = observation.group_prototypes {
+                            ui.label(format!("Prototype/group matches: {} · {} descriptors · support end {}",
+                                context.assignments.iter().flatten().count(), context.descriptors.iter().flatten().count(), context.end_sample));
+                        }
+                        if let Some(profiles) = observation.action_profile_features {
+                            ui.label(format!(
+                                "Action profile windows: {} · {} projected coordinates · uncalibrated",
+                                profiles.cells, profiles.projected_coordinates
+                            ));
+                            if let Some(delay) = profiles.evaluation_delay_samples {
+                                ui.label(format!(
+                                    "Evaluation: {:.0} ms after action, rounded up to a profile hop",
+                                    delay as f64 / 48.
+                                ));
+                            } else {
+                                ui.label("Evaluation: at action time");
+                            }
+                            ui.label(format!(
+                                "Raw closure previews: {} · future reference comparisons: {} · uncalibrated",
+                                profiles.closure_supported_cells, profiles.projected_residual_cells
+                            ));
+                            ui.label(format!(
+                                "Raw mixtures (unreweighted): closure {} · continuation {} · issue coverage {:.0}%",
+                                profiles.raw_head_supported_cells[0], profiles.raw_head_supported_cells[1],
+                                100. * profiles.raw_head_issue.observed_coverage
+                            ));
+                            ui.label(format!("Candidate accent density: {} projected cells · uncalibrated",
+                                profiles.projected_accent_density_cells));
+                            ui.label(format!("Candidate arrival: {} projected cells · uncalibrated",
+                                profiles.projected_arrival_cells));
+                            if let Some(issue) = profiles.groove_issue {
+                                egui::CollapsingHeader::new("Candidate groove/desire (uncalibrated)")
+                                    .id_salt((observation.bus, "candidate_groove"))
+                                    .show(ui, |ui| {
+                                        ui.label(format!("Frozen issue coverage {:.0}% · latest published candidate per class",
+                                            100. * issue.observed_coverage));
+                                        for cell in profiles.latest.iter().flatten() {
+                                            let Some(heads) = cell.groove_heads else { continue };
+                                            for (name, rating) in [("groove", heads.groove), ("desire", heads.desire)] {
+                                                if let Some(rating) = rating {
+                                                    ui.label(format!("{:?} · {name}: {:.3} · support {:.0}%",
+                                                        cell.class, rating.expected_rating, 100. * rating.reported_support_mass));
+                                                } else {
+                                                    ui.label(format!("{:?} · {name}: unavailable", cell.class));
+                                                }
+                                            }
+                                        }
+                                    });
+                            }
+                        }
+                        if let Some(resources) = observation.action_profile_resources {
+                            ui.label(format!(
+                                "Maximum assigned prototypes per build: {}",
+                                resources.builds_by_assigned_prototypes.iter().rposition(|n| *n > 0).unwrap_or(0)
+                            ));
+                            ui.label(format!(
+                                "Shared table builds: {} · deferred: {} · invalidated: {} · last/max {:.2}/{:.2} ms",
+                                resources.rebuilds, resources.deferred_calls, resources.invalidations,
+                                resources.last_build_us as f64 / 1000.,
+                                resources.max_build_us as f64 / 1000.
+                            ));
+                            ui.label(format!(
+                                "Shared table cells: {} evaluated · {} reused · {} outside evaluation range",
+                                resources.projection_calls, resources.reused_cells,
+                                resources.evaluation_unavailable_cells
+                            ));
+                            ui.label(format!(
+                                "Articulation hops: {} evaluated · {} reused",
+                                resources.articulation_frames, resources.reused_articulation_frames
+                            ));
+                        }
+                        if let Some(resources) = observation.worker_resources {
+                            ui.label(format!(
+                                "Worker: {} frames · max {:.2} ms · 100 ms windows {}/{} over 50 ms",
+                                resources.frames.count, resources.frames.maximum_ns as f64 / 1e6,
+                                resources.windows.over_limit, resources.windows.count
+                            ));
+                            ui.label(format!(
+                                "Publication age: max {:.2} ms · {}/{} over 25 ms",
+                                resources.delivery.maximum_ns as f64 / 1e6,
+                                resources.delivery.over_limit, resources.delivery.count
+                            ));
+                        }
+                        if observation.acoustic_failed {
+                            ui.label("Acoustic diagnostics: failed for this source epoch");
+                        } else if let Some(acoustic) = observation.acoustic {
+                            ui.label(format!(
+                                "{} sound groups · {} raw descriptors · {} accents · uncalibrated",
+                                acoustic.retained_groups.iter().flatten().count(),
+                                acoustic.features.iter().flatten().count(),
+                                acoustic
+                                    .features
+                                    .iter()
+                                    .flatten()
+                                    .filter(|f| { f.detector.is_some_and(|d| d.accent.is_some()) })
+                                    .count(),
+                            ));
+                        }
+                        if let Some(error) = observation.reference_inventory_error {
+                            ui.label(format!("Reference inventory: {error}"));
+                        } else if let Some(inventory) = &observation.reference_inventory {
+                            ui.label(format!("Private references: {} · assigned {:.3} · unassigned {:.3}",
+                                inventory.references.iter().flatten().count(), inventory.assigned, inventory.unassigned));
+                        }
+                        if observation.memory_failed {
+                            ui.label("Memory diagnostics: failed for this source epoch");
+                        } else if let Some(memory) = observation.memory {
+                            ui.label(format!(
+                                "{} stored intervals · {} completed queries · {} pruned candidates ({} tied) · uncalibrated",
+                                memory.stored_episodes, memory.completed, memory.pruned_candidates, memory.pruned_ties
+                            ));
+                            if let Some(retention) = memory.retention {
+                                ui.label(format!("Retention: {} admissions · {} records · {} evictions · rate invalid {} / unverified {}",
+                                    retention.sequence, retention.records, retention.evictions,
+                                    retention.rate.envelope_invalid, retention.rate.envelope_unverified));
+                                if let Some(group) = memory.retrieval.iter().flatten().max_by_key(|g| g.query_id) {
+                                    ui.label(format!("Stored-match probability: {:.3}–{:.3} · {} scored episodes",
+                                        group.recognition.lower, group.recognition.upper, group.scored_episodes));
+                                }
+                            }
+                            if let Some(graph) = memory.graph {
+                                ui.label(format!("Episode graph: {} nodes · {} candidate links · {} pending queries · {} pruned links",
+                                    graph.nodes, graph.edges, graph.pending_queries, graph.pruned_edges));
+                                ui.label(format!("Unsealed phrases: {} · {} candidate links · {} pruned links · {} lost owners",
+                                    graph.retained_prefixes, graph.prefix_edges, graph.pruned_prefix_edges, graph.lost_prefixes));
+                            }
+                            if let Some(sealed) = memory.latest_sealed_coarse {
+                                if let Some(query) = sealed.query {
+                                    ui.label(format!("Sealed interval: query {} · {} known coarse costs · {} unresolved",
+                                        query.query_id, sealed.known_costs, sealed.unknown_costs));
+                                } else {
+                                    ui.label("Sealed interval: no qualifying original query");
+                                }
+                            }
+                            if let Some(result) = memory.latest {
+                                if let Some(best) = result.best {
+                                    ui.label(format!(
+                                        "Query {} → interval {} · cost {:.4} · {}–{} samples",
+                                        result.query_id,
+                                        best.episode_id,
+                                        best.cost,
+                                        best.support_start_sample,
+                                        best.support_end_sample
+                                    ));
+                                } else {
+                                    ui.label(format!(
+                                        "Query {}: no supported match among {} earlier intervals",
+                                        result.query_id, result.candidates
+                                    ));
+                                }
+                            }
+                        }
+                        if let Some(error)=observation.phrase_error {
+                            ui.label(format!("Phrase diagnostics: {error}"));
+                        } else if let Some(phrase)=observation.phrase {
+                            ui.label(format!("Phrase / closure · uncalibrated · closure rating {:.3} (unknown {:.3}) · continuation rating {:.3} (unknown {:.3})",phrase.closure.expected_rating,phrase.closure.unknown,phrase.continuation.expected_rating,phrase.continuation.unknown));
+                            for g in phrase.groups.iter().flatten() {
+                                if let Some(f)=g.forecast {
+                                    ui.label(format!("Group {} · boundary types {:?} · survival {:.3} · unknown {:.3} · forecast {}–{} · evidence {}–{} / available {}",g.group.generation,f.exits,f.survival,f.unknown,f.issued_at,f.horizon_end,f.source_start,f.source_end,f.available));
+                                }
+                            }
+                        }
+                        if let Some(error) = observation.whole_error {
+                            ui.label(format!("Whole-piece diagnostics: {error}"));
+                        } else if let Some(whole) = observation.whole.as_ref() {
+                            ui.label(format!("Whole-piece completion · uncalibrated · rating {:.3} · support {:.3} · observed through {}",whole.expected_rating,whole.support,whole.observed_end_sample));
+                            ui.label(format!("Inputs {:?} · support {:?}",whole.values,whole.input_support));
+                            if let Some(controls) = whole.controls {
+                                ui.label(format!("Completion controls · closure {:.3} · gap/energy {:.3} · elapsed {:.3}",
+                                    controls.closure_only.rating.expected_rating,
+                                    controls.gap_energy_2s.rating.expected_rating,
+                                    controls.elapsed_only.rating.expected_rating));
+                                ui.label(format!("Control support · {:.3} · {:.3} · {:.3}",
+                                    controls.closure_only.rating.support,
+                                    controls.gap_energy_2s.rating.support,
+                                    controls.elapsed_only.rating.support));
+                            }
+                        }
+                        if let Some(error) = observation.section_error {
+                            ui.label(format!("Section diagnostics: {error}"));
+                        } else if let Some(section) = observation.section.as_ref() {
+                            ui.label(format!("Section · uncalibrated · {} committed phrases · {} commitment losses · {} revisions", section.committed_phrases, section.commitment_losses, section.commitment_revisions));
+                            for g in section.groups.iter().flatten() {
+                                ui.label(format!("Group {} · representative path {} · {} completed spans · one-second exits {:?} · unknown {:.3}", g.group.generation, g.representative_path, g.observed_spans, g.exits, g.unknown));
+                                for candidate in g.candidates.iter().flatten().take(4) {
+                                    ui.label(format!("Context {} · {:?} · mass {:.3} · start {}",candidate.context_id,candidate.relation,candidate.mass,candidate.start_sample));
+                                    if let Some(focus)=candidate.focus {
+                                        ui.label(format!("Recall episode {} · transformation {:?} · query {:?}",focus.episode_id,focus.transformation,candidate.query_id));
+                                    }
+                                }
+                                if let Some(cue)=g.cue {
+                                    ui.label(format!("Cue {} · whole prefix {}–{} · recent acoustic support {:.3} s",cue.occurrence_id,cue.start_sample,cue.support_end_sample,cue.weighted_seconds));
+                                } else { ui.label("Cue unavailable"); }
+                            }
+                        }
+                        if let Some(error)=observation.period_error {
+                            ui.label(format!("Period / arrival diagnostics: {error}"));
+                        } else if let Some(period)=observation.period {
+                            for group in period.groups.iter().flatten().filter(|g|g.active) {
+                                ui.label(format!("Group {}: {} accents · {} period alternatives · {} groupings · uncalibrated",group.ledger.group.generation,group.ledger.retained_accents,group.peaks.iter().flatten().count(),group.grouping.map_or(0,|g|g.proposals.iter().flatten().count())));
+                                if let Some(f)=group.forecast {
+                                    ui.label(format!("{:?} arrival {:?} · elapsed {:?} s · reset unknown {} · forecast {}–{} · evidence {}–{} / available {}",f.model,f.probability,f.elapsed_seconds,f.reset_unknown,f.issued_at,f.horizon_end,f.source_start,f.source_end,f.available));
+                                }
+                            }
+                            if let Some(heads) = period.groove_heads {
+                                for (index, (name, rating)) in [
+                                    ("Groove", heads.groove),
+                                    ("Desire to participate", heads.desire),
+                                ].into_iter().enumerate() {
+                                    if let Some(error) = heads.errors[index] {
+                                        ui.label(format!("{name}: {error}"));
+                                    } else if let Some(rating) = rating {
+                                        ui.label(format!(
+                                            "{name} rating {:.3} · observed {:.0}% · head support {:.0}% · prior contribution {:.0}%",
+                                            rating.expected_rating,
+                                            rating.observed_coverage * 100.,
+                                            rating.supported_mass * 100.,
+                                            (1. - rating.reported_support_mass) * 100.,
+                                        ));
+                                    }
+                                    let errors = heads.groups.iter().flatten().filter(|g| g.local.errors[index].is_some()).count();
+                                    if errors > 0 {
+                                        ui.label(format!("{name}: {errors} group predictions unavailable due to numeric errors"));
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(error) = observation.gesture_error {
+                            ui.label(format!("Gesture diagnostics: {error}"));
+                        } else if let Some(gesture) = observation.gesture {
+                            let unions = gesture.candidates.iter().flatten().filter(|c| c.members[1].is_some()).count();
+                            ui.label(format!("Gesture hypotheses: {} · {} two-group unions · unresolved {:.3} · uncalibrated", gesture.candidates.iter().flatten().count(), unions, gesture.unresolved));
+                            for group in gesture.groups.iter().flatten() {
+                                ui.label(format!("Group {}: attack {:.2} · continuation {:.2} · release {:.2} · gap {:.2} · unknown {:.2}", group.group.generation, group.states[0], group.states[1], group.states[2], group.states[3], group.unknown));
+                            }
+                        }
+
+                    }
+                }
                 let old_spacing = ui.spacing().item_spacing;
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.label("Auditory salience");

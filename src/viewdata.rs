@@ -98,6 +98,9 @@ pub struct PredictionFrame {
 
 #[derive(Clone, Debug, Default)]
 pub struct UiFrame {
+    pub body: Option<Arc<crate::temporal_cognition::body::Snapshot>>,
+    pub self_sound: Option<crate::life::action_observation::Snapshot>,
+    pub temporal: Arc<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pub wave: WaveFrame,
     pub spec: SpecFrame,
     pub listener: ListenerFrame,

@@ -1,0 +1,1346 @@
+{
+  "schema": "i10-source-energy-model-v5",
+  "status": "normal_diagnostic_learning_not_action_enabled_or_calibrated",
+  "model": "source_energy_log1p_residual_v5",
+  "ownership": [
+    "source_id",
+    "source_generation",
+    "body_generation"
+  ],
+  "buses": [
+    "habitat",
+    "presentation"
+  ],
+  "target": "mean squared PCM of the summed routed whole-source contribution before mixture and guards",
+  "command_windows_seconds": {
+    "onset": 0.02,
+    "release": 2.0
+  },
+  "bins": 16,
+  "edges": "scheduled_start + ceil(k * actual_window_width_samples / 16), k=0..16",
+  "support": "nonempty bin with every finite sample acquired from the matching private capture slot and generations; cancelled commands excluded",
+  "future_support": "issued command window only; later energy and excluded tail mass remain unknown",
+  "fixed_prior": "Use the supported whole-source coherent stationary-sine carrier mean; otherwise the explicitly reported v4 incoherent command-plus-retained envelope/control sum. Original command and retained components remain separately reported.",
+  "fixed_prior_limit": "Coherent support is limited to stationary sine contributors. Midpoint amplitude/norm, later controls and other backends remain approximations; fallback is not coherent support.",
+  "controls": [
+    "fixed_coherent_sine_or_incoherent_proxy",
+    "action_conditioned_residual",
+    "action_independent_residual"
+  ],
+  "action_independent_prior_energy": 0.0001,
+  "link": {
+    "formula": "log1p(E / scale)",
+    "scale_full_scale_squared": 1e-06
+  },
+  "inputs": [
+    "intercept",
+    "is_onset",
+    "is_release",
+    "log2_frequency_div_16",
+    "log2_amplitude_div_20",
+    "relative_envelope_end_clamped_0_1",
+    "six_standardized_descriptors_tanh_div_4",
+    "six_descriptor_masks",
+    "command_routed_to_bus"
+  ],
+  "action_blind_mask": "zero existing feature indices 1..5 and appended routing feature; retain intercept and observed body descriptors/masks",
+  "learning": {
+    "method": "normalized LMS residual",
+    "rate": 0.1,
+    "normalizer": "1+sum(x*x)",
+    "weight_bounds": [
+      -8,
+      8
+    ],
+    "prediction_log_bounds": "0..log1p(f32::MAX^2/scale)"
+  },
+  "ordering": "score frozen issued predictions before updating weights; retired generations may be scored but cannot update replacement models",
+  "capacity": {
+    "owners": 64,
+    "models_per_bus": 2,
+    "weights_per_model": 304,
+    "pending_commands": 256
+  },
+  "claims_excluded": [
+    "ordinary seven-class hypothetical preview and shared consequence transfer",
+    "whole-Voice silence proof from one tone envelope",
+    "future detailed energy beyond command window",
+    "ordinal calibration",
+    "action influence",
+    "full I10 resource acceptance"
+  ],
+  "source_sha256": {
+    "src/life/sound/mod.rs": "8a46da837d933f6a55ee83fd21a81514b065cb4ed24ff0f33e30eee5e16a9707",
+    "src/life/sound/sine_forecast.rs": "3d774e1116ec7a082021c4c5215fe2be326727af848f4857cbbcfabcea5f5015",
+    "src/life/sound/oscillator_bank.rs": "b9829968debe7088c7b2dd2236b770b7419a1fc90965860b136314bd5656452e",
+    "src/life/sound/tone.rs": "9fdaa35068de473c1c8525b306b225dec6d2bbd4ff4f7ffc67fe61b6dd7b32e1",
+    "src/life/self_prediction.rs": "d4a7791fb7fc69e0247a34ca1149725e49c98725adf3b330264a1ede79dcb980",
+    "src/life/self_prediction/projection.rs": "8a3cd13d6cbc98968a4cae02b08a5dc9fc07bf3067a5b090ff35a86f2a316177",
+    "src/life/self_prediction/energy.rs": "d358337b4663436578354281e16743bd8958e67a008045c543ccb3c73e8f33a6",
+    "src/life/self_prediction/tests.rs": "9667d7dcde6e4087f7d13f20aef49e350989860f697fa7443f0626bac08b82f9",
+    "src/life/self_prediction/ratios.rs": "65ce5b013d4895548e7b9675915c6a1c93a9871a5a10b30f670c980cd57fc6c4",
+    "src/life/participation_trace/tests.rs": "32f0b77c85e7fade44e48b918d9a9507aaefe97bb6551245f0ca9d26d90f83b0",
+    "src/life/action_observation.rs": "4548f118046a8fe3f7235013210740bad939cd9945853413ff1aea241f99c863",
+    "src/life/schedule_renderer.rs": "d201597624f23c44d19c181946ff79388bd2b848e09ee21e5258bc4a6e2a70aa",
+    "src/temporal_cognition/body.rs": "bd7c08ade530a51020418fa92b0fede9de3f3a811332b71afed58e041327af1d",
+    "src/temporal_cognition/body/tests.rs": "62041edae4eb5e6eefa2296aac4d99b770489ccceb0a23f1aa201e1ef6503a1d",
+    "src/runtime/body_profiles/policy_default/energy_projection.rs": "ca7e631b03d3aeb7ac1dc15b7ad216faa819756cf22ea0997b9fdd3f68278d0e",
+    "tests/render_binary.rs": "5a773c9ba198ee79b8b426dd47494155433c906163a5158ee35ae151e84cf352",
+    "scripts/verify_temporal_candidate_energy.py": "f5f5d9e82ab8aaa0769703e8b19e0301d5d01825b41ad977d07cdc279743b5b1",
+    "scripts/verify_temporal_retained_energy.py": "b172e4612a4d19e6aaa5968338070ff28b45cbd4a02396f3491d9117352a2fd8"
+  },
+  "validation": {
+    "test_status": "cargo test exit=0 @ 2026-09-18T11:55:14+09:00",
+    "passed": 1156,
+    "failed": 0,
+    "ignored": 37,
+    "suites": 31,
+    "clippy": "passed",
+    "all_targets": "passed",
+    "fmt": "passed",
+    "candidate_regression": {
+      "files": 4,
+      "floats": 27231,
+      "changed_floats": 404,
+      "maximum_change": 2.168404344971009e-19,
+      "candidate_ranks_unchanged": true,
+      "verified_points": 9088,
+      "maximum_direct_wave_sum_error": 2.6020852139652106e-18
+    },
+    "ordinary_summary": {
+      "verified_forecasts": 70,
+      "bus_window_coordinates": 2240,
+      "changed_fixed_predictions": 244,
+      "unchanged_pcm_files": 172,
+      "paired_scored_windows": 2220,
+      "unchanged_common_passive_frames": 485,
+      "old_model_squared_error_sum": [
+        0.006563818141556952,
+        0.0068460453842649795,
+        0.01270896428553889
+      ],
+      "new_model_squared_error_sum": [
+        0.006563818141556952,
+        0.0068460453842649795,
+        0.01270896428553889
+      ]
+    },
+    "resource_probe": {
+      "scope": "Release opt-level=3 and LTO; isolated kernel wall time including point construction, excluding control snapshots, observer/model/report, shared candidate scheduling and concurrent audio. Tone count is not Voice count.",
+      "rows": [
+        {
+          "support": "aligned",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2310,
+          "p99_ns": 2760,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "aligned",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 6220,
+          "p99_ns": 6590,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "aligned",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 29841,
+          "p99_ns": 31880,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "aligned",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 262421,
+          "p99_ns": 270341,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2340,
+          "p99_ns": 2360,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 9550,
+          "p99_ns": 10590,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 88831,
+          "p99_ns": 91041,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1245528,
+          "p99_ns": 1289848,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2300,
+          "p99_ns": 2490,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 7690,
+          "p99_ns": 8240,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 57120,
+          "p99_ns": 59011,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 703854,
+          "p99_ns": 731495,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2320,
+          "p99_ns": 2350,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 6440,
+          "p99_ns": 6790,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 34590,
+          "p99_ns": 36230,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 317762,
+          "p99_ns": 327512,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2330,
+          "p99_ns": 2360,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 10590,
+          "p99_ns": 11630,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 111541,
+          "p99_ns": 114340,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1596389,
+          "p99_ns": 1620910,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2310,
+          "p99_ns": 2340,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 9610,
+          "p99_ns": 10690,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 93371,
+          "p99_ns": 95190,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1297648,
+          "p99_ns": 1314758,
+          "scratch_bytes": 86528
+        }
+      ],
+      "reference_additional_work_p99_ns": 1600000,
+      "cases_exceeding_reference_slice": [
+        {
+          "support": "staggered_near_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1596389,
+          "p99_ns": 1620910,
+          "scratch_bytes": 86528
+        }
+      ],
+      "full_resource_acceptance": false
+    },
+    "scope": "Same v5 accuracy boundary; optimized implementation independently rechecked. No full I10 completion or real-time acceptance."
+  },
+  "scheduled_release": {
+    "fields": [
+      "apply_at_sample",
+      "off_sample"
+    ],
+    "source": "validated issue-known onset opportunity; frozen on the existing ordinary forecast",
+    "delivery": "now + floor((off-now)/hop)*hop; conditional on unchanged hop grid",
+    "terminal_feature": "relative end uses min(original hold end, planned off) plus original release; original natural terminal is never extended",
+    "invalid_receipt": "no scheduled release; preserve original prediction inputs",
+    "actual_renderer": "unchanged; note-off is delivered at its original scheduled hop"
+  },
+  "prior_registrations": [
+    {
+      "schema": "i10-source-energy-model-v1",
+      "model": "source_energy_log1p_residual_v1",
+      "fixed_prior": "routed ? amplitude^2 * actual_tone_envelope_gain_at_integer_bin_midpoint^2 / 2 : 0",
+      "source_sha256": {
+        "src/life/self_prediction/energy.rs": "6ac57fa05be8fc2e276dea5c441c6ec0237a3947da763819db580d168af2ba7f",
+        "src/life/self_prediction.rs": "e03ae2ebd57869a333411776889e3f03f31fbef208c8c18c8a683f8b9dc01e0c",
+        "src/life/self_prediction/tests.rs": "62461315cb129438ceb14b1099eb34324aaff0af06d097a30e46fce03b6371d1",
+        "src/life/action_observation.rs": "f1d54b5d36d38a66dfc828cfe3a435c3aeeee14e826d0effc8242b1f2a67c4f9",
+        "src/life/schedule_renderer.rs": "93117c6e77820a56cf4e5f88a5b14e3eb6a46ce6ecdcdbe80332f7b0cc00b888",
+        "src/temporal_cognition/body.rs": "8245e3fa2190095d4161741dd030d8f45dc74ab75965173363d4dee7ad4657a5",
+        "src/temporal_cognition/body/tests.rs": "7792020413f6bd953f98174552e4960763d4cf545b1179af8fd027b2185a68ff",
+        "src/ui/windows.rs": "4af1eeb5299ab287a4a39edfb2cbb71f4706bc0fb82c904a3fc25facd0477887",
+        "tests/render_binary.rs": "60ef69f30f6ac748a8ca91a41bbd91d643a0fa0deb752e8c9308f32399d9bfa2"
+      },
+      "validation": {
+        "rust_passed": 1081,
+        "rust_failed": 0,
+        "rust_ignored": 30,
+        "rust_suites": 31,
+        "test_status": "cargo test exit=0 @ 2026-09-18T02:00:54+09:00",
+        "clippy": "passed",
+        "all_targets_check": "passed",
+        "format": "passed",
+        "diff_check": "passed",
+        "scope": "registered diagnostic and synthetic mapping tests; no forecast-accuracy or resource acceptance claim"
+      }
+    },
+    {
+      "schema": "i10-source-energy-model-v2",
+      "model": "source_energy_log1p_residual_v2",
+      "fixed_prior": "routed ? amplitude^2 * conditional_tone_envelope_gain_at_integer_bin_midpoint^2 / 2 : 0; original envelope before scheduled_release.apply_at_sample, envelope shortened at scheduled_release.off_sample afterward",
+      "scheduled_release": {
+        "fields": [
+          "apply_at_sample",
+          "off_sample"
+        ],
+        "source": "validated issue-known onset opportunity; frozen on the existing ordinary forecast",
+        "delivery": "now + floor((off-now)/hop)*hop; conditional on unchanged hop grid",
+        "terminal_feature": "relative end uses min(original hold end, planned off) plus original release; original natural terminal is never extended",
+        "invalid_receipt": "no scheduled release; preserve original prediction inputs",
+        "actual_renderer": "unchanged; note-off is delivered at its original scheduled hop"
+      },
+      "source_sha256": {
+        "src/life/schedule_renderer.rs": "5d55e0bed16fdac0c736812f08c55c19490678eadbfb3ae9566441d214297004",
+        "src/life/self_prediction.rs": "4a973f913a1b38cf9722b7bd17e10b3c7a51ff2481922315da03ef2af2fee860",
+        "src/life/self_prediction/energy.rs": "90a95fe971b08bf195485306a0ba2ffaf6666fde33c04ee302cca8f81be2f286",
+        "src/life/self_prediction/tests.rs": "d8cb2497f438de374d2d9b70f37e54008e15b552bdaf99393d15fdf51f10112a",
+        "src/life/self_prediction/ratios.rs": "ca8fe89c745f2841378ecac46575dfc492e30e193d532115b933615b7369f521",
+        "src/life/participation_trace/tests.rs": "c88c319de074bee2fb09fa217789848f176fb4aef25c9ef9a4bc343fdce52103",
+        "src/temporal_cognition/body.rs": "65653f4918210afa56bc18c47a3b243d24e7ac45bf9f0609f093d657454ea952",
+        "src/temporal_cognition/body/tests.rs": "1d2c6d4d8d040ec0dda972c30d20c5714deaca4b92cf919191ba4e4578c17dc4",
+        "tests/render_binary.rs": "09421b0f30bfe06b7a14c0b9ccd390b649c73a377493981b88ef76d01ad76e8e",
+        "scripts/verify_temporal_scheduled_release.py": "d6a5af3012c21cf8e87f55fc9125730b6be6ac046c661375ec2841c7950b8d71"
+      },
+      "validation": {
+        "test_status": "cargo test exit=0 @ 2026-09-18T09:58:38+09:00",
+        "passed": 1147,
+        "failed": 0,
+        "ignored": 35,
+        "suites": 31,
+        "clippy": "passed",
+        "all_targets": "passed",
+        "fmt": "passed",
+        "diff_check": "passed",
+        "scope": "Piecewise envelope arithmetic, ordinary planned-release input consumption, actual input/PCM/target invariance and one development short-release diagnostic; no general forecast-accuracy or resource acceptance."
+      }
+    },
+    {
+      "schema": "i10-source-energy-model-v3",
+      "model": "source_energy_log1p_residual_v3",
+      "fixed_prior": "command-tone sine-envelope proxy plus actual retained-tone sine-envelope proxies on the target bus; each uses its own current amplitude, frozen envelope and scheduled-release hop switch. No coherent interference or backend/modulator dynamics.",
+      "source_sha256": {
+        "src/life/schedule_renderer.rs": "3bfceccc5e7007db5788b2d2a81b8700d262e9b1946469e78644e3cbac95e43d",
+        "src/life/action_observation.rs": "ee1f06b416c6952a9357772c0e92281ace7d23483013da0f39527103b3871832",
+        "src/life/self_prediction.rs": "56de328935f9d5c511a2802c1eea2f9eb1405c24d6026dae32a43a7fa87f8696",
+        "src/life/self_prediction/energy.rs": "54188a8ee2c64ab33566492bc6e26e43eea8f6f8b4b182fb0a952c587de5404c",
+        "src/life/self_prediction/tests.rs": "d9e0ca9eecbb0fc2c39e77feeb5215b692e5538479c8ecff53d6f9c1ba499e07",
+        "src/life/self_prediction/ratios.rs": "e593c11d5917837efc977af954f914e62bdd99b9e0d1b4c066ab80dbf4381ec9",
+        "src/life/participation_trace/tests.rs": "10eb4343c2906b3b202f13d50190a66b018accfb808797823375e79607e60b2c",
+        "src/temporal_cognition/body.rs": "25e660a7bf196273083b3aebea12f48dd5665a4a42816166130feaadf74c522c",
+        "src/temporal_cognition/body/tests.rs": "1bcbd88e48f9d329171fb7906a092eb282367fa20c61ed2b57699b962ded2c26",
+        "tests/render_binary.rs": "001ff3735f58d7b0f2fda0e7143ddbd2d6ac2699eb052ab568e53715b79fdc85",
+        "scripts/verify_temporal_retained_energy.py": "35a9394e730c2d41272d62491d722a9951b26c8f23d49f2e819ace87dca2bdc1"
+      },
+      "validation": {
+        "test_status": "cargo test exit=0 @ 2026-09-18T10:21:25+09:00",
+        "passed": 1149,
+        "failed": 0,
+        "ignored": 35,
+        "suites": 31,
+        "clippy": "passed",
+        "all_targets": "passed",
+        "fmt": "passed",
+        "diff": "passed",
+        "scope": "On 2220 paired supported bus windows, fixed and action-conditioned squared errors both increase in aggregate; the action-independent control is unchanged. This connects real retained-body inputs but does not establish a more accurate acoustic model. Keep backend/modulator/phase conditioning and fixed/conditioned comparison as required work."
+      },
+      "retained_input": {
+        "ownership": "Actual same-source/same-source-generation renderer entries excluding the command tone; each tone retains its own bus routing.",
+        "time": "State immediately after that command is applied, before later commands, with parameters frozen at issue.",
+        "capacity": {
+          "source_entries": 64,
+          "overflow_probe": 1,
+          "windows": 16,
+          "buses": 2,
+          "behavior": "Source-scoped BTree range; count every examined entry, including excluded target/other-generation entries. Stop on entry 65, mark retained.complete=false and all whole-source forecasts unknown; no residual scoring/updating from a partial sum. No new heap allocation or DSP rendering."
+        },
+        "report": [
+          "command_fixed_energy",
+          "retained.complete",
+          "retained.scanned_entries",
+          "retained.included_tones",
+          "retained.fixed_energy",
+          "retained.control_supported"
+        ],
+        "learning": "If source inventory is truncated, every whole-source comparison is unsupported and cannot score or update; command component remains separately visible. Unsupported control windows also cannot score or train; complete still describes inventory completeness only."
+      }
+    },
+    {
+      "schema": "i10-source-energy-model-v4",
+      "status": "normal_diagnostic_learning_not_action_enabled_or_calibrated",
+      "model": "source_energy_log1p_residual_v4",
+      "ownership": [
+        "source_id",
+        "source_generation",
+        "body_generation"
+      ],
+      "buses": [
+        "habitat",
+        "presentation"
+      ],
+      "target": "mean squared PCM of the summed routed whole-source contribution before mixture and guards",
+      "command_windows_seconds": {
+        "onset": 0.02,
+        "release": 2.0
+      },
+      "bins": 16,
+      "edges": "scheduled_start + ceil(k * actual_window_width_samples / 16), k=0..16",
+      "support": "nonempty bin with every finite sample acquired from the matching private capture slot and generations; cancelled commands excluded",
+      "future_support": "issued command window only; later energy and excluded tail mass remain unknown",
+      "fixed_prior": "Sum actual command/retained tone amplitude^2 * conditional outer envelope^2 * issued analytic control amplitude^2 / 2 at each integer midpoint, with each tone routed independently. Control state and known kick/excitation are frozen at issue.",
+      "fixed_prior_limit": "Incoherent sine-variance proxy with analytic control approximation; no backend-specific response, sine impulse boost, phase cross terms, future rhythm changes or parameter updates.",
+      "controls": [
+        "fixed_coherent_sine_or_incoherent_proxy",
+        "action_conditioned_residual",
+        "action_independent_residual"
+      ],
+      "action_independent_prior_energy": 0.0001,
+      "link": {
+        "formula": "log1p(E / scale)",
+        "scale_full_scale_squared": 1e-06
+      },
+      "inputs": [
+        "intercept",
+        "is_onset",
+        "is_release",
+        "log2_frequency_div_16",
+        "log2_amplitude_div_20",
+        "relative_envelope_end_clamped_0_1",
+        "six_standardized_descriptors_tanh_div_4",
+        "six_descriptor_masks",
+        "command_routed_to_bus"
+      ],
+      "action_blind_mask": "zero existing feature indices 1..5 and appended routing feature; retain intercept and observed body descriptors/masks",
+      "learning": {
+        "method": "normalized LMS residual",
+        "rate": 0.1,
+        "normalizer": "1+sum(x*x)",
+        "weight_bounds": [
+          -8,
+          8
+        ],
+        "prediction_log_bounds": "0..log1p(f32::MAX^2/scale)"
+      },
+      "ordering": "score frozen issued predictions before updating weights; retired generations may be scored but cannot update replacement models",
+      "capacity": {
+        "owners": 64,
+        "models_per_bus": 2,
+        "weights_per_model": 304,
+        "pending_commands": 256
+      },
+      "claims_excluded": [
+        "ordinary seven-class hypothetical preview and shared consequence transfer",
+        "whole-Voice silence proof from one tone envelope",
+        "future detailed energy beyond command window",
+        "ordinal calibration",
+        "action influence",
+        "full I10 resource acceptance"
+      ],
+      "source_sha256": {
+        "src/life/sound/render_modulator.rs": "dd7d47f0f640f2810a9771b8ea479788a17fdd376258525dd25dc7e44ed19050",
+        "src/life/sound/tone.rs": "dfd9421f24ca2f70cd0cead6a62a7b4d1d8edc9a49a967789521c98ddc97a6f8",
+        "src/life/schedule_renderer.rs": "4020308eb9e95e18525a518a862c88ed715d9a5c72444062a80848b6d7ff9550",
+        "src/life/action_observation.rs": "49ed47fc46bc86f6f12dd1a9466dae977b2c4fa8a314a657bc6b14b22edbe5c7",
+        "src/life/self_prediction.rs": "cc3764b58f20cadfb93c15ea65bd174dbce89ae0246e9208f9ef0b2852ae21bc",
+        "src/life/self_prediction/energy.rs": "df817818b94240ae0fc143edf0f9c8808721e75c3ee415eb09a872b0f497b9a5",
+        "src/life/sound/control_forecast.rs": "781a70e57dd9360abfa664d0fa8df48baa0fda45a487125f1430f71418ee3943",
+        "src/life/sound/mod.rs": "2eee305f52d8a0b1eb2a25a0ba725e2f7c36e015dd6d21542fe7f450454265c9",
+        "src/life/self_prediction/tests.rs": "6eea60932eb44e2ce821cb141cf1213458c0f513e2004bdd4b009a067e4f13ee",
+        "src/life/self_prediction/ratios.rs": "6f59dd2949d20abb146615da46f9eb7b47d1cf0e4bf4cf742d7202d40cee1223",
+        "src/life/participation_trace/tests.rs": "24585de50e4829026dcff6464d738c23e1006ef6502d7b6074f70cd83110cde4",
+        "src/temporal_cognition/body.rs": "553c378fe1c6cc8ce8acccb4101f594170e38a0c7f2d42ed01657b2ad006a977",
+        "src/temporal_cognition/body/tests.rs": "a4d2ba815e7d6a2313b1db0deb6ecc102d2a3f0206729bbeb4a03fab7978c0d9",
+        "tests/render_binary.rs": "922a2a138a6aa134a839774d0e0168416c203a637ca9fd845b3f1ef7aefbc88d",
+        "scripts/verify_temporal_retained_energy.py": "3c6e590b818586d1079ddf81c19282b3e09cded7295c50f4e2f99ea4d4c56a02",
+        "src/life/self_prediction/projection.rs": "0b9e33e3c8bcb457d35684e0388bb81f10e9fcad82f2e7708e1913b416133f2b",
+        "src/runtime/body_profiles/policy_default.rs": "dde5ff84981769754ea3540139a37202ab868796d5a309d4576fa5a2872b7a42",
+        "src/runtime/body_profiles/policy_default/energy_projection.rs": "130e5485e2694b1c8b354ee926afbd2efd883b56a1b8f44e348b95cb6b07cca7",
+        "scripts/verify_temporal_candidate_energy.py": "3392615ecde5f209f9c95ee34d9fc5306b6266f70d798663b903705ccde4e210"
+      },
+      "validation": {
+        "test_status": "cargo test exit=0 @ 2026-09-18T10:45:06+09:00",
+        "passed": 1152,
+        "failed": 0,
+        "ignored": 35,
+        "suites": 31,
+        "clippy": "passed",
+        "all_targets": "passed",
+        "fmt": "passed",
+        "scope": "On the same 2220 supported development bus windows, aggregate fixed and action-conditioned squared errors decrease; action-independent control unchanged. Fixed errors worsen on sine-hold, harmonic-entrained and harmonic-pulse. No general body-transfer accuracy, ranking, calibration or resource acceptance.",
+        "evidence": "target/i10-control-amplitude-20260918/control-amplitude-verification.json",
+        "summary": {
+          "verified_forecasts": 70,
+          "bus_window_coordinates": 2240,
+          "changed_fixed_predictions": 1373,
+          "nonzero_retained_coordinates": 1199,
+          "paired_scored_windows": 2220,
+          "unchanged_pcm_files": 172,
+          "unchanged_common_passive_frames": 429,
+          "max_absolute_error": 0.0,
+          "old_model_squared_error_sum": [
+            0.013481236695798695,
+            0.010431522993000845,
+            0.01270896428553889
+          ],
+          "new_model_squared_error_sum": [
+            0.007761865430497955,
+            0.007877097873786114,
+            0.01270896428553889
+          ]
+        },
+        "diff": "passed"
+      },
+      "scheduled_release": {
+        "fields": [
+          "apply_at_sample",
+          "off_sample"
+        ],
+        "source": "validated issue-known onset opportunity; frozen on the existing ordinary forecast",
+        "delivery": "now + floor((off-now)/hop)*hop; conditional on unchanged hop grid",
+        "terminal_feature": "relative end uses min(original hold end, planned off) plus original release; original natural terminal is never extended",
+        "invalid_receipt": "no scheduled release; preserve original prediction inputs",
+        "actual_renderer": "unchanged; note-off is delivered at its original scheduled hop"
+      },
+      "retained_input": {
+        "ownership": "Actual same-source/same-source-generation renderer entries excluding the command tone; each tone retains its own bus routing.",
+        "time": "State immediately after that command is applied, before later commands, with parameters frozen at issue.",
+        "capacity": {
+          "source_entries": 64,
+          "overflow_probe": 1,
+          "windows": 16,
+          "buses": 2,
+          "behavior": "Source-scoped BTree range; count every examined entry, including excluded target/other-generation entries. Stop on entry 65, mark retained.complete=false and all whole-source forecasts unknown; no residual scoring/updating from a partial sum. No new heap allocation or DSP rendering."
+        },
+        "report": [
+          "command_fixed_energy",
+          "retained.complete",
+          "retained.scanned_entries",
+          "retained.included_tones",
+          "retained.fixed_energy",
+          "retained.control_supported"
+        ],
+        "learning": "If source inventory is truncated, every whole-source comparison is unsupported and cannot score or update; command component remains separately visible. Unsupported control windows also cannot score or train; complete still describes inventory completeness only."
+      },
+      "control_amplitude": {
+        "state": "Actual renderer EntrainPulse state/level, SeqGate timer, or DroneSway phase; dt and onset excitation/kick. Unmodulated tones use the existing tension factor. No backend clone or per-sample forecast loop.",
+        "time": "One control step is included at the target sample. Kick resets Attack/SeqGate at known onset; no kick reset for DroneSway. Current alpha/beta held for the forecast.",
+        "support": "Unstarted tones are zero before a known excitation. Autonomous EntrainPulse is supported after a known kick only if positive sustain prevents returning Idle; otherwise unknown. SeqGate near its strict edge is unknown within a conservative f32 accumulation bound. Nonfinite/invalid parameters are unknown.",
+        "learning": "A missing command control or unsupported retained control makes the whole-source window unknown and unscored; no partial-sum training. A known zero outer envelope or unrouted command remains zero.",
+        "report": [
+          "prediction.control",
+          "source_energy[].retained.control_supported"
+        ],
+        "bounds": "O(16) scalar forecasts per routed retained tone, existing cap 64 plus overflow probe. No new heap allocation or DSP render. Full I10 resource census still required."
+      },
+      "kernel_refactor": {
+        "semantic_change": false,
+        "source_before": {
+          "src/life/sound/render_modulator.rs": "dd7d47f0f640f2810a9771b8ea479788a17fdd376258525dd25dc7e44ed19050",
+          "src/life/sound/tone.rs": "dfd9421f24ca2f70cd0cead6a62a7b4d1d8edc9a49a967789521c98ddc97a6f8",
+          "src/life/schedule_renderer.rs": "4020308eb9e95e18525a518a862c88ed715d9a5c72444062a80848b6d7ff9550",
+          "src/life/action_observation.rs": "49ed47fc46bc86f6f12dd1a9466dae977b2c4fa8a314a657bc6b14b22edbe5c7",
+          "src/life/self_prediction.rs": "cc3764b58f20cadfb93c15ea65bd174dbce89ae0246e9208f9ef0b2852ae21bc",
+          "src/life/self_prediction/energy.rs": "df817818b94240ae0fc143edf0f9c8808721e75c3ee415eb09a872b0f497b9a5",
+          "src/life/sound/control_forecast.rs": "781a70e57dd9360abfa664d0fa8df48baa0fda45a487125f1430f71418ee3943",
+          "src/life/sound/mod.rs": "2eee305f52d8a0b1eb2a25a0ba725e2f7c36e015dd6d21542fe7f450454265c9",
+          "src/life/self_prediction/tests.rs": "6eea60932eb44e2ce821cb141cf1213458c0f513e2004bdd4b009a067e4f13ee",
+          "src/life/self_prediction/ratios.rs": "6f59dd2949d20abb146615da46f9eb7b47d1cf0e4bf4cf742d7202d40cee1223",
+          "src/life/participation_trace/tests.rs": "24585de50e4829026dcff6464d738c23e1006ef6502d7b6074f70cd83110cde4",
+          "src/temporal_cognition/body.rs": "553c378fe1c6cc8ce8acccb4101f594170e38a0c7f2d42ed01657b2ad006a977",
+          "src/temporal_cognition/body/tests.rs": "a4d2ba815e7d6a2313b1db0deb6ecc102d2a3f0206729bbeb4a03fab7978c0d9",
+          "tests/render_binary.rs": "922a2a138a6aa134a839774d0e0168416c203a637ca9fd845b3f1ef7aefbc88d",
+          "scripts/verify_temporal_retained_energy.py": "3c6e590b818586d1079ddf81c19282b3e09cded7295c50f4e2f99ea4d4c56a02",
+          "src/life/self_prediction/projection.rs": "0b9e33e3c8bcb457d35684e0388bb81f10e9fcad82f2e7708e1913b416133f2b",
+          "src/runtime/body_profiles/policy_default.rs": "dde5ff84981769754ea3540139a37202ab868796d5a309d4576fa5a2872b7a42",
+          "src/runtime/body_profiles/policy_default/energy_projection.rs": "130e5485e2694b1c8b354ee926afbd2efd883b56a1b8f44e348b95cb6b07cca7",
+          "scripts/verify_temporal_candidate_energy.py": "3392615ecde5f209f9c95ee34d9fc5306b6266f70d798663b903705ccde4e210"
+        },
+        "consumer": "ToneEnergy::at shared by ordinary command and retained-tone energy, and the explicit offline seven-class/default evaluator. Candidate release is an additional delivery-gated shortening alongside the existing plan.",
+        "evidence": "target/i10-seven-class-energy-inputs-20260918/ordinary-regression-verification.json",
+        "ordinary_identical_outcomes": 97,
+        "ordinary_identical_forecasts": 97,
+        "ordinary_identical_pcm_files": 172,
+        "seven_class_evidence": "target/i10-seven-class-energy-20260918/verification.json",
+        "checks": {
+          "test_status": "cargo test exit=0 @ 2026-09-18T11:01:14+09:00",
+          "passed": 1153,
+          "failed": 0,
+          "ignored": 36,
+          "suites": 31,
+          "clippy": "passed",
+          "all_targets": "passed",
+          "fmt": "passed",
+          "python_compile": "passed",
+          "diff": "passed"
+        }
+      }
+    },
+    {
+      "schema": "i10-source-energy-model-v5",
+      "status": "normal_diagnostic_learning_not_action_enabled_or_calibrated",
+      "model": "source_energy_log1p_residual_v5",
+      "ownership": [
+        "source_id",
+        "source_generation",
+        "body_generation"
+      ],
+      "buses": [
+        "habitat",
+        "presentation"
+      ],
+      "target": "mean squared PCM of the summed routed whole-source contribution before mixture and guards",
+      "command_windows_seconds": {
+        "onset": 0.02,
+        "release": 2.0
+      },
+      "bins": 16,
+      "edges": "scheduled_start + ceil(k * actual_window_width_samples / 16), k=0..16",
+      "support": "nonempty bin with every finite sample acquired from the matching private capture slot and generations; cancelled commands excluded",
+      "future_support": "issued command window only; later energy and excluded tail mass remain unknown",
+      "fixed_prior": "Use the supported whole-source coherent stationary-sine carrier mean; otherwise the explicitly reported v4 incoherent command-plus-retained envelope/control sum. Original command and retained components remain separately reported.",
+      "fixed_prior_limit": "Coherent support is limited to stationary sine contributors. Midpoint amplitude/norm, later controls and other backends remain approximations; fallback is not coherent support.",
+      "controls": [
+        "fixed_coherent_sine_or_incoherent_proxy",
+        "action_conditioned_residual",
+        "action_independent_residual"
+      ],
+      "action_independent_prior_energy": 0.0001,
+      "link": {
+        "formula": "log1p(E / scale)",
+        "scale_full_scale_squared": 1e-06
+      },
+      "inputs": [
+        "intercept",
+        "is_onset",
+        "is_release",
+        "log2_frequency_div_16",
+        "log2_amplitude_div_20",
+        "relative_envelope_end_clamped_0_1",
+        "six_standardized_descriptors_tanh_div_4",
+        "six_descriptor_masks",
+        "command_routed_to_bus"
+      ],
+      "action_blind_mask": "zero existing feature indices 1..5 and appended routing feature; retain intercept and observed body descriptors/masks",
+      "learning": {
+        "method": "normalized LMS residual",
+        "rate": 0.1,
+        "normalizer": "1+sum(x*x)",
+        "weight_bounds": [
+          -8,
+          8
+        ],
+        "prediction_log_bounds": "0..log1p(f32::MAX^2/scale)"
+      },
+      "ordering": "score frozen issued predictions before updating weights; retired generations may be scored but cannot update replacement models",
+      "capacity": {
+        "owners": 64,
+        "models_per_bus": 2,
+        "weights_per_model": 304,
+        "pending_commands": 256
+      },
+      "claims_excluded": [
+        "ordinary seven-class hypothetical preview and shared consequence transfer",
+        "whole-Voice silence proof from one tone envelope",
+        "future detailed energy beyond command window",
+        "ordinal calibration",
+        "action influence",
+        "full I10 resource acceptance"
+      ],
+      "source_sha256": {
+        "src/life/sound/mod.rs": "8a46da837d933f6a55ee83fd21a81514b065cb4ed24ff0f33e30eee5e16a9707",
+        "src/life/sound/sine_forecast.rs": "3d774e1116ec7a082021c4c5215fe2be326727af848f4857cbbcfabcea5f5015",
+        "src/life/sound/oscillator_bank.rs": "b9829968debe7088c7b2dd2236b770b7419a1fc90965860b136314bd5656452e",
+        "src/life/sound/tone.rs": "9fdaa35068de473c1c8525b306b225dec6d2bbd4ff4f7ffc67fe61b6dd7b32e1",
+        "src/life/self_prediction.rs": "d4a7791fb7fc69e0247a34ca1149725e49c98725adf3b330264a1ede79dcb980",
+        "src/life/self_prediction/projection.rs": "db115371e891276c28e24a2ee6585c9ca5f93d1e92a05827ec77bb79dc056e0e",
+        "src/life/self_prediction/energy.rs": "d358337b4663436578354281e16743bd8958e67a008045c543ccb3c73e8f33a6",
+        "src/life/self_prediction/tests.rs": "9667d7dcde6e4087f7d13f20aef49e350989860f697fa7443f0626bac08b82f9",
+        "src/life/self_prediction/ratios.rs": "65ce5b013d4895548e7b9675915c6a1c93a9871a5a10b30f670c980cd57fc6c4",
+        "src/life/participation_trace/tests.rs": "32f0b77c85e7fade44e48b918d9a9507aaefe97bb6551245f0ca9d26d90f83b0",
+        "src/life/action_observation.rs": "4548f118046a8fe3f7235013210740bad939cd9945853413ff1aea241f99c863",
+        "src/life/schedule_renderer.rs": "d201597624f23c44d19c181946ff79388bd2b848e09ee21e5258bc4a6e2a70aa",
+        "src/temporal_cognition/body.rs": "bd7c08ade530a51020418fa92b0fede9de3f3a811332b71afed58e041327af1d",
+        "src/temporal_cognition/body/tests.rs": "62041edae4eb5e6eefa2296aac4d99b770489ccceb0a23f1aa201e1ef6503a1d",
+        "src/runtime/body_profiles/policy_default/energy_projection.rs": "ca7e631b03d3aeb7ac1dc15b7ad216faa819756cf22ea0997b9fdd3f68278d0e",
+        "tests/render_binary.rs": "5a773c9ba198ee79b8b426dd47494155433c906163a5158ee35ae151e84cf352",
+        "scripts/verify_temporal_candidate_energy.py": "f5f5d9e82ab8aaa0769703e8b19e0301d5d01825b41ad977d07cdc279743b5b1",
+        "scripts/verify_temporal_retained_energy.py": "b172e4612a4d19e6aaa5968338070ff28b45cbd4a02396f3491d9117352a2fd8"
+      },
+      "validation": {
+        "test_status": "cargo test exit=0 @ 2026-09-18T11:23:05+09:00",
+        "passed": 1155,
+        "failed": 0,
+        "ignored": 37,
+        "suites": 31,
+        "clippy": "passed",
+        "all_targets": "passed",
+        "fmt": "passed",
+        "python_compile": "passed",
+        "ordinary_summary": {
+          "verified_forecasts": 70,
+          "bus_window_coordinates": 2240,
+          "paired_scored_windows": 2220,
+          "unchanged_pcm_files": 172,
+          "unchanged_common_passive_frames": 478,
+          "changed_fixed_predictions": 600,
+          "old_model_squared_error_sum": [
+            0.007761865430497955,
+            0.007877097873786114,
+            0.01270896428553889
+          ],
+          "new_model_squared_error_sum": [
+            0.006563818141556952,
+            0.0068460453842649795,
+            0.01270896428553889
+          ]
+        },
+        "candidate_summary": {
+          "models": [
+            "coherent_or_incoherent",
+            "actual_controls",
+            "without_inner_controls",
+            "without_retained_tones"
+          ],
+          "branches": 71,
+          "verified_points": 9088,
+          "maximum_arithmetic_error": 2.6020852139652106e-18,
+          "squared_error_sum": [
+            1.77009275994668e-05,
+            2.25432081856134e-05,
+            0.00021507776775286187,
+            2.8277526598169832e-05
+          ],
+          "paired_squared_error_sum": [
+            1.3638034270658828e-05,
+            9.735058720189645e-05,
+            0.0001224562109956027,
+            0.00010569954051779008
+          ],
+          "ranks": [
+            {
+              "pairs": 4936,
+              "reversed": 24,
+              "missed_difference": 41,
+              "invented_difference": 0,
+              "agreement": 4871
+            },
+            {
+              "pairs": 4936,
+              "reversed": 54,
+              "missed_difference": 49,
+              "invented_difference": 0,
+              "agreement": 4833
+            },
+            {
+              "pairs": 4936,
+              "reversed": 57,
+              "missed_difference": 44,
+              "invented_difference": 0,
+              "agreement": 4835
+            },
+            {
+              "pairs": 4936,
+              "reversed": 54,
+              "missed_difference": 1114,
+              "invented_difference": 0,
+              "agreement": 3768
+            }
+          ]
+        },
+        "scope": "Same development bodies only. Sine-flow energy ranks and cancellation improve; other backends stay unchanged. No contextual/ordinal rank, calibration, live seven-class/default transfer, audibility or resource acceptance.",
+        "resource_probe": {
+          "scope": "Release profile opt-level=3 with LTO; kernel-only elapsed wall time, excludes snapshots, control forecasts, observer/model/report and concurrent audio. Not full hop resource acceptance.",
+          "rows": [
+            {
+              "tones": 1,
+              "windows": 32,
+              "samples": 257,
+              "median_ns": 1810,
+              "p99_ns": 1990,
+              "scratch_bytes": 82432
+            },
+            {
+              "tones": 4,
+              "windows": 32,
+              "samples": 257,
+              "median_ns": 11410,
+              "p99_ns": 15590,
+              "scratch_bytes": 82432
+            },
+            {
+              "tones": 16,
+              "windows": 32,
+              "samples": 257,
+              "median_ns": 160131,
+              "p99_ns": 163061,
+              "scratch_bytes": 82432
+            },
+            {
+              "tones": 64,
+              "windows": 32,
+              "samples": 257,
+              "median_ns": 2551166,
+              "p99_ns": 2567746,
+              "scratch_bytes": 82432
+            }
+          ],
+          "reference_additional_work_p99_ns": 1600000,
+          "sixty_four_tone_kernel_exceeds_reference_slice": true
+        }
+      },
+      "scheduled_release": {
+        "fields": [
+          "apply_at_sample",
+          "off_sample"
+        ],
+        "source": "validated issue-known onset opportunity; frozen on the existing ordinary forecast",
+        "delivery": "now + floor((off-now)/hop)*hop; conditional on unchanged hop grid",
+        "terminal_feature": "relative end uses min(original hold end, planned off) plus original release; original natural terminal is never extended",
+        "invalid_receipt": "no scheduled release; preserve original prediction inputs",
+        "actual_renderer": "unchanged; note-off is delivered at its original scheduled hop"
+      },
+      "retained_input": {
+        "ownership": "Actual same-source/same-source-generation renderer entries excluding the command tone; each tone retains its own bus routing.",
+        "time": "State immediately after that command is applied, before later commands, with parameters frozen at issue.",
+        "capacity": {
+          "source_entries": 64,
+          "overflow_probe": 1,
+          "windows": 16,
+          "buses": 2,
+          "behavior": "Source-scoped BTree range; count every examined entry, including excluded target/other-generation entries. Stop on entry 65, mark retained.complete=false and all whole-source forecasts unknown; no residual scoring/updating from a partial sum. No new heap allocation or DSP rendering."
+        },
+        "report": [
+          "command_fixed_energy",
+          "retained.complete",
+          "retained.scanned_entries",
+          "retained.included_tones",
+          "retained.fixed_energy",
+          "retained.control_supported"
+        ],
+        "learning": "If source inventory is truncated, every whole-source comparison is unsupported and cannot score or update; command component remains separately visible. Unsupported control windows also cannot score or train; complete still describes inventory completeness only."
+      },
+      "control_amplitude": {
+        "state": "Actual renderer EntrainPulse state/level, SeqGate timer, or DroneSway phase; dt and onset excitation/kick. Unmodulated tones use the existing tension factor. No backend clone or per-sample forecast loop.",
+        "time": "One control step is included at the target sample. Kick resets Attack/SeqGate at known onset; no kick reset for DroneSway. Current alpha/beta held for the forecast.",
+        "support": "Unstarted tones are zero before a known excitation. Autonomous EntrainPulse is supported after a known kick only if positive sustain prevents returning Idle; otherwise unknown. SeqGate near its strict edge is unknown within a conservative f32 accumulation bound. Nonfinite/invalid parameters are unknown.",
+        "learning": "A missing command control or unsupported retained control makes the whole-source window unknown and unscored; no partial-sum training. A known zero outer envelope or unrouted command remains zero.",
+        "report": [
+          "prediction.control",
+          "source_energy[].retained.control_supported"
+        ],
+        "bounds": "O(16) scalar forecasts per routed retained tone, existing cap 64 plus overflow probe. No new heap allocation or DSP render. Full I10 resource census still required."
+      },
+      "coherent_sine": {
+        "source": "Actual stationary sine x/y and rotation coefficients, including pending initial seed, first backend sample and issued sine impulse boost. Read-only; no RNG consumption, backend clone or DSP step.",
+        "support": "Current pitch and amplitude equal targets; no queued parameter update; supported activation/control. Nonzero non-sine or unsupported contribution makes that bus/window coherent value None. The explicit incoherent prior remains a diagnostic fallback, not evidence of phase support.",
+        "formula": "Freeze envelope/control/boost amplitude and carrier norm at each midpoint, integrate each sine self term and pair product over integer-bin samples with onset/release clipping. Retain phase cross terms, including cancellation.",
+        "report": [
+          "prediction.sine",
+          "source_energy[].incoherent_fixed_energy",
+          "source_energy[].coherent_sine_energy"
+        ],
+        "bounds": "64 retained source entries including excluded command plus overflow probe as before; at most 64 nonzero carriers per bus/window. 32 CoherentWindow scratch objects total 82432 stack bytes; no new heap allocation. General distinct-frequency integration is quadratic.",
+        "limits": [
+          "Stationary sine subset only; harmonic/modal remain the declared v4 proxy.",
+          "Frozen midpoint amplitude/norm and future f32 recurrence approximation; no exact-waveform claim.",
+          "No unknown inventory/control is redeemed or trained from a partial sum.",
+          "Seven-class pairing remains offline; no I11 effect or passive-observation injection.",
+          "Release 64-tone kernel p99 exceeds the 1.6 ms additional-work reference slice; full concurrent 4/16/64-Voice resource acceptance remains incomplete."
+        ]
+      }
+    }
+  ],
+  "retained_input": {
+    "ownership": "Actual same-source/same-source-generation renderer entries excluding the command tone; each tone retains its own bus routing.",
+    "time": "State immediately after that command is applied, before later commands, with parameters frozen at issue.",
+    "capacity": {
+      "source_entries": 64,
+      "overflow_probe": 1,
+      "windows": 16,
+      "buses": 2,
+      "behavior": "Source-scoped BTree range; count every examined entry, including excluded target/other-generation entries. Stop on entry 65, mark retained.complete=false and all whole-source forecasts unknown; no residual scoring/updating from a partial sum. No new heap allocation or DSP rendering."
+    },
+    "report": [
+      "command_fixed_energy",
+      "retained.complete",
+      "retained.scanned_entries",
+      "retained.included_tones",
+      "retained.fixed_energy",
+      "retained.control_supported"
+    ],
+    "learning": "If source inventory is truncated, every whole-source comparison is unsupported and cannot score or update; command component remains separately visible. Unsupported control windows also cannot score or train; complete still describes inventory completeness only."
+  },
+  "control_amplitude": {
+    "state": "Actual renderer EntrainPulse state/level, SeqGate timer, or DroneSway phase; dt and onset excitation/kick. Unmodulated tones use the existing tension factor. No backend clone or per-sample forecast loop.",
+    "time": "One control step is included at the target sample. Kick resets Attack/SeqGate at known onset; no kick reset for DroneSway. Current alpha/beta held for the forecast.",
+    "support": "Unstarted tones are zero before a known excitation. Autonomous EntrainPulse is supported after a known kick only if positive sustain prevents returning Idle; otherwise unknown. SeqGate near its strict edge is unknown within a conservative f32 accumulation bound. Nonfinite/invalid parameters are unknown.",
+    "learning": "A missing command control or unsupported retained control makes the whole-source window unknown and unscored; no partial-sum training. A known zero outer envelope or unrouted command remains zero.",
+    "report": [
+      "prediction.control",
+      "source_energy[].retained.control_supported"
+    ],
+    "bounds": "O(16) scalar forecasts per routed retained tone, existing cap 64 plus overflow probe. No new heap allocation or DSP render. Full I10 resource census still required."
+  },
+  "coherent_sine": {
+    "source": "Actual stationary sine x/y and rotation coefficients, including pending initial seed, first backend sample and issued sine impulse boost. Read-only; no RNG consumption, backend clone or DSP step.",
+    "support": "Current pitch and amplitude equal targets; no queued parameter update; supported activation/control. Nonzero non-sine or unsupported contribution makes that bus/window coherent value None. The explicit incoherent prior remains a diagnostic fallback, not evidence of phase support.",
+    "formula": "Freeze envelope/control/boost amplitude and carrier norm at each midpoint, integrate each sine self term and pair product over integer-bin samples with onset/release clipping. Retain phase cross terms, including cancellation.",
+    "report": [
+      "prediction.sine",
+      "source_energy[].incoherent_fixed_energy",
+      "source_energy[].coherent_sine_energy"
+    ],
+    "bounds": "64 retained source entries plus overflow probe as before; at most 64 nonzero carriers per bus/window. 32 CoherentWindow input arrays total 82432 bytes plus one shared 4096-byte edge cache, 86528 bytes of explicit stack arrays. No new heap allocation. Pair work remains quadratic.",
+    "limits": [
+      "Stationary sine subset only; harmonic/modal remain the declared v4 proxy.",
+      "Frozen midpoint amplitude/norm and future f32 recurrence approximation; no exact-waveform claim.",
+      "No unknown inventory/control is redeemed or trained from a partial sum.",
+      "Seven-class pairing remains offline; no I11 effect or passive-observation injection.",
+      "The current 24-case isolated kernel resource probe and its exceedances are recorded under kernel_optimization; full shared-budget/concurrent 4/16/64-Voice resource acceptance remains incomplete."
+    ]
+  },
+  "kernel_optimization": {
+    "id": "coherent-edge-cache-20260918",
+    "status": "ordinary_and_offline_integral_optimized_full_resource_acceptance_open",
+    "model": "source_energy_log1p_residual_v5",
+    "inputs": "target/i10-coherent-edges-inputs-20260918",
+    "candidate_predictions": "target/i10-coherent-edges-checked-20260918",
+    "ordinary_predictions": "target/i10-coherent-edges-ordinary-checked-20260918",
+    "source_sha256": {
+      "src/life/sound/mod.rs": "8a46da837d933f6a55ee83fd21a81514b065cb4ed24ff0f33e30eee5e16a9707",
+      "src/life/sound/sine_forecast.rs": "3d774e1116ec7a082021c4c5215fe2be326727af848f4857cbbcfabcea5f5015",
+      "src/life/sound/oscillator_bank.rs": "b9829968debe7088c7b2dd2236b770b7419a1fc90965860b136314bd5656452e",
+      "src/life/sound/tone.rs": "9fdaa35068de473c1c8525b306b225dec6d2bbd4ff4f7ffc67fe61b6dd7b32e1",
+      "src/life/self_prediction.rs": "d4a7791fb7fc69e0247a34ca1149725e49c98725adf3b330264a1ede79dcb980",
+      "src/life/self_prediction/projection.rs": "8a3cd13d6cbc98968a4cae02b08a5dc9fc07bf3067a5b090ff35a86f2a316177",
+      "src/life/self_prediction/energy.rs": "d358337b4663436578354281e16743bd8958e67a008045c543ccb3c73e8f33a6",
+      "src/life/self_prediction/tests.rs": "9667d7dcde6e4087f7d13f20aef49e350989860f697fa7443f0626bac08b82f9",
+      "src/life/self_prediction/ratios.rs": "65ce5b013d4895548e7b9675915c6a1c93a9871a5a10b30f670c980cd57fc6c4",
+      "src/life/participation_trace/tests.rs": "32f0b77c85e7fade44e48b918d9a9507aaefe97bb6551245f0ca9d26d90f83b0",
+      "src/life/action_observation.rs": "4548f118046a8fe3f7235013210740bad939cd9945853413ff1aea241f99c863",
+      "src/life/schedule_renderer.rs": "d201597624f23c44d19c181946ff79388bd2b848e09ee21e5258bc4a6e2a70aa",
+      "src/temporal_cognition/body.rs": "bd7c08ade530a51020418fa92b0fede9de3f3a811332b71afed58e041327af1d",
+      "src/temporal_cognition/body/tests.rs": "62041edae4eb5e6eefa2296aac4d99b770489ccceb0a23f1aa201e1ef6503a1d",
+      "src/runtime/body_profiles/policy_default/energy_projection.rs": "ca7e631b03d3aeb7ac1dc15b7ad216faa819756cf22ea0997b9fdd3f68278d0e",
+      "tests/render_binary.rs": "5a773c9ba198ee79b8b426dd47494155433c906163a5158ee35ae151e84cf352",
+      "scripts/verify_temporal_candidate_energy.py": "f5f5d9e82ab8aaa0769703e8b19e0301d5d01825b41ad977d07cdc279743b5b1",
+      "scripts/verify_temporal_retained_energy.py": "b172e4612a4d19e6aaa5968338070ff28b45cbd4a02396f3491d9117352a2fd8"
+    },
+    "contract": "Same v5 midpoint amplitude/norm and integer-sample carrier products. Cache clipped half-sample endpoint phasors and relative times; combine regular pair terms into one division. Centered geometric form for small denominators, exact zero-frequency integral, alias reduction only outside [-pi,pi], and degree-six small-angle polynomials restricted to arguments <=0.01 with individual remainders <3e-21. No term pruning, capacity reduction, model fitting or future target input.",
+    "direct_wave_sum": {
+      "new_cases": 84,
+      "existing_cases": 90,
+      "absolute_tolerance": 1e-12,
+      "maximum_new_case_error": 1.7335833696298028e-15
+    },
+    "candidate_regression": {
+      "files": 4,
+      "floats": 27231,
+      "changed_floats": 404,
+      "maximum_change": 2.168404344971009e-19,
+      "candidate_ranks_unchanged": true,
+      "verified_points": 9088,
+      "maximum_direct_wave_sum_error": 2.6020852139652106e-18
+    },
+    "ordinary_regression": {
+      "verified_forecasts": 70,
+      "bus_window_coordinates": 2240,
+      "changed_fixed_predictions": 244,
+      "unchanged_pcm_files": 172,
+      "paired_scored_windows": 2220,
+      "unchanged_common_passive_frames": 485,
+      "old_model_squared_error_sum": [
+        0.006563818141556952,
+        0.0068460453842649795,
+        0.01270896428553889
+      ],
+      "new_model_squared_error_sum": [
+        0.006563818141556952,
+        0.0068460453842649795,
+        0.01270896428553889
+      ]
+    },
+    "scratch": {
+      "window_arrays_bytes": 82432,
+      "shared_edge_cache_bytes": 4096,
+      "explicit_arrays_total_bytes": 86528,
+      "additional_heap_allocations": 0
+    },
+    "resource_probe": {
+      "scope": "Release opt-level=3 and LTO; isolated kernel wall time including point construction, excluding control snapshots, observer/model/report, shared candidate scheduling and concurrent audio. Tone count is not Voice count.",
+      "rows": [
+        {
+          "support": "aligned",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2310,
+          "p99_ns": 2760,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "aligned",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 6220,
+          "p99_ns": 6590,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "aligned",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 29841,
+          "p99_ns": 31880,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "aligned",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 262421,
+          "p99_ns": 270341,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2340,
+          "p99_ns": 2360,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 9550,
+          "p99_ns": 10590,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 88831,
+          "p99_ns": 91041,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1245528,
+          "p99_ns": 1289848,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2300,
+          "p99_ns": 2490,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 7690,
+          "p99_ns": 8240,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 57120,
+          "p99_ns": 59011,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "near_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 703854,
+          "p99_ns": 731495,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2320,
+          "p99_ns": 2350,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 6440,
+          "p99_ns": 6790,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 34590,
+          "p99_ns": 36230,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 317762,
+          "p99_ns": 327512,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2330,
+          "p99_ns": 2360,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 10590,
+          "p99_ns": 11630,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 111541,
+          "p99_ns": 114340,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_near_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1596389,
+          "p99_ns": 1620910,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 1,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 2310,
+          "p99_ns": 2340,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 4,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 9610,
+          "p99_ns": 10690,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 16,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 93371,
+          "p99_ns": 95190,
+          "scratch_bytes": 86528
+        },
+        {
+          "support": "staggered_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1297648,
+          "p99_ns": 1314758,
+          "scratch_bytes": 86528
+        }
+      ],
+      "reference_additional_work_p99_ns": 1600000,
+      "cases_exceeding_reference_slice": [
+        {
+          "support": "staggered_near_unison",
+          "tones": 64,
+          "windows": 32,
+          "samples": 257,
+          "median_ns": 1596389,
+          "p99_ns": 1620910,
+          "scratch_bytes": 86528
+        }
+      ],
+      "full_resource_acceptance": false
+    },
+    "checks": {
+      "test_status": "cargo test exit=0 @ 2026-09-18T11:55:14+09:00",
+      "passed": 1156,
+      "failed": 0,
+      "ignored": 37,
+      "suites": 31,
+      "clippy": "passed",
+      "all_targets": "passed",
+      "fmt": "passed"
+    },
+    "limitations": [
+      "Quadratic pair work remains. Isolated kernel measurements do not establish worst-case latency or full 4/16/64-Voice acceptance.",
+      "Non-sine body fidelity, normal candidate/default consumption and shared budget remain incomplete.",
+      "Joint proposals, path lifetime, conditional score, all heads and evaluation time remain incomplete.",
+      "I9 stays on hold and I11 generation effects stay disabled."
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "schema": "i10-window-feature-projection-registration-v1",
+  "status": "shared_observed_and_hypothetical_window_arithmetic_verified_live_candidate_producer_pending",
+  "source_sha256": {
+    "src/temporal_cognition/feature_projection.rs": "7027ad0a8cae3e2b753490dfcf0990a46fb748eea19d7b61068ad060044ee87f",
+    "src/temporal_cognition/feature_projection/window.rs": "38977a6ccbebf3b70e3daa15ae4f035f8b453810d933cc2b9711f95014188de7",
+    "src/temporal_cognition/feature_projection/window/tests.rs": "1108933e9e61668cd87b83fdba8fc1bbc4441d9d000859b611189874c8219328",
+    "src/temporal_cognition/phrase.rs": "fbea5a90145eaaf2cbd74e2747fbfea89cbd0da12863f63cea147a838b37257f",
+    "scripts/verify_temporal_feature_windows.py": "086c2d0f09a6ca90d88dd7967978d43203bb009df1243aac2246d675c66ca553",
+    "docs/roadmap/temporal-dcc/feature-manifest.json": "1617be3502aa9116d0639bb813f10e83f7a6d668fde67322b9c81967bc14fa5a"
+  },
+  "numerical_directory": "target/i10-window-projection-20260918",
+  "numerical_verification": {
+    "schema": "i10-feature-window-arithmetic-verification-v1",
+    "windows": 76032,
+    "coordinates": 532224,
+    "observed_coordinates": 15048,
+    "projected_coordinates": 515592,
+    "unsupported_coordinates": 1584,
+    "maximum_absolute_error": 2.1316282072803006e-14,
+    "results_sha256": "50691fb0c940c33a52036ef2b30aee5caedee42d5889b6af419c39f58e1aa659",
+    "claim": "numerical hypothetical-tag replay of actual targets; not candidate forecasts or ordinal transfer acceptance",
+    "input_verification_sha256": "9061196fb464e95a6b3b1fb96c3526b0fd344eb025b95f43738547e533fb0979"
+  },
+  "numerical_verification_sha256": "7c3b0e071d73cc9891790f2eb89753f3d59e17a6329a18ecb173c08058f4330d",
+  "numerical_replay_log_sha256": "56e6bcf17262a6be82b78979cfc6b4b4a51df04867171bb637f398990311b9db",
+  "runtime_directory": "target/i10-window-projection-runtime-20260918",
+  "runtime_comparison": {
+    "body_descriptor": 384,
+    "self_sound_outcome": 6,
+    "self_sound_descriptor_prediction": 6,
+    "wav_sha256": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+    "common_observation_cuts": 56,
+    "equal_phrase_snapshots": 56,
+    "equal_group_snapshots": 201,
+    "equal_recent_energy_summaries": 201,
+    "before_only_cuts": 14,
+    "after_only_cuts": 14,
+    "scope": "exact same-cut phrase snapshots and all private records; unmatched asynchronous snapshots not compared"
+  },
+  "runtime_artifacts_sha256": {
+    "before.wav": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+    "before.jsonl": "9152dfb8c6d7e44e67c16dfa5c2438eecb2ce462280d083a2a001e1129952e4b",
+    "before.log": "c7b414fc215f64e92b6bd7a70c04b70f1e886596394658248334d6449c1f95c1",
+    "after.wav": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+    "after.jsonl": "09f3eae2ebebee6416e3c31ca0cd5b937015fbfa4bf400d75635123fa11aaee4",
+    "after.log": "e09b9393c59466f12704696bae983e80bbb6e7ee12a94ec27e300ee6466337f3",
+    "verification.json": "7263ac72f3ec37d42235f85db4b7d60494719da13d025b3b28e15f33d145d30b"
+  },
+  "runtime_inputs_sha256": {
+    "target/i10-feature-projection-20260918/input.rhai": "e7201756a3ce34aa94f50b008e934039f45c483967eb4c3ce85474ddda5faff6",
+    "target/i10-feature-projection-20260918/config.toml": "2a929560dc92fb85dd9da4a4dd6fd9f8f0e62d80cb711c860dde220edd040895"
+  },
+  "binaries_sha256": {
+    "/tmp/conchordal-render-before-i10-window-projection": "38f2c722875d62e87095955c5704d2da3b88179ae6f69dbe38c4aef485edd9e0",
+    "target/debug/conchordal-render": "6172ede5cdeb1ed2d7a1555742c7dd271ad18babd007334dc25b13382e748c1f",
+    "target/debug/deps/conchordal-9e54960b014972a7": "2b0a4b81bd31f4bf4bfcaed33f55ff60c93f08eced4a200450443c4c5e282a72"
+  },
+  "validation": {
+    "suites": 31,
+    "passed": 1093,
+    "failed": 0,
+    "ignored": 32,
+    "status": "cargo test exit=0 @ 2026-09-18T03:25:34+09:00",
+    "clippy": "passed",
+    "all_targets_check": "passed",
+    "format": "passed",
+    "diff_check": "passed",
+    "explicit_arithmetic_replay": "1 passed"
+  },
+  "reproduce": [
+    "python3 scripts/verify_temporal_feature_windows.py --replay --output <fresh-directory>",
+    "python3 scripts/verify_temporal_feature_windows.py --output target/i10-window-projection-20260918",
+    "cargo test --lib temporal_cognition::feature_projection::window -- --nocapture"
+  ],
+  "limits": [
+    "Future actual-audio targets were tagged projected only in an explicit arithmetic fixture; no forecast accuracy or ordinal transfer claim.",
+    "Frozen e_issue is not recomputed by the window reducer; full head policy and candidate backoff integration remain pending.",
+    "Runtime comparison covers common source cuts; fourteen unmatched cuts per run were not compared.",
+    "New seven-class live candidate inputs, compatible prototype profiles, full head projection, consequence tables, actual/default pairing and all-I10 resources remain incomplete.",
+    "I9 remains held; no new action effects enabled."
+  ]
+}

@@ -150,6 +150,44 @@ class AccentWindowTests(unittest.TestCase):
 
 
 class AccentDeliveryTests(unittest.TestCase):
+    def test_same_id_with_changed_right_support_cannot_receive_new_credit(self):
+        ledger = ref.AccentLedger(1, 4)
+        original = event()
+        ledger.deliver(original, original['available_end'])
+        before = copy.deepcopy(ledger.__dict__)
+        changed = copy.deepcopy(original)
+        changed['raw_support_intervals'][-1] = (192, 320)
+        changed['raw_support_end'] = changed['available_end'] = 320/48000
+        with self.assertRaises(ValueError):
+            ledger.deliver(changed, changed['available_end'])
+        self.assertEqual(ledger.__dict__, before)
+
+    def test_out_of_bank_tied_id_cannot_return_with_larger_evidence_end(self):
+        ledger = ref.AccentLedger(1, 4, capacity=1)
+        first = event()
+        second = copy.deepcopy(first)
+        second.update(id=(1, 4, 129, 192), event_interval=[129/48000, 192/48000],
+                      raw_support_intervals=[(0, 64), (64, 129), (129, 192), (192, 256)])
+        ledger.deliver(first, first['available_end'])
+        ledger.deliver(second, second['available_end'])
+        before = copy.deepcopy(ledger.__dict__)
+        changed = copy.deepcopy(first)
+        changed['raw_support_intervals'][-1] = (192, 320)
+        changed['raw_support_end'] = changed['available_end'] = 320/48000
+        with self.assertRaises(ValueError):
+            ledger.deliver(changed, changed['available_end'])
+        self.assertEqual(ledger.__dict__, before)
+
+    def test_full_source_window_and_availability_can_exceed_canonical_hops(self):
+        ledger = ref.AccentLedger(1, 4)
+        accent = event(4)
+        accent.update(raw_support_start=0., raw_support_end=600/48000, available_end=640/48000)
+        self.assertIsNone(ledger.deliver(accent, 600/48000))
+        received = ledger.deliver(accent, 700/48000)
+        self.assertEqual(received['accent'], accent)
+        self.assertEqual(received['delivered_at'], 700/48000)
+        self.assertEqual(ledger.snapshot(0.)['accents'], [accent])
+
     def test_late_admission_preserves_original_time_and_once_only_credit(self):
         ledger = ref.AccentLedger(1, 4)
         accent = event()

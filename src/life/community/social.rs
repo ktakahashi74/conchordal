@@ -121,7 +121,11 @@ mod tests {
     #[test]
     fn social_trace_is_delayed_by_one_hop() {
         let batch = PhonationBatch {
+            body_policy: None,
+            body_opportunity: None,
+            intrinsic_period_sec: None,
             source_id: 1,
+            source_generation: 0,
             routing: crate::scenario::control::Routing::default(),
             cmds: Vec::new(),
             tones: Vec::new(),

@@ -1,0 +1,492 @@
+{
+  "schema": "i10-articulation-kernel-v1",
+  "status": "measurement_scope_corrected_release_partial_load_verified_i10_incomplete",
+  "artifact_directory": "target/i10-articulation-kernel-20260918",
+  "plan": {
+    "scope": "Measure the remaining articulation transition/expansion, merge and ranking costs; reduce repeated exact computations without changing transition order, pruning or unknown support.",
+    "source_before_sha256": {
+      "src/temporal_cognition/gesture.rs": "1079ee0c47c3d5918b00ae5375ba2b56f7ba0ac521790ad15b6af88d3d0bf3df",
+      "src/temporal_cognition/gesture/projection.rs": "e7a56cc48f2601d9d1e4fa6c94bb1189ca7298f7ffae7da364b9eb4294a9062d",
+      "src/temporal_cognition/gesture/projection/tests.rs": "dcb32fe6364245f4579d5aad461e6975ae3f6c99e193e0b75c15d3e6521f8103",
+      "src/temporal_cognition/phrase/tests.rs": "262ada81c29806c4e0ac29bd56bb86c11d147d4524faffef2135a6a46fcf3e3e",
+      "src/temporal_cognition/action_profiles/tests.rs": "301d3f0fdac718cd4a38ab0191dd3f2627b60bf12b5bae2821f1164761764a6a"
+    },
+    "binary_before_sha256": "efdc7af9c72cc016de5ade203d97e46022995ab116d9ff1f8aad536e367fae2e",
+    "inputs_sha256": {
+      "target/i10-articulation-kernel-20260918/load-1000.toml": "8c6f0de06deaa2d31f1777e576df9708d00567ecc9621d5c6708cd448fa620ca",
+      "target/i10-articulation-kernel-20260918/load-250.toml": "585b56823584e4c6aaa3853c60dc54164407558b776235a6244322824ca1bb5c",
+      "target/i10-articulation-kernel-20260918/load-at.toml": "b53ff47545d94d948d98252f882ed34df674b2767174880c3778a5a1994a15d3",
+      "target/i10-articulation-kernel-20260918/pulse-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+      "target/i10-articulation-kernel-20260918/pulse-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+      "target/i10-articulation-kernel-20260918/pulse.rhai": "b5a03ba6093f0fdb40e80246cb32b8bf0bcce1fddb6cc337261000e3729fb281",
+      "target/i10-articulation-kernel-20260918/pulse.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+      "target/i10-articulation-kernel-20260918/stair-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+      "target/i10-articulation-kernel-20260918/stair-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+      "target/i10-articulation-kernel-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+      "target/i10-articulation-kernel-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+      "target/i10-articulation-kernel-20260918/sustain-1000.toml": "e62f1ff04cc1478291a042b3d7041ea14ff0f56d9b0e31f02be3546cc4f63440",
+      "target/i10-articulation-kernel-20260918/sustain-250.toml": "467acaa35d063813f4afe9d5ddca32dfa9f95c546d8d0fe54eea812cddb8000a",
+      "target/i10-articulation-kernel-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+      "target/i10-articulation-kernel-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01"
+    },
+    "before_test_sha256": "1d879c104a73da5af4db0439e82cf3e1f03d6ea8e930866474a025f119614cfc",
+    "instrumented_sources_sha256": {
+      "src/temporal_cognition/gesture.rs": "1079ee0c47c3d5918b00ae5375ba2b56f7ba0ac521790ad15b6af88d3d0bf3df",
+      "src/temporal_cognition/gesture/projection.rs": "c83a7a02c8f4a592868390527ac8dc676bf98457f552a4ed06c1869ad7448ee7",
+      "src/temporal_cognition/gesture/projection/tests.rs": "dcb32fe6364245f4579d5aad461e6975ae3f6c99e193e0b75c15d3e6521f8103",
+      "src/temporal_cognition/phrase/tests.rs": "606a916dd9ee17571d716aa7f99dfc53a0c9ae2d4135aa2784d7309da159e5b9",
+      "src/temporal_cognition/action_profiles/tests.rs": "da1611080e4c65bee0b4922d20954e0f37887f8558da792a45edcce7241b802c"
+    },
+    "release_test_sha256": "e18e024a21164a924202d57e903fe1fd0d08c8617cec09db4bae52bb1a6eec24",
+    "release_compiler_artifact": {
+      "reason": "compiler-artifact",
+      "package_id": "path+file:///home/shafi/lwrk/conchordal#0.4.0",
+      "manifest_path": "/home/shafi/lwrk/conchordal/Cargo.toml",
+      "target": {
+        "kind": [
+          "lib"
+        ],
+        "crate_types": [
+          "lib"
+        ],
+        "name": "conchordal",
+        "src_path": "/home/shafi/lwrk/conchordal/src/lib.rs",
+        "edition": "2024",
+        "doc": true,
+        "doctest": true,
+        "test": true
+      },
+      "profile": {
+        "opt_level": "3",
+        "debuginfo": 0,
+        "debug_assertions": false,
+        "overflow_checks": false,
+        "test": true
+      },
+      "features": [
+        "default",
+        "simd-wide"
+      ],
+      "filenames": [
+        "/home/shafi/lwrk/conchordal/target/release/deps/conchordal-ca9750681d3d7936"
+      ],
+      "executable": "/home/shafi/lwrk/conchordal/target/release/deps/conchordal-ca9750681d3d7936",
+      "fresh": false
+    },
+    "cargo_toml_sha256": "0561b65e7a50a79a09382a92e79a4fba7db707c2bee38f55237525c270d5ea41",
+    "cargo_lock_sha256": "d71893b05065cf3cc545e00ccb6ab601d1eff8d371c6090357ec80369982e7b6",
+    "after_test_sha256": "0178e3f781d1482de88094477269703624123a3836e1216b41ff84bef5bf00e5",
+    "source_after_sha256": {
+      "src/temporal_cognition/gesture.rs": "1079ee0c47c3d5918b00ae5375ba2b56f7ba0ac521790ad15b6af88d3d0bf3df",
+      "src/temporal_cognition/gesture/projection.rs": "c83a7a02c8f4a592868390527ac8dc676bf98457f552a4ed06c1869ad7448ee7",
+      "src/temporal_cognition/gesture/projection/tests.rs": "dcb32fe6364245f4579d5aad461e6975ae3f6c99e193e0b75c15d3e6521f8103",
+      "src/temporal_cognition/phrase/tests.rs": "606a916dd9ee17571d716aa7f99dfc53a0c9ae2d4135aa2784d7309da159e5b9",
+      "src/temporal_cognition/action_profiles/tests.rs": "a4b4f94b89c6a60609536673b554b6492ab4573ed1ee79a43c844ef668aa74ed"
+    }
+  },
+  "contract": {
+    "production_change": "None. Added three cfg(test)-only nested timing stages and corrected ignored-assay clock boundaries. No rate, transition, sort, pruning, cache, unknown-mass or evaluation-policy changes.",
+    "old_timing": "No timing_schema: inference_ns includes recurrence_ns. Correct total = inference_ns + table_ns.",
+    "new_timing": "timing_schema=disjoint-v2: recurrence_ns, inference_ns and table_ns are disjoint. Total is their sum.",
+    "nested_timing": "Stages 8..10 are subsets of stage 2, not additional top-level work. Timer overhead is included only in explicitly profiled test runs.",
+    "build_profiles": "The old load evidence is dev/test opt-level 1. New production-like test build uses release opt-level 3 and LTO. No Cargo profile or threshold was changed.",
+    "support": "Frozen actual nonzero gesture coefficients for weighted=true, all zeros for weighted=false. Same input and numerical algorithm across builds."
+  },
+  "release_verification": {
+    "at": {
+      "equivalence": {
+        "table_snapshots_exact": 336,
+        "compact_final_arrival_records_exact": 16512,
+        "full_cells_against_direct_projection": "checked inside each successful assay binary"
+      },
+      "dev": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 44336774,
+        "updates_over_50ms": 0,
+        "maximum_table_ns": 43111526,
+        "previous_double_counted_maximum_ns": 44349624,
+        "previous_double_counted_over_50ms": 0,
+        "stages_ns": null
+      },
+      "release": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 34649434,
+        "updates_over_50ms": 0,
+        "maximum_table_ns": 33609248,
+        "previous_double_counted_maximum_ns": 34660764,
+        "previous_double_counted_over_50ms": 0,
+        "stages_ns": null
+      }
+    },
+    "250": {
+      "equivalence": {
+        "table_snapshots_exact": 336,
+        "compact_final_arrival_records_exact": 15488,
+        "full_cells_against_direct_projection": "checked inside each successful assay binary"
+      },
+      "dev": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 62488286,
+        "updates_over_50ms": 266,
+        "maximum_table_ns": 61259859,
+        "previous_double_counted_maximum_ns": 62501006,
+        "previous_double_counted_over_50ms": 266,
+        "stages_ns": null
+      },
+      "release": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 46158415,
+        "updates_over_50ms": 0,
+        "maximum_table_ns": 45123618,
+        "previous_double_counted_maximum_ns": 46167695,
+        "previous_double_counted_over_50ms": 0,
+        "stages_ns": null
+      }
+    },
+    "1000": {
+      "equivalence": {
+        "table_snapshots_exact": 336,
+        "compact_final_arrival_records_exact": 12416,
+        "full_cells_against_direct_projection": "checked inside each successful assay binary"
+      },
+      "dev": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 101304626,
+        "updates_over_50ms": 336,
+        "maximum_table_ns": 100041568,
+        "previous_double_counted_maximum_ns": 101317036,
+        "previous_double_counted_over_50ms": 336,
+        "stages_ns": null
+      },
+      "release": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 71702923,
+        "updates_over_50ms": 336,
+        "maximum_table_ns": 70635606,
+        "previous_double_counted_maximum_ns": 71712074,
+        "previous_double_counted_over_50ms": 336,
+        "stages_ns": null
+      }
+    },
+    "profile": {
+      "equivalence": {
+        "table_snapshots_exact": 336,
+        "compact_final_arrival_records_exact": 15488,
+        "full_cells_against_direct_projection": "checked inside each successful assay binary"
+      },
+      "dev": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 64169577,
+        "updates_over_50ms": 298,
+        "maximum_table_ns": 64037476,
+        "previous_double_counted_maximum_ns": 64172297,
+        "previous_double_counted_over_50ms": 301,
+        "stages_ns": {
+          "feature_windows": 1257388069,
+          "grouping": 23492823,
+          "articulation": 11865475545,
+          "residual_closure": 857923189,
+          "accent_arrival": 1056697765,
+          "continuation": 2253102393,
+          "prefix_match": 417895295,
+          "raw_mixture": 578251346,
+          "articulation_expand": 7820099007,
+          "articulation_merge": 2882736265,
+          "articulation_rank": 760456417
+        }
+      },
+      "release": {
+        "cases": 16,
+        "updates": 3216,
+        "maximum_update_ns": 47561873,
+        "updates_over_50ms": 0,
+        "maximum_table_ns": 46519867,
+        "previous_double_counted_maximum_ns": 47571033,
+        "previous_double_counted_over_50ms": 0,
+        "stages_ns": {
+          "feature_windows": 887041245,
+          "grouping": 23335937,
+          "articulation": 8252083683,
+          "residual_closure": 976490770,
+          "accent_arrival": 919897461,
+          "continuation": 1816395922,
+          "prefix_match": 82751452,
+          "raw_mixture": 542284017,
+          "articulation_expand": 5560363686,
+          "articulation_merge": 1757020552,
+          "articulation_rank": 598238322
+        }
+      }
+    },
+    "release_profile_vs_unprofiled": {
+      "table_snapshots_exact": 336,
+      "compact_final_arrival_records_exact": 15488,
+      "full_cells_against_direct_projection": "checked inside each successful assay binary"
+    },
+    "timing_definition": "Current frozen binaries: inference_ns already includes recurrence_ns; total=inference_ns+table_ns. Nested articulation stages 8..10 are not additive with enclosing stage 2.",
+    "scope": "Release-configured test executable, synthetic forced assignments, not ordinary worker/device acceptance. Distinct build profiles, not a production algorithm speedup."
+  },
+  "final_verification": {
+    "table_snapshots_exact": 336,
+    "compact_final_arrival_records_exact": 15488,
+    "full_cells_against_direct_projection": "checked inside each successful assay binary",
+    "timing_schema": "disjoint-v2",
+    "formula": "recurrence_ns + inference_ns + table_ns",
+    "maximum_update_ns": 63572543,
+    "updates_over_50ms": 303,
+    "profiling_enabled": true,
+    "scope": "Final dev-profile assay verifies changed clock boundaries and nested instrumentation; not a resource acceptance run."
+  },
+  "commands": [
+    {
+      "label": "profile-before",
+      "command": [
+        "target/i10-articulation-kernel-20260918/before-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-articulation-kernel-20260918/load-250.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-articulation-kernel-20260918/profile-before.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1",
+        "CONCHORDAL_I10_PROFILE_PROJECTION": "1"
+      },
+      "exit": 0,
+      "elapsed_seconds": 26.636160400987137,
+      "binary_sha256": "1d879c104a73da5af4db0439e82cf3e1f03d6ea8e930866474a025f119614cfc"
+    },
+    {
+      "label": "release-at",
+      "command": [
+        "target/i10-articulation-kernel-20260918/release-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-articulation-kernel-20260918/load-at.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-articulation-kernel-20260918/release-at.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      },
+      "exit": 0,
+      "elapsed_seconds": 15.252770386985503,
+      "binary_sha256": "e18e024a21164a924202d57e903fe1fd0d08c8617cec09db4bae52bb1a6eec24"
+    },
+    {
+      "label": "release-250",
+      "command": [
+        "target/i10-articulation-kernel-20260918/release-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-articulation-kernel-20260918/load-250.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-articulation-kernel-20260918/release-250.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      },
+      "exit": 0,
+      "elapsed_seconds": 18.97535657399567,
+      "binary_sha256": "e18e024a21164a924202d57e903fe1fd0d08c8617cec09db4bae52bb1a6eec24"
+    },
+    {
+      "label": "release-1000",
+      "command": [
+        "target/i10-articulation-kernel-20260918/release-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-articulation-kernel-20260918/load-1000.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-articulation-kernel-20260918/release-1000.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      },
+      "exit": 0,
+      "elapsed_seconds": 26.668896031973418,
+      "binary_sha256": "e18e024a21164a924202d57e903fe1fd0d08c8617cec09db4bae52bb1a6eec24"
+    },
+    {
+      "label": "release-250-profile",
+      "command": [
+        "target/i10-articulation-kernel-20260918/release-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-articulation-kernel-20260918/load-250.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-articulation-kernel-20260918/release-250-profile.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1",
+        "CONCHORDAL_I10_PROFILE_PROJECTION": "1"
+      },
+      "exit": 0,
+      "elapsed_seconds": 19.51673572603613,
+      "binary_sha256": "e18e024a21164a924202d57e903fe1fd0d08c8617cec09db4bae52bb1a6eec24"
+    },
+    {
+      "label": "profile-after",
+      "command": [
+        "target/i10-articulation-kernel-20260918/after-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-articulation-kernel-20260918/load-250.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-articulation-kernel-20260918/profile-after.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1",
+        "CONCHORDAL_I10_PROFILE_PROJECTION": "1"
+      },
+      "exit": 0,
+      "elapsed_seconds": 26.749578710005153,
+      "binary_sha256": "0178e3f781d1482de88094477269703624123a3836e1216b41ff84bef5bf00e5"
+    }
+  ],
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.9144870989839546
+    },
+    {
+      "command": [
+        "cargo",
+        "check",
+        "--all-targets"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.1759365309844725
+    },
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.6942749959998764
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.045870023022871464
+    }
+  ],
+  "cargo_test": {
+    "status": "cargo test exit=0 @ 2026-09-18T17:27:00+09:00",
+    "passed": 1177,
+    "failed": 0,
+    "ignored": 38,
+    "suites": 31
+  },
+  "limits": [
+    "Release-configured test executable with disabled test hooks, synthetic forced assignments and selected inference intervals only; not ordinary whole-worker/Voice/audio-device acceptance.",
+    "1-second delayed evaluation still exceeds the original 50 ms bound; no cutoff, cell count or gate was relaxed.",
+    "Evaluation timing adoption remains pending. Default exact action time, I9 held and I11 effects disabled.",
+    "Whole I10 requires normal shared/local joint inference, complete head features/scores, actual-body candidate/default consumption and full resource acceptance; these remain unproven."
+  ],
+  "dependency_sha256": {
+    "Cargo.toml": "0561b65e7a50a79a09382a92e79a4fba7db707c2bee38f55237525c270d5ea41",
+    "Cargo.lock": "d71893b05065cf3cc545e00ccb6ab601d1eff8d371c6090357ec80369982e7b6",
+    "/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+    "target/i10-branch-prefix-reuse-20260918/load-at-after.jsonl": "b25493606e0bff47fffdcc8bf52f3b43b97c71f52ec841669b5e08277c5091f0",
+    "target/i10-branch-prefix-reuse-20260918/load-250-after.jsonl": "68d3a15244378b736a1c1b4bdb0eecdc29e7e45df52b50e1179aa372fd8ca10a",
+    "target/i10-branch-prefix-reuse-20260918/load-1000-after.jsonl": "f7a6523d56ce606fc5624bce8462ceff8f873c3a2229e556231ececcab749355"
+  },
+  "artifact_sha256": {
+    "target/i10-articulation-kernel-20260918/after-test": "0178e3f781d1482de88094477269703624123a3836e1216b41ff84bef5bf00e5",
+    "target/i10-articulation-kernel-20260918/before-render": "efdc7af9c72cc016de5ade203d97e46022995ab116d9ff1f8aad536e367fae2e",
+    "target/i10-articulation-kernel-20260918/before-source/src/temporal_cognition/action_profiles/tests.rs": "301d3f0fdac718cd4a38ab0191dd3f2627b60bf12b5bae2821f1164761764a6a",
+    "target/i10-articulation-kernel-20260918/before-source/src/temporal_cognition/gesture/projection/tests.rs": "dcb32fe6364245f4579d5aad461e6975ae3f6c99e193e0b75c15d3e6521f8103",
+    "target/i10-articulation-kernel-20260918/before-source/src/temporal_cognition/gesture/projection.rs": "e7a56cc48f2601d9d1e4fa6c94bb1189ca7298f7ffae7da364b9eb4294a9062d",
+    "target/i10-articulation-kernel-20260918/before-source/src/temporal_cognition/gesture.rs": "1079ee0c47c3d5918b00ae5375ba2b56f7ba0ac521790ad15b6af88d3d0bf3df",
+    "target/i10-articulation-kernel-20260918/before-source/src/temporal_cognition/phrase/tests.rs": "262ada81c29806c4e0ac29bd56bb86c11d147d4524faffef2135a6a46fcf3e3e",
+    "target/i10-articulation-kernel-20260918/before-test": "1d879c104a73da5af4db0439e82cf3e1f03d6ea8e930866474a025f119614cfc",
+    "target/i10-articulation-kernel-20260918/check-0.log": "490309c26fb242f7c07cbaeed02d36a198e3f05806d42e3e7d675e9bbc77d975",
+    "target/i10-articulation-kernel-20260918/check-1.log": "0d9d01c9842f9235c2b0257887c7e37b401880a2f6628990063a94fec2f6d391",
+    "target/i10-articulation-kernel-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-articulation-kernel-20260918/check-3.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-articulation-kernel-20260918/checks.json": "e2713f13736c1c3eff1d23518f0f3cdc852b924076af1f5c05a91f0851404327",
+    "target/i10-articulation-kernel-20260918/checks.log": "e5b2e27f9b9de257f5512e746bc4b80916df91b529b793d1a172ff8d461884f8",
+    "target/i10-articulation-kernel-20260918/checks.py": "7f9063e24ddffb464835bf0bb13bf797e16bea2d701b0fabb658fbd7686e9145",
+    "target/i10-articulation-kernel-20260918/commands.jsonl": "b2b100657361e6d186311d3b18b556aa13a70fb99f17bd46f9f37936eac25ca6",
+    "target/i10-articulation-kernel-20260918/final-verification.json": "40ebb74ca814bdf3a6bf5db8b7f62908ac33a59edcfec596435ac521335f0341",
+    "target/i10-articulation-kernel-20260918/final-verification.log": "ac2e9e5cb0fb93b9d729a8d6120b80f64cdfbe0518f8242db12b9356fa69a214",
+    "target/i10-articulation-kernel-20260918/final_verify.py": "54acc88ad5977200aae50904a54111bdfdf9979225978a5ecf6166ed8db65798",
+    "target/i10-articulation-kernel-20260918/instrumented-build.jsonl": "1104e4a5486843bcb77d4d4f992b31ede8cd4efe96eae0ba921ffca71d6a77d7",
+    "target/i10-articulation-kernel-20260918/instrumented-build.log": "f4793858b68cab5eee97e200389cef862cb9d1bd87600a70394fd6b43b2aefa5",
+    "target/i10-articulation-kernel-20260918/instrumented-source/src/temporal_cognition/action_profiles/tests.rs": "da1611080e4c65bee0b4922d20954e0f37887f8558da792a45edcce7241b802c",
+    "target/i10-articulation-kernel-20260918/instrumented-source/src/temporal_cognition/gesture/projection/tests.rs": "dcb32fe6364245f4579d5aad461e6975ae3f6c99e193e0b75c15d3e6521f8103",
+    "target/i10-articulation-kernel-20260918/instrumented-source/src/temporal_cognition/gesture/projection.rs": "c83a7a02c8f4a592868390527ac8dc676bf98457f552a4ed06c1869ad7448ee7",
+    "target/i10-articulation-kernel-20260918/instrumented-source/src/temporal_cognition/gesture.rs": "1079ee0c47c3d5918b00ae5375ba2b56f7ba0ac521790ad15b6af88d3d0bf3df",
+    "target/i10-articulation-kernel-20260918/instrumented-source/src/temporal_cognition/phrase/tests.rs": "606a916dd9ee17571d716aa7f99dfc53a0c9ae2d4135aa2784d7309da159e5b9",
+    "target/i10-articulation-kernel-20260918/load-1000.toml": "8c6f0de06deaa2d31f1777e576df9708d00567ecc9621d5c6708cd448fa620ca",
+    "target/i10-articulation-kernel-20260918/load-250.toml": "585b56823584e4c6aaa3853c60dc54164407558b776235a6244322824ca1bb5c",
+    "target/i10-articulation-kernel-20260918/load-at.toml": "b53ff47545d94d948d98252f882ed34df674b2767174880c3778a5a1994a15d3",
+    "target/i10-articulation-kernel-20260918/plan.json": "4772ca6ef0bb078285baeedb5535f546953e104a37a721facfd32496efae37ae",
+    "target/i10-articulation-kernel-20260918/profile-after-acquisition.log": "aa9f975027cabb426e923e92e5f23ad9c8c2ff15deb81428f0216fd8b3f54796",
+    "target/i10-articulation-kernel-20260918/profile-after.jsonl": "3a8600e5dc9e7b1361d701d109ea7e68c43faae53c327e0ef676573555a6d652",
+    "target/i10-articulation-kernel-20260918/profile-after.log": "cb1f52c120cb5d77e13cbf3c4d863dfc1233132816c85bde06dd1ab45a5d1a4c",
+    "target/i10-articulation-kernel-20260918/profile-before-acquisition.log": "3de93fcbc30c9f0f1aaea126936c2f0f3d62eaed69b8303daa3ac6bbb363900c",
+    "target/i10-articulation-kernel-20260918/profile-before.jsonl": "00ec1219168345ed9b155e8a806eaaa4ddcb7dc39ac9ec6e7cc161d73160f544",
+    "target/i10-articulation-kernel-20260918/profile-before.log": "e897d6366817b99c7f58660a8cd27d3414c494cf357358505a982b7c9d48ff48",
+    "target/i10-articulation-kernel-20260918/profile.py": "1b75f570df28017148c5aee637099f209791aa2ba8a112c5cdce5741a163dff2",
+    "target/i10-articulation-kernel-20260918/pulse-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+    "target/i10-articulation-kernel-20260918/pulse-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+    "target/i10-articulation-kernel-20260918/pulse.rhai": "b5a03ba6093f0fdb40e80246cb32b8bf0bcce1fddb6cc337261000e3729fb281",
+    "target/i10-articulation-kernel-20260918/pulse.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+    "target/i10-articulation-kernel-20260918/register.py": "f171bc273d97a1ed18a0c1823aa304c8e43fec1bb9d3c943be11d091c87d703e",
+    "target/i10-articulation-kernel-20260918/release-1000.jsonl": "5f6d65dd00440d73cbf8645daafc74b95d9e2db7aaac4021fa522b4a34c0b55e",
+    "target/i10-articulation-kernel-20260918/release-1000.log": "d44b7e6fc3ff9a641773688e4bf94f45b5da5b8079880a67e89f909ed1862ae9",
+    "target/i10-articulation-kernel-20260918/release-250-profile.jsonl": "16b0bf2226ca38d3a0e4df8aebd88f812138f7af7db037ef5fae949cd35a365e",
+    "target/i10-articulation-kernel-20260918/release-250-profile.log": "0d30c16616858840e1c017f3775c06a4bdadd60dbfee154b366dffdce63f2355",
+    "target/i10-articulation-kernel-20260918/release-250.jsonl": "3666ba398773b26f3b433a1b04b70b1cd8579e248be604b9a19ec221a2829ba9",
+    "target/i10-articulation-kernel-20260918/release-250.log": "60e4a3ec2815b8125b2fa8a3c992c4fd333618f024b66529ca557a31ca0498a6",
+    "target/i10-articulation-kernel-20260918/release-acquisition.log": "541a923398af952a3ea11b073117ff214556506801a55431a7ffcd941bcca920",
+    "target/i10-articulation-kernel-20260918/release-at.jsonl": "c391097852a2a7388c0f95d52207d5de993d2c75bce76fab4ce860aca5f314b0",
+    "target/i10-articulation-kernel-20260918/release-at.log": "1ff6bd3a343f7d9abdc401052546210102e7dcb3076b1fcd4e621190064c8a8b",
+    "target/i10-articulation-kernel-20260918/release-build.jsonl": "88ed62ff24fe2975b998a63c4f07f1d345a38b57043379b486b8746ca782ed9d",
+    "target/i10-articulation-kernel-20260918/release-build.log": "eb83ed8cfcd92fc35c1d904ddf124ac1a61c69825fdf0b9771b3163cb310b093",
+    "target/i10-articulation-kernel-20260918/release-test": "e18e024a21164a924202d57e903fe1fd0d08c8617cec09db4bae52bb1a6eec24",
+    "target/i10-articulation-kernel-20260918/release-verification.json": "2b2266c617fa2dd856e847d1b21068150c57751894341542edf7ee6fea189f4d",
+    "target/i10-articulation-kernel-20260918/release_assay.py": "bddb8c8fc6b382c79ee8762a59286b0e60e486289d58006635a564325bec95f0",
+    "target/i10-articulation-kernel-20260918/stair-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+    "target/i10-articulation-kernel-20260918/stair-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+    "target/i10-articulation-kernel-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+    "target/i10-articulation-kernel-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+    "target/i10-articulation-kernel-20260918/sustain-1000.toml": "e62f1ff04cc1478291a042b3d7041ea14ff0f56d9b0e31f02be3546cc4f63440",
+    "target/i10-articulation-kernel-20260918/sustain-250.toml": "467acaa35d063813f4afe9d5ddca32dfa9f95c546d8d0fe54eea812cddb8000a",
+    "target/i10-articulation-kernel-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+    "target/i10-articulation-kernel-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+    "target/i10-articulation-kernel-20260918/test_report.txt": "06a75911e533eb3c27fb46d37fc627cdebd73955bb4bd43ef2fdb8d6113003ce",
+    "target/i10-articulation-kernel-20260918/test_status.txt": "5c57136cf1525858126492ad0c919be28d5f77c3ddb98fa9f5f665cf7fb9d4a5",
+    "target/i10-articulation-kernel-20260918/verify_release.py": "e17d1d5a01f2d8b986024923fd2c4344716d9d173574d9ff6ebe13b64687f206"
+  }
+}

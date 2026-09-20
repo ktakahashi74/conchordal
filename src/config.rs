@@ -281,6 +281,286 @@ pub struct AppConfig {
     pub dcc: DccConfig,
     #[serde(default)]
     pub playback: PlaybackConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_ridge: Option<TemporalRidgeConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_acoustic: Option<TemporalAcousticConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_memory: Option<TemporalMemoryConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_gesture: Option<TemporalGestureConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_period: Option<TemporalPeriodConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_groove: Option<TemporalGrooveConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_phrase: Option<TemporalPhraseConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_section: Option<TemporalSectionConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_whole: Option<TemporalWholeConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_body: Option<TemporalBodyConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_body_prototypes: Option<TemporalBodyPrototypesConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_action_profiles: Option<TemporalActionProfilesConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_private_trace: Option<TemporalPrivateTraceConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalPrivateTraceConfig {
+    pub tau_sec: f64,
+    pub kappa: f64,
+    pub strength_max: f64,
+}
+
+/// Frozen development scales for private body diagnostics; no adopted calibration.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalBodyConfig {
+    pub means: [f64; 6],
+    pub deviations: [f64; 6],
+    pub accent_means: [f64; 2],
+    pub accent_deviations: [f64; 2],
+}
+
+/// Frozen descriptive medoids; these do not authorize counterfactual action projections.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalBodyPrototypesConfig {
+    pub model_version: String,
+    pub sample_rate: u32,
+    pub nfft: usize,
+    pub hop_size: usize,
+    pub means: [f64; 6],
+    pub deviations: [f64; 6],
+    pub accent_means: [f64; 2],
+    pub accent_deviations: [f64; 2],
+    pub medoids: Vec<TemporalBodyMedoid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalBodyMedoid {
+    pub record_id: String,
+    pub raw_values: [f64; 6],
+    pub mask: u8,
+}
+
+/// Frozen conditional descriptor-transfer data; no action or calibration is enabled.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalActionProfilesConfig {
+    pub file: String,
+    pub sha256: String,
+    /// Omitted: exact action time. Set: delay, then round up on the issue-relative hop grid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evaluation_delay_ms: Option<u32>,
+}
+
+/// Explicit research scales for passive ridge diagnostics, not an adopted fit.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalRidgeConfig {
+    pub means: [f64; 3],
+    pub deviations: [f64; 3],
+}
+
+/// Frozen inputs for uncalibrated acoustic diagnostics; no implicit fit scales.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalAcousticConfig {
+    pub group_means: [f64; 3],
+    pub group_deviations: [f64; 3],
+    pub accent_means: [f64; 2],
+    pub accent_deviations: [f64; 2],
+    pub group_retirement_sec: f64,
+    pub inactive_energy_max: f64,
+    pub correlation_window_sec: f64,
+    pub min_pairs: usize,
+    pub min_coverage: f64,
+    pub persistence_hops: u8,
+}
+
+/// Explicit assay windows and scales for passive, uncalibrated memory diagnostics.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalMemoryConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention: Option<TemporalRetentionConfig>,
+    /// Explicit search capacity; absent selects the frozen 16-candidate baseline.
+    pub candidates: Option<usize>,
+    pub scales: [f64; 10],
+    pub span_hops: u64,
+    pub episodes: usize,
+    pub query_cadence_ms: u64,
+    pub deadline_ms: u64,
+}
+
+/// Explicit diagnostic retention parameters; no implicit stage-1 fit.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalRetentionConfig {
+    pub tau_sec: f64,
+    pub kappa: f64,
+    pub strength_max: f64,
+    pub r_max: f64,
+    pub no_memory_bias: f64,
+}
+
+/// Frozen research inputs for the single-context articulation/gesture diagnostic.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalGestureConfig {
+    pub rms_reference: f64,
+    pub means: [f64; 5],
+    pub deviations: [f64; 5],
+    pub coefficients: [[[f64; 11]; 4]; 4],
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ArrivalModel {
+    Hazard,
+    Periodic,
+}
+
+/// Explicit uncalibrated arrival parameters; coefficient layout is versioned with the model.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalPeriodConfig {
+    pub model: ArrivalModel,
+    pub coefficients: [f64; 18],
+    pub means: [f64; 8],
+    pub deviations: [f64; 8],
+    pub horizon_sec: f64,
+}
+
+/// Frozen base phrase heads; no fitted coefficients are supplied implicitly.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalPhraseConfig {
+    pub means: [f64; 12],
+    pub deviations: [f64; 12],
+    pub hazard: [f64; 26],
+    pub exits: [[f64; 26]; 4],
+    pub closure: TemporalOrdinalConfig,
+    pub continuation: TemporalOrdinalConfig,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalOrdinalConfig {
+    pub means: [f64; 14],
+    pub deviations: [f64; 14],
+    pub coefficients: [f64; 29],
+    pub cutpoints: [f64; 4],
+    pub prior: [f64; 5],
+}
+
+/// Shared development scales and two independently fitted acoustic rating heads.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalGrooveConfig {
+    #[serde(with = "fixed_array")]
+    pub means: [f64; 54],
+    #[serde(with = "fixed_array")]
+    pub deviations: [f64; 54],
+    pub groove: TemporalGrooveHeadConfig,
+    pub desire: TemporalGrooveHeadConfig,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalGrooveHeadConfig {
+    #[serde(with = "fixed_array")]
+    pub coefficients: [f64; 109],
+    pub cutpoints: [f64; 4],
+    pub prior: [f64; 5],
+    pub temperature: f64,
+}
+
+/// Explicit section and acoustic-match scales; these diagnostics are not fitted implicitly.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalSectionConfig {
+    #[serde(with = "fixed_array")]
+    pub means: [f64; 82],
+    #[serde(with = "fixed_array")]
+    pub deviations: [f64; 82],
+    #[serde(with = "fixed_array")]
+    pub hazard: [f64; 83],
+    #[serde(with = "fixed_array")]
+    pub new_context: [f64; 83],
+    #[serde(with = "fixed_array")]
+    pub recurrence: [f64; 83],
+    #[serde(with = "fixed_array")]
+    pub contrast: [f64; 83],
+    pub ending_means: [f64; 6],
+    pub ending_deviations: [f64; 6],
+    pub match_means: [f64; 14],
+    pub match_deviations: [f64; 14],
+    pub match_coefficients: [f64; 15],
+}
+
+/// Separate scoring-only ordinal instrument for the heard whole-piece context.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalWholeConfig {
+    pub means: [f64; 4],
+    pub deviations: [f64; 4],
+    pub coefficients: [f64; 9],
+    pub cutpoints: [f64; 4],
+    pub prior: [f64; 5],
+    pub temperature: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<TemporalWholeControlsConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalScoringConfig<const N: usize, const C: usize> {
+    #[serde(with = "fixed_array")]
+    pub means: [f64; N],
+    #[serde(with = "fixed_array")]
+    pub deviations: [f64; N],
+    #[serde(with = "fixed_array")]
+    pub coefficients: [f64; C],
+    pub cutpoints: [f64; 4],
+    pub prior: [f64; 5],
+    pub temperature: f64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalWholeControlsConfig {
+    pub closure_only: TemporalScoringConfig<1, 3>,
+    pub gap_energy_2s: TemporalScoringConfig<3, 7>,
+    pub elapsed_only: TemporalScoringConfig<1, 3>,
+}
+
+pub(crate) mod fixed_array {
+    use serde::{Deserialize, Serialize};
+
+    pub fn serialize<T: Serialize, S: serde::Serializer, const N: usize>(
+        values: &[T; N],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        values.as_slice().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>, const N: usize>(
+        deserializer: D,
+    ) -> Result<[T; N], D::Error> {
+        let values = Vec::<T>::deserialize(deserializer)?;
+        let count = values.len();
+        values.try_into().map_err(|_| {
+            serde::de::Error::custom(format!("expected {N} array entries, got {count}"))
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -341,6 +621,14 @@ impl Default for PlaybackConfig {
 impl AppConfig {
     /// Validate the dimensions shared by the runtime and the NSGT kernel.
     pub fn validate(&self) -> Result<()> {
+        crate::temporal_cognition::action_profiles::validate_config(self)?;
+        if let Some(ridge) = self.temporal_ridge {
+            ensure!(
+                ridge.means.iter().all(|v| v.is_finite())
+                    && ridge.deviations.iter().all(|v| v.is_finite() && *v >= 0.0),
+                "temporal_ridge requires finite means and finite nonnegative deviations"
+            );
+        }
         ensure!(
             self.audio.sample_rate > 0,
             "audio.sample_rate must be positive"
@@ -375,6 +663,117 @@ impl AppConfig {
             .is_zero(),
             "analysis.hop_size / audio.sample_rate must produce a nonzero hop duration"
         );
+        if let Some(body) = self.temporal_body {
+            crate::temporal_cognition::body::validate(body).map_err(anyhow::Error::msg)?;
+            if let Some(acoustic) = self.temporal_acoustic {
+                ensure!(
+                    body.accent_means == acoustic.accent_means
+                        && body.accent_deviations == acoustic.accent_deviations,
+                    "temporal_body and temporal_acoustic must share frozen accent scales"
+                );
+            }
+        }
+        crate::temporal_cognition::body_model::validate(self)?;
+        if let Some(acoustic) = self.temporal_acoustic {
+            let ridge = self
+                .temporal_ridge
+                .context("temporal_acoustic requires temporal_ridge scales")?;
+            crate::temporal_cognition::proposals::frontend::Frontend::configured(
+                crate::core::log2space::Log2Space::new(100.0, 200.0, 1),
+                0,
+                (0, 0),
+                self.audio.sample_rate,
+                self.analysis.hop_size as u64,
+                ridge,
+                acoustic,
+            )
+            .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(memory) = self.temporal_memory {
+            ensure!(
+                self.temporal_acoustic.is_some(),
+                "temporal_memory requires temporal_acoustic"
+            );
+            crate::temporal_cognition::recall::Recall::new(
+                0,
+                0,
+                self.audio.sample_rate,
+                self.analysis.hop_size as u64,
+                memory,
+                self.temporal_section,
+            )
+            .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(gesture) = self.temporal_gesture {
+            ensure!(
+                self.temporal_acoustic.is_some(),
+                "temporal_gesture requires temporal_acoustic"
+            );
+            crate::temporal_cognition::gesture::Gesture::new(
+                0,
+                0,
+                self.audio.sample_rate,
+                self.analysis.hop_size as u64,
+                gesture,
+            )
+            .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(phrase) = self.temporal_phrase {
+            ensure!(
+                self.temporal_memory.is_some()
+                    && self.temporal_gesture.is_some()
+                    && self.temporal_period.is_some(),
+                "temporal_phrase requires temporal_memory, temporal_gesture and temporal_period"
+            );
+            crate::temporal_cognition::phrase::Phrase::validate(phrase)
+                .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(whole) = self.temporal_whole {
+            ensure!(
+                self.temporal_section.is_some(),
+                "temporal_whole requires temporal_section"
+            );
+            crate::temporal_cognition::whole::validate(whole).map_err(anyhow::Error::msg)?;
+        }
+        if let Some(trace) = self.temporal_private_trace {
+            anyhow::ensure!(
+                self.temporal_memory.is_some_and(|m| m.retention.is_some()),
+                "temporal_private_trace requires temporal_memory.retention"
+            );
+            anyhow::ensure!(
+                [trace.tau_sec, trace.kappa, trace.strength_max]
+                    .iter()
+                    .all(|v| v.is_finite() && *v > 0.),
+                "temporal_private_trace requires finite positive parameters"
+            );
+        }
+        if let Some(section) = self.temporal_section {
+            ensure!(
+                self.temporal_phrase.is_some(),
+                "temporal_section requires temporal_phrase"
+            );
+            ensure!(
+                self.temporal_memory
+                    .is_some_and(|m| m.query_cadence_ms == 100),
+                "temporal_section requires temporal_memory.query_cadence_ms = 100"
+            );
+            crate::temporal_cognition::section::Stream::validate(section)
+                .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(period) = self.temporal_period {
+            ensure!(
+                self.temporal_acoustic.is_some(),
+                "temporal_period requires temporal_acoustic"
+            );
+            crate::temporal_cognition::arrival::Engine::new(period).map_err(anyhow::Error::msg)?;
+        }
+        if let Some(groove) = &self.temporal_groove {
+            ensure!(
+                self.temporal_period.is_some(),
+                "temporal_groove requires temporal_period"
+            );
+            crate::temporal_cognition::groove::validate(groove).map_err(anyhow::Error::msg)?;
+        }
         Ok(())
     }
 
@@ -501,6 +900,31 @@ mod tests {
     use super::*;
     use std::fs;
 
+    #[test]
+    fn ridge_diagnostics_require_explicit_finite_scales() {
+        assert!(AppConfig::default().temporal_ridge.is_none());
+        let config = "[temporal_ridge]\nmeans = [0.0, 0.0, 0.0]\ndeviations = [0.05, 4.0, 1.0]\n";
+        let valid: AppConfig = toml::from_str(config).unwrap();
+        valid.validate().unwrap();
+        for text in [
+            "[temporal_ridge]\nmeans = [0.0, 0.0, 0.0]\n",
+            "[temporal_ridge]\ndeviations = [0.05, 4.0, 1.0]\n",
+            "[temporal_ridge]\nmeans = [0.0, 0.0, 0.0]\ndeviatons = [0.05, 4.0, 1.0]\n",
+        ] {
+            assert!(toml::from_str::<AppConfig>(text).is_err());
+        }
+        for value in [f64::NAN, f64::INFINITY, -1.0] {
+            let mut invalid = valid.clone();
+            invalid.temporal_ridge.as_mut().unwrap().deviations[0] = value;
+            assert!(invalid.validate().is_err());
+        }
+        let restored: AppConfig = toml::from_str(&toml::to_string(&valid).unwrap()).unwrap();
+        assert_eq!(
+            restored.temporal_ridge.unwrap().deviations,
+            [0.05, 4.0, 1.0]
+        );
+    }
+
     fn unique_path(name: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!(
@@ -576,6 +1000,19 @@ mod tests {
         let path = unique_path("custom.toml");
         let path_str = path.to_string_lossy().to_string();
         let custom = AppConfig {
+            temporal_ridge: None,
+            temporal_acoustic: None,
+            temporal_memory: None,
+            temporal_gesture: None,
+            temporal_period: None,
+            temporal_groove: None,
+            temporal_phrase: None,
+            temporal_section: None,
+            temporal_whole: None,
+            temporal_body: None,
+            temporal_body_prototypes: None,
+            temporal_action_profiles: None,
+            temporal_private_trace: None,
             audio: AudioConfig {
                 latency_ms: 75.0,
                 sample_rate: 44_100,
@@ -766,6 +1203,161 @@ mod tests {
             assert!(message.contains(path.to_str().unwrap()), "{message}");
             fs::remove_file(path).unwrap();
         }
+    }
+
+    #[test]
+    fn temporal_diagnostics_require_explicit_dependencies_and_valid_scales() {
+        let acoustic = TemporalAcousticConfig {
+            group_means: [0.; 3],
+            group_deviations: [0.05, 4., 1.],
+            accent_means: [0.; 2],
+            accent_deviations: [1.; 2],
+            group_retirement_sec: 2.,
+            inactive_energy_max: 1e-8,
+            correlation_window_sec: 0.25,
+            min_pairs: 8,
+            min_coverage: 0.9,
+            persistence_hops: 3,
+        };
+        let memory = TemporalMemoryConfig {
+            retention: None,
+            candidates: None,
+            scales: [1.; 10],
+            span_hops: 128,
+            episodes: 16,
+            query_cadence_ms: 100,
+            deadline_ms: 200,
+        };
+        let mut cfg = AppConfig {
+            temporal_memory: Some(memory),
+            ..Default::default()
+        };
+        assert!(
+            cfg.validate()
+                .unwrap_err()
+                .to_string()
+                .contains("temporal_acoustic")
+        );
+        cfg.temporal_acoustic = Some(acoustic);
+        assert!(
+            cfg.validate()
+                .unwrap_err()
+                .to_string()
+                .contains("temporal_ridge")
+        );
+        cfg.temporal_ridge = Some(TemporalRidgeConfig {
+            means: [0.; 3],
+            deviations: [0.05, 4., 1.],
+        });
+        cfg.validate().unwrap();
+        for change in 0..9 {
+            let mut bad = cfg.clone();
+            let m = bad.temporal_memory.as_mut().unwrap();
+            match change {
+                0 => m.scales[0] = f64::NAN,
+                1 => m.scales[0] = 0.,
+                2 => m.span_hops = 0,
+                3 => m.episodes = 16385,
+                4 => m.query_cadence_ms = 75,
+                5 => m.deadline_ms = u64::MAX,
+                7 => m.candidates = Some(0),
+                8 => m.candidates = Some(1025),
+                _ => {
+                    bad.temporal_acoustic
+                        .as_mut()
+                        .unwrap()
+                        .correlation_window_sec = -1.
+                }
+            }
+            assert!(bad.validate().is_err(), "accepted invalid case {change}");
+        }
+        let text = toml::to_string(&cfg).unwrap();
+        let parsed: AppConfig = toml::from_str(&text).unwrap();
+        parsed.validate().unwrap();
+        assert_eq!(parsed.temporal_memory.unwrap().scales, memory.scales);
+        assert!(toml::from_str::<AppConfig>(&text.replace("span_hops", "span_hpos")).is_err());
+    }
+
+    #[test]
+    fn period_configuration_requires_explicit_valid_model_inputs() {
+        let period = TemporalPeriodConfig {
+            model: ArrivalModel::Hazard,
+            coefficients: [0.; 18],
+            means: [0.; 8],
+            deviations: [1.; 8],
+            horizon_sec: 0.1,
+        };
+        let cfg = AppConfig {
+            temporal_period: Some(period),
+            ..Default::default()
+        };
+        assert!(
+            cfg.validate()
+                .unwrap_err()
+                .to_string()
+                .contains("temporal_acoustic")
+        );
+        for case in 0..5 {
+            let mut bad = period;
+            match case {
+                0 => bad.coefficients[17] = f64::INFINITY,
+                1 => bad.means[0] = f64::NAN,
+                2 => bad.deviations[0] = -1.,
+                3 => bad.horizon_sec = 0.,
+                _ => bad.horizon_sec = 33.,
+            }
+            assert!(crate::temporal_cognition::arrival::Engine::new(bad).is_err());
+        }
+        let text = toml::to_string(&period).unwrap();
+        let parsed: TemporalPeriodConfig = toml::from_str(&text).unwrap();
+        assert_eq!(parsed.model, period.model);
+        assert_eq!(parsed.coefficients, period.coefficients);
+        assert!(
+            toml::from_str::<TemporalPeriodConfig>(&text.replace("hazard", "other_model")).is_err()
+        );
+        assert!(
+            toml::from_str::<TemporalPeriodConfig>(&text.replace("horizon_sec", "horizon_secs"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn gesture_configuration_requires_frozen_finite_inputs() {
+        let gesture = TemporalGestureConfig {
+            rms_reference: 0.1,
+            means: [0.; 5],
+            deviations: [1.; 5],
+            coefficients: [[[0.; 11]; 4]; 4],
+        };
+        let cfg = AppConfig {
+            temporal_gesture: Some(gesture),
+            ..Default::default()
+        };
+        assert!(
+            cfg.validate()
+                .unwrap_err()
+                .to_string()
+                .contains("temporal_acoustic")
+        );
+        for case in 0..4 {
+            let mut bad = gesture;
+            match case {
+                0 => bad.rms_reference = 0.,
+                1 => bad.coefficients[0][1][3] = f64::INFINITY,
+                2 => bad.means[0] = f64::NAN,
+                _ => bad.deviations[0] = -1.,
+            }
+            assert!(
+                crate::temporal_cognition::gesture::Gesture::new(0, 0, 48000, 512, bad).is_err()
+            );
+        }
+        let text = toml::to_string(&gesture).unwrap();
+        let parsed: TemporalGestureConfig = toml::from_str(&text).unwrap();
+        assert_eq!(parsed.coefficients, gesture.coefficients);
+        assert!(
+            toml::from_str::<TemporalGestureConfig>(&text.replace("rms_reference", "rms_refernce"))
+                .is_err()
+        );
     }
 
     #[test]

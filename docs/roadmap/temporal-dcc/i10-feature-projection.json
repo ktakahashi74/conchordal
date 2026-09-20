@@ -1,0 +1,94 @@
+{
+  "schema": "i10-raw-feature-projection-v1",
+  "status": "shared_raw_arithmetic_in_normal_observed_stream_candidate_table_incomplete",
+  "source_sha256": {
+    "src/temporal_cognition.rs": "f6280358a7e1cf9f5f25b8c9bea590ed55567c3476d922287b99c5cf810af379",
+    "src/temporal_cognition/features.rs": "dccc988905732c85b74a4f95148570d6fbf54ef2a40a86fa755337fe6ccb09a5",
+    "src/temporal_cognition/feature_projection.rs": "6cc192282d0e1ad12da132dab6d27011d1cc9a5aef08a96b8fae2591e2640558",
+    "src/temporal_cognition/feature_projection/tests.rs": "ecc64118cf85a31062522f9600d12629313a61081ce5c621da2e32eb0005860f",
+    "docs/roadmap/temporal-dcc/feature-manifest.json": "b9d17dc64185548918b6d07ba9631bdf67345a7939e3c7f9d845bd0060bf9576"
+  },
+  "ordered_path_content_sha256": "754aa70208aebef7bdab39cf42e2d683c1cffa47c371aa8eda64d5e7ac1af816",
+  "manifest": "docs/roadmap/temporal-dcc/feature-manifest.json#i10_raw_feature_projection",
+  "record": "docs/roadmap/temporal-dcc/i10-body-outcome.md",
+  "validation": {
+    "passed": 1090,
+    "failed": 0,
+    "ignored": 30,
+    "suites": 31,
+    "status": "cargo test exit=0 @ 2026-09-18T02:39:19+09:00",
+    "clippy": "passed: cargo clippy -- -D warnings",
+    "all_targets": "passed: cargo check --all-targets",
+    "numeric_oracle": [
+      "RAW_FEATURE_ORACLE endpoints=1152 admitted=275"
+    ],
+    "provenance": "32 independent current energy, bus energy, spectrum, previous energy and previous spectrum tag combinations",
+    "replay": {
+      "before-repeat": {
+        "body_descriptor": 384,
+        "self_sound_outcome": 6,
+        "self_sound_descriptor_prediction": 6,
+        "raw_and_detector": {
+          "before": 369,
+          "compared": 369,
+          "common_support_keys": 331,
+          "different_at_common_support": 0
+        },
+        "phrase": {
+          "before": 72,
+          "compared": 72,
+          "common_support_keys": 67,
+          "different_at_common_support": 0
+        }
+      },
+      "after": {
+        "body_descriptor": 384,
+        "self_sound_outcome": 6,
+        "self_sound_descriptor_prediction": 6,
+        "raw_and_detector": {
+          "before": 369,
+          "compared": 369,
+          "common_support_keys": 339,
+          "different_at_common_support": 0
+        },
+        "phrase": {
+          "before": 72,
+          "compared": 72,
+          "common_support_keys": 68,
+          "different_at_common_support": 0
+        }
+      }
+    }
+  },
+  "replay_artifacts": "target/i10-feature-projection-20260918",
+  "replay_sha256": {
+    "target/i10-feature-projection-20260918/config.toml": "2a929560dc92fb85dd9da4a4dd6fd9f8f0e62d80cb711c860dde220edd040895",
+    "target/i10-feature-projection-20260918/input.rhai": "e7201756a3ce34aa94f50b008e934039f45c483967eb4c3ce85474ddda5faff6",
+    "target/i10-feature-projection-20260918/before.wav": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+    "target/i10-feature-projection-20260918/before-repeat.wav": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+    "target/i10-feature-projection-20260918/after.wav": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+    "target/i10-feature-projection-20260918/before.jsonl": "3472204dd0d187df76816bde86031411ad4405312bac33af6fefcf7383c6b79d",
+    "target/i10-feature-projection-20260918/before-repeat.jsonl": "162ca71d196307297bbb1bad9e455ed1f3b7c25ff3aa664662b0a4af3d13c078",
+    "target/i10-feature-projection-20260918/after.jsonl": "d70f7baa71697cef9027d6e8fbe803b30f4ca053815bcdce03226849f59acad2",
+    "/tmp/conchordal-render-before-i10-feature-projection": "c37904b8fb46c25db2eb7b40667eb1cb622e3d37e64ae440494e8117033e6af6",
+    "target/debug/conchordal-render": "38f2c722875d62e87095955c5704d2da3b88179ae6f69dbe38c4aef485edd9e0"
+  },
+  "replay_limits": [
+    "Observation snapshots are asynchronous; complete report-line equality is not asserted.",
+    "All private descriptor and command prediction rows match. Shared raw/detector and phrase results match at common original support cuts.",
+    "Unmatched shared cuts are not certified equal. The same prior binary also changes published support cuts on replay."
+  ],
+  "remaining_i10": [
+    "freeze full head feature projection policies",
+    "generate seven-class candidate inputs on the original physical grid",
+    "build and publish bounded shared consequence tables",
+    "actual Voice/body-default mapping and paired differences",
+    "complete both-bus candidate report/UI",
+    "4/16/64-Voice all-I10 resource measurement and R2 handoff"
+  ],
+  "limits": [
+    "The pure kernel does not certify caller time, identity, adjacency or acquisition support.",
+    "No hypothetical feature is routed into an observed stream or used to train a head.",
+    "No fitted constants, calibration acceptance, generation effect or I9 restart."
+  ]
+}

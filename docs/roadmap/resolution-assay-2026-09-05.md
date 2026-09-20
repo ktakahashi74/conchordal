@@ -127,7 +127,7 @@ seed 42のtensionはほぼ横ばいだった。窓平均のtensionは各観測�
 ListenerTwinの`tension = (1 − stability) × resolvability`は、現在の音場の不安定さと
 近傍の改善可能性を組み合わせる。基準音の記憶、句の先行文脈、帰還への期待は含まない。
 Scenarioの「resolution」という操作名を、指標が検出すべき正解ラベルとして使わない。
-この適用範囲と質量の契約は[技術ノート第9章](../../web/content/technote.ja.md)
+この適用範囲と質量の契約は[設計台帳（旧技術ノート第9章）](../design-notes/technote-ledger.ja.md)
 と[ListenerTwin設計](../design-notes/listener-twin.md)にも記録した。
 
 ## 検証と次の判断

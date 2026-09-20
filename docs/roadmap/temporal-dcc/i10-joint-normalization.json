@@ -1,0 +1,206 @@
+{
+  "schema": "i10-joint-normalization-kernel-v2",
+  "status": "numerical_joint_to_candidate_pipeline_verified_not_production_wired",
+  "source_sha256": {
+    "src/temporal_cognition.rs": "da7134ed516dd30a886b4e4c96626fd4a3581d84908ebebc6ea9448cbe17533d",
+    "src/temporal_cognition/joint.rs": "6b645f6d6b0c27bd2ec7b1f3b1c1b674e28733193a4c5ad8a3ad85e9f69e7a0d",
+    "src/temporal_cognition/joint/tests.rs": "889ded77604a71d246346b1f4f38519e2bbb8753533049ae6723f753b0082633",
+    "src/temporal_cognition/consequence.rs": "661be3e702b79b32e45a0eca1885cb7a5425af6899ced96603cf403a365803f1",
+    "src/temporal_cognition/consequence/tests.rs": "17a1c0b17f77b1b17e38558ab2f156623b519bd509b00dcb8e32cbd90e69cf28",
+    "scripts/generate_temporal_joint_fixtures.py": "c3e03786d09eca71a7260e6a5afa537e2a3ef720ccdebbc14b64e1a67f678afc",
+    "tests/fixtures/temporal_cognition/joint.json": "d4321074e307174ecfdb8ff4891d13987c02138537ee6744f0383472438f553a"
+  },
+  "artifact_directory": "target/i10-joint-empty-groups-20260918",
+  "equations": "Normalize all A(C)+sum_g logsumexp(B_g(E|C)) and each complete B_g before pruning; parent/extension pairs are not normalized separately per parent after evidence.",
+  "input_contract": {
+    "priors": "represented parent priors sum to one, identical across their extensions",
+    "transitions": "each parent has normalized transitions and exactly one explicit unknown extension",
+    "identity": "bounded parent/extension slots, duplicates rejected; caller owns actual compatible path state",
+    "missing": "all conditional potentials suppressed on a fully missing interval; transitions remain active",
+    "capacity": {
+      "shared_pairs": 32,
+      "groups": 8,
+      "local_pairs_per_group_context": 256,
+      "retained_shared_resolved": 7,
+      "retained_local_resolved": 15
+    },
+    "zero_groups": "Zero through eight groups, same count under each shared pair. Empty local product is one: shared-only normalization. Empty shared inventory or an existing group with an empty local candidate list remains invalid."
+  },
+  "numerics": "Center potentials before adding prior/transition logs; retain local partition shift and residual separately before shared evidence. Zero-prior/transition rows cannot affect centering. Invalid relative normalization rejects without replacing the last published numeric posterior.",
+  "unknown": "Explicit unknown and pruned mass remain separate. Retained resolved weights are not renormalized. Shared unknown carries no retained local identities. Unused group slots are cleared on inventory shrink.",
+  "candidate_connection": "Multiply retained shared and selected-group local masses, match supported candidate inputs by both parent/extension pairs, reject orphan or duplicate identities, and pass the bounded result into the existing consequence kernel. Missing projections increase unknown; they do not recover original unknown.",
+  "candidate_unknown_fields": [
+    "original_unknown_mass",
+    "unsupported_projection_mass",
+    "unknown_mass"
+  ],
+  "head_coverage": "consequence and joint preview now take a three-head issue-coverage array; each head backs off independently after hypothetical path mixing. No shifted-window coverage is substituted.",
+  "verification": {
+    "decimal_cases": 29,
+    "decimal_precision": 60,
+    "oracle": "independent probability-space Cartesian enumeration",
+    "fixture_reproduction": "exact",
+    "maximum_enumeration": {
+      "shared": 32,
+      "local": 65536
+    },
+    "new_rust_tests": 9,
+    "later_identity_loss": {
+      "exhaustive_context_mass": 0.5389532142295803,
+      "retained_unknown_baseline_context_mass": 0.45,
+      "difference": 0.0889532142295803,
+      "interpretation": "synthetic later cue distinguishes a discarded identity; mass conservation on the earlier step does not preserve later interpretive information"
+    },
+    "cases": [
+      "diffuse posterior under only one context",
+      "parent and transition normalization",
+      "missing versus partially scored input",
+      "explicit and all-unknown states",
+      "stable ties and full caps",
+      "common potentials 1e300 and zero-mass extreme rows",
+      "atomic malformed input rejection",
+      "orphan and duplicate candidate input rejection",
+      "joint candidate reweighting, original/unsupported unknown separation, entropy and ordinal backoff",
+      "distinct head coverage including zero",
+      "zero-group startup and shared-only observation/missing updates",
+      "zero-group shared pruning",
+      "group retirement, rebirth, scratch reuse and no local preview"
+    ],
+    "zero_group_update": {
+      "plan": {
+        "scope": "Allow the empty local-group product in the shared/local normalizer without fabricating a group. Verify independent Decimal enumeration, retained shared transitions, pruning, scratch reuse and retirement/reset. The joint module remains test-only; normal ownership/features still required.",
+        "source_before_sha256": {
+          "src/temporal_cognition/joint.rs": "8bc35ee91a8102e8a9b96076915f0bf47468737009a65293ee365f86425ed701",
+          "src/temporal_cognition/joint/tests.rs": "12dbfd83fd0637d2846a2dc0154aa3177df435496be18823c5dca472cb996b2b",
+          "scripts/generate_temporal_joint_fixtures.py": "69fa66bc07e4679936d4c4ff9b8d3ec4782f3bb91fb566f718592eb00ee7a9cb",
+          "tests/fixtures/temporal_cognition/joint.json": "900a096cc0f17657fed9551fc9d5012fd8c547c84c171901af9ed58548ab31dd"
+        }
+      },
+      "fixture_delta": {
+        "original_cases_unchanged": 25,
+        "new_cases": [
+          "empty-initial-unknown",
+          "empty-local-product-observed-False",
+          "empty-local-product-observed-True",
+          "empty-local-product-shared-pruning"
+        ],
+        "expected_old_command_exit": 101,
+        "observed_old_failure": "joint group inventory mismatch"
+      },
+      "oracle": {
+        "decimal_cases": 29,
+        "precision": 60,
+        "reproduction": "exact"
+      },
+      "joint_tests_passed": 20,
+      "roundtrip_group_counts": [
+        0,
+        8,
+        0,
+        1,
+        0
+      ],
+      "invariants": [
+        "Shared known and explicit unknown mass preserved without inventing a group",
+        "No local enumeration or stale local output after retirement",
+        "Out-of-range candidate preview rejected",
+        "Scratch allocation retained",
+        "Malformed inventory rejection preserves published posterior and valid retry succeeds"
+      ]
+    }
+  },
+  "checks": {
+    "cargo_test": {
+      "passed": 1179,
+      "failed": 0,
+      "ignored": 38,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T17:36:26+09:00"
+    },
+    "commands": [
+      {
+        "command": [
+          "cargo",
+          "clippy",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.11254492698935792
+      },
+      {
+        "command": [
+          "cargo",
+          "check",
+          "--all-targets"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 2.1963393799960613
+      },
+      {
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.690754788054619
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.04608207195997238
+      }
+    ]
+  },
+  "limits": [
+    "The joint and consequence modules remain test-only; no actual observation posterior or ordinary table has been replaced by synthetic weights.",
+    "Compatible bounded component tuple proposals, shared/local path lifetimes, real conditional feature vectors and score parameters remain required.",
+    "The current ordered feature manifest has no complete joint observation layout; it must be registered before stage-3 fitting and real score assembly.",
+    "Observation frame IDs, bus/epoch ownership and single-update delivery are caller contracts still to wire; this numerical kernel alone does not establish them.",
+    "Head/group partial support beyond currently supplied alternative head predictions, remaining invitation/timing inputs and calibrated transfer remain unfinished.",
+    "Scratch reuse and enumerated operation caps do not establish the full real-time resource gate; half/double capacity and full 4/16/64-Voice comparisons remain separate.",
+    "I9 remains held; no I11 action effects or new external/model runs."
+  ],
+  "next": [
+    "Assemble actual bounded compatible shared/local proposals rather than independent marginal products.",
+    "Register and implement the consumed joint conditional feature layout and candidate score differences.",
+    "Feed real frozen joint alternatives into ordinary tables, retaining per-head group support and issue coverage.",
+    "Complete actual-Voice/default correspondence, pending evaluation timing and full resources."
+  ],
+  "historical_baseline": {
+    "path": "target/i10-joint-empty-groups-20260918/baseline-registration.json",
+    "sha256": "16f61ea847d200b9284213fa60d3665ab7af12ad10e3f668f84f8b9db4ecb443",
+    "note": "Original 25-case run and later head-coverage registration preserved. Current source and checks are below."
+  },
+  "artifact_sha256": {
+    "target/i10-joint-empty-groups-20260918/baseline-manifest-entry.json": "56333dd1c72eb28ed6199c5edd5f2e3dc70eed17f8b8c792244c5326caac9458",
+    "target/i10-joint-empty-groups-20260918/baseline-registration.json": "16f61ea847d200b9284213fa60d3665ab7af12ad10e3f668f84f8b9db4ecb443",
+    "target/i10-joint-empty-groups-20260918/before/scripts/generate_temporal_joint_fixtures.py": "69fa66bc07e4679936d4c4ff9b8d3ec4782f3bb91fb566f718592eb00ee7a9cb",
+    "target/i10-joint-empty-groups-20260918/before/src/temporal_cognition/joint/tests.rs": "12dbfd83fd0637d2846a2dc0154aa3177df435496be18823c5dca472cb996b2b",
+    "target/i10-joint-empty-groups-20260918/before/src/temporal_cognition/joint.rs": "8bc35ee91a8102e8a9b96076915f0bf47468737009a65293ee365f86425ed701",
+    "target/i10-joint-empty-groups-20260918/before/tests/fixtures/temporal_cognition/joint.json": "900a096cc0f17657fed9551fc9d5012fd8c547c84c171901af9ed58548ab31dd",
+    "target/i10-joint-empty-groups-20260918/before-failure.log": "e71e2c0a0324d0425f6211100a6500c2bd1e6167c581f43a49db76212db9cc4d",
+    "target/i10-joint-empty-groups-20260918/check-0.log": "1088ac524f62a23f0d9ce10767ad2d977dbac126b933bfca7424955a54bdff6d",
+    "target/i10-joint-empty-groups-20260918/check-1.log": "dd471f4e2835ec26ee74d143fbc7e8b2f666936ec318fc63d47405f33ca08734",
+    "target/i10-joint-empty-groups-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-joint-empty-groups-20260918/check-3.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-joint-empty-groups-20260918/checks.json": "e792b871e1454715a82ffce43aeb4a960aa93b42cfa554a5998e1d47fe9de220",
+    "target/i10-joint-empty-groups-20260918/checks.log": "e5b2e27f9b9de257f5512e746bc4b80916df91b529b793d1a172ff8d461884f8",
+    "target/i10-joint-empty-groups-20260918/checks.py": "580b137e617605b3c5a770a3c372d8eb670eb03a2975c5efc15f4d8e36b3b5ed",
+    "target/i10-joint-empty-groups-20260918/fixture-delta.json": "b8a6a877f3ebfb7807eed1a6dca38855249df66f34c894950403200f90bd8376",
+    "target/i10-joint-empty-groups-20260918/joint-tests.log": "f65c56d502a0f0b40dc225bb87c931ace38c2cad5736e03b959a40a9b15216a0",
+    "target/i10-joint-empty-groups-20260918/oracle-check.json": "c6a3496f517be0fc1e3ab75866c3e573ad7f788bb4a2f7b04a3149963feac4f6",
+    "target/i10-joint-empty-groups-20260918/plan.json": "60e47d68a8a50baeaa36acd5ed601e422a6089ed38fd21ce97047e4496593826",
+    "target/i10-joint-empty-groups-20260918/register.py": "9d87c6092e35048449b02a110e0186a2d7775a6bd384fa1d25d60da13a55c279",
+    "target/i10-joint-empty-groups-20260918/test_report.txt": "a8bbe4ab908edc22f3652dc4ce9c0b0fac1c1e7f8e18e129c08a176264d7f56f",
+    "target/i10-joint-empty-groups-20260918/test_status.txt": "792c365ea4fc1f02eeac1c6cbbe4d0fac70e9efde293b2e554ef2b6b5df46e77"
+  }
+}

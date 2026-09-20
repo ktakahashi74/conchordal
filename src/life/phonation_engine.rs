@@ -21,11 +21,13 @@ use crate::scenario::{
 pub type ToneId = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct OnsetKick {
     pub strength: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct ToneUpdate {
     pub target_freq_hz: Option<f32>,
     /// Final output target amp (linear).
@@ -42,6 +44,7 @@ impl ToneUpdate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub enum ToneCmd {
     On {
         tone_id: ToneId,
@@ -519,11 +522,7 @@ impl CouplingClock {
         }
     }
 
-    fn gather_candidates_impl(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
-        let fs = ctx.fs;
-        if !fs.is_finite() || fs <= 0.0 || ctx.frame_end <= ctx.now_tick {
-            return;
-        }
+    fn velocity(&self, ctx: &CoreTickCtx) -> (f32, f32, f32) {
         let conf = ctx.rhythms.delta.alpha.clamp(0.0, 1.0);
         let lock = (self.coupling * conf).clamp(0.0, 1.0);
         let f_band = {
@@ -533,6 +532,29 @@ impl CouplingClock {
         // Meter beat phase in cycles, [0,1); microtiming offsets the lock target.
         let target_frac = ((ctx.rhythms.delta.phase / TAU) + self.microtiming).rem_euclid(1.0);
 
+        let f_intrinsic = self.intrinsic_rate_hz.max(0.01);
+        let mut f_eff = (1.0 - lock) * f_intrinsic + lock * f_band;
+        if !f_eff.is_finite() {
+            f_eff = f_intrinsic;
+        }
+        f_eff = f_eff.clamp(0.01, MAX_ONSET_RATE_HZ);
+
+        let my_frac = self.phase.rem_euclid(1.0) as f32;
+        let raw_err = target_frac - my_frac;
+        let err = raw_err - raw_err.round(); // signed phase error in [-0.5, 0.5]
+        let mut phase_dot = f_eff * (1.0 + lock * COUPLING_PULL_K * err);
+        if !phase_dot.is_finite() || phase_dot <= 0.0 {
+            phase_dot = f_eff.max(0.01);
+        }
+
+        (f_eff, phase_dot, my_frac)
+    }
+
+    fn gather_candidates_impl(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
+        let fs = ctx.fs;
+        if !fs.is_finite() || fs <= 0.0 || ctx.frame_end <= ctx.now_tick {
+            return;
+        }
         let frame_end = ctx.frame_end as f64;
         let mut cursor = ctx.now_tick as f64;
         // Defensive bound on in-hop crossings (degenerate rates only).
@@ -542,21 +564,8 @@ impl CouplingClock {
             if guard > 100_000 {
                 break;
             }
-            let f_intrinsic = self.intrinsic_rate_hz.max(0.01);
-            let mut f_eff = (1.0 - lock) * f_intrinsic + lock * f_band;
-            if !f_eff.is_finite() {
-                f_eff = f_intrinsic;
-            }
-            f_eff = f_eff.clamp(0.01, MAX_ONSET_RATE_HZ);
+            let (f_eff, phase_dot, my_frac) = self.velocity(ctx);
             self.last_f_eff_hz = f_eff;
-
-            let my_frac = self.phase.rem_euclid(1.0) as f32;
-            let raw_err = target_frac - my_frac;
-            let err = raw_err - raw_err.round(); // signed phase error in [-0.5, 0.5]
-            let mut phase_dot = f_eff * (1.0 + lock * COUPLING_PULL_K * err);
-            if !phase_dot.is_finite() || phase_dot <= 0.0 {
-                phase_dot = f_eff.max(0.01);
-            }
 
             // Cycles to the next integer crossing (a full cycle when on a beat).
             let frac_to_next = 1.0 - my_frac as f64;
@@ -695,6 +704,65 @@ pub enum PhonationClock {
 }
 
 impl PhonationClock {
+    pub(crate) fn intrinsic_period_sec(&self) -> Option<f64> {
+        let rate = match self {
+            Self::Coupling(c) => c.intrinsic_rate_hz,
+            Self::Participation(c) => c.base_rate_hz,
+            _ => return None,
+        };
+        (rate.is_finite() && rate > 0.).then(|| 1. / f64::from(rate))
+    }
+    pub(crate) fn opportunity(
+        &self,
+        ctx: &CoreTickCtx,
+    ) -> Option<crate::life::action_candidates::Opportunity> {
+        use crate::life::action_candidates::{Opportunity, OpportunityBasis};
+        if !ctx.fs.is_finite() || ctx.fs <= 0.0 || ctx.frame_end <= ctx.now_tick {
+            return None;
+        }
+        let (at, basis) = match self {
+            Self::Participation(clock) => return clock.policy.as_ref()?.opportunity(ctx.now_tick),
+            Self::Coupling(clock) => {
+                let (_, phase_dot, my_frac) = clock.velocity(ctx);
+                let crossing =
+                    ctx.now_tick as f64 + (1.0 - my_frac as f64) / phase_dot as f64 * ctx.fs as f64;
+                if !crossing.is_finite() || crossing.round() >= Tick::MAX as f64 {
+                    return None;
+                }
+                let at = if crossing < ctx.frame_end as f64 {
+                    (crossing.round() as Tick).clamp(ctx.now_tick, ctx.frame_end - 1)
+                } else {
+                    crossing.round() as Tick
+                };
+                (at, OpportunityBasis::CouplingProjection)
+            }
+            Self::ThetaGate(clock) => {
+                let cursor = match clock.last_gate_tick {
+                    Some(last) if last >= ctx.now_tick => last.checked_add(1)?,
+                    _ => ctx.now_tick,
+                };
+                let mut theta = ctx.rhythms.theta;
+                let elapsed = cursor.saturating_sub(ctx.now_tick) as f64 / ctx.fs as f64;
+                theta.phase = (theta.phase as f64 + TAU as f64 * theta.freq_hz as f64 * elapsed)
+                    .rem_euclid(TAU as f64) as f32;
+                let next = next_gate_tick(cursor, ctx.fs, theta, 0.0)?;
+                let at = if cursor == ctx.now_tick && theta.phase == 0.0 {
+                    cursor
+                } else {
+                    next
+                };
+                (at, OpportunityBasis::ThetaProjection)
+            }
+            #[cfg(test)]
+            Self::Custom(_) => return None,
+        };
+        Some(Opportunity {
+            issued_at: ctx.now_tick,
+            at,
+            basis,
+        })
+    }
+
     pub fn gather_candidates(&mut self, ctx: &CoreTickCtx, out: &mut Vec<CandidatePoint>) {
         match self {
             PhonationClock::ThetaGate(clock) => {
@@ -1059,9 +1127,11 @@ impl DurationRule {
 pub struct ToneOnEvent {
     pub tone_id: ToneId,
     pub onset_tick: Tick,
+    pub opportunity: Option<super::action_candidates::OnsetOpportunity>,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct OnsetEvent {
     pub gate: u64,
     pub onset_tick: Tick,
@@ -1130,6 +1200,13 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
+    #[cfg(test)]
+    pub(crate) fn planned_releases(&self) -> impl Iterator<Item = (ToneId, Tick)> + '_ {
+        self.pending_off
+            .iter()
+            .map(|Reverse(off)| (off.tone_id, off.off_tick))
+    }
+
     pub(crate) fn observe_participation_context(
         &mut self,
         own: &crate::core::temporal_expectation::OwnSoundHistory,
@@ -1303,6 +1380,7 @@ impl PhonationEngine {
             out_events.push(ToneOnEvent {
                 tone_id,
                 onset_tick: ctx.now_tick,
+                opportunity: None,
             });
             out_onsets.push(OnsetEvent {
                 gate: 0,
@@ -1347,7 +1425,7 @@ impl PhonationEngine {
         ctx: &CoreTickCtx,
         timing_grid: &mut ThetaGrid,
         fixed_period: Option<f64>,
-    ) {
+    ) -> Tick {
         let hold_theta = if hold_theta.is_finite() {
             hold_theta.max(0.0)
         } else {
@@ -1362,6 +1440,7 @@ impl PhonationEngine {
             .unwrap_or(onset.tick);
         let off_tick = off_tick_opt.unwrap_or(fallback).max(onset.tick);
         self.schedule_note_off(onset.tone_id, off_tick);
+        off_tick
     }
 
     /// Map a fractional gate position to a tick on the timing grid.
@@ -1540,13 +1619,13 @@ impl PhonationEngine {
         ctx: &CoreTickCtx,
         timing_grid: &mut ThetaGrid,
         fixed_period: Option<f64>,
-    ) {
+    ) -> Option<Tick> {
         let plan = self.duration_rule.on_note_on(onset);
         match plan {
             DurationPlan::HoldTheta(hold_theta) => {
-                self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid, fixed_period);
+                Some(self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid, fixed_period))
             }
-            DurationPlan::None => {}
+            DurationPlan::None => None,
         }
     }
 
@@ -1578,6 +1657,23 @@ impl PhonationEngine {
                 dt_sec: step.dt_sec,
                 weight: step.weight,
             };
+            let (intrinsic_due_at, period) = match &self.clock {
+                PhonationClock::Participation(clock) => (
+                    clock
+                        .policy
+                        .as_ref()
+                        .and_then(|p| p.intrinsic_due_for_selected(c.tick)),
+                    self.clock
+                        .intrinsic_period_sec()
+                        .map(|p| p * f64::from(ctx.fs)),
+                ),
+                // A theta gate is not the body's onset period (e.g. an accumulator).
+                PhonationClock::ThetaGate(_) => (Some(c.tick), None),
+                // Gathering may already have renewed this clock's rate. Do not borrow it.
+                PhonationClock::Coupling(_) => (Some(c.tick), None),
+                #[cfg(test)]
+                PhonationClock::Custom(_) => (None, None),
+            };
             if allow_onset
                 && state.onset_allowed
                 && let Some(mut kick) = self.onset_rule.on_candidate(&input, state)
@@ -1602,6 +1698,18 @@ impl PhonationEngine {
                 out_events.push(ToneOnEvent {
                     tone_id,
                     onset_tick: c.tick,
+                    opportunity: Some(super::action_candidates::OnsetOpportunity {
+                        issued_at: ctx.now_tick,
+                        at: c.tick,
+                        gate: c.gate,
+                        intrinsic_due_at,
+                        intrinsic_period_ticks: period
+                            .filter(|p| {
+                                p.is_finite() && p.round() >= 1. && p.round() < u64::MAX as f64
+                            })
+                            .map(|p| p.round() as u64),
+                        planned_release_at: None,
+                    }),
                 });
                 out_onsets.push(OnsetEvent {
                     gate: c.gate,
@@ -1615,7 +1723,14 @@ impl PhonationEngine {
                     exc_gate: step.exc_gate,
                     exc_slope: step.exc_slope,
                 };
-                self.schedule_duration(onset, ctx, timing_grid, fixed_period);
+                let release = self.schedule_duration(onset, ctx, timing_grid, fixed_period);
+                out_events
+                    .last_mut()
+                    .unwrap()
+                    .opportunity
+                    .as_mut()
+                    .unwrap()
+                    .planned_release_at = release;
             }
             self.last_tick = Some(c.tick);
             prev_gate_exc = Some(step.exc_gate);
@@ -2368,6 +2483,65 @@ mod tests {
             exc_slope: 0.0,
         });
         assert_eq!(plan, DurationPlan::HoldTheta(0.0));
+    }
+
+    #[test]
+    fn frozen_clock_opportunities_match_first_crossings_without_consuming_rng() {
+        let configs = [
+            PhonationClockConfig::ThetaGate,
+            PhonationClockConfig::Coupling {
+                coupling: 0.0,
+                base_rate_hz: 30.0,
+                flow_depth: 0.8,
+                microtiming: 0.0,
+            },
+            PhonationClockConfig::Coupling {
+                coupling: 0.7,
+                base_rate_hz: 30.0,
+                flow_depth: 0.8,
+                microtiming: 0.03,
+            },
+        ];
+        for config in configs {
+            let mut clock = PhonationClock::from_config(&config, 19);
+            let mut control = PhonationClock::from_config(&config, 19);
+            let mut checked = 0;
+            for now in (0..20_000).step_by(64) {
+                let mut rhythms = NeuralRhythms::default();
+                rhythms.theta.freq_hz = 30.0;
+                rhythms.theta.phase = (now as f32 * 30.0 / 1000.0 * TAU).rem_euclid(TAU);
+                rhythms.delta.phase = (now as f32 * 2.3 / 1000.0 * TAU).rem_euclid(TAU);
+                rhythms.delta.alpha = 0.9;
+                let ctx = CoreTickCtx {
+                    now_tick: now,
+                    frame_end: now + 64,
+                    fs: 1000.0,
+                    rhythms,
+                };
+                let frozen = clock.opportunity(&ctx).unwrap();
+                for _ in 0..4 {
+                    assert_eq!(clock.opportunity(&ctx), Some(frozen));
+                }
+                let mut actual = Vec::new();
+                let mut expected = Vec::new();
+                clock.gather_candidates(&ctx, &mut actual);
+                control.gather_candidates(&ctx, &mut expected);
+                assert_eq!(
+                    actual.iter().map(|c| (c.tick, c.gate)).collect::<Vec<_>>(),
+                    expected
+                        .iter()
+                        .map(|c| (c.tick, c.gate))
+                        .collect::<Vec<_>>()
+                );
+                if let Some(first) = actual.first() {
+                    assert_eq!(frozen.at, first.tick);
+                    checked += 1;
+                } else {
+                    assert!(frozen.at >= ctx.frame_end);
+                }
+            }
+            assert!(checked > 10);
+        }
     }
 
     #[test]
@@ -3590,6 +3764,7 @@ mod tests {
         assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
         assert_eq!(events.len(), 1);
         assert!(engine.hold.note_on_sent);
+        assert!(events[0].opportunity.is_none());
     }
 
     #[test]

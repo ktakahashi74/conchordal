@@ -372,7 +372,14 @@ This restriction concerns dedicated synchronization support, not pitch-only
 
 ## Other
 - Don't touch `web/` when editing sourcecode. Don't touch `src/` when editing `web/`, unless otherwise specified.
-- The technote's final chapter ("Manifesto Correspondence and Open Problems") is the ledger connecting Manifesto commitments to the implementation. Record new first-principles findings there (ledger row, gap, or upstream revision), not in version-specific design notes. `samples/README.md` is an index of the études, not a rules document.
+- The public technote (`web/content/technote.md` + `.ja.md`) describes only the implemented
+  state. Its final chapter is a condensed ledger of Manifesto commitments (implemented /
+  partial / open) plus a short open-problems list. Design decisions, first-principles
+  findings, numerical registrations and upstream revisions go to
+  `docs/design-notes/technote-ledger.md` (+ `.ja.md`), which preserves the former
+  chapter-9 numbering (§9.2–§9.4, §9.3.x) and anchors. Update the technote only when an
+  implementation lands; never add research state or pending decisions to it.
+  `samples/README.md` is an index of the études, not a rules document.
 - `web/content/technote.md` (+ `.ja.md`) is hand-curated; keep it in sync with the code when core algorithms change. There is no generation pipeline.
 - `docs/rhai_book` is the English Rhai API reference; build with `mdbook build docs/rhai_book`.
 - `rhai-defs/conchordal.d.rhai` and `docs/rhai_book*/src/reference/api.md` are generated

@@ -1,0 +1,75 @@
+{
+  "schema": "i10-seven-class-bodily-input-registration-v1",
+  "status": "shared_input_rules_and_event_timing_verified_live_acoustic_producer_incomplete",
+  "source_sha256": {
+    "src/life/action_candidates.rs": "b9ea7bd9c014a074fbf34df8a3abe64c28d91b8f9197d31081e3dd2d58f54b0f",
+    "src/life/action_candidates/tests.rs": "4db9029f293461f9877ae2109fcfc659f7d87da114a42a4d4303c4388e1cf1b9",
+    "src/life/mod.rs": "fef27baaf7d90304460cc22d22734b3fe3947bf1fa3acda2e51b0e36c5ae32af",
+    "src/life/participation_trace.rs": "da4ba54ef25724ff19fb2993428628cf74296845378e557edf365419beb134bc",
+    "examples/temporal_action_profiles.rs": "c734dea3b508afea8bc1f93c49bb0034afc472edfe317ceb3290dd1e123aefe8",
+    "docs/roadmap/temporal-dcc/feature-manifest.json": "9f78be98d23d72bda12babd5d112f30e8f5f43aa0c3541b770ad466372153b07"
+  },
+  "binary_sha256": "84f8f1cce88e58fb5e0836dd71c54a43c828db35b97348471702dc16b6745c48",
+  "directory": "target/i10-shared-action-inputs-512-20260918",
+  "verification_sha256": "48bb3c36c051063ca1d32c575c27e4486133d8af4c9590df799d82b06bf5d2e2",
+  "independent_verification": {
+    "schema": "i10-actual-action-profiles-verification-v2",
+    "cases": 36,
+    "sample_rate": 48000,
+    "hop_samples": 512,
+    "issue_sample": 14848,
+    "prefix_energy_coordinates": 2088,
+    "realized_branches": 396,
+    "ineligible_branches": 72,
+    "energy_coordinates": 297000,
+    "tail_cases": 108,
+    "max_energy_absolute_error": 3.2959746043559335e-17,
+    "claim": "PCM and registered class semantics only; no live projection accuracy, ordinal calibration or resource acceptance"
+  },
+  "unchanged_material": {
+    "original_directory": "target/i10-action-profiles-512-prefix-20260918",
+    "current_directory": "target/i10-shared-action-inputs-512-20260918",
+    "identical_hashed_files": 469,
+    "identical_future_pcm": 396,
+    "identical_prefix_pcm": 36,
+    "identical_profile_json": 36,
+    "manifest_equal": true,
+    "independent_verification_equal": true,
+    "scope": "all frozen matrix PCM and metadata; not action prediction or transfer acceptance"
+  },
+  "timing_contract": {
+    "uniform_points": 12,
+    "extra_supported_points_max": 3,
+    "default_retained": true,
+    "total_points_max": 16,
+    "private_trace_extra_points": 0,
+    "private_trace_event_points_max": 13,
+    "integer_rule": "floor(span*k/11); absolute integer samples; exclude overflow and duplicate offsets",
+    "current_use": "private trace event-time grid only; no calibrated quantiles or seven-class live action selection"
+  },
+  "validation": {
+    "suites": 31,
+    "passed": 1096,
+    "failed": 0,
+    "ignored": 32,
+    "status": "cargo test exit=0 @ 2026-09-18T03:40:31+09:00",
+    "clippy": "passed",
+    "example_clippy": "passed",
+    "all_targets_check": "passed",
+    "format": "passed",
+    "diff_check": "passed"
+  },
+  "reproduce": [
+    "cargo test --lib action_candidates -- --nocapture",
+    "cargo run --example temporal_action_profiles -- <fresh-directory> --hop-samples 512",
+    "python3 scripts/verify_temporal_action_profiles.py <fresh-directory>"
+  ],
+  "limitations": [
+    "This produces bodily action/timing inputs, not audio features or evidence of sound.",
+    "The offline matrix supplies known body facts; live body/generation/policy fact collection and the actual default mapping remain pending.",
+    "Known action legality does not grant spectral/energy/template projection support.",
+    "Shared timing arithmetic preserves the old private event diagnostic; these event times are not relabeled action times.",
+    "No calibrated arrival quantiles, policy changes, learned effects, shared consequence tables or all-I10 resource acceptance.",
+    "I9 remains held."
+  ]
+}

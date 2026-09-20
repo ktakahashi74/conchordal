@@ -1,0 +1,72 @@
+{
+  "schema": "i10-command-energy-ratio-v1",
+  "status": "normal_command_diagnostics_connected_full_i10_incomplete",
+  "model": {
+    "own": "source_energy_log1p_residual_v1 action-conditioned prediction, 16 windows",
+    "external": "local_history_mix_readonly; habitat own-excluded history; legacy three-band energy sum",
+    "epsilon": 1e-12,
+    "points": 16,
+    "horizon_seconds": 4,
+    "windows": "actual-command onset 20ms or release 2s; no inferred energy outside those windows",
+    "interpolation": "physical window centers, edge holds inside supported windows only; integer sample plus fractional sample",
+    "ratios": "same 16 uniform midpoint points, own-energy weighted external/(own+external+epsilon) and own/(own+external+epsilon)",
+    "unknown": [
+      "missing or stale owner context",
+      "any missing own or external interval inside the footprint",
+      "empty horizon intersection",
+      "zero predicted own energy is not silence evidence",
+      "quadrature misses positive modeled energy"
+    ],
+    "excluded_mass": "exact piecewise-linear integral of own prediction outside the external horizon intersection, within the own modeled window only",
+    "ownership": [
+      "source_id",
+      "source_generation",
+      "body_generation",
+      "issued_at_sample"
+    ],
+    "cache_limit": 64,
+    "allocation": "cache reserved when predictions are enabled; clear/refill without hop allocations",
+    "isolation": "no extra issued comparison, learning, recurrence scratch update, candidate selection or presentation external forecast"
+  },
+  "source_sha256": {
+    "src/core/history_prediction.rs": "949c05b31fdee0b5efc37dab244e106c23ae76469db8f5984cfcbf539fd88f0f",
+    "src/core/temporal_expectation.rs": "541d11c5e8e272e70694689afbe84e763468e793c2636499a924c33c6a6d33cc",
+    "src/life/self_prediction/ratios.rs": "7fab6f18c2c4cdf21ebe27c7e26b028e9f0b7b2a5982756ec629c32188d0b6fa",
+    "src/life/self_prediction.rs": "6d9e96a0ea625a87941811f1d9a9e138c999b7103cd95eb8beffc088489c9082",
+    "src/life/self_prediction/energy.rs": "89a36ab347959201a9069889fa7f0e66b8ea8de1246cc32be56150aa4b0f595e",
+    "src/life/self_prediction/tests.rs": "23871981b80d3f191bd677c4ffb529ff55a2a92912f484ec53d610fccc254d16",
+    "src/life/action_observation.rs": "6e5cd9d6f22986cfd927c5c59c62210a855933f2b0f75bb071fac72d4e3db8d8",
+    "src/life/schedule_renderer.rs": "771b0a0fcd1a19dbc72356122adcd40303dea391779359c80b232bf3257d6270",
+    "src/runtime/mod.rs": "98307d97b0ec5528aeebd9fb1b974f93d1ecf23cb96f22a8e27fa5a9245a101c",
+    "src/ui/windows.rs": "5323797466a28f08f71e3f9ee1f3d13d2f2f6ff0f809e41dea59bb405ba8b4e8",
+    "tests/render_binary.rs": "3d95e3bb8548a0f2e3785e462c1e77ee15ed01fef3d0e2a8e229f6a7b6dfe01c",
+    "tests/habituation_field_assay.rs": "46fe44494c312d7e65b875cdcdcde916536a9f0033915723735ce20b3cd21a2e"
+  },
+  "ordered_path_content_sha256": "48ef9fd3eb94ac508044e967f40b433667f72ba73a6dce1d0da26cc6c570baa5",
+  "validation": {
+    "passed": 1086,
+    "failed": 0,
+    "ignored": 30,
+    "suites": 31,
+    "test_status": "cargo test exit=0 @ 2026-09-18T02:26:27+09:00",
+    "clippy": "passed: cargo clippy -- -D warnings",
+    "all_targets": "passed: cargo check --all-targets",
+    "fmt": "passed",
+    "diff_check": "passed",
+    "audio": "private_body_descriptors_use_real_routes_and_do_not_change_audio: off/observe x report/no-report WAV bytes identical",
+    "initial_failure": "habituation_off_is_the_causal_control; time-only temporary path collision inferred from removed off config; PID and atomic sequence added; full rerun passed",
+    "initial_failure_artifacts": "target/i10-command-energy-ratios-20260918/test-{report,status}-before-temp-path-fix.txt"
+  },
+  "remaining_i10": [
+    "seven-class feature provenance and projection",
+    "shared consequence tables",
+    "actual Voice and body-default mapping with paired differences",
+    "both-bus complete candidate report and UI",
+    "full I10 4/16/64-Voice resource measurements and R2 handoff"
+  ],
+  "limits": [
+    "Energy units remain an approximate transfer between raw PCM prediction and legacy three-band sum.",
+    "16-point numerical errors remain as recorded in i10-energy-quadrature.json.",
+    "No new generation effect, perceptual acceptance, calibration or I9 restart."
+  ]
+}

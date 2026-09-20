@@ -1,0 +1,294 @@
+{
+  "schema": "i10-section-path-identity-v1",
+  "status": "normal_local_section_ancestry_published_shared_joint_connection_pending",
+  "artifact_directory": "target/i10-section-path-identity-20260918",
+  "source_sha256": {
+    "src/temporal_cognition/section/form.rs": "cad7b52cc000fb9d7d0f19133e1b0c663be241c23ad2a71e0a21a7d34ddce7ec",
+    "src/temporal_cognition/section/runtime.rs": "ce5951d66de898e7841f7909b712d76f1050952c91966f3aff8fa31511d2da05",
+    "src/temporal_cognition/section/tests.rs": "7c79378af3af6e40a800c24ca4e17d75a41949b7354fa85bc14ecc8656534618"
+  },
+  "plan": {
+    "scope": "Live local section path identity and phrase-parent ownership; no shared posterior inference or new action effects",
+    "source_before_sha256": {
+      "src/temporal_cognition/section/form.rs": "800b2f7609938ca2f50e0a30e2398b897ded0466ee3e6a2fbcc33d317b8eac39",
+      "src/temporal_cognition/section/runtime.rs": "ed4d73fda62e4b7551798a8a09f5ee1d0478a92b8f3cf0312bc4235ea6490cec",
+      "src/temporal_cognition/section/tests.rs": "25ea3e69e4d51a2bb174f2e8cc8184dad55fc3eedfb334933062f346ee38641f"
+    },
+    "binary_before_sha256": "5106dc9b102d96a5db607fc6fc730012312c3192fb81c8dd7946484234a2a89d",
+    "inputs_sha256": {
+      "target/i10-section-path-identity-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+      "target/i10-section-path-identity-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+      "target/i10-section-path-identity-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+      "target/i10-section-path-identity-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d"
+    },
+    "comparison": "Old published numeric fields and WAV unchanged; new candidate ancestry fields checked separately. Decimated reports carry the preceding parent inventory.",
+    "source_after_sha256": {
+      "src/temporal_cognition/section/form.rs": "cad7b52cc000fb9d7d0f19133e1b0c663be241c23ad2a71e0a21a7d34ddce7ec",
+      "src/temporal_cognition/section/runtime.rs": "ce5951d66de898e7841f7909b712d76f1050952c91966f3aff8fa31511d2da05",
+      "src/temporal_cognition/section/tests.rs": "7c79378af3af6e40a800c24ca4e17d75a41949b7354fa85bc14ecc8656534618"
+    }
+  },
+  "profile": {
+    "file": "/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin",
+    "sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5"
+  },
+  "contract": {
+    "identity": "A checked monotonically increasing u64 counter per section Stream allocates root and child path-version IDs, including a new version on stay. Bus, epoch and group generation are carried by GroupSnapshot.group. Context IDs are separate; a matching context label does not merge paths. These local version IDs must not be substituted directly for the shared stay identity.",
+    "ancestry": "Every retained child carries parent_path_id and current phrase_path_index. Each group snapshot carries its previous receipt cut and up to 16 preceding live path IDs with their phrase-parent slots. Candidate sorting and pruning do not renumber IDs.",
+    "branch": "Transition records this update: stay, new_context, return, contrast or development. Relation remains the context interpretation and can persist through stay.",
+    "raw_score": "Existing base-head survival or exit probability times retrieved context mass, before previous form weight. Original weight multiplication order, ranking and pruning are unchanged. This is not a joint observation potential or a calibrated posterior.",
+    "lifetime": "Retired groups lose their owned paths; new roots allocate new IDs. Epoch/new stream resets the counter under a new owner. Counter exhaustion errors rather than wrapping. Failed transition construction is not claimed to be atomic.",
+    "allocation": "Fixed parent inventory and scalar metadata only; no new heap allocation sites. Existing form Path/Proposal vectors and snapshot structs are larger."
+  },
+  "verification": {
+    "expanded_rust_tests": [
+      "live_phrase_receipts_preserve_conditional_histories_and_mask_absent_inputs: each retained parent belongs to the preceding full live inventory, child phrase index names the same parent, unique IDs across 46 updates including a gap, forks and same-context alternatives required",
+      "return_requires_an_earlier_context_and_preserves_transformation_and_unknown_mass: raw transition scores/weights, return versus historical relation, stay after new-context, counter overflow rejection"
+    ],
+    "cargo_test": {
+      "passed": 1168,
+      "failed": 0,
+      "ignored": 38,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T15:42:41+09:00"
+    },
+    "checks": [
+      {
+        "command": [
+          "cargo",
+          "clippy",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 4.606417084985878,
+        "log": "target/i10-section-path-identity-20260918/check-0.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "check",
+          "--all-targets"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 5.765743642987218,
+        "log": "target/i10-section-path-identity-20260918/check-1.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.6864472369779833,
+        "log": "target/i10-section-path-identity-20260918/check-2.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--bin",
+          "conchordal-render"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 53.23740715399617,
+        "log": "target/i10-section-path-identity-20260918/check-3.log"
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.04388439503964037,
+        "log": "target/i10-section-path-identity-20260918/check-4.log"
+      },
+      {
+        "command": [
+          "python3",
+          "-m",
+          "py_compile",
+          "target/i10-section-path-identity-20260918/acquire.py",
+          "target/i10-section-path-identity-20260918/verify.py"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.024003455007914454,
+        "log": "target/i10-section-path-identity-20260918/check-5.log"
+      }
+    ],
+    "render": {
+      "sustain": {
+        "ancestry": {
+          "unique_paths": 2048,
+          "phrase_bindings": 2016,
+          "independent_raw_scores": 2080,
+          "stay": 2068,
+          "new_context": 6,
+          "contrast": 6,
+          "shared_context_snapshots": 120,
+          "forked_parent_snapshots": 12,
+          "group_snapshots": 130
+        },
+        "common_observations": 124,
+        "old_numeric_fields_exact": true,
+        "old_records_strict_equal": true,
+        "availability_changes": [],
+        "records": {
+          "onset": 1,
+          "body_default": 119,
+          "body_descriptor": 118,
+          "self_sound_outcome": 2,
+          "self_sound_descriptor_prediction": 2,
+          "population_step": 591
+        },
+        "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "terminal_resources": {
+          "0": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 12711857,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 10517393,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 12898858,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 10626464,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "stair": {
+        "ancestry": {
+          "unique_paths": 2282,
+          "phrase_bindings": 2218,
+          "independent_raw_scores": 2282,
+          "stay": 2274,
+          "new_context": 4,
+          "contrast": 4,
+          "shared_context_snapshots": 134,
+          "forked_parent_snapshots": 12,
+          "group_snapshots": 144
+        },
+        "common_observations": 139,
+        "old_numeric_fields_exact": true,
+        "old_records_strict_equal": true,
+        "availability_changes": [],
+        "records": {
+          "onset": 1,
+          "body_default": 134,
+          "body_descriptor": 134,
+          "self_sound_outcome": 2,
+          "self_sound_descriptor_prediction": 2,
+          "population_step": 668
+        },
+        "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "terminal_resources": {
+          "0": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 12157573,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 10025750,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 12768577,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 10551003,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      }
+    },
+    "negative_checks": [
+      {
+        "fault": "orphan_parent",
+        "rejected": true
+      },
+      {
+        "fault": "wrong_phrase_parent",
+        "rejected": true
+      },
+      {
+        "fault": "duplicate_identity",
+        "rejected": true
+      },
+      {
+        "fault": "wrong_raw_score",
+        "rejected": true
+      }
+    ]
+  },
+  "limits": [
+    "Local section identities do not constitute a shared cross-group context path. The test-only joint normalizer and shared admission kernel remain disconnected from the normal observer.",
+    "Strongest shared candidate production, full joint state ownership, ordered conditional features and real score updates remain required.",
+    "Real render reports are decimated; each carries its preceding parent inventory. Full consecutive inventory equality is verified in the direct live Phrase/Section test, not reconstructed across omitted render frames.",
+    "Raw score reference checks on real audio cover stay/new/contrast under zero engineering section coefficients. Retrieved-return raw scores are checked in the synthetic module fixture, not claimed from real audio.",
+    "No all-worker/Voice/live-device resource acceptance, fitted model validity, calibration, audibility or author adoption is established.",
+    "I10 remains incomplete; actual-body candidate/default consumption, full heads, timing choice and full resource acceptance remain open. I9 held and I11 effects disabled."
+  ],
+  "artifact_sha256": {
+    "target/i10-section-path-identity-20260918/acquire.py": "55a699417bd8befcacde09b1ac7a10092895de83bd43fbd4785aaaf14abaf64c",
+    "target/i10-section-path-identity-20260918/after-render": "6921e78c45faa6c9f4f33e27b429fc7777401b680a3531749bf49dc82bb72c94",
+    "target/i10-section-path-identity-20260918/ancestry.log": "8696f7ffe8efd1993fefea00dc790eaeb6b3b9d302a2b21210050d654655a2f8",
+    "target/i10-section-path-identity-20260918/audit.py": "68dced6b5696525279e0630243c1925c95dac3e6eac36c7a4841696b8399974b",
+    "target/i10-section-path-identity-20260918/before/src/temporal_cognition/section/form.rs": "800b2f7609938ca2f50e0a30e2398b897ded0466ee3e6a2fbcc33d317b8eac39",
+    "target/i10-section-path-identity-20260918/before/src/temporal_cognition/section/runtime.rs": "ed4d73fda62e4b7551798a8a09f5ee1d0478a92b8f3cf0312bc4235ea6490cec",
+    "target/i10-section-path-identity-20260918/before/src/temporal_cognition/section/tests.rs": "25ea3e69e4d51a2bb174f2e8cc8184dad55fc3eedfb334933062f346ee38641f",
+    "target/i10-section-path-identity-20260918/before-render": "5106dc9b102d96a5db607fc6fc730012312c3192fb81c8dd7946484234a2a89d",
+    "target/i10-section-path-identity-20260918/check-0.log": "8980c329a852e64659185615d0b3d04e38ddcbbf5985a458af32a1d8b5af08f5",
+    "target/i10-section-path-identity-20260918/check-1.log": "1c5b580db7f0801976a344b754a194c88f8eadc9b62f3cf8d1fe2daf30b11450",
+    "target/i10-section-path-identity-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-section-path-identity-20260918/check-3.log": "045ec2079ed6e19dfd581b29fee128334d9d43da55238fd141e96e19532f1b0e",
+    "target/i10-section-path-identity-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-section-path-identity-20260918/check-5.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-section-path-identity-20260918/checks.json": "3e524ab8427254ff89cf90c7e2647605753fe7a9bf525544c949c67e941203db",
+    "target/i10-section-path-identity-20260918/commands.jsonl": "7c25490d4024c630b77e58b1309c8c799d07724f618b75e8ce4e118c78c2efaa",
+    "target/i10-section-path-identity-20260918/negative-checks.json": "2a979d9976703d4fab825b377a21d8ac3b6763607d2af9d5d2c0011c58ee5de9",
+    "target/i10-section-path-identity-20260918/negative.py": "c9742340db887687776687719b46c38b890384e982c79eaad5e18138b278d9ad",
+    "target/i10-section-path-identity-20260918/plan.json": "583cde5090dae014518e8c6dba7cf523b792d83aa4ef1e2a9eb58599558bc661",
+    "target/i10-section-path-identity-20260918/register.py": "83372a29356ae5bc38a56f4b8b3c5ec3233b7fedaf7a55097cc49d0d4c0f821a",
+    "target/i10-section-path-identity-20260918/source.diff": "58309a6584d213f07fe07280bbb0226e3f553d1a38ab44bd4adb9bdd02712414",
+    "target/i10-section-path-identity-20260918/stair-after.jsonl": "ff1112e016907ec2bf9949e9e0818f0bd4d342fc3c8b93ec82a82f40902d0d4c",
+    "target/i10-section-path-identity-20260918/stair-after.log": "e9974b4ef80f1e32084e6a873270ef236215d0bb7286079a7adabb5712e3e287",
+    "target/i10-section-path-identity-20260918/stair-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-section-path-identity-20260918/stair-before.jsonl": "33330ba9c840385a20cbc19124f532eb6e576cebeb844d02be1ca8700de01f78",
+    "target/i10-section-path-identity-20260918/stair-before.log": "13e1127ef8bdaeb029580961563f00b9cc5da6e43d655919d5e540f3eb356179",
+    "target/i10-section-path-identity-20260918/stair-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-section-path-identity-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+    "target/i10-section-path-identity-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+    "target/i10-section-path-identity-20260918/sustain-after.jsonl": "0a80084c3a3d98f35588714ffcad2b3e0159f7d2e5f0165e5c0bde38175f0fd8",
+    "target/i10-section-path-identity-20260918/sustain-after.log": "c5f6c5be30f950d52e48abea747d5fcbdb04e991f3262417f5f0cb624ea0eb29",
+    "target/i10-section-path-identity-20260918/sustain-after.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-section-path-identity-20260918/sustain-before.jsonl": "9459d43e79791398e17ae315283cabc459846ba70c5baa746e036ca7a9d7ac77",
+    "target/i10-section-path-identity-20260918/sustain-before.log": "cafa705845dd92819a584babeeb3772b5150585fefcf58e6fa87c4a0ce02937c",
+    "target/i10-section-path-identity-20260918/sustain-before.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-section-path-identity-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+    "target/i10-section-path-identity-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+    "target/i10-section-path-identity-20260918/targeted.log": "2994d86464ca4dc213091d6ae847c09ae4bb8fc54a05be251e96036a4d343244",
+    "target/i10-section-path-identity-20260918/test_report.txt": "28549b22fa66591a9fc662256731e4ef86252ea6993b26cbdb26099d34b18a19",
+    "target/i10-section-path-identity-20260918/test_status.txt": "b9c3bf1077f4395721791a59061f9dc987c0767377e62f176d077a8c319a9455",
+    "target/i10-section-path-identity-20260918/verification.json": "cc26b9860c06a22377ffbe59e5f3ecb6d024cce29015221093636d1298fa2794",
+    "target/i10-section-path-identity-20260918/verify.py": "45a7f0df02f08b3d17b1f36b33e2ae0180814f65401e610723f259ed61a9fd62"
+  }
+}

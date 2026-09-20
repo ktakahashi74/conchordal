@@ -3,6 +3,7 @@ use std::sync::Arc;
 pub type VoiceId = u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub enum BodyKind {
     Sine,
     Harmonic,
@@ -10,6 +11,7 @@ pub enum BodyKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct BodySnapshot {
     pub kind: BodyKind,
     pub amp_scale: f32,

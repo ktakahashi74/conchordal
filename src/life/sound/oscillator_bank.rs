@@ -203,6 +203,32 @@ impl OscillatorBank {
         matches!(self.profile, OscillatorProfile::Sine)
     }
 
+    pub(crate) fn sine_state(&self, pitch_hz: f32) -> Option<([f32; 2], [f32; 2])> {
+        if !self.is_sine() || !pitch_hz.is_finite() || pitch_hz <= 0. {
+            return None;
+        }
+        let pitch = pitch_hz.max(1.);
+        if pitch > (self.fs * 0.49).max(1.) {
+            return Some(([0.; 2], [1., 0.]));
+        }
+        let refresh = self.pitch_counter == 0 || self.needs_pitch_state_refresh(pitch);
+        let state = if let Some(mut seed) = self.pending_phase_seed {
+            if !refresh {
+                return None;
+            }
+            seeded_phase_state(&mut seed)
+        } else {
+            [self.x[0], self.y[0]]
+        };
+        let rotation = if refresh {
+            let phase = TAU * pitch / self.fs;
+            [phase.cos(), phase.sin()]
+        } else {
+            [self.rot_c[0], self.rot_s[0]]
+        };
+        Some((state, rotation))
+    }
+
     pub fn seed_phases(&mut self, seed: u64) {
         self.pending_phase_seed = Some(seed);
         self.jitter_gen = PinkNoise::new(seed ^ 0xA5A5_5A5A_DEAD_BEEF, 0.001);
@@ -227,9 +253,7 @@ impl OscillatorBank {
             return;
         };
         for idx in 0..self.lane_len_real {
-            let phase = splitmix64_unit_f32(&mut state) * TAU;
-            self.x[idx] = phase.cos();
-            self.y[idx] = phase.sin();
+            [self.x[idx], self.y[idx]] = seeded_phase_state(&mut state);
         }
     }
 
@@ -720,10 +744,11 @@ fn splitmix64_next(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-fn splitmix64_unit_f32(state: &mut u64) -> f32 {
+pub(super) fn seeded_phase_state(state: &mut u64) -> [f32; 2] {
     const SCALE: f64 = 1.0 / ((1u64 << 53) as f64);
     let bits = splitmix64_next(state) >> 11;
-    (bits as f64 * SCALE) as f32
+    let phase = (bits as f64 * SCALE) as f32 * TAU;
+    [phase.cos(), phase.sin()]
 }
 
 #[cfg(test)]

@@ -22,7 +22,7 @@ The earlier equivalence between a deep metrical attractor and a common onset
 target is no longer the proposed design principle. Numeric phase is an internal
 coordinate, not inherently a symbolic score; first-order onset PLV is not a
 general measure of rhythmic predictability. The proposal preserves this memo as
-the implementation history and records the upstream revision in technote §9.
+the implementation history and records the upstream revision in technote-ledger §9.
 
 Phase 3-4 outcome (2026-06-10): the externally-imposed fixed clock is gone.
 Production timing is now a per-voice phase-coupling clock (`CouplingClock`) that

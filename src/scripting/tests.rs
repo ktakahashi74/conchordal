@@ -46,6 +46,62 @@ fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
     out
 }
 
+#[test]
+fn temporal_mode_is_a_single_pre_performance_setting() {
+    use crate::scenario::TemporalMode;
+    assert_eq!(run_script("").0.temporal_mode, TemporalMode::Off);
+    assert_eq!(
+        run_script("temporal_mode(\"off\");").0.temporal_mode,
+        TemporalMode::Off
+    );
+    assert_eq!(
+        run_script("temporal_mode(\"observe\"); create(sine(), 1);")
+            .0
+            .temporal_mode,
+        TemporalMode::Observe
+    );
+    for script in [
+        "temporal_mode(\"observe\"); temporal_mode(\"observe\");",
+        "wait(1.0); temporal_mode(\"observe\");",
+        "create(sine(), 1); temporal_mode(\"observe\");",
+        "section(\"a\", || { temporal_mode(\"observe\"); });",
+        "parallel([|| { temporal_mode(\"observe\"); }]);",
+        "fn mode() { temporal_mode(\"observe\"); } mode();",
+    ] {
+        assert!(
+            run_script_err(script)
+                .to_string()
+                .contains("temporal_mode must be declared"),
+            "{script}"
+        );
+    }
+    assert!(
+        run_script_err("temporal_mode(\"participate\");")
+            .to_string()
+            .contains("not implemented")
+    );
+    assert!(
+        run_script_err("temporal_mode(\"unknown\");")
+            .to_string()
+            .contains("expects off or observe")
+    );
+
+    let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+    let engine = ScriptHost::create_engine(ctx.clone());
+    assert!(
+        engine
+            .eval::<Dynamic>("temporal_mode(\"participate\");")
+            .is_err()
+    );
+    assert_eq!(
+        ctx.lock().unwrap().scenario.temporal_mode,
+        TemporalMode::Off
+    );
+    let _ = engine
+        .eval::<Dynamic>("temporal_mode(\"observe\");")
+        .unwrap();
+}
+
 fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
     let (scenario, _warnings) = run_script(src);
     scenario

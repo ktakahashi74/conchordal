@@ -1,0 +1,131 @@
+{
+  "schema": "i10-action-feature-target-registration-v1",
+  "status": "offline_actual_audio_targets_verified_live_projection_incomplete",
+  "source_sha256": {
+    "src/temporal_cognition/body.rs": "6dfdae42c3ff5786332432a3a09e28ca95ad95853590b4b2a741120428405f8f",
+    "src/temporal_cognition/body/action_targets.rs": "ac1e636144a5b253b3b4c1a47e5a97611eec2d6f1382499e7216ec02f753fda6",
+    "src/temporal_cognition/features.rs": "dccc988905732c85b74a4f95148570d6fbf54ef2a40a86fa755337fe6ccb09a5",
+    "src/temporal_cognition/feature_projection.rs": "6cc192282d0e1ad12da132dab6d27011d1cc9a5aef08a96b8fae2591e2640558",
+    "src/temporal_cognition/observables.rs": "0a2db3aaa8f2cca04fe0eae1b16336f5480b7472bd0c0ae1bff14f1fefb17054",
+    "src/core/nsgt_kernel.rs": "dc58c81968deeabd31415e7f3d0ef9be24984419f00f77683e9a2ca0d96177fa",
+    "src/core/nsgt_rt.rs": "fa9c4a371a501fd631b3f8e7ca13139ffdb5ce257563b82cd6daa4f05a8123a6",
+    "src/core/log2space.rs": "afe6973cffa1f83146d96c3c407e5fc8743c330e98bfbba06a8240396bfbd44e",
+    "scripts/collect_temporal_action_features.py": "966202baa84174d8bb7ef77d294c5405ad770fc7566fe917f3d2ec4fe9fd215c",
+    "tests/test_temporal_action_features.py": "ab2a4b1dd95331e408a734f8b60a535f56a2b2b7e1f652aff227404e7634d3dc"
+  },
+  "test_binary_sha256": "c343153dc6c75ff9d01a595f10021981f3c4d3c7a882734e4692c6b28e0d40e0",
+  "directory": "target/i10-action-features-512-20260918",
+  "manifest_sha256": "5d47d605299dce3e4e9beece4185b2a222dc1617ecbbe238352269962455f58f",
+  "verification_sha256": "9061196fb464e95a6b3b1fb96c3526b0fd344eb025b95f43738547e533fb0979",
+  "verification_summary": {
+    "schema": "i10-actual-action-feature-verification-v1",
+    "counts": {
+      "cases": 36,
+      "branches": 396,
+      "prefix_rows": 2088,
+      "future_rows": 297000,
+      "raw_coordinates": 2970000,
+      "body_publications": 30096,
+      "equivalent_pairs": 288,
+      "delayed_prefix_pairs": 360,
+      "routed_zero_streams": 264
+    },
+    "max_raw_absolute_error": 5.417888360170764e-14,
+    "claim": "all raw formulas, PCM energy, support and class comparisons; NSGT and six body-window values are not independently reimplemented",
+    "input_manifest_sha256": "c19b90de22f9e3e38c5cdeefaa5144018f70e3568eed4f640a753542706adea2",
+    "input_verification_sha256": "48bb3c36c051063ca1d32c575c27e4486133d8af4c9590df799d82b06bf5d2e2"
+  },
+  "verified_files": 1729,
+  "negative_checks": [
+    {
+      "fault": "role",
+      "rejected": true,
+      "reason": "issue input and actual-audio target confused"
+    },
+    {
+      "fault": "warmup",
+      "rejected": true,
+      "reason": "NSGT warmup restarted or missing"
+    },
+    {
+      "fault": "invented_shape",
+      "rejected": true,
+      "reason": "raw feature support mismatch: sine-both-silent-gate/wait-6000/0"
+    },
+    {
+      "fault": "lost_adjacent_energy",
+      "rejected": true,
+      "reason": "raw feature support mismatch: sine-both-silent-gate/wait-6000/0"
+    },
+    {
+      "fault": "future_available",
+      "rejected": true,
+      "reason": "raw source/time support changed"
+    },
+    {
+      "fault": "energy",
+      "rejected": true,
+      "reason": "feature energy differs from private PCM"
+    },
+    {
+      "fault": "flux",
+      "rejected": true,
+      "reason": "raw feature mismatch: sine-both-silent-gate/wait-6000/0"
+    },
+    {
+      "fault": "body_generation",
+      "rejected": true,
+      "reason": "body publication identity or support changed"
+    },
+    {
+      "fault": "truncated_rows",
+      "rejected": true,
+      "reason": "incomplete feature timeline"
+    },
+    {
+      "fault": "grid",
+      "rejected": true,
+      "reason": "wrong Log2Space coordinates"
+    },
+    {
+      "fault": "ineligible",
+      "rejected": true,
+      "reason": "fabricated ineligible target"
+    }
+  ],
+  "negative_script_sha256": "f571c60ec548f59798c0ba1ec6876a50930b7f27d2876de2204b7f714628c3bb",
+  "tests": {
+    "suites": 31,
+    "passed": 1090,
+    "failed": 0,
+    "ignored": 31,
+    "status": "cargo test exit=0 @ 2026-09-18T03:10:33+09:00",
+    "explicit_acquisition": "1 passed",
+    "python": "2 passed",
+    "clippy": "passed",
+    "all_targets_check": "passed",
+    "format": "passed",
+    "diff_check": "passed"
+  },
+  "acquisition_log": "target/i10-action-features-512-20260918/acquisition-and-initial-check.log",
+  "verification_log": "target/i10-action-features-512-20260918/verification.log",
+  "initial_verifier_correction": "first check omitted the previous hop from derivative source support; corrected to max(0,end-nfft-hop); Rust acquisition unchanged; complete saved target corpus then passed",
+  "reproduce": [
+    "python3 scripts/collect_temporal_action_features.py --collect --output <fresh-directory>",
+    "python3 scripts/collect_temporal_action_features.py --output target/i10-action-features-512-20260918",
+    "python3 target/i10-action-features-512-20260918/negative_checks.py",
+    "python3 -m unittest discover -s tests -p test_temporal_action_features.py"
+  ],
+  "limits": [
+    "Only 48kHz/2048 nfft/512 hop registered development conditions; app default nfft 16384 not checked.",
+    "Spectra come from normal NSGT; Python independently checks raw feature arithmetic, not the NSGT transform.",
+    "Six body-window values are acquired; only identity, support bounds and publication schedule checked independently here.",
+    "Source-only energy_share is private-source self-share; not an external mixture or shared-group projection.",
+    "396 actual counterfactual branches are offline targets, not forecasts or live observations.",
+    "No compatible eight-medoid action templates, seven-class live candidate producer, full head projection, consequence table, actual/default paired mapping or all-I10 resource acceptance."
+  ],
+  "artifact_log_sha256": {
+    "acquisition_log": "5b62fdfe86790ed02f18e0cbe02a9788d2acdfe8bfa8a8e0570a065a7e645648",
+    "verification_log": "e534daefb973bd3cec3fcb55e7404efa424acffb80efd5e98b143e6fd37132f4"
+  }
+}

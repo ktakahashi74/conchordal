@@ -1,0 +1,112 @@
+{
+  "schema": "i10-articulation-phrase-input-connection-v1",
+  "status": "live_conditional_state_and_phrase_inputs_full_heads_incomplete",
+  "artifact_directory": "target/i10-articulation-profile-live-20260918",
+  "source_sha256": {
+    "src/temporal_cognition/gesture.rs": "dbf7033413cd09f9a424bb861d26027ecb5636b3b886bd54cd2c6b5983a16ba1",
+    "src/temporal_cognition/gesture/projection.rs": "d25b856117abaebfd7d180795d12ec2df475247dabd902714b9f67107dff2781",
+    "src/temporal_cognition/gesture/projection/tests.rs": "204edfc1c94bf7740604c06b98fd5f9cba2b584ec8b3da6ef1210cdbfb27e014",
+    "src/temporal_cognition/phrase.rs": "231a2ddfa11605505259efa92fc0224647be08efe10219de8529216887cf24db",
+    "src/temporal_cognition/phrase/tests.rs": "b76283eb69c4dcfe595c65606a9b9e738fe8e02df5a522816319e635f11efb3a",
+    "src/temporal_cognition/action_profiles.rs": "0451a1ee83a9ea886f7b19556ba13015c3cd302cab79e1e0445347556df3de07",
+    "src/temporal_cognition/observation.rs": "c965f5a06d460ad3f14d7beb6ee6ddcf303a37eb9d85756171f97ebfe3881254"
+  },
+  "renderer_sha256": "47bc47cdb49ad1eca43c2ec8dc19d494080d955181616b61a9c8ef058abce095",
+  "profile_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+  "articulation": {
+    "law": "same observed feature standardization, missing masks, softplus rates and gap-gated transitions",
+    "initial_state": "actual issue-time retained state paths including entered clocks",
+    "unknown": "original unknown is never admitted; pruned conditional paths add to unknown without renormalizing retained mass",
+    "future": "candidate rise/decline/flux and physical elapsed time; unsupported future ridge motion; known log RMS gates gap admission",
+    "bounds": {
+      "retained_paths": 15,
+      "expansions": 60,
+      "max_horizon_sec": 4,
+      "heap_allocations_per_projection": 0
+    },
+    "clock": "contiguous projected frames; final frame duration clipped at evaluation, with its registered full-hop feature values",
+    "report": "per-cell states, original/pruned/total unknown, clocks, retained count, provenance flag; table count of supported articulation cells"
+  },
+  "phrase_inputs": {
+    "stored_coordinates": "v5..v12; v1..v4 remain conditional one-hot states for subsequent marginalization, never averaged indicators",
+    "v5_v8": "250ms common physical-window means from real prefix and conditional profiles",
+    "v9": "same 2s assignment-weighted grouping formula; only issue-available observed portion is supported, requiring 90 percent shifted-window coverage",
+    "v10": "issue-time supported matcher value at zero offset only; future ordered matching is not implemented",
+    "v11_v12": "remain unsupported as in the current base observed head",
+    "support": "separate observed/projected fractions for short means and observed grouping coverage"
+  },
+  "live_numerical_verification": {
+    "schema": "i10-articulation-phrase-projection-verification-v1",
+    "counts": {
+      "report_cells": 56,
+      "duplicated_cells_checked": 28,
+      "cells": 28,
+      "projected": 16,
+      "observed": 12,
+      "pruned": 16,
+      "zero_offset_state_comparisons": 0,
+      "future_phrase_windows": 16,
+      "future_phrase_coordinates": 64
+    },
+    "profile_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+    "claim": "Live state probability/mass/clock invariants and independent full-future 250ms arithmetic. Transition numerical correctness uses Rust closed-form and support tests; no future acoustic accuracy or ordinal transfer claim."
+  },
+  "live_noninterference": {
+    "schema": "i10-live-profile-verification-v1",
+    "common_observations_unchanged": 35,
+    "terminal_observations_unchanged": 2,
+    "existing_records_unchanged": {
+      "onset": 3,
+      "body_default": 152,
+      "body_descriptor": 384,
+      "self_sound_outcome": 6,
+      "self_sound_descriptor_prediction": 6,
+      "population_step": 750
+    },
+    "profile_snapshots": 47,
+    "nonempty_snapshots": 5,
+    "nonempty_by_bus": {
+      "0": 2,
+      "1": 3
+    },
+    "future_windows": 20,
+    "future_coordinates": 140,
+    "issue_coverage_checks": 2,
+    "wav_sha256": {
+      "before": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+      "after": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+      "after-no-report": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90",
+      "off": "00ba126a393f45d4493fa56231229592d7010810ed7428c79b47c20853142a90"
+    },
+    "limits": "Observed-prefix coordinates and exact issue-time coverage are covered by Rust causal/mixed-window tests, not reconstructed from decimated reports. Primitive at-action windows only; no full consequence score or action-time adoption."
+  },
+  "checks": {
+    "cargo_test": {
+      "passed": 1109,
+      "failed": 0,
+      "ignored": 33,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T05:30:49+09:00"
+    },
+    "clippy": "pass",
+    "all_targets_check": "pass",
+    "fmt": "pass",
+    "diff_check": "pass"
+  },
+  "limits": [
+    "No acoustic forecast/rank or ordinal transfer acceptance.",
+    "Full closure/continuation/invitation inputs, alternative score mixture, uncertainty/backoff and actual/default differences remain incomplete.",
+    "Ordinary diagnostics still evaluate at the action time; no change to the pending timing choice.",
+    "Future hypothetical states do not carry observed Run endpoints or update Gesture, Phrase, memory, credits or private traces.",
+    "Full future state trajectories are numerically checked by closed-form/support/pruning Rust tests; live report checks mass/identity/clocks and full-future 250ms arithmetic.",
+    "Decimated reports provided zero directly aligned issue-time articulation snapshot comparisons; zero-offset identity is covered by Rust tests.",
+    "Render wall times overlap other checks and are not a real-time resource acceptance measurement.",
+    "I9 stays held and new I11 action effects stay disabled."
+  ],
+  "next": [
+    "Project retained expected-segment comparisons into closure/continuation feature inputs without a new retrieved identity.",
+    "Connect full per-head alternatives, frozen acoustic weights and issue coverage, ordinal mixtures and paired candidate/default columns.",
+    "Resolve evaluation timing and actual-Voice/unreserved-default correspondence.",
+    "Measure complete 4/16/64-Voice I10 resources and hand off to R2."
+  ]
+}

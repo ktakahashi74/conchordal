@@ -287,6 +287,14 @@ seed(value)
 
 Set the random seed for reproducible scenarios.
 
+#### `temporal_mode`
+
+```rhai,ignore
+temporal_mode(name)
+```
+
+Select off or observe for new temporal cognition before playback. Declare once at top level before events or time advance. Default off preserves existing behavior. Observe currently tracks ordered NSGT evidence on both buses; relation inference remains unknown and no new action pressure is applied. Participate is rejected until implemented and calibrated. Run a new scenario to change mode.
+
 ### Bodyと音色
 
 Voiceの音響bodyを構成するlevel、spectrum、detuning、envelope。

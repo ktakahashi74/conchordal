@@ -143,6 +143,19 @@ fn config_load_custom_values() {
     let path = unique_path("custom.toml");
     let path_str = path.to_string_lossy().to_string();
     let custom = AppConfig {
+        temporal_ridge: None,
+        temporal_acoustic: None,
+        temporal_memory: None,
+        temporal_gesture: None,
+        temporal_period: None,
+        temporal_groove: None,
+        temporal_phrase: None,
+        temporal_section: None,
+        temporal_whole: None,
+        temporal_body: None,
+        temporal_body_prototypes: None,
+        temporal_action_profiles: None,
+        temporal_private_trace: None,
         audio: AudioConfig {
             latency_ms: 75.0,
             sample_rate: 44_100,

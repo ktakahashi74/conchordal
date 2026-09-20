@@ -45,7 +45,7 @@ fn spawn_sustain_publishes_note_on_first_tick() {
     let landscape = Landscape::new(space);
     let now: Tick = 0;
     let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
-    assert!(!batches.is_empty());
+    assert!(batches.iter().any(|batch| !batch.onsets.is_empty()));
 }
 
 #[test]

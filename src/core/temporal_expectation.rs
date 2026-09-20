@@ -446,6 +446,15 @@ impl TemporalExpectation {
         }
         energy
     }
+
+    fn energy_forecast(&self, history: &BandEnergyHistory) -> [[f32; 3]; FORECAST_LEN] {
+        // No lag can consult history here, so every horizon has the same ordered sum.
+        if self.recent_onsets < 1.0 || self.step_index < (3 * self.min_delay + 2) as u64 {
+            [self.energy_at(history, 0); FORECAST_LEN]
+        } else {
+            std::array::from_fn(|lead| self.energy_at(history, lead * FORECAST_STRIDE))
+        }
+    }
 }
 
 /// Acoustic evidence is framed by its own window, not by runtime hop boundaries.
@@ -483,6 +492,7 @@ pub(crate) struct TemporalForecast {
     len: usize,
     contrast: [[f32; 3]; FORECAST_LEN],
     band_energy: [[f32; 3]; FORECAST_LEN],
+    known_energy_windows: [u64; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
     energy_recurrence_weight: [[f32; 3]; FORECAST_LEN],
     background_energy: [f32; 3],
     period_step_sec: f32,
@@ -490,7 +500,164 @@ pub(crate) struct TemporalForecast {
     recurrence_support: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+pub(crate) struct EnergyFootprintPoint {
+    pub sample: u64,
+    pub sample_fraction: f64,
+    pub band_energy_sum: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+pub(crate) struct ExternalEnergyFootprint {
+    pub version: u8,
+    pub requested: [u64; 2],
+    pub horizon_intersection: Option<[u64; 2]>,
+    pub continuous_support: Option<bool>,
+    pub omitted_prefix_samples: Option<u64>,
+    pub omitted_tail_samples: Option<u64>,
+    pub points: [Option<EnergyFootprintPoint>; 16],
+}
+
 impl TemporalForecast {
+    fn refresh_energy_support(&mut self) {
+        self.known_energy_windows.fill(0);
+        let mut previous = false;
+        for (i, bands) in self.band_energy[..self.len].iter().enumerate() {
+            let known = bands.iter().all(|v| v.is_finite() && *v >= 0.);
+            let index = i * FORECAST_STRIDE;
+            if known {
+                self.known_energy_windows[index / 64] |= 1 << (index % 64);
+            }
+            if i > 0 && known && previous {
+                for between in index - FORECAST_STRIDE + 1..index {
+                    self.known_energy_windows[between / 64] |= 1 << (between % 64);
+                }
+            }
+            previous = known;
+        }
+    }
+
+    fn scalar_window(&self, index: u64) -> Option<f64> {
+        let window = self.step_frames / FORECAST_STRIDE;
+        let at = self
+            .start_frame
+            .checked_add(index.checked_mul(window as u64)?)?;
+        if at < self.available_through_frame {
+            return None;
+        }
+        let left = usize::try_from(index / FORECAST_STRIDE as u64).ok()?;
+        if left >= self.len {
+            return None;
+        }
+        let blend = (index % FORECAST_STRIDE as u64) as f64 / FORECAST_STRIDE as f64;
+        let mut value = 0.;
+        for band in 0..3 {
+            let a = f64::from(self.band_energy[left][band]);
+            if !a.is_finite() || a < 0. {
+                return None;
+            }
+            value += if blend == 0. {
+                a
+            } else {
+                if left + 1 >= self.len {
+                    return None;
+                }
+                let b = f64::from(self.band_energy[left + 1][band]);
+                if !b.is_finite() || b < 0. {
+                    return None;
+                }
+                a * (1. - blend) + b * blend
+            };
+        }
+        Some(value)
+    }
+
+    /// Center interpolation stays within the connected support of the containing window.
+    pub(crate) fn centered_energy(&self, sample: u64, fraction: f64) -> Option<f64> {
+        if !fraction.is_finite() || !(0. ..1.).contains(&fraction) {
+            return None;
+        }
+        let width = (self.step_frames / FORECAST_STRIDE) as u64;
+        let offset = sample.checked_sub(self.start_frame)?;
+        let index = offset / width;
+        let value = self.scalar_window(index)?;
+        let within = (offset % width) as f64 + fraction;
+        let half = width as f64 / 2.;
+        if within < half {
+            if let Some(previous) = index.checked_sub(1).and_then(|i| self.scalar_window(i)) {
+                let mix = 0.5 + within / width as f64;
+                return Some(previous * (1. - mix) + value * mix);
+            }
+        } else if within > half
+            && let Some(next) = self.scalar_window(index + 1)
+        {
+            let mix = within / width as f64 - 0.5;
+            return Some(value * (1. - mix) + next * mix);
+        }
+        Some(value)
+    }
+
+    pub(crate) fn external_footprint(
+        &self,
+        requested: [u64; 2],
+        limit: u64,
+    ) -> ExternalEnergyFootprint {
+        let mut result = ExternalEnergyFootprint {
+            version: 1,
+            requested,
+            horizon_intersection: None,
+            continuous_support: None,
+            omitted_prefix_samples: None,
+            omitted_tail_samples: None,
+            points: [None; 16],
+        };
+        let width = (self.step_frames / FORECAST_STRIDE) as u64;
+        let first = self
+            .available_through_frame
+            .saturating_sub(self.start_frame)
+            .div_ceil(width);
+        let Some(begin) = first
+            .checked_mul(width)
+            .and_then(|v| self.start_frame.checked_add(v))
+        else {
+            return result;
+        };
+        let Some(end) = (self.len.saturating_sub(1) as u64)
+            .checked_mul(self.step_frames as u64)
+            .and_then(|v| self.start_frame.checked_add(v))
+            .and_then(|v| v.checked_add(width))
+        else {
+            return result;
+        };
+        let begin = begin.max(requested[0]);
+        let end = end.min(limit).min(requested[1]);
+        if end <= begin {
+            return result;
+        }
+        result.horizon_intersection = Some([begin, end]);
+        let first = ((begin - self.start_frame) / width) as usize;
+        let last = ((end - self.start_frame - 1) / width) as usize;
+        result.continuous_support = Some((first / 64..=last / 64).all(|word| {
+            let low = first.saturating_sub(word * 64);
+            let high = (last - word * 64).min(63);
+            let mask = (u64::MAX << low) & (u64::MAX >> (63 - high));
+            self.known_energy_windows[word] & mask == mask
+        }));
+        result.omitted_prefix_samples = Some(begin - requested[0]);
+        result.omitted_tail_samples = Some(requested[1] - end);
+        for (i, point) in result.points.iter_mut().enumerate() {
+            let numerator = u128::from(end - begin) * (2 * i + 1) as u128;
+            let sample = begin + (numerator / 32) as u64;
+            let fraction = (numerator % 32) as f64 / 32.;
+            *point = Some(EnergyFootprintPoint {
+                sample,
+                sample_fraction: fraction,
+                band_energy_sum: self.centered_energy(sample, fraction),
+            });
+        }
+        result
+    }
+
     #[cfg(test)]
     pub(crate) fn energy_fixture(
         fs: u32,
@@ -500,7 +667,7 @@ impl TemporalForecast {
         let step_frames = (fs as f64 / 50.0).round() as usize;
         let band_energy =
             std::array::from_fn(|i| energy(i as f64 * step_frames as f64 / fs as f64));
-        Self {
+        let mut forecast = Self {
             observed_history: None,
             energy_prediction_model: "fixture",
             start_frame: start,
@@ -510,11 +677,14 @@ impl TemporalForecast {
             contrast: [[0.0; 3]; FORECAST_LEN],
             background_energy: band_energy[FORECAST_LEN - 1],
             band_energy,
+            known_energy_windows: [0; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
             energy_recurrence_weight: [[1.0; 3]; FORECAST_LEN],
             period_step_sec: 0.01,
             period_weights: [0.0; MAX_DELAY + 1],
             recurrence_support: 0.0,
-        }
+        };
+        forecast.refresh_energy_support();
+        forecast
     }
 
     pub(crate) fn observed_frame(&self) -> u64 {
@@ -679,9 +849,7 @@ impl AcousticTemporalExpectation {
                 }
                 let (prediction, gain_bits) = self.model.observe(band);
                 // Issue on the observation clock, independently of queries and reports.
-                let recurrence = std::array::from_fn(|lead| {
-                    self.model.energy_at(&self.energy, lead * FORECAST_STRIDE)
-                });
+                let recurrence = self.model.energy_forecast(&self.energy);
                 self.energy_learning
                     .issue(self.model.step_index, recurrence, energies);
                 let start_frame = self.observed_through_frame;
@@ -723,6 +891,7 @@ impl AcousticTemporalExpectation {
             len: FORECAST_LEN,
             contrast: [[0.0; 3]; FORECAST_LEN],
             band_energy: [[0.0; 3]; FORECAST_LEN],
+            known_energy_windows: [0; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
             energy_recurrence_weight: [[1.0; 3]; FORECAST_LEN],
             background_energy: self.energy.mean,
             period_step_sec: self.model.step_sec,
@@ -756,6 +925,7 @@ impl AcousticTemporalExpectation {
                 *value = (p - base) / (p + base + 0.01);
             }
         }
+        forecast.refresh_energy_support();
         Some(forecast)
     }
 
@@ -775,11 +945,11 @@ impl AcousticTemporalExpectation {
         } else {
             [0.0; 3]
         };
+        let raw_recurrence = self.model.energy_forecast(external);
         let recurrence = std::array::from_fn(|ahead| {
-            let recurrence = self.model.energy_at(external, ahead * FORECAST_STRIDE);
             std::array::from_fn(|band| {
                 let weight = forecast.energy_recurrence_weight[ahead][band];
-                weight * recurrence[band] + (1.0 - weight) * latest[band]
+                weight * raw_recurrence[ahead][band] + (1.0 - weight) * latest[band]
             })
         });
         let candidate = external.history_prediction.forecast(latest, &history);
@@ -790,12 +960,293 @@ impl AcousticTemporalExpectation {
             self.next_input_frame,
         );
         forecast.background_energy = external.mean;
+        forecast.refresh_energy_support();
+    }
+
+    /// Energy-only diagnostic; neither recurrence scratch nor comparison learning is advanced.
+    pub(crate) fn preview_external_energy(
+        &self,
+        external: &BandEnergyHistory,
+    ) -> Option<TemporalForecast> {
+        if external.step_index != self.model.step_index {
+            return None;
+        }
+        let issued = &self.energy_learning.pending
+            [(self.model.step_index % ENERGY_PENDING_LEN as u64) as usize];
+        if issued.step != Some(self.model.step_index) {
+            return None;
+        }
+        let history = external.temporal.snapshot();
+        let latest = if external.step_index > 0 {
+            external.history[((external.step_index - 1) % HISTORY as u64) as usize]
+        } else {
+            [0.; 3]
+        };
+        let raw_recurrence = self.model.energy_forecast(external);
+        let recurrence = std::array::from_fn(|ahead| {
+            std::array::from_fn(|band| {
+                let weight = issued.weight[ahead][band];
+                weight * raw_recurrence[ahead][band] + (1. - weight) * latest[band]
+            })
+        });
+        let candidate = external.history_prediction.forecast(latest, &history);
+        let (band_energy, _) = external
+            .history_prediction
+            .preview_comparison(recurrence, candidate);
+        let mut forecast = TemporalForecast {
+            observed_history: Some(history),
+            energy_prediction_model: "local_history_mix_readonly",
+            start_frame: self.observed_through_frame,
+            available_through_frame: self.next_input_frame?,
+            step_frames: self.window.len() * FORECAST_STRIDE,
+            len: FORECAST_LEN,
+            contrast: [[0.; 3]; FORECAST_LEN],
+            band_energy,
+            known_energy_windows: [0; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
+            energy_recurrence_weight: issued.weight,
+            background_energy: external.mean,
+            period_step_sec: self.model.step_sec,
+            period_weights: [0.; MAX_DELAY + 1],
+            recurrence_support: 0.,
+        };
+        forecast.refresh_energy_support();
+        Some(forecast)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn energy_forecast_preserves_all_horizons_at_readiness_and_onset_boundaries() {
+        for dt in [0.005, 0.01, 0.02] {
+            let mut model = TemporalExpectation::new(dt);
+            let mut history = BandEnergyHistory::new(dt, 0);
+            history.mean = [0., 0.03, 1.];
+            for (i, bands) in history.history.iter_mut().enumerate() {
+                *bands = [
+                    0.0001 * (i % 7) as f32,
+                    0.03 * (i % 11) as f32,
+                    (i % 13) as f32,
+                ];
+            }
+            let ready = (3 * model.min_delay + 2) as u64;
+            for step in [
+                0,
+                ready - 1,
+                ready,
+                ready + 1,
+                (3 * model.max_delay + 2) as u64,
+                100_003,
+            ] {
+                model.step_index = step;
+                history.step_index = step;
+                for recent in [0., f32::from_bits(1.0_f32.to_bits() - 1), 1., 1.25] {
+                    model.recent_onsets = recent;
+                    let actual = model.energy_forecast(&history);
+                    for (lead, bands) in actual.iter().enumerate() {
+                        let expected = model.energy_at(&history, lead * FORECAST_STRIDE);
+                        assert_eq!(
+                            bands.map(f32::to_bits),
+                            expected.map(f32::to_bits),
+                            "dt={dt} step={step} recent={recent} lead={lead}"
+                        );
+                    }
+                    if step >= ready && recent >= 1. {
+                        assert!(actual.windows(2).any(|w| w[0] != w[1]));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn centered_energy_uses_window_centers_and_stops_at_support_edges() {
+        let mut forecast =
+            TemporalForecast::energy_fixture(1000, 7, |t| [(100. * t) as f32, 2., 3.]);
+        forecast.len = 3;
+        for (sample, fraction, expected) in [
+            (7, 0., 5.),
+            (12, 0., 5.),
+            (17, 0., 5.5),
+            (22, 0., 6.),
+            (22, 0.5, 6.05),
+            (56, 0.999, 9.),
+        ] {
+            assert!((forecast.centered_energy(sample, fraction).unwrap() - expected).abs() < 1e-12);
+        }
+        assert_eq!(forecast.centered_energy(6, 0.999), None);
+        assert_eq!(forecast.centered_energy(57, 0.), None);
+        for fraction in [-0.1, 1., f64::NAN, f64::INFINITY] {
+            assert_eq!(forecast.centered_energy(22, fraction), None);
+        }
+        assert_eq!(
+            forecast.energy_window_after(17),
+            Some((17, 27, [1., 2., 3.]))
+        );
+        forecast.available_through_frame = 18;
+        assert_eq!(forecast.centered_energy(26, 0.999), None);
+        assert_eq!(forecast.centered_energy(27, 0.), Some(7.));
+        assert_eq!(forecast.centered_energy(32, 0.), Some(7.));
+    }
+
+    #[test]
+    fn centered_energy_does_not_bridge_unknown_windows_or_erase_known_silence() {
+        for invalid in [f32::NAN, f32::INFINITY, -1.] {
+            let mut forecast =
+                TemporalForecast::energy_fixture(1000, 7, |t| [(100. * t) as f32, 2., 3.]);
+            forecast.len = 3;
+            forecast.band_energy[1][0] = invalid;
+            forecast.refresh_energy_support();
+            assert_eq!(forecast.centered_energy(16, 0.999), Some(5.));
+            for sample in 17..47 {
+                assert_eq!(forecast.centered_energy(sample, 0.), None);
+            }
+            assert_eq!(forecast.centered_energy(47, 0.), Some(9.));
+            let points = forecast.external_footprint([7, 57], 57);
+            assert_eq!(points.horizon_intersection, Some([7, 57]));
+            assert_eq!(points.continuous_support, Some(false));
+            assert!(
+                points
+                    .points
+                    .iter()
+                    .flatten()
+                    .any(|p| p.band_energy_sum.is_none())
+            );
+            assert!(
+                points
+                    .points
+                    .iter()
+                    .flatten()
+                    .any(|p| p.band_energy_sum.is_some())
+            );
+        }
+        let silent = TemporalForecast::energy_fixture(1000, 0, |_| [0.; 3]);
+        assert_eq!(silent.centered_energy(100, 0.5), Some(0.));
+    }
+
+    #[test]
+    fn external_footprint_clips_time_without_claiming_energy_mass_or_empty_silence() {
+        let forecast = TemporalForecast::energy_fixture(1000, 7, |_| [1., 2., 3.]);
+        let points = forecast.external_footprint([0, 8000], 4007);
+        assert_eq!(points.horizon_intersection, Some([7, 4007]));
+        assert_eq!(points.continuous_support, Some(true));
+        assert_eq!(points.omitted_prefix_samples, Some(7));
+        assert_eq!(points.omitted_tail_samples, Some(3993));
+        for (i, point) in points.points.into_iter().enumerate() {
+            let point = point.unwrap();
+            assert_eq!(point.sample, 132 + i as u64 * 250);
+            assert_eq!(point.sample_fraction, 0.);
+            assert_eq!(point.band_energy_sum, Some(6.));
+        }
+        let partial = forecast.external_footprint([37, 103], 4007);
+        assert_eq!(
+            (
+                partial.points[0].unwrap().sample,
+                partial.points[0].unwrap().sample_fraction
+            ),
+            (39, 0.0625)
+        );
+        assert_eq!(
+            (
+                partial.points[15].unwrap().sample,
+                partial.points[15].unwrap().sample_fraction
+            ),
+            (100, 0.9375)
+        );
+        let full = forecast.external_footprint([0, 8000], u64::MAX);
+        assert_eq!(full.horizon_intersection, Some([7, 4017]));
+        for requested in [[5000, 8000], [0, 7], [50, 50], [50, 49]] {
+            let empty = forecast.external_footprint(requested, 4007);
+            assert_eq!(empty.horizon_intersection, None);
+            assert_eq!(empty.continuous_support, None);
+            assert_eq!(empty.omitted_prefix_samples, None);
+            assert_eq!(empty.omitted_tail_samples, None);
+            assert!(empty.points.iter().all(Option::is_none));
+        }
+    }
+
+    #[test]
+    fn footprint_support_detects_unsampled_gaps_across_bitset_word_boundaries() {
+        let mut forecast = TemporalForecast::energy_fixture(1000, 0, |_| [1.; 3]);
+        forecast.band_energy[1][0] = f32::NAN;
+        forecast.refresh_energy_support();
+        let result = forecast.external_footprint([0, 4000], 4000);
+        assert!(
+            result
+                .points
+                .iter()
+                .flatten()
+                .all(|point| point.band_energy_sum.is_some())
+        );
+        assert_eq!(result.continuous_support, Some(false));
+        for bad in [1, 31, 32, 63, 64, 127, 128, 199, 200] {
+            forecast.band_energy.fill([1.; 3]);
+            forecast.band_energy[bad][2] = -1.;
+            forecast.refresh_energy_support();
+            for requested in [
+                [0, 4000],
+                [640, 1280],
+                [1260, 1290],
+                [190, 200],
+                [4000, 4010],
+            ] {
+                let expected = (requested[0] / 10..requested[1] / 10)
+                    .all(|window| forecast.scalar_window(window).is_some());
+                assert_eq!(
+                    forecast
+                        .external_footprint(requested, 4010)
+                        .continuous_support,
+                    Some(expected),
+                    "invalid row {bad}, request {requested:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn centered_energy_preserves_fractional_samples_at_large_clock_origins() {
+        let origin = u64::MAX - 10000;
+        let near = TemporalForecast::energy_fixture(1000, 0, |t| [t as f32, 0., 0.]);
+        let far = TemporalForecast::energy_fixture(1000, origin, |t| [t as f32, 0., 0.]);
+        for offset in [0, 9, 10, 17, 2000, 4009, 4010] {
+            assert_eq!(
+                near.centered_energy(offset, 0.125),
+                far.centered_energy(origin + offset, 0.125)
+            );
+        }
+        let a = near.external_footprint([37, 103], 4000);
+        let b = far.external_footprint([origin + 37, origin + 103], origin + 4000);
+        for (a, b) in a.points.into_iter().zip(b.points) {
+            let (a, b) = (a.unwrap(), b.unwrap());
+            assert_eq!(a.sample, b.sample - origin);
+            assert_eq!(a.sample_fraction, b.sample_fraction);
+            assert_eq!(a.band_energy_sum, b.band_energy_sum);
+        }
+    }
+
+    #[test]
+    fn centered_energy_midpoint_means_match_an_affine_reference_at_three_resolutions() {
+        let forecast = TemporalForecast::energy_fixture(1000, 7, |t| [(100. * t) as f32, 2., 3.]);
+        // E(t) = 5 + (t - 12) / 10 between supported window centers.
+        let expected = 5. + ((107. + 807.) / 2. - 12.) / 10.;
+        for count in [8, 16, 32] {
+            let mean = (0..count)
+                .map(|i| {
+                    let at = 107. + (i as f64 + 0.5) * 700. / count as f64;
+                    forecast
+                        .centered_energy(at.floor() as u64, at.fract())
+                        .unwrap()
+                })
+                .sum::<f64>()
+                / count as f64;
+            assert!(
+                (mean - expected).abs() < 1e-12,
+                "{count}: {mean} != {expected}"
+            );
+        }
+    }
 
     #[test]
     fn energy_results_update_only_the_matching_lead_and_preserve_issued_weights() {
@@ -1211,13 +1662,57 @@ mod tests {
             }
             let mut forecast = observer.forecast().unwrap();
             let shared = forecast;
+            let scratch = observer.model.predictions;
+            let preview = observer.preview_external_energy(&own.external).unwrap();
+            assert_eq!(observer.model.predictions, scratch);
+            assert!(own.external.history_prediction.take_errors().is_none());
+            for _ in 0..3 {
+                assert_eq!(
+                    observer
+                        .preview_external_energy(&own.external)
+                        .unwrap()
+                        .band_energy,
+                    preview.band_energy
+                );
+            }
+            assert_eq!(observer.model.predictions, scratch);
+            assert!(own.external.history_prediction.take_errors().is_none());
             observer.use_external_energy(&mut forecast, &mut own.external);
+            assert_eq!(preview.band_energy, forecast.band_energy);
+            assert_eq!(preview.known_energy_windows, forecast.known_energy_windows);
+            assert_eq!(
+                own.external
+                    .history_prediction
+                    .take_errors()
+                    .unwrap()
+                    .issued,
+                1
+            );
             assert_eq!(forecast.contrast, shared.contrast);
             assert_eq!(forecast.period_weights, shared.period_weights);
             assert_eq!(
                 forecast.energy_recurrence_weight,
                 shared.energy_recurrence_weight
             );
+            let start = forecast.observed_frame();
+            let footprint = forecast.external_footprint([start, start + 48000], start + 192000);
+            assert!(
+                footprint
+                    .points
+                    .iter()
+                    .flatten()
+                    .all(|point| point.band_energy_sum.unwrap() > 0.)
+            );
+            if phase == -1. {
+                let mixed = shared.external_footprint([start, start + 48000], start + 192000);
+                assert!(
+                    mixed
+                        .points
+                        .iter()
+                        .flatten()
+                        .all(|point| point.band_energy_sum == Some(0.))
+                );
+            }
             assert!(
                 forecast
                     .band_energy

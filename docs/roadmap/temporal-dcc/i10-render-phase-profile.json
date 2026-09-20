@@ -1,0 +1,3861 @@
+{
+  "schema": "i10-render-phase-profile-v1",
+  "status": "renderer_phase_measurement_verified_audio_preserved_diagnostic_reproducibility_failed",
+  "artifact_directory": "target/i10-render-phase-profile-20260918",
+  "plan": {
+    "scope": "Optional renderer phase timing for --profile only. Measure setup, command preparation, sample rendering, own history, private observation and capture delivery separately; keep existing outer synthesis and whole-hop clocks. No changed audio, policy, learning or candidate semantics.",
+    "source_before_sha256": {
+      "src/life/schedule_renderer.rs": "095f76bee2c504dd4ed06daf23afecc2db095137a46bb4d4ae13521b9ecb099b",
+      "src/runtime/mod.rs": "95a3b3ac3bab32dd56d1d36493c082b643cf693564a39d6e28156fc38e98e23c",
+      "src/runtime_profile.rs": "a4909169791d741972e1d09a563ade6fc0f14407c9cacf5a20bed1c6238bd4cd",
+      "tests/runtime_profile_binary.rs": "9497b016b412b0c621a8cffcf2c0250825369dbf4ad6398d983b4fda64a4d2f8"
+    },
+    "baseline": "target/i10-population-preflight-20260918/instrument",
+    "baseline_sha256": "1be2cbc5654a13c21fa99156a3aa579e25c5da13a40e30d3b533313ceadf316a",
+    "checks": [
+      "Existing instrument integration observes schema3, nonnegative nested phases and nested sum <= outer synthesis in report/on-off combinations.",
+      "All Rust tests, clippy and all targets.",
+      "Repeat6case instrument profiles and compare all stable report records with frozen baseline, allowing independently measured publication timing.",
+      "Compare no-report/report flow64 renderer phases; do not infer individual CPU time or live deadline from wall intervals."
+    ]
+  },
+  "binaries": {
+    "instrument": "4d78ca037818b0ff94b1de1fd179a7729e751976130e1cdc8b0fe97f44dd7f00",
+    "render": "9dff5d6961bcb499151f494a40ab1227f54f1be8841ef58376a0f766e810b317"
+  },
+  "verification": {
+    "cases": 6,
+    "primary_runs": 18,
+    "baseline_repeat_runs": 1,
+    "all_wav_exact": true,
+    "onset_population_body_default_private_trace_exact": true,
+    "candidate_differences_limited_to_binding_available": true,
+    "all_diagnostics_exact": false,
+    "tests": {
+      "passed": 1188,
+      "failed": 0,
+      "ignored": 38
+    },
+    "python_tests": 28,
+    "feature_profile_tests": 5
+  },
+  "cases": [
+    {
+      "case": "hold-4",
+      "profiles": {
+        "report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 956897.114,
+            "p99": 2588.249100000001,
+            "maximum": 20138.691
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 20898.217,
+              "p99": 9.568000000000051,
+              "maximum": 18918.874
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 623.047,
+              "p99": 5.263000000000012,
+              "maximum": 103.82000000000001
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 34246.725,
+              "p99": 75.2341,
+              "maximum": 86.96
+            },
+            "history_us": {
+              "count": 591,
+              "total": 20438.613,
+              "p99": 72.4369,
+              "maximum": 80.661
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 876.811,
+              "p99": 9.982000000000006,
+              "maximum": 51.879999999999995
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 397.736,
+              "p99": 1.6720000000000006,
+              "maximum": 2.27
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 4,
+              "elapsed_us": 20138.691,
+              "analysis_wait_us": 1012.6560000000001,
+              "listener_wait_us": 5.79,
+              "landscape_update_us": 0.56,
+              "population_us": 5.609999999999999,
+              "reports_us": 9.1,
+              "render_route_us": 19035.085,
+              "synthesis_us": 19023.105,
+              "rendering": {
+                "setup_us": 18918.874,
+                "commands_us": 0.48,
+                "samples_us": 76.241,
+                "history_us": 25.279999999999998,
+                "observation_us": 1.88,
+                "capture_delivery_us": 0.3
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 57.96,
+              "worker_allocations": {
+                "count": 27,
+                "bytes": 16544
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 0,
+              "time_sec": 0.0,
+              "alive_voice_count": 4,
+              "elapsed_us": 2711.7450000000003,
+              "analysis_wait_us": 2.1399999999999997,
+              "listener_wait_us": 0.56,
+              "landscape_update_us": 1.5,
+              "population_us": 2323.303,
+              "reports_us": 79.95,
+              "render_route_us": 252.802,
+              "synthesis_us": 236.142,
+              "rendering": {
+                "setup_us": 25.781,
+                "commands_us": 103.82000000000001,
+                "samples_us": 62.830000000000005,
+                "history_us": 27.861,
+                "observation_us": 15.26,
+                "capture_delivery_us": 0.52
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 42.620000000000005,
+              "worker_allocations": {
+                "count": 153,
+                "bytes": 14065864
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 563,
+              "time_sec": 6.0053334,
+              "alive_voice_count": 4,
+              "elapsed_us": 2214.232,
+              "analysis_wait_us": 1260.477,
+              "listener_wait_us": 4.0,
+              "landscape_update_us": 0.38,
+              "population_us": 515.803,
+              "reports_us": 41.77,
+              "render_route_us": 232.442,
+              "synthesis_us": 228.892,
+              "rendering": {
+                "setup_us": 5.720000000000001,
+                "commands_us": 58.681000000000004,
+                "samples_us": 86.96,
+                "history_us": 62.29,
+                "observation_us": 13.911,
+                "capture_delivery_us": 1.27
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 152.7,
+              "worker_allocations": {
+                "count": 25,
+                "bytes": 15440
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 1,
+              "time_sec": 0.010666667,
+              "alive_voice_count": 4,
+              "elapsed_us": 1826.29,
+              "analysis_wait_us": 1518.678,
+              "listener_wait_us": 8.559999999999999,
+              "landscape_update_us": 1.13,
+              "population_us": 9.221,
+              "reports_us": 8.219999999999999,
+              "render_route_us": 236.67100000000002,
+              "synthesis_us": 162.78,
+              "rendering": {
+                "setup_us": 21.889999999999997,
+                "commands_us": 0.75,
+                "samples_us": 67.48,
+                "history_us": 20.42,
+                "observation_us": 51.879999999999995,
+                "capture_delivery_us": 0.3
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 27.92,
+              "worker_allocations": {
+                "count": 24,
+                "bytes": 15584
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 569,
+              "time_sec": 6.0693336,
+              "alive_voice_count": 4,
+              "elapsed_us": 2158.6420000000003,
+              "analysis_wait_us": 1762.88,
+              "listener_wait_us": 4.1,
+              "landscape_update_us": 0.32,
+              "population_us": 3.74,
+              "reports_us": 3.1599999999999997,
+              "render_route_us": 152.671,
+              "synthesis_us": 151.111,
+              "rendering": {
+                "setup_us": 3.07,
+                "commands_us": 0.09999999999999999,
+                "samples_us": 65.75999999999999,
+                "history_us": 71.931,
+                "observation_us": 9.52,
+                "capture_delivery_us": 0.6799999999999999
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 224.651,
+              "worker_allocations": {
+                "count": 21,
+                "bytes": 15312
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        },
+        "no-report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 936100.199,
+            "p99": 2337.294100000001,
+            "maximum": 21058.055999999997
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 21924.991,
+              "p99": 10.10700000000002,
+              "maximum": 19837.34
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 556.034,
+              "p99": 4.8990000000000045,
+              "maximum": 103.06099999999999
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 34808.482,
+              "p99": 89.941,
+              "maximum": 91.42
+            },
+            "history_us": {
+              "count": 591,
+              "total": 20747.589,
+              "p99": 75.66400000000006,
+              "maximum": 93.47
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 867.356,
+              "p99": 10.054000000000006,
+              "maximum": 48.980000000000004
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 455.161,
+              "p99": 1.9000000000000021,
+              "maximum": 5.12
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 4,
+              "elapsed_us": 21058.055999999997,
+              "analysis_wait_us": 1012.5649999999999,
+              "listener_wait_us": 6.07,
+              "landscape_update_us": 0.75,
+              "population_us": 5.5600000000000005,
+              "reports_us": 0.07,
+              "render_route_us": 19966.581000000002,
+              "synthesis_us": 19956.941,
+              "rendering": {
+                "setup_us": 19837.34,
+                "commands_us": 0.9299999999999999,
+                "samples_us": 79.35100000000001,
+                "history_us": 33.980000000000004,
+                "observation_us": 4.83,
+                "capture_delivery_us": 0.39999999999999997
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 52.99,
+              "worker_allocations": {
+                "count": 16,
+                "bytes": 13944
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 0,
+              "time_sec": 0.0,
+              "alive_voice_count": 4,
+              "elapsed_us": 2688.315,
+              "analysis_wait_us": 2.5100000000000002,
+              "listener_wait_us": 0.38,
+              "landscape_update_us": 1.33,
+              "population_us": 2389.913,
+              "reports_us": 0.13,
+              "render_route_us": 244.912,
+              "synthesis_us": 235.962,
+              "rendering": {
+                "setup_us": 27.04,
+                "commands_us": 103.06099999999999,
+                "samples_us": 62.51,
+                "history_us": 27.980999999999998,
+                "observation_us": 14.96,
+                "capture_delivery_us": 0.35
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 41.529999999999994,
+              "worker_allocations": {
+                "count": 131,
+                "bytes": 14056352
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 314,
+              "time_sec": 3.3493333,
+              "alive_voice_count": 4,
+              "elapsed_us": 1629.649,
+              "analysis_wait_us": 1265.2469999999998,
+              "listener_wait_us": 5.35,
+              "landscape_update_us": 0.58,
+              "population_us": 6.76,
+              "reports_us": 0.02,
+              "render_route_us": 178.36100000000002,
+              "synthesis_us": 175.751,
+              "rendering": {
+                "setup_us": 4.380000000000001,
+                "commands_us": 0.19999999999999998,
+                "samples_us": 75.00099999999999,
+                "history_us": 93.47,
+                "observation_us": 1.76,
+                "capture_delivery_us": 0.87
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 163.241,
+              "worker_allocations": {
+                "count": 13,
+                "bytes": 13544
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 563,
+              "time_sec": 6.0053334,
+              "alive_voice_count": 4,
+              "elapsed_us": 2072.851,
+              "analysis_wait_us": 1260.557,
+              "listener_wait_us": 4.01,
+              "landscape_update_us": 0.31,
+              "population_us": 513.793,
+              "reports_us": 0.049999999999999996,
+              "render_route_us": 173.33100000000002,
+              "synthesis_us": 170.83100000000002,
+              "rendering": {
+                "setup_us": 4.09,
+                "commands_us": 44.77,
+                "samples_us": 65.7,
+                "history_us": 44.371,
+                "observation_us": 10.89,
+                "capture_delivery_us": 0.95
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 113.88,
+              "worker_allocations": {
+                "count": 17,
+                "bytes": 13672
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 1,
+              "time_sec": 0.010666667,
+              "alive_voice_count": 4,
+              "elapsed_us": 1780.29,
+              "analysis_wait_us": 1558.988,
+              "listener_wait_us": 8.729999999999999,
+              "landscape_update_us": 1.22,
+              "population_us": 9.72,
+              "reports_us": 0.09999999999999999,
+              "render_route_us": 163.301,
+              "synthesis_us": 158.5,
+              "rendering": {
+                "setup_us": 21.950000000000003,
+                "commands_us": 0.49,
+                "samples_us": 66.33,
+                "history_us": 20.59,
+                "observation_us": 48.980000000000004,
+                "capture_delivery_us": 0.09999999999999999
+              },
+              "rendered_tone_count": 4,
+              "post_render_us": 23.99,
+              "worker_allocations": {
+                "count": 13,
+                "bytes": 13528
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        }
+      },
+      "report_comparison": {
+        "report": {
+          "onset": {
+            "before": 4,
+            "after": 4,
+            "exact": true
+          },
+          "population_step": {
+            "before": 2364,
+            "after": 2364,
+            "exact": true
+          },
+          "body_default": {
+            "before": 476,
+            "after": 476,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 472,
+            "after": 472,
+            "exact": true
+          },
+          "self_sound_outcome": {
+            "before": 8,
+            "after": 8,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 8,
+            "after": 8,
+            "exact": true
+          },
+          "private_participation_trace": {
+            "before": 8,
+            "after": 8,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 448,
+            "after": 448,
+            "exact": true
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        },
+        "render": {
+          "onset": {
+            "before": 4,
+            "after": 4,
+            "exact": true
+          },
+          "population_step": {
+            "before": 2364,
+            "after": 2364,
+            "exact": true
+          },
+          "body_default": {
+            "before": 476,
+            "after": 476,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 472,
+            "after": 472,
+            "exact": true
+          },
+          "self_sound_outcome": {
+            "before": 8,
+            "after": 8,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 8,
+            "after": 8,
+            "exact": true
+          },
+          "private_participation_trace": {
+            "before": 8,
+            "after": 8,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 448,
+            "after": 448,
+            "exact": true
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        }
+      },
+      "wav_exact": true
+    },
+    {
+      "case": "hold-16",
+      "profiles": {
+        "report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 1209881.732,
+            "p99": 3209.367200000005,
+            "maximum": 12994.182
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 16337.571999999998,
+              "p99": 14.330000000000178,
+              "maximum": 11511.073999999999
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 1555.046,
+              "p99": 9.51,
+              "maximum": 295.86199999999997
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 133502.111,
+              "p99": 290.83110000000005,
+              "maximum": 300.462
+            },
+            "history_us": {
+              "count": 591,
+              "total": 111100.077,
+              "p99": 377.391,
+              "maximum": 476.433
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 2698.212,
+              "p99": 39.0501,
+              "maximum": 190.511
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 566.544,
+              "p99": 1.7050000000000012,
+              "maximum": 2.3
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 16,
+              "elapsed_us": 12994.182,
+              "analysis_wait_us": 1010.0860000000001,
+              "listener_wait_us": 4.32,
+              "landscape_update_us": 0.42,
+              "population_us": 15.860000000000001,
+              "reports_us": 8.790000000000001,
+              "render_route_us": 11872.866,
+              "synthesis_us": 11858.596000000001,
+              "rendering": {
+                "setup_us": 11511.073999999999,
+                "commands_us": 1.1400000000000001,
+                "samples_us": 222.161,
+                "history_us": 118.32000000000001,
+                "observation_us": 5.431,
+                "capture_delivery_us": 0.39
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 69.22,
+              "worker_allocations": {
+                "count": 61,
+                "bytes": 25024
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 389,
+              "time_sec": 4.1493335,
+              "alive_voice_count": 16,
+              "elapsed_us": 2365.763,
+              "analysis_wait_us": 1331.557,
+              "listener_wait_us": 6.79,
+              "landscape_update_us": 1.1400000000000001,
+              "population_us": 33.900999999999996,
+              "reports_us": 18.790000000000003,
+              "render_route_us": 744.754,
+              "synthesis_us": 737.774,
+              "rendering": {
+                "setup_us": 21.84,
+                "commands_us": 1.02,
+                "samples_us": 231.711,
+                "history_us": 476.433,
+                "observation_us": 4.199999999999999,
+                "capture_delivery_us": 2.3
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 209.821,
+              "worker_allocations": {
+                "count": 57,
+                "bytes": 24048
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 0,
+              "time_sec": 0.0,
+              "alive_voice_count": 16,
+              "elapsed_us": 10008.265000000001,
+              "analysis_wait_us": 1.95,
+              "listener_wait_us": 0.63,
+              "landscape_update_us": 1.3,
+              "population_us": 9116.921,
+              "reports_us": 100.18,
+              "render_route_us": 730.504,
+              "synthesis_us": 701.744,
+              "rendering": {
+                "setup_us": 27.73,
+                "commands_us": 295.86199999999997,
+                "samples_us": 230.411,
+                "history_us": 103.59100000000001,
+                "observation_us": 43.64,
+                "capture_delivery_us": 0.45999999999999996
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 49.32,
+              "worker_allocations": {
+                "count": 551,
+                "bytes": 56243176
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 584,
+              "time_sec": 6.2293334,
+              "alive_voice_count": 16,
+              "elapsed_us": 2229.632,
+              "analysis_wait_us": 1263.377,
+              "listener_wait_us": 4.74,
+              "landscape_update_us": 0.48,
+              "population_us": 17.520000000000003,
+              "reports_us": 9.989999999999998,
+              "render_route_us": 679.764,
+              "synthesis_us": 675.774,
+              "rendering": {
+                "setup_us": 8.63,
+                "commands_us": 0.37,
+                "samples_us": 249.42200000000003,
+                "history_us": 377.74199999999996,
+                "observation_us": 38.550000000000004,
+                "capture_delivery_us": 1.02
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 242.971,
+              "worker_allocations": {
+                "count": 53,
+                "bytes": 22928
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 569,
+              "time_sec": 6.0693336,
+              "alive_voice_count": 16,
+              "elapsed_us": 2998.3869999999997,
+              "analysis_wait_us": 2017.721,
+              "listener_wait_us": 4.43,
+              "landscape_update_us": 0.36,
+              "population_us": 18.071,
+              "reports_us": 29.09,
+              "render_route_us": 678.124,
+              "synthesis_us": 674.133,
+              "rendering": {
+                "setup_us": 8.65,
+                "commands_us": 0.55,
+                "samples_us": 248.661,
+                "history_us": 376.972,
+                "observation_us": 38.099999999999994,
+                "capture_delivery_us": 1.15
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 238.971,
+              "worker_allocations": {
+                "count": 53,
+                "bytes": 22928
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        },
+        "no-report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 1166218.382,
+            "p99": 3122.5271000000016,
+            "maximum": 14745.411
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 17496.725,
+              "p99": 16.631000000000075,
+              "maximum": 12950.231
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 1584.902,
+              "p99": 9.878000000000002,
+              "maximum": 307.962
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 134114.888,
+              "p99": 292.76390000000004,
+              "maximum": 331.172
+            },
+            "history_us": {
+              "count": 591,
+              "total": 109616.597,
+              "p99": 366.6450000000001,
+              "maximum": 496.912
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 2693.878,
+              "p99": 38.82100000000001,
+              "maximum": 197.211
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 606.491,
+              "p99": 1.8810000000000002,
+              "maximum": 2.3
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 16,
+              "elapsed_us": 14745.411,
+              "analysis_wait_us": 1264.686,
+              "listener_wait_us": 5.68,
+              "landscape_update_us": 1.08,
+              "population_us": 21.35,
+              "reports_us": 0.14,
+              "render_route_us": 13373.784,
+              "synthesis_us": 13366.124,
+              "rendering": {
+                "setup_us": 12950.231,
+                "commands_us": 1.16,
+                "samples_us": 292.65200000000004,
+                "history_us": 117.951,
+                "observation_us": 3.6399999999999997,
+                "capture_delivery_us": 0.42
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 58.15,
+              "worker_allocations": {
+                "count": 32,
+                "bytes": 16888
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 569,
+              "time_sec": 6.0693336,
+              "alive_voice_count": 16,
+              "elapsed_us": 3484.049,
+              "analysis_wait_us": 2270.322,
+              "listener_wait_us": 4.62,
+              "landscape_update_us": 0.59,
+              "population_us": 26.310000000000002,
+              "reports_us": 0.19,
+              "render_route_us": 829.734,
+              "synthesis_us": 823.424,
+              "rendering": {
+                "setup_us": 8.36,
+                "commands_us": 1.16,
+                "samples_us": 331.172,
+                "history_us": 431.202,
+                "observation_us": 49.65,
+                "capture_delivery_us": 1.74
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 319.322,
+              "worker_allocations": {
+                "count": 29,
+                "bytes": 16488
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 539,
+              "time_sec": 5.7493334,
+              "alive_voice_count": 16,
+              "elapsed_us": 2536.114,
+              "analysis_wait_us": 1514.228,
+              "listener_wait_us": 4.9799999999999995,
+              "landscape_update_us": 0.52,
+              "population_us": 21.09,
+              "reports_us": 0.16,
+              "render_route_us": 742.825,
+              "synthesis_us": 736.325,
+              "rendering": {
+                "setup_us": 8.98,
+                "commands_us": 0.94,
+                "samples_us": 222.202,
+                "history_us": 496.912,
+                "observation_us": 5.821,
+                "capture_delivery_us": 1.31
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 239.411,
+              "worker_allocations": {
+                "count": 29,
+                "bytes": 16488
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 0,
+              "time_sec": 0.0,
+              "alive_voice_count": 16,
+              "elapsed_us": 8546.217,
+              "analysis_wait_us": 1.75,
+              "listener_wait_us": 0.43,
+              "landscape_update_us": 1.28,
+              "population_us": 7763.863,
+              "reports_us": 0.22999999999999998,
+              "render_route_us": 726.814,
+              "synthesis_us": 714.8140000000001,
+              "rendering": {
+                "setup_us": 29.73,
+                "commands_us": 307.962,
+                "samples_us": 230.43099999999998,
+                "history_us": 102.091,
+                "observation_us": 43.980000000000004,
+                "capture_delivery_us": 0.55
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 41.34,
+              "worker_allocations": {
+                "count": 483,
+                "bytes": 56204992
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 584,
+              "time_sec": 6.2293334,
+              "alive_voice_count": 16,
+              "elapsed_us": 2535.263,
+              "analysis_wait_us": 1521.6380000000001,
+              "listener_wait_us": 5.19,
+              "landscape_update_us": 1.71,
+              "population_us": 21.52,
+              "reports_us": 0.12,
+              "render_route_us": 709.484,
+              "synthesis_us": 704.754,
+              "rendering": {
+                "setup_us": 7.74,
+                "commands_us": 0.7899999999999999,
+                "samples_us": 258.072,
+                "history_us": 397.74199999999996,
+                "observation_us": 38.349999999999994,
+                "capture_delivery_us": 1.9800000000000002
+              },
+              "rendered_tone_count": 16,
+              "post_render_us": 263.511,
+              "worker_allocations": {
+                "count": 54,
+                "bytes": 551279
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        }
+      },
+      "report_comparison": {
+        "report": {
+          "onset": {
+            "before": 16,
+            "after": 16,
+            "exact": true
+          },
+          "population_step": {
+            "before": 9456,
+            "after": 9456,
+            "exact": true
+          },
+          "body_default": {
+            "before": 1904,
+            "after": 1904,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 1888,
+            "after": 1888,
+            "exact": true
+          },
+          "self_sound_outcome": {
+            "before": 32,
+            "after": 32,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 32,
+            "after": 32,
+            "exact": true
+          },
+          "private_participation_trace": {
+            "before": 32,
+            "after": 32,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 1792,
+            "after": 1792,
+            "exact": true
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        },
+        "render": {
+          "onset": {
+            "before": 16,
+            "after": 16,
+            "exact": true
+          },
+          "population_step": {
+            "before": 9456,
+            "after": 9456,
+            "exact": true
+          },
+          "body_default": {
+            "before": 1904,
+            "after": 1904,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 1888,
+            "after": 1888,
+            "exact": true
+          },
+          "self_sound_outcome": {
+            "before": 32,
+            "after": 32,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 32,
+            "after": 32,
+            "exact": true
+          },
+          "private_participation_trace": {
+            "before": 32,
+            "after": 32,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 1792,
+            "after": 1792,
+            "exact": true
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        }
+      },
+      "wav_exact": true
+    },
+    {
+      "case": "hold-64",
+      "profiles": {
+        "report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 2963510.395,
+            "p99": 5885.6621000000005,
+            "maximum": 37944.74
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 575050.354,
+              "p99": 1723.7001,
+              "maximum": 1829.47
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 5297.411,
+              "p99": 26.701000000000004,
+              "maximum": 1016.966
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 560779.56,
+              "p99": 1155.0539,
+              "maximum": 1221.5469999999998
+            },
+            "history_us": {
+              "count": 591,
+              "total": 602048.77,
+              "p99": 1899.8239999999998,
+              "maximum": 1975.85
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 8229.018,
+              "p99": 149.92790000000002,
+              "maximum": 721.814
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 273.844,
+              "p99": 1.13,
+              "maximum": 5.77
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 329,
+              "time_sec": 3.5093334,
+              "alive_voice_count": 64,
+              "elapsed_us": 5903.933,
+              "analysis_wait_us": 1265.777,
+              "listener_wait_us": 6.9399999999999995,
+              "landscape_update_us": 1.13,
+              "population_us": 72.91000000000001,
+              "reports_us": 38.121,
+              "render_route_us": 4309.434,
+              "synthesis_us": 4301.1630000000005,
+              "rendering": {
+                "setup_us": 1619.528,
+                "commands_us": 2.231,
+                "samples_us": 969.975,
+                "history_us": 1703.289,
+                "observation_us": 5.79,
+                "capture_delivery_us": 0.29
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 180.561,
+              "worker_allocations": {
+                "count": 177,
+                "bytes": 52576
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 539,
+              "time_sec": 5.7493334,
+              "alive_voice_count": 64,
+              "elapsed_us": 5955.071999999999,
+              "analysis_wait_us": 1520.158,
+              "listener_wait_us": 5.67,
+              "landscape_update_us": 1.0899999999999999,
+              "population_us": 70.72,
+              "reports_us": 50.900999999999996,
+              "render_route_us": 4023.082,
+              "synthesis_us": 4015.262,
+              "rendering": {
+                "setup_us": 1134.236,
+                "commands_us": 2.29,
+                "samples_us": 911.1650000000001,
+                "history_us": 1958.351,
+                "observation_us": 8.569999999999999,
+                "capture_delivery_us": 0.55
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 262.631,
+              "worker_allocations": {
+                "count": 177,
+                "bytes": 52576
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 449,
+              "time_sec": 4.7893333,
+              "alive_voice_count": 64,
+              "elapsed_us": 5883.632,
+              "analysis_wait_us": 1517.418,
+              "listener_wait_us": 5.16,
+              "landscape_update_us": 0.9900000000000001,
+              "population_us": 67.65,
+              "reports_us": 42.98,
+              "render_route_us": 4007.0319999999997,
+              "synthesis_us": 3992.092,
+              "rendering": {
+                "setup_us": 1167.536,
+                "commands_us": 2.0700000000000003,
+                "samples_us": 912.0559999999999,
+                "history_us": 1901.48,
+                "observation_us": 7.659999999999999,
+                "capture_delivery_us": 1.18
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 222.821,
+              "worker_allocations": {
+                "count": 177,
+                "bytes": 52576
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 429,
+              "time_sec": 4.576,
+              "alive_voice_count": 64,
+              "elapsed_us": 5777.122,
+              "analysis_wait_us": 1565.658,
+              "listener_wait_us": 5.67,
+              "landscape_update_us": 1.35,
+              "population_us": 86.041,
+              "reports_us": 58.730000000000004,
+              "render_route_us": 3922.912,
+              "synthesis_us": 3910.442,
+              "rendering": {
+                "setup_us": 1418.3380000000002,
+                "commands_us": 2.6,
+                "samples_us": 1074.866,
+                "history_us": 1406.528,
+                "observation_us": 7.359999999999999,
+                "capture_delivery_us": 0.61
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 122.40100000000001,
+              "worker_allocations": {
+                "count": 177,
+                "bytes": 52576
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 509,
+              "time_sec": 5.429333,
+              "alive_voice_count": 64,
+              "elapsed_us": 5868.423,
+              "analysis_wait_us": 1519.299,
+              "listener_wait_us": 5.49,
+              "landscape_update_us": 1.22,
+              "population_us": 72.32,
+              "reports_us": 59.961,
+              "render_route_us": 3897.821,
+              "synthesis_us": 3883.671,
+              "rendering": {
+                "setup_us": 1081.806,
+                "commands_us": 2.62,
+                "samples_us": 912.505,
+                "history_us": 1876.6799999999998,
+                "observation_us": 8.790000000000001,
+                "capture_delivery_us": 1.13
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 293.922,
+              "worker_allocations": {
+                "count": 202,
+                "bytes": 588711
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        },
+        "no-report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 2901444.142,
+            "p99": 5747.007,
+            "maximum": 35947.398
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 682608.167,
+              "p99": 1848.5921000000005,
+              "maximum": 2097.312
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 5075.825,
+              "p99": 28.542000000000005,
+              "maximum": 1016.065
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 560088.287,
+              "p99": 1179.8519000000001,
+              "maximum": 1333.258
+            },
+            "history_us": {
+              "count": 591,
+              "total": 578553.455,
+              "p99": 1781.0831,
+              "maximum": 1870.451
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 7688.204,
+              "p99": 146.9849,
+              "maximum": 831.034
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 190.62,
+              "p99": 0.6330000000000007,
+              "maximum": 2.68
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 134,
+              "time_sec": 1.4293333,
+              "alive_voice_count": 64,
+              "elapsed_us": 5628.891,
+              "analysis_wait_us": 1264.077,
+              "listener_wait_us": 5.180000000000001,
+              "landscape_update_us": 0.49,
+              "population_us": 54.19,
+              "reports_us": 0.18,
+              "render_route_us": 4227.353,
+              "synthesis_us": 4213.983,
+              "rendering": {
+                "setup_us": 2097.312,
+                "commands_us": 3.28,
+                "samples_us": 925.985,
+                "history_us": 1179.4360000000001,
+                "observation_us": 7.49,
+                "capture_delivery_us": 0.42
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 63.181000000000004,
+              "worker_allocations": {
+                "count": 88,
+                "bytes": 26360
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 374,
+              "time_sec": 3.9893334,
+              "alive_voice_count": 64,
+              "elapsed_us": 5792.302,
+              "analysis_wait_us": 1324.177,
+              "listener_wait_us": 5.95,
+              "landscape_update_us": 0.69,
+              "population_us": 74.96,
+              "reports_us": 0.16,
+              "render_route_us": 4150.513,
+              "synthesis_us": 4143.4929999999995,
+              "rendering": {
+                "setup_us": 1205.827,
+                "commands_us": 2.7800000000000002,
+                "samples_us": 1060.105,
+                "history_us": 1870.451,
+                "observation_us": 3.87,
+                "capture_delivery_us": 0.39
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 220.821,
+              "worker_allocations": {
+                "count": 113,
+                "bytes": 562495
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 209,
+              "time_sec": 2.2293334,
+              "alive_voice_count": 64,
+              "elapsed_us": 5569.6410000000005,
+              "analysis_wait_us": 1301.577,
+              "listener_wait_us": 4.52,
+              "landscape_update_us": 0.98,
+              "population_us": 59.48,
+              "reports_us": 0.06,
+              "render_route_us": 4135.703,
+              "synthesis_us": 4129.4529999999995,
+              "rendering": {
+                "setup_us": 1683.33,
+                "commands_us": 3.4,
+                "samples_us": 1156.606,
+                "history_us": 1281.817,
+                "observation_us": 3.92,
+                "capture_delivery_us": 0.31
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 57.471,
+              "worker_allocations": {
+                "count": 88,
+                "bytes": 26360
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 554,
+              "time_sec": 5.909333,
+              "alive_voice_count": 64,
+              "elapsed_us": 5575.411,
+              "analysis_wait_us": 1268.3970000000002,
+              "listener_wait_us": 5.05,
+              "landscape_update_us": 0.55,
+              "population_us": 56.339999999999996,
+              "reports_us": 0.07,
+              "render_route_us": 3984.662,
+              "synthesis_us": 3979.272,
+              "rendering": {
+                "setup_us": 1260.787,
+                "commands_us": 1.85,
+                "samples_us": 903.005,
+                "history_us": 1809.3799999999999,
+                "observation_us": 3.81,
+                "capture_delivery_us": 0.33
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 247.28199999999998,
+              "worker_allocations": {
+                "count": 88,
+                "bytes": 26360
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 454,
+              "time_sec": 4.8426666,
+              "alive_voice_count": 64,
+              "elapsed_us": 5438.23,
+              "analysis_wait_us": 1235.866,
+              "listener_wait_us": 5.010000000000001,
+              "landscape_update_us": 0.62,
+              "population_us": 86.941,
+              "reports_us": 0.16999999999999998,
+              "render_route_us": 3978.9919999999997,
+              "synthesis_us": 3972.562,
+              "rendering": {
+                "setup_us": 1809.4,
+                "commands_us": 2.23,
+                "samples_us": 910.075,
+                "history_us": 1245.6870000000001,
+                "observation_us": 4.78,
+                "capture_delivery_us": 0.29
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 119.061,
+              "worker_allocations": {
+                "count": 88,
+                "bytes": 26360
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        }
+      },
+      "report_comparison": {
+        "report": {
+          "onset": {
+            "before": 64,
+            "after": 64,
+            "exact": true
+          },
+          "population_step": {
+            "before": 37824,
+            "after": 37824,
+            "exact": true
+          },
+          "body_default": {
+            "before": 7616,
+            "after": 7616,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 7552,
+            "after": 7552,
+            "exact": false
+          },
+          "self_sound_outcome": {
+            "before": 128,
+            "after": 128,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 128,
+            "after": 128,
+            "exact": false
+          },
+          "private_participation_trace": {
+            "before": 128,
+            "after": 128,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 7168,
+            "after": 7168,
+            "exact": false
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        },
+        "render": {
+          "onset": {
+            "before": 64,
+            "after": 64,
+            "exact": true
+          },
+          "population_step": {
+            "before": 37824,
+            "after": 37824,
+            "exact": true
+          },
+          "body_default": {
+            "before": 7616,
+            "after": 7616,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 7552,
+            "after": 7552,
+            "exact": false
+          },
+          "self_sound_outcome": {
+            "before": 128,
+            "after": 128,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 128,
+            "after": 128,
+            "exact": false
+          },
+          "private_participation_trace": {
+            "before": 128,
+            "after": 128,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 7168,
+            "after": 7168,
+            "exact": false
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        }
+      },
+      "wav_exact": true
+    },
+    {
+      "case": "flow-4",
+      "profiles": {
+        "report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 1125136.664,
+            "p99": 2771.392000000002,
+            "maximum": 18995.305
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 19746.5,
+              "p99": 8.920000000000275,
+              "maximum": 17492.627
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 3628.835,
+              "p99": 44.59010000000001,
+              "maximum": 128.131
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 123886.332,
+              "p99": 307.5050000000001,
+              "maximum": 388.892
+            },
+            "history_us": {
+              "count": 591,
+              "total": 21923.573,
+              "p99": 83.304,
+              "maximum": 94.941
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 18546.196,
+              "p99": 91.141,
+              "maximum": 127.30099999999999
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 435.991,
+              "p99": 1.6460000000000012,
+              "maximum": 3.5599999999999996
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 4,
+              "elapsed_us": 18995.305,
+              "analysis_wait_us": 1010.2659999999998,
+              "listener_wait_us": 256.881,
+              "landscape_update_us": 0.43,
+              "population_us": 7.61,
+              "reports_us": 14.86,
+              "render_route_us": 17624.147999999997,
+              "synthesis_us": 17574.897999999997,
+              "rendering": {
+                "setup_us": 17492.627,
+                "commands_us": 0.73,
+                "samples_us": 25.37,
+                "history_us": 31.741,
+                "observation_us": 24.12,
+                "capture_delivery_us": 0.22999999999999998
+              },
+              "rendered_tone_count": 1,
+              "post_render_us": 67.32,
+              "worker_allocations": {
+                "count": 27,
+                "bytes": 16544
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 353,
+              "time_sec": 3.7653334,
+              "alive_voice_count": 4,
+              "elapsed_us": 2507.184,
+              "analysis_wait_us": 1804.8,
+              "listener_wait_us": 7.46,
+              "landscape_update_us": 0.98,
+              "population_us": 11.7,
+              "reports_us": 9.1,
+              "render_route_us": 488.513,
+              "synthesis_us": 482.563,
+              "rendering": {
+                "setup_us": 6.07,
+                "commands_us": 0.53,
+                "samples_us": 331.172,
+                "history_us": 70.56,
+                "observation_us": 71.991,
+                "capture_delivery_us": 2.1500000000000004
+              },
+              "rendered_tone_count": 18,
+              "post_render_us": 171.041,
+              "worker_allocations": {
+                "count": 23,
+                "bytes": 15568
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 240,
+              "time_sec": 2.56,
+              "alive_voice_count": 4,
+              "elapsed_us": 2495.174,
+              "analysis_wait_us": 1270.857,
+              "listener_wait_us": 6.46,
+              "landscape_update_us": 0.85,
+              "population_us": 13.86,
+              "reports_us": 469.313,
+              "render_route_us": 645.873,
+              "synthesis_us": 480.542,
+              "rendering": {
+                "setup_us": 5.33,
+                "commands_us": 7.890000000000001,
+                "samples_us": 388.892,
+                "history_us": 39.81,
+                "observation_us": 37.27,
+                "capture_delivery_us": 1.27
+              },
+              "rendered_tone_count": 21,
+              "post_render_us": 78.551,
+              "worker_allocations": {
+                "count": 23,
+                "bytes": 15568
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 563,
+              "time_sec": 6.0053334,
+              "alive_voice_count": 4,
+              "elapsed_us": 2642.035,
+              "analysis_wait_us": 1260.157,
+              "listener_wait_us": 4.6,
+              "landscape_update_us": 0.3,
+              "population_us": 752.1840000000001,
+              "reports_us": 31.83,
+              "render_route_us": 471.833,
+              "synthesis_us": 467.263,
+              "rendering": {
+                "setup_us": 3.63,
+                "commands_us": 128.131,
+                "samples_us": 226.751,
+                "history_us": 45.080000000000005,
+                "observation_us": 62.931,
+                "capture_delivery_us": 0.6799999999999999
+              },
+              "rendered_tone_count": 15,
+              "post_render_us": 113.6,
+              "worker_allocations": {
+                "count": 25,
+                "bytes": 15440
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 344,
+              "time_sec": 3.6693332,
+              "alive_voice_count": 4,
+              "elapsed_us": 2752.266,
+              "analysis_wait_us": 2014.412,
+              "listener_wait_us": 4.55,
+              "landscape_update_us": 0.28,
+              "population_us": 87.80000000000001,
+              "reports_us": 2.83,
+              "render_route_us": 465.193,
+              "synthesis_us": 441.64300000000003,
+              "rendering": {
+                "setup_us": 3.5700000000000003,
+                "commands_us": 28.540000000000003,
+                "samples_us": 267.292,
+                "history_us": 77.03999999999999,
+                "observation_us": 64.61099999999999,
+                "capture_delivery_us": 0.54
+              },
+              "rendered_tone_count": 19,
+              "post_render_us": 169.331,
+              "worker_allocations": {
+                "count": 24,
+                "bytes": 15600
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        },
+        "no-report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 1077232.749,
+            "p99": 2730.906000000001,
+            "maximum": 19907.84
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 20622.664,
+              "p99": 8.855000000000008,
+              "maximum": 18463.472
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 3421.764,
+              "p99": 43.872000000000085,
+              "maximum": 126.4
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 124252.512,
+              "p99": 312.2211,
+              "maximum": 375.69300000000004
+            },
+            "history_us": {
+              "count": 591,
+              "total": 21300.939,
+              "p99": 78.84900000000007,
+              "maximum": 92.35
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 18530.898,
+              "p99": 92.66590000000001,
+              "maximum": 125.74
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 446.073,
+              "p99": 1.9670000000000016,
+              "maximum": 2.53
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 4,
+              "elapsed_us": 19907.84,
+              "analysis_wait_us": 1261.6070000000002,
+              "listener_wait_us": 4.1899999999999995,
+              "landscape_update_us": 0.19999999999999998,
+              "population_us": 5.52,
+              "reports_us": 0.02,
+              "render_route_us": 18558.162,
+              "synthesis_us": 18548.091999999997,
+              "rendering": {
+                "setup_us": 18463.472,
+                "commands_us": 0.94,
+                "samples_us": 26.16,
+                "history_us": 32.29,
+                "observation_us": 24.63,
+                "capture_delivery_us": 0.42
+              },
+              "rendered_tone_count": 1,
+              "post_render_us": 64.911,
+              "worker_allocations": {
+                "count": 15,
+                "bytes": 13688
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 464,
+              "time_sec": 4.949333,
+              "alive_voice_count": 4,
+              "elapsed_us": 2201.332,
+              "analysis_wait_us": 1298.4669999999999,
+              "listener_wait_us": 5.43,
+              "landscape_update_us": 0.53,
+              "population_us": 120.931,
+              "reports_us": 0.09999999999999999,
+              "render_route_us": 510.873,
+              "synthesis_us": 508.173,
+              "rendering": {
+                "setup_us": 4.66,
+                "commands_us": 33.19,
+                "samples_us": 306.892,
+                "history_us": 92.35,
+                "observation_us": 70.061,
+                "capture_delivery_us": 0.95
+              },
+              "rendered_tone_count": 17,
+              "post_render_us": 257.331,
+              "worker_allocations": {
+                "count": 25,
+                "bytes": 14324
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 232,
+              "time_sec": 2.4746666,
+              "alive_voice_count": 4,
+              "elapsed_us": 2000.6999999999998,
+              "analysis_wait_us": 1298.817,
+              "listener_wait_us": 6.66,
+              "landscape_update_us": 0.36,
+              "population_us": 104.3,
+              "reports_us": 0.02,
+              "render_route_us": 499.00300000000004,
+              "synthesis_us": 496.70300000000003,
+              "rendering": {
+                "setup_us": 4.359999999999999,
+                "commands_us": 39.93,
+                "samples_us": 375.69300000000004,
+                "history_us": 40.63,
+                "observation_us": 34.690000000000005,
+                "capture_delivery_us": 1.31
+              },
+              "rendered_tone_count": 21,
+              "post_render_us": 80.57,
+              "worker_allocations": {
+                "count": 25,
+                "bytes": 14324
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 184,
+              "time_sec": 1.9626666,
+              "alive_voice_count": 4,
+              "elapsed_us": 1982.8210000000001,
+              "analysis_wait_us": 1323.047,
+              "listener_wait_us": 6.409999999999999,
+              "landscape_update_us": 0.8999999999999999,
+              "population_us": 89.681,
+              "reports_us": 0.11,
+              "render_route_us": 487.072,
+              "synthesis_us": 483.68199999999996,
+              "rendering": {
+                "setup_us": 5.12,
+                "commands_us": 42.230000000000004,
+                "samples_us": 375.512,
+                "history_us": 36.93,
+                "observation_us": 21.950000000000003,
+                "capture_delivery_us": 1.85
+              },
+              "rendered_tone_count": 21,
+              "post_render_us": 66.431,
+              "worker_allocations": {
+                "count": 27,
+                "bytes": 14644
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 563,
+              "time_sec": 6.0053334,
+              "alive_voice_count": 4,
+              "elapsed_us": 2856.066,
+              "analysis_wait_us": 1511.3990000000001,
+              "listener_wait_us": 4.49,
+              "landscape_update_us": 0.24,
+              "population_us": 753.154,
+              "reports_us": 0.02,
+              "render_route_us": 464.532,
+              "synthesis_us": 462.962,
+              "rendering": {
+                "setup_us": 3.6799999999999997,
+                "commands_us": 126.4,
+                "samples_us": 227.132,
+                "history_us": 41.730000000000004,
+                "observation_us": 63.2,
+                "capture_delivery_us": 0.77
+              },
+              "rendered_tone_count": 15,
+              "post_render_us": 114.281,
+              "worker_allocations": {
+                "count": 17,
+                "bytes": 13672
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        }
+      },
+      "report_comparison": {
+        "report": {
+          "onset": {
+            "before": 57,
+            "after": 57,
+            "exact": true
+          },
+          "population_step": {
+            "before": 2364,
+            "after": 2364,
+            "exact": true
+          },
+          "body_default": {
+            "before": 476,
+            "after": 476,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 472,
+            "after": 472,
+            "exact": true
+          },
+          "self_sound_outcome": {
+            "before": 116,
+            "after": 116,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 116,
+            "after": 116,
+            "exact": true
+          },
+          "private_participation_trace": {
+            "before": 116,
+            "after": 116,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 421,
+            "after": 421,
+            "exact": true
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        },
+        "render": {
+          "onset": {
+            "before": 57,
+            "after": 57,
+            "exact": true
+          },
+          "population_step": {
+            "before": 2364,
+            "after": 2364,
+            "exact": true
+          },
+          "body_default": {
+            "before": 476,
+            "after": 476,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 472,
+            "after": 472,
+            "exact": true
+          },
+          "self_sound_outcome": {
+            "before": 116,
+            "after": 116,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 116,
+            "after": 116,
+            "exact": true
+          },
+          "private_participation_trace": {
+            "before": 116,
+            "after": 116,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 421,
+            "after": 421,
+            "exact": true
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        }
+      },
+      "wav_exact": true
+    },
+    {
+      "case": "flow-16",
+      "profiles": {
+        "report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 1869321.25,
+            "p99": 5420.006200000005,
+            "maximum": 15128.774
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 18810.928,
+              "p99": 15.066000000000066,
+              "maximum": 13856.805999999999
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 13558.782,
+              "p99": 78.69600000000018,
+              "maximum": 680.874
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 454160.899,
+              "p99": 1128.3269000000005,
+              "maximum": 1222.046
+            },
+            "history_us": {
+              "count": 591,
+              "total": 114654.35,
+              "p99": 389.1439000000002,
+              "maximum": 522.023
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 62087.724,
+              "p99": 271.251,
+              "maximum": 307.562
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 682.635,
+              "p99": 2.2750000000000012,
+              "maximum": 2.99
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 16,
+              "elapsed_us": 15128.774,
+              "analysis_wait_us": 1010.4459999999999,
+              "listener_wait_us": 4.25,
+              "landscape_update_us": 0.61,
+              "population_us": 13.31,
+              "reports_us": 6.2299999999999995,
+              "render_route_us": 14037.767,
+              "synthesis_us": 13994.467,
+              "rendering": {
+                "setup_us": 13856.805999999999,
+                "commands_us": 0.63,
+                "samples_us": 23.461000000000002,
+                "history_us": 94.62,
+                "observation_us": 18.65,
+                "capture_delivery_us": 0.25
+              },
+              "rendered_tone_count": 1,
+              "post_render_us": 44.791,
+              "worker_allocations": {
+                "count": 61,
+                "bytes": 25024
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 563,
+              "time_sec": 6.0053334,
+              "alive_voice_count": 16,
+              "elapsed_us": 6555.356,
+              "analysis_wait_us": 1562.968,
+              "listener_wait_us": 6.85,
+              "landscape_update_us": 1.42,
+              "population_us": 2595.7850000000003,
+              "reports_us": 44.919999999999995,
+              "render_route_us": 2207.832,
+              "synthesis_us": 2175.892,
+              "rendering": {
+                "setup_us": 8.7,
+                "commands_us": 680.874,
+                "samples_us": 1017.0649999999999,
+                "history_us": 197.762,
+                "observation_us": 270.30100000000004,
+                "capture_delivery_us": 1.08
+              },
+              "rendered_tone_count": 65,
+              "post_render_us": 124.241,
+              "worker_allocations": {
+                "count": 71,
+                "bytes": 23888
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 584,
+              "time_sec": 6.2293334,
+              "alive_voice_count": 16,
+              "elapsed_us": 4409.805,
+              "analysis_wait_us": 1555.039,
+              "listener_wait_us": 5.890000000000001,
+              "landscape_update_us": 1.3900000000000001,
+              "population_us": 555.9029999999999,
+              "reports_us": 42.15,
+              "render_route_us": 1970.3210000000001,
+              "synthesis_us": 1927.391,
+              "rendering": {
+                "setup_us": 17.64,
+                "commands_us": 32.99,
+                "samples_us": 1045.286,
+                "history_us": 522.023,
+                "observation_us": 307.562,
+                "capture_delivery_us": 1.6700000000000002
+              },
+              "rendered_tone_count": 55,
+              "post_render_us": 256.81199999999995,
+              "worker_allocations": {
+                "count": 54,
+                "bytes": 22960
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 479,
+              "time_sec": 5.1093335,
+              "alive_voice_count": 16,
+              "elapsed_us": 3337.158,
+              "analysis_wait_us": 1311.777,
+              "listener_wait_us": 6.97,
+              "landscape_update_us": 0.9900000000000001,
+              "population_us": 27.610000000000003,
+              "reports_us": 14.701,
+              "render_route_us": 1748.339,
+              "synthesis_us": 1702.529,
+              "rendering": {
+                "setup_us": 9.37,
+                "commands_us": 0.7999999999999999,
+                "samples_us": 1171.866,
+                "history_us": 354.232,
+                "observation_us": 164.691,
+                "capture_delivery_us": 1.48
+              },
+              "rendered_tone_count": 64,
+              "post_render_us": 214.831,
+              "worker_allocations": {
+                "count": 57,
+                "bytes": 24048
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 331,
+              "time_sec": 3.5306666,
+              "alive_voice_count": 16,
+              "elapsed_us": 3668.09,
+              "analysis_wait_us": 1563.088,
+              "listener_wait_us": 7.191,
+              "landscape_update_us": 0.95,
+              "population_us": 29.119999999999997,
+              "reports_us": 15.400000000000002,
+              "render_route_us": 1953.8310000000001,
+              "synthesis_us": 1662.019,
+              "rendering": {
+                "setup_us": 11.16,
+                "commands_us": 0.71,
+                "samples_us": 1160.5059999999999,
+                "history_us": 284.002,
+                "observation_us": 204.401,
+                "capture_delivery_us": 1.08
+              },
+              "rendered_tone_count": 62,
+              "post_render_us": 85.8,
+              "worker_allocations": {
+                "count": 57,
+                "bytes": 24048
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        },
+        "no-report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 1743605.336,
+            "p99": 5625.909000000006,
+            "maximum": 13586.525
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 17459.129,
+              "p99": 15.442000000000087,
+              "maximum": 12299.749
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 13817.326,
+              "p99": 75.4229,
+              "maximum": 688.014
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 454820.388,
+              "p99": 1149.066,
+              "maximum": 1264.8570000000002
+            },
+            "history_us": {
+              "count": 591,
+              "total": 109490.364,
+              "p99": 365.8140000000001,
+              "maximum": 446.53200000000004
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 61812.95,
+              "p99": 269.23109999999997,
+              "maximum": 352.19199999999995
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 585.233,
+              "p99": 2.191000000000002,
+              "maximum": 2.9299999999999997
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 4,
+              "time_sec": 0.042666666,
+              "alive_voice_count": 16,
+              "elapsed_us": 13586.525,
+              "analysis_wait_us": 1011.025,
+              "listener_wait_us": 4.42,
+              "landscape_update_us": 0.61,
+              "population_us": 15.97,
+              "reports_us": 0.08,
+              "render_route_us": 12477.220000000001,
+              "synthesis_us": 12469.479000000001,
+              "rendering": {
+                "setup_us": 12299.749,
+                "commands_us": 0.98,
+                "samples_us": 24.41,
+                "history_us": 120.19,
+                "observation_us": 23.73,
+                "capture_delivery_us": 0.31
+              },
+              "rendered_tone_count": 1,
+              "post_render_us": 61.989999999999995,
+              "worker_allocations": {
+                "count": 32,
+                "bytes": 16888
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 563,
+              "time_sec": 6.0053334,
+              "alive_voice_count": 16,
+              "elapsed_us": 5861.142,
+              "analysis_wait_us": 1263.747,
+              "listener_wait_us": 4.8999999999999995,
+              "landscape_update_us": 0.48,
+              "population_us": 2238.112,
+              "reports_us": 0.07,
+              "render_route_us": 2217.662,
+              "synthesis_us": 2213.732,
+              "rendering": {
+                "setup_us": 8.290000000000001,
+                "commands_us": 688.014,
+                "samples_us": 1013.306,
+                "history_us": 227.741,
+                "observation_us": 275.361,
+                "capture_delivery_us": 0.9099999999999999
+              },
+              "rendered_tone_count": 65,
+              "post_render_us": 125.571,
+              "worker_allocations": {
+                "count": 47,
+                "bytes": 17448
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 577,
+              "time_sec": 6.154667,
+              "alive_voice_count": 16,
+              "elapsed_us": 4202.923,
+              "analysis_wait_us": 1517.6680000000001,
+              "listener_wait_us": 6.22,
+              "landscape_update_us": 1.0499999999999998,
+              "population_us": 655.674,
+              "reports_us": 0.11,
+              "render_route_us": 1876.67,
+              "synthesis_us": 1869.6299999999999,
+              "rendering": {
+                "setup_us": 15.06,
+                "commands_us": 37.36,
+                "samples_us": 1264.8570000000002,
+                "history_us": 286.832,
+                "observation_us": 263.92100000000005,
+                "capture_delivery_us": 1.54
+              },
+              "rendered_tone_count": 60,
+              "post_render_us": 128.541,
+              "worker_allocations": {
+                "count": 30,
+                "bytes": 16520
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 584,
+              "time_sec": 6.2293334,
+              "alive_voice_count": 16,
+              "elapsed_us": 3852.111,
+              "analysis_wait_us": 1266.4569999999999,
+              "listener_wait_us": 6.7299999999999995,
+              "landscape_update_us": 0.52,
+              "population_us": 524.073,
+              "reports_us": 0.08,
+              "render_route_us": 1771.8600000000001,
+              "synthesis_us": 1766.0900000000001,
+              "rendering": {
+                "setup_us": 9.93,
+                "commands_us": 27.651,
+                "samples_us": 1010.0350000000001,
+                "history_us": 446.53200000000004,
+                "observation_us": 270.04200000000003,
+                "capture_delivery_us": 1.83
+              },
+              "rendered_tone_count": 55,
+              "post_render_us": 271.191,
+              "worker_allocations": {
+                "count": 55,
+                "bytes": 551311
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 521,
+              "time_sec": 5.5573335,
+              "alive_voice_count": 16,
+              "elapsed_us": 3670.33,
+              "analysis_wait_us": 1818.21,
+              "listener_wait_us": 7.33,
+              "landscape_update_us": 0.39,
+              "population_us": 24.3,
+              "reports_us": 0.03,
+              "render_route_us": 1696.6299999999999,
+              "synthesis_us": 1690.6499999999999,
+              "rendering": {
+                "setup_us": 9.65,
+                "commands_us": 0.74,
+                "samples_us": 1249.707,
+                "history_us": 251.742,
+                "observation_us": 177.511,
+                "capture_delivery_us": 1.18
+              },
+              "rendered_tone_count": 65,
+              "post_render_us": 111.87,
+              "worker_allocations": {
+                "count": 29,
+                "bytes": 16488
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        }
+      },
+      "report_comparison": {
+        "report": {
+          "onset": {
+            "before": 206,
+            "after": 206,
+            "exact": true
+          },
+          "population_step": {
+            "before": 9456,
+            "after": 9456,
+            "exact": true
+          },
+          "body_default": {
+            "before": 1904,
+            "after": 1904,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 1888,
+            "after": 1888,
+            "exact": true
+          },
+          "self_sound_outcome": {
+            "before": 423,
+            "after": 423,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 422,
+            "after": 422,
+            "exact": true
+          },
+          "private_participation_trace": {
+            "before": 422,
+            "after": 422,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 1675,
+            "after": 1675,
+            "exact": true
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        },
+        "render": {
+          "onset": {
+            "before": 206,
+            "after": 206,
+            "exact": true
+          },
+          "population_step": {
+            "before": 9456,
+            "after": 9456,
+            "exact": true
+          },
+          "body_default": {
+            "before": 1904,
+            "after": 1904,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 1888,
+            "after": 1888,
+            "exact": false
+          },
+          "self_sound_outcome": {
+            "before": 423,
+            "after": 423,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 422,
+            "after": 422,
+            "exact": false
+          },
+          "private_participation_trace": {
+            "before": 422,
+            "after": 422,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 1675,
+            "after": 1675,
+            "exact": false
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        }
+      },
+      "wav_exact": true
+    },
+    {
+      "case": "flow-64",
+      "profiles": {
+        "report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 4599996.454,
+            "p99": 11929.202000000003,
+            "maximum": 37746.458
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 57793.655,
+              "p99": 1484.0569000000014,
+              "maximum": 1998.7009999999998
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 40810.115,
+              "p99": 170.07700000000017,
+              "maximum": 228.631
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 1967149.851,
+              "p99": 4308.777000000002,
+              "maximum": 5525.07
+            },
+            "history_us": {
+              "count": 591,
+              "total": 538417.328,
+              "p99": 1699.902,
+              "maximum": 1750.45
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 218395.601,
+              "p99": 688.374,
+              "maximum": 719.914
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 677.235,
+              "p99": 2.6220000000000008,
+              "maximum": 3.13
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 494,
+              "time_sec": 5.2693334,
+              "alive_voice_count": 64,
+              "elapsed_us": 12044.976,
+              "analysis_wait_us": 2288.0119999999997,
+              "listener_wait_us": 8.31,
+              "landscape_update_us": 1.4,
+              "population_us": 1834.1799999999998,
+              "reports_us": 51.07,
+              "render_route_us": 7490.171,
+              "synthesis_us": 7326.5509999999995,
+              "rendering": {
+                "setup_us": 20.69,
+                "commands_us": 112.751,
+                "samples_us": 4896.797,
+                "history_us": 1731.619,
+                "observation_us": 563.0939999999999,
+                "capture_delivery_us": 1.47
+              },
+              "rendered_tone_count": 268,
+              "post_render_us": 348.512,
+              "worker_allocations": {
+                "count": 229,
+                "bytes": 590623
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 328,
+              "time_sec": 3.4986668,
+              "alive_voice_count": 64,
+              "elapsed_us": 10705.628999999999,
+              "analysis_wait_us": 1784.39,
+              "listener_wait_us": 8.13,
+              "landscape_update_us": 1.8599999999999999,
+              "population_us": 1650.229,
+              "reports_us": 64.971,
+              "render_route_us": 7058.9490000000005,
+              "synthesis_us": 6977.038,
+              "rendering": {
+                "setup_us": 24.150000000000002,
+                "commands_us": 25.41,
+                "samples_us": 5366.889,
+                "history_us": 965.3860000000001,
+                "observation_us": 593.883,
+                "capture_delivery_us": 1.19
+              },
+              "rendered_tone_count": 254,
+              "post_render_us": 118.3,
+              "worker_allocations": {
+                "count": 242,
+                "bytes": 57436
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 587,
+              "time_sec": 6.2613335,
+              "alive_voice_count": 64,
+              "elapsed_us": 10053.506,
+              "analysis_wait_us": 1531.199,
+              "listener_wait_us": 8.399999999999999,
+              "landscape_update_us": 1.5799999999999998,
+              "population_us": 1256.5269999999998,
+              "reports_us": 66.79,
+              "render_route_us": 6886.238,
+              "synthesis_us": 6850.857999999999,
+              "rendering": {
+                "setup_us": 28.25,
+                "commands_us": 55.541000000000004,
+                "samples_us": 5064.798,
+                "history_us": 1136.666,
+                "observation_us": 564.1030000000001,
+                "capture_delivery_us": 1.29
+              },
+              "rendered_tone_count": 221,
+              "post_render_us": 283.17199999999997,
+              "worker_allocations": {
+                "count": 201,
+                "bytes": 586095
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 335,
+              "time_sec": 3.5733333,
+              "alive_voice_count": 64,
+              "elapsed_us": 12461.498,
+              "analysis_wait_us": 2534.9629999999997,
+              "listener_wait_us": 8.261,
+              "landscape_update_us": 1.0,
+              "population_us": 436.622,
+              "reports_us": 51.66,
+              "render_route_us": 9288.652,
+              "synthesis_us": 6725.798,
+              "rendering": {
+                "setup_us": 18.72,
+                "commands_us": 113.321,
+                "samples_us": 4960.298,
+                "history_us": 1048.975,
+                "observation_us": 582.844,
+                "capture_delivery_us": 1.27
+              },
+              "rendered_tone_count": 251,
+              "post_render_us": 116.33000000000001,
+              "worker_allocations": {
+                "count": 192,
+                "bytes": 127404
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 180,
+              "time_sec": 1.92,
+              "alive_voice_count": 64,
+              "elapsed_us": 10702.529,
+              "analysis_wait_us": 1516.468,
+              "listener_wait_us": 6.15,
+              "landscape_update_us": 0.54,
+              "population_us": 174.17100000000002,
+              "reports_us": 491.942,
+              "render_route_us": 8403.667,
+              "synthesis_us": 6569.827,
+              "rendering": {
+                "setup_us": 19.84,
+                "commands_us": 110.151,
+                "samples_us": 5525.07,
+                "history_us": 758.595,
+                "observation_us": 153.481,
+                "capture_delivery_us": 2.62
+              },
+              "rendered_tone_count": 264,
+              "post_render_us": 89.88,
+              "worker_allocations": {
+                "count": 179,
+                "bytes": 52864
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        },
+        "no-report": {
+          "full_population_hops": 591,
+          "elapsed_us": {
+            "count": 591,
+            "total": 4268705.526,
+            "p99": 10202.9229,
+            "maximum": 35603.567
+          },
+          "rendering": {
+            "setup_us": {
+              "count": 591,
+              "total": 92183.281,
+              "p99": 1809.7030000000004,
+              "maximum": 2437.663
+            },
+            "commands_us": {
+              "count": 591,
+              "total": 39983.452,
+              "p99": 170.9640000000001,
+              "maximum": 242.99099999999999
+            },
+            "samples_us": {
+              "count": 591,
+              "total": 1979482.556,
+              "p99": 5325.900100000001,
+              "maximum": 5914.223
+            },
+            "history_us": {
+              "count": 591,
+              "total": 508342.013,
+              "p99": 1622.5590000000002,
+              "maximum": 1696.1689999999999
+            },
+            "observation_us": {
+              "count": 591,
+              "total": 217284.999,
+              "p99": 619.0091,
+              "maximum": 673.753
+            },
+            "capture_delivery_us": {
+              "count": 591,
+              "total": 648.732,
+              "p99": 2.5210000000000004,
+              "maximum": 5.38
+            }
+          },
+          "worst_render_hops": [
+            {
+              "frame_idx": 415,
+              "time_sec": 4.4266667,
+              "alive_voice_count": 64,
+              "elapsed_us": 10389.027,
+              "analysis_wait_us": 1779.29,
+              "listener_wait_us": 7.300000000000001,
+              "landscape_update_us": 0.8099999999999999,
+              "population_us": 694.924,
+              "reports_us": 0.09999999999999999,
+              "render_route_us": 7700.582,
+              "synthesis_us": 7684.482,
+              "rendering": {
+                "setup_us": 24.689999999999998,
+                "commands_us": 103.69000000000001,
+                "samples_us": 5914.223,
+                "history_us": 1084.626,
+                "observation_us": 555.913,
+                "capture_delivery_us": 1.13
+              },
+              "rendered_tone_count": 269,
+              "post_render_us": 189.931,
+              "worker_allocations": {
+                "count": 100,
+                "bytes": 27140
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 475,
+              "time_sec": 5.0666666,
+              "alive_voice_count": 64,
+              "elapsed_us": 10198.146999999999,
+              "analysis_wait_us": 2033.5919999999999,
+              "listener_wait_us": 8.01,
+              "landscape_update_us": 1.06,
+              "population_us": 319.082,
+              "reports_us": 0.12,
+              "render_route_us": 7566.0509999999995,
+              "synthesis_us": 7550.551,
+              "rendering": {
+                "setup_us": 22.85,
+                "commands_us": 106.28,
+                "samples_us": 5820.672,
+                "history_us": 1065.7259999999999,
+                "observation_us": 533.693,
+                "capture_delivery_us": 1.22
+              },
+              "rendered_tone_count": 265,
+              "post_render_us": 252.372,
+              "worker_allocations": {
+                "count": 127,
+                "bytes": 563595
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 555,
+              "time_sec": 5.92,
+              "alive_voice_count": 64,
+              "elapsed_us": 10062.135999999999,
+              "analysis_wait_us": 1493.868,
+              "listener_wait_us": 5.37,
+              "landscape_update_us": 0.7999999999999999,
+              "population_us": 839.564,
+              "reports_us": 0.11,
+              "render_route_us": 7526.402,
+              "synthesis_us": 7507.812,
+              "rendering": {
+                "setup_us": 16.87,
+                "commands_us": 111.45100000000001,
+                "samples_us": 5706.631,
+                "history_us": 1045.826,
+                "observation_us": 621.5840000000001,
+                "capture_delivery_us": 5.38
+              },
+              "rendered_tone_count": 263,
+              "post_render_us": 179.61100000000002,
+              "worker_allocations": {
+                "count": 126,
+                "bytes": 563307
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 510,
+              "time_sec": 5.44,
+              "alive_voice_count": 64,
+              "elapsed_us": 9372.032000000001,
+              "analysis_wait_us": 1474.328,
+              "listener_wait_us": 7.41,
+              "landscape_update_us": 1.02,
+              "population_us": 330.65200000000004,
+              "reports_us": 0.12,
+              "render_route_us": 7422.691000000001,
+              "synthesis_us": 7386.561,
+              "rendering": {
+                "setup_us": 19.21,
+                "commands_us": 55.059999999999995,
+                "samples_us": 5615.891,
+                "history_us": 1117.017,
+                "observation_us": 577.943,
+                "capture_delivery_us": 1.3900000000000001
+              },
+              "rendered_tone_count": 268,
+              "post_render_us": 118.611,
+              "worker_allocations": {
+                "count": 101,
+                "bytes": 35340
+              },
+              "underrun_frames_total": null
+            },
+            {
+              "frame_idx": 294,
+              "time_sec": 3.136,
+              "alive_voice_count": 64,
+              "elapsed_us": 10245.906,
+              "analysis_wait_us": 1527.1779999999999,
+              "listener_wait_us": 7.6499999999999995,
+              "landscape_update_us": 0.9199999999999999,
+              "population_us": 1254.087,
+              "reports_us": 0.14,
+              "render_route_us": 7246.34,
+              "synthesis_us": 7241.72,
+              "rendering": {
+                "setup_us": 16.990000000000002,
+                "commands_us": 188.81099999999998,
+                "samples_us": 5604.881,
+                "history_us": 864.905,
+                "observation_us": 564.763,
+                "capture_delivery_us": 1.3
+              },
+              "rendered_tone_count": 258,
+              "post_render_us": 184.401,
+              "worker_allocations": {
+                "count": 163,
+                "bytes": 565679
+              },
+              "underrun_frames_total": null
+            }
+          ]
+        }
+      },
+      "report_comparison": {
+        "report": {
+          "onset": {
+            "before": 869,
+            "after": 869,
+            "exact": true
+          },
+          "population_step": {
+            "before": 37824,
+            "after": 37824,
+            "exact": true
+          },
+          "body_default": {
+            "before": 7616,
+            "after": 7616,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 7552,
+            "after": 7552,
+            "exact": false
+          },
+          "self_sound_outcome": {
+            "before": 1783,
+            "after": 1783,
+            "exact": true
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 1388,
+            "after": 1388,
+            "exact": false
+          },
+          "private_participation_trace": {
+            "before": 835,
+            "after": 835,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 6785,
+            "after": 6785,
+            "exact": false
+          },
+          "terminal_self_sound": {
+            "exact": true
+          }
+        },
+        "render": {
+          "onset": {
+            "before": 869,
+            "after": 869,
+            "exact": true
+          },
+          "population_step": {
+            "before": 37824,
+            "after": 37824,
+            "exact": true
+          },
+          "body_default": {
+            "before": 7616,
+            "after": 7616,
+            "exact": true
+          },
+          "body_descriptor": {
+            "before": 7552,
+            "after": 7552,
+            "exact": false
+          },
+          "self_sound_outcome": {
+            "before": 1783,
+            "after": 1783,
+            "exact": false
+          },
+          "self_sound_descriptor_prediction": {
+            "before": 1388,
+            "after": 1388,
+            "exact": false
+          },
+          "private_participation_trace": {
+            "before": 835,
+            "after": 835,
+            "exact": true
+          },
+          "body_candidate_energy": {
+            "before": 6785,
+            "after": 6785,
+            "exact": false
+          },
+          "terminal_self_sound": {
+            "exact": false
+          }
+        }
+      },
+      "wav_exact": true
+    }
+  ],
+  "diagnostic_differences": [
+    {
+      "case": "hold-64",
+      "mode": "report",
+      "kinds": {
+        "body_descriptor": {
+          "before": 7552,
+          "after": 7552,
+          "common": 7552,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available": 173
+          },
+          "examples": {
+            "available": [
+              292352,
+              292864
+            ]
+          }
+        },
+        "self_sound_descriptor_prediction": {
+          "before": 128,
+          "after": 128,
+          "common": 128,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available_at_sample": 7,
+            "buses[].observed.available": 12
+          },
+          "examples": {
+            "available_at_sample": [
+              5632,
+              6144
+            ],
+            "buses[].observed.available": [
+              5632,
+              6144
+            ]
+          }
+        },
+        "body_candidate_energy": {
+          "before": 7168,
+          "after": 7168,
+          "common": 7168,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "shared_bindings[].available": 122
+          },
+          "examples": {
+            "shared_bindings[].available": [
+              27136,
+              26624
+            ]
+          }
+        },
+        "self_sound_outcome": {
+          "before": 128,
+          "after": 128,
+          "common": 128,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_observation": {
+          "before": 1,
+          "after": 1,
+          "common": 1,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        }
+      }
+    },
+    {
+      "case": "hold-64",
+      "mode": "render",
+      "kinds": {
+        "body_descriptor": {
+          "before": 7552,
+          "after": 7552,
+          "common": 7552,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available": 333
+          },
+          "examples": {
+            "available": [
+              292352,
+              292864
+            ]
+          }
+        },
+        "self_sound_descriptor_prediction": {
+          "before": 128,
+          "after": 128,
+          "common": 128,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available_at_sample": 26,
+            "buses[].observed.available": 51,
+            "buses[].input_support[]": 3
+          },
+          "examples": {
+            "available_at_sample": [
+              5632,
+              6144
+            ],
+            "buses[].observed.available": [
+              5632,
+              6144
+            ],
+            "buses[].input_support[]": [
+              287744,
+              288256
+            ]
+          }
+        },
+        "body_candidate_energy": {
+          "before": 7168,
+          "after": 7168,
+          "common": 7168,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "shared_bindings[].available": 210
+          },
+          "examples": {
+            "shared_bindings[].available": [
+              22016,
+              21504
+            ]
+          }
+        },
+        "self_sound_outcome": {
+          "before": 128,
+          "after": 128,
+          "common": 128,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_observation": {
+          "before": 1,
+          "after": 1,
+          "common": 1,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        }
+      }
+    },
+    {
+      "case": "flow-16",
+      "mode": "report",
+      "kinds": {
+        "body_descriptor": {
+          "before": 1888,
+          "after": 1888,
+          "common": 1888,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_descriptor_prediction": {
+          "before": 422,
+          "after": 422,
+          "common": 422,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "body_candidate_energy": {
+          "before": 1675,
+          "after": 1675,
+          "common": 1675,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_outcome": {
+          "before": 423,
+          "after": 423,
+          "common": 423,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_observation": {
+          "before": 1,
+          "after": 1,
+          "common": 1,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        }
+      }
+    },
+    {
+      "case": "flow-16",
+      "mode": "render",
+      "kinds": {
+        "body_descriptor": {
+          "before": 1888,
+          "after": 1888,
+          "common": 1888,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available": 3
+          },
+          "examples": {
+            "available": [
+              5120,
+              5632
+            ]
+          }
+        },
+        "self_sound_descriptor_prediction": {
+          "before": 422,
+          "after": 422,
+          "common": 422,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "buses[].input_support[]": 2
+          },
+          "examples": {
+            "buses[].input_support[]": [
+              5120,
+              5632
+            ]
+          }
+        },
+        "body_candidate_energy": {
+          "before": 1675,
+          "after": 1675,
+          "common": 1675,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "shared_bindings[].available": 2
+          },
+          "examples": {
+            "shared_bindings[].available": [
+              5120,
+              5632
+            ]
+          }
+        },
+        "self_sound_outcome": {
+          "before": 423,
+          "after": 423,
+          "common": 423,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_observation": {
+          "before": 1,
+          "after": 1,
+          "common": 1,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        }
+      }
+    },
+    {
+      "case": "flow-64",
+      "mode": "report",
+      "kinds": {
+        "body_descriptor": {
+          "before": 7552,
+          "after": 7552,
+          "common": 7552,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available": 80
+          },
+          "examples": {
+            "available": [
+              46592,
+              46080
+            ]
+          }
+        },
+        "self_sound_descriptor_prediction": {
+          "before": 1388,
+          "after": 1388,
+          "common": 1388,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available_at_sample": 9,
+            "buses[].observed.available": 18,
+            "buses[].input_support[]": 17
+          },
+          "examples": {
+            "available_at_sample": [
+              16896,
+              16384
+            ],
+            "buses[].observed.available": [
+              16896,
+              16384
+            ],
+            "buses[].input_support[]": [
+              16896,
+              16384
+            ]
+          }
+        },
+        "body_candidate_energy": {
+          "before": 6785,
+          "after": 6785,
+          "common": 6785,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "shared_bindings[].available": 4
+          },
+          "examples": {
+            "shared_bindings[].available": [
+              26624,
+              27136
+            ]
+          }
+        },
+        "self_sound_outcome": {
+          "before": 1783,
+          "after": 1783,
+          "common": 1783,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_observation": {
+          "before": 1,
+          "after": 1,
+          "common": 1,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        }
+      }
+    },
+    {
+      "case": "flow-64",
+      "mode": "render",
+      "kinds": {
+        "body_descriptor": {
+          "before": 7552,
+          "after": 7552,
+          "common": 7552,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available": 369
+          },
+          "examples": {
+            "available": [
+              41472,
+              41984
+            ]
+          }
+        },
+        "self_sound_descriptor_prediction": {
+          "before": 1388,
+          "after": 1388,
+          "common": 1388,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available_at_sample": 39,
+            "buses[].observed.available": 79,
+            "buses[].input_support[]": 92,
+            "buses[].squared_error[][]": 1658,
+            "buses[].predictions[][]": 2218,
+            "buses[].updates_at_issue": 4
+          },
+          "examples": {
+            "available_at_sample": [
+              5632,
+              6144
+            ],
+            "buses[].observed.available": [
+              5632,
+              6144
+            ],
+            "buses[].input_support[]": [
+              5632,
+              6144
+            ],
+            "buses[].squared_error[][]": [
+              0.00020947417376900062,
+              0.0002586274157568414
+            ],
+            "buses[].predictions[][]": [
+              0.2268470506843925,
+              0.22845572518231194
+            ],
+            "buses[].updates_at_issue": [
+              3,
+              2
+            ]
+          }
+        },
+        "body_candidate_energy": {
+          "before": 6785,
+          "after": 6785,
+          "common": 6785,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "shared_bindings[].available": 42
+          },
+          "examples": {
+            "shared_bindings[].available": [
+              5632,
+              6144
+            ]
+          }
+        },
+        "self_sound_outcome": {
+          "before": 1783,
+          "after": 1783,
+          "common": 1783,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "prediction.energy_ratio.own_integral_sample_units": 79,
+            "prediction.energy_ratio.excluded_modeled_mass_fraction": 40,
+            "prediction.energy_ratio.excluded_modeled_integral_sample_units": 40,
+            "prediction.energy_ratio.modeled_own_integral_sample_units": 79,
+            "prediction.energy_ratio.overlap": 79,
+            "prediction.energy_ratio.audibility": 79,
+            "prediction.energy_ratio.own[]": 1204,
+            "prediction.buses[].squared_error[][]": 1056,
+            "prediction.buses[].predictions[][]": 1264,
+            "prediction.source_energy[].squared_error[][]": 4442,
+            "prediction.source_energy[].predictions[][]": 4914
+          },
+          "examples": {
+            "prediction.energy_ratio.own_integral_sample_units": [
+              0.06590965645809599,
+              0.0659097209429547
+            ],
+            "prediction.energy_ratio.excluded_modeled_mass_fraction": [
+              0.1416470814585865,
+              0.14164613205631638
+            ],
+            "prediction.energy_ratio.excluded_modeled_integral_sample_units": [
+              0.010877273113671648,
+              0.010877198427437618
+            ],
+            "prediction.energy_ratio.modeled_own_integral_sample_units": [
+              0.07679136768414002,
+              0.07679135511524597
+            ],
+            "prediction.energy_ratio.overlap": [
+              0.9768563380880417,
+              0.9768563013452773
+            ],
+            "prediction.energy_ratio.audibility": [
+              0.023143661659556083,
+              0.023143698402320063
+            ],
+            "prediction.energy_ratio.own[]": [
+              5.4073570651379356e-05,
+              5.4071722273092183e-05
+            ],
+            "prediction.buses[].squared_error[][]": [
+              8.390573035239067e-05,
+              8.39522626191948e-05
+            ],
+            "prediction.buses[].predictions[][]": [
+              0.9908399928846976,
+              0.9908374532678302
+            ],
+            "prediction.source_energy[].squared_error[][]": [
+              2.9076886081272327e-11,
+              2.9076922205265714e-11
+            ],
+            "prediction.source_energy[].predictions[][]": [
+              5.00021296569854e-05,
+              5.000212630739521e-05
+            ]
+          }
+        },
+        "self_sound_observation": {
+          "before": 1,
+          "after": 1,
+          "common": 1,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "prediction.energy.log_squared_error_sum[]": 2,
+            "prediction.energy.squared_error_sum[]": 2,
+            "prediction.descriptor.squared_error_sum[]": 3,
+            "prediction.squared_error_sum[]": 2
+          },
+          "examples": {
+            "prediction.energy.log_squared_error_sum[]": [
+              136355.4801544005,
+              136355.38880236878
+            ],
+            "prediction.energy.squared_error_sum[]": [
+              0.00196423368577364,
+              0.001964221302460833
+            ],
+            "prediction.descriptor.squared_error_sum[]": [
+              516.2131653059741,
+              516.2435640015208
+            ],
+            "prediction.squared_error_sum[]": [
+              8.94206408367661,
+              8.942100111721755
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case": "flow-64",
+      "mode": "baseline-repeat",
+      "kinds": {
+        "body_descriptor": {
+          "before": 7552,
+          "after": 7552,
+          "common": 7552,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available": 90
+          },
+          "examples": {
+            "available": [
+              46592,
+              46080
+            ]
+          }
+        },
+        "self_sound_descriptor_prediction": {
+          "before": 1388,
+          "after": 1388,
+          "common": 1388,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "available_at_sample": 10,
+            "buses[].observed.available": 20,
+            "buses[].input_support[]": 20
+          },
+          "examples": {
+            "available_at_sample": [
+              5632,
+              6144
+            ],
+            "buses[].observed.available": [
+              5632,
+              6144
+            ],
+            "buses[].input_support[]": [
+              5632,
+              6144
+            ]
+          }
+        },
+        "body_candidate_energy": {
+          "before": 6785,
+          "after": 6785,
+          "common": 6785,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {
+            "shared_bindings[].available": 4
+          },
+          "examples": {
+            "shared_bindings[].available": [
+              5632,
+              6144
+            ]
+          }
+        },
+        "self_sound_outcome": {
+          "before": 1783,
+          "after": 1783,
+          "common": 1783,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        },
+        "self_sound_observation": {
+          "before": 1,
+          "after": 1,
+          "common": 1,
+          "unmatched_old": 0,
+          "unmatched_new": 0,
+          "paths": {},
+          "examples": {}
+        }
+      }
+    }
+  ],
+  "baseline_repeat": {
+    "command": [
+      "target/i10-population-preflight-20260918/render",
+      "target/i10-population-preflight-20260918/inputs/flow-64-observe.rhai",
+      "--config",
+      "target/i10-population-preflight-20260918/inputs/config.toml",
+      "-o",
+      "target/i10-render-phase-profile-20260918/flow-64-baseline-repeat.wav",
+      "--report",
+      "target/i10-render-phase-profile-20260918/flow-64-baseline-repeat.jsonl"
+    ],
+    "exit": 0,
+    "elapsed_sec": 4.681387656019069,
+    "binary_sha256": "c65a72dceb029e321b4e80a851a97978b965f3b16eabaf14dc8380e416fcd8c0"
+  },
+  "source_after_sha256": {
+    "src/app.rs": "aaecd11c07450fd7f169a5a0cf0b62f2e1db3278621401bb1b4f850fee7dd365",
+    "src/audio/limiter.rs": "d1e03881bee5402e02f2f6e1bcc243e3abcab712cf2f1e6670c68f064af2c956",
+    "src/audio/mod.rs": "ef0c06b776fad220908ef40adb900349915273ef33664e0ba34ac6c443bf96e6",
+    "src/audio/output.rs": "dbc8f2eb886ec5e4b192b241883e2008c72ba37c3f53af637c614da1d7447f8b",
+    "src/audio/writer.rs": "c748b9da8f3a5e3f8c5f18ea06bc21336908883cdfc5647756e6f122613ef4eb",
+    "src/bin/gen_rhai_defs.rs": "644c5c77d08bda17c7fa78b0dd7d722b2a854c801f585d45c46567c9163f264d",
+    "src/bin/render.rs": "e2760387a4c32fe52666acfb34e04ab1a6f14f2a88a33a2ea381958309a2283e",
+    "src/cli.rs": "fdc4adf50fb9cc8ff6b3deacb2d9d219c784f633b6986803731675d4729da0b1",
+    "src/config.rs": "3359e334af30a63c86461df72ef343b915eb3da9bbd17d4871f762318bc48890",
+    "src/core/analysis_worker.rs": "786bb8b01837a863553097504d0df1b2b374caf6cc76db4784507986e8fba17c",
+    "src/core/consonance_kernel.rs": "f2965e0b5578af8d95d3a092a1d80d4be465169d39dea044926d8c0046167bd0",
+    "src/core/db.rs": "2fcaecb9936bbabc372cb3e0a7afdc5148f5a400e0f4ca0a0144782f48942c0c",
+    "src/core/density.rs": "9cca188fa41b55b13b15f136973796e4f7dfa6181f303dc8621d21647b26dd3a",
+    "src/core/erb.rs": "ad5d311b244589173e2876e28db2fe17e0110f95353544ccb7f9ae91e79c64bc",
+    "src/core/fft.rs": "3e097a3fe9baec8658484bd3d66cb63017ef70f75b5c13198425a004dfed559a",
+    "src/core/float.rs": "9fe9612408de7c8fb881e42e38b9994771804452111b5ba9c8a44d1087fd0ee6",
+    "src/core/habituation.rs": "cb3310d614544baa3da6e65d2437fdf41e598dcd3c0dfb531e1bbd42d4c4e3cb",
+    "src/core/harmonic_ratios.rs": "6cc4840c54f5328a93617f6533168584fe058c2737fb249eb08083e71ae1d056",
+    "src/core/harmonicity_kernel.rs": "f9bab3f8a863e51a2e1a314bdc3dfcc2eafda2bed8f1dcc4081e482328c63046",
+    "src/core/history_prediction.rs": "949c05b31fdee0b5efc37dab244e106c23ae76469db8f5984cfcbf539fd88f0f",
+    "src/core/landscape.rs": "b46af9587fbdfc12445aa39b5826122ca83ebdcaf30d4078dce8cfeefe9de897",
+    "src/core/landscape_spectral.rs": "b451289b3388350e88c17d0b118508f8db4ffb4e692ad66b5c3c4ac8111d567f",
+    "src/core/log2space.rs": "afe6973cffa1f83146d96c3c407e5fc8743c330e98bfbba06a8240396bfbd44e",
+    "src/core/meter.rs": "25d881da29f4734da10bd8177b19fd383cca3939b445209cf35248ff7e6b5a0e",
+    "src/core/meter_assay.rs": "4dfeb8258c3d3ed7c90acff1e004ef151e145dd695f1b28dd2ee816949dbd213",
+    "src/core/mode_pattern.rs": "b0fd709d30f0128a047186e73bb0394543ea7e332ceeb958ec934f54f17df09d",
+    "src/core/modulation.rs": "8da22a4865c325535b2285384432ab6d915410d0e5d6861d4823d2df355666af",
+    "src/core/nsgt_kernel.rs": "dc58c81968deeabd31415e7f3d0ef9be24984419f00f77683e9a2ca0d96177fa",
+    "src/core/nsgt_rt.rs": "fa9c4a371a501fd631b3f8e7ca13139ffdb5ce257563b82cd6daa4f05a8123a6",
+    "src/core/onset.rs": "27dff33ef5b74394dfbed6b92ba66590cc9cab970c63441f8ea5f794b03b6187",
+    "src/core/peak_extraction.rs": "d9e6c8468c7b69579687cfe9d2e57df5ae91315ebab7ad931927de065c1bd03a",
+    "src/core/phase.rs": "6359927b399fb76fd655fe856020b5632bfc67e423c2b9fc0037543d97153473",
+    "src/core/psycho_state.rs": "e86804e4c29bb84849902a681e49c9ed1e6c9d1bde65496166d266ed2eafb7c5",
+    "src/core/roughness_kernel.rs": "66c4e167686fde17e3b7f4fe7428d69d93ea6472f1e5770a8faf96e5078f75ca",
+    "src/core/spectral_history.rs": "68da188454b531145f65d1fbbb0a95f1eac94667bbd20c9c29492ab8ddf0c43a",
+    "src/core/stream/analysis.rs": "a9f09af4e982ac08fe90d7bdb12f63c489beff44b0d1e851a44e9b9b872651e3",
+    "src/core/stream/dorsal.rs": "af1d449215b8aadbe45633b1f4afb07edcd28c30d1ed94f345f2a5badafa2a96",
+    "src/core/stream/mod.rs": "17b177de66bec33eed002617ed37540fb8e11e26195acd928dd97d08f905453a",
+    "src/core/temporal_assay.rs": "63d895fbc6d8b440892d40d7168c3b353895101b0f7ab44fd7414dddd3ac1301",
+    "src/core/temporal_expectation.rs": "541d11c5e8e272e70694689afbe84e763468e793c2636499a924c33c6a6d33cc",
+    "src/core/temporal_history.rs": "b5e09f3da3686d43bf8737ba3a5bcbf88e4bbcc6f9db2eccfd35c710a8f52002",
+    "src/core/timebase.rs": "108e000918ff88b3d038f97473b87a5161a8d6b7cf14cc49b84eff8567046c09",
+    "src/core/utils.rs": "d02d5f3b7d6f2bf7180dff7b3a101ccfb2e58d0fb6df65a01da9e9451a878730",
+    "src/core.rs": "d5033cf7a1803fe30e58d2acd219a203104ea0b6e558ca038c68926d1b866134",
+    "src/dcc_coupler.rs": "816eac55db70d4a643a3667e8d7accd0c2187e1a1aa23d20fd118bde07787b5a",
+    "src/lib.rs": "e38567fea0199161d4a96b3cfeb5d9f5530f87a57b666959232969be7f55096f",
+    "src/life/action_candidates/energy.rs": "b0c5f4106a20aca7653f9956f3075fe21855f1c8cde9c8c5f2c70bc9ec648a64",
+    "src/life/action_candidates/live.rs": "64b8be8d1e0390063c18d7952e08ca0f29151a7b12b4233ac887023bea940592",
+    "src/life/action_candidates/tests.rs": "4db9029f293461f9877ae2109fcfc659f7d87da114a42a4d4303c4388e1cf1b9",
+    "src/life/action_candidates.rs": "6aafa909282e855bc198d139e9de783b1435033e46b98bf76b8ca6c140a60737",
+    "src/life/action_observation.rs": "044880556e8e15875ced36c740ced82a5c0e9367e3fe8bb65615c19930f5c128",
+    "src/life/adaptation.rs": "6224810e1f26ff8ed6e02f706d592d1d42b09ecfd30dcfb9663fea5e08083261",
+    "src/life/articulation_core.rs": "a76c72d71dad9d8f69b7e94c3cf6aa0b96924b4954e29d2a556c2fdc35d707e2",
+    "src/life/articulation_envelope.rs": "3e790f7c59229a9341aafb7bf4c649bb1191b81396afa4ebead422ad08ed6719",
+    "src/life/community/actions.rs": "6e21354377c80b330e9c08066b79864d8949d3508db4e73301ae59c4a642ddb2",
+    "src/life/community/frequency.rs": "3eda917d191ace598494572c61e49121616648f0fc43880f813d04fe6c445e54",
+    "src/life/community/respawn.rs": "8e89a18767945a818ab0c02abcbe5e4095981b07e40e1c49b9a895f1f96ef220",
+    "src/life/community/social.rs": "798af1d708f58165ab97806ba050961c8e668d119820ce4252ed334ef0986921",
+    "src/life/community.rs": "926475633ee2a7b628dd6ffb51daa404d085dda41fa2e08d32d116df94f56a24",
+    "src/life/conductor.rs": "e59d291c666fcaf31c71fdbbfae4dc4e8a1e95a04ecf8bd7e4c60155b601fad8",
+    "src/life/constants.rs": "732f17311af099c79ba4c80d077708f39083b371793419b59e83a03c99efe8c6",
+    "src/life/control_adapters.rs": "5e7793e89b012c253c538d3335f739ca1c646e12d0f2e0b7e3651c416e5745e0",
+    "src/life/gate_clock.rs": "14e42b0f649c48030cc316c81c8594a95f422b475cae85c9e724b03c29a73844",
+    "src/life/generator_model.rs": "dd1d80241a8b33e89fb6e5cde9b2a351f84432c49103d92da2b53884aa61f23d",
+    "src/life/metabolism_policy.rs": "c04badcb57395853740d49cf9dd85c94965e92de5630b18b5925656949c36ee8",
+    "src/life/mod.rs": "fef27baaf7d90304460cc22d22734b3fe3947bf1fa3acda2e51b0e36c5ae32af",
+    "src/life/modal.rs": "037ca71c6d202d409703072cafa36d40ee4a7139c7cb6e48a00562b2a0c1111d",
+    "src/life/participation_trace/tests.rs": "f6702c4dfc48f46bc0e5885a58792d03e4ecbb9968704aa5b07242091eb811d9",
+    "src/life/participation_trace.rs": "d0eddf9800493e5f472d0dcf8cac18da26b4e82b24d33cc1076bdc114cc7e6cc",
+    "src/life/phonation_engine.rs": "ef8210258d24cbbd324af5819987161c7cf0ae5265a1cae2dd81372965cba657",
+    "src/life/pitch_controller.rs": "5371228fbea4e7a198fa4a668516fbb28f4394f64a9fe74fd439589c656c9851",
+    "src/life/pitch_core.rs": "7f0127b24efb63ede71f7e0628f2446ecd65ea59e4bd729de6ac7235b210d1ce",
+    "src/life/report.rs": "253eba7f747927b6cc165bc8f5e6d1f4f8e213ce68729ac49a46d627bccb0024",
+    "src/life/schedule_renderer.rs": "b75601cc9af51186a5f1f2dcdf8c888f9a6a0da2c1e34594d209222ca190262b",
+    "src/life/self_prediction/descriptor.rs": "f4b07101ddd80e037bb8adab1fda7cf1b4f7d0156bc167abf62f0d01e6bbd62c",
+    "src/life/self_prediction/energy.rs": "d358337b4663436578354281e16743bd8958e67a008045c543ccb3c73e8f33a6",
+    "src/life/self_prediction/projection.rs": "936b508c4994181fadd74feb33db01fb41a5907d68ad627e4296d244d88d754b",
+    "src/life/self_prediction/ratios.rs": "65ce5b013d4895548e7b9675915c6a1c93a9871a5a10b30f670c980cd57fc6c4",
+    "src/life/self_prediction/tests.rs": "9667d7dcde6e4087f7d13f20aef49e350989860f697fa7443f0626bac08b82f9",
+    "src/life/self_prediction.rs": "d4a7791fb7fc69e0247a34ca1149725e49c98725adf3b330264a1ede79dcb980",
+    "src/life/social_density.rs": "71584a76613f0cc9e5a5afd470dd9bf1528fbac2352f6697757f1d9d515ffe1f",
+    "src/life/sound/any_backend.rs": "5014c3e235ed76e99e9b3d327d95caca34c9dcd41ff61d24e6392c0e368f01ce",
+    "src/life/sound/control.rs": "d09772354a9da096881b3623332c42c7ab9a8f370309d9a70d3ea249c0e09f35",
+    "src/life/sound/control_forecast.rs": "781a70e57dd9360abfa664d0fa8df48baa0fda45a487125f1430f71418ee3943",
+    "src/life/sound/envelope.rs": "fc2e443814bf45459ea2fb2fdc988853a7949ddc24ea930e28c1644f117115f8",
+    "src/life/sound/events.rs": "9bec9c45164091b1e14e1f8ce22df30f73fbf0f201fa66fbb9a89dd3ed31e962",
+    "src/life/sound/mod.rs": "8a46da837d933f6a55ee83fd21a81514b065cb4ed24ff0f33e30eee5e16a9707",
+    "src/life/sound/modal_engine.rs": "94c736a772a58218bfb2d0961d9177ae416c04babeb2cfefdca3ae67fee50416",
+    "src/life/sound/mode_utils.rs": "7a5085dd67a070e595af0fc35181e36d3750f91bf4c303726ff9fde0c56bc0bf",
+    "src/life/sound/oscillator_bank.rs": "b9829968debe7088c7b2dd2236b770b7419a1fc90965860b136314bd5656452e",
+    "src/life/sound/render_modulator.rs": "dd7d47f0f640f2810a9771b8ea479788a17fdd376258525dd25dc7e44ed19050",
+    "src/life/sound/sine_forecast.rs": "3d774e1116ec7a082021c4c5215fe2be326727af848f4857cbbcfabcea5f5015",
+    "src/life/sound/spectral.rs": "52d64b324b18a670c761667b86ed60ea39fb7cc24ace204386178221ff80d655",
+    "src/life/sound/tone.rs": "9fdaa35068de473c1c8525b306b225dec6d2bbd4ff4f7ffc67fe61b6dd7b32e1",
+    "src/life/sound_body.rs": "d1bac9c3ca25b78c60e4e14f73daff6ade9d7da97c41299e57c7e27134e7640b",
+    "src/life/telemetry.rs": "ac94d69008e41788d2578bc49967bae5bbc52455bf8617bdafd3e71d187b5abf",
+    "src/life/temporal_participation.rs": "2d3279afc5dd01ec5832c15773362e7ad0d79fe48e229a4a5f2d0fa1986f696d",
+    "src/life/temporal_participation_assay.rs": "c4ef74c0dccfd021480a4d8b109117fc8e04f295744c3ce297113fc6a66cfd27",
+    "src/life/tests.rs": "42c0d2d50fb364777e987ecf7dbbc534939ec89e97c1c32377929c4fee0dd4a0",
+    "src/life/voice.rs": "ba1cab874f23fa9cca86436f60875f00acd2548a50099c1ca56d49b2bfdf95a4",
+    "src/listener_twin/contour.rs": "1269788b9c67db2ab254cd444937cfa8a83af567b111923d5cae4e40f053737b",
+    "src/listener_twin/mod.rs": "90a6772f7be9586f9bb8b597a2c26eacca099c9f621cbc30f7fe511dda275c44",
+    "src/main.rs": "1a37c8530b8704c8b049587d3d0221b0e0b438ad99272671e62af5456a6be1e4",
+    "src/runtime/body_profiles/policy_default/energy_projection.rs": "2b6f258b4b7f5b5864f899f91c2c378629a8cd94e76462f7f323aa184abbfa4c",
+    "src/runtime/body_profiles/policy_default/local_continuation.rs": "07b84832277c5854be8eeba9b678551c51ad8261529a18c07525d09c2a0bc1bc",
+    "src/runtime/body_profiles/policy_default/onset_branches.rs": "5d4fe1a11392dbbd606842ea0f57e530a4a276051528a65ca4d650d0d60c2de4",
+    "src/runtime/body_profiles/policy_default.rs": "dde5ff84981769754ea3540139a37202ab868796d5a309d4576fa5a2872b7a42",
+    "src/runtime/body_profiles.rs": "9a021e5c01b3e53c038cd8bf1f9a968eeeae75102ba9b8bcade117d6a4fb65df",
+    "src/runtime/mod.rs": "2439f0bd2bd72061cbaf5a57bfcf6ff0201c1730b0014624dec8fed4e8985b9e",
+    "src/runtime/perceptual_action_assay.rs": "1bd237e5c5c9e7d3d84739f51be8177a5ae9090ba28eeb94fe8a773c56146c67",
+    "src/runtime_profile.rs": "97e162c5c7ec2274dbce126115f9894e3b7ee303258fbd3ea22d02ada90e6403",
+    "src/scenario/control.rs": "f2610e082ba72db56ec1e10ddbc2f14e05199381b46682248f0d65586e346d3a",
+    "src/scenario/lifecycle.rs": "5a92ef595fc3b7d24be884176bcf0502392c01c5f068444beb662dbfcc570985",
+    "src/scenario.rs": "cf0105821c67e8e20b78cbba4b794d33f0efb6254fe9f26a14b680fded8fdb1e",
+    "src/scripting/defs_gen.rs": "76cf16b3e8059f117e776cefa706e49878bcf52e3b0f6abe48057fc5a84c0629",
+    "src/scripting/docs.rs": "7655963e9436f1f63d40a4d5aa0a7fc04d479f0169291b4d3a2ab4eb5ab91fe8",
+    "src/scripting/engine.rs": "b2559b8f4ae2524cc9d916403e39d1a42e02632759887f9827baf0b79193be7f",
+    "src/scripting/mod.rs": "d3e14280ec99d7432f28766b31f5a8342e31f58e5063ba8c435a8ebce10b4748",
+    "src/scripting/tests.rs": "71adfb4ff3d8de8d96231ca8ec8053c00d5bfca1b01d1bf393a67034d34a2f8f",
+    "src/synth/mod.rs": "12d4f10579bc2a76c658f446ccfefebc63e21202bd037e4bde5179baee975143",
+    "src/synth/modes.rs": "30c391197bcb2869ee6feb4e1160dcf64a5a797a7d8ffdf052c08bffdff5fd3b",
+    "src/synth/resonator.rs": "4adc58af16ac545af22ce8621b66e30f794e81697822f205f0368b9b01e53bc6",
+    "src/temporal_cognition/accents/periods/groupings/tests.rs": "05a80aaf8f115464e0cbbf808df8a53235fa4e6e5a0fab504ce6a6c893ec7eb3",
+    "src/temporal_cognition/accents/periods/groupings.rs": "c59b9c09cdad17ef8c59bc8a23abfa4627764b01f3515b37a1b06425712f385f",
+    "src/temporal_cognition/accents/periods/tests.rs": "5ac75473f1d4cad6a7ca7caa846cf7273aa315a8504b41185f0ad1ef7abe2db1",
+    "src/temporal_cognition/accents/periods.rs": "30d45f320ea7bbc83a3ae6ec399a5ea043b56c2db80a22062c60cd5d91e8c435",
+    "src/temporal_cognition/accents/tests.rs": "2154948526c7c81e9d74eb25baa1ba91b4141ecfde22a550be97dff928276e6f",
+    "src/temporal_cognition/accents.rs": "38f3fe2b969a4bf470b64d606cd783d1d56830fde127deacc6508638ff31d8c4",
+    "src/temporal_cognition/action_profiles/consumer.rs": "94bc31fa266393b1f7b1f82724d1858434f6385207b02dd6cae1c9a4602bc18f",
+    "src/temporal_cognition/action_profiles/tests.rs": "57ad3078212e3d7284152bdb95e371365c30cc77ce1402866686832e058751aa",
+    "src/temporal_cognition/action_profiles.rs": "658631c81966dcb482c90d298573e85c2fd68f0f63ab22ad2b6d16f6743e3c46",
+    "src/temporal_cognition/arrival/projection/tests.rs": "8aa3de90f544b9b42e5c99f7ae24339cafffc4cab4e77923530f5d75bf4db7b1",
+    "src/temporal_cognition/arrival/projection.rs": "a119b46bc79c12f94c1bd8497cc96279866455aaba7bcdd238696cc8fb74793f",
+    "src/temporal_cognition/arrival/tests.rs": "62b26252a22c9529921c7e1559b3fe80261581d8a94be4d8c1ad8bcccec5669d",
+    "src/temporal_cognition/arrival.rs": "ba4a397b011b9db64d75ced34469b696cebe8618d02590dd331a743e0107875a",
+    "src/temporal_cognition/body/action_targets.rs": "9c8b245903696aec2b2ebde4f4d4103bc34fb80e705d195e92238053aaa18212",
+    "src/temporal_cognition/body/tests.rs": "62041edae4eb5e6eefa2296aac4d99b770489ccceb0a23f1aa201e1ef6503a1d",
+    "src/temporal_cognition/body.rs": "bd7c08ade530a51020418fa92b0fede9de3f3a811332b71afed58e041327af1d",
+    "src/temporal_cognition/body_model.rs": "37b44e297f4fbff867a674102776c2d6ef19d511ac4405474317747e1c8154f8",
+    "src/temporal_cognition/consequence/tests.rs": "17a1c0b17f77b1b17e38558ab2f156623b519bd509b00dcb8e32cbd90e69cf28",
+    "src/temporal_cognition/consequence.rs": "661be3e702b79b32e45a0eca1885cb7a5425af6899ced96603cf403a365803f1",
+    "src/temporal_cognition/descriptor/tests.rs": "6798f09d9fcac72db4b1719ffbe050ce1a28d13eb6c3c8cc920cce51cd63bdd6",
+    "src/temporal_cognition/descriptor.rs": "d86fb9adfede9dd5114b9f211181d3484876d109928047848bbcd17a7276286a",
+    "src/temporal_cognition/feature_projection/tests.rs": "ecc64118cf85a31062522f9600d12629313a61081ce5c621da2e32eb0005860f",
+    "src/temporal_cognition/feature_projection/window/tests.rs": "1108933e9e61668cd87b83fdba8fc1bbc4441d9d000859b611189874c8219328",
+    "src/temporal_cognition/feature_projection/window.rs": "fa8954ecaa7235ac9400e66e4a25e853d546cdefe6f5082777d184b2f8b01f5b",
+    "src/temporal_cognition/feature_projection.rs": "7027ad0a8cae3e2b753490dfcf0990a46fb748eea19d7b61068ad060044ee87f",
+    "src/temporal_cognition/features/tests.rs": "2868a20d6260d00803db96989927eeed35b662ba74bdd9ae010f2c29faa25a1e",
+    "src/temporal_cognition/features.rs": "4ee42881d50435e315c962358a49032452df9ac910221e60b6bb0a1ee2fcbabb",
+    "src/temporal_cognition/gesture/projection/tests.rs": "dcb32fe6364245f4579d5aad461e6975ae3f6c99e193e0b75c15d3e6521f8103",
+    "src/temporal_cognition/gesture/projection.rs": "c83a7a02c8f4a592868390527ac8dc676bf98457f552a4ed06c1869ad7448ee7",
+    "src/temporal_cognition/gesture/tests.rs": "dde36dc2dfd47514c0ce9665142f8173c680b2af83a03b06343e45093ae185f2",
+    "src/temporal_cognition/gesture.rs": "1079ee0c47c3d5918b00ae5375ba2b56f7ba0ac521790ad15b6af88d3d0bf3df",
+    "src/temporal_cognition/group/tests.rs": "7480a2939becf8a71484ec25e2d51e820521406b1c0a9485d67c488ab6c08ea8",
+    "src/temporal_cognition/group.rs": "7a9840967ed6085d87376d14b358e120e6b8d1a14f57cfbefd212fb2b8833017",
+    "src/temporal_cognition/grouping/tests.rs": "81f72488169ff62de633173cef4fd4f6c202d6dc6310b92bea734c9bafa1f9b7",
+    "src/temporal_cognition/grouping.rs": "e58a7400f248780dd0c68620fc99cc91b4a39904dd0571f0547bc523faa2ed27",
+    "src/temporal_cognition/hazard.rs": "26e39365ed446030a03fa0d658203c283e7d9f558bf69c0ebac7811586969c0d",
+    "src/temporal_cognition/joint/proposals/tests.rs": "776c3d197b3d6f933a0a7eefc9cc62baf02cbed0d949a8db7f4dfefc1da6f670",
+    "src/temporal_cognition/joint/proposals.rs": "42af9ff2bf8c81c95ac1e527a1d8afc4d04f431571ee298b951969efe0bf77d9",
+    "src/temporal_cognition/joint/shared/tests.rs": "829efb23eadf4744bae397b28217945dcee8cd3e67830e6760620de78f40c8d2",
+    "src/temporal_cognition/joint/shared.rs": "a6832b379fc0c07db2bd4fb4ef553dec5c6092498b493c5a2b790fddbd5ffad0",
+    "src/temporal_cognition/joint/tests.rs": "889ded77604a71d246346b1f4f38519e2bbb8753533049ae6723f753b0082633",
+    "src/temporal_cognition/joint.rs": "6b645f6d6b0c27bd2ec7b1f3b1c1b674e28733193a4c5ad8a3ad85e9f69e7a0d",
+    "src/temporal_cognition/long_form.rs": "2f886fa01320530ad85a9e485bf00615840ea4df0a361fd377428c9a5b71eb49",
+    "src/temporal_cognition/matcher.rs": "99c403d63fb932f4194b073061cf80607c497a9a72d5ff2784e905fb010e233e",
+    "src/temporal_cognition/memory/index.rs": "5a1b0879ce3225b0b9ce59271a3d5ffe0e252caa30b73403dd75e85339aa9093",
+    "src/temporal_cognition/memory/reference.rs": "731cd83d54e976c953fc907973bc2a69acc5090282ec2cf1622d7a1c9d6808b0",
+    "src/temporal_cognition/memory.rs": "7a59224e256e41d3014cfc732a90e4350f47269b1798c2af110e6d0222f300fb",
+    "src/temporal_cognition/observables.rs": "0a2db3aaa8f2cca04fe0eae1b16336f5480b7472bd0c0ae1bff14f1fefb17054",
+    "src/temporal_cognition/observation/replay.rs": "9d884a4aaa19c07e94372c1fe461ba2414e70fa430b919d6fd9149584e9751d5",
+    "src/temporal_cognition/observation/resources.rs": "cd76fcc02bb91289bc0724b51a4d0bbcb079ab895eb64ace8bf114fa22ca0c82",
+    "src/temporal_cognition/observation.rs": "f0e9032003b35f55dd76356b0fadaedf09a30a0ab166c46a6fc4c39eb2d96278",
+    "src/temporal_cognition/phrase/projection/accents.rs": "ba0b7c0aac2939439d36a21da3107d0553cb350003d7b7f44309338569922f8e",
+    "src/temporal_cognition/phrase/projection/tests.rs": "4ceb92053bc788f0456ea958aea53a74763afc0e5b65be67abd3d6fba6a9cfd7",
+    "src/temporal_cognition/phrase/projection.rs": "e0bcb1331278cf88fda2f0fc37868f6a12808ae09ff9c62a5d80c615201ce18c",
+    "src/temporal_cognition/phrase/tests.rs": "606a916dd9ee17571d716aa7f99dfc53a0c9ae2d4135aa2784d7309da159e5b9",
+    "src/temporal_cognition/phrase.rs": "265c468d0f23d3c21ad87f0b9d34d9988d3765a5e2c5fe60a92c061a20ad2381",
+    "src/temporal_cognition/private_trace/tests.rs": "49b32f4b015cb91edb9fc53f3884c925335b770ed207944c7d933b64b9fab185",
+    "src/temporal_cognition/private_trace.rs": "e2cc3b7ca09148b0d3d8828d3d6c3426652713460fbf7dfe52377bd76fa141b0",
+    "src/temporal_cognition/proposals/frontend/recurrence/tests.rs": "28da7de3fca7c04442a90d91428c151263ba0eabbd3a1c1777a46b91746472f2",
+    "src/temporal_cognition/proposals/frontend/recurrence.rs": "f185185818ce2819c84bd66343e035b2a763f60d659e354e8e38080871b77507",
+    "src/temporal_cognition/proposals/frontend/tests.rs": "36c8631463bb7a5ade8ced74e4f270d2be92bedb2412c02cdc9061571f07f87e",
+    "src/temporal_cognition/proposals/frontend.rs": "0249c2e8bb73bd89d7622b21f636f5e0c58bb4154f1fc21a5ac7285575fc771f",
+    "src/temporal_cognition/proposals/lifecycle/tests.rs": "4eca1e982e9d791ca4a33360e5599ff2dcf56fe52a7175380b16e8a16e3e6960",
+    "src/temporal_cognition/proposals/lifecycle.rs": "6491a0cd4177cdfd92ab47c70766f2431724d544cd7b9c8f53072f810f759e74",
+    "src/temporal_cognition/proposals/producer/tests.rs": "89ae5e62d63e76568f941612698b87ec453bd0f64473a5993618e4b7799eece4",
+    "src/temporal_cognition/proposals/producer.rs": "023b927e66c03ff8ef25feb97e5be22c1012b1126ba6b89d2513f43f01ff88bc",
+    "src/temporal_cognition/proposals/tests.rs": "e7f499db8a419b7c3e8f8e8b827658c842ddbab23d802d94b25cb80674bf597d",
+    "src/temporal_cognition/proposals.rs": "2cdbc838855e09d248b5b36d3857306eeeb9682b6a64ec352a24002bdc090b3a",
+    "src/temporal_cognition/query/cache/tests.rs": "b2bc65df8d925290891c63822fb0d330cd737f151cfcb09d704364fc652f7d05",
+    "src/temporal_cognition/query/cache.rs": "6b12defaa5fd1ff243438a01ce8ee95a199d87fd59626ca53ceecc7a09efbc2b",
+    "src/temporal_cognition/query/tests.rs": "0faa4d9adf926ebb18e167baf1fd80729c3e289698f5c01a699cd0ed692adae2",
+    "src/temporal_cognition/query.rs": "11aa5e405efeec5b383e4ea3d2828b3c978265f65b89fb944dbc6ec724aaf385",
+    "src/temporal_cognition/ratings.rs": "0a7ec546210a2a2c4634ea3215e058ae12bcec3379a3532f9de53bdc15826149",
+    "src/temporal_cognition/recall/audit.rs": "cab0c3b4648eea4e8f010b6ae993b495a7a7ef3adcb8bb6cccbdd752ba75a04d",
+    "src/temporal_cognition/recall/clock/tests.rs": "dbf062216e2268c3869416a8c13310355173033e652da844b83ff1afe1ce2780",
+    "src/temporal_cognition/recall/clock.rs": "6159f5f2f6c7fa82eebdb9dc4f586b8759cb39a94ba53b983c17bc74c221fc04",
+    "src/temporal_cognition/recall/graph.rs": "853be89d3b3f6493f1ed39fb2eadbc405223f842555ad034c47d76538cfefc5e",
+    "src/temporal_cognition/recall/retention/tests.rs": "dfd61a930390c9a873dde464dd8871f018da11c0eb0ef7bffb7c5b98dc080f34",
+    "src/temporal_cognition/recall/retention.rs": "b5b1aae226f8c78ea8f78e6f546bf93107ea533de38d349fc4a23164d4f86486",
+    "src/temporal_cognition/recall/retrieval.rs": "743b2e9a3a1554bb8a811600f1f3f23187e001103e535d200f02b9339cf38477",
+    "src/temporal_cognition/recall/tests.rs": "90b979ac8c6a3d8ec2ebf2612cec1b0851fd4ba854b9bf8bc1037bb1ae2b63cd",
+    "src/temporal_cognition/recall.rs": "023983506fa74c1cada327bc7b018da58df5d2a50d3a04063fb12b5b64ca77c3",
+    "src/temporal_cognition/reference_inventory/tests.rs": "d7fe3c68dd3debe06e3b6c20948eb113747651b50596f7a9c9849d04bbfa7208",
+    "src/temporal_cognition/reference_inventory.rs": "730e8f0211964bc03fe7007447a38b5b76452e0db79f2b5c8a36ca59a979ed79",
+    "src/temporal_cognition/ridge/tests.rs": "fcacd12d2002d367853fad3d9d496791e861702ff49c9976f4c01c3872e38bb8",
+    "src/temporal_cognition/ridge.rs": "b58da9ab9dccde9654d6a1bbb2bdc2a751a305ab3da347be4fd3301f21b63224",
+    "src/temporal_cognition/section/commitment.rs": "54b7a4de7fa68fed4052c7593923791f657cd037c006ec5505294db030677112",
+    "src/temporal_cognition/section/cue/tests.rs": "3f2d1b8b4233178434ff01efe4cdf4df0fb943c7796d34af9db3e2b46b984e51",
+    "src/temporal_cognition/section/cue.rs": "ef7ec6e94e697c528eea10744a26b87e1b4d9897e12ad4847e545180d9bbfacf",
+    "src/temporal_cognition/section/form.rs": "cad7b52cc000fb9d7d0f19133e1b0c663be241c23ad2a71e0a21a7d34ddce7ec",
+    "src/temporal_cognition/section/runtime.rs": "ce5951d66de898e7841f7909b712d76f1050952c91966f3aff8fa31511d2da05",
+    "src/temporal_cognition/section/tests.rs": "7c79378af3af6e40a800c24ca4e17d75a41949b7354fa85bc14ecc8656534618",
+    "src/temporal_cognition/section.rs": "a1cad8203588b5d84a6d2b8cae831906c4c7aa0a0176f10a329dd6882326a56d",
+    "src/temporal_cognition/tests.rs": "326c2e802a1d6c010baba8aeff47ad572b763c4e3670e122e0318397d2daf568",
+    "src/temporal_cognition/trajectory.rs": "245029a014f3b59997e4305858a1e500bddb0e9670b0f93acfb0c4b54eeb0542",
+    "src/temporal_cognition/transport.rs": "4c4f1d336a957eb8cb55c11bea0d76efb05df423cefa5fc9571ae919ffa6e76f",
+    "src/temporal_cognition/whole/controls.rs": "1033c58d96a0a016e4cb4f97b40c296ab0f8224a09ad62c88358ed4c770e153a",
+    "src/temporal_cognition/whole.rs": "ed1e0bcd4490d810c241702232a8c91a1218dd21b0ae4ed4d4d148cf4baaa865",
+    "src/temporal_cognition.rs": "da7134ed516dd30a886b4e4c96626fd4a3581d84908ebebc6ea9448cbe17533d",
+    "src/ui/mod.rs": "e72c400bc0c7853f4136020019827645a6eea7a4d2483aa50ab6f9fd1d47d079",
+    "src/ui/plots.rs": "67db5d661678df4b81c025fe5b63588ef723efe671897c3666435ddab2c64651",
+    "src/ui/windows.rs": "1d8f75cc983e3eba1a518566a7cdaf82fdd6185272cdd21265bc53a97a483680",
+    "src/viewdata.rs": "51589241cc346fb569cfeac85e34513eb7da55afd5c027cae5eb8f2fdc80f4a1"
+  },
+  "supporting_files_sha256": {
+    "scripts/evaluate_rt.py": "7a917827edd8007b5bb0e311f1661125a88a7dc0e2cb2aa456012b6c00ed0da8",
+    "tests/test_evaluate_rt.py": "cb60f7f722d8584dee3952c1b9854fd49ad280bb011e17dd396552cd770b37d7",
+    "tests/runtime_profile_binary.rs": "4c96a145376e361384e7e50c09e56cad5717990a3c8225f57e560d4ecf1d4a5e"
+  },
+  "limits": [
+    "Timing only, no algorithmic performance improvement claim. 64-Voice flow whole-hop p99 still exceeds8.5333ms in this short device-free workload.",
+    "Nested sequential wall intervals overlap the existing outer synthesis measurement. Their percentiles must not be summed; they do not prove the combined decision1.6ms criterion.",
+    "Frozen pre-change binary repeated with identical WAV also changes body availability and issue support. Numerical learned predictions changed in the before/after64-Voice renderer comparison but not this one baseline repeat; complete causal attribution is not yet established.",
+    "Private-body offline publication ordering, all-window private worker p99, no-report background terminal counters, queue/freshness, full8-prototype load and full-duration/live acceptance remain unresolved.",
+    "I10 incomplete. I9 held; I11 effects disabled."
+  ],
+  "artifacts_sha256": {
+    "target/i10-render-phase-profile-20260918/acquire.py": "37bdd388265dc76c420b480670d33323df4375548406dfc3bd7bc41f42b86481",
+    "target/i10-render-phase-profile-20260918/all-targets.log": "864a394d21eef3a211e72b12f14d25d969c6e08a33e26881a217d6f8f90df04b",
+    "target/i10-render-phase-profile-20260918/baseline-repeat-run.json": "b622c914041e996f5649da63ed4afa4d41a1778b77e9b1db23c3ae960100ddbb",
+    "target/i10-render-phase-profile-20260918/before/src/life/schedule_renderer.rs": "095f76bee2c504dd4ed06daf23afecc2db095137a46bb4d4ae13521b9ecb099b",
+    "target/i10-render-phase-profile-20260918/before/src/runtime/mod.rs": "95a3b3ac3bab32dd56d1d36493c082b643cf693564a39d6e28156fc38e98e23c",
+    "target/i10-render-phase-profile-20260918/before/src/runtime_profile.rs": "a4909169791d741972e1d09a563ade6fc0f14407c9cacf5a20bed1c6238bd4cd",
+    "target/i10-render-phase-profile-20260918/before/tests/runtime_profile_binary.rs": "9497b016b412b0c621a8cffcf2c0250825369dbf4ad6398d983b4fda64a4d2f8",
+    "target/i10-render-phase-profile-20260918/binaries.json": "1c16b25348fd952bfe9f869d200a6aa15a7195ac63749db39052c4374883e84b",
+    "target/i10-render-phase-profile-20260918/checks.json": "a4acae26b665528c24bd96991285e172327640bb861d68b52d0354809538c727",
+    "target/i10-render-phase-profile-20260918/clippy.log": "0676557803c5cc37d9f7fa0cb8a803a5cb4a387abd4d76b9e598c8e7e202521f",
+    "target/i10-render-phase-profile-20260918/diagnostic-differences.json": "34360965399676ff411a6c59e7206f34f5559ed6cad394f6e705d1c630f611e4",
+    "target/i10-render-phase-profile-20260918/diagnostic-differences.log": "46e085e131a197835e1830502d49b97e0ac7670e62d619b3931bd06c19a49935",
+    "target/i10-render-phase-profile-20260918/flow-16-no-report-profile.json": "cdd40cad8073bbfc380badb48970adb5a7f03fd79134f1a6ff14694794ad19d9",
+    "target/i10-render-phase-profile-20260918/flow-16-no-report.log": "4c3cfc090bb8d42fbd81c158d757cc99258e46e070101dfe3aec828c8cd114db",
+    "target/i10-render-phase-profile-20260918/flow-16-render.jsonl": "ecaf1a620b5d48aaeb50ddcc95c8ffdf247f822b63b39fbad9592785159e350f",
+    "target/i10-render-phase-profile-20260918/flow-16-render.log": "fb963cbdfb1ab235630a690522162b3ff325d7965fc4d6d57e4b2117fdb0f0a6",
+    "target/i10-render-phase-profile-20260918/flow-16-render.wav": "85732d960f3bf0c1d4735c897d2348cd2ad9df05d524760187f7e402668ad60d",
+    "target/i10-render-phase-profile-20260918/flow-16-report-profile.json": "2675ffc5cb7e5ec3c1668db54cf37d33d117a7c0a2b1003760283040ecb01ed4",
+    "target/i10-render-phase-profile-20260918/flow-16-report.jsonl": "3be2b71a634604e6a648d4f842235838bde3355a6f2f27da57ecdcebd01286c1",
+    "target/i10-render-phase-profile-20260918/flow-16-report.log": "5bc5ccba48954f01aceab96c3a5e278072d17ad87e8b267e3ae0b7dc94d8c720",
+    "target/i10-render-phase-profile-20260918/flow-4-no-report-profile.json": "832728f6dcc01c05bf8029019a4139e621859900c147587f1b7c6da838ff768f",
+    "target/i10-render-phase-profile-20260918/flow-4-no-report.log": "a78eb1e8b0f74600bd11f69305481a56641dea011287675d541d153cfdc4d181",
+    "target/i10-render-phase-profile-20260918/flow-4-render.jsonl": "7158c04b145664707f5dcb230e1a3493c36f6ce6fe408c5229f074e339a3d69c",
+    "target/i10-render-phase-profile-20260918/flow-4-render.log": "4ed7986d0fa59293f8dc709fd76ed1c214a21df17cf9b867a5ea81122155e882",
+    "target/i10-render-phase-profile-20260918/flow-4-render.wav": "2465390ac3e8c5a6dd1f324bc58a1bc7d2b6a60ea273077844461d29a02c0536",
+    "target/i10-render-phase-profile-20260918/flow-4-report-profile.json": "f0b982dae991011fd75574b38fca746c07b09689fb24c6a5499d2ca2c1cfda77",
+    "target/i10-render-phase-profile-20260918/flow-4-report.jsonl": "81c50efd58fdbd0f5e07d8113c8321cf3301e444fddb16e4ad65134edbb810ed",
+    "target/i10-render-phase-profile-20260918/flow-4-report.log": "e8464ea8b836471cc43f68c6a5c06ffa28276ca437a99f3312785900c5cce48c",
+    "target/i10-render-phase-profile-20260918/flow-64-baseline-repeat.jsonl": "5ef08df0ca907a69a7dae5741d6b78b14105d17e275b2dc0b970a55ea28b2b27",
+    "target/i10-render-phase-profile-20260918/flow-64-baseline-repeat.log": "c3487005166eafa3e1020746ae7ee5e2de5356efd1ac08419d11320cf26f90b3",
+    "target/i10-render-phase-profile-20260918/flow-64-baseline-repeat.wav": "6492d17e8e797de44ef3660bcda8f816ba21b5b1417a05d1e0cf17e25ed1bac8",
+    "target/i10-render-phase-profile-20260918/flow-64-no-report-profile.json": "a87f6e7e01e164820c37f1fceff64b11129e00d6f0d2d82b3ccf7214fc1397e3",
+    "target/i10-render-phase-profile-20260918/flow-64-no-report.log": "668ad235de8013db7d017669b7215be38a157aa3580641a56793910c70b916f6",
+    "target/i10-render-phase-profile-20260918/flow-64-render.jsonl": "74d6f871aa85dbbed17a7489e95c6af92c87e2d4738e66b1e00d1d2e4d4f78e4",
+    "target/i10-render-phase-profile-20260918/flow-64-render.log": "80615a5580042fd723a41141deccebd20f0c887525c69b92b8e313d39dc70889",
+    "target/i10-render-phase-profile-20260918/flow-64-render.wav": "6492d17e8e797de44ef3660bcda8f816ba21b5b1417a05d1e0cf17e25ed1bac8",
+    "target/i10-render-phase-profile-20260918/flow-64-report-profile.json": "f2841efd9f7cff18e87b84e25de959cfb16c75f1de1145e02b16dd3f4f7810e0",
+    "target/i10-render-phase-profile-20260918/flow-64-report.jsonl": "2b8d1c04985bbf94bca29f26f2ce449a471857571980b1d363f742c1d6aeab2d",
+    "target/i10-render-phase-profile-20260918/flow-64-report.log": "b16ea0b2f3f1b82c70f2968a25942810aecd1d54ddadc9c932f9974cdd14ae5e",
+    "target/i10-render-phase-profile-20260918/fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-render-phase-profile-20260918/hold-16-no-report-profile.json": "fa352bfb6c2c108de600097debbb5731e5d8e7355cfa11eb948f932ac01fe200",
+    "target/i10-render-phase-profile-20260918/hold-16-no-report.log": "bae9a0f5741512d435d22cc98ad9d3c651f1878df634638b81992d7827deeb3b",
+    "target/i10-render-phase-profile-20260918/hold-16-render.jsonl": "83898ec928b81fb40e190ffdc9728d3d1da464255910b66e61c3e446ade89b16",
+    "target/i10-render-phase-profile-20260918/hold-16-render.log": "17655c4eb081f6731b169ce99eb1000e7b2b6069426a81795d9c2da7bca32410",
+    "target/i10-render-phase-profile-20260918/hold-16-render.wav": "9a379ce7f3d26ffa88a62aac63eb33f9475fbc90cc2f6d194a792479f350e733",
+    "target/i10-render-phase-profile-20260918/hold-16-report-profile.json": "d476b0a33b297b32d480373584b5aa7d17526957996a6486a9b50fddf97e0ad8",
+    "target/i10-render-phase-profile-20260918/hold-16-report.jsonl": "25689f954d36ed7a8933527925883442f31c097b65dacaa12411c09a4207d2cb",
+    "target/i10-render-phase-profile-20260918/hold-16-report.log": "c282d19f26fe31d5a99917ec2d82f4a34b1c28a4cf3ed07a4b7fe83e605ee789",
+    "target/i10-render-phase-profile-20260918/hold-4-no-report-profile.json": "08faf8fef95e049a7e6ab2120f7d75cb7ee711b2815f2c415e656df8a2216934",
+    "target/i10-render-phase-profile-20260918/hold-4-no-report.log": "d42779af8139090760f17188b60b81289f7e4aaa5f498bd19289118fef3dffd8",
+    "target/i10-render-phase-profile-20260918/hold-4-render.jsonl": "bc59acb07c859994bd72baf7c8f0fa36ea1bd0c74f0515a2717b2b87947e1c7f",
+    "target/i10-render-phase-profile-20260918/hold-4-render.log": "10d5af608bc9927db194bf71152597b995ee14344967d9b2c0aac63025d1d67d",
+    "target/i10-render-phase-profile-20260918/hold-4-render.wav": "fd3870d9accdc5b972960bbe86b9371ffdb29ab4f386a8ad2086c8657069343c",
+    "target/i10-render-phase-profile-20260918/hold-4-report-profile.json": "18abeb15b65df5252ded18f8669ec0b52b1a61611135d901aa14db4b28209ef9",
+    "target/i10-render-phase-profile-20260918/hold-4-report.jsonl": "cd9c52675a3f672bdaf93db33872f07ae34c297298a7ad29819a3f1808a28ec3",
+    "target/i10-render-phase-profile-20260918/hold-4-report.log": "6d054538617ee4cb2c83d48b8e3d85420fcc1cd9c8ae5a7bbc3662c8d7b5f3d0",
+    "target/i10-render-phase-profile-20260918/hold-64-no-report-profile.json": "532abe68747fe1e556507415fbed18c9544fbb835fb22353f0e3ee237787260f",
+    "target/i10-render-phase-profile-20260918/hold-64-no-report.log": "cf46f70cbec5849e655c7875b502509e095d07f368fa73aac6eba518421b38a5",
+    "target/i10-render-phase-profile-20260918/hold-64-render.jsonl": "d170b2492d27a7e1fb571a9cbbb2fd6cac06479e742a323dc86be973f6a4699a",
+    "target/i10-render-phase-profile-20260918/hold-64-render.log": "44397636f56a4a2a31e3d71fe1c4a9f3da2513f6da6842ca7354aa83d701ec73",
+    "target/i10-render-phase-profile-20260918/hold-64-render.wav": "6c0ed96b3c8099802aa60e2daa760722929bb8fffe49e9d558b5e2abb1d2b31f",
+    "target/i10-render-phase-profile-20260918/hold-64-report-profile.json": "e98260c78d37e804856d1114a11facf1551e0e3783b7ee4f20f8ec66adbe0269",
+    "target/i10-render-phase-profile-20260918/hold-64-report.jsonl": "a17a05a3085254b08a6cce3830d4d1c9f781178c6ef67cd6f54a8f9f90671d7a",
+    "target/i10-render-phase-profile-20260918/hold-64-report.log": "fa4495cc347a8e8a8a9b46cba0e7c74ec11016702d655244a457575cda76b0d9",
+    "target/i10-render-phase-profile-20260918/initial-test-compile-failure-status.txt": "4052c8aefaaa18e2a8d255a1ddb77d5ef87e4af48910e77b0db383ce64d0afdd",
+    "target/i10-render-phase-profile-20260918/initial-test-compile-failure.log": "1693e31ce1d77b3c63c4113cad61e36ab6918e77faadd3fff3e4c2d046cd4e1d",
+    "target/i10-render-phase-profile-20260918/inspect_changes.py": "9c5b89dc87035cf08b40aefee515af3279ca453f3d0848b0e109de35b54bcfe0",
+    "target/i10-render-phase-profile-20260918/instrument": "4d78ca037818b0ff94b1de1fd179a7729e751976130e1cdc8b0fe97f44dd7f00",
+    "target/i10-render-phase-profile-20260918/official-evaluator-smoke.json": "8869260ac94ed35ab9b86515741e71d6bb788ec144f4900c330a56a041300edb",
+    "target/i10-render-phase-profile-20260918/plan.json": "e87d0bc6986b93de225af4671657b0ed46c7d08b90407a9f1b51342dca6574a8",
+    "target/i10-render-phase-profile-20260918/profile-feature-tests.log": "92237ff98ec3bedaabe644c6dc2335cb7cf8c389f3e0a47050a624627c0caa63",
+    "target/i10-render-phase-profile-20260918/python-tests.log": "b81320b268b022000158f4e8348337af4ce34836b158d9d13a41cfbb94cfcf9b",
+    "target/i10-render-phase-profile-20260918/register.py": "dd66ab6d00859c01fe852b08ebe371238a95e93b21f113155a9f8e4d1a0e1782",
+    "target/i10-render-phase-profile-20260918/release.log": "bf793fc79f6ec65d2c5f476c99bac7a2861d1b356b873e8e08e9085032056181",
+    "target/i10-render-phase-profile-20260918/render": "9dff5d6961bcb499151f494a40ab1227f54f1be8841ef58376a0f766e810b317",
+    "target/i10-render-phase-profile-20260918/runs.json": "2eda52788ed25dc369641bce96f4cbf97b2ddd1e9f64fb2ef92d9835bf9e455a",
+    "target/i10-render-phase-profile-20260918/source-sha256.json": "ee5bf2e2ef0f364bd0f1c60a15d3da808eff7ea86afd81dcfd40704edc93083e",
+    "target/i10-render-phase-profile-20260918/test_report.txt": "721ee6373a58eee1d787f220a86ab174c939e436c2b7ec669ccd37b13609f3f3",
+    "target/i10-render-phase-profile-20260918/test_status.txt": "44f705877105e3344fd1eb0033990980912a1f1eeab7f071b62bb41c12b6caf6",
+    "target/i10-render-phase-profile-20260918/verification.json": "3d685bd548afecc2d98d7d51cb3fafa960199550743a84d5b2acb778898a81df",
+    "target/i10-render-phase-profile-20260918/verify.py": "e0a00d443af2345d6da1511f7d7f12cce80ea0c0596fc299934034ce3bb8b4db"
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "schema": "i10-expected-segment-and-raw-head-projection-v1",
+  "status": "raw_conditional_base_heads_connected_full_consequence_incomplete",
+  "artifact_directory": "target/i10-residual-profile-live-20260918",
+  "source_sha256": {
+    "src/temporal_cognition/recall.rs": "023983506fa74c1cada327bc7b018da58df5d2a50d3a04063fb12b5b64ca77c3",
+    "src/temporal_cognition/phrase.rs": "2d61b2e71057d782d75d9ef878f14fc2a7fc3070bc6e30a71058f4ccf1caed4b",
+    "src/temporal_cognition/phrase/tests.rs": "2cc8eab022f052a49d84141245a165b3fa0f202409eabb12d5450d43ff8dbe3d",
+    "src/temporal_cognition/phrase/projection.rs": "ad2cd2b6061a1d4e04eaa317b6e85e36a53908b31456e311762b314eca44a151",
+    "src/temporal_cognition/phrase/projection/tests.rs": "b04166f242987089bbe67c9ad0982ea38e5b90b789c2162a7dd8f937223c90a1",
+    "src/temporal_cognition/action_profiles.rs": "12aa70800d7ca827b4f443bfac38230b47e2a221277ce3d5ea81f193832557d9",
+    "src/ui/windows.rs": "b7bee3a50e6ae4086c499953a2a1d177a793a51f407576433d0d8b9d228dfdf1",
+    "scripts/verify_temporal_projected_heads.py": "30414d1e64cf84985318fe246b180e3e8acd78c0d178321807fa78120d301b25"
+  },
+  "renderer_sha256": "ab9593c5a94802a596295cd4c4a96461a375fc7cddddf3b51362ee3336c32da9",
+  "before_renderer_sha256": "47bc47cdb49ad1eca43c2ec8dc19d494080d955181616b61a9c8ef058abce095",
+  "profile_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+  "residual": {
+    "prefix": "original observed comparisons and physical intervals, never rescored against a newer cue",
+    "future": "one issue-available retained expected segment; mean squared standardized distance over common raw coordinates; no retrieval or interval extrapolation",
+    "window": "2 seconds or group age, physical-duration average over supported comparison intervals",
+    "provenance": "observed/projected means and sample counts; known zero differs from no comparisons",
+    "report": "future reference with original identity and clocks; latest future-comparison cell plus class representatives"
+  },
+  "closure": "same raw uncalibrated ordinal head; residual only, existing missing mask for other coordinates",
+  "continuation": {
+    "inputs": "residual, current arrival at zero offset only, per-path survival at evaluation age, supported observed accent density and grouping",
+    "path_weights": "original issue path masses and unknown retained; no nonlinear head evaluated on averaged path inputs",
+    "survival": "existing base phrase law and articulation marginal, including its missing-state handling; this is not a resolved-mass claim",
+    "report": "each retained path index, mass, foreground start, survival provenance, ordinal distribution; separate issue unknown"
+  },
+  "assay": {
+    "stage": "before head comparison renders",
+    "purpose": "unfitted numerical diagnostic, not adoption or calibration",
+    "closure_residual": -0.25,
+    "continuation_survival": 2.0,
+    "hazard_log_duration": 1.0,
+    "other_hazard_coefficients": 0.0,
+    "analytic_hazard": "log(2 + elapsed_seconds)",
+    "configs": [
+      {
+        "path": "target/i10-residual-profile-live-20260918/long-span-heads.toml",
+        "sha256": "b1eac91f2ca2e31f1319c56a3fc9c035d6e4c5fa26a8c8763602663dc385c7cc"
+      },
+      {
+        "path": "target/i10-residual-profile-live-20260918/stair-heads.toml",
+        "sha256": "d68fb6bb90505a3447b8750e583c7e0298abfd639dc596eb766cf36494a1f201"
+      }
+    ]
+  },
+  "verification": {
+    "sustain": {
+      "report_sha256": "a1f22e2cb0b048aee3049cc9566cfd62441c64031d2cd267ee4a8bbbe94bc511",
+      "config_sha256": "b1eac91f2ca2e31f1319c56a3fc9c035d6e4c5fa26a8c8763602663dc385c7cc",
+      "model_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+      "unique_cells": 774,
+      "duplicate_cells": 0,
+      "future_residual_cells": 4,
+      "future_compared_samples": 1564,
+      "closure_distributions": 94,
+      "continuation_distributions": 11610,
+      "distinct_closure_distributions": 9,
+      "distinct_survival_values": 645,
+      "buses": [
+        0,
+        1
+      ],
+      "maximum_hazard_absolute_error": 1.4646088342118446e-08,
+      "hazard_tolerance": "1e-9 + 1e-7 * integrated hazard (existing numerical contract)",
+      "observed_residual_prefix": "reported mean; not independently reconstructed here",
+      "claim": "raw arithmetic and frozen support; no calibration or full mixture acceptance",
+      "noninterference": {
+        "common_observations": 114,
+        "terminal_buses": [
+          0,
+          1
+        ],
+        "existing_records": {
+          "onset": 1,
+          "body_default": 119,
+          "body_descriptor": 118,
+          "self_sound_outcome": 2,
+          "self_sound_descriptor_prediction": 2,
+          "population_step": 591
+        },
+        "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "before_report_sha256": "b61405037af80b1695006666c5048686ebb5448f09d661d1e3f227918d16e4d3",
+        "after_report_sha256": "a1f22e2cb0b048aee3049cc9566cfd62441c64031d2cd267ee4a8bbbe94bc511",
+        "wav_variants_sha256": {
+          "before": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+          "after": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+          "no-report": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+          "off": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0"
+        }
+      }
+    },
+    "stair": {
+      "report_sha256": "5f88925f8cfa0225c6b65749e26a1bc03ea34876d81ccc7c161c994186d2e781",
+      "config_sha256": "d68fb6bb90505a3447b8750e583c7e0298abfd639dc596eb766cf36494a1f201",
+      "model_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+      "unique_cells": 802,
+      "duplicate_cells": 0,
+      "future_residual_cells": 18,
+      "future_compared_samples": 7848,
+      "closure_distributions": 282,
+      "continuation_distributions": 12030,
+      "distinct_closure_distributions": 52,
+      "distinct_survival_values": 770,
+      "buses": [
+        0,
+        1
+      ],
+      "maximum_hazard_absolute_error": 1.4646088342118446e-08,
+      "hazard_tolerance": "1e-9 + 1e-7 * integrated hazard (existing numerical contract)",
+      "observed_residual_prefix": "reported mean; not independently reconstructed here",
+      "claim": "raw arithmetic and frozen support; no calibration or full mixture acceptance",
+      "noninterference": {
+        "common_observations": 122,
+        "terminal_buses": [
+          0,
+          1
+        ],
+        "existing_records": {
+          "onset": 1,
+          "body_default": 134,
+          "body_descriptor": 134,
+          "self_sound_outcome": 2,
+          "self_sound_descriptor_prediction": 2,
+          "population_step": 668
+        },
+        "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "before_report_sha256": "e571947410e4d80238b9d1739cc0f2670cafdf45f90742f3afcbdc25796c0554",
+        "after_report_sha256": "5f88925f8cfa0225c6b65749e26a1bc03ea34876d81ccc7c161c994186d2e781",
+        "wav_variants_sha256": {
+          "before": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "after": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "no-report": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "off": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf"
+        }
+      }
+    }
+  },
+  "noninterference": {
+    "sustain": {
+      "common_observations": 114,
+      "terminal_buses": [
+        0,
+        1
+      ],
+      "existing_records": {
+        "onset": 1,
+        "body_default": 119,
+        "body_descriptor": 118,
+        "self_sound_outcome": 2,
+        "self_sound_descriptor_prediction": 2,
+        "population_step": 591
+      },
+      "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+      "before_report_sha256": "b61405037af80b1695006666c5048686ebb5448f09d661d1e3f227918d16e4d3",
+      "after_report_sha256": "a1f22e2cb0b048aee3049cc9566cfd62441c64031d2cd267ee4a8bbbe94bc511",
+      "wav_variants_sha256": {
+        "before": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "after": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "no-report": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "off": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0"
+      }
+    },
+    "stair": {
+      "common_observations": 122,
+      "terminal_buses": [
+        0,
+        1
+      ],
+      "existing_records": {
+        "onset": 1,
+        "body_default": 134,
+        "body_descriptor": 134,
+        "self_sound_outcome": 2,
+        "self_sound_descriptor_prediction": 2,
+        "population_step": 668
+      },
+      "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+      "before_report_sha256": "e571947410e4d80238b9d1739cc0f2670cafdf45f90742f3afcbdc25796c0554",
+      "after_report_sha256": "5f88925f8cfa0225c6b65749e26a1bc03ea34876d81ccc7c161c994186d2e781",
+      "wav_variants_sha256": {
+        "before": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "after": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "no-report": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "off": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf"
+      }
+    }
+  },
+  "checks": {
+    "cargo_test": {
+      "passed": 1114,
+      "failed": 0,
+      "ignored": 33,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T05:59:12+09:00"
+    },
+    "clippy": "pass",
+    "all_targets_check": "pass",
+    "fmt": "pass",
+    "diff_check": "pass"
+  },
+  "limits": [
+    "Raw base heads are not full per-head alternatives, score mixtures, prior backoff or calibrated ratings.",
+    "Original unknown articulation is handled as the existing base heads missing state; full consequence uncertainty must preserve its unresolved mass.",
+    "The observed residual prefix is not independently reconstructed from decimated reports; Rust causal interval tests and same-frame noninterference cover it separately.",
+    "Positive fixtures use longer 96/160-hop memory spans because the original 8-hop fixture supplies no future expected segment at these issue cuts.",
+    "Declared diagnostic coefficients are unfitted; the exact log(2+elapsed) hazard permits independent closed-form verification.",
+    "Fractional final hops use registered full-hop feature values with clipped duration; no partial-PCM reanalysis.",
+    "Normal previews still evaluate at the action time. The timing decision remains unresolved.",
+    "Render wall times are not resource acceptance. I9 remains held; I11 action effects remain disabled."
+  ],
+  "next": [
+    "Complete remaining ordered/timing/head inputs and shared alternative reweighting/backoff/uncertainty.",
+    "Connect candidate/default paired differences and actual-Voice projections including unreserved future decisions.",
+    "Resolve action/evaluation timing and complete two-bus 4/16/64-Voice resource inventory."
+  ]
+}

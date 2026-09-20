@@ -349,6 +349,7 @@ impl Community {
         self.last_phonation_onset_strength_in_hop
     }
 
+    /// One batch per Voice, including policy facts when no sound command is emitted.
     pub fn collect_phonation_batches(
         &mut self,
         generator_model: &mut GeneratorModel,
@@ -439,11 +440,8 @@ impl Community {
                 .iter()
                 .map(|o| o.strength.max(0.0))
                 .sum::<f32>();
-            let has_output =
-                !(batch.cmds.is_empty() && batch.tones.is_empty() && batch.onsets.is_empty());
-            if has_output {
-                used += 1;
-            }
+            // Silent owners still carry current policy facts and must not appear retired.
+            used += 1;
         }
         let active_batches = &out[..used];
         let social_enabled =
@@ -1001,6 +999,7 @@ mod tests {
 
     fn make_dummy_tone_spec() -> crate::life::voice::ToneSpec {
         crate::life::voice::ToneSpec {
+            opportunity: None,
             tone_id: 1,
             onset: 0,
             hold_ticks: None,
@@ -1405,7 +1404,11 @@ mod tests {
         );
 
         let mut batches = vec![PhonationBatch {
+            body_policy: None,
+            body_opportunity: None,
+            intrinsic_period_sec: None,
             source_id: 99,
+            source_generation: 0,
             routing: crate::scenario::control::Routing::default(),
             cmds: vec![ToneCmd::On {
                 tone_id: 1,
@@ -1425,7 +1428,12 @@ mod tests {
         // Source id is from the actual voice, not the stale 99
         if used > 0 {
             assert_eq!(batches[0].source_id, 77);
+            assert_eq!(batches[0].body_policy.unwrap().at, 0);
         }
+        let used = pop.collect_phonation_batches_into(&mut world, &landscape, 64, &mut batches);
+        assert_eq!(used, 1);
+        assert!(batches[0].onsets.is_empty());
+        assert_eq!(batches[0].body_policy.unwrap().at, 64);
     }
 
     #[test]

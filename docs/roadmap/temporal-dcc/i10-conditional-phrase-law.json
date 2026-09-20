@@ -1,0 +1,502 @@
+{
+  "schema": "i10-conditional-phrase-law-v1",
+  "status": "one_state_phrase_head_shared_with_ordinary_mixture_active_joint_adapter_test_only",
+  "artifact_directory": "target/i10-conditional-phrase-law-20260918",
+  "source_sha256": {
+    "src/temporal_cognition/phrase.rs": "68b2edef435e6a0f1c01d91321c17cb9711974cd44cf508fda9caaf7c58d8a48",
+    "src/temporal_cognition/phrase/tests.rs": "32b111ba7afb03394208ee91494e91afdd881cdb81d0cfba4b62e637fd32ef1b",
+    "src/temporal_cognition/joint/proposals.rs": "42af9ff2bf8c81c95ac1e527a1d8afc4d04f431571ee298b951969efe0bf77d9",
+    "src/temporal_cognition/joint/proposals/tests.rs": "776c3d197b3d6f933a0a7eefc9cc62baf02cbed0d949a8db7f4dfefc1da6f670"
+  },
+  "plan": {
+    "source_before_sha256": {
+      "src/temporal_cognition/phrase.rs": "ba1872d2e02a3f421b3becd31d0c137122d9c2219cc55d906a1aa28b83c1fc17",
+      "src/temporal_cognition/phrase/tests.rs": "32b111ba7afb03394208ee91494e91afdd881cdb81d0cfba4b62e637fd32ef1b",
+      "src/temporal_cognition/joint/proposals.rs": "96fb4bca146bdb7ac43e75aac417c96b89742a38f3b638917c87d95f1c5e69ea",
+      "src/temporal_cognition/joint/proposals/tests.rs": "bbe99947a5ef1294d7d0defd7256b9e46778dfd59f256e745b22808702a77a5a"
+    },
+    "inputs_sha256": {
+      "target/i10-conditional-phrase-law-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+      "target/i10-conditional-phrase-law-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+      "target/i10-conditional-phrase-law-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+      "target/i10-conditional-phrase-law-20260918/stair-weighted.toml": "01fccd9542731ebd4aafc2f5169eb5da7814bac45056eb076e8c09a4275337b4",
+      "target/i10-conditional-phrase-law-20260918/stair-weighted.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+      "target/i10-conditional-phrase-law-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d"
+    },
+    "scope": "One-articulation conditional phrase law shared by ordinary mixture and active-phrase joint transition adapter. No independent marginal substituted for a joint path.",
+    "binary_before_sha256": "6921e78c45faa6c9f4f33e27b429fc7777401b680a3531749bf49dc82bb72c94",
+    "cases": [
+      "sustain",
+      "stair",
+      "stair-weighted"
+    ],
+    "weighted_control": {
+      "scope": "Engineering regression coefficients; no model fitting or adoption",
+      "hazard": [
+        0.0,
+        1.0,
+        0.9,
+        -0.35,
+        0.45,
+        -0.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.1,
+        -0.05,
+        0.08,
+        0.02,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "exits": [
+        [
+          0.0,
+          0.0,
+          0.5625,
+          0.11249999999999999,
+          -0.33749999999999997,
+          -0.7875,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          -0.07500000000000001,
+          -0.07500000000000001,
+          -0.07500000000000001,
+          -0.07500000000000001,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.1875,
+          0.0375,
+          -0.11249999999999999,
+          -0.2625,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          -0.025,
+          -0.025,
+          -0.025,
+          -0.025,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          -0.1875,
+          -0.0375,
+          0.11249999999999999,
+          0.2625,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.025,
+          0.025,
+          0.025,
+          0.025,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          -0.5625,
+          -0.11249999999999999,
+          0.33749999999999997,
+          0.7875,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.07500000000000001,
+          0.07500000000000001,
+          0.07500000000000001,
+          0.07500000000000001,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      ]
+    },
+    "source_after_sha256": {
+      "src/temporal_cognition/phrase.rs": "68b2edef435e6a0f1c01d91321c17cb9711974cd44cf508fda9caaf7c58d8a48",
+      "src/temporal_cognition/phrase/tests.rs": "32b111ba7afb03394208ee91494e91afdd881cdb81d0cfba4b62e637fd32ef1b",
+      "src/temporal_cognition/joint/proposals.rs": "42af9ff2bf8c81c95ac1e527a1d8afc4d04f431571ee298b951969efe0bf77d9",
+      "src/temporal_cognition/joint/proposals/tests.rs": "776c3d197b3d6f933a0a7eefc9cc62baf02cbed0d949a8db7f4dfefc1da6f670"
+    }
+  },
+  "profile": {
+    "file": "/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin",
+    "sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5"
+  },
+  "contract": {
+    "head": "phrase::conditional_law evaluates the registered stage-2 26-coordinate head for one Option<gesture::State>. None masks all four articulation indicators; arbitrary caller values in those four coordinates are ignored. Other values retain their frozen global scaling and masks.",
+    "ordinary": "The existing law loops over its state weights and consumes the same per-state kernel, preserving state order and multiplication order. Survival-only calls omit exit logits. Unsupported hazard and unsupported exits retain the previous separate handling.",
+    "active_joint": "List::active_phrase requires a known active foreground and five distinct caller-owned compatible extension IDs: stay, new, overlap, reinterpret, inactive. It evaluates a single selected articulation state, not a marginal from the ordinary observer.",
+    "admission": "Known raw scores are survival and supported exit scores; inactive requires the caller-supplied observed-low gate. Normalize the positive admitted scores with the existing List::build contract, then apply the 30-second unknown leak once. All-zero support yields unknown mass one. Unsupported exit logits admit only supported stay; an unsupported hazard admits no known option.",
+    "clock": "Elapsed endpoints and sample rate generate the hazard duration. Unknown leak uses the integer sample difference divided by sample rate, not subtraction of large floating-point ages. Backward elapsed samples and zero sample rate reject.",
+    "identity": "The adapter checks duplicate supplied IDs but does not manufacture or own the compatible path states those IDs name.",
+    "difference_from_base": "The joint admitted-list normalization is not the ordinary bootstrap Group::step posterior or its unsupported-mass policy. Sharing the raw head kernel does not equate those different inference updates."
+  },
+  "verification": {
+    "new_rust_tests": 2,
+    "closed_form_cases": 90,
+    "closed_form": "Independent constant-softplus-hazard survival and probability-space softmax/normalization; four known articulation states plus masked unknown, three feature-support values, three intervals and both inactive gates.",
+    "additional": [
+      "contradictory caller marginal indicators ignored",
+      "state-dependent coefficients cause distinct proposal masses",
+      "unsupported integration, duplicate IDs, backward clock and zero sample rate",
+      "large elapsed age preserves physical unknown leak from sample difference",
+      "real conditional phrase list composed with all other component lists; stay/unknown and four boundary combinations retained with 16-pop/86-evaluation limits"
+    ],
+    "targeted": "7 proposal tests and 25 phrase tests passed, including existing survival-only and conditional continuation checks",
+    "cargo_test": {
+      "passed": 1170,
+      "failed": 0,
+      "ignored": 38,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T16:04:06+09:00"
+    },
+    "checks": [
+      {
+        "command": [
+          "cargo",
+          "clippy",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 2.8381788909900934,
+        "log": "target/i10-conditional-phrase-law-20260918/check-0.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "check",
+          "--all-targets"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 2.3126891950378194,
+        "log": "target/i10-conditional-phrase-law-20260918/check-1.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.6821319670416415,
+        "log": "target/i10-conditional-phrase-law-20260918/check-2.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--bin",
+          "conchordal-render"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 53.11746497900458,
+        "log": "target/i10-conditional-phrase-law-20260918/check-3.log"
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.044909165997523814,
+        "log": "target/i10-conditional-phrase-law-20260918/check-4.log"
+      },
+      {
+        "command": [
+          "python3",
+          "-m",
+          "py_compile",
+          "target/i10-conditional-phrase-law-20260918/acquire.py",
+          "target/i10-conditional-phrase-law-20260918/verify.py"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.022383307048585266,
+        "log": "target/i10-conditional-phrase-law-20260918/check-5.log"
+      }
+    ],
+    "render": {
+      "cases": {
+        "sustain": {
+          "ancestry": {
+            "unique_paths": 2048,
+            "phrase_bindings": 2016,
+            "independent_raw_scores": 2080,
+            "stay": 2068,
+            "new_context": 6,
+            "contrast": 6,
+            "shared_context_snapshots": 120,
+            "forked_parent_snapshots": 12,
+            "group_snapshots": 130
+          },
+          "common_observations": 124,
+          "old_numeric_fields_exact": true,
+          "old_records_strict_equal": true,
+          "availability_changes": [],
+          "records": {
+            "onset": 1,
+            "body_default": 119,
+            "body_descriptor": 118,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 591
+          },
+          "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+          "terminal_resources": {
+            "0": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 12691697,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10489115,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 12798539,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10538015,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          }
+        },
+        "stair": {
+          "ancestry": {
+            "unique_paths": 2282,
+            "phrase_bindings": 2218,
+            "independent_raw_scores": 2282,
+            "stay": 2274,
+            "new_context": 4,
+            "contrast": 4,
+            "shared_context_snapshots": 134,
+            "forked_parent_snapshots": 12,
+            "group_snapshots": 144
+          },
+          "common_observations": 138,
+          "old_numeric_fields_exact": true,
+          "old_records_strict_equal": true,
+          "availability_changes": [],
+          "records": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12631398,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10446774,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12703538,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10521874,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          }
+        },
+        "stair-weighted": {
+          "ancestry": {
+            "unique_paths": 2282,
+            "phrase_bindings": 2218,
+            "independent_raw_scores": 2282,
+            "stay": 2276,
+            "new_context": 3,
+            "contrast": 3,
+            "shared_context_snapshots": 144,
+            "forked_parent_snapshots": 22,
+            "group_snapshots": 144
+          },
+          "common_observations": 137,
+          "old_numeric_fields_exact": true,
+          "old_records_strict_equal": true,
+          "availability_changes": [],
+          "records": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12802099,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10532895,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12616957,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10466944,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          }
+        }
+      },
+      "weighted_control": {
+        "compared_forecasts": 141,
+        "changed_forecasts": 141,
+        "maximum_survival_difference": 0.06702718142821079,
+        "scope": "Engineering regression coefficients, not a fit or adoption"
+      }
+    }
+  },
+  "limits": [
+    "The normal observer still uses its ordinary articulation mixture. The joint adapter is under the test-only joint module; no ordinary joint posterior has been installed.",
+    "The adapter covers known active phrase parents only. Inactive/unknown-parent admission and ownership of full local/shared compatible paths remain to connect.",
+    "Complete joint conditional feature inventory, shared cross-group state and actual score updates remain absent; no new stage-3 feature coordinates or fitted weights were invented.",
+    "Candidate continuation caching still assumes identical per-cell head inputs except foreground start. Adding real joint path-conditioned values must extend/remove that reuse key.",
+    "Actual-body candidate/default consumption, all heads, pending timing choice and full worker/Voice/live-audio resource gates remain open. I10 incomplete; I9 held and I11 effects disabled."
+  ],
+  "artifact_sha256": {
+    "target/i10-conditional-phrase-law-20260918/acquire.py": "df23e351927ed249e029fbaf0f6842b674c0444b8e64a49734d7ee47d0ec3af3",
+    "target/i10-conditional-phrase-law-20260918/after-render": "8bf18a7b1f6ff16e8bd618698882477f4a1893b348c2e4544a9a25333c805113",
+    "target/i10-conditional-phrase-law-20260918/audit.py": "f12914cb3720bd5a1f2eac41022cf0e84569944d7e9fb5913537817a44bed46f",
+    "target/i10-conditional-phrase-law-20260918/before/src/temporal_cognition/joint/proposals/tests.rs": "bbe99947a5ef1294d7d0defd7256b9e46778dfd59f256e745b22808702a77a5a",
+    "target/i10-conditional-phrase-law-20260918/before/src/temporal_cognition/joint/proposals.rs": "96fb4bca146bdb7ac43e75aac417c96b89742a38f3b638917c87d95f1c5e69ea",
+    "target/i10-conditional-phrase-law-20260918/before/src/temporal_cognition/phrase/tests.rs": "32b111ba7afb03394208ee91494e91afdd881cdb81d0cfba4b62e637fd32ef1b",
+    "target/i10-conditional-phrase-law-20260918/before/src/temporal_cognition/phrase.rs": "ba1872d2e02a3f421b3becd31d0c137122d9c2219cc55d906a1aa28b83c1fc17",
+    "target/i10-conditional-phrase-law-20260918/before-render": "6921e78c45faa6c9f4f33e27b429fc7777401b680a3531749bf49dc82bb72c94",
+    "target/i10-conditional-phrase-law-20260918/check-0.log": "98b48af5692714127ed7535cfa4ea0c33f5d73ec5d1b2e82fc4fcd44e736b80f",
+    "target/i10-conditional-phrase-law-20260918/check-1.log": "3eb9c5f0f3387e56c3df24d6eeba692259030b074c9e73253a3b80b2190efd6b",
+    "target/i10-conditional-phrase-law-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-conditional-phrase-law-20260918/check-3.log": "f3a790d03eb1dc7e342ab52aa4e957ca2cfce4ae93f419f1f4c423727cdb58ed",
+    "target/i10-conditional-phrase-law-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-conditional-phrase-law-20260918/check-5-failed.log": "112f3fe8bdbdba6ab7252a930fdcba769acd267504f55638e894073196edc551",
+    "target/i10-conditional-phrase-law-20260918/check-5.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-conditional-phrase-law-20260918/checks-before-script-fix.json": "fd5585814337c3985b0c9b0b684100d9c16e361bc990679fddf960cb4aec190b",
+    "target/i10-conditional-phrase-law-20260918/checks.json": "14a0f461b8c1da2b9c354041797cfe012aa833614434c666cacdcec50581285a",
+    "target/i10-conditional-phrase-law-20260918/commands.jsonl": "639929c7f3502f5833a974cb17cc5ad9caa33e5ac60c93eb9c548a1aeaac58df",
+    "target/i10-conditional-phrase-law-20260918/phrase.log": "675c20716aadb358a051e927980a83ca4774672f12c7064861d6acc4c60a1687",
+    "target/i10-conditional-phrase-law-20260918/plan.json": "11a6db8d08090e15431793cdb4ff0df0b06403d3f11875aab6abcee2f34a07e9",
+    "target/i10-conditional-phrase-law-20260918/proposals.log": "646f2067f1d2791819ff77f2a76421025283a93476a923e090cc395f77b488e6",
+    "target/i10-conditional-phrase-law-20260918/register.py": "844aeb2ce8ca8b39c8b3c1aff0d3db7c47af9e2b7d88723e9ca4953f9e4be057",
+    "target/i10-conditional-phrase-law-20260918/source.diff": "67662aa5c84a16cec3a8e41a9be63a89eb66ae9b16b93245a98364da367014d8",
+    "target/i10-conditional-phrase-law-20260918/stair-after.jsonl": "56bda9c3e0c40a632a849ea1f4b060305317355082dc89842b8836800df10cb7",
+    "target/i10-conditional-phrase-law-20260918/stair-after.log": "118ffc6fc086947f8decfcb171a7a08944a43fc8cd4da2177eece6818d7a013c",
+    "target/i10-conditional-phrase-law-20260918/stair-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-conditional-phrase-law-20260918/stair-before.jsonl": "2603b56039fac058f020c06e3ac6d7c2cb3611dc25f250a689d1ca342a002ea7",
+    "target/i10-conditional-phrase-law-20260918/stair-before.log": "6d684dc8f8e7e720ea01ee299d137b3dfda441d75847325afbc04c14ea698ba6",
+    "target/i10-conditional-phrase-law-20260918/stair-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted-after.jsonl": "a68e8c81f5cc010cdaf91462609e983480aa0da46019e6b2567bb1ac594bd05b",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted-after.log": "04e607c553869df7084ea5d8cfd4c9a68b1ca650ca37ffa150d5897fb4d03fdd",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted-before.jsonl": "42827b658a9d85c3aabc82cd53b31265f3d6927fe50817b54c5e8b2044ad68eb",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted-before.log": "4cf3b0416f118b5fd47857083f3151719f18d599edf6899412c4cd367669b82d",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+    "target/i10-conditional-phrase-law-20260918/stair-weighted.toml": "01fccd9542731ebd4aafc2f5169eb5da7814bac45056eb076e8c09a4275337b4",
+    "target/i10-conditional-phrase-law-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+    "target/i10-conditional-phrase-law-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+    "target/i10-conditional-phrase-law-20260918/sustain-after.jsonl": "e64619408439ea8c54fa717bd5ed8ef05542066e696d07d04db24d7c142ccdbe",
+    "target/i10-conditional-phrase-law-20260918/sustain-after.log": "dc49b23c5d39eda966af7873c5d6d18f3e7412b1df440806e94436ec0f72a0dc",
+    "target/i10-conditional-phrase-law-20260918/sustain-after.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-conditional-phrase-law-20260918/sustain-before.jsonl": "e1771c91977afbf4b6bb59e5e55ce46c4c13e2135b5e907c120871dac1e721be",
+    "target/i10-conditional-phrase-law-20260918/sustain-before.log": "3ae51ca9a8cbbd8a5d752a5224cbe8944f8cd82450a27720ae9774607ec1bf51",
+    "target/i10-conditional-phrase-law-20260918/sustain-before.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-conditional-phrase-law-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+    "target/i10-conditional-phrase-law-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+    "target/i10-conditional-phrase-law-20260918/test_report.txt": "be297f2bf7ea758e73e59a501c09cb89e49e3e177336dfab56d3b32ebfcd4f96",
+    "target/i10-conditional-phrase-law-20260918/test_status.txt": "bd997d215589707e7a8fe764bed02efcd4a442c92fdb08c6acba1b549fc04609",
+    "target/i10-conditional-phrase-law-20260918/verification.json": "e8c93790350f8460161977cfac5182ce766604ae989b39426755b309e3c8f78c",
+    "target/i10-conditional-phrase-law-20260918/verify.py": "874b465f2727b63d96920da3afcaa29ef911fbf8c0e6cdc7adfe237149e65f3b"
+  }
+}

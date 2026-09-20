@@ -4,7 +4,7 @@
   "status": "partial_registration_not_collection_or_model_freeze_ready",
   "specification": {
     "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
-    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85"
+    "sha256": "c3ef46176cbcc96766173deb1d5f44f3ce716ccee6d56516d9ea2dab0f2a6be5"
   },
   "comparisons": [
     {
@@ -41,6 +41,75 @@
       "on_failure": "Reopen O06/O11 query/task/parameter sharing and affected fits. Retain the original task and short-retention stress points; do not silently add duration parameters or increase recruitment.",
       "interpretation": "A transfer bound for the expanded procedure, not an isolated duration effect: its development training counts exceed those of the control.",
       "status": "method_and_provisional_margin_registered; split_power_and_data_missing"
+    },
+    {
+      "id": "period_pair_grid_arithmetic",
+      "obligation": [
+        "O03",
+        "O04",
+        "O09",
+        "O10"
+      ],
+      "role": "Finite engineering arithmetic and peak-selection comparisons; not human or musical acceptance.",
+      "full": "Declared32-byte f32 contribution cache, f64 incremental sums,1024-admission rebuild,241bins and1/24-octave peak separation.",
+      "controls": [
+        "direct all-bin all-f64 kernel recomputation",
+        "fresh sum of cached f32 contributions",
+        "512/2048-admission rebuild schedules",
+        "1/48 and1/12-octave peak separations",
+        "64/256 accent capacities"
+      ],
+      "metrics": [
+        "absolute cached-sum drift",
+        "f32 contribution rounding difference",
+        "ordered peak and P_best changes",
+        "actual layout and operation counts; partial release cost"
+      ],
+      "evidence": "docs/roadmap/temporal-dcc/m0-period-grid.json",
+      "known_counterexamples": [
+        "ordinary near-tie weights change P_best under f32 rounding",
+        "extremely small weights can underflow and remove period support"
+      ],
+      "adoption": "No new variant adopted for production; baseline declared arithmetic retained. Range/resolution/window controls and downstream fit/validation remain required.",
+      "full_O04_passed": false
+    },
+    {
+      "id": "grouping_inventory_anchor_search",
+      "status": "numerical_fixtures_only_not_development_adoption",
+      "reference": "two_sided_integer_and_consecutive_word",
+      "alternatives": {
+        "integer_234": "same shared period inventory, integers2/3/4 only, words disabled",
+        "strict_integer": "baseline integer search plus no unselected intervening accent; word baseline unchanged",
+        "one_skip_word": "baseline words plus exactly one skipped interior accent among next2n+2 endpoints; merge the two adjacent intervals; retain skipped ID and approximation flag; include extra case cost",
+        "tolerance_fixture_values": [
+          0.05,
+          0.1,
+          0.2
+        ],
+        "tie_probe_tolerance": 0.5
+      },
+      "measurements": [
+        "candidate admission and top16 inventory",
+        "both original repetition coverages and duration residuals",
+        "cache age and superseded refresh slots",
+        "resource cost including extra skip cases",
+        "downstream grouping loss and stability require refit; not yet measured"
+      ],
+      "adoption": "do not adopt control from numerical agreement alone; registered full development/recovery and O04 criteria remain required"
+    },
+    {
+      "id": "recurrence_frontend_ownership_and_numeric_scales",
+      "status": "numerical integration and controlled PCM probes only; not model adoption or full O11",
+      "reference": "preexisting test scales threshold1 deviations1; source-fixed pulse/silence/steady PCM",
+      "contrast": "diagnostic threshold0.05 deviations0.2 on identical copied PCM",
+      "measures": [
+        "unique (group,event) delivery and original cumulative credit",
+        "same-hop capacity replacement and constructor buffer reuse",
+        "accent counts and group-hop counts with recurrence/grouping/0.256s candidate",
+        "delay/gap/epoch/bus masks",
+        "single-bus ownership cost, cache resets and observed active inventory"
+      ],
+      "decision": "exclude candidate-presence-only claims when steady control also admits target; do not adopt either supplied scale as fitted/calibrated; retain full registered recovery, fit and O04 gates"
     }
   ],
   "not_yet_registered": "All other mandatory primary/additional contrasts and sensitivity entries from the completion plan and sections 9.1-10.3 must still be enumerated before their corresponding fits or freezes.",
@@ -128,13 +197,21 @@
     {
       "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
       "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    },
+    {
+      "date": "2026-09-12",
+      "specification": {
+        "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+        "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85"
+      },
+      "reason": "Rust implementation preparation/MR1 and delivery gate ownership; concurrent embodied-affordance requirements retained separately. Section9 is byte-identical to the previous specification. Existing numerical evidence, fit version29, collection and O04 gates are not promoted."
     }
   ],
   "updated_at": "2026-09-11T11:40:42.701331+00:00",
   "model_replacement": {
     "path": "docs/roadmap/temporal-dcc/model-replacement.md",
-    "sha256": "d377eedba0023af20bf25476ae8c5d681a5de210f216aee89c5d986b655dd2e5",
-    "status": "design_and_protocols_registered; replacement_experiments_not_run",
+    "sha256": "7beb8d3e60936501dc3811f8abac848ca20105a7efd72daf42d46d34662fe5f6",
+    "status": "small_rust_MR1_passed; production_wiring_MR2_MR3_not_run",
     "feature_version": "m0-registration-29",
     "obligations": [
       "O03",
@@ -142,9 +219,28 @@
       "O12"
     ],
     "experiments": {
-      "MR1": "M0_before_production_wiring; not_run",
+      "MR1": "M0 small Rust exchange passed; no cognitive promotion",
       "MR2": "M2; not_run",
       "MR3": "first_M1-M2_production_boundary; not_run"
+    },
+    "evidence": "docs/roadmap/temporal-dcc/m0-rust-preparation.json"
+  },
+  "model_replacement_history": [
+    {
+      "path": "docs/roadmap/temporal-dcc/model-replacement.md",
+      "sha256": "d377eedba0023af20bf25476ae8c5d681a5de210f216aee89c5d986b655dd2e5",
+      "status": "design_and_protocols_registered; replacement_experiments_not_run",
+      "feature_version": "m0-registration-29",
+      "obligations": [
+        "O03",
+        "O09",
+        "O12"
+      ],
+      "experiments": {
+        "MR1": "M0_before_production_wiring; not_run",
+        "MR2": "M2; not_run",
+        "MR3": "first_M1-M2_production_boundary; not_run"
+      }
     }
-  }
+  ]
 }

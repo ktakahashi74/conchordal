@@ -12,7 +12,7 @@
 この記録はM0のO03・O09・O12を具体化する。設計の正本は
 [神経認知階層メモ](../../design-notes/dcc-neurocognitive-hierarchy.md)、工程の正本は
 [完成計画](../temporal-dcc-completion.md)。第一原理と実装の対応は
-[technote 9.3.55](../../../web/content/technote.ja.md)へ記録する。
+[technote-ledger 9.3.55](../../design-notes/technote-ledger.ja.md)へ記録する。
 現在の数値参照を第一候補として保持し、数式・特徴量・容量・適合済み係数を
 認知神経科学から一意に導出された仕様とは扱わない。
 

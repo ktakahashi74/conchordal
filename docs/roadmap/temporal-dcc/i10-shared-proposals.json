@@ -1,0 +1,130 @@
+{
+  "schema": "i10-shared-proposals-v1",
+  "status": "transition_admission_kernel_verified_not_production_wired",
+  "artifact_directory": "target/i10-shared-proposals-20260918",
+  "source_sha256": {
+    "src/temporal_cognition/joint.rs": "8bc35ee91a8102e8a9b96076915f0bf47468737009a65293ee365f86425ed701",
+    "src/temporal_cognition/joint/shared.rs": "a6832b379fc0c07db2bd4fb4ef553dec5c6092498b493c5a2b790fddbd5ffad0",
+    "src/temporal_cognition/joint/shared/tests.rs": "829efb23eadf4744bae397b28217945dcee8cd3e67830e6760620de78f40c8d2",
+    "scripts/generate_temporal_shared_proposal_fixtures.py": "d5058b71a40d514d789bdaf07ad78c1c61c860e26f6515a44c06dc824668e988",
+    "tests/fixtures/temporal_cognition/shared_proposals.json": "3dd5f812bbbdc955eeb3e20d48a45a17b0008d214b0c8cae0479b80b927d6b12"
+  },
+  "contract": {
+    "roles": [
+      "stay",
+      "unknown",
+      "strongest_supported_retrieved",
+      "strongest_supported_new_or_contrasting"
+    ],
+    "input": "The caller must supply the two already-selected strongest supported proposals. This kernel neither searches memory nor manufactures support.",
+    "identity": "Opaque complete-path keys owned by the caller, never context labels or recyclable beam slots. Unknown is None; numeric key zero remains a known key.",
+    "stay": "Must refer to the supplied known parent; an unknown parent cannot claim a discarded identity as stay.",
+    "duplicates": "Keep the first positive role in stay/retrieved/new order with its own raw score; no summation and no refill from a weaker candidate. Distinct complete-path keys stay distinct.",
+    "missing": "Known-parent admitted transition priors remain available without new observation. An unknown parent admits no known alternative without observed support. Complete observation-score suppression remains the normalizer contract.",
+    "normalization": "Normalize admitted positive known raw scores in probability space, give them exp(-dt/120) total mass, and reserve -expm1(-dt/120) for unknown. With no known alternative, unknown has mass one. Unknown remains an explicit slot at dt=0.",
+    "numerics": "Finite nonnegative raw scores and finite nonnegative dt required even for masked proposals. Log probabilities use max-scaled sum; no heap allocation or mutable state.",
+    "capacity": "Four fixed slots per parent. Seven known parents and one unknown parent produce at most 31 occupied slots; the canonical conservative shared capacity remains 32."
+  },
+  "verification": {
+    "decimal_precision": 80,
+    "decimal_cases": 80,
+    "new_rust_tests": 4,
+    "scope": [
+      "all support masks and known/unknown parents with/without observation",
+      "same-path duplicate roles, zero scores, zero/tiny/long dt, extreme/subnormal finite scores",
+      "invalid score, clock and stay rejection before masking",
+      "2/8/32/60-second gaps at 1/2/1000 subdivisions; support-based unknown recovery",
+      "31 shared extensions and 8 local groups through the real joint normalizer, with nonzero synthetic scores and full probability-space enumeration",
+      "explicit unknown versus 16 pruned identities, stable ties, identity binding and forbidden unknown-parent stay"
+    ],
+    "fixture_reproduction": "byte_exact",
+    "cargo_test": {
+      "passed": 1168,
+      "failed": 0,
+      "ignored": 38,
+      "suites": 31,
+      "status": "cargo test exit=0 @ 2026-09-18T15:33:21+09:00"
+    },
+    "checks": [
+      {
+        "command": [
+          "cargo",
+          "clippy",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.109664342016913,
+        "log": "target/i10-shared-proposals-20260918/check-0.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "check",
+          "--all-targets"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 5.370001737959683,
+        "log": "target/i10-shared-proposals-20260918/check-1.log"
+      },
+      {
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.6846769640105776,
+        "log": "target/i10-shared-proposals-20260918/check-2.log"
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.04456709302030504,
+        "log": "target/i10-shared-proposals-20260918/check-3.log"
+      },
+      {
+        "command": [
+          "python3",
+          "-m",
+          "py_compile",
+          "scripts/generate_temporal_shared_proposal_fixtures.py"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.02079247700748965,
+        "log": "target/i10-shared-proposals-20260918/check-4.log"
+      }
+    ]
+  },
+  "limits": [
+    "Shared proposal kernel is under the existing test-only joint module; no normal acoustic observer or ordinary action table uses it yet.",
+    "Real strongest-candidate selection, complete-path state ownership/lifetime, bus/epoch/support provenance and once-per-interval delivery remain caller work.",
+    "Complete ordered joint feature registration, real conditional scores, all heads and ordinary candidate reweighting remain incomplete.",
+    "No claim of real-time resource acceptance, retention/readmission on real audio, calibration, audibility or author adoption.",
+    "I10 remains incomplete; actual-body candidate/default consumption and full resource acceptance remain open. Timing choice pending; I9 held and I11 effects disabled."
+  ],
+  "artifact_sha256": {
+    "target/i10-shared-proposals-20260918/audit.py": "bdfad4cb0429a9be869613bf3f9108a82b5598c072e46fe53294fc3f52d95ffc",
+    "target/i10-shared-proposals-20260918/before/docs/design-notes/dcc-neurocognitive-hierarchy.md": "9e239ba666b099481bd50f0513075d967cc9e591ded7d4d7cc1d04a1a47f0796",
+    "target/i10-shared-proposals-20260918/before/src/temporal_cognition/joint/proposals.rs": "96fb4bca146bdb7ac43e75aac417c96b89742a38f3b638917c87d95f1c5e69ea",
+    "target/i10-shared-proposals-20260918/before/src/temporal_cognition/joint.rs": "97cf7695478dc3f2ccccb0f03de8a081819cfeeddd3f86c5b2cf035986a2c20c",
+    "target/i10-shared-proposals-20260918/before.json": "8a420bf86b85fa504a43429b0af4707769892337817185ea0092c095a6e29019",
+    "target/i10-shared-proposals-20260918/check-0.log": "1088ac524f62a23f0d9ce10767ad2d977dbac126b933bfca7424955a54bdff6d",
+    "target/i10-shared-proposals-20260918/check-1.log": "c3278c4a800e87face9b67a0e59086904cec2a04dc42ffe93fcf73d12e118ebc",
+    "target/i10-shared-proposals-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-shared-proposals-20260918/check-3.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-shared-proposals-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-shared-proposals-20260918/checks.json": "64d1f8e84cd3810ecf3441df9f5dac6b60903d399fef60967cdc39253cd26edb",
+    "target/i10-shared-proposals-20260918/register.py": "7d81ec7bd8e1ac1dd1f73331e72962db6ed695cd641e9468bdc45b31c01db02b",
+    "target/i10-shared-proposals-20260918/targeted.log": "00487a8c54a15a85bde2a915c6bdcdf516c6281ef141c72ef6b854c5ee5f6a90",
+    "target/i10-shared-proposals-20260918/test_report.txt": "3dd527c772090ee9be06a93c8654d5e43c43449030c4689f1a78eb8c451d8f8f",
+    "target/i10-shared-proposals-20260918/test_status.txt": "73b999d03812de0d4335f3238b2e05b654568cbdc44c7fa7b04d617a84330262"
+  }
+}

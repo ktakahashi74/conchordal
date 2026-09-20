@@ -1,0 +1,440 @@
+{
+  "schema": "i10-energy-reuse-v1",
+  "status": "exact_physical_window_reuse_verified_not_resource_acceptance",
+  "artifact_directory": "target/i10-energy-reuse-20260918",
+  "plan": {
+    "scope": "Reuse exactly identical no-excitation physical windows within one frozen request. All no-release inputs share the same unchanged-body windows; release/gap share windows only at the identical release time and retained tone state. Preserve full candidate identities, defaults, support, shared heads and trace. No approximate cache keys or cross-request reuse.",
+    "source_before_sha256": {
+      "src/life/action_candidates/energy.rs": "922f406a0dcfb07863708874fd13b5725aeca70277309496d925fb9f65394bab"
+    },
+    "before_binary_sha256": "76e9e763bad3f11828e781467f3771d60351bed6abe61adde2d6fb03ea39d53b",
+    "ordinary_inputs_sha256": {
+      "target/i10-energy-reuse-20260918/inputs/config.toml": "e2c0e475b4ffba2e86abc8bcbdceee659ba7435e2967c05cb3489c2eb6c8a3e7",
+      "target/i10-energy-reuse-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+      "target/i10-energy-reuse-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+      "target/i10-energy-reuse-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+      "target/i10-energy-reuse-20260918/inputs/dev-sine-110-flow.rhai": "7544de4049222dfccd8a5c3f88ffed87c127e8426f7efd843214d72bb9bf0daf",
+      "target/i10-energy-reuse-20260918/inputs/dev-sine-110-hold.rhai": "3ff8eed161a4f30aac9e3ae6bf2136835017984107741c9716687764a6edf015",
+      "target/i10-energy-reuse-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+      "target/i10-energy-reuse-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+      "target/i10-energy-reuse-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957"
+    },
+    "timing_comparison": "After exact numerical/audio isolation checks, compare frozen before/after release binaries on the same sine-flow and110Hz-flow inputs in three alternating order rounds. Background request timing only; not all-Voice/live budget acceptance."
+  },
+  "source_after_sha256": {
+    "src/life/action_candidates/energy.rs": "8a6ba31792ca9ed94a695a54189cf9f3d174b7dcff8c9b5f26f0253a6520a3a9"
+  },
+  "verification": {
+    "candidate_records": 665,
+    "common_observations": 910,
+    "direct_physical_windows": 92408,
+    "reused_physical_windows": 49672,
+    "cases": 8,
+    "all_candidate_fields_except_timing_exact": true,
+    "all_wav_pairs_exact": true,
+    "existing_learning_and_observations_exact": true
+  },
+  "cases": [
+    {
+      "case": "dev-harmonic-entrained",
+      "wav_sha256": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+      "existing_records": {
+        "onset": 11,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 23,
+        "self_sound_descriptor_prediction": 23,
+        "population_step": 550,
+        "private_participation_trace": 23
+      },
+      "common_observations": 116,
+      "candidate_records": 100,
+      "direct_physical_windows": 19952,
+      "reused_physical_windows": 10256,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 27254,
+      "background_us_after": 14044
+    },
+    {
+      "case": "dev-harmonic-pulse",
+      "wav_sha256": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+      "existing_records": {
+        "onset": 10,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 20,
+        "self_sound_descriptor_prediction": 20,
+        "population_step": 550,
+        "private_participation_trace": 20
+      },
+      "common_observations": 116,
+      "candidate_records": 92,
+      "direct_physical_windows": 1504,
+      "reused_physical_windows": 1488,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 1784,
+      "background_us_after": 2130
+    },
+    {
+      "case": "dev-modal-flow",
+      "wav_sha256": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+      "existing_records": {
+        "onset": 12,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 25,
+        "self_sound_descriptor_prediction": 25,
+        "population_step": 550,
+        "private_participation_trace": 25
+      },
+      "common_observations": 116,
+      "candidate_records": 99,
+      "direct_physical_windows": 20376,
+      "reused_physical_windows": 10584,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 30154,
+      "background_us_after": 18046
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "wav_sha256": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+      "existing_records": {
+        "onset": 20,
+        "body_default": 156,
+        "body_descriptor": 156,
+        "self_sound_outcome": 41,
+        "self_sound_descriptor_prediction": 41,
+        "population_step": 778,
+        "private_participation_trace": 41
+      },
+      "common_observations": 162,
+      "candidate_records": 140,
+      "direct_physical_windows": 28960,
+      "reused_physical_windows": 15040,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 68814,
+      "background_us_after": 34511
+    },
+    {
+      "case": "dev-sine-110-hold",
+      "wav_sha256": "02108f3e1162fbc2dca395466e323bcfb9390afe01ec8e4efa3fdd83fbf5d766",
+      "existing_records": {
+        "onset": 1,
+        "body_default": 44,
+        "body_descriptor": 42,
+        "self_sound_outcome": 2,
+        "self_sound_descriptor_prediction": 2,
+        "population_step": 216,
+        "private_participation_trace": 2
+      },
+      "common_observations": 52,
+      "candidate_records": 37,
+      "direct_physical_windows": 592,
+      "reused_physical_windows": 592,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 661,
+      "background_us_after": 743
+    },
+    {
+      "case": "dev-sine-flow",
+      "wav_sha256": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+      "existing_records": {
+        "onset": 13,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 27,
+        "self_sound_descriptor_prediction": 27,
+        "population_step": 550,
+        "private_participation_trace": 27
+      },
+      "common_observations": 116,
+      "candidate_records": 94,
+      "direct_physical_windows": 19376,
+      "reused_physical_windows": 10064,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 120259,
+      "background_us_after": 60691
+    },
+    {
+      "case": "dev-sine-hold",
+      "wav_sha256": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+      "existing_records": {
+        "onset": 1,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 2,
+        "self_sound_descriptor_prediction": 2,
+        "population_step": 550,
+        "private_participation_trace": 2
+      },
+      "common_observations": 116,
+      "candidate_records": 103,
+      "direct_physical_windows": 1648,
+      "reused_physical_windows": 1648,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 1817,
+      "background_us_after": 2391
+    },
+    {
+      "case": "dev-sine-silent",
+      "wav_sha256": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+      "existing_records": {
+        "onset": 0,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 0,
+        "self_sound_descriptor_prediction": 0,
+        "population_step": 550,
+        "private_participation_trace": 0
+      },
+      "common_observations": 116,
+      "candidate_records": 0,
+      "direct_physical_windows": 0,
+      "reused_physical_windows": 0,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 0,
+      "background_us_after": 0
+    }
+  ],
+  "alternating_comparisons": [
+    {
+      "case": "dev-sine-flow",
+      "round": 0,
+      "before_total_us": 113996,
+      "after_total_us": 62988,
+      "fraction_saved": 0.44745429664198744,
+      "before_max_us": 3047,
+      "after_max_us": 1485
+    },
+    {
+      "case": "dev-sine-flow",
+      "round": 1,
+      "before_total_us": 115948,
+      "after_total_us": 60174,
+      "fraction_saved": 0.4810259771621761,
+      "before_max_us": 2861,
+      "after_max_us": 1440
+    },
+    {
+      "case": "dev-sine-flow",
+      "round": 2,
+      "before_total_us": 112938,
+      "after_total_us": 63767,
+      "fraction_saved": 0.4353804742425047,
+      "before_max_us": 2867,
+      "after_max_us": 1747
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "round": 0,
+      "before_total_us": 67722,
+      "after_total_us": 44409,
+      "fraction_saved": 0.34424559227429785,
+      "before_max_us": 1059,
+      "after_max_us": 706
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "round": 1,
+      "before_total_us": 83178,
+      "after_total_us": 42878,
+      "fraction_saved": 0.4845031138041309,
+      "before_max_us": 1190,
+      "after_max_us": 731
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "round": 2,
+      "before_total_us": 67903,
+      "after_total_us": 37570,
+      "fraction_saved": 0.4467107491568856,
+      "before_max_us": 1128,
+      "after_max_us": 696
+    }
+  ],
+  "tests": {
+    "suites": 31,
+    "passed": 1188,
+    "failed": 0,
+    "ignored": 38,
+    "status": "cargo test exit=0 @ 2026-09-18T19:19:03+09:00"
+  },
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.8756484700134024
+    },
+    {
+      "command": [
+        "cargo",
+        "check",
+        "--all-targets"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.2572550360346213
+    },
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7077159920008853
+    },
+    {
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--bin",
+        "conchordal-render"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 53.12138348200824
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.04601731995353475
+    }
+  ],
+  "limits": [
+    "Window-call counts are derived from the distinct physical inputs of665 reported requests, not an added runtime profiler. No cross-request state is cached.",
+    "Background request wall time is not all-Voice, whole-worker or live-audio acceptance. One post-change maximum is1.747ms, so a1.6ms bound is not established.",
+    "Energy quadrature, body-transfer fidelity, non-energy heads, full default semantics and pending scope/evaluation decisions are unchanged. I10 incomplete; I9 held; I11 effects disabled."
+  ],
+  "artifact_sha256": {
+    "target/i10-energy-reuse-20260918/acquire.py": "2493a58e10591fdd24b00dc4d045bf7f0c4f5aca3c50806c608b50f1a963fcfc",
+    "target/i10-energy-reuse-20260918/after/src/life/action_candidates/energy.rs": "8a6ba31792ca9ed94a695a54189cf9f3d174b7dcff8c9b5f26f0253a6520a3a9",
+    "target/i10-energy-reuse-20260918/after-render": "389e58c0a317593a9d7d9f3f2611fe22e18c4fd4f71ec51fb96f5245b7ffcf63",
+    "target/i10-energy-reuse-20260918/alternating/comparisons.json": "6d74064a4c51521f9bf662d7a794df5db27428ae20a9b7ab6483083c9718636a",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r0-after.jsonl": "a14482f1f5edde2b155f94f2d81354b124fa6e47e8a6ee81636efb8fea69192e",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r0-after.log": "a08aae09a18f46af0f60373598dfa7f1bbedb056f17ff2c7ed6582874cc55408",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r0-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r0-before.jsonl": "46b3a6b377c197556c647b96ec0d7267bba40129a3b5c1bd9fdce9c499109cd7",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r0-before.log": "789b31e5e41d360e80e361aedec426f02435d1f33de357c0485b6ea9541c4c19",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r0-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r1-after.jsonl": "a5c38a2310ac778d0979891bad137f61271837e68c62e323b668c0dd0cae2b29",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r1-after.log": "e59a4b232c00a034790e4eef87083fae7a9dac551c285952e3301a7f0a53e09d",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r1-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r1-before.jsonl": "f5f154cde54d0fa8a61b2945f3d130fe7922fedc224e21d60fb09737e32bff4e",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r1-before.log": "93c4f2d437416285a71f2e3f283cfc82fcfa6302c7bc025b3414c2be0a31a5cc",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r1-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r2-after.jsonl": "3ec01c516c413d913febf441f5bb191e987ef7da119b43b4d22ba8cde83b6f58",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r2-after.log": "946f549fa35a019bb1c4beec3f62165e63109ac2590d0d5f43e9689132372f2a",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r2-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r2-before.jsonl": "9573edc7f73526d5db024328ad08eea3927e7b011b3492ffea32643da6780c95",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r2-before.log": "019a59a678bd2c39c2ddf3e2350150e78bc527116233380e412f19e3fa69777b",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-110-flow-r2-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r0-after.jsonl": "1801b5be1635e7750566224ac1158bed5c0fdc23a7cda2e1c3464d6086536625",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r0-after.log": "36ab7d1b02a9955bb13ad12c0ee46894f5170a21a0a3d46fd8a64ddd055014e3",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r0-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r0-before.jsonl": "4231d97af2604eb67fe46edf8f8996ccd57edd0c88858e3e1a3122aad11dbcb6",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r0-before.log": "a8b94e3956277ee86ddc53ce1dcf77944fb7aadcf5fdf20cd23437f039448852",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r0-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r1-after.jsonl": "86abc8c3d9bd0b067490c2db6db7fcac2631b050d96054e2ca37824ee05f5de1",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r1-after.log": "0b4f48adc980244de28aa50c3e4d65d08b60c61336c85d3571328847e2837ca3",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r1-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r1-before.jsonl": "ad5062a8c283377a14a037a4637678699c3aada156c0dd7f7ae767ddd8a7fd1f",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r1-before.log": "29caad0e6e18927e00a2318f2576f7a2159ed75aee38c0e7995a44e5e8049320",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r1-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r2-after.jsonl": "b6766f361fbccc9be0436e1c74cab6f3500ab197b68b26b2384f253ac438e2a5",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r2-after.log": "a870b370772f084449b94db98e8fc53048d6cf8c1b5f32576ea239e300b06b93",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r2-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r2-before.jsonl": "7634538688008262c029063ac488b2014f81c5a400b052908edf3148620a97cf",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r2-before.log": "ca07d0bdd321e926294fb52f9472f0faff4ff03504fb1da9726e0a8338d93233",
+    "target/i10-energy-reuse-20260918/alternating/dev-sine-flow-r2-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/alternating/results.json": "1f104bf4266fabd199141204b19c5994de0cfa7738b008185e5fecb1416319db",
+    "target/i10-energy-reuse-20260918/before/src/life/action_candidates/energy.rs": "922f406a0dcfb07863708874fd13b5725aeca70277309496d925fb9f65394bab",
+    "target/i10-energy-reuse-20260918/before-render": "76e9e763bad3f11828e781467f3771d60351bed6abe61adde2d6fb03ea39d53b",
+    "target/i10-energy-reuse-20260918/benchmark.py": "ec46fcbe2313bb29cc20ca61e5838c19e207c5506fce98363cf415030c128779",
+    "target/i10-energy-reuse-20260918/check-0.log": "2751ade3eabb7388f5881f8615c21a67ba7bd56d11ef68cd821221995eb2bbd3",
+    "target/i10-energy-reuse-20260918/check-1.log": "5980513b25621c62061ee2e0198d410855d18188a02481f21d5fcb212bf27cc1",
+    "target/i10-energy-reuse-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-energy-reuse-20260918/check-3.log": "f3a790d03eb1dc7e342ab52aa4e957ca2cfce4ae93f419f1f4c423727cdb58ed",
+    "target/i10-energy-reuse-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-energy-reuse-20260918/checks.json": "e83f98dcc69af3f7ea02b47787f5c23fbe73159fb14cd4552b89b24462024a5b",
+    "target/i10-energy-reuse-20260918/checks.py": "89fd0505a2e1884cbda4b5cc59ac7375b732feeaa14c7c803fdba6032d2318e0",
+    "target/i10-energy-reuse-20260918/dev-harmonic-entrained-after.jsonl": "c60d68e1eca2f1a7609fbc309062f00f37de51f1c7f816afcfa38b2e4f436dc8",
+    "target/i10-energy-reuse-20260918/dev-harmonic-entrained-after.log": "753e3116820ebf9eba5fbd17124291138b4fc17699813a4dff05a7311aef1d8c",
+    "target/i10-energy-reuse-20260918/dev-harmonic-entrained-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-reuse-20260918/dev-harmonic-entrained-before.jsonl": "a123e8c96b5f353d93d041ecd5e5a728b05894258fd6d6298ab9f3feed8745fb",
+    "target/i10-energy-reuse-20260918/dev-harmonic-entrained-before.log": "9032380322d6e5fe142046358d0531d68e6d1f38e19c55fa9ffeddbcbc09c8af",
+    "target/i10-energy-reuse-20260918/dev-harmonic-entrained-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-reuse-20260918/dev-harmonic-pulse-after.jsonl": "d749fb2a61e9b211c3ab2406e6bf36f8b1034f98baf674a79813fce99ca0b1ba",
+    "target/i10-energy-reuse-20260918/dev-harmonic-pulse-after.log": "ab6a0b69e50fe57c92783d2e44213a80597d11ab303015ed0ed68004b3ede65c",
+    "target/i10-energy-reuse-20260918/dev-harmonic-pulse-after.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-energy-reuse-20260918/dev-harmonic-pulse-before.jsonl": "105b9433aff5177b8d8f90dc14ca674e73d83d0d6fb801bf582a89c62a7923c2",
+    "target/i10-energy-reuse-20260918/dev-harmonic-pulse-before.log": "716ad33fcfd266e9ee104a86c6d2d3def78fb8756a9979eb1a5505e94b0e38be",
+    "target/i10-energy-reuse-20260918/dev-harmonic-pulse-before.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-energy-reuse-20260918/dev-modal-flow-after.jsonl": "beb8e16e4e11ee745b6508bd7f2cc83908793319af8a245818d9c38ce9f479b8",
+    "target/i10-energy-reuse-20260918/dev-modal-flow-after.log": "3ce1927351b13920a7f976832e74770317b220e88b00f95f403d9112a8bfe4a7",
+    "target/i10-energy-reuse-20260918/dev-modal-flow-after.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-energy-reuse-20260918/dev-modal-flow-before.jsonl": "eaa6922fd1d54f0c2c5b32fb668cc2df5b2de012c4504d1fded8d60828786202",
+    "target/i10-energy-reuse-20260918/dev-modal-flow-before.log": "7b22cc620e1152a318598dcdfc14e7053ed930f60e12f7c03851e5bbd1e594f5",
+    "target/i10-energy-reuse-20260918/dev-modal-flow-before.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-energy-reuse-20260918/dev-sine-110-flow-after.jsonl": "00c42d0ca8110bb95973e43b253ed09b9416e156f63f037cdebebb8e5eef972f",
+    "target/i10-energy-reuse-20260918/dev-sine-110-flow-after.log": "3fefae7ed734dd936dacb0bfc01bb10787a85f6d3b7884b1961d335990c5ff42",
+    "target/i10-energy-reuse-20260918/dev-sine-110-flow-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/dev-sine-110-flow-before.jsonl": "f603923f22f3f8852a8d70f6f27a33c27a3f5b03a6d64c526cf0e0f878047964",
+    "target/i10-energy-reuse-20260918/dev-sine-110-flow-before.log": "bc9b1d59392b1d969694766cb205eb943cac4ff7b31f68dce5e7c202379feada",
+    "target/i10-energy-reuse-20260918/dev-sine-110-flow-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-reuse-20260918/dev-sine-110-hold-after.jsonl": "d2faa27613f3bdb5ff64b03fef6d7191994f737a5a8c45c32a727a102ca493b3",
+    "target/i10-energy-reuse-20260918/dev-sine-110-hold-after.log": "5e5384ffd2e65b59588f68aba5a08290bc9eb569cfe90705c47a37f1d8141ea4",
+    "target/i10-energy-reuse-20260918/dev-sine-110-hold-after.wav": "02108f3e1162fbc2dca395466e323bcfb9390afe01ec8e4efa3fdd83fbf5d766",
+    "target/i10-energy-reuse-20260918/dev-sine-110-hold-before.jsonl": "6a158ab373321f4733df705a685c812aa5170b581699511cd329d20fe368d535",
+    "target/i10-energy-reuse-20260918/dev-sine-110-hold-before.log": "d0753a6d71ba1070179b8f0fce21947a27aebaa47acb683726a554ec5383de1e",
+    "target/i10-energy-reuse-20260918/dev-sine-110-hold-before.wav": "02108f3e1162fbc2dca395466e323bcfb9390afe01ec8e4efa3fdd83fbf5d766",
+    "target/i10-energy-reuse-20260918/dev-sine-flow-after.jsonl": "01043aecddb7dbc6b5d04bd6ebe23ba12adfc9249ac03e3fdd4ccc7ddd1a02f5",
+    "target/i10-energy-reuse-20260918/dev-sine-flow-after.log": "4240a42edacb38f8bd420e34bcc22e5eaf251d52ca2e42c71f857a8aafa2585c",
+    "target/i10-energy-reuse-20260918/dev-sine-flow-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/dev-sine-flow-before.jsonl": "5dc306f12f88b35eea9486a2f51c03debd313eff8b0a1475da6f48c49d6dad25",
+    "target/i10-energy-reuse-20260918/dev-sine-flow-before.log": "9b0fb1751260343f4843cf46bcd80e88d420a536c0d6b23afd09e0ccaef7ff9f",
+    "target/i10-energy-reuse-20260918/dev-sine-flow-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-reuse-20260918/dev-sine-hold-after.jsonl": "f1da978bb961e1ff4a7abb18f95d3731c1e7ef17a4f76440ef8fc3c3b677b487",
+    "target/i10-energy-reuse-20260918/dev-sine-hold-after.log": "566d3749c8ee34eaed18bdcb12c89eef00eb87d3322727bd3cdb2c0f0845e8f5",
+    "target/i10-energy-reuse-20260918/dev-sine-hold-after.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-energy-reuse-20260918/dev-sine-hold-before.jsonl": "5f8847a05edc287b004fac4805780805187eb4745e96b985ce8f5675a70d4159",
+    "target/i10-energy-reuse-20260918/dev-sine-hold-before.log": "f3107095527127352bd7b30312d7262372fc90abca63daddf4290500a0383314",
+    "target/i10-energy-reuse-20260918/dev-sine-hold-before.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-energy-reuse-20260918/dev-sine-silent-after.jsonl": "670e224c0319b2124906a21c0286fc4d0785a2f3a0fd7fbb131e5fb0120544aa",
+    "target/i10-energy-reuse-20260918/dev-sine-silent-after.log": "ca34e3f4048047c8f9a02cc4715c7f411fd074b922c63414b3b5e1f526e9a67d",
+    "target/i10-energy-reuse-20260918/dev-sine-silent-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-reuse-20260918/dev-sine-silent-before.jsonl": "365b1604e678bc12ebc53506597e93b6a066313ea2324b6246a6e0c4131dc5eb",
+    "target/i10-energy-reuse-20260918/dev-sine-silent-before.log": "753a95b5d06c8890414322a548a174ccbe2b85fbdbf8cac37e2cd13b7e78beda",
+    "target/i10-energy-reuse-20260918/dev-sine-silent-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-reuse-20260918/environment.json": "b7cfc08c112fd633e56ef615b7f50553a9721f2bd71d6f6840a7c75a06ca5840",
+    "target/i10-energy-reuse-20260918/initial-check.log": "87aa7fe523563d230eb3d969b0389330727a5ea935e36fcb51a7132cb0148532",
+    "target/i10-energy-reuse-20260918/inputs/config.toml": "e2c0e475b4ffba2e86abc8bcbdceee659ba7435e2967c05cb3489c2eb6c8a3e7",
+    "target/i10-energy-reuse-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+    "target/i10-energy-reuse-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+    "target/i10-energy-reuse-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+    "target/i10-energy-reuse-20260918/inputs/dev-sine-110-flow.rhai": "7544de4049222dfccd8a5c3f88ffed87c127e8426f7efd843214d72bb9bf0daf",
+    "target/i10-energy-reuse-20260918/inputs/dev-sine-110-hold.rhai": "3ff8eed161a4f30aac9e3ae6bf2136835017984107741c9716687764a6edf015",
+    "target/i10-energy-reuse-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+    "target/i10-energy-reuse-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+    "target/i10-energy-reuse-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957",
+    "target/i10-energy-reuse-20260918/plan.json": "5f3bed1462466c0ca4eef98f6618579cd41c7e80ba916dd52b44d9b09f136680",
+    "target/i10-energy-reuse-20260918/register.py": "4fc45a22b336106590468980fe65db0127ea015af86a0a96945eabf04139050d",
+    "target/i10-energy-reuse-20260918/reuse-unit.log": "aa1171f2924974ef57126cc3b8171624a23eb44d6ab5d59386640d376f652a67",
+    "target/i10-energy-reuse-20260918/runs.json": "f12e9fbef6849bb41a73a837f8642061964c7ba1b92bc4f7c41fe9cfca317a7c",
+    "target/i10-energy-reuse-20260918/test_report.txt": "39fc250e4e1ae76beaac2732b029148bee086dd8b13aaa79852bcd00cbdd9bde",
+    "target/i10-energy-reuse-20260918/test_status.txt": "0a523d3ee94eefac269ae7ee2e43cd6a562894811e6b73919b9cb520e9da5f63",
+    "target/i10-energy-reuse-20260918/verification.json": "efffc2f593a16dd024c8db612936e6c06851c3f2e4d04b18159f5c8ba4267065",
+    "target/i10-energy-reuse-20260918/verify.py": "22bd4ea9fd7f7ef4829551caf12502830506dc09ede3f951ffad9e2d84e0eb54"
+  }
+}

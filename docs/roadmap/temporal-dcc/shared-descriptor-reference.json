@@ -4,7 +4,7 @@
   "status": "exact_knot_sharing_verified; conditional_doubled_capacity_passed; full_model_sizing_unproven",
   "specification": {
     "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
-    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "sha256": "c3ef46176cbcc96766173deb1d5f44f3ce716ccee6d56516d9ea2dab0f2a6be5",
     "sections": [
       "9.3",
       "10.1"
@@ -346,6 +346,18 @@
     {
       "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
       "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    },
+    {
+      "date": "2026-09-12",
+      "specification": {
+        "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+        "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+        "sections": [
+          "9.3",
+          "10.1"
+        ]
+      },
+      "reason": "Rust implementation preparation/MR1 and delivery gate ownership; concurrent embodied-affordance requirements retained separately. Section9 is byte-identical to the previous specification. Existing numerical evidence, fit version29, collection and O04 gates are not promoted."
     }
   ],
   "updated_at": "2026-09-11T11:40:42.701331+00:00",

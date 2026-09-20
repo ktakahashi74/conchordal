@@ -186,23 +186,24 @@ class AccentLedger:
                 or any(a >= b for a, b in intervals)
                 or any(intervals[i][1] != intervals[i+1][0] for i in range(3))
                 or accent["event_interval"] != [v / rate for v in intervals[2]]
-                or accent["raw_support_end"] != intervals[-1][1] / rate
+                or accent["raw_support_end"] < intervals[-1][1] / rate
+                or not math.isfinite(accent.get('raw_support_start', intervals[0][0] / rate))
+                or not 0 <= accent.get('raw_support_start', intervals[0][0] / rate) <= intervals[0][0] / rate
                 or accent["id"] != (self.epoch, self.generation, *intervals[2]) or accent["weight"] <= 0):
             raise ValueError("complete canonical detector provenance and stable accent ID required")
         if observed_end < self.observed_end:
             raise ValueError("delivery clock must not run backwards")
-        key = (accent["raw_support_end"], accent["id"])
-        if self.last is not None:
-            if key == (self.last["raw_support_end"], self.last["id"]):
-                if accent != self.last:
+        # Stable IDs cannot acquire new credit by changing their evidence window.
+        for old in ([self.last] if self.last is not None else []) + self.bank:
+            if old['id'] == accent['id']:
+                if old != accent:
                     raise ValueError("conflicting repeat of an admitted accent")
                 return None
-            if key < (self.last["raw_support_end"], self.last["id"]):
-                for old in self.bank:
-                    if old["id"] == accent["id"] and old == accent:
-                        return None
+        key = (accent["raw_support_end"], accent["id"])
+        if self.last is not None:
+            if key <= (self.last["raw_support_end"], self.last["id"]):
                 raise ValueError("stale admission requires upstream reconciliation, never new credit")
-            if accent['time'] < self.last['time']:
+            if (accent['time'], accent['id']) <= (self.last['time'], self.last['id']):
                 raise ValueError("canonical detector event order must be preserved")
         self.advance(observed_end)
         self.last = copy.deepcopy(accent)

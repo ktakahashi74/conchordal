@@ -533,6 +533,48 @@ impl ScriptHost {
             },
         );
 
+        let ctx_for_temporal_mode = ctx.clone();
+        engine.register_fn(
+            "temporal_mode",
+            move |call: NativeCallContext, name: &str| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_temporal_mode.lock().expect("lock script context");
+                if ctx.temporal_mode_declared
+                    || ctx.cursor != 0.0
+                    || !ctx.scopes.is_empty()
+                    || !ctx.scenario.events.is_empty()
+                    || call.call_level() > 1
+                {
+                    return Err(EvalAltResult::ErrorRuntime(
+                        "temporal_mode must be declared once at top level before playback events"
+                            .into(),
+                        call.call_position(),
+                    )
+                    .into());
+                }
+                let mode = match name {
+                    "off" => crate::scenario::TemporalMode::Off,
+                    "observe" => crate::scenario::TemporalMode::Observe,
+                    "participate" => {
+                        return Err(EvalAltResult::ErrorRuntime(
+                            "temporal participation is not implemented or calibrated".into(),
+                            call.call_position(),
+                        )
+                        .into());
+                    }
+                    _ => {
+                        return Err(EvalAltResult::ErrorRuntime(
+                            "temporal_mode expects off or observe".into(),
+                            call.call_position(),
+                        )
+                        .into());
+                    }
+                };
+                ctx.scenario.temporal_mode = mode;
+                ctx.temporal_mode_declared = true;
+                Ok(())
+            },
+        );
+
         let ctx_for_seed = ctx.clone();
         engine.register_fn(
             "seed",

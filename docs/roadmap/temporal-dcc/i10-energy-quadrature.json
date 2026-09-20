@@ -1,0 +1,2694 @@
+{
+  "schema": "i10-energy-quadrature-registration-v1",
+  "status": "offline_fidelity_audit_not_promoted",
+  "artifact_directory": "target/i10-energy-quadrature-20260918-final",
+  "summary": {
+    "schema": "i10-energy-quadrature-audit-v1",
+    "corpus_manifest_sha256": "46310f2909cac82be7c3566f51990216a863b99651c2a0dfacb17105dac2e7cb",
+    "corpus_verification_sha256": "9cb9b0071fc6a3a2fd14397d575abd5f8a8597a6290f1f28a4e7b995ba83d2f6",
+    "script_sha256": "5805ae270f2339ceb2c2c18c0efca965ed6d35a8bdef14073b9b2c90567b5efe",
+    "registry_sha256": "ef845ba7045762e4f2abbbdaf46891cbde0516ae780c882fc4acf2689e5a603c",
+    "python_version": "3.14.4",
+    "numpy_version": "2.3.5",
+    "epsilon_full_scale_squared": 1e-12,
+    "cases": 36,
+    "ineligible_branches": 72,
+    "conditions": 8,
+    "rows": 6336,
+    "reference": "piecewise window-center/edge Gauss-Legendre 8/16, doubled to 512 until ratio change <= 1e-10",
+    "max_reference_ratio_difference": 8.736362674954812e-11,
+    "unconverged_reference_rows": 0,
+    "largest_reference_order": 512,
+    "strata_errors": [
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.06468949918695266,
+        "worst_row": 4077
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 16,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.06468949924080747,
+        "worst_row": 4077
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.06468949914393907,
+        "worst_row": 4077
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 32,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.06468949924080747,
+        "worst_row": 4077
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.4581948902881078,
+        "worst_row": 4077
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 8,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.4581948904518306,
+        "worst_row": 4077
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.03881603737640349,
+        "worst_row": 4109
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.03881603736451613,
+        "worst_row": 4109
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.05060675982563073,
+        "worst_row": 3756
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.05060675981594853,
+        "worst_row": 3756
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.3035072885500335,
+        "worst_row": 4125
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.30350728869997806,
+        "worst_row": 4125
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.13791264856451368,
+        "worst_row": 4221
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 16,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.13791264866390457,
+        "worst_row": 4221
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.022041917959055635,
+        "worst_row": 4221
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 32,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.022041917987375426,
+        "worst_row": 4221
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.09669668851366853,
+        "worst_row": 4189
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 8,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.09669668859080978,
+        "worst_row": 4189
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.11304106856983442,
+        "worst_row": 3725
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.11304106867456301,
+        "worst_row": 3725
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.04934027654044304,
+        "worst_row": 4093
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.04934027648986192,
+        "worst_row": 4093
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.43396525957999754,
+        "worst_row": 4093
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.4339652594906003,
+        "worst_row": 4093
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.13791264856451368,
+        "worst_row": 4173
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 16,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.13791264866390457,
+        "worst_row": 4173
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.022041917959055635,
+        "worst_row": 4173
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 32,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.022041917987375426,
+        "worst_row": 4173
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.09669668851366853,
+        "worst_row": 4141
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 8,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.09669668859080978,
+        "worst_row": 4141
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.06468949918695266,
+        "worst_row": 4061
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 16,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.06468949924080747,
+        "worst_row": 4061
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.06468949914393907,
+        "worst_row": 4061
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 32,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.06468949924080747,
+        "worst_row": 4061
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.4581948902881078,
+        "worst_row": 4061
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 8,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.4581948904518306,
+        "worst_row": 4061
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.06468949918695266,
+        "worst_row": 4045
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 16,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.06468949924080747,
+        "worst_row": 4045
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.06468949914393907,
+        "worst_row": 4045
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 32,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.06468949924080747,
+        "worst_row": 4045
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.4581948902881078,
+        "worst_row": 4045
+      },
+      {
+        "body": "harmonic",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 8,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.4581948904518306,
+        "worst_row": 4045
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.036628995856213487,
+        "worst_row": 3869
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 16,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.03662899588610048,
+        "worst_row": 3869
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.036628995838097755,
+        "worst_row": 3869
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 32,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.03662899588610048,
+        "worst_row": 3869
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.2532244055840088,
+        "worst_row": 3869
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 8,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.25322440566578014,
+        "worst_row": 3869
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.027787922265101184,
+        "worst_row": 3596
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.027787922255289255,
+        "worst_row": 3596
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.028133542873609807,
+        "worst_row": 3612
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.028133542868354344,
+        "worst_row": 3612
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.14920328030357954,
+        "worst_row": 3901
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.14920328023387225,
+        "worst_row": 3901
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.08891152067849539,
+        "worst_row": 4013
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 16,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.0889115207211662,
+        "worst_row": 4013
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.015047236784526574,
+        "worst_row": 4013
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 32,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.015047236797366595,
+        "worst_row": 4013
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.08467809503175061,
+        "worst_row": 3981
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 8,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.08467809509301824,
+        "worst_row": 3981
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.08692763290487793,
+        "worst_row": 3581
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.08692763297731868,
+        "worst_row": 3581
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.03428303308867664,
+        "worst_row": 3885
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.03428303306144148,
+        "worst_row": 3885
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.2860456102171808,
+        "worst_row": 3885
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.2860456101813166,
+        "worst_row": 3885
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.08891152067849539,
+        "worst_row": 3965
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 16,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.0889115207211662,
+        "worst_row": 3965
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.015047236784526574,
+        "worst_row": 3965
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 32,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.015047236797366595,
+        "worst_row": 3965
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.08467809503175061,
+        "worst_row": 3933
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 8,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.08467809509301824,
+        "worst_row": 3933
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.036628995856213487,
+        "worst_row": 3853
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 16,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.03662899588610048,
+        "worst_row": 3853
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.036628995838097755,
+        "worst_row": 3853
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 32,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.03662899588610048,
+        "worst_row": 3853
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.2532244055840088,
+        "worst_row": 3853
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 8,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.25322440566578014,
+        "worst_row": 3853
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.036628995856213487,
+        "worst_row": 3837
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 16,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.03662899588610048,
+        "worst_row": 3837
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.036628995838097755,
+        "worst_row": 3837
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 32,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.03662899588610048,
+        "worst_row": 3837
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.2532244055840088,
+        "worst_row": 3837
+      },
+      {
+        "body": "harmonic",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 8,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.25322440566578014,
+        "worst_row": 3837
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.1394698982765274,
+        "worst_row": 6188
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 16,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.13946989892048556,
+        "worst_row": 6188
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.09702285491644558,
+        "worst_row": 6189
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 32,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.09702287281413334,
+        "worst_row": 6189
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.8438781128236919,
+        "worst_row": 6189
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 8,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.8438781566549539,
+        "worst_row": 6189
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.1057661156999733,
+        "worst_row": 6236
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.10576611584283391,
+        "worst_row": 6236
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.10529877580318059,
+        "worst_row": 6234
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.10529877569788171,
+        "worst_row": 6234
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.42292145481083254,
+        "worst_row": 6221
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.4229214285910737,
+        "worst_row": 6221
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.23989739635373342,
+        "worst_row": 6333
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 16,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.2398974145001127,
+        "worst_row": 6333
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.04725412681269858,
+        "worst_row": 6333
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 32,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.04725412777844021,
+        "worst_row": 6333
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.2288823334408198,
+        "worst_row": 6332
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 8,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.22888233451390005,
+        "worst_row": 6332
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.10800789376129838,
+        "worst_row": 6205
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.10800789516867033,
+        "worst_row": 6205
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.10800789970553981,
+        "worst_row": 6205
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.10800789516867033,
+        "worst_row": 6205
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.8396621479933299,
+        "worst_row": 6205
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.8396621488895292,
+        "worst_row": 6205
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.23989739635373342,
+        "worst_row": 6285
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 16,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.2398974145001127,
+        "worst_row": 6285
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.04725412681269858,
+        "worst_row": 6285
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 32,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.04725412777844021,
+        "worst_row": 6285
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.2288823334408198,
+        "worst_row": 6284
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 8,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.22888233451390005,
+        "worst_row": 6284
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.1394698982765274,
+        "worst_row": 6172
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 16,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.13946989892048556,
+        "worst_row": 6172
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.09702285491644558,
+        "worst_row": 6173
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 32,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.09702287281413334,
+        "worst_row": 6173
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.8438781128236919,
+        "worst_row": 6173
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 8,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.8438781566549539,
+        "worst_row": 6173
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.1394698982765274,
+        "worst_row": 6156
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 16,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.13946989892048556,
+        "worst_row": 6156
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.09702285491644558,
+        "worst_row": 6157
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 32,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.09702287281413334,
+        "worst_row": 6157
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.8438781128236919,
+        "worst_row": 6157
+      },
+      {
+        "body": "modal",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 8,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.8438781566549539,
+        "worst_row": 6157
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.0806032438432182,
+        "worst_row": 5980
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 16,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.0806032442216692,
+        "worst_row": 5980
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.05641272233657302,
+        "worst_row": 5981
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 32,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.05641272706255816,
+        "worst_row": 5981
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.5359424753759134,
+        "worst_row": 5981
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 8,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.5359424944435397,
+        "worst_row": 5981
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.09973266712599771,
+        "worst_row": 5709
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.09973266490442238,
+        "worst_row": 5709
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.09973266697372518,
+        "worst_row": 5709
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.09973266490442238,
+        "worst_row": 5709
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.3722887360244673,
+        "worst_row": 6012
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.3722887359564149,
+        "worst_row": 6012
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.19564631715151193,
+        "worst_row": 6125
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 16,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.19564632672798993,
+        "worst_row": 6125
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.036709770972999545,
+        "worst_row": 6125
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 32,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.03670977148340572,
+        "worst_row": 6125
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.16926619292171957,
+        "worst_row": 6124
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 8,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.16926619374572327,
+        "worst_row": 6124
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.09288588383340252,
+        "worst_row": 5996
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.092885883755427,
+        "worst_row": 5996
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.1173276896270965,
+        "worst_row": 5996
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.11732768943796673,
+        "worst_row": 5996
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.6762586572585013,
+        "worst_row": 5997
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.6762586564376444,
+        "worst_row": 5997
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.19564631715151193,
+        "worst_row": 6077
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 16,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.19564632672798993,
+        "worst_row": 6077
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.036709770972999545,
+        "worst_row": 6077
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 32,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.03670977148340572,
+        "worst_row": 6077
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.16926619292171957,
+        "worst_row": 6076
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 8,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.16926619374572327,
+        "worst_row": 6076
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.0806032438432182,
+        "worst_row": 5964
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 16,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.0806032442216692,
+        "worst_row": 5964
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.05641272233657302,
+        "worst_row": 5965
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 32,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.05641272706255816,
+        "worst_row": 5965
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.5359424753759134,
+        "worst_row": 5965
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 8,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.5359424944435397,
+        "worst_row": 5965
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.0806032438432182,
+        "worst_row": 5948
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 16,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.0806032442216692,
+        "worst_row": 5948
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.05641272233657302,
+        "worst_row": 5949
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 32,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.05641272706255816,
+        "worst_row": 5949
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.5359424753759134,
+        "worst_row": 5949
+      },
+      {
+        "body": "modal",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 8,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.5359424944435397,
+        "worst_row": 5949
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.05003564029606811,
+        "worst_row": 1965
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 16,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.050035640314345896,
+        "worst_row": 1965
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.050035640302760975,
+        "worst_row": 1965
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 32,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.050035640314345896,
+        "worst_row": 1965
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.34506187453060055,
+        "worst_row": 1965
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "continue",
+        "points": 8,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.34506187459089266,
+        "worst_row": 1965
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.03359842295880522,
+        "worst_row": 2013
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.033598422978548155,
+        "worst_row": 2013
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.03359842299288751,
+        "worst_row": 2013
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.033598422978548155,
+        "worst_row": 2013
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.2557571811980105,
+        "worst_row": 2013
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.255757181320014,
+        "worst_row": 2013
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.11358823413936425,
+        "worst_row": 2109
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 16,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.1135882342094238,
+        "worst_row": 2109
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.02107454376346507,
+        "worst_row": 2109
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 32,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.021074543775202653,
+        "worst_row": 2109
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.09473288578808015,
+        "worst_row": 2077
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "gap",
+        "points": 8,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.09473288579549022,
+        "worst_row": 2077
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.09251047300306214,
+        "worst_row": 1613
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.0925104730915035,
+        "worst_row": 1613
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.0335426442641632,
+        "worst_row": 1981
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.033542644245963316,
+        "worst_row": 1981
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.34538565104840546,
+        "worst_row": 1981
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.34538565099187607,
+        "worst_row": 1981
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.11358823413936425,
+        "worst_row": 2061
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 16,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.1135882342094238,
+        "worst_row": 2061
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.02107454376346507,
+        "worst_row": 2061
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 32,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.021074543775202653,
+        "worst_row": 2061
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.09473288578808015,
+        "worst_row": 2029
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "release",
+        "points": 8,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.09473288579549022,
+        "worst_row": 2029
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.05003564029606811,
+        "worst_row": 1949
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 16,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.050035640314345896,
+        "worst_row": 1949
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.050035640302760975,
+        "worst_row": 1949
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 32,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.050035640314345896,
+        "worst_row": 1949
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.34506187453060055,
+        "worst_row": 1949
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "skip",
+        "points": 8,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.34506187459089266,
+        "worst_row": 1949
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.05003564029606811,
+        "worst_row": 1933
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 16,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.050035640314345896,
+        "worst_row": 1933
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.050035640302760975,
+        "worst_row": 1933
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 32,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.050035640314345896,
+        "worst_row": 1933
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.34506187453060055,
+        "worst_row": 1933
+      },
+      {
+        "body": "sine",
+        "modulator": "drone_sway",
+        "action_class": "wait",
+        "points": 8,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.34506187459089266,
+        "worst_row": 1933
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.024424571122013017,
+        "worst_row": 1757
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 16,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.024424571130471716,
+        "worst_row": 1757
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.024424571122159677,
+        "worst_row": 1757
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 32,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.024424571130471716,
+        "worst_row": 1757
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.16212867062505576,
+        "worst_row": 1757
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "continue",
+        "points": 8,
+        "column": "overlap",
+        "compared": 44,
+        "max_absolute_error": 0.16212867065704897,
+        "worst_row": 1757
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.01669518786420965,
+        "worst_row": 1789
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 16,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.016695187880462314,
+        "worst_row": 1789
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.01669518787690827,
+        "worst_row": 1789
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 32,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.016695187880462314,
+        "worst_row": 1789
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "audibility",
+        "compared": 112,
+        "max_absolute_error": 0.10588228936145139,
+        "worst_row": 1789
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "delayed_onset",
+        "points": 8,
+        "column": "overlap",
+        "compared": 174,
+        "max_absolute_error": 0.10588228935312344,
+        "worst_row": 1789
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.0626586050250948,
+        "worst_row": 1901
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 16,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.06265860505207047,
+        "worst_row": 1901
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.012444489284117788,
+        "worst_row": 1901
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 32,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.012444489287298778,
+        "worst_row": 1901
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.0781699382810025,
+        "worst_row": 1869
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "gap",
+        "points": 8,
+        "column": "overlap",
+        "compared": 276,
+        "max_absolute_error": 0.07816993828566524,
+        "worst_row": 1869
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.06270463471644194,
+        "worst_row": 1469
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 16,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.06270463476644084,
+        "worst_row": 1469
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.01961397271858789,
+        "worst_row": 1773
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 32,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.019613972713126288,
+        "worst_row": 1773
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.18675074156332472,
+        "worst_row": 1773
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "onset_now",
+        "points": 8,
+        "column": "overlap",
+        "compared": 88,
+        "max_absolute_error": 0.18675074155651675,
+        "worst_row": 1773
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 16,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.0626586050250948,
+        "worst_row": 1853
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 16,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.06265860505207047,
+        "worst_row": 1853
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 32,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.012444489284117788,
+        "worst_row": 1853
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 32,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.012444489287298778,
+        "worst_row": 1853
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 8,
+        "column": "audibility",
+        "compared": 84,
+        "max_absolute_error": 0.0781699382810025,
+        "worst_row": 1821
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "release",
+        "points": 8,
+        "column": "overlap",
+        "compared": 132,
+        "max_absolute_error": 0.07816993828566524,
+        "worst_row": 1821
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 16,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.024424571122013017,
+        "worst_row": 1741
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 16,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.024424571130471716,
+        "worst_row": 1741
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 32,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.024424571122159677,
+        "worst_row": 1741
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 32,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.024424571130471716,
+        "worst_row": 1741
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 8,
+        "column": "audibility",
+        "compared": 28,
+        "max_absolute_error": 0.16212867062505576,
+        "worst_row": 1741
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "skip",
+        "points": 8,
+        "column": "overlap",
+        "compared": 92,
+        "max_absolute_error": 0.16212867065704897,
+        "worst_row": 1741
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 16,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.024424571122013017,
+        "worst_row": 1725
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 16,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.024424571130471716,
+        "worst_row": 1725
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 32,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.024424571122159677,
+        "worst_row": 1725
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 32,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.024424571130471716,
+        "worst_row": 1725
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 8,
+        "column": "audibility",
+        "compared": 56,
+        "max_absolute_error": 0.16212867062505576,
+        "worst_row": 1725
+      },
+      {
+        "body": "sine",
+        "modulator": "seq_gate",
+        "action_class": "wait",
+        "points": 8,
+        "column": "overlap",
+        "compared": 184,
+        "max_absolute_error": 0.16212867065704897,
+        "worst_row": 1725
+      }
+    ],
+    "errors": {
+      "8": {
+        "overlap": {
+          "compared": 5940,
+          "max_absolute_error": 0.8438781566549539,
+          "worst_row": 6189,
+          "p95_absolute_error": 0.13659255125228886
+        },
+        "audibility": {
+          "compared": 2688,
+          "max_absolute_error": 0.8438781128236919,
+          "worst_row": 6189,
+          "p95_absolute_error": 0.27433144441309465
+        }
+      },
+      "16": {
+        "overlap": {
+          "compared": 5940,
+          "max_absolute_error": 0.2398974145001127,
+          "worst_row": 6333,
+          "p95_absolute_error": 0.05175860312192482
+        },
+        "audibility": {
+          "compared": 2688,
+          "max_absolute_error": 0.23989739635373342,
+          "worst_row": 6333,
+          "p95_absolute_error": 0.0806032438432182
+        }
+      },
+      "32": {
+        "overlap": {
+          "compared": 5940,
+          "max_absolute_error": 0.11732768943796673,
+          "worst_row": 5996,
+          "p95_absolute_error": 0.03046421037184066
+        },
+        "audibility": {
+          "compared": 2688,
+          "max_absolute_error": 0.1173276896270965,
+          "worst_row": 5996,
+          "p95_absolute_error": 0.04934027654044304
+        }
+      }
+    },
+    "rank": {
+      "8": {
+        "overlap": {
+          "pairs": 32832,
+          "inversions": 2256,
+          "dense_ties": 17544,
+          "midpoint_ties": 18528,
+          "unsupported": 2520,
+          "inversions_above_1e_6": 2244,
+          "inversions_above_1e_3": 1924
+        },
+        "audibility": {
+          "pairs": 32832,
+          "inversions": 2648,
+          "dense_ties": 1512,
+          "midpoint_ties": 1848,
+          "unsupported": 19272,
+          "inversions_above_1e_6": 2380,
+          "inversions_above_1e_3": 2060
+        }
+      },
+      "16": {
+        "overlap": {
+          "pairs": 32832,
+          "inversions": 644,
+          "dense_ties": 17544,
+          "midpoint_ties": 18408,
+          "unsupported": 2520,
+          "inversions_above_1e_6": 632,
+          "inversions_above_1e_3": 496
+        },
+        "audibility": {
+          "pairs": 32832,
+          "inversions": 896,
+          "dense_ties": 1512,
+          "midpoint_ties": 1848,
+          "unsupported": 19272,
+          "inversions_above_1e_6": 744,
+          "inversions_above_1e_3": 604
+        }
+      },
+      "32": {
+        "overlap": {
+          "pairs": 32832,
+          "inversions": 516,
+          "dense_ties": 17544,
+          "midpoint_ties": 18408,
+          "unsupported": 2520,
+          "inversions_above_1e_6": 504,
+          "inversions_above_1e_3": 316
+        },
+        "audibility": {
+          "pairs": 32832,
+          "inversions": 740,
+          "dense_ties": 1512,
+          "midpoint_ties": 1848,
+          "unsupported": 19272,
+          "inversions_above_1e_6": 608,
+          "inversions_above_1e_3": 416
+        }
+      }
+    },
+    "artifacts_sha256": {
+      "rows.jsonl": "5c9aead3ebc6498bbd2287785aa0752065a655339c51a4d004dc1ccd914c9cbe",
+      "rank-comparisons.json": "69c722c078683db2ada2f3c142a55900563a89b2672ac27ca64d08055109fc16"
+    },
+    "claim": "offline ideal energy quadrature only; not live body prediction, calibration, promotion or full I10 acceptance"
+  },
+  "summary_sha256": "604cea3a5db441c425af48de29244427f3e7956918b170535d54a85d8306f77b",
+  "status_counts_16": {
+    "known_silent": 3252,
+    "supported": 2688,
+    "unsupported": 360,
+    "empty_intersection": 36
+  },
+  "source_sha256": {
+    "src/core/temporal_expectation.rs": "edc708cfa1256a71d9d41dcba0d76c9aff921e821cd91ff3e9cb0b29b07d4a41",
+    "tests/render_binary.rs": "03333cf2eca94ab6fd82d4c1f039814969a38b582932438b02ab7d57b1af33dd",
+    "scripts/evaluate_temporal_energy_footprints.py": "5805ae270f2339ceb2c2c18c0efca965ed6d35a8bdef14073b9b2c90567b5efe",
+    "tests/test_temporal_energy_footprints.py": "60567c323b0861006770e5db907f2eaabd27614c9beaab8dcc2558ce6e871d18"
+  },
+  "ordered_source_hash": "c3b3b1d872a71f2d1f3097478f33e60cdedbbf81ad797b33d031742bea67bacf",
+  "reproduce": [
+    "python3 -m unittest discover -s tests -p test_temporal_energy_footprints.py -v",
+    "python3 scripts/evaluate_temporal_energy_footprints.py target/i10-action-profiles-20260918-v2 target/i10-energy-quadrature-replay"
+  ],
+  "validation": {
+    "python_tests": 8,
+    "rust_passed": 1077,
+    "rust_failed": 0,
+    "rust_ignored": 30,
+    "rust_status": "cargo test exit=0 @ 2026-09-18T01:39:51+09:00",
+    "clippy": "passed",
+    "all_targets_check": "passed",
+    "format": "passed"
+  },
+  "limits": [
+    "Counterfactual future PCM is an offline energy target; not a live forecast or observed training input.",
+    "Own energy is the center-interpolated 10 ms PCM mean-square curve, not an instantaneous sample square or a fitted active-body predictor.",
+    "External fields are declared independent synthetic energy conditions; not heard bus mixture or validated perceptual masking.",
+    "Rank counts are separate energy-column orders, not full consequence utility or the final action policy.",
+    "All buses and routed-away silence are retained; this makes overlap and audibility denominators different.",
+    "Gauss order-doubling agreement is a numerical convergence check, not an analytic error bound.",
+    "No accuracy acceptance threshold or live grid change was selected from these results.",
+    "The live 16-point diagnostic now reports continuous_support separately; overlap and audibility are not connected to action."
+  ]
+}

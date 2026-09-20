@@ -11,5 +11,6 @@ pub(crate) mod runtime_profile;
 pub mod scenario;
 pub mod scripting;
 pub(crate) mod synth;
+pub(crate) mod temporal_cognition;
 pub(crate) mod ui;
 pub(crate) mod viewdata;

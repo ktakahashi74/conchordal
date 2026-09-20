@@ -1,0 +1,111 @@
+{
+  "schema": "m0-rating-preparation-v1",
+  "date": "2026-09-12T06:32:12.497694+00:00",
+  "status": "O03_rating_layouts_and_O09_ordinal_arithmetic_partial_pass; M0_incomplete",
+  "M0_complete": false,
+  "full_O04_passed": false,
+  "O03_complete": false,
+  "O12_complete": false,
+  "human_collection_permitted": false,
+  "model_fitted": false,
+  "production_wired": false,
+  "feature_registration": "m0-registration-30",
+  "previous_feature_registration": "m0-registration-29",
+  "source_inventory": {
+    "Cargo.toml": "17ed08c08e31446e9799777310281141ea2a1f15c7c699ec37ec73ff11e4ae80",
+    "Cargo.lock": "0ed3002e2fb5e0c889217413738d710ce6d4f05b0aa37d1f8e453b85b67dc3c0",
+    "src/temporal_cognition.rs": "e22d8141d0acf2d45dac7eddddaa41f7a3cddc9d4d5f0a5b5b453b9ba76a86af",
+    "src/temporal_cognition/ratings.rs": "8d9c21bd28c8d0214a4949218ae31f2a70b2af9220b5d9fc5f9ffccabc7b1397",
+    "scripts/generate_temporal_rating_fixtures.py": "b6aa3a02f419eaeb309a423dd608a078600401c5014fe6f19d05a75f279fbf88",
+    "tests/fixtures/temporal_cognition/ratings.json": "5ca336db7c0ac99d963154aed8f57afdd05335aa6d76dd31aaea213a9e1b1bd0",
+    "docs/roadmap/temporal-dcc/feature-manifest.json": "3eea8c775fa6f4baeaf75054e40f46f758940d514dac0bff8bc937983d4d89a8",
+    "docs/roadmap/temporal-dcc/m0-rating-preparation.md": "1991b1617f3726f807ef4e858d9df79a103696358d8bedc982ffe7075bb37442",
+    "docs/design-notes/dcc-neurocognitive-hierarchy.md": "04143a6b4a24b21782ee1f2030483f7e3af5844fce3975081b57143b2f9e0714"
+  },
+  "source_archive": {
+    "path": "target/temporal-dcc/m0-rating-preparation-20260912/source.tar.gz",
+    "sha256": "e519b9e6af9e391da05ddae0f944d1ca9f7f34bd40e7aa5b90622521966e326f",
+    "scope": "rating-stage additions and modified entry/feature registration; overlay on the retained M1 source archive for the complete earlier crate"
+  },
+  "previous_full_source_archive": {
+    "path": "target/temporal-dcc/m1-observation-20260912/source-final.tar.gz",
+    "sha256": "ab177f023846518b176979f7b09a63c75a65682aa272c078d8145a3a0112410d",
+    "files": 310,
+    "inventory_member": "SOURCE_SHA256.json",
+    "scope": "current source, tests, scripts samples and author documentation; local ignored artifact, no audio device or human data"
+  },
+  "previous_source_change_check": {
+    "changed": [
+      "src/temporal_cognition.rs"
+    ],
+    "reason": "Adds only a cfg(test) rating module; all previously registered production source bytes match their retained M1 record."
+  },
+  "layouts": {
+    "groove_desire_109": 109,
+    "groove_desire_no_within_81": 81,
+    "groove_desire_complexity_5": 5,
+    "groove_desire_oscillator_beat_only_5": 5,
+    "groove_desire_meter_existing_234_13": 13
+  },
+  "raw_blocks": [
+    14,
+    14,
+    14,
+    8,
+    3,
+    1
+  ],
+  "raw_coordinates": 54,
+  "heads": "groove and desire share layouts, retain independent coefficients/cutpoints/calibration; all unfitted",
+  "numerical_verification": {
+    "oracle": "independent Decimal direct CDF and adjacent subtraction",
+    "precision_digits": 750,
+    "conditions": 56,
+    "log_probability_comparisons": 280,
+    "tolerance": "abs(error) <= 2e-13 * max(1, abs(expected)); probability sum within2e-14",
+    "covers": [
+      "eta +/-1000",
+      "cutpoint spacing1e-12",
+      "48 seeded arbitrary ordered-cutpoint cases",
+      "mask versus known zero",
+      "sd floor and block order",
+      "nonfinite inputs, nonordered cuts and arithmetic range rejection"
+    ],
+    "deterministic_regeneration_equal": true
+  },
+  "verification": {
+    "cargo_test": {
+      "passed": 769,
+      "failed": 0,
+      "ignored": 13,
+      "status": "cargo test exit=0 @ 2026-09-12T15:30:17+09:00",
+      "report": "target/temporal-dcc/m0-rating-preparation-20260912/test_report.txt",
+      "sha256": "790c477fa1f9e9f3da0027bd19be96c8a9f324e0398d8f69255e71b2ad8ba307"
+    },
+    "general_reference_tests": {
+      "command": "/tmp/conchordal-context-scores-venv/bin/python -m unittest discover -s tests -p test_evaluate_temporal_cognition_reference.py",
+      "passed": 58,
+      "exit": 0,
+      "scipy": "1.18.1",
+      "initial_system_python_failed_due_to_missing_scipy": true
+    },
+    "section_reference_tests": {
+      "passed": 43,
+      "exit": 0
+    },
+    "cargo_clippy_default_exit": 0,
+    "cargo_check_all_targets_exit": 0,
+    "all_target_clippy_two_existing_categories_allowed_exit": 0,
+    "unqualified_all_target_clippy_passed": false,
+    "format_and_diff_check": true,
+    "zola_preview": "target/temporal-dcc/m0-rating-preparation-20260912/site",
+    "existing_HEAD_features_layouts_heads_unchanged": true,
+    "all_layout_ids_unique": true
+  },
+  "remaining": [
+    "Full history/word/grouping/density producers and acoustic/capacity coverage fixtures",
+    "Onset-concentration-only exact feature definition and remaining sensitivity layouts/inferential rules",
+    "Finite fit budgets, lambda/solver/weights and O07/O12 held-out criteria/stability",
+    "All other M0 inputs/controls, real-audio recovery, full nonzero simultaneous O04 and O05 institution/material/pilot gates"
+  ]
+}

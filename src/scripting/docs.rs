@@ -591,6 +591,16 @@ branch end.",
         summary: "Set the random seed for reproducible scenarios.",
         details: "",
     },
+    FnDoc {
+        name: "temporal_mode",
+        owner: Owner::Global,
+        category: "timeline",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["temporal_mode(name)"],
+        summary: "Select off or observe for new temporal cognition before playback.",
+        details: "Declare once at top level before events or time advance. Default off preserves existing behavior. Observe currently tracks ordered NSGT evidence on both buses; relation inference remains unknown and no new action pressure is applied. Participate is rejected until implemented and calibrated. Run a new scenario to change mode.",
+    },
     // --- body ---
     FnDoc {
         name: "amp",

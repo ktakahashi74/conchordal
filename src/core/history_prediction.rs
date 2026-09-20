@@ -54,6 +54,37 @@ mod tests {
     use crate::core::temporal_history::{AuditoryHistory, HISTORY_AGES_SEC};
 
     #[test]
+    fn readonly_comparison_matches_issue_without_registering_or_training() {
+        let mut predictor = HistoryEnergyPrediction::new();
+        let mut untouched = predictor.clone();
+        let recurrence = [[0.1; 3]; FORECAST_LEN];
+        let history = [[0.5; 3]; FORECAST_LEN];
+        for step in 1..450 {
+            let preview = predictor.preview_comparison(recurrence, history);
+            assert_eq!(predictor.preview_comparison(recurrence, history), preview);
+            assert_eq!(
+                serde_json::to_value(&predictor.errors).unwrap(),
+                serde_json::to_value(&untouched.errors).unwrap()
+            );
+            assert_eq!(
+                predictor.issue_comparison(step, recurrence, history, None),
+                preview
+            );
+            assert_eq!(
+                untouched.issue_comparison(step, recurrence, history, None),
+                preview
+            );
+            let target = [0.2 + (step % 3) as f32 * 0.1; 3];
+            predictor.observe(step, target, |_| {});
+            untouched.observe(step, target, |_| {});
+        }
+        assert_eq!(
+            serde_json::to_value(predictor.take_errors()).unwrap(),
+            serde_json::to_value(untouched.take_errors()).unwrap()
+        );
+    }
+
+    #[test]
     fn matches_preserve_context_and_issued_support_across_ring_wraps() {
         let mut p = HistoryEnergyPrediction::new();
         let mut quiet = p.clone();
@@ -231,6 +262,24 @@ mod tests {
         let current = *energies.last().unwrap();
         let x = *inputs.last().unwrap();
         let actual = predictor.forecast(current, &snapshot);
+        // Preserve the former three separate dot products bit for bit on trained state.
+        let legacy_projection: [f64; FEATURES] =
+            std::array::from_fn(|i| predictor.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
+        for (lead, bands) in actual.iter().enumerate() {
+            for (band, &value) in bands.iter().enumerate() {
+                let correction: f64 = predictor.response_cross[lead]
+                    .iter()
+                    .zip(legacy_projection)
+                    .map(|(row, x)| row[band] * x)
+                    .sum();
+                let expected = (current[band] as f64 + correction).max(0.) as f32;
+                assert_eq!(
+                    value.to_bits(),
+                    expected.to_bits(),
+                    "lead={lead} band={band}"
+                );
+            }
+        }
         // Cholesky solve of the batch Gram, independent of inverse rank-one updates.
         let mut lower = [[0.0; FEATURES]; FEATURES];
         for i in 0..FEATURES {
@@ -494,24 +543,20 @@ impl HistoryEnergyPrediction {
         let projected: [f64; FEATURES] =
             std::array::from_fn(|i| self.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
         std::array::from_fn(|lead| {
-            std::array::from_fn(|band| {
-                let correction: f64 = self.response_cross[lead]
-                    .iter()
-                    .zip(projected)
-                    .map(|(row, x)| row[band] * x)
-                    .sum();
-                (energy[band] as f64 + correction).max(0.0) as f32
-            })
+            let mut correction = [0.; 3];
+            for (row, &x) in self.response_cross[lead].iter().zip(&projected) {
+                for band in 0..3 {
+                    correction[band] += row[band] * x;
+                }
+            }
+            std::array::from_fn(|band| (energy[band] as f64 + correction[band]).max(0.) as f32)
         })
     }
 
-    /// Publish once per observed context; only later actual outcomes fit the mixture.
-    pub(crate) fn issue_comparison(
-        &mut self,
-        step: u64,
+    pub(crate) fn preview_comparison(
+        &self,
         recurrence: [[f32; 3]; FORECAST_LEN],
         history: [[f32; 3]; FORECAST_LEN],
-        requested_frame: Option<u64>,
     ) -> ([[f32; 3]; FORECAST_LEN], [[f32; 3]; FORECAST_LEN]) {
         let weights = std::array::from_fn(|lead| {
             std::array::from_fn(|band| {
@@ -529,6 +574,18 @@ impl HistoryEnergyPrediction {
                 (1.0 - w) * recurrence[lead][band] + w * history[lead][band]
             })
         });
+        (prediction, weights)
+    }
+
+    /// Publish once per observed context; only later actual outcomes fit the mixture.
+    pub(crate) fn issue_comparison(
+        &mut self,
+        step: u64,
+        recurrence: [[f32; 3]; FORECAST_LEN],
+        history: [[f32; 3]; FORECAST_LEN],
+        requested_frame: Option<u64>,
+    ) -> ([[f32; 3]; FORECAST_LEN], [[f32; 3]; FORECAST_LEN]) {
+        let (prediction, weights) = self.preview_comparison(recurrence, history);
         let pending = &mut self.comparisons[(step % ENERGY_PENDING_LEN as u64) as usize];
         if pending.step == Some(step) {
             debug_assert_eq!(pending.recurrence, recurrence);

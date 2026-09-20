@@ -1,0 +1,2150 @@
+{
+  "schema": "i10-evaluation-timing-v1",
+  "status": "optional_post_action_evaluation_connected_default_at_action_unchanged_choice_pending",
+  "artifact_directory": "target/i10-evaluation-timing-20260918",
+  "plan": {
+    "scope": "Optional issue-relative hop-aligned post-action evaluation; omitted setting retains exact at-action policy. No default adoption, I9 restart or I11 effects.",
+    "before_sources_sha256": {
+      "src/config.rs": "1fb9b2839fa00b0bcb1eb10ff3a2a4366ae479fb6895b3d6048fe79a142dff5c",
+      "src/temporal_cognition/action_profiles.rs": "303d537fe8b2847f64160e66d31405657775f5c8c7e828246d3a9a59acd87f33",
+      "src/temporal_cognition/action_profiles/tests.rs": "f68931dfd22162b8001d11fa30e009be2917a13cf30645e926e040c1775a4cb0",
+      "src/ui/windows.rs": "4ffd3643d53583cbf032dad6059ba6fdb18016dc9406858ec413b764a29cd43a"
+    },
+    "before_binary_sha256": "8bf18a7b1f6ff16e8bd618698882477f4a1893b348c2e4544a9a25333c805113",
+    "inputs_sha256": {
+      "target/i10-evaluation-timing-20260918/stair-weighted.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+      "target/i10-evaluation-timing-20260918/stair-weighted.toml": "01fccd9542731ebd4aafc2f5169eb5da7814bac45056eb076e8c09a4275337b4",
+      "target/i10-evaluation-timing-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+      "target/i10-evaluation-timing-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+      "target/i10-evaluation-timing-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+      "target/i10-evaluation-timing-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+      "target/i10-evaluation-timing-20260918/sustain-250.toml": "467acaa35d063813f4afe9d5ddca32dfa9f95c546d8d0fe54eea812cddb8000a",
+      "target/i10-evaluation-timing-20260918/sustain-1000.toml": "e62f1ff04cc1478291a042b3d7041ea14ff0f56d9b0e31f02be3546cc4f63440",
+      "target/i10-evaluation-timing-20260918/stair-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+      "target/i10-evaluation-timing-20260918/stair-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+      "target/i10-evaluation-timing-20260918/stair-weighted-250.toml": "e29ff351ee3c85dc9a63c0ba06fe2a427d422f57816f11f7ee3a4c7741736d37",
+      "target/i10-evaluation-timing-20260918/stair-weighted-1000.toml": "ff7034b1ee24b35edc5584e20aede96cb0c7ce59de04069efeed5b600b640fad"
+    },
+    "source_after_sha256": {
+      "src/config.rs": "3359e334af30a63c86461df72ef343b915eb3da9bbd17d4871f762318bc48890",
+      "src/temporal_cognition/action_profiles.rs": "9290bf2ca95848e2312f82004aa9bbb6c917d88786256d002b24a7dd7b4b441a",
+      "src/temporal_cognition/action_profiles/tests.rs": "190c2eddb58cf31c6f18577a8e8260d862e8305043a93304bd8a97cbe3ad08f4",
+      "src/ui/windows.rs": "bea191b86dafe3df4e0360c8fe36f95eb13864f7a69443831515a3395ec12faf"
+    },
+    "timing_contract": {
+      "config": "temporal_action_profiles.evaluation_delay_ms: optional integer 0..=4000",
+      "omitted": "exact action time, no rounding",
+      "set": "issue + 512 * ceil((action_offset + 48 * delay_ms) / 512)",
+      "grid": "issue-relative, 48000 Hz, 512 samples per hop; independent of absolute issue modulo 512",
+      "out_of_profile": "rounded offset > 192000 or integer overflow returns unsupported; never clipped or extrapolated",
+      "zero": "explicit zero rounds up; unlike omitted policy",
+      "counter": "evaluation_unavailable_cells counts all attempted prototype/class/offset positions, including slots with no registered trajectory; not only valid bindings",
+      "adoption": "No evaluation timing default selected; compare at-action/250ms/1000ms only"
+    }
+  },
+  "source_sha256": {
+    "src/config.rs": "3359e334af30a63c86461df72ef343b915eb3da9bbd17d4871f762318bc48890",
+    "src/temporal_cognition/action_profiles.rs": "9290bf2ca95848e2312f82004aa9bbb6c917d88786256d002b24a7dd7b4b441a",
+    "src/temporal_cognition/action_profiles/tests.rs": "190c2eddb58cf31c6f18577a8e8260d862e8305043a93304bd8a97cbe3ad08f4",
+    "src/ui/windows.rs": "bea191b86dafe3df4e0360c8fe36f95eb13864f7a69443831515a3395ec12faf"
+  },
+  "verification": {
+    "render": {
+      "sustain": {
+        "default_comparison": {
+          "common_observations": 124,
+          "all_observed_fields_exact": true,
+          "default_cells_exact": true,
+          "storage_byte_deltas": [
+            [
+              16,
+              32
+            ]
+          ],
+          "record_counts": {
+            "onset": 1,
+            "body_default": 119,
+            "body_descriptor": 118,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 591
+          },
+          "availability_changes": []
+        },
+        "after": {
+          "timing_cells_checked": 854,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 854,
+            "heads": 1708,
+            "prior_only": 854,
+            "mixed_groups": 0,
+            "fully_future_windows": 488,
+            "aligned_issue_heads": 18,
+            "frozen_issue_snapshots": 124,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 12039735,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 9897961,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 12524748,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10278494,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+          "physical_head_reference": {
+            "unique_cells": 854,
+            "checks": {
+              "closed_form_survival": 12530,
+              "continuation_distributions": 12810,
+              "accent_windows": 488,
+              "accent_positive": 0,
+              "accent_known_zero": 488,
+              "accent_unsupported": 0,
+              "accent_accents": 0
+            },
+            "distinct_continuations": 924,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        },
+        "250": {
+          "timing_cells_checked": 812,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 812,
+            "heads": 1624,
+            "prior_only": 812,
+            "mixed_groups": 0,
+            "fully_future_windows": 464,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 118,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 50504294,
+              "over_limit_windows": 1,
+              "max_delivery_ns": 65516676,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 48872023,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 63904187,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+          "isolation": {
+            "common_observations": 106,
+            "all_observed_fields_exact": true,
+            "default_cells_exact": false,
+            "storage_byte_deltas": [],
+            "record_counts": {
+              "onset": 1,
+              "body_default": 119,
+              "body_descriptor": 118,
+              "self_sound_outcome": 2,
+              "self_sound_descriptor_prediction": 2,
+              "population_step": 591
+            },
+            "availability_changes": []
+          },
+          "physical_head_reference": {
+            "unique_cells": 812,
+            "checks": {
+              "closed_form_survival": 12026,
+              "continuation_distributions": 12180,
+              "accent_windows": 464,
+              "accent_positive": 2,
+              "accent_known_zero": 462,
+              "accent_unsupported": 0,
+              "accent_accents": 2
+            },
+            "distinct_continuations": 893,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        },
+        "1000": {
+          "timing_cells_checked": 812,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 812,
+            "heads": 1624,
+            "prior_only": 812,
+            "mixed_groups": 0,
+            "fully_future_windows": 464,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 118,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 47718186,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 62166876,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 611,
+              "windows": 66,
+              "max_window_ns": 46419028,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 59060566,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+          "isolation": {
+            "common_observations": 106,
+            "all_observed_fields_exact": true,
+            "default_cells_exact": false,
+            "storage_byte_deltas": [],
+            "record_counts": {
+              "onset": 1,
+              "body_default": 119,
+              "body_descriptor": 118,
+              "self_sound_outcome": 2,
+              "self_sound_descriptor_prediction": 2,
+              "population_step": 591
+            },
+            "availability_changes": []
+          },
+          "physical_head_reference": {
+            "unique_cells": 812,
+            "checks": {
+              "closed_form_survival": 12026,
+              "continuation_distributions": 12180,
+              "accent_windows": 464,
+              "accent_positive": 2,
+              "accent_known_zero": 462,
+              "accent_unsupported": 0,
+              "accent_accents": 2
+            },
+            "distinct_continuations": 1042,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        }
+      },
+      "stair": {
+        "default_comparison": {
+          "common_observations": 138,
+          "all_observed_fields_exact": true,
+          "default_cells_exact": true,
+          "storage_byte_deltas": [
+            [
+              16,
+              32
+            ]
+          ],
+          "record_counts": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "availability_changes": []
+        },
+        "after": {
+          "timing_cells_checked": 903,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 903,
+            "heads": 1806,
+            "prior_only": 783,
+            "mixed_groups": 0,
+            "fully_future_windows": 516,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 137,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12947910,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10707306,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12028694,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 9874431,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "physical_head_reference": {
+            "unique_cells": 903,
+            "checks": {
+              "closed_form_survival": 13349,
+              "continuation_distributions": 13545,
+              "accent_windows": 516,
+              "accent_positive": 0,
+              "accent_known_zero": 516,
+              "accent_unsupported": 0,
+              "accent_accents": 0,
+              "closure_distributions": 120
+            },
+            "distinct_continuations": 1004,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        },
+        "250": {
+          "timing_cells_checked": 847,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 840,
+            "heads": 1680,
+            "prior_only": 732,
+            "mixed_groups": 0,
+            "fully_future_windows": 480,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 128,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 49612958,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 66112690,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 48946534,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 62216517,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "isolation": {
+            "common_observations": 114,
+            "all_observed_fields_exact": true,
+            "default_cells_exact": false,
+            "storage_byte_deltas": [],
+            "record_counts": {
+              "onset": 1,
+              "body_default": 134,
+              "body_descriptor": 134,
+              "self_sound_outcome": 2,
+              "self_sound_descriptor_prediction": 2,
+              "population_step": 668
+            },
+            "availability_changes": []
+          },
+          "physical_head_reference": {
+            "unique_cells": 840,
+            "checks": {
+              "closed_form_survival": 12446,
+              "continuation_distributions": 12600,
+              "accent_windows": 480,
+              "accent_positive": 2,
+              "accent_known_zero": 478,
+              "accent_unsupported": 0,
+              "accent_accents": 2,
+              "closure_distributions": 108
+            },
+            "distinct_continuations": 949,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        },
+        "1000": {
+          "timing_cells_checked": 847,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 833,
+            "heads": 1666,
+            "prior_only": 767,
+            "mixed_groups": 0,
+            "fully_future_windows": 476,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 127,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 47496555,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 62341877,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 46593279,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 58452733,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "isolation": {
+            "common_observations": 114,
+            "all_observed_fields_exact": true,
+            "default_cells_exact": false,
+            "storage_byte_deltas": [],
+            "record_counts": {
+              "onset": 1,
+              "body_default": 134,
+              "body_descriptor": 134,
+              "self_sound_outcome": 2,
+              "self_sound_descriptor_prediction": 2,
+              "population_step": 668
+            },
+            "availability_changes": []
+          },
+          "physical_head_reference": {
+            "unique_cells": 833,
+            "checks": {
+              "closed_form_survival": 12341,
+              "continuation_distributions": 12495,
+              "accent_windows": 476,
+              "accent_positive": 2,
+              "accent_known_zero": 474,
+              "accent_unsupported": 0,
+              "accent_accents": 2,
+              "closure_distributions": 66
+            },
+            "distinct_continuations": 1119,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        }
+      },
+      "stair-weighted": {
+        "default_comparison": {
+          "common_observations": 137,
+          "all_observed_fields_exact": true,
+          "default_cells_exact": true,
+          "storage_byte_deltas": [
+            [
+              16,
+              32
+            ]
+          ],
+          "record_counts": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "availability_changes": []
+        },
+        "after": {
+          "timing_cells_checked": 910,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 910,
+            "heads": 1820,
+            "prior_only": 784,
+            "mixed_groups": 0,
+            "fully_future_windows": 520,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 138,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12588838,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10505605,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 12090185,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 10088923,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "physical_head_reference": {
+            "unique_cells": 910,
+            "checks": {
+              "continuation_distributions": 13650,
+              "accent_windows": 520,
+              "accent_positive": 0,
+              "accent_known_zero": 520,
+              "accent_unsupported": 0,
+              "accent_accents": 0,
+              "closure_distributions": 126
+            },
+            "distinct_continuations": 1891,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        },
+        "250": {
+          "timing_cells_checked": 840,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 833,
+            "heads": 1666,
+            "prior_only": 719,
+            "mixed_groups": 0,
+            "fully_future_windows": 476,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 127,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 49312946,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 70498228,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 48659581,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 70506877,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "isolation": {
+            "common_observations": 112,
+            "all_observed_fields_exact": true,
+            "default_cells_exact": false,
+            "storage_byte_deltas": [],
+            "record_counts": {
+              "onset": 1,
+              "body_default": 134,
+              "body_descriptor": 134,
+              "self_sound_outcome": 2,
+              "self_sound_descriptor_prediction": 2,
+              "population_step": 668
+            },
+            "availability_changes": []
+          },
+          "physical_head_reference": {
+            "unique_cells": 833,
+            "checks": {
+              "continuation_distributions": 12495,
+              "accent_windows": 476,
+              "accent_positive": 2,
+              "accent_known_zero": 474,
+              "accent_unsupported": 0,
+              "accent_accents": 2,
+              "closure_distributions": 114
+            },
+            "distinct_continuations": 1771,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        },
+        "1000": {
+          "timing_cells_checked": 847,
+          "positive_arrival_tables": 0,
+          "maximum_projected_arrival_cells": 0,
+          "raw_mixtures": {
+            "cells": 840,
+            "heads": 1680,
+            "prior_only": 768,
+            "mixed_groups": 0,
+            "fully_future_windows": 480,
+            "aligned_issue_heads": 0,
+            "frozen_issue_snapshots": 128,
+            "buses": [
+              0,
+              1
+            ],
+            "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+          },
+          "terminal_resources": {
+            "0": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 47865217,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 60965869,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            },
+            "1": {
+              "frames": 688,
+              "windows": 74,
+              "max_window_ns": 47986548,
+              "over_limit_windows": 0,
+              "max_delivery_ns": 66945336,
+              "dropped": 0,
+              "rejected": 0,
+              "missing": 0
+            }
+          },
+          "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+          "isolation": {
+            "common_observations": 112,
+            "all_observed_fields_exact": true,
+            "default_cells_exact": false,
+            "storage_byte_deltas": [],
+            "record_counts": {
+              "onset": 1,
+              "body_default": 134,
+              "body_descriptor": 134,
+              "self_sound_outcome": 2,
+              "self_sound_descriptor_prediction": 2,
+              "population_step": 668
+            },
+            "availability_changes": []
+          },
+          "physical_head_reference": {
+            "unique_cells": 840,
+            "checks": {
+              "continuation_distributions": 12600,
+              "accent_windows": 480,
+              "accent_positive": 2,
+              "accent_known_zero": 478,
+              "accent_unsupported": 0,
+              "accent_accents": 2,
+              "closure_distributions": 72
+            },
+            "distinct_continuations": 2692,
+            "scope": "Physical candidate accent/arrival receipts, constant arrival hazard including current resolution rejection, ordinal heads and optional closed-form phrase survival. These short materials have no projected residual reference; observed residual mean is not independently reconstructed."
+          }
+        }
+      }
+    },
+    "load": {
+      "after": [
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 39758717,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39561855,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 39370094,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39175113,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 33094796,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 33015195,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 33018874,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 32951134,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 41227046,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39910428,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 41154865,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39839017,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 34224062,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 33622969,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 33849580,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 33327287,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 39379945,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39185574,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 39590936,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39396485,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 33023905,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 32943595,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 33014735,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 32935144,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 41303168,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39989398,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 41068556,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 39754117,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 33901930,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 33375787,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 1032,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 1032,
+            "partial_tail": 960,
+            "known_receipt_future": 0,
+            "known_receipt_integration_unavailable": 40
+          },
+          "maximum_update_ns": 33898482,
+          "updates_over_50ms": 0,
+          "maximum_table_ns": 33376188,
+          "builds": 21
+        }
+      ],
+      "250": [
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 167767861,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 167617920,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 167573081,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 167423630,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 163620416,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 163539655,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 165359047,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 165279717,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 168894569,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 167697611,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 168259954,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 167246758,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 164892025,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 164425551,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 164466651,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 163999398,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 168107693,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 167957222,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 166718455,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 166519664,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 163900787,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 163820687,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 164289329,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 164209789,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 168530678,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 167521281,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 171126062,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 170099726,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 165400387,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 164868793,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 968,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 131,
+            "masked": 968,
+            "partial_tail": 0,
+            "known_receipt_future": 131,
+            "known_receipt_integration_unavailable": 131
+          },
+          "maximum_update_ns": 165081094,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 164556031,
+          "builds": 21
+        }
+      ],
+      "1000": [
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 155044232,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 154894721,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 155780488,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 155628207,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 153400863,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 153319672,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 154353838,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 154283598,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 156918475,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 155703076,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 157651648,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 156638822,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 154043616,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 153520173,
+          "builds": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 154302619,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 153777475,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 156274350,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 156122959,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 155724686,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 155572475,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 154053716,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 153983046,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 153606833,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 153524893,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 156481072,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 155318855,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 157175906,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 156164870,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 154504129,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 154040696,
+          "builds": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells_checked": 776,
+          "arrival": {
+            "point": 0,
+            "future_point": 0,
+            "candidate_accents": 101,
+            "masked": 776,
+            "partial_tail": 0,
+            "known_receipt_future": 101,
+            "known_receipt_integration_unavailable": 101
+          },
+          "maximum_update_ns": 154350038,
+          "updates_over_50ms": 21,
+          "maximum_table_ns": 153885516,
+          "builds": 21
+        }
+      ]
+    },
+    "paired_changes": {
+      "sustain-250": {
+        "compared_cells": 306,
+        "changed_continuations": 300,
+        "maximum_category_difference": 0.0047539648495074915
+      },
+      "sustain-1000": {
+        "compared_cells": 306,
+        "changed_continuations": 300,
+        "maximum_category_difference": 0.014186396060248574
+      },
+      "stair-250": {
+        "compared_cells": 312,
+        "changed_continuations": 306,
+        "maximum_category_difference": 0.0020987368673182627
+      },
+      "stair-1000": {
+        "compared_cells": 312,
+        "changed_continuations": 306,
+        "maximum_category_difference": 0.006555509088284117
+      },
+      "stair-weighted-250": {
+        "compared_cells": 306,
+        "changed_continuations": 300,
+        "maximum_category_difference": 0.0008669521028672744
+      },
+      "stair-weighted-1000": {
+        "compared_cells": 306,
+        "changed_continuations": 300,
+        "maximum_category_difference": 0.0035038855827715654
+      }
+    },
+    "negative_checks": [
+      "wrong_policy",
+      "wrong_endpoint",
+      "invented_horizon_cell"
+    ],
+    "scope": "Timing policy and raw conditional heads only. No timing adoption, actual-body transfer, joint completion or full worker/live-audio acceptance."
+  },
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.250116908980999
+    },
+    {
+      "command": [
+        "cargo",
+        "check",
+        "--all-targets"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.050364548980724
+    },
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.6898524530115537
+    },
+    {
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--bin",
+        "conchordal-render"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 52.91923294501612
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.0443441360257566
+    }
+  ],
+  "cargo_test": {
+    "status": "cargo test exit=0 @ 2026-09-18T16:25:55+09:00",
+    "passed": 1173,
+    "failed": 0,
+    "ignored": 38,
+    "suites": 31
+  },
+  "commands": [
+    {
+      "label": "sustain-before",
+      "command": [
+        "target/i10-evaluation-timing-20260918/before-render",
+        "target/i10-evaluation-timing-20260918/sustain.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/sustain.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/sustain-before.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/sustain-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7961047530407086,
+      "binary_sha256": "8bf18a7b1f6ff16e8bd618698882477f4a1893b348c2e4544a9a25333c805113"
+    },
+    {
+      "label": "sustain-after",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/sustain.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/sustain.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/sustain-after.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/sustain-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7960241030086763,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "sustain-250",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/sustain.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/sustain-250.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/sustain-250.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/sustain-250.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.1959736259886995,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "sustain-1000",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/sustain.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/sustain-1000.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/sustain-1000.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/sustain-1000.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.1419258700334467,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-before",
+      "command": [
+        "target/i10-evaluation-timing-20260918/before-render",
+        "target/i10-evaluation-timing-20260918/stair.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-before.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.9169980729930103,
+      "binary_sha256": "8bf18a7b1f6ff16e8bd618698882477f4a1893b348c2e4544a9a25333c805113"
+    },
+    {
+      "label": "stair-after",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/stair.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-after.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.9211889799917117,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-250",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/stair.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair-250.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-250.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-250.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.2821121710003354,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-1000",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/stair.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair-1000.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-1000.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-1000.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.2214594240067527,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-weighted-before",
+      "command": [
+        "target/i10-evaluation-timing-20260918/before-render",
+        "target/i10-evaluation-timing-20260918/stair-weighted.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair-weighted.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-weighted-before.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-weighted-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.9198420909815468,
+      "binary_sha256": "8bf18a7b1f6ff16e8bd618698882477f4a1893b348c2e4544a9a25333c805113"
+    },
+    {
+      "label": "stair-weighted-after",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/stair-weighted.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair-weighted.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-weighted-after.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-weighted-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.9265424530021846,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-weighted-250",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/stair-weighted.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair-weighted-250.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-weighted-250.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-weighted-250.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.359394599974621,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-weighted-1000",
+      "command": [
+        "target/i10-evaluation-timing-20260918/after-render",
+        "target/i10-evaluation-timing-20260918/stair-weighted.rhai",
+        "--config",
+        "target/i10-evaluation-timing-20260918/stair-weighted-1000.toml",
+        "-o",
+        "target/i10-evaluation-timing-20260918/stair-weighted-1000.wav",
+        "--report",
+        "target/i10-evaluation-timing-20260918/stair-weighted-1000.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.2965069190249778,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "load-after",
+      "command": [
+        "target/i10-evaluation-timing-20260918/load-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 19.58087007299764,
+      "binary_sha256": "93dc4cdbf16bdc930de25fcaea8fc6c3b07e231ceaa6a34a914bad34dddec0bc",
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-evaluation-timing-20260918/stair.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-evaluation-timing-20260918/load-after.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      }
+    },
+    {
+      "label": "load-250",
+      "command": [
+        "target/i10-evaluation-timing-20260918/load-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 62.9508022069931,
+      "binary_sha256": "93dc4cdbf16bdc930de25fcaea8fc6c3b07e231ceaa6a34a914bad34dddec0bc",
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-evaluation-timing-20260918/stair-250.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-evaluation-timing-20260918/load-250.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      }
+    },
+    {
+      "label": "load-1000",
+      "command": [
+        "target/i10-evaluation-timing-20260918/load-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 58.88367415504763,
+      "binary_sha256": "93dc4cdbf16bdc930de25fcaea8fc6c3b07e231ceaa6a34a914bad34dddec0bc",
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-evaluation-timing-20260918/stair-1000.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-evaluation-timing-20260918/load-1000.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      }
+    }
+  ],
+  "limits": [
+    "No timing choice adopted. Omitted setting retains exact at-action evaluation; explicit zero rounds up.",
+    "Raw conditional transfer profiles have fixed source-body and issue-prefix assumptions. This does not prove actual-Voice body transfer fidelity or candidate/default consumption.",
+    "The maximum-assignment assay uses synthetic acoustic/memory inputs, forced profile assignments and excludes matcher, section, full worker queue, Voice decisions and audio device.",
+    "Normal renderer cases are finite regression materials, not calibration, audible benefit or author acceptance.",
+    "Shared/local joint runtime ownership and full conditional feature/score update, complete heads, timing adoption, actual-body consumption and whole-worker/Voice/live-audio gates remain open. I10 incomplete; I9 held and I11 effects disabled."
+  ],
+  "arrival_integration_finding": {
+    "source": "src/temporal_cognition/arrival.rs:155",
+    "scope": "Existing bounded quadrature phase-resolution gate, observed under optional later evaluation. No change to the arrival algorithm in this experiment.",
+    "condition": "The 1-second horizon requires width <= peak.period_seconds / 4 even with zero phase coefficients. At period 0.17174420593226114 s, 16 intervals are still too wide; all 62 evaluations are spent and no point is returned despite constant log(2) hazard.",
+    "known_future_receipts_per_final_table": {
+      "at_action": 0,
+      "250_ms": 131,
+      "1000_ms": 101
+    },
+    "actual_future_points_per_final_table": 0,
+    "next_action": "Make the phase-resolution gate depend on actual phase dependence, preserve nonzero phase controls and compare against independent integrals. Separately reduce delayed table rebuild cost; do not adopt a timing setting from receipt counts alone."
+  },
+  "dependency_sha256": {
+    "scripts/verify_temporal_projected_heads.py": "9ca6a028a62081f9be6fc655dc2c3da66985997c4dad58325dbb9f7d4ccff17b",
+    "target/i10-conditional-phrase-law-20260918/verify.py": "874b465f2727b63d96920da3afcaa29ef911fbf8c0e6cdc7adfe237149e65f3b",
+    "src/temporal_cognition/phrase.rs": "68b2edef435e6a0f1c01d91321c17cb9711974cd44cf508fda9caaf7c58d8a48",
+    "src/temporal_cognition/arrival/projection.rs": "a119b46bc79c12f94c1bd8497cc96279866455aaba7bcdd238696cc8fb74793f",
+    "src/temporal_cognition/gesture/projection.rs": "f326b1bb660617a7c6efb10032ef469689c398594c0afedec2113f022a4bd2f7",
+    "src/runtime/mod.rs": "97c476c7ba8e51b29194f0cd622a6ec2e9fb7b0af953397272a2151776a81323",
+    "/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5"
+  },
+  "artifact_sha256": {
+    "target/i10-evaluation-timing-20260918/acquire.py": "cbbb01906f806c331d93d000d14ada9ef055235d432a7d9fa5c99290fc67c40a",
+    "target/i10-evaluation-timing-20260918/acquisition.log": "2008bcc29dfd1ddc0569bd6f4dcf4b8c03f40372483e341216ef346fbd659d2c",
+    "target/i10-evaluation-timing-20260918/action_profiles.rs.diff": "8f829f21fa78b4fc8102486f8b12f1bc8e867be8ec82f40e50e244d264c08330",
+    "target/i10-evaluation-timing-20260918/after-render": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2",
+    "target/i10-evaluation-timing-20260918/audit.py": "b93377065d64d77fd19445506057f003c7892335378644047f7317763da2505e",
+    "target/i10-evaluation-timing-20260918/before-render": "8bf18a7b1f6ff16e8bd618698882477f4a1893b348c2e4544a9a25333c805113",
+    "target/i10-evaluation-timing-20260918/before-source/src/config.rs": "1fb9b2839fa00b0bcb1eb10ff3a2a4366ae479fb6895b3d6048fe79a142dff5c",
+    "target/i10-evaluation-timing-20260918/before-source/src/temporal_cognition/action_profiles/tests.rs": "f68931dfd22162b8001d11fa30e009be2917a13cf30645e926e040c1775a4cb0",
+    "target/i10-evaluation-timing-20260918/before-source/src/temporal_cognition/action_profiles.rs": "303d537fe8b2847f64160e66d31405657775f5c8c7e828246d3a9a59acd87f33",
+    "target/i10-evaluation-timing-20260918/before-source/src/ui/windows.rs": "4ffd3643d53583cbf032dad6059ba6fdb18016dc9406858ec413b764a29cd43a",
+    "target/i10-evaluation-timing-20260918/check-0.log": "8d03d534a13b3b9221e4a6bc6ef6232719d5684f19cabb193dabeb1d7e971f6d",
+    "target/i10-evaluation-timing-20260918/check-1.log": "3c6475d43e575f91fb911dc6bc51dc117e1b3c8a9e7578e7be536152bfefd2eb",
+    "target/i10-evaluation-timing-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-evaluation-timing-20260918/check-3.log": "cd36196038ae756369d121ef83aaac41c846a45fe8bd6a54e5feef79a5fcde26",
+    "target/i10-evaluation-timing-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-evaluation-timing-20260918/checks.json": "682879aa040bef26028c7948b60fe7db164530ed54d03f90eb1b305167bf8f2e",
+    "target/i10-evaluation-timing-20260918/checks.py": "63b715dfcea4daccfc768d5a54f2021ad0c2c9bd17a418fa0d517a73c3da7722",
+    "target/i10-evaluation-timing-20260918/commands.jsonl": "4e4a6321e5e364d6bbabd7b6de0ac0a699e8d6d819aef147036a02a784ace471",
+    "target/i10-evaluation-timing-20260918/config.rs.diff": "edfc69f8f1b271f868e780441f92ad4a5100488e2180b4cb19af9f827378df2f",
+    "target/i10-evaluation-timing-20260918/load-1000.jsonl": "a4af4ab8d10248e473c604bab62ec3f5550c9f4a30f42c0596e8eefbc50a03f2",
+    "target/i10-evaluation-timing-20260918/load-1000.log": "c0370c8c73de3d18e081df2931977a5ca03c75ff13348863a1863734fb0a24f5",
+    "target/i10-evaluation-timing-20260918/load-250.jsonl": "58f067db851e2a24d1d8e8dcbd235ddadc50bb1068fbe03f61e72f0cea95b2d1",
+    "target/i10-evaluation-timing-20260918/load-250.log": "3437ee639ecc8c142914048a10a1b1fa9fe31840b0b416ad156e9679cfef5752",
+    "target/i10-evaluation-timing-20260918/load-after.jsonl": "5115c82a412999d0bd8abfd0ca937f75e0f70bb44cf24b9ffea36df95f7e5fc3",
+    "target/i10-evaluation-timing-20260918/load-after.log": "250f302eeb03498114de37bf636784805be3f96cf225749f2f254ef69d6054d9",
+    "target/i10-evaluation-timing-20260918/load-test": "93dc4cdbf16bdc930de25fcaea8fc6c3b07e231ceaa6a34a914bad34dddec0bc",
+    "target/i10-evaluation-timing-20260918/plan.json": "800ba51b3fe4f34c03c00ff4d18ac58e14dcf46c5b055b93a763c25e39cfaaf3",
+    "target/i10-evaluation-timing-20260918/register.py": "bd2f2dbeab9b6daeade081acd9d9116a0db643039e70da6fece96b667e5dc6dc",
+    "target/i10-evaluation-timing-20260918/stair-1000.jsonl": "a8524d9a12d75d69b0f659439737f86e8e0dbb30eaf69b65c2f3ff540eeeadf8",
+    "target/i10-evaluation-timing-20260918/stair-1000.log": "e6d17f637eb0e878f8c30393d1a483d7c1db1998b83443377ba51019165d2840",
+    "target/i10-evaluation-timing-20260918/stair-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+    "target/i10-evaluation-timing-20260918/stair-1000.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-250.jsonl": "32aec4070fc45a5f848927a0162c3af950f73f83815c21b2dc5d5e382a973e9a",
+    "target/i10-evaluation-timing-20260918/stair-250.log": "e547edd61d8759407fe33f93a73a1c25516a293c7d7d5af85058c88db8cb832e",
+    "target/i10-evaluation-timing-20260918/stair-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+    "target/i10-evaluation-timing-20260918/stair-250.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-after.jsonl": "bba00f88c0df82c6aab98385291a9aeee1f89bef6fa9b11f8e41f82c90ce775b",
+    "target/i10-evaluation-timing-20260918/stair-after.log": "266dc60937a1ed08927a43ce43b5555259d49045fb9fca2922f33be384c81fd6",
+    "target/i10-evaluation-timing-20260918/stair-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-before.jsonl": "955efff270998b73cd3ace1cca114f572b3897ac0253531c4f6696dff9d6355f",
+    "target/i10-evaluation-timing-20260918/stair-before.log": "830805195628730398774128b70bb8c680f71972bdb2beaf115b03e1beec3bdc",
+    "target/i10-evaluation-timing-20260918/stair-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-weighted-1000.jsonl": "9ea8c0e8248b141e8afa9e81235d7127ddcf8d4592026282999227fc004b09d6",
+    "target/i10-evaluation-timing-20260918/stair-weighted-1000.log": "ed70df603de7da31efb5f52c3f9e832de4001f69025e61335493eeec1a1a4c02",
+    "target/i10-evaluation-timing-20260918/stair-weighted-1000.toml": "ff7034b1ee24b35edc5584e20aede96cb0c7ce59de04069efeed5b600b640fad",
+    "target/i10-evaluation-timing-20260918/stair-weighted-1000.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-weighted-250.jsonl": "06c4c228cab4e1712e95ee8e00b1a4578fe6506d30988a44cecc9704946c1117",
+    "target/i10-evaluation-timing-20260918/stair-weighted-250.log": "5b42165e0df3417f7d54847021dadd13afd0b488e8c788bccf8b1987cfc030d1",
+    "target/i10-evaluation-timing-20260918/stair-weighted-250.toml": "e29ff351ee3c85dc9a63c0ba06fe2a427d422f57816f11f7ee3a4c7741736d37",
+    "target/i10-evaluation-timing-20260918/stair-weighted-250.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-weighted-after.jsonl": "076327e73e252cafd41ea8d1d11b25d607fc74402b11c57d0cd60bf01446ce1c",
+    "target/i10-evaluation-timing-20260918/stair-weighted-after.log": "dfdfb9a8de8900244ead276d77eb3595dfe408fcbf3e2216dca60456a6088b9e",
+    "target/i10-evaluation-timing-20260918/stair-weighted-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-weighted-before.jsonl": "d5c98b43c11f46183316364e330802dea9ed21549937322416d76927c2c43c75",
+    "target/i10-evaluation-timing-20260918/stair-weighted-before.log": "97291a19cb5490e4deb0492fc7cd525e905db4a58d28066a8c9434e5b6b29b82",
+    "target/i10-evaluation-timing-20260918/stair-weighted-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-evaluation-timing-20260918/stair-weighted.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+    "target/i10-evaluation-timing-20260918/stair-weighted.toml": "01fccd9542731ebd4aafc2f5169eb5da7814bac45056eb076e8c09a4275337b4",
+    "target/i10-evaluation-timing-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+    "target/i10-evaluation-timing-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+    "target/i10-evaluation-timing-20260918/summary.py": "b9605f3c5876ac42ff1875c79e73a42053b7b96fddd46d6d618c0e9bacadb5b3",
+    "target/i10-evaluation-timing-20260918/sustain-1000.jsonl": "f9ca3559ea6517ef820e8ef9b1e5d25782f073cf5e59ae5a3a738aa2b77dcb5c",
+    "target/i10-evaluation-timing-20260918/sustain-1000.log": "5ce0658ea2200188b9a5ec8cb7c1d1d31fcd7d92255212c10ac0ad68d5a7a4cd",
+    "target/i10-evaluation-timing-20260918/sustain-1000.toml": "e62f1ff04cc1478291a042b3d7041ea14ff0f56d9b0e31f02be3546cc4f63440",
+    "target/i10-evaluation-timing-20260918/sustain-1000.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-evaluation-timing-20260918/sustain-250.jsonl": "7504740ed368907f50c3e8a3bb44a58d3c2b0f036bc99aad50f3cc00fef7c3e0",
+    "target/i10-evaluation-timing-20260918/sustain-250.log": "f09b43525048ca722a3933659fc22d24fcbccf70f59ef565f51200ad57898897",
+    "target/i10-evaluation-timing-20260918/sustain-250.toml": "467acaa35d063813f4afe9d5ddca32dfa9f95c546d8d0fe54eea812cddb8000a",
+    "target/i10-evaluation-timing-20260918/sustain-250.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-evaluation-timing-20260918/sustain-after.jsonl": "bf214a22d0d08e44c05885feb09033415ba51365f9f5cd3bbfb8e8f3941adfde",
+    "target/i10-evaluation-timing-20260918/sustain-after.log": "6a770fcd8c4c013f314d82900f4fbbb8fa24520bbc997b04411e0eba4b0e26e9",
+    "target/i10-evaluation-timing-20260918/sustain-after.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-evaluation-timing-20260918/sustain-before.jsonl": "9b9989d287afa5b6cdf75d1aa98061bcc6156bfed9ad10f94b0dcfeb72092294",
+    "target/i10-evaluation-timing-20260918/sustain-before.log": "e6daac9691bc50ff618c27b773632212e1463d4e0615065312521ef099f3810d",
+    "target/i10-evaluation-timing-20260918/sustain-before.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-evaluation-timing-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+    "target/i10-evaluation-timing-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+    "target/i10-evaluation-timing-20260918/targeted-tests-fixed.log": "1e26c41cf5e4a480288c85d0942744a386181f7bde7326e0f8ec67ccfca89dbd",
+    "target/i10-evaluation-timing-20260918/targeted-tests.log": "33768ef8b9ade310660a6de139d693aa1bc875296d3c174ac6a6e6a89ea31f0d",
+    "target/i10-evaluation-timing-20260918/test_report.txt": "75b369135bfd08e0b5805c238b2e8b36f8bb0f73a751cf9a659a42f3f4f70053",
+    "target/i10-evaluation-timing-20260918/test_status.txt": "f85c705dd9ae16f12857034a184799e1a2cd0e6eb4df3578aa7354ca1d2c5ec8",
+    "target/i10-evaluation-timing-20260918/tests.rs.diff": "a8ea050e2bb4bdfc1b43f3afcaf9942e195fda68cb8ec573d1653d3a718db7d1",
+    "target/i10-evaluation-timing-20260918/verification-first-error.log": "d53f592e1ec16adbb5d26fa72bf0cf89a882a8c8de20b221dd635badab98a7d1",
+    "target/i10-evaluation-timing-20260918/verification-second-error.log": "578358b8173e535b99d35349ad3d6a9fd4bffc148bf68006cac4ae46d9bec919",
+    "target/i10-evaluation-timing-20260918/verification.json": "535dbf5fe00201d0ff0269686ff7d8bdf9b650a847bc28f809369aa4c147e81d",
+    "target/i10-evaluation-timing-20260918/verification.log": "de61f02c273352b0c4a7e1f12575e4a3fed03a113d8374d3fc3be2eef1b8b4cb",
+    "target/i10-evaluation-timing-20260918/verify.py": "6ec46c21252911fbb9795f836fd996db5c3c2028e2e02303b57fd5adc2c3da73",
+    "target/i10-evaluation-timing-20260918/windows.rs.diff": "bcf136802aaf881d90310baf963dd91b9d2a9379895ad4ee85128143786d25e2"
+  }
+}

@@ -1,0 +1,4809 @@
+{
+  "schema": "temporal-ridge-decimal-oracle-v1",
+  "precision": 100,
+  "seed": 9122033,
+  "generator_sha256": "412a6672ba4367346efecedd69b0ce227ba66d2e32286ad3147c05b57b7b30c3",
+  "scope": "individual continuity distances/secants, independent of lifecycle and human calibration",
+  "cases": [
+    {
+      "old": [
+        null,
+        9.5
+      ],
+      "new": [
+        4.125,
+        null
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        -0.375,
+        -0.5
+      ],
+      "deviations": [
+        1.125,
+        0.0,
+        1.25
+      ],
+      "expected": {
+        "distance": null,
+        "secant": null,
+        "available_coordinates": 0
+      }
+    },
+    {
+      "old": [
+        -6.75,
+        6.25
+      ],
+      "new": [
+        10.0,
+        9.5
+      ],
+      "slope": -4.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.5,
+        0.125
+      ],
+      "deviations": [
+        0.875,
+        0.5,
+        2.0
+      ],
+      "expected": {
+        "distance": 1817.4594858287244,
+        "secant": 1570.3125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        2.875,
+        -0.75
+      ],
+      "new": [
+        9.875,
+        -8.25
+      ],
+      "slope": 8.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        -0.25,
+        0.125
+      ],
+      "deviations": [
+        0.0,
+        1.875,
+        0.875
+      ],
+      "expected": {
+        "distance": 4276240.9984523505,
+        "secant": 656.25,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -0.875,
+        2.625
+      ],
+      "new": [
+        -9.5,
+        7.375
+      ],
+      "slope": -2.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        -0.125,
+        -0.25
+      ],
+      "deviations": [
+        0.125,
+        0.375,
+        0.75
+      ],
+      "expected": {
+        "distance": 45.10023873797368,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        8.5,
+        9.75
+      ],
+      "new": [
+        1.875,
+        2.375
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        0.125,
+        -0.5
+      ],
+      "deviations": [
+        1.375,
+        1.125,
+        1.75
+      ],
+      "expected": {
+        "distance": 4.199800511690961,
+        "secant": -621.09375,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -5.625
+      ],
+      "new": [
+        -5.0,
+        5.875
+      ],
+      "slope": 3.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.125,
+        -0.375
+      ],
+      "deviations": [
+        2.0,
+        1.875,
+        1.25
+      ],
+      "expected": {
+        "distance": 9.5,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        4.25,
+        7.375
+      ],
+      "new": [
+        -4.625,
+        -5.75
+      ],
+      "slope": -5.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.25,
+        -0.375,
+        -0.5
+      ],
+      "deviations": [
+        1.625,
+        0.75,
+        2.0
+      ],
+      "expected": {
+        "distance": 5.71587209491897,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -6.25,
+        -7.125
+      ],
+      "new": [
+        -8.125,
+        null
+      ],
+      "slope": -0.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        -0.25,
+        -0.375
+      ],
+      "deviations": [
+        0.375,
+        0.0,
+        0.25
+      ],
+      "expected": {
+        "distance": 124030948.83750293,
+        "secant": -175.78125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        4.375,
+        -8.375
+      ],
+      "new": [
+        -7.5,
+        7.875
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        0.125,
+        -0.5
+      ],
+      "deviations": [
+        0.0,
+        0.125,
+        1.625
+      ],
+      "expected": {
+        "distance": 8043339.63600028,
+        "secant": -1113.28125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -1.625,
+        -2.5
+      ],
+      "new": [
+        -4.375,
+        9.375
+      ],
+      "slope": -6.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.25,
+        0.125,
+        0.375
+      ],
+      "deviations": [
+        0.125,
+        0.5,
+        0.0
+      ],
+      "expected": {
+        "distance": 8131727.983653283,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -4.0
+      ],
+      "new": [
+        10.0,
+        -1.5
+      ],
+      "slope": 8.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        0.0,
+        0.5
+      ],
+      "deviations": [
+        0.25,
+        1.75,
+        1.5
+      ],
+      "expected": {
+        "distance": 1.3333333333333333,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        4.75,
+        -3.625
+      ],
+      "new": [
+        7.25,
+        -6.75
+      ],
+      "slope": -2.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.25,
+        0.125
+      ],
+      "deviations": [
+        0.125,
+        1.625,
+        0.75
+      ],
+      "expected": {
+        "distance": 84.9262794400901,
+        "secant": 234.375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -2.5,
+        -2.375
+      ],
+      "new": [
+        0.625,
+        4.125
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.25,
+        -0.5,
+        0.375
+      ],
+      "deviations": [
+        1.25,
+        1.0,
+        1.625
+      ],
+      "expected": {
+        "distance": 3.1222668521217063,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -2.25,
+        -5.25
+      ],
+      "new": [
+        2.5,
+        7.25
+      ],
+      "slope": -3.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        -0.375,
+        0.25
+      ],
+      "deviations": [
+        0.625,
+        0.75,
+        0.0
+      ],
+      "expected": {
+        "distance": 7072540.806041119,
+        "secant": 445.3125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        0.0,
+        -6.125
+      ],
+      "new": [
+        5.25,
+        null
+      ],
+      "slope": 0.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.0,
+        -0.25
+      ],
+      "deviations": [
+        1.75,
+        0.75,
+        1.875
+      ],
+      "expected": {
+        "distance": 463.9253707170599,
+        "secant": 492.1875,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        0.0
+      ],
+      "new": [
+        1.5,
+        10.0
+      ],
+      "slope": 3.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        -0.5,
+        0.375
+      ],
+      "deviations": [
+        0.125,
+        1.375,
+        0.625
+      ],
+      "expected": {
+        "distance": 15.4,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -5.75,
+        2.25
+      ],
+      "new": [
+        -7.375,
+        9.375
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        -0.5,
+        0.125
+      ],
+      "deviations": [
+        1.75,
+        1.5,
+        1.875
+      ],
+      "expected": {
+        "distance": 2.6877483010328955,
+        "secant": -152.34375,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        9.375,
+        -9.875
+      ],
+      "new": [
+        3.75,
+        -6.75
+      ],
+      "slope": 4.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.5,
+        -0.5
+      ],
+      "deviations": [
+        0.5,
+        0.0,
+        0.625
+      ],
+      "expected": {
+        "distance": 307204469.7966175,
+        "secant": -527.34375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -0.125,
+        -0.625
+      ],
+      "new": [
+        2.375,
+        -6.125
+      ],
+      "slope": -1.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.25,
+        -0.5,
+        0.0
+      ],
+      "deviations": [
+        1.625,
+        0.25,
+        1.625
+      ],
+      "expected": {
+        "distance": 2.6014547086044852,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        8.125,
+        -0.375
+      ],
+      "new": [
+        -6.0,
+        1.25
+      ],
+      "slope": -2.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.125,
+        0.5,
+        0.125
+      ],
+      "deviations": [
+        2.0,
+        0.0,
+        0.75
+      ],
+      "expected": {
+        "distance": 763166844.8891244,
+        "secant": -1324.21875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        7.875
+      ],
+      "new": [
+        5.5,
+        6.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        -0.5,
+        -0.25
+      ],
+      "deviations": [
+        0.5,
+        0.0,
+        0.875
+      ],
+      "expected": {
+        "distance": 1.8571428571428572,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -7.75,
+        6.875
+      ],
+      "new": [
+        -8.0,
+        null
+      ],
+      "slope": -1.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.0,
+        0.375,
+        0.0
+      ],
+      "deviations": [
+        1.5,
+        0.5,
+        0.625
+      ],
+      "expected": {
+        "distance": 0.11688888888888889,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        2.75,
+        -9.5
+      ],
+      "new": [
+        2.625,
+        -2.25
+      ],
+      "slope": 5.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        -0.5,
+        -0.25
+      ],
+      "deviations": [
+        0.125,
+        0.75,
+        1.0
+      ],
+      "expected": {
+        "distance": 14.212374161141984,
+        "secant": -11.71875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        1.125,
+        3.0
+      ],
+      "new": [
+        -4.25,
+        -5.875
+      ],
+      "slope": -9.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        -0.5,
+        0.375
+      ],
+      "deviations": [
+        1.0,
+        0.125,
+        2.0
+      ],
+      "expected": {
+        "distance": 2280.6812167273456,
+        "secant": -503.90625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        8.75,
+        9.875
+      ],
+      "new": [
+        -6.5,
+        -2.25
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        -0.5,
+        0.25
+      ],
+      "deviations": [
+        0.375,
+        1.375,
+        1.625
+      ],
+      "expected": {
+        "distance": 28.56079942232606,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -9.5
+      ],
+      "new": [
+        -9.375,
+        8.25
+      ],
+      "slope": -2.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        -0.125,
+        -0.5
+      ],
+      "deviations": [
+        1.125,
+        0.25,
+        0.25
+      ],
+      "expected": {
+        "distance": 73.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -8.375,
+        1.625
+      ],
+      "new": [
+        -6.375,
+        0.625
+      ],
+      "slope": 3.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        0.5,
+        -0.25
+      ],
+      "deviations": [
+        1.625,
+        0.75,
+        1.625
+      ],
+      "expected": {
+        "distance": 141.4520250347011,
+        "secant": 187.5,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -9.625,
+        8.0
+      ],
+      "new": [
+        4.25,
+        5.25
+      ],
+      "slope": 5.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        0.25,
+        -0.125
+      ],
+      "deviations": [
+        1.625,
+        1.375,
+        0.625
+      ],
+      "expected": {
+        "distance": 6.767048391016886,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -5.375,
+        9.625
+      ],
+      "new": [
+        9.0,
+        null
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        -0.375,
+        0.5
+      ],
+      "deviations": [
+        1.375,
+        0.625,
+        1.5
+      ],
+      "expected": {
+        "distance": 10.454545454545455,
+        "secant": 1347.65625,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -0.375,
+        -9.0
+      ],
+      "new": [
+        8.0,
+        -7.375
+      ],
+      "slope": 5.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        0.0,
+        0.0
+      ],
+      "deviations": [
+        1.375,
+        1.75,
+        1.5
+      ],
+      "expected": {
+        "distance": 257.41222442796004,
+        "secant": 785.15625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -9.625
+      ],
+      "new": [
+        8.125,
+        7.0
+      ],
+      "slope": -0.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.5,
+        0.125,
+        -0.5
+      ],
+      "deviations": [
+        1.375,
+        0.5,
+        1.5
+      ],
+      "expected": {
+        "distance": 11.416666666666666,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        0.75,
+        8.5
+      ],
+      "new": [
+        -6.625,
+        -4.125
+      ],
+      "slope": -5.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        -0.25,
+        0.375
+      ],
+      "deviations": [
+        0.625,
+        0.625,
+        1.25
+      ],
+      "expected": {
+        "distance": 633.5584992954052,
+        "secant": -691.40625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -6.375,
+        -7.25
+      ],
+      "new": [
+        8.75,
+        -5.875
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.25,
+        -0.375
+      ],
+      "deviations": [
+        1.5,
+        1.5,
+        0.75
+      ],
+      "expected": {
+        "distance": 7.261006970263988,
+        "secant": 1417.96875,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -6.5,
+        6.25
+      ],
+      "new": [
+        -1.25,
+        5.875
+      ],
+      "slope": -8.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.0,
+        0.125,
+        -0.5
+      ],
+      "deviations": [
+        0.75,
+        0.625,
+        2.0
+      ],
+      "expected": {
+        "distance": 5.539493682711667,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        1.25,
+        -0.875
+      ],
+      "new": [
+        -5.375,
+        -9.375
+      ],
+      "slope": -5.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        -0.375,
+        0.125
+      ],
+      "deviations": [
+        0.25,
+        0.75,
+        1.875
+      ],
+      "expected": {
+        "distance": 473.68173208198056,
+        "secant": -621.09375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -5.0
+      ],
+      "new": [
+        -1.875,
+        null
+      ],
+      "slope": -8.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        -0.125,
+        0.5
+      ],
+      "deviations": [
+        0.25,
+        1.125,
+        1.125
+      ],
+      "expected": {
+        "distance": null,
+        "secant": null,
+        "available_coordinates": 0
+      }
+    },
+    {
+      "old": [
+        -7.5,
+        -5.25
+      ],
+      "new": [
+        6.625,
+        -1.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        0.125,
+        0.0
+      ],
+      "deviations": [
+        0.625,
+        1.875,
+        1.875
+      ],
+      "expected": {
+        "distance": 16.623744731223734,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -7.625,
+        6.625
+      ],
+      "new": [
+        8.375,
+        -5.125
+      ],
+      "slope": -7.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.375,
+        0.5
+      ],
+      "deviations": [
+        0.625,
+        0.75,
+        1.125
+      ],
+      "expected": {
+        "distance": 1160.2945495986835,
+        "secant": 1500.0,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -4.0,
+        -1.125
+      ],
+      "new": [
+        0.75,
+        5.5
+      ],
+      "slope": -8.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.125,
+        0.5
+      ],
+      "deviations": [
+        1.5,
+        0.0,
+        1.5
+      ],
+      "expected": {
+        "distance": 262008769.03661707,
+        "secant": 445.3125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        8.25,
+        -1.25
+      ],
+      "new": [
+        4.375,
+        7.0
+      ],
+      "slope": -3.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        -0.375,
+        0.375
+      ],
+      "deviations": [
+        0.0,
+        0.625,
+        0.25
+      ],
+      "expected": {
+        "distance": 2270284.1722388733,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -3.625
+      ],
+      "new": [
+        -2.75,
+        1.875
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        -0.125,
+        0.5
+      ],
+      "deviations": [
+        2.0,
+        0.625,
+        0.625
+      ],
+      "expected": {
+        "distance": 8.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        5.625,
+        3.875
+      ],
+      "new": [
+        6.25,
+        -5.25
+      ],
+      "slope": -7.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        -0.375,
+        -0.375
+      ],
+      "deviations": [
+        1.875,
+        1.625,
+        1.875
+      ],
+      "expected": {
+        "distance": 23.814990866109582,
+        "secant": 58.59375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        2.625,
+        -9.625
+      ],
+      "new": [
+        5.5,
+        null
+      ],
+      "slope": -4.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.125,
+        0.0,
+        0.125
+      ],
+      "deviations": [
+        0.25,
+        1.625,
+        1.375
+      ],
+      "expected": {
+        "distance": 12.456,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -1.0,
+        -5.875
+      ],
+      "new": [
+        -4.5,
+        -6.125
+      ],
+      "slope": -8.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        0.0,
+        -0.125
+      ],
+      "deviations": [
+        1.375,
+        1.5,
+        0.5
+      ],
+      "expected": {
+        "distance": 123.03095661364934,
+        "secant": -328.125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        3.125,
+        0.25
+      ],
+      "new": [
+        -1.25,
+        2.25
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        -0.25,
+        0.25
+      ],
+      "deviations": [
+        2.0,
+        1.75,
+        1.75
+      ],
+      "expected": {
+        "distance": 1.5417370479430013,
+        "secant": -410.15625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        8.375
+      ],
+      "new": [
+        -0.625,
+        -3.375
+      ],
+      "slope": 0.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        0.125,
+        0.5
+      ],
+      "deviations": [
+        0.875,
+        0.0,
+        1.625
+      ],
+      "expected": {
+        "distance": 7.538461538461538,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -4.375,
+        -9.125
+      ],
+      "new": [
+        6.0,
+        4.75
+      ],
+      "slope": 3.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        -0.375,
+        -0.375
+      ],
+      "deviations": [
+        0.125,
+        2.0,
+        2.0
+      ],
+      "expected": {
+        "distance": 284.03968083152677,
+        "secant": 972.65625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        3.25,
+        -9.125
+      ],
+      "new": [
+        -5.875,
+        4.375
+      ],
+      "slope": 5.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        0.25,
+        -0.5
+      ],
+      "deviations": [
+        0.75,
+        1.625,
+        1.125
+      ],
+      "expected": {
+        "distance": 306.29288039056684,
+        "secant": -855.46875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -3.0,
+        1.25
+      ],
+      "new": [
+        0.375,
+        -5.375
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.25,
+        0.0,
+        0.125
+      ],
+      "deviations": [
+        0.75,
+        0.625,
+        0.125
+      ],
+      "expected": {
+        "distance": 38.33641291977583,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        8.125,
+        0.875
+      ],
+      "new": [
+        0.25,
+        null
+      ],
+      "slope": 1.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.0,
+        0.125
+      ],
+      "deviations": [
+        1.375,
+        0.875,
+        0.125
+      ],
+      "expected": {
+        "distance": 597.4441183688283,
+        "secant": -738.28125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        8.75
+      ],
+      "new": [
+        -4.625,
+        3.625
+      ],
+      "slope": 0.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        0.375,
+        0.25
+      ],
+      "deviations": [
+        1.5,
+        0.625,
+        2.0
+      ],
+      "expected": {
+        "distance": 2.6875,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        0.0,
+        6.0
+      ],
+      "new": [
+        7.5,
+        -8.75
+      ],
+      "slope": 6.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.25,
+        0.375,
+        0.375
+      ],
+      "deviations": [
+        0.75,
+        0.25,
+        0.125
+      ],
+      "expected": {
+        "distance": 85.79860714285705,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -2.125,
+        2.75
+      ],
+      "new": [
+        -9.5,
+        -1.125
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        0.125,
+        0.375
+      ],
+      "deviations": [
+        0.5,
+        1.625,
+        0.375
+      ],
+      "expected": {
+        "distance": 12.736648783028533,
+        "secant": -691.40625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        0.375,
+        -7.0
+      ],
+      "new": [
+        6.0,
+        5.125
+      ],
+      "slope": -2.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.375,
+        0.375
+      ],
+      "deviations": [
+        0.625,
+        0.125,
+        1.0
+      ],
+      "expected": {
+        "distance": 2446.6806013083706,
+        "secant": 527.34375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        5.125,
+        3.125
+      ],
+      "new": [
+        -3.75,
+        2.75
+      ],
+      "slope": 3.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        0.125,
+        -0.25
+      ],
+      "deviations": [
+        1.125,
+        2.0,
+        0.25
+      ],
+      "expected": {
+        "distance": 5.457339047190903,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        6.375
+      ],
+      "new": [
+        -1.875,
+        3.375
+      ],
+      "slope": -5.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        -0.375,
+        -0.5
+      ],
+      "deviations": [
+        0.875,
+        1.75,
+        1.5
+      ],
+      "expected": {
+        "distance": 1.6666666666666667,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -6.125,
+        -1.625
+      ],
+      "new": [
+        -6.875,
+        null
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        -0.125,
+        -0.125
+      ],
+      "deviations": [
+        1.25,
+        1.5,
+        1.125
+      ],
+      "expected": {
+        "distance": 1.0,
+        "secant": -70.3125,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -4.0,
+        -9.75
+      ],
+      "new": [
+        -6.75,
+        5.875
+      ],
+      "slope": -4.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        -0.375,
+        -0.5
+      ],
+      "deviations": [
+        1.375,
+        0.625,
+        2.0
+      ],
+      "expected": {
+        "distance": 5.78539412010971,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -3.75,
+        -10.0
+      ],
+      "new": [
+        3.375,
+        1.125
+      ],
+      "slope": 5.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.125,
+        0.0
+      ],
+      "deviations": [
+        0.5,
+        0.25,
+        1.125
+      ],
+      "expected": {
+        "distance": 1529.9362157616138,
+        "secant": 667.96875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -1.5,
+        5.125
+      ],
+      "new": [
+        0.25,
+        9.375
+      ],
+      "slope": 3.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.125,
+        -0.125
+      ],
+      "deviations": [
+        0.875,
+        1.25,
+        0.25
+      ],
+      "expected": {
+        "distance": 74.8509502820268,
+        "secant": 164.0625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -3.125
+      ],
+      "new": [
+        2.625,
+        1.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        0.125,
+        -0.125
+      ],
+      "deviations": [
+        1.125,
+        1.125,
+        0.0
+      ],
+      "expected": {
+        "distance": 4250000.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        9.875,
+        -6.375
+      ],
+      "new": [
+        8.25,
+        -5.75
+      ],
+      "slope": 5.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        -0.5,
+        0.0
+      ],
+      "deviations": [
+        0.875,
+        0.625,
+        0.375
+      ],
+      "expected": {
+        "distance": 145.58630261171953,
+        "secant": -152.34375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        1.0,
+        10.0
+      ],
+      "new": [
+        1.625,
+        8.25
+      ],
+      "slope": -2.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        -0.375,
+        -0.25
+      ],
+      "deviations": [
+        1.5,
+        1.25,
+        1.625
+      ],
+      "expected": {
+        "distance": 28.515112436267916,
+        "secant": 58.59375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -1.875,
+        9.125
+      ],
+      "new": [
+        -9.625,
+        null
+      ],
+      "slope": 9.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "deviations": [
+        1.625,
+        2.0,
+        1.625
+      ],
+      "expected": {
+        "distance": 5.336615384615385,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        0.375,
+        2.0
+      ],
+      "new": [
+        3.0,
+        4.75
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        0.5,
+        0.25
+      ],
+      "deviations": [
+        1.75,
+        1.25,
+        1.0
+      ],
+      "expected": {
+        "distance": 2.1724151893922214,
+        "secant": 246.09375,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        6.25
+      ],
+      "new": [
+        -6.875,
+        6.125
+      ],
+      "slope": -1.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        0.375,
+        -0.125
+      ],
+      "deviations": [
+        1.625,
+        1.25,
+        0.25
+      ],
+      "expected": {
+        "distance": 0.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -9.5,
+        -7.5
+      ],
+      "new": [
+        3.0,
+        -4.25
+      ],
+      "slope": 1.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        -0.375,
+        0.25
+      ],
+      "deviations": [
+        0.375,
+        1.0,
+        1.0
+      ],
+      "expected": {
+        "distance": 23.742493063890507,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        5.875,
+        -7.875
+      ],
+      "new": [
+        0.5,
+        3.625
+      ],
+      "slope": 0.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        -0.375,
+        0.5
+      ],
+      "deviations": [
+        0.375,
+        1.75,
+        1.875
+      ],
+      "expected": {
+        "distance": 166.41367023662048,
+        "secant": -503.90625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        7.625,
+        -9.0
+      ],
+      "new": [
+        8.5,
+        7.125
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        -0.125,
+        -0.25
+      ],
+      "deviations": [
+        0.5,
+        0.0,
+        0.875
+      ],
+      "expected": {
+        "distance": 13.290729660103661,
+        "secant": 82.03125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -6.25,
+        -9.875
+      ],
+      "new": [
+        1.25,
+        3.25
+      ],
+      "slope": 5.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.25,
+        -0.25,
+        -0.5
+      ],
+      "deviations": [
+        0.875,
+        0.625,
+        2.0
+      ],
+      "expected": {
+        "distance": 7.32027744123199,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        7.75
+      ],
+      "new": [
+        -6.25,
+        null
+      ],
+      "slope": -1.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        -0.375,
+        0.25
+      ],
+      "deviations": [
+        1.0,
+        1.25,
+        1.125
+      ],
+      "expected": {
+        "distance": null,
+        "secant": null,
+        "available_coordinates": 0
+      }
+    },
+    {
+      "old": [
+        3.125,
+        -5.25
+      ],
+      "new": [
+        -8.25,
+        -0.125
+      ],
+      "slope": -7.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        -0.25,
+        -0.25
+      ],
+      "deviations": [
+        1.5,
+        0.125,
+        1.75
+      ],
+      "expected": {
+        "distance": 4889.726108036838,
+        "secant": -1066.40625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -9.125,
+        8.0
+      ],
+      "new": [
+        -9.0,
+        -1.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.25,
+        -0.125,
+        0.375
+      ],
+      "deviations": [
+        1.125,
+        1.25,
+        0.25
+      ],
+      "expected": {
+        "distance": 26.51662069041804,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        6.75,
+        6.75
+      ],
+      "new": [
+        -6.0,
+        -9.625
+      ],
+      "slope": 8.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        -0.125,
+        -0.375
+      ],
+      "deviations": [
+        0.0,
+        1.125,
+        0.875
+      ],
+      "expected": {
+        "distance": 7415871.783402737,
+        "secant": -1195.3125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -8.25,
+        8.25
+      ],
+      "new": [
+        -2.0,
+        3.0
+      ],
+      "slope": 3.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        0.125,
+        0.125
+      ],
+      "deviations": [
+        0.875,
+        0.75,
+        1.625
+      ],
+      "expected": {
+        "distance": 448.38494939817485,
+        "secant": 585.9375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -3.375
+      ],
+      "new": [
+        9.5,
+        5.0
+      ],
+      "slope": 9.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.5,
+        0.0,
+        -0.125
+      ],
+      "deviations": [
+        0.25,
+        1.375,
+        1.5
+      ],
+      "expected": {
+        "distance": 5.666666666666667,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        5.5,
+        -1.0
+      ],
+      "new": [
+        8.375,
+        -6.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.125,
+        0.0,
+        0.0
+      ],
+      "deviations": [
+        1.25,
+        0.0,
+        0.75
+      ],
+      "expected": {
+        "distance": 5.010211794148249,
+        "secant": 269.53125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -9.0,
+        2.75
+      ],
+      "new": [
+        6.375,
+        null
+      ],
+      "slope": -2.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        0.375,
+        -0.5
+      ],
+      "deviations": [
+        1.125,
+        1.5,
+        1.625
+      ],
+      "expected": {
+        "distance": 680.6149425702395,
+        "secant": 1441.40625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -0.875,
+        3.5
+      ],
+      "new": [
+        4.5,
+        -6.875
+      ],
+      "slope": -7.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        0.375,
+        0.5
+      ],
+      "deviations": [
+        0.125,
+        0.125,
+        0.625
+      ],
+      "expected": {
+        "distance": 36.322261358872225,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -5.125,
+        3.875
+      ],
+      "new": [
+        -6.125,
+        -8.5
+      ],
+      "slope": 9.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        -0.25,
+        0.5
+      ],
+      "deviations": [
+        2.0,
+        1.25,
+        0.625
+      ],
+      "expected": {
+        "distance": 48.98224646491828,
+        "secant": -93.75,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        0.25
+      ],
+      "new": [
+        5.5,
+        -8.875
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.0,
+        0.375
+      ],
+      "deviations": [
+        1.25,
+        0.125,
+        0.875
+      ],
+      "expected": {
+        "distance": 10.857142857142858,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -4.625,
+        2.5
+      ],
+      "new": [
+        1.25,
+        2.125
+      ],
+      "slope": 1.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.125,
+        0.5,
+        0.0
+      ],
+      "deviations": [
+        1.25,
+        0.5,
+        1.625
+      ],
+      "expected": {
+        "distance": 3.209324716966937,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -3.125,
+        10.0
+      ],
+      "new": [
+        0.25,
+        -3.5
+      ],
+      "slope": 6.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.25,
+        0.25
+      ],
+      "deviations": [
+        1.375,
+        1.125,
+        0.25
+      ],
+      "expected": {
+        "distance": 162.12514143295348,
+        "secant": 316.40625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        2.875,
+        -1.375
+      ],
+      "new": [
+        9.875,
+        8.875
+      ],
+      "slope": -9.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.375,
+        0.375
+      ],
+      "deviations": [
+        1.0,
+        1.625,
+        1.125
+      ],
+      "expected": {
+        "distance": 236.35570766210802,
+        "secant": 656.25,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -4.375,
+        -6.5
+      ],
+      "new": [
+        -6.75,
+        null
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        0.5,
+        0.125
+      ],
+      "deviations": [
+        0.5,
+        0.875,
+        0.5
+      ],
+      "expected": {
+        "distance": 4.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        null,
+        8.5
+      ],
+      "new": [
+        8.625,
+        -2.625
+      ],
+      "slope": 4.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.375,
+        0.375
+      ],
+      "deviations": [
+        1.375,
+        0.5,
+        1.75
+      ],
+      "expected": {
+        "distance": 6.571428571428571,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -7.75,
+        2.375
+      ],
+      "new": [
+        8.875,
+        6.875
+      ],
+      "slope": 5.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        0.5,
+        -0.375
+      ],
+      "deviations": [
+        2.0,
+        1.75,
+        0.25
+      ],
+      "expected": {
+        "distance": 512.4113789418686,
+        "secant": 1558.59375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -0.625,
+        1.125
+      ],
+      "new": [
+        5.0,
+        0.25
+      ],
+      "slope": -9.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.25,
+        0.125,
+        0.375
+      ],
+      "deviations": [
+        1.75,
+        2.0,
+        0.0
+      ],
+      "expected": {
+        "distance": 883883.4764872111,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -7.875,
+        -2.375
+      ],
+      "new": [
+        -9.75,
+        -7.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        0.25,
+        -0.125
+      ],
+      "deviations": [
+        0.5,
+        0.75,
+        0.125
+      ],
+      "expected": {
+        "distance": 25.59357829612733,
+        "secant": -175.78125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -1.25,
+        0.875
+      ],
+      "new": [
+        -5.375,
+        0.75
+      ],
+      "slope": 4.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        -0.375,
+        0.375
+      ],
+      "deviations": [
+        1.125,
+        1.5,
+        1.75
+      ],
+      "expected": {
+        "distance": 150.59644170752404,
+        "secant": -386.71875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -3.625
+      ],
+      "new": [
+        5.5,
+        4.25
+      ],
+      "slope": 7.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        0.125,
+        0.5
+      ],
+      "deviations": [
+        0.875,
+        1.875,
+        1.75
+      ],
+      "expected": {
+        "distance": 4.214285714285714,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -2.125,
+        0.75
+      ],
+      "new": [
+        3.375,
+        null
+      ],
+      "slope": 0.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        -0.375,
+        -0.375
+      ],
+      "deviations": [
+        0.0,
+        1.875,
+        0.25
+      ],
+      "expected": {
+        "distance": 3886258.8742661625,
+        "secant": 515.625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        4.625,
+        -6.25
+      ],
+      "new": [
+        -9.375,
+        9.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.0,
+        0.5
+      ],
+      "deviations": [
+        0.375,
+        1.75,
+        1.5
+      ],
+      "expected": {
+        "distance": 27.527006940659405,
+        "secant": -1312.5,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -3.75,
+        6.75
+      ],
+      "new": [
+        3.75,
+        8.875
+      ],
+      "slope": -3.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.5,
+        0.5,
+        -0.5
+      ],
+      "deviations": [
+        0.75,
+        0.0,
+        2.0
+      ],
+      "expected": {
+        "distance": 6.89123208368234,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -2.0,
+        1.5
+      ],
+      "new": [
+        -4.375,
+        -10.0
+      ],
+      "slope": -4.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        -0.5,
+        -0.125
+      ],
+      "deviations": [
+        0.125,
+        0.5,
+        1.5
+      ],
+      "expected": {
+        "distance": 251.6933613183172,
+        "secant": -222.65625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        5.875
+      ],
+      "new": [
+        -8.125,
+        -5.25
+      ],
+      "slope": -4.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.375,
+        -0.375
+      ],
+      "deviations": [
+        0.625,
+        0.25,
+        1.0
+      ],
+      "expected": {
+        "distance": 10.75,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -7.0,
+        2.625
+      ],
+      "new": [
+        9.875,
+        -7.25
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.125,
+        -0.25,
+        -0.125
+      ],
+      "deviations": [
+        0.75,
+        0.125,
+        1.25
+      ],
+      "expected": {
+        "distance": 16.727489019242814,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -7.375,
+        -6.0
+      ],
+      "new": [
+        6.0,
+        -5.0
+      ],
+      "slope": 4.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        -0.375,
+        -0.25
+      ],
+      "deviations": [
+        1.125,
+        2.0,
+        0.25
+      ],
+      "expected": {
+        "distance": 360.8260047659626,
+        "secant": 1253.90625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        8.875,
+        -3.625
+      ],
+      "new": [
+        -8.875,
+        null
+      ],
+      "slope": -1.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        -0.375,
+        -0.25
+      ],
+      "deviations": [
+        1.75,
+        0.25,
+        1.25
+      ],
+      "expected": {
+        "distance": 4701.027814776153,
+        "secant": -1664.0625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        7.25,
+        -7.75
+      ],
+      "new": [
+        -8.0,
+        6.625
+      ],
+      "slope": -7.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        0.375,
+        -0.25
+      ],
+      "deviations": [
+        1.25,
+        0.625,
+        1.5
+      ],
+      "expected": {
+        "distance": 10.739126048033683,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -1.375
+      ],
+      "new": [
+        -4.75,
+        0.125
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        -0.5,
+        -0.125
+      ],
+      "deviations": [
+        1.0,
+        1.75,
+        1.375
+      ],
+      "expected": {
+        "distance": 1.1818181818181819,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -1.625,
+        1.625
+      ],
+      "new": [
+        -5.5,
+        -1.625
+      ],
+      "slope": 8.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.25,
+        0.0
+      ],
+      "deviations": [
+        1.5,
+        0.375,
+        0.25
+      ],
+      "expected": {
+        "distance": 572.4463208046802,
+        "secant": -363.28125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -2.375,
+        9.75
+      ],
+      "new": [
+        -2.5,
+        8.875
+      ],
+      "slope": 7.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.375,
+        0.0,
+        0.125
+      ],
+      "deviations": [
+        1.25,
+        0.375,
+        0.125
+      ],
+      "expected": {
+        "distance": 5.686358331617482,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        2.25,
+        5.125
+      ],
+      "new": [
+        -9.375,
+        -9.5
+      ],
+      "slope": -5.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        0.125,
+        0.125
+      ],
+      "deviations": [
+        1.625,
+        0.75,
+        1.125
+      ],
+      "expected": {
+        "distance": 834.6764204918516,
+        "secant": -1089.84375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -0.625,
+        2.5
+      ],
+      "new": [
+        -3.0,
+        -0.625
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        0.0,
+        0.25
+      ],
+      "deviations": [
+        1.75,
+        0.5,
+        1.375
+      ],
+      "expected": {
+        "distance": 1.9832586975888482,
+        "secant": -222.65625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        9.25
+      ],
+      "new": [
+        2.25,
+        null
+      ],
+      "slope": 0.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.5,
+        0.375,
+        -0.125
+      ],
+      "deviations": [
+        1.625,
+        0.625,
+        0.375
+      ],
+      "expected": {
+        "distance": null,
+        "secant": null,
+        "available_coordinates": 0
+      }
+    },
+    {
+      "old": [
+        3.625,
+        -0.875
+      ],
+      "new": [
+        0.625,
+        7.25
+      ],
+      "slope": -4.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        -0.125,
+        0.0
+      ],
+      "deviations": [
+        0.875,
+        0.5,
+        0.375
+      ],
+      "expected": {
+        "distance": 319.38040217251756,
+        "secant": -281.25,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -7.0,
+        6.5
+      ],
+      "new": [
+        -9.0,
+        -3.125
+      ],
+      "slope": -1.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        -0.25,
+        0.375
+      ],
+      "deviations": [
+        1.0,
+        1.625,
+        2.0
+      ],
+      "expected": {
+        "distance": 66.06626793533408,
+        "secant": -187.5,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        4.5,
+        7.125
+      ],
+      "new": [
+        -4.75,
+        -2.875
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.0,
+        -0.125,
+        -0.375
+      ],
+      "deviations": [
+        0.5,
+        0.125,
+        1.25
+      ],
+      "expected": {
+        "distance": 14.169333082400174,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        4.375,
+        8.5
+      ],
+      "new": [
+        0.375,
+        3.375
+      ],
+      "slope": 5.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.375,
+        0.0
+      ],
+      "deviations": [
+        0.0,
+        1.625,
+        1.25
+      ],
+      "expected": {
+        "distance": 2561318.247795429,
+        "secant": -375.0,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        8.75
+      ],
+      "new": [
+        -9.75,
+        8.625
+      ],
+      "slope": -4.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        -0.375,
+        -0.5
+      ],
+      "deviations": [
+        0.25,
+        1.75,
+        0.875
+      ],
+      "expected": {
+        "distance": 0.42857142857142855,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        0.875,
+        -9.75
+      ],
+      "new": [
+        -4.0,
+        6.25
+      ],
+      "slope": 1.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        0.0,
+        -0.125
+      ],
+      "deviations": [
+        1.75,
+        1.75,
+        0.125
+      ],
+      "expected": {
+        "distance": 91.23809033343261,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        5.625,
+        -0.375
+      ],
+      "new": [
+        -1.75,
+        null
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        -0.25,
+        -0.375
+      ],
+      "deviations": [
+        0.0,
+        1.375,
+        0.875
+      ],
+      "expected": {
+        "distance": 7875000.0,
+        "secant": -691.40625,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -5.375,
+        -3.25
+      ],
+      "new": [
+        5.0,
+        7.0
+      ],
+      "slope": -1.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        -0.25,
+        0.125
+      ],
+      "deviations": [
+        0.125,
+        0.5,
+        1.875
+      ],
+      "expected": {
+        "distance": 1126.0788250296173,
+        "secant": 972.65625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        4.375,
+        -4.75
+      ],
+      "new": [
+        8.625,
+        5.0
+      ],
+      "slope": 6.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        0.125,
+        0.375
+      ],
+      "deviations": [
+        1.5,
+        1.5,
+        0.875
+      ],
+      "expected": {
+        "distance": 7.840603162327856,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -3.5
+      ],
+      "new": [
+        -9.75,
+        5.0
+      ],
+      "slope": 0.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.125,
+        0.25
+      ],
+      "deviations": [
+        0.125,
+        1.0,
+        1.0
+      ],
+      "expected": {
+        "distance": 8.25,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        6.5,
+        -3.0
+      ],
+      "new": [
+        -4.25,
+        -9.375
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        0.25,
+        -0.125
+      ],
+      "deviations": [
+        2.0,
+        1.25,
+        1.125
+      ],
+      "expected": {
+        "distance": 5.404937443248728,
+        "secant": -1007.8125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        8.75,
+        -2.25
+      ],
+      "new": [
+        -1.375,
+        -2.625
+      ],
+      "slope": -2.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.125,
+        0.25,
+        -0.25
+      ],
+      "deviations": [
+        0.625,
+        1.375,
+        0.5
+      ],
+      "expected": {
+        "distance": 11.37617609216735,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -7.625,
+        -0.125
+      ],
+      "new": [
+        6.125,
+        1.5
+      ],
+      "slope": -9.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        0.0,
+        -0.25
+      ],
+      "deviations": [
+        1.375,
+        1.5,
+        1.125
+      ],
+      "expected": {
+        "distance": 499.89742012962637,
+        "secant": 1289.0625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -3.5,
+        -8.5
+      ],
+      "new": [
+        1.625,
+        null
+      ],
+      "slope": -5.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.125,
+        -0.25
+      ],
+      "deviations": [
+        0.25,
+        0.75,
+        0.0
+      ],
+      "expected": {
+        "distance": 458.1633805489648,
+        "secant": 480.46875,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -3.25
+      ],
+      "new": [
+        -1.5,
+        -3.625
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.25,
+        0.0,
+        0.0
+      ],
+      "deviations": [
+        1.625,
+        0.0,
+        1.625
+      ],
+      "expected": {
+        "distance": 0.23076923076923078,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -0.5,
+        -8.375
+      ],
+      "new": [
+        -5.0,
+        -7.25
+      ],
+      "slope": -5.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.375,
+        0.0
+      ],
+      "deviations": [
+        0.375,
+        1.0,
+        0.875
+      ],
+      "expected": {
+        "distance": 240.72610471968147,
+        "secant": -421.875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        3.875,
+        6.75
+      ],
+      "new": [
+        -0.375,
+        -8.25
+      ],
+      "slope": -2.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.5,
+        -0.125
+      ],
+      "deviations": [
+        1.875,
+        0.75,
+        0.75
+      ],
+      "expected": {
+        "distance": 305.2032703857799,
+        "secant": -398.4375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -9.375,
+        6.0
+      ],
+      "new": [
+        3.75,
+        3.375
+      ],
+      "slope": -5.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        -0.375,
+        0.125
+      ],
+      "deviations": [
+        2.0,
+        1.125,
+        0.0
+      ],
+      "expected": {
+        "distance": 1944543.6482690037,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        0.75,
+        -4.25
+      ],
+      "new": [
+        1.375,
+        9.5
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.125,
+        0.0,
+        0.0
+      ],
+      "deviations": [
+        0.75,
+        0.875,
+        1.75
+      ],
+      "expected": {
+        "distance": 5.6006559382607595,
+        "secant": 58.59375,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        7.125
+      ],
+      "new": [
+        8.0,
+        0.875
+      ],
+      "slope": -5.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.0,
+        0.5
+      ],
+      "deviations": [
+        0.875,
+        0.5,
+        1.625
+      ],
+      "expected": {
+        "distance": 4.153846153846154,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        3.625,
+        1.875
+      ],
+      "new": [
+        9.75,
+        null
+      ],
+      "slope": 8.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.375,
+        0.5,
+        -0.125
+      ],
+      "deviations": [
+        1.0,
+        0.75,
+        0.375
+      ],
+      "expected": {
+        "distance": 5.134,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -5.875,
+        0.625
+      ],
+      "new": [
+        5.375,
+        1.875
+      ],
+      "slope": 4.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.0,
+        0.375,
+        0.0
+      ],
+      "deviations": [
+        0.375,
+        1.375,
+        2.0
+      ],
+      "expected": {
+        "distance": 440.9867570529207,
+        "secant": 1054.6875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        4.5,
+        6.0
+      ],
+      "new": [
+        -6.5,
+        -5.75
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        0.125,
+        0.25
+      ],
+      "deviations": [
+        1.0,
+        0.25,
+        1.5
+      ],
+      "expected": {
+        "distance": 9.334077351297235,
+        "secant": -1031.25,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        7.0,
+        -3.0
+      ],
+      "new": [
+        7.625,
+        1.0
+      ],
+      "slope": -3.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.125,
+        0.125,
+        0.5
+      ],
+      "deviations": [
+        1.375,
+        0.75,
+        0.25
+      ],
+      "expected": {
+        "distance": 9.913913272314952,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        -0.75
+      ],
+      "new": [
+        -2.25,
+        1.625
+      ],
+      "slope": 9.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.5,
+        0.5,
+        -0.25
+      ],
+      "deviations": [
+        1.0,
+        1.375,
+        2.0
+      ],
+      "expected": {
+        "distance": 1.3125,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -1.375,
+        3.0
+      ],
+      "new": [
+        4.875,
+        6.375
+      ],
+      "slope": -3.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        0.5,
+        -0.125
+      ],
+      "deviations": [
+        0.625,
+        0.375,
+        1.0
+      ],
+      "expected": {
+        "distance": 906.7517355768222,
+        "secant": 585.9375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -0.5,
+        1.5
+      ],
+      "new": [
+        7.375,
+        5.0
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        0.0,
+        -0.5
+      ],
+      "deviations": [
+        1.0,
+        0.0,
+        1.0
+      ],
+      "expected": {
+        "distance": 6.48315123994497,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -6.5,
+        -1.875
+      ],
+      "new": [
+        1.375,
+        null
+      ],
+      "slope": -1.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.5,
+        -0.125
+      ],
+      "deviations": [
+        2.0,
+        1.625,
+        1.0
+      ],
+      "expected": {
+        "distance": 321.8676926787009,
+        "secant": 738.28125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        7.5,
+        -9.625
+      ],
+      "new": [
+        -4.25,
+        -8.5
+      ],
+      "slope": -6.125,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        0.25,
+        -0.5
+      ],
+      "deviations": [
+        0.125,
+        0.625,
+        1.25
+      ],
+      "expected": {
+        "distance": 1013.7164512350545,
+        "secant": -1101.5625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -6.25
+      ],
+      "new": [
+        -6.625,
+        -8.0
+      ],
+      "slope": -1.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.0,
+        0.5,
+        0.5
+      ],
+      "deviations": [
+        1.75,
+        0.5,
+        0.125
+      ],
+      "expected": {
+        "distance": 18.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        4.25,
+        -0.375
+      ],
+      "new": [
+        1.375,
+        -5.625
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.5,
+        -0.25,
+        -0.375
+      ],
+      "deviations": [
+        1.5,
+        1.625,
+        0.875
+      ],
+      "expected": {
+        "distance": 4.248724298335361,
+        "secant": -269.53125,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        7.75,
+        4.375
+      ],
+      "new": [
+        -6.125,
+        1.0
+      ],
+      "slope": -0.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.25,
+        0.0
+      ],
+      "deviations": [
+        1.125,
+        0.625,
+        1.0
+      ],
+      "expected": {
+        "distance": 1201.0559397055247,
+        "secant": -1300.78125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -9.25,
+        9.875
+      ],
+      "new": [
+        5.625,
+        3.25
+      ],
+      "slope": -8.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.25,
+        0.375,
+        0.125
+      ],
+      "deviations": [
+        0.5,
+        1.875,
+        1.0
+      ],
+      "expected": {
+        "distance": 22.831602824934468,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        9.375,
+        -8.375
+      ],
+      "new": [
+        -2.0,
+        -2.875
+      ],
+      "slope": -2.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        -0.375,
+        0.5
+      ],
+      "deviations": [
+        1.25,
+        0.25,
+        1.875
+      ],
+      "expected": {
+        "distance": 2456.4152143036167,
+        "secant": -1066.40625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -2.625
+      ],
+      "new": [
+        -5.375,
+        null
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.0,
+        -0.5
+      ],
+      "deviations": [
+        1.125,
+        0.75,
+        1.375
+      ],
+      "expected": {
+        "distance": null,
+        "secant": null,
+        "available_coordinates": 0
+      }
+    },
+    {
+      "old": [
+        6.125,
+        -4.875
+      ],
+      "new": [
+        8.375,
+        -3.625
+      ],
+      "slope": -3.875,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.5,
+        0.5,
+        0.125
+      ],
+      "deviations": [
+        0.125,
+        1.125,
+        0.75
+      ],
+      "expected": {
+        "distance": 17.22575129146928,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        3.0,
+        1.5
+      ],
+      "new": [
+        7.375,
+        -6.75
+      ],
+      "slope": -8.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.375,
+        0.125,
+        0.5
+      ],
+      "deviations": [
+        0.375,
+        1.25,
+        0.75
+      ],
+      "expected": {
+        "distance": 193.47338605760925,
+        "secant": 410.15625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -5.75,
+        -8.25
+      ],
+      "new": [
+        -6.125,
+        2.875
+      ],
+      "slope": 10.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.25,
+        0.375,
+        -0.5
+      ],
+      "deviations": [
+        1.625,
+        1.375,
+        0.875
+      ],
+      "expected": {
+        "distance": 20.599704219786855,
+        "secant": -35.15625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        8.5,
+        6.5
+      ],
+      "new": [
+        4.5,
+        -8.125
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.25,
+        -0.5,
+        -0.25
+      ],
+      "deviations": [
+        1.0,
+        0.625,
+        0.0
+      ],
+      "expected": {
+        "distance": 10164659.979557065,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        4.25
+      ],
+      "new": [
+        7.375,
+        -2.25
+      ],
+      "slope": -7.5,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "deviations": [
+        0.875,
+        0.875,
+        0.75
+      ],
+      "expected": {
+        "distance": 8.666666666666666,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        6.5,
+        -0.5
+      ],
+      "new": [
+        3.75,
+        4.875
+      ],
+      "slope": -5.25,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.125,
+        -0.25
+      ],
+      "deviations": [
+        1.375,
+        0.625,
+        0.875
+      ],
+      "expected": {
+        "distance": 233.4554924040792,
+        "secant": -257.8125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        8.75,
+        7.125
+      ],
+      "new": [
+        7.75,
+        null
+      ],
+      "slope": 6.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        0.5,
+        -0.5
+      ],
+      "deviations": [
+        1.75,
+        1.25,
+        1.5
+      ],
+      "expected": {
+        "distance": 0.6291428571428571,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        9.875,
+        8.125
+      ],
+      "new": [
+        6.5,
+        -0.75
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        -0.5,
+        0.0
+      ],
+      "deviations": [
+        0.375,
+        0.125,
+        1.5
+      ],
+      "expected": {
+        "distance": 8.014093488626424,
+        "secant": -316.40625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -1.5,
+        -2.5
+      ],
+      "new": [
+        9.75,
+        -1.5
+      ],
+      "slope": -4.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        -0.25,
+        0.25
+      ],
+      "deviations": [
+        0.5,
+        0.625,
+        0.5
+      ],
+      "expected": {
+        "distance": 978.8654471833611,
+        "secant": 1054.6875,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        null,
+        -9.625
+      ],
+      "new": [
+        1.375,
+        -3.75
+      ],
+      "slope": -7.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.0,
+        0.5,
+        0.375
+      ],
+      "deviations": [
+        0.25,
+        1.375,
+        1.375
+      ],
+      "expected": {
+        "distance": 4.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -6.75,
+        -4.625
+      ],
+      "new": [
+        3.875,
+        5.25
+      ],
+      "slope": -0.75,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.375,
+        -0.25,
+        0.125
+      ],
+      "deviations": [
+        0.625,
+        1.875,
+        0.25
+      ],
+      "expected": {
+        "distance": 308.0177074644417,
+        "secant": 996.09375,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        -6.375,
+        -9.625
+      ],
+      "new": [
+        -0.625,
+        -1.625
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.25,
+        0.0,
+        -0.375
+      ],
+      "deviations": [
+        2.0,
+        1.25,
+        0.875
+      ],
+      "expected": {
+        "distance": 7.041830191717178,
+        "secant": 539.0625,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        -1.125,
+        2.75
+      ],
+      "new": [
+        -2.25,
+        7.0
+      ],
+      "slope": 1.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.125,
+        -0.25,
+        0.5
+      ],
+      "deviations": [
+        0.375,
+        0.0,
+        0.875
+      ],
+      "expected": {
+        "distance": 3.927181603380593,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        7.375,
+        -3.625
+      ],
+      "new": [
+        9.5,
+        null
+      ],
+      "slope": -6.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        -0.25,
+        0.375
+      ],
+      "deviations": [
+        1.375,
+        0.75,
+        1.25
+      ],
+      "expected": {
+        "distance": 194.30996876498986,
+        "secant": 199.21875,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        null,
+        0.375
+      ],
+      "new": [
+        8.125,
+        8.25
+      ],
+      "slope": 1.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        0.125,
+        0.125,
+        0.0
+      ],
+      "deviations": [
+        0.0,
+        2.0,
+        1.125
+      ],
+      "expected": {
+        "distance": 7.0,
+        "secant": null,
+        "available_coordinates": 1
+      }
+    },
+    {
+      "old": [
+        -8.75,
+        4.0
+      ],
+      "new": [
+        -5.625,
+        6.125
+      ],
+      "slope": null,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        -0.375,
+        -0.125,
+        0.0
+      ],
+      "deviations": [
+        2.0,
+        0.75,
+        0.625
+      ],
+      "expected": {
+        "distance": 2.7039323216382467,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    },
+    {
+      "old": [
+        4.0,
+        -1.75
+      ],
+      "new": [
+        -6.75,
+        0.75
+      ],
+      "slope": -3.0,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.125,
+        0.375,
+        -0.375
+      ],
+      "deviations": [
+        1.875,
+        1.375,
+        0.0
+      ],
+      "expected": {
+        "distance": 1659882.077584567,
+        "secant": -1007.8125,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        8.75,
+        7.375
+      ],
+      "new": [
+        -5.0,
+        3.875
+      ],
+      "slope": -0.625,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 1024,
+      "means": [
+        -0.125,
+        -0.25,
+        -0.5
+      ],
+      "deviations": [
+        1.5,
+        1.375,
+        2.0
+      ],
+      "expected": {
+        "distance": 540.9245632445596,
+        "secant": -1289.0625,
+        "available_coordinates": 3
+      }
+    },
+    {
+      "old": [
+        5.75,
+        3.0
+      ],
+      "new": [
+        4.125,
+        9.375
+      ],
+      "slope": 8.375,
+      "sample_rate": 48000,
+      "hop": 512,
+      "old_end_sample": 512,
+      "end_sample": 4096,
+      "means": [
+        0.375,
+        -0.375,
+        -0.25
+      ],
+      "deviations": [
+        0.5,
+        0.5,
+        1.75
+      ],
+      "expected": {
+        "distance": 4.577178885378289,
+        "secant": null,
+        "available_coordinates": 2
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@
   "status": "batched_sealed_sums_and_descriptor_reads_verified; finite_work_reduced_maximum_cycle_increased; full_O04_unmet",
   "specification": {
     "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
-    "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+    "sha256": "c3ef46176cbcc96766173deb1d5f44f3ce716ccee6d56516d9ea2dab0f2a6be5",
     "sections": [
       "9.2",
       "9.5",
@@ -205,6 +205,19 @@
     {
       "sha256": "901e19db720121ec7f27cd568a97bbf39af91d65eac01d791b39c0f877cdcc96",
       "reason": "Architecture addendum in section8.1 and O03/O09/O12: model-owned representations, exchange boundaries, dependency/refit scope and unrun MR1-MR3. Numerical sections9-10.3 are unchanged; prior results and reviews retain their saved-version scope."
+    },
+    {
+      "date": "2026-09-12",
+      "specification": {
+        "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+        "sha256": "afab484d8958cc595fe167f05a7d16edf79db4cbd857392ff60e8dc74ed6bd85",
+        "sections": [
+          "9.2",
+          "9.5",
+          "9.6"
+        ]
+      },
+      "reason": "Rust implementation preparation/MR1 and delivery gate ownership; concurrent embodied-affordance requirements retained separately. Section9 is byte-identical to the previous specification. Existing numerical evidence, fit version29, collection and O04 gates are not promoted."
     }
   ],
   "updated_at": "2026-09-11T11:40:42.701331+00:00",
@@ -4243,5 +4256,247 @@
       "test_evaluate_temporal_shared_descriptor_reference.py": "c3d07379890dd471d862fbe2792461812b242646043c289bd6b861a572a22995",
       "verify-sealed-sums.py": "0fcb88b4c7209e6d4ba54a105a60a8c9cc3c48c6dcc7e634e71af9a8133dee0e"
     }
-  }
+  },
+  "rust_initial_context_consumer": {
+    "status": "initial_context_input_diagnostic_connected; I8_incomplete; unfitted",
+    "observer_version": 9,
+    "config": "temporal_section; explicit scales and coefficients; requires temporal_phrase",
+    "sources": {
+      "src/temporal_cognition/section.rs": "d10846d9b0416b6da51650d3b03e4563e6109f7ba7eddb85891ad931757349da",
+      "src/temporal_cognition/section/runtime.rs": "c386d8d47940b406f8685d3849177ae62b2976f237edd61c29fb00261026c0ed",
+      "src/temporal_cognition/section/tests.rs": "65bfcf598b7c45259c15a494a33a413bb49508a701f7e2a929d270396f48968f",
+      "src/temporal_cognition/observation.rs": "17804f7300350c718eaf593f4d5fb53f5d0160d625e1d2124d5e78dd7cfd92ab",
+      "src/config.rs": "e22270c2d55dbab56f72cd107a5f78a555611cdfeb7de0064714a110ed86af28",
+      "tests/render_binary.rs": "f81d92bfcd7a1a2a6d724e280b91b548d640e4ebc21fafe7f8e9a0ca0600a9df"
+    },
+    "state": "7 resolved groups x 15 retained phrase paths; cumulative640 bytes plus4x640 ring per path; two reusable path buffers; allocation and full copy census still open",
+    "activity": "Canonical new group acoustic delta once per conditional lineage; admitted accent delivery watermark; current admission union; resolved-only overlap; articulation and timing dispersion missing until upstream joint assignments are supplied",
+    "correspondence": "Unresolved until a path-assigned correspondence exists; nearest cache cost alone is not an assigned relation",
+    "retrieval": "Borrow the existing received16x4 cache only for matching group and foreground prefix support; no extra DTW. Whole-prefix cue selector and fallback remain unimplemented",
+    "acoustic_score": {
+      "status": "explicit uncalibrated initial layout; shared final stage1 scoring and comparison open",
+      "features": [
+        "sqrt(coordinate_squared_error[j]/observed_cue_steps), j=0..9; missing if no valid pair",
+        "motion residual RMS over supported adjacent pairs",
+        "log2 interval residual RMS over supported adjacent pairs",
+        "inserted/observed_cue_steps",
+        "deleted/observed_cue_steps"
+      ],
+      "coefficients": 15,
+      "missing": "frozen mean imputation before standardization",
+      "excluded": [
+        "availability",
+        "section age"
+      ]
+    },
+    "publication": "Representative path39/39/82 values; phrase-mass weighted one-second forecast; initial_context_only=true; EOF unknown with original observed_end_sample preserved",
+    "remaining": [
+      "Shared section branching and return focus",
+      "Exact stage1 cue selection and stable cue occurrence identity",
+      "Provisional ownership, late accent allocation and private sealing",
+      "Joint articulation and timing summaries",
+      "Final shared recognition score and fit",
+      "Full O04 resource census and R/A acceptance"
+    ],
+    "verification": {
+      "rust_tests": {
+        "passed": 966,
+        "failed": 0,
+        "ignored": 28
+      },
+      "test_status": "cargo test exit=0 @ 2026-09-13T11:38:18+09:00",
+      "clippy": "passed",
+      "all_target_check": "passed",
+      "source_tree_sha256": "cc9153a4865995d7b65573e8da4fa4443a62e1cf1b86919b69c85da355f40d7a",
+      "live_evidence": [
+        "I8_NSGT_HANDOFF groups=1 support_matched_queries=7"
+      ],
+      "evidence_directory": "target/temporal-dcc/i8-consumer-20260913"
+    }
+  },
+  "rust_ongoing_cue": {
+    "status": "ongoing_whole_prefix_selector_connected; committed_fallback_unimplemented; I8_incomplete",
+    "observer_version": 10,
+    "memory_transport_version": 2,
+    "query_cadence_ms": 100,
+    "selector_window_seconds": 0.5,
+    "selector": "Positive stage1 assignment-weighted seconds; latest positive support endpoint, latest span start, lowest stable credit ties; no posterior weighting; exact fractional-sample clipping",
+    "ownership": "At most15 distinct ongoing foreground credits per resolved group; reinterpret aliases share one descriptor; conflicting support rejected; retiring group destroys selection support",
+    "descriptor": "Whole original prefix through existing128-knot Span compression; selector window never trims the query",
+    "query": "Reuse existing acquisition-clock scheduler and one matcher dispatch path; freeze selected occurrence/support identity and source metadata; receive before phrase update, dispatch after cue selection",
+    "section_input": "One selected-query acoustic score per group reused across conditional section paths; requires frozen selection provenance; original0.5s acoustic-age masking",
+    "fallback": "No committed-phrase producer yet; provisional closures and fixed assay episodes are not substituted for committed fallback",
+    "memory_scope": "Earlier retained fixed assay intervals remain the bank; later whole prefixes can outgrow their continuations. Full phrase memory and section return focus are not implemented",
+    "bounded_payload": "At most7*15*128*320=4300800 bytes of active descriptor block capacity per bus, excluding Span fields/bitmaps, moment scratch, query snapshots, historical bank and allocator overhead. Allocation/copy census and full O04 remain open",
+    "sources": {
+      "src/temporal_cognition/section/cue.rs": "a950361eef339b65374ac9d61ee89e44e180a8d73e12d4c88e115cf858ae9a95",
+      "src/temporal_cognition/section/cue/tests.rs": "b12638d673771396353b554979fe716e6ab3a601c40ec4b73b91a9e32eeda8c8",
+      "src/temporal_cognition/section/runtime.rs": "069974182187db696a922a58653ed87ebbddbb594f3690ee29ff3e04b45d792e",
+      "src/temporal_cognition/recall.rs": "8a15a8092fca51ae214d238b7f5025afde3444c130342695e372435bb00b85dd",
+      "src/temporal_cognition/observation.rs": "c60eae9f8811ad157566f854059bc6516a48ecd447b3d1e5a7cca1002b235215",
+      "scripts/generate_temporal_section_cue_fixtures.py": "667529aa1fb5cdbac8d2bb43c25eafb7420cf7e7fdb0478b1aae7ae807967608",
+      "scripts/temporal_section_reference.py": "303792342df6a58ac0fa4e7b950c4c1fa2a67231111fb308ee044b4de9018d62",
+      "tests/fixtures/temporal_cognition/section_cues.json": "a2946de28970117f3711da2593c563198559d61d02ee62f4fcce9c2bb827590e",
+      "tests/render_binary.rs": "1630c898e095e96146ad3ca7544b0b60f12e45cdcaf348326d1041a0eb747f65"
+    },
+    "verification": {
+      "rust_tests": {
+        "passed": 970,
+        "failed": 0,
+        "ignored": 28
+      },
+      "test_status": "cargo test exit=0 @ 2026-09-13T11:58:34+09:00",
+      "clippy": "passed",
+      "all_target_check": "passed",
+      "source_tree_sha256": "691b43c9f892d773e80ccfd992827f3500cdbf3228710dd9ac3e053d95bee783",
+      "live_evidence": [
+        "I7_NSGT_HANDOFF scored=30 closure_support=0.28468834335987037 continuation_support=0.28468834335987037",
+        "I7_NSGT_HANDOFF scored=12 closure_support=0 continuation_support=0.48706850553013104",
+        "I8_NSGT_HANDOFF groups=1 support_matched_queries=29"
+      ],
+      "evidence_directory": "target/temporal-dcc/i8-cue-20260913"
+    }
+  },
+  "rust_matched_return_control": {
+    "status": "matched_first_and_return_acoustic_context_verified; received_cache_per_group; I8_incomplete",
+    "observer_version": 11,
+    "control": {
+      "sample_rate": 48000,
+      "hop": 512,
+      "earlier_exposure_frames": [
+        0,
+        300
+      ],
+      "identical_silence_frames": [
+        300,
+        600
+      ],
+      "identical_target_frames": [
+        600,
+        660
+      ],
+      "phrase_hazard_retrieval_coefficient": 0.0,
+      "matched_samples": 184320,
+      "groups": 3,
+      "raw_values_per_group": 10,
+      "matched_section_coordinates": 80,
+      "comparison": "value bits and missing masks; cue start/end and weighted support; group and occurrence names normalized across conditions, still bound within each query"
+    },
+    "observed": {
+      "first_retrieval": "missing for all3 groups",
+      "return_retrieval": "both acoustic score/gap valid for all3 groups; zero-valued uncalibrated coefficients",
+      "first_prediction_comparisons": 0,
+      "return_prediction_comparisons": 18
+    },
+    "cache_fix": "Originally only the latest bus query survived; a two-group regression reproduces still-valid receipt displacement. Each resolved group now owns its received16x4 cache. Receive swaps only that group; deadline and episode retirement invalidate all affected caches. Phrase and section select by stable group handle",
+    "snapshot": "Metadata and best candidate per group only; all transformations remain in owner heap; latest display derived from received group queries; retained_matches sums valid group caches",
+    "cache_capacity": "7 received buffers +1 shared pending buffer, each16x4 transformation records; active DP/Report/query snapshots and other state are excluded. Full O04 remains open",
+    "sources": {
+      "src/temporal_cognition/recall.rs": "3997c4c81a2613a23d6decef6b2d2c09f557db29744c23ff833baa0d8cbbb8a4",
+      "src/temporal_cognition/recall/tests.rs": "3338387ed61b0c2efeda6fe3185c57c27131f3bfda4ccd979acfff13a40b4125",
+      "src/temporal_cognition/phrase.rs": "6de3cb56ead16c57e4c1ee835bcc25deea1ef8f39136a67a4f47f0025838e41d",
+      "src/temporal_cognition/phrase/tests.rs": "b0575e2a95e7b852de8a5f699669ca486acef584070296f16a67dc566a2526c7",
+      "src/temporal_cognition/section/runtime.rs": "11c0a64c91236d6ed05408442bc51ccfc0b391af2a4f86a1b286b0c58a9aa91a",
+      "src/temporal_cognition/observation.rs": "53d16de94d29753289cc8451896a03b51cd0170904aae83dd1afebd16021fedb"
+    },
+    "verification": {
+      "rust_tests": {
+        "passed": 971,
+        "failed": 0,
+        "ignored": 28
+      },
+      "test_status": "cargo test exit=0 @ 2026-09-13T12:19:05+09:00",
+      "clippy": "passed",
+      "all_target_check": "passed",
+      "source_tree_sha256": "af76ff8bdf55ccfca6496f5fabaf78c4f14f7c711018f343b92e852a5f887f98",
+      "live_evidence": [
+        "I7_NSGT_HANDOFF case=assay scored=30 closure_support=0.28468834335987037 continuation_support=0.28468834335987037",
+        "I7_NSGT_HANDOFF case=return-long scored=12 closure_support=0 continuation_support=0.48706850553013104",
+        "I8_NSGT_HANDOFF case=return-long groups=1 support_matched_queries=29",
+        "I7_NSGT_HANDOFF case=first scored=0 closure_support=0 continuation_support=0.18445242683093843",
+        "I8_RETURN_CONTROL case=first groups=3 scores=[[None, None], [None, None], [None, None]] predictions=0",
+        "I8_NSGT_HANDOFF case=first groups=3 support_matched_queries=13",
+        "I7_NSGT_HANDOFF case=return scored=18 closure_support=0.18445242683093843 continuation_support=0.18445242683093843",
+        "I8_RETURN_CONTROL case=return groups=3 scores=[[Some(0.0), Some(0.0)], [Some(0.0), Some(0.0)], [Some(0.0), Some(0.0)]] predictions=18",
+        "I8_MATCHED_CONTEXT samples=184320 groups=3 acoustic_values=10 non_retrieval_values=80 bit_exact=true",
+        "I8_NSGT_HANDOFF case=return groups=3 support_matched_queries=13"
+      ],
+      "evidence_directory": "target/temporal-dcc/i8-return-20260913"
+    },
+    "not_proven": [
+      "Phrase occurrence sealing and long phrase bank",
+      "Committed cue fallback",
+      "Section branches and return focus",
+      "Fit, scientific validity, listener acceptance",
+      "Full O04 resource and worst-case timing budget"
+    ]
+  },
+  "weekly_limit_stop": {
+    "status": "threshold_observed; final_checks_passed; stopped; I8_incomplete",
+    "quota": {
+      "timestamp": "2026-09-13T03:26:05.625Z",
+      "limit_id": "codex",
+      "used_percent": 51.0,
+      "remaining_percent": 49.0,
+      "stop": true
+    },
+    "evidence_directory": "target/temporal-dcc/weekly-stop-20260913",
+    "last_finding": "An ongoing foreground credit can have13 distinct closed endpoint alternatives within the tested branch history; it is not a sealed occurrence identity. Existing OccurrenceLedger rejects replacing original support for an occurrence. Mapping and conserved-credit/joint-lag production must be resolved before commitment integration",
+    "last_test": "temporal_cognition::phrase::tests::ongoing_credit_does_not_identify_a_unique_closed_endpoint_within_commit_lag",
+    "source_hashes": {
+      "src/temporal_cognition/phrase.rs": "1a6764ccba87e8dbaf6d46e2f71ff03b301d122a6409f48e1471093e7f7688fb",
+      "src/temporal_cognition/phrase/tests.rs": "4285039563f4f2fed85abd98f922a45166a9ec724ab367b065efa0f165e56c50",
+      "scripts/temporal_occurrence_reference.py": "ac0458faca720797f32a5ebd05bfcad97fd3f3ad3c42f635584eefca804e9a69"
+    },
+    "verification": {
+      "rust_tests": {
+        "passed": 972,
+        "failed": 0,
+        "ignored": 28
+      },
+      "test_status": "cargo test exit=0 @ 2026-09-13T12:27:47+09:00",
+      "clippy": "passed",
+      "all_target_check": "passed",
+      "source_tree_sha256": "9589a15afed154b5e3c034e01a92390a2ea6567ecfd25ffad740bc5fb58ed6e9",
+      "final_evidence": [
+        "I8_ENDPOINT_IDENTITY credit=1 distinct_endpoints=13 first=[(0, 100), (0, 200), (0, 300)]",
+        "I8_RETURN_CONTROL case=first groups=3 scores=[[None, None], [None, None], [None, None]] predictions=0",
+        "I8_RETURN_CONTROL case=return groups=3 scores=[[Some(0.0), Some(0.0)], [Some(0.0), Some(0.0)], [Some(0.0), Some(0.0)]] predictions=18",
+        "I8_MATCHED_CONTEXT samples=184320 groups=3 acoustic_values=10 non_retrieval_values=80 bit_exact=true"
+      ]
+    }
+  },
+  "rust_i8_initial_diagnostics": {
+    "milestone": "I8",
+    "scope": "initial diagnostic implementation; subsequent full-model integration and R/A remain open",
+    "status": "technical_complete",
+    "tests": {
+      "passed": 979,
+      "failed": 0,
+      "ignored": 28
+    },
+    "test_status": "cargo test exit=0 @ 2026-09-13T15:56:44+09:00",
+    "clippy_exit": 0,
+    "check_all_targets_exit": 0,
+    "source_tree_sha256": "583b3b779548da28c882991ceaf22645135cde6bd40c9e0e8da3519cceaa3056",
+    "observer_version": 12,
+    "phrase_version": 3,
+    "memory_transport_version": 3,
+    "evidence": {
+      "numeric_section": "342 byte-exact checkpoints; 48 head forecasts; retained existing fixtures",
+      "commitment": "competing endpoints; conserved ancestral mass; exact half-second age; sealed joint-cell revisions; original endings; late ring accents",
+      "memory": "30-second committed whole descriptor; ongoing selection and committed fallback; 128 knots; original support and seal availability",
+      "matched_real_audio": "184320 equal f32 samples and three groups of cue/acoustic/non-retrieval inputs; two return groups have supported retrieval",
+      "return_focus": "actual NSGT waveform activates contexts sourced before the intervening silence; original episode and query retained",
+      "render": "both buses; diagnostics/report variants preserve WAV bytes"
+    },
+    "remaining": {
+      "I9": "whole-piece state and 30-minute replay",
+      "integration": "full shared/local stage-3 updates; joint articulation/timing producers; all provisional overlap ownership; private prepared commit and complete strength/interference lifecycle",
+      "R_A": "registration, full O04 load, fits/calibration, cognitive tasks, listening and author acceptance"
+    },
+    "committed_to_git": false,
+    "evidence_path": "target/temporal-dcc/i8-completion-20260913/verification.json"
+  },
+  "production_integration_scope": "Full registered model and O04 obligations; the completed I8 initial diagnostic connection is recorded separately in rust_i8_initial_diagnostics."
 }

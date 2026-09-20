@@ -1,0 +1,263 @@
+{
+  "schema": "m0-rust-preparation-v1",
+  "date": "2026-09-12",
+  "baseline_commit": "559d02988c59fa41841ebefebf4ac130fd6d202a",
+  "status": "W0_W1_W2_passed_for_M1_technical_preparation; M0_incomplete",
+  "production_wired": false,
+  "human_collection_permitted": false,
+  "O04_passed": false,
+  "specification": {
+    "path": "docs/design-notes/dcc-neurocognitive-hierarchy.md",
+    "sha256": "04143a6b4a24b21782ee1f2030483f7e3af5844fce3975081b57143b2f9e0714"
+  },
+  "versions": {
+    "contract": "m0-exchange-v1",
+    "ordered": 1,
+    "memory_orderless": 2,
+    "features": "m0-registration-29",
+    "fit": null,
+    "storage": "model-owned in-memory knots and local-interval sidecar; no persistent runtime codec"
+  },
+  "source_inventory": {
+    "Cargo.toml": {
+      "sha256": "17ed08c08e31446e9799777310281141ea2a1f15c7c699ec37ec73ff11e4ae80",
+      "bytes": 2311
+    },
+    "Cargo.lock": {
+      "sha256": "0ed3002e2fb5e0c889217413738d710ce6d4f05b0aa37d1f8e453b85b67dc3c0",
+      "bytes": 114669
+    },
+    "src/lib.rs": {
+      "sha256": "59e0b891d090c548a65aec0cdeb85680ce6422b1c6184ce51b98bb35c85b1793",
+      "bytes": 418
+    },
+    "src/temporal_cognition.rs": {
+      "sha256": "6b416d4dcb409863bb97c1c1089b91b48accc6aa44222e61368b9dd22e4e39b1",
+      "bytes": 147
+    },
+    "src/temporal_cognition/matcher.rs": {
+      "sha256": "a54b64b87114c442e3fa576aa43b92fc14962c958168d5f5b43bb5bc25b3aa79",
+      "bytes": 20839
+    },
+    "src/temporal_cognition/memory.rs": {
+      "sha256": "0986b439d45c1c01affc114bd80ad5abb4c89a5693d89ca5d38c8436fa4c9ccd",
+      "bytes": 15564
+    },
+    "src/temporal_cognition/tests.rs": {
+      "sha256": "7dd734537076f2858600ddabb4fec132df31ce548647a4b3581e2368096ed711",
+      "bytes": 33335
+    },
+    "src/temporal_cognition/transport.rs": {
+      "sha256": "ba453c68d95b4e0c484c9f1b408a98c8e115af1e9893e30ed141fb1417127503",
+      "bytes": 5291
+    },
+    "scripts/generate_temporal_rust_fixtures.py": {
+      "sha256": "f79295f427d7a3df9e7463c5cd16dc676a3cad3ab8901ba14c84a83fc7b98e01",
+      "bytes": 6612
+    },
+    "tests/fixtures/temporal_cognition/reference.json": {
+      "sha256": "3cb9c6ff202bd74066adbc9535c69352747ea6460974270bd8051673048d4362",
+      "bytes": 759699
+    },
+    "scripts/temporal_matcher_kernel.rs": {
+      "sha256": "0b6ea34cc4b470c5a53fca4a006e417d868479b68396f524521144df89a3080d",
+      "bytes": 39106
+    },
+    "scripts/temporal_matcher_reference.py": {
+      "sha256": "cd2c2a162e542b310f33d561ec776577d3b33dbba65b103c54554ec4ad73037e",
+      "bytes": 25535
+    },
+    "scripts/temporal_descriptor_reference.py": {
+      "sha256": "f6df1096610f30a0dcb9c14f3fbdac1eb24666a9981402c36c4196cc5091d1cf",
+      "bytes": 23414
+    },
+    "tests/test_evaluate_temporal_matcher_reference.py": {
+      "sha256": "cc97af80724befe0ff5f2182aacb698023c96fa435d1d755cd20889b9ed3605c",
+      "bytes": 21501
+    },
+    "config.toml": {
+      "sha256": "d24b9fd76416e1348fc3a1b4689a1efac9ae4b751e9fdb016dc968063e73dc99",
+      "bytes": 321
+    }
+  },
+  "source_archive": {
+    "path": "target/temporal-dcc/m0-rust-preparation-20260912/source.tar.gz",
+    "sha256": "4c1be4ea882e84a8c5835340a4ff59e683c2336c99c5340915970d60a5ebb519",
+    "scope": "local reproduction snapshot; not tracked by Git"
+  },
+  "documentation": {
+    "docs/roadmap/temporal-dcc-completion.md": "46943b0a35bb5105699352ede35fe51a395163c2c928ac241068ab901263ff15",
+    "docs/roadmap/temporal-dcc/implementation-plan-revision.md": "337cff0b899a39164656e389c536d430f243e750f98c91debdbd5359240838af",
+    "docs/roadmap/temporal-dcc/author-interface-contract.md": "467b625cd3b9e6d0f7b7994241b132e45455ab987f3719ecb31604c28be5bdc6",
+    "docs/roadmap/temporal-dcc/model-replacement.md": "7beb8d3e60936501dc3811f8abac848ca20105a7efd72daf42d46d34662fe5f6",
+    "docs/roadmap/temporal-dcc/m0-rust-preparation.md": "7956b34003bd08fc799c1f674494cd4e94d93b896ff533842e17dde6a515b5a8"
+  },
+  "oracle": {
+    "generator": "scripts/generate_temporal_rust_fixtures.py",
+    "fixture": "tests/fixtures/temporal_cognition/reference.json",
+    "dtw_and_coarse_cases": 48,
+    "full_query_cases": 6,
+    "independent_bag_statistics_cases": 12,
+    "exhaustive_path_inputs": 81,
+    "ordered_comparison": "f64 bit equality for tested costs, coordinate residuals, transforms and exact paths/ranking",
+    "bag_cost_tolerance": "8e-15 * max(1, abs(expected)); permutation bit equality",
+    "generated_without_rust": true,
+    "deterministic_regeneration_equal": true
+  },
+  "MR1": {
+    "passed": true,
+    "scope": "small numerical exchange and shared bounded contract consumer only",
+    "input_and_output": "docs/roadmap/temporal-dcc/m0-rust-resources.json#mr1_exchange",
+    "ordered_costs": [
+      0.0,
+      0.5
+    ],
+    "orderless_costs": [
+      0.0,
+      0.0
+    ],
+    "tested_wrong_admissions": 0,
+    "rejections": [
+      "future support",
+      "future completion",
+      "late receipt",
+      "wrong bus",
+      "old epoch",
+      "wrong model version",
+      "wrong query generation",
+      "changed support ID or supporting audio cut",
+      "retired episode generation",
+      "duplicate receipt",
+      "handle reuse",
+      "capacity excess",
+      "occupied worker ticket"
+    ],
+    "pending_production_tests": [
+      "M1 actual ordered analysis/reset/EOF/GUI-report isolation",
+      "MR3 actual model-feature-fit-codec version combinations",
+      "O04 simultaneous full load",
+      "M3 T4/T6 refit and cognitive decision"
+    ]
+  },
+  "resources": {
+    "path": "docs/roadmap/temporal-dcc/m0-rust-resources.json",
+    "sha256": "cd25937e66d9d27f9227ecd51b9886b618149ab2f802091b47281d3aa6a230e9",
+    "hardware": {
+      "cpu": "AMD Ryzen 9 9950X 16-Core Processor",
+      "architecture": "x86_64",
+      "kernel": "7.0.0-30-generic",
+      "affinity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31
+      ]
+    },
+    "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2",
+    "command": "CONCHORDAL_M0_REPORT=<new-file> cargo test --release --lib temporal_cognition::tests::resource_assay -- --ignored --exact --nocapture",
+    "exit": 0,
+    "scope": "single caller; 256 episodes x 128 knots; 128-knot cue; 1/10 coordinates; borrowed input generation excluded; 20 warmup + 200 measured calls per condition; not matched to historical Python workloads",
+    "unmeasured": [
+      "full allocator/RSS/stack census",
+      "all 64 nonzero transform trials on every query",
+      "two actual workers and 64 Voices",
+      "real audio device and underruns",
+      "all inference/queue/retention/head/candidate work"
+    ]
+  },
+  "verification": {
+    "cargo_test": {
+      "command": "RUST_BACKTRACE=1 cargo test -- --nocapture",
+      "exit": 0,
+      "passed": 758,
+      "failed": 0,
+      "ignored": 13,
+      "log": "test_report.txt",
+      "status": "test_status.txt",
+      "status_sha256": "206e04a2194e26fe8e999a0de5a18981dc3fdc4e973e77657edeeb1cf38f864b"
+    },
+    "focused_m0": {
+      "passed": 12,
+      "ignored_release_assay": 1
+    },
+    "cargo_fmt_check": 0,
+    "cargo_clippy_default_D_warnings": 0,
+    "cargo_check_all_targets": 0,
+    "cargo_clippy_all_targets_unrestricted": {
+      "exit": 101,
+      "existing_errors": 13,
+      "paths": [
+        "src/life/temporal_participation.rs",
+        "src/runtime/mod.rs"
+      ],
+      "lints": [
+        "unnecessary_cast",
+        "manual_is_multiple_of"
+      ],
+      "observed_errors_on_first_run": 15,
+      "new_errors_fixed": 2
+    },
+    "cargo_clippy_all_targets_with_existing_categories_allowed": {
+      "exit": 0,
+      "command": "cargo clippy --all-targets -- -D warnings -A clippy::unnecessary_cast -A clippy::manual_is_multiple_of"
+    },
+    "instrument_changes": "only cfg(test) module registration in src/lib.rs; no production caller or audio-write path",
+    "zola_build": {
+      "exit": 0,
+      "output": "target/temporal-dcc/m0-rust-preparation-20260912/site",
+      "scope": "local EN/JA site build; no public deployment"
+    },
+    "final_integrity": {
+      "source_hashes_and_archive_match": true,
+      "documentation_hashes_match": true,
+      "registration_count": 20,
+      "all_O01_O22_present": true,
+      "local_links_checked": 58,
+      "all_JSON_parse": true,
+      "git_diff_check": 0
+    }
+  },
+  "remaining_M0": [
+    "O04 full simultaneous nonzero workload and physical accounting",
+    "O03 full inputs/proposals/fit registration",
+    "O05 materials/splits/ethics-or-institution determination/consent/protocol",
+    "O06-O08 complete tasks, language pilots and frozen controls/power",
+    "O11/O13 recovery with actual waveform/body/opportunities",
+    "O12 upstream event inputs and complete predictive-stability/OOF/fit/calibration gates",
+    "body-only/context-only/crossed intervention registration details and actual downstream validation"
+  ],
+  "concurrent_document_change": "Embodied-affordance requirements in memo3.1/10.2.1 were added separately during this task; preserved, not validated by MR1.",
+  "work_cost": {
+    "new_rust_physical_lines": 2242,
+    "tokens": "not measured",
+    "scope": "no fixed savings or total M0 completion estimate inferred"
+  }
+}

@@ -10,6 +10,8 @@ const CONTEXT_DELAY_SEC: f64 = 0.08;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub(crate) struct ParticipationContextPrediction {
+    pub(crate) external_energy_footprint:
+        Option<crate::core::temporal_expectation::ExternalEnergyFootprint>,
     pub(crate) onset_frame: u64,
     pub(crate) forecast_observed_frame: u64,
     pub(crate) decision_external_history: Option<AuditoryHistorySnapshot>,
@@ -98,6 +100,32 @@ impl TemporalParticipation {
         self.coupling > 0.0
             && self.planned.is_none_or(|(at, _)| (at.round() as u64) < now)
             && self.due_frame - (end as f64) < (0.2 * self.period_frames).min(0.06 * self.fs)
+    }
+
+    pub(crate) fn opportunity(&self, now: u64) -> Option<super::action_candidates::Opportunity> {
+        use super::action_candidates::{Opportunity, OpportunityBasis};
+        let (at, basis) = match self.planned {
+            Some((at, _)) => (at, OpportunityBasis::ParticipationPlanned),
+            None => (self.due_frame, OpportunityBasis::ParticipationDue),
+        };
+        // Stale state must be advanced by the real policy, never by this observer.
+        (at.is_finite() && at >= 0.0 && at.round() < u64::MAX as f64)
+            .then_some(at.round() as u64)
+            .filter(|at| *at >= now)
+            .map(|at| Opportunity {
+                issued_at: now,
+                at,
+                basis,
+            })
+    }
+
+    pub(crate) fn intrinsic_due_for_selected(&self, tick: u64) -> Option<u64> {
+        let (planned, _) = self.planned?;
+        (planned.round() as u64 == tick
+            && self.due_frame.is_finite()
+            && self.due_frame >= 0.0
+            && self.due_frame.round() < u64::MAX as f64)
+            .then_some(self.due_frame.round() as u64)
     }
 
     pub(crate) fn set_sound_duration(&mut self, hold_sec: f32, adsr: Option<ToneAdsr>) {
@@ -247,6 +275,7 @@ impl TemporalParticipation {
                         onset + (CONTEXT_DELAY_SEC * self.fs).round() as u64,
                     )?;
                     Some(ParticipationContextPrediction {
+                        external_energy_footprint: None,
                         onset_frame: onset,
                         forecast_observed_frame: f.observed_frame(),
                         decision_external_history: f.observed_history,
@@ -309,6 +338,21 @@ impl TemporalParticipation {
                 self.skipped_cycles = self.skipped_cycles.saturating_add(1);
                 self.due_frame += self.next_interval();
                 continue;
+            }
+            if let (Some(context), Some(forecast)) = (&mut best_context, forecast) {
+                context.external_energy_footprint = Some(
+                    forecast.external_footprint(
+                        [
+                            context.onset_frame,
+                            context
+                                .onset_frame
+                                .saturating_add((f64::from(duration) * self.fs).ceil() as u64),
+                        ],
+                        forecast
+                            .observed_frame()
+                            .saturating_add((4. * self.fs) as u64),
+                    ),
+                );
             }
             self.planned = Some((best, best_context));
         }
@@ -456,6 +500,36 @@ impl TemporalParticipation {
 mod tests {
     use super::*;
     use crate::core::temporal_expectation::AcousticTemporalExpectation;
+
+    #[test]
+    fn frozen_opportunity_preserves_due_plan_and_renewal_state() {
+        use crate::life::action_candidates::OpportunityBasis;
+        let mut policy = TemporalParticipation::new(1000, 2.0, 0.0, 0, 59, 16);
+        let mut control = TemporalParticipation::new(1000, 2.0, 0.0, 0, 59, 16);
+        policy.set_flow_depth(0.8);
+        control.set_flow_depth(0.8);
+        for _ in 0..20 {
+            let issue = policy.last_onset.map_or(0, |last| last + 1);
+            let due = policy.opportunity(issue).unwrap();
+            assert_eq!(policy.intrinsic_due_for_selected(due.at), None);
+            assert_eq!(due.basis, OpportunityBasis::ParticipationDue);
+            assert_eq!(policy.opportunity(issue), Some(due));
+            let end = due.at + 1000;
+            let actual = policy.candidate(issue, end, true, None).unwrap();
+            let expected = control.candidate(issue, end, true, None).unwrap();
+            assert_eq!(actual, expected);
+            assert_eq!(actual, due.at);
+            let planned = policy.opportunity(issue).unwrap();
+            assert_eq!(planned.at, actual);
+            assert_eq!(planned.basis, OpportunityBasis::ParticipationPlanned);
+            assert_eq!(policy.intrinsic_due_for_selected(actual), Some(due.at));
+            assert_eq!(policy.intrinsic_due_for_selected(actual + 1), None);
+            assert!(policy.opportunity(actual + 1).is_none());
+            policy.resolve(actual, true);
+            assert_eq!(policy.intrinsic_due_for_selected(actual), None);
+            control.resolve(expected, true);
+        }
+    }
 
     #[test]
     fn learned_acoustic_continuations_change_participation_after_equal_silence() {
@@ -691,7 +765,10 @@ mod tests {
             .candidate(10_480, 11_000, true, Some(&occupied))
             .unwrap();
         assert!(onset > 10_500 && onset < 10_750, "{onset}");
+        assert_eq!(voice.intrinsic_due_for_selected(onset), Some(10_500));
+        assert_ne!(voice.intrinsic_due_for_selected(onset), Some(onset));
         voice.resolve(onset, true);
+        assert_eq!(voice.intrinsic_due_for_selected(onset), None);
         assert_eq!(voice.period_frames(), 500.0);
         voice.update_parameters(4.0, 0.8, 0.0);
         assert_eq!(voice.period_frames(), 250.0);
@@ -933,6 +1010,15 @@ mod tests {
             voice.resolve(onset, true);
             assert!(voice.memory.is_none());
             let issued = *voice.pending_contexts.front().unwrap();
+            let footprint = issued.external_energy_footprint.unwrap();
+            assert_eq!(footprint.requested[0], onset);
+            assert!(
+                footprint
+                    .points
+                    .iter()
+                    .flatten()
+                    .all(|point| point.band_energy_sum == Some(1.))
+            );
             let end = issued.target_end_frames[1] as usize;
             let audio: Vec<f32> = (0..end)
                 .map(|i| 0.2 * (std::f32::consts::TAU * frequency * i as f32 / fs as f32).sin())

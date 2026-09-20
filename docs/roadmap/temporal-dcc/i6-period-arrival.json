@@ -1,0 +1,145 @@
+{
+  "id": "i6-period-arrival-v1",
+  "status": "technical diagnostic complete; uncalibrated; no generation action",
+  "git_head": "559d02988c59fa41841ebefebf4ac130fd6d202a",
+  "worktree": "uncommitted; includes prior authorized work",
+  "test_status": "cargo test exit=0 @ 2026-09-13T09:37:27+09:00",
+  "tests": {
+    "passed": 930,
+    "failed": 0,
+    "ignored": 28
+  },
+  "required_command": "RUST_BACKTRACE=1 cargo test -- --nocapture (stdout and stderr recorded)",
+  "checks": [
+    "cargo clippy -- -D warnings",
+    "cargo check --all-targets",
+    "cargo fmt --all -- --check",
+    "git diff --check"
+  ],
+  "render_matrix": {
+    "configurations": [
+      "off",
+      "observe",
+      "ridge",
+      "acoustic",
+      "memory",
+      "gesture",
+      "hazard",
+      "periodic"
+    ],
+    "report": [
+      false,
+      true
+    ],
+    "checks": "byte-identical audio; both buses finish; shared period diagnostics; no action"
+  },
+  "traces": {
+    "I6_MR2_EXCHANGE": {
+      "calibrated": false,
+      "different_forecasts": 350,
+      "forecast_pairs": 350,
+      "groups_with_alternatives": 302,
+      "hops": 360,
+      "input": "same acoustic power and energy; omitted pulses, changed tempo, aperiodic tail"
+    },
+    "RECURRENCE_NSGT_TRACE": {
+      "accents": [
+        431,
+        0,
+        320,
+        79,
+        0,
+        0
+      ],
+      "arrival_forecasts": [
+        940,
+        0,
+        860,
+        894,
+        0,
+        0
+      ],
+      "fixture": "500Hz carrier with24-hop amplitude pulses versus silence and separate steady-amplitude control; fixed supplied numeric scales; candidate presence alone is not full O11 recovery or perceptual acceptance",
+      "frames_with_0_256s_candidate": [
+        892,
+        0,
+        261,
+        876,
+        0,
+        0
+      ],
+      "grouped_frames": [
+        811,
+        0,
+        808,
+        736,
+        0,
+        0
+      ],
+      "hop": 512,
+      "hops_per_instance": 480,
+      "instances": [
+        "diagnostic_pulse_bus0",
+        "diagnostic_silence_bus1",
+        "diagnostic_steady_bus0",
+        "baseline_pulse_bus0",
+        "baseline_silence_bus1",
+        "baseline_steady_bus0"
+      ],
+      "nfft": 2048,
+      "periodic_frames": [
+        912,
+        0,
+        824,
+        894,
+        0,
+        0
+      ],
+      "salience_deviations": [
+        0.2,
+        0.2,
+        0.2,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sample_rate": 48000,
+      "thresholds": [
+        0.05,
+        0.05,
+        0.05,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "source_tree_manifest": {
+    "files": 177,
+    "recipe": "sorted relative path + NUL + file sha256 + LF over src/**/*.rs, tests/**/*.rs, Cargo.toml, Cargo.lock",
+    "sha256": "26169cf2d9c91017dc419a04435e71caa18f5094a33b4a3b076ab917aa57868e"
+  },
+  "component_sha256": {
+    "src/config.rs": "2939fadb55781e021cc8fb9a3568bf3f696b805fe103dda6f7064977bc94ba58",
+    "src/temporal_cognition.rs": "dd016850b601ea50b710740f827ecb0dfb65ecaa249b15b7a2aa93b77ea4abce",
+    "src/temporal_cognition/arrival.rs": "fdb3e8e2d57a3efaab8c041e2f217d1606922584a8c0d86cef76d8238aabd499",
+    "src/temporal_cognition/arrival/tests.rs": "aafa449da9b8d1bd1e151c2bb05a4ced0a5fa74f67c98d9b60808f7181ac83a6",
+    "src/temporal_cognition/observation.rs": "71ab1753da9d064e2fc0d7c96d3c5589b78b69a9db942641330cb3a507649ce9",
+    "src/temporal_cognition/accents.rs": "38f3fe2b969a4bf470b64d606cd783d1d56830fde127deacc6508638ff31d8c4",
+    "src/temporal_cognition/accents/periods.rs": "30d45f320ea7bbc83a3ae6ec399a5ea043b56c2db80a22062c60cd5d91e8c435",
+    "src/temporal_cognition/accents/periods/groupings.rs": "f18a21274acdb89ecab5c4c82fd3a20605189a024c5cc288e3c2efa0c2e1e719",
+    "src/temporal_cognition/proposals/frontend.rs": "0249c2e8bb73bd89d7622b21f636f5e0c58bb4154f1fc21a5ac7285575fc771f",
+    "src/temporal_cognition/proposals/frontend/recurrence.rs": "f48ebb5efafbdfbdb312dd540163d16093e1ce8fdc0fade3f99731e0aa75b825",
+    "src/temporal_cognition/proposals/frontend/recurrence/tests.rs": "0146245d2ecf93c659227e9fd19187120167a0aadccdabc9a79257c71380ff9a",
+    "src/runtime/mod.rs": "87d40602ea6a20f9693f1d2c5549256282d5adf4147034301ad5281f0a19c129",
+    "src/ui/windows.rs": "a0dfd8858e72f28817f68cb93ad819e39a53c99cda26f555531392af04d56d6c",
+    "tests/render_binary.rs": "42f3164a2d1beb2394c2a47704e228a7fcf860641c8dcb6a84e3538d4465759d",
+    "tests/config_restore.rs": "cab976a7572fa5a38056a27b027b05dbb2dfa24b4ce0bfbc87fa90f8fca8fdbb"
+  },
+  "test_report_sha256": "f54b6f87b1ccb9045a4b6821e0ed0b2f6cff0a7124e199c954e15dd58accbcf4",
+  "remaining": [
+    "I7 and later technical milestones",
+    "O12 fitting and stability beyond small MR2",
+    "R/A cognitive, audible, authorial and full-load acceptance"
+  ]
+}

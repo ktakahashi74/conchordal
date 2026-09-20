@@ -1,8 +1,12 @@
+pub mod action_candidates;
+pub(crate) mod action_observation;
 pub(crate) mod articulation_envelope;
 pub(crate) mod conductor;
 pub(crate) mod constants;
 mod control_adapters;
 pub mod gate_clock;
+pub(crate) mod participation_trace;
+pub(crate) mod self_prediction;
 pub mod voice;
 pub(crate) use voice::articulation_core;
 pub(crate) mod adaptation;

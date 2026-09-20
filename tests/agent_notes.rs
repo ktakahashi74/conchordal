@@ -56,14 +56,18 @@ fn agents_publish_notes_and_render_audio() {
     let mut now: Tick = 0;
     for _ in 0..300 {
         let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
-        if !batches.is_empty() {
+        if batches.iter().any(|batch| !batch.onsets.is_empty()) {
             phonation_batches = batches;
             render_now = now;
             break;
         }
         now = now.saturating_add(hop);
     }
-    assert!(!phonation_batches.is_empty());
+    assert!(
+        phonation_batches
+            .iter()
+            .any(|batch| !batch.onsets.is_empty())
+    );
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = landscape.rhythm;
     let frame = renderer.render(&phonation_batches, render_now, &rhythms);
@@ -116,13 +120,13 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     let mut batches = Vec::new();
     for _ in 0..300 {
         let next = pop.collect_phonation_batches(&mut world, &landscape, now);
-        if !next.is_empty() {
+        if next.iter().any(|batch| !batch.onsets.is_empty()) {
             batches = next;
             break;
         }
         now = now.saturating_add(hop);
     }
-    assert!(!batches.is_empty());
+    assert!(batches.iter().any(|batch| !batch.onsets.is_empty()));
 
     let mut landscape_off = Landscape::new(space);
     landscape_off.rhythm.theta.freq_hz = 1.0;
@@ -134,5 +138,9 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     let agent = agent_cfg.spawn(assigned_id, 0, metadata, tb.fs, 0);
     pop_off.add_voice(agent);
     let batches_off = pop_off.collect_phonation_batches(&mut world_off, &landscape_off, now);
-    assert!(batches_off.is_empty());
+    assert_eq!(batches_off.len(), 1);
+    assert_eq!(batches_off[0].body_policy.unwrap().at, now);
+    assert!(batches_off[0].cmds.is_empty());
+    assert!(batches_off[0].tones.is_empty());
+    assert!(batches_off[0].onsets.is_empty());
 }

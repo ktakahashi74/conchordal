@@ -614,6 +614,9 @@ fn temporal_basin(arg0: i64, arg1: f64);
 /// Tempo region the emergent beat gravitates toward.
 fn temporal_basin(arg0: i64, arg1: i64);
 
+/// Select off or observe for new temporal cognition before playback.
+fn temporal_mode(arg0: String);
+
 /// Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1).
 fn tension(arg0: Placement, arg1: f64) -> Placement;
 /// Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1).

@@ -1,0 +1,28 @@
+{
+  "schema": "m0-rust-registration-sync-v1",
+  "memo_sha256": "04143a6b4a24b21782ee1f2030483f7e3af5844fce3975081b57143b2f9e0714",
+  "section9_unchanged_from_HEAD": true,
+  "updated_registrations": [
+    "docs/roadmap/temporal-dcc/accent-reference.json",
+    "docs/roadmap/temporal-dcc/bank-reference.json",
+    "docs/roadmap/temporal-dcc/consumer-packet-reference.json",
+    "docs/roadmap/temporal-dcc/consumer-reference.json",
+    "docs/roadmap/temporal-dcc/control-comparisons.json",
+    "docs/roadmap/temporal-dcc/descriptor-reference.json",
+    "docs/roadmap/temporal-dcc/endpoint-reference.json",
+    "docs/roadmap/temporal-dcc/event-head-reference.json",
+    "docs/roadmap/temporal-dcc/feasibility-preflight.json",
+    "docs/roadmap/temporal-dcc/feature-manifest.json",
+    "docs/roadmap/temporal-dcc/matcher-reference.json",
+    "docs/roadmap/temporal-dcc/memory-reference.json",
+    "docs/roadmap/temporal-dcc/occurrence-reference.json",
+    "docs/roadmap/temporal-dcc/payload-reference.json",
+    "docs/roadmap/temporal-dcc/private-trace-reference.json",
+    "docs/roadmap/temporal-dcc/query-scheduler-reference.json",
+    "docs/roadmap/temporal-dcc/recognition-instrument.json",
+    "docs/roadmap/temporal-dcc/relation-instrument.json",
+    "docs/roadmap/temporal-dcc/section-feature-reference.json",
+    "docs/roadmap/temporal-dcc/shared-descriptor-reference.json"
+  ],
+  "scope": "Rust implementation preparation/MR1 and delivery gate ownership; concurrent embodied-affordance requirements retained separately. Section9 is byte-identical to the previous specification. Existing numerical evidence, fit version29, collection and O04 gates are not promoted."
+}

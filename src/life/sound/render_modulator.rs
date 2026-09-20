@@ -4,6 +4,7 @@ use crate::life::phonation_engine::OnsetKick;
 use crate::life::voice::{ArticulationSignal, ArticulationState};
 
 #[derive(Clone, Debug)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub enum RenderModulatorSpec {
     EntrainPulse {
         attack_step: f32,
@@ -24,7 +25,8 @@ pub enum RenderModulatorSpec {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub enum RenderModulatorStateKind {
     Idle,
     Attack,
@@ -52,6 +54,7 @@ impl From<RenderModulatorStateKind> for ArticulationState {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct AutonomousPulseSpec {
     pub rate_hz: f32,
     pub phase_0_1: f32,
@@ -153,6 +156,32 @@ impl RenderModulator {
             Self::EntrainPulse(modulator) => modulator.begin_attack(),
             Self::SeqGate(modulator) => modulator.timer = 0.0,
             Self::DroneSway(_) => {}
+        }
+    }
+
+    pub(crate) fn amplitude_model(
+        &self,
+        rhythms: &NeuralRhythms,
+    ) -> super::control_forecast::AmplitudeModel {
+        use super::control_forecast::AmplitudeModel;
+        match self {
+            Self::EntrainPulse(m) => AmplitudeModel::EntrainPulse {
+                attack_step: m.attack_step,
+                decay_rate: m.decay_rate,
+                sustain_level: m.sustain_level,
+                state: m.state.into(),
+                env_level: m.env_level,
+                autonomous_retrigger: m.autonomous_pulse.as_ref().is_some_and(|p| p.retrigger),
+            },
+            Self::SeqGate(m) => AmplitudeModel::SeqGate {
+                timer: m.timer,
+                duration_sec: m.duration_sec,
+            },
+            Self::DroneSway(m) => AmplitudeModel::DroneSway {
+                phase: m.phase,
+                sway_rate: m.sway_rate,
+                alpha: rhythms.theta.alpha,
+            },
         }
     }
 

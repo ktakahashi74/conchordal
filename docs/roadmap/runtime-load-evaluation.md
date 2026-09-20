@@ -145,13 +145,23 @@ DCC 0.25も比較用の値であって推奨設定ではない。
 | 項目 | 契約 |
 |---|---|
 | worker時間 | `process_hop`の処理時間。report有効時の書き込みを含む。workerの待機sleep、profile行の保存、終了時の集計・書き込みは含まない |
-| 区間別時間 | schema 2ではanalysis待ち、Landscape更新、listener待ち、Voice更新、report、合成・転送、合成後の処理を記録する。合成後にはmeter・解析への送信・UI・hop reportを含む。計測点間の小さな処理は全体時間にだけ含まれる |
+| 区間別時間 | schema 4ではanalysis待ち、Landscape更新、listener待ち、Voice更新、report、合成・転送、合成後の処理を記録する。合成後にはmeter・解析への送信・UI・hop reportを含む。計測点間の小さな処理は全体時間にだけ含まれる |
 | 合成内部 | `synthesis_us`は`render_route_us`の内数。両者を合計しない。`rendered_tone_count`はそのhopでScheduleRendererが処理するTone数であり、生存Voice数とは別に記録する |
+| renderer内訳 | `rendering`の6区間は`synthesis_us`の内数。`setup_us`は私有capture取得・終了Tone除去、`commands_us`は指令適用・身体予測・候補提出、`samples_us`は実合成・sample単位の私有観測、`history_us`は自声照合とそのreport、`observation_us`はsource energy・帰結／trace完了、`capture_delivery_us`は私有PCM提出とoffline時の公開完了待ち。wall時間であり、threadのCPU時間や全新規判断の1.6 ms枠そのものではない。`--profile`時だけ計時する |
 | p95/p99 | 指定した測定窓に完全に含まれるhopだけを使い、`(n−1)×p`で線形補間する |
 | worker割当 | 成功したRust `alloc`・`alloc_zeroed`・`realloc`の要求回数と要求bytes。保持メモリ量ではない |
 | 割当の対象外 | analysis thread、音声callback、native malloc、開始時の準備、終了時の集計 |
 | 出力不足 | callbackがringから読めずゼロ補完したmono frame数。hardware xrunではない。生成時刻の測定窓境界で取得した累積差であり、ring以降の遅延を補正した物理再生区間の集計ではない |
 | 機器情報 | CPAL backend、device名、実sample rate、channel数、ring容量、callbackとエラーの数 |
+| 背景worker終端 | `background`はdrain／join後の両bus共有worker、私有body、候補energyの状態・欠落・費用。reportなしでも取得する。nullは無効または未計測であり、費用ゼロを意味しない。費用分布は実行全体の受信frameとsample時計の100 ms窓を集計し、指定warmup／測定区間だけの集計ではない |
+
+私有bodyの`worker_resources`はdescriptor公開の有無によらず全frameを計数する。
+frame wall時間は解析・descriptor／prototype・snapshot公開lock／copyを含み、delivery時間はqueue待ちも含む。
+meter更新、buffer返却と完了通知の送信はframe計時の後にある。startupはworker側のlane初期化である。
+thread CPU時間ではなく、foregroundのoffline完了待ちとも別の値である。
+共有・私有のhistogramには40 ms境界を含め、50 ms上限の超過数と区別する。
+共用形式のtable／rejectedは私有bodyでは使用せず、frame・delivery・窓・finishを見る。
+評価CLIは保存済みschema 2／3も読めるが、存在しない終端計器を補完せず、背景情報から自動で資源合格を判定しない。
 
 `profile-alloc`が無効な通常ビルドには割当計測用のglobal allocatorを組み込まない。
 有効なビルドではthread-localのスカラーカウンターで計測し、計測用処理からの割当を避ける。

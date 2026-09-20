@@ -1,0 +1,2466 @@
+{
+  "schema": "i10-arrival-phase-resolution-v1",
+  "status": "phase_independent_arrival_support_repaired_phase_guard_preserved_full_i10_incomplete",
+  "artifact_directory": "target/i10-arrival-phase-resolution-20260918",
+  "plan": {
+    "scope": "Require phase resolution only for nonzero cosine/sine hazard coefficients; preserve numerical tolerance, 62-evaluation cap and uncertainty policy. No timing default adoption or I11 action effects.",
+    "source_before_sha256": {
+      "src/temporal_cognition/arrival.rs": "87dc59b145d8d5833f7dd3cff49bcd1698b9ab534c058f04e2fb7729da47e82a",
+      "src/temporal_cognition/arrival/tests.rs": "eb82f3fd3f825d4d2cc621d6b886aa1051b7aaf498b2f2082976e08d7b73c765",
+      "src/temporal_cognition/arrival/projection/tests.rs": "2759e1a339cd7cbea827096c136b4b99bcf7698f42df1140a84ca4c3e223b225"
+    },
+    "binary_before_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2",
+    "inputs_sha256": {
+      "target/i10-arrival-phase-resolution-20260918/stair-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+      "target/i10-arrival-phase-resolution-20260918/stair-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+      "target/i10-arrival-phase-resolution-20260918/stair-phase.toml": "4b758628dedb440d4ca5ebbe7756ca5399d738a463e8947f9b24b3dfe873f0fc",
+      "target/i10-arrival-phase-resolution-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+      "target/i10-arrival-phase-resolution-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+      "target/i10-arrival-phase-resolution-20260918/sustain-1000.toml": "e62f1ff04cc1478291a042b3d7041ea14ff0f56d9b0e31f02be3546cc4f63440",
+      "target/i10-arrival-phase-resolution-20260918/sustain-250.toml": "467acaa35d063813f4afe9d5ddca32dfa9f95c546d8d0fe54eea812cddb8000a",
+      "target/i10-arrival-phase-resolution-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+      "target/i10-arrival-phase-resolution-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+      "target/i10-arrival-phase-resolution-20260918/pulse-phase.toml": "4b758628dedb440d4ca5ebbe7756ca5399d738a463e8947f9b24b3dfe873f0fc",
+      "target/i10-arrival-phase-resolution-20260918/pulse.rhai": "b5a03ba6093f0fdb40e80246cb32b8bf0bcce1fddb6cc337261000e3729fb281",
+      "target/i10-arrival-phase-resolution-20260918/pulse-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+      "target/i10-arrival-phase-resolution-20260918/pulse.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+      "target/i10-arrival-phase-resolution-20260918/pulse-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae"
+    },
+    "baseline_load_directory": "target/i10-evaluation-timing-20260918",
+    "baseline_load_sha256": {
+      "target/i10-evaluation-timing-20260918/load-after.jsonl": "5115c82a412999d0bd8abfd0ca937f75e0f70bb44cf24b9ffea36df95f7e5fc3",
+      "target/i10-evaluation-timing-20260918/load-250.jsonl": "58f067db851e2a24d1d8e8dcbd235ddadc50bb1068fbe03f61e72f0cea95b2d1",
+      "target/i10-evaluation-timing-20260918/load-1000.jsonl": "a4af4ab8d10248e473c604bab62ec3f5550c9f4a30f42c0596e8eefbc50a03f2"
+    },
+    "source_after_sha256": {
+      "src/temporal_cognition/arrival.rs": "ba4a397b011b9db64d75ced34469b696cebe8618d02590dd331a743e0107875a",
+      "src/temporal_cognition/arrival/tests.rs": "62b26252a22c9529921c7e1559b3fe80261581d8a94be4d8c1ad8bcccec5669d",
+      "src/temporal_cognition/arrival/projection/tests.rs": "8aa3de90f544b9b42e5c99f7ae24339cafffc4cab4e77923530f5d75bf4db7b1"
+    },
+    "new_rust_tests": 3,
+    "closed_form_constant_cases": 108,
+    "added_real_audio_control": "Existing sustain/stair produced no ordinary arrival forecasts. Add a frozen 0.171-second amplitude pulse train to exercise short-period integration on actual audio."
+  },
+  "source_sha256": {
+    "src/temporal_cognition/arrival.rs": "ba4a397b011b9db64d75ced34469b696cebe8618d02590dd331a743e0107875a",
+    "src/temporal_cognition/arrival/tests.rs": "62b26252a22c9529921c7e1559b3fe80261581d8a94be4d8c1ad8bcccec5669d",
+    "src/temporal_cognition/arrival/projection/tests.rs": "8aa3de90f544b9b42e5c99f7ae24339cafffc4cab4e77923530f5d75bf4db7b1"
+  },
+  "contract": {
+    "gate": "Require width <= period / 4 only when the context has a peak and at least one of cosine/sine hazard coefficients 10/11 is nonzero. Exact zero comparison; no near-zero tolerance.",
+    "preserved": "Original feature mapping, two-point Gauss-Legendre refinement, absolute/relative error tolerance, 62-evaluation cap, uncertain-reset bounds, candidate receipt rules and causal ownership remain unchanged.",
+    "constant": "A phase-independent constant hazard converges after six evaluations even with a short period. Period/support/missing-indicator coefficients may remain nonzero since their within-window features are constant.",
+    "observed_and_candidate": "Both use the same integral. Observed arrival probabilities and their downstream diagnostic head inputs may change; this is a numerical support correction, not an observation-invariance claim.",
+    "limits": "Nonzero phase coefficients retain the existing resolution guard, including very small coefficients. No larger integration budget, phase approximation or unknown-to-silence substitution."
+  },
+  "verification": {
+    "render": {
+      "sustain": {
+        "common_observations": 125,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 119,
+            "body_descriptor": 118,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 591
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "independent_checks": {
+          "continuation_distributions": 12810,
+          "accent_windows": 488,
+          "accent_positive": 0,
+          "accent_known_zero": 488,
+          "accent_unsupported": 0,
+          "accent_accents": 0
+        },
+        "raw_mixtures": {
+          "cells": 854,
+          "heads": 1708,
+          "prior_only": 854,
+          "mixed_groups": 0,
+          "fully_future_windows": 488,
+          "aligned_issue_heads": 12,
+          "frozen_issue_snapshots": 124,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 11944054,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 9774821,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 12045895,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 9851031,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "sustain-250": {
+        "common_observations": 120,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 119,
+            "body_descriptor": 118,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 591
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "independent_checks": {
+          "continuation_distributions": 12180,
+          "accent_windows": 464,
+          "accent_positive": 2,
+          "accent_known_zero": 462,
+          "accent_unsupported": 0,
+          "accent_accents": 2
+        },
+        "raw_mixtures": {
+          "cells": 812,
+          "heads": 1624,
+          "prior_only": 812,
+          "mixed_groups": 0,
+          "fully_future_windows": 464,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 118,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 53013649,
+            "over_limit_windows": 1,
+            "max_delivery_ns": 72083008,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 52300205,
+            "over_limit_windows": 1,
+            "max_delivery_ns": 69970224,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "sustain-1000": {
+        "common_observations": 120,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 119,
+            "body_descriptor": 118,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 591
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+        "independent_checks": {
+          "continuation_distributions": 12180,
+          "accent_windows": 464,
+          "accent_positive": 2,
+          "accent_known_zero": 462,
+          "accent_unsupported": 0,
+          "accent_accents": 2
+        },
+        "raw_mixtures": {
+          "cells": 812,
+          "heads": 1624,
+          "prior_only": 812,
+          "mixed_groups": 0,
+          "fully_future_windows": 464,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 118,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 47693386,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 62834080,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 611,
+            "windows": 66,
+            "max_window_ns": 46763680,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 60415645,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "stair": {
+        "common_observations": 139,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "independent_checks": {
+          "continuation_distributions": 13650,
+          "accent_windows": 520,
+          "accent_positive": 0,
+          "accent_known_zero": 520,
+          "accent_unsupported": 0,
+          "accent_accents": 0
+        },
+        "raw_mixtures": {
+          "cells": 910,
+          "heads": 1820,
+          "prior_only": 790,
+          "mixed_groups": 0,
+          "fully_future_windows": 520,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 138,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 12417307,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 10213564,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 12311456,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 10139733,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "stair-250": {
+        "common_observations": 128,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "independent_checks": {
+          "continuation_distributions": 12495,
+          "accent_windows": 476,
+          "accent_positive": 2,
+          "accent_known_zero": 474,
+          "accent_unsupported": 0,
+          "accent_accents": 2
+        },
+        "raw_mixtures": {
+          "cells": 833,
+          "heads": 1666,
+          "prior_only": 725,
+          "mixed_groups": 0,
+          "fully_future_windows": 476,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 127,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 50161771,
+            "over_limit_windows": 1,
+            "max_delivery_ns": 66906945,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 49731719,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 63476404,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "stair-1000": {
+        "common_observations": 128,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "independent_checks": {
+          "continuation_distributions": 12495,
+          "accent_windows": 476,
+          "accent_positive": 2,
+          "accent_known_zero": 474,
+          "accent_unsupported": 0,
+          "accent_accents": 2
+        },
+        "raw_mixtures": {
+          "cells": 833,
+          "heads": 1666,
+          "prior_only": 767,
+          "mixed_groups": 0,
+          "fully_future_windows": 476,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 127,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 47870298,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 63016571,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 46596360,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 61059369,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "stair-phase": {
+        "common_observations": 128,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 134,
+            "body_descriptor": 134,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 668
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+        "independent_checks": {},
+        "raw_mixtures": {
+          "cells": 840,
+          "heads": 1680,
+          "prior_only": 732,
+          "mixed_groups": 0,
+          "fully_future_windows": 480,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 128,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 50304742,
+            "over_limit_windows": 1,
+            "max_delivery_ns": 66091350,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 688,
+            "windows": 74,
+            "max_window_ns": 50124891,
+            "over_limit_windows": 1,
+            "max_delivery_ns": 66962446,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "pulse": {
+        "common_observations": 76,
+        "ordinary_continuation_dominance_checks": 152,
+        "changed_paths": {
+          "period.groups[].forecast.probability": 152,
+          "period.groups[].forecast.evaluations": 152,
+          "phrase.groups[].continuation[]": 760,
+          "phrase.continuation.categories[]": 335,
+          "phrase.continuation.expected_rating": 67,
+          "phrase.continuation.supported_expected_rating": 67,
+          "action_profile_features.raw_head_issue.groups[].categories[][]": 675,
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.categories[]": 2135,
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.expected_rating": 427
+        },
+        "change_examples": {
+          "period.groups[].forecast.probability": [
+            null,
+            [
+              0.5,
+              0.5
+            ]
+          ],
+          "period.groups[].forecast.evaluations": [
+            62,
+            6
+          ],
+          "phrase.groups[].continuation[]": [
+            0.0689737808747157,
+            0.02654968921195875
+          ],
+          "phrase.continuation.categories[]": [
+            0.1694653203664646,
+            0.1664848883594661
+          ],
+          "phrase.continuation.expected_rating": [
+            0.5494071777821442,
+            0.5595987269112366
+          ],
+          "phrase.continuation.supported_expected_rating": [
+            0.6787593861810025,
+            0.7156332807916854
+          ],
+          "action_profile_features.raw_head_issue.groups[].categories[][]": [
+            0.06638813158737686,
+            0.025509193093585122
+          ],
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.categories[]": [
+            0.18737262583830763,
+            0.18617373470707071
+          ],
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.expected_rating": [
+            0.5216124150297455,
+            0.5261187261839372
+          ]
+        },
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 166,
+            "body_descriptor": 166,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 828
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+        "independent_checks": {
+          "continuation_distributions": 14112,
+          "accent_windows": 608,
+          "accent_positive": 0,
+          "accent_known_zero": 608,
+          "accent_unsupported": 0,
+          "accent_accents": 0,
+          "all_observed_forecasts": 676,
+          "forecast_groups_with_short_peak": 348,
+          "observed_forecasts_checked": 676
+        },
+        "raw_mixtures": {
+          "cells": 1064,
+          "heads": 2128,
+          "prior_only": 1064,
+          "mixed_groups": 1050,
+          "fully_future_windows": 608,
+          "aligned_issue_heads": 6,
+          "frozen_issue_snapshots": 162,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 22747721,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 72089408,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 22638180,
+            "over_limit_windows": 0,
+            "max_delivery_ns": 73012594,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "pulse-250": {
+        "common_observations": 94,
+        "ordinary_continuation_dominance_checks": 186,
+        "changed_paths": {
+          "period.groups[].forecast.probability": 186,
+          "period.groups[].forecast.evaluations": 187,
+          "phrase.groups[].continuation[]": 930,
+          "phrase.continuation.categories[]": 425,
+          "phrase.continuation.expected_rating": 85,
+          "phrase.continuation.supported_expected_rating": 85,
+          "action_profile_features.raw_head_issue.groups[].categories[][]": 860,
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.categories[]": 2765,
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.expected_rating": 553
+        },
+        "change_examples": {
+          "period.groups[].forecast.probability": [
+            null,
+            [
+              0.49999999999999994,
+              0.49999999999999994
+            ]
+          ],
+          "period.groups[].forecast.evaluations": [
+            62,
+            6
+          ],
+          "phrase.groups[].continuation[]": [
+            0.05669165412926547,
+            0.02163795163292557
+          ],
+          "phrase.continuation.categories[]": [
+            0.18869682663993143,
+            0.18756583167502686
+          ],
+          "phrase.continuation.expected_rating": [
+            0.5182202351563043,
+            0.5220930146551106
+          ],
+          "phrase.continuation.supported_expected_rating": [
+            0.6774759577618805,
+            0.7151991399741249
+          ],
+          "action_profile_features.raw_head_issue.groups[].categories[][]": [
+            0.047274648467010724,
+            0.017928133145513423
+          ],
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.categories[]": [
+            0.1877658392629701,
+            0.1865050983140107
+          ],
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.expected_rating": [
+            0.521117459963609,
+            0.5258489525383305
+          ]
+        },
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 166,
+            "body_descriptor": 166,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 828
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+        "independent_checks": {
+          "continuation_distributions": 14322,
+          "accent_windows": 616,
+          "accent_positive": 96,
+          "accent_known_zero": 520,
+          "accent_unsupported": 0,
+          "accent_accents": 96,
+          "all_observed_forecasts": 656,
+          "forecast_groups_with_short_peak": 340,
+          "observed_forecasts_checked": 656
+        },
+        "raw_mixtures": {
+          "cells": 1078,
+          "heads": 2156,
+          "prior_only": 1078,
+          "mixed_groups": 1064,
+          "fully_future_windows": 616,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 164,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 60078992,
+            "over_limit_windows": 48,
+            "max_delivery_ns": 208857778,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 59963023,
+            "over_limit_windows": 48,
+            "max_delivery_ns": 208114552,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "pulse-1000": {
+        "common_observations": 94,
+        "ordinary_continuation_dominance_checks": 191,
+        "changed_paths": {
+          "period.groups[].forecast.probability": 191,
+          "period.groups[].forecast.evaluations": 192,
+          "phrase.groups[].continuation[]": 955,
+          "phrase.continuation.categories[]": 420,
+          "phrase.continuation.expected_rating": 84,
+          "phrase.continuation.supported_expected_rating": 84,
+          "action_profile_features.raw_head_issue.groups[].categories[][]": 830,
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.categories[]": 2695,
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.expected_rating": 539
+        },
+        "change_examples": {
+          "period.groups[].forecast.probability": [
+            null,
+            [
+              0.49999999999999994,
+              0.49999999999999994
+            ]
+          ],
+          "period.groups[].forecast.evaluations": [
+            62,
+            6
+          ],
+          "phrase.groups[].continuation[]": [
+            0.04403638881741573,
+            0.01666646310162241
+          ],
+          "phrase.continuation.categories[]": [
+            0.1876778790674568,
+            0.1865362616307693
+          ],
+          "phrase.continuation.expected_rating": [
+            0.5211937412673371,
+            0.5255164365621393
+          ],
+          "phrase.continuation.supported_expected_rating": [
+            0.7129659117478289,
+            0.7564026383291985
+          ],
+          "action_profile_features.raw_head_issue.groups[].categories[][]": [
+            0.07150972362232087,
+            0.02757319436730019
+          ],
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.categories[]": [
+            0.18927473342609685,
+            0.18816304431027325
+          ],
+          "action_profile_features.latest[].raw_unreweighted_heads.continuation.expected_rating": [
+            0.5169650220026712,
+            0.5206813474615476
+          ]
+        },
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 166,
+            "body_descriptor": 166,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 828
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+        "independent_checks": {
+          "continuation_distributions": 14322,
+          "accent_windows": 616,
+          "accent_positive": 96,
+          "accent_known_zero": 520,
+          "accent_unsupported": 0,
+          "accent_accents": 96,
+          "all_observed_forecasts": 654,
+          "forecast_groups_with_short_peak": 338,
+          "observed_forecasts_checked": 654
+        },
+        "raw_mixtures": {
+          "cells": 1078,
+          "heads": 2156,
+          "prior_only": 1078,
+          "mixed_groups": 1064,
+          "fully_future_windows": 616,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 164,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 57078164,
+            "over_limit_windows": 46,
+            "max_delivery_ns": 198336682,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 56844223,
+            "over_limit_windows": 46,
+            "max_delivery_ns": 198460233,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      },
+      "pulse-phase": {
+        "common_observations": 141,
+        "ordinary_continuation_dominance_checks": 0,
+        "changed_paths": {},
+        "change_examples": {},
+        "records": {
+          "counts": {
+            "onset": 1,
+            "body_default": 166,
+            "body_descriptor": 166,
+            "self_sound_outcome": 2,
+            "self_sound_descriptor_prediction": 2,
+            "population_step": 828
+          },
+          "availability_changes": []
+        },
+        "wav_sha256": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+        "independent_checks": {
+          "all_observed_forecasts": 650,
+          "forecast_groups_with_short_peak": 334
+        },
+        "raw_mixtures": {
+          "cells": 1064,
+          "heads": 2128,
+          "prior_only": 1064,
+          "mixed_groups": 1050,
+          "fully_future_windows": 608,
+          "aligned_issue_heads": 0,
+          "frozen_issue_snapshots": 163,
+          "buses": [
+            0,
+            1
+          ],
+          "claim": "raw unreweighted base-head mixture, not shared-context consequence posterior"
+        },
+        "terminal_resources": {
+          "0": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 60709288,
+            "over_limit_windows": 48,
+            "max_delivery_ns": 207955872,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          },
+          "1": {
+            "frames": 848,
+            "windows": 91,
+            "max_window_ns": 60004283,
+            "over_limit_windows": 48,
+            "max_delivery_ns": 204991243,
+            "dropped": 0,
+            "rejected": 0,
+            "missing": 0
+          }
+        }
+      }
+    },
+    "load": {
+      "at": [
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 39437075,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 39758717,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 39417064,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 39370094,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 33532398,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 33094796,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 33050715,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 33018874,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 40999194,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 41227046,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 41128425,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 41154865,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 33786340,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 34224062,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 34064101,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 33849580,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 39376504,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 39379945,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 39351145,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 39590936,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 33033856,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 33023905,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 33081006,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 33014735,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 41168275,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 41303168,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 41150105,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 41068556,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 34016731,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 33901930,
+          "previous_updates_over_50ms": 0
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells": 1032,
+          "arrival": {
+            "point": 40,
+            "future_point": 0,
+            "candidate_accents": 0,
+            "masked": 992,
+            "partial_tail": 960,
+            "known_forecasts": 40,
+            "new_supported_points": 40
+          },
+          "maximum_update_ns": 33916251,
+          "updates_over_50ms": 0,
+          "previous_maximum_update_ns": 33898482,
+          "previous_updates_over_50ms": 0
+        }
+      ],
+      "250": [
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 167362689,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 167767861,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 167384919,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 167573081,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 163901777,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 163620416,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 164333860,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 165359047,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 168669207,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 168894569,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 168732168,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 168259954,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 165164636,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 164892025,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 165090655,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 164466651,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 167459089,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 168107693,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 167404631,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 166718455,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 164075809,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 163900787,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 166316523,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 164289329,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 168830939,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 168530678,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 168615197,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 171126062,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 164550182,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 165400387,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells": 968,
+          "arrival": {
+            "point": 131,
+            "future_point": 131,
+            "candidate_accents": 131,
+            "masked": 837,
+            "partial_tail": 0,
+            "known_forecasts": 131,
+            "new_supported_points": 131
+          },
+          "maximum_update_ns": 167639071,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 165081094,
+          "previous_updates_over_50ms": 21
+        }
+      ],
+      "1000": [
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 155056893,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 155044232,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 155349635,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 155780488,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 153405743,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 153400863,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 153851426,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 154353838,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 156782494,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 156918475,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 156459642,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 157651648,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 154238368,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 154043616,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 0,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 154615251,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 154302619,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 154965753,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 156274350,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": false,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 155259826,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 155724686,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 155141254,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 154053716,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 1,
+          "quiet": true,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 153708005,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 153606833,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 157285167,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 156481072,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": false,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 156432460,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 157175906,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": false,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 153991956,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 154504129,
+          "previous_updates_over_50ms": 21
+        },
+        {
+          "bus": 1,
+          "groups": 7,
+          "quiet": true,
+          "weighted": true,
+          "cells": 776,
+          "arrival": {
+            "point": 101,
+            "future_point": 101,
+            "candidate_accents": 101,
+            "masked": 675,
+            "partial_tail": 0,
+            "known_forecasts": 101,
+            "new_supported_points": 101
+          },
+          "maximum_update_ns": 154147459,
+          "updates_over_50ms": 21,
+          "previous_maximum_update_ns": 154350038,
+          "previous_updates_over_50ms": 21
+        }
+      ]
+    },
+    "scope": "Numerical support and frozen conditional receipts. Load timings compare with the frozen prior assay, not freshly interleaved benchmark repetitions. No timing adoption or full worker/live-device acceptance."
+  },
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.7627843939699233
+    },
+    {
+      "command": [
+        "cargo",
+        "check",
+        "--all-targets"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.2201090040034615
+    },
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.6950743450433947
+    },
+    {
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--bin",
+        "conchordal-render"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 52.87031725002453
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.0448238379904069
+    }
+  ],
+  "cargo_test": {
+    "status": "cargo test exit=0 @ 2026-09-18T16:40:12+09:00",
+    "passed": 1176,
+    "failed": 0,
+    "ignored": 38,
+    "suites": 31
+  },
+  "commands": [
+    {
+      "label": "sustain-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/sustain.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/sustain.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/sustain-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/sustain-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7883594940067269,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "sustain-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/sustain.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/sustain.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/sustain-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/sustain-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7878099109511822,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "sustain-250-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/sustain.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/sustain-250.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/sustain-250-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/sustain-250-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.20290858799126,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "sustain-250-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/sustain.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/sustain-250.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/sustain-250-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/sustain-250-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.215093674021773,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "sustain-1000-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/sustain.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/sustain-1000.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/sustain-1000-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/sustain-1000-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.1409074240364134,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "sustain-1000-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/sustain.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/sustain-1000.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/sustain-1000-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/sustain-1000-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.1556054450338706,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "stair-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.911415359005332,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.9165926109999418,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "stair-250-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair-250.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-250-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-250-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.278540168015752,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-250-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair-250.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-250-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-250-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.296420369995758,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "stair-1000-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair-1000.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-1000-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-1000-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.2208245099755004,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-1000-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair-1000.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-1000-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-1000-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.2303692790446803,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "stair-phase-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair-phase.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-phase-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-phase-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.2946266580256633,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "stair-phase-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/stair.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/stair-phase.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/stair-phase-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/stair-phase-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.2919521110015921,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "load-at",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/load-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 19.52143755502766,
+      "binary_sha256": "106ba15baaf8538f20a0c9543a109bc5296634ef0b430db0b15b168af431a95a",
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-arrival-phase-resolution-20260918/stair.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-arrival-phase-resolution-20260918/load-at.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      }
+    },
+    {
+      "label": "load-250",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/load-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 62.93444319599075,
+      "binary_sha256": "106ba15baaf8538f20a0c9543a109bc5296634ef0b430db0b15b168af431a95a",
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-arrival-phase-resolution-20260918/stair-250.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-arrival-phase-resolution-20260918/load-250.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      }
+    },
+    {
+      "label": "load-1000",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/load-test",
+        "temporal_cognition::action_profiles::tests::saturated_action_profile_table_load",
+        "--exact",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 58.86777314700885,
+      "binary_sha256": "106ba15baaf8538f20a0c9543a109bc5296634ef0b430db0b15b168af431a95a",
+      "environment": {
+        "CONCHORDAL_I10_MAX_LOAD_CONFIG": "target/i10-arrival-phase-resolution-20260918/stair-1000.toml",
+        "CONCHORDAL_I10_MAX_LOAD_OUTPUT": "target/i10-arrival-phase-resolution-20260918/load-1000.jsonl",
+        "CONCHORDAL_I10_MAX_LOAD_HEADS": "1"
+      }
+    },
+    {
+      "label": "pulse-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.6331285649794154,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "pulse-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 1.6272097780019976,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "pulse-250-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse-250.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-250-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-250-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.7762039969675243,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "pulse-250-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse-250.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-250-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-250-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.810699580993969,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "pulse-1000-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse-1000.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-1000-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-1000-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.6276022739475593,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "pulse-1000-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse-1000.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-1000-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-1000-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.6562865219893865,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    },
+    {
+      "label": "pulse-phase-before",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/before-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse-phase.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-phase-before.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-phase-before.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.7814744700444862,
+      "binary_sha256": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2"
+    },
+    {
+      "label": "pulse-phase-after",
+      "command": [
+        "target/i10-arrival-phase-resolution-20260918/after-render",
+        "target/i10-arrival-phase-resolution-20260918/pulse.rhai",
+        "--config",
+        "target/i10-arrival-phase-resolution-20260918/pulse-phase.toml",
+        "-o",
+        "target/i10-arrival-phase-resolution-20260918/pulse-phase-after.wav",
+        "--report",
+        "target/i10-arrival-phase-resolution-20260918/pulse-phase-after.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 3.8184382500476204,
+      "binary_sha256": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913"
+    }
+  ],
+  "limits": [
+    "No timing choice adopted; omitted profile timing remains exact at-action evaluation.",
+    "The maximum-assignment assay uses synthetic inputs and forced prototype assignments. It excludes matcher, section, full worker queue, Voice decisions and audio device.",
+    "Resource measurements compared with frozen prior-run data do not establish a paired speedup or full real-time acceptance.",
+    "Raw profile arrival points and ordinal arithmetic do not establish actual-body transfer fidelity, calibrated predictions, audible benefit or author adoption.",
+    "Normal shared/local joint inference and full conditional feature/score update, all heads, actual-body candidate/default consumption, timing choice and whole-worker/Voice/live-audio gates remain open. I10 incomplete; I9 held and I11 effects disabled."
+  ],
+  "dependency_sha256": {
+    "scripts/verify_temporal_projected_heads.py": "9ca6a028a62081f9be6fc655dc2c3da66985997c4dad58325dbb9f7d4ccff17b",
+    "src/temporal_cognition/arrival/projection.rs": "a119b46bc79c12f94c1bd8497cc96279866455aaba7bcdd238696cc8fb74793f",
+    "src/temporal_cognition/phrase.rs": "68b2edef435e6a0f1c01d91321c17cb9711974cd44cf508fda9caaf7c58d8a48",
+    "src/temporal_cognition/action_profiles.rs": "9290bf2ca95848e2312f82004aa9bbb6c917d88786256d002b24a7dd7b4b441a",
+    "src/temporal_cognition/action_profiles/tests.rs": "190c2eddb58cf31c6f18577a8e8260d862e8305043a93304bd8a97cbe3ad08f4",
+    "target/i10-evaluation-timing-20260918/load-after.jsonl": "5115c82a412999d0bd8abfd0ca937f75e0f70bb44cf24b9ffea36df95f7e5fc3",
+    "target/i10-evaluation-timing-20260918/load-250.jsonl": "58f067db851e2a24d1d8e8dcbd235ddadc50bb1068fbe03f61e72f0cea95b2d1",
+    "target/i10-evaluation-timing-20260918/load-1000.jsonl": "a4af4ab8d10248e473c604bab62ec3f5550c9f4a30f42c0596e8eefbc50a03f2",
+    "/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5"
+  },
+  "artifact_sha256": {
+    "target/i10-arrival-phase-resolution-20260918/acquire.py": "a97f73b24d0ae04e6aebc355a0c42874de3c29910beee9295e3214750638b873",
+    "target/i10-arrival-phase-resolution-20260918/acquire_pulse.py": "4285284c0b239fe3969b4e5d0f88375e121118bc3669bf2d31f15e64118620e9",
+    "target/i10-arrival-phase-resolution-20260918/acquisition.log": "c13e6092eea89d1ad2a86ed4f67959dc3cecfa0cda24c8b0f1b2cecfc79c7f85",
+    "target/i10-arrival-phase-resolution-20260918/after-render": "6279e86f25a882d1d7ecf6420f82c90d68195a4ecaa6837821f9b4d0c9ca4913",
+    "target/i10-arrival-phase-resolution-20260918/audit.py": "090a43937d8aeae92544ce29733969fb34c40154ee9cdedb6503448e3f6cc6b4",
+    "target/i10-arrival-phase-resolution-20260918/before-render": "f2ed0776bebac46c2ec1df8f0bafe606b5709639e74cf497a1a320c8abffc8e2",
+    "target/i10-arrival-phase-resolution-20260918/before-source/src/temporal_cognition/arrival/projection/tests.rs": "2759e1a339cd7cbea827096c136b4b99bcf7698f42df1140a84ca4c3e223b225",
+    "target/i10-arrival-phase-resolution-20260918/before-source/src/temporal_cognition/arrival/tests.rs": "eb82f3fd3f825d4d2cc621d6b886aa1051b7aaf498b2f2082976e08d7b73c765",
+    "target/i10-arrival-phase-resolution-20260918/before-source/src/temporal_cognition/arrival.rs": "87dc59b145d8d5833f7dd3cff49bcd1698b9ab534c058f04e2fb7729da47e82a",
+    "target/i10-arrival-phase-resolution-20260918/changes.json": "838f97a2b97bb3a70259b61f9b3744fe15dcceabb0e68181cf8acf4c83bc4825",
+    "target/i10-arrival-phase-resolution-20260918/changes.log": "c606cdbaab91a2bb537fa250175b82c0b0ef09bbe5399ce0bd56b6a866f02d02",
+    "target/i10-arrival-phase-resolution-20260918/check-0.log": "ced92c35447a4d3f9783e773ef04d72ed7b78dccd059eddc9dc8663cfa175f55",
+    "target/i10-arrival-phase-resolution-20260918/check-1.log": "cca886847a71a6a2e73e223a47d890b83c3707e49b46feb2659e7fae236a10e1",
+    "target/i10-arrival-phase-resolution-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-arrival-phase-resolution-20260918/check-3.log": "f6931a864f5a0a90682511d39c279a8256961903ce084b69cf4b1768bbe4e987",
+    "target/i10-arrival-phase-resolution-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-arrival-phase-resolution-20260918/checks.json": "5be41f0a10044fe7ae0f6afe614d684eaddfde05a1987595cd0930c2b44f3ab7",
+    "target/i10-arrival-phase-resolution-20260918/checks.py": "f031a5629b69bf013d05b38f3faa6423b7ff44b0d1761a7489f4a49933b24d5c",
+    "target/i10-arrival-phase-resolution-20260918/commands.jsonl": "c784acc975df54828ac24306fa3db5a46e028b7f27bc8b2fcb23562e333301f5",
+    "target/i10-arrival-phase-resolution-20260918/inspect_changes.py": "1680eaa2c130dbde6ac98456acb4494acab15d303630a6d23ec081fd8a1927c1",
+    "target/i10-arrival-phase-resolution-20260918/load-1000.jsonl": "ceb1edca5aa98e6ca939a2e809c6f08feacb30b3a02fe8b82bdb29b3bcae4d56",
+    "target/i10-arrival-phase-resolution-20260918/load-1000.log": "f03ce80c4c0cd9c587bd486dbb0c3b815f322cba910aa51890b1f435da18c89c",
+    "target/i10-arrival-phase-resolution-20260918/load-250.jsonl": "87a41903de837f68be25296e8588641c5d41929567d5af8541ed15ff0edb1461",
+    "target/i10-arrival-phase-resolution-20260918/load-250.log": "ab51bcbb0e98cdbf9fd14e36d7e34a9b5111648d73d0a449d48848719ced9fce",
+    "target/i10-arrival-phase-resolution-20260918/load-at.jsonl": "caca81f3063159f0d9e979266d35b29de8f5feedb4de7718053b1719c1b37625",
+    "target/i10-arrival-phase-resolution-20260918/load-at.log": "aa3af1e70c21db3a5d8890066958f2489e00a61ae923d61c4fff34bda58926bb",
+    "target/i10-arrival-phase-resolution-20260918/load-test": "106ba15baaf8538f20a0c9543a109bc5296634ef0b430db0b15b168af431a95a",
+    "target/i10-arrival-phase-resolution-20260918/plan.json": "5e7eeb044ce30a6f07f169992081706dba385df465f2244192fd308759d39ecb",
+    "target/i10-arrival-phase-resolution-20260918/pulse-1000-after.jsonl": "b28a0d7927355a5064e5372b95131263fac93620ce5304aa75b9578e9b792508",
+    "target/i10-arrival-phase-resolution-20260918/pulse-1000-after.log": "b54a9df0b2e55259924aeb5bc8cce3ab56639c3db36961da124c8c8342ece989",
+    "target/i10-arrival-phase-resolution-20260918/pulse-1000-after.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-1000-before.jsonl": "67e2f8173a19fc4c45b2f6ea9509dde3851657fbfa5700d0e53e8050933ba537",
+    "target/i10-arrival-phase-resolution-20260918/pulse-1000-before.log": "d1faa1ba13179930498b96a8b0357699b35c2890eed03918b516b9a89148b882",
+    "target/i10-arrival-phase-resolution-20260918/pulse-1000-before.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+    "target/i10-arrival-phase-resolution-20260918/pulse-250-after.jsonl": "5d7c36197f90af3ab2b0a0a10a0d19e700ae1e3b10d641089b746469bd5a042a",
+    "target/i10-arrival-phase-resolution-20260918/pulse-250-after.log": "29bac908348f67b9d0f1a39b1b545ef9abec10dd5a4b75f9e8d951aeff7b05cc",
+    "target/i10-arrival-phase-resolution-20260918/pulse-250-after.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-250-before.jsonl": "7ef9969c667f4c6cd1d088f35991f86c5c673f6047108f7f7817b23aa5537944",
+    "target/i10-arrival-phase-resolution-20260918/pulse-250-before.log": "df630a16fbb38121b2e27f098920b0a7d3adb14d5a1a3e1a4b3530711a635be2",
+    "target/i10-arrival-phase-resolution-20260918/pulse-250-before.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+    "target/i10-arrival-phase-resolution-20260918/pulse-acquisition.log": "722dbffab0e472dfa788e709b383106edd88fa5bf4f6d02d208925caaa24b63e",
+    "target/i10-arrival-phase-resolution-20260918/pulse-after.jsonl": "8ada57a2a42a9397c4854c0702772354f262b1874991c6d505d1772050ce6d8d",
+    "target/i10-arrival-phase-resolution-20260918/pulse-after.log": "a4490e32b8cda50da969d4d9577d632d6de12022e5a0ca9413f6052fa3eeafaf",
+    "target/i10-arrival-phase-resolution-20260918/pulse-after.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-before.jsonl": "b7ebbc201fec5ad0ca177a727ac59b06b3a60abe0ae461bd394d29f583fcf2f9",
+    "target/i10-arrival-phase-resolution-20260918/pulse-before.log": "403f8e53378c12fdd174f0fab55e063683d342009d6bafee63aa0dab85000e55",
+    "target/i10-arrival-phase-resolution-20260918/pulse-before.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-phase-after.jsonl": "78503d6bc259f6aabac595156075d613aafb45c3fcade27b7122cae65ce24320",
+    "target/i10-arrival-phase-resolution-20260918/pulse-phase-after.log": "77dd97b980ea77e8fc95a81cde730d8b61ebfea1a1f67cab1ba82588533082a4",
+    "target/i10-arrival-phase-resolution-20260918/pulse-phase-after.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-phase-before.jsonl": "ef3c69873eabe5954c4581b702279c14e814f3891c2359bc910372612222c60a",
+    "target/i10-arrival-phase-resolution-20260918/pulse-phase-before.log": "f2fab9f5f45c7ba0e2eb0b9c7cd05d62d1f6bc5599611b5d7b7d14265c3eecea",
+    "target/i10-arrival-phase-resolution-20260918/pulse-phase-before.wav": "7cd1dcf451a5965327d2d71f4555d06230b37dc7e2d0524ddbb5d7e9fdb94c62",
+    "target/i10-arrival-phase-resolution-20260918/pulse-phase.toml": "4b758628dedb440d4ca5ebbe7756ca5399d738a463e8947f9b24b3dfe873f0fc",
+    "target/i10-arrival-phase-resolution-20260918/pulse.rhai": "b5a03ba6093f0fdb40e80246cb32b8bf0bcce1fddb6cc337261000e3729fb281",
+    "target/i10-arrival-phase-resolution-20260918/pulse.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+    "target/i10-arrival-phase-resolution-20260918/register.py": "53fa0d5ee306cb3c10d995addf7b4eb3cbbfce2bcd294e069421b1ba5b9c7e61",
+    "target/i10-arrival-phase-resolution-20260918/src_temporal_cognition_arrival.rs.diff": "35cb7fb647932e21c86deb559b08e6d11f42924a5c41888e320f9a63a2584bed",
+    "target/i10-arrival-phase-resolution-20260918/src_temporal_cognition_arrival_projection_tests.rs.diff": "62c6438c321323895a27d776307392acc9d6801ecb4aaa12b8f93e41b0d51eaf",
+    "target/i10-arrival-phase-resolution-20260918/src_temporal_cognition_arrival_tests.rs.diff": "11a252a65a889da703fae830fb1196cc245cc1baaa6a2092089b908730d1342c",
+    "target/i10-arrival-phase-resolution-20260918/stair-1000-after.jsonl": "e41cb443d364480f7c8eaadc064e1144b07bad3040d42125bf9a0bbe0b5e6c93",
+    "target/i10-arrival-phase-resolution-20260918/stair-1000-after.log": "41234b26c2c6ea19aece4162bb9146bb24f59b31882622ad3bedce6639852686",
+    "target/i10-arrival-phase-resolution-20260918/stair-1000-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-1000-before.jsonl": "8453aa7fb1aa0a2b79a9aba6fd6a02d1ea95f91a4f3da03aee738fd919a673de",
+    "target/i10-arrival-phase-resolution-20260918/stair-1000-before.log": "1481005bb6328e1d969528f649888a19fffdd48e9a887998836b3fab9283bde4",
+    "target/i10-arrival-phase-resolution-20260918/stair-1000-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-1000.toml": "ab10cc7fd06e9f0114fed47dcd1e2b1e3b606ef0e5b17cf808e4b33d18d5ba26",
+    "target/i10-arrival-phase-resolution-20260918/stair-250-after.jsonl": "0bbef4718e3b711d141b184886a5237993569ff85d6869ade2a00120d1ff482e",
+    "target/i10-arrival-phase-resolution-20260918/stair-250-after.log": "ba0f67a5db6b1ae0a8f88516f3e0c174d9087355dd29c6ee93e4f796dbaf722a",
+    "target/i10-arrival-phase-resolution-20260918/stair-250-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-250-before.jsonl": "83c435506fcc022e7a49fd401dc225f7be54c15fb8734ae8822d2b7094ea5f2a",
+    "target/i10-arrival-phase-resolution-20260918/stair-250-before.log": "37ae781446248cddcf0be768e17111b2d0c84db79a445a4f6beca30030d4d600",
+    "target/i10-arrival-phase-resolution-20260918/stair-250-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-250.toml": "ea611ceba129117dc2a4f1e10754e80780ed17be5082d3a5bd3ac9dff49abaae",
+    "target/i10-arrival-phase-resolution-20260918/stair-after.jsonl": "6111f2f914c20be061ea398f275b6510732ee8a9de88c74259860df138662811",
+    "target/i10-arrival-phase-resolution-20260918/stair-after.log": "ab3540304cf15cb1d5dfa8e8d93da9f00bab02205afc203614feed82c7486c5c",
+    "target/i10-arrival-phase-resolution-20260918/stair-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-before.jsonl": "a81b599d8009f90f9574e17c6e4bc083317a522ffcf43df2aadac9fcd2bd8111",
+    "target/i10-arrival-phase-resolution-20260918/stair-before.log": "72121d8142654e4720dd660fd02fec741501dc952ab1fe580243409370ffa9a5",
+    "target/i10-arrival-phase-resolution-20260918/stair-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-phase-after.jsonl": "8ba9f65feae77e4160fb00408dfc1faff8556c5f36e0e4a648a456833804c9d4",
+    "target/i10-arrival-phase-resolution-20260918/stair-phase-after.log": "166ed8ba681d381b7246a46c2cb90e24163fce79ea05984a67e0be113a876c52",
+    "target/i10-arrival-phase-resolution-20260918/stair-phase-after.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-phase-before.jsonl": "cc7936cdb84da4edfb13738050d20e556d235f1d53a8b70a0cf111e96e24a6a5",
+    "target/i10-arrival-phase-resolution-20260918/stair-phase-before.log": "eb7af578775d285befe6af00d5042721670c46477fa6c1913f84100ab0a6602c",
+    "target/i10-arrival-phase-resolution-20260918/stair-phase-before.wav": "7814667f71d73058446c760580c032451f27b7c989da93c2677a78939579daaf",
+    "target/i10-arrival-phase-resolution-20260918/stair-phase.toml": "4b758628dedb440d4ca5ebbe7756ca5399d738a463e8947f9b24b3dfe873f0fc",
+    "target/i10-arrival-phase-resolution-20260918/stair.rhai": "b62e2cd1bada7f21fca21a7cdf1889dcb7e33d093a916d6e6d79623702c1730d",
+    "target/i10-arrival-phase-resolution-20260918/stair.toml": "99b482009df75fdeb16b80914888e020c52037c698d09fbdf0ffe9ab6244e39d",
+    "target/i10-arrival-phase-resolution-20260918/sustain-1000-after.jsonl": "0b5819ca188a8214dfb572816fe5abdadea3700b85c66b903a915044f87c38c1",
+    "target/i10-arrival-phase-resolution-20260918/sustain-1000-after.log": "8953df5243d986e0f0b7144cb810f930be22fdadf41d88aa3d64473d433b3227",
+    "target/i10-arrival-phase-resolution-20260918/sustain-1000-after.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-arrival-phase-resolution-20260918/sustain-1000-before.jsonl": "18e5f92de9e44955b8b44c82894a7d31b720b18ea2e5521c86265eb461663f9a",
+    "target/i10-arrival-phase-resolution-20260918/sustain-1000-before.log": "e08278cd5d42c18bae42bf710fb5ce621ac2b3ca8499cbb9618984ce8a45dbc4",
+    "target/i10-arrival-phase-resolution-20260918/sustain-1000-before.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-arrival-phase-resolution-20260918/sustain-1000.toml": "e62f1ff04cc1478291a042b3d7041ea14ff0f56d9b0e31f02be3546cc4f63440",
+    "target/i10-arrival-phase-resolution-20260918/sustain-250-after.jsonl": "8d28e7e786378a123ba719f37b48aad9a18bb148e64d469dc9ebf211ed8f7d3a",
+    "target/i10-arrival-phase-resolution-20260918/sustain-250-after.log": "5d1456c44db815840b37eadc78a9b0eeecca4d910e2813d899c20c30cc5ffdc5",
+    "target/i10-arrival-phase-resolution-20260918/sustain-250-after.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-arrival-phase-resolution-20260918/sustain-250-before.jsonl": "7ff672f54dc43df27370ddb3c99d15c06692423f536fdcc071e51bf65cfa9398",
+    "target/i10-arrival-phase-resolution-20260918/sustain-250-before.log": "1fefde46b5eb20d43202216aec8d589ef46786916b2a5104182d71f6a9c9aa29",
+    "target/i10-arrival-phase-resolution-20260918/sustain-250-before.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-arrival-phase-resolution-20260918/sustain-250.toml": "467acaa35d063813f4afe9d5ddca32dfa9f95c546d8d0fe54eea812cddb8000a",
+    "target/i10-arrival-phase-resolution-20260918/sustain-after.jsonl": "5b57f6e3f3b4f306b8b57ac4499d03b3f8ea1303872fb54db5485982bd38348b",
+    "target/i10-arrival-phase-resolution-20260918/sustain-after.log": "568932027c51eaaba94ac671f537f4059e2d1e6483ac810aef0a537685e95516",
+    "target/i10-arrival-phase-resolution-20260918/sustain-after.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-arrival-phase-resolution-20260918/sustain-before.jsonl": "ab3d950a91f044d0fc05bf5de545306ea79bbca4606a27907e4cd59040d6e854",
+    "target/i10-arrival-phase-resolution-20260918/sustain-before.log": "a7d823b3086ca01864f0e8d92c4f6f39283d698f8f4aa52a965066be17819c66",
+    "target/i10-arrival-phase-resolution-20260918/sustain-before.wav": "15d6bf6efbfe6a445088bfa0bfe73ad71863313e52595b9bd312e68faddb3bd0",
+    "target/i10-arrival-phase-resolution-20260918/sustain.rhai": "430ba6a3db98058d488f473e076cc0c21ff25c49191fc56c528d5039d69a9a0e",
+    "target/i10-arrival-phase-resolution-20260918/sustain.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+    "target/i10-arrival-phase-resolution-20260918/targeted-tests.log": "abe9dee252dbb0c52c3fec7603e1798d8e90d28c6bb48c4095c7ec52dc46b8a6",
+    "target/i10-arrival-phase-resolution-20260918/test_report.txt": "4d82138de47d4a17b6546721e072fb9b0f63dc31d987ffb0ab9298d3880d982f",
+    "target/i10-arrival-phase-resolution-20260918/test_status.txt": "b4c6cf46004d2e55b334a66f4e36007f6ab0a465c5f3259090dade7f1103a88c",
+    "target/i10-arrival-phase-resolution-20260918/verification.json": "2429fde7b85d27cd6a707c685eeb3c590139687c33fa50a0469abe418cdd07e9",
+    "target/i10-arrival-phase-resolution-20260918/verification.log": "55985af4c340b6c1e3d9458f6f31e4b85f1c8daf4bf7035240ab3917d05e9729",
+    "target/i10-arrival-phase-resolution-20260918/verify.py": "10293a2d5c3f71cd33fedb72a3c0703de5998432e8ab69d44f9124aacb892a89"
+  }
+}

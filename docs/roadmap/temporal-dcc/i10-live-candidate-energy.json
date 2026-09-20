@@ -1,0 +1,287 @@
+{
+  "schema": "i10-live-candidate-energy-v1",
+  "status": "conditional_readonly_diagnostic_verified_not_I10_completion",
+  "artifact_directory": "target/i10-live-candidate-energy-20260918",
+  "plan": {
+    "scope": "Read-only conditional actual-body energy diagnostics for sampled single granted onset recipes. Seven classes use existing Class::input, no policy execution or learning. Bounded worker inputs hold at most64 retained same-source tones; unsupported/multiple commands are counted rather than selecting a favorable subset. Existing shared graph/score/timing defaults unchanged.",
+    "source_before_sha256": {
+      "src/life/action_candidates.rs": "99ffc5323003318d3d9e208e1b151980eaff0ec309e15fad827aea5fb1909e61",
+      "src/life/action_candidates/live.rs": "686b5b7c0b38ea6bff5a2326715c562309307ece54675fee629f5e7a4f9f2631",
+      "src/life/action_observation.rs": "4548f118046a8fe3f7235013210740bad939cd9945853413ff1aea241f99c863",
+      "src/life/schedule_renderer.rs": "d201597624f23c44d19c181946ff79388bd2b848e09ee21e5258bc4a6e2a70aa",
+      "src/life/report.rs": "961c15847e0dfc8271049979e9a0712254318048bee6d3f4ff7c922264632239",
+      "src/runtime/mod.rs": "97c476c7ba8e51b29194f0cd622a6ec2e9fb7b0af953397272a2151776a81323",
+      "src/runtime/body_profiles/policy_default/energy_projection.rs": "ca7e631b03d3aeb7ac1dc15b7ad216faa819756cf22ea0997b9fdd3f68278d0e",
+      "src/ui/windows.rs": "bea191b86dafe3df4e0360c8fe36f95eb13864f7a69443831515a3395ec12faf"
+    },
+    "before_binary_sha256": "efdc7af9c72cc016de5ade203d97e46022995ab116d9ff1f8aad536e367fae2e",
+    "ordinary_inputs_sha256": {
+      "target/i10-live-candidate-energy-20260918/inputs/config.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+      "target/i10-live-candidate-energy-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+      "target/i10-live-candidate-energy-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+      "target/i10-live-candidate-energy-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+      "target/i10-live-candidate-energy-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+      "target/i10-live-candidate-energy-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+      "target/i10-live-candidate-energy-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957"
+    }
+  },
+  "contract": {
+    "inputs": "Existing 20Hz sampled single accepted On recipe, source and body generations, routing, actual readonly envelope/control/sine state, known planned release, at most64 scanned retained source entries. Queued retained onsets and multi-command batches are unsupported.",
+    "meaning": "Seven existing conditional classes, at-action baseline, candidate time grid capped at two intrinsic periods or4s. Frozen controls and no later policy commands. Baseline is the same granted local recipe, not the entire future policy default.",
+    "execution": "Dedicated bounded worker and64 preallocated input buffers. At most64 output records. No candidate command issue, clock mutation, forecast pending insertion, learner update or generation effect. Instrument audio is not recorded.",
+    "output": "body_candidate_energy reports contain both buses and250ms/1s/2s/4s physical window means, default means, differences and support/coherent bin counts. UI exposes worker counts and failure. Full16-point arrays remain in offline evidence.",
+    "sampling": "Not all opportunities are sampled. No record for an ungranted/unsampled recipe. Unknown control support remains unknown; unrouted or provably absent sound is known zero."
+  },
+  "source_sha256": {
+    "src/life/action_candidates.rs": "6aafa909282e855bc198d139e9de783b1435033e46b98bf76b8ca6c140a60737",
+    "src/life/action_candidates/live.rs": "23d9edfa3f56070887188872a124b089a486d0ac9acd94004725063abae052b7",
+    "src/life/action_observation.rs": "72d12c1969542a369a8be2bbbe134a7ed9e743e6866a0672c3057123a0ef9527",
+    "src/life/schedule_renderer.rs": "cc7b93b3dfe5f40196fd4a09ca66739fa0c3447b355aef3b913e2de6c4010342",
+    "src/life/report.rs": "253eba7f747927b6cc165bc8f5e6d1f4f8e213ce68729ac49a46d627bccb0024",
+    "src/runtime/mod.rs": "474f0243285ecee582b379173c61c435284dcf4940acc7f3f766b9f0d4365178",
+    "src/runtime/body_profiles/policy_default/energy_projection.rs": "2b6f258b4b7f5b5864f899f91c2c378629a8cd94e76462f7f323aa184abbfa4c",
+    "src/ui/windows.rs": "1d8f75cc983e3eba1a518566a7cdaf82fdd6185272cdd21265bc53a97a483680",
+    "src/life/action_candidates/energy.rs": "6e5c6b3358e49023f5587309b9a1746a801c4ef9ec8e245815e79be2523c48c8"
+  },
+  "binary_sha256": {
+    "target/i10-live-candidate-energy-20260918/before-render": "efdc7af9c72cc016de5ade203d97e46022995ab116d9ff1f8aad536e367fae2e",
+    "target/i10-live-candidate-energy-20260918/after-render": "00f9f0284086bba34793d3ec7fd52a150db7e04ffe3f497d1ace61167d8cce97"
+  },
+  "dependency_sha256": {
+    "/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+    "target/i10-coherent-sine-inputs-20260918/registration.json": "34e6826e7335df6b8c3c7c4eab8db5f8f17e0f9dd7abdc9b87264e601a5e31db",
+    "src/life/self_prediction/projection.rs": "8a3cd13d6cbc98968a4cae02b08a5dc9fc07bf3067a5b090ff35a86f2a316177",
+    "scripts/verify_temporal_candidate_energy.py": "f5f5d9e82ab8aaa0769703e8b19e0301d5d01825b41ad977d07cdc279743b5b1"
+  },
+  "tests": {
+    "suites": 31,
+    "passed": 1182,
+    "failed": 0,
+    "ignored": 38,
+    "status": "cargo test exit=0 @ 2026-09-18T18:02:00+09:00",
+    "checks": [
+      {
+        "command": [
+          "cargo",
+          "clippy",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 4.711182613973506
+      },
+      {
+        "command": [
+          "cargo",
+          "check",
+          "--all-targets"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 2.320836917962879
+      },
+      {
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.6978928809985518
+      },
+      {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--bin",
+          "conchordal-render"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 52.81848889501998
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0,
+        "elapsed_seconds": 0.04528860602295026
+      }
+    ]
+  },
+  "ordinary": {
+    "cases": 6,
+    "records": 9,
+    "windows": 2792,
+    "unknown_windows": 0,
+    "common_temporal_observations": 566,
+    "all_six_wav_pairs_exact": true,
+    "existing_command_outcome_and_learning_records_exact": true,
+    "terminal_existing_observer_snapshots_exact": true,
+    "unsupported": 2,
+    "capacity_dropped": 0,
+    "output_dropped": 0,
+    "max_background_processing_us": 2866
+  },
+  "offline": {
+    "branches": 71,
+    "points": 9088,
+    "windows": 568,
+    "comparison": {
+      "predictions": [
+        {
+          "case": "dev-harmonic-entrained",
+          "exact": true,
+          "changed_float_coordinates": 0,
+          "maximum_absolute_difference": 0
+        },
+        {
+          "case": "dev-modal-flow",
+          "exact": true,
+          "changed_float_coordinates": 0,
+          "maximum_absolute_difference": 0
+        },
+        {
+          "case": "dev-harmonic-pulse",
+          "exact": true,
+          "changed_float_coordinates": 0,
+          "maximum_absolute_difference": 0
+        },
+        {
+          "case": "dev-sine-flow",
+          "exact": false,
+          "changed_float_coordinates": 404,
+          "maximum_absolute_difference": 2.168404344971009e-19
+        }
+      ],
+      "rank_results_equal": true
+    },
+    "independent_numerical_verifier_passed": true
+  },
+  "off_checks": [
+    {
+      "label": "no-report",
+      "command": [
+        "target/i10-live-candidate-energy-20260918/after-render",
+        "target/i10-live-candidate-energy-20260918/inputs/dev-sine-flow.rhai",
+        "--config",
+        "target/i10-live-candidate-energy-20260918/inputs/config.toml",
+        "-o",
+        "target/i10-live-candidate-energy-20260918/no-report.wav"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.8302792289759964,
+      "wav_sha256": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+      "script_sha256": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11"
+    },
+    {
+      "label": "observer-off",
+      "command": [
+        "target/i10-live-candidate-energy-20260918/after-render",
+        "target/i10-live-candidate-energy-20260918/inputs/sine-flow-off.rhai",
+        "--config",
+        "target/i10-live-candidate-energy-20260918/inputs/config.toml",
+        "-o",
+        "target/i10-live-candidate-energy-20260918/observer-off.wav",
+        "--report",
+        "target/i10-live-candidate-energy-20260918/observer-off.jsonl"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7591921309940517,
+      "wav_sha256": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+      "script_sha256": "69319ceaf548097be5c1c9d28a7ce34313df8e7cb7e6854bafcf42a5d68022e6"
+    }
+  ],
+  "limits": [
+    "Normal shared-table consumer with actual-body compatibility and bus/generation/support/deadline/default checks remains missing. This conditional energy report is not the full consequence table.",
+    "Multi-command and queued-onset candidate semantics, ungranted/default future opportunities, non-energy consequence terms and body fidelity remain open. Existing prediction errors and rank reversals are retained.",
+    "Background processing durations are not whole-worker, Voice or live-audio resource acceptance. Full joint inference, all heads and pending evaluation/scope choices are not resolved by this change.",
+    "I10 remains incomplete. I9 remains held. I11 generation effects stay disabled; no calibration, audibility or author adoption claim."
+  ],
+  "evidence_sha256": {
+    "target/i10-live-candidate-energy-20260918/acquire.py": "1bb3d69e1a2c5e8835a93ca88cbbb688a1dcffef9366a9f2ebda851ca85c53b8",
+    "target/i10-live-candidate-energy-20260918/check-0.log": "636ec7cd781770e9ef79f02d825532b275d9073524ef5ad8523ae7555d5a0868",
+    "target/i10-live-candidate-energy-20260918/check-1.log": "74de363eef8c4e83b9bb742d08a7c9d63bdc68c92172b865d79ce32b799f1e7f",
+    "target/i10-live-candidate-energy-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-live-candidate-energy-20260918/check-3.log": "e3d7a9051640decce7bc76369f8d2d4391ec881270b52fcf42f8649a842b7a36",
+    "target/i10-live-candidate-energy-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-live-candidate-energy-20260918/check.log": "6d1aaacb77b6b1a361fb41b69d0369624892574097eed35624f5e62c0224af63",
+    "target/i10-live-candidate-energy-20260918/checks.json": "d002d967ea74bba8e8ca6a5d1e17a02feaa5fc6a6c9ec62df213f847a87ff5a0",
+    "target/i10-live-candidate-energy-20260918/checks.py": "5dec88a2242e52d26c659c076d734ff5c22f11213888e08c07326c601bef11a7",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-entrained-after.jsonl": "e6aa1e4ff276bf183b8092bd42f99f959744ec264b119139eaf349400500e08d",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-entrained-after.log": "182cb323d014670e87c09841812f5580710e02a7dbcab2c277c493a8afedf102",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-entrained-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-entrained-before.jsonl": "6a1cfdd948475c3991abf63a78fdcc784f4c3a8ed3f2bf040ff7657c8eb23f97",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-entrained-before.log": "84119b58178f007255f7e4acd58131c632933d87911f6869cb266dee7dcb003f",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-entrained-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-pulse-after.jsonl": "174a47641cb04fdecdf0ca0914a188636748063eaf5cca2afd75aa039377b90f",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-pulse-after.log": "21bf469fff964abede9799765e765907453858c10083d185df7649498ffbfdc4",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-pulse-after.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-pulse-before.jsonl": "20f588728de56d0fd88939b190686a08473f243f47c56b5b02b38047959ba408",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-pulse-before.log": "10e0a8a63e2e83b214f71d4004b64718852246123064d9f6c1fdbbd407e641a1",
+    "target/i10-live-candidate-energy-20260918/dev-harmonic-pulse-before.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-live-candidate-energy-20260918/dev-modal-flow-after.jsonl": "bad7883fad62a6c6c1712323568501ef7b05b0125267060c54a3e2fc3215540f",
+    "target/i10-live-candidate-energy-20260918/dev-modal-flow-after.log": "8a6b6315e132816be49993701bd7e4f6aab300544f6305c90012ef3b90e0450e",
+    "target/i10-live-candidate-energy-20260918/dev-modal-flow-after.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-live-candidate-energy-20260918/dev-modal-flow-before.jsonl": "dc5aa233d05786c7df340d002ee143a1ec9b3d420e46293f30df6f8f5109deb1",
+    "target/i10-live-candidate-energy-20260918/dev-modal-flow-before.log": "025185b23ee403c5c8ba553ca7e77b0be5a9457235d481aa8d2d753ba6482111",
+    "target/i10-live-candidate-energy-20260918/dev-modal-flow-before.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-live-candidate-energy-20260918/dev-sine-flow-after.jsonl": "1893b8efeaf0f6567449b82b6331ac6610aaf067bbc5cd878d2e49a1b98391cc",
+    "target/i10-live-candidate-energy-20260918/dev-sine-flow-after.log": "da30f68ce556100a62c4c84c9a28ecb03dcad45f715133ff75ca45c0cade0968",
+    "target/i10-live-candidate-energy-20260918/dev-sine-flow-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-live-candidate-energy-20260918/dev-sine-flow-before.jsonl": "6967e4cf611ec643613bee050aef24bd7b0b1ba63996c8269ebb11a38d8f4b97",
+    "target/i10-live-candidate-energy-20260918/dev-sine-flow-before.log": "2b3f3eec52ed2a0f54b492c598149a13f6d457d1b3f068e90699ddb1267e483a",
+    "target/i10-live-candidate-energy-20260918/dev-sine-flow-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-live-candidate-energy-20260918/dev-sine-hold-after.jsonl": "7e40dc99da797fe15fc94e35999ba4cb5d0da915eb675bfa5425cdd1eee15c54",
+    "target/i10-live-candidate-energy-20260918/dev-sine-hold-after.log": "a3e66883d80e7ae908454e8900b656c055d0d86e0afb6126a20639d650390869",
+    "target/i10-live-candidate-energy-20260918/dev-sine-hold-after.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-live-candidate-energy-20260918/dev-sine-hold-before.jsonl": "0961e1b087269f0f8284a867df56ce91c6e0262a8e5569169f3d4fc24366acfb",
+    "target/i10-live-candidate-energy-20260918/dev-sine-hold-before.log": "3edd2a0862bcb31dad8724658802f4387a7a66d2903c06b32a784d4857ec0689",
+    "target/i10-live-candidate-energy-20260918/dev-sine-hold-before.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-live-candidate-energy-20260918/dev-sine-silent-after.jsonl": "fc7aec0dbea41f4ed8105a4c9f2a327e155fc70ff3285422fe30dd46ec50d7be",
+    "target/i10-live-candidate-energy-20260918/dev-sine-silent-after.log": "f4159f4b33629da79ff642bcf4e0874588c74e08a35ecdf70d8b18a77a424513",
+    "target/i10-live-candidate-energy-20260918/dev-sine-silent-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-live-candidate-energy-20260918/dev-sine-silent-before.jsonl": "b61476da21920f0bd4fb6a35f9b447328798a00a9adfcfd39346ae6543153da4",
+    "target/i10-live-candidate-energy-20260918/dev-sine-silent-before.log": "2fa7a5ef14c0c1c2b628b41c4ca824bea94ef6ac2ed9dfd8f41ccdce866abe4c",
+    "target/i10-live-candidate-energy-20260918/dev-sine-silent-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-live-candidate-energy-20260918/initial-check.log": "97c7d50ccb51fde9ba05ccf90978540ce311ad5febc2c1068fb301e69b7c9c86",
+    "target/i10-live-candidate-energy-20260918/inputs/config.toml": "b3640533fd52dbd6ffa0569f52e1626885c3a5218395f375ff10dcef4950bb01",
+    "target/i10-live-candidate-energy-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+    "target/i10-live-candidate-energy-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+    "target/i10-live-candidate-energy-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+    "target/i10-live-candidate-energy-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+    "target/i10-live-candidate-energy-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+    "target/i10-live-candidate-energy-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957",
+    "target/i10-live-candidate-energy-20260918/inputs/sine-flow-off.rhai": "69319ceaf548097be5c1c9d28a7ce34313df8e7cb7e6854bafcf42a5d68022e6",
+    "target/i10-live-candidate-energy-20260918/kernel-tests.log": "25438a4728d76c9239e47ad44a1eb212ffe4d403a6341b35a932f31764d56c68",
+    "target/i10-live-candidate-energy-20260918/no-report.log": "f00996b712e0dc52da10965d991b02472b476ba83a3e4e699df4cc0d21a104f6",
+    "target/i10-live-candidate-energy-20260918/no-report.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-live-candidate-energy-20260918/observer-off.jsonl": "9dbb43cc237478fef48ad4ae1dc6612e021a37bdd5508549b6da93384e76dd72",
+    "target/i10-live-candidate-energy-20260918/observer-off.log": "63036275307c996ea50c3f749658155cdc289ed145ea141475376f2097de5392",
+    "target/i10-live-candidate-energy-20260918/observer-off.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-live-candidate-energy-20260918/off-checks.json": "90df5830519cfb7e00d8b7b9bd9a73fddd360243f059f8d9c8f41d784e77af72",
+    "target/i10-live-candidate-energy-20260918/off_checks.py": "880d199abf51752056e1c25b03e0d72529d2b9b4ab8719a9e6d9c3b8ed6f2d15",
+    "target/i10-live-candidate-energy-20260918/offline/dev-harmonic-entrained/predictions.json": "035b025178bfe6ee59a64ebd1252413e702e76d1a5badc0f5702f215fee449d4",
+    "target/i10-live-candidate-energy-20260918/offline/dev-harmonic-pulse/predictions.json": "0f512ef7d20b34404a9fb9361008c5ac7a859b67784cff57a8b6436ea0af9617",
+    "target/i10-live-candidate-energy-20260918/offline/dev-modal-flow/predictions.json": "dbcbae18635ac4ab4c39a7a57b9cf79c953cd15c0e376b0a8e13f4131849d2b6",
+    "target/i10-live-candidate-energy-20260918/offline/dev-sine-flow/predictions.json": "47ec086cdc11a3550713762b8124e57d7f7a09900007849a51c571b577383333",
+    "target/i10-live-candidate-energy-20260918/offline/manifest.json": "dd4b2e8162164cac75e21755001c4947d5151f783d9375df35e7c52c7e367d5f",
+    "target/i10-live-candidate-energy-20260918/offline/verification.json": "1ba8951cfbe00bdc5ca5103e49765412661c8550e029c8431323d470419f133c",
+    "target/i10-live-candidate-energy-20260918/offline-comparison.json": "7eedc6e1dc758c65fec29e122f6ef95b517aec4872be3984fb99bd76c0e8a76a",
+    "target/i10-live-candidate-energy-20260918/offline-verifier.log": "d5203bb88a5863760ebbf8bac6ad4ff8a4304aabf87828d0fb688fcc081a8bf4",
+    "target/i10-live-candidate-energy-20260918/offline.log": "9060be1a4c5179b63a10639c53c444e27cf3f77fb20b5bc0c78ff363eae400a4",
+    "target/i10-live-candidate-energy-20260918/ordinary-verification.json": "bad39fad8c52c4cbcc06d0c116f1d20327d972822b74fe34aa8bf6784615dbde",
+    "target/i10-live-candidate-energy-20260918/ordinary-verifier.log": "1477e68e88770779ccc80bedc339b9e997bdf98134462864e10cc329a889f7fd",
+    "target/i10-live-candidate-energy-20260918/plan.json": "39328006f07b506760ae50d049643b0f1e6d6efd43865b3bdd963ed514dcefc6",
+    "target/i10-live-candidate-energy-20260918/register.py": "a69924878f0f6b51638aef820ed00a4f7b30e3ae769fb874c0df3ec7aaf13d57",
+    "target/i10-live-candidate-energy-20260918/renderer-test.log": "89519994d2620ca2566e957d7d7eb491fda92631e3a848010c96c0bc9a24d9d6",
+    "target/i10-live-candidate-energy-20260918/runs.json": "ad7eb1e9d8c111e66ea0f45b16ef2cbaa92e2a1102829e736604d0791321cb0f",
+    "target/i10-live-candidate-energy-20260918/test_report.txt": "7180329435ea94a259824d66aa83c4800beaaa01bb1c5ed78d80527d70aa8f3f",
+    "target/i10-live-candidate-energy-20260918/test_status.txt": "640efd7ca8b343deb12f7d355e178ccdec0c77913a64d8f01f84cb38f841fa55",
+    "target/i10-live-candidate-energy-20260918/verify.py": "d08829f89f8e9b5e9fa275dd09edc890fc68362a89b39cd4dbbbb238021ee563"
+  }
+}

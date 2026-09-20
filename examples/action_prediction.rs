@@ -38,7 +38,11 @@ fn note(
     amp: f32,
 ) -> PhonationBatch {
     PhonationBatch {
+        body_policy: None,
+        body_opportunity: None,
+        intrinsic_period_sec: None,
         source_id,
+        source_generation: 0,
         routing: Routing {
             to_presentation: source_id < 1_000_000,
             to_habitat: habitat,
@@ -63,6 +67,7 @@ fn note(
             },
         ],
         tones: vec![ToneSpec {
+            opportunity: None,
             tone_id,
             onset,
             hold_ticks: Some((fs as f64 * 0.155) as u64),
@@ -160,7 +165,9 @@ fn main() {
                                 vec![actor.clone()]
                             } else if h == args.warmup_hops - 2 {
                                 vec![PhonationBatch {
+                                    intrinsic_period_sec: None,
                                     source_id: seed,
+                                    source_generation: 0,
                                     cmds: vec![ToneCmd::Update {
                                         tone_id: 1,
                                         at_tick: Some(issue + hop as u64 / 2),

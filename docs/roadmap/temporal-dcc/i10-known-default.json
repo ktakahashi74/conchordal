@@ -1,0 +1,933 @@
+{
+  "schema": "i10-known-default-v1",
+  "status": "sampled_batch_known_schedule_projection_verified_i10_incomplete",
+  "artifact_directory": "target/i10-known-default-20260918",
+  "plan": {
+    "scope": "I10 actual known-schedule default: freeze one sampled granted opportunity only after the whole command batch is applied; retain other accepted and queued owned tones and known releases in baseline and alternatives. Allow multiple On/Off commands while keeping one bounded preview per source. Preserve ordinary audio and observed learning.",
+    "before_sources": {
+      "src/life/action_candidates/energy.rs": "b0c5f4106a20aca7653f9956f3075fe21855f1c8cde9c8c5f2c70bc9ec648a64",
+      "src/life/action_candidates/live.rs": "64b8be8d1e0390063c18d7952e08ca0f29151a7b12b4233ac887023bea940592",
+      "src/life/schedule_renderer.rs": "b75601cc9af51186a5f1f2dcdf8c888f9a6a0da2c1e34594d209222ca190262b",
+      "src/life/sound/tone.rs": "9fdaa35068de473c1c8525b306b225dec6d2bbd4ff4f7ffc67fe61b6dd7b32e1",
+      "src/temporal_cognition/action_profiles/consumer.rs": "94bc31fa266393b1f7b1f82724d1858434f6385207b02dd6cae1c9a4602bc18f",
+      "src/runtime/body_profiles/policy_default/energy_projection.rs": "2b6f258b4b7f5b5864f899f91c2c378629a8cd94e76462f7f323aa184abbfa4c"
+    },
+    "baseline_binaries": {
+      "target/i10-nsgt-shared-kernel-20260918/render": "10bab396fe0805b7f18d4716c43576c1e1db3890a493276d0ba2403f901ef0f2",
+      "target/i10-nsgt-shared-kernel-20260918/instrument": "f6f662cfe3425923beafdb39024a0a748d5fe4c39f691dcbfa962301259ff5b3"
+    },
+    "contract": [
+      "The focused recipe is the first eligible granted recipe already identified by the existing sampled record. Other accepted/queued tones remain in the known baseline; no future policy calls or random draws.",
+      "The recorded first accepted default transition and full known inventory are distinct from the focused opportunity input. Composite/queued defaults cannot use a single-class shared prototype baseline.",
+      "Gap suppresses already queued excitations whose onset falls in its half-open withholding interval, retaining tails of tones active at the gap time. Existing untargeted releases are retained.",
+      "Known pending control changes are not silently treated as a stable amplitude/control forecast. Unsupported projections remain unknown, never assumed zero.",
+      "This closes compound/queued known-schedule input, not unreserved future recipe generation, all subsequent policy commands, prototype transfer validity, non-energy heads or I10 completion."
+    ],
+    "validation": [
+      "Focused numerical tests for queued tones, gap endpoints, baseline/difference and unknown controls.",
+      "Ordinary renderer tests for multi-On, Off+On, routing, body generation, queue boundaries and post-batch snapshots, with observer-off exact audio and no hypothetical outcome learning.",
+      "Full Rust tests with logs, clippy/alltargets/fmt; release runtime fixtures and independent comparison of old/new records with added scopes retained."
+    ]
+  },
+  "runtime_inputs": {
+    "cases": [
+      "hold-4",
+      "hold-16",
+      "hold-64",
+      "flow-4",
+      "flow-16",
+      "flow-64"
+    ],
+    "inputs_sha256": {
+      "target/i10-population-preflight-20260918/inputs/config.toml": "e2c0e475b4ffba2e86abc8bcbdceee659ba7435e2967c05cb3489c2eb6c8a3e7",
+      "target/i10-population-preflight-20260918/inputs/flow-16-observe.rhai": "e30c126f2869db869d458b13844352e250d8c89bd7dae418d355c6523a501ca0",
+      "target/i10-population-preflight-20260918/inputs/flow-16-off.rhai": "94bf620c510ad70a0e1da028acb78b6349b3586d2d189958fcf9e25491087ac4",
+      "target/i10-population-preflight-20260918/inputs/flow-4-observe.rhai": "655a2a8358a82678f7326ba2d128b2e3def3bafd4cb21b92db70cbf41a8e44f1",
+      "target/i10-population-preflight-20260918/inputs/flow-4-off.rhai": "291e0e30d2ebd8d083b507e61fec68d3bdb4b7dd3f3eb3d25d99c9a35a835090",
+      "target/i10-population-preflight-20260918/inputs/flow-64-observe.rhai": "d55a7458c686d200b8c9164e3a092945ebd5706ce7cc35d240badf1b9ea14336",
+      "target/i10-population-preflight-20260918/inputs/flow-64-off.rhai": "ba0c4fadb7fb229ba387beefa89186884448ded638248d34b6ff628cb36dfb54",
+      "target/i10-population-preflight-20260918/inputs/hold-16-observe.rhai": "f3067a4f7237278991d7bcd40a674ef7cd81669ab5e98d8b996ab1409763f110",
+      "target/i10-population-preflight-20260918/inputs/hold-16-off.rhai": "a92fa4f45322963f72bc48d634cc69e137d3c5ee37b96982a50dd54ef1f918bd",
+      "target/i10-population-preflight-20260918/inputs/hold-4-observe.rhai": "5ce795c38ac140c854e2e1c2642225f5134297530ada00af362b5778cd2b1317",
+      "target/i10-population-preflight-20260918/inputs/hold-4-off.rhai": "96799262eb026fdaccaf02fbf450cbd75fb107a34ac67727acf66049dbba58d2",
+      "target/i10-population-preflight-20260918/inputs/hold-64-observe.rhai": "5d5cc7c09702c31583d8953ec331ef56c9f7549cca3143defd40fbe127591bae",
+      "target/i10-population-preflight-20260918/inputs/hold-64-off.rhai": "66c735ffba65009dc986b4029fe9e83b7a04d76bcea9e960cb77ccba160d6dde"
+    }
+  },
+  "source_after_sha256": {
+    "src/app.rs": "aaecd11c07450fd7f169a5a0cf0b62f2e1db3278621401bb1b4f850fee7dd365",
+    "src/audio/limiter.rs": "d1e03881bee5402e02f2f6e1bcc243e3abcab712cf2f1e6670c68f064af2c956",
+    "src/audio/mod.rs": "ef0c06b776fad220908ef40adb900349915273ef33664e0ba34ac6c443bf96e6",
+    "src/audio/output.rs": "dbc8f2eb886ec5e4b192b241883e2008c72ba37c3f53af637c614da1d7447f8b",
+    "src/audio/writer.rs": "c748b9da8f3a5e3f8c5f18ea06bc21336908883cdfc5647756e6f122613ef4eb",
+    "src/bin/gen_rhai_defs.rs": "644c5c77d08bda17c7fa78b0dd7d722b2a854c801f585d45c46567c9163f264d",
+    "src/bin/render.rs": "e2760387a4c32fe52666acfb34e04ab1a6f14f2a88a33a2ea381958309a2283e",
+    "src/cli.rs": "fdc4adf50fb9cc8ff6b3deacb2d9d219c784f633b6986803731675d4729da0b1",
+    "src/config.rs": "3359e334af30a63c86461df72ef343b915eb3da9bbd17d4871f762318bc48890",
+    "src/core/analysis_worker.rs": "786bb8b01837a863553097504d0df1b2b374caf6cc76db4784507986e8fba17c",
+    "src/core/consonance_kernel.rs": "f2965e0b5578af8d95d3a092a1d80d4be465169d39dea044926d8c0046167bd0",
+    "src/core/db.rs": "2fcaecb9936bbabc372cb3e0a7afdc5148f5a400e0f4ca0a0144782f48942c0c",
+    "src/core/density.rs": "9cca188fa41b55b13b15f136973796e4f7dfa6181f303dc8621d21647b26dd3a",
+    "src/core/erb.rs": "ad5d311b244589173e2876e28db2fe17e0110f95353544ccb7f9ae91e79c64bc",
+    "src/core/fft.rs": "3e097a3fe9baec8658484bd3d66cb63017ef70f75b5c13198425a004dfed559a",
+    "src/core/float.rs": "9fe9612408de7c8fb881e42e38b9994771804452111b5ba9c8a44d1087fd0ee6",
+    "src/core/habituation.rs": "cb3310d614544baa3da6e65d2437fdf41e598dcd3c0dfb531e1bbd42d4c4e3cb",
+    "src/core/harmonic_ratios.rs": "6cc4840c54f5328a93617f6533168584fe058c2737fb249eb08083e71ae1d056",
+    "src/core/harmonicity_kernel.rs": "f9bab3f8a863e51a2e1a314bdc3dfcc2eafda2bed8f1dcc4081e482328c63046",
+    "src/core/history_prediction.rs": "949c05b31fdee0b5efc37dab244e106c23ae76469db8f5984cfcbf539fd88f0f",
+    "src/core/landscape.rs": "b46af9587fbdfc12445aa39b5826122ca83ebdcaf30d4078dce8cfeefe9de897",
+    "src/core/landscape_spectral.rs": "b451289b3388350e88c17d0b118508f8db4ffb4e692ad66b5c3c4ac8111d567f",
+    "src/core/log2space.rs": "afe6973cffa1f83146d96c3c407e5fc8743c330e98bfbba06a8240396bfbd44e",
+    "src/core/meter.rs": "25d881da29f4734da10bd8177b19fd383cca3939b445209cf35248ff7e6b5a0e",
+    "src/core/meter_assay.rs": "4dfeb8258c3d3ed7c90acff1e004ef151e145dd695f1b28dd2ee816949dbd213",
+    "src/core/mode_pattern.rs": "b0fd709d30f0128a047186e73bb0394543ea7e332ceeb958ec934f54f17df09d",
+    "src/core/modulation.rs": "8da22a4865c325535b2285384432ab6d915410d0e5d6861d4823d2df355666af",
+    "src/core/nsgt_kernel.rs": "dc58c81968deeabd31415e7f3d0ef9be24984419f00f77683e9a2ca0d96177fa",
+    "src/core/nsgt_rt.rs": "a1363ebc8e05c13f2e918373801e7c25a54a5f10ccb32f3404c0e35ffd1f95ea",
+    "src/core/onset.rs": "27dff33ef5b74394dfbed6b92ba66590cc9cab970c63441f8ea5f794b03b6187",
+    "src/core/peak_extraction.rs": "d9e6c8468c7b69579687cfe9d2e57df5ae91315ebab7ad931927de065c1bd03a",
+    "src/core/phase.rs": "6359927b399fb76fd655fe856020b5632bfc67e423c2b9fc0037543d97153473",
+    "src/core/psycho_state.rs": "e86804e4c29bb84849902a681e49c9ed1e6c9d1bde65496166d266ed2eafb7c5",
+    "src/core/roughness_kernel.rs": "66c4e167686fde17e3b7f4fe7428d69d93ea6472f1e5770a8faf96e5078f75ca",
+    "src/core/spectral_history.rs": "68da188454b531145f65d1fbbb0a95f1eac94667bbd20c9c29492ab8ddf0c43a",
+    "src/core/stream/analysis.rs": "a9f09af4e982ac08fe90d7bdb12f63c489beff44b0d1e851a44e9b9b872651e3",
+    "src/core/stream/dorsal.rs": "af1d449215b8aadbe45633b1f4afb07edcd28c30d1ed94f345f2a5badafa2a96",
+    "src/core/stream/mod.rs": "17b177de66bec33eed002617ed37540fb8e11e26195acd928dd97d08f905453a",
+    "src/core/temporal_assay.rs": "63d895fbc6d8b440892d40d7168c3b353895101b0f7ab44fd7414dddd3ac1301",
+    "src/core/temporal_expectation.rs": "541d11c5e8e272e70694689afbe84e763468e793c2636499a924c33c6a6d33cc",
+    "src/core/temporal_history.rs": "b5e09f3da3686d43bf8737ba3a5bcbf88e4bbcc6f9db2eccfd35c710a8f52002",
+    "src/core/timebase.rs": "108e000918ff88b3d038f97473b87a5161a8d6b7cf14cc49b84eff8567046c09",
+    "src/core/utils.rs": "d02d5f3b7d6f2bf7180dff7b3a101ccfb2e58d0fb6df65a01da9e9451a878730",
+    "src/core.rs": "d5033cf7a1803fe30e58d2acd219a203104ea0b6e558ca038c68926d1b866134",
+    "src/dcc_coupler.rs": "816eac55db70d4a643a3667e8d7accd0c2187e1a1aa23d20fd118bde07787b5a",
+    "src/lib.rs": "e38567fea0199161d4a96b3cfeb5d9f5530f87a57b666959232969be7f55096f",
+    "src/life/action_candidates/energy.rs": "8818996907654e281177f602a45b71305f860ed613ea1956c0a8952e4b66b72d",
+    "src/life/action_candidates/live.rs": "961361deb88baa57b4c8e392657a72f360b4c19d35865b282afbf37a8940b160",
+    "src/life/action_candidates/tests.rs": "4db9029f293461f9877ae2109fcfc659f7d87da114a42a4d4303c4388e1cf1b9",
+    "src/life/action_candidates.rs": "6aafa909282e855bc198d139e9de783b1435033e46b98bf76b8ca6c140a60737",
+    "src/life/action_observation.rs": "044880556e8e15875ced36c740ced82a5c0e9367e3fe8bb65615c19930f5c128",
+    "src/life/adaptation.rs": "6224810e1f26ff8ed6e02f706d592d1d42b09ecfd30dcfb9663fea5e08083261",
+    "src/life/articulation_core.rs": "a76c72d71dad9d8f69b7e94c3cf6aa0b96924b4954e29d2a556c2fdc35d707e2",
+    "src/life/articulation_envelope.rs": "3e790f7c59229a9341aafb7bf4c649bb1191b81396afa4ebead422ad08ed6719",
+    "src/life/community/actions.rs": "6e21354377c80b330e9c08066b79864d8949d3508db4e73301ae59c4a642ddb2",
+    "src/life/community/frequency.rs": "3eda917d191ace598494572c61e49121616648f0fc43880f813d04fe6c445e54",
+    "src/life/community/respawn.rs": "8e89a18767945a818ab0c02abcbe5e4095981b07e40e1c49b9a895f1f96ef220",
+    "src/life/community/social.rs": "798af1d708f58165ab97806ba050961c8e668d119820ce4252ed334ef0986921",
+    "src/life/community.rs": "926475633ee2a7b628dd6ffb51daa404d085dda41fa2e08d32d116df94f56a24",
+    "src/life/conductor.rs": "e59d291c666fcaf31c71fdbbfae4dc4e8a1e95a04ecf8bd7e4c60155b601fad8",
+    "src/life/constants.rs": "732f17311af099c79ba4c80d077708f39083b371793419b59e83a03c99efe8c6",
+    "src/life/control_adapters.rs": "5e7793e89b012c253c538d3335f739ca1c646e12d0f2e0b7e3651c416e5745e0",
+    "src/life/gate_clock.rs": "14e42b0f649c48030cc316c81c8594a95f422b475cae85c9e724b03c29a73844",
+    "src/life/generator_model.rs": "dd1d80241a8b33e89fb6e5cde9b2a351f84432c49103d92da2b53884aa61f23d",
+    "src/life/metabolism_policy.rs": "c04badcb57395853740d49cf9dd85c94965e92de5630b18b5925656949c36ee8",
+    "src/life/mod.rs": "fef27baaf7d90304460cc22d22734b3fe3947bf1fa3acda2e51b0e36c5ae32af",
+    "src/life/modal.rs": "037ca71c6d202d409703072cafa36d40ee4a7139c7cb6e48a00562b2a0c1111d",
+    "src/life/participation_trace/tests.rs": "f6702c4dfc48f46bc0e5885a58792d03e4ecbb9968704aa5b07242091eb811d9",
+    "src/life/participation_trace.rs": "d0eddf9800493e5f472d0dcf8cac18da26b4e82b24d33cc1076bdc114cc7e6cc",
+    "src/life/phonation_engine.rs": "ef8210258d24cbbd324af5819987161c7cf0ae5265a1cae2dd81372965cba657",
+    "src/life/pitch_controller.rs": "5371228fbea4e7a198fa4a668516fbb28f4394f64a9fe74fd439589c656c9851",
+    "src/life/pitch_core.rs": "7f0127b24efb63ede71f7e0628f2446ecd65ea59e4bd729de6ac7235b210d1ce",
+    "src/life/report.rs": "253eba7f747927b6cc165bc8f5e6d1f4f8e213ce68729ac49a46d627bccb0024",
+    "src/life/schedule_renderer.rs": "cbd2fda9537a7d0794e71803480663685c7e6164006fcdb64f1bba5292380679",
+    "src/life/self_prediction/descriptor.rs": "f4b07101ddd80e037bb8adab1fda7cf1b4f7d0156bc167abf62f0d01e6bbd62c",
+    "src/life/self_prediction/energy.rs": "d358337b4663436578354281e16743bd8958e67a008045c543ccb3c73e8f33a6",
+    "src/life/self_prediction/projection.rs": "936b508c4994181fadd74feb33db01fb41a5907d68ad627e4296d244d88d754b",
+    "src/life/self_prediction/ratios.rs": "65ce5b013d4895548e7b9675915c6a1c93a9871a5a10b30f670c980cd57fc6c4",
+    "src/life/self_prediction/tests.rs": "abfd156d74c63850913bfc34e470d148281dceab8048fcd68cff8dd2e3946da7",
+    "src/life/self_prediction.rs": "d4a7791fb7fc69e0247a34ca1149725e49c98725adf3b330264a1ede79dcb980",
+    "src/life/social_density.rs": "71584a76613f0cc9e5a5afd470dd9bf1528fbac2352f6697757f1d9d515ffe1f",
+    "src/life/sound/any_backend.rs": "5014c3e235ed76e99e9b3d327d95caca34c9dcd41ff61d24e6392c0e368f01ce",
+    "src/life/sound/control.rs": "d09772354a9da096881b3623332c42c7ab9a8f370309d9a70d3ea249c0e09f35",
+    "src/life/sound/control_forecast.rs": "781a70e57dd9360abfa664d0fa8df48baa0fda45a487125f1430f71418ee3943",
+    "src/life/sound/envelope.rs": "fc2e443814bf45459ea2fb2fdc988853a7949ddc24ea930e28c1644f117115f8",
+    "src/life/sound/events.rs": "9bec9c45164091b1e14e1f8ce22df30f73fbf0f201fa66fbb9a89dd3ed31e962",
+    "src/life/sound/mod.rs": "8a46da837d933f6a55ee83fd21a81514b065cb4ed24ff0f33e30eee5e16a9707",
+    "src/life/sound/modal_engine.rs": "94c736a772a58218bfb2d0961d9177ae416c04babeb2cfefdca3ae67fee50416",
+    "src/life/sound/mode_utils.rs": "7a5085dd67a070e595af0fc35181e36d3750f91bf4c303726ff9fde0c56bc0bf",
+    "src/life/sound/oscillator_bank.rs": "b9829968debe7088c7b2dd2236b770b7419a1fc90965860b136314bd5656452e",
+    "src/life/sound/render_modulator.rs": "dd7d47f0f640f2810a9771b8ea479788a17fdd376258525dd25dc7e44ed19050",
+    "src/life/sound/sine_forecast.rs": "3d774e1116ec7a082021c4c5215fe2be326727af848f4857cbbcfabcea5f5015",
+    "src/life/sound/spectral.rs": "52d64b324b18a670c761667b86ed60ea39fb7cc24ace204386178221ff80d655",
+    "src/life/sound/tone.rs": "e5bced5f949e1ca0b2e12a7cdc49105289a6190b02bae9eadd95d1709cfbae0d",
+    "src/life/sound_body.rs": "d1bac9c3ca25b78c60e4e14f73daff6ade9d7da97c41299e57c7e27134e7640b",
+    "src/life/telemetry.rs": "ac94d69008e41788d2578bc49967bae5bbc52455bf8617bdafd3e71d187b5abf",
+    "src/life/temporal_participation.rs": "2d3279afc5dd01ec5832c15773362e7ad0d79fe48e229a4a5f2d0fa1986f696d",
+    "src/life/temporal_participation_assay.rs": "c4ef74c0dccfd021480a4d8b109117fc8e04f295744c3ce297113fc6a66cfd27",
+    "src/life/tests.rs": "42c0d2d50fb364777e987ecf7dbbc534939ec89e97c1c32377929c4fee0dd4a0",
+    "src/life/voice.rs": "ba1cab874f23fa9cca86436f60875f00acd2548a50099c1ca56d49b2bfdf95a4",
+    "src/listener_twin/contour.rs": "1269788b9c67db2ab254cd444937cfa8a83af567b111923d5cae4e40f053737b",
+    "src/listener_twin/mod.rs": "90a6772f7be9586f9bb8b597a2c26eacca099c9f621cbc30f7fe511dda275c44",
+    "src/main.rs": "1a37c8530b8704c8b049587d3d0221b0e0b438ad99272671e62af5456a6be1e4",
+    "src/runtime/body_profiles/policy_default/energy_projection.rs": "4f77539f4b545b685d780f8ad04e29c997328c11563c3049af14bfddf05dfbe5",
+    "src/runtime/body_profiles/policy_default/local_continuation.rs": "07b84832277c5854be8eeba9b678551c51ad8261529a18c07525d09c2a0bc1bc",
+    "src/runtime/body_profiles/policy_default/onset_branches.rs": "5d4fe1a11392dbbd606842ea0f57e530a4a276051528a65ca4d650d0d60c2de4",
+    "src/runtime/body_profiles/policy_default.rs": "dde5ff84981769754ea3540139a37202ab868796d5a309d4576fa5a2872b7a42",
+    "src/runtime/body_profiles.rs": "9a021e5c01b3e53c038cd8bf1f9a968eeeae75102ba9b8bcade117d6a4fb65df",
+    "src/runtime/mod.rs": "35b72165da6cd0d4935561c7d22d7bf5da8c52a5e6acd1ac3bf08ebf93886ded",
+    "src/runtime/perceptual_action_assay.rs": "1bd237e5c5c9e7d3d84739f51be8177a5ae9090ba28eeb94fe8a773c56146c67",
+    "src/runtime_profile.rs": "ed85b8bdcfe6ea8e46ee8fd30997fada5c56bcc2603e37ceb1ac5654a9edbe41",
+    "src/scenario/control.rs": "f2610e082ba72db56ec1e10ddbc2f14e05199381b46682248f0d65586e346d3a",
+    "src/scenario/lifecycle.rs": "5a92ef595fc3b7d24be884176bcf0502392c01c5f068444beb662dbfcc570985",
+    "src/scenario.rs": "cf0105821c67e8e20b78cbba4b794d33f0efb6254fe9f26a14b680fded8fdb1e",
+    "src/scripting/defs_gen.rs": "76cf16b3e8059f117e776cefa706e49878bcf52e3b0f6abe48057fc5a84c0629",
+    "src/scripting/docs.rs": "7655963e9436f1f63d40a4d5aa0a7fc04d479f0169291b4d3a2ab4eb5ab91fe8",
+    "src/scripting/engine.rs": "b2559b8f4ae2524cc9d916403e39d1a42e02632759887f9827baf0b79193be7f",
+    "src/scripting/mod.rs": "d3e14280ec99d7432f28766b31f5a8342e31f58e5063ba8c435a8ebce10b4748",
+    "src/scripting/tests.rs": "71adfb4ff3d8de8d96231ca8ec8053c00d5bfca1b01d1bf393a67034d34a2f8f",
+    "src/synth/mod.rs": "12d4f10579bc2a76c658f446ccfefebc63e21202bd037e4bde5179baee975143",
+    "src/synth/modes.rs": "30c391197bcb2869ee6feb4e1160dcf64a5a797a7d8ffdf052c08bffdff5fd3b",
+    "src/synth/resonator.rs": "4adc58af16ac545af22ce8621b66e30f794e81697822f205f0368b9b01e53bc6",
+    "src/temporal_cognition/accents/periods/groupings/tests.rs": "05a80aaf8f115464e0cbbf808df8a53235fa4e6e5a0fab504ce6a6c893ec7eb3",
+    "src/temporal_cognition/accents/periods/groupings.rs": "c59b9c09cdad17ef8c59bc8a23abfa4627764b01f3515b37a1b06425712f385f",
+    "src/temporal_cognition/accents/periods/tests.rs": "5ac75473f1d4cad6a7ca7caa846cf7273aa315a8504b41185f0ad1ef7abe2db1",
+    "src/temporal_cognition/accents/periods.rs": "30d45f320ea7bbc83a3ae6ec399a5ea043b56c2db80a22062c60cd5d91e8c435",
+    "src/temporal_cognition/accents/tests.rs": "2154948526c7c81e9d74eb25baa1ba91b4141ecfde22a550be97dff928276e6f",
+    "src/temporal_cognition/accents.rs": "38f3fe2b969a4bf470b64d606cd783d1d56830fde127deacc6508638ff31d8c4",
+    "src/temporal_cognition/action_profiles/consumer.rs": "cc04c3ebf95e9870bbf8b778635cc3dc9c9caa78d043ed1ba92781098d8f9cf4",
+    "src/temporal_cognition/action_profiles/tests.rs": "57ad3078212e3d7284152bdb95e371365c30cc77ce1402866686832e058751aa",
+    "src/temporal_cognition/action_profiles.rs": "658631c81966dcb482c90d298573e85c2fd68f0f63ab22ad2b6d16f6743e3c46",
+    "src/temporal_cognition/arrival/projection/tests.rs": "8aa3de90f544b9b42e5c99f7ae24339cafffc4cab4e77923530f5d75bf4db7b1",
+    "src/temporal_cognition/arrival/projection.rs": "a119b46bc79c12f94c1bd8497cc96279866455aaba7bcdd238696cc8fb74793f",
+    "src/temporal_cognition/arrival/tests.rs": "62b26252a22c9529921c7e1559b3fe80261581d8a94be4d8c1ad8bcccec5669d",
+    "src/temporal_cognition/arrival.rs": "ba4a397b011b9db64d75ced34469b696cebe8618d02590dd331a743e0107875a",
+    "src/temporal_cognition/body/action_targets.rs": "9c8b245903696aec2b2ebde4f4d4103bc34fb80e705d195e92238053aaa18212",
+    "src/temporal_cognition/body/tests.rs": "cf5116a49d6f0fb4571e97787c0b993657efc5316716c596859d6967f91134e3",
+    "src/temporal_cognition/body.rs": "1e9ccb8441036547d5033c4e96bd57b0cb4606577059b976b1d5d42cb6c138f6",
+    "src/temporal_cognition/body_model.rs": "37b44e297f4fbff867a674102776c2d6ef19d511ac4405474317747e1c8154f8",
+    "src/temporal_cognition/consequence/tests.rs": "17a1c0b17f77b1b17e38558ab2f156623b519bd509b00dcb8e32cbd90e69cf28",
+    "src/temporal_cognition/consequence.rs": "661be3e702b79b32e45a0eca1885cb7a5425af6899ced96603cf403a365803f1",
+    "src/temporal_cognition/descriptor/tests.rs": "6798f09d9fcac72db4b1719ffbe050ce1a28d13eb6c3c8cc920cce51cd63bdd6",
+    "src/temporal_cognition/descriptor.rs": "d86fb9adfede9dd5114b9f211181d3484876d109928047848bbcd17a7276286a",
+    "src/temporal_cognition/feature_projection/tests.rs": "ecc64118cf85a31062522f9600d12629313a61081ce5c621da2e32eb0005860f",
+    "src/temporal_cognition/feature_projection/window/tests.rs": "1108933e9e61668cd87b83fdba8fc1bbc4441d9d000859b611189874c8219328",
+    "src/temporal_cognition/feature_projection/window.rs": "fa8954ecaa7235ac9400e66e4a25e853d546cdefe6f5082777d184b2f8b01f5b",
+    "src/temporal_cognition/feature_projection.rs": "7027ad0a8cae3e2b753490dfcf0990a46fb748eea19d7b61068ad060044ee87f",
+    "src/temporal_cognition/features/tests.rs": "2868a20d6260d00803db96989927eeed35b662ba74bdd9ae010f2c29faa25a1e",
+    "src/temporal_cognition/features.rs": "4ee42881d50435e315c962358a49032452df9ac910221e60b6bb0a1ee2fcbabb",
+    "src/temporal_cognition/gesture/projection/tests.rs": "dcb32fe6364245f4579d5aad461e6975ae3f6c99e193e0b75c15d3e6521f8103",
+    "src/temporal_cognition/gesture/projection.rs": "c83a7a02c8f4a592868390527ac8dc676bf98457f552a4ed06c1869ad7448ee7",
+    "src/temporal_cognition/gesture/tests.rs": "dde36dc2dfd47514c0ce9665142f8173c680b2af83a03b06343e45093ae185f2",
+    "src/temporal_cognition/gesture.rs": "1079ee0c47c3d5918b00ae5375ba2b56f7ba0ac521790ad15b6af88d3d0bf3df",
+    "src/temporal_cognition/group/tests.rs": "7480a2939becf8a71484ec25e2d51e820521406b1c0a9485d67c488ab6c08ea8",
+    "src/temporal_cognition/group.rs": "7a9840967ed6085d87376d14b358e120e6b8d1a14f57cfbefd212fb2b8833017",
+    "src/temporal_cognition/grouping/tests.rs": "81f72488169ff62de633173cef4fd4f6c202d6dc6310b92bea734c9bafa1f9b7",
+    "src/temporal_cognition/grouping.rs": "e58a7400f248780dd0c68620fc99cc91b4a39904dd0571f0547bc523faa2ed27",
+    "src/temporal_cognition/hazard.rs": "26e39365ed446030a03fa0d658203c283e7d9f558bf69c0ebac7811586969c0d",
+    "src/temporal_cognition/joint/proposals/tests.rs": "776c3d197b3d6f933a0a7eefc9cc62baf02cbed0d949a8db7f4dfefc1da6f670",
+    "src/temporal_cognition/joint/proposals.rs": "42af9ff2bf8c81c95ac1e527a1d8afc4d04f431571ee298b951969efe0bf77d9",
+    "src/temporal_cognition/joint/shared/tests.rs": "829efb23eadf4744bae397b28217945dcee8cd3e67830e6760620de78f40c8d2",
+    "src/temporal_cognition/joint/shared.rs": "a6832b379fc0c07db2bd4fb4ef553dec5c6092498b493c5a2b790fddbd5ffad0",
+    "src/temporal_cognition/joint/tests.rs": "889ded77604a71d246346b1f4f38519e2bbb8753533049ae6723f753b0082633",
+    "src/temporal_cognition/joint.rs": "6b645f6d6b0c27bd2ec7b1f3b1c1b674e28733193a4c5ad8a3ad85e9f69e7a0d",
+    "src/temporal_cognition/long_form.rs": "2f886fa01320530ad85a9e485bf00615840ea4df0a361fd377428c9a5b71eb49",
+    "src/temporal_cognition/matcher.rs": "99c403d63fb932f4194b073061cf80607c497a9a72d5ff2784e905fb010e233e",
+    "src/temporal_cognition/memory/index.rs": "5a1b0879ce3225b0b9ce59271a3d5ffe0e252caa30b73403dd75e85339aa9093",
+    "src/temporal_cognition/memory/reference.rs": "731cd83d54e976c953fc907973bc2a69acc5090282ec2cf1622d7a1c9d6808b0",
+    "src/temporal_cognition/memory.rs": "7a59224e256e41d3014cfc732a90e4350f47269b1798c2af110e6d0222f300fb",
+    "src/temporal_cognition/observables.rs": "0a2db3aaa8f2cca04fe0eae1b16336f5480b7472bd0c0ae1bff14f1fefb17054",
+    "src/temporal_cognition/observation/replay.rs": "9d884a4aaa19c07e94372c1fe461ba2414e70fa430b919d6fd9149584e9751d5",
+    "src/temporal_cognition/observation.rs": "aa11a85a68e0a6a4bac4a261eacdaa9ef72c8fe7494efeeeef11183c7bdd367e",
+    "src/temporal_cognition/phrase/projection/accents.rs": "ba0b7c0aac2939439d36a21da3107d0553cb350003d7b7f44309338569922f8e",
+    "src/temporal_cognition/phrase/projection/tests.rs": "4ceb92053bc788f0456ea958aea53a74763afc0e5b65be67abd3d6fba6a9cfd7",
+    "src/temporal_cognition/phrase/projection.rs": "e0bcb1331278cf88fda2f0fc37868f6a12808ae09ff9c62a5d80c615201ce18c",
+    "src/temporal_cognition/phrase/tests.rs": "606a916dd9ee17571d716aa7f99dfc53a0c9ae2d4135aa2784d7309da159e5b9",
+    "src/temporal_cognition/phrase.rs": "265c468d0f23d3c21ad87f0b9d34d9988d3765a5e2c5fe60a92c061a20ad2381",
+    "src/temporal_cognition/private_trace/tests.rs": "49b32f4b015cb91edb9fc53f3884c925335b770ed207944c7d933b64b9fab185",
+    "src/temporal_cognition/private_trace.rs": "e2cc3b7ca09148b0d3d8828d3d6c3426652713460fbf7dfe52377bd76fa141b0",
+    "src/temporal_cognition/proposals/frontend/recurrence/tests.rs": "28da7de3fca7c04442a90d91428c151263ba0eabbd3a1c1777a46b91746472f2",
+    "src/temporal_cognition/proposals/frontend/recurrence.rs": "f185185818ce2819c84bd66343e035b2a763f60d659e354e8e38080871b77507",
+    "src/temporal_cognition/proposals/frontend/tests.rs": "36c8631463bb7a5ade8ced74e4f270d2be92bedb2412c02cdc9061571f07f87e",
+    "src/temporal_cognition/proposals/frontend.rs": "0249c2e8bb73bd89d7622b21f636f5e0c58bb4154f1fc21a5ac7285575fc771f",
+    "src/temporal_cognition/proposals/lifecycle/tests.rs": "4eca1e982e9d791ca4a33360e5599ff2dcf56fe52a7175380b16e8a16e3e6960",
+    "src/temporal_cognition/proposals/lifecycle.rs": "6491a0cd4177cdfd92ab47c70766f2431724d544cd7b9c8f53072f810f759e74",
+    "src/temporal_cognition/proposals/producer/tests.rs": "89ae5e62d63e76568f941612698b87ec453bd0f64473a5993618e4b7799eece4",
+    "src/temporal_cognition/proposals/producer.rs": "023b927e66c03ff8ef25feb97e5be22c1012b1126ba6b89d2513f43f01ff88bc",
+    "src/temporal_cognition/proposals/tests.rs": "e7f499db8a419b7c3e8f8e8b827658c842ddbab23d802d94b25cb80674bf597d",
+    "src/temporal_cognition/proposals.rs": "2cdbc838855e09d248b5b36d3857306eeeb9682b6a64ec352a24002bdc090b3a",
+    "src/temporal_cognition/query/cache/tests.rs": "b2bc65df8d925290891c63822fb0d330cd737f151cfcb09d704364fc652f7d05",
+    "src/temporal_cognition/query/cache.rs": "6b12defaa5fd1ff243438a01ce8ee95a199d87fd59626ca53ceecc7a09efbc2b",
+    "src/temporal_cognition/query/tests.rs": "0faa4d9adf926ebb18e167baf1fd80729c3e289698f5c01a699cd0ed692adae2",
+    "src/temporal_cognition/query.rs": "11aa5e405efeec5b383e4ea3d2828b3c978265f65b89fb944dbc6ec724aaf385",
+    "src/temporal_cognition/ratings.rs": "0a7ec546210a2a2c4634ea3215e058ae12bcec3379a3532f9de53bdc15826149",
+    "src/temporal_cognition/recall/audit.rs": "cab0c3b4648eea4e8f010b6ae993b495a7a7ef3adcb8bb6cccbdd752ba75a04d",
+    "src/temporal_cognition/recall/clock/tests.rs": "dbf062216e2268c3869416a8c13310355173033e652da844b83ff1afe1ce2780",
+    "src/temporal_cognition/recall/clock.rs": "6159f5f2f6c7fa82eebdb9dc4f586b8759cb39a94ba53b983c17bc74c221fc04",
+    "src/temporal_cognition/recall/graph.rs": "853be89d3b3f6493f1ed39fb2eadbc405223f842555ad034c47d76538cfefc5e",
+    "src/temporal_cognition/recall/retention/tests.rs": "dfd61a930390c9a873dde464dd8871f018da11c0eb0ef7bffb7c5b98dc080f34",
+    "src/temporal_cognition/recall/retention.rs": "b5b1aae226f8c78ea8f78e6f546bf93107ea533de38d349fc4a23164d4f86486",
+    "src/temporal_cognition/recall/retrieval.rs": "743b2e9a3a1554bb8a811600f1f3f23187e001103e535d200f02b9339cf38477",
+    "src/temporal_cognition/recall/tests.rs": "90b979ac8c6a3d8ec2ebf2612cec1b0851fd4ba854b9bf8bc1037bb1ae2b63cd",
+    "src/temporal_cognition/recall.rs": "023983506fa74c1cada327bc7b018da58df5d2a50d3a04063fb12b5b64ca77c3",
+    "src/temporal_cognition/reference_inventory/tests.rs": "d7fe3c68dd3debe06e3b6c20948eb113747651b50596f7a9c9849d04bbfa7208",
+    "src/temporal_cognition/reference_inventory.rs": "730e8f0211964bc03fe7007447a38b5b76452e0db79f2b5c8a36ca59a979ed79",
+    "src/temporal_cognition/resources.rs": "e0ef895208b33807b6195efa21c0d11634da24268d2fbb6c792e406061be52ac",
+    "src/temporal_cognition/ridge/tests.rs": "fcacd12d2002d367853fad3d9d496791e861702ff49c9976f4c01c3872e38bb8",
+    "src/temporal_cognition/ridge.rs": "b58da9ab9dccde9654d6a1bbb2bdc2a751a305ab3da347be4fd3301f21b63224",
+    "src/temporal_cognition/section/commitment.rs": "54b7a4de7fa68fed4052c7593923791f657cd037c006ec5505294db030677112",
+    "src/temporal_cognition/section/cue/tests.rs": "3f2d1b8b4233178434ff01efe4cdf4df0fb943c7796d34af9db3e2b46b984e51",
+    "src/temporal_cognition/section/cue.rs": "ef7ec6e94e697c528eea10744a26b87e1b4d9897e12ad4847e545180d9bbfacf",
+    "src/temporal_cognition/section/form.rs": "cad7b52cc000fb9d7d0f19133e1b0c663be241c23ad2a71e0a21a7d34ddce7ec",
+    "src/temporal_cognition/section/runtime.rs": "ce5951d66de898e7841f7909b712d76f1050952c91966f3aff8fa31511d2da05",
+    "src/temporal_cognition/section/tests.rs": "7c79378af3af6e40a800c24ca4e17d75a41949b7354fa85bc14ecc8656534618",
+    "src/temporal_cognition/section.rs": "a1cad8203588b5d84a6d2b8cae831906c4c7aa0a0176f10a329dd6882326a56d",
+    "src/temporal_cognition/tests.rs": "326c2e802a1d6c010baba8aeff47ad572b763c4e3670e122e0318397d2daf568",
+    "src/temporal_cognition/trajectory.rs": "245029a014f3b59997e4305858a1e500bddb0e9670b0f93acfb0c4b54eeb0542",
+    "src/temporal_cognition/transport.rs": "4c4f1d336a957eb8cb55c11bea0d76efb05df423cefa5fc9571ae919ffa6e76f",
+    "src/temporal_cognition/whole/controls.rs": "1033c58d96a0a016e4cb4f97b40c296ab0f8224a09ad62c88358ed4c770e153a",
+    "src/temporal_cognition/whole.rs": "ed1e0bcd4490d810c241702232a8c91a1218dd21b0ae4ed4d4d148cf4baaa865",
+    "src/temporal_cognition.rs": "6c1f5398fb0e877acab5352f03d3a60a2a130c7596a1bdced4cd566d5707e994",
+    "src/ui/mod.rs": "e72c400bc0c7853f4136020019827645a6eea7a4d2483aa50ab6f9fd1d47d079",
+    "src/ui/plots.rs": "67db5d661678df4b81c025fe5b63588ef723efe671897c3666435ddab2c64651",
+    "src/ui/windows.rs": "1d8f75cc983e3eba1a518566a7cdaf82fdd6185272cdd21265bc53a97a483680",
+    "src/viewdata.rs": "51589241cc346fb569cfeac85e34513eb7da55afd5c027cae5eb8f2fdc80f4a1"
+  },
+  "binaries": {
+    "render": "e7d800c7303c38a7612767e69f8e8626834fb0ed44e57c45911c885ff61f381b",
+    "instrument": "17b3d49367080ff0b753ea2924bee5b72d9a9dfe64febe165c979ba7944ab8ce"
+  },
+  "verification": {
+    "cases": 6,
+    "runs": 18,
+    "tests": {
+      "passed": 1194,
+      "failed": 0,
+      "ignored": 38,
+      "suites": 31
+    },
+    "audio_and_actual_learning_preserved": true,
+    "candidate_records_before": 18289,
+    "candidate_records_after": 18295,
+    "new_records": 6,
+    "common_observations": 756,
+    "physical_windows": 1969528,
+    "schedules": {
+      "compound": 6,
+      "queued": 223,
+      "unknown_control": 0
+    }
+  },
+  "cases": [
+    {
+      "case": "hold-4",
+      "audio_exact": true,
+      "preserved": {
+        "onset": {
+          "count": 4,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "population_step": {
+          "count": 2364,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_default": {
+          "count": 476,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_descriptor": {
+          "count": 472,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_outcome": {
+          "count": 8,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_descriptor_prediction": {
+          "count": 8,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "private_participation_trace": {
+          "count": 8,
+          "exact": true,
+          "instrument_exact": true
+        }
+      },
+      "common_observations": 126,
+      "instrument_common_observations": 126,
+      "candidate_records_before": 448,
+      "candidate_records_after": 448,
+      "new_records": 0,
+      "common_candidate_changed_fields": {},
+      "changed_examples": [],
+      "schedules": {
+        "compound": 0,
+        "queued": 0,
+        "unknown_control": 0
+      },
+      "shared_statuses": {
+        "no_body_binding": 452,
+        "no_group": 1324,
+        "paired": 12,
+        "unknown_cell": 4
+      },
+      "physical_windows": 7168,
+      "candidate_profiles": {
+        "report": {
+          "submitted": 448,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 448,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        },
+        "no-report": {
+          "submitted": 448,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 448,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        }
+      }
+    },
+    {
+      "case": "hold-16",
+      "audio_exact": true,
+      "preserved": {
+        "onset": {
+          "count": 16,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "population_step": {
+          "count": 9456,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_default": {
+          "count": 1904,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_descriptor": {
+          "count": 1888,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_outcome": {
+          "count": 32,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_descriptor_prediction": {
+          "count": 32,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "private_participation_trace": {
+          "count": 32,
+          "exact": true,
+          "instrument_exact": true
+        }
+      },
+      "common_observations": 126,
+      "instrument_common_observations": 126,
+      "candidate_records_before": 1792,
+      "candidate_records_after": 1792,
+      "new_records": 0,
+      "common_candidate_changed_fields": {},
+      "changed_examples": [],
+      "schedules": {
+        "compound": 0,
+        "queued": 0,
+        "unknown_control": 0
+      },
+      "shared_statuses": {
+        "no_body_binding": 1864,
+        "no_group": 5268,
+        "paired": 28,
+        "unknown_cell": 8
+      },
+      "physical_windows": 28672,
+      "candidate_profiles": {
+        "report": {
+          "submitted": 1792,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 1792,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        },
+        "no-report": {
+          "submitted": 1792,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 1792,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        }
+      }
+    },
+    {
+      "case": "hold-64",
+      "audio_exact": true,
+      "preserved": {
+        "onset": {
+          "count": 64,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "population_step": {
+          "count": 37824,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_default": {
+          "count": 7616,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_descriptor": {
+          "count": 7552,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_outcome": {
+          "count": 128,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_descriptor_prediction": {
+          "count": 128,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "private_participation_trace": {
+          "count": 128,
+          "exact": true,
+          "instrument_exact": true
+        }
+      },
+      "common_observations": 126,
+      "instrument_common_observations": 126,
+      "candidate_records_before": 7168,
+      "candidate_records_after": 7168,
+      "new_records": 0,
+      "common_candidate_changed_fields": {},
+      "changed_examples": [],
+      "schedules": {
+        "compound": 0,
+        "queued": 0,
+        "unknown_control": 0
+      },
+      "shared_statuses": {
+        "no_body_binding": 12776,
+        "no_group": 15872,
+        "paired": 24
+      },
+      "physical_windows": 114688,
+      "candidate_profiles": {
+        "report": {
+          "submitted": 7168,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 7168,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        },
+        "no-report": {
+          "submitted": 7168,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 7168,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        }
+      }
+    },
+    {
+      "case": "flow-4",
+      "audio_exact": true,
+      "preserved": {
+        "onset": {
+          "count": 57,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "population_step": {
+          "count": 2364,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_default": {
+          "count": 476,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_descriptor": {
+          "count": 472,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_outcome": {
+          "count": 116,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_descriptor_prediction": {
+          "count": 116,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "private_participation_trace": {
+          "count": 116,
+          "exact": true,
+          "instrument_exact": true
+        }
+      },
+      "common_observations": 126,
+      "instrument_common_observations": 126,
+      "candidate_records_before": 421,
+      "candidate_records_after": 422,
+      "new_records": 1,
+      "common_candidate_changed_fields": {},
+      "changed_examples": [],
+      "schedules": {
+        "compound": 1,
+        "queued": 14,
+        "unknown_control": 0
+      },
+      "shared_statuses": {
+        "no_body_binding": 21326,
+        "no_group": 348,
+        "composite_default": 98
+      },
+      "physical_windows": 87088,
+      "candidate_profiles": {
+        "report": {
+          "submitted": 422,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 422,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        },
+        "no-report": {
+          "submitted": 422,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 422,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        }
+      }
+    },
+    {
+      "case": "flow-16",
+      "audio_exact": true,
+      "preserved": {
+        "onset": {
+          "count": 206,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "population_step": {
+          "count": 9456,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_default": {
+          "count": 1904,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_descriptor": {
+          "count": 1888,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_outcome": {
+          "count": 423,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_descriptor_prediction": {
+          "count": 422,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "private_participation_trace": {
+          "count": 422,
+          "exact": true,
+          "instrument_exact": true
+        }
+      },
+      "common_observations": 126,
+      "instrument_common_observations": 126,
+      "candidate_records_before": 1675,
+      "candidate_records_after": 1677,
+      "new_records": 2,
+      "common_candidate_changed_fields": {},
+      "changed_examples": [],
+      "schedules": {
+        "compound": 2,
+        "queued": 40,
+        "unknown_control": 0
+      },
+      "shared_statuses": {
+        "no_body_binding": 85272,
+        "no_group": 300,
+        "composite_default": 196
+      },
+      "physical_windows": 343072,
+      "candidate_profiles": {
+        "report": {
+          "submitted": 1677,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 1677,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        },
+        "no-report": {
+          "submitted": 1677,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 1677,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        }
+      }
+    },
+    {
+      "case": "flow-64",
+      "audio_exact": true,
+      "preserved": {
+        "onset": {
+          "count": 869,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "population_step": {
+          "count": 37824,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_default": {
+          "count": 7616,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "body_descriptor": {
+          "count": 7552,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_outcome": {
+          "count": 1783,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "self_sound_descriptor_prediction": {
+          "count": 1388,
+          "exact": true,
+          "instrument_exact": true
+        },
+        "private_participation_trace": {
+          "count": 835,
+          "exact": true,
+          "instrument_exact": true
+        }
+      },
+      "common_observations": 126,
+      "instrument_common_observations": 126,
+      "candidate_records_before": 6785,
+      "candidate_records_after": 6788,
+      "new_records": 3,
+      "common_candidate_changed_fields": {},
+      "changed_examples": [],
+      "schedules": {
+        "compound": 3,
+        "queued": 169,
+        "unknown_control": 0
+      },
+      "shared_statuses": {
+        "no_table": 216,
+        "no_body_binding": 341952,
+        "no_group": 4698,
+        "unknown_cell": 50,
+        "composite_default": 294
+      },
+      "physical_windows": 1388840,
+      "candidate_profiles": {
+        "report": {
+          "submitted": 6788,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 6788,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        },
+        "no-report": {
+          "submitted": 6788,
+          "capacity_dropped": 0,
+          "unsupported": 0,
+          "completed": 6788,
+          "worker_unsupported": 0,
+          "output_dropped": 0,
+          "worker_failed": false
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "all-targets",
+      "command": [
+        "cargo",
+        "check",
+        "--all-targets"
+      ],
+      "exit": 0
+    },
+    {
+      "name": "release",
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--features",
+        "profile-alloc",
+        "--bin",
+        "conchordal",
+        "--bin",
+        "conchordal-render"
+      ],
+      "exit": 0
+    }
+  ],
+  "limits": [
+    "One existing20Hz sampled focused granted recipe per source and batch, after every command/update in that batch; at most64 total tones and64 pooled requests. Previously accepted/queued owned tones keep their routing and known releases. No additional future policy evaluation or random draw.",
+    "The first accepted default transition is distinct from the focused opportunity input. Shared single-class prototype comparisons reject composite/queued/unsupported-control defaults as composite_default. Full compound prototype conditioning and physical transfer validation remain incomplete.",
+    "Gap withholds queued onsets on the half-open interval[action_at,withhold_until); active release tails and onsets at the upper endpoint remain. Release alone does not cancel a future onset. Window reuse is bypassed when a queued onset is withheld.",
+    "Pending ToneUpdate commands or unfinished amplitude smoothing make the candidate control forecast unknown. They are not analytically forecast. Envelope-zero portions remain known zero, including canceled onsets. Actual audio and learned observation paths are unchanged.",
+    "Body generation may remain null in the pre-existing diagnostic-only path without Capture; matching optional tokens and source generation are required. Active-body sampling still requires Capture and at least one currently active tone; an exclusively queued idle body is not newly sampled.",
+    "Only the first eligible granted recipe from the sampled batch is focused. If that recipe is rejected, this unit does not select a later recipe. Later batches for the same source in the same hop are outside this snapshot. Off-only batches and unreserved future opportunities are not completed by this change.",
+    "Numerical fixtures cover half-open gap endpoints, release tails, queued routing, unknown controls, cache differences and active/onset default energies. Renderer comparisons cover multi-On, Off/On order, post-On cancellation, future updates, source/body-generation rejection and capacity, alongside existing actual-only learning comparison.",
+    "The six ordinary hold/flow4/16/64 cases validate both-bus audio, actual observed learning and diagnostic isolation. Short-run wall profiles are not CPU or whole-load acceptance. The prior failed40ms/8.5333ms screens remain unresolved.",
+    "Full future policy default, non-energy consequences, remaining shared/joint integrations, prototype transfer accuracy, full-duration/all-eight-prototype preflight and live acceptance remain incomplete. I10 active; I9 held; I11 disabled; default evaluation timing unchanged."
+  ],
+  "artifacts_sha256": {
+    "target/i10-known-default-20260918/acquire.py": "467f8a66cadce2eac18e54a0d1fa835bcf4dac26f3283a45e15d6e3fa25e3b01",
+    "target/i10-known-default-20260918/all-targets.log": "f695b47510116077205186c02e8866d2af33f3d7b5e60164a77c8d22f5caa0df",
+    "target/i10-known-default-20260918/before/src/life/action_candidates/energy.rs": "b0c5f4106a20aca7653f9956f3075fe21855f1c8cde9c8c5f2c70bc9ec648a64",
+    "target/i10-known-default-20260918/before/src/life/action_candidates/live.rs": "64b8be8d1e0390063c18d7952e08ca0f29151a7b12b4233ac887023bea940592",
+    "target/i10-known-default-20260918/before/src/life/schedule_renderer.rs": "b75601cc9af51186a5f1f2dcdf8c888f9a6a0da2c1e34594d209222ca190262b",
+    "target/i10-known-default-20260918/before/src/life/sound/tone.rs": "9fdaa35068de473c1c8525b306b225dec6d2bbd4ff4f7ffc67fe61b6dd7b32e1",
+    "target/i10-known-default-20260918/before/src/runtime/body_profiles/policy_default/energy_projection.rs": "2b6f258b4b7f5b5864f899f91c2c378629a8cd94e76462f7f323aa184abbfa4c",
+    "target/i10-known-default-20260918/before/src/temporal_cognition/action_profiles/consumer.rs": "94bc31fa266393b1f7b1f82724d1858434f6385207b02dd6cae1c9a4602bc18f",
+    "target/i10-known-default-20260918/binaries.json": "d632021c8e737c35ce3031d8e7a42b6a820e08526e0d6d519e675054a3daba75",
+    "target/i10-known-default-20260918/check.log": "04780cc7bc164acb85af1e1b95ecb43cb1faa9cff51e57e1c97f6e63c2ef20a5",
+    "target/i10-known-default-20260918/checks.json": "a4acae26b665528c24bd96991285e172327640bb861d68b52d0354809538c727",
+    "target/i10-known-default-20260918/checks.py": "2093d9378773f477a811a459272f41f03776cd4ed679a8775ff6b776e137035a",
+    "target/i10-known-default-20260918/clippy.log": "af434e39676a7e92ea23662f6951945c14299bf29c6922bbd0be80152e7264fa",
+    "target/i10-known-default-20260918/energy-tests.log": "37cb2c457846d6545fe5a9ad26240341fb0fd14f5c4c933e5af44c8c2b61e1db",
+    "target/i10-known-default-20260918/flow-16-no-report-profile.json": "945d77f3c7d7487482ba3df06bbc664f57d8bb9fdb3efc59651779d1e5f5fffa",
+    "target/i10-known-default-20260918/flow-16-no-report.log": "fd744f1a3171d987f9a52c973a0b41b964ee1ee90cd81a04a60d508669fdc0eb",
+    "target/i10-known-default-20260918/flow-16-render.jsonl": "100253c796d7ca9b2bf3d4558ecb53a840a5523201501493ec009e50e1893ceb",
+    "target/i10-known-default-20260918/flow-16-render.log": "4625e3391b29ec7e928e54922e497424090fa21e5ebd3bdaed1ad5dbf758a89d",
+    "target/i10-known-default-20260918/flow-16-render.wav": "85732d960f3bf0c1d4735c897d2348cd2ad9df05d524760187f7e402668ad60d",
+    "target/i10-known-default-20260918/flow-16-report-profile.json": "a018589ff1915a241161c28ba114bff827e3832c1bd1fce9298b99aa0998566e",
+    "target/i10-known-default-20260918/flow-16-report.jsonl": "ba7779151d7b57c5653f12e5290ce517413535ecf5df86cf85402dbfe03424b2",
+    "target/i10-known-default-20260918/flow-16-report.log": "fd744f1a3171d987f9a52c973a0b41b964ee1ee90cd81a04a60d508669fdc0eb",
+    "target/i10-known-default-20260918/flow-16-verification.json": "0f249fc33333afae2aa729959478eb2ac2fc6ff2de52fe5196ba9cb677781a7d",
+    "target/i10-known-default-20260918/flow-4-no-report-profile.json": "a145d982f0049c5aecc533d9dd3f1c92edcfc3baabe8a2e5b9179d3810fbef2a",
+    "target/i10-known-default-20260918/flow-4-no-report.log": "21b6fe7271ca0ee1a4b5811e590ca3dc41afbeec35c1e9329c267b796dc7beb6",
+    "target/i10-known-default-20260918/flow-4-render.jsonl": "90d32e6c65b1946ef019a3e3a51b661a0d3564ecbf6d97d2f3f9bcc6d3d8c9c5",
+    "target/i10-known-default-20260918/flow-4-render.log": "fb068df725c6222d01ebf1d431a831b5ef849e58873ad0b99fa37faac1a9a857",
+    "target/i10-known-default-20260918/flow-4-render.wav": "2465390ac3e8c5a6dd1f324bc58a1bc7d2b6a60ea273077844461d29a02c0536",
+    "target/i10-known-default-20260918/flow-4-report-profile.json": "6655fdc636d2f34d27702fe8733fdbe5818742b77c44ff1924a7a4845449e2a6",
+    "target/i10-known-default-20260918/flow-4-report.jsonl": "d0c99db82dfaddcd5ee3101950bfef4ca58bcaab21c2eb930cfdc61d255ffbc3",
+    "target/i10-known-default-20260918/flow-4-report.log": "c98e9d25603c4c9ea1fa3ddf508402f69be71fd7c701d88b3bfefeb9738229cc",
+    "target/i10-known-default-20260918/flow-4-verification.json": "343214043ef36aed241397d2493a2a1e27a27c8968f67060e35a593aa5e77193",
+    "target/i10-known-default-20260918/flow-64-no-report-profile.json": "8311acfbf930c4f6a5a18bc4699fc800bbdd5ad8c45b2b6bf3be7a45dd3b7b6d",
+    "target/i10-known-default-20260918/flow-64-no-report.log": "2e579fc283e8bf485771c129e24fbf4afe7f011c1bc8f0a0b285f453d237d25d",
+    "target/i10-known-default-20260918/flow-64-render.jsonl": "3a704ab82c1026890e7052e02e01e8be885ef09b27a800eaf29ec28e3258e0a9",
+    "target/i10-known-default-20260918/flow-64-render.log": "37991f7816530c1f0018851906eaf69cd4a9936c8bb51fc2dc50c49d86299c86",
+    "target/i10-known-default-20260918/flow-64-render.wav": "6492d17e8e797de44ef3660bcda8f816ba21b5b1417a05d1e0cf17e25ed1bac8",
+    "target/i10-known-default-20260918/flow-64-report-profile.json": "c303605554602b410fcf6af8803b4a17cd4236c69c95ef7d07fddb9729841df8",
+    "target/i10-known-default-20260918/flow-64-report.jsonl": "0a0cfe573ec229c95fc17468a84a36f4c422d2b72a33ddd1165b2ca73e5ee81b",
+    "target/i10-known-default-20260918/flow-64-report.log": "ae8fed94c862c026034b64cc70c81f0a236a57671d79e273806a352190ca6abc",
+    "target/i10-known-default-20260918/flow-64-verification.json": "f19532806a7e4c508816fec257c7f85a7569baa983c6057c501e3394bb93fec2",
+    "target/i10-known-default-20260918/fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-known-default-20260918/hold-16-no-report-profile.json": "1bc58f7443986eb7c2d2831f12e4f9b46a4ebe9f9fc4d9a21f70a4a595abc2d6",
+    "target/i10-known-default-20260918/hold-16-no-report.log": "fd744f1a3171d987f9a52c973a0b41b964ee1ee90cd81a04a60d508669fdc0eb",
+    "target/i10-known-default-20260918/hold-16-render.jsonl": "aa82a1dc4fe9f6d7f78b34fe804b479569543ea28b2f9fef675f17ca6862d592",
+    "target/i10-known-default-20260918/hold-16-render.log": "4625e3391b29ec7e928e54922e497424090fa21e5ebd3bdaed1ad5dbf758a89d",
+    "target/i10-known-default-20260918/hold-16-render.wav": "9a379ce7f3d26ffa88a62aac63eb33f9475fbc90cc2f6d194a792479f350e733",
+    "target/i10-known-default-20260918/hold-16-report-profile.json": "ccfc0f76d09732526f7ff8be5221e52c5b3bad3a12f0a135db318107e9fe7b94",
+    "target/i10-known-default-20260918/hold-16-report.jsonl": "d5fb646f7bb9dae3e80fa42049207653287ec4fd5ac7211d7641f6af5504f560",
+    "target/i10-known-default-20260918/hold-16-report.log": "b99b5bc0f431880ef31c0988c98126698f7e1c576bc24a4d99dc753426366b5e",
+    "target/i10-known-default-20260918/hold-16-verification.json": "0dc41d1de26a517fbde9c5c6187530661703ea940a495b0e05700b6d6557e350",
+    "target/i10-known-default-20260918/hold-4-no-report-profile.json": "706e6114a2f67b5a6e2aca829f9f9367d99077494b4c1085772208c732060a4f",
+    "target/i10-known-default-20260918/hold-4-no-report.log": "82e89b55cbd4be772ce278eecf4d9a5bcf7207d355d71a598aeecf15af2f550c",
+    "target/i10-known-default-20260918/hold-4-render.jsonl": "e82caa25ec88cc670ec0d4d7f80ea531e83bf84489a9ec535ba692aa4cbc01d4",
+    "target/i10-known-default-20260918/hold-4-render.log": "b2af0d16215471f4694f5514f811e84b6699cb22d953f20e2378599efa95df06",
+    "target/i10-known-default-20260918/hold-4-render.wav": "fd3870d9accdc5b972960bbe86b9371ffdb29ab4f386a8ad2086c8657069343c",
+    "target/i10-known-default-20260918/hold-4-report-profile.json": "7e42554eb4d0c1cd0bc9192946d99092b67767e6906ab03acc53f84c91403436",
+    "target/i10-known-default-20260918/hold-4-report.jsonl": "656b73d1cc915c6bb654a4175a76a9492d4f3b99c2b653dd00c2b0c26f8b04f1",
+    "target/i10-known-default-20260918/hold-4-report.log": "82e89b55cbd4be772ce278eecf4d9a5bcf7207d355d71a598aeecf15af2f550c",
+    "target/i10-known-default-20260918/hold-4-verification.json": "d32d6aeded38fb182d792f1bfbf6c1e55d69dd31043d42548ab4e18031a86dcc",
+    "target/i10-known-default-20260918/hold-64-no-report-profile.json": "596040edfad3b5e59c873886b2cf7b8f4448fb1e94a1e51c6675e8c1b076bfbf",
+    "target/i10-known-default-20260918/hold-64-no-report.log": "4d89e8ce3034bdc88b7dfffc8bb7f56c406fee4118dcc532dbbb553f2dc95f93",
+    "target/i10-known-default-20260918/hold-64-render.jsonl": "c19f97ba7b26bba20c9f297f2a45d46664bdbeb52e9c338a866defa4f359f2f7",
+    "target/i10-known-default-20260918/hold-64-render.log": "da9be9d82aa2f620b56f75db857954b750ab49ffea86a1bf3a96b486489d1aff",
+    "target/i10-known-default-20260918/hold-64-render.wav": "6c0ed96b3c8099802aa60e2daa760722929bb8fffe49e9d558b5e2abb1d2b31f",
+    "target/i10-known-default-20260918/hold-64-report-profile.json": "094d658b0f4d7499c8cc071391644572e85856331bcc11261bc8cb3d476dab27",
+    "target/i10-known-default-20260918/hold-64-report.jsonl": "ea2fb2837de691df42744a71963f08af9b649db9d01205bc338994a135e55f0d",
+    "target/i10-known-default-20260918/hold-64-report.log": "2c55dffc06e4066d13a22bbc277e84237129625e88c016bcea7159f1b4f2a8ef",
+    "target/i10-known-default-20260918/hold-64-verification.json": "82e293f0a2b14081174331e2ae2b9ebe4d4beacbdc952923ecddbcbb61860216",
+    "target/i10-known-default-20260918/initial-check.log": "c7c79b5fa1cb49cc272cd46e0f87a9b0c48213e03f598a96e27742cfc936ada8",
+    "target/i10-known-default-20260918/instrument": "17b3d49367080ff0b753ea2924bee5b72d9a9dfe64febe165c979ba7944ab8ce",
+    "target/i10-known-default-20260918/life-tests.log": "0f958f18da8176eec8e24c7a22f4a5d84e88603a6b2eab76f8673e4649f029bf",
+    "target/i10-known-default-20260918/plan.json": "a048e6e8402234a741632680fc947e132ca3247b9e4f60c69460c1408fcbfe87",
+    "target/i10-known-default-20260918/register.py": "f52ee78ebfffeced857260a926393ec03df7f9d5af88a45619c6e9fbf6102d00",
+    "target/i10-known-default-20260918/release.log": "6d73845365046719d97779514576942be3988badd49b715263b7c98afa64380b",
+    "target/i10-known-default-20260918/render": "e7d800c7303c38a7612767e69f8e8626834fb0ed44e57c45911c885ff61f381b",
+    "target/i10-known-default-20260918/runs.json": "56c7dfd2c08f2fba54ce3156901b5ab50e5537c4b937ba384568469b1a7d4008",
+    "target/i10-known-default-20260918/runtime-inputs.json": "36ec017db959126f50fcac71b9268a9cc7f99ca4a465b8c47a082e95f02a10c6",
+    "target/i10-known-default-20260918/source-sha256.json": "f10cda790fd8c62e2d4ac3b9a3201ebb9daeae49123ab08f19e2b218a0f81347",
+    "target/i10-known-default-20260918/test_report.txt": "18e695dae80f58b68c16bcd46c0058bb0158f5365df698b79778798b6f9a35f3",
+    "target/i10-known-default-20260918/test_status.txt": "516c78fa601cbda5a4a0467d3c1d09e65d812381118986fd9c0de5d7b8d8d451",
+    "target/i10-known-default-20260918/verification.json": "48fd5e8e54bcd39801d4a136ddc56a73078f2fe6a0bcd52384ebd879b87bb272",
+    "target/i10-known-default-20260918/verify.py": "1f256596ddfae368730e9a72e110606206191025d0aca48e79436017b2f35343"
+  }
+}

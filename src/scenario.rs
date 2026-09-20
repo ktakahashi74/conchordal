@@ -12,6 +12,7 @@ use lifecycle::LifecycleConfig;
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub seed: u64,
+    pub temporal_mode: TemporalMode,
     pub control_update_mode: ControlUpdateMode,
     pub scaffold: ScaffoldConfig,
     /// Scene-global shaping of the emergent production meter (composer-set soft
@@ -20,6 +21,14 @@ pub struct Scenario {
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,
     pub duration_sec: f32,
+}
+
+/// New temporal cognition is opt-in; observation never adds action pressure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TemporalMode {
+    #[default]
+    Off,
+    Observe,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

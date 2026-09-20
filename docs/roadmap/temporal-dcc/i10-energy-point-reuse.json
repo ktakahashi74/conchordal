@@ -1,0 +1,444 @@
+{
+  "schema": "i10-energy-point-reuse-v1",
+  "status": "same_point_energy_reuse_verified_not_resource_acceptance",
+  "artifact_directory": "target/i10-energy-point-reuse-20260918",
+  "plan": {
+    "scope": "Within one projected physical point, compute ToneEnergy.at once and use that same result for the incoherent sum and sine components. Preserve missing, known-zero, phase and support behavior. Baseline includes exact per-request window reuse.",
+    "source_before_sha256": {
+      "src/life/action_candidates/energy.rs": "8a6ba31792ca9ed94a695a54189cf9f3d174b7dcff8c9b5f26f0253a6520a3a9",
+      "src/life/self_prediction/projection.rs": "8a3cd13d6cbc98968a4cae02b08a5dc9fc07bf3067a5b090ff35a86f2a316177"
+    },
+    "before_binary_sha256": "389e58c0a317593a9d7d9f3f2611fe22e18c4fd4f71ec51fb96f5245b7ffcf63",
+    "ordinary_inputs_sha256": {
+      "target/i10-energy-point-reuse-20260918/inputs/config.toml": "e2c0e475b4ffba2e86abc8bcbdceee659ba7435e2967c05cb3489c2eb6c8a3e7",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-sine-110-flow.rhai": "7544de4049222dfccd8a5c3f88ffed87c127e8426f7efd843214d72bb9bf0daf",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-sine-110-hold.rhai": "3ff8eed161a4f30aac9e3ae6bf2136835017984107741c9716687764a6edf015",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+      "target/i10-energy-point-reuse-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957"
+    },
+    "timing_comparison": "Eight-case exact before/after isolation, followed by the same two-case three-round alternating release comparison. Retain the scalar-point change only if numeric isolation passes and aggregate cost improves in every paired round; no full resource acceptance claim."
+  },
+  "baseline_registration": {
+    "path": "docs/roadmap/temporal-dcc/i10-energy-reuse.json",
+    "sha256": "cffd0097c4a2dcb67252b4c2efabde38c2a9f2446fc1bc9fc4831b67ec257dac"
+  },
+  "source_after_sha256": {
+    "src/life/action_candidates/energy.rs": "b0c5f4106a20aca7653f9956f3075fe21855f1c8cde9c8c5f2c70bc9ec648a64",
+    "src/life/self_prediction/projection.rs": "936b508c4994181fadd74feb33db01fb41a5907d68ad627e4296d244d88d754b"
+  },
+  "verification": {
+    "candidate_records": 665,
+    "common_observations": 910,
+    "reported_candidate_windows": 92408,
+    "computed_unique_windows": 49672,
+    "cases": 8,
+    "all_candidate_fields_except_timing_exact": true,
+    "all_wav_pairs_exact": true,
+    "existing_learning_and_observations_exact": true
+  },
+  "cases": [
+    {
+      "case": "dev-harmonic-entrained",
+      "wav_sha256": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+      "existing_records": {
+        "onset": 11,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 23,
+        "self_sound_descriptor_prediction": 23,
+        "population_step": 550,
+        "private_participation_trace": 23
+      },
+      "common_observations": 116,
+      "candidate_records": 100,
+      "reported_candidate_windows": 19952,
+      "computed_unique_windows": 10256,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 14953,
+      "background_us_after": 13313
+    },
+    {
+      "case": "dev-harmonic-pulse",
+      "wav_sha256": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+      "existing_records": {
+        "onset": 10,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 20,
+        "self_sound_descriptor_prediction": 20,
+        "population_step": 550,
+        "private_participation_trace": 20
+      },
+      "common_observations": 116,
+      "candidate_records": 92,
+      "reported_candidate_windows": 1504,
+      "computed_unique_windows": 1488,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 2118,
+      "background_us_after": 1881
+    },
+    {
+      "case": "dev-modal-flow",
+      "wav_sha256": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+      "existing_records": {
+        "onset": 12,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 25,
+        "self_sound_descriptor_prediction": 25,
+        "population_step": 550,
+        "private_participation_trace": 25
+      },
+      "common_observations": 116,
+      "candidate_records": 99,
+      "reported_candidate_windows": 20376,
+      "computed_unique_windows": 10584,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 19402,
+      "background_us_after": 14935
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "wav_sha256": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+      "existing_records": {
+        "onset": 20,
+        "body_default": 156,
+        "body_descriptor": 156,
+        "self_sound_outcome": 41,
+        "self_sound_descriptor_prediction": 41,
+        "population_step": 778,
+        "private_participation_trace": 41
+      },
+      "common_observations": 162,
+      "candidate_records": 140,
+      "reported_candidate_windows": 28960,
+      "computed_unique_windows": 15040,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 41806,
+      "background_us_after": 30803
+    },
+    {
+      "case": "dev-sine-110-hold",
+      "wav_sha256": "02108f3e1162fbc2dca395466e323bcfb9390afe01ec8e4efa3fdd83fbf5d766",
+      "existing_records": {
+        "onset": 1,
+        "body_default": 44,
+        "body_descriptor": 42,
+        "self_sound_outcome": 2,
+        "self_sound_descriptor_prediction": 2,
+        "population_step": 216,
+        "private_participation_trace": 2
+      },
+      "common_observations": 52,
+      "candidate_records": 37,
+      "reported_candidate_windows": 592,
+      "computed_unique_windows": 592,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 868,
+      "background_us_after": 584
+    },
+    {
+      "case": "dev-sine-flow",
+      "wav_sha256": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+      "existing_records": {
+        "onset": 13,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 27,
+        "self_sound_descriptor_prediction": 27,
+        "population_step": 550,
+        "private_participation_trace": 27
+      },
+      "common_observations": 116,
+      "candidate_records": 94,
+      "reported_candidate_windows": 19376,
+      "computed_unique_windows": 10064,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 58839,
+      "background_us_after": 54958
+    },
+    {
+      "case": "dev-sine-hold",
+      "wav_sha256": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+      "existing_records": {
+        "onset": 1,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 2,
+        "self_sound_descriptor_prediction": 2,
+        "population_step": 550,
+        "private_participation_trace": 2
+      },
+      "common_observations": 116,
+      "candidate_records": 103,
+      "reported_candidate_windows": 1648,
+      "computed_unique_windows": 1648,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 1932,
+      "background_us_after": 1654
+    },
+    {
+      "case": "dev-sine-silent",
+      "wav_sha256": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+      "existing_records": {
+        "onset": 0,
+        "body_default": 111,
+        "body_descriptor": 110,
+        "self_sound_outcome": 0,
+        "self_sound_descriptor_prediction": 0,
+        "population_step": 550,
+        "private_participation_trace": 0
+      },
+      "common_observations": 116,
+      "candidate_records": 0,
+      "reported_candidate_windows": 0,
+      "computed_unique_windows": 0,
+      "unique_key_count_method": "Separate excitation times, separate release times, one unchanged state;8 bus/windows per key.",
+      "background_us_before": 0,
+      "background_us_after": 0
+    }
+  ],
+  "alternating_comparisons": [
+    {
+      "case": "dev-sine-flow",
+      "round": 0,
+      "before_total_us": 66791,
+      "after_total_us": 52659,
+      "fraction_saved": 0.2115853932416044,
+      "before_max_us": 1881,
+      "after_max_us": 1277
+    },
+    {
+      "case": "dev-sine-flow",
+      "round": 1,
+      "before_total_us": 66840,
+      "after_total_us": 53953,
+      "fraction_saved": 0.19280371035308197,
+      "before_max_us": 1707,
+      "after_max_us": 1272
+    },
+    {
+      "case": "dev-sine-flow",
+      "round": 2,
+      "before_total_us": 61168,
+      "after_total_us": 57671,
+      "fraction_saved": 0.0571704159037405,
+      "before_max_us": 1440,
+      "after_max_us": 1676
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "round": 0,
+      "before_total_us": 39401,
+      "after_total_us": 31043,
+      "fraction_saved": 0.21212659577168091,
+      "before_max_us": 693,
+      "after_max_us": 518
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "round": 1,
+      "before_total_us": 34875,
+      "after_total_us": 30649,
+      "fraction_saved": 0.12117562724014341,
+      "before_max_us": 582,
+      "after_max_us": 516
+    },
+    {
+      "case": "dev-sine-110-flow",
+      "round": 2,
+      "before_total_us": 43514,
+      "after_total_us": 28495,
+      "fraction_saved": 0.34515328400055156,
+      "before_max_us": 703,
+      "after_max_us": 479
+    }
+  ],
+  "acceptance": "Retained: exact numerical isolation passed, and total background request time decreased in all six preregistered comparisons. Peak resource acceptance not established.",
+  "tests": {
+    "suites": 31,
+    "passed": 1188,
+    "failed": 0,
+    "ignored": 38,
+    "status": "cargo test exit=0 @ 2026-09-18T19:26:16+09:00"
+  },
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.94032624096144
+    },
+    {
+      "command": [
+        "cargo",
+        "check",
+        "--all-targets"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 2.3421384029788896
+    },
+    {
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.7066540659870952
+    },
+    {
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--bin",
+        "conchordal-render"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 53.168113588006236
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.04635066201444715
+    }
+  ],
+  "limits": [
+    "The preset acceptance rule covers exact numerical isolation and aggregate background request time in every alternating pair. A per-request maximum regressed in one pair; the largest final value is1.676ms. No1.6ms bound or all-Voice/live resource acceptance is established.",
+    "The unique physical-window count is unchanged from the window-reuse baseline; this change removes a duplicate scalar energy evaluation inside each tone/point. Counts of scalar calls are not instrumented.",
+    "Body-transfer fidelity, non-energy heads, full default semantics, joint inference and pending scope/evaluation decisions are unchanged. I10 incomplete; I9 held; I11 effects disabled."
+  ],
+  "artifact_sha256": {
+    "target/i10-energy-point-reuse-20260918/acquire.py": "b235cfbb86bd8f693ba6b3bf92c25f93479ba16a966efbb1ab188c9319f08433",
+    "target/i10-energy-point-reuse-20260918/after-render": "c65a72dceb029e321b4e80a851a97978b965f3b16eabaf14dc8380e416fcd8c0",
+    "target/i10-energy-point-reuse-20260918/alternating/comparisons.json": "44e7397bc12cb01c212486696098ba43f0cde146900bdd9b27b2041b5a61eb04",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r0-after.jsonl": "d3a43c9955858b98f33f72f900b94c24181cf00a2dcc5059005295d29db359d9",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r0-after.log": "294e60d182e02892874a8b0b000fb3e3249de77a6898fa87a5a0f48cb36a35aa",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r0-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r0-before.jsonl": "8a1f9348dd61d34bff49172a6a3b07ec8daa65904a463ce1dc889afa4a5aeaf3",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r0-before.log": "9a13303231a30660656183435a4597b3799f08b4e09e382c9ff5467df4ed609d",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r0-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r1-after.jsonl": "b6527257306be057434f3b075be74d74d7d6101005dc11036158a5279d33b528",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r1-after.log": "616adad21955466399ba60461f1c03ce8540444385769d2a79763bd18d255f3b",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r1-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r1-before.jsonl": "5ccbc91f2f5b1f678c2d67271c5edf0fe653f0ada12b52c48284138e55745d7f",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r1-before.log": "a11cae789a79d19537e6ecb644ac93ae8f84094d2420a2a33a839a378db123ae",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r1-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r2-after.jsonl": "7e0240e977500f193ddba72e98ab92bfa3bf817754229cc255ac59831b62343f",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r2-after.log": "d7a2fbd52912d4d053814d3bc146c2d973b61fa2de8735546d2e9abc2b883897",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r2-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r2-before.jsonl": "7a80f60695f68dbcf856fccf3b272c2ad11038a5acbc4354a80ca9e945e2759a",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r2-before.log": "e444438353e1262e5b9ef350cf6e4eb7825a6f8b870ec06b08db5d2379103011",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-110-flow-r2-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r0-after.jsonl": "66fb8c3d3cca1dbd162062075a240af2144f6ab73bf4950e84517068052cedf3",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r0-after.log": "339843852d91edf404455a1375307bd139a7eaf0e0f4f2d96012782a3083909c",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r0-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r0-before.jsonl": "326afad499838323e0063abf8b66e8d19e8580d2062586ded1b6b1c1c111a403",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r0-before.log": "642968ab0652344809f698385102d351ab66fcdc4628c725f3b84eb1ceead111",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r0-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r1-after.jsonl": "816e87949b3e5e428bba6813d3326a3a41c0c784297e6ed2c37ca89f9cf70006",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r1-after.log": "073e866962fe3f3f51d2f401b33d4ea08af8813b910180f361604f32cc06d6b0",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r1-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r1-before.jsonl": "b881bb17599c6973eaccfc3f4c1858ee04401ce8d4912179b4113bd1f0966eb4",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r1-before.log": "f4e76f0c7ccf3a04ef9c0f84b1987ad2681036f1847396f68cf6888a02f781b1",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r1-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r2-after.jsonl": "c55714a64ea4249ac8fc8054ea41d58878f1e2f326e5d0cd5d76d40123db82b9",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r2-after.log": "37c736dd540e49a0e060519a46f57b52180cf9e756801a4a78cc55b099929e18",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r2-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r2-before.jsonl": "e07a77875fe97f6a624f2ae502d8ef5e6ee5b7c5e7dffe1c551efcb6a2447958",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r2-before.log": "f9b12c678c17ab029cb1c80488fd8cae7b506a8a08ae420ab416ed6c89c9f666",
+    "target/i10-energy-point-reuse-20260918/alternating/dev-sine-flow-r2-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/alternating/results.json": "4b3f478ec0c036375bc029fdc04ee8177d2e093a3f4ded670a05f606dfc17759",
+    "target/i10-energy-point-reuse-20260918/before/src/life/action_candidates/energy.rs": "8a6ba31792ca9ed94a695a54189cf9f3d174b7dcff8c9b5f26f0253a6520a3a9",
+    "target/i10-energy-point-reuse-20260918/before/src/life/self_prediction/projection.rs": "8a3cd13d6cbc98968a4cae02b08a5dc9fc07bf3067a5b090ff35a86f2a316177",
+    "target/i10-energy-point-reuse-20260918/before-render": "389e58c0a317593a9d7d9f3f2611fe22e18c4fd4f71ec51fb96f5245b7ffcf63",
+    "target/i10-energy-point-reuse-20260918/benchmark.py": "3aa5c42b1907ff5dcbf83ca3d8da193f42b837f28be7d386e4063a3c0eac6614",
+    "target/i10-energy-point-reuse-20260918/check-0.log": "f93fa898fd3a8eb29d0684736c1a82ec597b78d27bf7fa79b7a6265f4f89a1dd",
+    "target/i10-energy-point-reuse-20260918/check-1.log": "7dc23ba58a80ebab0c18b69e6ac5605e0d3cf45b057fb9622088be21a15d16f7",
+    "target/i10-energy-point-reuse-20260918/check-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-energy-point-reuse-20260918/check-3.log": "623095c69ef1bd39766c1333acbb8f75a597405e01974e451c6d0c7b2b73a379",
+    "target/i10-energy-point-reuse-20260918/check-4.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target/i10-energy-point-reuse-20260918/checks.json": "723264cc3ae3b77ff75802e96f1f74512adceccc5f91a41b336d8f50a09ea308",
+    "target/i10-energy-point-reuse-20260918/checks.py": "d0aac3873620c482858e294a635443911ed117d5f61114a78e54c5df2387fb3b",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-entrained-after.jsonl": "6d54d658feea265dec1601e55a0ef2c106b8b35cfe28f39b91eb780f2ae553e3",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-entrained-after.log": "47aab0a8a07af43caaf9da57f2cb30acffe0b4f8978b9b59fc9c2df143238bed",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-entrained-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-entrained-before.jsonl": "851a9325741eabbb60fe9166da744ab7e2b08449ea935e18a1199d22fbdfdd8d",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-entrained-before.log": "aa9f5b9193fdee0bc1f0b145caa308e1c35e3e9981878a51be167e3ae626d7c0",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-entrained-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-pulse-after.jsonl": "26e72c6855c860acd6c0f9fb16aac07a6f6610d30be297a9217b2daa80c97515",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-pulse-after.log": "0fb821280e4f3dbe3003d317ba4a6dbb647e1005b16dbb976e67e79cf404345f",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-pulse-after.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-pulse-before.jsonl": "af6b7daff53f50cb9c3472bb4a5ed25b878e244bd155e220e41e55fed75af606",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-pulse-before.log": "e31d966225576ab17348aefc636092c2ffaf8c579a96ffa2119a9ad28147145d",
+    "target/i10-energy-point-reuse-20260918/dev-harmonic-pulse-before.wav": "3ca0cff2a9f501beb9c8bef5745c64242b6e678a9480cc55a6549b5ec6cad763",
+    "target/i10-energy-point-reuse-20260918/dev-modal-flow-after.jsonl": "62c44e6b81a40a88a265561d676bd50896238f6420e27275b28e9c2d98c9bb50",
+    "target/i10-energy-point-reuse-20260918/dev-modal-flow-after.log": "8fed7e31f8d7a5efdc506ea4b6707b6ae7a05be71f8c809f883c3d626cbaaf24",
+    "target/i10-energy-point-reuse-20260918/dev-modal-flow-after.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-energy-point-reuse-20260918/dev-modal-flow-before.jsonl": "f55d0a4467acd3618e8f50995117d4dc9beaa4714ad1bd12e44d88e143623d97",
+    "target/i10-energy-point-reuse-20260918/dev-modal-flow-before.log": "4800be6a7a2feee73f0e4e415aa844a70592aaba12824520933b748ba46a7967",
+    "target/i10-energy-point-reuse-20260918/dev-modal-flow-before.wav": "4d3f30cdb3be4c7820311638c3bca4dc6301ae056c4d2b1317fd287e3d887e12",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-flow-after.jsonl": "1162a9dbc5f3382df6dcd2429fe3d9da14e94b2479e8474b3c97395b37630bff",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-flow-after.log": "9db25b2d289dabc1afbd074ce74898b17615e8064c6886310bd57f3ec805d3f3",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-flow-after.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-flow-before.jsonl": "a29780441f7f5d1d90a84e9e11940facc767ba23614e514ea1e64ec4e0f9fef1",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-flow-before.log": "cb23e893dad886804dc4be4170f6df4d160e4bc1cafe9726604886ab92cb53c2",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-flow-before.wav": "d1979697c99252d4f46e8fe13a60bb0c2ba72eda9dcee9251e12b1cd53576e0d",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-hold-after.jsonl": "4e7fee6fb98e7441447b76127602a7ad0984d6ca0cb6496913932cb70ae036a7",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-hold-after.log": "0156fa4dd8db2ec52f8459bd8b0cdbb8dd6da043c167b2df5d4ff8c2bab0ba55",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-hold-after.wav": "02108f3e1162fbc2dca395466e323bcfb9390afe01ec8e4efa3fdd83fbf5d766",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-hold-before.jsonl": "a1f5286c7cc6b9961c8a3a759a7200c51b4e4f2e570d7f153213e16175d0b719",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-hold-before.log": "73247f557c05000253f69d9b6c95080dcca5cda0f9264007733b66190d5f88b1",
+    "target/i10-energy-point-reuse-20260918/dev-sine-110-hold-before.wav": "02108f3e1162fbc2dca395466e323bcfb9390afe01ec8e4efa3fdd83fbf5d766",
+    "target/i10-energy-point-reuse-20260918/dev-sine-flow-after.jsonl": "cd2040a82d6e36396c863ab14d269314a8009ec91c3ed64652f991b3762bffa9",
+    "target/i10-energy-point-reuse-20260918/dev-sine-flow-after.log": "55aec5856d738b0a85bc89a2b8510f9639bb5be62b6b2c9fb12bc62c8ca8fb88",
+    "target/i10-energy-point-reuse-20260918/dev-sine-flow-after.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/dev-sine-flow-before.jsonl": "aacde75279fafaf46d4680189d4dd1131b5c725715e806df1d26bdac7de0e2f9",
+    "target/i10-energy-point-reuse-20260918/dev-sine-flow-before.log": "7e550bdfd6b65d4376a2f3e7ec4fcb4bdfa2ff93e30b93bd34f0934abb6784dc",
+    "target/i10-energy-point-reuse-20260918/dev-sine-flow-before.wav": "ea5bf255ad36e2735d8f8402827aa759a5409b95e3639923bb34b710d5b325a2",
+    "target/i10-energy-point-reuse-20260918/dev-sine-hold-after.jsonl": "1a8784c88ccaa42e6d69a7d3c609d0b0cfb5d63f452fa2f1dcb00fd48bcf8ca4",
+    "target/i10-energy-point-reuse-20260918/dev-sine-hold-after.log": "e4715b9a09e14f7fbad70af40d028f4984da1b1ec7948b9d4b93fe415685256f",
+    "target/i10-energy-point-reuse-20260918/dev-sine-hold-after.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-energy-point-reuse-20260918/dev-sine-hold-before.jsonl": "73be911f8d57084b7ba2e75d7e63bc579b652c7c6f7182ca88687edda532ed26",
+    "target/i10-energy-point-reuse-20260918/dev-sine-hold-before.log": "19db019cd6895ec459248bc2fdd4b6d0daad9b19327931ef210e79bf27dcadc8",
+    "target/i10-energy-point-reuse-20260918/dev-sine-hold-before.wav": "df6245a85ead993abb739454bf67a1e8cb8db0c43f4858b74b13926f07753c3d",
+    "target/i10-energy-point-reuse-20260918/dev-sine-silent-after.jsonl": "ef547c62c75a9695d75055c06f2b190fc220f7a39b9cf2870b8778120f7dd5f0",
+    "target/i10-energy-point-reuse-20260918/dev-sine-silent-after.log": "9c605374c3a14f8a8a799eb97f8459934057b634ca2ea644cb8f6cf5d8138c33",
+    "target/i10-energy-point-reuse-20260918/dev-sine-silent-after.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-point-reuse-20260918/dev-sine-silent-before.jsonl": "8a8ca3f05679bd89295dd889af4db74bf18bfcba5b13b6c025082c143b975fc9",
+    "target/i10-energy-point-reuse-20260918/dev-sine-silent-before.log": "a5a550151f780ff23e6b5fe1751294f6efaf1223730743aeb4edd6baad00859a",
+    "target/i10-energy-point-reuse-20260918/dev-sine-silent-before.wav": "53bc174fd36aa9b44baab8b06cb3bc1fc7947c5a022f2159e059fdbe2a91f3cd",
+    "target/i10-energy-point-reuse-20260918/inputs/config.toml": "e2c0e475b4ffba2e86abc8bcbdceee659ba7435e2967c05cb3489c2eb6c8a3e7",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-harmonic-entrained.rhai": "6294eea8dfc59e4c8166be87f2e6838279544b8e31f433a1f5a8636d39c632e3",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-harmonic-pulse.rhai": "fbc28e43025dbd71d848728320bb0ff60aeeffe9b06e1366b5f34f365c28692f",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-modal-flow.rhai": "039794d9763e162fec9f0e95b6e0cfc0eb0a553233f18f57bf7619ae95bd512a",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-sine-110-flow.rhai": "7544de4049222dfccd8a5c3f88ffed87c127e8426f7efd843214d72bb9bf0daf",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-sine-110-hold.rhai": "3ff8eed161a4f30aac9e3ae6bf2136835017984107741c9716687764a6edf015",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-sine-flow.rhai": "806b2ddd19b787f5deca38a80fc4395bb8fed176ed9f7189152d349184005c11",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-sine-hold.rhai": "c46e931db90947c724ef4d071b782569b111fc6e32ab70526c4a522e23b768dd",
+    "target/i10-energy-point-reuse-20260918/inputs/dev-sine-silent.rhai": "a3b7fcc30d0a340260ea3deda1596f1f3f827b1a2996d885872fa0aab29b8957",
+    "target/i10-energy-point-reuse-20260918/plan.json": "5a0619334aebf75d413ca94fb76beaafefd068a84299ee849a13fd20c2eaac76",
+    "target/i10-energy-point-reuse-20260918/register.py": "216b6ed0cbd3b5c10897ef6e111d7dba5d8ab090b3f99edc0c4e6c0ea6bac597",
+    "target/i10-energy-point-reuse-20260918/runs.json": "0b784428528e152bcdbcc50fe7e12965582ab1ddfb34f32d454c63edabdf3109",
+    "target/i10-energy-point-reuse-20260918/test_report.txt": "aeb605a62e4e1a8d918a66aba0e4efc8584708a2f7c377d75d90a317f2104a44",
+    "target/i10-energy-point-reuse-20260918/test_status.txt": "24130e6a1b9f582c58c6523a19c511116d931307250748b848b592b70773cd05",
+    "target/i10-energy-point-reuse-20260918/verification.json": "5db0ee7689c49377af6e5420e3e761ca3b78ac6d183fafd239e86470ab35a55e",
+    "target/i10-energy-point-reuse-20260918/verify.py": "c4e62e0cdc91a09cb0f9a60ec2a56c4b83aa91b21ad8da14c34f87e2fa68d99b"
+  }
+}

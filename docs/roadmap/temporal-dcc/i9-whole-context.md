@@ -214,7 +214,7 @@ node側79,656回、prefix側163,477回のedge枝刈りが発生した。これ�
 
 ## 固定した研究用scenarioと実ファイルreplay
 
-既存登録素材の指定がないため、技術検証用に`samples/research/temporal_long_returns.rhai`を追加した。
+既存登録素材の指定がないため、技術検証用に`samples/research/temporal_long_returns.rhai`を追加した。この素材は2026-09-20の研究拡張の削除でmainから外し、branch `research/temporal-dcc-extension` に保存した。
 seedは2026091309、30秒cellを60個、最初の12秒motifを150／810／1740秒で再提示する。
 直前のmotif終端からの介在は138／648／918秒。harmonic Voiceの周波数移動、二声の重なり、
 releaseと休止を含み、専用の同期Voiceは置かない。構成ラベルは音響observerへ渡さない。

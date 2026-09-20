@@ -102,6 +102,7 @@ ListenerTwinは受動的な観測指標に留める。I9除外はこの規則の
 - 本体のA4は、I9／I12eに加えてI7・I8・I12a／c／d・T3評定head・T5・T6を監査対象から外す。四接続の統合判定はI12b二経路の除去比較へ置き換える。
 - I11の対象は本体T行に限る。本体の閾値・尺度は各Iの契約検査（O03／O09）で登録し、人の評定へ適合させない。
 - 既存の数値参照（39／82成分descriptor、109係数head、episode graph、fit表）は研究拡張ブランチと`docs/roadmap/temporal-dcc/*.json`に保存し、本体の依存へ戻さない。
+- `scripts/`のPython参照コーパスは、mainに残るRust（descriptor・matcher・memory・query・transport）の数値参照として保持する。削除したのはmainから消えたRustのfixture生成器だけで、参照モジュールと単体テストは相互依存が閉じるように残す。
 - 継続運転、air-gap、既定off、Scenario指示≠聴いた帰還の証拠、因果的状態更新、R2／A3の全処理計数は変更しない。
 - I10は§2行の狭い範囲で閉じる。2026-09-18〜20の共同posterior・全帰結投影・phrase再重み付けの作業は研究拡張の保存記録とし、`src/temporal_cognition/joint/`・`consequence/`・`long_form.rs` はmainから削除した。残作業の仕分けとI11入力契約は[I10記録](i10-body-outcome.md#i10の範囲確定と残作業の再定義2026-09-20)。
 - 候補表は観測文脈（`src/temporal_cognition/context.rs`）から作る。列はfeature窓、articulation投影、短窓の四座標、grouping支持、arrival、accent密度、文脈三座標に限る。closure／continuation／groove由来の列は削除した。

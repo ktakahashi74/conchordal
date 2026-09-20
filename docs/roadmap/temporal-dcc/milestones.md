@@ -214,14 +214,14 @@ I4の残作業として、`recall.rs` から `matcher.rs`／`memory.rs`／`query
 記憶は固定スパンのepisodeで動く。`reference_inventory` はその検索結果を入力にとるため、探索の分離には代替の照合規則が要る。
 I11の比較量・有界窓・情報締切・欠測時の選択規則と、I12b到来経路の更新則・尺度は、I11の実装前登録で確定する。登録前はI11・I12bの機能成立を主張しない。
 
-未解決（2026-09-20に発見、I10の残作業へ追加）: 私有参加traceが信用を割り当てなくなった。
-`reference_inventory` が作る参照のanchorは、これまでphrase cueで封緘したepisodeの検索結果に紐づいていた。
-固定スパンepisodeへ切り替えた結果、`private_trace::paired_lookup` の窓（非周期系では候補時刻の4周期以内）に
-入るanchorが無くなり、支持が0、`assigned` が0、`learned` が0になる。統合テスト
-`temporal_observation_preserves_audio_and_finishes_both_buses` は現状（previews>0、支持0、信用0）を明示して検査し、
-回復したら失敗するようにしてある。I10完了にはこの回復が要る。選択肢は、参照anchorを直近のaccent台帳から選ぶ、
-固定スパンの長さ・周期推定を候補窓に合わせる、`paired_lookup` の窓規則を明示し直す、のいずれか。
-phrase／sectionをmainへ戻す案は機構選択規則に反するため採らない。
+解決済み（2026-09-20に発見・同日解決）: 研究拡張の削除直後、私有参加traceが信用を割り当てなくなった。
+原因は設定の意味の変化だった。phrase cueがある間は、cueのcommitがepisodeを封緘し、`span_hops` はquery span
+だけを決めていた。cueを外すと `span_hops` が封緘するepisodeの長さそのものになる。検査設定の8 hop（85 ms）では
+毎秒約11本のepisodeを封緘し、16枠のbankを1.4秒で総入れ替えしてしまう。削除前後の実測は、検索行314→66、
+参照付き在庫34→5、参照378→44、信用付きtrace 16→0。
+検査設定を1秒のepisode（`span_hops = 96`）と32枠へ改めたところ、封緘570→24、退避554→8となり、
+信用・候補/default時刻差・学習済み予測の再利用がすべて回復した。`src/config.rs` の `span_hops`・`episodes` に
+この意味を明記した。コード側の変更は不要で、`paired_lookup` の窓規則も変えていない。
 
 残依存のsource監査（2026-09-19）: 共同正規化・全帰結の核・参加意欲の109座標標準化組立は監査時点でtest build限定。
 通常版はraw closure／continuation二列であり、全帰結の残作業は単なる呼出し追加ではない。

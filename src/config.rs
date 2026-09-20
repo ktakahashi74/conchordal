@@ -386,7 +386,11 @@ pub struct TemporalMemoryConfig {
     /// Explicit search capacity; absent selects the frozen 16-candidate baseline.
     pub candidates: Option<usize>,
     pub scales: [f64; 10],
+    /// Assay span, and with it the sealed episode length: a span is sealed into one episode
+    /// once this many observed hops accumulate. Short spans seal often and evict the bank
+    /// before a retained reference can be reused.
     pub span_hops: u64,
+    /// Episode bank capacity. It bounds how far back a reference can still be retained.
     pub episodes: usize,
     pub query_cadence_ms: u64,
     pub deadline_ms: u64,

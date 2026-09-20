@@ -505,11 +505,21 @@ section("author label is not an observation", || {
     }
     // Reuse the full observation configuration for a longer sealed-memory assay.
     let mut document: toml::Table = toml::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
-    // The private trace assay uses the registered 100 ms query cadence.
+    // With the phrase-cue commitments gone, span_hops alone sets the sealed episode length,
+    // so the assay states it: the registered 100 ms query cadence, a one-second episode and a
+    // bank deep enough that a returning Voice can reuse what an earlier issue taught it.
     document["temporal_memory"]
         .as_table_mut()
         .unwrap()
         .insert("query_cadence_ms".into(), toml::Value::Integer(100));
+    document["temporal_memory"]
+        .as_table_mut()
+        .unwrap()
+        .insert("span_hops".into(), toml::Value::Integer(96));
+    document["temporal_memory"]
+        .as_table_mut()
+        .unwrap()
+        .insert("episodes".into(), toml::Value::Integer(32));
     document["temporal_memory"].as_table_mut().unwrap().insert(
         "retention".into(),
         toml::Value::try_from(conchordal::config::TemporalRetentionConfig {
@@ -845,34 +855,24 @@ wait(0.6);
                         assert_eq!(summary["pending"], 0);
                         assert!(trace_records > 0);
                         if habitat {
-                            // Previews are issued and each names exactly one body default (checked
-                            // above). Since the phrase-cue episodes were removed, the retained
-                            // reference anchors are older than the candidate window, so no fit is
-                            // supported and no candidate/default difference appears. Registered as
-                            // an open I10 item; do not relax this into an unconditional pass.
                             assert!(
-                                timing_previews > 0,
-                                "no candidate timing preview reached the report"
-                            );
-                            assert_eq!(
-                                (timing_supported, timing_differences),
-                                (0, 0),
-                                "supported candidate fits reappeared: previews={timing_previews}"
+                                timing_previews > 0 && timing_differences > 0,
+                                "no learned candidate/default timing difference: previews={timing_previews}, differences={timing_differences}, supported_fits={timing_supported}"
                             );
                             assert_eq!(
                                 summary["timing_previews"].as_u64().unwrap(),
                                 timing_previews
                             );
-                            // Same open item: with no supported reference fit the trace assigns no
-                            // credit and learns nothing, so every issued entry stays unassigned.
-                            assert_eq!(trace_credit, 0., "{summary}");
-                            assert_eq!(summary["learned"], 0);
-                            assert_eq!(summary["assigned"], 0.);
-                            assert_eq!(
-                                summary["unassigned"].as_f64().unwrap(),
-                                summary["issued"].as_f64().unwrap()
+                            assert!(
+                                trace_credit > 0.,
+                                "no actual participation credit: {summary}"
                             );
-                            assert!(trace_voices.values().all(|v| v.1 == 0. && v.2 == 0));
+                            assert!(
+                                trace_voices
+                                    .values()
+                                    .any(|v| v.0 > 2 && v.1 > 0. && v.2 > 0),
+                                "no returning Voice used its issued learned forecast: {trace_voices:?}"
+                            );
                         } else {
                             assert_eq!(trace_credit, 0.);
                             assert_eq!(summary["learned"], 0);

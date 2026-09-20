@@ -4232,8 +4232,9 @@ decision does not establish the validity of a cognitive mechanism. Obligations O
 the core through A1/A2/A4. The R/A/O items named here are an excerpt; the obligation text
 and full mapping live in `docs/roadmap/temporal-dcc/milestones.md` §1.3 and §4.
 
-**What is kept.** The existing I7, I8 and groove-head implementations and numerical
-fixtures are not deleted; they remain default-off diagnostic and report paths. As with I9,
+**What is kept.** On 2026-09-20 the I7, I8 and groove-head implementations and their
+numerical fixtures were preserved on branch `research/temporal-dcc-extension`
+(tag `research/temporal-dcc-extension-20260920`) and removed from main. As with I9,
 records of technical completion are not promoted to cognitive adoption. The air gap,
 default-off state, causal state updates, and the separation between an authored return
 instruction and evidence of a heard return are unchanged. This revision changes documented

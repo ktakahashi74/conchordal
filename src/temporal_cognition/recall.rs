@@ -1,23 +1,11 @@
-//! Received memory evidence and bounded assay or selected-phrase prefix queries.
+//! Received memory evidence and bounded fixed-span assay queries.
 
 use super::{descriptor, memory, proposals::frontend, query, ridge::Handle, transport};
 use crate::config::TemporalMemoryConfig;
 
-pub(in crate::temporal_cognition) use graph::Snapshot as GraphSnapshot;
-
 const MODEL_VERSION: u64 = 5;
 const KNOTS: usize = 128;
 const COARSE_SNAPSHOTS: usize = 8;
-
-#[derive(Clone, Copy, Debug, serde::Serialize)]
-pub(crate) struct SealedCoarse {
-    pub occurrence_id: u64,
-    pub support_end_sample: u64,
-    pub query: Option<query::CoarseEvidence>,
-    pub known_costs: usize,
-    pub unknown_costs: usize,
-    pub approximate_costs: usize,
-}
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub(crate) struct Snapshot {
@@ -25,14 +13,8 @@ pub(crate) struct Snapshot {
     pub retrieval: [Option<retrieval::Group>; 7],
     pub coarse_snapshots_per_group: usize,
     pub coarse_cache_owned_bytes: usize,
-    pub latest_sealed_coarse: Option<SealedCoarse>,
-    pub sealed_with_coarse_query: u64,
-    pub sealed_without_coarse_query: u64,
     pub acquisition: Option<clock::Snapshot>,
-    pub graph: Option<graph::Snapshot>,
     pub stored_episodes: usize,
-    pub phrase_episodes: usize,
-    pub committed_support: f64,
     pub stored_total: u64,
     pub evicted: u64,
     pub queries: u64,
@@ -46,20 +28,11 @@ pub(crate) struct Snapshot {
     pub group_queries: [Option<ResultSnapshot>; 7],
 }
 
-impl Snapshot {
-    pub fn latest_for(&self, group: Handle) -> Option<ResultSnapshot> {
-        self.group_queries
-            .iter()
-            .flatten()
-            .find(|q| q.group == group)
-            .copied()
-    }
-}
+impl Snapshot {}
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub(crate) struct ResultSnapshot {
     pub query_id: u64,
-    pub cue: Option<super::section::cue::Selection>,
     pub group: Handle,
     pub support_start_sample: u64,
     pub support_end_sample: u64,
@@ -112,31 +85,13 @@ pub(crate) struct Prediction {
     pub scales: [f64; 10],
 }
 
-impl Prediction {
-    pub(super) fn normalized_residual(&self, values: [Option<f64>; 10]) -> Option<f64> {
-        let mut sum = 0.;
-        let mut count = 0;
-        for (i, actual) in values.into_iter().enumerate() {
-            if let (Some(actual), Some(expected)) = (actual, self.values[i]) {
-                if !self.scales[i].is_finite() || self.scales[i] <= 0. {
-                    return None;
-                }
-                sum += ((actual - expected) / self.scales[i]).powi(2);
-                count += 1;
-            }
-        }
-        (count > 0)
-            .then(|| sum / count as f64)
-            .filter(|v| v.is_finite())
-    }
-}
+impl Prediction {}
 
 struct Group {
     handle: Handle,
     span: Option<descriptor::Span>,
     latest: Option<ResultSnapshot>,
     matches: Box<[[Option<MatchSnapshot>; 4]]>,
-    pending_cue: Option<(u64, super::section::cue::Selection)>,
     start: u64,
     end: u64,
 }
@@ -155,7 +110,6 @@ pub(crate) struct Recall {
     retention_costs: Vec<(u64, Option<f64>)>,
     retrieval_scratch: Vec<retrieval::Entry>,
     recognition_scratch: Vec<(u64, f64)>,
-    graph: Option<graph::Graph>,
     config: TemporalMemoryConfig,
     rate: u32,
     hop: u64,
@@ -168,10 +122,7 @@ pub(crate) struct Recall {
     pending: Option<Pending>,
     pending_matches: Box<[[Option<MatchSnapshot>; 4]]>,
     query_id: u64,
-    cue_mode: Option<bool>,
     episode_id: u64,
-    last_commit: u64,
-    phrase_provenance: Vec<(transport::Identity, super::section::commitment::Evidence)>,
     snapshot: Snapshot,
 }
 
@@ -255,7 +206,6 @@ impl Recall {
             } else {
                 0
             }),
-            graph: None,
             config,
             rate,
             hop,
@@ -269,10 +219,7 @@ impl Recall {
             pending_matches: vec![[None; 4]; config.candidates.unwrap_or(memory::CANDIDATES)]
                 .into_boxed_slice(),
             query_id: 0,
-            cue_mode: None,
             episode_id: 0,
-            last_commit: 0,
-            phrase_provenance: Vec::with_capacity(config.episodes),
             retained_ids: (0, std::sync::Arc::from([])),
             snapshot: Snapshot {
                 coarse_snapshots_per_group: COARSE_SNAPSHOTS,
@@ -288,9 +235,6 @@ impl Recall {
                 .acquisition
                 .as_ref()
                 .map(|c| c.snapshot(self.episodes.first().map(|e| e.first_observed_end))),
-            graph: self.graph.as_ref().map(|g| g.snapshot()),
-            phrase_episodes: self.phrase_provenance.len(),
-            committed_support: self.phrase_provenance.iter().map(|(_, p)| p.support).sum(),
             latest: self
                 .groups
                 .iter()
@@ -349,14 +293,6 @@ impl Recall {
     }
 
     #[cfg(test)]
-    pub(in crate::temporal_cognition) fn latest_matches(
-        &self,
-    ) -> Option<(ResultSnapshot, &[[Option<MatchSnapshot>; 4]])> {
-        self.snapshot()
-            .latest
-            .and_then(|q| self.matches_for(q.group))
-    }
-
     pub(in crate::temporal_cognition) fn matches_for(
         &self,
         group: Handle,
@@ -365,7 +301,16 @@ impl Recall {
         g.latest.map(|q| (q, g.matches.as_ref()))
     }
 
-    pub(crate) fn receive(
+    #[cfg(test)]
+    pub(in crate::temporal_cognition) fn latest_matches(
+        &self,
+    ) -> Option<(ResultSnapshot, &[[Option<MatchSnapshot>; 4]])> {
+        self.snapshot()
+            .latest
+            .and_then(|q| self.matches_for(q.group))
+    }
+
+    fn retire_unheld_groups(
         &mut self,
         acoustic: &frontend::Snapshot,
         cut: u64,
@@ -387,16 +332,8 @@ impl Recall {
         &mut self,
         acoustic: &frontend::Snapshot,
         cut: u64,
-        cues: Option<&super::section::cue::Stream>,
     ) -> Result<(), &'static str> {
-        if self.cue_mode.is_some_and(|mode| mode != cues.is_some()) {
-            return Err("memory query ownership cannot change within an epoch");
-        }
-        if cues.is_some() && self.config.query_cadence_ms != 100 {
-            return Err("phrase cue queries require the registered 100 ms cadence");
-        }
-        self.cue_mode = Some(cues.is_some());
-        self.receive(acoustic, cut)?;
+        self.retire_unheld_groups(acoustic, cut)?;
         for update in acoustic.features[..7].iter().flatten() {
             let raw = &update.raw;
             if !acoustic.retained_groups.contains(&Some(raw.group)) {
@@ -420,7 +357,6 @@ impl Recall {
                     span: None,
                     latest: None,
                     matches: vec![[None; 4]; self.pending_matches.len()].into_boxed_slice(),
-                    pending_cue: None,
                     start: raw.start,
                     end: raw.start,
                 });
@@ -472,23 +408,13 @@ impl Recall {
                     .query_id
                     .checked_add(1)
                     .ok_or("memory query IDs exhausted")?;
-                let (frozen, selected) = if let Some(cues) = cues {
-                    let Some((frozen, selected)) = cues.prefix(group.handle, cut)? else {
-                        continue;
-                    };
-                    (frozen, Some(selected))
-                } else {
-                    (span.prefix(cut)?, None)
-                };
-                let occurrence = selected.map_or(self.query_id, |s| s.occurrence_id);
-                if self.scheduler.submit(
+                let frozen = span.prefix(cut)?;
+                self.scheduler.submit(
                     slot,
                     &frozen,
-                    [self.query_id, occurrence, self.query_id],
+                    [self.query_id, self.query_id, self.query_id],
                     cut,
-                )? {
-                    group.pending_cue = selected.map(|s| (self.query_id, s));
-                }
+                )?;
             }
         }
         if let Some(dispatch) = self.scheduler.take(cut)? {
@@ -652,30 +578,12 @@ impl Recall {
                     scales: self.config.scales,
                 })
             });
-            let cue = group
-                .pending_cue
-                .filter(|(id, _)| *id == dispatch.header.query_id)
-                .map(|(_, s)| s);
-            if cues.is_some()
-                && cue.is_none_or(|s| {
-                    s.occurrence_id != dispatch.header.occurrence_id
-                        || s.start_sample != start
-                        || s.support_end_sample != end
-                        || s.selected_at != (dispatch.header.captured * rate).round() as u64
-                        || s.last_observed_sample > end
-                        || !s.weighted_seconds.is_finite()
-                        || s.weighted_seconds <= 0.
-                })
-            {
-                return Err("dispatched phrase cue differs from its frozen selection");
-            }
             let snapshot = ResultSnapshot {
                 search_covered: report.search_covered,
                 cutoff_tie: report.cutoff_tie,
                 pruned_candidates: report.pruned_candidates,
                 pruned_ties: report.pruned_ties,
                 query_id: ticket.query.id,
-                cue,
                 group: group.handle,
                 support_start_sample: start,
                 support_end_sample: end,
@@ -723,99 +631,31 @@ impl Recall {
                 continue;
             }
             let frozen = group.span.take().unwrap().finish(cut)?;
-            if cues.is_none() {
-                self.store(&frozen, None, cut)?;
-            }
-        }
-        if let Some(cues) = cues {
-            for (evidence, frozen) in cues.committed() {
-                if evidence.sequence <= self.last_commit {
-                    continue;
-                }
-                self.store(frozen, Some(*evidence), cut)?;
-                self.last_commit = evidence.sequence;
-            }
-            if let Some(graph) = self.graph.as_mut() {
-                graph.retain_sources(cut, |group, credit, start| {
-                    cues.retains_prefix(group, credit, start)
-                })?;
-            }
+            self.store(&frozen, cut)?;
         }
         self.snapshot.stored_episodes = self.episodes.len();
         self.refresh_retrieval(cut)?;
         Ok(())
     }
 
-    fn store(
-        &mut self,
-        frozen: &descriptor::Frozen,
-        provenance: Option<super::section::commitment::Evidence>,
-        cut: u64,
-    ) -> Result<(), &'static str> {
+    fn store(&mut self, frozen: &descriptor::Frozen, cut: u64) -> Result<(), &'static str> {
         if frozen.supporting_audio_end.is_none() {
             return Ok(());
         }
         let descriptor = frozen
             .matching()
             .map_err(|_| "memory descriptor export failed")?;
-        let support = provenance.map_or_else(
-            || {
-                (descriptor.knots.iter().map(|k| k.observed_sec).sum::<f64>()
-                    / (frozen.end - frozen.start))
-                    .clamp(0., 1.)
-            },
-            |p| p.support,
-        );
+        let support = (descriptor.knots.iter().map(|k| k.observed_sec).sum::<f64>()
+            / (frozen.end - frozen.start))
+            .clamp(0., 1.);
         if self.config.retention.is_some() && (!support.is_finite() || support <= 0.) {
             return Err("retained episode admission requires positive observed assignment");
         }
         self.retention_costs.clear();
-        let sealed_coarse = if let Some(p) = provenance {
-            let cached = self.scheduler.coarse_for_commitment(
-                p.group,
-                p.ongoing_credit,
-                [p.start, p.end],
-                p.deadline.min(p.end + u64::from(self.rate) / 2),
-                cut,
-            )?;
-            let mut summary = SealedCoarse {
-                occurrence_id: p.occurrence_id,
-                support_end_sample: p.end,
-                query: cached.map(|c| c.evidence()),
-                known_costs: 0,
-                unknown_costs: 0,
-                approximate_costs: 0,
-            };
-            for (slot, episode) in self
-                .episodes
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| e.first_observed_end < p.end as f64 / f64::from(self.rate))
-            {
-                let entry = cached.and_then(|c| c.entry(slot, episode.identity.id));
-                if let Some(entry) = &entry {
-                    debug_assert_eq!(entry.handle, episode.identity.id);
-                    debug_assert_eq!(entry.cost.is_some(), entry.similarity.is_some());
-                }
-                if self.retention.is_some() {
-                    self.retention_costs
-                        .push((episode.identity.id, entry.as_ref().and_then(|e| e.cost)));
-                }
-                if entry.as_ref().is_some_and(|e| e.cost.is_some()) {
-                    summary.known_costs += 1;
-                } else {
-                    summary.unknown_costs += 1;
-                }
-                summary.approximate_costs += usize::from(entry.is_some_and(|e| e.approximate));
-            }
-            Some(summary)
-        } else {
-            if self.retention.is_some() {
-                self.retention_costs
-                    .extend(self.episodes.iter().map(|e| (e.identity.id, None)));
-            }
-            None
-        };
+        if self.retention.is_some() {
+            self.retention_costs
+                .extend(self.episodes.iter().map(|e| (e.identity.id, None)));
+        }
         self.retention_costs.sort_unstable_by_key(|(id, _)| *id);
         if self.episodes.len() == self.config.episodes {
             let victim = if let Some(retention) = self.retention.as_mut() {
@@ -834,11 +674,7 @@ impl Recall {
                 0
             };
             let old = self.episodes.remove(victim);
-            if let Some(graph) = self.graph.as_mut() {
-                graph.retire(old.identity);
-            }
             self.controller.retire(old.identity);
-            self.phrase_provenance.retain(|(id, _)| *id != old.identity);
             for g in self.groups.iter_mut().flatten() {
                 for row in g.matches.iter_mut() {
                     if row[0].is_some_and(|m| {
@@ -872,27 +708,15 @@ impl Recall {
             .map_err(|_| "memory registration failed")?;
         if let Some(retention) = self.retention.as_mut() {
             let rate = f64::from(self.rate);
-            let committed = provenance.map_or(frozen.available_at, |p| p.sealed_at) as f64 / rate;
-            let coarse = sealed_coarse
-                .and_then(|s| s.query)
-                .map(|c| retention::Coarse {
-                    epoch: c.epoch,
-                    generation: c.generation,
-                    query_id: c.query_id,
-                    occurrence_id: c.occurrence_id,
-                    support_id: c.support_id,
-                    support_end: c.end,
-                    supporting_audio_end: c.audio_end,
-                    available_end: c.received_at,
-                    entries: &self.retention_costs,
-                });
+            let committed = frozen.available_at as f64 / rate;
+            let coarse = None;
             retention.apply(
                 self.acquisition.as_ref().unwrap(),
                 &retention::Write {
                     epoch: self.epoch,
-                    sequence: provenance.map_or(self.snapshot.stored_total + 1, |p| p.sequence),
-                    occurrence_id: provenance.map_or(identity.id, |p| p.occurrence_id),
-                    support_id: provenance.map_or(identity.id, |p| p.ongoing_credit),
+                    sequence: self.snapshot.stored_total + 1,
+                    occurrence_id: identity.id,
+                    support_id: identity.id,
                     start: frozen.start,
                     end: frozen.end,
                     committed,
@@ -910,8 +734,7 @@ impl Recall {
         let episode = memory::Episode {
             identity,
             epoch: self.epoch,
-            available_end: provenance.map_or(frozen.available_at, |p| p.sealed_at) as f64
-                / f64::from(self.rate),
+            available_end: frozen.available_at as f64 / f64::from(self.rate),
             first_observed_end: frozen.end,
             scales: self.config.scales,
             descriptor,
@@ -920,41 +743,8 @@ impl Recall {
             .episodes
             .partition_point(|e| e.first_observed_end <= episode.first_observed_end);
         self.episodes.insert(slot, episode);
-        if let Some(provenance) = provenance {
-            self.graph
-                .get_or_insert_with(|| {
-                    graph::Graph::new(
-                        self.bus,
-                        self.epoch,
-                        self.rate,
-                        self.config.episodes,
-                        self.pending_matches.len(),
-                    )
-                })
-                .register(identity, provenance, cut)?;
-            self.phrase_provenance.push((identity, provenance));
-        }
         self.snapshot.stored_total += 1;
-        if let Some(summary) = sealed_coarse {
-            if summary.query.is_some() {
-                self.snapshot.sealed_with_coarse_query += 1;
-            } else {
-                self.snapshot.sealed_without_coarse_query += 1;
-            }
-            self.snapshot.latest_sealed_coarse = Some(summary);
-        }
         Ok(())
-    }
-
-    pub(in crate::temporal_cognition) fn occurrence(
-        &self,
-        episode: u64,
-        generation: u64,
-    ) -> Option<super::section::commitment::Evidence> {
-        self.phrase_provenance
-            .iter()
-            .find(|(id, _)| id.id == episode && id.generation == generation)
-            .map(|(_, e)| *e)
     }
 
     pub(crate) fn finish(&mut self, cut: u64) -> Result<(), &'static str> {
@@ -1008,9 +798,6 @@ impl Recall {
             .finish(pending.dispatch.ticket, completion, &bindings, cut)?
         {
             pending.snapshot.received_at = cut;
-            if let Some(graph) = self.graph.as_mut() {
-                graph.receive(pending.snapshot, &self.pending_matches)?;
-            }
             let group = self.groups[pending.dispatch.group_slot].as_mut().unwrap();
             std::mem::swap(&mut group.matches, &mut self.pending_matches);
             group.latest = Some(pending.snapshot);
@@ -1024,6 +811,5 @@ impl Recall {
 pub(in crate::temporal_cognition) mod tests;
 
 mod clock;
-mod graph;
 mod retention;
 pub(super) mod retrieval;

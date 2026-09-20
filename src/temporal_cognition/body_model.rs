@@ -1,7 +1,7 @@
 //! Frozen development prototypes for body/group matching, not candidate eligibility.
 
 use super::body::Record;
-use super::{observables, phrase, proposals::frontend};
+use super::{context, observables, proposals::frontend};
 use crate::config::{AppConfig, TemporalBodyConfig, TemporalBodyPrototypesConfig};
 
 pub(crate) fn validate(config: &AppConfig) -> anyhow::Result<()> {
@@ -139,11 +139,11 @@ impl Shared {
         cached: &mut Option<Self>,
         model: &Prototypes,
         scales: TemporalBodyConfig,
-        phrase: &phrase::Phrase,
+        context: &context::Context,
         acoustic: &frontend::Snapshot,
         (bus, epoch): (u8, u64),
     ) {
-        let current = phrase.snapshot();
+        let current = context.snapshot();
         let end = current.end_sample;
         let eligible = |descriptor: &observables::WindowDescriptor| {
             descriptor.group.bus == bus
@@ -187,7 +187,7 @@ impl Shared {
         }) {
             return;
         }
-        let descriptors = phrase.body_descriptors().map(|d| d.filter(&eligible));
+        let descriptors = context.body_descriptors().map(|d| d.filter(&eligible));
         let candidates = descriptors.map(|d| {
             d.map_or(
                 Descriptor {

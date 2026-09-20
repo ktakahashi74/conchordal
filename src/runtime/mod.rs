@@ -1022,10 +1022,6 @@ fn wire_runtime(
                     memory: config.temporal_memory,
                     gesture: config.temporal_gesture,
                     period: config.temporal_period,
-                    groove: config.temporal_groove,
-                    phrase: config.temporal_phrase,
-                    section: config.temporal_section,
-                    whole: config.temporal_whole,
                 },
             );
             temporal_snapshots[bus] = Some(Arc::clone(&tap.snapshot));

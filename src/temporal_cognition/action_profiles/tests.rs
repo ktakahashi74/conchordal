@@ -84,23 +84,6 @@ pub(in crate::temporal_cognition) fn model() -> Profiles {
     decode(&config, &bytes(&header, &payload)).unwrap()
 }
 
-pub(in crate::temporal_cognition) fn pulse_model() -> Profiles {
-    let (config, header, mut payload) = fixture();
-    let flux = 4 * 96 + 8 + 5 * 8;
-    payload[flux..flux + 8].copy_from_slice(&4_f64.to_le_bytes());
-    decode(&config, &bytes(&header, &payload)).unwrap()
-}
-
-pub(in crate::temporal_cognition) fn timing_pulse_model() -> Profiles {
-    let mut profiles = model();
-    let mut frames = profiles.frames.to_vec();
-    for i in [4, 14] {
-        frames[i].values[5] = 4.;
-    }
-    profiles.frames = frames.into_boxed_slice();
-    profiles
-}
-
 pub(in crate::temporal_cognition) fn distinct_release_model() -> Profiles {
     let mut profiles = model();
     let mut frames = profiles.frames.to_vec();
@@ -115,34 +98,10 @@ pub(in crate::temporal_cognition) fn distinct_release_model() -> Profiles {
     profiles
 }
 
-pub(in crate::temporal_cognition) fn shared_prefix_model() -> Profiles {
-    let mut profiles = model();
-    let mut frames = profiles.frames.to_vec();
-    for offset in 1..32 {
-        for (i, mut frame) in profiles.frames.iter().copied().enumerate() {
-            if i >= profiles.offsets[offset] as usize / 512 {
-                frame.values[2] = -20.;
-                frame.values[3] = 0.25;
-                frame.values[4] = 0.5;
-                frame.values[5] = 0.75;
-                frame.values[10] = 0.01;
-            }
-            // Force prefix rejection before and after this trajectory.
-            if offset == 3 && i == 1 {
-                frame.values[3] = 0.125;
-            }
-            frames.push(frame);
-        }
-        profiles.profiles[0].trajectories[1][offset] = Some(offset);
-    }
-    profiles.frames = frames.into_boxed_slice();
-    profiles
-}
-
 pub(in crate::temporal_cognition) fn assert_table_matches_direct(
     table: &Table,
     profiles: &Profiles,
-    phrase: &Phrase,
+    context: &context::Context,
     gesture: &super::super::gesture::Gesture,
 ) {
     let snapshot = table.snapshot.unwrap();
@@ -156,30 +115,22 @@ pub(in crate::temporal_cognition) fn assert_table_matches_direct(
                 });
                 let direct = (relative <= 192_000)
                     .then(|| {
-                        phrase
-                            .project_action_window(
-                                profiles,
-                                prototype,
-                                class,
-                                offset,
-                                snapshot.issued_at + relative,
-                                group,
-                                gesture.rms_reference(),
-                                Some(gesture),
-                                snapshot
-                                    .arrival_issues
-                                    .iter()
-                                    .flatten()
-                                    .find(|a| a.group == group),
-                                None,
-                                None,
-                                None,
-                            )
-                            .map(|mut cell| {
-                                cell.raw_unreweighted_heads =
-                                    snapshot.raw_head_issue.project(&cell);
-                                cell
-                            })
+                        context.project_action_window(
+                            profiles,
+                            prototype,
+                            class,
+                            offset,
+                            snapshot.issued_at + relative,
+                            group,
+                            gesture.rms_reference(),
+                            Some(gesture),
+                            snapshot
+                                .arrival_issues
+                                .iter()
+                                .flatten()
+                                .find(|a| a.group == group),
+                            None,
+                        )
                     })
                     .flatten();
                 assert_eq!(
@@ -215,7 +166,6 @@ fn evaluation_timing_config_preserves_omitted_policy_and_rejects_invalid_delays(
             .unwrap()
             .contains("evaluation_delay")
     );
-    config.temporal_phrase = Some(super::super::phrase::tests::config());
     for delay in [0, 250, 1000, 4000, 4001, u32::MAX] {
         let spec: TemporalActionProfilesConfig =
             toml::from_str(&format!("{text}evaluation_delay_ms = {delay}\n")).unwrap();
@@ -279,9 +229,9 @@ fn evaluation_timing_uses_issue_relative_complete_hops_without_horizon_clipping(
 
 #[test]
 fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observations() {
-    use crate::temporal_cognition::{gesture, phrase};
+    use crate::temporal_cognition::{context, gesture};
     let mut profiles = distinct_release_model();
-    let mut phrase = Phrase::new(1, 0, 0, 48000, 512, phrase::tests::config()).unwrap();
+    let mut observed = context::Context::new(1, 0, 0, 48000, 512).unwrap();
     let mut gesture = gesture::Gesture::new(
         1,
         0,
@@ -295,7 +245,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
         },
     )
     .unwrap();
-    let mut input = phrase::tests::input(1, 0.5);
+    let mut input = context::tests::input(1, 0.5);
     input.assignment.end_sample = 512;
     input.correlation_window = [0, 512];
     let raw = &mut input.features[0].as_mut().unwrap().raw;
@@ -306,9 +256,9 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
     raw.source_end = 512;
     raw.available_end = 512;
     gesture
-        .advance(&input, &phrase::tests::ridges(), 512)
+        .advance(&input, &context::tests::ridges(), 512)
         .unwrap();
-    phrase.advance(&input, &gesture, None, None, 512).unwrap();
+    observed.advance(&input, None, 512).unwrap();
     let mut shared = body_model::Shared {
         model_version: profiles.body_model_version,
         bus: 1,
@@ -322,7 +272,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
         distance: 0.,
         common_coordinates: 6,
     });
-    let before = serde_json::to_value(phrase.snapshot()).unwrap();
+    let before = serde_json::to_value(observed.snapshot()).unwrap();
     let mut table = Table::new();
     let mut frozen_publications = Vec::new();
     let binding = consumer::Binding {
@@ -360,7 +310,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
         profiles.evaluation_delay_samples = delay;
         let old_unavailable = table.resources().evaluation_unavailable_cells;
         let snapshot = table
-            .refresh(&profiles, &phrase, &shared, &gesture, None)
+            .refresh(&profiles, &observed, &shared, &gesture, None)
             .unwrap();
         let published = table.publication(&profiles).unwrap();
         assert_eq!(published.key, consumer::Key::from(&snapshot));
@@ -390,7 +340,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
         assert!(table.publication(&profiles).is_none());
         let mut unrouted_table = Table::new();
         unrouted_table
-            .refresh(&profiles, &phrase, &shared, &gesture, None)
+            .refresh(&profiles, &observed, &shared, &gesture, None)
             .unwrap();
         let unrouted = unrouted_table.publication(&profiles).unwrap();
         assert_eq!(unrouted.key.routed_prototypes, 0);
@@ -466,7 +416,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
             table.resources().evaluation_unavailable_cells - old_unavailable,
             unavailable
         );
-        assert_table_matches_direct(&table, &profiles, &phrase, &gesture);
+        assert_table_matches_direct(&table, &profiles, &observed, &gesture);
         for cell in table.cells.iter().flatten() {
             assert_eq!(cell.issued_at, 512);
             assert!(cell.action_at <= cell.evaluation_at);
@@ -480,7 +430,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
             }
         }
         let repeat = table
-            .refresh(&profiles, &phrase, &shared, &gesture, None)
+            .refresh(&profiles, &observed, &shared, &gesture, None)
             .unwrap();
         assert_eq!(
             serde_json::to_value(snapshot).unwrap(),
@@ -488,7 +438,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
         );
         assert_eq!(table.resources().rebuilds, build as u64 + 1);
     }
-    assert_eq!(before, serde_json::to_value(phrase.snapshot()).unwrap());
+    assert_eq!(before, serde_json::to_value(observed.snapshot()).unwrap());
 }
 
 #[test]
@@ -706,342 +656,4 @@ fn missing_binding_and_silent_energy_are_not_interpolated_or_invented() {
         .next()
         .unwrap();
     assert_eq!(first.raw[6], Feature::Unsupported);
-}
-
-#[test]
-#[ignore = "explicit eight-profile synthetic load assay over frozen external profiles; not matcher or whole-worker acceptance"]
-fn saturated_action_profile_table_load() {
-    use crate::temporal_cognition::{
-        features, gesture, group, observables, phrase, proposals::frontend::recurrence, recall,
-    };
-    use std::io::Write;
-    use std::time::Instant;
-
-    let config_path = std::env::var("CONCHORDAL_I10_MAX_LOAD_CONFIG").unwrap();
-    let output_path = std::env::var("CONCHORDAL_I10_MAX_LOAD_OUTPUT").unwrap();
-    let supported_heads = match std::env::var("CONCHORDAL_I10_MAX_LOAD_HEADS").as_deref() {
-        Ok("1") => true,
-        Ok("0") | Err(_) => false,
-        _ => panic!("CONCHORDAL_I10_MAX_LOAD_HEADS must be 0 or 1"),
-    };
-    let profile_projection =
-        std::env::var("CONCHORDAL_I10_PROFILE_PROJECTION").as_deref() == Ok("1");
-    let config: AppConfig =
-        toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
-    let profiles =
-        Profiles::load(&config, config.temporal_action_profiles.as_ref().unwrap()).unwrap();
-    assert_eq!(profiles.count(), 8);
-    let scales = config.temporal_body.unwrap();
-    let medoids = &config.temporal_body_prototypes.as_ref().unwrap().medoids;
-    let valid_cells = profiles
-        .profiles
-        .iter()
-        .flat_map(|p| p.trajectories.iter())
-        .flat_map(|row| row.iter().enumerate())
-        .filter(|(index, cell)| {
-            let offset = profiles.offsets[*index];
-            let end = profiles.evaluation_delay_samples.map_or(offset, |delay| {
-                let raw = offset + delay;
-                raw + (512 - raw % 512) % 512
-            });
-            cell.is_some() && end <= 192_000
-        })
-        .count();
-    let mut output = std::io::BufWriter::new(std::fs::File::create(output_path).unwrap());
-    for bus in [0, 1] {
-        for group_count in [1, 7] {
-            for quiet in [false, true] {
-                for weighted in [false, true] {
-                    phrase::tests::PROJECTION_NANOS.with(|cost| {
-                        cost.set(profile_projection.then_some([0; 11]));
-                    });
-                    let mut gesture_config = config.temporal_gesture.unwrap();
-                    if !weighted {
-                        gesture_config.coefficients = [[[0.; 11]; 4]; 4];
-                    }
-                    let mut gesture =
-                        gesture::Gesture::new(bus, 0, 48000, 512, gesture_config).unwrap();
-                    let mut phrase =
-                        Phrase::new(bus, 0, 0, 48000, 512, config.temporal_phrase.unwrap())
-                            .unwrap();
-                    let mut table = Table::new();
-                    let mut recurrence = None;
-                    let mut prior_values = [None; 7];
-                    let mut shared = body_model::Shared {
-                        model_version: profiles.body_model_version,
-                        bus,
-                        epoch: 0,
-                        end_sample: 0,
-                        descriptors: [None; 7],
-                        assignments: [None; 8],
-                    };
-                    let mut records = Vec::new();
-                    for step in 1..=201_u64 {
-                        let end = step * 512;
-                        let mut input = phrase::tests::input(step, 0.5);
-                        input.assignment.end_sample = end;
-                        input.correlation_window = [end.saturating_sub(96000), end];
-                        let template = input.features[0].unwrap();
-                        let energy: [f64; 8] = std::array::from_fn(|i| {
-                            if i < group_count {
-                                (if quiet { 1e-8 } else { 0.01 }) * (i + 1) as f64
-                            } else {
-                                0.
-                            }
-                        });
-                        let total: f64 = energy.iter().sum();
-                        input.energy = Some(energy);
-                        input.group_handles = std::array::from_fn(|i| {
-                            (i < group_count).then_some(Handle {
-                                bus,
-                                epoch: 0,
-                                generation: i as u64 + 2,
-                            })
-                        });
-                        input.retained_groups = std::array::from_fn(|i| input.group_handles[i]);
-                        input.assignment.group_handles = input.retained_groups;
-                        input.eligible = std::array::from_fn(|i| i < group_count);
-                        input.features =
-                            std::array::from_fn(|i| {
-                                input.group_handles[i].map(|handle| {
-                                    let mut feature = template;
-                                    feature.raw.group = handle;
-                                    feature.raw.start = end - 512;
-                                    feature.raw.end = end;
-                                    feature.raw.known_samples = 512;
-                                    feature.raw.source_start = end.saturating_sub(2048);
-                                    feature.raw.source_end = end;
-                                    feature.raw.available_end = end;
-                                    feature.raw.values = [
-                                        8. + i as f64 * 0.25,
-                                        0.5,
-                                        0.5 * energy[i].log2(),
-                                        0.,
-                                        0.,
-                                        0.125,
-                                        energy[i] / total,
-                                        0.1,
-                                        0.2,
-                                        0.3,
-                                    ]
-                                    .map(Some);
-                                    if supported_heads {
-                                        feature.raw.values[5] =
-                                            Some(if step % 16 == 3 { 4. } else { 0.125 });
-                                        if step >= 4 {
-                                            let saliences = std::array::from_fn(|j| {
-                                                features::accent_salience(
-                                                    [
-                                                        0.,
-                                                        if (step - 2 + j as u64) % 16 == 3 {
-                                                            4.
-                                                        } else {
-                                                            0.125
-                                                        },
-                                                    ],
-                                                    profiles.accent_means,
-                                                    profiles.accent_deviations,
-                                                )
-                                            });
-                                            let status = features::accent_status(saliences, 1.);
-                                            let accent = (status == features::Status::Admitted)
-                                                .then(|| features::Accent {
-                                                    group: handle,
-                                                    event_start: end - 1024,
-                                                    event_end: end - 512,
-                                                    raw_intervals: std::array::from_fn(|j| {
-                                                        (
-                                                            end - (4 - j as u64) * 512,
-                                                            end - (3 - j as u64) * 512,
-                                                        )
-                                                    }),
-                                                    source_start: end.saturating_sub(3584),
-                                                    source_end: end,
-                                                    available_end: end,
-                                                    weight: (saliences[1] - 1.).min(1.),
-                                                    observed_prefix: end - 512,
-                                                });
-                                            feature.detector = Some(features::Detection {
-                                                acquisition_coverage: 1.,
-                                                detector_coverage: true,
-                                                saliences: Some(saliences),
-                                                status,
-                                                accent,
-                                            });
-                                        }
-                                    }
-                                    feature
-                                })
-                            });
-                        input.assignment.rows = std::array::from_fn(|i| {
-                            input.group_handles[i].map(|handle| group::Row {
-                                trajectory: Handle {
-                                    generation: 100 + i as u64,
-                                    ..handle
-                                },
-                                weights: std::array::from_fn(|j| f64::from(i == j)),
-                                matched_members: [None; 7],
-                            })
-                        });
-                        let memory = (supported_heads && step > 1).then(|| recall::Snapshot {
-                            group_queries: std::array::from_fn(|i| {
-                                input.retained_groups[i].map(|group| {
-                                    // Predict a constant continuation of the previously accepted descriptor.
-                                    let issue = end - 512;
-                                    recall::ResultSnapshot {
-                                        query_id: step,
-                                        cue: None,
-                                        group,
-                                        support_start_sample: issue.saturating_sub(2048),
-                                        support_end_sample: issue,
-                                        source_start_sample: issue.saturating_sub(2048),
-                                        supporting_audio_end: Some(issue),
-                                        available_at: issue,
-                                        issued_at: issue,
-                                        completed_at: issue,
-                                        received_at: end,
-                                        deadline: end,
-                                        candidates: 1,
-                                        search_covered: true,
-                                        cutoff_tie: false,
-                                        pruned_candidates: 0,
-                                        pruned_ties: 0,
-                                        dp_cells: 0,
-                                        reconstruction_error: 0.,
-                                        best: None,
-                                        prediction: Some(recall::Prediction {
-                                            episode_id: i as u64 + 1,
-                                            query_id: step,
-                                            group,
-                                            issued_at: issue,
-                                            source_start: issue.saturating_sub(2048),
-                                            source_end: issue,
-                                            available: issue,
-                                            expected_start: issue,
-                                            expected_end: end + 192000,
-                                            values: prior_values[i].unwrap(),
-                                            scales: [1.; 10],
-                                        }),
-                                    }
-                                })
-                            }),
-                            ..Default::default()
-                        });
-                        let start = Instant::now();
-                        if supported_heads {
-                            recurrence::advance_synthetic_arrivals(
-                                &mut recurrence,
-                                &input,
-                                config.temporal_period.unwrap(),
-                            );
-                        }
-                        let recurrence_ns = start.elapsed().as_nanos() as u64;
-                        let start = Instant::now();
-                        gesture
-                            .advance(&input, &phrase::tests::ridges(), end)
-                            .unwrap();
-                        phrase
-                            .advance(
-                                &input,
-                                &gesture,
-                                memory,
-                                recurrence.as_ref().and_then(|r| r.diagnostics()),
-                                end,
-                            )
-                            .unwrap();
-                        let inference_ns = start.elapsed().as_nanos() as u64;
-                        prior_values = std::array::from_fn(|i| {
-                            input.features[i].map(|feature| feature.raw.values)
-                        });
-                        let build_due = (step - 1).is_multiple_of(10);
-                        if build_due {
-                            shared.end_sample = end;
-                            shared.descriptors = phrase.body_descriptors();
-                            // Force occupancy only in this assay; retain actual distances to selected groups.
-                            shared.assignments = std::array::from_fn(|i| {
-                                let descriptor = shared.descriptors[i % group_count].unwrap();
-                                let medoid = &medoids[i];
-                                let values = observables::standardize(
-                                    std::array::from_fn(|j| {
-                                        (medoid.mask & (1 << j) != 0)
-                                            .then_some(medoid.raw_values[j])
-                                    }),
-                                    scales,
-                                );
-                                body_model::nearest(
-                                    &values,
-                                    &[body_model::Descriptor {
-                                        key: (descriptor.group.epoch, descriptor.group.generation),
-                                        values: observables::standardize(
-                                            descriptor.raw_values,
-                                            scales,
-                                        ),
-                                    }],
-                                    f64::MAX,
-                                )
-                                .unwrap()
-                            });
-                            assert!(shared.assignments.iter().all(Option::is_some));
-                        }
-                        let start = Instant::now();
-                        let snapshot = table
-                            .refresh(&profiles, &phrase, &shared, &gesture, recurrence.as_ref())
-                            .unwrap();
-                        let table_ns = start.elapsed().as_nanos() as u64;
-                        assert_eq!(snapshot.groups.iter().flatten().count(), 8);
-                        assert_eq!(
-                            snapshot.raw_head_issue.groups.iter().flatten().count(),
-                            group_count
-                        );
-                        assert_eq!(snapshot.cells, valid_cells);
-                        if supported_heads && step >= 11 {
-                            assert_eq!(snapshot.raw_head_supported_cells[0], valid_cells);
-                            assert_eq!(
-                                snapshot.arrival_issues.iter().flatten().count(),
-                                group_count
-                            );
-                        }
-                        assert_eq!(snapshot.issued_at == end, build_due);
-                        records.push(serde_json::json!({
-                            "start_sample": end - 512, "end_sample": end,
-                            "inference_ns": inference_ns, "table_ns": table_ns,
-                            "recurrence_ns": recurrence_ns,
-                            "build": build_due, "resources": table.resources(),
-                            "snapshot": build_due.then_some(snapshot),
-                        }));
-                    }
-                    let projection_ns = phrase::tests::PROJECTION_NANOS.with(|cost| cost.take());
-                    assert_table_matches_direct(&table, &profiles, &phrase, &gesture);
-                    let resources = table.resources();
-                    assert_eq!(resources.rebuilds, 21);
-                    assert_eq!(
-                        resources.builds_by_assigned_prototypes,
-                        [0, 0, 0, 0, 0, 0, 0, 0, 21]
-                    );
-                    assert_eq!(resources.attempted_cells, 21 * 8 * 7 * 32);
-                    writeln!(output, "{}", serde_json::json!({
-                        "bus": bus, "groups": group_count, "quiet": quiet, "weighted": weighted,
-                        "supported_heads": supported_heads,
-                        "sample_rate": 48000, "hop": 512, "profile_sha256": profiles.sha256,
-                        "timing_schema": "disjoint-v2",
-                        "scope": "Synthetic maximum assignment assay. Times cover Gesture::advance, Phrase::advance and Table::refresh, plus optional synthetic recurrence ownership/setup, ledger, period/grouping and arrival updates. Exclude raw/memory-input fabrication, forced assignment calculation, serialization and direct-reference validation. No acoustic/memory retrieval/section/queue/audio-device or actual matcher acceptance.",
-                        "direct_table_positions_checked": 8 * 7 * 32,
-                        "projection_stage_ns": projection_ns,
-                        "projection_stage_order": ["feature_windows", "grouping", "articulation", "residual_closure", "accent_arrival", "continuation", "prefix_match", "raw_mixture", "articulation_expand", "articulation_merge", "articulation_rank"],
-                        "final_arrival_cells": table.cells.iter().flatten().map(|cell| serde_json::json!({
-                            "prototype": cell.prototype, "class": cell.class, "group": cell.group,
-                            "issued_at": cell.issued_at, "action_at": cell.action_at,
-                            "evaluation_at": cell.evaluation_at, "arrival": cell.arrival,
-                            "continuation_context": cell.continuation_context,
-                        })).collect::<Vec<_>>(),
-                        "final_resources": resources, "records": records,
-                    })).unwrap();
-                    output.flush().unwrap();
-                    println!(
-                        "I10_MAX_LOAD bus={bus} groups={group_count} quiet={quiet} weighted={weighted} heads={supported_heads} builds=21"
-                    );
-                }
-            }
-        }
-    }
 }

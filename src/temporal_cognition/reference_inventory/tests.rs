@@ -258,7 +258,6 @@ fn supported_periods_keep_distinct_group_anchors_and_reject_future_evidence() {
     let a = acoustic(100, &[2, 3], &[0.5, 0.5], true);
     let mut period = recurrence::Snapshot {
         timing: None,
-        groove_heads: None,
         end_sample: 100,
         received_at: 100,
         residual: Summary {
@@ -280,7 +279,6 @@ fn supported_periods_keep_distinct_group_anchors_and_reject_future_evidence() {
         ledger.group = a.retained_groups[i].unwrap();
         ledger.retained_accents = 2;
         period.groups[i] = Some(recurrence::GroupSnapshot {
-            groove: None,
             ledger,
             active: true,
             acoustic_eligible: true,

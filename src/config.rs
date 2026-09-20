@@ -292,14 +292,6 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_period: Option<TemporalPeriodConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_groove: Option<TemporalGrooveConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_phrase: Option<TemporalPhraseConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_section: Option<TemporalSectionConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_whole: Option<TemporalWholeConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body: Option<TemporalBodyConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body_prototypes: Option<TemporalBodyPrototypesConfig>,
@@ -446,127 +438,14 @@ pub struct TemporalPeriodConfig {
     pub horizon_sec: f64,
 }
 
-/// Frozen base phrase heads; no fitted coefficients are supplied implicitly.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalPhraseConfig {
-    pub means: [f64; 12],
-    pub deviations: [f64; 12],
-    pub hazard: [f64; 26],
-    pub exits: [[f64; 26]; 4],
-    pub closure: TemporalOrdinalConfig,
-    pub continuation: TemporalOrdinalConfig,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalOrdinalConfig {
-    pub means: [f64; 14],
-    pub deviations: [f64; 14],
-    pub coefficients: [f64; 29],
-    pub cutpoints: [f64; 4],
-    pub prior: [f64; 5],
-}
-
-/// Shared development scales and two independently fitted acoustic rating heads.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalGrooveConfig {
-    #[serde(with = "fixed_array")]
-    pub means: [f64; 54],
-    #[serde(with = "fixed_array")]
-    pub deviations: [f64; 54],
-    pub groove: TemporalGrooveHeadConfig,
-    pub desire: TemporalGrooveHeadConfig,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalGrooveHeadConfig {
-    #[serde(with = "fixed_array")]
-    pub coefficients: [f64; 109],
-    pub cutpoints: [f64; 4],
-    pub prior: [f64; 5],
-    pub temperature: f64,
-}
-
-/// Explicit section and acoustic-match scales; these diagnostics are not fitted implicitly.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalSectionConfig {
-    #[serde(with = "fixed_array")]
-    pub means: [f64; 82],
-    #[serde(with = "fixed_array")]
-    pub deviations: [f64; 82],
-    #[serde(with = "fixed_array")]
-    pub hazard: [f64; 83],
-    #[serde(with = "fixed_array")]
-    pub new_context: [f64; 83],
-    #[serde(with = "fixed_array")]
-    pub recurrence: [f64; 83],
-    #[serde(with = "fixed_array")]
-    pub contrast: [f64; 83],
-    pub ending_means: [f64; 6],
-    pub ending_deviations: [f64; 6],
-    pub match_means: [f64; 14],
-    pub match_deviations: [f64; 14],
-    pub match_coefficients: [f64; 15],
-}
-
-/// Separate scoring-only ordinal instrument for the heard whole-piece context.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalWholeConfig {
-    pub means: [f64; 4],
-    pub deviations: [f64; 4],
-    pub coefficients: [f64; 9],
-    pub cutpoints: [f64; 4],
-    pub prior: [f64; 5],
-    pub temperature: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub controls: Option<TemporalWholeControlsConfig>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalScoringConfig<const N: usize, const C: usize> {
-    #[serde(with = "fixed_array")]
-    pub means: [f64; N],
-    #[serde(with = "fixed_array")]
-    pub deviations: [f64; N],
-    #[serde(with = "fixed_array")]
-    pub coefficients: [f64; C],
-    pub cutpoints: [f64; 4],
-    pub prior: [f64; 5],
-    pub temperature: f64,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalWholeControlsConfig {
-    pub closure_only: TemporalScoringConfig<1, 3>,
-    pub gap_energy_2s: TemporalScoringConfig<3, 7>,
-    pub elapsed_only: TemporalScoringConfig<1, 3>,
-}
-
 pub(crate) mod fixed_array {
-    use serde::{Deserialize, Serialize};
+    use serde::Serialize;
 
     pub fn serialize<T: Serialize, S: serde::Serializer, const N: usize>(
         values: &[T; N],
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
         values.as_slice().serialize(serializer)
-    }
-
-    pub fn deserialize<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>, const N: usize>(
-        deserializer: D,
-    ) -> Result<[T; N], D::Error> {
-        let values = Vec::<T>::deserialize(deserializer)?;
-        let count = values.len();
-        values.try_into().map_err(|_| {
-            serde::de::Error::custom(format!("expected {N} array entries, got {count}"))
-        })
     }
 }
 
@@ -724,23 +603,6 @@ impl AppConfig {
             )
             .map_err(anyhow::Error::msg)?;
         }
-        if let Some(phrase) = self.temporal_phrase {
-            ensure!(
-                self.temporal_memory.is_some()
-                    && self.temporal_gesture.is_some()
-                    && self.temporal_period.is_some(),
-                "temporal_phrase requires temporal_memory, temporal_gesture and temporal_period"
-            );
-            crate::temporal_cognition::phrase::Phrase::validate(phrase)
-                .map_err(anyhow::Error::msg)?;
-        }
-        if let Some(whole) = self.temporal_whole {
-            ensure!(
-                self.temporal_section.is_some(),
-                "temporal_whole requires temporal_section"
-            );
-            crate::temporal_cognition::whole::validate(whole).map_err(anyhow::Error::msg)?;
-        }
         if let Some(trace) = self.temporal_private_trace {
             anyhow::ensure!(
                 self.temporal_memory.is_some_and(|m| m.retention.is_some()),
@@ -753,32 +615,12 @@ impl AppConfig {
                 "temporal_private_trace requires finite positive parameters"
             );
         }
-        if let Some(section) = self.temporal_section {
-            ensure!(
-                self.temporal_phrase.is_some(),
-                "temporal_section requires temporal_phrase"
-            );
-            ensure!(
-                self.temporal_memory
-                    .is_some_and(|m| m.query_cadence_ms == 100),
-                "temporal_section requires temporal_memory.query_cadence_ms = 100"
-            );
-            crate::temporal_cognition::section::Stream::validate(section)
-                .map_err(anyhow::Error::msg)?;
-        }
         if let Some(period) = self.temporal_period {
             ensure!(
                 self.temporal_acoustic.is_some(),
                 "temporal_period requires temporal_acoustic"
             );
             crate::temporal_cognition::arrival::Engine::new(period).map_err(anyhow::Error::msg)?;
-        }
-        if let Some(groove) = &self.temporal_groove {
-            ensure!(
-                self.temporal_period.is_some(),
-                "temporal_groove requires temporal_period"
-            );
-            crate::temporal_cognition::groove::validate(groove).map_err(anyhow::Error::msg)?;
         }
         Ok(())
     }
@@ -1011,10 +853,6 @@ mod tests {
             temporal_memory: None,
             temporal_gesture: None,
             temporal_period: None,
-            temporal_groove: None,
-            temporal_phrase: None,
-            temporal_section: None,
-            temporal_whole: None,
             temporal_body: None,
             temporal_body_prototypes: None,
             temporal_action_profiles: None,

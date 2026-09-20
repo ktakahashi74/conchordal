@@ -45,16 +45,6 @@ pub(in crate::temporal_cognition) struct Proposal {
     observed_pairs: u16,
 }
 
-/// A currently matched acoustic word, retaining original observations for deduplication.
-#[derive(Clone, Copy, Debug)]
-pub(in crate::temporal_cognition) struct Word {
-    pub len: u8,
-    pub symbols: [u8; 8],
-    pub anchors: [(u64, u64); 17],
-    pub support: f64,
-    pub observed_pairs: u16,
-}
-
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub(in crate::temporal_cognition) struct Work {
     integer_cases: usize,
@@ -68,6 +58,17 @@ pub(in crate::temporal_cognition) struct Work {
     ranking_comparisons: usize,
     pub(in crate::temporal_cognition) integer_window_limited_cases: usize,
     pub(in crate::temporal_cognition) word_insufficient_endpoints: usize,
+}
+
+#[cfg(test)]
+/// A currently matched acoustic word, retaining original observations for deduplication.
+#[derive(Clone, Copy, Debug)]
+pub(in crate::temporal_cognition) struct Word {
+    pub len: u8,
+    pub symbols: [u8; 8],
+    pub anchors: [(u64, u64); 17],
+    pub support: f64,
+    pub observed_pairs: u16,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -200,51 +201,6 @@ pub(crate) struct Snapshot {
 }
 
 impl View {
-    pub(in crate::temporal_cognition) fn matches_source(&self, estimator: &Estimator) -> bool {
-        self.group == estimator.ledger.group
-            && estimator.source_support().is_some_and(|s| {
-                self.period_source_end == Some(s[1]) && self.period_available_end == Some(s[2])
-            })
-            && self.retained_span.map(|s| s.1) == estimator.latest_accent_end()
-    }
-
-    pub(in crate::temporal_cognition) fn words(&self, estimator: &Estimator) -> [Option<Word>; 16] {
-        let mut words: [Option<Word>; 16] = [None; 16];
-        if !self.matches_source(estimator) {
-            return words;
-        }
-        let mut count = 0;
-        for p in self.proposals.iter().flatten() {
-            let Shape::Word { len, symbols } = p.key.shape else {
-                continue;
-            };
-            if p.skipped_accent.is_some()
-                || Some(p.key.anchors[2 * usize::from(len)].1) != estimator.latest_accent_end()
-                || p.available_end > estimator.ledger.received_at
-                || p.mean_endpoint_weight <= 0.
-            {
-                continue;
-            }
-            if let Some(old) = words[..count]
-                .iter_mut()
-                .flatten()
-                .find(|w| w.len == len && w.symbols == symbols && w.anchors == p.key.anchors)
-            {
-                old.support = old.support.max(p.mean_endpoint_weight);
-                continue;
-            }
-            words[count] = Some(Word {
-                len,
-                symbols,
-                anchors: p.key.anchors,
-                support: p.mean_endpoint_weight,
-                observed_pairs: p.observed_pairs,
-            });
-            count += 1;
-        }
-        words
-    }
-
     pub(in crate::temporal_cognition) fn diagnostics(&self) -> Snapshot {
         let support = self
             .proposals
@@ -284,6 +240,53 @@ impl View {
                 })
             }),
         }
+    }
+
+    #[cfg(test)]
+    pub(in crate::temporal_cognition) fn matches_source(&self, estimator: &Estimator) -> bool {
+        self.group == estimator.ledger.group
+            && estimator.source_support().is_some_and(|s| {
+                self.period_source_end == Some(s[1]) && self.period_available_end == Some(s[2])
+            })
+            && self.retained_span.map(|s| s.1) == estimator.latest_accent_end()
+    }
+
+    #[cfg(test)]
+    pub(in crate::temporal_cognition) fn words(&self, estimator: &Estimator) -> [Option<Word>; 16] {
+        let mut words: [Option<Word>; 16] = [None; 16];
+        if !self.matches_source(estimator) {
+            return words;
+        }
+        let mut count = 0;
+        for p in self.proposals.iter().flatten() {
+            let Shape::Word { len, symbols } = p.key.shape else {
+                continue;
+            };
+            if p.skipped_accent.is_some()
+                || Some(p.key.anchors[2 * usize::from(len)].1) != estimator.latest_accent_end()
+                || p.available_end > estimator.ledger.received_at
+                || p.mean_endpoint_weight <= 0.
+            {
+                continue;
+            }
+            if let Some(old) = words[..count]
+                .iter_mut()
+                .flatten()
+                .find(|w| w.len == len && w.symbols == symbols && w.anchors == p.key.anchors)
+            {
+                old.support = old.support.max(p.mean_endpoint_weight);
+                continue;
+            }
+            words[count] = Some(Word {
+                len,
+                symbols,
+                anchors: p.key.anchors,
+                support: p.mean_endpoint_weight,
+                observed_pairs: p.observed_pairs,
+            });
+            count += 1;
+        }
+        words
     }
 
     pub(in crate::temporal_cognition) fn word_indicator(

@@ -54,11 +54,7 @@ fn retained_live_queries_publish_causal_score_bounds_and_source_strength() {
             .observe_acquisition((step - 1) * 100, step * 100, step * 100)
             .unwrap();
         recall
-            .advance(
-                &input(step, ((step - 1) % 8) as f64 * 0.03),
-                step * 100,
-                None,
-            )
+            .advance(&input(step, ((step - 1) % 8) as f64 * 0.03), step * 100)
             .unwrap();
         let snapshot = recall.snapshot();
         let retained = snapshot.retention.unwrap();
@@ -151,7 +147,7 @@ fn live_retention_evicts_weak_support_and_invalidates_its_descriptor() {
             raw.known_samples = 0;
             raw.values = [None; 10];
         }
-        recall.advance(&frame, step * 100, None).unwrap();
+        recall.advance(&frame, step * 100).unwrap();
         if step == 16 {
             let record = recall.snapshot().retention.unwrap().latest_record.unwrap();
             assert_eq!(record.handle, 2);
@@ -251,9 +247,7 @@ fn configured_search_capacity_reaches_the_received_cache_without_truncation() {
     let mut peak = 0;
     for step in 1..=320 {
         let value = ((step - 1) / 8) as f64 * 0.001 + ((step - 1) % 8) as f64 * 0.03;
-        recall
-            .advance(&input(step, value), step * 100, None)
-            .unwrap();
+        recall.advance(&input(step, value), step * 100).unwrap();
         if let Some((q, rows)) = recall.latest_matches() {
             assert_eq!(rows.len(), 32);
             let received = rows.iter().filter(|r| r[0].is_some()).count();
@@ -281,7 +275,7 @@ fn first_and_later_queries_preserve_support_and_detect_order_changes() {
                 index
             };
             recall
-                .advance(&input(step, (index / 2) as f64 * 0.5), step * 100, None)
+                .advance(&input(step, (index / 2) as f64 * 0.5), step * 100)
                 .unwrap();
             if step == 16 {
                 recall.finish(step * 100).unwrap();
@@ -312,13 +306,13 @@ fn first_and_later_queries_preserve_support_and_detect_order_changes() {
 fn late_and_retired_queries_are_rejected_and_next_queries_recover() {
     for retirement in [false, true] {
         let mut recall = Recall::new(1, 0, 1000, 100, config()).unwrap();
-        recall.advance(&input(1, 1.), 100, None).unwrap();
+        recall.advance(&input(1, 1.), 100).unwrap();
         assert!(recall.pending.is_some());
         if retirement {
             let mut next = input(2, 1.);
             next.retained_groups = [None; 7];
             next.features = [None; 8];
-            recall.advance(&next, 200, None).unwrap();
+            recall.advance(&next, 200).unwrap();
             assert_eq!(recall.snapshot().rejected_retired, 1);
         } else {
             recall.finish(400).unwrap();
@@ -330,7 +324,7 @@ fn late_and_retired_queries_are_rejected_and_next_queries_recover() {
             next.retained_groups[0].as_mut().unwrap().generation = 3;
             next.features[0].as_mut().unwrap().raw.group.generation = 3;
         }
-        recall.advance(&next, 500, None).unwrap();
+        recall.advance(&next, 500).unwrap();
         recall.finish(500).unwrap();
         assert!(recall.snapshot().latest.is_some());
     }
@@ -342,7 +336,7 @@ fn capacity_retirement_invalidates_pending_matches() {
     cfg.episodes = 1;
     let mut recall = Recall::new(1, 0, 1000, 100, cfg).unwrap();
     for step in 1..=32 {
-        recall.advance(&input(step, 1.), step * 100, None).unwrap();
+        recall.advance(&input(step, 1.), step * 100).unwrap();
     }
     // The full second query references episode 1, evicted by the second commit.
     recall.finish(3200).unwrap();
@@ -355,7 +349,7 @@ fn capacity_retirement_invalidates_pending_matches() {
 fn missing_acquisition_stays_a_gap_and_epoch_ownership_is_enforced() {
     let mut recall = Recall::new(1, 0, 1000, 100, config()).unwrap();
     for step in [1, 2, 5, 6] {
-        recall.advance(&input(step, 1.), step * 100, None).unwrap();
+        recall.advance(&input(step, 1.), step * 100).unwrap();
     }
     let frozen = recall.groups[0]
         .as_ref()
@@ -375,7 +369,7 @@ fn missing_acquisition_stays_a_gap_and_epoch_ownership_is_enforced() {
     let mut foreign = input(7, 1.);
     foreign.features[0].as_mut().unwrap().raw.group.epoch = 1;
     foreign.retained_groups[0].as_mut().unwrap().epoch = 1;
-    assert!(recall.advance(&foreign, 700, None).is_err());
+    assert!(recall.advance(&foreign, 700).is_err());
 }
 
 #[test]
@@ -386,12 +380,8 @@ fn all_received_transformations_stay_bound_to_the_original_query() {
     let mut previous_query = 0;
     let mut previous_matches = String::new();
     for step in 1..=72 {
-        r.advance(
-            &input(step, ((step - 1) % 16) as f64 * 0.02),
-            step * 100,
-            None,
-        )
-        .unwrap();
+        r.advance(&input(step, ((step - 1) % 16) as f64 * 0.02), step * 100)
+            .unwrap();
         if let Some((query, matches)) = r.latest_matches() {
             assert_eq!(query.query_id, r.snapshot().latest.unwrap().query_id);
             assert!(query.issued_at <= query.received_at && query.received_at <= step * 100);
@@ -459,7 +449,7 @@ fn interleaved_groups_keep_independent_received_matches_and_deadlines() {
         a.features[1] = a.features[0];
         a.features[1].as_mut().unwrap().raw.group = second;
         a.eligible[1] = true;
-        r.advance(&a, step * 100, None).unwrap();
+        r.advance(&a, step * 100).unwrap();
     }
     r.finish(3200).unwrap();
     let (a, ma) = r

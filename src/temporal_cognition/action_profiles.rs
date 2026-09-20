@@ -1,7 +1,7 @@
 //! Immutable conditional descriptor profiles. No hypothetical frame enters observation memory.
 
 use super::feature_projection::{Feature, window};
-use super::{body_model, phrase::Phrase, ridge::Handle};
+use super::{body_model, context, ridge::Handle};
 use crate::config::{AppConfig, TemporalActionProfilesConfig};
 use crate::life::action_candidates::Class;
 use anyhow::{Context, Result, ensure};
@@ -23,27 +23,16 @@ pub(crate) struct Cell {
     pub issue_log_rms: Option<f64>,
     pub(super) features: window::Summary,
     pub articulation: Option<super::gesture::Projection>,
-    /// Phrase v5..v12; v1..v4 are conditional one-hot states, not averaged masses.
-    pub(super) phrase_features: [Feature; 8],
-    pub phrase_observed_fraction: [f64; 4],
-    pub phrase_projected_fraction: [f64; 4],
+    /// Quarter-second window of the first four raw descriptor coordinates.
+    pub(super) short_features: [Feature; 4],
+    pub short_observed_fraction: [f64; 4],
+    pub short_projected_fraction: [f64; 4],
+    pub(super) grouping: Feature,
     pub grouping_observed_fraction: f64,
-    pub residual: super::phrase::ResidualProjection,
     pub arrival: Option<super::arrival::Projection>,
-    pub accent_density: super::phrase::AccentDensity,
-    pub closure: Option<[f64; 5]>,
-    pub(super) continuation_context: [Feature; 3],
-    pub continuation_paths: [Option<super::phrase::ConditionalOrdinal>; 15],
-    pub issue_phrase_unknown: f64,
-    pub raw_unreweighted_heads: Option<super::phrase::RawHeadMixture>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_density: Option<super::groove::DensityProjection>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_timing: Option<super::auditory_timing::ProjectedFeatures>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_context: Option<super::groove::ContextProjection>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_heads: Option<super::groove::CandidateHeads>,
+    pub accent_density: super::context::AccentDensity,
+    /// Arrival probability, accent density and grouping support at the evaluated time.
+    pub(super) context_features: [Feature; 3],
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -60,21 +49,14 @@ pub(crate) struct Snapshot {
     pub groups: [Option<Handle>; 8],
     pub issue_observed_coverage: f64,
     pub arrival_issues: [Option<super::arrival::Frozen>; 7],
-    pub raw_head_issue: super::phrase::IssueHeads,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_issue: Option<super::groove::Snapshot>,
     pub profile_bytes: usize,
     pub table_bytes: usize,
     pub cells: usize,
     pub supported_coordinates: usize,
     pub projected_coordinates: usize,
     pub articulation_supported_cells: usize,
-    pub closure_supported_cells: usize,
-    pub raw_head_supported_cells: [usize; 2],
-    pub projected_residual_cells: usize,
     pub projected_accent_density_cells: usize,
     pub projected_arrival_cells: usize,
-    pub latest_residual: Option<Cell>,
     pub latest: [Option<Cell>; 7],
 }
 
@@ -83,7 +65,6 @@ pub(crate) struct Table {
     snapshot: Box<Option<Snapshot>>,
     last_build: Option<([u8; 32], u8, u64, u64, Option<u64>)>,
     resources: Resources,
-    timing_scratch: Option<super::auditory_timing::Scratch>,
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -115,7 +96,6 @@ impl Table {
             snapshot: Box::new(None),
             last_build: None,
             resources: Resources::default(),
-            timing_scratch: None,
         }
     }
 
@@ -126,14 +106,14 @@ impl Table {
     pub(crate) fn refresh(
         &mut self,
         profiles: &Profiles,
-        phrase: &Phrase,
+        context: &context::Context,
         shared: &body_model::Shared,
         articulation: &super::gesture::Gesture,
         recurrence: Option<&super::proposals::frontend::recurrence::Recurrence>,
     ) -> Option<Snapshot> {
         let started = std::time::Instant::now();
         self.resources.refresh_calls += 1;
-        let current = phrase.snapshot();
+        let current = context.snapshot();
         let same_clock = self.last_build.is_some_and(|(profile, bus, epoch, _, _)| {
             profile == profiles.sha256 && bus == shared.bus && epoch == shared.epoch
         });
@@ -156,7 +136,6 @@ impl Table {
                 generation: a.key.1,
             })
         });
-        let groove_groups = recurrence.and_then(|r| r.groove_groups(current.end_sample));
         if self.snapshot.is_some_and(|s| {
             s.profile_sha256 == profiles.sha256
                 && s.evaluation_delay_samples == profiles.evaluation_delay_samples
@@ -164,19 +143,14 @@ impl Table {
                 && s.epoch == shared.epoch
                 && s.assignment_end == shared.end_sample
                 && s.groups == groups
-                && s.groove_issue.map(|s| s.groups.map(|g| g.map(|g| g.group))) == groove_groups
                 && s.issued_at <= current.end_sample
         }) {
             return *self.snapshot;
         }
-        // Retirement invalidates the whole frozen mixture, not just its selected group.
+        // Retirement invalidates the whole frozen table, not just its selected group.
         if let Some(previous) = self.snapshot.take() {
             self.resources.invalidations += u64::from(
                 previous.groups != groups
-                    || previous
-                        .groove_issue
-                        .map(|s| s.groups.map(|g| g.map(|g| g.group)))
-                        != groove_groups
                     || previous.evaluation_delay_samples != profiles.evaluation_delay_samples
                     || previous.profile_sha256 != profiles.sha256
                     || previous.bus != shared.bus
@@ -203,7 +177,6 @@ impl Table {
         let assigned = groups.iter().take(profiles.count()).flatten().count();
         self.resources.builds_by_assigned_prototypes[assigned] += 1;
         self.resources.last_build_sample = Some(current.end_sample);
-        let groove_issue = recurrence.and_then(|r| r.groove_issue(current.end_sample));
         let mut snapshot = Snapshot {
             profile_sha256: profiles.sha256,
             body_model_version: profiles.body_model_version,
@@ -218,9 +191,7 @@ impl Table {
             assignment_end: shared.end_sample,
             evaluation_delay_samples: profiles.evaluation_delay_samples,
             groups,
-            issue_observed_coverage: current.closure.observed_coverage,
-            raw_head_issue: phrase.issue_heads(),
-            groove_issue: groove_issue.as_ref().map(|g| g.snapshot),
+            issue_observed_coverage: current.observed_coverage,
             arrival_issues: recurrence.map_or([None; 7], |r| r.arrival_issues(current.end_sample)),
             profile_bytes: profiles.stored_bytes(),
             table_bytes: std::mem::size_of::<Self>()
@@ -230,34 +201,13 @@ impl Table {
             supported_coordinates: 0,
             projected_coordinates: 0,
             articulation_supported_cells: 0,
-            closure_supported_cells: 0,
-            raw_head_supported_cells: [0; 2],
-            projected_residual_cells: 0,
             projected_accent_density_cells: 0,
             projected_arrival_cells: 0,
-            latest_residual: None,
             latest: [None; 7],
         };
         let mut projection_cache = super::gesture::ProjectionCache::default();
         for (prototype, group) in groups.iter().enumerate().take(profiles.count()) {
             let Some(group) = *group else { continue };
-            // The observed prefix is identical across all action classes at this offset.
-            let densities: [Option<super::groove::DensityProjection>; 32] =
-                std::array::from_fn(|index| {
-                    recurrence?.density_projection(
-                        group,
-                        current.end_sample,
-                        profiles.evaluation_at(current.end_sample, profiles.offsets()[index])?,
-                    )
-                });
-            let contexts: [Option<super::groove::ContextProjection>; 32] =
-                std::array::from_fn(|index| {
-                    recurrence?.context_projection(
-                        group,
-                        current.end_sample,
-                        profiles.evaluation_at(current.end_sample, profiles.offsets()[index])?,
-                    )
-                });
             for (class_index, class) in CLASSES.into_iter().enumerate() {
                 for (index, offset) in profiles.offsets().iter().copied().enumerate() {
                     self.resources.attempted_cells += 1;
@@ -284,7 +234,7 @@ impl Table {
                     } else {
                         self.resources.projection_calls += 1;
                         #[cfg(test)]
-                        let mut cost_clock = super::phrase::tests::projection_clock();
+                        let mut cost_clock = super::context::tests::projection_clock();
                         if let Some(trajectory) = trajectory {
                             projection_cache.retag_matching_prefix(
                                 trajectory,
@@ -304,72 +254,33 @@ impl Table {
                             );
                         }
                         #[cfg(test)]
-                        super::phrase::tests::record_projection_cost(&mut cost_clock, 6);
-                        let timing = recurrence.and_then(|r| {
-                            r.timing_projection(
-                                group,
-                                current.end_sample,
-                                evaluation_at,
-                                &mut self.timing_scratch,
-                            )
-                        });
-                        phrase
-                            .project_action_window(
-                                profiles,
-                                prototype,
-                                class,
-                                offset,
-                                evaluation_at,
-                                group,
-                                articulation.rms_reference(),
-                                Some(articulation),
-                                snapshot
-                                    .arrival_issues
-                                    .iter()
-                                    .flatten()
-                                    .find(|f| f.group == group),
-                                trajectory.map(|id| (id, &mut projection_cache)),
-                                densities[index],
-                                timing,
-                            )
-                            .map(|mut cell| {
-                                #[cfg(test)]
-                                let mut cost_clock = super::phrase::tests::projection_clock();
-                                cell.raw_unreweighted_heads =
-                                    snapshot.raw_head_issue.project(&cell);
-                                cell.groove_context = contexts[index];
-                                cell.groove_heads =
-                                    groove_issue.as_ref().and_then(|g| g.project(&cell));
-                                #[cfg(test)]
-                                super::phrase::tests::record_projection_cost(&mut cost_clock, 7);
-                                cell
-                            })
+                        super::context::tests::record_projection_cost(&mut cost_clock, 6);
+                        context.project_action_window(
+                            profiles,
+                            prototype,
+                            class,
+                            offset,
+                            evaluation_at,
+                            group,
+                            articulation.rms_reference(),
+                            Some(articulation),
+                            snapshot
+                                .arrival_issues
+                                .iter()
+                                .flatten()
+                                .find(|f| f.group == group),
+                            trajectory.map(|id| (id, &mut projection_cache)),
+                        )
                     };
                     let Some(cell) = cell else {
                         continue;
                     };
-                    if let Some(heads) = cell.raw_unreweighted_heads {
-                        for (count, head) in snapshot
-                            .raw_head_supported_cells
-                            .iter_mut()
-                            .zip([heads.closure, heads.continuation])
-                        {
-                            *count += usize::from(head.reported_support_mass > 0.);
-                        }
-                    }
                     self.cells[(prototype * 7 + class_index) * 32 + index] = Some(cell);
                     snapshot.cells += 1;
-                    snapshot.closure_supported_cells += usize::from(cell.closure.is_some());
-                    snapshot.projected_arrival_cells += usize::from(matches!(
-                        cell.continuation_context[0],
-                        Feature::Projected(_)
-                    ));
+                    snapshot.projected_arrival_cells +=
+                        usize::from(matches!(cell.context_features[0], Feature::Projected(_)));
                     snapshot.projected_accent_density_cells +=
                         usize::from(matches!(cell.accent_density.value, Feature::Projected(_)));
-                    if cell.residual.projected_samples > 0 {
-                        snapshot.projected_residual_cells += 1;
-                        snapshot.latest_residual = Some(cell);
-                    }
                     snapshot.articulation_supported_cells += usize::from(
                         cell.articulation
                             .is_some_and(|p| p.states.iter().sum::<f64>() > 0.),
@@ -393,10 +304,7 @@ impl Table {
         self.resources.articulation_frames += projection_cache.advanced_frames;
         snapshot.table_bytes = std::mem::size_of::<Self>()
             + std::mem::size_of::<Option<Snapshot>>()
-            + self.cells.capacity() * std::mem::size_of::<Option<Cell>>()
-            + self.timing_scratch.as_ref().map_or(0, |s| {
-                s.owned_bytes() - std::mem::size_of::<super::auditory_timing::Scratch>()
-            });
+            + self.cells.capacity() * std::mem::size_of::<Option<Cell>>();
         self.resources.reused_articulation_frames += projection_cache.reused_frames;
         self.resources.last_build_us =
             started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
@@ -470,8 +378,8 @@ pub(crate) fn validate_config(config: &AppConfig) -> Result<()> {
             "temporal_action_profiles requires a file and lowercase SHA-256"
         );
         ensure!(
-            config.temporal_body_prototypes.is_some() && config.temporal_phrase.is_some(),
-            "temporal_action_profiles requires body prototypes and phrase observations"
+            config.temporal_body_prototypes.is_some(),
+            "temporal_action_profiles requires body prototypes"
         );
     }
     Ok(())

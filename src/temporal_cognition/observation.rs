@@ -7,16 +7,13 @@ use std::time::Instant;
 use crossbeam_channel::{Sender, TrySendError};
 use serde::Serialize;
 
-use super::{
-    gesture, phrase, proposals::frontend, recall, reference_inventory, resources, ridge, section,
-    whole,
-};
+use super::{context, gesture, proposals::frontend, recall, reference_inventory, resources, ridge};
 use crate::{
     config::{TemporalAcousticConfig, TemporalRidgeConfig},
     core::log2space::Log2Space,
 };
 
-const OBSERVATION_VERSION: u64 = 24;
+const OBSERVATION_VERSION: u64 = 25;
 const QUEUE_CAPACITY: usize = 32;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -68,25 +65,16 @@ pub(crate) struct Snapshot {
     pub gesture: Option<gesture::Snapshot>,
     pub gesture_error: Option<&'static str>,
     pub period_parameters: Option<crate::config::TemporalPeriodConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_parameters: Option<crate::config::TemporalGrooveConfig>,
     pub period: Option<frontend::recurrence::Snapshot>,
     pub period_error: Option<&'static str>,
-    pub phrase_parameters: Option<crate::config::TemporalPhraseConfig>,
-    pub phrase: Option<phrase::Snapshot>,
-    pub phrase_error: Option<&'static str>,
+    pub context: Option<context::Snapshot>,
+    pub context_error: Option<&'static str>,
     pub group_prototypes: Option<super::body_model::Shared>,
     pub action_profile_features: Option<super::action_profiles::Snapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action_profile_resources: Option<super::action_profiles::Resources>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worker_resources: Option<resources::Snapshot>,
-    pub section_parameters: Option<crate::config::TemporalSectionConfig>,
-    pub section: Option<section::Snapshot>,
-    pub section_error: Option<&'static str>,
-    pub whole_parameters: Option<crate::config::TemporalWholeConfig>,
-    pub whole: Option<whole::Snapshot>,
-    pub whole_error: Option<&'static str>,
     pub relations_implemented: bool,
     pub action_enabled: bool,
 }
@@ -104,10 +92,6 @@ pub(crate) struct Options {
     pub memory: Option<crate::config::TemporalMemoryConfig>,
     pub gesture: Option<crate::config::TemporalGestureConfig>,
     pub period: Option<crate::config::TemporalPeriodConfig>,
-    pub groove: Option<crate::config::TemporalGrooveConfig>,
-    pub phrase: Option<crate::config::TemporalPhraseConfig>,
-    pub section: Option<crate::config::TemporalSectionConfig>,
-    pub whole: Option<crate::config::TemporalWholeConfig>,
 }
 
 struct Observation {
@@ -182,10 +166,6 @@ impl Tap {
             memory_parameters: options.memory,
             gesture_parameters: options.gesture,
             period_parameters: options.period,
-            groove_parameters: options.groove,
-            phrase_parameters: options.phrase,
-            section_parameters: options.section,
-            whole_parameters: options.whole,
             ..Snapshot::default()
         };
         let snapshot = Arc::new(Mutex::new(initial));
@@ -241,12 +221,8 @@ impl Tap {
                         (
                             None,
                             f.map(|f| {
-                                frontend::recurrence::Recurrence::configured(
-                                    f,
-                                    config,
-                                    options.groove,
-                                )
-                                .expect("validated recurrence configuration")
+                                frontend::recurrence::Recurrence::configured(f, config)
+                                    .expect("validated recurrence configuration")
                             }),
                         )
                     } else {
@@ -270,34 +246,17 @@ impl Tap {
                             .expect("validated gesture diagnostic configuration")
                     })
                 };
-                let new_phrase = |epoch, start| {
-                    options.phrase.map(|c| {
-                        phrase::Phrase::new(bus, epoch, start, sample_rate, hop as u64, c)
-                            .expect("validated phrase configuration")
-                    })
+                let new_context = |epoch, start| {
+                    context::Context::new(bus, epoch, start, sample_rate, hop as u64)
+                        .expect("validated context stream")
                 };
-                let new_section = |epoch, start| {
-                    options.section.map(|c| {
-                        section::Stream::new(
-                            bus,
-                            epoch,
-                            sample_rate,
-                            start,
-                            hop as u64,
-                            options.memory.expect("section requires memory"),
-                            c,
-                        )
-                        .expect("validated section configuration")
-                    })
-                };
-                let mut section = new_section(0, 0);
                 let new_inventory = |epoch, start| {
                     options.memory.and_then(|m| m.retention).map(|_| {
                         reference_inventory::Stream::new(bus, epoch, start, sample_rate, hop as u64)
                     })
                 };
                 let mut inventory = new_inventory(0, 0);
-                let mut phrase = new_phrase(0, 0);
+                let mut context = Some(new_context(0, 0));
                 let mut gesture = new_gesture(0);
                 let mut memory = new_memory(0);
                 let (mut acoustic, mut recurrence) = split_frontend(new_frontend(0, 0));
@@ -327,12 +286,8 @@ impl Tap {
                         } => {
                             state.input_end_sample = input_end_sample;
                             if source_epoch != state.source_epoch {
-                                section = None;
-                                state.section = None;
-                                state.whole = None;
-                                state.whole_error = None;
-                                phrase = None;
-                                state.phrase = None;
+                                context = None;
+                                state.context = None;
                                 state.group_prototypes = None;
                                 state.action_profile_features = None;
                                 recurrence = None;
@@ -374,27 +329,16 @@ impl Tap {
                                     }
                                 }
                             }
-                            if let Some(p) =
-                                phrase.as_mut().filter(|_| state.phrase_error.is_none())
+                            if let Some(context) =
+                                context.as_mut().filter(|_| state.context_error.is_none())
                             {
-                                match p.finish(input_end_sample) {
-                                    Ok(()) => state.phrase = Some(p.snapshot()),
+                                match context.finish(input_end_sample) {
+                                    Ok(()) => state.context = Some(context.snapshot()),
                                     Err(e) => {
-                                        state.phrase = None;
+                                        state.context = None;
                                         state.group_prototypes = None;
                                         state.action_profile_features = None;
-                                        state.phrase_error = Some(e);
-                                    }
-                                }
-                            }
-                            if let Some(s) =
-                                section.as_mut().filter(|_| state.section_error.is_none())
-                            {
-                                match s.finish(input_end_sample) {
-                                    Ok(()) => state.section = Some(*s.snapshot()),
-                                    Err(e) => {
-                                        state.section = None;
-                                        state.section_error = Some(e);
+                                        state.context_error = Some(e);
                                     }
                                 }
                             }
@@ -434,16 +378,11 @@ impl Tap {
                                         split_frontend(new_frontend(frame.epoch, frame.start));
                                     state.period = None;
                                     state.period_error = None;
-                                    section = new_section(frame.epoch, frame.start);
-                                    state.section = None;
-                                    state.section_error = None;
-                                    state.whole = None;
-                                    state.whole_error = None;
-                                    phrase = new_phrase(frame.epoch, frame.start);
-                                    state.phrase = None;
+                                    context = Some(new_context(frame.epoch, frame.start));
+                                    state.context = None;
                                     state.group_prototypes = None;
                                     state.action_profile_features = None;
-                                    state.phrase_error = None;
+                                    state.context_error = None;
                                     memory = new_memory(frame.epoch);
                                     inventory = new_inventory(frame.epoch, frame.start);
                                     state.reference_inventory = None;
@@ -541,11 +480,7 @@ impl Tap {
                                             if let Some(memory) =
                                                 memory.as_mut().filter(|_| !state.memory_failed)
                                             {
-                                                let result = if options.section.is_some() {
-                                                    memory.receive(&summary, frame.end)
-                                                } else {
-                                                    memory.advance(&summary, frame.end, None)
-                                                };
+                                                let result = memory.advance(&summary, frame.end);
                                                 if let Err(error) = result {
                                                     state.memory_failed = true;
                                                     state.memory_error = Some(error);
@@ -564,44 +499,35 @@ impl Tap {
                                                     }
                                                 }
                                             }
-                                            if phrase.is_some() && state.gesture_error.is_some() {
-                                                state.phrase = None;
-                                                state.phrase_error =
-                                                    Some("gesture input failed for this epoch");
-                                            }
-                                            if let (Some(p), Some(g)) = (
-                                                phrase
-                                                    .as_mut()
-                                                    .filter(|_| state.phrase_error.is_none()),
-                                                gesture
-                                                    .as_ref()
-                                                    .filter(|_| state.gesture_error.is_none()),
-                                            ) {
-                                                match p.advance(
+                                            if let Some(context) = context
+                                                .as_mut()
+                                                .filter(|_| state.context_error.is_none())
+                                            {
+                                                match context.advance(
                                                     &summary,
-                                                    g,
-                                                    state.memory.filter(|_| !state.memory_failed),
                                                     state.period,
                                                     frame.end,
                                                 ) {
-                                                    Ok(()) => state.phrase = Some(p.snapshot()),
+                                                    Ok(()) => {
+                                                        state.context = Some(context.snapshot())
+                                                    }
                                                     Err(e) => {
-                                                        state.phrase = None;
-                                                        state.phrase_error = Some(e);
+                                                        state.context = None;
+                                                        state.context_error = Some(e);
                                                     }
                                                 }
                                             }
-                                            if let (Some((scales, model)), Some(p)) = (
+                                            if let (Some((scales, model)), Some(context)) = (
                                                 options.body_prototypes.as_ref(),
-                                                phrase
+                                                context
                                                     .as_ref()
-                                                    .filter(|_| state.phrase_error.is_none()),
+                                                    .filter(|_| state.context_error.is_none()),
                                             ) {
                                                 super::body_model::Shared::refresh(
                                                     &mut state.group_prototypes,
                                                     model,
                                                     *scales,
-                                                    p,
+                                                    context,
                                                     &summary,
                                                     (bus, frame.epoch),
                                                 );
@@ -614,9 +540,9 @@ impl Tap {
                                             state.action_profile_features = match (
                                                 options.action_profiles.as_ref(),
                                                 action_table.as_mut(),
-                                                phrase
+                                                context
                                                     .as_ref()
-                                                    .filter(|_| state.phrase_error.is_none()),
+                                                    .filter(|_| state.context_error.is_none()),
                                                 state.group_prototypes.as_ref(),
                                                 gesture
                                                     .as_ref()
@@ -625,12 +551,12 @@ impl Tap {
                                                 (
                                                     Some(profiles),
                                                     Some(table),
-                                                    Some(p),
+                                                    Some(context),
                                                     Some(shared),
                                                     Some(gesture),
                                                 ) => table.refresh(
                                                     profiles,
-                                                    p,
+                                                    context,
                                                     shared,
                                                     gesture,
                                                     recurrence.as_ref(),
@@ -642,50 +568,6 @@ impl Tap {
                                             state.action_profile_resources = action_table
                                                 .as_ref()
                                                 .map(super::action_profiles::Table::resources);
-                                            if section.is_some() && state.phrase_error.is_some() {
-                                                state.section = None;
-                                                state.section_error =
-                                                    Some("phrase input failed for this epoch");
-                                            }
-                                            if let (Some(s), Some(p)) = (
-                                                section
-                                                    .as_mut()
-                                                    .filter(|_| state.section_error.is_none()),
-                                                state.phrase.as_ref(),
-                                            ) {
-                                                match s.advance(
-                                                    &summary,
-                                                    p,
-                                                    state.period,
-                                                    memory
-                                                        .as_ref()
-                                                        .filter(|_| !state.memory_failed),
-                                                ) {
-                                                    Ok(()) => state.section = Some(*s.snapshot()),
-                                                    Err(e) => {
-                                                        state.section = None;
-                                                        state.section_error = Some(e);
-                                                    }
-                                                }
-                                            }
-                                            if options.section.is_some()
-                                                && let Some(m) =
-                                                    memory.as_mut().filter(|_| !state.memory_failed)
-                                            {
-                                                let result = if let Some(s) = section
-                                                    .as_ref()
-                                                    .filter(|_| state.section_error.is_none())
-                                                {
-                                                    m.advance(&summary, frame.end, Some(s.cues()))
-                                                } else {
-                                                    Err("phrase cue input failed for this epoch")
-                                                };
-                                                if let Err(e) = result {
-                                                    state.memory_failed = true;
-                                                    state.memory_error = Some(e);
-                                                }
-                                                state.memory = Some(m.snapshot());
-                                            }
                                             state.reference_inventory = None;
                                             if let Some(inventory) =
                                                 inventory.as_mut().filter(|_| {
@@ -723,27 +605,6 @@ impl Tap {
                                                         Some("shared memory input unavailable");
                                                 }
                                             }
-                                            if let Some(c) = options.whole {
-                                                if let (Some(p), Some(s)) =
-                                                    (state.phrase.as_ref(), state.section.as_ref())
-                                                {
-                                                    match whole::observe(c, p, s, state.memory) {
-                                                        Ok(w) => {
-                                                            state.whole = Some(w);
-                                                            state.whole_error = None;
-                                                        }
-                                                        Err(e) => {
-                                                            state.whole = None;
-                                                            state.whole_error = Some(e);
-                                                        }
-                                                    }
-                                                } else {
-                                                    state.whole = None;
-                                                    state.whole_error = Some(
-                                                        "whole-piece lower-head input unavailable",
-                                                    );
-                                                }
-                                            }
                                             state.acoustic = Some(summary);
                                         }
                                         Err(error) => {
@@ -754,14 +615,8 @@ impl Tap {
                                                 state.period = None;
                                                 state.period_error = Some(error);
                                             }
-                                            if phrase.is_some() {
-                                                state.phrase = None;
-                                                state.phrase_error = Some(error);
-                                            }
-                                            if section.is_some() {
-                                                state.section = None;
-                                                state.section_error = Some(error);
-                                            }
+                                            state.context = None;
+                                            state.context_error = Some(error);
                                             state.acoustic_failed = true;
                                             state.ridge_failed = true;
                                             if gesture.is_some() {
@@ -998,7 +853,6 @@ mod tests {
             space,
             Options {
                 deterministic: true,
-                section: Some(section::tests::runtime_config()),
                 memory: Some(crate::config::TemporalMemoryConfig {
                     retention: Some(crate::config::TemporalRetentionConfig {
                         tau_sec: 20.,
@@ -1077,10 +931,6 @@ mod tests {
                         min_coverage: 0.9,
                         persistence_hops: 3,
                     }),
-                    phrase: Some(phrase::tests::config()),
-                    section: Some(section::tests::runtime_config()),
-                    whole: Some(whole::tests::config()),
-                    groove: None,
                     body_prototypes: None,
                     action_profiles: None,
                     period: Some(crate::config::TemporalPeriodConfig {
@@ -1115,8 +965,12 @@ mod tests {
             let before_eof = loop {
                 let snapshot = output.lock().unwrap();
                 if snapshot.support_end_sample == 40 * 512 {
-                    assert!(snapshot.whole_error.is_none(), "{:?}", snapshot.whole_error);
-                    break snapshot.whole;
+                    assert!(
+                        snapshot.context_error.is_none(),
+                        "{:?}",
+                        snapshot.context_error
+                    );
+                    break snapshot.context;
                 }
                 drop(snapshot);
                 assert!(
@@ -1135,8 +989,7 @@ mod tests {
             drop(tap);
             let state = *output.lock().unwrap();
             assert!(state.gesture_error.is_none());
-            assert!(state.phrase_error.is_none(), "{:?}", state.phrase_error);
-            assert!(state.section_error.is_none(), "{:?}", state.section_error);
+            assert!(state.context_error.is_none(), "{:?}", state.context_error);
             assert!(state.period_error.is_none(), "{:?}", state.period_error);
             assert!(!state.memory_failed, "{:?}", state.memory_error);
             assert_eq!(state.support_end_sample, 40 * 512);
@@ -1146,33 +999,30 @@ mod tests {
                 assert!(state.memory.is_none());
                 assert!(state.gesture.is_none());
                 assert!(state.period.is_none());
-                assert!(state.phrase.is_none());
-                assert!(state.section.is_none());
-                assert!(state.whole.is_none());
+                assert!(state.context.is_none());
             } else {
                 let before = before_eof.unwrap();
-                let after = state.whole.unwrap();
-                assert!(after.controls.is_some());
-                assert_eq!(after.observed_end_sample, 40 * 512);
+                let after = state.context.unwrap();
+                assert!(after.censored);
+                assert_eq!(before.end_sample, 40 * 512);
                 assert_eq!(
-                    serde_json::to_value(before).unwrap(),
-                    serde_json::to_value(after).unwrap(),
-                    "EOF changed the whole-piece scoring snapshot"
+                    before.groups.map(|g| g.map(|g| g.group)),
+                    after.groups.map(|g| g.map(|g| g.group)),
+                    "EOF changed the retained observed groups"
                 );
                 assert_eq!(state.period.unwrap().received_at, 100 * 512);
-                assert!(state.phrase.unwrap().censored);
-                assert!(state.section.unwrap().censored);
-                assert!(!state.section.unwrap().initial_context_only);
-                assert_eq!(state.phrase.unwrap().end_sample, 100 * 512);
+                assert_eq!(after.end_sample, 100 * 512);
                 let memory = state.memory.unwrap();
                 let acquisition = memory.acquisition.unwrap();
                 assert_eq!(acquisition.end_sample, 40 * 512);
                 assert_eq!(acquisition.delivery_cut_sample, 40 * 512);
                 assert_eq!(acquisition.missing_seconds, 0.);
+                // Fixed-span episodes seal as each span fills; EOF adds none of its own.
                 assert_eq!(
-                    memory.stored_total, 0,
-                    "EOF cannot seal before the half-second observation lag"
+                    memory.stored_total as usize, memory.stored_episodes,
+                    "EOF sealed an episode outside the observed spans"
                 );
+                assert!(memory.stored_total > 0);
                 assert!(memory.queries > 0 && memory.completed > 0);
                 assert!(memory.latest.is_none(), "expired result survived EOF");
                 assert_eq!(state.gesture.unwrap().unresolved, 1.);
@@ -1210,10 +1060,6 @@ mod tests {
                     }),
                     gesture: None,
                     period: None,
-                    groove: None,
-                    phrase: None,
-                    section: None,
-                    whole: None,
                     body_prototypes: None,
                     action_profiles: None,
                     acoustic: Some(TemporalAcousticConfig {
@@ -1301,10 +1147,6 @@ mod tests {
             memory: None,
             gesture: None,
             period: None,
-            groove: None,
-            phrase: None,
-            section: None,
-            whole: None,
             body_prototypes: None,
             action_profiles: None,
             ridge: Some(TemporalRidgeConfig {
@@ -1596,259 +1438,5 @@ mod tests {
         );
         tap.observe(0, &power, 0.25);
         tap.observe(0, &power, 0.25);
-    }
-    #[test]
-    fn real_waveform_memory_predictions_reach_independent_phrase_diagnostics() {
-        let mut first_exposure = None;
-        for (label, section_enabled, earlier_tone, frames) in [
-            ("assay", false, true, 900),
-            ("return-long", true, true, 900),
-            ("first", true, false, 660),
-            ("return", true, true, 660),
-            ("focus", true, true, 700),
-        ] {
-            use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
-            use crate::core::nsgt_rt::RtNsgtKernelLog2;
-            let space = Log2Space::new(100., 6400., 24);
-            let kernel = NsgtKernelLog2::new(
-                NsgtLog2Config {
-                    fs: 48000.,
-                    overlap: 0.75,
-                    nfft_override: Some(2048),
-                    ..Default::default()
-                },
-                space.clone(),
-                None,
-                PowerMode::Coherent,
-            );
-            let mut analysis = RtNsgtKernelLog2::new(kernel);
-            let mut phrase_config = phrase::tests::config();
-            if frames == 660 {
-                phrase_config.hazard[11] = 0.;
-            }
-            let mut section_config = section::tests::runtime_config();
-            if label == "focus" {
-                section_config.recurrence[0] = 20.;
-                section_config.new_context[0] = -10.;
-                section_config.contrast[0] = -10.;
-            }
-            let mut tap = Tap::spawn(
-                1,
-                48000,
-                512,
-                2048,
-                space,
-                Options {
-                    deterministic: true,
-                    ridge: Some(TemporalRidgeConfig {
-                        means: [0.; 3],
-                        deviations: [0.05, 4., 1.],
-                    }),
-                    acoustic: Some(TemporalAcousticConfig {
-                        group_means: [0.; 3],
-                        group_deviations: [0.05, 4., 1.],
-                        accent_means: [0.; 2],
-                        accent_deviations: [1.; 2],
-                        group_retirement_sec: 2.,
-                        inactive_energy_max: 1e-8,
-                        correlation_window_sec: 0.25,
-                        min_pairs: 8,
-                        min_coverage: 0.9,
-                        persistence_hops: 3,
-                    }),
-                    phrase: Some(phrase_config),
-                    section: section_enabled.then_some(section_config),
-                    whole: section_enabled.then(whole::tests::config),
-                    groove: None,
-                    body_prototypes: None,
-                    action_profiles: None,
-                    period: Some(crate::config::TemporalPeriodConfig {
-                        model: crate::config::ArrivalModel::Hazard,
-                        coefficients: [0.; 18],
-                        means: [0.; 8],
-                        deviations: [1.; 8],
-                        horizon_sec: 0.1,
-                    }),
-                    gesture: Some(crate::config::TemporalGestureConfig {
-                        rms_reference: 0.1,
-                        means: [0.; 5],
-                        deviations: [1.; 5],
-                        coefficients: [[[0.; 11]; 4]; 4],
-                    }),
-                    memory: Some(crate::config::TemporalMemoryConfig {
-                        retention: None,
-                        candidates: None,
-                        scales: [1.; 10],
-                        span_hops: 64,
-                        episodes: 128,
-                        query_cadence_ms: 100,
-                        deadline_ms: 200,
-                    }),
-                },
-            );
-            let output = Arc::clone(&tap.snapshot);
-            let mut audio = [0.; 512];
-            let mut target_audio = Vec::new();
-            for frame in 0..frames {
-                for (i, x) in audio.iter_mut().enumerate() {
-                    let time = (frame * 512 + i) as f64 / 48000.;
-                    let phase = (frame % 48) as f64 / 48.;
-                    let amp = if section_enabled && frame < 600 && (!earlier_tone || frame >= 300) {
-                        0.
-                    } else {
-                        0.015
-                            + 0.01 * (std::f64::consts::TAU * phase).sin()
-                            + 0.003 * (2. * std::f64::consts::TAU * phase).sin()
-                    };
-                    *x = (amp * (std::f64::consts::TAU * 500. * time).sin()) as f32;
-                }
-                if frames == 660 && frame >= 300 {
-                    target_audio.extend(audio.iter().map(|x| x.to_bits()));
-                }
-                let energy = audio.iter().map(|&x| f64::from(x).powi(2)).sum::<f64>() / 512.;
-                let power = analysis.process_hop(&audio);
-                tap.observe(frame as u64, power, energy);
-            }
-            drop(tap);
-            let state = *output.lock().unwrap();
-            assert!(state.phrase_error.is_none(), "{:?}", state.phrase_error);
-            assert!(state.section_error.is_none(), "{:?}", state.section_error);
-            assert!(!state.acoustic_failed && !state.memory_failed);
-            let p = state.phrase.unwrap();
-            let scored: u64 = p
-                .groups
-                .iter()
-                .flatten()
-                .map(|g| g.prediction_comparisons)
-                .sum();
-            println!(
-                "I7_NSGT_HANDOFF case={label} scored={scored} closure_support={} continuation_support={}",
-                p.closure.supported_mass, p.continuation.supported_mass
-            );
-            if earlier_tone {
-                assert!(scored > 0);
-            } else {
-                assert_eq!(scored, 0);
-            }
-            if section_enabled && frames == 900 {
-                // The whole returning cue eventually outgrows the retained observed continuations.
-                assert_eq!(p.closure.supported_mass, 0.);
-                assert_eq!(p.closure.unknown, 1.);
-            } else if !section_enabled {
-                assert!(p.closure.supported_mass > 0.);
-            }
-            assert!(p.continuation.supported_mass > 0.);
-            assert!(p.censored);
-            if let Some(section) = state.section {
-                let groups: Vec<_> = section.groups.iter().flatten().collect();
-                assert!(!groups.is_empty());
-                assert!(groups.iter().any(|g| g.cumulative[34].is_some()));
-                assert!(
-                    groups
-                        .iter()
-                        .all(|g| g.observed_end_sample == frames as u64 * 512)
-                );
-                assert!(groups.iter().all(|g| g.unknown == 1.));
-                assert!(
-                    groups
-                        .iter()
-                        .any(|g| g.cue.is_some_and(|c| c.start_sample >= 600 * 512))
-                );
-                assert!(groups.iter().map(|g| g.prefix_support_queries).sum::<u64>() > 0);
-                if label == "focus" {
-                    let focused: Vec<_> = groups
-                        .iter()
-                        .flat_map(|g| g.candidates.iter().flatten())
-                        .filter(|c| c.focus.is_some())
-                        .collect();
-                    println!(
-                        "I8_REAL_FOCUS committed={} candidates={:?}",
-                        section.committed_phrases, focused
-                    );
-                    assert!(
-                        !focused.is_empty(),
-                        "received phrase memory did not activate an earlier context"
-                    );
-                    assert!(focused.iter().all(|c| c.query_id.is_some() && c.mass > 0.));
-                    assert!(
-                        focused
-                            .iter()
-                            .any(|c| c.focus.unwrap().support_end_sample < 300 * 512
-                                && c.start_sample >= 600 * 512),
-                        "focus has no provenance before the intervening silence"
-                    );
-                }
-                if frames == 660 {
-                    let mut local_groups: Vec<_> = groups
-                        .iter()
-                        .map(|g| {
-                            let raw = state
-                                .acoustic
-                                .as_ref()
-                                .unwrap()
-                                .features
-                                .iter()
-                                .flatten()
-                                .find(|u| u.raw.group == g.group)
-                                .unwrap()
-                                .raw
-                                .values;
-                            (
-                                g.cue.map(|c| {
-                                    (
-                                        c.start_sample,
-                                        c.support_end_sample,
-                                        c.weighted_seconds.to_bits(),
-                                    )
-                                }),
-                                raw.map(|v| v.map(f64::to_bits)),
-                                g.covariates[..80]
-                                    .iter()
-                                    .map(|v| v.map(f64::to_bits))
-                                    .collect::<Vec<_>>(),
-                            )
-                        })
-                        .collect();
-                    local_groups.sort();
-                    let scores: Vec<_> =
-                        groups.iter().map(|g| g.covariates[80..].to_vec()).collect();
-                    println!(
-                        "I8_RETURN_CONTROL case={label} groups={} scores={scores:?} predictions={scored}",
-                        groups.len()
-                    );
-                    if earlier_tone {
-                        let (audio, local) = first_exposure.as_ref().unwrap();
-                        assert!(
-                            *audio == target_audio,
-                            "target and intervening silence differ"
-                        );
-                        assert!(
-                            *local == local_groups,
-                            "normalized cue, acoustic values or non-retrieval section inputs differ"
-                        );
-                        assert!(groups.iter().any(|g| g.covariates[80].is_some()));
-                        assert!(section.committed_phrases > 0);
-                        assert_eq!(
-                            state.memory.unwrap().phrase_episodes,
-                            state.memory.unwrap().stored_episodes
-                        );
-                        println!(
-                            "I8_MATCHED_CONTEXT samples={} groups={} acoustic_values=10 non_retrieval_values=80 bit_exact=true",
-                            target_audio.len(),
-                            groups.len()
-                        );
-                    } else {
-                        assert!(groups.iter().all(|g| g.covariates[80..] == [None; 2]));
-                        first_exposure = Some((target_audio, local_groups));
-                    }
-                }
-                println!(
-                    "I8_NSGT_HANDOFF case={label} groups={} support_matched_queries={}",
-                    groups.len(),
-                    groups.iter().map(|g| g.prefix_support_queries).sum::<u64>()
-                );
-            }
-            assert!(!state.action_enabled);
-        }
     }
 }

@@ -173,7 +173,7 @@ impl Gesture {
                 &self.config,
             );
             #[cfg(test)]
-            let mut cost_clock = crate::temporal_cognition::phrase::tests::projection_clock();
+            let mut cost_clock = crate::temporal_cognition::context::tests::projection_clock();
             for path in &paths[..count] {
                 let elapsed = cursor.checked_sub(path.entered)? as f64 / f64::from(self.rate);
                 let transition = transition(
@@ -202,7 +202,7 @@ impl Gesture {
                 }
             }
             #[cfg(test)]
-            crate::temporal_cognition::phrase::tests::record_projection_cost(&mut cost_clock, 8);
+            crate::temporal_cognition::context::tests::record_projection_cost(&mut cost_clock, 8);
             scratch[..expanded].sort_unstable_by_key(|p| (p.state, p.entered));
             let mut merged = 0;
             for index in 0..expanded {
@@ -218,7 +218,7 @@ impl Gesture {
                 }
             }
             #[cfg(test)]
-            crate::temporal_cognition::phrase::tests::record_projection_cost(&mut cost_clock, 9);
+            crate::temporal_cognition::context::tests::record_projection_cost(&mut cost_clock, 9);
             scratch[..merged].sort_unstable_by(|a, b| {
                 b.mass
                     .total_cmp(&a.mass)
@@ -228,7 +228,7 @@ impl Gesture {
             pruned_mass += scratch[count..merged].iter().map(|p| p.mass).sum::<f64>();
             paths[..count].copy_from_slice(&scratch[..count]);
             #[cfg(test)]
-            crate::temporal_cognition::phrase::tests::record_projection_cost(&mut cost_clock, 10);
+            crate::temporal_cognition::context::tests::record_projection_cost(&mut cost_clock, 10);
             cursor = end;
             if let Some(cache) = cache.as_deref_mut() {
                 cache.advanced_frames += 1;

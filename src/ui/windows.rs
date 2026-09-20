@@ -587,37 +587,14 @@ fn draw_listener_dashboard(
                                 ui.label("Evaluation: at action time");
                             }
                             ui.label(format!(
-                                "Raw closure previews: {} · future reference comparisons: {} · uncalibrated",
-                                profiles.closure_supported_cells, profiles.projected_residual_cells
-                            ));
-                            ui.label(format!(
-                                "Raw mixtures (unreweighted): closure {} · continuation {} · issue coverage {:.0}%",
-                                profiles.raw_head_supported_cells[0], profiles.raw_head_supported_cells[1],
-                                100. * profiles.raw_head_issue.observed_coverage
+                                "Issue coverage {:.0}% · articulation-supported cells {}",
+                                100. * profiles.issue_observed_coverage,
+                                profiles.articulation_supported_cells
                             ));
                             ui.label(format!("Candidate accent density: {} projected cells · uncalibrated",
                                 profiles.projected_accent_density_cells));
                             ui.label(format!("Candidate arrival: {} projected cells · uncalibrated",
                                 profiles.projected_arrival_cells));
-                            if let Some(issue) = profiles.groove_issue {
-                                egui::CollapsingHeader::new("Candidate groove/desire (uncalibrated)")
-                                    .id_salt((observation.bus, "candidate_groove"))
-                                    .show(ui, |ui| {
-                                        ui.label(format!("Frozen issue coverage {:.0}% · latest published candidate per class",
-                                            100. * issue.observed_coverage));
-                                        for cell in profiles.latest.iter().flatten() {
-                                            let Some(heads) = cell.groove_heads else { continue };
-                                            for (name, rating) in [("groove", heads.groove), ("desire", heads.desire)] {
-                                                if let Some(rating) = rating {
-                                                    ui.label(format!("{:?} · {name}: {:.3} · support {:.0}%",
-                                                        cell.class, rating.expected_rating, 100. * rating.reported_support_mass));
-                                                } else {
-                                                    ui.label(format!("{:?} · {name}: unavailable", cell.class));
-                                                }
-                                            }
-                                        }
-                                    });
-                            }
                         }
                         if let Some(resources) = observation.action_profile_resources {
                             ui.label(format!(
@@ -689,20 +666,6 @@ fn draw_listener_dashboard(
                                         group.recognition.lower, group.recognition.upper, group.scored_episodes));
                                 }
                             }
-                            if let Some(graph) = memory.graph {
-                                ui.label(format!("Episode graph: {} nodes · {} candidate links · {} pending queries · {} pruned links",
-                                    graph.nodes, graph.edges, graph.pending_queries, graph.pruned_edges));
-                                ui.label(format!("Unsealed phrases: {} · {} candidate links · {} pruned links · {} lost owners",
-                                    graph.retained_prefixes, graph.prefix_edges, graph.pruned_prefix_edges, graph.lost_prefixes));
-                            }
-                            if let Some(sealed) = memory.latest_sealed_coarse {
-                                if let Some(query) = sealed.query {
-                                    ui.label(format!("Sealed interval: query {} · {} known coarse costs · {} unresolved",
-                                        query.query_id, sealed.known_costs, sealed.unknown_costs));
-                                } else {
-                                    ui.label("Sealed interval: no qualifying original query");
-                                }
-                            }
                             if let Some(result) = memory.latest {
                                 if let Some(best) = result.best {
                                     ui.label(format!(
@@ -721,47 +684,17 @@ fn draw_listener_dashboard(
                                 }
                             }
                         }
-                        if let Some(error)=observation.phrase_error {
-                            ui.label(format!("Phrase diagnostics: {error}"));
-                        } else if let Some(phrase)=observation.phrase {
-                            ui.label(format!("Phrase / closure · uncalibrated · closure rating {:.3} (unknown {:.3}) · continuation rating {:.3} (unknown {:.3})",phrase.closure.expected_rating,phrase.closure.unknown,phrase.continuation.expected_rating,phrase.continuation.unknown));
-                            for g in phrase.groups.iter().flatten() {
-                                if let Some(f)=g.forecast {
-                                    ui.label(format!("Group {} · boundary types {:?} · survival {:.3} · unknown {:.3} · forecast {}–{} · evidence {}–{} / available {}",g.group.generation,f.exits,f.survival,f.unknown,f.issued_at,f.horizon_end,f.source_start,f.source_end,f.available));
-                                }
-                            }
-                        }
-                        if let Some(error) = observation.whole_error {
-                            ui.label(format!("Whole-piece diagnostics: {error}"));
-                        } else if let Some(whole) = observation.whole.as_ref() {
-                            ui.label(format!("Whole-piece completion · uncalibrated · rating {:.3} · support {:.3} · observed through {}",whole.expected_rating,whole.support,whole.observed_end_sample));
-                            ui.label(format!("Inputs {:?} · support {:?}",whole.values,whole.input_support));
-                            if let Some(controls) = whole.controls {
-                                ui.label(format!("Completion controls · closure {:.3} · gap/energy {:.3} · elapsed {:.3}",
-                                    controls.closure_only.rating.expected_rating,
-                                    controls.gap_energy_2s.rating.expected_rating,
-                                    controls.elapsed_only.rating.expected_rating));
-                                ui.label(format!("Control support · {:.3} · {:.3} · {:.3}",
-                                    controls.closure_only.rating.support,
-                                    controls.gap_energy_2s.rating.support,
-                                    controls.elapsed_only.rating.support));
-                            }
-                        }
-                        if let Some(error) = observation.section_error {
-                            ui.label(format!("Section diagnostics: {error}"));
-                        } else if let Some(section) = observation.section.as_ref() {
-                            ui.label(format!("Section · uncalibrated · {} committed phrases · {} commitment losses · {} revisions", section.committed_phrases, section.commitment_losses, section.commitment_revisions));
-                            for g in section.groups.iter().flatten() {
-                                ui.label(format!("Group {} · representative path {} · {} completed spans · one-second exits {:?} · unknown {:.3}", g.group.generation, g.representative_path, g.observed_spans, g.exits, g.unknown));
-                                for candidate in g.candidates.iter().flatten().take(4) {
-                                    ui.label(format!("Context {} · {:?} · mass {:.3} · start {}",candidate.context_id,candidate.relation,candidate.mass,candidate.start_sample));
-                                    if let Some(focus)=candidate.focus {
-                                        ui.label(format!("Recall episode {} · transformation {:?} · query {:?}",focus.episode_id,focus.transformation,candidate.query_id));
-                                    }
-                                }
-                                if let Some(cue)=g.cue {
-                                    ui.label(format!("Cue {} · whole prefix {}–{} · recent acoustic support {:.3} s",cue.occurrence_id,cue.start_sample,cue.support_end_sample,cue.weighted_seconds));
-                                } else { ui.label("Cue unavailable"); }
+                        if let Some(error) = observation.context_error {
+                            ui.label(format!("Observed context: {error}"));
+                        } else if let Some(context) = observation.context {
+                            ui.label(format!("Observed context · coverage {:.0}% · {} groups{}",
+                                100. * context.observed_coverage,
+                                context.groups.iter().flatten().count(),
+                                if context.censored { " · censored" } else { "" }));
+                            for g in context.groups.iter().flatten() {
+                                ui.label(format!("Group {} · {} hops · {} accents · weight {:.3} · arrival {:?}",
+                                    g.group.generation, g.history_hops, g.accents, g.acoustic_weight,
+                                    g.arrival_probability));
                             }
                         }
                         if let Some(error)=observation.period_error {
@@ -771,28 +704,6 @@ fn draw_listener_dashboard(
                                 ui.label(format!("Group {}: {} accents · {} period alternatives · {} groupings · uncalibrated",group.ledger.group.generation,group.ledger.retained_accents,group.peaks.iter().flatten().count(),group.grouping.map_or(0,|g|g.proposals.iter().flatten().count())));
                                 if let Some(f)=group.forecast {
                                     ui.label(format!("{:?} arrival {:?} · elapsed {:?} s · reset unknown {} · forecast {}–{} · evidence {}–{} / available {}",f.model,f.probability,f.elapsed_seconds,f.reset_unknown,f.issued_at,f.horizon_end,f.source_start,f.source_end,f.available));
-                                }
-                            }
-                            if let Some(heads) = period.groove_heads {
-                                for (index, (name, rating)) in [
-                                    ("Groove", heads.groove),
-                                    ("Desire to participate", heads.desire),
-                                ].into_iter().enumerate() {
-                                    if let Some(error) = heads.errors[index] {
-                                        ui.label(format!("{name}: {error}"));
-                                    } else if let Some(rating) = rating {
-                                        ui.label(format!(
-                                            "{name} rating {:.3} · observed {:.0}% · head support {:.0}% · prior contribution {:.0}%",
-                                            rating.expected_rating,
-                                            rating.observed_coverage * 100.,
-                                            rating.supported_mass * 100.,
-                                            (1. - rating.reported_support_mass) * 100.,
-                                        ));
-                                    }
-                                    let errors = heads.groups.iter().flatten().filter(|g| g.local.errors[index].is_some()).count();
-                                    if errors > 0 {
-                                        ui.label(format!("{name}: {errors} group predictions unavailable due to numeric errors"));
-                                    }
                                 }
                             }
                         }

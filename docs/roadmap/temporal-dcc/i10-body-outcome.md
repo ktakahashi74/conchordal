@@ -1,6 +1,6 @@
 # I10: 指令と私有実音の帰結診断
 
-範囲確定（2026-09-20）: 機構選択規則（[technote-ledger §9.3.55](../../design-notes/technote-ledger.ja.md#mechanism-selection-rule)、[milestones §1.3](milestones.md#13-機構選択規則による本体範囲の縮小2026-09-20同日のレビューを反映)）により、I10は正本の狭い範囲で閉じる。共同推論・全帰結投影・phrase再重み付け・groove評定headは研究拡張へ移し、`joint/`・`consequence/`・`long_form.rs` はcfg(test)のまま凍結する。残作業・仕分け・I11入力契約は末尾の[「I10の範囲確定と残作業の再定義」](#i10の範囲確定と残作業の再定義2026-09-20)を正とする。以下の「最新状態（2026-09-18）」行と2026-09-20までの各節は履歴として保存し、現行の完了条件ではない。
+範囲確定（2026-09-20）: 機構選択規則（[technote-ledger §9.3.55](../../design-notes/technote-ledger.ja.md#mechanism-selection-rule)、[milestones §1.3](milestones.md#13-機構選択規則による本体範囲の縮小2026-09-20同日のレビューを反映)）により、I10は正本の狭い範囲で閉じる。共同推論・全帰結投影・phrase再重み付け・groove評定headは研究拡張へ移し、該当Rust実装は2026-09-20にmainから削除した（branch `research/temporal-dcc-extension`、tag `research/temporal-dcc-extension-20260920` に保存）。残作業・仕分け・I11入力契約は末尾の[「I10の範囲確定と残作業の再定義」](#i10の範囲確定と残作業の再定義2026-09-20)を正とする。以下の「最新状態（2026-09-18）」行と2026-09-20までの各節は履歴として保存し、現行の完了条件ではない。
 
 最新状態（2026-09-18）: onset／release観測、身体世代付き六記述値に続き、動作条件付き自声予測を通常runtime／report／UIへ接続して検査した。活動・終端の5座標と将来の六記述値を、固定／動作非依存対照とともに発行時の予測で照合・学習する。私有参加traceの有界Rust数値filterも移植し、Python参照と照合した。続いて、共有memoryの保持状態とretrieval score上下限を通常worker／report／UIへ接続した。共有reference inventoryも原観測の2秒支持とanchorから通常worker／report／UIへ接続した。実Voiceの発行時reference／予測凍結、実onset／releaseからの私有trace更新、両対照の診断も通常rendererへ接続した。候補帰結の数値核（距離、候補混合、ordinal backoff、時刻lookup、default差分）は独立参照と照合した。実音288 recordからPAM prototypeを作り、通常身体worker／report／UIのdescriptor照合を接続・検査した。共有音群の2秒descriptor cacheとprototype対応も両busの通常worker／report／UIへ接続・検査した。局所own-excluded energyの中心補間と16点診断も通常参加reportへ接続・検査した。区間内の欠測を見落とさない支持bitsetを追加し、実音6,336条件のenergy積分監査で16点近似の誤差を記録した。続いて、指令発行時のwhole-source energy予測と16窓の私有実音教師・両対照・学習前誤差を通常renderer／report／UIへ接続した。さらに、同じ発行時点のhabitat自声除外予測とのenergy比率・区間支持・除外した予測質量を通常report／UIへ接続した。観測と候補で共用する10個の生特徴数値式も分離し、出所タグとfeature manifestのraw投影方針を追加して検査した。7 classの実身体比較素材には、512／480 hopで発行前PCMを保存するv2取得を追加し、未来PCMとともに独立検証した。さらに512-hop素材を通常の私有NSGT・raw抽出へ通し、396分岐・両busの297,000未来hopについて十生特徴と原支持を独立照合した。観測と候補で共有する物理窓集計も通常phraseへ接続し、32時点×3窓幅の76,032窓で数値・出所・支持を独立照合した。7 classの身体入力則と有界時刻生成も共通化し、取得器の396分岐が不変であることを確認した。I10全体は未完了。条件付き身体行動profileと7 classのprimitive特徴窓は通常接続・検査済み。次は評価時刻の確定、全head特徴・帰結表・actual-Voice/default対応、全I10資源検査。
 
@@ -6505,8 +6505,9 @@ fmt、通常Clippy、全target check、release build通過。cargo test exit=0 @
   本節自身は含まない。
 - これらはphrase履歴・section復帰・correspondence／matcher proposal・retrieval特徴・groupingを結合する共同posteriorと全帰結投影の
   実装であり、T5・T6と、T4のうち変形をまたぐ対応に属する。研究拡張の保存記録とし、I10の依存には戻さない。
-- `src/temporal_cognition/joint/`、`consequence/`、`long_form.rs` はcfg(test)限定のまま凍結する。以後I10として作業しない。
-  削除やattic退避は別に判断する。tuple列挙、matcher支持窓、section arenaの予約量などの数値検査結果は、研究拡張を再登録するときの参照として保持する。
+- `src/temporal_cognition/joint/`、`consequence/`、`long_form.rs` は2026-09-20にmainから削除した。保存先はbranch
+  `research/temporal-dcc-extension`（tag `research/temporal-dcc-extension-20260920`）。tuple列挙、matcher支持窓、
+  section arenaの予約量などの数値検査結果は本記録と `docs/roadmap/temporal-dcc/*.json` に残り、研究拡張を再登録するときの参照とする。
 
 ### 2026-09-19監査の残依存6件の仕分け
 
@@ -6515,7 +6516,7 @@ fmt、通常Clippy、全target check、release build通過。cargo test exit=0 @
 | 通常観測経路の共同posterior | 研究拡張 | 条件2・3。phrase／section／correspondence文脈に条件づけた推論で、その文脈側が研究拡張 |
 | 全候補帰結投影 | 研究拡張 | 条件2・3。三head候補核の入力が共同posterior |
 | 通常共有候補分布（phrase二headの再重み付け） | 研究拡張 | 条件2・3。closure／continuationはT5由来 |
-| 参加意欲head（groove／desire、54入力・109係数） | 研究拡張 | 条件2・3。係数は人の評定への適合が前提。通常接続済みの評定headは `[temporal_groove]` 明示時だけの既定off診断として保持し、追加実装しない |
+| 参加意欲head（groove／desire、54入力・109係数） | 研究拡張 | 条件2・3。係数は人の評定への適合が前提。通常接続済みの評定headは2026-09-20にmainから削除し、研究拡張ブランチへ保存した |
 | 実身体転用の妥当性 | 本体残作業 | 感覚運動予測の核心。実身体・残存tone・制御・位相を含む投影で順位反転を解消する |
 | I10資源引渡し | 本体残作業 | 縮小した実装負荷を棚卸し・測定しR2へ渡す |
 
@@ -6525,11 +6526,10 @@ fmt、通常Clippy、全target check、release build通過。cargo test exit=0 @
 
 ### 共有候補表の列の仕分け
 
-- arrival、accent密度の列はI10本体の入力とする。
-- groove／参加意欲の列と、phrase closure／continuationの列は、それぞれ `[temporal_groove]`・`[temporal_phrase]` を明示した場合だけの
-  既定off診断とし、I11の帰結評価には使わない。`src/temporal_cognition/phrase/projection.rs` の「Raw base-head aggregation only」という
-  出所表記を維持する。
-- section・recall・correspondence由来の値は通常表へ追加しない。
+- 候補表は観測文脈（`src/temporal_cognition/context.rs`）から作る。列はfeature窓、articulation投影、短窓の四座標、
+  grouping支持、arrival、accent密度、文脈三座標に限る。
+- groove／参加意欲の列と、phrase closure／continuationの列は2026-09-20に削除した。
+- section・recall・correspondence由来の値は表へ追加しない。
 
 ### I11の入力契約（本体、機構は一つ）
 
@@ -6556,6 +6556,7 @@ I11の完了条件は、この二候補の比較が固定方策のoff基準と�
 | 実身体転用の妥当性 | 実身体・残存tone・制御・位相を含む候補energy予測が、offline実音比較で順位反転を残さない。失敗した身体の除外で合格にしない | 未完。sine backendは1,520候補対で反転0。非sine等は明示的に旧近似 |
 | release・任意身体・両busへの候補評価の展開 | 固定方策の音声不変、候補による学習不変、routing・世代・欠測の検査 | onset候補は接続済み。release分岐は取得と一部接続。任意身体は転用妥当性の解決に依存 |
 | I10の資源 | 上記の実装負荷を4／16／64 Voiceで測定しR2へ渡す | 未完。前版の測定は旧負荷に対するもの |
+| 私有参加traceの信用割当 | 参照anchorが候補窓に入り、`assigned`／`learned` が正になる | 未完。研究拡張の削除で退行した。原因と選択肢は[マイルストーン§5](milestones.md#5-現在地と再開時の一単位)の「未解決（2026-09-20に発見）」 |
 
-監査記録は `target/i10-scope-confirmation-20260920/audit.json` に保存する。今回の変更は文書と監査記録に限り、
-Rustと生成音は不変である。I9保留、I11無効、at-action維持。R2／A3は別工程。次の一単位は実身体転用の妥当性である。
+監査記録は `target/i10-scope-confirmation-20260920/audit.json` に保存する。範囲確定は文書上の判断であり、
+それに続く研究拡張コードの削除と候補表の作り替えは同日に実施した。通常演奏の既定動作と生成音は変更していない。I9保留、I11無効、at-action維持。R2／A3は別工程。次の一単位は実身体転用の妥当性である。

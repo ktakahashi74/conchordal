@@ -95,34 +95,9 @@ impl Estimator {
         self.ledger.summary()
     }
 
+    #[cfg(test)]
     pub(in crate::temporal_cognition) fn latest_accent_end(&self) -> Option<u64> {
         self.ledger.last.map(|a| a.event_end)
-    }
-
-    /// Missing retained history is never a zero count over a complete window.
-    pub(in crate::temporal_cognition) fn accent_weight(&self, start: u64, end: u64) -> Option<f64> {
-        if start > end
-            || end > self.ledger.received_at
-            || start
-                < self
-                    .ledger
-                    .received_at
-                    .saturating_sub(self.ledger.window_samples)
-            || self
-                .ledger
-                .capacity_evicted_through
-                .is_some_and(|t| t >= start)
-        {
-            return None;
-        }
-        Some(
-            self.ledger
-                .bank
-                .iter()
-                .filter(|a| start <= a.event_end && a.event_end <= end)
-                .map(|a| a.weight)
-                .sum(),
-        )
     }
 
     pub(in crate::temporal_cognition) fn source_support(&self) -> Option<[u64; 3]> {

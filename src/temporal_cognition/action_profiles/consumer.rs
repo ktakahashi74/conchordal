@@ -2,7 +2,7 @@
 
 use super::{CLASSES, Cell, Profiles, Snapshot, Table};
 use crate::life::action_candidates::{Class, Input};
-use crate::temporal_cognition::{body, phrase::RawHeadMixture, ridge::Handle};
+use crate::temporal_cognition::{body, ridge::Handle};
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -81,9 +81,6 @@ pub(crate) struct Entry {
     pub action_at: u64,
     pub evaluation_at: u64,
     pub window_start: u64,
-    pub heads: Option<RawHeadMixture>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_heads: Option<crate::temporal_cognition::groove::CandidateHeads>,
 }
 
 impl From<&Cell> for Entry {
@@ -95,8 +92,6 @@ impl From<&Cell> for Entry {
             action_at: c.action_at,
             evaluation_at: c.evaluation_at,
             window_start: c.window_start,
-            heads: c.raw_unreweighted_heads,
-            groove_heads: c.groove_heads,
         }
     }
 }
@@ -166,13 +161,11 @@ pub(crate) enum Pair {
     NoGroup,
     OutsideHorizon,
     UnknownCell,
-    UnpairedHeads,
     Paired {
         candidate_index: usize,
         default_index: usize,
         candidate: Entry,
         body_default: Entry,
-        raw_rating_difference: [Option<f64>; 2],
     },
 }
 
@@ -279,36 +272,11 @@ impl Publication {
         else {
             return Pair::UnknownCell;
         };
-        let phrase_heads = candidate.heads.zip(body_default.heads).filter(|(c, d)| {
-            c.issued_at == self.key.issued_at && d.issued_at == self.key.issued_at
-        });
-        let groove_heads = candidate
-            .groove_heads
-            .zip(body_default.groove_heads)
-            .filter(|(c, d)| {
-                c.issue_window[1] == self.key.issued_at
-                    && d.issue_window[1] == self.key.issued_at
-                    && c.evaluated_at == candidate.evaluation_at
-                    && d.evaluated_at == body_default.evaluation_at
-                    && c.selected_group == group
-                    && d.selected_group == group
-            });
-        if phrase_heads.is_none() && groove_heads.is_none() {
-            return Pair::UnpairedHeads;
-        }
-        let raw_rating_difference = std::array::from_fn(|i| {
-            let (c, d) = phrase_heads?;
-            let ca = [c.closure, c.continuation];
-            let da = [d.closure, d.continuation];
-            (ca[i].reported_support_mass > 0. && da[i].reported_support_mass > 0.)
-                .then_some(ca[i].expected_rating - da[i].expected_rating)
-        });
         Pair::Paired {
             candidate_index: ci,
             default_index: di,
             candidate,
             body_default,
-            raw_rating_difference,
         }
     }
 }
@@ -317,7 +285,6 @@ impl Publication {
 mod tests {
     use super::*;
     use crate::life::action_candidates::BodyState;
-    use crate::temporal_cognition::phrase::RawOrdinalMixture;
 
     fn fixture() -> (Publication, Binding, Input) {
         let group = Handle {
@@ -341,16 +308,6 @@ mod tests {
         let mut cells = vec![None; 8 * 7 * 32];
         for (ci, class) in CLASSES.into_iter().enumerate() {
             for (i, offset) in offsets.into_iter().enumerate() {
-                let mean = i as f64 / 31.;
-                let head = RawOrdinalMixture {
-                    categories: [1. - mean, 0., 0., 0., mean],
-                    expected_rating: mean,
-                    observed_coverage: 0.8,
-                    supported_mass: 0.5,
-                    reported_support_mass: 0.4,
-                    selected_supported_mass: 0.5,
-                    held_supported_mass: 0.,
-                };
                 cells[ci * 32 + i] = Some(Entry {
                     prototype: 0,
                     class,
@@ -358,14 +315,6 @@ mod tests {
                     action_at: 1000 + offset,
                     evaluation_at: 1000 + offset,
                     window_start: 0,
-                    groove_heads: None,
-                    heads: Some(RawHeadMixture {
-                        issued_at: 1000,
-                        selected_group_weight: 1.,
-                        issue_known_mass: 0.5,
-                        closure: head,
-                        continuation: head,
-                    }),
                 });
             }
         }
@@ -573,7 +522,6 @@ mod tests {
                 body_default,
                 candidate_index,
                 default_index,
-                raw_rating_difference,
             } = table.pair(Some(binding), (7, 2, Some(4)), 0, now, candidate, default)
             else {
                 panic!("shifted {class:?}")
@@ -588,7 +536,6 @@ mod tests {
                     _ => class,
                 }
             );
-            assert_eq!(raw_rating_difference, [Some(0.); 2]);
             assert_eq!(candidate.class, class);
             assert_eq!(candidate.consumes_due_opportunity, class == Class::Skip);
             assert_eq!(candidate.excitation_at.is_some(), class == Class::OnsetNow);
@@ -614,14 +561,12 @@ mod tests {
         let release = Class::Release
             .input(now, 1000 + table.offsets[3], Some(24000), 48000, body)
             .unwrap();
-        let Pair::Paired {
-            raw_rating_difference,
-            ..
-        } = table.pair(Some(binding), (7, 2, Some(4)), 0, now, release, default)
+        let Pair::Paired { candidate, .. } =
+            table.pair(Some(binding), (7, 2, Some(4)), 0, now, release, default)
         else {
             panic!("supported shifted pair")
         };
-        assert!((raw_rating_difference[0].unwrap() - 2. / 31.).abs() < 1e-15);
+        assert_eq!(candidate.action_at, 1000 + table.offsets[3]);
     }
 
     #[test]
@@ -683,7 +628,6 @@ mod tests {
                 let Pair::Paired {
                     candidate_index,
                     candidate: cell,
-                    raw_rating_difference,
                     ..
                 } = table.pair(Some(binding), (7, 2, Some(4)), 0, 1000, candidate, default)
                 else {
@@ -691,8 +635,6 @@ mod tests {
                 };
                 assert_eq!(candidate_index, expected);
                 assert_eq!(cell.action_at, 1000 + table.offsets[expected]);
-                assert_eq!(raw_rating_difference, [Some(expected as f64 / 31.); 2]);
-                assert_eq!(cell.heads.unwrap().closure.reported_support_mass, 0.4);
             }
         }
         let candidate = Input {
@@ -714,22 +656,6 @@ mod tests {
             at: 1000 + table.offsets[3],
             ..candidate
         };
-        table.cells[0]
-            .as_mut()
-            .unwrap()
-            .heads
-            .as_mut()
-            .unwrap()
-            .closure
-            .reported_support_mass = 0.;
-        let Pair::Paired {
-            raw_rating_difference,
-            ..
-        } = table.pair(Some(binding), (7, 2, Some(4)), 0, 1000, candidate, default)
-        else {
-            panic!()
-        };
-        assert_eq!(raw_rating_difference, [None, Some(3. / 31.)]);
         table.cells[0] = None;
         assert!(matches!(
             table.pair(Some(binding), (7, 2, Some(4)), 0, 1000, candidate, default),

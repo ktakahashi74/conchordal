@@ -4,10 +4,7 @@ use super::{accents::periods::Peak, features::Accent, ridge::Handle};
 use std::cell::Cell;
 use std::collections::VecDeque;
 
-mod projection;
 mod shape;
-pub(crate) use projection::ProjectedFeatures;
-pub(super) use projection::{Projection, Scratch};
 
 const GROUPS: usize = 7;
 const BINS: usize = 32;

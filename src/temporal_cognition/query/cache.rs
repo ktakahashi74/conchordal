@@ -170,56 +170,15 @@ impl Snapshot {
     }
 }
 
+impl Snapshot {}
+
+#[cfg(test)]
 #[derive(Debug)]
 pub(in crate::temporal_cognition) struct Entry {
     pub handle: u64,
     pub cost: Option<f64>,
     pub similarity: Option<f64>,
     pub approximate: bool,
-}
-
-#[derive(Clone, Copy, Debug, serde::Serialize)]
-pub(crate) struct CoarseEvidence {
-    pub epoch: u64,
-    pub generation: u64,
-    pub query_id: u64,
-    pub occurrence_id: u64,
-    pub support_id: u64,
-    pub start: f64,
-    pub end: f64,
-    pub audio_end: Option<f64>,
-    pub received_at: f64,
-}
-
-impl Snapshot {
-    pub(in crate::temporal_cognition) fn evidence(&self) -> CoarseEvidence {
-        CoarseEvidence {
-            epoch: self.ids[0],
-            generation: self.ids[1],
-            query_id: self.ids[2],
-            occurrence_id: self.ids[3],
-            support_id: self.ids[4],
-            start: self.times[3],
-            end: self.times[0],
-            audio_end: (!self.times[1].is_nan()).then_some(self.times[1]),
-            received_at: self.times[2],
-        }
-    }
-
-    pub(in crate::temporal_cognition) fn entry(&self, slot: usize, handle: u64) -> Option<Entry> {
-        let c = self
-            .cells
-            .get(slot)
-            .filter(|c| handle != 0 && c.handle == handle)?;
-        let (word, mask) = (slot / 64, 1 << (slot % 64));
-        let valid = self.valid[word] & mask != 0;
-        Some(Entry {
-            handle,
-            cost: valid.then_some(c.cost),
-            similarity: valid.then_some(c.similarity),
-            approximate: self.approximate[word] & mask != 0,
-        })
-    }
 }
 
 #[cfg(test)]
@@ -251,39 +210,6 @@ impl Cache {
                 .iter()
                 .map(Snapshot::storage_bytes)
                 .sum::<usize>()
-    }
-
-    pub(super) fn for_commitment(
-        &self,
-        occurrence: u64,
-        span: [u64; 2],
-        deadline: u64,
-        rate: u32,
-        cut: u64,
-    ) -> Option<&Snapshot> {
-        self.blocks
-            .iter()
-            .zip(&self.occupied)
-            .filter_map(|(s, used)| {
-                if !used || s.ids[3] != occurrence || s.times[1].is_nan() {
-                    return None;
-                }
-                let samples = |value: f64| (value * f64::from(rate)).round() as u64;
-                let end = samples(s.times[0]);
-                let audio_end = samples(s.times[1]);
-                (samples(s.times[3]) == span[0]
-                    && end <= span[1]
-                    && audio_end <= span[1]
-                    && u128::from(span[1] - end) * 10 <= u128::from(rate)
-                    && u128::from(span[1] - audio_end) * 10 <= u128::from(rate)
-                    && samples(s.times[2]) <= deadline.min(cut))
-                .then_some(s)
-            })
-            .max_by(|a, b| {
-                a.times[0]
-                    .total_cmp(&b.times[0])
-                    .then(a.ids[2].cmp(&b.ids[2]))
-            })
     }
 
     pub(super) fn new(epoch: u64, generation: u64, capacity: usize, episodes: usize) -> Self {

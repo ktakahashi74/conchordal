@@ -418,19 +418,6 @@ impl Gesture {
         self.config.rms_reference
     }
 
-    pub(in crate::temporal_cognition) fn current_states(&self, handle: ridge::Handle) -> [f64; 5] {
-        let mut states = [0.; 5];
-        if let Some(g) = self.groups.iter().flatten().find(|g| g.handle == handle) {
-            for p in &g.paths {
-                states[p.state as usize] += p.mass;
-            }
-            states[4] = g.unknown;
-        } else {
-            states[4] = 1.;
-        }
-        states
-    }
-
     pub(crate) fn snapshot(&self) -> Snapshot {
         self.snapshot
     }

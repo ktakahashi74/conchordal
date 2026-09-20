@@ -8,7 +8,6 @@ use super::{
 };
 
 mod cache;
-pub(crate) use cache::CoarseEvidence;
 pub(super) use cache::{Binding, Cache, Snapshot};
 
 #[repr(C)]
@@ -250,35 +249,6 @@ impl Scheduler {
                 .iter()
                 .map(|g| g.cache.storage_bytes())
                 .sum::<usize>()
-    }
-
-    pub fn coarse_for_commitment(
-        &self,
-        group: Handle,
-        occurrence: u64,
-        span: [u64; 2],
-        deadline: u64,
-        cut: u64,
-    ) -> Result<Option<&Snapshot>, &'static str> {
-        self.check(cut, None)?;
-        if group.bus != self.config.bus
-            || group.epoch != self.config.epoch
-            || span[0] >= span[1]
-            || span[1] > deadline
-            || deadline > cut
-        {
-            return Err(
-                "current-epoch sealed original interval and causal commitment cut required",
-            );
-        }
-        Ok(self
-            .groups
-            .iter()
-            .find(|g| g.bound && g.generation == Some(group.generation))
-            .and_then(|g| {
-                g.cache
-                    .for_commitment(occurrence, span, deadline, self.config.sample_rate, cut)
-            }))
     }
 
     pub fn retire(&mut self, slot: usize, cut: u64) -> Result<(), &'static str> {

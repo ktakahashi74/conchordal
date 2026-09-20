@@ -3,17 +3,25 @@
 use super::*;
 use crate::temporal_cognition::features::{Status, accent_salience, accent_status};
 
+#[derive(Clone, Copy, Debug, Serialize)]
+pub(crate) struct AccentDensity {
+    pub(in crate::temporal_cognition) value: Feature,
+    pub observed_samples: u64,
+    pub projected_samples: u64,
+    pub observed_weight: f64,
+    pub projected_weight: f64,
+    pub projected_accents: usize,
+    pub latest_projected_interval: Option<[u64; 2]>,
+}
+
 impl Group {
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::temporal_cognition::phrase) fn projected_accent_density(
+    pub(super) fn projected_accent_density(
         &self,
         [start, end]: [u64; 2],
         issue: u64,
         rate: u32,
         (means, deviations): ([f64; 2], [f64; 2]),
         mut arrival: Option<&mut crate::temporal_cognition::arrival::Scratch>,
-        mut density: Option<&mut crate::temporal_cognition::groove::DensityProjection>,
-        mut timing: Option<&mut crate::temporal_cognition::auditory_timing::Projection<'_>>,
         future: impl Iterator<Item = window::Frame>,
     ) -> Result<AccentDensity, &'static str> {
         if start > end
@@ -56,21 +64,7 @@ impl Group {
             known: bool,
             salience: Option<f64>,
         }
-        let prefix = self
-            .history
-            .iter()
-            .skip(self.history.len().saturating_sub(3))
-            .map(|s| window::Frame {
-                start: s.raw.start,
-                end: s.raw.end,
-                source_end: s.raw.source_end,
-                available: s.raw.available_end,
-                raw: s
-                    .raw
-                    .values
-                    .map(|v| v.map_or(Feature::Unsupported, Feature::Observed)),
-                energy: s.energy.map_or(Feature::Unsupported, Feature::Observed),
-            });
+        let prefix = self.frames().skip(self.history.len().saturating_sub(3));
         let mut saved: [Option<Hop>; 4] = [None; 4];
         for frame in prefix.chain(future) {
             if frame.start >= frame.end {
@@ -147,14 +141,8 @@ impl Group {
             if let Some(scratch) = arrival.as_deref_mut() {
                 scratch.receipt([center.start, center.end], frame.end, supported, weight)?;
             }
-            if let Some(timing) = timing.as_deref_mut() {
-                timing.receipt([center.start, center.end], supported, weight)?;
-            }
             if !supported {
                 continue;
-            }
-            if let Some(density) = density.as_deref_mut() {
-                density.receipt([center.start, center.end], weight);
             }
             result.projected_samples += center
                 .end

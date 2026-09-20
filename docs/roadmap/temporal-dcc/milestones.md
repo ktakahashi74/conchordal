@@ -95,16 +95,18 @@ ListenerTwinは受動的な観測指標に留める。I9除外はこの規則の
 | 最終受入A | A1（作者自身の試聴だけで完了可能。他者試聴は任意の参考で判定に必須としない）、A2、A3、A4（この縮小範囲の監査） | 研究拡張採用時の該当T行の四判定 |
 | O義務 | O01–O04、O09–O15、O17–O22（本体T行と接続に限る。本文は§4と完成計画§4.1） | O05–O08、O16（長期記憶容量の採用条件、2026-09-13に移管済み） |
 
-- T3のうち固有周期・参加周期・鳴る／待つ／見送る（`src/life/temporal_participation.rs`）はVoiceの身体と作者の参加傾向であり、ALife側でそのまま使う。groove評定headは `[temporal_groove]` 明示時だけの既定off診断として保持し、追加実装しない。
+- T3のうち固有周期・参加周期・鳴る／待つ／見送る（`src/life/temporal_participation.rs`）はVoiceの身体と作者の参加傾向であり、ALife側でそのまま使う。groove／参加意欲の評定head（`groove.rs`・`ratings.rs`・`[temporal_groove]`）は2026-09-20にmainから削除し、研究拡張ブランチへ保存した。
 - I4の分割: 本体に残すのは `src/core/temporal_expectation.rs`・`history_prediction.rs` の短期反復・帯域エネルギー予測（I11の外部短期予測の供給元）、`recall.rs` の受領証拠の保持・減衰状態、その保持状態と音響支持から作る `reference_inventory.rs` の2秒支持・anchorによる有界因果参照（I10私有traceの入力。`Stream` は `recall::Snapshot` を入力にとる）。研究拡張へ移すのは `matcher.rs` のcoarse／DTW、`memory.rs` の順序付き／orderless episode検索、`query.rs` のscheduler、`recall.rs` のprefix query発行、`recall/graph.rs` の対応graph。現在の `recall.rs` は保持状態の生成とprefix query発行を同じ型で担うため、この分離はコード上は未実施であり、`[temporal_memory]` 明示時はrecall全体が既定off診断として動く。分離はI4の残作業として§5に登録し、I10の完了条件には含めない。
 - I12bの本体範囲は、I6の到来期待がgesture候補時刻へ作用する経路と、観測accentが周期推定へ入る既存経路の二つ。除去比較はこの二経路それぞれ。前者の更新則・閾値・尺度はI11の実装前登録で確定し、登録前は本体採用を保留する。独立したgrouping推論は本体に追加しない。
-- I7・I8の既存Rust実装・数値fixture・検査記録は削除せず、既定offの診断・report経路として保持する。通常演奏の生成には作用させない。
+- I7・I8のRust実装（`phrase.rs`・`section.rs`・`whole.rs`・`hazard.rs`と各fixture）は2026-09-20にmainから削除した。実装・fixture・検査記録はbranch `research/temporal-dcc-extension`（tag `research/temporal-dcc-extension-20260920`）に保存し、再開時はそこから復元する。既定off診断としてmainに残す方針は、本体が読まない約2万行をtest buildへ抱えることになるため撤回した。
 - 本体のA4は、I9／I12eに加えてI7・I8・I12a／c／d・T3評定head・T5・T6を監査対象から外す。四接続の統合判定はI12b二経路の除去比較へ置き換える。
 - I11の対象は本体T行に限る。本体の閾値・尺度は各Iの契約検査（O03／O09）で登録し、人の評定へ適合させない。
-- 既存の数値参照（39／82成分descriptor、109係数head、episode graph、fit表）は研究拡張の登録として保存し、本体の依存へ戻さない。
+- 既存の数値参照（39／82成分descriptor、109係数head、episode graph、fit表）は研究拡張ブランチと`docs/roadmap/temporal-dcc/*.json`に保存し、本体の依存へ戻さない。
 - 継続運転、air-gap、既定off、Scenario指示≠聴いた帰還の証拠、因果的状態更新、R2／A3の全処理計数は変更しない。
-- I10は§2行の狭い範囲で閉じる。2026-09-18〜20の共同posterior・全帰結投影・phrase再重み付けの作業は研究拡張の保存記録とし、`src/temporal_cognition/joint/`・`consequence/`・`long_form.rs` はcfg(test)のまま凍結する。残作業の仕分けとI11入力契約は[I10記録](i10-body-outcome.md#i10の範囲確定と残作業の再定義2026-09-20)。
-- 今回の変更は文書上の範囲・判定の変更であり、Rustと生成音の変更はない。`src/temporal_cognition/` の追跡・保存方針は別途判断する。
+- I10は§2行の狭い範囲で閉じる。2026-09-18〜20の共同posterior・全帰結投影・phrase再重み付けの作業は研究拡張の保存記録とし、`src/temporal_cognition/joint/`・`consequence/`・`long_form.rs` はmainから削除した。残作業の仕分けとI11入力契約は[I10記録](i10-body-outcome.md#i10の範囲確定と残作業の再定義2026-09-20)。
+- 候補表は観測文脈（`src/temporal_cognition/context.rs`）から作る。列はfeature窓、articulation投影、短窓の四座標、grouping支持、arrival、accent密度、文脈三座標に限る。closure／continuation／groove由来の列は削除した。
+- 記憶の保持・検索は固定スパンのepisodeで動く。phrase由来のcue封緘、対応graph、prefix query、coarse commitment cacheは削除した。`matcher.rs`・`memory.rs`・`query.rs`の探索はI4の研究拡張として残り、分離は§5の残作業。
+- 本体の範囲判定は文書上の変更だが、上記のコード削除と候補表の作り替えは2026-09-20に実施済み。通常演奏の既定動作（全`temporal_*`がNone）と生成音は変更していない。
 
 ## 2. 技術実装の完了点
 
@@ -194,17 +196,32 @@ R/Aは対象T行・component・版ごとに判定できる。一つの部分合�
 
 範囲再改訂（2026-09-20）: §1.3の機構選択規則を採用し、本体をT1・T2・T4の短期反復期待、I0–I3、I4の有界因果参照、I5、I6、I10、I11、
 I12b、I13へ縮小した。T3評定head、I7、I8、I12a／c／dは研究拡張へ移管し、R1・R4・R5は本体の完了条件から外した。
+同日、研究拡張のRust実装をmainから削除した。checkpointは `d579688`、保存先はbranch `research/temporal-dcc-extension`
+（tag `research/temporal-dcc-extension-20260920`）。削除したのはjoint／consequence／long_form、phrase／section／whole／
+groove／ratings／hazard、対応fixtureと生成スクリプト。候補表は新しい観測文脈モジュールから作り直し、記憶の照合は
+明示した距離則へ置き換えた。`src/temporal_cognition/` は35,342行（削除前は約51,000行）。
 以下の2026-09-19までの判断待ち（工程表I10と後続拡張範囲の不一致）は、この改訂で範囲側を確定したものとして扱う。
-実装状態は不変であり、変えたのは完了対象と残作業の分類である。Rust・生成音も不変。
+通常演奏の既定動作（全`temporal_*`がNone）と生成音は変更していない。
 I10の残作業は三つ。実身体転用の妥当性（非sine backendを含む順位反転の解消）、release・任意身体・両busへの候補評価の展開
 （§1.2の契約「onsetのみの成立はI10全体の完了ではない」に由来し、新たな不足ではない）、縮小した負荷の資源引渡し。
 2026-09-19監査の残依存6件のうち、共同posterior・全帰結投影・phrase再重み付け・参加意欲headの4件は研究拡張へ、
 実身体転用と資源引渡しの2件が本体に残る。2026-09-18〜20の共同posterior・全帰結投影の作業は研究拡張の保存記録とし、
-`joint/`・`consequence/`・`long_form.rs` はcfg(test)のまま凍結する。仕分けの詳細、新しい完了監査表、I11入力契約は
+`joint/`・`consequence/`・`long_form.rs` はmainから削除した。仕分けの詳細、新しい完了監査表、I11入力契約は
 [I10記録](i10-body-outcome.md#i10の範囲確定と残作業の再定義2026-09-20)、監査は `target/i10-scope-confirmation-20260920/audit.json`。
 次の一単位は実身体転用の妥当性。
-I4の残作業として、`recall.rs` の保持状態生成とprefix query発行の分離を登録する（I10の完了条件外、A4前に実施）。
+I4の残作業として、`recall.rs` から `matcher.rs`／`memory.rs`／`query.rs` のepisode探索を分離することを登録する
+（I10の完了条件外、A4前に実施）。phrase由来のcue封緘・対応graph・prefix query・coarse commitment cacheは2026-09-20に削除済みで、
+記憶は固定スパンのepisodeで動く。`reference_inventory` はその検索結果を入力にとるため、探索の分離には代替の照合規則が要る。
 I11の比較量・有界窓・情報締切・欠測時の選択規則と、I12b到来経路の更新則・尺度は、I11の実装前登録で確定する。登録前はI11・I12bの機能成立を主張しない。
+
+未解決（2026-09-20に発見、I10の残作業へ追加）: 私有参加traceが信用を割り当てなくなった。
+`reference_inventory` が作る参照のanchorは、これまでphrase cueで封緘したepisodeの検索結果に紐づいていた。
+固定スパンepisodeへ切り替えた結果、`private_trace::paired_lookup` の窓（非周期系では候補時刻の4周期以内）に
+入るanchorが無くなり、支持が0、`assigned` が0、`learned` が0になる。統合テスト
+`temporal_observation_preserves_audio_and_finishes_both_buses` は現状（previews>0、支持0、信用0）を明示して検査し、
+回復したら失敗するようにしてある。I10完了にはこの回復が要る。選択肢は、参照anchorを直近のaccent台帳から選ぶ、
+固定スパンの長さ・周期推定を候補窓に合わせる、`paired_lookup` の窓規則を明示し直す、のいずれか。
+phrase／sectionをmainへ戻す案は機構選択規則に反するため採らない。
 
 残依存のsource監査（2026-09-19）: 共同正規化・全帰結の核・参加意欲の109座標標準化組立は監査時点でtest build限定。
 通常版はraw closure／continuation二列であり、全帰結の残作業は単なる呼出し追加ではない。

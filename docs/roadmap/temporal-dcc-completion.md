@@ -66,7 +66,7 @@ M6–M7で身体介入・文脈介入・交互作用を検査し、M9でT1と階
 この規則により、本体はT1・T2とT4の短期反復期待、I0–I3、I4のうち有界因果参照（`reference_inventory`）、I5、I6、I10、I11、
 I12b（二経路）、I13とする。T3のgroove評定head、T4の変形をまたぐ対応・想起、T5・T6、I7・I8、I12a／c／dは、
 I9・I12e・T7と同じく研究拡張へ移す。R1・R4・R5は本体の完了条件から外し、本体の作者採用はA1（作者試聴のみ）・A2・A4で行う。
-R2・R3・A3の全処理計数は維持する。I7・I8・groove headの実装は削除せず既定offの診断として保持する。
+R2・R3・A3の全処理計数は維持する。I7・I8・groove headの実装は2026-09-20にmainから削除し、branch `research/temporal-dcc-extension` に保存した。
 正本は[technote-ledger §9.3.55](../design-notes/technote-ledger.ja.md#mechanism-selection-rule)、
 実行規則は[マイルストーン§1.3](temporal-dcc/milestones.md#13-機構選択規則による本体範囲の縮小2026-09-20同日のレビューを反映)。
 §1.1と以下の本文にある「本体T1–T6」「四接続」は2026-09-13時点の記録であり、現在の範囲は本節に従う。

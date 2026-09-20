@@ -3343,7 +3343,7 @@ R5（認知課題）は本体の完了条件から外し、研究拡張を採用
 O19の旧template置換は本体ではA1／A2／A4で判定する。ここに挙げたR・A・Oは抜粋であり、義務の本文と全対応表は
 `docs/roadmap/temporal-dcc/milestones.md` §1.3・§4に置く。
 
-**維持するもの。** I7・I8とgroove評定headの既存実装・数値fixtureは削除せず、既定offの診断・report経路として保持する。
+**維持するもの。** I7・I8とgroove評定headの実装・数値fixtureは、2026-09-20にbranch `research/temporal-dcc-extension`（tag `research/temporal-dcc-extension-20260920`）へ保存し、mainからは削除した。
 I9と同様に、技術完了の記録を認知的採用へ引き上げない。air-gap、既定off、因果的な状態更新、
 Scenarioの帰還指示を聞こえた帰還の証拠にしない分離は変わらない。本改訂は文書上の範囲と判定の変更であり、
 Rustと生成音の変更はない。実行上の正本は `docs/roadmap/temporal-dcc/milestones.md` §1.3に置く。

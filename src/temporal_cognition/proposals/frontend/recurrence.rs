@@ -10,7 +10,7 @@ use crate::temporal_cognition::{
         Ledger, Summary,
         periods::{self, groupings},
     },
-    arrival, auditory_timing, groove,
+    arrival, auditory_timing,
     ridge::Handle,
 };
 
@@ -29,7 +29,6 @@ struct Slot {
     arrival: Option<arrival::Engine>,
     estimator: periods::Estimator,
     grouping: groupings::Inventory,
-    groove: groove::Group,
 }
 
 #[derive(Clone, Copy)]
@@ -41,7 +40,6 @@ struct GroupFrame {
     period_source: Option<[u64; 3]>,
     grouping: Option<groupings::View>,
     forecast: Option<arrival::Forecast>,
-    groove: Option<groove::Summary>,
 }
 
 struct Frame {
@@ -63,7 +61,6 @@ pub(crate) struct Recurrence {
     received_at: u64,
     failure: Option<&'static str>,
     timing: auditory_timing::Stream,
-    heads: Option<groove::Heads>,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -76,7 +73,6 @@ pub(crate) struct GroupSnapshot {
     pub period_source: Option<[u64; 3]>,
     pub grouping: Option<groupings::Snapshot>,
     pub forecast: Option<arrival::Forecast>,
-    pub groove: Option<groove::Summary>,
 }
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 pub(crate) struct Snapshot {
@@ -85,8 +81,6 @@ pub(crate) struct Snapshot {
     pub groups: [Option<GroupSnapshot>; 7],
     pub residual: Summary,
     pub timing: Option<auditory_timing::Snapshot>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub groove_heads: Option<groove::Snapshot>,
 }
 
 impl Recurrence {
@@ -98,10 +92,9 @@ impl Recurrence {
     pub(crate) fn configured(
         frontend: Frontend,
         forecast: crate::config::TemporalPeriodConfig,
-        groove: Option<crate::config::TemporalGrooveConfig>,
     ) -> Result<Self, &'static str> {
         let rate = frontend.config.group.sample_rate;
-        let mut model = Self::with_frontend(
+        Self::with_frontend(
             frontend,
             Settings {
                 forecast: Some(forecast),
@@ -116,18 +109,7 @@ impl Recurrence {
                     one_skip_words: false,
                 },
             },
-        )?;
-        model.heads = groove
-            .map(|c| {
-                groove::Heads::new(
-                    c,
-                    rate,
-                    model.frontend.config.group.hop,
-                    model.frontend.config.epoch_start,
-                )
-            })
-            .transpose()?;
-        Ok(model)
+        )
     }
 
     fn with_frontend(frontend: Frontend, settings: Settings) -> Result<Self, &'static str> {
@@ -155,11 +137,6 @@ impl Recurrence {
                     config.epoch_start,
                     settings.grouping,
                 )?,
-                groove: groove::Group::new(
-                    config.group.sample_rate,
-                    config.group.hop,
-                    config.epoch_start,
-                ),
             });
         }
         let mut residual = Ledger::new(
@@ -190,7 +167,6 @@ impl Recurrence {
             frame: Box::new(None),
             received_at: config.epoch_start,
             failure: None,
-            heads: None,
             timing: auditory_timing::Stream::new(
                 config.group.sample_rate,
                 config.group.hop,
@@ -242,17 +218,6 @@ impl Recurrence {
         observation: Option<Observation<'_>>,
         acoustic: &Output,
     ) -> Result<(), &'static str> {
-        if let Some(heads) = &mut self.heads {
-            heads.advance(
-                end,
-                observation.is_some_and(|o| {
-                    o.source_start <= end - self.frontend.config.group.hop
-                        && o.source_end >= end
-                        && o.source_end <= received_at
-                        && o.available_end <= received_at
-                }),
-            );
-        }
         let mut evidence_groups = [None; 7];
         let mut timing = [None; 7];
         let assignment_total: f64 = acoustic
@@ -348,17 +313,7 @@ impl Recurrence {
             } else {
                 0.
             };
-            let groove = slot.groove.advance(
-                &slot.estimator,
-                slot.grouping.snapshot().as_ref(),
-                groove::Input {
-                    start: end - self.frontend.config.group.hop,
-                    end,
-                    known,
-                    alpha,
-                    refreshed,
-                },
-            );
+            let _ = (known, alpha, refreshed);
             evidence_groups[index] = Some(GroupFrame {
                 ledger: slot.estimator.ledger_summary(),
                 acoustic_eligible: self.frontend.energy_eligible[index],
@@ -369,7 +324,6 @@ impl Recurrence {
                 period_source: slot.estimator.source_support(),
                 grouping: slot.grouping.snapshot(),
                 forecast,
-                groove: Some(groove),
             });
             timing[index] = Some(auditory_timing::Input {
                 group: owner,
@@ -411,7 +365,6 @@ impl Recurrence {
                 slot.grouping.reset(handle, received_at)?;
                 newborn[index] = Some(slot.estimator.ledger_summary());
             }
-            slot.groove.reset();
             slot.owner = next;
         }
         *self.frame = Some(Frame {
@@ -454,117 +407,15 @@ impl Recurrence {
         })
     }
 
-    pub(in crate::temporal_cognition) fn groove_issue(
-        &self,
-        cut: u64,
-    ) -> Option<groove::Issue<'_>> {
-        self.groove_groups(cut)?;
-        self.heads
-            .as_ref()?
-            .freeze(self.diagnostics()?.groove_heads?)
-    }
-
-    pub(in crate::temporal_cognition) fn groove_groups(
-        &self,
-        cut: u64,
-    ) -> Option<[Option<Handle>; 7]> {
-        let frame = self.frame.as_ref().as_ref()?;
-        if self.heads.is_none()
-            || self.failure.is_some()
-            || frame.end_sample != cut
-            || frame.received_at != cut
-        {
-            return None;
-        }
-        Some(std::array::from_fn(|i| {
-            let group = frame.evidence_groups[i]?;
-            let raw = group.groove?;
-            (frame.next_owners[i] == Some(group.ledger.group)
-                && raw.end_sample == cut
-                && raw.assignment_sample_weight > 0.)
-                .then_some(group.ledger.group)
-        }))
-    }
-
-    pub(in crate::temporal_cognition) fn density_projection(
-        &self,
-        group: Handle,
-        issue: u64,
-        end: u64,
-    ) -> Option<groove::DensityProjection> {
-        let frame = self.frame.as_ref().as_ref()?;
-        if self.heads.is_none()
-            || self.failure.is_some()
-            || frame.end_sample != issue
-            || frame.received_at != issue
-        {
-            return None;
-        }
-        let index = self.slots.iter().position(|s| s.owner == Some(group))?;
-        if frame.next_owners[index] != Some(group)
-            || frame.evidence_groups[index]?.ledger.group != group
-        {
-            return None;
-        }
-        self.slots[index]
-            .groove
-            .project_density(&self.slots[index].estimator, end)
-    }
-
-    pub(in crate::temporal_cognition) fn context_projection(
-        &self,
-        group: Handle,
-        issue: u64,
-        end: u64,
-    ) -> Option<groove::ContextProjection> {
-        let frame = self.frame.as_ref().as_ref()?;
-        if self.heads.is_none()
-            || self.failure.is_some()
-            || frame.end_sample != issue
-            || frame.received_at != issue
-        {
-            return None;
-        }
-        let index = self.slots.iter().position(|s| s.owner == Some(group))?;
-        if frame.next_owners[index] != Some(group)
-            || frame.evidence_groups[index]?.ledger.group != group
-        {
-            return None;
-        }
-        self.slots[index]
-            .groove
-            .project_context(&self.slots[index].estimator, end)
-    }
-
-    pub(in crate::temporal_cognition) fn timing_projection<'a>(
-        &'a self,
-        group: Handle,
-        issue: u64,
-        end: u64,
-        scratch: &'a mut Option<auditory_timing::Scratch>,
-    ) -> Option<auditory_timing::Projection<'a>> {
-        let frame = self.frame.as_ref().as_ref()?;
-        if self.heads.is_none()
-            || self.failure.is_some()
-            || frame.end_sample != issue
-            || frame.received_at != issue
-            || !frame.next_owners.contains(&Some(group))
-        {
-            return None;
-        }
-        self.timing.project(group, issue, end, scratch)
-    }
-
     pub(crate) fn diagnostics(&self) -> Option<Snapshot> {
         let frame = self.frame.as_ref().as_ref()?;
         let timing = Some(self.timing.snapshot()).filter(|s| s.window[1] == frame.end_sample);
-        let mut snapshot = Snapshot {
+        let snapshot = Snapshot {
             end_sample: frame.end_sample,
             received_at: frame.received_at,
             residual: frame.residual,
             // Finishing at a later delivery clock does not invent acoustic coverage.
             timing,
-            groove_heads: None,
             groups: std::array::from_fn(|i| {
                 frame.evidence_groups[i].map(|g| {
                     let active = frame.next_owners[i] == Some(g.ledger.group);
@@ -583,33 +434,10 @@ impl Recurrence {
                         period_source: g.period_source,
                         grouping: g.grouping.map(|v| v.diagnostics()),
                         forecast,
-                        groove: g.groove.map(|mut summary| {
-                            if let Some(t) = timing.as_ref().and_then(|s| {
-                                s.groups
-                                    .iter()
-                                    .flatten()
-                                    .find(|t| t.group == g.ledger.group)
-                            }) {
-                                for (value, timing) in summary.raw[..42]
-                                    .iter_mut()
-                                    .zip(t.timing_features.iter().flatten())
-                                {
-                                    *value = *timing;
-                                }
-                            }
-                            summary
-                        }),
                     }
                 })
             }),
         };
-        snapshot.groove_heads = self.heads.as_ref().map(|h| {
-            h.score(snapshot.groups.each_ref().map(|g| {
-                g.as_ref()
-                    .filter(|g| g.active)
-                    .and_then(|g| g.groove.as_ref().map(|s| (g.ledger.group, s)))
-            }))
-        });
         Some(snapshot)
     }
 
@@ -683,5 +511,3 @@ impl Recurrence {
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-pub(in crate::temporal_cognition) use tests::advance_synthetic_arrivals;

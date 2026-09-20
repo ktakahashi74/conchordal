@@ -25,10 +25,12 @@ fn retained_live_queries_publish_causal_score_bounds_and_source_strength() {
         strength_max: 2.,
         r_max: 4.,
         no_memory_bias: 0.,
+        match_temperature: 1.,
+        edit_penalty: 1.,
+        motion_scale: 1.,
+        interval_scale: 1.,
     });
-    let model = crate::temporal_cognition::section::tests::runtime_config();
-    assert!(Recall::new(1, 0, 1000, 100, c, None).is_err());
-    for change in 0..5 {
+    for change in 0..9 {
         let mut bad = c;
         let p = bad.retention.as_mut().unwrap();
         match change {
@@ -36,11 +38,15 @@ fn retained_live_queries_publish_causal_score_bounds_and_source_strength() {
             1 => p.kappa = f64::NAN,
             2 => p.strength_max = 0.5,
             3 => p.r_max = f64::INFINITY,
-            _ => p.no_memory_bias = f64::NAN,
+            4 => p.no_memory_bias = f64::NAN,
+            5 => p.match_temperature = 0.,
+            6 => p.edit_penalty = -1.,
+            7 => p.motion_scale = f64::NAN,
+            _ => p.interval_scale = 0.,
         }
-        assert!(Recall::new(1, 0, 1000, 100, bad, Some(model)).is_err());
+        assert!(Recall::new(1, 0, 1000, 100, bad).is_err());
     }
-    let mut recall = Recall::new(1, 0, 1000, 100, c, Some(model)).unwrap();
+    let mut recall = Recall::new(1, 0, 1000, 100, c).unwrap();
     let mut scored = 0;
     let mut truncated = 0;
     for step in 1..=192 {
@@ -71,7 +77,8 @@ fn retained_live_queries_publish_causal_score_bounds_and_source_strength() {
             let mut upper = 0.;
             for entry in group.entries.iter().flatten() {
                 scored += 1;
-                assert_eq!(entry.acoustic_score, 0.);
+                // Explicit distance rule: exact matches score 0, residuals only lower it.
+                assert!(entry.acoustic_score <= 0. && entry.acoustic_score.is_finite());
                 assert!(entry.score[0] <= entry.score[1]);
                 assert!(
                     0. <= entry.weight[0]
@@ -128,16 +135,12 @@ fn live_retention_evicts_weak_support_and_invalidates_its_descriptor() {
         strength_max: 2.,
         r_max: 4.,
         no_memory_bias: 0.,
+        match_temperature: 1.,
+        edit_penalty: 1.,
+        motion_scale: 1.,
+        interval_scale: 1.,
     });
-    let mut recall = Recall::new(
-        1,
-        0,
-        1000,
-        100,
-        c,
-        Some(crate::temporal_cognition::section::tests::runtime_config()),
-    )
-    .unwrap();
+    let mut recall = Recall::new(1, 0, 1000, 100, c).unwrap();
     for step in 1..=24 {
         recall
             .observe_acquisition((step - 1) * 100, step * 100, step * 100)
@@ -244,7 +247,7 @@ fn configured_search_capacity_reaches_the_received_cache_without_truncation() {
     c.episodes = 64;
     c.candidates = Some(32);
     c.span_hops = 8;
-    let mut recall = Recall::new(1, 0, 1000, 100, c, None).unwrap();
+    let mut recall = Recall::new(1, 0, 1000, 100, c).unwrap();
     let mut peak = 0;
     for step in 1..=320 {
         let value = ((step - 1) / 8) as f64 * 0.001 + ((step - 1) % 8) as f64 * 0.03;
@@ -261,7 +264,7 @@ fn configured_search_capacity_reaches_the_received_cache_without_truncation() {
     assert_eq!(peak, 32);
     for invalid in [0, memory::MAX_CANDIDATES + 1] {
         c.candidates = Some(invalid);
-        assert!(Recall::new(1, 0, 1000, 100, c, None).is_err());
+        assert!(Recall::new(1, 0, 1000, 100, c).is_err());
     }
 }
 
@@ -269,7 +272,7 @@ fn configured_search_capacity_reaches_the_received_cache_without_truncation() {
 fn first_and_later_queries_preserve_support_and_detect_order_changes() {
     let mut costs = Vec::new();
     for reversed in [false, true] {
-        let mut recall = Recall::new(1, 0, 1000, 100, config(), None).unwrap();
+        let mut recall = Recall::new(1, 0, 1000, 100, config()).unwrap();
         for step in 1..=32 {
             let index = (step - 1) % 16;
             let index = if reversed && step > 16 {
@@ -308,7 +311,7 @@ fn first_and_later_queries_preserve_support_and_detect_order_changes() {
 #[test]
 fn late_and_retired_queries_are_rejected_and_next_queries_recover() {
     for retirement in [false, true] {
-        let mut recall = Recall::new(1, 0, 1000, 100, config(), None).unwrap();
+        let mut recall = Recall::new(1, 0, 1000, 100, config()).unwrap();
         recall.advance(&input(1, 1.), 100, None).unwrap();
         assert!(recall.pending.is_some());
         if retirement {
@@ -337,7 +340,7 @@ fn late_and_retired_queries_are_rejected_and_next_queries_recover() {
 fn capacity_retirement_invalidates_pending_matches() {
     let mut cfg = config();
     cfg.episodes = 1;
-    let mut recall = Recall::new(1, 0, 1000, 100, cfg, None).unwrap();
+    let mut recall = Recall::new(1, 0, 1000, 100, cfg).unwrap();
     for step in 1..=32 {
         recall.advance(&input(step, 1.), step * 100, None).unwrap();
     }
@@ -350,7 +353,7 @@ fn capacity_retirement_invalidates_pending_matches() {
 
 #[test]
 fn missing_acquisition_stays_a_gap_and_epoch_ownership_is_enforced() {
-    let mut recall = Recall::new(1, 0, 1000, 100, config(), None).unwrap();
+    let mut recall = Recall::new(1, 0, 1000, 100, config()).unwrap();
     for step in [1, 2, 5, 6] {
         recall.advance(&input(step, 1.), step * 100, None).unwrap();
     }
@@ -377,7 +380,7 @@ fn missing_acquisition_stays_a_gap_and_epoch_ownership_is_enforced() {
 
 #[test]
 fn all_received_transformations_stay_bound_to_the_original_query() {
-    let mut r = Recall::new(1, 0, 1000, 100, config(), None).unwrap();
+    let mut r = Recall::new(1, 0, 1000, 100, config()).unwrap();
     let mut compared = 0;
     let mut two_episodes = false;
     let mut previous_query = 0;
@@ -443,7 +446,7 @@ fn all_received_transformations_stay_bound_to_the_original_query() {
 
 #[test]
 fn interleaved_groups_keep_independent_received_matches_and_deadlines() {
-    let mut r = Recall::new(1, 0, 1000, 100, config(), None).unwrap();
+    let mut r = Recall::new(1, 0, 1000, 100, config()).unwrap();
     let first = input(1, 0.).group_handles[0].unwrap();
     let second = Handle {
         generation: first.generation + 10,

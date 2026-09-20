@@ -1,7 +1,7 @@
-//! Causal retained-episode score bounds using the existing section match feature map.
+//! Causal retained-episode score bounds from an explicit residual-distance rule.
 
 use super::*;
-use crate::config::TemporalSectionConfig;
+use crate::config::TemporalMemoryConfig;
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 pub(crate) struct Entry {
@@ -94,49 +94,49 @@ fn logadd(a: f64, b: f64) -> f64 {
 }
 
 impl MatchSnapshot {
+    /// Explicit rule with declared scales; no fitted coefficients. Coordinates without
+    /// residual support contribute nothing rather than an imputed mean.
     pub(in crate::temporal_cognition) fn acoustic_score(
         &self,
-        model: &TemporalSectionConfig,
+        config: &TemporalMemoryConfig,
     ) -> Option<f64> {
         if self.ambiguous {
             return None;
         }
+        let p = config.retention?;
         let r = self.residuals.filter(|r| r.observed > 0)?;
-        let mut values = [None; 14];
-        for (j, v) in values[..10].iter_mut().enumerate() {
+        let observed = f64::from(r.observed);
+        let mut distance = 0.;
+        let mut coordinates = 0.;
+        for j in 0..10 {
             if r.coordinate_count[j] > 0 {
-                *v = Some((r.coordinate_squared_error[j] / f64::from(r.observed)).sqrt());
+                distance += (r.coordinate_squared_error[j] / observed).sqrt() / config.scales[j];
+                coordinates += 1.;
             }
         }
+        if coordinates > 0. {
+            distance /= coordinates;
+        }
         if r.motion_count > 0 {
-            values[10] = Some((r.motion_squared_error / f64::from(r.motion_count)).sqrt());
+            distance +=
+                (r.motion_squared_error / f64::from(r.motion_count)).sqrt() / p.motion_scale;
         }
         if r.interval_count > 0 {
-            values[11] = Some((r.interval_squared_error / f64::from(r.interval_count)).sqrt());
+            distance +=
+                (r.interval_squared_error / f64::from(r.interval_count)).sqrt() / p.interval_scale;
         }
-        values[12] = Some(f64::from(r.inserted) / f64::from(r.observed));
-        values[13] = Some(f64::from(r.deleted) / f64::from(r.observed));
-        let score = model.match_coefficients[0]
-            + values
-                .iter()
-                .enumerate()
-                .map(|(j, v)| {
-                    v.map_or(0., |v| {
-                        (v - model.match_means[j]) / model.match_deviations[j].max(1e-6)
-                    }) * model.match_coefficients[j + 1]
-                })
-                .sum::<f64>();
+        let edits = f64::from(r.inserted + r.deleted) / observed;
+        let score = -(distance / p.match_temperature) - p.edit_penalty * edits;
         score.is_finite().then_some(score)
     }
 }
 
 impl Recall {
     pub(super) fn refresh_retrieval(&mut self, cut: u64) -> Result<(), &'static str> {
-        let (Some(retention), Some(clock), Some(parameters), Some(model)) = (
+        let (Some(retention), Some(clock), Some(parameters)) = (
             self.retention.as_mut(),
             self.acquisition.as_ref(),
             self.config.retention,
-            self.match_model.as_ref(),
         ) else {
             return Ok(());
         };
@@ -160,7 +160,7 @@ impl Recall {
                 let best = row
                     .iter()
                     .flatten()
-                    .filter_map(|m| m.acoustic_score(model).map(|s| (*m, s)))
+                    .filter_map(|m| m.acoustic_score(&self.config).map(|s| (*m, s)))
                     .max_by(|(a, x), (b, y)| x.total_cmp(y).then(b.episode_id.cmp(&a.episode_id)));
                 let Some((m, acoustic_score)) = best else {
                     continue;

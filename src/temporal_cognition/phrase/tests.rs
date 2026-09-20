@@ -1317,7 +1317,6 @@ fn ordered_recall_forecast_reaches_phrase_on_later_observed_support() {
             query_cadence_ms: 100,
             deadline_ms: 200,
         },
-        None,
     )
     .unwrap();
     let mut phrase = Phrase::new(1, 0, 0, 1000, 100, config()).unwrap();
@@ -1417,7 +1416,6 @@ fn stale_foreign_and_future_query_results_are_masked_at_the_phrase_consumer() {
             query_cadence_ms: 100,
             deadline_ms: 200,
         },
-        None,
     )
     .unwrap();
     for step in 1..=24 {

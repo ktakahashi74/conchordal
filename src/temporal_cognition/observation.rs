@@ -260,15 +260,8 @@ impl Tap {
                     .map(|_| super::action_profiles::Table::new());
                 let new_memory = |epoch| {
                     options.memory.map(|config| {
-                        recall::Recall::new(
-                            bus,
-                            epoch,
-                            sample_rate,
-                            hop as u64,
-                            config,
-                            options.section,
-                        )
-                        .expect("validated memory diagnostic configuration")
+                        recall::Recall::new(bus, epoch, sample_rate, hop as u64, config)
+                            .expect("validated memory diagnostic configuration")
                     })
                 };
                 let new_gesture = |epoch| {
@@ -1013,6 +1006,10 @@ mod tests {
                         strength_max: 1.2,
                         r_max: 1.,
                         no_memory_bias: 0.,
+                        match_temperature: 1.,
+                        edit_penalty: 1.,
+                        motion_scale: 1.,
+                        interval_scale: 1.,
                     }),
                     candidates: None,
                     scales: [1.; 10],

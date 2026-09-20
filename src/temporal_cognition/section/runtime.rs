@@ -366,7 +366,7 @@ impl Stream {
             }) {
                 used_query = true;
                 for m in matches.iter().flatten().flatten().filter(|m| !m.ambiguous) {
-                    let Some(score) = m.acoustic_score(&self.config) else {
+                    let Some(score) = section_match_score(m, &self.config) else {
                         continue;
                     };
                     scores.push((
@@ -602,4 +602,40 @@ impl Stream {
         }
         Ok(())
     }
+}
+
+// Retained only for the section diagnostic; the memory retention rule no longer uses it.
+fn section_match_score(
+    m: &crate::temporal_cognition::recall::MatchSnapshot,
+    model: &crate::config::TemporalSectionConfig,
+) -> Option<f64> {
+    if m.ambiguous {
+        return None;
+    }
+    let r = m.residuals.filter(|r| r.observed > 0)?;
+    let mut values = [None; 14];
+    for (j, v) in values[..10].iter_mut().enumerate() {
+        if r.coordinate_count[j] > 0 {
+            *v = Some((r.coordinate_squared_error[j] / f64::from(r.observed)).sqrt());
+        }
+    }
+    if r.motion_count > 0 {
+        values[10] = Some((r.motion_squared_error / f64::from(r.motion_count)).sqrt());
+    }
+    if r.interval_count > 0 {
+        values[11] = Some((r.interval_squared_error / f64::from(r.interval_count)).sqrt());
+    }
+    values[12] = Some(f64::from(r.inserted) / f64::from(r.observed));
+    values[13] = Some(f64::from(r.deleted) / f64::from(r.observed));
+    let score = model.match_coefficients[0]
+        + values
+            .iter()
+            .enumerate()
+            .map(|(j, v)| {
+                v.map_or(0., |v| {
+                    (v - model.match_means[j]) / model.match_deviations[j].max(1e-6)
+                }) * model.match_coefficients[j + 1]
+            })
+            .sum::<f64>();
+    score.is_finite().then_some(score)
 }

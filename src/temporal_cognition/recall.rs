@@ -152,7 +152,6 @@ pub(crate) struct Recall {
     retained_ids: (u64, std::sync::Arc<[(u64, u64)]>),
     acquisition: Option<clock::Clock>,
     retention: Option<retention::Retention>,
-    match_model: Option<crate::config::TemporalSectionConfig>,
     retention_costs: Vec<(u64, Option<f64>)>,
     retrieval_scratch: Vec<retrieval::Entry>,
     recognition_scratch: Vec<(u64, f64)>,
@@ -195,20 +194,25 @@ impl Recall {
         rate: u32,
         hop: u64,
         config: TemporalMemoryConfig,
-        match_model: Option<crate::config::TemporalSectionConfig>,
     ) -> Result<Self, &'static str> {
-        if let Some(p) = config.retention {
-            let model =
-                match_model.ok_or("memory retention requires temporal_section match scales")?;
-            super::section::Stream::validate(model)?;
-            if [p.tau_sec, p.kappa, p.strength_max, p.r_max]
-                .iter()
-                .any(|v| !v.is_finite() || *v <= 0.)
+        if let Some(p) = config.retention
+            && ([
+                p.tau_sec,
+                p.kappa,
+                p.strength_max,
+                p.r_max,
+                p.match_temperature,
+                p.motion_scale,
+                p.interval_scale,
+            ]
+            .iter()
+            .any(|v| !v.is_finite() || *v <= 0.)
                 || p.strength_max < 1.
                 || !p.no_memory_bias.is_finite()
-            {
-                return Err("invalid explicit memory retention parameters or no-memory bias");
-            }
+                || !p.edit_penalty.is_finite()
+                || p.edit_penalty < 0.)
+        {
+            return Err("invalid explicit memory retention parameters or no-memory bias");
         }
         if config.span_hops == 0
             || config.span_hops.checked_mul(hop).is_none()
@@ -236,7 +240,6 @@ impl Recall {
         Ok(Self {
             acquisition: None,
             retention: None,
-            match_model,
             retention_costs: Vec::with_capacity(if config.retention.is_some() {
                 config.episodes
             } else {

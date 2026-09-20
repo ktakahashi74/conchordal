@@ -743,6 +743,10 @@ section("author label is not an observation", || {
             strength_max: 2.,
             r_max: 100.,
             no_memory_bias: 0.,
+            match_temperature: 1.,
+            edit_penalty: 1.,
+            motion_scale: 1.,
+            interval_scale: 1.,
         })
         .unwrap(),
     );
@@ -1050,7 +1054,9 @@ wait(0.6);
                                 let lo = weight[0].as_f64().unwrap();
                                 let hi = weight[1].as_f64().unwrap();
                                 assert!(0. <= lo && lo <= hi && hi <= 1.);
-                                assert_eq!(entry["acoustic_score"], 0.);
+                                // Explicit distance rule: exact matches score 0, residuals lower it.
+                                let score = entry["acoustic_score"].as_f64().unwrap();
+                                assert!(score <= 0. && score.is_finite(), "{score}");
                                 scored += 1;
                             }
                         }

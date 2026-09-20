@@ -100,7 +100,7 @@ fn reused_matcher_receives_the_selected_whole_prefix_and_stable_occurrence() {
         query_cadence_ms: 100,
         deadline_ms: 200,
     };
-    let mut memory = recall::Recall::new(1, 0, 1000, 100, cfg, None).unwrap();
+    let mut memory = recall::Recall::new(1, 0, 1000, 100, cfg).unwrap();
     let mut cues = Stream::new(1, 0, 1000, 100, 0, [1.; 10]).unwrap();
     let (mut phrase, base) = base();
     let mut long_prefix = false;
@@ -371,7 +371,7 @@ fn thirty_second_phrase_enters_memory_once_with_its_whole_bounded_descriptor() {
         deadline_ms: 200,
     };
     let mut cues = Stream::new(1, 0, 1000, 100, 0, [1.; 10]).unwrap();
-    let mut memory = recall::Recall::new(1, 0, 1000, 100, cfg, None).unwrap();
+    let mut memory = recall::Recall::new(1, 0, 1000, 100, cfg).unwrap();
     for step in 1..=320 {
         let end = step * 100;
         let a = fixture::input(step, 0.);

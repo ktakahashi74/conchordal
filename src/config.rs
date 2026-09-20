@@ -409,6 +409,13 @@ pub struct TemporalRetentionConfig {
     pub strength_max: f64,
     pub r_max: f64,
     pub no_memory_bias: f64,
+    /// Explicit match rule: score = -(distance / match_temperature) - edit_penalty * edits,
+    /// where distance sums the coordinate RMS residuals over `scales`, the motion RMS over
+    /// `motion_scale` and the interval RMS over `interval_scale`. No fitted coefficients.
+    pub match_temperature: f64,
+    pub edit_penalty: f64,
+    pub motion_scale: f64,
+    pub interval_scale: f64,
 }
 
 /// Frozen research inputs for the single-context articulation/gesture diagnostic.
@@ -700,7 +707,6 @@ impl AppConfig {
                 self.audio.sample_rate,
                 self.analysis.hop_size as u64,
                 memory,
-                self.temporal_section,
             )
             .map_err(anyhow::Error::msg)?;
         }

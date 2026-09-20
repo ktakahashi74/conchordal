@@ -510,16 +510,6 @@ impl Graph {
             ..self.summary
         }
     }
-
-    #[cfg(test)]
-    pub(super) fn archived_nodes(&self) -> impl Iterator<Item = (&Source, &[Option<Edge>])> {
-        self.nodes.iter().map(|n| (&n.source, n.edges.as_ref()))
-    }
-
-    #[cfg(test)]
-    pub(super) fn archived_prefixes(&self) -> impl Iterator<Item = &PendingQuery> {
-        self.owners.iter()
-    }
 }
 
 #[cfg(test)]

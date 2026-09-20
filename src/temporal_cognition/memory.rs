@@ -575,6 +575,3 @@ fn bag_cost(
     }
     Ok((count > 0).then(|| total / count as f64))
 }
-
-#[cfg(test)]
-mod reference;

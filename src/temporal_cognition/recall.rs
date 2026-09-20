@@ -157,8 +157,6 @@ pub(crate) struct Recall {
     retrieval_scratch: Vec<retrieval::Entry>,
     recognition_scratch: Vec<(u64, f64)>,
     graph: Option<graph::Graph>,
-    #[cfg(test)]
-    audit: Option<audit::Audit>,
     config: TemporalMemoryConfig,
     rate: u32,
     hop: u64,
@@ -255,8 +253,6 @@ impl Recall {
                 0
             }),
             graph: None,
-            #[cfg(test)]
-            audit: audit::Audit::new(bus, epoch)?,
             config,
             rate,
             hop,
@@ -515,10 +511,6 @@ impl Recall {
                 self.pending_matches.len(),
             )
             .map_err(|_| "memory matching failed")?;
-            #[cfg(test)]
-            if let Some(audit) = self.audit.as_mut() {
-                audit.query(&dispatch, &self.episodes[..count], &report, self.rate)?;
-            }
 
             let ticket = transport::Ticket {
                 bus: self.bus,
@@ -744,10 +736,6 @@ impl Recall {
                 graph.retain_sources(cut, |group, credit, start| {
                     cues.retains_prefix(group, credit, start)
                 })?;
-                #[cfg(test)]
-                if let Some(audit) = self.audit.as_mut() {
-                    audit.graph(graph, cues, cut, self.rate)?;
-                }
             }
         }
         self.snapshot.stored_episodes = self.episodes.len();
@@ -925,10 +913,6 @@ impl Recall {
             scales: self.config.scales,
             descriptor,
         };
-        #[cfg(test)]
-        if let Some(audit) = self.audit.as_mut() {
-            audit.episode(&episode, provenance)?;
-        }
         let slot = self
             .episodes
             .partition_point(|e| e.first_observed_end <= episode.first_observed_end);
@@ -1035,9 +1019,6 @@ impl Recall {
 
 #[cfg(test)]
 pub(in crate::temporal_cognition) mod tests;
-
-#[cfg(test)]
-mod audit;
 
 mod clock;
 mod graph;

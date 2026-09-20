@@ -91,47 +91,6 @@ impl Interpretation {
         })
     }
 
-    #[cfg(test)]
-    pub(in crate::temporal_cognition) fn reset(
-        &mut self,
-        group: Handle,
-        start: u64,
-        rate: u32,
-        context: u64,
-    ) -> Result<(), &'static str> {
-        if rate == 0 {
-            return Err("invalid section sample rate");
-        }
-        self.history.reset(
-            group.epoch,
-            group.generation,
-            context,
-            start as f64 / f64::from(rate),
-        )?;
-        self.group = group;
-        self.end = start;
-        self.start = start;
-        self.context = context;
-        self.relation = Relation::Initial;
-        self.focus = None;
-        self.query = None;
-        self.values.fill(None);
-        self.owners.clear();
-        self.late_accent_support = 0.;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(in crate::temporal_cognition) fn storage(&self) -> [(usize, usize); 2] {
-        [
-            (
-                self.history.ring.as_ptr() as usize,
-                self.history.ring.capacity(),
-            ),
-            (self.owners.as_ptr() as usize, self.owners.capacity()),
-        ]
-    }
-
     pub fn advance(&mut self, input: Input<'_>, change: Change) -> Result<(), &'static str> {
         if input.group != self.group
             || input.rate == 0

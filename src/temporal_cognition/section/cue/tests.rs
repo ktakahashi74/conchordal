@@ -461,17 +461,3 @@ fn odd_rate_commit_does_not_round_post_deadline_evidence_into_the_lag() {
     assert!((e.retained_mass - 0.2).abs() < 1e-12);
     assert!((e.lag_missing_seconds - (0.5 - 500. / 1001.)).abs() < 1e-12);
 }
-
-pub(in crate::temporal_cognition) fn project_and_seal(
-    cues: &mut Stream,
-    acoustic: &frontend::Snapshot,
-    phrase: &phrase::Snapshot,
-    rows: &[(u64, u64, u64, f64)],
-) {
-    cues.prepare(acoustic, phrase).unwrap();
-    let group = phrase.groups[0].unwrap().group;
-    cues.commitments
-        .project(group, phrase.end_sample, rows)
-        .unwrap();
-    cues.commitments.seal(phrase.end_sample, &phrase.groups);
-}

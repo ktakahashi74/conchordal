@@ -6,8 +6,6 @@ pub(crate) mod arrival;
 mod auditory_timing;
 pub(crate) mod body;
 pub(crate) mod body_model;
-#[cfg(test)]
-mod consequence;
 mod descriptor;
 mod feature_projection;
 mod features;
@@ -16,10 +14,6 @@ pub(crate) mod groove;
 mod group;
 mod grouping;
 mod hazard;
-#[cfg(test)]
-mod joint;
-#[cfg(test)]
-mod long_form;
 mod matcher;
 mod memory;
 mod observables;

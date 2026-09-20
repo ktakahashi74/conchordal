@@ -57,22 +57,6 @@ pub(super) struct Ledger {
 }
 
 impl Ledger {
-    #[cfg(test)]
-    pub(super) fn trace_prefix(&self, group: Handle, credit: u64, start: u64) -> serde_json::Value {
-        let same = |e: &Evidence| {
-            e.group == group
-                && e.start == start
-                && (e.ongoing_credit == credit || e.occurrence_id == credit)
-        };
-        serde_json::json!({
-            "pending": self.pending.iter().filter(|p| same(&p.evidence))
-                .map(|p| serde_json::json!({"evidence":p.evidence,"members":p.members}))
-                .collect::<Vec<_>>(),
-            "sealed": self.sealed.iter().filter(|p| same(&p.evidence))
-                .map(|p| p.evidence).collect::<Vec<_>>()
-        })
-    }
-
     pub(super) fn retains_prefix(&self, group: Handle, credit: u64, start: u64) -> bool {
         self.pending.iter().any(|p| {
             p.evidence.group == group

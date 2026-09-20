@@ -45,24 +45,6 @@ pub(crate) struct Stream {
 }
 
 impl Stream {
-    #[cfg(test)]
-    pub(in crate::temporal_cognition) fn trace_prefix(
-        &self,
-        group: Handle,
-        credit: u64,
-        start: u64,
-    ) -> serde_json::Value {
-        let owner = self.groups.iter().flatten().find(|g| g.handle == group);
-        serde_json::json!({
-            "group_retained": owner.is_some(),
-            "ongoing": owner.into_iter().flat_map(|g| &g.entries)
-                .filter(|e| e.foreground.credit == credit && e.foreground.start == start)
-                .map(|e| serde_json::json!({"foreground":e.foreground,
-                    "assignment_seconds":e.assignment_seconds})).collect::<Vec<_>>(),
-            "endpoints": self.commitments.trace_prefix(group, credit, start)
-        })
-    }
-
     pub(in crate::temporal_cognition) fn retains_prefix(
         &self,
         group: Handle,

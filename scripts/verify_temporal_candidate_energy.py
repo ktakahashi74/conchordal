@@ -140,7 +140,7 @@ def control_steps(control):
                          else (control['issued_at'], gate['timer']))
         left = (gate['duration_sec']-timer)/float(np.float32(control['sample_dt']))
         if math.isfinite(left) and left > 0:
-            out.append(origin+math.ceil(left))
+            out.append(origin+max(math.ceil(left)-1, 0))
     return out
 
 
@@ -229,12 +229,12 @@ def lane_point(bank, lane, tick):
 
 def trend(energies, lo, hi, tick):
     a, b, c = energies
-    mean = (a+4*b+c)/6
     n = hi-lo
+    mean = (a+c)/2 if n <= 2 else (a+4*b+c)/6
     rate = math.log(c/a)/(2*(n-1)) if a > 0 and c > 0 and n > 1 else 0.
     if not math.isfinite(rate) or abs(rate*n) > 4:
         rate = 0.
-    shape = 1. if rate == 0 else math.sinh(rate*n)/(rate*n)
+    shape = 1. if rate == 0 else math.sinh(rate*n)/(n*math.sinh(rate))
     return mean/shape*math.exp(2*rate*(tick-(lo+(n-1)/2))), rate
 
 
@@ -288,7 +288,8 @@ def coherent_energy(tones,left,right,tick):
     edges = {left, right}
     for tone, intervention in tones:
         edges |= {at for at in breakpoints(tone, intervention) if left < at < right}
-    require(len(edges) <= 130, 'span edge capacity')
+    if len(edges) > 130:
+        return None
     edges = sorted(edges)
     total = 0.
     for start, stop in zip(edges, edges[1:]):

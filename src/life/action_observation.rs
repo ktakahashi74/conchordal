@@ -112,6 +112,13 @@ impl Observer {
         }
     }
 
+    /// Diagnostic control: keep observation and learning, stop the default and candidate
+    /// bank, so a run can show that evaluating candidates changes neither.
+    pub(crate) fn disable_candidates(&mut self) {
+        self.body_defaults = None;
+        self.snapshot.body_defaults = None;
+    }
+
     pub(crate) fn enable_predictions(&mut self) {
         self.body_defaults = Some(super::action_candidates::live::Bank::new(
             self.snapshot.sample_rate,

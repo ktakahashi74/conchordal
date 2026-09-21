@@ -6786,16 +6786,50 @@ attackが816 sampleで振幅更新を含まないため、今回の修正経路�
 近似そのものの独立検証ではない。近似の妥当性は、実rendererとの波形・窓energy比較と、実音PCMとの
 順位一致が担う。
 
+### Astra再レビュー（commit `2dc41af`）への対応（2026-09-21）
+
+修正commitへの再レビューも「不可」だった。前回指摘のうち再impulse、記録の不整合、改名、hop経路負荷は
+解消と確認され、振幅更新、span下限、学習不変の根拠は部分解消とされた。新規指摘は全て妥当と判断し修正した。
+レビュー全文は`target/i10-bank-forecast-inputs-20260921/astra-review-2dc41af.md`。
+
+- sequence gateの終端（高）。rendererはtimerを進めてから比較するため、durationへ達したsampleは既に閉じている。
+  折れ点が1 sample遅く、最後の閉じたsampleがspanの求積端点になっていた。最初に無音となるsampleへ合わせ、
+  整数・非整数のdurationとsine／harmonic／modalで、rendererが最初に無音を出すsampleとの一致を単体testにした。
+  gate近傍のbinは`gain_at`が丸めの不確定として`None`を返すため、従来どおり支持外である。
+- 折れ点の容量超過（高）。1 binの内点128を超えた折れ点を黙って捨て、coherent値を`Some`で返していた。
+  重複を除いた上で、収容できないbinのcoherent値を`None`にした。Python検証器は重複を除いており挙動が
+  一致していなかったため、同じ規則へ揃えた。40 tone×4更新を1 binへ置く単体testで`None`を確認した。
+- 2 sampleのspan（中）。3点のnodeが`[lo, lo+1, lo+1]`になり、後端を5倍に重み付けていた。1〜2 sampleは
+  単純平均とし、局所指数の形状係数を連続形`sinh(κn)/(κn)`から整数sample上の平均`sinh(κn)/(n sinh κ)`へ
+  改めた。2 sampleでは厳密になる。64 sampleのattack（32分割で各2 sample）の窓energy誤差は3身体で最大2.2e-4。
+- 学習不変の対照（中）。前回追加した単体testは、記述値の学習入力と私有traceの参照を供給していなかった。
+  単体fixtureでは両者を通せないため、候補と既定診断のbankだけを止める診断用の停止点
+  （環境変数`CONCHORDAL_DISABLE_CANDIDATE_ENERGY`、`Observer::disable_candidates`）を置き、実pipelineの
+  12条件で候補あり／なしを比べた（`candidates_off.py`、`candidates-off.json`）。WAVは全条件で一致。
+  学習系12種のrecordのうち`self_sound_outcome`、`self_sound_descriptor_prediction`、
+  `private_participation_trace`、`participation_outcome`、`participation_context`、`body_descriptor`、
+  `local_prediction_match`、`local_prediction_error`、`onset`、`population_step`の10種は全件一致した。
+  `body_observation`と`self_sound_observation`の差は、wall timeの計測欄と候補bank自身の統計
+  （`body_defaults`）だけである。この停止点は診断用であり、作者向けの設定ではない。
+- 文言（低）。表と現在地の断定を下のとおり改めた。
+
+修正後、登録71分岐は反転0／4,936のままである。形状係数の変更で数値はわずかに動き、`verification.json`の
+SHA256は`834d3a44b0db9812c5812bc625fa97a2bfac922320912e5f1b2bb5de46b3460a`になった
+（窓平均の二乗誤差合計1.08e-13、local default差8.98e-13、独立照合の最大相対差1.8e-08）。
+全Rust 1,138成功・失敗0・35 ignored（`cargo test exit=0 @ 2026-09-21T18:24:15+09:00`）、clippy通過。
+この修正に対する再々レビューは未実施である。
+
 ### I10の現在地
 
 | 残作業 | 状態 |
 | --- | --- |
 | 実身体転用の妥当性 | 調整に用いた固定development素材で、変更していない符号判定基準の4,936対すべてが実音と一致（反転0・見落とし0・捏造0）。支持境界はレビュー対応で修正しrenderer比較testを追加。未知素材への一般化は未確認 |
-| release・任意身体・両busへの展開 | 完了。7 class・3身体・両bus、音声不変、学習不変を12条件で確認 |
+| release・任意身体・両busへの展開 | 7 class・3身体・両busへ展開済み。12条件で、音声は`off`と一致、学習recordは再実行間で一致し、候補bankだけを止めた対照とも学習内容が一致 |
 | I10の資源引渡し | 測定し引き渡した。候補workerの飽和と64 Voiceのhop超過は失敗として保持し、R2の課題とする |
 
-狭い範囲のI10（milestones §2）は、レビュー対応後の状態で監査表の全行を満たした。修正後の再レビューは
-未実施であり、完了の最終確認はそれを待つ。完了が意味するのは、実Voiceの身体・
+狭い範囲のI10（milestones §2）の完了判定は保留する。二度のレビューがいずれも「不可」であり、
+二度目の指摘への修正は再々レビューを受けていない。監査表の各行の証拠は上のとおり揃えたが、
+「監査表を満たした」と書くのは再々レビューの後とする。完了が意味することになるのは、実Voiceの身体・
 実行結果から私有trace・候補帰結の数値経路・診断までが通常接続され、候補energy予測が固定素材の実音順位を
 再現し、生成と学習を変えないことである。認知機構の妥当性の実証、作者採用（A1／A2）、資源受入（R2）、
 実機受入（A3）は含まない。候補workerの飽和と64 Voiceのhop超過は未解決の失敗としてR2へ渡した。

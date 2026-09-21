@@ -246,8 +246,13 @@ impl ToneEnergy {
         }
         // Energy at `tick` and the amplitude log rate of the local exponential.
         let trend = |[a, b, c]: [f64; 3]| {
-            let mean = (a + 4. * b + c) / 6.;
             let n = (hi - lo) as f64;
+            // One or two samples are their own mean; Simpson's weights need three nodes.
+            let mean = if hi - lo <= 2 {
+                (a + c) / 2.
+            } else {
+                (a + 4. * b + c) / 6.
+            };
             let mut rate = if a > 0. && c > 0. && hi - lo > 1 {
                 (c / a).ln() / (2. * (n - 1.))
             } else {
@@ -256,10 +261,11 @@ impl ToneEnergy {
             if !rate.is_finite() || (rate * n).abs() > 4. {
                 rate = 0.;
             }
+            // Mean of `exp(2 rate (k - center))` over the span's integer samples.
             let shape = if rate == 0. {
                 1.
             } else {
-                (rate * n).sinh() / (rate * n)
+                (rate * n).sinh() / (n * rate.sinh())
             };
             let center = lo as f64 + (n - 1.) / 2.;
             (

@@ -93,17 +93,24 @@ impl Body<'_> {
         // spans short enough for the rule to hold on each smooth piece.
         let mut edges = [left; 130];
         let mut count = 1;
+        let mut complete = true;
         for (_, tone, release) in self.tones(bus) {
             for at in tone.breakpoints(release) {
-                if at > left && at < right && count < edges.len() - 1 {
-                    edges[count] = at;
-                    count += 1;
+                if at <= left || at >= right || edges[..count].contains(&at) {
+                    continue;
                 }
+                if count == edges.len() - 1 {
+                    complete = false;
+                    break;
+                }
+                edges[count] = at;
+                count += 1;
             }
         }
         edges[count] = right;
         edges[..=count].sort_unstable();
-        let mut coherent = Some(0.);
+        // A breakpoint that does not fit would leave a step inside a span.
+        let mut coherent = complete.then_some(0.);
         for piece in edges[..=count].windows(2) {
             let [from, to] = [piece[0], piece[1]];
             let limit = self

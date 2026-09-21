@@ -137,9 +137,11 @@ impl ControlForecast {
                 Some(at) => (at.max(self.issued_at), 0.),
                 None => (self.issued_at, f64::from(timer)),
             };
+            // The renderer advances its timer before the comparison, so the step that
+            // reaches the duration is already closed.
             let left = (f64::from(duration_sec) - timer) / dt;
             if left.is_finite() && left > 0. {
-                out[4] = Some(origin.saturating_add(left.ceil() as u64));
+                out[4] = Some(origin.saturating_add((left.ceil() as u64).saturating_sub(1)));
             }
         }
         out

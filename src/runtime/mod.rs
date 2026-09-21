@@ -1689,6 +1689,14 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                 .as_mut()
                 .unwrap()
                 .enable_predictions();
+            if std::env::var_os("CONCHORDAL_DISABLE_CANDIDATE_ENERGY").is_some() {
+                state
+                    .schedule_renderer
+                    .action_observer
+                    .as_mut()
+                    .unwrap()
+                    .disable_candidates();
+            }
         }
         if let Some(trace) = cfg.private_trace {
             state

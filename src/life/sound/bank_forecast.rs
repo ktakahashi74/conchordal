@@ -375,6 +375,115 @@ mod tests {
         eprintln!("BANK_WINDOW maximum_relative_error={maximum}");
     }
 
+    fn custom(kind: BodyKind, modulator: RenderModulatorSpec, adsr: ToneAdsr) -> Tone {
+        let mut tone = Tone::from_parts(
+            Timebase {
+                fs: 48000.,
+                hop: 64,
+            },
+            2100,
+            200000,
+            293.,
+            0.2,
+            Some(BodySnapshot {
+                kind,
+                amp_scale: 1.,
+                brightness: 0.6,
+                inharmonic: 0.,
+                spread: 0.,
+                unison: 1,
+                motion: 0.,
+                ratios: matches!(kind, BodyKind::Modal)
+                    .then(|| (1..=16).map(|k| k as f32).collect::<Vec<_>>().into()),
+            }),
+            Some(modulator),
+            Some(adsr),
+        )
+        .unwrap();
+        tone.seed_modal_phases(5);
+        tone.schedule_planned_kick(OnsetKick { strength: 0.85 });
+        tone.arm_onset_trigger(0.85);
+        tone
+    }
+
+    #[test]
+    fn a_closing_gate_and_two_sample_spans_match_the_renderer() {
+        let rhythms = NeuralRhythms::default();
+        let flat = ToneAdsr {
+            attack_sec: 0.001,
+            decay_sec: 0.,
+            sustain_level: 1.,
+            release_sec: 0.1,
+        };
+        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+            // The gate breakpoint is the first sample the renderer silences, on and off a
+            // whole number of samples. Bins around it stay unsupported by rounding doubt.
+            for duration_sec in [3000. / 48000., 3000.5 / 48000.] {
+                let mut gated = custom(kind, RenderModulatorSpec::SeqGate { duration_sec }, flat);
+                let closing = model(&gated, 2048, &rhythms).control.unwrap().steps()[4].unwrap();
+                let mut last_sound = 0;
+                for tick in 2048..8000 {
+                    gated.kick_planned_if_due(tick);
+                    if gated.render_tick(tick, 48000., 1. / 48000., &rhythms) != 0. {
+                        last_sound = tick;
+                    }
+                }
+                assert_eq!(closing, last_sound + 1, "{kind:?} gate {duration_sec}");
+            }
+            // A 64-sample attack in 32 spans leaves two samples in each.
+            let short = custom(
+                kind,
+                RenderModulatorSpec::SeqGate { duration_sec: 10. },
+                ToneAdsr {
+                    attack_sec: 64. / 48000.,
+                    ..flat
+                },
+            );
+            let error = window_error(short, 2048, 12000, &rhythms);
+            eprintln!("BANK_WINDOW {kind:?} attack64 relative_error={error}");
+            assert!(error < 1e-3, "{kind:?} attack64 error={error}");
+        }
+    }
+
+    #[test]
+    fn breakpoints_that_do_not_fit_leave_the_bin_without_a_coherent_value() {
+        let rhythms = NeuralRhythms::default();
+        let mut retained = Vec::new();
+        for id in 0..40_u64 {
+            let mut tone = tone(BodyKind::Sine, 37, 293., id);
+            tone.set_smoothing_tau_sec(0.002);
+            for tick in 0..2048 {
+                tone.kick_planned_if_due(tick);
+                tone.render_tick(tick, 48000., 1. / 48000., &rhythms);
+            }
+            for step in 0..4 {
+                tone.schedule_update(
+                    2100 + id * 8 + step * 400,
+                    crate::life::phonation_engine::ToneUpdate {
+                        target_freq_hz: None,
+                        target_amp: Some(0.1 + step as f32 * 0.1),
+                        continuous_drive: None,
+                    },
+                );
+            }
+            retained.push((id, [true, true], model(&tone, 2048, &rhythms)));
+        }
+        let window = crate::life::action_candidates::energy::project_window(
+            &retained,
+            None,
+            2048,
+            (None, None),
+            0,
+            [2048, 2048 + 192000],
+            true,
+        )
+        .unwrap();
+        // All 160 steps fall in the first 12000-sample bin; later bins still fit.
+        assert_eq!(window.coherent_energies[0], None);
+        assert!(window.coherent_energies[15].is_some());
+        assert!(window.mean.is_some());
+    }
+
     #[test]
     fn a_direct_impulse_on_a_ringing_bank_is_not_forecast() {
         let rhythms = NeuralRhythms::default();

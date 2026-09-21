@@ -36,6 +36,20 @@ fn splitmix64_unit_f32(state: &mut u64) -> f32 {
     (bits as f64 * SCALE) as f32
 }
 
+/// Seed mixing shared by the renderer and its read-only forecast.
+pub(crate) fn input_phase_seed(seed: u64, active_len: usize) -> u64 {
+    seed ^ ((active_len as u64).wrapping_mul(0xD6E8_FEB8_6659_FD93))
+}
+
+/// One seeded input coupling. An unusable magnitude consumes no random draw.
+pub(crate) fn seeded_input_coupling(state: &mut u64, mag: f32) -> Option<[f32; 2]> {
+    if !mag.is_finite() || mag <= 0.0 {
+        return None;
+    }
+    let phase = splitmix64_unit_f32(state) * (2.0 * PI);
+    Some([mag * phase.cos(), mag * phase.sin()])
+}
+
 /// Bank of resonators in a struct-of-arrays layout.
 #[derive(Debug, Clone)]
 pub struct ResonatorBank {
@@ -97,7 +111,6 @@ impl ResonatorBank {
     }
 
     /// Active number of modes.
-    #[cfg(test)]
     pub fn active_len(&self) -> usize {
         self.active_len
     }
@@ -171,16 +184,31 @@ impl ResonatorBank {
     /// Rotate per-mode input coupling phase deterministically from a seed.
     /// Magnitude `sqrt(b1^2 + b2^2)` is preserved for each active mode.
     pub fn randomize_input_phase_from_seed(&mut self, seed: u64) {
-        let mut state = seed ^ ((self.active_len as u64).wrapping_mul(0xD6E8_FEB8_6659_FD93));
+        let mut state = input_phase_seed(seed, self.active_len);
         for i in 0..self.active_len {
             let mag = (self.b1[i] * self.b1[i] + self.b2[i] * self.b2[i]).sqrt();
-            if !mag.is_finite() || mag <= 0.0 {
-                continue;
+            if let Some([b1, b2]) = seeded_input_coupling(&mut state, mag) {
+                self.b1[i] = b1;
+                self.b2[i] = b2;
             }
-            let phase = splitmix64_unit_f32(&mut state) * (2.0 * PI);
-            self.b1[i] = mag * phase.cos();
-            self.b2[i] = mag * phase.sin();
         }
+    }
+
+    pub(crate) fn fs(&self) -> f32 {
+        self.fs
+    }
+
+    /// Read-only `(x, y, r, e, gain)` of one active mode, for forecasts.
+    pub(crate) fn mode_state(&self, idx: usize) -> Option<[f32; 5]> {
+        (idx < self.active_len).then(|| {
+            [
+                self.x[idx],
+                self.y[idx],
+                self.r[idx],
+                self.e[idx],
+                self.gain[idx],
+            ]
+        })
     }
 
     /// Reference scalar MCF update (no denormal flushing).

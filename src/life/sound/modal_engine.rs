@@ -67,6 +67,89 @@ impl ModalEngine {
         self.pending_modal_phase_seed = Some(seed);
     }
 
+    /// Read-only free response of a static-pitch bank. `impulse` is the onset drive of a
+    /// tone that has not rendered yet.
+    pub(crate) fn bank_forecast(
+        &self,
+        pitch_hz: f32,
+        first_sample: u64,
+        impulse: Option<f32>,
+    ) -> Option<super::bank_forecast::BankForecast> {
+        use super::bank_forecast::{BankForecast, LANES, Lane, Response, struck_state};
+        use crate::synth::{modes::compile_mode, resonator};
+        if !pitch_hz.is_finite() {
+            return None;
+        }
+        let mut lanes = [Lane::default(); LANES];
+        let seeded = matches!(self.shape, ModeShape::Modal { .. });
+        let len = if let Some(impulse) = impulse {
+            let ModeShape::Modal { modes } = &self.shape else {
+                return None;
+            };
+            if self.counter != 0 || self.bank.active_len() != 0 || !impulse.is_finite() {
+                return None;
+            }
+            let len = modes.len().min(self.bank.capacity());
+            let mut seed = self
+                .pending_modal_phase_seed
+                .map(|seed| resonator::input_phase_seed(seed, len));
+            for (idx, mode) in modes[..len].iter().enumerate() {
+                let freq_hz = pitch_hz.max(1.) * mode.ratio;
+                if !freq_hz.is_finite() || freq_hz <= 0. {
+                    return None;
+                }
+                let c = compile_mode(
+                    &ModeParams {
+                        freq_hz,
+                        t60_s: mode.t60_s.max(1e-3),
+                        gain: mode.gain,
+                        in_gain: mode.in_gain,
+                    },
+                    self.bank.fs(),
+                );
+                let held = c.b1.hypot(c.b2);
+                let coupling = seed
+                    .as_mut()
+                    .and_then(|state| resonator::seeded_input_coupling(state, held))
+                    .unwrap_or([c.b1, c.b2]);
+                *lanes.get_mut(idx)? = Lane {
+                    state: struck_state([c.r, c.e], coupling, impulse),
+                    step: [c.r, c.e],
+                    gain: c.gain,
+                    held,
+                    damping: 0.,
+                };
+            }
+            len
+        } else {
+            if self.pending_modal_phase_seed.is_some()
+                || (pitch_hz.max(1.) - self.last_built_pitch_hz).abs() > 1e-6
+            {
+                return None;
+            }
+            for idx in 0..self.bank.active_len() {
+                let [x, y, r, e, gain] = self.bank.mode_state(idx)?;
+                *lanes.get_mut(idx)? = Lane {
+                    state: [x, y],
+                    step: [r, e],
+                    gain,
+                    held: 0.,
+                    damping: 0.,
+                };
+            }
+            self.bank.active_len()
+        };
+        Some(BankForecast {
+            first_sample,
+            response: Response::Resonator {
+                impulse,
+                seeded: seeded && self.pending_modal_phase_seed.is_some(),
+            },
+            len,
+            lanes,
+        })
+    }
+
     fn rebuild_modes(&mut self, pitch_hz: f32) {
         if !pitch_hz.is_finite() || pitch_hz <= 0.0 {
             self.last_modes_len = 0;

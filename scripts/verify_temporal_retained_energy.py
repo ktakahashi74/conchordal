@@ -216,7 +216,7 @@ def verify(root, inputs, previous, controls=False):
                     entries = [(k, v) for k, v in sorted(retained.items()) if k[0] == source]
                     require(len(entries) <= 64, 'corpus unexpectedly exceeds retained inventory cap')
                     for bus, energy in enumerate(prediction['source_energy']):
-                        require(energy['model'] in (['source_energy_log1p_residual_v4','source_energy_log1p_residual_v5','source_energy_log1p_residual_v6','source_energy_log1p_residual_v7'] if controls else ['source_energy_log1p_residual_v3']), 'model version')
+                        require(energy['model'] in (['source_energy_log1p_residual_v4','source_energy_log1p_residual_v5','source_energy_log1p_residual_v6','source_energy_log1p_residual_v7','source_energy_log1p_residual_v8'] if controls else ['source_energy_log1p_residual_v3']), 'model version')
                         previous_energy = old[out_key]['prediction']['source_energy'][bus]
                         if not controls:
                             require(energy['command_fixed_energy'] == previous_energy['predictions'][0],
@@ -244,7 +244,7 @@ def verify(root, inputs, previous, controls=False):
                                                      (energy.get('incoherent_fixed_energy',energy['predictions'][0])[k], total + issued)]:
                                 maximum_error = max(maximum_error, abs(actual - expected))
                                 require(abs(actual - expected) <= max(1e-14, abs(expected)*5e-7), 'retained or command fixed energy')
-                            if energy['model'] in ['source_energy_log1p_residual_v5','source_energy_log1p_residual_v6','source_energy_log1p_residual_v7']:
+                            if energy['model'] in ['source_energy_log1p_residual_v5','source_energy_log1p_residual_v6','source_energy_log1p_residual_v7','source_energy_log1p_residual_v8']:
                                 coherent = energy['coherent_sine_energy'][k]
                                 require(energy['predictions'][0][k] == (coherent if coherent is not None else energy['incoherent_fixed_energy'][k]), 'declared coherent choice or fallback')
                             target = energy['target'][k]

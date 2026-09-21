@@ -161,6 +161,7 @@ impl ScheduleRenderer {
                         control: Some(rt.tone.prediction_control(now, &rhythms)),
                         scheduled_release: rt.scheduled_release,
                         sine: rt.tone.prediction_sine(now),
+                        bank: rt.tone.prediction_bank(now),
                     },
                 )
             })
@@ -753,6 +754,7 @@ impl ScheduleRenderer {
                                                     tone.prediction_control(now, rhythms),
                                                 ),
                                                 sine: tone.prediction_sine(now),
+                                                bank: tone.prediction_bank(now),
                                             },
                                         });
                                     candidate_packet = Some(packet);
@@ -1078,6 +1080,7 @@ impl ScheduleRenderer {
                         scheduled_release: rt.scheduled_release,
                         control,
                         sine: rt.tone.prediction_sine(now),
+                        bank: rt.tone.prediction_bank(now),
                     };
                     queued |= envelope.onset > now
                         && energy
@@ -1783,7 +1786,8 @@ mod tests {
             let default = &record.candidates[0];
             let habitat = default.buses[0][0].unwrap();
             match case {
-                "cancel" => assert_eq!(habitat.mean, Some(0.)),
+                // A tone released at its onset still renders a brief attack-release sliver.
+                "cancel" => assert!(habitat.mean.unwrap() < 1e-6),
                 "pitch_update" => assert_eq!(habitat.mean, None),
                 _ => assert!(habitat.mean.unwrap() > 0.),
             }
@@ -1954,7 +1958,9 @@ mod tests {
                 usize::from(case == "later_update")
             );
             match case {
-                "later_release" => assert_eq!(r.candidates[0].buses[0][0].unwrap().mean, Some(0.)),
+                "later_release" => {
+                    assert!(r.candidates[0].buses[0][0].unwrap().mean.unwrap() < 1e-6)
+                }
                 _ => assert!(r.candidates[0].buses[0][0].unwrap().mean.unwrap() > 0.),
             }
         }
@@ -2240,6 +2246,7 @@ mod tests {
                             control: None,
                             scheduled_release: None,
                             sine: None,
+                            bank: None,
                         };
                         predicted_end = frozen.renderer_end_after(
                             32,

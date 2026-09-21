@@ -401,7 +401,9 @@ impl Tone {
     }
 
     pub(crate) fn prediction_sine(&self, now: Tick) -> Option<super::sine_forecast::SineForecast> {
-        if self.current_pitch_hz != self.target_pitch_hz
+        // Log-domain smoothing can settle one rounding step away from its target.
+        if (self.current_pitch_hz != self.target_pitch_hz
+            && self.next_pitch_hz() != self.current_pitch_hz)
             || self
                 .pending_updates
                 .iter()
@@ -416,7 +418,11 @@ impl Tone {
         let AnyBackend::Oscillator(backend) = &self.backend else {
             return None;
         };
-        let (state, rotation) = backend.sine_state(self.current_pitch_hz)?;
+        let (state, rotation) = backend.sine_state(if self.started {
+            self.current_pitch_hz
+        } else {
+            self.settled_pitch_hz()
+        })?;
         let first_sample = if self.started || self.pending_impulse_energy > 0. {
             now
         } else {
@@ -438,6 +444,46 @@ impl Tone {
                 .clamp(0., SINE_IMPULSE_BOOST_MAX),
             boost_decay: impulse_boost_decay(self.sample_dt),
         })
+    }
+
+    /// Carrier lanes of the harmonic and modal backends under the same static-tone
+    /// conditions as `prediction_sine`. Continuous drive is not forecast.
+    pub(crate) fn prediction_bank(&self, now: Tick) -> Option<super::bank_forecast::BankForecast> {
+        if (self.current_pitch_hz != self.target_pitch_hz
+            && self.next_pitch_hz() != self.current_pitch_hz)
+            || self.continuous_drive != 0.
+            || self
+                .pending_updates
+                .iter()
+                .take(5)
+                .any(|u| u.update.target_freq_hz.is_some() || u.update.continuous_drive.is_some())
+            || (self.started
+                && (self.pending_trigger.is_some() || self.planned_kick_pending.is_some()))
+            || (self.pending_impulse_energy > 0. && self.pending_trigger.is_some())
+        {
+            return None;
+        }
+        let (first_sample, impulse) = if self.started {
+            (now, None)
+        } else if self.pending_impulse_energy > 0. {
+            (now, Some(self.pending_impulse_energy))
+        } else {
+            let trigger = self.pending_trigger?;
+            (trigger.at_tick.max(now), Some(trigger.energy))
+        };
+        if first_sample < self.envelope.onset {
+            return None;
+        }
+        let pitch = if self.started {
+            self.current_pitch_hz
+        } else {
+            self.settled_pitch_hz()
+        }
+        .max(1.);
+        match &self.backend {
+            AnyBackend::Oscillator(bank) => bank.bank_forecast(pitch, first_sample, impulse),
+            AnyBackend::Resonator(engine) => engine.bank_forecast(pitch, first_sample, impulse),
+        }
     }
 
     pub(crate) fn prediction_control(
@@ -536,6 +582,38 @@ impl Tone {
         }
     }
 
+    /// The pitch the next smoothing step would render.
+    fn next_pitch_hz(&self) -> f32 {
+        self.pitch_step_from(self.current_pitch_hz)
+    }
+
+    fn pitch_step_from(&self, current: f32) -> f32 {
+        let next = if self.pitch_alpha >= 1.0 || current <= 0.0 || self.target_pitch_hz <= 0.0 {
+            self.target_pitch_hz
+        } else {
+            smooth_step(current.ln(), self.target_pitch_hz.ln(), self.pitch_alpha).exp()
+        };
+        if next.is_finite() && next > 0.0 {
+            next
+        } else {
+            self.target_pitch_hz
+        }
+    }
+
+    /// The pitch an unstarted tone renders: log-domain smoothing rounds a static pitch onto
+    /// its own fixed point within a few samples, and a carrier forecast must turn at it.
+    fn settled_pitch_hz(&self) -> f32 {
+        let mut pitch = self.current_pitch_hz;
+        for _ in 0..8 {
+            let next = self.pitch_step_from(pitch);
+            if next == pitch {
+                break;
+            }
+            pitch = next;
+        }
+        pitch
+    }
+
     fn advance_smoothing(&mut self) {
         self.current_amp = smooth_step(self.current_amp, self.target_amp, self.amp_alpha);
         if !self.current_amp.is_finite() {
@@ -544,17 +622,7 @@ impl Tone {
         self.current_amp = self.current_amp.max(0.0);
 
         // Smooth pitch in log2 space so equal semitone steps take equal time.
-        if self.pitch_alpha >= 1.0 || self.current_pitch_hz <= 0.0 || self.target_pitch_hz <= 0.0 {
-            self.current_pitch_hz = self.target_pitch_hz;
-        } else {
-            let cur_log = self.current_pitch_hz.ln();
-            let tgt_log = self.target_pitch_hz.ln();
-            let next_log = smooth_step(cur_log, tgt_log, self.pitch_alpha);
-            self.current_pitch_hz = next_log.exp();
-        }
-        if !self.current_pitch_hz.is_finite() || self.current_pitch_hz <= 0.0 {
-            self.current_pitch_hz = self.target_pitch_hz;
-        }
+        self.current_pitch_hz = self.next_pitch_hz();
     }
 
     fn gain_at(&self, tick: Tick) -> f32 {
@@ -1010,6 +1078,7 @@ mod tests {
                             envelope,
                             control: Some(tone.prediction_control(256, &rhythms)),
                             sine: tone.prediction_sine(256),
+                            bank: tone.prediction_bank(256),
                             scheduled_release: releases[0],
                         };
                         assert!(frozen.sine.is_some());
@@ -1090,6 +1159,7 @@ mod tests {
             envelope,
             control: Some(tone.prediction_control(256, &rhythms)),
             sine: None,
+            bank: None,
             scheduled_release: None,
         };
         let control = frozen.control_for(None).unwrap();

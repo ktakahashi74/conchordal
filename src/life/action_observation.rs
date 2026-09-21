@@ -224,6 +224,7 @@ impl Observer {
                 control: input.control,
                 scheduled_release: input.scheduled_release,
                 sine: input.sine,
+                bank: input.bank,
             };
             for (bus, windows) in coherent.iter_mut().enumerate() {
                 if pending.outcome.buses[bus].routed {
@@ -232,7 +233,8 @@ impl Observer {
                             start + (u128::from(width) * edge as u128).div_ceil(16) as u64
                         });
                         if left < right {
-                            window.add(command.sine_point(left + (right - left) / 2, None));
+                            let tick = left + (right - left) / 2;
+                            command.add_carriers(window, tick, None, command.at(tick, None));
                         }
                     }
                 }
@@ -258,6 +260,7 @@ impl Observer {
                     control: Some(control),
                     scheduled_release: plan,
                     sine: tone.prediction_sine(control.issued_at),
+                    bank: tone.prediction_bank(control.issued_at),
                 };
                 for (bus, routed) in [routing.to_habitat, routing.to_presentation]
                     .into_iter()
@@ -278,7 +281,12 @@ impl Observer {
                             continue;
                         }
                         let tick = left + (right - left) / 2;
-                        coherent[bus][k].add(projected.sine_point(tick, None));
+                        projected.add_carriers(
+                            &mut coherent[bus][k],
+                            tick,
+                            None,
+                            projected.at(tick, None),
+                        );
                         if let Some(energy) = projected.at(tick, None) {
                             input.retained_energy[bus].fixed_energy[k] += energy;
                         } else {

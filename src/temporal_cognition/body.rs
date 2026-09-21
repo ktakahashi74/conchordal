@@ -552,6 +552,7 @@ impl Capture {
             retained_energy: [Default::default(); 2],
             coherent_energy: [[None; 16]; 2],
             sine: None,
+            bank: None,
             descriptor_slot: token.0,
             descriptor_target_end: {
                 let period = u64::from(self.sample_rate)

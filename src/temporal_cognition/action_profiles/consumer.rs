@@ -392,6 +392,7 @@ mod tests {
                             amplitude: 0.1,
                             control: None,
                             sine: None,
+                            bank: None,
                             scheduled_release: None,
                             envelope: Envelope {
                                 onset: 0,
@@ -460,6 +461,7 @@ mod tests {
                 amplitude: 0.1,
                 control: None,
                 sine: None,
+                bank: None,
                 scheduled_release: None,
                 envelope: Envelope {
                     onset: 2000,

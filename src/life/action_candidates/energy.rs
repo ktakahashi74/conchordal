@@ -86,15 +86,50 @@ impl Body<'_> {
 
     fn point(&self, tick: u64, left: u64, right: u64, bus: usize) -> (Option<f64>, Option<f64>) {
         let mut energy = Some(0.);
-        let mut coherent = CoherentWindow::new();
         for (_, tone, release) in self.tones(bus) {
-            let projected = tone.at(tick, release);
-            energy = energy.zip(projected).map(|(a, b)| a + b);
-            coherent.add(tone.sine_point_from_energy(tick, release, projected));
+            energy = energy.zip(tone.at(tick, release)).map(|(a, b)| a + b);
         }
-        (energy, coherent.mean(left, right, tick))
+        // Envelopes are frozen per span: cut the bin at every envelope breakpoint, then into
+        // spans short enough for the rule to hold on each smooth piece.
+        let mut edges = [left; 130];
+        let mut count = 1;
+        for (_, tone, release) in self.tones(bus) {
+            for at in tone.breakpoints(release) {
+                if at > left && at < right && count < edges.len() - 1 {
+                    edges[count] = at;
+                    count += 1;
+                }
+            }
+        }
+        edges[count] = right;
+        edges[..=count].sort_unstable();
+        let mut coherent = Some(0.);
+        for piece in edges[..=count].windows(2) {
+            let [from, to] = [piece[0], piece[1]];
+            let limit = self
+                .tones(bus)
+                .filter_map(|(_, tone, release)| tone.fast_span([from, to], release))
+                .fold(COHERENT_SPAN, u64::min)
+                .max(16);
+            let spans = (to - from).div_ceil(limit);
+            for k in 0..spans {
+                let [a, b] = [k, k + 1].map(|edge| from + (to - from) * edge / spans);
+                let middle = a + (b - a) / 2;
+                let mut window = CoherentWindow::new();
+                for (_, tone, release) in self.tones(bus) {
+                    tone.add_span(&mut window, [a, b], middle, release);
+                }
+                coherent = coherent
+                    .zip(window.mean(a, b, middle))
+                    .map(|(sum, mean)| sum + mean * (b - a) as f64 / (right - left) as f64);
+            }
+        }
+        (energy, coherent)
     }
 }
+
+/// Longest span over which a candidate's envelope and control gains are frozen.
+const COHERENT_SPAN: u64 = 750;
 
 pub(crate) fn project_window(
     retained: &[(u64, [bool; 2], ToneEnergy)],
@@ -350,6 +385,20 @@ fn evaluate(
                     }
                     s.first_sample = at;
                     s
+                });
+                tone.bank = tone.bank.map(|mut b| {
+                    if shift > 0 {
+                        return b.for_new_onset(
+                            at,
+                            crate::life::schedule_renderer::modal_phase_seed(
+                                request.source_id,
+                                at,
+                                request.tone_id,
+                            ),
+                        );
+                    }
+                    b.first_sample = at;
+                    b
                 });
                 if let Some(control) = tone.control.as_mut() {
                     control.issued_at =
@@ -895,6 +944,7 @@ mod tests {
             }),
             scheduled_release: None,
             sine: None,
+            bank: None,
         }
     }
 

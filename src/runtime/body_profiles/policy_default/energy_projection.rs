@@ -109,6 +109,7 @@ fn acquire_seven_class_energy() {
         let (_, amplitude, envelope) = onset.prediction_parameters(None);
         let issued = ToneEnergy {
             sine: onset.prediction_sine(current.now),
+            bank: onset.prediction_bank(current.now),
             amplitude,
             envelope,
             control: Some(onset.prediction_control(current.now, &current.rhythms)),
@@ -166,6 +167,12 @@ fn acquire_seven_class_energy() {
                     let mut tone = issued;
                     tone.sine = tone.sine.map(|s| {
                         s.for_new_onset(
+                            at,
+                            crate::life::schedule_renderer::modal_phase_seed(1, at, tone_id),
+                        )
+                    });
+                    tone.bank = tone.bank.map(|b| {
+                        b.for_new_onset(
                             at,
                             crate::life::schedule_renderer::modal_phase_seed(1, at, tone_id),
                         )
@@ -229,7 +236,7 @@ fn acquire_seven_class_energy() {
         let directory = output.join(id);
         fs::create_dir(&directory).unwrap();
         fs::write(directory.join("predictions.json"), serde_json::to_vec_pretty(&json!({
-            "schema": "i10-seven-class-energy-v1", "model": if use_coherent { "source_energy_log1p_residual_v7" } else { "source_energy_log1p_residual_v4" },
+            "schema": "i10-seven-class-energy-v1", "model": if use_coherent { "source_energy_log1p_residual_v8" } else { "source_energy_log1p_residual_v4" },
             "render_start": current.now, "decision_sample": decision, "receipt": receipt,
             "retained": retained, "issued": issued, "recipe": recipe, "routing": routed,
             "local_default": "onset_now-0", "candidates": candidates, "predictions": predictions,

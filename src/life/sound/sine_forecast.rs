@@ -90,6 +90,7 @@ mod tests {
                         envelope,
                         control: Some(tone.prediction_control(512, &rhythms)),
                         sine: tone.prediction_sine(512),
+                        bank: tone.prediction_bank(512),
                         scheduled_release: None,
                     };
                     assert!(frozen.control.unwrap().amplitude_smoothing.is_some());
@@ -153,6 +154,7 @@ mod tests {
                         envelope,
                         control: Some(tone.prediction_control(prefix, &rhythms)),
                         sine: Some(saved),
+                        bank: None,
                         scheduled_release: None,
                     };
                     for offset in 0..=48000 {

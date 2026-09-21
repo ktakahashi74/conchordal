@@ -229,6 +229,90 @@ impl OscillatorBank {
         Some((state, rotation))
     }
 
+    /// Read-only lanes of a static-pitch harmonic bank. `impulse` is the onset drive of a
+    /// tone that has not rendered yet. Vibrato and jitter are not forecast.
+    pub(crate) fn bank_forecast(
+        &self,
+        pitch_hz: f32,
+        first_sample: u64,
+        impulse: Option<f32>,
+    ) -> Option<super::bank_forecast::BankForecast> {
+        use super::bank_forecast::{BankForecast, LANES, Lane, Response};
+        let OscillatorProfile::Harmonic { genotype } = &self.profile else {
+            return None;
+        };
+        if genotype.vibrato_depth != 0. || genotype.jitter != 0. || !pitch_hz.is_finite() {
+            return None;
+        }
+        let pitch = pitch_hz.max(1.);
+        let mut lanes = [Lane::default(); LANES];
+        let len = if let Some(impulse) = impulse {
+            let mut seed = self.pending_phase_seed;
+            let max_freq_hz = (self.fs * 0.49).max(1.);
+            let mut len = 0;
+            for idx in 0..self.lane_len_real {
+                let freq_hz = pitch * self.freq_mul[idx];
+                let active = freq_hz.is_finite() && freq_hz > 0. && freq_hz <= max_freq_hz;
+                // The renderer seeds culled lanes too, after the active prefix.
+                if !active {
+                    break;
+                }
+                let dphi = TAU * freq_hz / self.fs;
+                *lanes.get_mut(idx)? = Lane {
+                    state: seed
+                        .as_mut()
+                        .map_or([self.x[idx], self.y[idx]], seeded_phase_state),
+                    step: [dphi.cos(), dphi.sin()],
+                    gain: self.base_gain[idx],
+                    held: 0.,
+                    damping: self.damp_exp[idx],
+                };
+                len = idx + 1;
+            }
+            if self.pitch_counter != 0 || !impulse.is_finite() {
+                return None;
+            }
+            len
+        } else {
+            if self.pending_phase_seed.is_some() || self.needs_pitch_state_refresh(pitch) {
+                return None;
+            }
+            for idx in 0..self.active_lane_len {
+                *lanes.get_mut(idx)? = Lane {
+                    state: [self.x[idx], self.y[idx]],
+                    step: [self.rot_c[idx], self.rot_s[idx]],
+                    gain: self.base_gain[idx],
+                    held: self.gain_mask[idx],
+                    damping: self.damp_exp[idx],
+                };
+            }
+            self.active_lane_len
+        };
+        let period = PITCH_REFRESH_PERIOD_SAMPLES;
+        let damped = self.spectral_damping_active;
+        Some(BankForecast {
+            first_sample,
+            response: Response::Oscillator {
+                drive_env: impulse.map_or(self.drive_env * self.drive_decay, |v| v.clamp(0., 4.)),
+                drive_decay: self.drive_decay,
+                spectral_env: if !damped {
+                    0.
+                } else {
+                    impulse.map_or(self.spectral_env * self.spectral_env_decay, |v| {
+                        v.clamp(0., 1.)
+                    })
+                },
+                spectral_decay: self.spectral_env_decay,
+                // An inert coupling leaves every gain at its base value.
+                spectral_floor: if damped { SPECTRAL_ENERGY_FLOOR } else { 1. },
+                refresh_at: first_sample + ((period - self.pitch_counter) % period) as u64,
+                refresh_period: period as u64,
+            },
+            len,
+            lanes,
+        })
+    }
+
     pub fn seed_phases(&mut self, seed: u64) {
         self.pending_phase_seed = Some(seed);
         self.jitter_gen = PinkNoise::new(seed ^ 0xA5A5_5A5A_DEAD_BEEF, 0.001);

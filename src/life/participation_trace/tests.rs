@@ -377,6 +377,7 @@ fn predicted_outcome(id: u64, at: u64) -> Outcome {
         retained_energy: [Default::default(); 2],
         coherent_energy: [[None; 16]; 2],
         sine: None,
+        bank: None,
         body_generation: 1,
         descriptors: [[None; 6]; 2],
         descriptor_support: [None; 2],

@@ -119,6 +119,34 @@ impl ControlForecast {
     }
 
     /// Includes the target sample's control step, without stepping a DSP backend.
+    /// The modulator's linear attack `[origin, end)`; its gain changes slope at `end`.
+    pub(crate) fn attack_span(self) -> Option<[u64; 2]> {
+        let AmplitudeModel::EntrainPulse {
+            attack_step,
+            state,
+            env_level,
+            ..
+        } = self.model
+        else {
+            return None;
+        };
+        let step = f64::from(attack_step * self.sample_dt);
+        if !step.is_finite() || step <= 0. {
+            return None;
+        }
+        let (origin, level) = match self.kick_at {
+            Some(at) => (at.max(self.issued_at), 0.),
+            None if state == RenderModulatorStateKind::Attack => {
+                (self.issued_at, f64::from(env_level))
+            }
+            None => return None,
+        };
+        Some([
+            origin,
+            origin.saturating_add(((1. - level) / step).ceil().max(1.) as u64),
+        ])
+    }
+
     pub(crate) fn gain_at(self, tick: u64) -> Option<f64> {
         if tick < self.issued_at
             || self.valid_until.is_some_and(|end| tick >= end)

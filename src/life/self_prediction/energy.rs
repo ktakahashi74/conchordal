@@ -98,6 +98,7 @@ impl EnergyForecast {
                     envelope: input.envelope,
                     control: input.control,
                     sine: input.sine,
+                    bank: input.bank,
                     scheduled_release: input.scheduled_release,
                 }
                 .at(tick, None)
@@ -127,7 +128,7 @@ impl EnergyForecast {
             }
         }
         Self {
-            model: "source_energy_log1p_residual_v7",
+            model: "source_energy_log1p_residual_v8",
             command_fixed_energy,
             retained,
             incoherent_fixed_energy,

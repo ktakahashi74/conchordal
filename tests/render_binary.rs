@@ -1628,7 +1628,7 @@ wait(2.1);
                     assert_eq!(source_energy.len(), 2);
                     let mut integral = 0.;
                     for (bus, energy) in source_energy.iter().enumerate() {
-                        assert_eq!(energy["model"], "source_energy_log1p_residual_v7");
+                        assert_eq!(energy["model"], "source_energy_log1p_residual_v8");
                         assert_eq!(energy["learned"], true);
                         assert_eq!(energy["updates_at_issue"], 0);
                         let windows = energy["windows"].as_array().unwrap();

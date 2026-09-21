@@ -464,6 +464,10 @@ impl Tone {
             return None;
         }
         let (first_sample, impulse) = if self.started {
+            // A direct impulse would re-excite the ringing bank on the next sample.
+            if self.pending_impulse_energy > 0. {
+                return None;
+            }
             (now, None)
         } else if self.pending_impulse_energy > 0. {
             (now, Some(self.pending_impulse_energy))

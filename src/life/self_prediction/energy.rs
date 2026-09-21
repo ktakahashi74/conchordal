@@ -47,7 +47,7 @@ pub struct EnergyForecast {
     pub command_fixed_energy: [Option<f64>; WINDOWS],
     pub retained: RetainedEnergy,
     pub incoherent_fixed_energy: [Option<f64>; WINDOWS],
-    pub coherent_sine_energy: [Option<f64>; WINDOWS],
+    pub coherent_energy: [Option<f64>; WINDOWS],
     pub windows: [[u64; 2]; WINDOWS],
     /// Fixed sine-envelope proxy, action-conditioned residual, action-independent residual.
     pub predictions: [[Option<f64>; WINDOWS]; 3],
@@ -132,7 +132,7 @@ impl EnergyForecast {
             command_fixed_energy,
             retained,
             incoherent_fixed_energy,
-            coherent_sine_energy: input.coherent_energy[bus],
+            coherent_energy: input.coherent_energy[bus],
             windows,
             predictions,
             target: [None; WINDOWS],

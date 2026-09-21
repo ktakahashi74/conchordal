@@ -119,6 +119,49 @@ impl ControlForecast {
     }
 
     /// Includes the target sample's control step, without stepping a DSP backend.
+    /// Ticks where the amplitude target steps or a sequence gate closes.
+    pub(crate) fn steps(self) -> [Option<u64>; 5] {
+        let mut out = [None; 5];
+        if let Some(updates) = self.amplitude_updates {
+            for (slot, update) in out.iter_mut().zip(&updates.events[..updates.len]) {
+                *slot = Some(update.at_sample.max(self.issued_at));
+            }
+        }
+        if let AmplitudeModel::SeqGate {
+            timer,
+            duration_sec,
+        } = self.model
+        {
+            let dt = f64::from(self.sample_dt);
+            let (origin, timer) = match self.kick_at {
+                Some(at) => (at.max(self.issued_at), 0.),
+                None => (self.issued_at, f64::from(timer)),
+            };
+            let left = (f64::from(duration_sec) - timer) / dt;
+            if left.is_finite() && left > 0. {
+                out[4] = Some(origin.saturating_add(left.ceil() as u64));
+            }
+        }
+        out
+    }
+
+    /// Span bound while `[from, to)` overlaps an amplitude-smoothing transient: the same
+    /// `2 lambda h <= 0.1` rule as the envelope decay, over seven time constants after the
+    /// issue or a target step.
+    pub(crate) fn smoothing_span(self, [from, to]: [u64; 2]) -> Option<u64> {
+        let alpha = f64::from(self.amplitude_smoothing?.alpha);
+        if !(alpha > 0. && alpha < 1.) {
+            return None;
+        }
+        let lambda = -(1. - alpha).ln();
+        let settle = (7. / lambda).ceil() as u64;
+        std::iter::once(Some(self.issued_at))
+            .chain(self.steps().into_iter().take(4))
+            .flatten()
+            .any(|at| from < at.saturating_add(settle) && to > at)
+            .then(|| (0.1 / (2. * lambda)) as u64)
+    }
+
     /// The modulator's linear attack `[origin, end)`; its gain changes slope at `end`.
     pub(crate) fn attack_span(self) -> Option<[u64; 2]> {
         let AmplitudeModel::EntrainPulse {

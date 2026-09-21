@@ -245,7 +245,7 @@ def verify(root, inputs, previous, controls=False):
                                 maximum_error = max(maximum_error, abs(actual - expected))
                                 require(abs(actual - expected) <= max(1e-14, abs(expected)*5e-7), 'retained or command fixed energy')
                             if energy['model'] in ['source_energy_log1p_residual_v5','source_energy_log1p_residual_v6','source_energy_log1p_residual_v7','source_energy_log1p_residual_v8']:
-                                coherent = energy['coherent_sine_energy'][k]
+                                coherent = energy.get('coherent_energy', energy.get('coherent_sine_energy'))[k]
                                 require(energy['predictions'][0][k] == (coherent if coherent is not None else energy['incoherent_fixed_energy'][k]), 'declared coherent choice or fallback')
                             target = energy['target'][k]
                             if target is not None:

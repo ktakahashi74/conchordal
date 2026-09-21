@@ -137,8 +137,8 @@ impl ToneEnergy {
 
     /// Ticks where this tone's envelope or control changes slope; zero marks an unused
     /// slot. Spans cut here keep each frozen-envelope rule on one smooth piece.
-    pub(crate) fn breakpoints(self, intervention: Option<ScheduledRelease>) -> [u64; 24] {
-        let mut out = [0; 24];
+    pub(crate) fn breakpoints(self, intervention: Option<ScheduledRelease>) -> [u64; 32] {
+        let mut out = [0; 32];
         let mut n = 0;
         let mut push = |at: u64| {
             if n < out.len() {
@@ -177,6 +177,7 @@ impl ToneEnergy {
             self.control.and_then(|c| c.attack_span()).map(|s| s[1]),
         ]
         .into_iter()
+        .chain(self.control.map_or([None; 5], |c| c.steps()))
         .flatten()
         {
             push(at);
@@ -208,6 +209,7 @@ impl ToneEnergy {
                 .and_then(|c| c.attack_span())
                 .filter(|s| inside(*s))
                 .map(|[a, b]| (b - a) / 32),
+            self.control.and_then(|c| c.smoothing_span([from, to])),
         ]
         .into_iter()
         .flatten()

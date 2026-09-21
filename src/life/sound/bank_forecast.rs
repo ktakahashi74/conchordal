@@ -285,6 +285,111 @@ mod tests {
         }
     }
 
+    /// Rendered mean square over `[now, now + width)` against the candidate quadrature.
+    fn window_error(mut tone: Tone, now: u64, width: u64, rhythms: &NeuralRhythms) -> f64 {
+        let frozen = model(&tone, now, rhythms);
+        assert!(frozen.sine.is_some() || frozen.bank.is_some());
+        let predicted = crate::life::action_candidates::energy::project_window(
+            &[(1, [true, true], frozen)],
+            None,
+            now,
+            (None, None),
+            0,
+            [now, now + width],
+            true,
+        )
+        .unwrap();
+        assert!(predicted.coherent_energies.iter().all(Option::is_some));
+        let mut actual = 0.;
+        for tick in now..now + width {
+            tone.kick_planned_if_due(tick);
+            tone.apply_updates_if_due(tick);
+            actual += f64::from(tone.render_tick(tick, 48000., 1. / 48000., rhythms)).powi(2);
+        }
+        actual /= width as f64;
+        (predicted.mean.unwrap() / actual - 1.).abs()
+    }
+
+    #[test]
+    fn amplitude_steps_and_short_envelopes_match_the_rendered_window_energy() {
+        let rhythms = NeuralRhythms::default();
+        let mut maximum = 0_f64;
+        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+            // A smoothed amplitude step between the quadrature nodes of a long span.
+            let mut stepped = tone(kind, 37, 293., 11);
+            stepped.set_smoothing_tau_sec(0.002);
+            for tick in 0..2048 {
+                stepped.kick_planned_if_due(tick);
+                stepped.render_tick(tick, 48000., 1. / 48000., &rhythms);
+            }
+            for (at, target) in [(2300, 1.), (2400, 0.2)] {
+                stepped.schedule_update(
+                    at,
+                    crate::life::phonation_engine::ToneUpdate {
+                        target_freq_hz: None,
+                        target_amp: Some(target),
+                        continuous_drive: None,
+                    },
+                );
+            }
+            // An attack and decay far shorter than the old 16-sample span floor.
+            let mut short = Tone::from_parts(
+                Timebase {
+                    fs: 48000.,
+                    hop: 64,
+                },
+                2100,
+                200000,
+                293.,
+                0.2,
+                Some(BodySnapshot {
+                    kind,
+                    amp_scale: 1.,
+                    brightness: 0.6,
+                    inharmonic: 0.,
+                    spread: 0.,
+                    unison: 1,
+                    motion: 0.,
+                    ratios: matches!(kind, BodyKind::Modal)
+                        .then(|| (1..=16).map(|k| k as f32).collect::<Vec<_>>().into()),
+                }),
+                Some(RenderModulatorSpec::SeqGate { duration_sec: 10. }),
+                Some(ToneAdsr {
+                    attack_sec: 0.001,
+                    decay_sec: 0.001,
+                    sustain_level: 0.5,
+                    release_sec: 0.1,
+                }),
+            )
+            .unwrap();
+            short.seed_modal_phases(5);
+            short.schedule_planned_kick(OnsetKick { strength: 0.85 });
+            short.arm_onset_trigger(0.85);
+            for (label, tone) in [("step", stepped), ("short", short)] {
+                let error = window_error(tone, 2048, 12000, &rhythms);
+                eprintln!("BANK_WINDOW {kind:?} {label} relative_error={error}");
+                maximum = maximum.max(error);
+                assert!(error < 1e-3, "{kind:?} {label} relative_error={error}");
+            }
+        }
+        eprintln!("BANK_WINDOW maximum_relative_error={maximum}");
+    }
+
+    #[test]
+    fn a_direct_impulse_on_a_ringing_bank_is_not_forecast() {
+        let rhythms = NeuralRhythms::default();
+        for kind in [BodyKind::Harmonic, BodyKind::Modal] {
+            let mut tone = tone(kind, 37, 293., 11);
+            for tick in 0..512 {
+                tone.kick_planned_if_due(tick);
+                tone.render_tick(tick, 48000., 1. / 48000., &rhythms);
+            }
+            assert!(tone.prediction_bank(512).is_some());
+            tone.trigger_impulse(0.5);
+            assert!(tone.prediction_bank(512).is_none());
+        }
+    }
+
     #[test]
     fn stochastic_or_moving_bodies_stay_unsupported() {
         let rhythms = NeuralRhythms::default();

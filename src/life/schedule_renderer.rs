@@ -1388,6 +1388,124 @@ mod tests {
         }
     }
 
+    /// The control keeps observation and learning but strips the policy facts and
+    /// opportunities that make candidates due, so any effect of evaluating them would show.
+    #[test]
+    fn candidate_evaluation_leaves_audio_and_learning_unchanged_for_every_body() {
+        use crate::life::action_candidates::{OnsetOpportunity, PolicySnapshot};
+        use crate::life::action_observation::Observer;
+        let time = Timebase { fs: 8000., hop: 64 };
+        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+            let mut tracked = ScheduleRenderer::new(time);
+            let mut control = ScheduleRenderer::new(time);
+            for renderer in [&mut tracked, &mut control] {
+                let mut observer = Observer::new(8000);
+                observer.enable_predictions();
+                observer.enable_trace(crate::config::TemporalPrivateTraceConfig {
+                    tau_sec: 10.,
+                    kappa: 2.,
+                    strength_max: 3.,
+                });
+                renderer.action_observer = Some(Box::new(observer));
+                let kernel = crate::core::nsgt_kernel::NsgtKernelLog2::new(
+                    crate::core::nsgt_kernel::NsgtLog2Config {
+                        fs: 8000.,
+                        overlap: 0.75,
+                        nfft_override: Some(256),
+                        ..Default::default()
+                    },
+                    crate::core::log2space::Log2Space::new(100., 2000., 12),
+                    None,
+                    crate::core::nsgt_kernel::PowerMode::Coherent,
+                );
+                let mut capture = crate::temporal_cognition::body::Capture::spawn(
+                    crate::core::nsgt_rt::RtNsgtKernelLog2::new(kernel),
+                    crate::config::TemporalBodyConfig {
+                        means: [0.; 6],
+                        deviations: [1.; 6],
+                        accent_means: [0.; 2],
+                        accent_deviations: [1.; 2],
+                    },
+                    true,
+                    None,
+                );
+                capture.prepare(
+                    std::iter::once((2, 7, outcome_batch(kind).tones[0].body.clone())),
+                    0,
+                );
+                renderer.body_capture = Some(capture);
+            }
+            for now in (0..4800).step_by(64) {
+                let mut batch = outcome_batch(kind);
+                batch.body_policy = Some(PolicySnapshot {
+                    at: now,
+                    is_alive: true,
+                    gate_allows_onset: true,
+                });
+                batch.intrinsic_period_sec = Some(0.5);
+                batch.tones[0].hold_ticks = Some(1600);
+                if now > 0 {
+                    batch.cmds.clear();
+                    batch.tones.clear();
+                }
+                if now == 896 {
+                    let mut tone = outcome_batch(kind).tones.remove(0);
+                    tone.tone_id = 2;
+                    tone.onset = 896;
+                    tone.hold_ticks = Some(896);
+                    tone.opportunity = Some(OnsetOpportunity {
+                        issued_at: 896,
+                        at: 896,
+                        gate: 1,
+                        intrinsic_due_at: Some(896),
+                        intrinsic_period_ticks: Some(4000),
+                        planned_release_at: None,
+                    });
+                    batch.tones.push(tone);
+                    batch.cmds.push(ToneCmd::On {
+                        tone_id: 2,
+                        kick: OnsetKick { strength: 1. },
+                    });
+                }
+                let mut reference_batch = batch.clone();
+                reference_batch.body_policy = None;
+                for tone in &mut reference_batch.tones {
+                    tone.opportunity = None;
+                }
+                let actual = tracked.render(&[batch], now, &NeuralRhythms::default());
+                let reference = control.render(&[reference_batch], now, &NeuralRhythms::default());
+                assert_eq!(actual.habitat, reference.habitat, "{kind:?} at {now}");
+                assert_eq!(
+                    actual.presentation, reference.presentation,
+                    "{kind:?} at {now}"
+                );
+            }
+            let observer = tracked.action_observer.as_mut().unwrap();
+            let reference = control.action_observer.as_mut().unwrap();
+            observer.finish();
+            reference.finish();
+            assert_eq!(
+                observer.snapshot.prediction, reference.snapshot.prediction,
+                "{kind:?}"
+            );
+            assert_eq!(
+                observer.snapshot.participation_trace, reference.snapshot.participation_trace,
+                "{kind:?}"
+            );
+            let learned: Vec<_> = observer.drain().collect();
+            assert!(!learned.is_empty(), "{kind:?}");
+            assert_eq!(learned, reference.drain().collect::<Vec<_>>(), "{kind:?}");
+            assert_eq!(reference.drain_candidate_energy().count(), 0);
+            let records: Vec<_> = observer.drain_candidate_energy().collect();
+            let onset = records
+                .iter()
+                .find(|r| r.candidates.iter().any(|c| c.input.excitation_at.is_some()))
+                .unwrap_or_else(|| panic!("{kind:?}: no onset candidates in {}", records.len()));
+            let window = onset.candidates[0].buses[0][0].unwrap();
+            assert!(window.coherent_bins > 0, "{kind:?}");
+        }
+    }
+
     #[test]
     fn idle_queued_candidates_preserve_audio_learning_and_owned_schedule() {
         use crate::life::action_candidates::{OnsetOpportunity, PolicySnapshot};

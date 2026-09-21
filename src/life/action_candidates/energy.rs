@@ -110,7 +110,7 @@ impl Body<'_> {
                 .tones(bus)
                 .filter_map(|(_, tone, release)| tone.fast_span([from, to], release))
                 .fold(COHERENT_SPAN, u64::min)
-                .max(16);
+                .max(1);
             let spans = (to - from).div_ceil(limit);
             for k in 0..spans {
                 let [a, b] = [k, k + 1].map(|edge| from + (to - from) * edge / spans);

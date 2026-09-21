@@ -224,7 +224,9 @@ impl Observer {
                 control: input.control,
                 scheduled_release: input.scheduled_release,
                 sine: input.sine,
-                bank: input.bank,
+                // Lane products are quadratic in carriers; this runs on the hop path, so
+                // multi-lane bodies keep the explicit incoherent prior here.
+                bank: None,
             };
             for (bus, windows) in coherent.iter_mut().enumerate() {
                 if pending.outcome.buses[bus].routed {
@@ -260,7 +262,7 @@ impl Observer {
                     control: Some(control),
                     scheduled_release: plan,
                     sine: tone.prediction_sine(control.issued_at),
-                    bank: tone.prediction_bank(control.issued_at),
+                    bank: None,
                 };
                 for (bus, routed) in [routing.to_habitat, routing.to_presentation]
                     .into_iter()

@@ -1216,7 +1216,7 @@ fn retained_source_energy_uses_real_tones_routes_and_planned_releases() {
             forecast
                 .source_energy
                 .iter()
-                .all(|e| e.coherent_sine_energy.iter().all(Option::is_some))
+                .all(|e| e.coherent_energy.iter().all(Option::is_some))
         );
         assert!(
             forecast

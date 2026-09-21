@@ -129,6 +129,32 @@ def control_attack(tone):
     return [origin, origin+int(max(math.ceil((1-level)/step), 1))]
 
 
+def control_steps(control):
+    out = []
+    updates = control.get('amplitude_updates')
+    if updates is not None:
+        out += [max(u['at_sample'], control['issued_at']) for u in updates['events'][:updates['len']]]
+    if 'SeqGate' in control['model']:
+        gate = control['model']['SeqGate']
+        origin, timer = ((max(control['kick_at'], control['issued_at']), 0.) if control['kick_at'] is not None
+                         else (control['issued_at'], gate['timer']))
+        left = (gate['duration_sec']-timer)/float(np.float32(control['sample_dt']))
+        if math.isfinite(left) and left > 0:
+            out.append(origin+math.ceil(left))
+    return out
+
+
+def smoothing_span(control, start, stop):
+    smoothing = control.get('amplitude_smoothing')
+    if smoothing is None or not 0 < smoothing['alpha'] < 1:
+        return None
+    lam = -math.log(1-float(np.float32(smoothing['alpha'])))
+    settle = math.ceil(7/lam)
+    updates = control.get('amplitude_updates')
+    events = [control['issued_at']]+([max(u['at_sample'], control['issued_at']) for u in updates['events'][:updates['len']]] if updates else [])
+    return int(.1/(2*lam)) if any(start < at+settle and stop > at for at in events) else None
+
+
 def breakpoints(tone, intervention):
     out = []
     envelope = dict(tone['envelope'])
@@ -148,7 +174,8 @@ def breakpoints(tone, intervention):
     if control is not None:
         out += [at for at in [control['starts_at'], control['kick_at']] if at is not None]
         if control_attack(tone) is not None: out.append(control_attack(tone)[1])
-    require(len(out) <= 24, 'breakpoint capacity')
+        out += control_steps(control)
+    require(len(out) <= 32, 'breakpoint capacity')
     return out
 
 
@@ -163,6 +190,8 @@ def fast_span(tone, start, stop, intervention):
     if inside(envelope['onset'], begin): out.append(attack_of(envelope)//32)
     attack = control_attack(tone)
     if attack is not None and inside(*attack): out.append((attack[1]-attack[0])//32)
+    if tone['control'] is not None and smoothing_span(tone['control'], start, stop) is not None:
+        out.append(smoothing_span(tone['control'], start, stop))
     return min(out) if out else None
 
 
@@ -264,7 +293,7 @@ def coherent_energy(tones,left,right,tick):
     total = 0.
     for start, stop in zip(edges, edges[1:]):
         limits = [v for v in [fast_span(tone, start, stop, intervention) for tone, intervention in tones] if v is not None]
-        limit = max(min([SPAN]+limits), 16)
+        limit = max(min([SPAN]+limits), 1)
         spans = -(-(stop-start)//limit)
         for k in range(spans):
             a, b = [start+(stop-start)*edge//spans for edge in [k, k+1]]

@@ -6583,8 +6583,9 @@ modal-flowでは予測が実音の約30倍になり、harmonic-entrainedでは�
   - 遅延onsetはsineと同じく、source／onset／tone IDから作るseedを引き直す。
 - 積分核（`src/life/self_prediction/projection.rs`）。搬送波の点を`[x, y, omega, log_decay]`へ拡張した。
   減衰を含む窓は複素等比級数で整数sample上を厳密に積分し、`u`が0に近い組は
-  `sinh(un/2)/sinh(u/2)`の中心化形で桁落ちを避ける。減衰のない窓（sine、harmonic）は既存の核を
-  そのまま通るため、sine素材の数値は核の変更では変わらない。
+  `sinh(un/2)/sinh(u/2)`の中心化形で桁落ちを避ける。全点のlog decayが0の窓だけが既存の核を通る。
+  最終版の候補求積では、span内envelopeの局所指数率が非ゼロならsine／harmonicも減衰核へ進む。
+  既存の核をそのまま通るのは、envelopeが平坦なspanと、通常の自声energy予測である。
 - 候補energyの求積（`src/life/action_candidates/energy.rs`）。16点の各binを、寄与する全toneの
   envelope／controlの折れ点（onset、attack終端、decay終端、hold終端、release終端、有効なreleaseの到着、
   modulatorのattack終端など）で区切り、各片を750 sample以下のspanへ分割する。750は登録済みの
@@ -6605,8 +6606,8 @@ modal-flowでは予測が実音の約30倍になり、harmonic-entrainedでは�
   continuous driveが非ゼロ（modalではnoise駆動）、motionが非ゼロ（vibrato／pink jitter）、17 lane以上。
   これらは確率的または未実装の身体であり、coherent支持の成功には数えない。
 - model版は`source_energy_log1p_residual_v8`。`bank`は`skip_serializing_if`で直列化するため、
-  sine素材のreportは欄を増やさない。通常の自声energy予測（`action_observation.rs`）もlaneを含むが、
-  こちらは従来どおり16点の中点凍結である。
+  sine素材のreportは欄を増やさない。通常の自声energy予測（`action_observation.rs`）はhop経路で動くため、
+  laneを展開しない。harmonic／modalは変更前と同じ明示的なincoherent priorのままとする（下のレビュー対応）。
 
 ### 検証
 
@@ -6689,18 +6690,21 @@ wall timeだけを測る。CPU時間、鮮度、実機の受入は含まない�
   残りは支持外条件（pitch変化中など）による明示的な`None`で、旧近似へ戻している。
 - sineの定常判定。初回の測定でsineのcoherent支持が約30%と低く、harmonic／modalで直した
   「平滑化が目標の1 ulp手前で止まる」問題がsineに残っていると分かった。`prediction_sine`へ同じ
-  定常判定を適用し、100%になった。登録済み71分岐の結果（反転22、二乗誤差）と独立検証は不変。
+  定常判定を適用し、100%になった。この時点の中間版で、登録済み71分岐の結果（中間版の反転22、二乗誤差）と
+  独立検証は不変だった。最終版の反転は0である。
 - 固定方策の音声不変。12条件すべてで、`temporal_mode("observe")`のWAVが`temporal_mode("off")`の
   WAVとSHA256で一致した。候補評価とbank予測は生成音へ作用しない。
-- 候補による学習不変。12条件すべてで、renderを2回行った際の学習系record（`self_sound_outcome`、
+- 同設定の再実行での学習record一致。12条件すべてで、renderを2回行った際の学習系record（`self_sound_outcome`、
   `self_sound_descriptor_prediction`、`private_participation_trace`、`participation_outcome`、
   `participation_context`、`onset`、`population_step`）が完全一致した。最大44,449件。候補recordの件数は
-  非同期workerの容量dropにより実行間で揺れる（例: sine-flow-4で418と411）が、学習へ波及しない。
+  非同期workerの容量dropにより実行間で揺れる（例: sine-flow-4で418と411）が、学習recordは揺れない。
+  これは候補件数の揺れに対する不変であり、候補評価そのものが学習を変えないことは示さない。後者は、
+  観測と学習を保ったまま候補評価だけを止めた対照との比較で示す（下のレビュー対応）。
 - 世代・routing・欠測の境界は既存の単体test（`action_candidates`、`schedule_renderer`）が担い、
   今回の変更後も全て通過した。
 
-以上により、候補評価はrelease・harmonic／modal身体・両busへ展開済みであり、生成と学習を変えないことを
-確認した。展開した予測の精度は前節の判定に従う。
+以上と下のレビュー対応の対照testにより、候補評価はrelease・harmonic／modal身体・両busへ展開済みであり、
+生成と学習を変えないことを確認した。展開した予測の精度は前節の判定に従う。
 
 ### 資源測定（残作業の三件目、R2への引渡し）
 
@@ -6708,23 +6712,23 @@ report付きinstrumentの値。候補workerは1 recordあたりのwall time、ho
 
 | 条件 | 候補 提出／容量drop | 候補 中央値／p99／最大 [ms] | hop p99 [ms] | 予算超過hop |
 | --- | ---: | ---: | ---: | ---: |
-| sine-hold-4／16／64 | 448／0、1,792／0、7,168／0 | 0.53／0.7／0.9 | 2.53、5.56、16.32 | 0、0、75 |
-| sine-flow-4 | 198／238 | 8.17／24.4／36.6 | 3.05 | 0 |
-| sine-flow-16 | 377／1,363 | 7.01／22.8／36.5 | 6.32 | 0 |
-| sine-flow-64 | 979／6,070 | 7.20／22.7／37.4 | 20.63 | 480 |
-| harmonic-flow-4 | 78／364 | 211.3／848.6／1,381.0 | 6.36 | 0 |
-| harmonic-flow-16 | 92／1,655 | 82.2／787.8／1,240.4 | 8.76 | 1 |
-| harmonic-flow-64 | 136／6,932 | 216.9／641.7／1,248.5 | 21.39 | 490 |
-| modal-flow-4 | 86／354 | 126.4／452.4／558.3 | 6.55 | 0 |
-| modal-flow-16 | 122／1,627 | 73.5／453.1／820.6 | 8.49 | 1 |
-| modal-flow-64 | 156／6,908 | 101.1／566.4／829.9 | 22.28 | 490 |
+| sine-hold-4／16／64 | 448／0、1,792／0、7,168／0 | 0.55／0.7／0.9 | 2.47、5.36、16.28 | 0、0、73 |
+| sine-flow-4 | 189／248 | 8.24／23.7／37.9 | 2.81 | 0 |
+| sine-flow-16 | 366／1,375 | 7.33／23.7／38.1 | 6.52 | 0 |
+| sine-flow-64 | 931／6,118 | 7.38／23.6／38.0 | 20.14 | 470 |
+| harmonic-flow-4 | 78／363 | 210.8／884.4／1,393.5 | 6.23 | 0 |
+| harmonic-flow-16 | 92／1,655 | 82.5／970.1／1,069.3 | 8.28 | 0 |
+| harmonic-flow-64 | 134／6,935 | 176.9／622.4／1,079.8 | 19.97 | 486 |
+| modal-flow-4 | 85／356 | 126.1／451.4／453.5 | 6.51 | 0 |
+| modal-flow-16 | 117／1,630 | 62.8／453.1／829.7 | 8.18 | 0 |
+| modal-flow-64 | 150／6,918 | 98.0／456.0／459.8 | 20.58 | 485 |
 
 hop予算は10.667 ms、各条件611 hop。共有観測・私有body抽出のframe dropは全条件で0、worker失敗なし。
 
 引き渡す事実は三つある。
 
 1. 候補workerは飽和している。flow条件では要求の55〜98%が容量dropになる。1 recordの費用は
-   sine約7〜8 ms、harmonic約80〜220 ms、modal約70〜130 msで、最大は1.4秒に達する。発音中の身体が
+   sine約7〜8 ms、harmonic約80〜210 ms、modal約60〜130 msで、最大は1.4秒に達する。発音中の身体が
    毎hop要求を出す頻度に追いつかない。dropは安全側（候補recordが欠けるだけで、音声・学習は不変）だが、
    I11が候補比較を消費するには不足する。費用の内訳は、4窓×最大25候補×両bus、折れ点とfast pieceで
    増えたspan数、そして搬送波数の二乗（harmonic／modalは1 toneあたり16 lane）である。順位一致に必要だった
@@ -6733,25 +6737,65 @@ hop予算は10.667 ms、各条件611 hop。共有観測・私有body抽出のfra
    精度を保ったままの費用削減と要求頻度の間引きをR2の課題とする。
 2. 減衰核は搬送波ごとに指数を前計算し、支持区間を共有する対では超越関数を呼ばない形へ改めた。
    中間版のmodalで中央値228→118 ms、p99 850→425 msの効果を確認した。数値は不変で、独立検証も再通過した。
-   各段階の測定は`before-kernel-precompute/`、`before-sine-settled/`、`before-quadrature/`に保存した。
-3. 64 Voiceではhop自体が予算を超える。sine-holdで75 hop、flowの3身体で480〜490 hopが10.667 msを超えた。
+   各段階の測定は`before-kernel-precompute/`、`before-sine-settled/`、`before-quadrature/`、
+   `before-review-fixes/`に保存した。
+3. 64 Voiceではhop自体が予算を超える。sine-holdで73 hop、flowの3身体で470〜486 hopが10.667 msを超えた。
    reportなしでもほぼ同数であり、report直列化が原因ではない。候補workerは別threadで、
-   4／16 Voiceの超過は0〜1 hopに留まる。64 Voiceの超過はI10の追加分だけでは説明できず、
+   4／16 Voiceの超過は0 hopである。変更前（`831c190`）のbinaryでも64 Voiceは480 hop前後を超過しており
+   （`hop-path/summary.json`）、64 Voiceの超過は今回の追加分ではなく、
    合成・観測を含む全体の負荷としてR2で扱う。2026-09-18の測定は削除前の負荷に対するものであり、
    今回の値と直接は比較しない。
 
 証拠は`target/i10-reduced-resources-20260921/`（`plan.json`、`acquire.py`、`summarize.py`、`summary.json`、
 `invariance.py`、`invariance.json`、各profile／report、`before-*`の退避、test記録）。
 
+### Astraレビュー（commit `1a42001`）への対応（2026-09-21）
+
+read-onlyのレビューは「不可」だった。式の誤りは見つからなかったが、予測の支持境界に穴があり、学習不変の
+根拠が不足し、hop経路へ負荷が入っていた。指摘は全て妥当と判断し、次のとおり修正した。レビュー全文は
+`target/i10-bank-forecast-inputs-20260921/astra-review-1a42001.md`。
+
+- 振幅更新の欠落（高）。折れ点が`amplitude_updates`を列挙せず、spanの3点の間にある振幅stepを見落としていた。
+  振幅targetのstepとsequence gateの閉じを折れ点へ加え、平滑化のtransient（発行またはstepから時定数の7倍）を
+  `2 lambda h <= 0.1`のfast pieceにした。rendererとの窓energy比較（sine／harmonic／modal、
+  `bank_forecast`の単体test）で相対誤差は最大2.6e-4。修正を外すと同じtestが誤差21%で落ちることを確認した。
+  Python検証器も同じ近似を複製していたため、この穴は独立検証では検出できなかった。
+- span幅の下限（中）。16 sampleの下限が、短いattack／decayで登録した細分規則を破っていた。下限を
+  1 sampleにした。48 sampleのattackとdecayを持つtoneを上の比較testに含めた。
+- 発音中の再impulse（中）。鳴っているbankが直接のimpulseを抱えるとき、予測は自由応答を続けていた。
+  `prediction_bank`は`None`を返す。通常の候補取得経路からこの状態へ到達するかは未確認である。
+- 学習不変の根拠（中）。再実行の一致は、候補評価が学習を変えないことを示さない。観測と学習を保ったまま、
+  候補が発火する条件（policy事実と発音機会）だけを外した対照と、音声・予測snapshot・私有trace・学習recordを
+  比べる単体test（`candidate_evaluation_leaves_audio_and_learning_unchanged_for_every_body`）を
+  sine／harmonic／modalで追加し、全て一致した。sine限定の同種のtestは以前からあった。この対照は
+  固定した短いscenarioであり、12条件の長い実行で候補評価だけを止めた比較は行っていない。
+- hop経路の負荷（付記）。通常の自声energy予測へlaneを展開した結果、合成費用の最大値がmodal-flow-16で
+  3.9→14.0 ms、harmonic-flow-16で4.0→7.1 msに跳ね、予算超過hopが0→1になった（変更前binaryとの交互3反復、
+  `hop-path/summary-with-ordinary-lanes.json`）。通常経路のlane展開をやめ、harmonic／modalは変更前と同じ
+  明示的なincoherent priorへ戻した。再測定で変更前と同等になった（`hop-path/summary.json`）。
+  前節までの「追加負荷は候補worker内」という説明は、この修正後に成り立つ。
+- 名前（低）。`coherent_sine_energy`を`coherent_energy`へ改めた。旧artifactを読む検証器は旧名も受ける。
+- 記録の不整合（低）。中間版の記述2箇所を訂正した。
+
+修正後も登録71分岐の結果は同一である（`verification.json`のSHA256不変、反転0／4,936）。登録素材は
+attackが816 sampleで振幅更新を含まないため、今回の修正経路は71分岐ではなく上の比較testが担う。
+全Rust 1,136成功・失敗0・35 ignored（`cargo test exit=0 @ 2026-09-21T17:51:28+09:00`）、clippy通過。
+
+独立性の限界を明記する。Python検証器は折れ点・span・局所指数の近似をRustから複製し、積分だけを
+直接の波形和で独立に行う。したがって確認しているのは「宣言したlaneと近似に対する積分の整合」であり、
+近似そのものの独立検証ではない。近似の妥当性は、実rendererとの波形・窓energy比較と、実音PCMとの
+順位一致が担う。
+
 ### I10の現在地
 
 | 残作業 | 状態 |
 | --- | --- |
-| 実身体転用の妥当性 | 完了。登録済みの符号比較で4,936対すべてが実音と一致（反転0・見落とし0・捏造0）。独立検証済み |
+| 実身体転用の妥当性 | 調整に用いた固定development素材で、変更していない符号判定基準の4,936対すべてが実音と一致（反転0・見落とし0・捏造0）。支持境界はレビュー対応で修正しrenderer比較testを追加。未知素材への一般化は未確認 |
 | release・任意身体・両busへの展開 | 完了。7 class・3身体・両bus、音声不変、学習不変を12条件で確認 |
 | I10の資源引渡し | 測定し引き渡した。候補workerの飽和と64 Voiceのhop超過は失敗として保持し、R2の課題とする |
 
-狭い範囲のI10（milestones §2）は、監査表の全行を満たして完了した。完了が意味するのは、実Voiceの身体・
+狭い範囲のI10（milestones §2）は、レビュー対応後の状態で監査表の全行を満たした。修正後の再レビューは
+未実施であり、完了の最終確認はそれを待つ。完了が意味するのは、実Voiceの身体・
 実行結果から私有trace・候補帰結の数値経路・診断までが通常接続され、候補energy予測が固定素材の実音順位を
 再現し、生成と学習を変えないことである。認知機構の妥当性の実証、作者採用（A1／A2）、資源受入（R2）、
 実機受入（A3）は含まない。候補workerの飽和と64 Voiceのhop超過は未解決の失敗としてR2へ渡した。

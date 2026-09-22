@@ -152,6 +152,7 @@ fn config_load_custom_values() {
         temporal_body_prototypes: None,
         temporal_action_profiles: None,
         temporal_private_trace: None,
+        temporal_onset_comparison: None,
         audio: AudioConfig {
             latency_ms: 75.0,
             sample_rate: 44_100,

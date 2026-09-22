@@ -299,6 +299,45 @@ pub struct AppConfig {
     pub temporal_action_profiles: Option<TemporalActionProfilesConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_private_trace: Option<TemporalPrivateTraceConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_onset_comparison: Option<TemporalOnsetComparisonConfig>,
+}
+
+/// Which footprint the participation onset comparison consumes (I11-1 §4.10).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FootprintSource {
+    #[default]
+    Body,
+    Proxy,
+}
+
+/// Absent keeps the legacy 64-point proxy path; present selects the bounded comparison.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalOnsetComparisonConfig {
+    #[serde(default)]
+    pub footprint: FootprintSource,
+    #[serde(default)]
+    pub arrival: bool,
+    #[serde(default = "TemporalOnsetComparisonConfig::default_arrival_weight")]
+    pub arrival_weight: f64,
+}
+
+impl TemporalOnsetComparisonConfig {
+    fn default_arrival_weight() -> f64 {
+        1.0
+    }
+}
+
+impl Default for TemporalOnsetComparisonConfig {
+    fn default() -> Self {
+        Self {
+            footprint: FootprintSource::default(),
+            arrival: false,
+            arrival_weight: Self::default_arrival_weight(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -626,6 +665,12 @@ impl AppConfig {
             );
             crate::temporal_cognition::arrival::Engine::new(period).map_err(anyhow::Error::msg)?;
         }
+        if let Some(onset) = self.temporal_onset_comparison {
+            ensure!(
+                onset.arrival_weight.is_finite() && (0.0..=4.0).contains(&onset.arrival_weight),
+                "temporal_onset_comparison.arrival_weight must lie within 0..=4"
+            );
+        }
         Ok(())
     }
 
@@ -777,6 +822,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn onset_comparison_defaults_to_body_and_bounds_arrival_weight() {
+        assert!(AppConfig::default().temporal_onset_comparison.is_none());
+        let bare: AppConfig = toml::from_str("[temporal_onset_comparison]\n").unwrap();
+        bare.validate().unwrap();
+        let bare = bare.temporal_onset_comparison.unwrap();
+        assert_eq!(bare.footprint, FootprintSource::Body);
+        assert!(!bare.arrival);
+        assert_eq!(bare.arrival_weight, 1.0);
+
+        let proxy: AppConfig =
+            toml::from_str("[temporal_onset_comparison]\nfootprint = \"proxy\"\n").unwrap();
+        assert_eq!(
+            proxy.temporal_onset_comparison.unwrap().footprint,
+            FootprintSource::Proxy
+        );
+        assert!(
+            toml::from_str::<AppConfig>("[temporal_onset_comparison]\nfootprnt = \"proxy\"\n")
+                .is_err()
+        );
+
+        for weight in [5.0, -0.5, f64::NAN] {
+            let mut invalid: AppConfig = toml::from_str("[temporal_onset_comparison]\n").unwrap();
+            invalid
+                .temporal_onset_comparison
+                .as_mut()
+                .unwrap()
+                .arrival_weight = weight;
+            assert!(
+                invalid.validate().is_err(),
+                "weight {weight} must be rejected"
+            );
+        }
+    }
+
     fn unique_path(name: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!(
@@ -861,6 +941,7 @@ mod tests {
             temporal_body_prototypes: None,
             temporal_action_profiles: None,
             temporal_private_trace: None,
+            temporal_onset_comparison: None,
             audio: AudioConfig {
                 latency_ms: 75.0,
                 sample_rate: 44_100,

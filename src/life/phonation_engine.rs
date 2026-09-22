@@ -632,10 +632,20 @@ pub struct ParticipationClock {
     own_profile: [f32; 3],
     hold_theta: f32,
     adsr: Option<crate::life::sound::ToneAdsr>,
+    onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
+    footprint: crate::life::temporal_participation::FootprintTracker,
     gate_index: u64,
 }
 
 impl ParticipationClock {
+    /// The representative hold and envelope of I11-1 §4.2, only while a body
+    /// footprint is the configured source.
+    fn footprint_hold(&self) -> Option<(f32, Option<crate::life::sound::ToneAdsr>)> {
+        self.onset_comparison
+            .filter(|config| config.footprint == crate::config::FootprintSource::Body)
+            .map(|_| (self.hold_theta / self.base_rate_hz, self.adsr))
+    }
+
     fn candidate(
         &mut self,
         ctx: &CoreTickCtx,
@@ -662,6 +672,8 @@ impl ParticipationClock {
         }
         policy.set_overlap(0.8, self.own_profile);
         policy.set_sound_duration(self.hold_theta / self.base_rate_hz, self.adsr);
+        policy.set_onset_comparison(self.onset_comparison);
+        policy.set_body_footprint(self.footprint.selected());
         let tick = policy.candidate(cursor, ctx.frame_end, allowed, self.forecast.as_ref())?;
         self.pending_prediction = self.outcome_forecast.as_ref().and_then(|forecast| {
             let (start, end, energy) = forecast.energy_window_after(tick)?;
@@ -842,6 +854,8 @@ impl PhonationClock {
                 issued_predictions: Vec::new(),
                 hold_theta: 1.0,
                 adsr: None,
+                onset_comparison: None,
+                footprint: Default::default(),
                 gate_index: 0,
             })),
         }
@@ -1248,6 +1262,50 @@ impl PhonationEngine {
     pub(crate) fn set_sound_adsr(&mut self, adsr: Option<crate::life::sound::ToneAdsr>) {
         if let PhonationClock::Participation(clock) = &mut self.clock {
             clock.adsr = adsr;
+        }
+    }
+
+    pub(crate) fn set_onset_comparison(
+        &mut self,
+        config: Option<crate::config::TemporalOnsetComparisonConfig>,
+    ) {
+        if let PhonationClock::Participation(clock) = &mut self.clock {
+            clock.onset_comparison = config;
+        }
+    }
+
+    pub(crate) fn footprint_hold(&self) -> Option<(f32, Option<crate::life::sound::ToneAdsr>)> {
+        match &self.clock {
+            PhonationClock::Participation(clock) => clock.footprint_hold(),
+            _ => None,
+        }
+    }
+
+    /// I11-1 §4.2 hop step: adopt the identity and send at most one request.
+    /// Returns true when the supplier had already been asked for this identity.
+    pub(crate) fn footprint_hop(
+        &mut self,
+        identity: crate::life::action_candidates::footprint::Identity,
+        now: Tick,
+        recipe: &crate::life::action_candidates::footprint::Recipe,
+        send: impl FnOnce(crate::life::action_candidates::footprint::Request) -> bool,
+    ) -> bool {
+        match &mut self.clock {
+            PhonationClock::Participation(clock) => {
+                clock.footprint.hop(identity, now, recipe, send)
+            }
+            _ => false,
+        }
+    }
+
+    /// Returns true when the record was discarded because its request was superseded.
+    pub(crate) fn footprint_receive(
+        &mut self,
+        record: &crate::life::action_candidates::footprint::Record,
+    ) -> bool {
+        match &mut self.clock {
+            PhonationClock::Participation(clock) => clock.footprint.receive(record),
+            _ => false,
         }
     }
 
@@ -2132,6 +2190,51 @@ mod tests {
 
     fn candidate_at_gate(gate: u64) -> CandidatePoint {
         CandidatePoint { tick: gate, gate }
+    }
+
+    #[test]
+    fn a_body_footprint_is_representative_only_while_the_comparison_configures_it() {
+        use crate::config::{FootprintSource, TemporalOnsetComparisonConfig};
+        let mut engine = test_engine(
+            OnsetRule::Always { strength: 1.0 },
+            DurationRule::fixed_gate(1),
+        );
+        // A theta gate compares no onset times and has no recipe to freeze.
+        assert!(engine.footprint_hold().is_none());
+        engine.clock = PhonationClock::from_config(
+            &PhonationClockConfig::Participation {
+                coupling: 0.8,
+                base_rate_hz: 2.0,
+                flow_depth: 0.0,
+            },
+            21,
+        );
+        assert!(
+            engine.footprint_hold().is_none(),
+            "unconfigured asks nothing"
+        );
+        let mut config = TemporalOnsetComparisonConfig {
+            footprint: FootprintSource::Proxy,
+            arrival: false,
+            arrival_weight: 1.0,
+        };
+        engine.set_onset_comparison(Some(config));
+        assert!(
+            engine.footprint_hold().is_none(),
+            "the proxy setting asks nothing"
+        );
+        config.footprint = FootprintSource::Body;
+        engine.set_onset_comparison(Some(config));
+        let (hold_sec, adsr) = engine.footprint_hold().expect("a body recipe");
+        assert_eq!(hold_sec, 0.5);
+        assert!(adsr.is_none());
+        engine.set_sound_adsr(Some(crate::life::sound::ToneAdsr {
+            attack_sec: 0.01,
+            decay_sec: 0.0,
+            sustain_level: 1.0,
+            release_sec: 0.1,
+        }));
+        assert!(engine.footprint_hold().unwrap().1.is_some());
     }
 
     fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {

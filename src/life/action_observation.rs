@@ -369,6 +369,13 @@ impl Observer {
             .flat_map(|bank| bank.energy.drain())
     }
 
+    /// I11-1 §4.2: the footprint queues live beside the candidate-energy worker.
+    pub(crate) fn footprint_worker(
+        &mut self,
+    ) -> Option<&mut super::action_candidates::energy::Worker> {
+        self.body_defaults.as_mut().map(|bank| &mut bank.energy)
+    }
+
     pub(crate) fn freeze_onset_trace(
         &self,
         slot: (usize, u64),

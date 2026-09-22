@@ -355,3 +355,38 @@ footprint要求は専用queueと優先取り出し（§4.2）で候補packetの�
 - 到来項は同期方向だけを持つ。回避の選好はScenario側に置く。
 - 本登録の数値（`w_arr = 1`、`w = width`、16 bin、4秒、代表kick 1.0、代表seed）は結果を見て調整しない。変更する場合は
   新しい登録として日付と理由を残す。
+
+
+## 第1段の実装状態（2026-09-22）
+
+登録どおりに第1段（T1 footprint）を実装した。実装はFable統括のもとOpusへ4 unitに分けて委譲し、統合後に
+全体を検査した。commit前の実走確認は最小限で、§5の全項目は次の単位で取得する。
+
+- 実装の所在。worker側の核は `src/life/action_candidates/footprint.rs`（`Recipe`／`Identity`／`Request`／
+  `Record`／`compute`）と `energy.rs` の専用queue（容量64、候補packetより先に取り出す）。消費者側は
+  `src/config.rs` の `[temporal_onset_comparison]`、`src/life/temporal_participation.rs` の `Some` 分岐
+  （16 bin、`BodyFootprint`、状態語彙、report 8欄）、`phonation_engine.rs` の `FootprintTracker`（Voiceごとの
+  未完了1件・置換済み印・再送）、`voice.rs` の `footprint_recipe`、`runtime/mod.rs` の要求送出と返却routing。
+- 登録からの実装上の差。`Request` の入力は `Recipe` に束ねた。`computed_at` はworkerにhop時計が無いため
+  `requested_at + 実測経過` で埋め、実時間欄として扱う。`hold` のhashは4秒clamp前の値。`BodySnapshot` と
+  `RenderModulatorSpec` の `Serialize` はtest限定なので、識別hashは手書きの正準byte符号化をSHA-256に通す。
+  `Unsupported` recordは `d_samples = 0` で保持し、proxyの `D` は `hold + release` の打ち切り値へ落とす。
+  返却dropの解除経路は作っていない（未完了1件・容量64・毎hop drainのため生じない。runtimeにコメント）。
+- 検査。全Rust 1,154成功・失敗0・35 ignored（`cargo test exit=0 @ 2026-09-22T12:47:17+09:00`）、
+  `cargo clippy -- -D warnings` 通過。§5.6の遷移（absent→body→stale→body）、置換、再送、`Unsupported`／
+  `BodySilent`、予約後の非再選択、`None`／`proxy` では要求ゼロ、を単体testで確認。
+- §5.4(a)。`None` のrender 12条件を基準commit `32a6389` のbinaryと比べ、WAVは全条件でSHA一致、学習系10種の
+  recordは新8欄を除いて全件一致（`target/i11-stage1-20260922/bit-identity.json`。基準側は新欄を持たないため、
+  比較scriptは新欄を実時間欄と同じく除外する）。
+- 実走。4 Voiceのsine／harmonic／modal flowで `body` と `proxy` のrenderを1回ずつ取得した。`body` では
+  `footprint_source` が sine 53／56、harmonic 55／56、modal 53／56 で `body`、残りは `proxy(absent)`（最初の
+  機会）または `proxy(stale)`（recipe変更直後）。全recordが16 bin。選択候補の分布は `body` と `proxy` で
+  異なる（例: modal-flow-4 で `body` は前倒し候補7件を含み、`proxy` は含まない）。これは経路が動く確認であり、
+  §5.5(a)の判定ではない。
+- 測定script。`target/i11-stage1-20260922/`（`plan.json`、`register.py`、`acquire.py`、`bit_identity.py`、
+  `api_effect.py`、`hop_path.py`、`representative_gap.py` の骨組み、`README.md`）。入力15件のSHAと基準commitを
+  登録済み。
+
+未実施（次の単位）。§5.1の独立参照、§5.2、§5.3の実走、§5.5(a)(b)の12条件、§5.7の交互3反復、§5.9の
+offline再投影（Rust側の入口が未実装）。第1段の技術完了はこれらの通過後に判定する。第2段（到来項）は未着手。
+

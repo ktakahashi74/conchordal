@@ -2,6 +2,7 @@
 
 use crate::core::temporal_expectation::{OwnSoundHistory, TemporalForecast};
 use crate::core::temporal_history::AuditoryHistorySnapshot;
+use crate::life::action_candidates::footprint;
 use crate::life::sound::ToneAdsr;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::collections::VecDeque;
@@ -19,6 +20,143 @@ pub(crate) struct ParticipationContextPrediction {
     pub(crate) target_start_frames: [u64; 2],
     pub(crate) target_end_frames: [u64; 2],
     pub(crate) pred_external_band_energy: [[f32; 3]; 2],
+    /// I11-1 §4.6 state vocabulary; `none` marks the unconfigured legacy path.
+    pub(crate) footprint_source: &'static str,
+    pub(crate) footprint_bins: u8,
+    pub(crate) footprint_truncated: bool,
+    /// I11-1 §4.8: the delay of the record this decision used is their difference.
+    pub(crate) footprint_requested_at: Option<u64>,
+    pub(crate) footprint_received_at: Option<u64>,
+    pub(crate) reference_cost: f32,
+    pub(crate) selected_cost: f32,
+    pub(crate) selected_offset: i8,
+}
+
+/// What the supplier could deliver for the recipe the Voice would emit now (§4.6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FootprintState {
+    /// The powers belong to the current identity.
+    Body,
+    /// The identity moved on; only the span of the old body record survives (§4.3).
+    Stale,
+    /// The worker answered that the recipe has no supported projection.
+    Unsupported,
+}
+
+/// Own-sound energy over the bounded onset window, supplied by the worker record.
+/// `d_samples == 0` marks a record that carries no supported span.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BodyFootprint {
+    pub d_samples: u64,
+    pub power: [f64; 16],
+    pub truncated: bool,
+    pub state: FootprintState,
+    pub requested_at: u64,
+    pub received_at: u64,
+}
+
+impl BodyFootprint {
+    fn from_record(record: &footprint::Record) -> Self {
+        let supported = matches!(
+            record.state,
+            footprint::State::Body | footprint::State::BodySilent
+        );
+        Self {
+            // An unsupported projection is not a body record, so it lends no span (§4.3).
+            d_samples: if supported { record.d_samples } else { 0 },
+            power: record.power,
+            truncated: record.truncated,
+            state: if supported {
+                FootprintState::Body
+            } else {
+                FootprintState::Unsupported
+            },
+            requested_at: record.requested_at,
+            // Only `Worker::drain_footprints` builds the records that reach a Voice.
+            received_at: record.received_at.expect("a drained footprint has arrived"),
+        }
+    }
+}
+
+/// I11-1 §4.2: one outstanding request per Voice, and identity-keyed reuse of the
+/// record it returns. The bookkeeping is per-Voice; the computation is not.
+#[derive(Default)]
+pub(crate) struct FootprintTracker {
+    /// The identity of the recipe the Voice would emit now.
+    identity: Option<footprint::Identity>,
+    current: Option<(footprint::Identity, BodyFootprint)>,
+    outstanding: Option<footprint::Identity>,
+    superseded: bool,
+    last_sent: Option<footprint::Identity>,
+}
+
+impl FootprintTracker {
+    /// Adopts `identity` and sends at most one request through `send`.
+    /// Returns true when this identity had already been handed to the supplier.
+    pub(crate) fn hop(
+        &mut self,
+        identity: footprint::Identity,
+        now: u64,
+        recipe: &footprint::Recipe,
+        send: impl FnOnce(footprint::Request) -> bool,
+    ) -> bool {
+        self.identity = Some(identity);
+        if let Some(outstanding) = self.outstanding {
+            // The reply must arrive before the new identity is asked for.
+            self.superseded |= outstanding != identity;
+            return false;
+        }
+        // A stale record never suppresses a request; a matching one always does.
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|(known, _)| *known == identity)
+        {
+            return false;
+        }
+        let resent = self.last_sent == Some(identity);
+        self.last_sent = Some(identity);
+        if send(footprint::Request {
+            identity,
+            requested_at: now,
+            recipe: recipe.clone(),
+        }) {
+            self.outstanding = Some(identity);
+        }
+        resent
+    }
+
+    /// Returns true when the record was discarded because its request was superseded.
+    pub(crate) fn receive(&mut self, record: &footprint::Record) -> bool {
+        let Some(outstanding) = self.outstanding.take() else {
+            return false;
+        };
+        if self.superseded || outstanding != record.identity {
+            self.superseded = false;
+            return true;
+        }
+        self.current = Some((record.identity, BodyFootprint::from_record(record)));
+        false
+    }
+
+    /// The §4.6 state of the held record against the identity of this hop.
+    pub(crate) fn selected(&self) -> Option<BodyFootprint> {
+        let (known, footprint) = self.current.as_ref()?;
+        let stale = self.identity != Some(*known);
+        Some(match (stale, footprint.state) {
+            (false, _) => *footprint,
+            (true, FootprintState::Body) => BodyFootprint {
+                state: FootprintState::Stale,
+                ..*footprint
+            },
+            // An expired unsupported record lends neither powers nor span.
+            (true, _) => BodyFootprint {
+                d_samples: 0,
+                state: FootprintState::Stale,
+                ..*footprint
+            },
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -53,6 +191,8 @@ pub(crate) struct TemporalParticipation {
     skipped_cycles: u32,
     sound_hold_sec: f32,
     sound_adsr: Option<ToneAdsr>,
+    onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
+    body_footprint: Option<BodyFootprint>,
     rng: SmallRng,
 }
 
@@ -92,6 +232,8 @@ impl TemporalParticipation {
             skipped_cycles: 0,
             sound_hold_sec: 0.08,
             sound_adsr: None,
+            onset_comparison: None,
+            body_footprint: None,
             rng,
         }
     }
@@ -131,6 +273,18 @@ impl TemporalParticipation {
     pub(crate) fn set_sound_duration(&mut self, hold_sec: f32, adsr: Option<ToneAdsr>) {
         self.sound_hold_sec = hold_sec.max(1.0 / self.fs as f32);
         self.sound_adsr = adsr;
+    }
+
+    pub(crate) fn set_onset_comparison(
+        &mut self,
+        config: Option<crate::config::TemporalOnsetComparisonConfig>,
+    ) {
+        self.onset_comparison = config;
+    }
+
+    /// Identity and staleness are the supplier's concern; absence falls back to the proxy.
+    pub(crate) fn set_body_footprint(&mut self, footprint: Option<BodyFootprint>) {
+        self.body_footprint = footprint;
     }
 
     /// Periodic participation follows recurrence; renewal keeps its intrinsic scale.
@@ -206,6 +360,8 @@ impl TemporalParticipation {
             let mut best = self.due_frame;
             let mut best_context = None;
             let mut best_cost = f32::INFINITY;
+            let mut best_offset: i8 = 0;
+            let mut reference_cost = f32::INFINITY;
             // Missing forecast coverage must not make an unscored candidate cheaper.
             let forecast = forecast.filter(|f| {
                 f.energy_window_after((self.due_frame - width).max(now as f64).round() as u64)
@@ -220,13 +376,10 @@ impl TemporalParticipation {
             // the acoustic body and render modulator can add their own decay.
             let release = self.sound_adsr.map_or(0.0, |a| a.release_sec.max(0.0));
             let duration = self.sound_hold_sec + release;
-            let footprint: [(f64, f32); 64] = std::array::from_fn(|i| {
-                let age = (i as f32 + 0.5) * duration / 64.0;
-                let gain = self.sound_adsr.map_or(1.0, |a| {
-                    let attack = a
-                        .attack_sec
-                        .max(1.0 / self.fs as f32)
-                        .min(self.sound_hold_sec);
+            let (fs, hold_sec, adsr) = (self.fs, self.sound_hold_sec, self.sound_adsr);
+            let proxy_gain = |age: f32| {
+                adsr.map_or(1.0, |a| {
+                    let attack = a.attack_sec.max(1.0 / fs as f32).min(hold_sec);
                     let before_release = if age < attack {
                         age / attack
                     } else if a.decay_sec > 0.0 {
@@ -237,14 +390,68 @@ impl TemporalParticipation {
                         a.sustain_level
                     };
                     before_release
-                        * if age < self.sound_hold_sec {
+                        * if age < hold_sec {
                             1.0
                         } else {
                             ((duration - age) / release.max(1e-12)).clamp(0.0, 1.0)
                         }
-                });
-                (age as f64 * self.fs, gain * gain)
-            });
+                })
+            };
+            // One buffer serves both shapes; the configured path uses its first 16 slots.
+            let mut points = [(0.0f64, 0.0f32); 64];
+            let (footprint_bins, footprint_source, footprint_truncated, span_frames) =
+                match self.onset_comparison {
+                    None => {
+                        for (i, point) in points.iter_mut().enumerate() {
+                            let age = (i as f32 + 0.5) * duration / 64.0;
+                            let gain = proxy_gain(age);
+                            *point = (age as f64 * self.fs, gain * gain);
+                        }
+                        (
+                            64u8,
+                            "none",
+                            false,
+                            (f64::from(duration) * self.fs).ceil() as u64,
+                        )
+                    }
+                    Some(config) => {
+                        let record = self.body_footprint;
+                        // I11-1 §5.3: no decision may rest on an observation from its future.
+                        debug_assert!(
+                            record.is_none_or(|record| record.received_at <= now),
+                            "a footprint that arrives after the decision cannot be used"
+                        );
+                        let body = config.footprint == crate::config::FootprintSource::Body;
+                        // A retained span keeps body and proxy comparable bin for bin.
+                        let span = record.filter(|record| record.d_samples > 0);
+                        let (d_samples, truncated) = match span {
+                            Some(record) => (record.d_samples as f64, record.truncated),
+                            None => (f64::from(duration.min(4.0)) * self.fs, duration > 4.0),
+                        };
+                        for (k, point) in points[..16].iter_mut().enumerate() {
+                            let delay = (k as f64 + 0.5) * d_samples / 16.0;
+                            let power = match record {
+                                Some(record) if body && record.state == FootprintState::Body => {
+                                    record.power[k] as f32
+                                }
+                                _ => {
+                                    let gain = proxy_gain((delay / fs) as f32);
+                                    gain * gain
+                                }
+                            };
+                            *point = (delay, power);
+                        }
+                        let source = match (body, record.map(|record| record.state)) {
+                            (false, _) => "proxy(setting)",
+                            (true, None) => "proxy(absent)",
+                            (true, Some(FootprintState::Body)) => "body",
+                            (true, Some(FootprintState::Stale)) => "proxy(stale)",
+                            (true, Some(FootprintState::Unsupported)) => "proxy(unsupported)",
+                        };
+                        (16u8, source, truncated, d_samples.ceil() as u64)
+                    }
+                };
+            let footprint = &points[..footprint_bins as usize];
             let own_total: f32 = self.own_band_energy.iter().sum();
             let footprint_mass: f32 = footprint.iter().map(|(_, power)| power).sum();
             let earliest = self.last_onset.map_or(now as f64, |last| {
@@ -283,6 +490,16 @@ impl TemporalParticipation {
                         target_start_frames: [start, after_start],
                         target_end_frames: [end, after_end],
                         pred_external_band_energy: [present, after],
+                        footprint_source,
+                        footprint_bins,
+                        footprint_truncated,
+                        footprint_requested_at: self
+                            .body_footprint
+                            .map(|record| record.requested_at),
+                        footprint_received_at: self.body_footprint.map(|record| record.received_at),
+                        reference_cost: 0.0,
+                        selected_cost: 0.0,
+                        selected_offset: 0,
                     })
                 });
                 let mut cost = (displacement * displacement) as f32;
@@ -309,7 +526,7 @@ impl TemporalParticipation {
                     && let Some(forecast) = forecast
                 {
                     let mut overlap = 0.0;
-                    for (delay, power) in footprint {
+                    for &(delay, power) in footprint {
                         if let Some(energy) = forecast.sustained_energy_at(at + delay) {
                             for (own, other) in self.own_band_energy.into_iter().zip(energy) {
                                 let own = own * power;
@@ -321,10 +538,14 @@ impl TemporalParticipation {
                     cost += self.coupling * 6.0 * self.overlap_sensitivity * overlap
                         / (own_total * footprint_mass).max(1e-12);
                 }
+                if offset == 0 {
+                    reference_cost = cost;
+                }
                 if cost < best_cost {
                     best_cost = cost;
                     best = at;
                     best_context = context;
+                    best_offset = offset as i8;
                 }
             }
             // Skipping is a participation decision, not an executed sound or a reward.
@@ -340,13 +561,14 @@ impl TemporalParticipation {
                 continue;
             }
             if let (Some(context), Some(forecast)) = (&mut best_context, forecast) {
+                context.reference_cost = reference_cost;
+                context.selected_cost = best_cost;
+                context.selected_offset = best_offset;
                 context.external_energy_footprint = Some(
                     forecast.external_footprint(
                         [
                             context.onset_frame,
-                            context
-                                .onset_frame
-                                .saturating_add((f64::from(duration) * self.fs).ceil() as u64),
+                            context.onset_frame.saturating_add(span_frames),
                         ],
                         forecast
                             .observed_frame()
@@ -500,6 +722,473 @@ impl TemporalParticipation {
 mod tests {
     use super::*;
     use crate::core::temporal_expectation::AcousticTemporalExpectation;
+
+    const BOUNDED_FS: u32 = 1000;
+    const BOUNDED_OWN: [f32; 3] = [1.0, 0.5, 0.25];
+    const BOUNDED_ADSR: ToneAdsr = ToneAdsr {
+        attack_sec: 0.01,
+        decay_sec: 0.05,
+        sustain_level: 0.6,
+        release_sec: 0.1,
+    };
+    const BOUNDED_HOLD_SEC: f32 = 0.2;
+
+    fn bounded_policy(
+        comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
+    ) -> TemporalParticipation {
+        let mut policy = TemporalParticipation::new(BOUNDED_FS, 2.0, 1.0, 0, 17, 1000);
+        policy.set_overlap(0.8, BOUNDED_OWN);
+        policy.set_sound_duration(BOUNDED_HOLD_SEC, Some(BOUNDED_ADSR));
+        policy.set_onset_comparison(comparison);
+        policy
+    }
+
+    fn bounded_forecast() -> TemporalForecast {
+        TemporalForecast::energy_fixture(BOUNDED_FS, 0, |t| {
+            let pulse = 0.02 * (1.0 + (t * 4.0 * std::f64::consts::PI).sin()) as f32;
+            [pulse, 0.5 * pulse, 0.25 * pulse]
+        })
+    }
+
+    /// Independent restatement of the registered 16-point proxy (I11-1 §4.2, §4.3).
+    fn bounded_proxy_power(k: usize, d_samples: f64) -> (f64, f32) {
+        let duration = BOUNDED_HOLD_SEC + BOUNDED_ADSR.release_sec;
+        let delay = (k as f64 + 0.5) * d_samples / 16.0;
+        let age = (delay / f64::from(BOUNDED_FS)) as f32;
+        let attack = BOUNDED_ADSR
+            .attack_sec
+            .max(1.0 / BOUNDED_FS as f32)
+            .min(BOUNDED_HOLD_SEC);
+        let before_release = if age < attack {
+            age / attack
+        } else {
+            BOUNDED_ADSR.sustain_level
+                + (1.0 - BOUNDED_ADSR.sustain_level)
+                    * (-6.908 * (age - attack) / BOUNDED_ADSR.decay_sec).exp()
+        };
+        let gain = before_release
+            * if age < BOUNDED_HOLD_SEC {
+                1.0
+            } else {
+                ((duration - age) / BOUNDED_ADSR.release_sec.max(1e-12)).clamp(0.0, 1.0)
+            };
+        (delay, gain * gain)
+    }
+
+    /// The fallback span of §4.3 when no body record lends its own.
+    fn bounded_proxy_span() -> f64 {
+        f64::from((BOUNDED_HOLD_SEC + BOUNDED_ADSR.release_sec).min(4.0)) * f64::from(BOUNDED_FS)
+    }
+
+    #[test]
+    fn bounded_proxy_footprint_scores_sixteen_bins() {
+        use crate::config::{FootprintSource, TemporalOnsetComparisonConfig};
+        let forecast = bounded_forecast();
+        let config = TemporalOnsetComparisonConfig {
+            footprint: FootprintSource::Proxy,
+            arrival: false,
+            arrival_weight: 1.0,
+        };
+        let mut policy = bounded_policy(Some(config));
+        let tick = policy.candidate(0, 1200, true, Some(&forecast)).unwrap();
+        let mut repeat = bounded_policy(Some(config));
+        assert_eq!(repeat.candidate(0, 1200, true, Some(&forecast)), Some(tick));
+
+        let (at, context) = policy.planned.unwrap();
+        let context = context.unwrap();
+        assert_eq!(context.footprint_bins, 16);
+        assert_eq!(context.footprint_source, "proxy(setting)");
+        assert!(!context.footprint_truncated);
+        assert_eq!(context.onset_frame, tick);
+
+        let mut mass = 0.0f32;
+        let mut overlap = 0.0f32;
+        for k in 0..16 {
+            let (delay, power) = bounded_proxy_power(k, bounded_proxy_span());
+            mass += power;
+            if let Some(energy) = forecast.sustained_energy_at(at + delay) {
+                for (own, other) in BOUNDED_OWN.into_iter().zip(energy) {
+                    let own = own * power;
+                    overlap += own * other / (own + other + 1e-12);
+                }
+            }
+        }
+        let displacement = (at - policy.due_frame) / policy.period_frames;
+        let own_total: f32 = BOUNDED_OWN.iter().sum();
+        let expected = (displacement * displacement) as f32
+            + 6.0 * 0.8 * overlap / (own_total * mass).max(1e-12);
+        assert!(
+            (context.selected_cost - expected).abs() <= 1e-6 * expected.abs().max(1.0),
+            "selected cost {} vs recomputed {expected}",
+            context.selected_cost
+        );
+        assert!(context.reference_cost.is_finite());
+
+        // The unconfigured path keeps the 64-point proxy and reports it as such.
+        let mut legacy = bounded_policy(None);
+        legacy.candidate(0, 1200, true, Some(&forecast)).unwrap();
+        let legacy = legacy.planned.unwrap().1.unwrap();
+        assert_eq!(legacy.footprint_bins, 64);
+        assert_eq!(legacy.footprint_source, "none");
+        assert!(!legacy.footprint_truncated);
+    }
+
+    #[test]
+    fn body_footprint_replaces_proxy_power_and_reports_its_source() {
+        use crate::config::{FootprintSource, TemporalOnsetComparisonConfig};
+        let forecast = bounded_forecast();
+        let config = TemporalOnsetComparisonConfig {
+            footprint: FootprintSource::Body,
+            arrival: false,
+            arrival_weight: 1.0,
+        };
+        let mut absent = bounded_policy(Some(config));
+        absent.set_body_footprint(None);
+        absent.candidate(0, 1200, true, Some(&forecast)).unwrap();
+        let absent_context = absent.planned.unwrap().1.unwrap();
+        assert_eq!(absent_context.footprint_source, "proxy(absent)");
+        assert_eq!(absent_context.footprint_bins, 16);
+
+        let mut body = bounded_policy(Some(config));
+        body.set_body_footprint(Some(BodyFootprint {
+            d_samples: 300,
+            power: [0.0; 16],
+            truncated: false,
+            state: FootprintState::Body,
+            requested_at: 0,
+            received_at: 0,
+        }));
+        body.candidate(0, 1200, true, Some(&forecast)).unwrap();
+        let (at, context) = body.planned.unwrap();
+        let context = context.unwrap();
+        assert_eq!(context.footprint_source, "body");
+        assert_eq!(context.footprint_bins, 16);
+        assert!(!context.footprint_truncated);
+        // Silent power removes the overlap term, leaving the displacement alone.
+        assert_eq!(at, body.due_frame);
+        assert_eq!(context.selected_offset, 0);
+        assert_eq!(context.selected_cost, 0.0);
+        assert_eq!(context.reference_cost, 0.0);
+    }
+
+    fn bounded_recipe(amp: f32) -> footprint::Recipe {
+        footprint::Recipe {
+            body: crate::life::sound::BodySnapshot {
+                kind: crate::life::sound::BodyKind::Sine,
+                amp_scale: 1.0,
+                brightness: 0.6,
+                inharmonic: 0.0,
+                spread: 0.0,
+                unison: 1,
+                motion: 0.0,
+                ratios: None,
+            },
+            freq_hz: 220.0,
+            amp,
+            hold: (BOUNDED_HOLD_SEC * BOUNDED_FS as f32) as u64,
+            adsr: Some(BOUNDED_ADSR),
+            modulator: crate::life::sound::RenderModulatorSpec::SeqGate { duration_sec: 1.0 },
+            smoothing_tau_sec: 0.02,
+            fs: BOUNDED_FS as f32,
+        }
+    }
+
+    fn bounded_record(
+        identity: footprint::Identity,
+        state: footprint::State,
+        power: [f64; 16],
+        d_samples: u64,
+    ) -> footprint::Record {
+        footprint::Record {
+            identity,
+            requested_at: 40,
+            computed_at: 60,
+            received_at: Some(80),
+            d_samples,
+            truncated: false,
+            state,
+            energies: [0.0; 16],
+            power,
+            representative: footprint::Representative {
+                kick_strength: 1.0,
+                seed: 0,
+                hold_samples: d_samples,
+                rhythms_default: true,
+            },
+        }
+    }
+
+    /// Independent restatement of the §4.4 overlap cost over sixteen bins.
+    fn bounded_expected_cost(
+        at: f64,
+        due: f64,
+        period: f64,
+        bins: [(f64, f32); 16],
+        forecast: &TemporalForecast,
+    ) -> f32 {
+        let (mut mass, mut overlap) = (0.0f32, 0.0f32);
+        for (delay, power) in bins {
+            mass += power;
+            if let Some(energy) = forecast.sustained_energy_at(at + delay) {
+                for (own, other) in BOUNDED_OWN.into_iter().zip(energy) {
+                    let own = own * power;
+                    overlap += own * other / (own + other + 1e-12);
+                }
+            }
+        }
+        let displacement = (at - due) / period;
+        let own_total: f32 = BOUNDED_OWN.iter().sum();
+        (displacement * displacement) as f32 + 6.0 * 0.8 * overlap / (own_total * mass).max(1e-12)
+    }
+
+    fn bounded_body_config() -> crate::config::TemporalOnsetComparisonConfig {
+        crate::config::TemporalOnsetComparisonConfig {
+            footprint: crate::config::FootprintSource::Body,
+            arrival: false,
+            arrival_weight: 1.0,
+        }
+    }
+
+    /// One decision from the state the tracker holds: `(at, due, period, context)`.
+    fn bounded_decision(
+        tracker: &FootprintTracker,
+        forecast: &TemporalForecast,
+    ) -> (f64, f64, f64, ParticipationContextPrediction) {
+        let mut policy = bounded_policy(Some(bounded_body_config()));
+        policy.set_body_footprint(tracker.selected());
+        // Later than every record timestamp below, as §5.3 requires of any decision.
+        policy.candidate(100, 1300, true, Some(forecast)).unwrap();
+        let (at, context) = policy.planned.unwrap();
+        (at, policy.due_frame, policy.period_frames, context.unwrap())
+    }
+
+    #[test]
+    fn footprint_state_walks_from_absent_through_body_and_stale_back_to_body() {
+        let forecast = bounded_forecast();
+        let (first, second) = (bounded_recipe(0.2), bounded_recipe(0.2000001));
+        let (id_a, id_b) = (
+            footprint::Identity::new(3, 1, &first),
+            footprint::Identity::new(3, 1, &second),
+        );
+        assert_ne!(id_a, id_b);
+        let power_a: [f64; 16] = std::array::from_fn(|k| 1.0 - k as f64 / 32.0);
+        let power_b: [f64; 16] = std::array::from_fn(|k| (k as f64 + 1.0) / 16.0);
+        let span = 240;
+        let mut tracker = FootprintTracker::default();
+
+        // Nothing has returned yet: the proxy carries the decision.
+        let mut sent = Vec::new();
+        assert!(!tracker.hop(id_a, 10, &first, |request| {
+            sent.push(request.identity);
+            true
+        }));
+        assert_eq!(sent, vec![id_a]);
+        let (_, _, _, absent) = bounded_decision(&tracker, &forecast);
+        assert_eq!(absent.footprint_source, "proxy(absent)");
+        assert_eq!(absent.footprint_requested_at, None);
+        assert_eq!(absent.footprint_received_at, None);
+
+        // The record for the current identity supplies the powers themselves.
+        let record_a = bounded_record(id_a, footprint::State::Body, power_a, span);
+        assert!(!tracker.receive(&record_a));
+        let (at, due, period, body) = bounded_decision(&tracker, &forecast);
+        assert_eq!(body.footprint_source, "body");
+        assert_eq!(body.footprint_bins, 16);
+        assert_eq!(body.footprint_requested_at, Some(40));
+        assert_eq!(body.footprint_received_at, Some(80));
+        let expected = bounded_expected_cost(
+            at,
+            due,
+            period,
+            std::array::from_fn(|k| ((k as f64 + 0.5) * span as f64 / 16.0, power_a[k] as f32)),
+            &forecast,
+        );
+        assert!(
+            (body.selected_cost - expected).abs() <= 1e-6 * expected.abs().max(1.0),
+            "selected cost {} vs recomputed {expected}",
+            body.selected_cost
+        );
+
+        // A new recipe expires the record; only its span survives into the proxy.
+        assert!(!tracker.hop(id_b, 200, &second, |_| true));
+        let (at, due, period, stale) = bounded_decision(&tracker, &forecast);
+        assert_eq!(stale.footprint_source, "proxy(stale)");
+        let expected = bounded_expected_cost(
+            at,
+            due,
+            period,
+            std::array::from_fn(|k| bounded_proxy_power(k, span as f64)),
+            &forecast,
+        );
+        assert!(
+            (stale.selected_cost - expected).abs() <= 1e-6 * expected.abs().max(1.0),
+            "selected cost {} vs recomputed {expected}",
+            stale.selected_cost
+        );
+
+        let record_b = bounded_record(id_b, footprint::State::Body, power_b, span);
+        assert!(!tracker.receive(&record_b));
+        let (at, due, period, body) = bounded_decision(&tracker, &forecast);
+        assert_eq!(body.footprint_source, "body");
+        let expected = bounded_expected_cost(
+            at,
+            due,
+            period,
+            std::array::from_fn(|k| ((k as f64 + 0.5) * span as f64 / 16.0, power_b[k] as f32)),
+            &forecast,
+        );
+        assert!(
+            (body.selected_cost - expected).abs() <= 1e-6 * expected.abs().max(1.0),
+            "selected cost {} vs recomputed {expected}",
+            body.selected_cost
+        );
+    }
+
+    #[test]
+    fn a_superseded_request_is_discarded_and_resent_with_the_current_identity() {
+        let (first, second) = (bounded_recipe(0.2), bounded_recipe(0.3));
+        let (id_a, id_b) = (
+            footprint::Identity::new(5, 2, &first),
+            footprint::Identity::new(5, 2, &second),
+        );
+        let mut tracker = FootprintTracker::default();
+        assert!(!tracker.hop(id_a, 10, &first, |_| true));
+        // One outstanding request per Voice: the new identity waits for the reply.
+        assert!(!tracker.hop(id_b, 20, &second, |_| panic!("second outstanding request")));
+        let record_a = bounded_record(id_a, footprint::State::Body, [0.5; 16], 240);
+        assert!(
+            tracker.receive(&record_a),
+            "superseded records are discarded"
+        );
+        assert_eq!(tracker.selected(), None);
+
+        let mut sent = Vec::new();
+        assert!(!tracker.hop(id_b, 30, &second, |request| {
+            sent.push(request.identity);
+            true
+        }));
+        assert_eq!(sent, vec![id_b]);
+        let record_b = bounded_record(id_b, footprint::State::Body, [0.25; 16], 480);
+        assert!(!tracker.receive(&record_b));
+        let held = tracker.selected().unwrap();
+        assert_eq!(held.state, FootprintState::Body);
+        assert_eq!(held.d_samples, 480);
+        assert_eq!(held.power, [0.25; 16]);
+    }
+
+    #[test]
+    fn a_refused_request_is_resent_and_its_record_arrives_at_the_draining_hop() {
+        use crate::life::action_candidates::energy::Worker;
+        let recipe = bounded_recipe(0.2);
+        let identity = footprint::Identity::new(7, 4, &recipe);
+        let mut tracker = FootprintTracker::default();
+
+        // A closed queue stands in for a full one: the refusal is counted, not held.
+        let mut refusing = Worker::new();
+        refusing.finish();
+        assert!(!tracker.hop(identity, 10, &recipe, |request| {
+            refusing.request_footprint(request)
+        }));
+        assert_eq!(refusing.stats.footprint_requested, 0);
+        assert_eq!(refusing.stats.footprint_dropped, 1);
+
+        let mut worker = Worker::new();
+        assert!(
+            tracker.hop(identity, 20, &recipe, |request| worker
+                .request_footprint(request)),
+            "the next hop re-sends the refused identity"
+        );
+        worker.finish();
+        assert_eq!(worker.stats.footprint_requested, 1);
+        assert_eq!(worker.stats.footprint_completed, 1);
+        // I11-1 §5.3: a record is stamped with the hop that drained it, never a later one.
+        let records: Vec<_> = worker.drain_footprints(600).collect();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].received_at, Some(600));
+        assert_eq!(records[0].identity, identity);
+        assert!(!tracker.receive(&records[0]));
+        let held = tracker.selected().unwrap();
+        assert_eq!(held.state, FootprintState::Body);
+        assert_eq!(held.received_at, 600);
+        assert!(held.d_samples > 0);
+    }
+
+    #[test]
+    fn an_unsupported_record_falls_back_to_the_proxy_and_a_silent_body_does_not() {
+        let forecast = bounded_forecast();
+        let recipe = bounded_recipe(0.2);
+        let identity = footprint::Identity::new(9, 1, &recipe);
+        let mut tracker = FootprintTracker::default();
+        assert!(!tracker.hop(identity, 10, &recipe, |_| true));
+        let unsupported = bounded_record(
+            identity,
+            footprint::State::Unsupported("coherent"),
+            [0.0; 16],
+            240,
+        );
+        assert!(!tracker.receive(&unsupported));
+        let (at, due, period, context) = bounded_decision(&tracker, &forecast);
+        assert_eq!(context.footprint_source, "proxy(unsupported)");
+        // An unsupported record lends no span either; the duration proxy stands in.
+        let expected = bounded_expected_cost(
+            at,
+            due,
+            period,
+            std::array::from_fn(|k| bounded_proxy_power(k, bounded_proxy_span())),
+            &forecast,
+        );
+        assert!(
+            (context.selected_cost - expected).abs() <= 1e-6 * expected.abs().max(1.0),
+            "selected cost {} vs recomputed {expected}",
+            context.selected_cost
+        );
+
+        // Known silence is a body record: no overlap term, only the displacement.
+        let mut silent = FootprintTracker::default();
+        assert!(!silent.hop(identity, 10, &recipe, |_| true));
+        assert!(!silent.receive(&bounded_record(
+            identity,
+            footprint::State::BodySilent,
+            [0.0; 16],
+            240,
+        )));
+        let (at, due, _, context) = bounded_decision(&silent, &forecast);
+        assert_eq!(context.footprint_source, "body");
+        assert_eq!(at, due);
+        assert_eq!(context.selected_cost, 0.0);
+    }
+
+    #[test]
+    fn a_reservation_keeps_the_footprint_state_it_was_selected_with() {
+        let forecast = bounded_forecast();
+        let recipe = bounded_recipe(0.2);
+        let identity = footprint::Identity::new(11, 1, &recipe);
+        let mut policy = bounded_policy(Some(bounded_body_config()));
+        policy.set_body_footprint(None);
+        let planned = policy.candidate(100, 1300, true, Some(&forecast)).unwrap();
+        assert_eq!(
+            policy.planned.unwrap().1.unwrap().footprint_source,
+            "proxy(absent)"
+        );
+
+        // I11-1 §4.8: a record that arrives after the reservation waits for the next cycle.
+        let mut tracker = FootprintTracker::default();
+        assert!(!tracker.hop(identity, 10, &recipe, |_| true));
+        assert!(!tracker.receive(&bounded_record(
+            identity,
+            footprint::State::Body,
+            [1.0; 16],
+            240,
+        )));
+        policy.set_body_footprint(tracker.selected());
+        assert_eq!(
+            policy.candidate(100, 1300, true, Some(&forecast)),
+            Some(planned)
+        );
+        let context = policy.planned.unwrap().1.unwrap();
+        assert_eq!(context.footprint_source, "proxy(absent)");
+        assert_eq!(context.footprint_requested_at, None);
+    }
 
     #[test]
     fn frozen_opportunity_preserves_due_plan_and_renewal_state() {

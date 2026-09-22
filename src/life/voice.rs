@@ -1071,6 +1071,30 @@ impl Voice {
         self.body.snapshot()
     }
 
+    /// The representative recipe of I11-1 §4.2, frozen from what this Voice would
+    /// emit now. `None` unless a participation clock consumes a body footprint.
+    pub(crate) fn footprint_recipe(
+        &self,
+        fs: f32,
+    ) -> Option<crate::life::action_candidates::footprint::Recipe> {
+        let (hold_sec, adsr) = self.phonation_engine.footprint_hold()?;
+        let phonation_mode = self.phonation_engine.mode;
+        Some(crate::life::action_candidates::footprint::Recipe {
+            body: self.body_snapshot(),
+            freq_hz: self.body.base_freq_hz(),
+            amp: self.compute_target_amp(),
+            hold: if matches!(phonation_mode, PhonationMode::Hold) {
+                Tick::MAX
+            } else {
+                (f64::from(hold_sec) * f64::from(fs)).round() as Tick
+            },
+            adsr,
+            modulator: self.articulation.render_modulator_spec(phonation_mode),
+            smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
+            fs,
+        })
+    }
+
     pub fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {
         let signal = self.last_signal;
         if !signal.is_active || signal.amplitude <= 0.0 {

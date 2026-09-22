@@ -1117,6 +1117,7 @@ fn wire_runtime(
 
     let cfg = WorkerConfig {
         private_trace: config.temporal_private_trace,
+        onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
         wait_user_exit,
         start_flag: start_flag.clone(),
@@ -1503,6 +1504,7 @@ fn join_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String>
 /// Immutable per-run settings and shared control flags for the worker thread.
 struct WorkerConfig {
     private_trace: Option<crate::config::TemporalPrivateTraceConfig>,
+    onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     scenario_name: String,
     wait_user_exit: bool,
     start_flag: Arc<AtomicBool>,
@@ -2424,6 +2426,14 @@ fn advance_population(
             now_tick,
         );
     }
+    if cfg.onset_comparison.is_some() {
+        for voice in &mut state.pop.voices {
+            voice
+                .phonation_engine
+                .set_onset_comparison(cfg.onset_comparison);
+        }
+        request_body_footprints(state, cfg.fs, now_tick);
+    }
     if let Some(observer) = state.temporal_expectation.as_mut() {
         // Track from birth, including before a later switch into participation.
         state.schedule_renderer.prepare_self_sound(
@@ -2521,6 +2531,71 @@ fn advance_population(
         &state.current_landscape,
     );
     phonation_count
+}
+
+/// I11-1 §4.2: at most one representative-onset footprint request per Voice per hop.
+/// The hop path carries the identity, the request and the reply; the projection
+/// itself runs on the candidate worker.
+fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
+    let voices = &mut state.pop.voices;
+    let renderer = &mut state.schedule_renderer;
+    let (Some(capture), Some(observer)) = (
+        renderer.body_capture.as_ref(),
+        renderer.action_observer.as_mut(),
+    ) else {
+        return;
+    };
+    let Some(worker) = observer.footprint_worker() else {
+        return;
+    };
+    for voice in voices {
+        if !voice.is_alive() {
+            continue;
+        }
+        let Some(recipe) = voice.footprint_recipe(fs) else {
+            continue;
+        };
+        let Some((_, body_generation)) = capture.token(voice.id(), voice.metadata.generation)
+        else {
+            continue;
+        };
+        let identity = crate::life::action_candidates::footprint::Identity::new(
+            voice.id(),
+            body_generation,
+            &recipe,
+        );
+        let resent = voice
+            .phonation_engine
+            .footprint_hop(identity, now, &recipe, |request| {
+                worker.request_footprint(request)
+            });
+        if resent {
+            worker.stats.footprint_resent += 1;
+        }
+    }
+}
+
+/// Route returned footprints to the Voice that asked for them (I11-1 §4.2).
+/// One outstanding request per Voice keeps the reply queue within its capacity.
+fn route_body_footprints(
+    voices: &mut [crate::life::voice::Voice],
+    observer: &mut crate::life::action_observation::Observer,
+    now: Tick,
+) {
+    let Some(worker) = observer.footprint_worker() else {
+        return;
+    };
+    let mut superseded = 0;
+    for record in worker.drain_footprints(now) {
+        if let Some(voice) = voices
+            .iter_mut()
+            .find(|voice| voice.id() == record.identity.source_id)
+            && voice.phonation_engine.footprint_receive(&record)
+        {
+            superseded += 1;
+        }
+    }
+    worker.stats.footprint_superseded += superseded;
 }
 
 /// Emit per-hop JSONL report records. No-op without a reporter.
@@ -2766,6 +2841,7 @@ fn render_and_route_audio(
                 writer.write_body_default(&record)
             });
         }
+        route_body_footprints(&mut state.pop.voices, observer, now_tick);
         for record in observer.drain_traces() {
             report_try(&mut state.reporter, "private trace", |writer| {
                 writer.write_private_trace(&record)
@@ -3261,6 +3337,7 @@ mod tests {
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
             private_trace: None,
+            onset_comparison: None,
             scenario_name: "clock regression".into(),
             wait_user_exit: false,
             start_flag: Arc::new(AtomicBool::new(true)),

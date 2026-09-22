@@ -1,9 +1,10 @@
 //! Conditional frozen-body diagnostics, isolated from command execution and learning.
 
+use super::footprint;
 use super::{BodyState, Class, Input, OnsetOpportunity};
 use crate::life::self_prediction::{CoherentWindow, ScheduledRelease, ToneEnergy};
 use crate::temporal_cognition::action_profiles::consumer;
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{Receiver, Sender, TryRecvError, bounded, select};
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -738,6 +739,13 @@ pub(crate) struct Stats {
     pub output_dropped: u64,
     pub max_processing_us: u64,
     pub worker_failed: bool,
+    pub footprint_requested: u64,
+    pub footprint_dropped: u64,
+    pub footprint_completed: u64,
+    pub footprint_output_dropped: u64,
+    /// Consumer-side bookkeeping (I11-1 §4.2), counted by the Voice that asked.
+    pub footprint_superseded: u64,
+    pub footprint_resent: u64,
 }
 
 pub(crate) struct Worker {
@@ -745,9 +753,85 @@ pub(crate) struct Worker {
     recycle: Sender<Box<Packet>>,
     input: Option<Sender<Box<Packet>>>,
     output: Receiver<Record>,
+    footprint_input: Option<Sender<footprint::Request>>,
+    footprint_output: Receiver<footprint::Record>,
     handle: Option<JoinHandle<()>>,
-    counters: Arc<[AtomicU64; 4]>,
+    counters: Arc<[AtomicU64; 6]>,
     pub stats: Stats,
+}
+
+/// Returns false once the packet pool is gone and the worker must stop.
+fn process_packet(
+    mut packet: Box<Packet>,
+    shared: &[AtomicU64; 6],
+    tx: &Sender<Record>,
+    returned: &Sender<Box<Packet>>,
+) -> bool {
+    let evaluated = match (packet.request, packet.scheduled) {
+        (Some(r), None) => evaluate(r, &packet.retained, packet.trace.as_ref()),
+        (None, Some(r)) => evaluate_scheduled(r, &packet.retained),
+        _ => None,
+    };
+    if let Some(mut record) = evaluated {
+        let started = std::time::Instant::now();
+        ratios::attach(&mut record, &packet.retained, packet.external.as_ref());
+        release_trace::attach(&mut record, &packet.retained, packet.release_trace.as_ref());
+        record.shared_bindings = packet.bindings;
+        record.default_schedule = packet.default_schedule;
+        for bus in 0..2 {
+            if let Some(table) = &packet.shared[bus] {
+                record.shared_origins[bus] = Some(table.key);
+                record.shared_bytes[bus] = table.bytes();
+                for candidate in &mut record.candidates {
+                    candidate.shared[bus] = if record.default_basis == "accepted_queued_onset" {
+                        consumer::Pair::QueuedDefault
+                    } else if record.default_schedule.is_some_and(|s| {
+                        s.accepted_transitions > 1
+                            || (s.accepted_transitions > 0 && record.tone_id.is_none())
+                            || s.queued_tones > usize::from(record.decision_at > record.issued_at)
+                            || s.unsupported_control_tones > 0
+                            || s.amplitude_smoothing_tones > 0
+                            || s.scheduled_amplitude_tones > 0
+                    }) {
+                        consumer::Pair::CompositeDefault
+                    } else if !record.default_routed[bus] {
+                        consumer::Pair::UnroutedDefault
+                    } else {
+                        table.pair(
+                            packet.bindings[bus],
+                            (
+                                record.source_id,
+                                record.source_generation,
+                                record.body_generation,
+                            ),
+                            bus,
+                            record.issued_at,
+                            candidate.input,
+                            record.default_input,
+                        )
+                    };
+                }
+            }
+        }
+        record.processing_us += started.elapsed().as_micros() as u64;
+        shared[0].fetch_add(1, Ordering::Relaxed);
+        shared[3].fetch_max(record.processing_us, Ordering::Relaxed);
+        if tx.try_send(record).is_err() {
+            shared[1].fetch_add(1, Ordering::Relaxed);
+        }
+    } else {
+        shared[2].fetch_add(1, Ordering::Relaxed);
+    }
+    packet.request = None;
+    packet.scheduled = None;
+    packet.retained.clear();
+    packet.trace = None;
+    packet.release_trace = None;
+    packet.shared = [None, None];
+    packet.bindings = [None; 2];
+    packet.default_schedule = None;
+    packet.external = None;
+    returned.send(packet).is_ok()
 }
 
 impl Worker {
@@ -755,6 +839,8 @@ impl Worker {
         let (recycle, free) = bounded(CAPACITY);
         let (input, rx) = bounded::<Box<Packet>>(CAPACITY);
         let (tx, output) = bounded(CAPACITY);
+        let (footprint_input, footprint_rx) = bounded(crate::temporal_cognition::body::VOICES);
+        let (ftx, footprint_output) = bounded(crate::temporal_cognition::body::VOICES);
         for _ in 0..CAPACITY {
             recycle
                 .send(Box::new(Packet {
@@ -774,80 +860,60 @@ impl Worker {
         let shared = Arc::clone(&counters);
         let returned = recycle.clone();
         let handle = std::thread::spawn(move || {
-            for mut packet in rx {
-                let evaluated = match (packet.request, packet.scheduled) {
-                    (Some(r), None) => evaluate(r, &packet.retained, packet.trace.as_ref()),
-                    (None, Some(r)) => evaluate_scheduled(r, &packet.retained),
-                    _ => None,
-                };
-                if let Some(mut record) = evaluated {
-                    let started = std::time::Instant::now();
-                    ratios::attach(&mut record, &packet.retained, packet.external.as_ref());
-                    release_trace::attach(
-                        &mut record,
-                        &packet.retained,
-                        packet.release_trace.as_ref(),
-                    );
-                    record.shared_bindings = packet.bindings;
-                    record.default_schedule = packet.default_schedule;
-                    for bus in 0..2 {
-                        if let Some(table) = &packet.shared[bus] {
-                            record.shared_origins[bus] = Some(table.key);
-                            record.shared_bytes[bus] = table.bytes();
-                            for candidate in &mut record.candidates {
-                                candidate.shared[bus] = if record.default_basis
-                                    == "accepted_queued_onset"
-                                {
-                                    consumer::Pair::QueuedDefault
-                                } else if record.default_schedule.is_some_and(|s| {
-                                    s.accepted_transitions > 1
-                                        || (s.accepted_transitions > 0 && record.tone_id.is_none())
-                                        || s.queued_tones
-                                            > usize::from(record.decision_at > record.issued_at)
-                                        || s.unsupported_control_tones > 0
-                                        || s.amplitude_smoothing_tones > 0
-                                        || s.scheduled_amplitude_tones > 0
-                                }) {
-                                    consumer::Pair::CompositeDefault
-                                } else if !record.default_routed[bus] {
-                                    consumer::Pair::UnroutedDefault
-                                } else {
-                                    table.pair(
-                                        packet.bindings[bus],
-                                        (
-                                            record.source_id,
-                                            record.source_generation,
-                                            record.body_generation,
-                                        ),
-                                        bus,
-                                        record.issued_at,
-                                        candidate.input,
-                                        record.default_input,
-                                    )
-                                };
-                            }
+            let handle_footprint = |request: footprint::Request| {
+                let record = footprint::compute(&request);
+                shared[4].fetch_add(1, Ordering::Relaxed);
+                if ftx.try_send(record).is_err() {
+                    shared[5].fetch_add(1, Ordering::Relaxed);
+                }
+            };
+            let mut pending: Option<Box<Packet>> = None;
+            let (mut packets_open, mut footprints_open) = (true, true);
+            loop {
+                // Footprint requests are taken before candidate packets.
+                loop {
+                    match footprint_rx.try_recv() {
+                        Ok(request) => handle_footprint(request),
+                        Err(TryRecvError::Empty) => break,
+                        Err(TryRecvError::Disconnected) => {
+                            footprints_open = false;
+                            break;
                         }
                     }
-                    record.processing_us += started.elapsed().as_micros() as u64;
-                    shared[0].fetch_add(1, Ordering::Relaxed);
-                    shared[3].fetch_max(record.processing_us, Ordering::Relaxed);
-                    if tx.try_send(record).is_err() {
-                        shared[1].fetch_add(1, Ordering::Relaxed);
-                    }
-                } else {
-                    shared[2].fetch_add(1, Ordering::Relaxed);
                 }
-                packet.request = None;
-                packet.scheduled = None;
-                packet.retained.clear();
-                packet.trace = None;
-                packet.release_trace = None;
-                packet.shared = [None, None];
-                packet.bindings = [None; 2];
-                packet.default_schedule = None;
-                packet.external = None;
-                if returned.send(packet).is_err() {
-                    break;
+                if pending.is_none() && packets_open {
+                    match rx.try_recv() {
+                        Ok(packet) => pending = Some(packet),
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => packets_open = false,
+                    }
+                }
+                if let Some(packet) = pending.take() {
+                    if !process_packet(packet, &shared, &tx, &returned) {
+                        break;
+                    }
+                    continue;
+                }
+                match (packets_open, footprints_open) {
+                    (false, false) => break,
+                    (true, false) => match rx.recv() {
+                        Ok(packet) => pending = Some(packet),
+                        Err(_) => packets_open = false,
+                    },
+                    (false, true) => match footprint_rx.recv() {
+                        Ok(request) => handle_footprint(request),
+                        Err(_) => footprints_open = false,
+                    },
+                    (true, true) => select! {
+                        recv(footprint_rx) -> request => match request {
+                            Ok(request) => handle_footprint(request),
+                            Err(_) => footprints_open = false,
+                        },
+                        recv(rx) -> packet => match packet {
+                            Ok(packet) => pending = Some(packet),
+                            Err(_) => packets_open = false,
+                        },
+                    },
                 }
             }
         });
@@ -856,6 +922,8 @@ impl Worker {
             recycle,
             input: Some(input),
             output,
+            footprint_input: Some(footprint_input),
+            footprint_output,
             handle: Some(handle),
             counters,
             stats: Stats::default(),
@@ -895,17 +963,39 @@ impl Worker {
             let _ = self.recycle.try_send(packet);
         }
     }
+    /// False when the queue is full; the caller re-sends on the next hop.
+    pub fn request_footprint(&mut self, request: footprint::Request) -> bool {
+        let accepted = self
+            .footprint_input
+            .as_ref()
+            .is_some_and(|tx| tx.try_send(request).is_ok());
+        if accepted {
+            self.stats.footprint_requested += 1;
+        } else {
+            self.stats.footprint_dropped += 1;
+        }
+        accepted
+    }
     pub fn poll(&mut self) {
         self.stats.completed = self.counters[0].load(Ordering::Relaxed);
         self.stats.worker_unsupported = self.counters[2].load(Ordering::Relaxed);
         self.stats.output_dropped = self.counters[1].load(Ordering::Relaxed);
         self.stats.max_processing_us = self.counters[3].load(Ordering::Relaxed);
+        self.stats.footprint_completed = self.counters[4].load(Ordering::Relaxed);
+        self.stats.footprint_output_dropped = self.counters[5].load(Ordering::Relaxed);
     }
     pub fn drain(&mut self) -> impl Iterator<Item = Record> + '_ {
         self.output.try_iter()
     }
+    pub fn drain_footprints(&mut self, now: u64) -> impl Iterator<Item = footprint::Record> + '_ {
+        self.footprint_output.try_iter().map(move |mut record| {
+            record.received_at = Some(now);
+            record
+        })
+    }
     pub fn finish(&mut self) {
         self.input.take();
+        self.footprint_input.take();
         if let Some(handle) = self.handle.take() {
             self.stats.worker_failed = handle.join().is_err();
         }

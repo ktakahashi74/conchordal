@@ -401,3 +401,8 @@ This restriction concerns dedicated synchronization support, not pitch-only
 - Never create a commit unless the user explicitly asks for a commit in that turn.
 - Before creating any commit, always run `cargo clippy -- -D warnings` and confirm it passes.
 - If a commit is requested, commit only the files relevant to the requested task.
+- Before every push, integrate the remote first with `git pull --rebase --autostash`.
+  Two machines and several agents push to `main`.
+- If two appends to a record file (e.g. `docs/roadmap/**`) conflict, keep both entries,
+  upstream first. Edits to the same paragraph and conflicts in code need a real merge;
+  stop and report when the intent of either side is unclear.

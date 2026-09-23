@@ -663,3 +663,88 @@ floorが効くのは`0.05 × none`がfloorを下回る欄、つまり絶対値�
   データが足りないため置かない。
 - floorはあくまで「この差は雑音と区別できない」の線であって、`body`が`none`より速い保証ではない。
   floor以内の差は**合否の判定に使わない**という意味しか持たない。
+
+
+## §5.7の取り直しと二つの許容による判定（2026-09-23）
+
+上の規則を登録した後に、`body`対`none`を§5.7と同じ手順で取り直した。取得先は
+`target/i11-stage1-rerun2-20260923/`（8条件×report有無×交互3反復、96実行すべてexit 0・失敗0）。
+入力は登録凍結のバイト複写、`acquire.py`・`hop_path.py`は無改変の複写（いずれもSHA-256一致を検証済み）。
+元の許容の判定は`hop-path.json`、A/A規則の判定は同ディレクトリの`aa_floor_check.py`が出す
+`aa-floor-verdict.json`。floorは`target/i11-stage1-aa-20260923/aa-floor.json`から読むだけで、
+この取得の結果からは再計算していない。
+
+合格は**元の許容で6/16組、A/A規則で8/16組**。判定が変わったのは2組だけである
+（sine-flow-4 report、harmonic-flow-16 no-report、いずれも不合格→合格）。
+
+### `population_us`中央値は決着した
+
+規則を作る動機になった欄は、A/A規則では**16組すべて合格**する。相対差は最大+21.4%
+（harmonic-flow-4 report）まで出るが、絶対差は1.23 µsでfloorの1.27 µsに収まる。
+
+| 組 | body | none | 差 | 相対 | 許容 |
+|---|---|---|---|---|---|
+| harmonic-flow-4 report | 6.97 µs | 5.74 µs | 1.23 µs | +21.4% | 1.27 µs（floor） |
+| modal-flow-4 no-report | 6.09 µs | 5.17 µs | 0.92 µs | +17.8% | 1.27 µs（floor） |
+| sine-flow-4 report | 5.88 µs | 5.13 µs | 0.75 µs | +14.6% | 1.27 µs（floor） |
+| sine-flow-16 no-report | 112.65 µs | 115.73 µs | 3.08 µs | −2.7% | 5.79 µs（5%） |
+
+`none`が5 µs台の4／16 Voiceのhold・flow条件ではfloorが効き（16組中10組）、`none`が115〜120 µs台の
+16 Voice flow条件では従来どおり5%が効く。**識別hashと要求送出が`population_us`の中央値へ乗せる量は、
+この機械のA/A雑音と区別できない**、というのが今回の結論である。floorが5%より広く効いたのは
+`population_us`中央値10組・同p99 8組・`synthesis_us`中央値8組・同p99 8組・`elapsed_us` p99 2組で、
+最大の3欄はfloorがいずれも1 ms未満のためどこでも効いていない。
+
+### A/A規則でも残る8組
+
+| 組 | 落ちた欄（差 > 許容） |
+|---|---|
+| sine-hold-16 no-report | synthesis_us p99 184.8 > 98.5 µs |
+| sine-flow-4 no-report | elapsed_us中央値 136.6 > 99.2 µs、同p99 152.4 > 130.1 µs |
+| harmonic-flow-4 report | population_us p99 78.5 > 70.2 µs |
+| harmonic-flow-4 no-report | population_us p99 95.2 > 70.2 µs |
+| modal-flow-4 report | elapsed_us最大 1781.4 > 1000.0 µs |
+| modal-flow-4 no-report | elapsed_us最大 2036.9 > 1000.0 µs |
+| modal-flow-16 report | population_us p99 168.3 > 90.4 µs、elapsed_us p99 546.0 > 404.2 µs |
+| modal-flow-16 no-report | population_us p99 99.9 > 92.9 µs、elapsed_us p99 597.7 > 400.2 µs |
+
+性質は三つに分かれる。
+
+1. **bodyの経路では説明できない不合格。** sine-holdの2条件は`body`設定でもfootprint要求が0件である
+   （本取得の計数で確認。下表）。要求を一件も出していない条件で`synthesis_us`のp99が落ちるのは、
+   本変更の作用ではありえない。sine-flow-4も要求24件・置換0件・返却遅延0.0 msで、`elapsed_us`の
+   中央値が136 µs動く理由が本変更側に無い。これらは、**1回分のA/Aから取ったfloorがその欄の雑音幅を
+   まだ下回っている**ことを示す。登録時に限界として書いたとおりで、floorは上界の証明ではない。
+2. **再現した唯一の候補。** modal-flow-4の`elapsed_us`最大は、本取得で1781.4／2036.9 µs、同日午前の
+   取り直しでも1802.8／1638.6 µsと、独立した2回の取得の4組すべてで1 msを超えた。同じ組のA/A雑音は
+   262.6／301.1 µsで、超過はその6倍前後にあたる。現在の証拠では雑音に帰せられない。§5.7で残る
+   実質的な問題はこれである。
+3. **判定を保留する残り。** harmonic-flow-4とmodal-flow-16のp99の超過はfloorの1.1〜1.9倍で、
+   取得2回では反復間ばらつきと本変更の作用を分離できない。
+
+### footprint計数（`body`、report、3反復合計）
+
+| 条件 | 要求 | 置換済み | drop | 返却遅延 中央値／p99／最大 | footprint_source |
+|---|---|---|---|---|---|
+| sine-hold-4／16 | 0 | 0 | 0 | ― | ― |
+| sine-flow-4 | 24 | 0 | 0 | 0.0／0.0／0.0 ms | body 100% |
+| sine-flow-16 | 96 | 0 | 0 | 0.0／0.0／0.0 ms | body 99.5%、proxy(stale) 0.5% |
+| harmonic-flow-4 | 24 | 6 | 0 | 32.0／53.3／53.3 ms | body 100% |
+| harmonic-flow-16 | 96 | 22 | 0 | 85.3／106.7／106.7 ms | body 99.2%、proxy(absent) 0.5%、proxy(stale) 0.3% |
+| modal-flow-4 | 24 | 0 | 0 | 21.3／32.0／32.0 ms | body 100% |
+| modal-flow-16 | 96 | 0 | 0 | 32.0／64.0／64.0 ms | body 99.5%、proxy(stale) 0.5% |
+
+要求＝完了、drop 0、置換済み0〜25%。同日午前の取り直しの値と件数・遅延とも一致しており、識別規則の
+改訂の効果は取得をまたいで安定している。
+
+### 判定
+
+§5.7は元の許容でも新しいA/A規則でも全欄合格に至っていない（6/16、8/16）。ただし不合格の中身は
+`population_us`の中央値から、p99・最大へ移った。中央値の増分は雑音と区別できないことが確定し、
+残る実質的な問題はmodal-flow-4の`elapsed_us`最大（1 msの約1.8〜2.0倍、2回の取得で再現）に絞られた。
+第1段の技術完了は判定しない（§5.1〜5.3と§5.9は別マシンで進行中）。
+
+次の一単位。(1) modal-flow-4の`elapsed_us`最大の超過が、どのhopで、`advance_population`の
+どの区間で起きているかをprofileから特定する。(2) A/Aを複数回に増やし、floorを最大値でなく分布で
+置き直す（現在のfloorは`synthesis_us`と`elapsed_us`で雑音幅を下回っている）。(3) §5.1〜5.3の独立参照と
+§5.9のoffline再投影（別マシン）。

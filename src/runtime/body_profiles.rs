@@ -312,3 +312,4 @@ fn acquire_medoid_action_profiles() {
 }
 
 mod policy_default;
+mod representative_gap;

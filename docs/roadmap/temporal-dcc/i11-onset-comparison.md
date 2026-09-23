@@ -1079,3 +1079,37 @@ report の`population_us`中央値＝report有りにだけ乗る決定報告の�
 - 変えないもの。`population_us` と `synthesis_us` の検査はそのまま。
 - 事後性。この規則は `5c877d4` の結果を見た後に置く。判定には、決定報告の書き出しを報告の相へ移した
   `c41fdb3` の後の新しい取得を使い、その取得の前にこの登録を固定する。A/Aのfloorを登録したときと同じ扱いである。
+
+
+## §5.9の入口と再現条件での分布（2026-09-23）
+
+§5.9のoffline再投影の入口を、I10のoffline評価と同じ形で作った。製品側のコードは変えていない。
+
+- 取得。ignored test `runtime::body_profiles::representative_gap::acquire_representative_gap`
+  （入力 `CONCHORDAL_I11_GAP_INPUTS`、出力 `CONCHORDAL_I11_GAP_OUTPUT`）。入力の `registration.json`
+  （schema `i11-representative-gap-v1`）はcaseごとにscriptとconfigとそのSHA-256を持つ。各caseを、test専用の
+  probeとreportを付けてofflineで実行する（footprintは決定的な配送）。probeは発行された各onsetを、
+  `ToneSpec` とkickから `Tone::from_parts` で組み直し、実kick、seed `modal_phase_seed(source, onset, tone_id)`、
+  そのhopのrhythms、予約releaseで、I10の `issued` と同じ手順で凍結する。実行後、reportの
+  `participation_decision`（skipでなく、`round(selected_at)` がonsetに一致するもの）から `D_rep` を取り、
+  `project_window` の `retained = []`、`added = ([true, false], issued)`、bus 0、区間
+  `[onset, onset + ceil(D_rep))`、coherentで16 binを求めて `gap.jsonl` に書く。
+- 集計。`scripts/summarize_i11_representative_gap.py` は、実側のenergyを最大binで正規化し、
+  `power_gap = max_k |power_k^actual - power_k^rep|`、選択候補の外部energyでの重なり和の差
+  `overlap_gap`、それを `coupling * 6 * s / norm` に通した費用項の差 `term_gap` を、footprintの出所ごとに
+  中央値・p95・最大（nearest rank）で出す。支持の無いbinを含むonset、決定の見つからないonset、重なり項が
+  効いていない決定は数えて除く。両側が既知の無音なら差0。重なり式は `verify_i11_stage1.py` と共有する。
+  testは `tests/test_summarize_i11_representative_gap.py`。
+- 再現条件の結果（識別規則の改訂節と同じ4 Voice flow、`body`）。onsetはsine 107、harmonic 107、modal 106で、
+  すべて決定と対応が付き、16 binすべてに支持があった。決定はすべて `body`。
+
+  | 条件 | `power_gap` 中央値／p95／最大 | `term_gap` 中央値／p95／最大 |
+  |---|---|---|
+  | sine | 5.89e-3／6.03e-3／6.12e-3 | 4.46e-4／8.63e-4／1.07e-3 |
+  | harmonic | 2.12e-2／2.19e-2／2.20e-2 | 5.75e-3／6.83e-3／7.03e-3 |
+  | modal | 3.69e-5／1.01e-4／1.35e-4 | 6.32e-6／1.78e-5／2.40e-5 |
+
+  代表条件（kick 1.0、代表seed、既定rhythms、release予約なし）と実条件の差は、この素材ではpowerで
+  最大2.2%、費用項で最大0.007だった。登録の12条件での取得は、入力がリポジトリに入った後に行う。
+- 限界。実側も発行時点の凍結であり、発行後の振幅更新と残存toneとの干渉は含まない（§5.9の定義どおり、
+  新しいtone単独のenergy）。

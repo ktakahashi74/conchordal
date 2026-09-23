@@ -1591,6 +1591,11 @@ struct WorkerState {
     prod_meter: MeterNetwork,
     temporal_expectation: Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
     participation_predictions: Vec<(u64, ParticipationPrediction)>,
+    /// Traced decisions wait here so their encoding is charged to the report phase.
+    participation_decisions: Vec<(
+        u64,
+        crate::life::temporal_participation::ParticipationDecision,
+    )>,
     generator_model: crate::life::generator_model::GeneratorModel,
     hab_ecology: crate::core::habituation::HabituationField,
     hab_listener: crate::core::habituation::HabituationField,
@@ -1675,6 +1680,7 @@ impl WorkerState {
             temporal_expectation:
                 crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32),
             participation_predictions: Vec::new(),
+            participation_decisions: Vec::new(),
             generator_model,
             hab_ecology,
             hab_listener,
@@ -2528,11 +2534,12 @@ fn advance_population(
                     .drain_participation_predictions()
                     .map(|prediction| (id, prediction)),
             );
-            for decision in voice.phonation_engine.drain_participation_decisions() {
-                report_try(&mut state.reporter, "participation decision", |writer| {
-                    writer.write_participation_decision(id, cfg.fs as u32, &decision)
-                });
-            }
+            state.participation_decisions.extend(
+                voice
+                    .phonation_engine
+                    .drain_participation_decisions()
+                    .map(|decision| (id, decision)),
+            );
         }
     }
 
@@ -2636,6 +2643,11 @@ fn emit_hop_reports(
 ) {
     if state.reporter.is_none() {
         return;
+    }
+    for (voice_id, decision) in state.participation_decisions.drain(..) {
+        report_try(&mut state.reporter, "participation decision", |writer| {
+            writer.write_participation_decision(voice_id, cfg.fs as u32, &decision)
+        });
     }
     // Only reporting is decimated; each analysis hop has already advanced history.
     let report_hops = (0.1 * cfg.fs / cfg.hop as f32).ceil().max(1.0) as u64;

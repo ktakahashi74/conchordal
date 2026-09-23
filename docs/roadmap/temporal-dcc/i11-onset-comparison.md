@@ -1046,3 +1046,15 @@ report の`population_us`中央値＝report有りにだけ乗る決定報告の�
 (2) modal-flow-4の`elapsed_us`最大＝分析待ちの外れ値で、footprintの経路とは時間的に重ならない、
 (3) modal-flow-16の`elapsed_us` p99＝同じ分析待ちの分布がp99へ効いたもの、に整理できる。
 第1段の技術完了は判定しない（§5.9のoffline再投影が未実施）。
+
+
+## 決定報告の書き出しを報告の相へ移す（2026-09-23）
+
+§5.7でharmonic-flow-16 reportだけ `population_us` 中央値が+8.81 µs（+7.4%）増えた件を調べ、実装の
+誤りを見つけた。`participation_decision` のJSON書き出しを集団更新（`advance_population`）の中で行って
+いたため、report付きの実行では書き出しの費用が `population_us` に計上されていた。既存の
+`participation_outcome` は集団更新では集めるだけで、書き出しは後の相で行う。同じ形に直し、決定recordは
+集団更新で集め、`emit_hop_reports` で書き出す。
+
+移す前後で、同じ条件のoffline renderのWAVと、`participation_decision`・`participation_context`・`onset`・
+`body_footprint`（`computed_at` を除く）が一致した。report有りの8組の§5.7は、この修正の後に取り直す。

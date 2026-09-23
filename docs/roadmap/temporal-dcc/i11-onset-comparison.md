@@ -1418,6 +1418,10 @@ pushした。以後、基準binaryは `git worktree add <dir> i11-stage1-baselin
 ### 残作業（blancheで行う。データが要る）
 
 1. §5.4aを最終版で再実行する（`None` の12条件で、基準binaryとのWAVと学習record 10種のbit一致）。
+   予備確認として、別マシン（arm64）でタグ `i11-stage1-baseline` からbuildした基準binaryと `ac8e59d` を、
+   再現条件3身体（4 Voice flow、両bus）の `None` で比べた。WAVは3条件とも一致し、実時間の欄を持つ5種を除く
+   22種のrecord（1条件あたり約10,400件）は、第1段で加えた `participation_context` の8欄を除いてすべて一致した。
+   基準binaryのSHAはマシンによって異なるので（arm64では `bd33d8ea…`）、比較は同じマシンの中で行う。
 2. §5.7の最終取得について、登録した1 passの規則での判定、待ちの中央値・p99・最大、返却遅延のp99・最大を
    補う。
 3. §5.5(a)について、`body` と `proxy` で最初に選択が分かれた決定を条件ごとに取り出し、その決定の入力

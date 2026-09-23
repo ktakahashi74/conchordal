@@ -929,3 +929,120 @@ modal 22／56・38／204・47／864）。`aebae2b`での同じ集計（121／3,3
 - 再現性を確かめたのは1条件（modal-flow-4）である。12条件すべてで2回renderして確かめてはいない。
 - 本節は§5.5(a)のみで、§5.7の数値は含まない。§5.7の取得（A/A 3 passと`body`対`none`）は
   `aebae2b`のbinaryで行っており、判定はまだ付けていない。
+
+
+## §5.7を三つの許容で判定する（2026-09-23、A/A 3 pass floor）
+
+取得前に登録した規則どおりに、A/A 3 passからfloorを置き直し、`body`対`none`の16組を三つの許容で
+判定した。取得はいずれも`aebae2b`のbinary（A/Aは`target/i11-stage1-aa3-20260923/pass1〜3/`、
+`body`対`none`は`target/i11-stage1-rerun3-20260923/`、計384実行すべてexit 0・失敗0）。§5.5(a)を
+取り直した`a6637db`はoffline renderの配送だけを変える改訂で、instrumentは実時間の配送のままである。
+
+### floor（48標本の最大）
+
+| 欄 | 3 pass floor | p50 | p95 | pass毎の最大 | 09-23の1 pass floor |
+|---|---|---|---|---|---|
+| population_us 中央値 | 2.090 µs | 0.27 | 1.31 | 2.1 / 1.3 / 2.0 | 1.270 |
+| population_us p99 | 109.621 µs | 14.47 | 54.13 | 79.9 / 50.2 / 109.6 | 70.181 |
+| population_us 最大 | 447.032 µs | 75.84 | 303.20 | 312.7 / 447.0 / 372.5 | 468.202 |
+| synthesis_us 中央値 | 101.580 µs | 9.97 | 41.58 | 51.4 / 39.2 / 101.6 | 62.571 |
+| synthesis_us p99 | 223.631 µs | 21.84 | 73.75 | 53.6 / 223.6 / 71.3 | 73.500 |
+| synthesis_us 最大 | 386.653 µs | 45.77 | 243.98 | 273.0 / 386.7 / 344.2 | 584.653 |
+| elapsed_us 中央値 | 171.471 µs | 28.05 | 98.07 | 98.1 / 111.6 / 171.5 | 71.580 |
+| elapsed_us p99 | 244.752 µs | 68.43 | 178.28 | 178.3 / 244.8 / 160.8 | 127.040 |
+| elapsed_us 最大 | 552.173 µs | 149.25 | 334.07 | 552.2 / 382.1 / 338.8 | 648.174 |
+| 超過hop数 | 1 | 0 | 0 | 0 / 1 / 0 | 1 |
+
+中央値・p99の6欄はすべて1 pass floorより大きくなった（`synthesis_us` p99は73.5→223.6 µsと3倍）。
+1回分の標本が雑音幅を下回っていたという診断どおりである。最大の3欄は逆に小さくなったが、規則が
+`max(1 ms, floor)`なのでどのみち1 msが効き、判定は変わらない。
+
+**収束の確認**（登録どおり、判定には使わない）。pass 1〜2の32標本から取ったfloorをpass 3の16標本に
+当てると、160件（16組×10欄）中4件が超過した——`population_us` p99が1件（harmonic-flow-16 report
+109.6 > 79.9）、`synthesis_us`中央値が2件（sine-flow-16 report 101.6 > 51.4、同 no-report 57.2）、
+`elapsed_us`中央値が1件（sine-flow-16 report 171.5 > 111.6）。2 passでは足りず、3 passでもまだ
+完全には収束していない。floorはこの数字で調整していない。
+
+### 判定（16組）
+
+| 組 | 元の許容 | 1 pass floor | 3 pass floor | 3 passで落ちた欄 |
+|---|---|---|---|---|
+| sine-hold-4 report | ○ | ○ | ○ | — |
+| sine-hold-4 no-report | × | × | ○ | — |
+| sine-hold-16 report／no-report | ○ | ○ | ○ | — |
+| sine-flow-4 report | × | × | ○ | — |
+| sine-flow-4 no-report | × | × | ○ | — |
+| sine-flow-16 report／no-report | ○ | ○ | ○ | — |
+| harmonic-flow-4 report | × | ○ | ○ | — |
+| harmonic-flow-4 no-report | × | ○ | ○ | — |
+| harmonic-flow-16 report | × | × | × | population_us中央値 8.8 > 6.0 µs（5%が効く） |
+| harmonic-flow-16 no-report | × | ○ | ○ | — |
+| modal-flow-4 report | × | × | × | elapsed_us最大 1610.5 > 1000.0 µs（1 msが効く） |
+| modal-flow-4 no-report | × | × | × | elapsed_us最大 1919.8 > 1000.0 µs（1 msが効く） |
+| modal-flow-16 report | × | × | × | elapsed_us p99 552.8 > 410.2 µs（5%が効く） |
+| modal-flow-16 no-report | × | × | × | elapsed_us p99 667.2 > 397.3 µs（5%が効く） |
+
+**合格は、元の許容で5/16、1 pass floorで8/16、3 pass floorで11/16。**
+
+残る5組はいずれも**floorが効いていない**。落ちた欄の許容を決めているのは5%か1 msであり、floorを
+広げても変わらない。`population_us`の中央値は16組中15組が合格で、唯一落ちたharmonic-flow-16 reportは
+`none`が119.65 µsの大きい基準に対して8.81 µs（+7.4%）増えたもので、09-23に問題にした「絶対値5 µsに
+相対5%」の話とは別である。同じ条件のno-reportは合格しているので、**report有りの`body`側にだけ乗る
+§4.6の決定報告の費用**（取得前に宣言した非対称）が最も素直な説明になる。report有りは5/8、
+report無しは6/8の合格で、全体としては決定報告が判定を大きく動かしてはいない。
+
+footprint計数（`body`、report、3反復合計）は要求＝完了・drop 0で、置換済みはharmonic-flow-4が6/24、
+harmonic-flow-16が24/96、他は0。返却遅延の中央値はsine 0.0 ms、modal-flow-4 21.3 ms、
+harmonic-flow-16 85.3 msで、09-23の取得と同程度である。
+
+### modal-flow-4の`elapsed_us`最大の超過hop（手順どおり特定した）
+
+この欄は3回の独立した取得（09-23午前 1802.8／1638.6 µs、同午後 1781.4／2036.9 µs、今回
+1610.5／1919.8 µs）で一貫して1 msを超えており、§5.7で唯一再現していた問題である。profileから
+hopを特定した。
+
+- **超過hopは6実行すべてframe 401**（body report／no-report × 3反復）。`none`側の最大hopは
+  11・191・501・561とばらけている。
+- frame 401で増えている相は`analysis_wait_us`だけである。body 7770.8 µs に対し`none`の同じframeは
+  1512.9 µs。他の相は一致する（`synthesis_us` 656.8対648.6、`rendering.capture_delivery_us`
+  304.6対299.1、`rendered_tone_count` 16対16）。**`population_us`は6.5 µs**で、候補選択の仕事は
+  この hop でほとんど動いていない。
+- **footprintの時刻とは重ならない。** modal-flow-4のfootprint要求は1実行あたり8件で、
+  `requested_at`は0と512サンプル（frame 0と1）、`received_at`は0〜2048サンプル、`computed_at`は
+  22〜564である。frame 401（サンプル205,312）の前後に要求・計算・受領はいずれも無い。置換済み0件、
+  drop 0件。
+- `analysis_wait_us`が3 msを超えるhopは、**両変種ともframe ≡ 1 (mod 10)** に限って現れる
+  （body 23件、none 30件）。分析thread側の配送が10 hop周期で、hopがそれを待っている。中央値は
+  body 1262.7 µs・none 1262.4 µs、p99は5533.1対5539.5でほぼ同じ。**spikeの数は`none`の方が多い。**
+- 最大のspikeは、その周期hopの直前にonsetが入ったときに出る。bodyは3反復ともhop 400にonsetがあり
+  （次のhop 401が周期hop）、`none`は395〜401にonsetが無く、frame 401の待ちは1.3〜1.5 msに留まる。
+  上位spikeでも frame 301（onset 298）、frame 481（onset 478）と同じ並びが見える。
+- 走行全体では差がない。`elapsed_us`の合計は report が body 1.43／1.46／1.42 s に対し
+  `none` 1.42／1.42／1.41 s、no-report は body 1.36／1.36／1.38 s に対し`none` 1.38／1.37／1.36 s。
+  予算超過hopは611 hop中、body no-report rep1の1件を除いて全実行0である。
+
+**原因の候補と根拠。**
+
+1. **最も支持される候補**: 落ちているのは「分析threadを待った時間の、走行中で最大の1点」であり、
+   その待ちは両変種に共通する10 hop周期の構造である。`max`という統計は各実行から外れ値を1つずつ
+   拾って比べるので、分布がほぼ同じでも、どのhopが最大を引くかで1 ms程度は動く。根拠は、spikeの
+   周期性、`population_us`が6.5 µsであること、footprintの活動がframe 0〜1で終わっていること、
+   中央値とp99が一致すること、spikeの件数は`none`の方が多いこと。
+2. **除外できない候補**: bodyがhop 400にonsetを置いたために、次の周期hopでの分析が実際に重くなった。
+   onsetの位置が違うのはT1が選択を変えた結果である（§5.5(a)でこの条件は25/55の決定が異なる）。
+   この場合の費用は「機構が計算に使う時間」ではなく「機構が変えた音楽の分析にかかる時間」であり、
+   §5.7が測ろうとしているhop経路の負荷とは別物になる。今回の証拠では両者を分離できない。
+3. **除外した候補**: 候補選択そのもの（当該hopの`population_us` 6.5 µs）と、footprintの要求・計算・
+   受領（frame 401の前後に一件も無い）。飽和・drop・置換済みもこの条件では0件である。
+
+修正は行っていない。この観察は、`elapsed_us`の最大を別々の実行の間で比べる判定が、機構の負荷では
+なく分析待ちの外れ値を拾いうることを示す。判定の形を変える場合は新しい登録として残す。
+
+### 判定のまとめ
+
+§5.7は三つの許容のいずれでも全欄合格に至っていない（5/16、8/16、11/16）。floorを3 passの分布から
+置き直したことで、雑音と区別できない差による不合格は解消した。残る5組は、(1) harmonic-flow-16
+report の`population_us`中央値＝report有りにだけ乗る決定報告の費用が最も素直な説明、
+(2) modal-flow-4の`elapsed_us`最大＝分析待ちの外れ値で、footprintの経路とは時間的に重ならない、
+(3) modal-flow-16の`elapsed_us` p99＝同じ分析待ちの分布がp99へ効いたもの、に整理できる。
+第1段の技術完了は判定しない（§5.9のoffline再投影が未実施）。

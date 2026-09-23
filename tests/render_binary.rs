@@ -1832,4 +1832,112 @@ wait(1.0);
         "a body render changed its audio on repeat"
     );
     assert_eq!(first.1, second.1);
+
+    let proxy_config = fs::read_to_string(&config)
+        .unwrap()
+        .replace("footprint = \"body\"", "footprint = \"proxy\"");
+    fs::write(&config, proxy_config).unwrap();
+    let proxy_wav = unique_wav_path();
+    let proxy_report = unique_temp_path("jsonl");
+    let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
+        .env("RUST_LOG", "warn")
+        .arg(&scenario)
+        .arg("-o")
+        .arg(&proxy_wav)
+        .arg("--config")
+        .arg(&config)
+        .arg("--report")
+        .arg(&proxy_report)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_ne!(
+        first.0,
+        fs::read(&proxy_wav).unwrap(),
+        "body and proxy audio match"
+    );
+    let proxy_records: Vec<serde_json::Value> = fs::read_to_string(&proxy_report)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let mut body_decisions: Vec<_> = first
+        .1
+        .iter()
+        .filter(|r| r["type"] == "participation_decision" && r["footprint_source"] == "body")
+        .collect();
+    body_decisions.sort_by_key(|r| (r["now"].as_u64().unwrap(), r["voice_id"].as_u64().unwrap()));
+    let mut compared = 0;
+    let mut found_divergence = false;
+    for body in body_decisions {
+        let Some(proxy) = proxy_records.iter().find(|r| {
+            r["type"] == "participation_decision"
+                && r["footprint_source"] == "proxy(setting)"
+                && r["voice_id"] == body["voice_id"]
+                && r["now"] == body["now"]
+        }) else {
+            panic!("proxy decision missing before the first selection divergence");
+        };
+        for field in [
+            "due_frame",
+            "period_frames",
+            "memory",
+            "own_band_energy",
+            "forecast_observed_frame",
+            "current_identity",
+        ] {
+            assert_eq!(
+                proxy[field], body[field],
+                "{field} differs before selection"
+            );
+        }
+        assert_eq!(proxy["footprint_identity"], body["footprint_identity"]);
+        assert_eq!(
+            proxy["footprint_received_at"],
+            body["footprint_received_at"]
+        );
+        assert!(proxy_records.iter().any(|r| {
+            r["type"] == "body_footprint"
+                && r["identity"] == proxy["footprint_identity"]
+                && r["received_at"] == proxy["footprint_received_at"]
+        }));
+        assert_eq!(proxy["footprint_d_samples"], body["footprint_d_samples"]);
+        assert_eq!(proxy["footprint_delay"], body["footprint_delay"]);
+        for (body_candidate, proxy_candidate) in body["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(proxy["candidates"].as_array().unwrap())
+        {
+            assert_eq!(proxy_candidate["at"], body_candidate["at"]);
+            assert_eq!(
+                proxy_candidate["external_energy"],
+                body_candidate["external_energy"]
+            );
+        }
+        compared += 1;
+        if proxy["selected_offset"] != body["selected_offset"]
+            || proxy["skipped"] != body["skipped"]
+        {
+            assert_ne!(proxy["footprint_power"], body["footprint_power"]);
+            found_divergence = true;
+            break;
+        }
+    }
+    assert!(
+        compared > 0,
+        "no matching body/proxy decisions used a delivered record"
+    );
+    assert!(
+        found_divergence,
+        "modal body/proxy selections never diverged"
+    );
+    fs::remove_file(config).unwrap();
+    fs::remove_file(scenario).unwrap();
+    fs::remove_file(proxy_wav).unwrap();
+    fs::remove_file(proxy_report).unwrap();
 }

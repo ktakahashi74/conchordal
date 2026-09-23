@@ -639,11 +639,10 @@ pub struct ParticipationClock {
 }
 
 impl ParticipationClock {
-    /// The representative hold and envelope of I11-1 §4.2, only while a body
-    /// footprint is the configured source.
+    /// The representative hold and envelope of I11-1 §4.2 for either configured
+    /// footprint source, so both sources can use the same record span.
     fn footprint_hold(&self) -> Option<(f32, Option<crate::life::sound::ToneAdsr>)> {
         self.onset_comparison
-            .filter(|config| config.footprint == crate::config::FootprintSource::Body)
             .map(|_| (self.hold_theta / self.base_rate_hz, self.adsr))
     }
 
@@ -2225,7 +2224,7 @@ mod tests {
     }
 
     #[test]
-    fn a_body_footprint_is_representative_only_while_the_comparison_configures_it() {
+    fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
         use crate::config::{FootprintSource, TemporalOnsetComparisonConfig};
         let mut engine = test_engine(
             OnsetRule::Always { strength: 1.0 },
@@ -2251,10 +2250,9 @@ mod tests {
             arrival_weight: 1.0,
         };
         engine.set_onset_comparison(Some(config));
-        assert!(
-            engine.footprint_hold().is_none(),
-            "the proxy setting asks nothing"
-        );
+        let (hold_sec, adsr) = engine.footprint_hold().expect("a proxy recipe");
+        assert_eq!(hold_sec, 0.5);
+        assert!(adsr.is_none());
         config.footprint = FootprintSource::Body;
         engine.set_onset_comparison(Some(config));
         let (hold_sec, adsr) = engine.footprint_hold().expect("a body recipe");

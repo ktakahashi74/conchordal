@@ -1072,7 +1072,7 @@ impl Voice {
     }
 
     /// The representative recipe of I11-1 §4.2, frozen from what this Voice would
-    /// emit now. `None` unless a participation clock consumes a body footprint.
+    /// emit now. `None` unless a participation clock configures onset comparison.
     pub(crate) fn footprint_recipe(
         &self,
         fs: f32,

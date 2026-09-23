@@ -691,6 +691,11 @@ impl TemporalForecast {
         self.start_frame
     }
 
+    /// No window before this frame may inform a prediction.
+    pub(crate) fn available_through_frame(&self) -> u64 {
+        self.available_through_frame
+    }
+
     /// First complete observation window at or after an action, on this observer's grid.
     pub(crate) fn energy_window_after(&self, frame: u64) -> Option<(u64, u64, [f32; 3])> {
         let window = (self.step_frames / FORECAST_STRIDE) as u64;

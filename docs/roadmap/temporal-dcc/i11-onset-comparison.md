@@ -748,3 +748,41 @@ floorが効くのは`0.05 × none`がfloorを下回る欄、つまり絶対値�
 どの区間で起きているかをprofileから特定する。(2) A/Aを複数回に増やし、floorを最大値でなく分布で
 置き直す（現在のfloorは`synthesis_us`と`elapsed_us`で雑音幅を下回っている）。(3) §5.1〜5.3の独立参照と
 §5.9のoffline再投影（別マシン）。
+
+
+## 独立参照による入力一致・状態介入・期限の検査（2026-09-23）
+
+§4.6は報告に「各項の値」と入力ごとの状態を加えると登録しているが、第1段の実装は基準候補と選択候補の
+費用しか出していなかった。独立参照が費用を再計算するには候補ごとの項と入力が要るため、登録どおりの
+報告を追加し、それを読む独立参照を作った。
+
+- 報告。`participation_decision` は `[temporal_onset_comparison]` が `Some` で、かつreportが付くときだけ、
+  決定ごとに一件出る。`now`、`due_frame`、`period_frames`、`width`、`earliest`、係数、`memory`、
+  `own_band_energy`、代理の保持と包絡、footprintの出所・識別・現在の識別・`requested_at`／`received_at`・`D`・
+  16 binの遅延と `power_k`、外部予測の `observed_frame` と `available_through_frame`、格子23点それぞれの
+  `at`・`displacement²`・文脈項の距離と入力・重なり和と16 binの外部energy・費用、選択、`skipped_cycles` と
+  skipの有無を持つ。`body_footprint` は配送された各recordを、置換済みで捨てたかどうかと共に出す。
+  `None` の経路と、reportを付けない実行では何も出さない。
+- 独立参照。`scripts/verify_i11_stage1.py` はRustを読まず、登録の式を書き直して照合する。§5.1は、使った
+  footprintが配送されたrecordと一致すること、代理のpowerとspanが§4.2・§4.3に従うこと、全候補の格子・
+  各項・費用・選択・skip判定の再計算、後に出る `participation_context` が同じ決定を述べること。§5.2は、
+  同じ決定のまま `power_k` だけを代理へ置き換え、選択が変わる決定を数える。§5.3は、未来のrecordを
+  使わないこと、現在の識別と異なるrecordをbodyとして使わず `proxy(stale)` へ落とすこと、置換済みrecordを
+  使わないこと、`available_through_frame` より前の外部energyと窓を使わないこと、予約が残る間に再選択
+  しないこと。整合したreportが全検査を通ることと、7種の違反をそれぞれの検査が捉えることを
+  `tests/test_verify_i11_stage1.py` で確認した。
+- 結果（再現条件）。識別規則の改訂節と同じ4 Voice flow（sine／harmonic／modal、habitat bus）を
+  `body` と `proxy` でrenderし、6本のreportで全検査が通った。各reportの決定は112〜113件、候補2,576〜2,599件、
+  そのうち文脈項が効いた候補2,369件、重なり項が効いた候補2,461件、外部energy 39,376点。§5.2で選択が
+  変わった決定は、sine 0／107、harmonic 19／102、modal 37／107。skip、`proxy(absent)`、`proxy(unsupported)` は
+  この実行に現れず、Rust側の単体testだけが扱う。登録の12条件での実行は未実施。
+- 変更前との一致。本変更の前の実装（`77e07b6`）と比べ、`None` では旧版どうし・新版どうし・旧版と新版の
+  いずれもWAVと `onset` が一致した。`body` でも、habitatとpresentationの両busへ送るharmonic条件で同様に一致した。
+  報告の追加は決定を変えない。
+- 見つかった性質。`body` のrenderは再実行で同じにならない。同じbinaryの再実行で `footprint_received_at` が
+  107件中101件異なり、`proxy(stale)` と `body` が入れ替わる決定もあった。footprintの配送がworkerの実時間に
+  依存するためで、第1段の実装からある性質である。この条件では `onset` は一致したが、habitat専用のharmonic
+  条件では旧版と新版で `onset` が食い違った（受領時刻の揺れで説明できる）。§5.5(a)のように別々の実行を
+  比べる検査はこの揺れを含み、§5.2の反実仮想（同じ決定で `power_k` だけを入れ替える）は含まない。
+- 資源。報告の追加はreport付きの実行だけでhop経路の仕事を増やす。§5.7のreport有りの8組は、本変更の後に
+  取り直す必要がある。A/Aのfloorは `none` どうしなので影響を受けない。

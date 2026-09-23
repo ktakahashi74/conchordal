@@ -634,6 +634,7 @@ pub struct ParticipationClock {
     adsr: Option<crate::life::sound::ToneAdsr>,
     onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     footprint: crate::life::temporal_participation::FootprintTracker,
+    decision_trace: bool,
     gate_index: u64,
 }
 
@@ -674,6 +675,8 @@ impl ParticipationClock {
         policy.set_sound_duration(self.hold_theta / self.base_rate_hz, self.adsr);
         policy.set_onset_comparison(self.onset_comparison);
         policy.set_body_footprint(self.footprint.selected());
+        policy.set_current_identity(self.footprint.identity());
+        policy.set_decision_trace(self.decision_trace);
         let tick = policy.candidate(cursor, ctx.frame_end, allowed, self.forecast.as_ref())?;
         self.pending_prediction = self.outcome_forecast.as_ref().and_then(|forecast| {
             let (start, end, energy) = forecast.energy_window_after(tick)?;
@@ -856,6 +859,7 @@ impl PhonationClock {
                 adsr: None,
                 onset_comparison: None,
                 footprint: Default::default(),
+                decision_trace: false,
                 gate_index: 0,
             })),
         }
@@ -1272,6 +1276,23 @@ impl PhonationEngine {
         if let PhonationClock::Participation(clock) = &mut self.clock {
             clock.onset_comparison = config;
         }
+    }
+
+    pub(crate) fn set_decision_trace(&mut self, enabled: bool) {
+        if let PhonationClock::Participation(clock) = &mut self.clock {
+            clock.decision_trace = enabled;
+        }
+    }
+
+    pub(crate) fn drain_participation_decisions(
+        &mut self,
+    ) -> impl Iterator<Item = crate::life::temporal_participation::ParticipationDecision> + '_ {
+        match &mut self.clock {
+            PhonationClock::Participation(clock) => clock.policy.as_mut(),
+            _ => None,
+        }
+        .into_iter()
+        .flat_map(|policy| policy.drain_decisions())
     }
 
     pub(crate) fn footprint_hold(&self) -> Option<(f32, Option<crate::life::sound::ToneAdsr>)> {

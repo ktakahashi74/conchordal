@@ -2431,6 +2431,9 @@ fn advance_population(
             voice
                 .phonation_engine
                 .set_onset_comparison(cfg.onset_comparison);
+            voice
+                .phonation_engine
+                .set_decision_trace(state.reporter.is_some());
         }
         request_body_footprints(state, cfg.fs, now_tick);
     }
@@ -2508,6 +2511,11 @@ fn advance_population(
                     .drain_participation_predictions()
                     .map(|prediction| (id, prediction)),
             );
+            for decision in voice.phonation_engine.drain_participation_decisions() {
+                report_try(&mut state.reporter, "participation decision", |writer| {
+                    writer.write_participation_decision(id, cfg.fs as u32, &decision)
+                });
+            }
         }
     }
 
@@ -2580,6 +2588,7 @@ fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
 fn route_body_footprints(
     voices: &mut [crate::life::voice::Voice],
     observer: &mut crate::life::action_observation::Observer,
+    reporter: &mut Option<JsonlReporter>,
     now: Tick,
 ) {
     let Some(worker) = observer.footprint_worker() else {
@@ -2587,13 +2596,14 @@ fn route_body_footprints(
     };
     let mut superseded = 0;
     for record in worker.drain_footprints(now) {
-        if let Some(voice) = voices
+        let discarded = voices
             .iter_mut()
             .find(|voice| voice.id() == record.identity.source_id)
-            && voice.phonation_engine.footprint_receive(&record)
-        {
-            superseded += 1;
-        }
+            .is_some_and(|voice| voice.phonation_engine.footprint_receive(&record));
+        superseded += u64::from(discarded);
+        report_try(reporter, "body footprint", |writer| {
+            writer.write_body_footprint(&record, discarded)
+        });
     }
     worker.stats.footprint_superseded += superseded;
 }
@@ -2841,7 +2851,12 @@ fn render_and_route_audio(
                 writer.write_body_default(&record)
             });
         }
-        route_body_footprints(&mut state.pop.voices, observer, now_tick);
+        route_body_footprints(
+            &mut state.pop.voices,
+            observer,
+            &mut state.reporter,
+            now_tick,
+        );
         for record in observer.drain_traces() {
             report_try(&mut state.reporter, "private trace", |writer| {
                 writer.write_private_trace(&record)

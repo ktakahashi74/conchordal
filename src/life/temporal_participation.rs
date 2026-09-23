@@ -32,6 +32,63 @@ pub(crate) struct ParticipationContextPrediction {
     pub(crate) selected_offset: i8,
 }
 
+/// One grid candidate of a traced decision: every cost term and the inputs that fed it.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub(crate) struct CandidateTerms {
+    pub(crate) offset: i8,
+    pub(crate) at: f64,
+    pub(crate) displacement_sq: f32,
+    /// Hellinger distance before `coupling`; `None` when the context term was not applied.
+    pub(crate) context_distance: Option<f32>,
+    pub(crate) pred_external_band_energy: Option<[[f32; 3]; 2]>,
+    /// Overlap sum before `coupling * 6 * s / norm`; `None` when the term was not applied.
+    pub(crate) overlap: Option<f32>,
+    /// `sustained_energy_at(at + delay_k)` for each footprint bin.
+    pub(crate) external_energy: [Option<[f32; 3]>; 16],
+    pub(crate) cost: f32,
+}
+
+/// I11-1 §4.6 report of one configured decision, carrying what an independent reference
+/// needs to recompute every term (§5.1), swap the footprint source (§5.2) and check the
+/// deadlines (§5.3).
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub(crate) struct ParticipationDecision {
+    pub(crate) now: u64,
+    pub(crate) due_frame: f64,
+    pub(crate) period_frames: f64,
+    pub(crate) width: f64,
+    pub(crate) earliest: f64,
+    pub(crate) coupling: f32,
+    pub(crate) overlap_sensitivity: f32,
+    pub(crate) onset_allowed: bool,
+    pub(crate) memory: Option<[[f32; 3]; 2]>,
+    pub(crate) own_band_energy: [f32; 3],
+    pub(crate) sound_hold_sec: f32,
+    /// Attack, decay, sustain level and release of the proxy envelope.
+    pub(crate) sound_adsr: Option<[f32; 4]>,
+    pub(crate) footprint_source: &'static str,
+    pub(crate) footprint_identity: Option<footprint::Identity>,
+    /// The identity of the recipe the Voice would emit at this hop.
+    pub(crate) current_identity: Option<footprint::Identity>,
+    pub(crate) footprint_requested_at: Option<u64>,
+    pub(crate) footprint_received_at: Option<u64>,
+    pub(crate) footprint_d_samples: f64,
+    pub(crate) footprint_truncated: bool,
+    pub(crate) footprint_delay: [f64; 16],
+    pub(crate) footprint_power: [f32; 16],
+    pub(crate) forecast_observed_frame: Option<u64>,
+    pub(crate) forecast_available_through_frame: Option<u64>,
+    /// Offsets `-2..=20` in grid order; `None` below `earliest`.
+    pub(crate) candidates: [Option<CandidateTerms>; 23],
+    pub(crate) reference_cost: f32,
+    pub(crate) selected_offset: i8,
+    pub(crate) selected_at: f64,
+    pub(crate) selected_cost: f32,
+    /// Cycles skipped before this decision; the skip threshold is `1 + skipped_cycles`.
+    pub(crate) skipped_cycles: u32,
+    pub(crate) skipped: bool,
+}
+
 /// What the supplier could deliver for the recipe the Voice would emit now (§4.6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FootprintState {
@@ -47,6 +104,7 @@ pub(crate) enum FootprintState {
 /// `d_samples == 0` marks a record that carries no supported span.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BodyFootprint {
+    pub identity: footprint::Identity,
     pub d_samples: u64,
     pub power: [f64; 16],
     pub truncated: bool,
@@ -62,6 +120,7 @@ impl BodyFootprint {
             footprint::State::Body | footprint::State::BodySilent
         );
         Self {
+            identity: record.identity,
             // An unsupported projection is not a body record, so it lends no span (§4.3).
             d_samples: if supported { record.d_samples } else { 0 },
             power: record.power,
@@ -124,6 +183,10 @@ impl FootprintTracker {
             self.outstanding = Some(identity);
         }
         resent
+    }
+
+    pub(crate) fn identity(&self) -> Option<footprint::Identity> {
+        self.identity
     }
 
     /// Returns true when the record was discarded because its request was superseded.
@@ -193,6 +256,9 @@ pub(crate) struct TemporalParticipation {
     sound_adsr: Option<ToneAdsr>,
     onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     body_footprint: Option<BodyFootprint>,
+    current_identity: Option<footprint::Identity>,
+    trace_decisions: bool,
+    decisions: Vec<ParticipationDecision>,
     rng: SmallRng,
 }
 
@@ -234,6 +300,9 @@ impl TemporalParticipation {
             sound_adsr: None,
             onset_comparison: None,
             body_footprint: None,
+            current_identity: None,
+            trace_decisions: false,
+            decisions: Vec::new(),
             rng,
         }
     }
@@ -285,6 +354,19 @@ impl TemporalParticipation {
     /// Identity and staleness are the supplier's concern; absence falls back to the proxy.
     pub(crate) fn set_body_footprint(&mut self, footprint: Option<BodyFootprint>) {
         self.body_footprint = footprint;
+    }
+
+    pub(crate) fn set_current_identity(&mut self, identity: Option<footprint::Identity>) {
+        self.current_identity = identity;
+    }
+
+    /// Configured decisions are traced only while a reporter can take them.
+    pub(crate) fn set_decision_trace(&mut self, enabled: bool) {
+        self.trace_decisions = enabled;
+    }
+
+    pub(crate) fn drain_decisions(&mut self) -> std::vec::Drain<'_, ParticipationDecision> {
+        self.decisions.drain(..)
     }
 
     /// Periodic participation follows recurrence; renewal keeps its intrinsic scale.
@@ -399,58 +481,64 @@ impl TemporalParticipation {
             };
             // One buffer serves both shapes; the configured path uses its first 16 slots.
             let mut points = [(0.0f64, 0.0f32); 64];
-            let (footprint_bins, footprint_source, footprint_truncated, span_frames) =
-                match self.onset_comparison {
-                    None => {
-                        for (i, point) in points.iter_mut().enumerate() {
-                            let age = (i as f32 + 0.5) * duration / 64.0;
-                            let gain = proxy_gain(age);
-                            *point = (age as f64 * self.fs, gain * gain);
-                        }
-                        (
-                            64u8,
-                            "none",
-                            false,
-                            (f64::from(duration) * self.fs).ceil() as u64,
-                        )
+            let (
+                footprint_bins,
+                footprint_source,
+                footprint_truncated,
+                span_frames,
+                footprint_d_samples,
+            ) = match self.onset_comparison {
+                None => {
+                    for (i, point) in points.iter_mut().enumerate() {
+                        let age = (i as f32 + 0.5) * duration / 64.0;
+                        let gain = proxy_gain(age);
+                        *point = (age as f64 * self.fs, gain * gain);
                     }
-                    Some(config) => {
-                        let record = self.body_footprint;
-                        // I11-1 §5.3: no decision may rest on an observation from its future.
-                        debug_assert!(
-                            record.is_none_or(|record| record.received_at <= now),
-                            "a footprint that arrives after the decision cannot be used"
-                        );
-                        let body = config.footprint == crate::config::FootprintSource::Body;
-                        // A retained span keeps body and proxy comparable bin for bin.
-                        let span = record.filter(|record| record.d_samples > 0);
-                        let (d_samples, truncated) = match span {
-                            Some(record) => (record.d_samples as f64, record.truncated),
-                            None => (f64::from(duration.min(4.0)) * self.fs, duration > 4.0),
+                    (
+                        64u8,
+                        "none",
+                        false,
+                        (f64::from(duration) * self.fs).ceil() as u64,
+                        f64::from(duration) * self.fs,
+                    )
+                }
+                Some(config) => {
+                    let record = self.body_footprint;
+                    // I11-1 §5.3: no decision may rest on an observation from its future.
+                    debug_assert!(
+                        record.is_none_or(|record| record.received_at <= now),
+                        "a footprint that arrives after the decision cannot be used"
+                    );
+                    let body = config.footprint == crate::config::FootprintSource::Body;
+                    // A retained span keeps body and proxy comparable bin for bin.
+                    let span = record.filter(|record| record.d_samples > 0);
+                    let (d_samples, truncated) = match span {
+                        Some(record) => (record.d_samples as f64, record.truncated),
+                        None => (f64::from(duration.min(4.0)) * self.fs, duration > 4.0),
+                    };
+                    for (k, point) in points[..16].iter_mut().enumerate() {
+                        let delay = (k as f64 + 0.5) * d_samples / 16.0;
+                        let power = match record {
+                            Some(record) if body && record.state == FootprintState::Body => {
+                                record.power[k] as f32
+                            }
+                            _ => {
+                                let gain = proxy_gain((delay / fs) as f32);
+                                gain * gain
+                            }
                         };
-                        for (k, point) in points[..16].iter_mut().enumerate() {
-                            let delay = (k as f64 + 0.5) * d_samples / 16.0;
-                            let power = match record {
-                                Some(record) if body && record.state == FootprintState::Body => {
-                                    record.power[k] as f32
-                                }
-                                _ => {
-                                    let gain = proxy_gain((delay / fs) as f32);
-                                    gain * gain
-                                }
-                            };
-                            *point = (delay, power);
-                        }
-                        let source = match (body, record.map(|record| record.state)) {
-                            (false, _) => "proxy(setting)",
-                            (true, None) => "proxy(absent)",
-                            (true, Some(FootprintState::Body)) => "body",
-                            (true, Some(FootprintState::Stale)) => "proxy(stale)",
-                            (true, Some(FootprintState::Unsupported)) => "proxy(unsupported)",
-                        };
-                        (16u8, source, truncated, d_samples.ceil() as u64)
+                        *point = (delay, power);
                     }
-                };
+                    let source = match (body, record.map(|record| record.state)) {
+                        (false, _) => "proxy(setting)",
+                        (true, None) => "proxy(absent)",
+                        (true, Some(FootprintState::Body)) => "body",
+                        (true, Some(FootprintState::Stale)) => "proxy(stale)",
+                        (true, Some(FootprintState::Unsupported)) => "proxy(unsupported)",
+                    };
+                    (16u8, source, truncated, d_samples.ceil() as u64, d_samples)
+                }
+            };
             let footprint = &points[..footprint_bins as usize];
             let own_total: f32 = self.own_band_energy.iter().sum();
             let footprint_mass: f32 = footprint.iter().map(|(_, power)| power).sum();
@@ -458,6 +546,42 @@ impl TemporalParticipation {
                 (last as f64
                     + (self.fs / crate::life::phonation_engine::MAX_ONSET_RATE_HZ as f64).ceil())
                 .max(now as f64)
+            });
+            let mut trace = (self.trace_decisions && self.onset_comparison.is_some()).then(|| {
+                ParticipationDecision {
+                    now,
+                    due_frame: self.due_frame,
+                    period_frames: self.period_frames,
+                    width,
+                    earliest,
+                    coupling: self.coupling,
+                    overlap_sensitivity: self.overlap_sensitivity,
+                    onset_allowed,
+                    memory: self.memory,
+                    own_band_energy: self.own_band_energy,
+                    sound_hold_sec: hold_sec,
+                    sound_adsr: adsr
+                        .map(|a| [a.attack_sec, a.decay_sec, a.sustain_level, a.release_sec]),
+                    footprint_source,
+                    footprint_identity: self.body_footprint.map(|record| record.identity),
+                    current_identity: self.current_identity,
+                    footprint_requested_at: self.body_footprint.map(|record| record.requested_at),
+                    footprint_received_at: self.body_footprint.map(|record| record.received_at),
+                    footprint_d_samples,
+                    footprint_truncated,
+                    footprint_delay: std::array::from_fn(|k| points[k].0),
+                    footprint_power: std::array::from_fn(|k| points[k].1),
+                    forecast_observed_frame: forecast.map(TemporalForecast::observed_frame),
+                    forecast_available_through_frame: forecast
+                        .map(TemporalForecast::available_through_frame),
+                    candidates: [None; 23],
+                    reference_cost: f32::INFINITY,
+                    selected_offset: 0,
+                    selected_at: 0.0,
+                    selected_cost: f32::INFINITY,
+                    skipped_cycles: self.skipped_cycles,
+                    skipped: false,
+                }
             });
             // The exact bodily due time is a candidate; search spacing is not a beat grid.
             for offset in -2..=20 {
@@ -503,6 +627,7 @@ impl TemporalParticipation {
                     })
                 });
                 let mut cost = (displacement * displacement) as f32;
+                let mut context_distance = None;
                 if onset_allowed && let (Some(memory), Some(context)) = (self.memory, context) {
                     let predicted = context.pred_external_band_energy;
                     let a_mass: f32 = memory.iter().flatten().sum();
@@ -520,14 +645,20 @@ impl TemporalParticipation {
                             .sum::<f32>()
                     };
                     cost += self.coupling * distance;
+                    context_distance = Some(distance);
                 }
+                let mut overlap_sum = None;
+                let mut external_energy = [None; 16];
                 if onset_allowed
                     && self.overlap_sensitivity != 0.0
                     && let Some(forecast) = forecast
                 {
                     let mut overlap = 0.0;
-                    for &(delay, power) in footprint {
+                    for (k, &(delay, power)) in footprint.iter().enumerate() {
                         if let Some(energy) = forecast.sustained_energy_at(at + delay) {
+                            if trace.is_some() {
+                                external_energy[k] = Some(energy);
+                            }
                             for (own, other) in self.own_band_energy.into_iter().zip(energy) {
                                 let own = own * power;
                                 overlap += own * other / (own + other + 1e-12);
@@ -537,6 +668,20 @@ impl TemporalParticipation {
                     // The caller forecasts the observed external waveform's energy.
                     cost += self.coupling * 6.0 * self.overlap_sensitivity * overlap
                         / (own_total * footprint_mass).max(1e-12);
+                    overlap_sum = Some(overlap);
+                }
+                if let Some(trace) = trace.as_mut() {
+                    trace.candidates[(offset + 2) as usize] = Some(CandidateTerms {
+                        offset: offset as i8,
+                        at,
+                        displacement_sq: (displacement * displacement) as f32,
+                        context_distance,
+                        pred_external_band_energy: context
+                            .map(|context| context.pred_external_band_energy),
+                        overlap: overlap_sum,
+                        external_energy,
+                        cost,
+                    });
                 }
                 if offset == 0 {
                     reference_cost = cost;
@@ -556,6 +701,14 @@ impl TemporalParticipation {
                 && self.overlap_sensitivity > 0.0
                 && best_cost > 1.0 + self.skipped_cycles as f32
             {
+                if let Some(mut trace) = trace {
+                    trace.skipped = true;
+                    trace.reference_cost = reference_cost;
+                    trace.selected_offset = best_offset;
+                    trace.selected_at = best;
+                    trace.selected_cost = best_cost;
+                    self.decisions.push(trace);
+                }
                 self.skipped_cycles = self.skipped_cycles.saturating_add(1);
                 self.due_frame += self.next_interval();
                 continue;
@@ -575,6 +728,13 @@ impl TemporalParticipation {
                             .saturating_add((4. * self.fs) as u64),
                     ),
                 );
+            }
+            if let Some(mut trace) = trace {
+                trace.reference_cost = reference_cost;
+                trace.selected_offset = best_offset;
+                trace.selected_at = best;
+                trace.selected_cost = best_cost;
+                self.decisions.push(trace);
             }
             self.planned = Some((best, best_context));
         }
@@ -851,6 +1011,11 @@ mod tests {
 
         let mut body = bounded_policy(Some(config));
         body.set_body_footprint(Some(BodyFootprint {
+            identity: footprint::Identity {
+                source_id: 0,
+                body_generation: 0,
+                recipe_hash: [0; 32],
+            },
             d_samples: 300,
             power: [0.0; 16],
             truncated: false,
@@ -960,6 +1125,68 @@ mod tests {
         policy.candidate(100, 1300, true, Some(forecast)).unwrap();
         let (at, context) = policy.planned.unwrap();
         (at, policy.due_frame, policy.period_frames, context.unwrap())
+    }
+
+    #[test]
+    fn a_traced_decision_restates_the_selection_it_made() {
+        let forecast = bounded_forecast();
+        let recipe = bounded_recipe(220.0);
+        let identity = footprint::Identity::new(3, 1, &recipe);
+        let power: [f64; 16] = std::array::from_fn(|k| 1.0 - k as f64 / 32.0);
+        let mut tracker = FootprintTracker::default();
+        tracker.hop(identity, 10, &recipe, |_| true);
+        tracker.receive(&bounded_record(
+            identity,
+            footprint::State::Body,
+            power,
+            300,
+        ));
+
+        let mut policy = bounded_policy(Some(bounded_body_config()));
+        policy.set_body_footprint(tracker.selected());
+        policy.set_current_identity(tracker.identity());
+        policy.set_decision_trace(true);
+        policy.candidate(100, 1300, true, Some(&forecast)).unwrap();
+        let (at, context) = policy.planned.unwrap();
+        let context = context.unwrap();
+        let decisions: Vec<_> = policy.drain_decisions().collect();
+        assert_eq!(decisions.len(), 1);
+        let decision = decisions[0];
+        assert!(!decision.skipped);
+        assert_eq!(decision.selected_at, at);
+        assert_eq!(decision.selected_offset, context.selected_offset);
+        assert_eq!(decision.selected_cost, context.selected_cost);
+        assert_eq!(decision.reference_cost, context.reference_cost);
+        assert_eq!(decision.footprint_source, "body");
+        assert_eq!(decision.footprint_identity, Some(identity));
+        assert_eq!(decision.current_identity, Some(identity));
+        assert_eq!(decision.footprint_received_at, Some(80));
+        assert_eq!(decision.footprint_d_samples, 300.0);
+        assert_eq!(decision.footprint_power, power.map(|p| p as f32));
+        // The selection is the first minimum in grid order, and offset 0 is the reference.
+        let scored: Vec<_> = decision.candidates.iter().flatten().collect();
+        assert!(scored.iter().all(|c| c.overlap.is_some()));
+        let best = scored
+            .iter()
+            .fold(None::<&&CandidateTerms>, |best, c| match best {
+                Some(b) if b.cost <= c.cost => Some(b),
+                _ => Some(c),
+            })
+            .unwrap();
+        assert_eq!(best.offset, decision.selected_offset);
+        assert_eq!(best.cost, decision.selected_cost);
+        let reference = scored.iter().find(|c| c.offset == 0).unwrap();
+        assert_eq!(reference.cost, decision.reference_cost);
+        assert_eq!(reference.at, decision.due_frame.max(decision.earliest));
+
+        // Untraced, or on the unconfigured path, nothing is kept.
+        let mut quiet = bounded_policy(Some(bounded_body_config()));
+        quiet.candidate(100, 1300, true, Some(&forecast)).unwrap();
+        assert_eq!(quiet.drain_decisions().count(), 0);
+        let mut legacy = bounded_policy(None);
+        legacy.set_decision_trace(true);
+        legacy.candidate(100, 1300, true, Some(&forecast)).unwrap();
+        assert_eq!(legacy.drain_decisions().count(), 0);
     }
 
     #[test]

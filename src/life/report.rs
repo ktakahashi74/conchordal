@@ -250,6 +250,18 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         update: &'a crate::life::temporal_participation::ParticipationContextUpdate,
     },
+    ParticipationDecision {
+        voice_id: u64,
+        sample_rate: u32,
+        #[serde(flatten)]
+        decision: &'a crate::life::temporal_participation::ParticipationDecision,
+    },
+    BodyFootprint {
+        /// The Voice discarded the record because its request was superseded.
+        superseded: bool,
+        #[serde(flatten)]
+        record: &'a crate::life::action_candidates::footprint::Record,
+    },
     LocalPredictionError {
         voice_id: u64,
         sample_rate: u32,
@@ -483,6 +495,27 @@ impl JsonlReporter {
             sample_rate,
             update,
         })
+    }
+
+    pub(crate) fn write_participation_decision(
+        &mut self,
+        voice_id: u64,
+        sample_rate: u32,
+        decision: &crate::life::temporal_participation::ParticipationDecision,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::ParticipationDecision {
+            voice_id,
+            sample_rate,
+            decision,
+        })
+    }
+
+    pub(crate) fn write_body_footprint(
+        &mut self,
+        record: &crate::life::action_candidates::footprint::Record,
+        superseded: bool,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::BodyFootprint { superseded, record })
     }
 
     pub(crate) fn write_local_prediction_match(

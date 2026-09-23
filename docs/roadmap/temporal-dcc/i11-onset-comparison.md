@@ -589,3 +589,77 @@ footprint計数（`body` variant、report mode、3反復合計）は次のとお
 下限を宣言すること（未解決、今回も同じ論点が残った）。(2) 反復を増やしてelapsed_us最大値とover_budget_hops
 のばらつきを分離すること（未解決）。(3) 置換済み比率が高い原因の特定と識別規則の改訂は今回**完了**
 （`77e07b6`）。次に残るのは(1)(2)と、§5.1〜5.3の独立参照、§5.9のoffline再投影（Rust側入口が未実装）である。
+
+
+## §5.7の許容にA/A雑音幅の下限を加える（2026-09-23、取得前の登録）
+
+§5.7の登録許容（中央値・p99が±5%、最大の差が1 ms、超過hop数が同数）は、2026-09-22と09-23の測定で
+繰り返し`population_us`を落とした。その欄は絶対値が5〜9 µs台で、相対±5%が0.3 µs程度を意味する。
+許容が機械の雑音より狭いのか、`body`が本当に遅いのかを、結果を見てから許容を緩めて判定すると事後調整に
+なる。そこで**同じ設定どうしの比較（A/A）の差を雑音幅とし、その最大値を許容の下限（floor）に置く**規則を、
+`body`対`none`の取り直しの**前**に登録する。§8の「変更する場合は新しい登録として日付と理由を残す」に従う
+改訂登録である。元の許容は削除せず、判定を併記して残す。
+
+### A/Aの取得
+
+比較の両側とも`None`設定である。取得先`target/i11-stage1-aa-20260923/`の`inputs/config-body.toml`は
+同ディレクトリの`inputs/config-none.toml`のバイト複写で（`plan.json`の`aa_substitution`に両者の
+SHA-256と一致の検証を記録）、`hop_path.py`が出す`tolerance_body_vs_none`は設定が同一の2本の実行の差に
+なる。`acquire.py`と`hop_path.py`は`target/i11-stage1-20260922/`からの無改変の複写である（SHA-256一致を
+検証済み）。範囲は§5.7の登録範囲と同じ16組（8条件＝4身体条件×4／16 Voice、report有無）、交互3反復、
+96実行すべてexit 0・失敗0。生データは`runs-aa.json`、`hop-path-aa.json`、floorの算出は`aa-floor.json`。
+`target/`はgit管理外なので、これらはこの機械の上にだけある。
+
+A/Aは元の許容で16組中6組が不合格になった。**設定が同一なのだから、落ちた欄は許容がその欄の雑音幅より
+狭いことを意味する。**
+
+| 組 | 元の許容で落ちた欄 |
+|---|---|
+| sine-hold-16 report | over_budget_hops（[0,0,0]対[0,0,1]） |
+| sine-flow-16 no-report | over_budget_hops（[0,0,0]対[0,0,1]） |
+| harmonic-flow-4 report | population_us中央値+8.5%、over_budget_hops（[1,0,0]対[0,0,0]） |
+| harmonic-flow-4 no-report | population_us中央値−5.4% |
+| modal-flow-4 report | population_us中央値−9.4%、p99 −13.3% |
+| modal-flow-4 no-report | population_us p99 −11.3% |
+
+### floorの定義と値
+
+floorは欄ごとに、16組のA/A差の絶対値の**最大値**とする。時間欄は`|A − A|`をµsで、超過hop数は
+3反復の合計の差`|Σbody − Σnone|`を件数で取る（元の許容はsort済みlistの同値比較なので、差を数える
+規則をここで定義しておく）。
+
+| 欄 | floor | 最大を与えた組 |
+|---|---|---|
+| population_us 中央値 | 1.270 µs | sine-flow-16 report |
+| population_us p99 | 70.181 µs | modal-flow-4 report |
+| population_us 最大 | 468.202 µs | sine-flow-16 report |
+| synthesis_us 中央値 | 62.571 µs | sine-flow-16 report |
+| synthesis_us p99 | 73.500 µs | harmonic-flow-16 no-report |
+| synthesis_us 最大 | 584.653 µs | modal-flow-16 no-report |
+| elapsed_us 中央値 | 71.580 µs | modal-flow-16 report |
+| elapsed_us p99 | 127.040 µs | harmonic-flow-16 no-report |
+| elapsed_us 最大 | 648.174 µs | sine-hold-16 report |
+| over_budget_hops | 1 hop | sine-hold-16 report |
+
+### 登録する規則
+
+`body`対`none`の判定を、欄ごとに次で行う。
+
+- 中央値・p99: `|body − none| <= max(0.05 × none, floor)`
+- 最大: `|body − none| <= max(1 ms, floor)`
+- 超過hop数: `|Σbody − Σnone| <= floor`
+
+floorが効くのは`0.05 × none`がfloorを下回る欄、つまり絶対値の小さい欄だけである。`population_us`の
+中央値（`none`が5 µs台なら5%は0.3 µs）ではfloorが効き、`elapsed_us`の中央値（`none`が2 ms台なら5%は
+100 µs）では従来どおり5%が効く。最大の3欄はfloorがいずれも1 ms未満なので、1 msが引き続き効く。
+
+### この規則の限界
+
+- floorは**この機械・この時点・この16組**での雑音幅である。別の機械、別の負荷、別の条件集合では
+  取り直す。この文書の値を普遍的な下限として他所へ持ち出さない。
+- 3反復1回分のA/Aから取った最大値であり、雑音幅の上界を証明したものではない。A/Aを増やせばfloorは
+  上がりうる。
+- 組ごとではなく16組全体の最大を取っているので、静かな組にはfloorが緩すぎる。組ごとのfloorは
+  データが足りないため置かない。
+- floorはあくまで「この差は雑音と区別できない」の線であって、`body`が`none`より速い保証ではない。
+  floor以内の差は**合否の判定に使わない**という意味しか持たない。

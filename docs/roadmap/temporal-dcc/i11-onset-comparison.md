@@ -1192,3 +1192,62 @@ harmonic-flow-4 42.7 ms、harmonic-flow-16 85.3 ms。これまでの取得と同
 §5.9はRust側の入口が入り（`12bb02b`）、再現条件では通ったが、登録12条件での取得が未実施である。
 §5.4bの凍結packetの再評価も未実施のまま。`own_us`による判定は、機構がhop経路に加える負荷を見る
 という§5.7の趣旨に沿わせたものであり、解析待ちが増える事実そのものを無くしたわけではない。
+
+
+## §5.9を登録12条件で取得する（2026-09-23）
+
+`12bb02b`の入口を、リポジトリ化した`registration.json`（`fe42afc`）の12条件へ当てた。取得は
+`CONCHORDAL_I11_GAP_INPUTS`／`_OUTPUT`を渡した ignored test `acquire_representative_gap`（`029795c`の
+ソース、`[profile.dev]` の `opt-level = 1` で192.6秒、test ok）。出力は`target/i11-gap-20260923/`
+（条件ごとに`report.jsonl`と`gap.jsonl`、計約780 MB）。集計は
+`scripts/summarize_i11_representative_gap.py`で、`summary.json`に置いた。§5.9は合否ではなく分布の
+報告であり、A1の材料である。
+
+### 件数
+
+投影できたonsetは**3,390件**で、`coherent_energies`に`None`を含む機会（`excluded_unsupported_bin`）は
+**0件**だった。`no_decision` 84件はsine-holdの3条件（4＋16＋64）で、発音機会が無く決定が出ない条件である。
+`overlap_not_applied` 39件は、選択候補に重なり項が適用されていなかった決定で、`proxy(absent)`の
+39件と一致する（各Voiceの最初の決定にはfootprintが無い）。この39件は`power_gap`だけが出て、
+`overlap_gap`と`term_gap`は算出されない。
+
+footprint源別の投影件数は`body` 3,342、`proxy(absent)` 39、`proxy(stale)` 9。
+
+### `body`（3,342件）の分布
+
+| 素材 | 条件 | `power_gap` 中央値／p95／最大 | `overlap_gap` 最大 | `term_gap` 最大 |
+|---|---|---|---|---|
+| sine | flow-4／16／64 | 2.64e-2／3.67e-2／3.96e-2<br>2.69e-2／3.87e-2／4.30e-2<br>2.73e-2／4.23e-2／5.26e-2 | 8.88e-4<br>5.80e-4<br>3.24e-4 | 1.51e-3<br>1.52e-3<br>1.66e-3 |
+| harmonic | flow-4／16／64 | 8.62e-2／9.77e-2／1.00e-1<br>8.70e-2／1.05e-1／1.31e-1<br>8.70e-2／1.07e-1／1.34e-1 | 3.26e-3<br>1.35e-3<br>5.81e-4 | 1.08e-2<br>1.29e-2<br>1.16e-2 |
+| modal | flow-4／16／64 | 2.63e-3／1.03e-2／1.09e-2<br>2.28e-3／9.35e-3／1.77e-2<br>2.31e-3／1.12e-2／2.22e-2 | 2.13e-6<br>1.96e-6<br>1.15e-6 | 2.36e-4<br>2.99e-4<br>1.01e-3 |
+
+素材による差が大きい。**代表footprintが実際に鳴ったtoneを最もよく追うのはmodal**（`power_gap`中央値
+2.3e-3）で、**最も外れるのはharmonic**（同8.7e-2、最大1.34e-1）。sineは中間（2.7e-2）。Voice数を増やしても
+中央値はほとんど動かず、最大だけが伸びる。
+
+`12bb02b`の再現条件（4 Voice flow、habitat bus）では`power_gap`最大2.2e-2・`term_gap`最大7.0e-3だったので、
+**登録12条件はそれより厳しい**（`body`で`power_gap`最大1.34e-1、`term_gap`最大1.29e-2）。再現条件の値を
+登録条件の代表値として読まない。
+
+### 代理に落ちた決定（48件）
+
+| 源 | 件数 | `power_gap`（sine／harmonic／modal） |
+|---|---|---|
+| `proxy(absent)` | 39 | 1.09e-1〜1.12e-1／7.78e-1〜7.80e-1／1.00 |
+| `proxy(stale)` | 9 | 1.90e-1〜1.95e-1／6.51e-1〜6.76e-1／9.97e-1 |
+
+代理（ADSRの包絡）と実際のtoneの差は、`body`より1〜3桁大きい。modalではほぼ1.0、つまり16 binの
+形がまったく違う。`proxy`のときに費用へ入る`power_k`が実条件をほとんど表していないということであり、
+`proxy`を基準候補として使う§4.3の設計そのものの限界を示す。件数は48/3,390（1.4%）に留まる。
+
+`proxy(stale)` 9件の`overlap_gap`と`term_gap`はいずれも厳密に0だった。選択候補の外部energyが全ゼロの
+窓で起きた決定のためで（48要素すべて0、`overlap`も0.0と確認）、実側・代表側の`Ov`がともに0になる。
+重なり項が効かない窓での差なので、0であること自体に意味は無い。
+
+### 限界
+
+- offlineの最短配送を仮定した取得である（§4.8のoffline改訂）。liveの受領遅延は含まず、
+  `proxy(absent)`／`proxy(stale)`の比率もliveより低い。代理の`power_gap`が大きいことの影響は、
+  liveではこの48件より広い範囲に及びうる。
+- 実側も発行時点の凍結で、発行後の振幅更新と残存toneとの干渉は含まない（§5.9の定義どおり）。
+- 分布の報告であって合否ではない。この差を許容するかはA1の聴取で判断する。

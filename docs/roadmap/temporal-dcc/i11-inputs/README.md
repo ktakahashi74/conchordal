@@ -17,8 +17,9 @@
 | `api_effect.py` | §5.5の判定（`body` 対 `proxy`、`body` 対 `none`） |
 | `hop_path.py` | §5.7の統計と元の許容による判定 |
 | `aa_floor_check.py` | §5.7をA/A floorの規則で判定する（floorのJSONを `--floor` で渡す） |
+| `own_us_check.py` | §5.7の`elapsed_us`を`own_us = elapsed_us - analysis_wait_us - listener_wait_us`で判定する。`floor`でA/A passからfloorを作り、`judge`で判定する |
 | `bit_identity.py` | §5.4a（`None` が基準commitとbit一致するか） |
-| `representative_gap.py` | §5.9の集計（Rust側の再投影が入るまでは骨組み） |
+| §5.9の取得と集計 | ここには置かない。取得は `src/runtime/body_profiles/representative_gap.rs` の ignored test `acquire_representative_gap`（`registration.json` を読む）、集計は `scripts/summarize_i11_representative_gap.py`。下の「§5.9」の手順を使う |
 | `register.py` | 入力を凍結して `plan.json` を書いた script。履歴として置く。再実行しない |
 
 `inputs_sha256` の**値は2026-09-22に凍結したものそのまま**で、キーだけを新しい場所へ向け直した
@@ -52,21 +53,30 @@ python3 $D/aa_floor_check.py --root "$OUT" --floor <A/A floorのJSON>
 `plan.json` の `inputs_sha256` に載っている場所なので、`--inputs` で別の場所を指した場合は
 検証した先と実行した先が食い違う。既定のまま使うこと。
 
-§5.9の再投影は環境変数で入出力を渡す。出力ディレクトリは**存在しない**ことが要る。
+### §5.9（代表条件と実条件の差）
+
+取得は `src/runtime/body_profiles/representative_gap.rs` の ignored test で、`registration.json` の12条件を
+読む。入出力は環境変数で渡し、**出力ディレクトリは存在しないこと**が要る（test が自分で作る）。集計は
+`scripts/summarize_i11_representative_gap.py` で、`gap.jsonl` と `report.jsonl` を突き合わせて
+`power_gap`・`overlap_gap`・`term_gap` の分布をfootprint源別に出す。合否は付けない（分布の報告）。
 
 ```sh
+OUT=target/i11-gap-$(date +%Y%m%d)
 CONCHORDAL_I11_GAP_INPUTS=$PWD/docs/roadmap/temporal-dcc/i11-inputs \
-CONCHORDAL_I11_GAP_OUTPUT=$PWD/target/i11-gap-$(date +%Y%m%d) \
-  cargo test --release acquire_representative_gap -- --ignored --nocapture
-python3 scripts/summarize_i11_representative_gap.py <出力ディレクトリ>
+CONCHORDAL_I11_GAP_OUTPUT=$PWD/$OUT \
+  cargo test --lib acquire_representative_gap -- --ignored --nocapture
+python3 scripts/summarize_i11_representative_gap.py "$OUT" --output "$OUT/summary.json"
 ```
+
+`[profile.dev]` は `opt-level = 1` なので、12条件の取得は `--release` なしで約3分である（2026-09-23 実測。
+出力は約780 MB）。
 
 ## script に加えた変更（2026-09-23、ロジックは変えていない）
 
 `target/<dir>/` に置かれている前提のパス処理だけを直した。測定と判定の中身は触っていない。
 
 - リポジトリ根を `Cargo.toml` を上へ探して決める（旧: script の2つ上のディレクトリ）。`acquire.py`・`register.py`
-- `--plan` を追加（既定 `<root>/plan.json`）。`acquire.py`・`api_effect.py`・`hop_path.py`・`bit_identity.py`・`representative_gap.py`
+- `--plan` を追加（既定 `<root>/plan.json`）。`acquire.py`・`api_effect.py`・`hop_path.py`・`bit_identity.py`
 - `--inputs` を追加（既定 `<plan のディレクトリ>/inputs`）。`acquire.py`
 - `--floor` を必須に、`--hop-path` の既定を `<root>/hop-path.json` に。`aa_floor_check.py`
 

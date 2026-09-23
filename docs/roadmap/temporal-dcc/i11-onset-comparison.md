@@ -1251,3 +1251,26 @@ footprint源別の投影件数は`body` 3,342、`proxy(absent)` 39、`proxy(stal
   liveではこの48件より広い範囲に及びうる。
 - 実側も発行時点の凍結で、発行後の振幅更新と残存toneとの干渉は含まない（§5.9の定義どおり）。
 - 分布の報告であって合否ではない。この差を許容するかはA1の聴取で判断する。
+
+
+## §5.4bを対の再実行で確かめる（2026-09-23、取得前の登録）
+
+§5.4bは「同一の凍結packetを基準版と新版で再評価し、record内容をbit比較する」と登録した。packetには
+共有table（`consumer::Publication`）、外部予測、traceなど約10種の型が入り、直列化と読み戻しの仕組みが
+無い。基準commit側にも評価の入口を移植する必要がある。同じ確かさを、次の方法で得る。§8に従う改訂登録である。
+
+- 同値の根拠。候補energyの評価関数（`evaluate`、`evaluate_scheduled`、`project_window`、`ratios`、
+  `release_trace`）は、I11直前の `103a32f` から本文が変わっていない。差分は、workerのループから
+  `process_packet` への切り出し（同値。packet返却の成否を戻り値で返す）と、footprint用queueの配線に限られる。
+  `None` ではhopごとの状態が基準とbit一致する（§5.4a）ので、両版は同じpacketを作る。
+- 方法。基準（`32a6389`）と新版（取得時のHEAD）で、登録12条件を `config-none.toml`、offline render、
+  report付きで実行する。`body_candidate_energy` を
+  `(source_id, source_generation, tone_id, issued_at, decision_at, scope)` で突き合わせ、実時間の欄
+  `processing_us` 以外の全欄をbit比較する（`scripts/compare_i11_candidate_records.py`）。片側にしか無い
+  recordは、候補workerの飽和による採否の揺れとして件数だけを数え、比較しない。
+- 合格。12条件すべてで、突き合わせたrecordが全件一致し、突き合わせが0件の条件が無いこと。
+- 予備確認。`77e07b6` の版と `aebae2b` 時点の版を、再現条件3身体の `None` で比べた。突き合わせた345件は
+  全件一致し、片側にしか無いrecordは162件だった。scriptのtestは
+  `tests/test_compare_i11_candidate_records.py`。
+- 基準の公開。基準commit `32a6389` はblancheのローカルにしか無いので、タグ `i11-stage1-baseline` として
+  公開し、別のマシンでも基準binaryを作れるようにする。

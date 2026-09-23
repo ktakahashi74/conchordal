@@ -19,6 +19,7 @@
 | `aa_floor_check.py` | §5.7をA/A floorの規則で判定する（floorのJSONを `--floor` で渡す） |
 | `own_us_check.py` | §5.7の`elapsed_us`を`own_us = elapsed_us - analysis_wait_us - listener_wait_us`で判定する。`floor`でA/A passからfloorを作り、`judge`で判定する |
 | `bit_identity.py` | §5.4a（`None` が基準commitとbit一致するか） |
+| `scripts/compare_i11_candidate_records.py`（リポジトリ直下の `scripts/`） | §5.4b。基準版と新版の `None` のreport対で、候補record（`body_candidate_energy`）を突き合わせ、`processing_us` 以外の全欄をbit比較する |
 | §5.9の取得と集計 | ここには置かない。取得は `src/runtime/body_profiles/representative_gap.rs` の ignored test `acquire_representative_gap`（`registration.json` を読む）、集計は `scripts/summarize_i11_representative_gap.py`。下の「§5.9」の手順を使う |
 | `register.py` | 入力を凍結して `plan.json` を書いた script。履歴として置く。再実行しない |
 

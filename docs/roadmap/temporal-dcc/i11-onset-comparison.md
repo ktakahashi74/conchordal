@@ -1421,8 +1421,10 @@ pushした。以後、基準binaryは `git worktree add <dir> i11-stage1-baselin
 2. §5.7の最終取得について、登録した1 passの規則での判定、待ちの中央値・p99・最大、返却遅延のp99・最大を
    補う。
 3. §5.5(a)について、`body` と `proxy` で最初に選択が分かれた決定を条件ごとに取り出し、その決定の入力
-   （`D`、外部energy、`memory`、係数）が一致し、違いが `power_k` だけであることを示す。§5.5(b)
-   （`Some` 対 `None` の参考比較）を記録する。
+   （`D`、外部energy、`memory`、係数）が一致し、違いが `power_k` だけであることを示す
+   （`scripts/locate_i11_first_divergence.py`。再現条件の3身体では、harmonicとmodalの最初の分岐で
+   `power_k` 以外の入力はすべて一致し、sineは分岐しなかった）。§5.5(b)（`Some` 対 `None` の参考比較）を
+   記録する。
 4. §5.9の `overlap_gap` と `term_gap` の中央値・p95を表に加え、`body` と代理を分けた母集団の表にする。
 5. 再現性の確認の節（modal-flow-4）の「28種のうち24種が一致」と「6種が不一致」の数の矛盾（24＋6＝30）を、
    元の出力から数え直して訂正する。

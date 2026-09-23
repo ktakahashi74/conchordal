@@ -15,6 +15,7 @@
 | `registration.json` | §5.9のoffline再投影用。`src/runtime/body_profiles/representative_gap.rs` の ignored test が読む |
 | `acquire.py` | 取得。12条件 × variant × （render／instrument report有無） |
 | `api_effect.py` | §5.5の判定（`body` 対 `proxy`、`body` 対 `none`） |
+| `scripts/locate_i11_first_divergence.py`（リポジトリ直下の `scripts/`） | §5.5(a)。`body` と `proxy` のreport対で、時刻順に最初に選択が分かれた決定を取り出し、`power_k` 以外に違う入力があれば列挙する |
 | `hop_path.py` | §5.7の統計と元の許容による判定 |
 | `aa_floor_check.py` | §5.7をA/A floorの規則で判定する（floorのJSONを `--floor` で渡す） |
 | `own_us_check.py` | §5.7の`elapsed_us`を`own_us = elapsed_us - analysis_wait_us - listener_wait_us`で判定する。`floor`でA/A passからfloorを作り、`judge`で判定する |

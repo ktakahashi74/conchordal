@@ -2608,7 +2608,7 @@ fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
 }
 
 /// Route returned footprints to the Voice that asked for them (I11-1 §4.2).
-/// One outstanding request per Voice keeps the reply queue within its capacity.
+/// A reply the full queue dropped releases the request, and the Voice resends it next hop.
 fn route_body_footprints(
     voices: &mut [crate::life::voice::Voice],
     observer: &mut crate::life::action_observation::Observer,
@@ -2630,6 +2630,17 @@ fn route_body_footprints(
         });
     }
     worker.stats.footprint_superseded += superseded;
+    let mut released = 0;
+    for identity in worker.drain_released_footprints() {
+        if let Some(voice) = voices
+            .iter_mut()
+            .find(|voice| voice.id() == identity.source_id)
+            && voice.phonation_engine.footprint_release(identity)
+        {
+            released += 1;
+        }
+    }
+    worker.stats.footprint_released += released;
 }
 
 /// Emit per-hop JSONL report records. No-op without a reporter.

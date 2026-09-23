@@ -691,6 +691,40 @@ mod tests {
     }
 
     #[test]
+    fn every_accepted_footprint_returns_or_is_released() {
+        for deterministic in [false, true] {
+            let mut worker = Worker::new();
+            if deterministic {
+                worker.deliver_footprints_deterministically();
+            }
+            let accepted = (0..VOICES * 2)
+                .filter(|_| worker.request_footprint(request(recipe(BodyKind::Sine, 24000))))
+                .count();
+            // Nothing drains while the worker fills the reply queue, so replies may drop.
+            assert!(poll_until(&mut worker, |w| {
+                w.stats.footprint_completed == accepted as u64
+            }));
+            let returned = worker.drain_footprints(100).count();
+            let released = worker.drain_released_footprints().count();
+            // The undrained reply queue holds exactly its capacity; the rest were dropped.
+            assert_eq!(
+                returned,
+                accepted.min(VOICES),
+                "deterministic={deterministic}"
+            );
+            assert_eq!(
+                returned + released,
+                accepted,
+                "deterministic={deterministic}"
+            );
+            // A drop is counted before its notice is sent, so the notices settle the count.
+            worker.poll();
+            assert_eq!(released as u64, worker.stats.footprint_output_dropped);
+            worker.finish();
+        }
+    }
+
+    #[test]
     fn deterministic_delivery_returns_every_accepted_request_at_the_asking_hop() {
         let mut worker = Worker::new();
         worker.deliver_footprints_deterministically();

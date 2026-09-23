@@ -1319,6 +1319,17 @@ impl PhonationEngine {
         }
     }
 
+    /// Returns true when this Voice was waiting for the dropped reply.
+    pub(crate) fn footprint_release(
+        &mut self,
+        identity: crate::life::action_candidates::footprint::Identity,
+    ) -> bool {
+        match &mut self.clock {
+            PhonationClock::Participation(clock) => clock.footprint.release(identity),
+            _ => false,
+        }
+    }
+
     /// Returns true when the record was discarded because its request was superseded.
     pub(crate) fn footprint_receive(
         &mut self,

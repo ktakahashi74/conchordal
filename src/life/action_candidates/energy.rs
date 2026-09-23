@@ -746,6 +746,7 @@ pub(crate) struct Stats {
     /// Consumer-side bookkeeping (I11-1 §4.2), counted by the Voice that asked.
     pub footprint_superseded: u64,
     pub footprint_resent: u64,
+    pub footprint_released: u64,
 }
 
 pub(crate) struct Worker {
@@ -755,6 +756,10 @@ pub(crate) struct Worker {
     output: Receiver<Record>,
     footprint_input: Option<Sender<footprint::Request>>,
     footprint_output: Receiver<footprint::Record>,
+    /// Identities whose record the full reply queue dropped (I11-1 §4.2).
+    footprint_dropped: Receiver<footprint::Identity>,
+    /// Drop notices taken while a deterministic drain waited, held for the next release.
+    footprints_released: Vec<footprint::Identity>,
     /// Offline renders wait for every accepted footprint at the hop that asked (I11-1).
     deterministic_footprints: bool,
     footprints_in_flight: usize,
@@ -844,6 +849,7 @@ impl Worker {
         let (tx, output) = bounded(CAPACITY);
         let (footprint_input, footprint_rx) = bounded(crate::temporal_cognition::body::VOICES);
         let (ftx, footprint_output) = bounded(crate::temporal_cognition::body::VOICES);
+        let (dropped_tx, footprint_dropped) = bounded(crate::temporal_cognition::body::VOICES);
         for _ in 0..CAPACITY {
             recycle
                 .send(Box::new(Packet {
@@ -866,8 +872,10 @@ impl Worker {
             let handle_footprint = |request: footprint::Request| {
                 let record = footprint::compute(&request);
                 shared[4].fetch_add(1, Ordering::Relaxed);
-                if ftx.try_send(record).is_err() {
+                if let Err(full) = ftx.try_send(record) {
                     shared[5].fetch_add(1, Ordering::Relaxed);
+                    // The asking Voice releases its outstanding request on this notice.
+                    let _ = dropped_tx.try_send(full.into_inner().identity);
                 }
             };
             let mut pending: Option<Box<Packet>> = None;
@@ -927,6 +935,8 @@ impl Worker {
             output,
             footprint_input: Some(footprint_input),
             footprint_output,
+            footprint_dropped,
+            footprints_released: Vec::with_capacity(crate::temporal_cognition::body::VOICES),
             deterministic_footprints: false,
             footprints_in_flight: 0,
             handle: Some(handle),
@@ -1001,12 +1011,19 @@ impl Worker {
     pub fn drain_footprints(&mut self, now: u64) -> impl Iterator<Item = footprint::Record> + '_ {
         std::iter::from_fn(move || {
             let mut record = if self.deterministic_footprints {
-                // One outstanding request per Voice keeps the reply queue from dropping,
-                // so every accepted request comes back.
-                if self.footprints_in_flight == 0 {
-                    return None;
+                // Every accepted request either returns or is dropped with a notice.
+                loop {
+                    if self.footprints_in_flight == 0 {
+                        return None;
+                    }
+                    select! {
+                        recv(self.footprint_output) -> record => break record.ok()?,
+                        recv(self.footprint_dropped) -> identity => {
+                            self.footprints_in_flight -= 1;
+                            self.footprints_released.push(identity.ok()?);
+                        }
+                    }
                 }
-                self.footprint_output.recv().ok()?
             } else {
                 self.footprint_output.try_recv().ok()?
             };
@@ -1014,6 +1031,21 @@ impl Worker {
             record.received_at = Some(now);
             Some(record)
         })
+    }
+
+    /// Requests whose record was dropped; the Voice clears its outstanding request and resends.
+    pub fn drain_released_footprints(&mut self) -> impl Iterator<Item = footprint::Identity> + '_ {
+        let Self {
+            footprint_dropped,
+            footprints_released,
+            footprints_in_flight,
+            ..
+        } = self;
+        footprints_released
+            .drain(..)
+            .chain(footprint_dropped.try_iter().inspect(|_| {
+                *footprints_in_flight = footprints_in_flight.saturating_sub(1);
+            }))
     }
     pub fn finish(&mut self) {
         self.input.take();

@@ -189,6 +189,17 @@ impl FootprintTracker {
         self.identity
     }
 
+    /// The reply to `identity` was dropped: clear the outstanding request so the next hop
+    /// resends. Returns true when this tracker was waiting for it.
+    pub(crate) fn release(&mut self, identity: footprint::Identity) -> bool {
+        if self.outstanding != Some(identity) {
+            return false;
+        }
+        self.outstanding = None;
+        self.superseded = false;
+        true
+    }
+
     /// Returns true when the record was discarded because its request was superseded.
     pub(crate) fn receive(&mut self, record: &footprint::Record) -> bool {
         let Some(outstanding) = self.outstanding.take() else {
@@ -1187,6 +1198,36 @@ mod tests {
         legacy.set_decision_trace(true);
         legacy.candidate(100, 1300, true, Some(&forecast)).unwrap();
         assert_eq!(legacy.drain_decisions().count(), 0);
+    }
+
+    #[test]
+    fn a_dropped_reply_releases_the_request_and_the_next_hop_resends_it() {
+        let recipe = bounded_recipe(220.0);
+        let identity = footprint::Identity::new(13, 1, &recipe);
+        let other = footprint::Identity::new(13, 1, &bounded_recipe(330.0));
+        let mut tracker = FootprintTracker::default();
+        let mut sent = 0;
+        assert!(!tracker.hop(identity, 10, &recipe, |_| {
+            sent += 1;
+            true
+        }));
+        // An outstanding request is not repeated.
+        assert!(!tracker.hop(identity, 20, &recipe, |_| {
+            sent += 1;
+            true
+        }));
+        assert_eq!(sent, 1);
+        // Only the identity the Voice is waiting for is released, once.
+        assert!(!tracker.release(other));
+        assert!(tracker.release(identity));
+        assert!(!tracker.release(identity));
+        // The next hop resends it and reports the resend.
+        assert!(tracker.hop(identity, 30, &recipe, |_| {
+            sent += 1;
+            true
+        }));
+        assert_eq!(sent, 2);
+        assert_eq!(tracker.selected(), None);
     }
 
     #[test]

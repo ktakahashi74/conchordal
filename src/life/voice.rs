@@ -1082,14 +1082,15 @@ impl Voice {
         Some(crate::life::action_candidates::footprint::Recipe {
             body: self.body_snapshot(),
             freq_hz: self.body.base_freq_hz(),
-            amp: self.compute_target_amp(),
             hold: if matches!(phonation_mode, PhonationMode::Hold) {
                 Tick::MAX
             } else {
                 (f64::from(hold_sec) * f64::from(fs)).round() as Tick
             },
             adsr,
-            modulator: self.articulation.render_modulator_spec(phonation_mode),
+            modulator: crate::life::action_candidates::footprint::representative_modulator(
+                self.articulation.render_modulator_spec(phonation_mode),
+            ),
             smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
             fs,
         })

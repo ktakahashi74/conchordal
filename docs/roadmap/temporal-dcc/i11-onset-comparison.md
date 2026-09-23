@@ -151,7 +151,7 @@ s   = overlap_sensitivity（呼び出し元が0.8で固定）
   平行移動する。onset時刻ごとのphase seedの違い、実際のkick強度、残存toneとの干渉、DroneSwayの
   rhythms依存は含めない。宣言した近似である。
 
-識別と再利用。footprint recordは `(source_id, body_generation, recipe_hash)` で識別する。`recipe_hash` は
+識別と再利用（2026-09-22に[改訂](#識別規則の改訂2026-09-22)）。footprint recordは `(source_id, body_generation, recipe_hash)` で識別する。`recipe_hash` は
 代表toneの生成入力の全て、すなわち身体snapshotの全field、`amp` と `freq_hz` のf32 bit、代表hold（sample）、
 ADSRの4値のbit（`None` は別符号）、modulator spec、`smoothing_tau_sec` のbit、代表kick `1.0`、
 代表seed、`fs` のSHA-256とする。代表値を固定したことで生成入力は識別に全て含まれ、recordは識別が
@@ -423,3 +423,60 @@ Opus agentに委譲して取得した。scriptの修正はなく、成果物は 
 識別を意図どおり「recipe変更時だけ」にすること。(3)は登録の識別規則の見直しになるため、変更する場合は
 新しい登録として残す。§5.1〜5.3の独立参照と§5.9の再投影は未実施。
 
+
+
+## 識別規則の改訂（2026-09-22）
+
+§5.7で置換済み要求が56〜88%と高かった原因を特定し、§4.2の識別規則を改める。§8の「変更する場合は
+新しい登録として日付と理由を残す」に従う改訂登録である。§4.2の本文は改訂前の登録として残す。
+
+- 原因。`Voice::footprint_recipe` が組むrecipeに、発音中の状態としてhopごとに動く値が二つ入っていた。
+  一時計測（4 Voice flow、sine／harmonic／modal、各4,760の連続hop対）で前hopから変わった欄は、modulatorの
+  `initial_env_level` が4,642（97.5%）、`amp` が350〜506、`initial_state` が214だった。`freq_hz`（3〜7）、
+  `hold`・`adsr`（各4）は実際のrecipe変更である。`initial_env_level`／`initial_state` はentrained包絡の現在値、
+  `amp` は `compute_target_amp()`（`body.amp × gate × release × vitality`）である。返却遅延（数hop）より短い
+  周期で識別が変わるため、要求の大半が返却前に置換済みになっていた。
+- 包絡の現在値はfootprintに届かない。代表toneは `T0` にkick 1.0を予約し、`RenderModulator::kick_planned` が
+  包絡を `(Attack, 0)` から始め直す。予測側の `ControlForecast::gain_at` もkick以降は `(Attack, 0)` から数え、
+  初期値を読まない。autonomous pulseの位相は `AmplitudeModel` に入らない。`initial_state`／
+  `initial_env_level`／`phase_0_1` だけを変えたrecipeのrecordは、3身体とも `energies`・`d_samples`・`state` が
+  bit一致した（test `the_live_envelope_state_moves_neither_the_footprint_nor_the_pinned_identity`）。
+- `amp` は倍率としてだけ働く。`amp` を0.61倍・1.7倍にすると `energies` は `amp²` 倍になり、正規化後の `power` の
+  差は最大1.5e-14（丸め）、`d_samples` と `state` は一致した。footprintは `power_k = E_k / max_k E_k` だけを
+  使うので、`amp` はfootprintの値を変えずに識別だけを変えていた。
+
+改訂内容。
+
+1. modulatorの代表化。`EntrainPulse` の `initial_state = Idle`、`initial_env_level = 0`、autonomous pulseの
+   `phase_0_1 = 0` に固定してから識別と計算に使う（`footprint::representative_modulator`）。recordの値は
+   変わらない（上記のbit一致）。`SeqGate` はspecに現在値を持たず、kickでtimerが戻るので変更しない。
+   `DroneSway.phase` はkickで戻らず予測に効くため、生成入力として残す（下記の限界）。
+2. 代表振幅。recipeから `amp` を外し、代表値 `1.0` を置く。代表kickと同じく固定した代表値として
+   `representative.amp` に記録する。§4.2の「`amp` と `freq_hz` のf32 bit」は「`freq_hz` のf32 bitと代表振幅
+   1.0」と読み替える。
+3. 「`Tone::from_parts` が `None` を返す場合（amp 0、非有限値）は `unsupported`」のうちamp 0は、身体の
+   `amp_scale = 0` の場合だけになる。gate・release・vitalityが0の間も、footprintは身体と包絡から作る。
+   onsetの発行は従来どおり `target_amp > AMP_EPS` で止まるので、振幅0のVoiceが発音することはない。
+4. 変更は `footprint_recipe` の中、`footprint_hold()?` より後だけにある。`None`／`proxy` の経路はここを
+   通らないので変わらない。`body` の経路は、recordの値が丸め差を除いて同じまま受け取れるrecordが増えるため、
+   `body`／`proxy(stale)` の選択比率が変わり、WAVも変わる。§5.5・§5.7の既存の測定値は改訂前の実装のものである。
+
+測定（再現条件）。登録の12条件の入力（`target/i11-stage1-20260922/`）は今回の作業環境に無いため、同じ構成の
+再現条件を別に作った。`temporal_mode("observe")`、`[temporal_body]` は恒等尺度、
+`[temporal_onset_comparison] footprint = "body"`。`sine()`／`harmonic()`／`modal()` に
+`.flow().cycles(3).adsr(0.03, 0.3, 0.5, 0.7)` を付け、`consonance(220, 880)` へ4／16 Voiceを12秒置く。
+`conchordal --nogui --play=false --profile` の `candidate_energy` 計数を各3反復した。置換済み／要求の比率は次のとおり。
+
+- 改訂前。4 Voiceで98〜99%（要求637〜1,331）、16 Voiceで86〜99%（要求1,890〜4,143）。
+- 改訂1だけ。4 Voiceで69〜80%（要求48〜69）、16 Voiceで73〜84%（要求516〜680）。
+- 改訂1と2。4 Voiceで0〜18%（要求11〜17）、16 Voiceで0〜14%（要求62〜95）。全条件でdrop 0、要求と完了は同数。
+
+残る置換済みはharmonic／modalに出る。発音中に `freq_hz` が動く、実際のrecipe変更である。sineでは0。
+これは§5.7の登録測定ではない。§5.5・§5.7は登録の12条件で再取得する。
+
+限界。
+
+- `DroneSway.phase` は生成入力として識別に残る。drone articulationのVoiceがparticipation clockを持つと、
+  識別は毎hop変わる。今回の再現条件（entrained）には現れない。代表位相を置くかはfootprintの値を変える判断
+  なので、別の登録で扱う。
+- pitchが連続して動く間（glide中）は `freq_hz` が毎hop変わりうる。実際の生成入力なので識別に残す。

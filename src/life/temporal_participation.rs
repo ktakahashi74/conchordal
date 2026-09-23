@@ -871,7 +871,7 @@ mod tests {
         assert_eq!(context.reference_cost, 0.0);
     }
 
-    fn bounded_recipe(amp: f32) -> footprint::Recipe {
+    fn bounded_recipe(freq_hz: f32) -> footprint::Recipe {
         footprint::Recipe {
             body: crate::life::sound::BodySnapshot {
                 kind: crate::life::sound::BodyKind::Sine,
@@ -883,8 +883,7 @@ mod tests {
                 motion: 0.0,
                 ratios: None,
             },
-            freq_hz: 220.0,
-            amp,
+            freq_hz,
             hold: (BOUNDED_HOLD_SEC * BOUNDED_FS as f32) as u64,
             adsr: Some(BOUNDED_ADSR),
             modulator: crate::life::sound::RenderModulatorSpec::SeqGate { duration_sec: 1.0 },
@@ -910,6 +909,7 @@ mod tests {
             energies: [0.0; 16],
             power,
             representative: footprint::Representative {
+                amp: 1.0,
                 kick_strength: 1.0,
                 seed: 0,
                 hold_samples: d_samples,
@@ -965,7 +965,7 @@ mod tests {
     #[test]
     fn footprint_state_walks_from_absent_through_body_and_stale_back_to_body() {
         let forecast = bounded_forecast();
-        let (first, second) = (bounded_recipe(0.2), bounded_recipe(0.2000001));
+        let (first, second) = (bounded_recipe(220.0), bounded_recipe(220.0001));
         let (id_a, id_b) = (
             footprint::Identity::new(3, 1, &first),
             footprint::Identity::new(3, 1, &second),
@@ -1046,7 +1046,7 @@ mod tests {
 
     #[test]
     fn a_superseded_request_is_discarded_and_resent_with_the_current_identity() {
-        let (first, second) = (bounded_recipe(0.2), bounded_recipe(0.3));
+        let (first, second) = (bounded_recipe(220.0), bounded_recipe(330.0));
         let (id_a, id_b) = (
             footprint::Identity::new(5, 2, &first),
             footprint::Identity::new(5, 2, &second),
@@ -1079,7 +1079,7 @@ mod tests {
     #[test]
     fn a_refused_request_is_resent_and_its_record_arrives_at_the_draining_hop() {
         use crate::life::action_candidates::energy::Worker;
-        let recipe = bounded_recipe(0.2);
+        let recipe = bounded_recipe(220.0);
         let identity = footprint::Identity::new(7, 4, &recipe);
         let mut tracker = FootprintTracker::default();
 
@@ -1116,7 +1116,7 @@ mod tests {
     #[test]
     fn an_unsupported_record_falls_back_to_the_proxy_and_a_silent_body_does_not() {
         let forecast = bounded_forecast();
-        let recipe = bounded_recipe(0.2);
+        let recipe = bounded_recipe(220.0);
         let identity = footprint::Identity::new(9, 1, &recipe);
         let mut tracker = FootprintTracker::default();
         assert!(!tracker.hop(identity, 10, &recipe, |_| true));
@@ -1161,7 +1161,7 @@ mod tests {
     #[test]
     fn a_reservation_keeps_the_footprint_state_it_was_selected_with() {
         let forecast = bounded_forecast();
-        let recipe = bounded_recipe(0.2);
+        let recipe = bounded_recipe(220.0);
         let identity = footprint::Identity::new(11, 1, &recipe);
         let mut policy = bounded_policy(Some(bounded_body_config()));
         policy.set_body_footprint(None);

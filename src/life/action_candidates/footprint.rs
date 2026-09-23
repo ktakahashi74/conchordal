@@ -7,21 +7,57 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::life::phonation_engine::OnsetKick;
 use crate::life::schedule_renderer::modal_phase_seed;
 use crate::life::self_prediction::ToneEnergy;
-use crate::life::sound::{BodyKind, BodySnapshot, RenderModulatorSpec, Tone, ToneAdsr};
+use crate::life::sound::{
+    AutonomousPulseSpec, BodyKind, BodySnapshot, RenderModulatorSpec, RenderModulatorStateKind,
+    Tone, ToneAdsr,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 /// Registered representative values (i11-onset-comparison §4.2).
 const KICK_STRENGTH: f32 = 1.0;
+/// The footprint is normalized to its peak bin, so the amplitude is a pure scale. A fixed
+/// value keeps the live gain (gate, vitality, release) out of the identity.
+const AMP: f32 = 1.0;
 const CAP_SECONDS: f32 = 4.0;
 const HOP: usize = 64;
+
+/// Pins the live envelope state out of the recipe. The representative kick restarts an
+/// entrained envelope from zero and the prediction never reads the autonomous pulse phase,
+/// so these values cannot reach the footprint; left live, they change the identity every
+/// hop. `DroneSway.phase` survives a kick and stays a generation input.
+pub(crate) fn representative_modulator(spec: RenderModulatorSpec) -> RenderModulatorSpec {
+    match spec {
+        RenderModulatorSpec::EntrainPulse {
+            attack_step,
+            decay_rate,
+            sustain_level,
+            alpha_gain,
+            beta_gain,
+            autonomous_pulse,
+            ..
+        } => RenderModulatorSpec::EntrainPulse {
+            attack_step,
+            decay_rate,
+            sustain_level,
+            initial_state: RenderModulatorStateKind::Idle,
+            initial_env_level: 0.,
+            alpha_gain,
+            beta_gain,
+            autonomous_pulse: autonomous_pulse.map(|pulse| AutonomousPulseSpec {
+                phase_0_1: 0.,
+                ..pulse
+            }),
+        },
+        spec => spec,
+    }
+}
 
 /// Generation inputs of the representative tone. Everything here is hashed into `Identity`.
 #[derive(Clone, Debug)]
 pub(crate) struct Recipe {
     pub body: BodySnapshot,
     pub freq_hz: f32,
-    pub amp: f32,
     pub hold: Tick,
     pub adsr: Option<ToneAdsr>,
     pub modulator: RenderModulatorSpec,
@@ -65,7 +101,7 @@ impl Identity {
                 }
             }
         }
-        hasher.update(recipe.amp.to_bits().to_le_bytes());
+        hasher.update(AMP.to_bits().to_le_bytes());
         hasher.update(recipe.freq_hz.to_bits().to_le_bytes());
         hasher.update(recipe.hold.to_le_bytes());
         match recipe.adsr {
@@ -170,6 +206,7 @@ pub(crate) enum State {
 /// The values stood in for quantities that only exist after the selection.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub(crate) struct Representative {
+    pub amp: f32,
     pub kick_strength: f32,
     pub seed: u64,
     pub hold_samples: u64,
@@ -207,6 +244,7 @@ pub(crate) fn compute(request: &Request) -> Record {
         energies: [0.; 16],
         power: [0.; 16],
         representative: Representative {
+            amp: AMP,
             kick_strength: KICK_STRENGTH,
             seed,
             hold_samples: hold,
@@ -228,7 +266,7 @@ pub(crate) fn compute(request: &Request) -> Record {
         0,
         hold,
         recipe.freq_hz,
-        recipe.amp,
+        AMP,
         Some(recipe.body.clone()),
         Some(recipe.modulator.clone()),
         recipe.adsr,
@@ -310,7 +348,6 @@ mod tests {
                     .then(|| (1..=16).map(|k| k as f32).collect::<Arc<[f32]>>()),
             },
             freq_hz: 293.,
-            amp: 0.2,
             hold,
             adsr: Some(ToneAdsr {
                 attack_sec: 0.001,
@@ -344,6 +381,7 @@ mod tests {
             assert_eq!(
                 record.representative,
                 Representative {
+                    amp: 1.,
                     kick_strength: 1.,
                     seed: modal_phase_seed(3, 0, 0),
                     hold_samples: hold,
@@ -376,10 +414,6 @@ mod tests {
             Identity::new(3, 1, &recipe(BodyKind::Harmonic, 24000))
         );
         let mut variants = vec![
-            Recipe {
-                amp: 0.2000001,
-                ..base.clone()
-            },
             Recipe {
                 adsr: None,
                 ..base.clone()
@@ -426,11 +460,88 @@ mod tests {
     }
 
     #[test]
-    fn a_silent_recipe_and_a_moving_body_are_unsupported() {
-        let silent = Recipe {
-            amp: 0.,
-            ..recipe(BodyKind::Sine, 24000)
+    fn the_live_envelope_state_moves_neither_the_footprint_nor_the_pinned_identity() {
+        let entrain =
+            |initial_state, initial_env_level, phase_0_1| RenderModulatorSpec::EntrainPulse {
+                attack_step: 40.,
+                decay_rate: 3.,
+                sustain_level: 0.5,
+                initial_state,
+                initial_env_level,
+                alpha_gain: 0.3,
+                beta_gain: 0.2,
+                autonomous_pulse: Some(AutonomousPulseSpec {
+                    rate_hz: 2.,
+                    phase_0_1,
+                    retrigger: true,
+                    env_open_threshold: 0.1,
+                    mag_threshold: 0.1,
+                    alpha_threshold: 0.1,
+                }),
+            };
+        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+            let with = |modulator| Recipe {
+                modulator,
+                ..recipe(kind, 24000)
+            };
+            let rest = with(entrain(RenderModulatorStateKind::Idle, 0., 0.));
+            let reference = compute(&request(rest.clone()));
+            assert_eq!(reference.state, State::Body, "{kind:?}");
+            let pinned = Identity::new(3, 1, &with(representative_modulator(rest.modulator)));
+            for (state, level, phase) in [
+                (RenderModulatorStateKind::Attack, 0.9, 0.3),
+                (RenderModulatorStateKind::Decay, 0.37, 0.8),
+            ] {
+                let live = with(entrain(state, level, phase));
+                // The representative kick overwrites the live state, bit for bit.
+                let record = compute(&request(live.clone()));
+                assert_eq!(record.state, reference.state, "{kind:?}");
+                assert_eq!(record.d_samples, reference.d_samples, "{kind:?}");
+                assert_eq!(
+                    record.energies.map(f64::to_bits),
+                    reference.energies.map(f64::to_bits),
+                    "{kind:?}"
+                );
+                assert_ne!(Identity::new(3, 1, &live), pinned, "{kind:?}");
+                assert_eq!(
+                    Identity::new(3, 1, &with(representative_modulator(live.modulator))),
+                    pinned,
+                    "{kind:?}"
+                );
+            }
+        }
+        // A sway keeps its phase through a kick, so the phase stays in the identity.
+        let sway = |phase| {
+            representative_modulator(RenderModulatorSpec::DroneSway {
+                phase,
+                sway_rate: 1.,
+            })
         };
+        let base = recipe(BodyKind::Sine, 24000);
+        assert_ne!(
+            Identity::new(
+                3,
+                1,
+                &Recipe {
+                    modulator: sway(0.),
+                    ..base.clone()
+                }
+            ),
+            Identity::new(
+                3,
+                1,
+                &Recipe {
+                    modulator: sway(1.),
+                    ..base
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn a_silent_recipe_and_a_moving_body_are_unsupported() {
+        let mut silent = recipe(BodyKind::Sine, 24000);
+        silent.body.amp_scale = 0.;
         assert_eq!(compute(&request(silent)).state, State::Unsupported("tone"));
         let mut moving = recipe(BodyKind::Harmonic, 24000);
         moving.body.motion = 0.5;
@@ -449,7 +560,7 @@ mod tests {
             0,
             recipe.hold,
             recipe.freq_hz,
-            recipe.amp,
+            AMP,
             Some(recipe.body.clone()),
             Some(recipe.modulator.clone()),
             recipe.adsr,

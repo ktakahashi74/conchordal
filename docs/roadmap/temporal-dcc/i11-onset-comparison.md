@@ -860,3 +860,72 @@ pass数とfloorの取り方をここで固定する。§8の「変更する場�
 だけを見るのはreport無しの8組である。A/Aは両側とも`None`で決定報告を含まないので、floorは雑音の推定
 として有効なまま使える（report有りの`body`側に乗る決定報告の費用は、雑音ではなく実際の仕事である）。
 report有りで差が出ても、それをfootprintの経路の費用と読み替えない。
+
+
+## §5.5(a)の取り直し（2026-09-23、`a6637db`の決定的配送）
+
+offline renderでのfootprint配送を決定化した`a6637db`で、登録12条件の§5.5(a)を取り直した。取得先は
+`target/i11-stage1-effect-a6637db-20260923/`（12条件×`body`／`proxy`、report付きrender、24実行すべて
+exit 0・失敗0）。入力は登録凍結のバイト複写、`acquire.py`・`api_effect.py`は無改変の複写（SHA-256一致を
+検証済み）。
+
+### 先に再現性を確かめた（modal-flow-4、1条件）
+
+同じ設定の`body` renderを2回行って比べた（`target/i11-stage1-repeat-check-20260923/`）。
+
+- WAVはSHA-256が一致（`6efaf95b…`）。
+- record型28種のうち**24種が完全一致**。`onset` 57件、`participation_decision` 60件、
+  `participation_context` 56件、`participation_outcome` 56件、`population_step` 2,364件、
+  学習系recordを含む。§5.5(a)が読む欄（`selected_offset`・`footprint_source`・`selected_cost`・
+  `reference_cost`・`onset_frame`）は56件すべて一致した。
+- 一致しなかったのは6種で、内訳は`body_footprint`の`computed_at`のみ（8件中6件、`a6637db`が
+  実時間の欄として明記したもの）、`hop_timing`（611件、`elapsed_us`など実時間）、`body_observation`
+  （62件、`max_processing_us`と`worker_resources.*_ns`）、`self_sound_observation`（1件、同種）、
+  `temporal_observation`（126件、`worker_resources`のhistogram）、`body_candidate_energy`（86件）。
+- **`body_candidate_energy`は実時間の欄ではない。** I10のcandidate energy workerが非同期に評価した
+  内容そのもの（区間・energy・binの数）が run 間で変わる。decisionにもWAVにもこの条件では届いて
+  いないが、report全体のbyte比較は今後も一致しない。再現するのは「WAVと決定に関わるrecord」であって、
+  report全体ではない。
+
+### 結果（`77e07b6`の実時間配送との比較）
+
+| 条件 | `77e07b6` 選択差 | `a6637db` 選択差 | `body`のfootprint源の変化 |
+|---|---|---|---|
+| sine-hold-4／16／64 | 0/0 | 0/0 | 発音機会なし |
+| sine-flow-4 | 0/56 | 0/56 | body 56（変化なし） |
+| sine-flow-16 | 0/205 | 0/205 | body 204, stale 1（変化なし） |
+| sine-flow-64 | 0/857 | 0/857 | body 855, stale 2（変化なし） |
+| harmonic-flow-4 | 3/56 | 3/56 | body 56（変化なし） |
+| harmonic-flow-16 | 10/205 | 10/205 | body 201, absent 4 → body 204, stale 1 |
+| harmonic-flow-64 | 8/857 | 8/857 | body 839, absent 15, stale 4 → body 856, stale 2 |
+| modal-flow-4 | 25/55 | 25/55 | body 56（変化なし） |
+| modal-flow-16 | 44/204 | 44/204 | body 203, stale 1（変化なし） |
+| modal-flow-64 | 66/851 | 66/851 | body 843, stale 11 → body 852, stale 2 |
+
+**選択差の件数は12条件すべてで一致した。** `t1_effect_observed`も6/12で変わらない（harmonic／modalで
+成立、sineでは不成立）。配送の決定化が変えたのはfootprintの出所の内訳で、`proxy(absent)`は
+harmonicの2条件から消え、`proxy(stale)`は64 Voiceで11→2・4→2へ下がり、その分`body`が増えた。
+
+この一致は、実時間配送のときの揺れが**この取得ではたまたま選択を動かさなかった**ことを意味する。
+配送が決定的になった今後は、同じ条件の再実行で同じ数値が出る。§5.5(a)を別々の実行の比較として
+成立させるための前提が揃ったということであり、数値そのものが変わったわけではない。
+
+### 独立参照（`a6637db`、12条件）
+
+同じ24本のreportに`scripts/verify_i11_stage1.py`をかけ、**22種の検査3,558,101件すべて通過、失敗0**。
+§5.2で選択が変わった決定は121／3,372（sineは全条件0、harmonic 1／56・6／205・7／863、
+modal 22／56・38／204・47／864）。`aebae2b`での同じ集計（121／3,346）と変化数は同じで、分母が増えたのは
+`proxy(stale)`へ落ちる決定が減って`body`を持つ決定が増えたためである。footprint源の合計は
+`aebae2b`の`body` 3,524・`absent` 55・`stale` 19から、`body` 3,550・`absent` 39・`stale` 9になった。
+
+`proxy(absent)` 39件は揺れではなく構造的なものである。要求を出したhopで受け取っても決定で使うのは
+次のhopからなので、各Voiceの最初の決定にはfootprintが無い。
+
+### 限界
+
+- `a6637db`が登録したとおり、offlineは**最短の配送を仮定**している。liveで測った受領遅延（中央値
+  10.7〜85.3 ms、最大277 ms）はここに現れず、`proxy(absent)`／`proxy(stale)`の比率はliveより低い。
+  §5.5(a)の数値をliveの挙動として読まない。
+- 再現性を確かめたのは1条件（modal-flow-4）である。12条件すべてで2回renderして確かめてはいない。
+- 本節は§5.5(a)のみで、§5.7の数値は含まない。§5.7の取得（A/A 3 passと`body`対`none`）は
+  `aebae2b`のbinaryで行っており、判定はまだ付けていない。

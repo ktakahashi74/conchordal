@@ -875,7 +875,9 @@ exit 0・失敗0）。入力は登録凍結のバイト複写、`acquire.py`・`
 同じ設定の`body` renderを2回行って比べた（`target/i11-stage1-repeat-check-20260923/`）。
 
 - WAVはSHA-256が一致（`6efaf95b…`）。
-- record型28種のうち**24種が完全一致**。`onset` 57件、`participation_decision` 60件、
+- record型**30種のうち24種が完全一致**（2026-09-24訂正。当初「28種のうち24種」と書いたが24＋6＝30で
+  合わなかったため、`target/i11-stage1-repeat-check-20260923/`の出力から数え直した。両実行とも30種で、
+  片方にしか現れない型は無い）。`onset` 57件、`participation_decision` 60件、
   `participation_context` 56件、`participation_outcome` 56件、`population_step` 2,364件、
   学習系recordを含む。§5.5(a)が読む欄（`selected_offset`・`footprint_source`・`selected_cost`・
   `reference_cost`・`onset_frame`）は56件すべて一致した。
@@ -1218,11 +1220,24 @@ footprint源別の投影件数は`body` 3,342、`proxy(absent)` 39、`proxy(stal
 
 ### `body`（3,342件）の分布
 
-| 素材 | 条件 | `power_gap` 中央値／p95／最大 | `overlap_gap` 最大 | `term_gap` 最大 |
+2026-09-24に、`overlap_gap`と`term_gap`も中央値・p95を載せる形へ改めた（`summary.json`から。再取得は
+していない）。`body`の3,342件はいずれの量も全件で算出されている。
+
+| 条件 | 件数 | `power_gap` 中央／p95／最大 | `overlap_gap` 中央／p95／最大 | `term_gap` 中央／p95／最大 |
 |---|---|---|---|---|
-| sine | flow-4／16／64 | 2.64e-2／3.67e-2／3.96e-2<br>2.69e-2／3.87e-2／4.30e-2<br>2.73e-2／4.23e-2／5.26e-2 | 8.88e-4<br>5.80e-4<br>3.24e-4 | 1.51e-3<br>1.52e-3<br>1.66e-3 |
-| harmonic | flow-4／16／64 | 8.62e-2／9.77e-2／1.00e-1<br>8.70e-2／1.05e-1／1.31e-1<br>8.70e-2／1.07e-1／1.34e-1 | 3.26e-3<br>1.35e-3<br>5.81e-4 | 1.08e-2<br>1.29e-2<br>1.16e-2 |
-| modal | flow-4／16／64 | 2.63e-3／1.03e-2／1.09e-2<br>2.28e-3／9.35e-3／1.77e-2<br>2.31e-3／1.12e-2／2.22e-2 | 2.13e-6<br>1.96e-6<br>1.15e-6 | 2.36e-4<br>2.99e-4<br>1.01e-3 |
+| sine-flow-4 | 56 | 2.64e-2／3.67e-2／3.96e-2 | 3.96e-4／7.73e-4／8.88e-4 | 8.23e-4／1.39e-3／1.51e-3 |
+| sine-flow-16 | 204 | 2.69e-2／3.87e-2／4.30e-2 | 1.69e-4／4.21e-4／5.80e-4 | 4.74e-4／1.31e-3／1.52e-3 |
+| sine-flow-64 | 855 | 2.73e-2／4.23e-2／5.26e-2 | 5.23e-5／1.59e-4／3.24e-4 | 1.61e-4／8.03e-4／1.66e-3 |
+| harmonic-flow-4 | 56 | 8.62e-2／9.77e-2／1.00e-1 | 1.28e-3／3.03e-3／3.26e-3 | 4.33e-3／9.24e-3／1.08e-2 |
+| harmonic-flow-16 | 204 | 8.70e-2／1.05e-1／1.31e-1 | 4.83e-4／1.01e-3／1.35e-3 | 7.87e-4／6.95e-3／1.29e-2 |
+| harmonic-flow-64 | 856 | 8.70e-2／1.07e-1／1.34e-1 | 1.34e-4／3.13e-4／5.81e-4 | 2.05e-4／2.49e-3／1.16e-2 |
+| modal-flow-4 | 56 | 2.63e-3／1.03e-2／1.09e-2 | 5.17e-7／2.09e-6／2.13e-6 | 2.45e-5／1.17e-4／2.36e-4 |
+| modal-flow-16 | 203 | 2.28e-3／9.35e-3／1.77e-2 | 1.99e-7／9.92e-7／1.96e-6 | 2.40e-5／1.44e-4／2.99e-4 |
+| modal-flow-64 | 852 | 2.31e-3／1.12e-2／2.22e-2 | 6.46e-8／3.47e-7／1.15e-6 | 1.15e-5／7.22e-5／1.01e-3 |
+
+`overlap_gap`と`term_gap`はVoice数が増えるほど中央値が下がる（例: sineの`overlap_gap`中央値は
+3.96e-4→1.69e-4→5.23e-5）。Voiceが増えると1声あたりの外部energyの寄与が薄まるためで、`power_gap`が
+Voice数にほとんど依らないのと対照的である。
 
 素材による差が大きい。**代表footprintが実際に鳴ったtoneを最もよく追うのはmodal**（`power_gap`中央値
 2.3e-3）で、**最も外れるのはharmonic**（同8.7e-2、最大1.34e-1）。sineは中間（2.7e-2）。Voice数を増やしても
@@ -1234,10 +1249,16 @@ footprint源別の投影件数は`body` 3,342、`proxy(absent)` 39、`proxy(stal
 
 ### 代理に落ちた決定（48件）
 
-| 源 | 件数 | `power_gap`（sine／harmonic／modal） |
-|---|---|---|
-| `proxy(absent)` | 39 | 1.09e-1〜1.12e-1／7.78e-1〜7.80e-1／1.00 |
-| `proxy(stale)` | 9 | 1.90e-1〜1.95e-1／6.51e-1〜6.76e-1／9.97e-1 |
+この48件は`body`とは**別の母集団**である（「実際のtone対ADSR代理」であり、「実際のtone対代表身体予測」
+ではない）。上の`body`の表には含まれない。
+
+| 源 | 件数 | `overlap_gap`・`term_gap`の算出 | `power_gap` 中央／p95（sine／harmonic／modal） |
+|---|---|---|---|
+| `proxy(absent)` | 39 | **0件**（選択候補に重なり項が適用されていない） | 1.09e-1／1.12e-1　7.79e-1／7.80e-1　1.00／1.00 |
+| `proxy(stale)` | 9 | 9件、いずれも中央値・p95とも0.00e+0 | 1.90e-1／1.95e-1　6.51e-1／6.76e-1　9.97e-1／9.97e-1 |
+
+`proxy(absent)`の39件は`overlap_gap`・`term_gap`を算出していない。各Voiceの最初の決定であり、選択候補に
+重なり項が適用されていないためである（`overlap_not_applied` 39件がこれと一致する）。
 
 代理（ADSRの包絡）と実際のtoneの差は、`body`より1〜3桁大きい。modalではほぼ1.0、つまり16 binの
 形がまったく違う。`proxy`のときに費用へ入る`power_k`が実条件をほとんど表していないということであり、
@@ -1434,3 +1455,101 @@ pushした。以後、基準binaryは `git worktree add <dir> i11-stage1-baselin
    元の出力から数え直して訂正する。
 
 これらがそろったら、改訂した§6の範囲で宣言文を書き直し、Astraに再レビューを頼む。
+
+
+## レビューの残作業5件を行う（2026-09-24）
+
+上の残作業を、blancheの最終版（`72de44a`。`ac8e59d`の返却drop解除と再送を含む）で片づけた。
+技術完了の宣言はしない。
+
+### 1. §5.4aの最終版での再実行
+
+基準binaryはタグ `i11-stage1-baseline` からこのマシンでbuildしたもの
+（`~/lwrk/conchordal-baseline`、render SHA-256 `3614d998…`＝`plan.json`記録と一致）。最終版は
+`af11547cfc9da247db1a3f6eb166a17953ac50bb631cc9b8ab98e6404a70d316`。登録12条件を`config-none.toml`・
+offline render・report付きで実行し（`target/i11-stage1-54a-final-20260924/`、24実行・失敗0）、
+基準側は`target/i11-stage1-54b-20260923/baseline/`の同じ基準binaryの取得を使った。
+
+**12条件すべて合格**（`pass=true`、skip 0）。WAVはSHA-256が全条件一致し、学習系record 10種も一致した。
+除外した欄は実時間欄（`processing_us`、`max_processing_us`、`worker_resources`、`delivery_delay_us`、
+`_us`／`_ns`で終わる欄）と、第1段で`participation_context`に加えた8欄（`footprint_source`、
+`footprint_bins`、`footprint_truncated`、`reference_cost`、`selected_cost`、`selected_offset`、
+`footprint_requested_at`、`footprint_received_at`。基準側はこれらを持たない）。
+
+候補recordの件数は条件によって基準と新版で食い違う（例: sine-flow-4は192対193、sine-flow-64は884対951）。
+§5.4の規定どおり、件数・drop・欠落は飽和による採否の揺れとして別集計で、内容一致の対象にしていない。
+
+`77bd4c2`時点の測定から、`77e07b6`・`aebae2b`・`a6637db`・`c41fdb3`・`ac8e59d`を経た最終版でも
+`None`の経路が基準とbit一致することを確かめた、ということである。
+
+### 2. §5.7の最終取得への補足
+
+`090700b`の取得（`target/i11-stage1-rerun4-20260923/`）に、新しい取得をせずに次を補う。
+
+**登録した1 passのfloorでの判定**（2026-09-23に最初に登録した規則）。合格は**11/16**で、元の登録許容の
+8/16と、3 pass floorの13/16（`own_us`では16/16）の間に入る。落ちた5組は、sine-hold-4 no-reportの
+`elapsed_us`中央値110.5>76.6 µs、harmonic-flow-4 reportの`population_us`中央値1.3>1.3 µsと同p99
+73.1>70.2 µs、modal-flow-4のreport／no-reportの`elapsed_us`最大1585.6／1713.5>1000.0 µs、
+modal-flow-16 reportの`elapsed_us` p99 513.2>404.6 µs。1 passのfloorが小さいために落ちる欄
+（`elapsed_us`中央値、`population_us`）が含まれる点は、3 passへ置き直した理由と同じである。
+
+**待ちの分布**（中央値／p99／最大、µs）。`analysis_wait_us`の中央値は多くの組で両変種とも1,260前後、
+p99は素材で分かれ（sine 1,512〜1,762、harmonic／modal 5,286〜5,543）、最大は5,225〜9,527である。
+差の向きは組で揃わない（harmonic-flow-16はreportで`body`が高く1,494対1,265、no-reportでは`none`が
+高く1,505対1,287）。`listener_wait_us`は全16組で`body`・`none`とも中央値3.9〜6.2、p99 255.1〜269.2、
+最大259.3〜759.0で、系統差が無い。
+
+**footprint返却遅延**（`body`、report、3反復合計）。sine-holdは要求0件。sine-flowは中央値・p99・最大とも
+0.0 ms。modal-flow-4は21.3／32.0／32.0 ms、modal-flow-16は32.0／64.0／64.0 ms、harmonic-flow-4は
+42.7／53.3／53.3 ms、harmonic-flow-16は85.3／106.7／106.7 ms。p99と最大が一致する条件が多いのは、
+遅延がhop単位の離散値（1 hop＝約10.7 ms）を取るためである。
+
+### 3. §5.5(a)の最初の分岐と、§5.5(b)
+
+`547b11d`の取得（`target/i11-stage1-effect-a6637db-20260923/`、決定的配送）の`body`／`proxy`の
+report対に`scripts/locate_i11_first_divergence.py`をかけた。
+
+| 条件 | 最初の分岐 | `power_k`以外に違う入力 |
+|---|---|---|
+| sineの6条件 | 分岐なし | ― |
+| harmonic-flow-4 | index 10、voice 3、now 44032 | `footprint_d_samples`、`candidates.external_energy` |
+| harmonic-flow-16 | index 10、voice 4、now 13824 | 同上 |
+| harmonic-flow-64 | index 31、voice 33、now 8704 | 同上 |
+| modal-flow-4 | index 5、voice 1、now 22016 | 同上 |
+| modal-flow-16 | index 10、voice 4、now 13824 | 同上 |
+| modal-flow-64 | index 31、voice 33、now 8704 | 同上 |
+
+**「違いが`power_k`だけ」は文字どおりには成り立たなかった。** 再現条件3身体では`power_k`以外が
+すべて一致したと記録していたが、登録12条件では分岐した6条件すべてで2つの入力が併せて違う。中身は次の
+とおりである。
+
+- `footprint_d_samples`は`body` 86400.0に対し`proxy` 86399.99771118164。差は**0.0023サンプル、相対
+  2.65e-8**で、`proxy`の`D`を`hold + release`から作るときのf32の丸めである。設計上の差ではない。
+- `candidates.external_energy`はその`D`が決める窓`[at, at + D)`の終端が1サンプル未満ずれた結果で、
+  全23候補に及ぶ。相対差の最大は条件により**1.32e-7〜7.08e-7**。
+- 決定レベルの他の入力（`due_frame`、`period_frames`、`width`、`earliest`、`coupling`、
+  `overlap_sensitivity`、`onset_allowed`、`memory`、`own_band_energy`、予測の`observed_frame`と
+  `available_through_frame`）はすべて一致し、候補の`at`も23/23一致する。
+- 同じ決定での`power_k`の差の最大は**0.84〜1.00**で、外部energyの差より**6桁（1.2e6〜7.6e6倍）大きい**。
+
+したがって主張は「`power_k`だけが違う」ではなく、**「選択を分けた入力は`power_k`であり、併存する他の差は
+`D`のf32丸めとその窓がもたらす1e-7水準の外部energyの差に留まる」**という形に限る。§5.5(a)が登録で
+「同じ`D`」と書いた条件は、実装上`proxy`の`D`が別経路で作られるため厳密には満たされない。
+
+**§5.5(b)（`Some`対`None`の参考比較）** は、最終版の`body`／`none`のrender対（上の§5.4aと同じ取得）で
+測った。`body`対`none`の選択差はsine-flow 5/56・11/205・8/856、harmonic-flow 2/56・7/205・4/858、
+modal-flow 24/56・39/204・51/852で、sine-holdは決定が無く0/0。WAVはsine-holdを除く9条件で相違した。
+**`body`対`proxy`ではsineに差が出ないのに対し、`body`対`none`ではsineにも差が出る。** 登録どおり
+`Some`と`None`の差は分割数と打ち切りの違いを含むためで、参考記録に留める（T1固有の作用の検査は(a)である）。
+
+### 4. §5.9の表の組み直し
+
+上の§5.9の節で、`overlap_gap`と`term_gap`の中央値・p95を表に加え、`body`（3,342件）と代理
+（`proxy(absent)` 39件・`proxy(stale)` 9件）を別の母集団として分けた。`proxy(absent)`では
+`overlap_gap`・`term_gap`が0件であること（選択候補に重なり項が適用されていない）も明記した。
+
+### 5. 再現性の確認の数の訂正
+
+`target/i11-stage1-repeat-check-20260923/`の2実行から型ごとに数え直した。**正しくは30種**で、両実行とも
+30種・片方にしか現れない型は無く、24種一致＋6種相違＝30である。「28種のうち24種」の28が誤りだった。
+該当箇所を訂正した。

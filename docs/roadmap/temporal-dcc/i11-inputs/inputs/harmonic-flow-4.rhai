@@ -1,0 +1,12 @@
+temporal_mode("observe");
+seed(20260918);
+let v0 = place(harmonic().sustain().flow().cycles(1).anchor().amp(0.040000000000000001).adsr(0.01, 0.01, 1.0, 0.3), at(110.0));
+let v1 = place(harmonic().sustain().flow().cycles(1).anchor().amp(0.040000000000000001).adsr(0.01, 0.01, 1.0, 0.3), at(220.0));
+let v2 = place(harmonic().sustain().flow().cycles(1).anchor().amp(0.040000000000000001).adsr(0.01, 0.01, 1.0, 0.3), at(330.0));
+let v3 = place(harmonic().sustain().flow().cycles(1).anchor().amp(0.040000000000000001).adsr(0.01, 0.01, 1.0, 0.3), at(440.0));
+wait(6.0);
+release(v0);
+release(v1);
+release(v2);
+release(v3);
+wait(0.5);

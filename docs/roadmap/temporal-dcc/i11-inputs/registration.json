@@ -1,0 +1,92 @@
+{
+  "schema": "i11-representative-gap-v1",
+  "registration_document": "docs/roadmap/temporal-dcc/i11-onset-comparison.md",
+  "criterion": "SS5.9",
+  "note": "Read by the ignored test acquire_representative_gap in src/runtime/body_profiles/representative_gap.rs. Paths are relative to this directory; the test checks each SHA-256 before compiling. The config carries [temporal_onset_comparison] footprint = \"body\", which SS5.9 requires.",
+  "cases": [
+    {
+      "id": "sine-hold-4",
+      "script": "inputs/sine-hold-4.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "5ce795c38ac140c854e2e1c2642225f5134297530ada00af362b5778cd2b1317",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "sine-hold-16",
+      "script": "inputs/sine-hold-16.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "f3067a4f7237278991d7bcd40a674ef7cd81669ab5e98d8b996ab1409763f110",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "sine-hold-64",
+      "script": "inputs/sine-hold-64.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "5d5cc7c09702c31583d8953ec331ef56c9f7549cca3143defd40fbe127591bae",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "sine-flow-4",
+      "script": "inputs/sine-flow-4.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "655a2a8358a82678f7326ba2d128b2e3def3bafd4cb21b92db70cbf41a8e44f1",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "sine-flow-16",
+      "script": "inputs/sine-flow-16.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "e30c126f2869db869d458b13844352e250d8c89bd7dae418d355c6523a501ca0",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "sine-flow-64",
+      "script": "inputs/sine-flow-64.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "d55a7458c686d200b8c9164e3a092945ebd5706ce7cc35d240badf1b9ea14336",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "harmonic-flow-4",
+      "script": "inputs/harmonic-flow-4.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "7c71543034976732d37ce5d7216f8eeac628a3c2d595fe3ad1be5b04b2d7b6a2",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "harmonic-flow-16",
+      "script": "inputs/harmonic-flow-16.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "1f33b90731f0e324daf2f985066390a64b06009925aa2c41a496255ea0f5afb5",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "harmonic-flow-64",
+      "script": "inputs/harmonic-flow-64.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "26f63de85afe101a35ea28cf629ec753ebd277b3bbd2a5bfe7a51fb5b153b9f9",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "modal-flow-4",
+      "script": "inputs/modal-flow-4.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "4608a6c9f1d5d02ef8d6ce056816a8a5ae412373ad63128868b6b8a5f73514f6",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "modal-flow-16",
+      "script": "inputs/modal-flow-16.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "2ef00e6d1fabb6d0da964205cc96f0c3cdc13d2f2f3354cc1beeae1ffadce90b",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    },
+    {
+      "id": "modal-flow-64",
+      "script": "inputs/modal-flow-64.rhai",
+      "config": "inputs/config-body.toml",
+      "script_sha256": "ed1e4dc93fbccd79ef0746478a9e30b10dc0014bfed25897293cad33fc49933f",
+      "config_sha256": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018"
+    }
+  ]
+}

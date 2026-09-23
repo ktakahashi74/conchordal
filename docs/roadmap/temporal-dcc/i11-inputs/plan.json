@@ -1,0 +1,181 @@
+{
+  "schema": "conchordal/i11-stage1-plan/1",
+  "generated_at": "2026-09-22T12:36:34+09:00",
+  "registered_at": "2026-09-22",
+  "registration_document": "docs/roadmap/temporal-dcc/i11-onset-comparison.md",
+  "registration_revision": "5th draft (2026-09-21), stage 1 (T1) only",
+  "scope": "I11 stage 1 (T1: the Voice's own predicted body footprint) measurement. The stage-1 code adds an Option config section [temporal_onset_comparison] with footprint = \"body\" | \"proxy\", arrival = false and arrival_weight = 1.0; None must leave the existing path bit for bit unchanged (doc SS4.10). These scripts acquire, for 12 scenario cases x 3 config variants (none/body/proxy), offline render runs and real-time instrument runs with and without the report, and then evaluate the registered checks SS5.4a (off criterion, bit identity against a baseline commit), SS5.5 (API effect, body vs proxy and body vs none), SS5.7 (hop path and saturation) and SS5.9 (representative versus actual condition gap, distribution report only). No author adoption (A1/A2), no resource acceptance (R2), no live-device acceptance (A3) is claimed.",
+  "cases": [
+    "sine-hold-4",
+    "sine-hold-16",
+    "sine-hold-64",
+    "sine-flow-4",
+    "sine-flow-16",
+    "sine-flow-64",
+    "harmonic-flow-4",
+    "harmonic-flow-16",
+    "harmonic-flow-64",
+    "modal-flow-4",
+    "modal-flow-16",
+    "modal-flow-64"
+  ],
+  "case_notes": "Byte copies of the I10 inputs at target/i10-reduced-resources-20260921/inputs/. sine/harmonic/modal x hold/flow x 4/16/64 Voices. SS5.5 requires sine / harmonic / modal x external pulse material; SS5.9 requires all 12 cases; SS5.7 registers the alternating 3 repetitions at 4 and 16 Voices only.",
+  "config_variants": {
+    "none": "config.toml copied unchanged: [temporal_onset_comparison] absent, i.e. the Option is None.",
+    "body": "config.toml plus [temporal_onset_comparison] with footprint = \"body\".",
+    "proxy": "config.toml plus [temporal_onset_comparison] with footprint = \"proxy\"."
+  },
+  "config_variant_notes": "arrival and arrival_weight are left at their registered defaults (arrival = false, arrival_weight = 1.0) and are not written into the files, because stage 1 does not deliver the arrival tables (doc SS4.5, SS7).",
+  "modes": [
+    "render (conchordal-render, offline, report on, 1 run per case and variant)",
+    "instrument --nogui --play=false --wait-user-start=false --wait-user-exit=false --profile with --report (3 alternating repetitions)",
+    "instrument --nogui --play=false --wait-user-start=false --wait-user-exit=false --profile without --report (3 alternating repetitions)"
+  ],
+  "repetitions": 3,
+  "repetition_order": "Per repetition the variant order is rotated (none,body,proxy / body,proxy,none / proxy,none,body) so that machine drift does not align with a single variant, as in target/i10-reduced-resources-20260921/hop-path/acquire.py.",
+  "metrics": [
+    "SS5.4a: SHA-256 of the render WAV and of the learning-record stream per record type, with the real-time fields removed, compared against a baseline-commit build.",
+    "SS5.5: number of participation_context decisions whose selected_offset differs between body and proxy, the distribution of selected_cost - reference_cost, WAV SHA-256 equality, and the footprint_source counts.",
+    "SS5.7: median / p99 / max of hops[].population_us, hops[].synthesis_us and hops[].elapsed_us, summary.over_budget_hops, the background.candidate_energy footprint counters, the footprint_received_at - footprint_requested_at distribution and the footprint_source fractions.",
+    "SS5.9: max_k |power_k^actual - power_k^rep| over the 16 bins, and the absolute difference of Ov(at); distribution only (median / p95 / max)."
+  ],
+  "criteria": {
+    "5.4": {
+      "source_ja": "off基準。二つに分ける。(a) 設定 `None` の実行で、音声（WAV）と学習系record（I10の`candidates_off.py`が\n比べる10種）が基準commitのbinaryとbit一致する。基準commitのSHAと対象artifactは第1段のtest開始時に\n登録fileへ固定する。(b) 候補計算は、同一の凍結packetを基準版と新版で再評価し、record内容をbit比較する。比較対象は\n`Record` の決定的なfield（候補の入力・窓・energy・状態・識別）とし、`processing_us`、`max_processing_us`、\nworker資源計測欄、`received_at` などの実時間欄を除く。除いたfieldは検査記録に列挙する。\nliveの候補recordは飽和で採否が変わるため（同一条件の再実行で件数が揺れる）、件数・drop・欠落は\n別集計とし、内容一致の対象にしない。",
+      "text_en": "Off criterion. Split in two. (a) In a run with the setting None, the audio (WAV) and the learning-system records (the 10 types compared by the I10 candidates_off.py) are bit-identical to the binary of the baseline commit. The SHA of the baseline commit and the target artifacts are fixed into the registration file when the stage-1 test starts. (b) For the candidate computation, re-evaluate the same frozen packet with the baseline version and the new version and compare the record contents bitwise. The comparison targets are the deterministic fields of Record (candidate inputs, windows, energy, state, identity), excluding the real-time fields such as processing_us, max_processing_us, the worker resource-measurement fields and received_at. The excluded fields are enumerated in the inspection record. Because live candidate records change acceptance under saturation (re-running the same condition makes the counts fluctuate), counts, drops and omissions are tallied separately and are not part of the content-equality target.",
+      "implemented_by": "bit_identity.py (part a only; part b needs a frozen-packet re-evaluation harness that does not exist yet)"
+    },
+    "5.5": {
+      "source_ja": "APIの作用（第1段でも必須）。二つの比較を行う。(a) 設定 `Some(footprint = body)` と\n`Some(footprint = proxy)` を、同じrecord・同じ `D`・同じ16 bin・同じ外部入力で比べ、選択候補の差と\nその音声差（WAV）が§4.4の `power_k` の差だけから生じることを示す。これがT1固有の作用の検査であり、\nこれに差が出ない素材だけでは第1段を通過しない。(b) `Some` と `None` の差は分割数・打ち切りの差を含む\nため、参考として記録する。素材はsine／harmonic／modal × 外部pulse。",
+      "text_en": "API effect (required in stage 1 as well). Two comparisons are made. (a) Compare the settings Some(footprint = body) and Some(footprint = proxy) on the same record, the same D, the same 16 bins and the same external input, and show that the difference in the selected candidate and its audio difference (WAV) arise only from the difference in power_k of SS4.4. This is the test of the effect specific to T1, and material that shows no difference here is not enough to pass stage 1. (b) The difference between Some and None includes the difference in the number of subdivisions and in the truncation, so it is recorded for reference. The material is sine / harmonic / modal x external pulse.",
+      "implemented_by": "api_effect.py"
+    },
+    "5.7": {
+      "source_ja": "hop経路と飽和。候補選択は `advance_population` 内で走り、profileの `population_us` に入る。設定 `Some` と\n`None` で、`population_us`、`synthesis_us`、hop全体 `elapsed_us` それぞれの中央値・p99・最大と、予算超過\nhop数を4／16 Voiceの交互3反復で比べる。許容は各欄の中央値とp99が±5%以内、最大の差が1 ms以内、\n超過hop数が同数。flow条件でのfootprint返却遅延の分布（中央値・p99・最大）と `proxy(absent)` の比率、\n置換済み要求と返却dropの件数を報告する。",
+      "text_en": "Hop path and saturation. Candidate selection runs inside advance_population and enters population_us of the profile. Compare, between the settings Some and None, the median, p99 and maximum of population_us, synthesis_us and the whole hop elapsed_us, and the number of over-budget hops, in 3 alternating repetitions at 4 and 16 Voices. The tolerance is: the median and p99 of each field within +-5 %, the difference of the maximum within 1 ms, and the same number of over-budget hops. Report the distribution of the footprint return delay (median, p99, maximum) under the flow condition, the ratio of proxy(absent), and the counts of replaced requests and of dropped returns.",
+      "implemented_by": "hop_path.py"
+    },
+    "5.9": {
+      "source_ja": "代表条件と実条件の差（第1段、分布報告）。12条件の実行で発行された各onset機会について、\n実際に発行された `ToneEnergy`（実kick、実seed、実rhythms、予約release。`energy_projection.rs` の\n`issued` と同じ凍結）を `added` とし、`retained = []`、bus 0、区間 `[onset, onset + D_rep)`\n（`D_rep` は同じ機会で使われた代表footprintの `D`）を16 binで offline に再投影する。新tone単独の\nenergyであり、残存tone込みの候補評価のSummaryは使わない。両者を `power_k` へ正規化し、比較量は\n`max_k |power_k^actual - power_k^rep|` と、同じ外部予測で計算した `Ov(at)` の差の絶対値。\n実側で `coherent_energies` に `None` があるbinを含む機会は比較から除き、件数を報告する。\n両側が既知の無音なら差0とする。合否ではなく分布（中央値・p95・最大）を報告し、A1の材料とする。",
+      "text_en": "Gap between the representative condition and the actual condition (stage 1, distribution report). For every onset opportunity issued in the runs of the 12 conditions, take the ToneEnergy actually issued (actual kick, actual seed, actual rhythms, reserved release; the same freeze as issued in energy_projection.rs) as added, with retained = [], bus 0, over the interval [onset, onset + D_rep) (D_rep is the D of the representative footprint used at the same opportunity), and re-project it offline in 16 bins. It is the energy of the new tone alone; the Summary of the candidate evaluation including retained tones is not used. Normalise both to power_k; the comparison quantities are max_k |power_k^actual - power_k^rep| and the absolute difference of Ov(at) computed with the same external prediction. Opportunities that include a bin whose coherent_energies is None on the actual side are excluded from the comparison and their count is reported. If both sides are a known silence the difference is 0. Report a distribution (median, p95, maximum) rather than a pass/fail, as material for A1.",
+      "implemented_by": "representative_gap.py (skeleton only; the offline re-projection is not implemented on the Rust side)"
+    }
+  },
+  "tolerances": {
+    "source": "SS5.7",
+    "population_us": {
+      "median_rel": 0.05,
+      "p99_rel": 0.05,
+      "max_abs_us": 1000.0
+    },
+    "synthesis_us": {
+      "median_rel": 0.05,
+      "p99_rel": 0.05,
+      "max_abs_us": 1000.0
+    },
+    "elapsed_us": {
+      "median_rel": 0.05,
+      "p99_rel": 0.05,
+      "max_abs_us": 1000.0
+    },
+    "over_budget_hops": "equal",
+    "comparison": "body (Some) against none (None)",
+    "registered_voice_counts": [
+      4,
+      16
+    ],
+    "note": "The tolerances are declared before the measurement and are not tuned after seeing the result (doc SS8)."
+  },
+  "removed_realtime_fields": {
+    "source": "SS5.4",
+    "exact": [
+      "processing_us",
+      "max_processing_us",
+      "worker_resources",
+      "delivery_delay_us",
+      "footprint_requested_at",
+      "footprint_received_at"
+    ],
+    "suffixes": [
+      "_us",
+      "_ns"
+    ],
+    "note": "Removed recursively from every record before the bit comparison. bit_identity.py lists the key paths it actually removed."
+  },
+  "learning_record_types": [
+    "self_sound_outcome",
+    "self_sound_descriptor_prediction",
+    "private_participation_trace",
+    "participation_outcome",
+    "participation_context",
+    "onset",
+    "population_step",
+    "body_descriptor",
+    "local_prediction_match",
+    "local_prediction_error"
+  ],
+  "new_participation_context_fields": [
+    "footprint_source",
+    "footprint_bins",
+    "footprint_truncated",
+    "reference_cost",
+    "selected_cost",
+    "selected_offset",
+    "footprint_requested_at",
+    "footprint_received_at"
+  ],
+  "limits": [
+    "Short screens inherited from I10; resource failures are preserved, not tuned away.",
+    "The offline render is not real-time paced; its drop counters are not live evidence.",
+    "SS5.4b (frozen-packet re-evaluation) and SS5.9 (offline re-projection) need Rust-side harnesses that do not exist yet; representative_gap.py is a skeleton.",
+    "This is a pre-implementation registration. It claims no effect and no adoption."
+  ],
+  "baseline_commit": {
+    "given": "32a6389",
+    "resolved": "32a63895fa099749faf23e1988e7575e410b21ee",
+    "resolved_ok": true
+  },
+  "binaries": {
+    "instrument": {
+      "path": "target/release/conchordal",
+      "sha256": "e3b707f26e041542e66eaf6989c8413ad589e729e1a1754b65b577d7e76a3898",
+      "size": 20884856,
+      "mtime": "2026-09-21T18:18:29+09:00"
+    },
+    "render": {
+      "path": "target/release/conchordal-render",
+      "sha256": "3614d998e07c04c7af1913f97f515cb0edf0be4e2aec6b18331703e67fa58b5e",
+      "size": 11773728,
+      "mtime": "2026-09-21T18:17:56+09:00"
+    },
+    "note": "SHA-256 of the binaries present when the inputs were frozen. These may predate the stage-1 implementation; acquire.py re-records the binaries it actually ran into binaries.json and flags any drift from this entry."
+  },
+  "inputs_sha256": {
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/config-body.toml": "5491274421335a12d222e163ff173e21a95278c13bf50e3b90da59b130408018",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/config-none.toml": "b9b93fb3e1cadfbd85bde87ea9223f23d4f795393b61ed874c5b1384e4f920f0",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/config-proxy.toml": "c5a438dbfb0aaf3277bfe079055b6a35adc7df993cac003e7d79b31c7e70ffb3",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-16.rhai": "1f33b90731f0e324daf2f985066390a64b06009925aa2c41a496255ea0f5afb5",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-4.rhai": "7c71543034976732d37ce5d7216f8eeac628a3c2d595fe3ad1be5b04b2d7b6a2",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-64.rhai": "26f63de85afe101a35ea28cf629ec753ebd277b3bbd2a5bfe7a51fb5b153b9f9",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-16.rhai": "2ef00e6d1fabb6d0da964205cc96f0c3cdc13d2f2f3354cc1beeae1ffadce90b",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-4.rhai": "4608a6c9f1d5d02ef8d6ce056816a8a5ae412373ad63128868b6b8a5f73514f6",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-64.rhai": "ed1e4dc93fbccd79ef0746478a9e30b10dc0014bfed25897293cad33fc49933f",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-16.rhai": "e30c126f2869db869d458b13844352e250d8c89bd7dae418d355c6523a501ca0",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-4.rhai": "655a2a8358a82678f7326ba2d128b2e3def3bafd4cb21b92db70cbf41a8e44f1",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-64.rhai": "d55a7458c686d200b8c9164e3a092945ebd5706ce7cc35d240badf1b9ea14336",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-16.rhai": "f3067a4f7237278991d7bcd40a674ef7cd81669ab5e98d8b996ab1409763f110",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-4.rhai": "5ce795c38ac140c854e2e1c2642225f5134297530ada00af362b5778cd2b1317",
+    "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-64.rhai": "5d5cc7c09702c31583d8953ec331ef56c9f7549cca3143defd40fbe127591bae"
+  },
+  "inputs_source": {
+    "scenario_scripts": "byte copies of target/i10-reduced-resources-20260921/inputs/*.rhai",
+    "config": "target/i10-reduced-resources-20260921/inputs/config.toml plus the SS4.10 section per variant",
+    "config_sha256_upstream": "b9b93fb3e1cadfbd85bde87ea9223f23d4f795393b61ed874c5b1384e4f920f0"
+  },
+  "inputs_location": {
+    "moved_on": "2026-09-23",
+    "from": "target/i11-stage1-20260922/inputs/ (git-ignored)",
+    "to": "docs/roadmap/temporal-dcc/i11-inputs/inputs/",
+    "note": "Only the keys of inputs_sha256 were re-pointed at the new location; every digest is the value registered on 2026-09-22 and was verified against the copies. The scenario scripts and configs themselves are byte copies."
+  }
+}

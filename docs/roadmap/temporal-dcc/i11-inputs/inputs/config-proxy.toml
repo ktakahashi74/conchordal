@@ -1,0 +1,121 @@
+[audio]
+sample_rate = 48000
+[analysis]
+nfft = 2048
+hop_size = 512
+[dcc]
+coupling_strength = 0.0
+[temporal_body]
+means = [7.880133173642814, 0.41780677860527643, -9.942744520555978, 0.03853607654620248, 0.008589734681519183, 0.0]
+deviations = [1.0381112779529351, 0.20020505483932044, 7.1518691269941135, 0.04961339254922897, 0.014001844472793944, 0.0]
+accent_means = [0.0, 0.0]
+accent_deviations = [1.0, 1.0]
+
+[temporal_body_prototypes]
+model_version = "b3eb8cba69007e16aedb013d9ee8ba617b3ecb4d3420afb492768bfeba02fd28"
+sample_rate = 48000
+nfft = 2048
+hop_size = 512
+means = [7.880133173642814, 0.41780677860527643, -9.942744520555978, 0.03853607654620248, 0.008589734681519183, 0.0]
+deviations = [1.0381112779529351, 0.20020505483932044, 7.1518691269941135, 0.04961339254922897, 0.014001844472793944, 0.0]
+accent_means = [0.0, 0.0]
+accent_deviations = [1.0, 1.0]
+
+[[temporal_body_prototypes.medoids]]
+record_id = "00-sine-110-0.04-both-bus0-cut009600"
+raw_values = [0.0, 0.0, -5.0626792380537395, 0.15653176752473089, 0.0, -0.0]
+mask = 44
+
+[[temporal_body_prototypes.medoids]]
+record_id = "00-sine-110-0.04-both-bus0-cut096000"
+raw_values = [6.716344335166367, 0.25948290271136704, -5.1351418420134545, 0.054411315849938184, 0.012374198076345993, -0.0]
+mask = 63
+
+[[temporal_body_prototypes.medoids]]
+record_id = "01-sine-110-0.04-habitat-bus1-cut009600"
+raw_values = [0.0, 0.0, -19.931568569324174, 0.0, 0.0, -0.0]
+mask = 44
+
+[[temporal_body_prototypes.medoids]]
+record_id = "06-sine-440-0.04-both-bus0-cut096000"
+raw_values = [8.777517259244147, 0.06095581988470055, -5.136732743760096, 0.018660038175032624, 0.0010749320931543723, -0.0]
+mask = 63
+
+[[temporal_body_prototypes.medoids]]
+record_id = "21-harmonic-440-0.12-both-bus0-cut096000"
+raw_values = [9.00341298036794, 0.5760946449297978, -3.7866685332175676, 0.021389289347771998, 0.012754444127735094, -0.0]
+mask = 63
+
+[[temporal_body_prototypes.medoids]]
+record_id = "24-modal-110-0.04-both-bus0-cut096000"
+raw_values = [6.897875008073272, 0.5534023647508224, -7.327102076355737, 0.020375913322225755, 0.005193757187969155, -0.0]
+mask = 63
+
+[[temporal_body_prototypes.medoids]]
+record_id = "30-modal-440-0.04-both-bus0-cut038400"
+raw_values = [8.966248195869332, 0.5109136376931779, -6.651246130500495, 0.0125367250715615, 8.270350560444323e-05, -0.0]
+mask = 63
+
+[[temporal_body_prototypes.medoids]]
+record_id = "33-modal-440-0.12-both-bus0-cut009600"
+raw_values = [0.0, 0.0, -3.890209275731938, 0.09611489189732841, 0.0, -0.0]
+mask = 44
+
+[temporal_ridge]
+means = [0.0, 0.0, 0.0]
+deviations = [0.05, 4.0, 1.0]
+
+[temporal_acoustic]
+group_means = [0.0, 0.0, 0.0]
+group_deviations = [0.05, 4.0, 1.0]
+accent_means = [0.0, 0.0]
+accent_deviations = [1.0, 1.0]
+group_retirement_sec = 2.0
+inactive_energy_max = 1e-08
+correlation_window_sec = 0.25
+min_pairs = 8
+min_coverage = 0.9
+persistence_hops = 3
+
+[temporal_memory]
+scales = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+span_hops = 96
+episodes = 32
+query_cadence_ms = 100
+deadline_ms = 200
+
+[temporal_gesture]
+rms_reference = 0.1
+means = [0.0, 0.0, 0.0, 0.0, 0.0]
+deviations = [1.0, 1.0, 1.0, 1.0, 1.0]
+coefficients = [[[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]]
+
+[temporal_period]
+model = "hazard"
+coefficients = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+means = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+deviations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+horizon_sec = 1.0
+
+[temporal_action_profiles]
+file = "/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin"
+sha256 = "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5"
+
+[temporal_memory.retention]
+tau_sec = 20.0
+kappa = 0.7
+strength_max = 1.2
+r_max = 1.0
+no_memory_bias = 0.0
+match_temperature = 1.0
+edit_penalty = 1.0
+motion_scale = 1.0
+interval_scale = 1.0
+
+[temporal_private_trace]
+tau_sec = 20.0
+kappa = 0.7
+strength_max = 1.2
+
+[temporal_onset_comparison]
+footprint = "proxy"

@@ -260,12 +260,12 @@ impl Recall {
         cut: u64,
     ) -> Result<(), &'static str> {
         if self.acquisition.is_none() {
-            self.acquisition = Some(clock::Clock::new(
+            let acquisition = self.acquisition.insert(clock::Clock::new(
                 self.epoch, self.rate, self.hop, start, 128,
             )?);
             if let Some(p) = self.config.retention {
                 self.retention = Some(retention::Retention::new(
-                    self.acquisition.as_ref().unwrap(),
+                    acquisition,
                     retention::Parameters {
                         tau: p.tau_sec,
                         kappa: p.kappa,

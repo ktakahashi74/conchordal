@@ -164,7 +164,8 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
                     value
                 })
                 .sum();
-                assert!(elapsed.is_finite() && elapsed >= phases);
+                // The phases lie within the hop; their f64 sum can exceed it by rounding.
+                assert!(elapsed.is_finite() && elapsed + 1e-6 >= phases);
                 assert!(
                     hop["synthesis_us"].as_f64().unwrap()
                         <= hop["render_route_us"].as_f64().unwrap()
@@ -186,7 +187,8 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
                     elapsed
                 })
                 .sum();
-                assert!(renderer_phases <= hop["synthesis_us"].as_f64().unwrap());
+                // The sub-phases partition synthesis; their f64 sum can exceed it by rounding.
+                assert!(renderer_phases <= hop["synthesis_us"].as_f64().unwrap() + 1e-6);
                 assert!(hop["rendered_tone_count"].as_u64().is_some());
                 assert!(hop["underrun_frames_total"].is_null());
                 if cfg!(feature = "profile-alloc") {

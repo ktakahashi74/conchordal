@@ -480,3 +480,112 @@ Opus agentに委譲して取得した。scriptの修正はなく、成果物は 
   識別は毎hop変わる。今回の再現条件（entrained）には現れない。代表位相を置くかはfootprintの値を変える判断
   なので、別の登録で扱う。
 - pitchが連続して動く間（glide中）は `freq_hz` が毎hop変わりうる。実際の生成入力なので識別に残す。
+
+
+## 第1段の再取得（2026-09-23、識別規則改訂後の§5.5と§5.7）
+
+識別規則の改訂commit（`77e07b6`）を反映したbinaryで、§5.5(a)と§5.7を再取得した。旧計測（`target/i11-stage1-20260922/`）は上書きしていない。新しい取得先は `target/i11-stage1-rerun-20260923/`。
+
+- HEADは `77e07b6`（直前は識別規則改訂本体の `db1eae4`）。release binaryを同日に再buildした
+  （`conchordal` SHA-256 `313ef557a8175730f247713d6ad909c0b90e03bac0eba65bcb17fe452af37e5e`、
+  `conchordal-render` SHA-256 `199fec1385aa75811616205299e35551fbd01e6ae8ff639c65c142d56c718d39`）。
+- 入力15件のSHA-256は `plan.json` の登録値と全件一致（不一致0件）。`register.py` は再実行していない
+  （入力は2026-09-22の凍結のまま）。`plan.json`・`README.md`・全script（`acquire.py`／`api_effect.py`／
+  `hop_path.py`／`bit_identity.py`／`representative_gap.py`／`register.py`）は複写のみで変更していない。
+- 取得範囲は今回の依頼どおり§5.5(a)と§5.7に限る。§5.5(a)はrender modeで`body`対`proxy`を12条件全て
+  取得した（旧計測と同じ範囲）。§5.7はinstrument modeの`body`対`none`を、登録範囲である4／16 Voiceの
+  8条件（sine-hold-4/16、sine-flow-4/16、harmonic-flow-4/16、modal-flow-4/16）だけ、report有無×3反復で
+  取得した。`proxy`と64 Voiceの8条件はこの再取得に含めていない（§5.7の許容判定は`body`対`none`のみを
+  要求し、64 Voiceは`registered_by_5_7 = false`で判定対象外のため）。variantの反復順回転は
+  `body`／`none`の2値で行い、登録文書にある3値回転（none/body/proxy）とは異なる。全120件
+  （render 24件、report/no-report 96件）の実行はすべて exit 0、drop・失敗0件。
+
+### §5.5(a): `body` 対 `proxy`（12条件、render）
+
+| 条件 | 旧（改訂前） differing/comparable | 新（改訂後） differing/comparable | WAV一致性 |
+|---|---|---|---|
+| sine-hold-4/16/64 | 0/0 | 0/0 | ok（発音機会なし） |
+| sine-flow-4/16/64 | 0/56, 0/205, 0/857 | 0/56, 0/205, 0/857 | ok |
+| harmonic-flow-4/16/64 | 3/56, 10/205, 9/857 | 3/56, 10/205, 8/857 | ok |
+| modal-flow-4/16/64 | 16/55, 44/204, 67/853 | 25/55, 44/204, 66/851 | ok |
+
+`wav_consistency`（選択差の有無とWAV差の有無が一致するか）は12条件全てで`ok`。判定は旧計測と同じく、
+harmonic／modalでT1固有の作用が観測され（`t1_effect_observed`は6/12条件で真、旧計測と同じ内訳）、
+sineでは観測されない。
+
+数値そのものは複数条件で変化した。原因は改訂の意図どおり、`body`のfootprint_sourceが
+`proxy(stale)`／`proxy(absent)`へ落ちる頻度が下がり、より多くの機会で実際に代表footprintが使われる
+ようになったことである。modal-flow-4では旧計測でfootprint_sourceが`body`53／`proxy(stale)`3だったのに対し、
+新計測は`body`56／`stale`0（全件解決）。この3件の解決だけで、下流の状態を通じてdiffering数が16→25へ
+9件動いた（単一の入力差が後続の候補選択へ連鎖する影響で、footprint_source変化数と1対1ではない）。
+harmonic-flow-4/16はfootprint_source内訳が変わっても（例: harmonic-flow-16は旧`stale`1／`absent`1→新
+`absent`4、旧`body`203→新`body`201）、differing数（3、10）は不変だった。harmonic-flow-64／modal-flow-64
+（登録範囲外の64 Voice）はdiffering数・comparable数がわずかに動いた（9→8、853→851など）。64 Voiceは
+実行が長くhopが多いため、上流での小さな選択差が後続の発音機会数へ連鎖した結果と考えられるが、
+登録範囲外につき判定はしない。
+
+### §5.7: `body` 対 `none`（4／16 Voice、report有無、交互3反復、登録8条件）
+
+全16組（8条件×report有無）中、全欄合格は7組（sine-hold-4 report／no-report、sine-hold-16
+report／no-report、sine-flow-16 no-report、harmonic-flow-16 report／no-report）。旧計測の全欄合格3組
+（sine-hold-4 report、sine-hold-16 report、sine-flow-16 no-report）と比べ、sine-hold-4／16のもう一方の
+report/no-reportとharmonic-flow-16の両方が新たに合格した。不合格9組の内訳:
+
+| 条件・mode | 不合格欄 |
+|---|---|
+| sine-flow-4 report | population_us中央値+15.3%、p99 -15.4% |
+| sine-flow-4 no-report | population_us中央値+12.4%、p99 -14.3% |
+| sine-flow-16 report | synthesis_us p99 +5.7% |
+| harmonic-flow-4 report | population_us p99 -12.1% |
+| harmonic-flow-4 no-report | population_us中央値+11.3%、p99 -6.2%、over_budget_hops（body=[0,0,0]、none=[1,0,0]） |
+| modal-flow-4 report | population_us中央値+23.4%、p99 -6.0%、elapsed_us最大+1802.8 µs |
+| modal-flow-4 no-report | population_us中央値+9.0%、elapsed_us最大+1638.6 µs |
+| modal-flow-16 report | population_us p99 +7.1%、elapsed_us p99 +8.9%、over_budget_hops（body=[1,0,0]、none=[0,0,0]） |
+| modal-flow-16 no-report | elapsed_us p99 +9.7% |
+
+不合格の性質は旧計測と同じ二種に分かれる。(1) `population_us`の中央値・p99の相対差は、絶対値が
+5〜9 µs台のまま±5%相対許容に対して依然厳しい（旧計測で指摘した論点は今回も未解決、許容は変更していない）。
+(2) `elapsed_us`最大の1 ms超過（modal-flow-4）とover_budget_hopsの1 hop差（harmonic-flow-4 no-report、
+modal-flow-16 report）は単発の値であり、3反復では反復間ばらつきと本変更の影響を分離できない
+（旧計測と同じ限界）。over_budget_hopsの差はいずれも`none`側または`body`側の1反復にのみ出ており、
+一貫して`body`が超過を増やした証拠にはならない。
+
+footprint計数（`body` variant、report mode、3反復合計）は次のとおり。要求＝完了が全条件で成立し、drop 0。
+
+| 条件 | 要求 | 置換済み(superseded) | 置換済み比率 |
+|---|---|---|---|
+| sine-hold-4/16 | 0 | 0 | ― |
+| sine-flow-4 | 24（8×3） | 0 | 0% |
+| sine-flow-16 | 96（32×3） | 0 | 0% |
+| harmonic-flow-4 | 24 | 6（2,2,2） | 25% |
+| harmonic-flow-16 | 96 | 22（7,7,8） | 23% |
+| modal-flow-4 | 24 | 0 | 0% |
+| modal-flow-16 | 96 | 0 | 0% |
+
+旧計測の置換済み56〜88%から、登録8条件では0〜25%へ下がった（改訂の目的どおり）。返却遅延
+（`footprint_received_at - footprint_requested_at`、report jsonlから算出）は次のとおり。
+
+| 条件 | 件数 | 中央値 | p99 | 最大 | footprint_source内訳 |
+|---|---|---|---|---|---|
+| sine-flow-4 | 168 | 0.0 ms | 0.0 ms | 0.0 ms | body 100% |
+| sine-flow-16 | 615 | 0.0 ms | 0.0 ms | 0.0 ms | body 99.5%、proxy(stale) 0.5% |
+| harmonic-flow-4 | 168 | 32.0 ms | 53.3 ms | 53.3 ms | body 100% |
+| harmonic-flow-16 | 615 | 85.3 ms | 106.7 ms | 106.7 ms | body 98.9%、proxy(stale) 0.3%、proxy(absent) 0.8% |
+| modal-flow-4 | 168 | 21.3 ms | 32.0 ms | 32.0 ms | body 100% |
+| modal-flow-16 | 612 | 32.0 ms | 64.0 ms | 64.0 ms | body 99.5%、proxy(stale) 0.5% |
+
+返却遅延の分布自体は旧計測（中央値10.7〜85.3 ms、最大277 ms）と同程度の桁で、harmonic-flow-16が
+最も遅い点も変わらない。`proxy(absent)`はharmonic-flow-16の0.8%のみで、他条件は0（旧計測の
+「harmonicの2条件で1〜2%」よりわずかに下がった）。
+
+### 判定
+
+§5.5(a)は改訂後binaryでも成立を維持する（harmonic／modalでT1固有の作用、sineでは不成立）。数値は
+置換済み比率の低下により旧計測から動いたが、判定を左右する`t1_effect_observed`の内訳は変わっていない。
+§5.7は登録許容で不合格が残る（7/16合格、旧3/16から改善）。第1段の技術完了はまだ主張しない
+（§5.1〜5.3の独立参照、§5.9のoffline再投影は未実施のまま）。
+
+次の単位で扱う項目を更新する。(1) `population_us`の増分を絶対値（µs）でも登録し、相対±5%が意味を持つ
+下限を宣言すること（未解決、今回も同じ論点が残った）。(2) 反復を増やしてelapsed_us最大値とover_budget_hops
+のばらつきを分離すること（未解決）。(3) 置換済み比率が高い原因の特定と識別規則の改訂は今回**完了**
+（`77e07b6`）。次に残るのは(1)(2)と、§5.1〜5.3の独立参照、§5.9のoffline再投影（Rust側入口が未実装）である。

@@ -1058,3 +1058,24 @@ report の`population_us`中央値＝report有りにだけ乗る決定報告の�
 
 移す前後で、同じ条件のoffline renderのWAVと、`participation_decision`・`participation_context`・`onset`・
 `body_footprint`（`computed_at` を除く）が一致した。report有りの8組の§5.7は、この修正の後に取り直す。
+
+
+## §5.7の`elapsed_us`をhop自身の仕事で判定する（2026-09-23、取得前の登録）
+
+§5.7は機構がhop経路に加える負荷を測る検査である。`5c877d4` の分析で、`elapsed_us` の不合格はその負荷では
+ないことが分かった。modal-flow-4の最大はframe 401に集中し、増えた相は `analysis_wait_us` だけ（`body`
+7770.8 µs、`none` 1512.9 µs）で、`population_us` は6.5 µsだった。`analysis_wait_us` が3 msを超えるhopは
+両変種ともframe ≡ 1 (mod 10) に限られ、解析threadの10 hop周期の受け渡しをhopが待っている。最大の外れ値は、
+周期hopの直前にonsetが入ったときに出る。modal-flow-16のp99も同じ分布から来ている。待ちの増加は機構の
+計算ではなく、機構が変えた音楽の解析時間である。
+
+- 規則。`elapsed_us` の3欄（中央値・p99・最大）と予算超過hop数を、hopごとの
+  `own_us = elapsed_us - analysis_wait_us - listener_wait_us` から算出して判定する。許容は現行のまま
+  （中央値とp99は `max(0.05 * none, floor)`、最大は `max(1 ms, floor)`、超過hop数は `floor` 以内）。
+  超過hopは `own_us` がhop予算を超えたhopとする。floorは既存のA/A 3 pass（`none` 対 `none`）から、同じ規則
+  （48標本の最大）で `own_us` について算出する。
+- 併記。生の `elapsed_us` とその判定、`analysis_wait_us`・`listener_wait_us` の中央値・p99・最大を、
+  `body` と `none` に分けて報告する。音楽が変わったことによる解析負荷の差は、資源受入（R2）で扱う。
+- 変えないもの。`population_us` と `synthesis_us` の検査はそのまま。
+- 事後性。この規則は `5c877d4` の結果を見た後に置く。判定には、決定報告の書き出しを報告の相へ移した
+  `c41fdb3` の後の新しい取得を使い、その取得の前にこの登録を固定する。A/Aのfloorを登録したときと同じ扱いである。

@@ -147,6 +147,7 @@ fn acquire_medoid_action_profiles() {
                 wav_tx: None,
                 reporter: Some(reporter),
                 deterministic_analysis: true,
+                deterministic_footprints: true,
                 guard_meter: None,
                 underrun_frames: None,
                 reserve_runtime_ids_through: 0,

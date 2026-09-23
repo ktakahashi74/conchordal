@@ -915,6 +915,9 @@ struct WiringOptions {
     wav_tx: Option<Sender<Arc<[f32]>>>,
     reporter: Option<JsonlReporter>,
     deterministic_analysis: bool,
+    /// Offline render only: footprints return at the hop that asked, whatever the worker's
+    /// pace. The instrument keeps wall-clock delivery, even with `--play=false`.
+    deterministic_footprints: bool,
     guard_meter: Option<Arc<LimiterMeter>>,
     underrun_frames: Option<Arc<AtomicU64>>,
     reserve_runtime_ids_through: u64,
@@ -952,6 +955,7 @@ fn wire_runtime(
         wav_tx,
         reporter,
         deterministic_analysis,
+        deterministic_footprints,
         guard_meter,
         underrun_frames,
         reserve_runtime_ids_through,
@@ -1132,6 +1136,7 @@ fn wire_runtime(
         hop_duration,
         fs,
         deterministic_analysis,
+        deterministic_footprints,
     };
     let channels = WorkerChannels {
         candidate_tables,
@@ -1323,6 +1328,7 @@ pub(crate) fn init_runtime(
             wav_tx: None,
             reporter,
             deterministic_analysis,
+            deterministic_footprints: false,
             guard_meter,
             underrun_frames: audio_out.as_ref().map(AudioOutput::underrun_frames),
             reserve_runtime_ids_through: 0,
@@ -1466,6 +1472,7 @@ pub fn run_render(
             wav_tx: Some(wav_tx),
             reporter,
             deterministic_analysis: true,
+            deterministic_footprints: true,
             guard_meter,
             underrun_frames: None,
             reserve_runtime_ids_through,
@@ -1521,6 +1528,7 @@ struct WorkerConfig {
     /// Offline/report paths consume analysis with a fixed lag so results do not
     /// depend on worker scheduling. Real-time leaves the listener best-effort.
     deterministic_analysis: bool,
+    deterministic_footprints: bool,
 }
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
@@ -1691,6 +1699,15 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                 .as_mut()
                 .unwrap()
                 .enable_predictions();
+            if cfg.deterministic_footprints
+                && let Some(worker) = state
+                    .schedule_renderer
+                    .action_observer
+                    .as_mut()
+                    .and_then(|observer| observer.footprint_worker())
+            {
+                worker.deliver_footprints_deterministically();
+            }
             if std::env::var_os("CONCHORDAL_DISABLE_CANDIDATE_ENERGY").is_some() {
                 state
                     .schedule_renderer
@@ -3367,6 +3384,7 @@ mod tests {
             hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
             fs,
             deterministic_analysis: true,
+            deterministic_footprints: true,
         };
         let scenario = crate::scenario::Scenario {
             temporal_mode: crate::scenario::TemporalMode::Off,
@@ -3665,6 +3683,7 @@ mod tests {
                             wav_tx: None,
                             reporter: Some(reporter),
                             deterministic_analysis: true,
+                            deterministic_footprints: true,
                             guard_meter: None,
                             underrun_frames: None,
                             reserve_runtime_ids_through: 0,
@@ -3762,6 +3781,7 @@ mod tests {
                         wav_tx: Some(wav_tx),
                         reporter: Some(reporter),
                         deterministic_analysis: true,
+                        deterministic_footprints: true,
                         guard_meter: None,
                         underrun_frames: None,
                         reserve_runtime_ids_through: 0,

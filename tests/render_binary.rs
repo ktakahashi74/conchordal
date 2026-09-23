@@ -1745,3 +1745,91 @@ wait(2.1);
     }
     fs::remove_file(config).unwrap();
 }
+
+#[test]
+fn body_footprint_renders_repeat_exactly() {
+    let config = unique_temp_path("toml");
+    fs::write(
+        &config,
+        r#"
+[audio]
+sample_rate = 48000
+[analysis]
+nfft = 2048
+hop_size = 512
+[dcc]
+coupling_strength = 0.0
+[temporal_body]
+means = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+deviations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+accent_means = [0.0, 0.0]
+accent_deviations = [1.0, 1.0]
+[temporal_onset_comparison]
+footprint = "body"
+"#,
+    )
+    .unwrap();
+    let scenario = write_inline_scenario(
+        r#"
+temporal_mode("observe");
+seed(20260923);
+let voice = modal().amp(0.03).flow().cycles(3).adsr(0.03, 0.3, 0.5, 0.7)
+    .send(habitat_bus | presentation_bus);
+let group = place(voice, consonance(220.0, 880.0).spacing(0.8).count(4));
+wait(4.0);
+release(group);
+wait(1.0);
+"#,
+    );
+    let mut runs = Vec::new();
+    for _ in 0..2 {
+        let wav = unique_wav_path();
+        let report = unique_temp_path("jsonl");
+        let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
+            .env("RUST_LOG", "warn")
+            .arg(&scenario)
+            .arg("-o")
+            .arg(&wav)
+            .arg("--config")
+            .arg(&config)
+            .arg("--report")
+            .arg(&report)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        // Everything a decision can depend on; `computed_at` is a wall-clock field.
+        let records: Vec<serde_json::Value> = fs::read_to_string(&report)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|record| {
+                matches!(
+                    record["type"].as_str(),
+                    Some(
+                        "participation_decision"
+                            | "participation_context"
+                            | "body_footprint"
+                            | "onset"
+                    )
+                )
+            })
+            .map(|mut record| {
+                record.as_object_mut().unwrap().remove("computed_at");
+                record
+            })
+            .collect();
+        runs.push((fs::read(&wav).unwrap(), records));
+    }
+    let (first, second) = (&runs[0], &runs[1]);
+    assert!(first.1.iter().any(|r| r["type"] == "body_footprint"));
+    assert!(first.1.iter().any(|r| r["footprint_source"] == "body"));
+    assert!(
+        first.0 == second.0,
+        "a body render changed its audio on repeat"
+    );
+    assert_eq!(first.1, second.1);
+}

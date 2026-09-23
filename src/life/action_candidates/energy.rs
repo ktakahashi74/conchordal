@@ -755,6 +755,9 @@ pub(crate) struct Worker {
     output: Receiver<Record>,
     footprint_input: Option<Sender<footprint::Request>>,
     footprint_output: Receiver<footprint::Record>,
+    /// Offline renders wait for every accepted footprint at the hop that asked (I11-1).
+    deterministic_footprints: bool,
+    footprints_in_flight: usize,
     handle: Option<JoinHandle<()>>,
     counters: Arc<[AtomicU64; 6]>,
     pub stats: Stats,
@@ -924,6 +927,8 @@ impl Worker {
             output,
             footprint_input: Some(footprint_input),
             footprint_output,
+            deterministic_footprints: false,
+            footprints_in_flight: 0,
             handle: Some(handle),
             counters,
             stats: Stats::default(),
@@ -971,6 +976,7 @@ impl Worker {
             .is_some_and(|tx| tx.try_send(request).is_ok());
         if accepted {
             self.stats.footprint_requested += 1;
+            self.footprints_in_flight += 1;
         } else {
             self.stats.footprint_dropped += 1;
         }
@@ -987,10 +993,26 @@ impl Worker {
     pub fn drain(&mut self) -> impl Iterator<Item = Record> + '_ {
         self.output.try_iter()
     }
+    /// Delivery then no longer follows the worker's pace, so a render repeats exactly.
+    pub(crate) fn deliver_footprints_deterministically(&mut self) {
+        self.deterministic_footprints = true;
+    }
+
     pub fn drain_footprints(&mut self, now: u64) -> impl Iterator<Item = footprint::Record> + '_ {
-        self.footprint_output.try_iter().map(move |mut record| {
+        std::iter::from_fn(move || {
+            let mut record = if self.deterministic_footprints {
+                // One outstanding request per Voice keeps the reply queue from dropping,
+                // so every accepted request comes back.
+                if self.footprints_in_flight == 0 {
+                    return None;
+                }
+                self.footprint_output.recv().ok()?
+            } else {
+                self.footprint_output.try_recv().ok()?
+            };
+            self.footprints_in_flight = self.footprints_in_flight.saturating_sub(1);
             record.received_at = Some(now);
-            record
+            Some(record)
         })
     }
     pub fn finish(&mut self) {

@@ -689,4 +689,19 @@ mod tests {
         assert_eq!(worker.stats.completed, submitted);
         assert_eq!(worker.drain_footprints(7).count(), 4);
     }
+
+    #[test]
+    fn deterministic_delivery_returns_every_accepted_request_at_the_asking_hop() {
+        let mut worker = Worker::new();
+        worker.deliver_footprints_deterministically();
+        for _ in 0..3 {
+            assert!(worker.request_footprint(request(recipe(BodyKind::Sine, 24000))));
+        }
+        // No polling: the drain itself waits for the worker.
+        let records: Vec<_> = worker.drain_footprints(8192).collect();
+        assert_eq!(records.len(), 3);
+        assert!(records.iter().all(|r| r.received_at == Some(8192)));
+        assert_eq!(worker.drain_footprints(8704).count(), 0);
+        worker.finish();
+    }
 }

@@ -786,3 +786,26 @@ floorが効くのは`0.05 × none`がfloorを下回る欄、つまり絶対値�
   比べる検査はこの揺れを含み、§5.2の反実仮想（同じ決定で `power_k` だけを入れ替える）は含まない。
 - 資源。報告の追加はreport付きの実行だけでhop経路の仕事を増やす。§5.7のreport有りの8組は、本変更の後に
   取り直す必要がある。A/Aのfloorは `none` どうしなので影響を受けない。
+
+
+## offline renderでのfootprint配送の決定化（2026-09-23、登録）
+
+`body` のrenderは、footprintの受領時刻がworkerの実時間に依存するため、再実行で同じにならない（前節）。
+§5.5(a)のように別々の実行を比べる検査と、研究assayの再現にはこれが障害になる。§4.8の時刻の扱いを、
+offline renderに限って次のように改める。§8に従う改訂登録である。
+
+- 規則。`conchordal-render` だけで、hopの冒頭で出した要求を、同じhopの受け取り処理（集団更新の後）で
+  全件受け取る。workerの計算が終わるまで待つ。受領時刻は要求と同じhopの `now` で、決定で使うのは次の
+  hopから。workerはfootprint要求を先着順に処理し、Voiceごとの未完了は1件なので、受け付けた要求は全件
+  返り、返却queue（容量64）は溢れない。
+- 対象外。instrumentは `--play=false` でも実時間の配送のままとする。§5.7の負荷にworkerを待つ時間を
+  混ぜないためである。
+- §4.8の読み替え。offline renderでは受領の遅延が0 hop、決定への反映が1 hop後になる。liveで測った
+  受領遅延の分布（中央値10.7〜85.3 ms、最大277 ms）はofflineには現れず、offlineの `proxy(absent)`／
+  `proxy(stale)` の比率はliveより低くなる。offlineの結果は最短の配送を仮定したものである。
+- 確認。同じ設定の `body` のrenderを2回行い、WAVと、`onset`・`participation_decision`・
+  `participation_context`・`body_footprint`（実時間の欄 `computed_at` を除く）が一致する（test
+  `body_footprint_renders_repeat_exactly`）。再現条件の3身体で独立参照の全検査が通り、全決定が `body` を
+  使った。§5.2で選択が変わる決定は、sine 0／107、harmonic 16／107、modal 37／107。
+- 影響。`body` のoffline renderの結果が変わるため、§5.5(a)は取り直す。`None` の経路は要求を出さないので、
+  待ちも生じない。

@@ -2,6 +2,8 @@
 
 状態：草案（未レビュー・未凍結）。実装・取得なし
 
+2026-09-24、作者の「全て推奨で、実装」により、担当I11-3（T1）／I11-4（T2）とT1モデルCASP 2008を確定した。以下の同日記録にある担当番号の未承認という記述は、この追記以前の状態である。R2の長時間取得の規模や合否を承認したものではない。
+
 **2026-09-24の対象版改訂。** 最初の正式主判定は、I12bの取得・終結と基準版固定、I4の第一・第二段階、I10再検証、T1のERB帯域同時・前方マスキング地形、T2の包絡変調スペクトル地形、I11-2／I12bの新版再登録・再取得を経た統合版を対象とする。地形追加前のsource／binaryや既存I11・I12b取得を正式R2の反復へ算入しない。現時点のI12b取得は0件であり、対象統合版のsource、binary、設定、モデル、素材SHAは未確定である。T1・T2の担当をI11-3／I11-4とするのは提案であり、作者未承認。以下の行列・予算は新版で再確認する草案で、取得の凍結を意味しない。
 
 2026-09-24追記：作者の「推奨」により、R2-1は通常採用・既定値変更の資源前提とする方針、R2-2はI4第二段階とI10再検証後の最終構成を最初の主判定にする方針を選択した。草案全体のレビュー・数値の凍結・実行開始とは区別する。
@@ -56,13 +58,23 @@ AGENTS.mdのDSP Efficiency節は、steady-stateの5種類の割当箇所と、�
 
 追加計器の受入は、計測区間と分母の検査、既定None等の登録回帰、計器有無の費用差を対象とする。費用差の測定は将来の別診断であり、現時点で計器が無負荷・RT-safeであるとは主張しない。
 
+### 2.1a `profile-max-hops`の有界容量契約案
+
+現`RunProfile`は100,000 hopを事前確保し、超過分を`truncated/dropped_hops`として終了時に失敗とする（`src/runtime_profile.rs:9,120-230`）。最小変更案は`--profile`専用の有限な`--profile-max-hops N_cap`を設け、省略時100,000を保つことである。CLIは`--profile`がない指定、0、整数overflowを起動前に拒否する。現在の`--profile`は`--nogui`必須で、`main`が`wait_user_exit=false`へ強制し、Scenarioには有限の`Finish`が必要である（`src/cli.rs:37-41`、`src/main.rs:51-63`、`src/runtime/mod.rs:790-809`）。現在の経路に無期限user待ちを想定して容量を増やさない。
+
+scriptはrelease tailを計算してから最終`Finish`を配置する（`src/scripting/mod.rs:1378-1388`）。現行runtimeは各hopの**始端**を`f32`秒へ変換してeventを配送し、`Finish`が`abort_requested`を立てたhopを記録して終了する。rendererのidle待ちはこの経路で保証されない（`src/runtime/mod.rs:1615-1619,2468-2475,2194-2201`、`src/life/conductor.rs:65-87`、`src/life/community/actions.rs:12-19`）。worker終了後のqueue回収・report集計等の**wall drainはhop記録の外**である（`src/runtime/mod.rs:1789`）。登録runでは最終`Finish`の実際の`f32`時刻を`t_finish`とし、`Timebase::tick_to_sec(k × hop_size) >= t_finish`を初めて満たすhop番号を`k_finish`とする。`H_required = k_finish + 1`をchecked整数演算で得て、`N_cap < H_required`を拒否し、等値は許す。秒を別規則で整数sampleへ丸めて代用しない。早期abortは正常な完全runへ読み替えず、raw件数と終了理由で別に検出する。将来の終了動作変更や停止時刻不明のrunは別登録とし、強制停止機能を暗黙追加しない。
+
+容量のbyte上限`B_profile`は、登録対象機器で**profile所有メモリ**の有限値として実装前に固定する。`HopProfile`領域の実確保容量×`size_of::<HopProfile>()`、全件`elapsed_us`の並べ替え領域の実確保容量×`size_of::<f64>()`、writer bufferをchecked加算して上限を検査する。process RSS全体の予算とは別である。両Vecをfallibleに予約し、実際のcapacityが要求数を超えた場合も上限を確認する。JSONはstreamingで書き、全JSON文字列の確保を加えない。hop外のsort・serialization・flushの時間と書込み失敗は別記する。`N_cap`と`B_profile`の数値をこの草案で決めない。`RunProfile::create`は現状profile file作成後にhop予約するため、実装では容量計算と予約をfile作成前へ移す。現在の周辺経路では音声stream起動とreport metadata書込みがprofile作成に先行するので、「起動前拒否」は**最初のhop前**の意味に限定し、他の出力が皆無とは主張しない（`src/runtime/mod.rs:1210-1315`）。
+
+48 kHz／512では660秒の区間`[0,660fs)`は61,875 hop、30分の区間は168,750 hopである。`Finish`が区間末ちょうどに置かれれば、その配送hopがさらに1件必要になる。容量`N_cap`は全runの完全性用であり、主判定の測定窓`[60fs,660fs)`に完全に入る56,250 hopの件数`N_window`、順位`floor(q(N_window−1))`とは分ける。profile内蔵の全run・線形補間summaryは主判定へ流用しない。実装時には既定100,000、`N_cap=H_required−1`／等値／`+1`、0、byte計算overflow、上限直前／超過、hop・summary領域の予約失敗、Finishがhop境界上・直前・直後の場合と長時間側の`f32`丸め、非ゼロrelease tail、renderer非idleでの現行終了、早期abort、wall drainによるraw件数不変、容量到達後の非伸長、write失敗、truncation、測定窓の境界hop・欠番を検査し、既存schema・全run summary・従来の`None`条件を維持する。R2取得前に登録するのは対象runの`t_finish`、`N_cap`、`B_profile`、測定窓と終了条件であり、この計器小単位だけで正式R2長時間取得や資源合格を宣言しない。
+
 ### 2.2 主判定に必要な最小データ契約案
 
 次の欄を既存profileと終端counterへ接続する案である。新しい汎用計測frameworkや全eventの無制限logは要求しない。表の「追加」は未実装であり、未観測値を埋めるものではない。共通識別は登録版、run、所有thread／経路、必要なbus・owner・epoch・body世代とする。
 
 | 所有者・既存接続 | 時計と母集団 | 既存欄に加える最小の観測と集計 |
 |---|---|---|
-| 主worker：`HopProfile`、`process_hop` | 整数frame・sample tick、単調wall時計。§5の完全hop集合 | 既存の全hop・相別wall・Voice／Tone数・出力不足を保持する。計時外のrow保存等は別の処理費用として集計する。欠番・重複・非有限値・計器dropを完全性欄へ出す。既存100,000 hop上限を事前照合し、途中拡張・間引きをしない |
+| 主worker：`HopProfile`、`process_hop` | 整数frame・sample tick、単調wall時計。§5の完全hop集合 | 既存の全hop・相別wall・Voice／Tone数・出力不足を保持する。計時外のrow保存等は別の処理費用として集計する。欠番・重複・非有限値・計器dropを完全性欄へ出す。現100,000 hop／変更後の登録`N_cap`を事前照合し、途中拡張・間引きをしない |
 | 両busの解析／共有observer、私有body、候補worker：`resources::Meter`、candidate `Stats` | 処理対象のsource sample tickと単調wall開始／終了。共有observerの100 ms窓はbus／epoch別、私有body・候補の共通処理はworker全体で一度だけ | 計器のある経路は全run集計を残して測定窓別の`count`・合計・最大・histogram・登録閾値超過数を追加する。各windowの完全／欠測／境界横断件数も保存する。現計器のない解析費用とcandidate分布は同じ範囲を明記して追加し、既存最大値だけからp99を作らない。table等の内数を二重加算しない |
 | 主workerの要求側、candidate worker、結果消費側：`Stats`とfootprint配送 | 要求発行sample tickで測定対象を分類し、投入／取出しの単調wall差でqueue滞留を測る | 候補はpool取得前の要求機会、投入、受理、支持不成立、容量drop、出力drop、処理完了、消費／破棄、pendingを別にする。footprintは投入試行と固有identity、受理、再送、完了、結果／drop通知受領、消費／破棄を区別する。既存の有界pool・queueに付く集計であり、capacity・観測最大占有・最古滞留・未説明未回収、主要payloadのcopy bytes・保持枠数を経路ごとに残す |
 | 共有／私有のprototype所有者、主workerの表・CDF・参照消費者：`Shared.assignments`、`body::Snapshot`、到来判定 | producer側はsource／available sample tick、消費側はdecision tick。公開版と世代を照合する | bus×prototype別の有効比較・実支持／対応・対応期間を固定サイズの集計へ出す。表を読み込んだ数と実対応数を分け、私有assignmentが現JSONでは省略される点を補う。必要な経路の公開数・有効受領数・適格decision数・実使用数、stale／未来／世代不一致等の拒否理由を集計する。既知0・既知非ゼロ・未知を分け、分母0を成功率へ変換しない |
@@ -137,7 +149,7 @@ I11-2／I12bのシナリオ、seed、body／Hazard設定、checksum検査器は�
 
 前回の判断4（本書R2-2のうち最初の運用範囲）は、I4第二段階とI10再検証後を選択した。[I4の引渡し順](i4-recall-separation.md#r2-handoff-order)も同じ選択を反映する。以下の第一分岐を採用方針とし、後二分岐は選ばなかった代案として残す。第一段階は旧producerを残す責務分離であり、I4残作業の完了ではない。
 
-- **第二段階後を主判定にする方針（選択済み）**：I12bの取得・作業終結と基準版の固定 → I4第一段階のbit回帰 → 第二段階の新規則登録・実装 → 研究検索の配置判断とI10／影響する生成経路の再検証 → T1地形とそのA1 → T2地形 → I11-2／I12bの新版再登録・再取得 → T2のA1とT1証拠の回帰照合 → 最終処理目録・不足計器の検証とR2登録 → R2 → R3／A2／A3の最終受入・A4監査。T1とT2のA1は対象版を固定したうえで並行可能である。T2変更後のT1回帰で証拠を引き継げない範囲はT1のA1を再実施する。R2の正式取得はI10再検証と両地形の統合まで待つ。R2合格をI4実装の着手条件にはしない。
+- **第二段階後を主判定にする方針（選択済み）**：I12bの取得・作業終結と基準版の固定 → I4第一段階のbit回帰 → 第二段階の新規則登録・実装 → 研究検索の配置判断とI10／影響する生成経路の再検証 → T1地形とT1 A1対象版の固定。その後、固定した版でのT1 A1とT2地形の作業を並行できる。T2地形後、I11-2／I12bの新版再登録・再取得 → T2のA1とT1証拠の回帰照合 → 最終処理目録・不足計器の検証とR2登録 → R2 → R3／A2／A3の最終受入・A4監査。T1 A1の終了はT2着手の条件ではない。T2変更後のT1回帰で証拠を引き継げない範囲はT1のA1を再実施する。R2の正式取得はI10再検証と両地形の統合まで待つ。R2合格をI4実装の着手条件にはしない。
 - **第一段階後に先行検査する案**：I12b終結・基準固定 → I4第一段階のbit回帰 → 旧producerを含む版のR2登録・取得 → 第二段階・研究検索の配置・I10再検証 → 最終構成のR2を別登録する。第一段階までで足りるのは、その暫定版だけを対象とする検査である。bit一致はCPU時間・割当・queue費用の一致を意味せず、第二段階後の資源受入へ流用しない。先行検査の目的・本数も未承認である。
 - **I4分離前を最初の対象にする代案**：I12b終結後の現構成を固定し、現存検索を含めてR2を行う。後続のI4分離・I10再検証後には新版のR2登録が要る。前回の判断4を採らない選択肢である。
 
@@ -196,3 +208,11 @@ JSONは今回、識別・状態・要求／限界の小さな欄を確認した�
 - 後段の登録事項：I4後の最終構成と計器の確定後、機器出力・GUI・対象負荷、主張に必要な本数、drop率・鮮度・メモリ上限・drain期限・prototype素材を取得前に固定する。数値予算と運用範囲の採用に必要な作者判断はこの時点でまとめる。198 run・36.3時間は現行案の規模であり、今その実行承認を求めるものではない。別機器・バッテリー条件、A3の長時間復旧行列はさらに別の登録で扱う。
 
 本草案の終了点は、失敗の引渡し先、現処理の目録、計器不足、行列・判定の提案、必要な判断がレビュー可能になった状態である。R2の登録完了・計器実装・性能成立を意味しない。
+
+## 9. 計器の限定技術完了（2026-09-24）
+
+§2.1aの登録を凍結した後、別worktreeでprofile容量とFinish preflightを実装した。`--profile-max-hops`による有界容量、256 MiBの所有byte上限、f32のFinish配送時計に対応する必要hop数、実予約容量の検査を持つ。入力・容量・予約に失敗した場合は出力fileを作成・上書きする前に終了する。profile schemaは4のままである。
+
+追加検査はunit 9件とbinary 4件で、H−1／H／H＋1、f32 ULP境界、両予約失敗、release tail、非idle終了、早期abort、drain後件数、write失敗を含む。対象版の全体Rust検査、fmt、clippy、all-targets checkも通過し、独立Astraのcompletion review2は「R2計器は可」とした。対象source・登録・全出力・独立判定を[`r2-instrument-completion.json`](../../../target/handoff-20260924/i13-r2/r2-instrument-completion.json)と同階層の`r2-instrument-approved/`に固定した。共に検査したI13は未完であり、後続修正と統合後の検査を残す。
+
+これは計器の技術完了に限る。§4.2のI4／I10／T1／T2の依存、正式R2の最終登録、長時間取得の規模承認、資源受入は未達のままである。

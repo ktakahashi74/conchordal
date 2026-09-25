@@ -91,6 +91,8 @@ I3の既存frontend・lifecycle・feature数値fixtureも全テストで再検�
 
 ## 残る範囲
 
+I4の本体参照と研究用episode検索の分離については、[設計登録草案](i4-recall-separation.md)を参照する（未レビュー・未凍結、実装・取得なし）。
+
 UIとreportは同じsnapshotを消費する。実画面の見切れ・操作性、実機音声、長時間遅延、全負荷、fit、
 聴取課題、可聴性、作者採用は未検証。追加のSpan確保、prefixコピー、matcher配列・path、snapshotと
 queueの費用は専用observer内にも存在する。音声callbackや主workerへ検索処理を追加していないが、

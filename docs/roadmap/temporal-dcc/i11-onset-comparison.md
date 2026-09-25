@@ -8,12 +8,20 @@
 off基準、検査計画である。数値は全て宣言した工学規則で、人の評定への適合は行わない
 （[milestones §1.3](milestones.md#13-機構選択規則による本体範囲の縮小2026-09-20同日のレビューを反映)）。
 
+最新の判定（2026-09-24 JST）：[Macでの再取得](#stage1-mac-validation-20260923)と独立Astra再レビューを経て、
+[改訂§6の限定範囲で第1段を技術完了](#stage1-technical-completion)とした。作者採用・資源受入・第2段は含めない。
+その後、変更経路外の[固定bit検査の移植性問題](#stage1-test-portability-20260923)を解消し、同一Macで必須の全`cargo test`も通過した。
+以下の登録と測定履歴は保持し、過去の未達判定を最新判定で置き換えずに残す。
+第2段は2026-09-24、[I11-2の実装前登録](i11-2-arrival-comparison.md)をAstraレビュー後に凍結し、
+実装した。offline 96本と§5.9のgap 18条件を取得・集計し、[第2段の結果記録](i11-2-results.md)へ保存した。
+係数・CDFの数値計算・配送・全hop負荷の判定は同登録を正本とする。A/A 504本と性能比較252本の取得を完了したが、原試行の§5.7性能主判定560欄中11欄が不合格だった。到来使用の適格性36件は全合格。この原判定を保持したまま、追加のAC給電・覚醒統制下252本と[独立結果レビュー](../../../target/i11-stage2-awake-diagnostic-20260924/results-review.md)・[独立受入審査](../../../target/i11-stage2-awake-diagnostic-20260924/acceptance-review.md)を根拠に、2026-09-24、**I11-2限定技術完了（追加証拠による事後受入）**を記録した。[第2段の結果記録](i11-2-results.md)の§6に範囲と留保を示す。原§5.7の11欄不合格は合格へ変更しない。
+
 I11は「支持された関係一つ→実消費者→音響差」を対象T行・消費者ごとに閉じる。ここで閉じる一機構は、
 T1（自声の身体予測）とT2（到来期待）を、実消費者 `src/life/temporal_participation.rs` の
 発音時刻決定へ入力として返す経路である。第1段が返すのは「代表onset条件付きの身体予測」であり、
 実kick・実rhythms・実seedに条件付けたI10の動作条件付き予測そのものではない（§4.2、§6）。T1を第1段、T2を第2段とし、登録・実装・完了記録を段ごとに分ける。
 第1段は本文書で登録済み。第2段は配送契約と量の形まで登録し、Hazard設定の凍結とCDF格子の最終値は
-第2段の実装前に追記する（§4.5）。
+第2段の実装前に追記する（§4.5。この追記は2026-09-24の[I11-2登録](i11-2-arrival-comparison.md)で行った）。
 
 ## 1. 対象と非対象
 
@@ -1606,7 +1614,7 @@ proxy側のworker処理とrecord報告は増える。この変更は比較の対
 - §5.6と§5.7。返却dropの解除と再送の単体test、および待ちを除く処理負荷の改訂規則への適合は認められた。
   総hop負荷、A/A floorの統計的同等性、liveでの作用は引き続き主張しない。
 
-### 修正後の手元検査と未実施の取得
+### 修正直後の手元検査と未実施だった取得
 
 `a43cdf8`を親とする作業差分で、`footprint_hold`のbody限定を外した。既存の単体testをproxyにもrecordを
 要求する契約へ更新し、offline renderの回帰testをbodyの2回一致とbody／proxy比較に拡張した。
@@ -1629,5 +1637,151 @@ proxy側のworker処理とrecord報告は増える。この変更は比較の対
   該当テストと計算経路のソースは親commitと一致し、今回変更したfootprint経路を呼ばない。親commitの
   別ビルドでの再実行はしていない。全文と終了状態は`test_report.txt`・`test_status.txt`に記録した。
 
-凍結入力が参照するprofile binaryはこのMacには無い。登録12条件の再取得、修正後Noneの§5.4a／b、
-その結果を使う§6の再判定は未実施であり、profileと基準取得を持つblancheでの実行が残る。
+この時点では、凍結入力が参照するprofile binaryはこのMacには無かった。登録12条件の再取得、修正後Noneの§5.4a／b、
+その結果を使う§6の再判定は未実施だった。blancheそのものは必須ではなく、登録profileを同じbyteで入手すれば、
+基準版と修正版を両方このMacで取得して比較できる。
+
+利用者の希望に合わせ、Mac用の取得準備も進めた。基準タグ`i11-stage1-baseline`（`103a32f`）の
+`src/`・`Cargo.toml`・`Cargo.lock`計209ファイルをGit blobと照合し、Mac用release binaryを別ディレクトリへ
+ビルドした。結果は`target/i11-local-baseline-20260923/manifest.json`に記録した。
+取得器の`--profile-file`は登録入力の原本を変えず、profileのSHAを確認したうえで実行用configの参照先だけを
+変更する。元・派生configのSHA、profileのSHA、機械情報を取得先に残す。これは入力ファイル移設への対応であり、
+測定結果や登録判定の代わりではない。手順は[i11-inputs/README.md](i11-inputs/README.md)を参照。
+
+
+<a id="stage1-mac-validation-20260923"></a>
+
+## 同一record修正後のMac新規取得（2026-09-23 PDT／2026-09-24 JST）
+
+これはblancheの既存rawを移したものではなく、このMac（Darwin arm64、rustc 1.93.0）で登録入力を新たに実行した結果である。受領した `i10-action-profiles-20260918.bin`（15,934,505 byte）のSHA-256は登録値 `033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5` と一致した。元のscenario・configは登録hashと一致し、取得用configではprofileの `file` パスだけを差し替えた。
+
+| 取得 | ソースcommit | `conchordal` SHA-256 | `conchordal-render` SHA-256 | render |
+|---|---|---|---|---:|
+| 基準 `None` | `103a32f` | `ff289aedc2d8f5b536cde863f6cd9da557d4a480a7991a8e4816827a93912cc8` | `1800f993407e756e64c266abc556ca37d469aefeef711d5d1e5b4669045ecb31` | 12 |
+| 同一record修正版 | `7f76e0b` | `eb385ee8d4eba4ca5e660b47aa4343ab3159d4bb88777c3c9ebc90bb08615dde` | `29f15c2af1246601164d1769790fe1860db341ae544671c4ac533862b667a688` | 36 |
+
+基準12本と修正版の `body`／`proxy`／`none` 各12本、計48本の終了コードはすべて0。各runのWAVとreportは非空で、出力に複写されたbinary・profileと両ソースのhashも照合した。基準の出力は `target/i11-local-baseline-20260923/none12/`、修正版は `target/i11-same-record-mac-20260923/`。取得と検査の一覧は後者の `mac-validation-summary.json`（`overall_pass=true`）にある。
+
+§5.4(a)は、修正版 `None` とこのMacで再構築した基準 `None` の12条件すべてでWAVと登録された10種類のreport内容がbit一致した。比較からは実時間欄（`processing_us`、`max_processing_us`、`worker_resources`、`delivery_delay_us`、`_us`／`_ns`で終わる欄）と、基準版にない `participation_context` の8欄（`footprint_source`、`footprint_bins`、`footprint_truncated`、`reference_cost`、`selected_cost`、`selected_offset`、`footprint_requested_at`、`footprint_received_at`）を除いた。§5.4(b)は、別々に実行したreportの共通キーに対応する候補record 11,561件で、`processing_us` だけを除いた内容差が0件。片側だけのrecordは基準134件・修正版139件であり、共通recordの内容一致の分母には含めない。登録文書の「同一の凍結packetを両版で再評価する」検査は未実施である。
+
+### §5.5(a)：最初の分岐まで
+
+| 条件 | `body`対`proxy`の選択差／比較可能決定 | 最初の分岐index（0起点） | WAV差 |
+|---|---:|---:|---|
+| sine-hold-4 | 0／0 | なし（決定0件） | なし |
+| sine-hold-16 | 0／0 | なし（決定0件） | なし |
+| sine-hold-64 | 0／0 | なし（決定0件） | なし |
+| sine-flow-4 | 0／56 | なし | なし |
+| sine-flow-16 | 0／205 | なし | なし |
+| sine-flow-64 | 0／857 | なし | なし |
+| harmonic-flow-4 | 3／56 | 10 | あり |
+| harmonic-flow-16 | 10／205 | 10 | あり |
+| harmonic-flow-64 | 8／857 | 31 | あり |
+| modal-flow-4 | 25／55 | 5 | あり |
+| modal-flow-16 | 44／204 | 10 | あり |
+| modal-flow-64 | 66／851 | 31 | あり |
+
+表の選択差／比較可能決定の分母は、`participation_context` を各Voiceのonset順で対にしたもの。最初の分岐indexは別の `participation_decision` を `(now, voice_id)` 順に並べた0起点の位置である。harmonic／modalの6条件はすべて厳密な最初の分岐を持つ。分岐以前の非power入力差はなく、分岐決定でも `power_k` は異なり、他の決定入力差は0。sine-flowの3条件は決定を比較して無分岐、sine-holdの3条件は参加時刻の決定自体が0件である。因果比較には最初の分岐を含むprefix、無分岐条件では全決定を使った。計1,302決定を追加監査し、record参照1,263件、recordなし39件。別実行間で同じ識別子・要求時刻・受領時刻に対応する157件のunique recordは、`computed_at` だけを除く全payload（`energies`、`power`、`state`、`representative`、`superseded`を含む）が一致した。record欠損、重複キー、payload差はいずれも0件。これは同一の物理的recordを共有したという意味ではなく、両実行で採用したrecordの識別と内容が一致したという意味である。詳細は `first-divergence.json` と `first-divergence-records.json`。
+
+独立参照は `body`／`proxy` の24 report、7,199決定、3,568,796項目を照合し、失敗0件。登録済みsine-hold 6 reportは決定0件なので検査scriptの終了コード1に含まれる。検査器の旧版は、識別が古いrecordを保持する `proxy(setting)` を誤って `proxy(stale)` 必須と判定し、6 report・9項目の偽陽性を出した。旧結果 `verify-stage1-before-setting-label-fix.json` と修正後の `verify-stage1.json` を両方保存した。修正はこの状態ラベル判定だけであり、取得rawは変えていない。
+
+### §5.9：このMacでの別取得
+
+`target/i11-gap-mac-20260923/summary.json` と `projection-edge-audit.json` による。登録12条件で投影3,390件、`no_decision` 84件。`coherent_energies` の非対応binは0件。source別の母集団と各量の最大値は次のとおり。`proxy(absent)` の39件は選択候補に重なり項が適用されず、`overlap_gap` と `term_gap` を算出していない。
+
+| footprint源 | 件数 | `power_gap` 最大 | `overlap_gap` 最大 | `term_gap` 最大 |
+|---|---:|---:|---:|---:|
+| `body` | 3,342 | 1.33885e-1 | 3.26319e-3 | 1.28510e-2 |
+| `proxy(absent)` | 39 | 9.99999968e-1 | 適用外 | 適用外 |
+| `proxy(stale)` | 9 | 9.97314e-1 | 0 | 0 |
+
+`body` の9つのflow条件の中央値／p95は以下のとおり（`summary.json`）。最大値は上表に示した。
+
+| 条件 | 件数 | `power_gap` 中央／p95 | `overlap_gap` 中央／p95 | `term_gap` 中央／p95 |
+|---|---:|---:|---:|---:|
+| sine-flow-4 | 56 | 2.64e-2／3.67e-2 | 3.95e-4／7.73e-4 | 8.23e-4／1.39e-3 |
+| sine-flow-16 | 204 | 2.69e-2／3.87e-2 | 1.69e-4／4.21e-4 | 4.74e-4／1.31e-3 |
+| sine-flow-64 | 855 | 2.73e-2／4.23e-2 | 5.23e-5／1.59e-4 | 1.61e-4／8.03e-4 |
+| harmonic-flow-4 | 56 | 8.62e-2／9.77e-2 | 1.28e-3／3.03e-3 | 4.33e-3／9.24e-3 |
+| harmonic-flow-16 | 204 | 8.70e-2／1.05e-1 | 4.83e-4／1.01e-3 | 7.87e-4／6.95e-3 |
+| harmonic-flow-64 | 856 | 8.70e-2／1.07e-1 | 1.34e-4／3.13e-4 | 2.05e-4／2.49e-3 |
+| modal-flow-4 | 56 | 2.63e-3／1.03e-2 | 5.17e-7／2.09e-6 | 2.45e-5／1.17e-4 |
+| modal-flow-16 | 203 | 2.28e-3／9.35e-3 | 1.99e-7／9.92e-7 | 2.40e-5／1.44e-4 |
+| modal-flow-64 | 852 | 2.31e-3／1.12e-2 | 6.46e-8／3.47e-7 | 1.15e-5／7.22e-5 |
+
+代理の `power_gap` 最大値は素材別にも差がある。代理48件は `body` 3,342件とは別の発音機会であり、分布の比較だけで同一条件における優劣は判定できない。
+
+| footprint源 | sine | harmonic | modal |
+|---|---:|---:|---:|
+| `proxy(absent)` | 1.122188e-1 | 7.797263e-1 | 9.99999968e-1 |
+| `proxy(stale)` | 1.950425e-1 | 6.757899e-1 | 9.973137e-1 |
+
+`proxy(stale)` 9件の重なり差が0なのは、すべての決定で `own_band_energy` の3帯域が0だったためである。外部energyの16 binがすべて既知の0だったのは3件だけで、残る6件には非0の外部energyがあった。`proxy(absent)` 39件では全件 `D = 86399.99771118164`、`ceil(D) - D = 0.002288818359375`。`D` ごとの17個の整数sample境界について、`ceil(Fraction.from_float(D) * k / 16)` と `ceil(ceil(D) * k / 16)`（`k = 0..16`）を比較した結果、3,390×17件すべて一致した。これは整数境界とその中点の一致であり、連続時間の端点energyが同一という主張ではない。§5.9は分布の報告であり、この数値だけで代表footprintの許容可否を判定しない。
+
+### 既存証拠を引き継ぐ範囲と検証の限界
+
+§5.6の欠測・世代交換・置換済み返却・drop解除・再送は、前節に記録した強制条件の単体testで
+確認した。登録12条件でこれらの全状態が出現した、という主張ではない。今回の修正は両方の
+`Some`設定を既存の要求・配送経路へ通すもので、`body`と`None`の条件分岐、配送・再送の実装は変えていない。
+
+§5.7は、本文の「§6の改訂（登録）」で事後に限定した処理負荷の範囲
+（`population_us`、`synthesis_us`、待ちを除く`own_us`）について、従前のblancheでの
+`body`対`None`の証拠と改訂した3 pass A/A floorへの適合（16/16）を引き継ぐ。
+これは修正版をMacで負荷再測定した結果ではない。同一record修正は明示的な`proxy`の要求を増やす変更であり、
+従前の測定が対象とした`body`／`None`の経路には作用しないことをソースで確認した。
+増えた`proxy` worker負荷は未測定であり、この適合に含めない。
+総hopの`elapsed_us`、A/A floorの収束や統計的同等性、liveでの因果的作用は未受入のままである。
+当初の総hop許容での合格と混同しない。
+
+今回の取得器と独立検査器の変更はPythonのI11検査34件で合格した
+（Python 3.9では31件合格・profile移設用の3件skip）。本体Rustソースは`7f76e0b`のままである。
+その修正時の単体test、offline render回帰test、Clippyは合格したが、必須の全`cargo test`は
+`migrated_power_counterexample_and_rounding_boundaries`の固定bit比較の1 ULP差でexit 101だった。
+このtestと依存計算経路は親commitと同じでfootprint修正を呼ばないが、親版を別ビルドしての再実行はしていない。
+全体test合格やリポジトリ全体の受入は宣言しない。今回の§5.9取得用ignored testは別に合格した。
+
+<a id="stage1-technical-completion"></a>
+
+### §6の限定した第1段技術完了宣言
+
+I11第1段のうち、代表onset条件付きの身体予測を`temporal_participation`の実消費者へ返す経路を、
+改訂した§6の範囲で技術完了とする。登録12条件のoffline比較のうち、harmonic／modalの6条件で、
+同じ代表record・同じD・同じ16 bin・同じ外部入力を使い、最初の選択が分かれるまでの決定入力を厳密比較した。
+各条件の最初の分岐では、費用を決める入力の違いは`power_k`だけであり、選択候補と出力WAVに差が生じた。
+代表recordは別実行間で識別と内容が一致したという意味で、同一メモリ上のオブジェクトを共有したという意味ではない。
+record本文の比較は計算実時間の`computed_at`だけを除いた。sine-flowの3条件は分岐なし、
+sine-holdの3条件は参加決定なしで、WAVは6条件とも一致した。
+
+同じMacでbuildした基準タグと修正版の`None`比較は12条件すべてでWAVが一致し、登録した実時間欄と
+新規`participation_context` 8欄を除く学習record 10種も一致した。候補recordは改訂§5.4bに従い、
+共通11,561件の内容が`processing_us`を除いて一致した。片側だけの134件／139件は別集計であり、
+欠落原因を全件特定したという意味ではない。当初の凍結packet再評価は未実施のままである。
+§5.1〜§5.3の独立照合、単体testによる§5.6、上記の限定した§5.7の証拠、§5.9の母集団別分布報告を
+合わせて、この限定した完了を判断する。
+
+この宣言は、代表身体予測を用いる上記offline経路の成立と、ADSR代理に対する選択・音響差に限る。
+実kick・実seed・実rhythmsに条件付けたI10予測の消費、身体予測の優越性、作者採用（A1／A2）、
+資源受入（R2）、O15・O18の達成、第2段の到来項（T2）は含めない。
+§5.9の身体予測と代理は異なる母集団であり、その分布差を優越性の証拠にしない。
+既定は`None`を維持する。
+
+### 最終Astra再レビュー
+
+独立Astraへ登録・旧判定・ソース差分・今回の保存済み測定・検査器・宣言文案を渡し、
+**「可（改訂§6の限定範囲）」**の判定を得た。前回の§5.5(a)未達は、許容差の追加ではなく、
+同一record経路への修正と新規取得で解消した。レビューは取得の再実行ではなく、保存済み集計、
+検査器の実装、代表的なraw recordとソース差分の読み合わせである。
+判定全文は`target/i11-stage1-mac-rereview-20260923.md`、審査対象の宣言文は
+`target/i11-stage1-declaration-draft-20260923.md`
+（SHA-256 `451ebfbfceb94939622a545c14e80e308e8bf641730129284e24c7134175830b`）。
+上の宣言を採用し、作者採用と資源受入などの残条件を進捗台帳へ引き継ぐ。
+
+<a id="stage1-test-portability-20260923"></a>
+
+### 固定bit検査の移植性解消（2026-09-23 PDT／24 JST）
+
+前節までの全`cargo test` exit 101は、Linuxで得た`powf(2.0)`の固定bitを全ホストへ要求するtest前提が原因だった。同じMacではPythonの`**2`、Rustの`powf`、親版と現行版のkernel出力が一致し、旧固定値だけが1 ULP異なった。親版について実施したのは該当kernelの隔離再現であり、親版crate全体の`cargo test`ではない。修正前の全体失敗ログは`target/i11-rounding-investigation-20260923/pre-fix-full-test_report.txt`と`pre-fix-full-test_status.txt`に保存した。
+
+Rustの変更は`#[cfg(test)]`の検査だけで、旧Linux入力と追加したMac入力を同ホストの`powf(black_box(2.0))`へ0 ULPで照合する。本体matcherは変更していない。Python差分検査も両入力と320個の乱数、`value**2`との厳密照合を維持し、Darwinのbindingに必要なリンク設定を加えた。kernel複写の`pow`を乗算へ置換した検査はMac入力で1 ULP差を検出し、exit 101となった。独立再現と置換検査の根拠は`target/i11-rounding-investigation-20260923/README.md`、`kernel-repro-results.json`、`mutation-repro-results.json`。
+
+修正後、必須の全`cargo test`は31 suiteで1,157成功・0失敗・36 ignored、exit 0（`test_report.txt`、`test_status.txt`）。`cargo clippy -- -D warnings`もexit 0、Python差分検査は43件成功・exit 0。固定bit検査の未解決は解消したが、上の第1段技術完了は改訂§6の限定範囲のまま。A1／A2、R2、O15／O18、T2の未達と既定`None`は変わらない。

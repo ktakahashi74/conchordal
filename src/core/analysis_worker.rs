@@ -243,7 +243,7 @@ mod tests {
             AnalysisDelivery::Latest,
             Some(tap),
         );
-        let observation = *observed.lock().unwrap();
+        let observation = observed.lock().unwrap().clone();
         assert_eq!(
             observation.state,
             crate::temporal_cognition::observation::ObservationState::Finished

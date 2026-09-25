@@ -9,6 +9,7 @@ pub(super) fn config(model: ArrivalModel) -> TemporalPeriodConfig {
         means: [0.; 8],
         deviations: [1.; 8],
         horizon_sec: 0.1,
+        period_accent_input: true,
     }
 }
 pub(super) fn accent(end: u64) -> Accent {

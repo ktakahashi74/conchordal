@@ -70,6 +70,33 @@ def report_fixture():
     return [footprint, decision, context]
 
 
+def stale_proxy_fixture(source):
+    records = report_fixture()
+    decision, context = records[1:]
+    decision["current_identity"] = {**IDENTITY, "body_generation": 2}
+    decision["footprint_source"] = source
+    context["footprint_source"] = source
+    powers = [v.f32(v.proxy_power(delay / decision["sample_rate"],
+                                  decision["sound_hold_sec"], decision["sound_adsr"],
+                                  decision["sample_rate"]))
+              for delay in decision["footprint_delay"]]
+    decision["footprint_power"] = powers
+    for candidate in decision["candidates"]:
+        candidate["overlap"] = v.overlap(OWN, powers, candidate["external_energy"])
+        candidate["cost"] = v.cost_of(decision, candidate, candidate["context_distance"],
+                                      candidate["overlap"], powers)
+    best_offset, best_cost = v.first_minimum(
+        [(candidate["offset"], candidate["cost"]) for candidate in decision["candidates"]])
+    decision.update(reference_cost=decision["candidates"][2]["cost"],
+                    selected_offset=best_offset,
+                    selected_at=decision["candidates"][best_offset + 2]["at"],
+                    selected_cost=best_cost)
+    context.update(onset_frame=v.rust_round(decision["selected_at"]),
+                   selected_cost=best_cost, reference_cost=decision["reference_cost"],
+                   selected_offset=best_offset)
+    return records
+
+
 def run(records):
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "report.jsonl"
@@ -88,6 +115,25 @@ class VerifyStageOneTest(unittest.TestCase):
         self.assertEqual(failed(summary), set())
         self.assertEqual(summary["5.1 cost"]["checked"], 23)
         self.assertEqual(intervention["body_decisions"], 1)
+
+    def test_stale_record_with_proxy_powers_accepts_both_proxy_sources(self):
+        for source in ("proxy(stale)", "proxy(setting)"):
+            with self.subTest(source=source):
+                summary, _ = run(stale_proxy_fixture(source))
+                self.assertEqual(failed(summary), set())
+                self.assertEqual(summary["5.3 stale identity falls back"]["checked"], 1)
+
+    def test_stale_record_with_body_source_is_rejected(self):
+        records = stale_proxy_fixture("body")
+        summary, _ = run(records)
+        self.assertIn("5.3 body identity is current", failed(summary))
+        self.assertIn("5.3 stale identity falls back", failed(summary))
+
+    def test_setting_proxy_cannot_reuse_old_body_powers(self):
+        records = stale_proxy_fixture("proxy(setting)")
+        records[1]["footprint_power"] = records[0]["power"]
+        summary, _ = run(records)
+        self.assertIn("5.1 proxy powers", failed(summary))
 
     def test_each_violation_is_caught_by_its_check(self):
         def cost(records):

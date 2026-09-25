@@ -28,4 +28,7 @@ mod trajectory;
 mod transport;
 
 #[cfg(test)]
+pub(crate) use ridge::Handle as TestHandle;
+
+#[cfg(test)]
 mod tests;

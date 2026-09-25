@@ -59,7 +59,11 @@ pub(crate) struct Engine {
     context: Context,
 }
 
+mod cdf;
 mod projection;
+pub(crate) use cdf::{
+    ArrivalIssue, ArrivalPublication, ArrivalResources, CDF_LEN, CdfUnknown, GroupArrival,
+};
 pub(in crate::temporal_cognition) use projection::Scratch;
 pub(crate) use projection::{Frozen, Projection};
 

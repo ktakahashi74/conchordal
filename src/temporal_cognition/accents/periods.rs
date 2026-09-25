@@ -183,6 +183,18 @@ impl Estimator {
         Ok(delivery)
     }
 
+    pub fn deliver_without_period(
+        &mut self,
+        accent: Accent,
+        received_at: u64,
+    ) -> Result<Option<Delivery>, &'static str> {
+        let delivery = self.ledger.deliver(accent, received_at)?;
+        if delivery.is_some() {
+            self.refresh(None, false);
+        }
+        Ok(delivery)
+    }
+
     pub fn advance(&mut self, received_at: u64) -> Result<(), &'static str> {
         self.ledger.advance(received_at)?;
         self.refresh(None, false);

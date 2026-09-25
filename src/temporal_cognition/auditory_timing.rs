@@ -534,6 +534,20 @@ impl Stream {
         }
     }
 
+    #[cfg(test)]
+    pub(in crate::temporal_cognition) fn raw_accent_state(
+        &self,
+    ) -> [(Option<Handle>, Option<Accent>, [u64; 4], usize); GROUPS] {
+        self.groups.map(|group| {
+            (
+                group.owner,
+                group.latest,
+                group.intervals,
+                group.interval_count,
+            )
+        })
+    }
+
     pub(super) fn snapshot(&self) -> Snapshot {
         Snapshot {
             window: [self.start(), self.cut],

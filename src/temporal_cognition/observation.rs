@@ -7,7 +7,9 @@ use std::time::Instant;
 use crossbeam_channel::{Sender, TrySendError};
 use serde::Serialize;
 
-use super::{context, gesture, proposals::frontend, recall, reference_inventory, resources, ridge};
+use super::{
+    arrival, context, gesture, proposals::frontend, recall, reference_inventory, resources, ridge,
+};
 use crate::{
     config::{TemporalAcousticConfig, TemporalRidgeConfig},
     core::log2space::Log2Space,
@@ -28,7 +30,7 @@ pub(crate) enum ObservationState {
     Failed,
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub(crate) struct Snapshot {
     pub state: ObservationState,
     pub bus: u8,
@@ -67,6 +69,12 @@ pub(crate) struct Snapshot {
     pub period_parameters: Option<crate::config::TemporalPeriodConfig>,
     pub period: Option<frontend::recurrence::Snapshot>,
     pub period_error: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period_accent_cut_deliveries: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arrival: Option<Arc<arrival::ArrivalPublication>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arrival_resources: Option<arrival::ArrivalResources>,
     pub context: Option<context::Snapshot>,
     pub context_error: Option<&'static str>,
     pub group_prototypes: Option<super::body_model::Shared>,
@@ -92,6 +100,7 @@ pub(crate) struct Options {
     pub memory: Option<crate::config::TemporalMemoryConfig>,
     pub gesture: Option<crate::config::TemporalGestureConfig>,
     pub period: Option<crate::config::TemporalPeriodConfig>,
+    pub arrival_cdf: bool,
 }
 
 struct Observation {
@@ -166,9 +175,13 @@ impl Tap {
             memory_parameters: options.memory,
             gesture_parameters: options.gesture,
             period_parameters: options.period,
+            period_accent_cut_deliveries: options
+                .period
+                .filter(|config| !config.period_accent_input)
+                .map(|_| 0),
             ..Snapshot::default()
         };
-        let snapshot = Arc::new(Mutex::new(initial));
+        let snapshot = Arc::new(Mutex::new(initial.clone()));
         let reference_context = Arc::new(Mutex::new(reference_inventory::Context::default()));
         let reference_output = Arc::clone(&reference_context);
         let candidate_table = Arc::new(Mutex::new(None));
@@ -268,6 +281,8 @@ impl Tap {
                 let mut resources = resource_started.map(|started| {
                     resources::Meter::new(sample_rate, hop as u64, resources::elapsed_ns(started))
                 });
+                let mut arrival_resources =
+                    options.arrival_cdf.then(arrival::ArrivalResources::default);
                 while let Ok(event) = rx.recv() {
                     let started = resources.as_ref().map(|_| Instant::now());
                     let published = match &event {
@@ -277,6 +292,7 @@ impl Tap {
                     let received_before = state.received_frames;
                     let mut table_ns = 0;
                     let mut finished = false;
+                    let mut accepted_frame = false;
                     match event {
                         Event::End {
                             input_end_sample,
@@ -284,6 +300,7 @@ impl Tap {
                             dropped_frames,
                             source_missing_samples,
                         } => {
+                            state.arrival = None;
                             state.input_end_sample = input_end_sample;
                             if source_epoch != state.source_epoch {
                                 context = None;
@@ -373,6 +390,7 @@ impl Tap {
                             {
                                 state.rejected_frames += 1;
                             } else {
+                                accepted_frame = true;
                                 if frame.epoch != state.source_epoch {
                                     (acoustic, recurrence) =
                                         split_frontend(new_frontend(frame.epoch, frame.start));
@@ -458,13 +476,20 @@ impl Tap {
                                             available_end: frame.available,
                                         });
                                     let result = if let Some(r) = recurrence.as_mut() {
-                                        r.advance(frame.end, frame.available, observation).map(
-                                            |out| {
-                                                let summary = r.acoustic_snapshot(&out);
-                                                state.period = r.diagnostics();
-                                                (out, summary)
-                                            },
-                                        )
+                                        let result =
+                                            r.advance(frame.end, frame.available, observation);
+                                        if let Some(total) =
+                                            state.period_accent_cut_deliveries.as_mut()
+                                        {
+                                            *total = total.saturating_add(
+                                                r.take_period_accent_cut_deliveries(),
+                                            );
+                                        }
+                                        result.map(|out| {
+                                            let summary = r.acoustic_snapshot(&out);
+                                            state.period = r.diagnostics();
+                                            (out, summary)
+                                        })
                                     } else {
                                         let a = acoustic.as_mut().unwrap();
                                         a.advance(frame.end, observation).map(|out| {
@@ -693,9 +718,52 @@ impl Tap {
                         *table_output.lock().expect("candidate table publication") = published;
                         published_key = key;
                     }
+                    if accepted_frame && let Some(meter) = arrival_resources.as_mut() {
+                        let began = Instant::now();
+                        let issue = recurrence
+                            .as_ref()
+                            .filter(|_| state.period_error.is_none())
+                            .and_then(|r| r.arrival_issue(state.available_sample))
+                            .filter(|issue| {
+                                issue.bus == bus
+                                    && issue.epoch == state.source_epoch
+                                    && issue.sample_rate == sample_rate
+                                    && issue.issued_at == state.available_sample
+                            });
+                        state.arrival = issue.map(|issue| {
+                            let profile_key = key.filter(|key| {
+                                key.bus == issue.bus
+                                    && key.epoch == issue.epoch
+                                    && key.assignment_end <= key.issued_at
+                                    && key.issued_at <= issue.issued_at
+                            });
+                            Arc::new(arrival::ArrivalPublication { issue, profile_key })
+                        });
+                        if let Some(publication) = state.arrival.as_ref() {
+                            meter.publications += 1;
+                            for group in publication.issue.groups.iter().flatten() {
+                                meter.cdf_generated += u64::from(group.cdf.is_some());
+                                meter.cdf_failed += u64::from(group.cdf.is_none());
+                                meter.evaluations += group.evaluations as u64;
+                            }
+                        } else if recurrence.is_some()
+                            && state
+                                .available_sample
+                                .checked_add(4 * u64::from(sample_rate))
+                                .is_none()
+                        {
+                            meter.horizon_overflow += 1;
+                        }
+                        let elapsed = began.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
+                        meter.generation_us_last = elapsed;
+                        meter.generation_us_total =
+                            meter.generation_us_total.saturating_add(elapsed);
+                        meter.generation_us_max = meter.generation_us_max.max(elapsed);
+                        state.arrival_resources = Some(*meter);
+                    }
                     {
                         let mut destination = output.lock().expect("observation snapshot");
-                        *destination = *state;
+                        *destination = state.as_ref().clone();
                         if let (Some(meter), Some(started)) = (resources.as_mut(), started) {
                             let wall_ns = resources::elapsed_ns(started);
                             if finished {
@@ -728,6 +796,7 @@ impl Tap {
                 state.state = ObservationState::Failed;
                 state.group_prototypes = None;
                 state.action_profile_features = None;
+                state.arrival = None;
                 if let Some(meter) = resources.as_mut() {
                     meter.close(state.input_end_sample);
                     state.worker_resources = Some(meter.snapshot);
@@ -736,7 +805,7 @@ impl Tap {
                     .lock()
                     .expect("reference context")
                     .inventory = None;
-                *output.lock().expect("observation snapshot") = *state;
+                *output.lock().expect("observation snapshot") = state.as_ref().clone();
             })
             .expect("spawn temporal observer");
         Self {
@@ -842,6 +911,315 @@ mod tests {
     use super::*;
 
     #[test]
+    fn period_cut_counter_survives_group_and_epoch_replacement_and_eof() {
+        let space = Log2Space::new(100., 6400., 32);
+        let mut scan = vec![0.; space.n_bins()];
+        scan[20] = 1.;
+        let mut tap = Tap::spawn(
+            0,
+            48_000,
+            512,
+            2048,
+            space,
+            Options {
+                deterministic: true,
+                ridge: Some(TemporalRidgeConfig {
+                    means: [0.; 3],
+                    deviations: [0.05, 4., 1.],
+                }),
+                acoustic: Some(TemporalAcousticConfig {
+                    group_means: [0.; 3],
+                    group_deviations: [0.05, 4., 1.],
+                    accent_means: [0.; 2],
+                    accent_deviations: [1.; 2],
+                    group_retirement_sec: 0.25,
+                    inactive_energy_max: 1e-8,
+                    correlation_window_sec: 0.25,
+                    min_pairs: 8,
+                    min_coverage: 0.9,
+                    persistence_hops: 3,
+                }),
+                period: Some(crate::config::TemporalPeriodConfig {
+                    model: crate::config::ArrivalModel::Hazard,
+                    coefficients: [0.; 18],
+                    means: [0.; 8],
+                    deviations: [1.; 8],
+                    horizon_sec: 4.,
+                    period_accent_input: false,
+                }),
+                ..Options::default()
+            },
+        );
+        let shared = Arc::clone(&tap.snapshot);
+        for frame in 0..240 {
+            let energy = if (8..10).contains(&(frame % 24)) {
+                0.16
+            } else {
+                0.01
+            };
+            tap.observe(frame, &scan, energy);
+        }
+        let first = shared.lock().unwrap().clone();
+        let first_count = first.period_accent_cut_deliveries.unwrap();
+        assert!(first_count > 0);
+        let first_json = serde_json::to_value(&first).unwrap();
+        assert_eq!(
+            first_json["period_parameters"]["period_accent_input"],
+            false
+        );
+        assert_eq!(first_json["period_accent_cut_deliveries"], first_count);
+        let mut full_shape = Snapshot::default();
+        let mut full_period = first.period_parameters.unwrap();
+        full_period.period_accent_input = true;
+        full_shape.period_parameters = Some(full_period);
+        let full_json = serde_json::to_value(&full_shape).unwrap();
+        assert!(
+            full_json["period_parameters"]
+                .get("period_accent_input")
+                .is_none()
+        );
+        assert!(full_json.get("period_accent_cut_deliveries").is_none());
+        let none_json = serde_json::to_value(Snapshot::default()).unwrap();
+        assert!(none_json.get("period_accent_cut_deliveries").is_none());
+        assert!(
+            first
+                .period
+                .unwrap()
+                .groups
+                .iter()
+                .flatten()
+                .all(|g| { g.peaks.iter().all(Option::is_none) })
+        );
+
+        tap.observe(241, &scan, 0.01);
+        let after_gap = shared.lock().unwrap().clone();
+        assert_eq!(after_gap.source_epoch, first.source_epoch + 1);
+        assert_eq!(after_gap.period_accent_cut_deliveries, Some(first_count));
+        for frame in 242..=360 {
+            let energy = if (8..10).contains(&(frame % 24)) {
+                0.16
+            } else {
+                0.01
+            };
+            tap.observe(frame, &scan, energy);
+        }
+        let second_count = shared.lock().unwrap().period_accent_cut_deliveries.unwrap();
+        assert!(second_count > first_count);
+        tap.epoch += 1;
+        drop(tap);
+        let finished = shared.lock().unwrap().clone();
+        assert_eq!(finished.state, ObservationState::Finished);
+        assert_eq!(finished.period_accent_cut_deliveries, Some(second_count));
+        assert!(finished.period.is_none());
+    }
+
+    #[test]
+    fn arrival_publication_shares_observation_clock_and_clears_at_eof() {
+        let space = Log2Space::new(100., 6400., 32);
+        let power = vec![0.; space.n_bins()];
+        let mut tap = Tap::spawn(
+            0,
+            48_000,
+            512,
+            2048,
+            space,
+            Options {
+                deterministic: true,
+                arrival_cdf: true,
+                ridge: Some(TemporalRidgeConfig {
+                    means: [0.; 3],
+                    deviations: [0.05, 4., 1.],
+                }),
+                acoustic: Some(TemporalAcousticConfig {
+                    group_means: [0.; 3],
+                    group_deviations: [0.05, 4., 1.],
+                    accent_means: [0.; 2],
+                    accent_deviations: [1.; 2],
+                    group_retirement_sec: 2.,
+                    inactive_energy_max: 1e-8,
+                    correlation_window_sec: 0.25,
+                    min_pairs: 8,
+                    min_coverage: 0.9,
+                    persistence_hops: 3,
+                }),
+                period: Some(crate::config::TemporalPeriodConfig {
+                    model: crate::config::ArrivalModel::Hazard,
+                    coefficients: [0.; 18],
+                    means: [0.; 8],
+                    deviations: [1.; 8],
+                    horizon_sec: 4.,
+                    period_accent_input: true,
+                }),
+                ..Options::default()
+            },
+        );
+        let shared = Arc::clone(&tap.snapshot);
+        for frame in 0..8 {
+            tap.observe(frame, &power, 0.);
+        }
+        let current = shared.lock().unwrap().clone();
+        let issue = &current.arrival.as_ref().unwrap().issue;
+        assert_eq!(current.state, ObservationState::Receiving);
+        assert_eq!(issue.bus, 0);
+        assert_eq!(issue.epoch, current.source_epoch);
+        assert_eq!(issue.sample_rate, current.sample_rate);
+        assert_eq!(issue.issued_at, current.period.unwrap().received_at);
+        assert_eq!(issue.horizon_end, issue.issued_at + 4 * 48_000);
+        assert_eq!(current.arrival_resources.unwrap().publications, 8);
+        drop(tap);
+        let finished = shared.lock().unwrap().clone();
+        assert_eq!(finished.state, ObservationState::Finished);
+        assert!(finished.arrival.is_none());
+    }
+
+    #[test]
+    fn arrival_publication_replaces_known_cdf_after_source_gap_and_retirement() {
+        let space = Log2Space::new(100., 6400., 32);
+        let mut pulse_scan = vec![0.; space.n_bins()];
+        pulse_scan[20] = 1.;
+        let silence = vec![0.; space.n_bins()];
+        let mut tap = Tap::spawn(
+            0,
+            48_000,
+            512,
+            2048,
+            space,
+            Options {
+                deterministic: true,
+                arrival_cdf: true,
+                ridge: Some(TemporalRidgeConfig {
+                    means: [0.; 3],
+                    deviations: [0.05, 4., 1.],
+                }),
+                acoustic: Some(TemporalAcousticConfig {
+                    group_means: [0.; 3],
+                    group_deviations: [0.05, 4., 1.],
+                    accent_means: [0.; 2],
+                    accent_deviations: [1.; 2],
+                    group_retirement_sec: 0.25,
+                    inactive_energy_max: 1e-8,
+                    correlation_window_sec: 0.25,
+                    min_pairs: 8,
+                    min_coverage: 0.9,
+                    persistence_hops: 3,
+                }),
+                period: Some(crate::config::TemporalPeriodConfig {
+                    model: crate::config::ArrivalModel::Hazard,
+                    coefficients: [0.; 18],
+                    means: [0.; 8],
+                    deviations: [1.; 8],
+                    horizon_sec: 4.,
+                    period_accent_input: true,
+                }),
+                ..Options::default()
+            },
+        );
+        let snapshot = Arc::clone(&tap.snapshot);
+        let mut old = None;
+        for frame in 0..240 {
+            let energy = if (8..10).contains(&(frame % 24)) {
+                0.16
+            } else {
+                0.01
+            };
+            tap.observe(frame, &pulse_scan, energy);
+            let state = snapshot.lock().unwrap();
+            if let Some(group) = state
+                .arrival
+                .as_ref()
+                .unwrap()
+                .issue
+                .groups
+                .iter()
+                .flatten()
+                .find(|g| g.cdf.is_some())
+            {
+                old = Some(group.group);
+            }
+        }
+        let old = old.expect("real recurrence must publish a known CDF");
+        let old_publication = Arc::clone(snapshot.lock().unwrap().arrival.as_ref().unwrap());
+        tap.observe(242, &pulse_scan, 0.01);
+        {
+            let state = snapshot.lock().unwrap();
+            let issue = &state.arrival.as_ref().unwrap().issue;
+            assert_eq!(issue.epoch, old.epoch + 1);
+            assert!(issue.groups.iter().all(Option::is_none));
+            assert_eq!(state.source_missing_samples, 2 * 512);
+        }
+        for frame in 243..=245 {
+            tap.observe(frame, &pulse_scan, 0.01);
+        }
+        let mut recovered = None;
+        for frame in 246..486 {
+            let energy = if (8..10).contains(&(frame % 24)) {
+                0.16
+            } else {
+                0.01
+            };
+            tap.observe(frame, &pulse_scan, energy);
+            let state = snapshot.lock().unwrap();
+            if let Some(group) = state
+                .arrival
+                .as_ref()
+                .unwrap()
+                .issue
+                .groups
+                .iter()
+                .flatten()
+                .find(|g| g.cdf.is_some())
+            {
+                recovered = Some(group.group);
+            }
+        }
+        let recovered = recovered.expect("new epoch must recover a known CDF");
+        assert_ne!(recovered, old);
+        assert_eq!(recovered.epoch, old.epoch + 1);
+        assert_eq!(old_publication.issue.epoch, old.epoch);
+        let mut retired = false;
+        for frame in 486..586 {
+            tap.observe(frame, &silence, 0.);
+            let state = snapshot.lock().unwrap();
+            let issue = &state.arrival.as_ref().unwrap().issue;
+            if issue.groups.iter().flatten().all(|g| g.group != recovered) {
+                retired = true;
+            }
+        }
+        assert!(retired, "known group must retire under supported silence");
+        {
+            let state = snapshot.lock().unwrap();
+            let issue = &state.arrival.as_ref().unwrap().issue;
+            assert!(issue.groups.iter().flatten().all(|g| g.group != recovered));
+        }
+        let mut next = None;
+        for frame in 586..826 {
+            let energy = if (8..10).contains(&(frame % 24)) {
+                0.16
+            } else {
+                0.01
+            };
+            tap.observe(frame, &pulse_scan, energy);
+            let state = snapshot.lock().unwrap();
+            if let Some(group) = state
+                .arrival
+                .as_ref()
+                .unwrap()
+                .issue
+                .groups
+                .iter()
+                .flatten()
+                .find(|g| g.cdf.is_some())
+            {
+                next = Some(group.group);
+            }
+        }
+        let next = next.expect("new owner must recover a known CDF");
+        assert_ne!(next, recovered);
+        assert_eq!(next.epoch, recovered.epoch);
+        assert_ne!(next.generation, recovered.generation);
+    }
+
+    #[test]
     fn deterministic_delivery_waits_for_reference_and_snapshot_publication() {
         let space = Log2Space::new(100., 200., 12);
         let power = vec![1.; space.n_bins()];
@@ -933,12 +1311,14 @@ mod tests {
                     }),
                     body_prototypes: None,
                     action_profiles: None,
+                    arrival_cdf: false,
                     period: Some(crate::config::TemporalPeriodConfig {
                         model: crate::config::ArrivalModel::Hazard,
                         coefficients: [0.; 18],
                         means: [0.; 8],
                         deviations: [1.; 8],
                         horizon_sec: 0.1,
+                        period_accent_input: true,
                     }),
                     gesture: Some(crate::config::TemporalGestureConfig {
                         rms_reference: 0.1,
@@ -987,7 +1367,7 @@ mod tests {
                 tap.source_missing_samples = 512;
             }
             drop(tap);
-            let state = *output.lock().unwrap();
+            let state = output.lock().unwrap().clone();
             assert!(state.gesture_error.is_none());
             assert!(state.context_error.is_none(), "{:?}", state.context_error);
             assert!(state.period_error.is_none(), "{:?}", state.period_error);
@@ -1062,6 +1442,7 @@ mod tests {
                     period: None,
                     body_prototypes: None,
                     action_profiles: None,
+                    arrival_cdf: false,
                     acoustic: Some(TemporalAcousticConfig {
                         group_means: [0.; 3],
                         group_deviations: [0.05, 4., 1.],
@@ -1090,7 +1471,7 @@ mod tests {
             }
             tap.observe(42, &scan, 0.25);
             drop(tap);
-            let s = *output.lock().unwrap();
+            let s = output.lock().unwrap().clone();
             assert!(!s.acoustic_failed);
             assert!(!s.memory_failed, "{:?}", s.memory_error);
             let clock = s.memory.unwrap().acquisition.unwrap();
@@ -1149,6 +1530,7 @@ mod tests {
             period: None,
             body_prototypes: None,
             action_profiles: None,
+            arrival_cdf: false,
             ridge: Some(TemporalRidgeConfig {
                 means: [0.; 3],
                 deviations: [0.05, 4., 1.],
@@ -1170,7 +1552,7 @@ mod tests {
                     tap.observe(frame, &scan, 0.25);
                 }
                 drop(tap);
-                let state = *output.lock().unwrap();
+                let state = output.lock().unwrap().clone();
                 assert!(!state.ridge_failed);
                 let update = state.ridges.unwrap();
                 assert_eq!(update.observed, !source_gap || recovery >= 4);
@@ -1219,7 +1601,7 @@ mod tests {
                 tap.observe(frame, &silence, 0.0);
             }
             drop(tap);
-            let state = *output.lock().unwrap();
+            let state = output.lock().unwrap().clone();
             assert_eq!(state.state, ObservationState::Finished);
             assert_eq!(state.received_frames, frames);
             assert_eq!(state.fully_supported_frames, frames.saturating_sub(3));
@@ -1262,7 +1644,7 @@ mod tests {
                 tap.observe(frame, &power, 0.25);
             }
             drop(tap);
-            let state = *output.lock().unwrap();
+            let state = output.lock().unwrap().clone();
             assert_eq!(state.source_epoch, 1);
             assert_eq!(state.source_missing_samples, 256);
             assert_eq!(state.delivery_dropped_frames, 0);
@@ -1305,7 +1687,7 @@ mod tests {
                     tap.observe(256, &power, 0.25);
                 }
                 drop(tap);
-                let state = *output.lock().unwrap();
+                let state = output.lock().unwrap().clone();
                 assert_eq!(state.state, ObservationState::Finished);
                 assert_eq!(state.delivery_dropped_frames, dropped);
                 assert_eq!(state.received_frames + dropped, 256 + u64::from(recover));
@@ -1385,7 +1767,7 @@ mod tests {
         tx.send(Event::Frame(frame(11, 1))).unwrap();
         tap.completed.as_ref().unwrap().recv().unwrap();
         drop(tap);
-        let state = *output.lock().unwrap();
+        let state = output.lock().unwrap().clone();
         assert_eq!(state.rejected_frames, 9);
         let resources = state.worker_resources.unwrap();
         assert_eq!(resources.frames.count, state.received_frames);

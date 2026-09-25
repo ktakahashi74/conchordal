@@ -7,6 +7,10 @@ use crate::life::sound::ToneAdsr;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::collections::VecDeque;
 
+#[path = "temporal_participation_arrival.rs"]
+mod arrival;
+pub(crate) use arrival::ArrivalInput;
+
 const CONTEXT_DELAY_SEC: f64 = 0.08;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
@@ -46,12 +50,18 @@ pub(crate) struct CandidateTerms {
     /// `sustained_energy_at(at + delay_k)` for each footprint bin.
     pub(crate) external_energy: [Option<[f32; 3]>; 16],
     pub(crate) cost: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) base_cost: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) arrival_p: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) arrival_term: Option<f32>,
 }
 
 /// I11-1 §4.6 report of one configured decision, carrying what an independent reference
 /// needs to recompute every term (§5.1), swap the footprint source (§5.2) and check the
 /// deadlines (§5.3).
-#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub(crate) struct ParticipationDecision {
     pub(crate) now: u64,
     pub(crate) due_frame: f64,
@@ -87,6 +97,12 @@ pub(crate) struct ParticipationDecision {
     /// Cycles skipped before this decision; the skip threshold is `1 + skipped_cycles`.
     pub(crate) skipped_cycles: u32,
     pub(crate) skipped: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) selected_base_cost: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) arrival_weight: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) arrival: Option<arrival::ArrivalDecisionTrace>,
 }
 
 /// What the supplier could deliver for the recipe the Voice would emit now (§4.6).
@@ -270,6 +286,8 @@ pub(crate) struct TemporalParticipation {
     current_identity: Option<footprint::Identity>,
     trace_decisions: bool,
     decisions: Vec<ParticipationDecision>,
+    arrival_input: Option<ArrivalInput>,
+    arrival_known_decisions: u64,
     rng: SmallRng,
 }
 
@@ -314,6 +332,8 @@ impl TemporalParticipation {
             current_identity: None,
             trace_decisions: false,
             decisions: Vec::new(),
+            arrival_input: None,
+            arrival_known_decisions: 0,
             rng,
         }
     }
@@ -369,6 +389,14 @@ impl TemporalParticipation {
 
     pub(crate) fn set_current_identity(&mut self, identity: Option<footprint::Identity>) {
         self.current_identity = identity;
+    }
+
+    pub(crate) fn set_arrival_input(&mut self, input: Option<ArrivalInput>) {
+        self.arrival_input = input;
+    }
+
+    pub(crate) fn take_arrival_known_decisions(&mut self) -> u64 {
+        std::mem::take(&mut self.arrival_known_decisions)
     }
 
     /// Configured decisions are traced only while a reporter can take them.
@@ -453,6 +481,7 @@ impl TemporalParticipation {
             let mut best = self.due_frame;
             let mut best_context = None;
             let mut best_cost = f32::INFINITY;
+            let mut best_base_cost = f32::INFINITY;
             let mut best_offset: i8 = 0;
             let mut reference_cost = f32::INFINITY;
             // Missing forecast coverage must not make an unscored candidate cheaper.
@@ -558,6 +587,34 @@ impl TemporalParticipation {
                     + (self.fs / crate::life::phonation_engine::MAX_ONSET_RATE_HZ as f64).ceil())
                 .max(now as f64)
             });
+            let arrival_enabled = self.onset_comparison.is_some_and(|config| config.arrival);
+            let arrival_weight = self
+                .onset_comparison
+                .map_or(0.0, |config| config.arrival_weight);
+            let arrival = arrival_enabled.then(|| {
+                let max_upper = (-2..=20)
+                    .filter_map(|offset| {
+                        let shift = if offset < 0 {
+                            offset as f64 * width / 2.0
+                        } else {
+                            offset as f64 * self.period_frames / 20.0
+                        };
+                        let at = if offset == 0 {
+                            self.due_frame.max(earliest)
+                        } else {
+                            self.due_frame + shift
+                        };
+                        (at >= earliest).then_some(at + width)
+                    })
+                    .fold(f64::NEG_INFINITY, f64::max);
+                arrival::Selection::new(
+                    self.arrival_input.as_ref(),
+                    now,
+                    max_upper,
+                    self.fs as u32,
+                    self.trace_decisions,
+                )
+            });
             let mut trace = (self.trace_decisions && self.onset_comparison.is_some()).then(|| {
                 ParticipationDecision {
                     now,
@@ -592,6 +649,9 @@ impl TemporalParticipation {
                     selected_cost: f32::INFINITY,
                     skipped_cycles: self.skipped_cycles,
                     skipped: false,
+                    selected_base_cost: None,
+                    arrival_weight: arrival_enabled.then_some(arrival_weight),
+                    arrival: None,
                 }
             });
             // The exact bodily due time is a candidate; search spacing is not a beat grid.
@@ -681,6 +741,15 @@ impl TemporalParticipation {
                         / (own_total * footprint_mass).max(1e-12);
                     overlap_sum = Some(overlap);
                 }
+                let base_cost = cost;
+                let arrival_p = arrival
+                    .as_ref()
+                    .and_then(|selection| selection.probability(at, width));
+                let arrival_term = arrival_p
+                    .map(|p| (f64::from(self.coupling) * arrival_weight * (1.0 - p)) as f32);
+                if let Some(term) = arrival_term {
+                    cost += term;
+                }
                 if let Some(trace) = trace.as_mut() {
                     trace.candidates[(offset + 2) as usize] = Some(CandidateTerms {
                         offset: offset as i8,
@@ -692,6 +761,9 @@ impl TemporalParticipation {
                         overlap: overlap_sum,
                         external_energy,
                         cost,
+                        base_cost: arrival_enabled.then_some(base_cost),
+                        arrival_p,
+                        arrival_term,
                     });
                 }
                 if offset == 0 {
@@ -699,10 +771,18 @@ impl TemporalParticipation {
                 }
                 if cost < best_cost {
                     best_cost = cost;
+                    best_base_cost = base_cost;
                     best = at;
                     best_context = context;
                     best_offset = offset as i8;
                 }
+            }
+            if arrival.as_ref().is_some_and(arrival::Selection::known) {
+                self.arrival_known_decisions = self.arrival_known_decisions.saturating_add(1);
+            }
+            if let Some(trace) = trace.as_mut() {
+                trace.selected_base_cost = arrival_enabled.then_some(best_base_cost);
+                trace.arrival = arrival.map(arrival::Selection::into_trace);
             }
             // Skipping is a participation decision, not an executed sound or a reward.
             // Its increasing cost prevents energetic overlap from prescribing silence.
@@ -710,7 +790,7 @@ impl TemporalParticipation {
                 && forecast.is_some()
                 && own_total > 1e-12
                 && self.overlap_sensitivity > 0.0
-                && best_cost > 1.0 + self.skipped_cycles as f32
+                && best_base_cost > 1.0 + self.skipped_cycles as f32
             {
                 if let Some(mut trace) = trace {
                     trace.skipped = true;
@@ -1162,7 +1242,7 @@ mod tests {
         let context = context.unwrap();
         let decisions: Vec<_> = policy.drain_decisions().collect();
         assert_eq!(decisions.len(), 1);
-        let decision = decisions[0];
+        let decision = &decisions[0];
         assert!(!decision.skipped);
         assert_eq!(decision.selected_at, at);
         assert_eq!(decision.selected_offset, context.selected_offset);

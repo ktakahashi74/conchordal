@@ -4162,6 +4162,206 @@ audition. Evidence is stored under `target/phrase-expectation/2026-09-09-continu
 
 ### 9.3.55 Temporal DCC across the hierarchy and its connection to local generation
 
+<a id="two-tier-rule"></a>
+
+#### Two-tier reading of the mechanism-selection rule, and a temporal psychoacoustic terrain before acceptance (2026-09-24, adopted by the author)
+
+The author adopted describing the computation of each function admitted to the core by the [mechanism-selection rule](#mechanism-selection-rule)
+in two tiers, a principle tier and an authored-rule tier. The author also revised the scope so that a temporal psychoacoustic terrain enters
+before the acceptance steps (the main R2 acquisition and A1–A4), and core completion (A4) is judged on that version.
+The core T rows and admission by the three conditions, the I12b registration and seal, and all default-off settings are unchanged.
+This entry fixes a description rule and an ordering; it records no completed implementation, validation or authorial adoption (A1/A2).
+
+**Background.** The harmonic side already reads as two tiers. The R (roughness) and H (harmonicity) kernels produce perceptual quantities,
+and the author sets the coefficients that couple them to behaviour (`a, b, c, d` in `[psychoacoustics.consonance.field.kernel]`) and the
+habituation time constants. The R/H kernels themselves, however, add their own approximations and tuned values to existing model forms.
+According to the code comments, the R kernel moves a Sethares-type kernel into the ERB-difference domain with practical defaults
+(`src/core/roughness_kernel.rs`), and the H kernel is a common-root projection approximating autocorrelation, with tuned projection
+weights and peak widths (`src/core/harmonicity_kernel.rs`). R/H and the temporal side differ in degree.
+
+On the temporal side, within what was confirmed by reading the code on 2026-09-24, the perceptual quantities themselves come from
+authored engineering rules.
+
+- The arrival hazard is `h = softplus(c·x)`. The main I11-2/I12b setting is `c0 = −2`, `c10 = 4`: with a period peak,
+  `h = softplus(−2 + 4 cos φ)` (φ is the phase relative to the latest accent); without a peak the phase features are 0 and
+  `h = softplus(−2)` is constant. The coefficients are unfitted diagnostic values.
+- Accent salience standardizes each of two components as `(c − μ)/σ`, clips negative values to 0 and averages them.
+  A three-hop local maximum above θ = 1.0 becomes an accent. μ/σ are configuration values (0/1 in the registered inputs), not fitted.
+- In I5's gesture model each transition rate to a different state is `softplus(C·x)`; the self-transition rate is 0. The coefficients C are
+  all 0 in the registered inputs, so each transition rate is ln 2 ≈ 0.69/s.
+- The period is a log-period histogram built from accent pairs in a 32 s, 128-entry window. The kernel half-width is 1/24 octave and the
+  grouping tolerance is 0.1.
+- I11-1's overlap sums only over times k for which an external forecast is available:
+  `Ov = Σ_k Σ_b own_b·p_k·ext_{k,b} / (own_b·p_k + ext_{k,b} + 1e-12)`
+  (`own_b` is the Voice's band profile, `p_k` the footprint's relative power, `ext_{k,b}` the external energy forecast at time k).
+  It enters the cost as `coupling·6·s·Ov/norm` (`s = 0.8`, `norm = max(Σ_b own_b · Σ_k p_k, 1e-12)`).
+  It is an empirical ratio, not a quantitative masking model.
+
+**Definition of the two tiers.**
+
+1. Principle tier: a computation that is either
+   - an exact computation of a physical quantity, limited to a declared model and its supported range; where the same computation contains a
+     numerical approximation, the approximation belongs to the authored-rule tier and its method and accuracy conditions are stated separately; or
+   - a quantitative stimulus-to-percept model whose form is established in the existing literature and whose correspondence with the primary
+     source has been checked.
+2. Authored-rule tier: engineering rules with stated thresholds and scales, their coefficients, and any approximations and tuned values added to
+   an existing model. The phenomenon behind a default (such as the rate band in which a beat exists) may be cited; that does not change the tier.
+   Learning rules and learning rates belong to this tier. Learned weights are state that follows observation; being learned does not move a
+   prediction into the principle tier.
+
+**The three conditions and the two tiers.** Whether a function enters the core is still decided by all three conditions. The two-tier
+classification is separate from that decision; it states which grounds the computation of an admitted function stands on. Write the grounds for
+the target listening response and mechanism (condition 1) separately from the grounds for the computational model (condition 2). A computation
+that meets condition 2 as "an engineering rule with stated thresholds and scales" belongs to the authored-rule tier. When writing "grounded in
+auditory cognition", state whether the grounds concern the target function or the computational model. Do not call authored-rule values
+cognitive constants or fitted values.
+
+**Example classification of the current implementation.** Placement follows the
+[scope in §1.3](../roadmap/temporal-dcc/milestones.md#13-機構選択規則による本体範囲の縮小2026-09-20同日のレビューを反映).
+
+| Mechanism | Placement | Principle tier | Authored-rule tier |
+|---|---|---|---|
+| R/H kernels | DCC (harmonic side) | The parts of existing model forms whose correspondence with the primary source has been checked (checking not yet done) | Own approximations and tuned values, coupling coefficients, habituation time constants |
+| T1 footprint energy (I11-1) | DCC core (supplier) | For the frozen representative tone, the part that computes the mean square of the carrier sum in closed form over integer samples; not a prediction of the tone that will actually sound | Numerical approximation of envelope energy within a span (three-point Simpson rule with a local exponential correction) and the span subdivision; accuracy is recorded only for [I10's check on fixed development material](../roadmap/temporal-dcc/i10-body-outcome.md#harmonicmodal身体の搬送波予測を候補energyへ接続2026-09-21) (4,936 pairs over 71 branches, both buses and four windows, where the sign of every energy difference matched the actual audio, with zero reversals, misses and fabrications); the subdivision was tuned on that material and is not blind, and no error bound outside it has been checked; the choice of representative values (a registered approximation) |
+| Participation cost (I11-1 overlap term, I11-2 arrival term) | ALife participation decision (consumer of I11-1 and I11-2) | — | The form of `Ov` and the cost constants, the `1 − P` form that maps arrival probability to cost and `arrival_weight`, `coupling` |
+| Self-sound separation (`OwnSoundHistory`) | DCC core (input to external forecasts) | Subtraction of the known self-sound PCM | Band split |
+| I10 self-sound prediction | DCC core (private to the Voice) | — | NLMS form, learning rate, weight bounds, capacity; the weights are state |
+| T2 accent, period and arrival (I3, I6, I11-2) | DCC core (supplier) | — | Salience form and threshold, histogram window and kernel, grouping tolerance, hazard features and coefficients |
+| I5 gesture | DCC core (diagnostic; no generative consumer) | — | Transition-rate coefficients, path-mass decay, handoff rules |
+| T4 short-term prediction (`temporal_expectation`, `history_prediction`) | DCC core | — | Per-candidate mixing weights over the latest three periods, forgetting and decay time constants, RLS features and ridge; the weights are state |
+| T4 retention and decay (the retention/decay part of `recall`), `reference_inventory` | DCC core (I4's bounded causal reference) | — | Decay and interference forms, τ, κ, capacity, support window, reference count; the retrieval part is subject to the I4 separation |
+| H term and participation-period tracking | ALife participation decision (T3) | — | Use of the squared Hellinger distance, memory update rate, tracking relaxation rule |
+| `MeterNetwork` | ListenerTwin (passive diagnostic) and the production meter | — | The current engineering implementation of a Hopf oscillator and its constants; its correspondence with the neural-resonance model cited in the code comments is unchecked |
+
+**Consequences.**
+
+- I13: I13's pre-implementation registration selects which authored-rule coefficients are exposed as settings the author can read and change.
+  This does not turn every internal constant into a setting. They are treated like `a, b, c, d` on the harmonic side.
+- R3: the existing recovery, stability and sensitivity checks are kept. Sensitivity to authored-rule coefficients is added as an emphasis:
+  whether the registered causal differences and the audible relation differences survive changes in those coefficients. Variants, ranges and
+  pass criteria are fixed in the R3 registration.
+- Description: the ledger and the technote do not describe authored-rule computations as "grounded in cognition". The technote records only the
+  implemented state, so this classification reaches it the next time the technote is updated.
+
+**Unit before acceptance: a temporal psychoacoustic terrain.** To give the temporal side the same structure, principle-tier perceptual quantities
+coupled to behaviour by authored rules, the following two changes enter before the acceptance steps.
+
+1. T1: replace the overlap with a quantitative model of simultaneous and forward masking in ERB bands. The footprint input stays
+   synthesizer-derived.
+2. T2: rebuild accent and periodicity on the envelope modulation spectrum. The I11-2 and I12b comparisons are re-registered and re-acquired on the
+   new version.
+
+The aim is to avoid redoing acceptance. The terrain changes the generated sound of T1 and T2, so adding it after A4 would mean redoing nearly
+all of the main R2 acquisition, R3 and A1–A4. The comparison baseline is the technically complete, sealed current version; it does not need to
+pass acceptance.
+
+**Order.**
+
+1. Work unaffected by the terrain goes first: the I12b acquisition, the I4 separation, the I13 framework, the missing R2 instrumentation, and the
+   tools for the A1 procedure.
+2. Add the T1 terrain and compare it with the current version. Then run T1's A1. T1's A1 is fixed to the version that has the T1 terrain but
+   not yet the T2 terrain.
+3. Add the T2 terrain and re-acquire I11-2 and I12b on the new version. Then run T2's A1. Because R/A can be judged per target T row, component
+   and version (milestones §3), T1's A1 and the T2 work may run in parallel. After the T2 terrain lands, check its effect on T1 with a registered
+   regression, and redo T1's A1 for any part whose evidence cannot carry over.
+4. Run the main R2 acquisition, R3, A2, A3 and A4 on the version with the terrain. Doing the heavy acceptance steps once is a planning goal; it
+   does not exclude any necessary integrated re-judgment.
+
+The existing dependency order is kept: completion of the I12b acquisition and work with the baseline fixed → I4 stage one → stage two and I10
+revalidation → the formal R2 ([R2 ordering](../roadmap/temporal-dcc/r2-preflight.md#i4-r2-order)). The T1 and T2 terrain join this order; they do
+not swap I4 and R2.
+
+Each change keeps its comparison separate so its effect stays identifiable. Model selection, primary-source checks, comparison quantities and
+tests belong to the pre-implementation registrations for T1 and T2. A1 is not run as acceptance on the current version; whether to run a
+procedure-check audition is decided separately.
+[Replacing the footprint with a learned one](#body-beat-time-constants) remains the unit after A4, as decided on 2026-09-24 (decision (b)).
+
+**Recorded as a scope revision.** Having core completion (A4) target the version with the terrain is a scope revision by the author's decision.
+It does not silently break milestones §6 ("do not add I/R/A completion conditions during the work"); like the 2026-09-20 scope revision, it is
+recorded explicitly. Milestones §1.3 and §5 are updated before the new T1/T2 work starts, stating the responsible I item, end point and target version.
+The R2 draft revises its acquisition timing to follow this order. The A1 draft re-registers not only the audition timing but also the target
+version, material, controls, denominators and presentation procedure. A comparison of the old version with the new one is kept separate from A1
+within the new version (causal intervention and connection-removal comparisons); the former does not substitute for the latter. I12b's A1 remains
+a separate registration.
+
+**Unchanged.** The core T rows and admission by the three conditions, the I12b registration, seal and acquisition plan, the I4 separation plan,
+the 2026-09-24 decision (b), and all default-off settings.
+
+The entry went through four independent Astra reviews (drafts 1–3 conditionally acceptable, draft 4 acceptable;
+`target/two-tier-rule-20260924/review-1.md` to `review-4.md`).
+
+<a id="body-beat-time-constants"></a>
+
+#### Final placement of body and beat time constants (2026-09-24, design direction)
+
+At the author's request, this entry records the intended final design for where the time constants a body carries
+should connect to beat and participation time constants. It does not change the core scope
+([mechanism-selection rule](#mechanism-selection-rule)), the I12b registration, or any default-off setting.
+It records no implementation, validation or authorial adoption. It builds on the 2026-09-12 entry in this section on
+embodied affordance and the circuit/cognitive-function correspondence.
+
+**Current state.** The only path by which a body time constant reaches a timing decision is I11-1's self-sound footprint
+(the overlap term). That footprint is a representative prediction computed from the synthesizer's body model, not a
+learned prediction. A Voice's intrinsic period is authored as `1 / base_rate_hz`, and the sound duration
+`hold_sec = hold_theta / base_rate_hz` follows from the period rather than the other way round.
+I6 estimates period and arrival from heard accents, and I11-2 removes the Voice's own accents from its arrival
+expectation through the Binding. ListenerTwin has no body. It holds only the fixed values of `MeterNetwork` in
+`core/meter.rs` (2 Hz initial beat, 2.5 s / 6 s decay) and Hebbian frequency learning from presentation onsets.
+Neither the generator nor ListenerTwin has a path from period to body.
+
+**Primary evidence.** The abstract of each source was checked on 2026-09-24. The full text of Todd, Cousins & Lee
+could not be retrieved; its finding was confirmed through the review by
+[Todd & Lee (2015)](https://pmc.ncbi.nlm.nih.gov/articles/PMC4549635/).
+
+| Primary study | Observed phenomenon | Constraint on this design |
+|---|---|---|
+| [Shadmehr & Mussa-Ivaldi (1994)](https://doi.org/10.1523/JNEUROSCI.14-05-03208.1994) | Reaching in a force field converged with practice to the free-space path; removing the field produced mirror-image aftereffects | The motor system learns body and environment dynamics. The task is reaching, not a beat or tempo time constant |
+| [Wolpert, Ghahramani & Jordan (1995)](https://doi.org/10.1126/science.7569931) | The temporal propagation of hand-location estimation errors in the dark under imposed forces matched optimal state estimation with an internal model | Supports a forward model that simulates action consequences. Belongs on the same side as I10's self-sound prediction |
+| [Jazayeri & Shadlen (2010)](https://doi.org/10.1038/nn.2590) | Reproduced intervals regressed systematically toward the mean of the presented distribution and were described by a distribution-aware Bayesian model | Timing is calibrated by experienced temporal statistics. Behavioural and model evidence, not specific to body time constants |
+| [Phillips-Silver & Trainor (2005)](https://doi.org/10.1126/science.1110922) | Seven-month-olds bounced on every second or third beat of an ambiguous rhythm listened longer to the accented version matching their bouncing; vision was not needed | Body movement shapes metrical interpretation. It biases interpretation rather than a period time constant |
+| [Trainor et al. (2009)](https://doi.org/10.1016/j.cortex.2007.10.014) | In adults, galvanic vestibular stimulation that only induced the sensation of head movement biased duple versus triple perception | Vestibular input enters metrical interpretation without actual movement |
+| [van Noorden & Moelants (1999)](https://doi.org/10.1076/jnmr.28.1.43.3122) | Explained the peak in pulse salience at certain rates by a damped resonating oscillator in the perceptual-motor system, around 2 Hz | Resonance is a hypothesis, not an identified mechanism |
+| [MacDougall & Moore (2005)](https://doi.org/10.1152/japplphysiol.00138.2005) | Over 10 h of daily activity in 20 subjects, head acceleration during locomotion was sharply tuned at 2 Hz (SD 0.13), uncorrelated with gender, age, height, weight or BMI; the authors speculated a central resonant frequency | Locomotor tempo was not predicted by body size. Does not support the assumption that body mechanics alone set the period |
+| Todd, Cousins & Lee (2007), Empirical Musicology Review 2(1), 1–13 | Reported a correlation between anthropometric measures and preferred tempo in a perceptual task | Evidence for a body–tempo relation, inconsistent with MacDougall & Moore |
+| [Dahl et al. (2014)](https://doi.org/10.1080/09298215.2014.884144) | Height and leg length combined best predicted preferred dance tempo; with height matched there was no sex difference; the authors found this consistent with a biomechanical resonance model | As above. A behavioural correlation, not an identified neural mechanism |
+| [Patel & Iversen (2014)](https://doi.org/10.3389/fnsys.2014.00057) | ASAP hypothesis: simulation of periodic movement in motor planning regions helps the auditory system predict beat timing via dorsal-stream connections through parietal cortex | A hypothesis; not grounds for putting a motor-simulation coupling into the core |
+| [Cannon & Patel (2021)](https://doi.org/10.1016/j.tics.2020.11.002) | Proposed that beat anticipation relies on action-like processes: patterned time-keeping activity in SMA, orchestrated and sequenced by the dorsal striatum | As above. A proposal with testable predictions |
+
+The body–tempo relation is inconsistent across studies. Within the sources checked, no neural study directly shows that
+beat-network time constants learn a body's resonance. The design therefore does not fix the body–period relation by
+formula; it observes the relation as an outcome of learning and selection.
+
+**Placement.**
+
+1. The body owns its time constants. Only the body layer supplies the synthetic body's decay, release tail,
+   refractory period, recovery and intrinsic pace.
+2. Voice sensorimotor learning (DCC side, private to the Voice). Extend I10's action-conditioned self-sound prediction and
+   replace I11-1's synthesizer-derived footprint with a learned prediction. Keep the synthesizer-derived value as teacher
+   and reference. The grounds are the primary studies in the [self-sound prediction contract](#i10-sensorimotor-contract)
+   and the internal-model studies above; this is a candidate that meets all three conditions of the mechanism-selection rule.
+3. Period estimation uses heard sound only, with no body prior mixed into the estimate. The body acts where the estimated
+   period is used.
+   - (a) A participation prior calibrated from experience (Jazayeri & Shadlen type). Keep the
+     [temporal-niche design](rhythm-temporal-niche.md) rule that execution intervals including deliberate waiting are not
+     used directly as training values for the body's intrinsic pace; what is learned is the participation period.
+     The evidence is behavioural, so this is a research candidate; register the separation from waiting before implementation.
+   - (b) Coupling motor simulation to beat prediction (ASAP type) is a research extension.
+4. Selection across generations (ALife). Make intrinsic pace a heritable trait that mutates independently of body traits,
+   and observe whether ecological selection produces a body–tempo correlation. Record a null result as well.
+5. ListenerTwin does not simulate a body. The direction is a single family of beat estimators behind the exchange boundary
+   of the 2026-09-11 entry in this section on model grounds, with the generator and ListenerTwin as instances that differ
+   only in input bus. This removes the current two systems: the Hopf oscillator in `core/meter.rs` (production meter and
+   ListenerTwin) and I6 in `temporal_cognition`. The listener's body connects as measurement through DCC stage two's
+   biosignal closed loop. Body sway and head movement relate more closely to the beat than heart rate does.
+
+**Order and relation to the rule.** Item 2 can proceed in the core as an extension of I10/I11. By the author's decision
+(2026-09-24), however, item 2 is not part of the current core completion condition (A4). The current core closes through
+A4 with the synthesizer-derived footprint; replacing it with a learned footprint is registered as the next unit after A4.
+When the replacement lands, I11-1's A1 and the footprint-related part of R2 are redone. Item 4 is an ALife change
+and does not touch the mechanism-selection rule. Item 3(a) is a research candidate after registration, 3(b) a research
+extension, and item 5 belongs to the biosignal stage. This direction does not close the 2026-09-12 gap that the Manifesto
+does not state the limb-resonance argument.
+
 <a id="mechanism-selection-rule"></a>
 
 #### Mechanism-selection rule and revised core scope (adopted 2026-09-20; same-day review applied)

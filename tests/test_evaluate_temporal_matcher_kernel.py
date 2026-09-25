@@ -46,8 +46,9 @@ class NativeMatcherTests(unittest.TestCase):
     def setUpClass(cls):
         cls.directory = tempfile.TemporaryDirectory(prefix='temporal-dtw-test-')
         cls.library = Path(cls.directory.name) / 'libtemporal_dtw.so'
+        python_link = ['-C', 'link-arg=-Wl,-undefined,dynamic_lookup'] if sys.platform == 'darwin' else []
         subprocess.run(['rustc', '--edition', '2021', '--crate-type', 'cdylib', '-O',
-                        '--cfg', 'feature="python-binding"',
+                        '--cfg', 'feature="python-binding"', *python_link,
                         str(ROOT / 'scripts/temporal_matcher_kernel.rs'), '-o', str(cls.library)],
                        check=True, capture_output=True, text=True)
         cls.numeric_library = Path(cls.directory.name) / 'libtemporal_numeric.so'
@@ -545,7 +546,6 @@ class NativeMatcherTests(unittest.TestCase):
         diag = self.worker.anchor_diagnostic
         self.assertEqual(diag.index,0)
         self.assertEqual(exact(list(diag.pitch_error[:5])),exact([value**2,0.,0.,0.,0.]))
-        self.assertNotEqual(diag.pitch_error[0],value*value)
         # A successful no-winner call must invalidate the preceding diagnostics.
         missing = fixtures.knots([None]*3)
         self.worker._pack(missing,self.worker.cue)
@@ -786,8 +786,9 @@ class NativeMatcherTests(unittest.TestCase):
     def test_traceback_pow_rounding_and_wide_magnitudes(self):
         rng = random.Random(47101)
         counterexample = float.fromhex('-0x1.e2cb19a44a7ecp+0')
-        self.assertNotEqual(counterexample*counterexample,counterexample**2)
-        values = [counterexample,0.,-0.] + [math.ldexp(rng.uniform(-2.,2.),rng.randint(-520,480))
+        mac_counterexample = float.fromhex('-0x1.b408fa09c73f9p-292')
+        # Python's power rounding depends on the platform libm.
+        values = [counterexample,mac_counterexample,0.,-0.] + [math.ldexp(rng.uniform(-2.,2.),rng.randint(-520,480))
                                           for _ in range(320)]
         for value in values:
             result = self.compare(fixtures.knots([0.,value]),fixtures.knots([0.,0.]),

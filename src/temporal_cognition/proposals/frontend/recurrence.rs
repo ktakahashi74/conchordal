@@ -61,6 +61,7 @@ pub(crate) struct Recurrence {
     received_at: u64,
     failure: Option<&'static str>,
     timing: auditory_timing::Stream,
+    period_accent_cut_deliveries: u64,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -172,7 +173,12 @@ impl Recurrence {
                 config.group.hop,
                 config.epoch_start,
             ),
+            period_accent_cut_deliveries: 0,
         })
+    }
+
+    pub(in crate::temporal_cognition) fn take_period_accent_cut_deliveries(&mut self) -> u64 {
+        std::mem::take(&mut self.period_accent_cut_deliveries)
     }
 
     pub(in crate::temporal_cognition) fn advance(
@@ -228,6 +234,10 @@ impl Recurrence {
             .flatten()
             .flat_map(|r| r.weights)
             .sum();
+        let period_accent_input = self
+            .settings
+            .forecast
+            .is_none_or(|config| config.period_accent_input);
         // Consume the old assignment before any cache can be rebound to a newborn.
         for (index, slot) in self.slots.iter_mut().enumerate() {
             let Some(owner) = slot.owner else { continue };
@@ -237,7 +247,16 @@ impl Recurrence {
             if let Some(update) = acoustic.features[index].as_ref() {
                 assert_eq!(update.raw.group, owner);
                 if let Some(accent) = update.detector.as_ref().and_then(|d| d.accent) {
-                    delivered = slot.estimator.deliver(accent, received_at)?.is_some();
+                    delivered = if period_accent_input {
+                        slot.estimator.deliver(accent, received_at)?
+                    } else {
+                        slot.estimator.deliver_without_period(accent, received_at)?
+                    }
+                    .is_some();
+                    if delivered && !period_accent_input {
+                        self.period_accent_cut_deliveries =
+                            self.period_accent_cut_deliveries.saturating_add(1);
+                    }
                     delivered_accent = delivered.then_some(accent);
                 }
             }
@@ -404,6 +423,46 @@ impl Recurrence {
                 cut,
                 self.frontend.config.group.sample_rate,
             )
+        })
+    }
+
+    pub(in crate::temporal_cognition) fn arrival_issue(
+        &self,
+        cut: u64,
+    ) -> Option<arrival::ArrivalIssue> {
+        let frame = self.frame.as_ref().as_ref()?;
+        let config = self.settings.forecast?;
+        let grid = self.frontend.config.group;
+        if self.failure.is_some() || frame.received_at != cut || grid.sample_rate == 0 {
+            return None;
+        }
+        let horizon_end = cut.checked_add(4 * u64::from(grid.sample_rate))?;
+        let groups: [Option<arrival::GroupArrival>; 7] = std::array::from_fn(|i| {
+            let owner = self.slots[i].owner?;
+            let evidence = frame.evidence_groups[i]?;
+            if frame.next_owners[i] != Some(owner)
+                || evidence.ledger.group != owner
+                || owner.bus != grid.bus
+                || owner.epoch != grid.epoch
+            {
+                return None;
+            }
+            Some(self.slots[i].arrival.as_ref()?.cdf(
+                owner,
+                cut,
+                grid.sample_rate,
+                evidence.forecast,
+            ))
+        });
+        Some(arrival::ArrivalIssue {
+            model: config.model,
+            version: 1,
+            bus: grid.bus,
+            epoch: grid.epoch,
+            sample_rate: grid.sample_rate,
+            issued_at: cut,
+            horizon_end,
+            groups,
         })
     }
 

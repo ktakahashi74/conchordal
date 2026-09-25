@@ -52,9 +52,9 @@ python3 $D/api_effect.py --root "$OUT" --plan $D/plan.json
 python3 $D/aa_floor_check.py --root "$OUT" --floor "$AA_FLOOR_JSON"
 ```
 
-`--inputs` を省くと `--plan` と同じディレクトリの `inputs/` を使う。`acquire.py` が検証するのは
-`plan.json` の `inputs_sha256` に載っている場所なので、`--inputs` で別の場所を指した場合は
-検証した先と実行した先が食い違う。既定のまま使うこと。
+`--inputs` を省くと `--plan` と同じディレクトリの `inputs/` を使う。`acquire.py` は登録原本に加え、
+実際に使うscenarioとconfigのSHA-256も検証する。`--inputs` で別の場所を指す場合も、
+その内容は登録原本と同じbyteでなければならない。
 
 ### 同一record修正後の§5.5(a)再取得（blanche）
 
@@ -62,7 +62,8 @@ python3 $D/aa_floor_check.py --root "$OUT" --floor "$AA_FLOOR_JSON"
 書き換えない。3つのconfigは同じ絶対パス
 `/home/shafi/lwrk/conchordal/target/i10-action-profiles-20260918.bin`を参照する。
 このprofileのSHA-256は`033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5`。
-このMacにはprofileと基準取得が無いので、ここでは実走できない。以下は両方が存在するblancheで実行する。
+以下はprofileと既存の基準取得があるblanche向けの手順。このMacでもprofileを受け取れば実行できる。
+Mac側の基準版はローカルのタグから再構築する（下記）。
 基準取得は`target/i11-stage1-54b-20260923/baseline/`を使い、その中の`render` binaryのSHA-256を
 `plan.json`に登録された`3614d998e07c04c7af1913f97f515cb0edf0be4e2aec6b18331703e67fa58b5e`
 と照合する。先にprofile、基準binary、基準12条件のWAVとreport、登録入力の全hashを検査し、
@@ -227,6 +228,85 @@ PY
 locatorの終了コード0は、12対がそろったことやharmonic／modalで選択差が出たことを保証しない。
 上のJSON検査まで通った場合だけ、登録条件での§5.5(a)再判定に使う。§5.4(b)の片側だけの候補recordは
 既定の規則どおり件数を報告し、内容一致の分母には含めない。
+
+### このMacでの再取得
+
+必要な外部入力は登録済みprofile **1ファイルだけ**。2026-09-23 PDTにDropboxの
+`wrk/conchordal-transfer/i10-action-profiles-20260918.bin`から受領し、このMacでも登録SHA-256との一致を確認した。
+基準タグ`i11-stage1-baseline`（`103a32fe5c5fc4fdf0f4d65fb25a1bb0c7c47303`）の
+ソースとarm64 binaryは、このMacの`target/i11-local-baseline-20260923/`に準備済み。
+`manifest.json`に基準ソース209ファイルのGit blob照合とbinaryのhashを記録した。
+blancheで作った基準binaryのSHA-256とは異なるので、このMacではその値との一致を要求しない。
+
+リポジトリのルートで実行する。取得先`BASE`と`OUT`には存在しない名前を指定する。
+`acquire.py --profile-file`はPython 3.11以降が必要。このMacではPython 3.12を指定する。
+同引数は元の登録configを変えず、実行用コピーのprofileの`file`だけを差し替える。
+登録入力hashとprofile hashを照合し、`acquisition-inputs.json`に元・派生configのhashと
+profileの出所を記録する。
+
+```sh
+set -euo pipefail
+export PYTHON=/opt/homebrew/bin/python3.12
+export D="$PWD/docs/roadmap/temporal-dcc/i11-inputs"
+export PROFILE="$HOME/Library/CloudStorage/Dropbox/wrk/conchordal-transfer/i10-action-profiles-20260918.bin"
+export BROOT="$PWD/target/i11-local-baseline-20260923"
+export BSRC="$BROOT/source"
+export BASE="$BROOT/none12-$(date +%Y%m%d-%H%M%S)"
+export OUT="$PWD/target/i11-same-record-mac-$(date +%Y%m%d-%H%M%S)"
+
+"$PYTHON" - <<'PY'
+import hashlib
+import json
+import os
+import subprocess
+from pathlib import Path
+
+def sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+profile = Path(os.environ['PROFILE'])
+expected = '033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5'
+if not profile.is_file() or sha256(profile) != expected:
+    raise SystemExit(f'登録profileなし、またはSHA-256不一致: {profile}')
+root = Path(os.environ['BROOT'])
+manifest = json.loads((root / 'manifest.json').read_text())
+commit = subprocess.check_output(['git', 'rev-parse', 'i11-stage1-baseline^{commit}'], text=True).strip()
+if commit != manifest['baseline_commit'] or not manifest['source_verification']['all_git_blob_hashes_match']:
+    raise SystemExit('基準タグとソースの記録が不一致')
+for name, binary in (('conchordal', 'conchordal'), ('conchordal-render', 'conchordal-render')):
+    path = root / 'build' / 'release' / binary
+    if not path.is_file() or sha256(path) != manifest['binaries'][name]['sha256']:
+        raise SystemExit(f'基準binaryが記録と不一致: {path}')
+for name in ('BSRC', 'BASE', 'OUT'):
+    path = Path(os.environ[name])
+    if name == 'BSRC' and not (path / 'Cargo.toml').is_file():
+        raise SystemExit(f'基準ソースなし: {path}')
+    if name != 'BSRC' and path.exists():
+        raise SystemExit(f'新しい取得先が必要: {path}')
+print('profile、基準タグ・binaryを確認')
+PY
+
+# 基準のsrc/Cargoは変えず、取得scriptと登録入力だけを基準ソース内のdocsへ複写する。
+mkdir -p "$BSRC/docs/roadmap/temporal-dcc/i11-inputs"
+cp -R "$D/." "$BSRC/docs/roadmap/temporal-dcc/i11-inputs/"
+"$PYTHON" "$BSRC/docs/roadmap/temporal-dcc/i11-inputs/acquire.py" \
+  --root "$BASE" --plan "$BSRC/docs/roadmap/temporal-dcc/i11-inputs/plan.json" \
+  --profile-file "$PROFILE" --mode render --variant none \
+  --instrument "$BROOT/build/release/conchordal" \
+  --render "$BROOT/build/release/conchordal-render"
+
+cargo build --release --locked --bin conchordal --bin conchordal-render
+"$PYTHON" "$D/acquire.py" --root "$OUT" --plan "$D/plan.json" \
+  --profile-file "$PROFILE" --mode render \
+  --variant body --variant proxy --variant none
+```
+
+基準12実行と新版36実行が完了したら、直前の「36 render、§5.4(a)(b)、§5.5(a)、24 report」の
+検査コードブロックを、`D`・`BASE`・`OUT`を維持した同じshellで実行する。
+基準の取得scriptは基準ソース内から実行する。これにより基準出力の`source-sha256.json`は
+基準の`src/`を記録する。現行checkoutのscriptから基準binaryだけを指定すると、ソース記録が現行版を
+指してしまう。取得したbinaryと派生configのhashは、各出力先の`binaries.json`と
+`acquisition-inputs.json`で確認する。
 
 ### §5.9（代表条件と実条件の差）
 

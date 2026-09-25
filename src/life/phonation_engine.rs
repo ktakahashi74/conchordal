@@ -633,6 +633,7 @@ pub struct ParticipationClock {
     hold_theta: f32,
     adsr: Option<crate::life::sound::ToneAdsr>,
     onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
+    arrival_input: Option<crate::life::temporal_participation::ArrivalInput>,
     footprint: crate::life::temporal_participation::FootprintTracker,
     decision_trace: bool,
     gate_index: u64,
@@ -675,6 +676,7 @@ impl ParticipationClock {
         policy.set_onset_comparison(self.onset_comparison);
         policy.set_body_footprint(self.footprint.selected());
         policy.set_current_identity(self.footprint.identity());
+        policy.set_arrival_input(self.arrival_input.clone());
         policy.set_decision_trace(self.decision_trace);
         let tick = policy.candidate(cursor, ctx.frame_end, allowed, self.forecast.as_ref())?;
         self.pending_prediction = self.outcome_forecast.as_ref().and_then(|forecast| {
@@ -857,6 +859,7 @@ impl PhonationClock {
                 hold_theta: 1.0,
                 adsr: None,
                 onset_comparison: None,
+                arrival_input: None,
                 footprint: Default::default(),
                 decision_trace: false,
                 gate_index: 0,
@@ -1274,6 +1277,25 @@ impl PhonationEngine {
     ) {
         if let PhonationClock::Participation(clock) = &mut self.clock {
             clock.onset_comparison = config;
+        }
+    }
+
+    pub(crate) fn set_arrival_input(
+        &mut self,
+        input: Option<crate::life::temporal_participation::ArrivalInput>,
+    ) {
+        if let PhonationClock::Participation(clock) = &mut self.clock {
+            clock.arrival_input = input;
+        }
+    }
+
+    pub(crate) fn take_arrival_known_decisions(&mut self) -> u64 {
+        match &mut self.clock {
+            PhonationClock::Participation(clock) => clock
+                .policy
+                .as_mut()
+                .map_or(0, TemporalParticipation::take_arrival_known_decisions),
+            _ => 0,
         }
     }
 

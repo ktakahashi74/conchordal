@@ -1,0 +1,46 @@
+{
+  "schema": "conchordal/i12b-registration-freeze/1",
+  "frozen_at": "2026-09-24T15:03:26.276221+00:00",
+  "objective": "I12bを完了",
+  "phase": "Specification and registered inputs before source implementation; acquisition prohibited until separate candidate/verifier seal and reviews",
+  "files": {
+    "docs/roadmap/temporal-dcc/i12b-coupling.md": "f5d0f97a8f257c4ae053d6f658ae3383477790b2c2523cc1bcf57275f6005425",
+    "docs/roadmap/temporal-dcc/i12b-inputs/README.md": "42ddf1cd911b79ad01edfabd9bb9d6b8773c7775cd4b431e9d703ee9cc45eaa7",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/config-backward-cut.toml": "22449f86621e2d7b9fac7a5ba4a6831bc0eb8f67dcb3592f6fa7d3e34667b439",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/config-forward-cut.toml": "74131aa96bc1ab219b6d7b37d4cc076869e534d9d585dc686cc9e70399642753",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/config-full.toml": "9ce8a6a1d3ab50b770d45bfe4cfaf016a8e47ce371e91d0a314189c2fd24f074",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/config-none.toml": "a0d8b173cb95c4ab72c4fd35f278833fc2b00699a4f4098e0a786fc877881abd",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/harmonic-pulse-flow-16.rhai": "86ae90f0f2102c0a660787250f5e2afd6a6a1701fad6d2621bf983705f8931a8",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/harmonic-pulse-flow-4.rhai": "02c43be6726a31021e6a90f9cd3609a3add89b2189f6af3892de800ccd6309ca",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/modal-pulse-flow-16.rhai": "d80034143ec6cdcacbf37d0553fc174a2af05dfa2e3f71cabe7ae81a039842a6",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/modal-pulse-flow-4.rhai": "05aefa28d3650bc4e1c443531558a53648b990872131403609475db47a7cfefc",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/sine-pulse-flow-16.rhai": "365fa2ff1cb3bb709456716e1f100ced56d3cf1a1116a9a6fbc4974de1278f73",
+    "docs/roadmap/temporal-dcc/i12b-inputs/inputs/sine-pulse-flow-4.rhai": "7c756dc3eff7e519681ae70d8746a57256f750de3b28c40cb66e9b569299c2a7",
+    "docs/roadmap/temporal-dcc/i12b-inputs/plan.json": "5661cdbd85a95c161af3442df7a70f66c39f67f25872a20a2444f15b7b742c9c",
+    "target/i12b-20260924/prereg-review.md": "d651fa4070d7f24719ac154c87de4c10929faaf526c30bdd813515b32c34c7b4",
+    "target/i12b-20260924/prereg-input-review.md": "5f789c9c49ddffb3d34a83a504b818cdfcb75e55b175dd727eb4689e1e4b54e1"
+  },
+  "plan_sha256": "5661cdbd85a95c161af3442df7a70f66c39f67f25872a20a2444f15b7b742c9c",
+  "prereg_review": {
+    "path": "target/i12b-20260924/prereg-input-review.md",
+    "sha256": "5f789c9c49ddffb3d34a83a504b818cdfcb75e55b175dd727eb4689e1e4b54e1"
+  },
+  "baseline": {
+    "manifest_path": "target/i11-stage2-20260924/candidate/manifest.json",
+    "manifest_sha256": "e3b76d987ddb4b7a479d5ac3927d2c27d2064af1a40f229a4f51fa971e4d45f4",
+    "unchanged_source_files_verified": 490
+  },
+  "counts": {
+    "offline": 48,
+    "performance": 144,
+    "total_runs": 192,
+    "nonregression_required": 120
+  },
+  "candidate_seal": "target/i12b-20260924/candidate/manifest.json",
+  "rules": [
+    "Do not edit frozen registration or inputs",
+    "Preserve every failure and raw result",
+    "Separate candidate/source/verifier seal required before acquisition",
+    "No commit or push authorized"
+  ]
+}

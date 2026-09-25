@@ -479,6 +479,21 @@ pub struct TemporalPeriodConfig {
     pub means: [f64; 8],
     pub deviations: [f64; 8],
     pub horizon_sec: f64,
+    #[serde(
+        default = "TemporalPeriodConfig::period_accent_input_default",
+        skip_serializing_if = "TemporalPeriodConfig::period_accent_input_enabled"
+    )]
+    pub period_accent_input: bool,
+}
+
+impl TemporalPeriodConfig {
+    fn period_accent_input_default() -> bool {
+        true
+    }
+
+    fn period_accent_input_enabled(value: &bool) -> bool {
+        *value
+    }
 }
 
 pub(crate) mod fixed_array {
@@ -1215,6 +1230,7 @@ mod tests {
             means: [0.; 8],
             deviations: [1.; 8],
             horizon_sec: 0.1,
+            period_accent_input: true,
         };
         let cfg = AppConfig {
             temporal_period: Some(period),
@@ -1238,9 +1254,20 @@ mod tests {
             assert!(crate::temporal_cognition::arrival::Engine::new(bad).is_err());
         }
         let text = toml::to_string(&period).unwrap();
+        assert!(!text.contains("period_accent_input"));
         let parsed: TemporalPeriodConfig = toml::from_str(&text).unwrap();
         assert_eq!(parsed.model, period.model);
         assert_eq!(parsed.coefficients, period.coefficients);
+        assert!(parsed.period_accent_input);
+        let mut cut = period;
+        cut.period_accent_input = false;
+        let cut_text = toml::to_string(&cut).unwrap();
+        assert!(cut_text.contains("period_accent_input = false"));
+        assert!(
+            !toml::from_str::<TemporalPeriodConfig>(&cut_text)
+                .unwrap()
+                .period_accent_input
+        );
         assert!(
             toml::from_str::<TemporalPeriodConfig>(&text.replace("hazard", "other_model")).is_err()
         );

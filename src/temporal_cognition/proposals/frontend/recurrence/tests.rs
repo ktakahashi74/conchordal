@@ -27,6 +27,192 @@ fn pulse(step: u64) -> f64 {
 }
 
 #[test]
+fn period_cut_preserves_real_accent_and_clock_but_removes_periodic_arrival_eligibility() {
+    let mut cfg = config(0);
+    cfg.features.threshold = 0.05;
+    let mut setup = settings(128);
+    let mut coefficients = [0.; 18];
+    coefficients[0] = -2.;
+    coefficients[10] = 4.;
+    setup.forecast = Some(crate::config::TemporalPeriodConfig {
+        model: crate::config::ArrivalModel::Hazard,
+        coefficients,
+        means: [0.; 8],
+        deviations: [1.; 8],
+        horizon_sec: 4.,
+        period_accent_input: true,
+    });
+    let mut full = Recurrence::new(space(), cfg, setup).unwrap();
+    setup.forecast.as_mut().unwrap().period_accent_input = false;
+    let mut cut = Recurrence::new(space(), cfg, setup).unwrap();
+    let grid = space();
+    let mut scan = vec![0.; grid.n_bins()];
+    scan[20] = 1.;
+    let mut cut_count = 0;
+    let mut confirmed = false;
+    let mut timing_accent_seen = false;
+    for step in 1..=240 {
+        let end = step * 512;
+        let input = observed(end, &scan, pulse(step));
+        let full_output = full.advance(end, end, input).unwrap();
+        let cut_output = cut.advance(end, end, input).unwrap();
+        assert_eq!(
+            serde_json::to_value(full.acoustic_snapshot(&full_output)).unwrap(),
+            serde_json::to_value(cut.acoustic_snapshot(&cut_output)).unwrap()
+        );
+        assert_eq!(full.take_period_accent_cut_deliveries(), 0);
+        cut_count += cut.take_period_accent_cut_deliveries();
+        let full_timing = full.timing.raw_accent_state();
+        let cut_timing = cut.timing.raw_accent_state();
+        assert_eq!(full_timing, cut_timing);
+        timing_accent_seen |= full_timing.iter().any(|(_, accent, _, _)| accent.is_some());
+        let full_period = full.diagnostics().unwrap();
+        let cut_period = cut.diagnostics().unwrap();
+        for (full_group, cut_group) in full_period.groups.iter().zip(cut_period.groups.iter()) {
+            assert_eq!(full_group.is_some(), cut_group.is_some());
+            let Some(full_group) = full_group else {
+                continue;
+            };
+            let cut_group = cut_group.as_ref().unwrap();
+            assert_eq!(
+                serde_json::to_value(full_group.ledger).unwrap(),
+                serde_json::to_value(cut_group.ledger).unwrap()
+            );
+            assert_eq!(full_group.period_source, cut_group.period_source);
+            assert_eq!(full_group.forecast.is_some(), cut_group.forecast.is_some());
+            if let (Some(full_forecast), Some(cut_forecast)) =
+                (full_group.forecast, cut_group.forecast)
+            {
+                assert_eq!(full_forecast.last_accent, cut_forecast.last_accent);
+                assert_eq!(full_forecast.elapsed_seconds, cut_forecast.elapsed_seconds);
+                assert_eq!(full_forecast.reset_unknown, cut_forecast.reset_unknown);
+            }
+            assert!(cut_group.peaks.iter().all(Option::is_none));
+        }
+        let full_issue = full.arrival_issue(end).unwrap();
+        let cut_issue = cut.arrival_issue(end).unwrap();
+        for (full_group, cut_group) in full_issue.groups.iter().zip(cut_issue.groups.iter()) {
+            assert_eq!(full_group.is_some(), cut_group.is_some());
+            let Some(full_group) = full_group else {
+                continue;
+            };
+            let cut_group = cut_group.as_ref().unwrap();
+            assert_eq!(full_group.group, cut_group.group);
+            if full_group.periodic && full_group.cdf.is_some() {
+                assert!(!cut_group.periodic);
+                assert!(cut_group.forecast.is_some());
+                confirmed = true;
+            }
+        }
+    }
+    assert!(cut_count > 0);
+    assert!(timing_accent_seen, "real accent must reach auditory timing");
+    assert!(
+        confirmed,
+        "real accent period must feed a consumer-eligible CDF"
+    );
+}
+
+#[test]
+fn arrival_issue_keeps_active_group_clock_and_generation() {
+    let mut cfg = config(0);
+    cfg.features.threshold = 0.05;
+    let mut setup = settings(128);
+    let mut coefficients = [0.; 18];
+    coefficients[0] = -2.;
+    coefficients[10] = 4.;
+    setup.forecast = Some(crate::config::TemporalPeriodConfig {
+        model: crate::config::ArrivalModel::Hazard,
+        coefficients,
+        means: [0.; 8],
+        deviations: [1.; 8],
+        horizon_sec: 4.,
+        period_accent_input: true,
+    });
+    let grid = space();
+    let mut scan = vec![0.; grid.n_bins()];
+    scan[20] = 1.;
+    let mut model = Recurrence::new(grid, cfg, setup).unwrap();
+    let mut groups = 0;
+    for step in 1..=96 {
+        let end = step * 512;
+        model
+            .advance(end, end, observed(end, &scan, pulse(step)))
+            .unwrap();
+        assert!(model.arrival_issue(end + 1).is_none());
+        let issue = model.arrival_issue(end).unwrap();
+        assert_eq!((issue.bus, issue.epoch, issue.sample_rate), (0, 2, 48_000));
+        assert_eq!((issue.issued_at, issue.horizon_end), (end, end + 192_000));
+        let period = model.diagnostics().unwrap();
+        for (entry, group) in issue.groups.iter().zip(period.groups) {
+            if let Some(entry) = entry {
+                groups += 1;
+                let group = group.unwrap();
+                assert!(group.active);
+                assert_eq!(entry.group, group.ledger.group);
+                assert_eq!(
+                    entry.forecast.map(|f| f.group),
+                    group.forecast.map(|f| f.group)
+                );
+                assert_eq!(
+                    entry.forecast.map(|f| f.issued_at),
+                    group.forecast.map(|f| f.issued_at)
+                );
+            }
+        }
+    }
+    assert!(groups > 0);
+}
+
+#[test]
+fn arrival_issue_marks_known_group_unknown_during_missing_observation() {
+    let mut cfg = config(0);
+    cfg.features.threshold = 0.05;
+    let mut setup = settings(128);
+    setup.forecast = Some(crate::config::TemporalPeriodConfig {
+        model: crate::config::ArrivalModel::Hazard,
+        coefficients: [0.; 18],
+        means: [0.; 8],
+        deviations: [1.; 8],
+        horizon_sec: 4.,
+        period_accent_input: true,
+    });
+    let grid = space();
+    let mut scan = vec![0.; grid.n_bins()];
+    scan[20] = 1.;
+    let mut model = Recurrence::new(grid, cfg, setup).unwrap();
+    let mut known = None;
+    for step in 1..=240 {
+        let end = step * 512;
+        model
+            .advance(end, end, observed(end, &scan, pulse(step)))
+            .unwrap();
+        if let Some(group) = model
+            .arrival_issue(end)
+            .unwrap()
+            .groups
+            .iter()
+            .flatten()
+            .find(|group| group.cdf.is_some())
+        {
+            known = Some(group.group);
+        }
+    }
+    let known = known.expect("real recurrence must produce a known CDF");
+    let missing_end = 241 * 512;
+    model.advance(missing_end, missing_end, None).unwrap();
+    let missing = model.arrival_issue(missing_end).unwrap();
+    let group = missing
+        .groups
+        .iter()
+        .flatten()
+        .find(|group| group.group == known)
+        .expect("owner must remain during a short missing interval");
+    assert!(group.cdf.is_none());
+    assert_eq!(group.unknown, Some(arrival::CdfUnknown::ResetUnknown));
+}
+
+#[test]
 fn ordinary_acoustic_recurrence_reports_public_within_timing_without_private_actions() {
     let grid = space();
     let mut scan = vec![0.; grid.n_bins()];
@@ -446,6 +632,7 @@ fn actual_nsgt_pulse_silence_and_steady_controls_reach_separate_inventories() {
             means: [0.; 8],
             deviations: [1.; 8],
             horizon_sec: 0.1,
+            period_accent_input: true,
         });
         models.push(Recurrence::new(grid.clone(), cfg, settings).unwrap());
     }
@@ -702,6 +889,7 @@ fn mr2_frontend_exchange_preserves_candidates_on_omission_tempo_and_aperiodic_in
                     means: [0.; 8],
                     deviations: [1.; 8],
                     horizon_sec: 0.1,
+                    period_accent_input: true,
                 },
             )
             .unwrap()

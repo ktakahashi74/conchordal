@@ -190,7 +190,8 @@ def verify(decisions, footprints, contexts):
         if record is not None:
             f.check("5.3 superseded record unused", not record["superseded"], where)
             if identity != current:
-                f.check("5.3 stale identity falls back", source == "proxy(stale)", where)
+                f.check("5.3 stale identity falls back",
+                        source in ("proxy(stale)", "proxy(setting)"), where)
 
         # §5.1 every candidate and every term.
         due, period, width = decision["due_frame"], decision["period_frames"], decision["width"]

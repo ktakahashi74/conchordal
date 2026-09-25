@@ -24,17 +24,41 @@
 
 ## 最小操作案と解決契約
 
-新規の作者操作を決める前に、既存の`temporal_mode("off"|"observe")`、Populationの`coupling/flow_depth`、明示TOMLの`temporal_onset_comparison`を一つの利用経路として整える。日常操作の第一候補は既存の参加傾向と、成立したI11-1／I11-2の消費者を有効化する最小の選択である。生のhazard係数・学習率・窓長を一括config化しない。T1/T2地形のモデルと尺度が未選定の間、係数の新名称、範囲、効用を固定しない。`None`／off既定は維持する。
+新規の作者操作を決める前に、既存の`temporal_mode("off"|"observe")`、Populationの`coupling/flow_depth`、明示TOMLの`temporal_onset_comparison`を一つの利用経路として整える。日常操作の第一候補は既存の参加傾向と、成立したI11-1／I11-2の消費者を有効化する最小の選択である。生のhazard係数・学習率・窓長を一括config化しない。T1のモデルはCASP 2008を選択済みだが、実装版の尺度は未確定である。T2のモデルと尺度も未確定であり、両地形の係数の新名称、範囲、効用をここで固定しない。`None`／off既定は維持する。
 
-現在のmode型は`Off|Observe`だけで、Rhaiの`participate`は起動前に拒否する（`src/scenario.rs:27-34`、`src/scripting/engine.rs:536-573`）。[初期操作契約](author-interface-contract.md#設定の所有者と解決)と[生成API参照](../../rhai_book/src/reference/api.md#temporal_mode)はobserveの新しい生成作用をゼロと説明する。一方、後日追加された明示`[temporal_onset_comparison]`はmodeとは別に各Voiceへ渡される（`src/runtime/mod.rs:2485-2494`）。現行コードの`Participation`は外部予測が適格で、onset候補が開き、係数が非ゼロなら費用を変え得る（`src/life/temporal_participation.rs:701-751`）。従って「observe単独」「observe＋明示TOML」「off＋明示TOML」を区別した説明が必要である。これは静的な経路確認であり、全組合せの実走結果やUI一致をまだ示さない。
+### 終了点と実行可能な一往復
 
-実装前に固定する対応表は、各操作について次の順に一行で結ぶ。①RhaiとTOMLの入力・所有者・重複／優先規則、②解決済みmodeと設定、③無効理由（既定off、未実装、未設定、入力不適格、支持不足、期限切れ等）、④実際に消費した候補と作用の有無、⑤同じ要約からのreport／UI表示、⑥作者が編集して再実行できる記述。UIの更新間引きやreport接続が候補選択を変えない。`participate`を受理する前に、そのmodeが何を有効化し、明示TOMLとどう重なるかをこの表で確定する。旧dispositionの未校正gain群は対象にしない。
+[I13の終了条件](milestones.md#2-技術実装の完了点)は、成立した機能で「Scenario指定→演奏→状態・無効理由の確認→編集・再実行」を通し、Rhai・UI・文書・実行sampleを同期することである（`milestones.md:129-133,157`）。[W0の初期契約](author-interface-contract.md#試聴と受入)も、M8–M9で実行sample、生成API参照、既定off、資源と音の回帰を要求する。説明文の同期や`participate`未実装の正確な記述だけではI13を完了しない。
+
+最小の一往復は、既存の実行可能なRhai操作（例：Populationの`entrained()`／`entrainment(value)`）と、明示`[temporal_onset_comparison]`を持つ検査Scenarioで行う。前者は参加傾向の作者指定、後者はI11比較の診断入力として所有者を分ける。支持された同一入力で、指定→解決設定→適格な候補費用→選択→実際の発音を識別し、UI／reportで理由と時刻を確認し、指定を編集して再実行する。設定差だけ、または候補費用差だけを聴こえる効果の成立と呼ばない。`entrained()`／`entrainment(value)`は既存API（`src/scripting/engine.rs:257-259`、`src/scripting/docs.rs:716-752`）である。新しい`participate` modeやdisposition gainをこの一往復のために実装しない。
+
+### modeとTOMLの解決表（現行動作を保持する案）
+
+現在のmode型は`Off|Observe`だけで、`participate`はRhaiの起動前に拒否される（`src/scenario.rs:27-34`、`src/scripting/engine.rs:536-573`）。明示`[temporal_onset_comparison]`はmodeで遮断せず各Voiceへ渡る（`src/runtime/mod.rs:1120-1130,2485-2494`）。したがって両者は現行実装では独立した指定であり、TOMLがmodeを上書きする、またはoffがTOMLを無効化するという優先規則を作らない。`temporal_mode`の重複・時刻付き指定、未知mode、未知TOML keyは既存の起動前拒否を維持する。
+
+| Rhai mode | onset比較TOML | 起動時の解決設定 | 候補判断時の実作用・無効理由 |
+|---|---|---|---|
+| 省略／`off` | `None` | 共有temporal observerなし。I11比較は従来の64点代理経路 | 新しい比較設定なし。既定生成と記録のbit一致を維持する |
+| `observe` | `None` | 両busの共有observerを起動。I11比較は従来経路 | mode単独の新しいI11費用なし。観測の受信／欠測は別の状態である |
+| 省略／`off` | 明示`Some` | 比較設定はVoiceへ渡る。mode offでは共有body worker／到来CDFを起動しない | `Some`の16点代理経路が働き得る。body指定は`proxy(absent)`等へ退避し、到来は入力不在なら未知。候補・音声の不変を一律には主張しない |
+| `observe` | 明示`Some` | Voiceへ比較設定を渡し、条件が満たされれば共有body／到来を配線 | bodyの有効支持、proxy理由、到来の既知／未知、`arrival=false`／weight 0、coupling 0、候補期限を判断ごとに区別する |
+| `participate` | 任意 | 起動前エラー。解決済みmodeは存在しない | 未実装・未校正。実行可能sampleに載せない |
+
+`Some`の16点代理・body退避は`src/life/temporal_participation.rs:529-594`、費用適用の条件は同`:701-751`にある。[W0](author-interface-contract.md#設定の所有者と解決)の「observeで新しい生成作用ゼロ」は、後日追加された明示比較TOMLがない**mode単独**の場合へ限定して同期する。現在のmode/TOML優先関係を将来変更するなら、別の作者判断とoff／None回帰を要する。
+
+### 設定、作用、表示の最小契約
+
+起動時にはRhai mode、TOMLの有無と明示値、body capture／到来CDFの配線可否を一度解決する。設定済み・worker起動・有効な入力受領・候補費用へ適用・選択変更・発音は異なる状態である。決定時の理由は実消費者の判断点で確定し、`body`／`proxy(setting|absent|stale|unsupported)`、到来の既知／未知、外部予測・候補窓・期限、coupling 0などを事実どおり示す。bodyの`stale`はrecipe／世代のidentity不一致であり、到来の期限切れと同じ時計判定にしない。未知を既知0へ変えない。決定機会がなければ作用は「未観測」であり「無効」と断定しない。
+
+現在の詳細`ParticipationDecision`はreport接続時だけ収集され、23候補を含む（`src/runtime/mod.rs:2485-2494,2609-2625`、`src/life/temporal_participation.rs:65-104`）。これをGUI用に常時生成・複製しない。実消費者が決定時に、Voice ID／generation、epoch、decision sample tick、選択onset tick、設定・入力の適格性、適用した費用項と理由を持つ**固定サイズの最新判断要約**を、report有無と独立に更新する案とする。実際の発音は選択と同義にせず、同じVoice世代・選択識別子に対応する発音tickが確認されたときだけ後から記す。未発音・退役・epoch更新ではその状態を保持または失効させる。各Voiceの有界な最新要約をworkerがUI更新時に小さいsnapshotへ集め、間引き後のsnapshotには取得tick／epochを付ける。reportは同じ要約を別の軽量recordとして出せるが、詳細traceの有無は従来どおりreport専用である。
+
+小さい解決済み設定要約と判断要約をreportとUIの共通入力にする。UIは更新間引き後の古いsnapshotを現在の支持と表示しない。reportの既存record型・既存fieldの意味と順序は維持する。追加の設定・判断recordが必要なら既存recordへfieldを差し込まず、明示`Some`または`observe`時だけ別型・schema版付きで出す案とし、`off+None`には出さない。既存`None` runの音声、決定・学習record、report schemaの固定比較を保つ。GUIなしでもreportから同じ設定・作用理由を得る。診断の有無で生成・学習を変えず、hopへの全候補frameコピーや表示専用の閾値を加えない。
 
 ## 実装前の回帰・検査案
 
-1. `None`／offと、Rhai `observe`だけの基準を固定し、同一seed・同一入力で生成音、決定record、学習recordを比較する。旧版から増えた診断欄は別集計にし、I11既存登録のbit一致条件を勝手に緩めない。
-2. mode×明示TOML×Voice参加方策を小さな行列で検査する。設定解決、未知key／重複／`participate`拒否、`arrival=false`、有効な`arrival=true`、予測欠落・期限切れを含め、費用項の有無と理由を候補recordから確かめる。I12b封印版の取得条件は変更しない。
-3. 同じ解決済み設定でreport有無・GUI有無を比較し、生成と学習の独立性、report／UIの同じ状態・無効理由・鮮度を確認する。実際の操作→編集→再実行を実行sampleと日英API参照へ反映し、生成物はregistryから更新する。
-4. T1マスキング版とT2変調版が決まった後、その版の係数を再分類する。既存`coupling`等の意味と単位を確認し、公開候補の小範囲感度をR3の別登録へ渡す。A1／A2の作者採用、R2／A3、A4をI13の文書・契約検査で代用しない。
+1. `off+None`と`observe+None`の同一seed・同一入力で、音声、決定・学習record、既存report schemaを固定基準と比較する。新しい設定recordは`off+None`へ出さず、I11のbit一致条件を緩めない。
+2. mode二値×TOML `None/body/proxy`×到来指定の最小行列を検査する。重複・未知key・`participate`拒否、`arrival=false`／weight 0、coupling 0、body支持欠落・世代違い・期限切れを含める。設定と判断の適格性、費用の非ゼロ、選択、発音を別欄で照合する。
+3. 支持された検査ScenarioでRhaiの参加指定から実作用までを一往復させ、Rhai指定または明示TOMLを編集して再実行する。同一状態介入の入力差分、決定record、音声を保存する。同一入力・同一配送列でreport有無×GUI有無の四条件を比較し、生成と学習の一致、GUI単独での理由表示、判断要約と詳細reportの対応を検査する。間引き、旧epoch、Voice退役、選択後未発音、report schema／順序の不変も検査する。実行sampleと日英API参照へ反映し、生成APIはregistryから更新する。
+4. 選択済みCASP 2008を使うT1マスキング実装版の尺度と、T2変調地形のモデル・尺度が定まった後、その版の係数を再分類し、既存`coupling`の意味と単位を確認する。公開候補の小範囲感度はR3の別登録へ渡す。A1／A2の作者採用、R2／A3、A4をI13の文書・契約検査で代用しない。
 
 開始条件はI12b取得・終結と基準版固定、sourceを触る場合の別worktree・別`CARGO_TARGET_DIR`、独立Astraの実装前登録レビュー「可」である。本文はそのレビュー前の草案であり、実装・検査・I13完了を宣言しない。

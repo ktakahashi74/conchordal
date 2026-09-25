@@ -427,6 +427,14 @@ impl Observer {
         }
     }
 
+    pub(crate) fn arrival_bindings(
+        &self,
+    ) -> &[crate::temporal_cognition::action_profiles::consumer::Binding] {
+        self.body_defaults
+            .as_ref()
+            .map_or(&[], |bank| bank.bindings.as_slice())
+    }
+
     pub(crate) fn drain_descriptor_predictions(
         &mut self,
     ) -> impl Iterator<Item = super::self_prediction::DescriptorOutcome> + '_ {

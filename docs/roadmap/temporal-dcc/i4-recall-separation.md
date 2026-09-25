@@ -201,3 +201,94 @@ I4-1の代案で旧検索を本体依存として採用し直すなら、既存�
 - 方針選択済み：I4-1はbit保存の責務分離の後に本体照合を新規則として登録する二段階案（前回2）。I4-2は代替producer検証・保存確認後の研究branch移管（前回3）。R2は第二段階・I10再検証後（前回4）。いずれも技術的成立の判定や実装開始ではない。
 - 別の判断で決まる：新照合規則を採るなら、明示memory時のI10証拠の再検証とreport／設定の意味の更新が必要になる。研究コードをmainから除くなら、それに専用の設定・test・参照の移管も必要になる。
 - 技術レビューで詰める：§4.2の固定bin入力・距離式・容量・受領順・coverage感度・差分許容は未凍結の第一案である。現在の依頼では実装／取得へ進まない。名前、数値参照、境界検査、保存対象の列挙は技術作業として進められ、項目ごとに作者へ選択を求めない。現在の有界因果参照という本体範囲を変える、支持要件を緩めて不成立を受け入れる、登録後の許容を結果に合わせて変える必要が生じた場合は、根拠と代案をまとめて作者判断へ戻す。
+
+## 10. 第一段階の具体実装前登録案（未レビュー・未凍結）
+
+この節は§4.1を実装可能な一単位に絞る草案である。I12bの取得、結果の独立監査、完了記録、基準版固定までは実装も比較取得も始めない。I12b候補manifestのSHA-256は`ac5518bfae768346f1743abf92a6e15a9c56f82c6493ebb893b783a66554d0c1`、実行sealは`8a5fe0dad53c7b85a9521e2055620a1c16dbce55164bfb8708c161abbe7247f5`である。候補manifestが列挙するsource 512件とそのsnapshotをbyte識別に使い、binaryは`conchordal`が`f3f496eabe7537ce665866590f77b5fd6282cc8f19ad1eddb9abff30adec38e8`、`conchordal-render`が`7f7d565c1ec2ddf3f1ebc5e6e040435347b2a14b6afc942e630b6b369afe61e4`である。manifestの`source_commit`は`b357e61f0136bc3856c96dc17e330c2377cd0c34`だが`source_is_dirty=true`であり、このcommit単独を基準版と呼ばない。I12b終結後に生きたsource、snapshot、binaryと完了記録を再照合し、基準版を別manifestへ固定する。新規commitは基準固定の必要条件としない。
+
+編集対象は`src/temporal_cognition/reference_inventory.rs`、`src/temporal_cognition/recall.rs`または既存`recall/retrieval.rs`のadapter、`src/temporal_cognition/observation.rs`、境界が変わる`src/temporal_cognition/reference_inventory/tests.rs`に限定する案とする。`tests/render_binary.rs`には新しい実参照正例の判定が既存検査で不足すると確認した場合だけ加える。固定長の証拠は7群、各群16 entryの`Option`配列とし、群にはhandle、query ID、支持開始・終端、受領・評価sample、no-memory bias、切捨てweight上下限、entryにはepisode ID・generation・weight上下限だけを置く。旧`Recall::refresh_retrieval`のGroup／Entryと`Snapshot`はreportのため維持し、adapterが順番・空slot・`f64` bitを変えずに証拠を値コピーする。inventoryはその証拠だけを読み、`recall::Snapshot`型を参照しない。`Recall::retained_ids()`から`Context.retained`への経路は独立に保ち、inventoryの16件から保持IDを再構成しない。コピーにheap確保・再計算・新規traitを入れない。
+
+`observation.rs`の同cutで音響・period更新→`Recall::advance`とsnapshot作成→inventory更新→`Context`公開という順序を保持する。旧producerのquery発行、span封緘、episode ID／退役、受領cut・期限・0.5秒鮮度、残差、保持状態、`f64`のlogadd・prefix・suffix・sort・tie・上下限・16件切捨てを変更しない。inventory側の2秒窓、7群探索、assignment×coverageの乗算・加算順、anchor、sort、質量保存を変更しない。設定の`[temporal_memory]`、既定`None`、report／UIのkeyとserialize形、private traceの発行時凍結・100 ms鮮度・retained IDによる退役を維持する。旧検索はadapterの先で実行し続けるため、この段階はI4最終分離でも資源改善でもない。
+
+比較は観測と動作の二つの分母に分ける。観測分母は基準版へ与える全受理cut×両busに、取得時計、epoch切替、reset、欠測、EOF処理とContextの公開／無効化イベントを加えた全列とする。動作分母は、そのContextがruntimeへ渡された時刻と、全issue／preview／complete／sealおよび確定したprivate creditの全列とする。各列の件数・鍵・順序と片側だけのイベントを照合する。封印binaryから採るのはWAVと既存reportである。reportに出ないretained ID列・`Context`・浮動小数点の生bitは、I12b終結後に封印sourceのbyteコピーを別worktreeへ展開し、production計算を変更しないtest専用probeで採る。probeのsource・実行binary・出力もSHAを保存し、封印binaryそのものの出力と混同しない。固定入力とRhai・TOML・profile・seed・sample rate・hop・report版・出力のSHAをmanifestに記す。正例には`tests/render_binary.rs`の長いmemory有効素材を起点とする、実episode保持、非空retrieval、非空inventory参照、発行時参照と正のprivate creditが全て現れた実走を必須とする。両busの件数、各段階の正例件数、最初と最後のcutを基準取得時に固定する。基準側で正例が欠ける素材を後から成功扱いにせず、登録を見直してから変更版を作る。旧I10の取得plan・report・WAV・除外scriptは未回復であり、この比較を旧I10試行の再現とは呼ばない。
+
+必須一致は、bus・epoch・group世代・cutを鍵とする全件の有無と順序、retrievalのquery ID、支持開始・終端、受領・評価sample、episode ID・generation・entry slot、各weightとdiscarded weightの`f64::to_bits()`、retained IDの全列、inventoryのgroup支持・coverage・query出所・参照key／上下限／anchor・各理由別質量、`Context`、private traceの参照選択・信用recordとWAVのbitである。`f64`をJSONへ往復してから比較するだけでは符号付きゼロ等のbit差を見失うため、境界fixtureと数値欄はRustのbit列またはlosslessなhex表現で記録する。観測分母・動作分母それぞれの基準版／変更版の和集合を比べ、片側だけのcut、Context、issue、preview、complete、seal、creditは不合格として件数を示す。0件照合、参照や信用の消失も不合格。通常実走の非同期候補recordだけは共通identityの内容一致と片側件数を別に報告し、全行一致とは呼ばない。除外候補は壁時計の実時間計器と非同期recordの**行順だけ**であり、正式な比較manifestでkey単位に列挙する。受領cut、支持、世代、値、学習順序は除外しない。
+
+変更前に基準版の観測・report・WAVと境界bit列を保存し、その後に別worktree・別`CARGO_TARGET_DIR`でadapterを実装して同じ入力を走らせる。既存`reference_inventory`、`recall`、`participation_trace`のmodule testと`tests/render_binary.rs`の実到達検査を使い、追加testは境界を通した非空・複数群の正例について旧基準bit列と変更版のinventory／private creditが一致する一点に絞る。単純なfieldコピーだけを実装どおりに反復するtestを合格の主証拠にしない。`cargo fmt --all --check`、`cargo clippy -- -D warnings`、`cargo test`を変更後に実行し、全testのstdout・stderrと同一shellの終了値を`AGENTS.md`に従って記録する。独立Astraによる本登録案のレビューで「可」を得た後に比較入力・除外・判定規則を凍結し、実装後の結果は別の独立レビューで判定する。
+
+実装後の全test記録コマンドは、別worktree内で`set -o pipefail`、`( RUST_BACKTRACE=1 cargo test -- --nocapture ) 2>&1 | tee test_report.txt`、直後に同じshellで`echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt`の順とする。途中の個別testだけでこの記録を代用しない。
+
+### 10.1 比較caseとtest専用probeの固定手順
+
+probeの固定入力にはfrontend snapshot／rawとは別に、各cutの`Option<recurrence::Snapshot>`をlosslessに含める。群・支持・peakと浮動小数点bitを保存し、Voice固有周期で代用しない。基準側・変更側は同じperiod snapshotを渡し、それぞれが生成したinventoryからContextを作る。
+
+EOFは通常cutのadvance列へ流さない。EOFの`source_epoch`が現epochと異なればmemory・period・Context・inventoryを破棄する。同epochでは有効なmemoryに`finish(input_end_sample)`を呼びsnapshotを取得するが、inventoryの`advance`は呼ばず、取得時計も進めない。公開Contextの`inventory`だけを`None`へ無効化し、`retained`は通常の保持ID更新を再実行せずEOF直前の値を保つ。epoch不一致時の`retained`も実装どおり公開出力を別途記録して照合する。probeはこの無効化Contextの受渡しを動作列へ記録し、その後に残るcomplete／sealをfixture通番どおり処理する。EOFで新query・新参照を作らない。
+
+case MはI11登録`config-none.toml`（SHA `b9b93fb3e1cadfbd85bde87ea9223f23d4f795393b61ed874c5b1384e4f920f0`）の`temporal_onset_comparison = None`であり、`temporal_memory`と`temporal_private_trace`は有効である。第一段階では旧producerを維持するので、このcaseのmemory、inventory、学習recordも同じ入力・同じ決定的イベントに対してbit一致を要求する。case Oは真の`temporal_memory = None`であり、同じ原本から`[temporal_memory]`、`[temporal_memory.retention]`、`[temporal_private_trace]`の三sectionとその本文だけを、section見出しから次の見出し直前まで削除して派生する。`temporal_private_trace`を残すとconfig検証が拒否する（`src/config.rs:664–667`）。各行をLFでそのまま出力する`awk 'BEGIN{drop=0} /^\[/{drop=($0=="[temporal_memory]" || $0=="[temporal_memory.retention]" || $0=="[temporal_private_trace]")} !drop{print}'`を変換規則とし、派生byteのSHAは`70a54bfd88ab2aa912021326de097190e4d6a11256188eee54568115678e7f9e`。原本／派生の残るTOML値一致、memory／private traceなしでparse成功を実装後に検査する。case Oはmemory・inventory・private traceが非起動であること、WAVと残る登録学習recordのbit一致を要求する。case MとOを一つの「None」へまとめない。両caseに同じ登録12 Rhaiを使い、profile pathだけのMac派生も別SHAで記録する。
+
+内部bit比較のprobeは、I12b終結後に封印sourceのbyteコピーから作る**test専用**の`src/temporal_cognition/i4_stage1_probe.rs`と、その`#[cfg(test)]`宣言だけを加える`src/temporal_cognition.rs`に限定する。基準側と変更側へ同じprobe source SHAを入れ、両側で別`CARGO_TARGET_DIR`を使う。probeは固定fixtureのfrontend snapshot／raw、取得時計、group退役、epoch/reset、gap、EOF、Context受渡し時刻、外生の動作`Outcome`と固有周期、issue／preview／complete／seal・watermarkを順番に読み込む。これら外生入力は整数と浮動小数点の16進bit列で保存し、fixture SHAとイベント通番を固定する。probe内で各busの`Recall::observe_acquisition`→`advance`／`finish`、`reference_inventory::Stream::advance`、`Recall::retained_ids()`→`Context`を実行し、`crate::life::participation_trace::Bank`へ**その実行で生成したContext**を渡して動作列を進める。変更側へ基準Contextの値を注入しない。probeは各段階の入力・出力、全slot、`f64::to_bits()`、event通番を指定出力へ書く。productionの関数、演算、report配線はprobeのために変更しない。
+
+基準probe実行の入口は、基準コピーのworktreeで`I4_PROBE_INPUT=<固定fixture> I4_PROBE_OUT=<基準trace> CARGO_TARGET_DIR=<基準target> cargo test --lib i4_stage1_probe -- --nocapture`、変更側は同じfixtureとprobe sourceを使い`I4_PROBE_OUT=<変更trace> CARGO_TARGET_DIR=<変更target>`へ出す。両traceのSHA、probe source・test binary・fixture・target版のSHAを保存する。test名・入力パス・出力パスはmanifestへ絶対pathと相対pathで記録する。基準側では非空retrieval、非空inventory参照、正の確定private creditと同Voiceの後続利用が揃うfixtureを変更前に確定する。揃わなければ判定を始めず、fixtureと登録を独立レビューへ戻す。観測分母は受理cutに加えてEOF・無効化・resetを含む全イベント、動作分母はContext受渡し・issue・preview・complete・seal・creditの全イベントとし、通番の欠落／追加／重複とbit差を不合格にする。通常rendererの固定素材ではWAVと既存reportの実到達を別に検査し、非同期の候補行順と実時間計器だけを除外する。probeの決定的結果を、通常実行の非同期行順までbit一致した証拠とは呼ばない。
+
+## 11. 第二段階の実装前登録案（未レビュー・未凍結）
+
+この節は§4.2–4.3の技術案を実装入口と比較条件に結ぶ。**今回の審査は設計契約だけ**を対象とする。第一段階の全件bit回帰と独立結果監査を終えた後、実入力SHA・正例件数・record固有鍵・除外fieldを含む比較manifestを作る。そのmanifestを同封した**第二段階の最終実装前登録審査**で「可」を得て、入力・式・除外・合否を凍結してから第二段階source編集を始める。今回の設計契約「可」を最終登録「可」と扱わない。それまで新producer、研究移管、設定削除、取得を始めない。第一段階のbit一致条件を第二段階の意図差で緩めない。I12bの終結と基準版固定も先行条件である。
+
+### 11.1 計算層と対象版
+
+原理層は、実観測の元支持・availability以前だけを使う因果条件、同じ相対時刻の既知座標だけを比較する入力契約、保持ID・世代・期限の整合と、受領前の発行へ結果を遡及しない規則である。ただし「固定bin照合が聴覚の標準モデルである」という主張はしない。2 hop/bin、96 hop、共通支持0.9、最低2 bin、32保持枠、100 ms cadence、200 ms期限、温度と尺度、0.5秒鮮度、16件公開、係数群は作者規則層の工学値として登録する。結果に合わせて同じ取得内で調整しない。0.8／0.9／1.0のcoverage感度は採用値0.9と別に報告し、採用値の事後変更に用いない。
+
+対象は第一段階で固定した版を旧対照とし、第二段階の変更版を別manifestで識別する。旧I10の限定結果は履歴であり、新規則の合格ではない。R2、A3、A4、作者採用も別判定である。
+
+### 11.2 raw入力、照合、公開の順序
+
+`features::RawDescriptor`のgroup、hop開始・終端、取得sample数、十座標、元支持、availabilityを、現`Recall::advance`が受理する**全hopまたは0hop**の条件で読む。`0<known_samples<hop`のpartial hopは取得位置が分からないため**契約違反として拒否**し、得点にも未知値の補完にも使わない。将来partialを使うなら元intervalまたはbitmapを別登録して入力に加える。旧`descriptor::Block`や`matcher::Knot`の圧縮値から48 binを復元しない。
+
+各bus最大7群、全群で32 episode、各episodeは開始から96 hopの物理区間とする。2 hopずつの48固定binにrawの元支持と十座標を保存し、欠測で時間を詰めない。完成binだけを比較し、rawの支持端・availabilityはcut以前を要する。各座標のbin値は、そのbinの全sampleが取得済みで、被覆rawの当該座標がすべて既知の場合に限り、重なりsample数で加重して作る。後の観測で過去の未完成binや欠測binを補わない。全欠測の区間は保持しない。設定が96 hop・48 binの容量を超えるときは明示エラーにする。
+
+同一bus・epochで、候補区間終端がquery開始以前、候補のavailabilityがcut以前、IDが現在の保持bankにあるepisodeだけをID昇順に全32件まで調べる。別group世代の過去episodeは候補として許すが、query所有群の世代とepisode自身の世代は別々に検査する。`L=min(query経過sample数, 候補区間長)`とし、同じ相対bin番号の完成binだけを比較する。座標`j`の共通既知bin集合`B_j`、件数`n_j`、共通支持sample数`S_j`に対し、`n_j >= 2`かつ`10*S_j >= 9*L`を満たす座標だけを集合`J`へ入れる。`L <= 0`、完成bin不足、`J`が空のときは理由を分けて未支持とし、距離0を作らない。未完成末尾も`L`の分母に残す。
+
+得点は§4.2の式どおり、各`j∈J`についてbin番号順に`(q[b,j]-e[b,j])²`を合計し、`sqrt(sum/n_j)/scales[j]`を座標番号順に平均した距離の負値を`match_temperature`で割る。生座標へのscale適用は一回だけ。pitch／tempo変換、DTW、挿入・削除、motion／interval項は使わない。非有限入力、非正scale・温度、未来支持、重複／逆転ID・時刻は未支持ではなく契約違反として拒否する。独立数値参照と比べるときだけ§4.3の有限値許容`1e-12*max(1,abs(reference))`を使い、ID・mask・採否・支持・tie順は完全一致とする。
+
+同cutの順序は、群退役と旧結果の失効→前cutまでに完了したpendingの期限・世代・保持ID検査と受領→新queryの採点と最大7群のpending登録→現在区間の封緘→受領済み結果からretention availabilityとweight更新→inventory公開とする。完了と受領のsampleは別欄に記録し、同cutのEOFで完了済み結果を受け取れるようにする。query支持終端から0.5秒**未満**、受領は期限**以下**。`query_id`、支持開始・終端、発行・完了・受領・評価sample、棄却理由を残す。現`recall/clock.rs`・`retention.rs`の保持・減衰と、第一段階の固定長inventory証拠型は本体で再利用する。`recall/retrieval.rs`のavailability、no-memory bias、prefix／suffixの上下限weight計算と16件切捨ては、新scoreを受け取る小さい入力境界に分けて再利用する。旧`MatchSnapshot::acoustic_score`、`group.matches`、`query::Scheduler`を本体のfallbackとして呼ばない。inventoryの7群・16参照と下限信用の質量条件、private traceの発行時凍結・保持ID退役は維持する。
+
+### 11.3 設定、報告、研究保存
+
+新本体設定名は`[temporal_reference]`を候補とし、`span_hops=96`、`episodes=32`、`bin_hops=2`、`coverage_min=0.9`、`min_common_bins=2`、`query_cadence_ms=100`、`deadline_ms=200`、`scales=[1.0;10]`、`match_temperature=1.0`、`no_memory_bias=0.0`を登録する。保持係数の初回値はI11登録configと同じ`tau_sec=20.0`、`kappa=0.7`、`strength_max=1.2`、`r_max=1.0`。数値を公開調整キーにする範囲はAnti-Bloatに従い実装前に絞り、固定値はschema／manifestのモデル定数として明示する。旧`[temporal_memory]`の`candidates`、`edit_penalty`、`motion_scale`、`interval_scale`を新規則へ同名転用しない。mainから旧研究設定を除いた後は`deny_unknown_fields`による明示エラーとし、黙って無視しない。保存済み旧configは旧binaryと研究側の証拠として保管する。
+
+実装対象は`src/config.rs`、`src/temporal_cognition/{features,recall,observation,reference_inventory}.rs`と新しい有界producer module、必要なclock／retention分離、`src/ui/windows.rs`およびruntimeのreport配線、対応するRust／Python testである。`docs/roadmap/temporal-dcc/feature-manifest.json`とI10記録・処理目録は実際に新schemaが接続した後に更新する。公開technoteの日英版も実装済み状態に合わせて更新するが、研究登録段階では変更しない。研究検索の削除とbranch配置は復元検査後の別単位にする。
+
+`temporal_memory = None`（旧検索なし）と`temporal_onset_comparison = None`（onset比較なし）は別である。I11登録の`config-none.toml`は後者がNoneでも`[temporal_memory]`とretentionが**有効**であり、第二段階では新producerへ移すとretrieval、inventory、私有trace、学習recordが変わり得る。同configの学習recordに旧版とのbit一致を要求しない。新しい`temporal_reference = None`の真のoff回帰ではWAV・登録学習recordのbit一致を要求する。memory有効・固定方策の観測非干渉WAVは別に検査し、参照を消費する生成設定の音声差は理由と最初のcutを記録する。report／UIは新score、支持・棄却理由、query／受領時計、モデル版を同じsnapshotから公開し、旧coarse／DTW件数を0埋めして残さない。
+
+研究側に保存する対象は`matcher.rs`、`memory.rs`と`memory/index.rs`、`query.rs`と`query/cache.rs`、`descriptor.rs`の圧縮・Knot生成、旧`recall.rs`の検索producer・adapter、検索専用の`transport.rs`部分、それらのtests／fixture／Python参照・設定・schema・再現手順である。共用のclock・retention・raw・inventory・private traceまでmainから消さない。現checkoutで旧研究branch/tagのlocal refは未確認であり、commitも未承認。まず既存refを読み取り確認し、基準版の全dirty sourceをSHA付きarchiveと復元manifestへ保存し、別環境での復元を検査する。新しい研究branchへのcommitは作者の別判断を要し、保存されていない現行検索を削除しない。
+
+### 11.4 比較と停止条件
+
+入力にはI11登録の12 Rhai・config原本・profileの登録SHAを使える。ただし`target/i10-reduced-resources-20260921/`の旧plan／report／WAV／除外scriptはこのcheckoutで未回復であり、元I10試行の再現とは呼ばない。登録済み12条件のうちholdのような空でよい対照を事前に印し、実参照が要る条件には保持→非空retrieval→非空inventory→私有信用→同じVoiceの後続利用の正例件数を固定する。`tests/render_binary.rs`の長いmemory有効素材は現存する実到達fixtureとして使い、新固定binの独立数値参照にはraw位置、共通支持のずれ、2 hop境界、未完成末尾、欠測、同一cut複数群、退役・期限境界を別に作る。新旧の最初の分岐を入力支持→得点→weight→受領→inventory→信用・選択の順で記録する。
+
+同一の新規則・同一入力の再実行は決定的欄のbit一致、独立参照との数値許容は上記式、旧第一段階との意図差は原因と分母を全件報告する。新規則の採否・支持・期限の不一致、全有効条件の未支持化、正例経路の消失、offまたは固定方策の非干渉回帰、旧研究実装の復元不能は技術未達。I10の学習recordを旧版へ無理にbit一致させて新規則を無効化しない。第二段階の結果に合わせてcoverage、尺度、温度、除外を変える場合は登録版を分けて再レビューする。source変更後のRust全test・fmt・clippyと独立結果監査を通す。正式R2はI10と影響する生成経路の再検証後に行う。
+
+### 11.5 固定区間、保持書込み、時計の実装契約
+
+入力列は各受理cutの`frontend::Snapshot.feature_gaps`と`features`の**slot 0〜6だけ**を読む。slot 7はbus全体の記述で群episodeへ入れない。各slotは保持中のgroup handleに合うrecordだけを対象にし、**gap→現在hop**の順で処理する。`RawDescriptor`の各recordは全hop（`known_samples=hop`かつ`end-start=hop`）または0hopの明示gapだけ受理する。`0<known_samples<hop`のpartialは契約違反として拒否し、将来の入力schema追加まで位置を捏造しない。0hopのrecordは`start..end`の未知sample区間として取り込み、元支持・availabilityは残す。96 hopを超えるgapは現在区間の物理終端まで未知として埋めて封緘し、残りを後続96 hop区間へ時刻順に分割する。gapの後の全hopは実際の`start`から入り、圧縮して左へ寄せない。各群の区間起点は最初の全hopの`start`、次区間起点は前区間起点+`96*hop`。区間が完成する前に群退役が来れば、最終観測終端までの未完成区間を部分封緘する。ただし全bin未知または取得sampleゼロの区間は保存しない。複数群が同cutで封緘される場合はbus、group slot、世代の昇順で書き、retentionの`Write.end`が逆転しないよう**終端sample昇順を第一鍵**にしてからbus内slot・世代・区間起点でtieを解く。過去終端の遅延封緘は拒否し、後続区間へ合算しない。
+
+封緘時のretention支持率は`available = 当該区間で取得済みのsample数 / (end-start)`とし、重複rawは二重計上せず、取得済みでも座標未知なら取得sampleに数える。partialは受理しない。0hop gapと未完成末尾は分母に残す。`available=0`は保持へ書かず、正の値だけを採用する。`Write`は`epoch=現epoch`、`sequence=stored_total+1`、`occurrence_id=support_id=新episode ID`、`start/end=元sampleをrateで秒化`、`committed=封緘区間の最終availability/rate`、`delivered=cut/rate`、`unknown=0`、`unassigned=0`、`assignments=[(新ID, available)]`、`coarse=None`とする。全32枠なら先に既存retentionの候補選択・退役を行い、保持ID／世代を更新した後に新IDを登録・書き込む。新照合scoreは**retrieval正規化だけ**に使い、retentionの支持率・時間減衰・退役費用へ入れない。取得時計の既存gap prefix検証を通し、`Write.end`逆転・支持率矛盾はエラーとする。
+
+100 ms cadenceはsampleで`period=ceil(100*rate/1000)`とする。各群の最初の全hop開始を起点とし、`floor((raw.end-start)/period)`が直前全hopから増えた時、または96 hop境界到達時に一つのprefix queryを発行する。gapでは取得sample累積もprefix発行条件も進めず、次の全hopで物理時刻だけが進んだ分の越境を一度だけ判定する。新しい96 hop区間へ進むと起点とcadence位相をリセットする。候補評価は発行cutの保持bankの全32件、期限は**発行sample+ceil(200*rate/1000)**を含む範囲、受領は後続cutの最初の機会とし、完了sampleと受領sampleを別に記録する。群退役・世代変更・保持ID退役は受領前に失効させる。EOFでは通常frameの取得時計・prefix発行・inventory advanceを行わない。同epoch EOFの`finish(input_end_sample)`では完了済みpendingだけ期限・世代・保持IDを検査して受領し、**部分区間の新規封緘、retention書込み・退役選択、availability／weight再評価はしない**。末尾dropで`input_end_sample`が取得時計の終端を超えても時計prefixを読まない。未封緘区間はEOFで捨て、件数・元区間・理由をterminal診断に残す。公開inventoryは`None`へ無効化し、新inventory・新Contextは作らない。現runtimeではprivate observerの`finish`が観測EOFより先なので、EOF無効化Contextを過去のprivate complete／sealへ渡さず、最後に配送済みのContextで終端処理する。terminal reportだけに無効化状態を反映する。この順序を変えない限り同期追加は不要。異epoch EOFでは旧状態を破棄する。
+
+### 11.6 全候補観測とI10比較manifestの凍結条件
+
+検査専用全候補traceのschemaを`conchordal/i4-bounded-candidates/1`とする。鍵は`run_id,bus,epoch,cut,event_ordinal,group_slot,group_generation,query_id,candidate_episode_id,candidate_generation`。各発行・完了・受領・退役・EOFに加え、**受領済みqueryのavailabilityとweightを再評価する全通常cut**で、当該queryの保持bank全件（最大32、ID昇順）を**16件公開前**に出す。query側の凍結raw record列と48 bin×10座標の値bit／既知mask、元支持・availability、候補側のepisode IDから復元できる凍結raw／48 bin×10座標の値bit／既知maskを同じtraceまたはSHA付きfixture参照で結ぶ。各候補の`L`、座標別`n_j,S_j`、`J`、距離・score bit、保持上下限、正規化前score／weight、採否・棄却理由、期限・受領時計、16件切捨て前順位を残す。候補ゼロ件でもheader eventを出し、対象候補数=0・出力件数=0と理由を記録する。通常snapshotのquery ID・出所・16件と照合し、対象候補数、出力候補数、欠落・重複・片側件数をイベントごとに検査する。reportへ全候補を常時流すかtest専用出力にするかは実装時に選ぶが、同schema・鍵・完全件数を満たし、最初の分岐をraw支持→bin→score→weight→受領→inventory→private creditで特定できることを合格条件とする。
+
+比較manifestは第一段階の結果後、**第二段階source編集前**に実ファイルとして作り、第二段階の独立実装前レビューへ同封する。入力はI11登録の12 Rhaiと各原本SHA、seed、profile、sample rate、hop、bus、`body/none/proxy`設定を明示し、旧`config-none`はmemory有効と記す。12条件の分類は次表で固定する。正例は実走で保持→非空retrieval→非空inventory→発行時参照→正の確定private credit→同じVoiceの後続利用まで繋がる場合だけ数える。空対照は「0でよい」のであって、異常な片側欠落を除外しない。
+
+| 条件 | 必須経路 | 許す空対照 |
+|---|---|---|
+| sine-hold-4 / 16 / 64 | raw、保持、全候補trace | private credit・後続利用 |
+| sine-flow-4 / 16 / 64 | raw、保持、非空retrieval、非空inventory | private creditはVoice発行不在時のみ |
+| harmonic-flow-4 / 16 / 64 | raw、保持、非空retrieval、非空inventory | private creditはVoice発行不在時のみ |
+| modal-flow-4 / 16 / 64 | raw、保持、非空retrieval、非空inventory | private creditはVoice発行不在時のみ |
+| `tests/render_binary.rs`長尺・habitat bus | 全経路と正のprivate credit・同Voice後続利用 | なし |
+| 同長尺・他bus | 保持と参照診断 | private credit・学習は0 |
+
+長尺fixtureの保持係数は`kappa=4,strength_max=2,r_max=100`で、§11.3のI11初回値`0.7,1.2,1`と異なる。比較manifestで設定を区別し、長尺の到達性とI11の12条件を混ぜて一つの数値判定にしない。I10で候補停止対照との全件一致を要求した学習record10種は`self_sound_outcome`、`self_sound_descriptor_prediction`、`private_participation_trace`、`participation_outcome`、`participation_context`、`body_descriptor`、`local_prediction_match`、`local_prediction_error`、`onset`、`population_step`（`i10-body-outcome.md`の2026-09-21対照記録）。各種の既存report固有鍵と件数を比較manifestに転記し、`body_observation`と`self_sound_observation`はwall time欄と候補bank自身の`body_defaults`だけ除外する。既存の`CONCHORDAL_DISABLE_CANDIDATE_ENERGY`停止点による学習非干渉対照は、`temporal_onset_comparison = None`の固定方策に**限定**する。この停止点はcandidate bankと同時にbody footprint供給も止めるため、body／proxy設定の候補のみ停止した対照とは呼ばない。body／proxyの因果比較は各設定の通常経路どうしで別に行い、footprint欠落による`proxy(absent)`への変化を候補効果に算入しない。非同期candidate行の順序と実時間資源計器だけを事前指定の除外欄とし、各recordの共通鍵内容・片側件数・欠落理由は報告する。旧I10 plan／report／WAV／除外scriptの未回復はそのまま留保し、比較manifestが未作成なら第二段階実装前レビューを「可」としない。

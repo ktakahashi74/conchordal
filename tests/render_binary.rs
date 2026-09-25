@@ -1,15 +1,18 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn unique_temp_path(ext: &str) -> PathBuf {
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time before epoch")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "conchordal-render-it-{}-{nanos}.{ext}",
+        "conchordal-render-it-{}-{nanos}-{sequence}.{ext}",
         std::process::id()
     ))
 }
@@ -154,6 +157,7 @@ section("author label is not an observation", || {
                 means: [0.; 8],
                 deviations: [1.; 8],
                 horizon_sec: 0.1,
+                period_accent_input: true,
             };
             let text = format!("[temporal_period]\n{}", toml::to_string(&period).unwrap());
             fs::OpenOptions::new()
@@ -1313,6 +1317,7 @@ fn body_prototypes_match_actual_descriptors_without_changing_audio() {
         means: [0.; 8],
         deviations: [1.; 8],
         horizon_sec: 0.1,
+        period_accent_input: true,
     });
     let run = |config: &AppConfig, mode: &str, reporting: bool| {
         let config_path = unique_temp_path("toml");

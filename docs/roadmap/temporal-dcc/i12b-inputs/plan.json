@@ -1,0 +1,2350 @@
+{
+  "schema": "conchordal/i12b-registration-draft/1",
+  "status": "Preregistration plan; execution requires registration freeze and separate candidate/verifier seal; no acquisition yet",
+  "basis": [
+    "docs/roadmap/temporal-dcc/i12b-coupling.md",
+    "docs/roadmap/temporal-dcc/i11-onset-comparison.md",
+    "docs/roadmap/temporal-dcc/i11-2-arrival-comparison.md"
+  ],
+  "source_registration": {
+    "i11_stage2_plan": "docs/roadmap/temporal-dcc/i11-2-inputs/plan.json",
+    "sha256": "1ba46d0955aedf8656bf222d956ab619d4ecdae2fe6555f96b989abb61fd7c95",
+    "i11_stage2_freeze": "docs/roadmap/temporal-dcc/i11-2-inputs/freeze.json",
+    "freeze_sha256": "b256b87b7d36a1ea9fd733316e6e9a7765fee5dbbcfb7b9b71f0f1fb53c7eb21"
+  },
+  "inputs_sha256": {
+    "inputs/config-backward-cut.toml": "22449f86621e2d7b9fac7a5ba4a6831bc0eb8f67dcb3592f6fa7d3e34667b439",
+    "inputs/config-forward-cut.toml": "74131aa96bc1ab219b6d7b37d4cc076869e534d9d585dc686cc9e70399642753",
+    "inputs/config-full.toml": "9ce8a6a1d3ab50b770d45bfe4cfaf016a8e47ce371e91d0a314189c2fd24f074",
+    "inputs/config-none.toml": "a0d8b173cb95c4ab72c4fd35f278833fc2b00699a4f4098e0a786fc877881abd",
+    "inputs/harmonic-pulse-flow-16.rhai": "86ae90f0f2102c0a660787250f5e2afd6a6a1701fad6d2621bf983705f8931a8",
+    "inputs/harmonic-pulse-flow-4.rhai": "02c43be6726a31021e6a90f9cd3609a3add89b2189f6af3892de800ccd6309ca",
+    "inputs/modal-pulse-flow-16.rhai": "d80034143ec6cdcacbf37d0553fc174a2af05dfa2e3f71cabe7ae81a039842a6",
+    "inputs/modal-pulse-flow-4.rhai": "05aefa28d3650bc4e1c443531558a53648b990872131403609475db47a7cfefc",
+    "inputs/sine-pulse-flow-16.rhai": "365fa2ff1cb3bb709456716e1f100ced56d3cf1a1116a9a6fbc4974de1278f73",
+    "inputs/sine-pulse-flow-4.rhai": "7c756dc3eff7e519681ae70d8746a57256f750de3b28c40cb66e9b569299c2a7"
+  },
+  "existing12_none_references": {
+    "harmonic-flow-16": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-16.rhai",
+      "sha256": "1f33b90731f0e324daf2f985066390a64b06009925aa2c41a496255ea0f5afb5"
+    },
+    "harmonic-flow-4": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-4.rhai",
+      "sha256": "7c71543034976732d37ce5d7216f8eeac628a3c2d595fe3ad1be5b04b2d7b6a2"
+    },
+    "harmonic-flow-64": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-64.rhai",
+      "sha256": "26f63de85afe101a35ea28cf629ec753ebd277b3bbd2a5bfe7a51fb5b153b9f9"
+    },
+    "modal-flow-16": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-16.rhai",
+      "sha256": "2ef00e6d1fabb6d0da964205cc96f0c3cdc13d2f2f3354cc1beeae1ffadce90b"
+    },
+    "modal-flow-4": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-4.rhai",
+      "sha256": "4608a6c9f1d5d02ef8d6ce056816a8a5ae412373ad63128868b6b8a5f73514f6"
+    },
+    "modal-flow-64": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-64.rhai",
+      "sha256": "ed1e4dc93fbccd79ef0746478a9e30b10dc0014bfed25897293cad33fc49933f"
+    },
+    "sine-flow-16": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-16.rhai",
+      "sha256": "e30c126f2869db869d458b13844352e250d8c89bd7dae418d355c6523a501ca0"
+    },
+    "sine-flow-4": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-4.rhai",
+      "sha256": "655a2a8358a82678f7326ba2d128b2e3def3bafd4cb21b92db70cbf41a8e44f1"
+    },
+    "sine-flow-64": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-64.rhai",
+      "sha256": "d55a7458c686d200b8c9164e3a092945ebd5706ce7cc35d240badf1b9ea14336"
+    },
+    "sine-hold-16": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-16.rhai",
+      "sha256": "f3067a4f7237278991d7bcd40a674ef7cd81669ab5e98d8b996ab1409763f110"
+    },
+    "sine-hold-4": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-4.rhai",
+      "sha256": "5ce795c38ac140c854e2e1c2642225f5134297530ada00af362b5778cd2b1317"
+    },
+    "sine-hold-64": {
+      "registered_path": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-64.rhai",
+      "sha256": "5d5cc7c09702c31583d8953ec331ef56c9f7549cca3143defd40fbe127591bae"
+    }
+  },
+  "new6_cases": [
+    "sine-pulse-flow-4",
+    "sine-pulse-flow-16",
+    "harmonic-pulse-flow-4",
+    "harmonic-pulse-flow-16",
+    "modal-pulse-flow-4",
+    "modal-pulse-flow-16"
+  ],
+  "config_delta": {
+    "full": "byte-identical to I11-2 config-body-on.toml",
+    "none": "byte-identical to I11-2 config-none.toml",
+    "forward-cut": "only temporal_onset_comparison.arrival_weight: 1.0 -> 0.0; arrival remains true",
+    "backward-cut": "only temporal_period.period_accent_input = false added"
+  },
+  "profile_sha256": "033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5",
+  "old_candidate": {
+    "manifest_path": "target/i11-stage2-20260924/candidate/manifest.json",
+    "manifest_sha256": "e3b76d987ddb4b7a479d5ac3927d2c27d2064af1a40f229a4f51fa971e4d45f4",
+    "binaries": {
+      "conchordal": {
+        "path": "target/i11-stage2-20260924/candidate/conchordal",
+        "sha256": "1d0d306eaa138a74b61a22c02fbd84aeec1ea942af5963973c8b8c08f36c4523",
+        "bytes": 14689616
+      },
+      "conchordal-render": {
+        "path": "target/i11-stage2-20260924/candidate/conchordal-render",
+        "sha256": "1d1d810f234d13d0947cba507715d2a94aaae11627fef82a457dc48ba2ce4e1e",
+        "bytes": 9256624
+      }
+    }
+  },
+  "new_candidate": {
+    "manifest_path": "target/i12b-20260924/candidate/manifest.json",
+    "manifest_sha256": null,
+    "binaries": null,
+    "state": "null fields are intentional placeholders; candidate manifest and SHA are recorded in a separate pre-acquisition seal, without editing this plan"
+  },
+  "acquisition": {
+    "sample_rate": 48000,
+    "offline_run_count": 48,
+    "performance_run_count": 144,
+    "run_count": 192,
+    "offline_binary": "conchordal-render",
+    "performance_binary": "conchordal",
+    "sequential": true,
+    "power_control": "AC, lid open, sleep prevention; audit before/after and OS sleep log",
+    "instrument_audio_disk_write": false
+  },
+  "effect_gate": {
+    "forward": "same delivered CDF with weight0; decision and WAV divergence per body",
+    "backward": "same case per body: real-run total effect with period semantic first divergence and WAV difference; independently, controlled direct mediation by swapping unmodified real full/backward packets into frozen full-side non-arrival inputs at the same valid decision time, yielding cost and selection difference. Missing correspondence fails that example; no rescue of prefix violations.",
+    "unknown": "nonperiodic/unknown only is not a success",
+    "none": "old 12 WAV and 10 learning record kinds against sealed stage2 candidate",
+    "backward_pairing": "For each body, both real-run total effect and frozen-full-input real-packet direct effect must hold in the same one of its two registered pulse cases; F positive may use the other case.",
+    "packet_swap": "Use actual full/backward publications at same observed cut and decision now, both received and valid; no identity/clock/profile-key/binding rewrite; report unmatched cases; full nonarrival inputs frozen before comparing."
+  },
+  "performance_gate": {
+    "nonregression": "new-full versus old-full, one-sided new-base upper bound, old I11 floor fixed before acquisition",
+    "cut_comparisons": "signed diagnostics only",
+    "reps_per_variant": 3,
+    "case_mode_cells": 12,
+    "nonregression_fields": 120,
+    "cut_diagnostic_fields": 240,
+    "old_floor_sha256": "ac737802286730f020cb62dbd01220397f484883adcf66c149edbc599990c00f",
+    "old_floor_path": "target/i11-stage2-20260924/acquisition/aa-floor.json",
+    "hop_quantile": "sorted values at floor(q*(N-1)); q=0.5 or 0.99",
+    "replicate_aggregation": {
+      "time_fields": "median of three per-run statistics",
+      "over_budget_hops": "sum of three per-run counts"
+    },
+    "upper_bounds": {
+      "median_p99": "new-base <= max(0.05*base, old_floor)",
+      "max": "new-base <= max(1000 us, old_floor)",
+      "over_budget_hops": "new-base <= old_floor"
+    },
+    "secondary_verdicts": [
+      "old absolute-difference rule with fixed floor",
+      "old original rule without floor"
+    ],
+    "eligibility_counters": {
+      "full": "background.arrival_known_decisions > 0 in each pulse6 case/mode/rep",
+      "forward-cut": "background.arrival_known_decisions > 0 in each pulse6 case/mode/rep despite weight zero",
+      "backward-cut": "background.shared[0].period_accent_cut_deliveries > 0 in each pulse6 case/mode/rep; known P not required",
+      "report_crosscheck": "temporal_observation.observation.period_accent_cut_deliveries in backward-cut report only; count newly admitted real accents, not detections or repeats",
+      "old-full": "background.arrival_known_decisions > 0 in each pulse6 case/mode/rep"
+    },
+    "nonregression_requirement": "all 120 fields must pass; old full and new full both valid according to per-run eligibility counter"
+  },
+  "run_order": [
+    {
+      "sequence": 1,
+      "phase": "offline-none-regression",
+      "case": "harmonic-flow-16",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-16.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 2,
+      "phase": "offline-none-regression",
+      "case": "harmonic-flow-4",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-4.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 3,
+      "phase": "offline-none-regression",
+      "case": "harmonic-flow-64",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/harmonic-flow-64.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 4,
+      "phase": "offline-none-regression",
+      "case": "modal-flow-16",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-16.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 5,
+      "phase": "offline-none-regression",
+      "case": "modal-flow-4",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-4.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 6,
+      "phase": "offline-none-regression",
+      "case": "modal-flow-64",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/modal-flow-64.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 7,
+      "phase": "offline-none-regression",
+      "case": "sine-flow-16",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-16.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 8,
+      "phase": "offline-none-regression",
+      "case": "sine-flow-4",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-4.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 9,
+      "phase": "offline-none-regression",
+      "case": "sine-flow-64",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-flow-64.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 10,
+      "phase": "offline-none-regression",
+      "case": "sine-hold-16",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-16.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 11,
+      "phase": "offline-none-regression",
+      "case": "sine-hold-4",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-4.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 12,
+      "phase": "offline-none-regression",
+      "case": "sine-hold-64",
+      "scenario": "docs/roadmap/temporal-dcc/i11-inputs/inputs/sine-hold-64.rhai",
+      "config": "inputs/config-none.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1
+    },
+    {
+      "sequence": 13,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 14,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 15,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 16,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 17,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 18,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 19,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 20,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 21,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 22,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 23,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 24,
+      "phase": "offline-effect",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 25,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 26,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 27,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 28,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 29,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 30,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 31,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 32,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 33,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 34,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 35,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 36,
+      "phase": "offline-effect",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 37,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 38,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 39,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 40,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 41,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 42,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 43,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 44,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 45,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 46,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 47,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 48,
+      "phase": "offline-effect",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-render",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 49,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 50,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 51,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 52,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 53,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 54,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 55,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 56,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 57,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 58,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 59,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 60,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 61,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 62,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 63,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 64,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 65,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 66,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 67,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 68,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 69,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 70,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 71,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 72,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 73,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 74,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 75,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 76,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 77,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 78,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 79,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 80,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 81,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 82,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 83,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 84,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 85,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 86,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 87,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 88,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 89,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 90,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 91,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 92,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 93,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 94,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 95,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 96,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 1,
+      "arm": "full"
+    },
+    {
+      "sequence": 97,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 98,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 99,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 100,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 101,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 102,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 103,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 104,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 105,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 106,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 107,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 108,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 109,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 110,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 111,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 112,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 113,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 114,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 115,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 116,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 117,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 118,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 119,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 120,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 121,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 122,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 123,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 124,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 125,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 126,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 127,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 128,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 129,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 130,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 131,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 132,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 133,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 134,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 135,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 136,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 137,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 138,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 139,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 140,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 141,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 142,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 143,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "full"
+    },
+    {
+      "sequence": 144,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 2,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 145,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 146,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 147,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 148,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 149,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 150,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 151,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 152,
+      "phase": "performance",
+      "case": "sine-pulse-flow-4",
+      "scenario": "inputs/sine-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 153,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 154,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 155,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 156,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 157,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 158,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 159,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 160,
+      "phase": "performance",
+      "case": "sine-pulse-flow-16",
+      "scenario": "inputs/sine-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 161,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 162,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 163,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 164,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 165,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 166,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 167,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 168,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-4",
+      "scenario": "inputs/harmonic-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 169,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 170,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 171,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 172,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 173,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 174,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 175,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 176,
+      "phase": "performance",
+      "case": "harmonic-pulse-flow-16",
+      "scenario": "inputs/harmonic-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 177,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 178,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 179,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 180,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 181,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 182,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 183,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 184,
+      "phase": "performance",
+      "case": "modal-pulse-flow-4",
+      "scenario": "inputs/modal-pulse-flow-4.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 185,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "backward-cut"
+    },
+    {
+      "sequence": 186,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 187,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 188,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 189,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "old-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "old-full"
+    },
+    {
+      "sequence": 190,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-full.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "full"
+    },
+    {
+      "sequence": 191,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-forward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "forward-cut"
+    },
+    {
+      "sequence": 192,
+      "phase": "performance",
+      "case": "modal-pulse-flow-16",
+      "scenario": "inputs/modal-pulse-flow-16.rhai",
+      "config": "inputs/config-backward-cut.toml",
+      "binary_role": "new-instrument",
+      "mode": "no-report",
+      "rep": 3,
+      "arm": "backward-cut"
+    }
+  ],
+  "scenario_seeds": {
+    "existing12_none": 20260918,
+    "pulse6": 20260924
+  },
+  "primary_hazard_f64_bits": {
+    "coefficients": [
+      "0xc000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x4010000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000"
+    ],
+    "means": [
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000",
+      "0x0000000000000000"
+    ],
+    "deviations": [
+      "0x3ff0000000000000",
+      "0x3ff0000000000000",
+      "0x3ff0000000000000",
+      "0x3ff0000000000000",
+      "0x3ff0000000000000",
+      "0x3ff0000000000000",
+      "0x3ff0000000000000",
+      "0x3ff0000000000000"
+    ],
+    "horizon_sec": [
+      "0x4010000000000000"
+    ]
+  },
+  "none_regression": {
+    "learning_record_types": [
+      "self_sound_outcome",
+      "self_sound_descriptor_prediction",
+      "private_participation_trace",
+      "participation_outcome",
+      "participation_context",
+      "onset",
+      "population_step",
+      "body_descriptor",
+      "local_prediction_match",
+      "local_prediction_error"
+    ],
+    "baseline": "I11-2 sealed candidate None old12",
+    "new_metadata_allowlist": [],
+    "existing_realtime_exclusions": "exact inherited I11-2 evaluator rules only; enumerate removed paths in verdict",
+    "new_metadata_rule": "new full/none serialization skips default-true period_accent_input and absent period_accent_cut_deliveries; no new-field exclusion. Any unexpected new field fails until pre-acquisition reviewed revision."
+  },
+  "diagnostic_field_contract": {
+    "config_default": "TemporalPeriodConfig.period_accent_input=true is skipped in serialized old/full/forward-cut/none reports",
+    "backward_period_config": "temporal_observation.observation.period_parameters.period_accent_input=false",
+    "backward_report_counter": "temporal_observation.observation.period_accent_cut_deliveries: Option<u64>, Some cumulative only for backward-cut, increment on newly admitted real accent with period contribution suppressed",
+    "backward_profile_counter": "background.shared[0].period_accent_cut_deliveries: Option<u64>, Some cumulative only for backward-cut",
+    "full_forward_profile_counter": "background.arrival_known_decisions: Option<u64>, positive for full and forward-cut; count retained even when arrival_weight=0",
+    "full_old_new_metadata_allowlist": [],
+    "confirmation": "validate exact serialization after implementation and before separate candidate/verifier seal; registration freeze precedes candidate seal"
+  },
+  "full_regression": {
+    "baseline": "I11-2 sealed candidate, six pulse cases, body-on, report",
+    "new": "I12b new full, six pulse cases, same config and scenario bytes",
+    "required": "WAV SHA and existing deterministic report record content bit-identical; original I11-2 realtime exclusions only",
+    "new_metadata_allowlist": [],
+    "candidate_records": "same common-key deterministic content; one-sided candidate count/drop separate as I11-2 5.4b"
+  }
+}

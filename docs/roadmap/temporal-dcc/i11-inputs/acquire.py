@@ -25,11 +25,18 @@ single 64-Voice case). Use --case / --variant / --mode to acquire in slices.
 import argparse
 import hashlib
 import json
+import platform
+import re
 import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
 
 ROOT = Path(__file__).resolve().parent
 def repo_root(start=None):
@@ -69,12 +76,96 @@ def verify_inputs(plan):
     return len(registered)
 
 
-def main():
+def prepare_inputs(plan, inputs, cases, variants, root, profile_file):
+    registered = plan["inputs_sha256"]
+    selected = {}
+    for name in [*(f"{case}.rhai" for case in cases),
+                 *(f"config-{variant}.toml" for variant in variants)]:
+        path = inputs / name
+        matches = [(rel, digest) for rel, digest in registered.items()
+                   if Path(rel).name == name]
+        if len(matches) != 1:
+            raise SystemExit(f"selected input has no unique registration: {name}")
+        registered_path, expected = matches[0]
+        if not path.is_file() or sha256(path) != expected:
+            raise SystemExit(f"selected input is not the registered bytes: {path}")
+        selected[name] = {"path": str(path), "sha256": expected,
+                          "registered_path": registered_path}
+        if name.endswith(".toml"):
+            selected[name]["original_path"] = str(path)
+            selected[name]["original_sha256"] = expected
+
+    configs = {variant: inputs / f"config-{variant}.toml" for variant in variants}
+    profile = None
+    derived = {}
+    if profile_file is not None:
+        if tomllib is None:
+            raise SystemExit("--profile-file requires Python 3.11 or newer (tomllib)")
+        source = profile_file.resolve()
+        if not source.is_file():
+            raise SystemExit(f"profile file is missing: {source}")
+        digest = sha256(source)
+        actual = root / "action-profiles.bin"
+        for variant, original in configs.items():
+            text = original.read_text(encoding="utf-8")
+            parsed = tomllib.loads(text)
+            if parsed["temporal_action_profiles"]["sha256"] != digest:
+                raise SystemExit(f"profile SHA-256 differs from config-{variant}.toml: {source}")
+            lines = text.splitlines(keepends=True)
+            in_profiles = False
+            replaced = 0
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.startswith("[") and stripped.endswith("]"):
+                    in_profiles = stripped == "[temporal_action_profiles]"
+                elif in_profiles:
+                    match = re.fullmatch(r"([ \t]*file[ \t]*=[ \t]*)[^\r\n]*(\r?\n?)", line)
+                    if match:
+                        lines[i] = match[1] + json.dumps(str(actual), ensure_ascii=False) + match[2]
+                        replaced += 1
+            if replaced != 1:
+                raise SystemExit(f"expected one temporal_action_profiles.file in {original}")
+            derived_text = "".join(lines)
+            parsed["temporal_action_profiles"]["file"] = str(actual)
+            if tomllib.loads(derived_text) != parsed:
+                raise SystemExit(f"derived config changed another value: {original}")
+            derived[variant] = derived_text
+        profile = {"source_path": str(source), "actual_path": str(actual), "sha256": digest}
+
+    root.mkdir(parents=True, exist_ok=True)
+    if profile is not None:
+        source = Path(profile["source_path"])
+        actual = Path(profile["actual_path"])
+        if source != actual:
+            shutil.copy2(source, actual)
+        if sha256(actual) != profile["sha256"]:
+            raise SystemExit(f"copied profile SHA-256 mismatch: {actual}")
+        (root / "run-configs").mkdir(exist_ok=True)
+        for variant, text in derived.items():
+            destination = root / "run-configs" / f"config-{variant}.toml"
+            destination.write_text(text, encoding="utf-8")
+            selected[f"config-{variant}.toml"]["derived_path"] = str(destination)
+            selected[f"config-{variant}.toml"]["derived_sha256"] = sha256(destination)
+            configs[variant] = destination
+    manifest = {
+        "schema": "conchordal/i11-stage1-acquisition-inputs/1",
+        "generated_at": now_iso(), "selected_inputs": selected, "profile": profile,
+        "machine": {"os": platform.platform(), "architecture": platform.machine(),
+                    "python": platform.python_version()},
+        "source_sha256_scope": "source-sha256.json hashes the current checkout; acquire a baseline binary from its baseline checkout",
+    }
+    (root / "acquisition-inputs.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return configs
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--root", type=Path, default=ROOT, help="measurement directory (default: this script's directory)")
     ap.add_argument("--inputs", type=Path, help="directory holding the registered inputs (default: <plan directory>/inputs)")
+    ap.add_argument("--profile-file", type=Path, help="verified action-profile binary to use in runtime config copies")
     ap.add_argument("--plan", type=Path, help="registration read (default: <root>/plan.json)")
     ap.add_argument("--instrument", type=Path, default=REPO / "target" / "release" / "conchordal", help="instrument binary (default: %(default)s)")
     ap.add_argument("--render", type=Path, default=REPO / "target" / "release" / "conchordal-render", help="offline render binary (default: %(default)s)")
@@ -84,7 +175,7 @@ def main():
     ap.add_argument("--reps", type=int, default=3, help="instrument repetitions (default: %(default)s)")
     ap.add_argument("--runs-name", default="runs.json", help="ledger file name inside the root (default: %(default)s)")
     ap.add_argument("--keep-going", action="store_true", help="record a non-zero exit and continue instead of aborting")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     root = args.root.resolve()
     plan_path = (args.plan or (root / "plan.json")).resolve()
@@ -96,6 +187,7 @@ def main():
     variants = args.variant or VARIANTS
     modes = args.mode or MODES
     inputs = (args.inputs or (plan_path.parent / "inputs")).resolve()
+    configs = prepare_inputs(plan, inputs, cases, variants, root, args.profile_file)
 
     # Copy the binaries into the measurement directory, as the I10 acquisition
     # does, so the artifacts stay readable after target/release is rebuilt.
@@ -138,7 +230,7 @@ def main():
     for case, variant, mode, rep in jobs:
         label = f"{case}-{variant}-{mode}-{rep}"
         script = str(inputs / f"{case}.rhai")
-        config = str(inputs / f"config-{variant}.toml")
+        config = str(configs[variant])
         if mode == "render":
             cmd = [str(root / "render"), script, "--config", config,
                    "-o", str(root / f"{label}.wav"), "--report", str(root / f"{label}.jsonl")]

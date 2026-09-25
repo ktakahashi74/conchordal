@@ -300,7 +300,7 @@ fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
         wave,
         self_sound: input.self_sound,
         body: input.body.map(|b| Arc::new(*b)),
-        temporal: Arc::new(*input.temporal),
+        temporal: Arc::new(input.temporal.clone()),
         spec,
         listener: listener_frame_from_states(input.listener_fast_state, input.listener_state),
         landscape: input.current_landscape.clone(),
@@ -1026,6 +1026,8 @@ fn wire_runtime(
                     memory: config.temporal_memory,
                     gesture: config.temporal_gesture,
                     period: config.temporal_period,
+                    arrival_cdf: bus == 0
+                        && config.temporal_onset_comparison.is_some_and(|c| c.arrival),
                 },
             );
             temporal_snapshots[bus] = Some(Arc::clone(&tap.snapshot));
@@ -1562,6 +1564,11 @@ struct WorkerState {
     offline_body_probe: Option<OfflineBodyProbe>,
     body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
     temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
+    arrival_received: Option<(
+        Arc<crate::temporal_cognition::arrival::ArrivalPublication>,
+        Tick,
+    )>,
+    arrival_known_decisions: u64,
     pop: Community,
     conductor: Conductor,
     current_landscape: LandscapeFrame,
@@ -1654,6 +1661,8 @@ impl WorkerState {
             offline_body_probe: None,
             pop,
             temporal_frames: Default::default(),
+            arrival_received: None,
+            arrival_known_decisions: 0,
             conductor,
             current_landscape,
             lparams,
@@ -1746,7 +1755,10 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
         .zip(&channels.temporal_snapshots)
     {
         if let Some(snapshot) = snapshot {
-            *target = *snapshot.lock().expect("initial observation snapshot");
+            *target = snapshot
+                .lock()
+                .expect("initial observation snapshot")
+                .clone();
         }
     }
     let mut initial_frame = build_initial_ui_frame(
@@ -1758,7 +1770,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
         state.playback_state,
         cfg.fs,
     );
-    initial_frame.temporal = Arc::new(*state.temporal_frames);
+    initial_frame.temporal = Arc::new((*state.temporal_frames).clone());
     initial_frame.self_sound = state
         .schedule_renderer
         .action_observer
@@ -1840,7 +1852,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                     .zip(&channels.temporal_snapshots)
                 {
                     if let Some(snapshot) = snapshot {
-                        *target = *snapshot.lock().expect("final observation snapshot");
+                        *target = snapshot.lock().expect("final observation snapshot").clone();
                         report_try(
                             &mut state.reporter,
                             "final temporal observation",
@@ -1960,6 +1972,8 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                         rejected_frames: snapshot.rejected_frames,
                         worker_resources: snapshot.worker_resources,
                         action_profile_resources: snapshot.action_profile_resources,
+                        arrival_resources: snapshot.arrival_resources,
+                        period_accent_cut_deliveries: snapshot.period_accent_cut_deliveries,
                     }
                 })
             }),
@@ -1981,6 +1995,10 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                 .as_ref()
                 .and_then(|observer| observer.snapshot.body_defaults)
                 .map(|defaults| defaults.candidate_energy),
+            arrival_known_decisions: cfg
+                .onset_comparison
+                .filter(|c| c.arrival)
+                .map(|_| state.arrival_known_decisions),
         });
     }
     if let Some(profile) = state.profile.take()
@@ -2055,7 +2073,22 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         if let Some(snapshot) = snapshot
             && let Ok(current) = snapshot.try_lock()
         {
-            *target = *current;
+            *target = current.clone();
+        }
+    }
+
+    if cfg.onset_comparison.is_some_and(|c| c.arrival) {
+        match &state.temporal_frames[0].arrival {
+            Some(publication)
+                if state
+                    .arrival_received
+                    .as_ref()
+                    .is_none_or(|(old, _)| !Arc::ptr_eq(old, publication)) =>
+            {
+                state.arrival_received = Some((Arc::clone(publication), now_tick));
+            }
+            None => state.arrival_received = None,
+            Some(_) => {}
         }
     }
 
@@ -2460,6 +2493,46 @@ fn advance_population(
         }
         request_body_footprints(state, cfg.fs, now_tick);
     }
+    if cfg.onset_comparison.is_some_and(|c| c.arrival) {
+        let snapshot = &state.temporal_frames[0];
+        let current_key = snapshot
+            .action_profile_features
+            .as_ref()
+            .map(crate::temporal_cognition::action_profiles::consumer::Key::from);
+        let renderer = &state.schedule_renderer;
+        let bindings = renderer
+            .action_observer
+            .as_ref()
+            .map_or(&[][..], |observer| observer.arrival_bindings());
+        for voice in &mut state.pop.voices {
+            if !voice.phonation_engine.uses_participation() {
+                continue;
+            }
+            let owner = (
+                voice.id(),
+                voice.metadata.generation,
+                renderer.body_capture.as_ref().and_then(|capture| {
+                    capture
+                        .token(voice.id(), voice.metadata.generation)
+                        .map(|(_, generation)| generation)
+                }),
+            );
+            let input = state
+                .arrival_received
+                .as_ref()
+                .map(|(publication, received)| {
+                    crate::life::temporal_participation::ArrivalInput::new(
+                        Arc::clone(publication),
+                        *received,
+                        snapshot.source_epoch,
+                        owner,
+                        current_key,
+                        bindings,
+                    )
+                });
+            voice.phonation_engine.set_arrival_input(input);
+        }
+    }
     if let Some(observer) = state.temporal_expectation.as_mut() {
         // Track from birth, including before a later switch into participation.
         state.schedule_renderer.prepare_self_sound(
@@ -2516,6 +2589,14 @@ fn advance_population(
     } else {
         0
     };
+
+    if cfg.onset_comparison.is_some_and(|c| c.arrival) {
+        for voice in &mut state.pop.voices {
+            state.arrival_known_decisions = state
+                .arrival_known_decisions
+                .saturating_add(voice.phonation_engine.take_arrival_known_decisions());
+        }
+    }
 
     if let Some(acoustic) = state.temporal_expectation.as_ref() {
         state.schedule_renderer.prepare_energy_contexts(
@@ -3439,6 +3520,128 @@ mod tests {
             state.generator_model.advance_to(now_tick);
             advance_population(&mut state, &cfg, now_tick, ListenerPressure::default());
             assert_eq!(state.pop.abort_requested, frame == 56_719);
+        }
+    }
+
+    #[test]
+    fn arrival_receipt_is_first_hop_of_each_publication_and_clears_on_absence() {
+        use crate::temporal_cognition::arrival::{ArrivalIssue, ArrivalPublication};
+
+        let fs = 48_000.0;
+        let hop = 512;
+        let cfg = WorkerConfig {
+            private_trace: None,
+            onset_comparison: Some(crate::config::TemporalOnsetComparisonConfig {
+                arrival: true,
+                ..Default::default()
+            }),
+            scenario_name: "arrival receipt regression".into(),
+            wait_user_exit: false,
+            start_flag: Arc::new(AtomicBool::new(true)),
+            exiting: Arc::new(AtomicBool::new(false)),
+            scaffold: Default::default(),
+            meter_shaping: Default::default(),
+            guard_meter: None,
+            underrun_frames: None,
+            audio_counters: None,
+            dcc_coupler: DccCoupler::new(Default::default()),
+            hop,
+            hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
+            fs,
+            deterministic_analysis: true,
+            deterministic_footprints: true,
+        };
+        let scenario = crate::scenario::Scenario {
+            temporal_mode: crate::scenario::TemporalMode::Off,
+            seed: 1,
+            control_update_mode: Default::default(),
+            scaffold: Default::default(),
+            meter_shaping: Default::default(),
+            scene_markers: Vec::new(),
+            events: vec![crate::scenario::TimedEvent {
+                time: 10.0,
+                order: 0,
+                actions: vec![Action::Finish],
+            }],
+            duration_sec: 10.0,
+        };
+        let space = Log2Space::new(200.0, 4_000.0, 12);
+        let mut state = WorkerState::new(
+            Community::new(Timebase { fs, hop }),
+            Conductor::from_scenario(scenario),
+            Landscape::new(space.clone()),
+            build_test_params(&space),
+            DorsalStream::new(fs),
+            None,
+            &cfg,
+        );
+        let shared = Arc::new(std::sync::Mutex::new(
+            crate::temporal_cognition::observation::Snapshot::default(),
+        ));
+        let (ui_tx, _ui_rx) = crossbeam_channel::unbounded();
+        let (audio_tx, _audio_rx) = crossbeam_channel::unbounded();
+        let (_analysis_tx, analysis_result_rx) = crossbeam_channel::unbounded();
+        let (analysis_update_tx, _update_rx) = crossbeam_channel::unbounded();
+        let mut channels = WorkerChannels {
+            candidate_tables: [None, None],
+            reference_context: None,
+            temporal_snapshots: [Some(Arc::clone(&shared)), None],
+            ui_tx,
+            report_error_tx: None,
+            audio_prod: None,
+            wav_tx: None,
+            audio_to_analysis_tx: Some(audio_tx),
+            analysis_result_rx,
+            analysis_update_tx,
+            presentation_to_listener_tx: None,
+            listener_result_rx: None,
+            listener_analysis_update_tx: None,
+        };
+        let first = Arc::new(ArrivalPublication {
+            issue: ArrivalIssue {
+                model: crate::config::ArrivalModel::Hazard,
+                version: 1,
+                bus: 0,
+                epoch: 1,
+                sample_rate: fs as u32,
+                issued_at: 0,
+                horizon_end: 192_000,
+                groups: [None; 7],
+            },
+            profile_key: None,
+        });
+        let replacement = Arc::new(ArrivalPublication {
+            issue: ArrivalIssue {
+                epoch: 2,
+                issued_at: 2_048,
+                horizon_end: 194_048,
+                ..first.issue
+            },
+            profile_key: None,
+        });
+        for (frame, publication, expected_received) in [
+            (0, Some(&first), Some(0)),
+            (1, Some(&first), Some(0)),
+            (2, Some(&first), Some(0)),
+            (3, None, None),
+            (4, Some(&replacement), Some(2_048)),
+            (5, Some(&replacement), Some(2_048)),
+        ] {
+            shared.lock().unwrap().arrival = publication.cloned();
+            assert_eq!(state.frame_idx, frame);
+            state.last_analysis_frame = Some(frame);
+            process_hop(&cfg, &mut channels, &mut state);
+            assert_eq!(
+                state.arrival_received.as_ref().map(|(_, tick)| *tick),
+                expected_received,
+                "frame {frame}"
+            );
+            if let Some(publication) = publication {
+                assert!(Arc::ptr_eq(
+                    &state.arrival_received.as_ref().unwrap().0,
+                    publication
+                ));
+            }
         }
     }
 

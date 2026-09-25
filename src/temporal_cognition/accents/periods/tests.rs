@@ -51,6 +51,78 @@ fn direct_grid(e: &Estimator) -> [f64; BINS] {
 }
 
 #[test]
+fn cut_delivery_keeps_accent_ledger_without_creating_period_pairs() {
+    let mut full = Estimator::new(group(), 8, 1000, 32000, 1024, 1. / 24.).unwrap();
+    let mut cut = Estimator::new(group(), 8, 1000, 32000, 1024, 1. / 24.).unwrap();
+    for index in 1..=8 {
+        let end = index * 256;
+        let packet = accent(end, end, 1.);
+        let received_at = end + 16;
+        assert_eq!(
+            full.deliver(packet, received_at).unwrap().is_some(),
+            cut.deliver_without_period(packet, received_at)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            serde_json::to_value(full.ledger_summary()).unwrap(),
+            serde_json::to_value(cut.ledger_summary()).unwrap()
+        );
+        assert_eq!(full.source_support(), cut.source_support());
+        assert_eq!(full.view().received_at, cut.view().received_at);
+    }
+    assert!(full.view().pairs > 0);
+    assert!(full.view().peaks.iter().any(Option::is_some));
+    assert_eq!(cut.view().pairs, 0);
+    assert!(cut.view().peaks.iter().all(Option::is_none));
+    assert!(cut.order.is_empty());
+    assert!(cut.cache.iter().all(|p| p.flags == 0));
+
+    let candidate = accent(9 * 256, 9 * 256, 1.);
+    let before = cut.ledger_summary().cumulative_count;
+    assert!(
+        cut.deliver_without_period(candidate, 9 * 256)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        cut.deliver_without_period(
+            Accent {
+                group: Handle {
+                    generation: 4,
+                    ..group()
+                },
+                ..candidate
+            },
+            9 * 256 + 16,
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(cut.ledger_summary().cumulative_count, before);
+    assert!(
+        cut.deliver_without_period(candidate, 9 * 256 + 16)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        cut.deliver_without_period(candidate, 9 * 256 + 16)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(cut.ledger_summary().cumulative_count, before + 1);
+
+    let new_owner = Handle {
+        generation: 4,
+        ..group()
+    };
+    cut.reset(new_owner, 2400).unwrap();
+    assert_eq!(cut.ledger_summary().cumulative_count, 0);
+    assert_eq!(cut.view().pairs, 0);
+    assert!(cut.view().peaks.iter().all(Option::is_none));
+}
+
+#[test]
 fn reset_clears_wrapped_pair_and_credit_state_without_reallocating_or_accepting_old_owner() {
     let mut e = Estimator::new(group(), 8, 1000, 32000, 1024, 1. / 24.).unwrap();
     let layout = e.storage_layout();

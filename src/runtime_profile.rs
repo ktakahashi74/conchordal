@@ -62,6 +62,10 @@ pub(crate) struct SharedWorkerProfile {
     pub rejected_frames: u64,
     pub worker_resources: Option<crate::temporal_cognition::resources::Snapshot>,
     pub action_profile_resources: Option<crate::temporal_cognition::action_profiles::Resources>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arrival_resources: Option<crate::temporal_cognition::arrival::ArrivalResources>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period_accent_cut_deliveries: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -81,6 +85,8 @@ pub(crate) struct BackgroundProfile {
     pub shared: [Option<SharedWorkerProfile>; 2],
     pub body: Option<BodyWorkerProfile>,
     pub candidate_energy: Option<crate::life::action_candidates::energy::Stats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arrival_known_decisions: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -303,6 +309,27 @@ pub(crate) fn finish_allocations() -> Option<AllocationCounts> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn period_cut_profile_field_is_present_only_for_backward_arm() {
+        let mut shared = SharedWorkerProfile {
+            bus: 0,
+            state: crate::temporal_cognition::observation::ObservationState::Finished,
+            received_frames: 0,
+            source_missing_samples: 0,
+            delivery_dropped_frames: 0,
+            rejected_frames: 0,
+            worker_resources: None,
+            action_profile_resources: None,
+            arrival_resources: None,
+            period_accent_cut_deliveries: None,
+        };
+        let full = serde_json::to_value(&shared).unwrap();
+        assert!(full.get("period_accent_cut_deliveries").is_none());
+        shared.period_accent_cut_deliveries = Some(7);
+        let cut = serde_json::to_value(&shared).unwrap();
+        assert_eq!(cut["period_accent_cut_deliveries"], 7);
+    }
 
     #[test]
     fn capacity_limit_drops_rows_without_growing_storage_and_marks_failure() {

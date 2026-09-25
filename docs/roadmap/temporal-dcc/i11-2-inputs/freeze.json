@@ -1,0 +1,27 @@
+{
+  "schema": "conchordal/i11-stage2-preregistration-freeze/1",
+  "frozen_utc": "2026-09-24T03:50:08.196190+00:00",
+  "head_commit": "7f76e0b970b1ed06ebce1a60e9cee71f35ecbb8f",
+  "stage2_implementation_started": false,
+  "stage2_results_acquired": false,
+  "review": "Astra: registration accepted; final result review remains required",
+  "files_sha256": {
+    "docs/roadmap/temporal-dcc/i11-2-arrival-comparison.md": "5ef841bfea0f8ce9aa24b50d37906105578336b4ea6d7bdaecdda3480629dc46",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/README.md": "f9ec82dbe6b60fd44a4ca29d1cdaf88e918bb50c62cab294f68fd58ab6c1ba75",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/config-body-off.toml": "eec17558f64f2d637c92705913e5e39f360a45cb946915c776b17f7d2d77b1bb",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/config-body-on.toml": "9ce8a6a1d3ab50b770d45bfe4cfaf016a8e47ce371e91d0a314189c2fd24f074",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/config-constant-hazard-on.toml": "fc185adf916461f7a80b9a03396c83511a4a54329cff738ae660858c39c5ca91",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/config-none.toml": "a0d8b173cb95c4ab72c4fd35f278833fc2b00699a4f4098e0a786fc877881abd",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/config-periodic-on.toml": "f3729baaf247bfef742e2a8f5bac6c0cfb8671dfc41c72fcc1954b7cb4d4aee3",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/config-proxy-off.toml": "122cc69ba4a06973100fcbb859c941e42f86b7ba645a000a81ac2a5560d335c8",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/config-proxy-on.toml": "82467f6dc86e7ea59f0fb281386723de92a8bdee0429d8098ed5fd6ee841174a",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/harmonic-pulse-flow-16.rhai": "86ae90f0f2102c0a660787250f5e2afd6a6a1701fad6d2621bf983705f8931a8",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/harmonic-pulse-flow-4.rhai": "02c43be6726a31021e6a90f9cd3609a3add89b2189f6af3892de800ccd6309ca",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/modal-pulse-flow-16.rhai": "d80034143ec6cdcacbf37d0553fc174a2af05dfa2e3f71cabe7ae81a039842a6",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/modal-pulse-flow-4.rhai": "05aefa28d3650bc4e1c443531558a53648b990872131403609475db47a7cfefc",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/sine-pulse-flow-16.rhai": "365fa2ff1cb3bb709456716e1f100ced56d3cf1a1116a9a6fbc4974de1278f73",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/inputs/sine-pulse-flow-4.rhai": "7c756dc3eff7e519681ae70d8746a57256f750de3b28c40cb66e9b569299c2a7",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/plan.json": "1ba46d0955aedf8656bf222d956ab619d4ecdae2fe6555f96b989abb61fd7c95",
+    "docs/roadmap/temporal-dcc/i11-2-inputs/prereg-review.md": "b14601eca6ad68e2348aeda8e3762d8fb0364a0fc7d6b1f8e0592be5dd6f6377"
+  }
+}

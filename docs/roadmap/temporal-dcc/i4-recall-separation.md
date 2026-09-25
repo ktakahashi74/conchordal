@@ -142,7 +142,11 @@ I10の限定完了はその版・固定development素材に対する過去の判
 
 本調査のHEAD `b357e61f0136bc3856c96dc17e330c2377cd0c34`に対し、上の主要検索source・その子module・検索参照script・`tests/fixtures/temporal_cognition/`には作業ツリー差分がなかった。一方、`src/config.rs`、`tests/test_evaluate_temporal_matcher_kernel.py`、I3／I4記録には未commit差分がある。matcher検査にはDarwinのlink指定とlibm依存の前提修正が含まれる。未commitの観測配線やruntime等も含め、HEADだけで現在の実行環境を再現できるとは扱わない。保存先refの確認、現在版の保存、別環境での復元検査は未実施であり、移管開始前の条件として残す。
 
-また、I10記録の取得plan `target/i10-reduced-resources-20260921/plan.json`は、このcheckoutでは親ディレクトリを確認できなかった。12条件の記述は現存するが、元の入力・除外規則の実物を照合したとは言えない。後続登録には当該証拠一式の受領とSHA確認が必要であり、現在の設定から推測して同一取得としない。
+I10記録の取得plan `target/i10-reduced-resources-20260921/plan.json`は、指定された親ディレクトリをこのcheckoutで確認できなかった。ただし追跡済み[I11登録入力](i11-inputs/README.md)を追加調査し、I10からバイト複写した12 scenarioと`config-none.toml`を回復確認した。13件全てが`i11-inputs/plan.json`の登録SHAと一致し、None設定のSHA `b9b93fb3e1cadfbd85bde87ea9223f23d4f795393b61ed874c5b1384e4f920f0`は同planのI10元設定SHAとも一致した。`register.py:70–90`に複写元とvariant生成規則が残る。
+
+設定が要求する身体profileも、`target/i11-same-record-mac-20260923/action-profiles.bin`が登録SHA `033905eadd9a7c681a8568ea347c25d1c1482d49d708bc849b00607a85d51fb5`と一致した。元設定にはLinuxの絶対パスが残るため、後続取得では原本を維持して実際のprofile所在との対応をmanifestへ明記する。これによりI4比較の入力作成を、元入力が全て失われたという理由で止める必要はない。
+
+一方、旧I10の取得plan・実行script・report／WAV・条件別の参照信用結果・正確な除外scriptは回復していない。I10正本に残る12条件、学習record10種、候補on／off対照の判定等は新しい比較登録の要件として使えるが、後続I11の除外規則を旧I10のものと断定しない。入力の同一性、既存記録の引用、新しいI4比較、旧取得そのものの再現は区別する。今回確認した範囲と実装入口は[入力回復記録](../../../target/r2-i4-parallel-20260924/round2/frontier-i4.md)に記す。
 
 ### 6.2 設定とreportの扱い
 

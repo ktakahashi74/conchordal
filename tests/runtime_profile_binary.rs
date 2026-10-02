@@ -1,15 +1,20 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture(dcc: bool) -> PathBuf {
+    static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir =
-        std::env::temp_dir().join(format!("conchordal-profile-{}-{stamp}", std::process::id()));
+    let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "conchordal-profile-{}-{stamp}-{sequence}",
+        std::process::id(),
+    ));
     fs::create_dir(&dir).unwrap();
     fs::write(
         dir.join("scenario.rhai"),

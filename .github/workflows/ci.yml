@@ -58,4 +58,4 @@ jobs:
 
       - name: Release recovery tests
         if: matrix.os == 'ubuntu-latest'
-        run: cargo test --release --lib life::phonation_engine::tests::
+        run: 'cargo test --release --lib life::phonation_engine::tests::'

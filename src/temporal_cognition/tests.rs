@@ -794,7 +794,7 @@ fn numerical_boundaries_and_extreme_arithmetic_reject_without_unsafe_access() {
 }
 
 #[test]
-fn migrated_power_counterexample_and_rounding_boundaries() {
+fn migrated_power_uses_platform_libm_and_rounding_boundaries() {
     let value = f64::from_bits(0xbffe2cb19a44a7ec);
     let a = sequence(&[Some(0.0), Some(value)], 100.0);
     let b = sequence(&[Some(0.0); 2], 0.0);
@@ -811,9 +811,15 @@ fn migrated_power_counterexample_and_rounding_boundaries() {
     };
     config.scales[0] = value.abs();
     dtw(&a.knots, &b.knots, &config, &mut out).unwrap();
+    assert_eq!(out.path_len, 2);
+    assert_eq!(out.path[..2], [[1, 0, 0], [1, 1, 1]]);
+    assert_eq!(out.total.to_bits(), 1.0_f64.to_bits());
+    assert_eq!(out.coordinate_error[0].to_bits(), 1.0_f64.to_bits());
     assert_eq!(out.motion_count, 1);
-    assert_eq!(out.motion_error[0].to_bits(), 0x400c740b6d82ad27);
-    assert_ne!((value * value).to_bits(), out.motion_error[0].to_bits());
+    // Linux libm gave 0x400c740b6d82ad27, one ULP below multiplication.
+    // That counterexample is platform-specific; preserve exact local pow semantics.
+    let expected = std::hint::black_box(value).powf(std::hint::black_box(2.0));
+    assert_eq!(out.motion_error[0].to_bits(), expected.to_bits());
     let mut anchors = [Anchor::default(); CAPACITY];
     let mut diagnostic = AnchorDiagnostic::default();
     for (pitch, rounded, bound) in [

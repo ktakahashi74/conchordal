@@ -117,13 +117,13 @@ ListenerTwinは受動的な観測指標に留める。I9除外はこの規則の
 
 A4の対象を、T1のERB帯域の同時・前方マスキングと、T2の包絡変調スペクトルに基づくaccent・周期性を入れた版へ改訂する。これは作者による終了対象版の変更であり、既存のT行・三条件・I12bの登録と封印・既定offを変えない。学習済みfootprintは引き続きA4後の単位とし、T1地形は合成器由来のfootprintを使う。
 
-担当番号は作者確認前である。推奨案は、I11-3をT1のマスキング地形、I11-4をT2の変調地形とする。旧I11-1／I11-2の限定した技術完了と証拠を保存し、それぞれを新しい比較単位として閉じる。別案はT1／T2の地形を独立した新I行へ置くことであり、どちらの番号案でも改訂済みのA4対象と必要検査は同じである。
+2026-09-24時点では担当番号が作者確認前であり、I11-3をT1、I11-4をT2に割り当てる案と、独立した新I行へ置く別案を並記した。2026-09-29に作者は前者を承認し、I11-3をT1のマスキング地形、I11-4をT2の変調地形の管理番号とした。旧I11-1／I11-2の証拠は版ごとに保存し、新しい比較単位の合格へ転用しない。この番号決定は原典モデル、係数、許容差、取得登録の採用ではない。
 
 - T1担当単位の終了点：作者が選んだ原典モデルと作者規則の境界、入力・単位・時刻を登録し、封印現行版との変更比較、同一入力での状態介入、期限・欠測・off／Noneのbit一致を検証する。独立レビュー後の限定技術完了と、T1のA1は別に記録する。
 - T2担当単位の終了点：T1実装の見通しが立った後にモデルを選択・登録し、accent・周期・到来への接続、I11-2とI12b二経路の新しい比較、T1への影響回帰を検証する。独立grouping推論や研究用headを追加する番号変更ではない。
 - I13は作者規則層から公開する最小の操作と診断を選ぶ。R3は既存義務を保ち、その係数感度を登録する。R2の本取得とR3・A2・A3・A4は地形を含む最終版に対して行う。
 
-T1のA1はT1地形後・T2地形前の版に固定する。T1のA1とT2の作業は並行できるが、T2後の影響回帰で証拠を継承できない部分はT1のA1を再実施する。旧版と新版の変更比較は、新版内の因果介入・接続除去によるA1を代用しない。旧60本のA1は受入として行わず、手順確認・基準の試聴として残すかは作者判断へ戻す。I12bのA1は別登録である。
+T1のA1はT1地形後・T2地形前の版に固定する。T1のA1とT2の作業は並行できるが、T2後の影響回帰で証拠を継承できない部分はT1のA1を再実施する。旧版と新版の変更比較は、新版内の因果介入・接続除去によるA1を代用しない。旧60本はA1受入に使わず保管し、必要になったときだけ非受入の提示手順確認に使う。本番4 sessionは開始しない。I12bのA1は別登録である。
 
 ## 2. 技術実装の完了点
 
@@ -703,6 +703,105 @@ I12bの保存記録と結果記録は未取得・技術完了未判定である�
 
 前後で変わるのは受入の対象版であり、現行版の技術結果を撤回したり、新版の合格へ読み替えたりしない。必要な検査は原典モデルへの数値照合、登録した因果差、既定None、配送・支持時計、全処理資源、版ごとの可聴性である。原理モデルから行動へ結ぶ独自の写像と調整値は作者規則として記録する。実装・取得・作者採用はまだ行っていない。
 
+### 2026-09-26：身体スペクトルによる適応度評価の計画
+
+[実装計画](../../design-notes/body-aware-fitness-plan.md)に、音源単位の自己除去、身体による候補評価、
+移動・代謝・出生への接続、音色遺伝の順序をまとめた。計画案であり、実装・取得・独立レビュー・作者採用は未実施。
+現在のA4へ新しい必須条件は追加しない。既存I12bの取得を保護し、身体・音響入力の契約と別環境での参照実験は先行可能とする。
+I12b終結後に隔離した実験版を作り、共有runtimeの接続はI4の配線変更と直列化する案である。通常採用は現在のA4後を基準とする。
+
+I11の16区間の時間footprintを周波数scanとして転用しない。T1マスキング地形とはTone・身体識別・音響入力の出所を共有し、
+R/Hによる適応度とマスキング・到来費用は別に検証する。詳細なI11-1記録末尾の再取得未実施と、後続文書の限定技術完了の
+記述には不一致があり、参照先のI11-2結果と台帳アンカーにもこのcheckoutに未収録のものがある。作業元の版・結果・稼働を
+確認するF0を最初に置き、取得の完了や現在の実行状態を推定しない。既存I/R/Aの状態はこの追記で変更しない。
+
+### 2026-09-26：I11-1現版の再取得後の状態
+
+F0で現checkoutと稼働を確認し、基準 `06a4772` の同一record修正後に登録12条件×body／proxy／Noneの36本を再取得した。
+§5.4a／bと§5.5(a)の登録判定を通し、§5.9の12条件も現版で再投影して旧集計とのbit一致を確認した。
+ただし§5.7の現版専有取得は、A/A 3 passとbody／none各96本の計384本がexit 0でも、
+改訂登録の直接処理負荷判定では16組中14組合格・2組不合格だった。
+失敗はharmonic-flow-16のreport有り `population_us` 中央値とreport無し `synthesis_us` p99。
+`own_us` は16/16合格し、旧raw `elapsed_us` と総hop資源は別に報告する。
+この2組を旧版§5.7の合格や36本のoffline結果で埋めず、I11-1第1段の現版技術完了を宣言しない。
+詳細な値と封印結果は [I11-1の末尾](i11-onset-comparison.md) と
+[F0監査](../../design-notes/body-aware-fitness-f0-audit.md) に保存した。
+I11-2は隔離版の試験用Hazard到来項で局所ON/OFF差を得た段階であり、作者既定採用・全要件完了・I12b完了とは別。
+
+### 2026-09-29：音色・合成計画との調整
+
+[音色・合成の実装計画](../../superpowers/plans/2026-09-29-timbre-synthesis.md)を作成し、作者が採用した。設計は[timbre.md](../../design-notes/timbre.md)、聴き手モデルの層と作曲者向けパラメータの審査規則は[台帳§9.3.56](../../design-notes/technote-ledger.md)にある。既存のI/R/Aの状態と受入条件は変更しない。
+
+I系列のコードに次の制約を加える。生態系側の新しいコードで、身体の種類による分岐を増やさない。身体footprintは代表描画を正とし、閉じた式による予測（I10の搬送波laneなど）は、描画と照合した近道として扱う。`action_candidates/footprint.rs`・`energy.rs`、`temporal_cognition/body.rs`、`self_prediction` は、音色計画のPhase 3で身体モジュールの自己モデル面へ移す。この移行は、I12bの終結と基準版の固定、I4の配線の後に、body-aware側と時期を合わせて行う。body-aware F2の本番用の身体表現は、音色計画Task 2の自己モデル面として共同で定める。
+
+同日のコード変更（生産メーターのonset入力をhabitatへ送るVoiceに限定、`set_roughness_k` を評価側の `set_roughness_aversion` へ置換、`Action::UpdateLandscape` への改名）は、ブランチ `timbre-valuation-meter`（commit `a3a56fd`）に置き、mainへは次の統合点で入れる。登録済みのI11条件とbody-aware条件の出力は変わらない。presentation専用のVoiceを含む登録sceneはなく、aversionの既定値は設定どおりのカーネルをビット単位で再現する。
+
+音色計画のPhase 4（時間的なまとまりの対照）は、T1マスキング・T2変調の地形作業の中で登録する。既存の身体の立ち上がり・減衰・再励起だけを使い、平均スペクトルをそろえて時間的なまとまりだけを変えた刺激を作る。音量、onset密度、変調、既存メーターの出力も記録し、人が聞き分けた差、解析が検出した差、行動へ戻った差を分けて報告する。検出機構を加える場合は別の計画とする。
+
+並行実行の規則（同日、作者採用）。I11、body-aware、音色計画は並行して進め、ぶつかる所だけ順番を決める。合否判定に使う時間計測（§5.7、資源screen、実時間ペースの取得、R2）は専有の時間帯で行い、前後に `scripts/timing_lock.sh acquire <担当> <分>` / `release <担当>` を実行する（ロックは `target/timing-exclusive.lock`、作成は不可分）。他者のロックがある間は、別worktreeであってもcargo・test・renderを走らせない。終了予定を過ぎたロックは消さずに作者へ報告する。探索・診断の計測は、重なりを記録すれば並行してよい。専有を取り合うときはI系列を優先する。統合は一つずつ、I12bの終結と基準版の固定 → I4の配線 → body-aware F3 → 音色計画Phase 3の順に行う。コミットは各worktreeのブランチで行い、共有しているmainのcheckoutではコミットしない。
+
+### 2026-09-29：I11の引継ぎ
+
+作者の指示により、統括セッションへの引継ぎ位置で停止した。**この追記の担当範囲はbody-aware F2の出生用footprint近道と、それまでに保存したI11との照合記録である。I11本体の最新作業を代行して完了認定する記録ではない。** 進行中の単位は「部分音群v2の採点位置を重心からanchorへ替える単一介入診断」。新しい単位へは進まない。
+
+完了した範囲：代表描画を正とする境界を主計画へ反映し、直接式v1・部分音群v2の隔離試作と保存結果の検算を終えた。v1は728候補中157件、v2は159件が登録精度条件を超え、双方に明確な順位逆転3対がある。費用はv1が0/16、v2が10/20条件成功で、本番runtime未接続。v2最大誤差例では弱群の再配分により880 Hz群の重心が1078.769 Hzへ動く経路を再構成した。旧描画参照の主観強度配置は重心ではなく選択peakのbinであり、この位置の意味の差を静的監査で確認した。詳細は[主計画](../../design-notes/body-aware-fitness-plan.md)と[v2結果](../../design-notes/body-fitness-partial-groups-results-20260929.md)。
+
+停止位置と未完：採点位置だけを変える[診断契約](../../design-notes/body-fitness-anchor-readout-diagnostic-20260929.md)を取得前に固定した（SHA-256 `3cf988f8cb6b2f0ee1f151caa88f8d3241efa7b9774c9b8f6473827517b9ecbc`）。診断Rustファイルと取得器の子module宣言、独立Python checkerは作成途中の状態で保存した。**新診断は未レビュー・未ビルド・未試験・未取得**。checkerも実データ未実行で、f32での合否・同点処理、環境パラメータ・入力hash・summary照合の最終レビューが残る。新診断の成功結果は存在しない。停止時のファイルhashと再開点は[progress.json](../../../target/body-fitness-partial-groups-20260929/progress.json)の `handoff` に保存した。
+
+停止処理：このセッションで起動した取得・cargo・試験の稼働ハンドルは残っていない。実装中のSol6二担当を中断し、他のSol6担当も作業終了済み。新診断の実行プロセスは起動していなかった。`scripts/timing_lock.sh check` は `free`、本セッションの所有ロックはなくrelease不要だった。他セッションのホスト全体の稼働停止までは主張しない。既存v2のdebug/release単体10件成功と、v1時点の全体1407成功・58 ignoreは保存済みだが、新診断の検証へ転用しない。worktreeの `test_status.txt` は新診断について `not_run / user_handoff_stop` に更新した。`test_report.txt` は前のv2対象単体試験であり、現在の未検証ソースの全体試験ではない。
+
+| 用途 | checkout / 出力先 | ブランチ・状態 |
+|---|---|---|
+| 計画・引継ぎ正本 | `/home/shafi/lwrk/conchordal` | `main`、HEAD `06a4772c43d06b41b44753bb0be891f23e16b93e`。共有変更多数。ここでコミットしない |
+| 直接式・群モデル・未完診断 | `/home/shafi/lwrk/conchordal/.worktrees/body-fitness-direct-model` | Git登録済みworktree、同じHEADでdetached。`CARGO_TARGET_DIR`環境変数は未設定、実効出力先は同worktreeの `target/` |
+| 保存された取得・監査 | main側の `target/body-fitness-direct-model-20260929/`、`target/body-fitness-partial-groups-20260929/`、`target/body-fitness-support-20260929/` | 未コミットのローカル証拠。凍結入力・binaryを保持し、取得前契約と結果を上書きしない |
+| 関連I11保存版 | `.worktrees/i11-resource-cost`、`.worktrees/i11-causal-group-join`、`.worktrees/i11-origin-records` | 同じ基準HEADのdetached worktree。今回新取得なし。I11自身の判定・再開点は担当記録と統括セッションで照合する |
+| 後続統合待ち | `.worktrees/timbre-valuation-meter` | `timbre-valuation-meter`、`a3a56fd`。main未統合のまま保持 |
+
+未コミットの変更：main側では `docs/design-notes/body-aware-fitness-plan.md`、`body-fitness-direct-model-*.md`、`body-fitness-partial-groups-*.md`、`body-fitness-anchor-readout-diagnostic-20260929.md`、関連する旧body-aware/body-fitness記録と本節にある。最新試作worktreeには `src/life/direct_body_fitness.rs`・同tests、`partial_group_fitness.rs`・同tests/assay、今回の `partial_group_readout_diagnostic.rs`、`src/life/mod.rs`、v1からの `src/runtime/mod.rs` の検査入口がある。凍結v2から今回変わった既存ソースはassay末尾の診断子module宣言だけで、v2producer本体は無変更。worktreeには継承した統合版の未コミット差分も多数あるため、Gitの全差分を今回分としてstageしない。[v2実装目録](../../../target/body-fitness-partial-groups-20260929/implementation-manifest-v2.json)と[継承元目録](../../../target/body-fitness-direct-model-20260929/base-source-manifest.json)で分ける。`target/body-fitness-support-20260929/readback_anchor.py` も未検証の引継ぎ対象。mainのAGENTS・音色計画・公開文書等の他担当変更は保持し、本セッションではコミットしていない。
+
+再開時の一単位は、上の**未完の採点位置診断を完了すること**。開始条件は、統括セッションが担当を引き受け、凍結契約・v1/v2入力hash・保存済み途中ソースを照合し、診断コードとcheckerのレビューを終えること。身体内部値を読む新しい生態系経路やBodyKind分岐を増やさない。cargo・test・render前にtiming lockを確認し、他者の専有中は実行しない。必要なRust試験と同一shellでの終了記録、release診断、全728行の先行再現・独立検算までを同単位とする。score 0.025、level 0.0125、旧gap 0.1以上の順位逆転0を維持し、失敗を閾値緩和で救済しない。資源再測定・本番接続はこの単位に含めない。
+
+作者判断とT1/T2：このF2診断について追加承認は求めておらず、停止理由は統括への引継ぎ指示である。方式採用・F5の実device/作者受入は未完。音色Task 2の身体モジュール契約は、本セッションでは仕様ファイル未作成であり、同計画所定の独立レビュー・作者承認前にPhase 3を先取りしない。T1/T2はPhase 4を登録準備へ含める要件を主計画と本節直前の調整記録へ反映済み。既存身体の立ち上がり・減衰・再励起、平均スペクトルの統制、音量・onset密度・変調・meterの記録、聴取差／検出差／行動差の別報告までが固定範囲で、本セッションでは数値条件の登録・刺激作成・作者試聴を行っていない。担当・原典モデルの選択を含むT1/T2の詳細登録は未完で、必要な作者判断はその具体案を用意した後に統括側で整理する。既存順序はI12b終結・基準版固定 → I4配線 → body-aware F3 → 音色Phase 3、Phase 4実施はその後とする。
+
+I11との接続については、[保存済み原点照合](../../../target/parallel-continuation-20260928/i11-origin-complete-verification.json)の112判断中 `complete_observable_join` 2、unknown 110、整合エラー0を引き継ぐ。2件は同じscene/seedの判断の反復で、一般的な自己同定の証明ではない。I11-1資源判定の版・指標を混ぜず、[onset比較記録](i11-onset-comparison.md)末尾と各隔離取得の登録に戻る。T1/T2の準備やF2の単体成功でI11・I12b・R2・A3を完了扱いにしない。
+
+### 2026-09-29：三系統の統括再開とI11本体の再構成
+
+作者の追加指示により、I11とT1/T2、body-aware、音色計画の三系統を一つの統括で継続する。直前の「I11の引継ぎ」はbody-aware F2の停止記録であり、I11本体には引継ぎがない。I11本体は本節の2026-09-26二項と[I11-1比較記録の末尾](i11-onset-comparison.md)から現在地を再構成した。[版別整理と次単位候補](../../../target/i11-resume-20260929.md)に、確認した判定JSON、後続隔離版、原典候補と作者判断を記録した。
+
+I11-1の基準版は `06a4772`。同一record修正後の36本の機能比較と§5.9の再投影は保存済みだが、§5.7は14/16合格・2不合格のままであり、技術完了を宣言しない。後続energy-loopの36＋8機能比較と432本の13/16合格は別の隔離版の結果で、I11-1の14/16を更新する値ではない。新たな性能調整・再測定は行わない。推奨する次の一単位は、T1原典と現在の入力・状態・時計・作者規則の対応表を作る文書作業。Dau 1996を優先照合候補、Glasberg–Moore 2005を代替候補とする提案を一次資料の確認範囲付きで用意した。モデル採用・数値登録の凍結・地形実装は未実施。I12bの終結・基準版固定とI4配線は共有コード統合の前提として維持する。
+
+作者は2026-09-29、I11-3=T1、I11-4=T2の管理番号と、旧60本を保管して必要時だけ非受入の提示手順確認に用いる方針を承認した。旧60本の本番4 sessionは開始しない。前回固定した6文書のClaude独立レビュー送信も承認したが、送信・レビューの実施や可否判定は別の状態として記録する。この承認はT1/T2の原典モデル、係数、許容差、取得登録、I11の技術完了・資源受入を含まない。
+
+続く[T1原典対応草案](i11-t1-model-mapping-20260929.md)では、Dau 1996 I/IIと現sourceの入力・時計・状態・候補分岐を照合した。現行の3帯域energyと16区間の消費者footprintから原典波形・位相は復元できず、producerの未正規化energyが残っていても音圧尺度への校正は別途必要である。候補ごとの仮想状態を観測状態へ戻さない境界、原典検出と作者費用の区別を記録し、別Astraの独立レビューを通過した。続く[参照仕様](i11-t1-reference-spec-20260929.md)で原典式(A5)の画像・Strube係数と、後年AMT16の動的適応更新・初期値・下限を照合し、独立レビュー後にMUの再尺度化と先行文書への案内を修正した。原Dauの実行設定・校正・元刺激は未確定のまま残る。その後の[AMT16 C適応核の限定比較](i11-t1-adaptation-reference-20260929.md)は単回exit 0で、67648出力・35最終状態・50境界状態、chunk/fork・10拒否を確認した。C対独立Pythonの最大出力差は約3.64e−12 MU。全Dau再現、モデル採用、地形実装の成立ではない。続いて作者は、AMT16変更版を名前付き参照候補とする路線と、未来背景PCM欠測時はunknownとして新T1を適用しない扱いを承認した。指定PCMを使う[1チャンネル前処理の有限検査](i11-t1-reference-spec-20260929.md#後続の1チャンネルpcm参照検査2026-09-29)を単回実行し、143360要素の段階比較と各chain内のchunk/forkを確認した。全chain間の同値性、知覚的マスキング、地形実装は認定していない。T2は[原典・AMTの差を照合](../../../target/i11-t2-reference-20260929.md)し、1音響チャンネル・4変調出力の有限核を8入力で単回比較した。約413万要素の主比較と各engine内のchunk/forkが成立した。T1のlimit=0入力を借りた部品比較であり、原1997のlimit=10を含む全段・accent・周期・Hazard接続は未成立である。
+
+body-awareは未完診断を修正する前に、`.worktrees/body-fitness-direct-model` の152ファイルを新しい `body-fitness-direct-model` ブランチの `0f0f4f8d9f7e08091af08e726da2bb4f302bb76b` へ原状退避した。標準Clippy成功、退避前後のファイルhash一致、コミットに `target/` や1 MB超のファイルがないことを確認した。未完診断の検証完了を意味しない。[退避記録と除外一覧](../../../target/body-fitness-support-20260929/checkpoint-report.md)を保持する。続く[anchor診断](../../design-notes/body-fitness-anchor-readout-results-20260929.md)は固定契約のまま取得し、全728候補の先行再現と独立検算が成功したが、旧描画の精度条件は93/728件不合格、明確な順位逆転4対だった。資源再取得・本番接続は行わない。全Rust回帰は2回とも非同期準備test1件で失敗し、単独だけ成功した。対象request限定の試験用記録を加えた3回目も1,315成功・1失敗・61 ignoreで、新jobの候補計算中に30秒へ達したと確認した。根本原因・全体回帰は未解消として保持する。最終sourceの単独検査・fmt・標準Clippy・all-targets checkは成功したが、追加commitは行わない。 後続の[認証区間の有限合成検査](../../../target/body-fitness-next-model-20260929.md)は、47 fixture・71 band record・280包含cell・30ラベル・7陰性を通過し、2新processのrawが一致した。実Tone/FFT・旧728・性能は未評価で、既存の精度・回帰失敗を置き換えない。
+
+音色Task 1は隔離 `timbre-valuation-meter` で23個のblind試聴音を生成した。音量・変調量の数値検査、example check、Clippy、全Rust検査1,165成功・0失敗・36 ignoreを確認した。作者試聴は未実施で、条件対応表は非表示のまま保持する。 番号付き23音の[試聴補助画面](../../../.worktrees/timbre-valuation-meter/target/timbre_probes/audition.html)を用意し、隔離Firefoxで相互停止・回答JSON保存・消去確認・desktop/mobile表示を検証した。音声の再生・試聴採用は行っていない。Task 2は[身体モジュール契約草案](../../superpowers/specs/2026-09-29-body-module-contract.md)を作成し、F2側のB1–B7回答まで記録した。最初の認証失敗と外部送信への自動承認審査の拒否を経て、作者が[固定6文書](../../../target/timbre-contract-review-authorization-20260929.md)の送信を明示承認した。通常CLIの既定KEIO認証を明示して、Claude Opus 5.5の[独立文書レビュー](../../superpowers/specs/2026-09-29-body-module-contract-claude-review.md)を受領した。判定は「作者方針判断には条件付きで利用可、契約採用には未準備」。[全15所見の処置表と契約修正稿](../../superpowers/specs/2026-09-29-body-module-contract-review-response.md)を作成し、音高操作・Off等の応答・容量と費用負担・追加consumer許容差・F2入口の5項目へ作者判断を集約した。記述の修正は採用を意味せず、提案した定数・動作方針は未採用、Phase 3実装は未開始である。 後続の数量レビューで64 live Voiceに死亡tailとreplacementが重なると65世代枠を要すると確認し、旧64総枠案を保留へ修正した。負荷や出生を縮めず退役込み容量を算定し、16 Toneの到着・保持上界も分けて検討する。既存F2 gateと統合順序は維持し、二度目のClaude reviewを自動的な新gateとはしない。レビューは承認された6文書だけを読み、source・描画・試聴を検証していない。I11の再開提案は別Astraの独立レビューを通過し、原典と現入力の未確認部分を追記した。
+
+音色Phase 2は[既存証拠と60セルの対照追記案](../../../target/timbre-phase2-evidence-20260929.md)を具体化した。無音身体の現参照は代謝前にunsupportedで止まるため、便益・費用を正常値として閉じる規則は未採用である。正mass対照の再開基点として、新規隔離branch `timbre-phase2-reference` に封印F4c-v2基準を復元し、commit `041e85f` へ保存した。全Rust検査1205成功・0失敗・40 ignore、標準Clippy・fmt成功。初回のdisk quotaによる結合検査失敗は保持し、作業専用TMPDIRで再確認した。新しい60セルの対照自体は未実装・未取得で、Phase 2受入・Phase 3開始を認定しない。
+
+[I12b／I4の所在監査](../../../target/i12b-i4-integration-base-audit-20260929.md)では、`.worktrees/i4-reference` にI4の第一段階36条件比較、第二段階の有界producer実消費smoke、memory=Noneの12条件回帰を確認した。保存capsule29ファイルと現在の212 Rust sourceのhashは一致した。これは `06a4772` に未コミットoverlayを加えた隔離成果で、main統合やI4全体完了ではない。一方、49登録worktreeの関連パスを調べた範囲では、I12b専用登録・192 runの結果・終結commit・統合基準版を特定できなかった。I4の先行隔離試験をI12b完了の証拠へ読み替えず、I12bの保存先と完了判断、次の基準版の引継ぎ照合を残す。 追加の[本文検索](../../../target/i12b-content-location-20260929.md)でも515パス・46内容群を得たが、専用完了結果・終結基準版は特定できなかった。対象外形式・深いtarget・大きいraw・他機器の不存在を意味しない。保存先への問い合わせを残し、独立単位を継続する。
+
+各worktreeブランチのコミットは今回の統括を通じて作者が明示許可した。共有mainでのコミット、mainへのmerge・pushは引き続き作者承認を要する。他の既存未コミットworktreeは変更・整理せず、[対応する計画・結果付きの目録](../../../target/worktree-inventory-20260929.md)へ44件を個別に記録した。main・退避済みF2・今回Task 1を変更した音色treeは別枠とし、49登録中47件dirty・2件cleanという棚卸し時点の数を分けた。独立した単位は並行し、共有ファイル・依存・専有計時・main統合だけを直列化する。担当・出力先・cargo枠・判断待ちは[作業ボード](../../../target/orchestration-board.md)で追跡する。
+
+### 2026-09-30：Sol 6.1主力への変更と独立単位の再開
+
+作者の指示で、実行・設計・レビューの主力をSol 6.1へ変更し、Astraは具体的な難所で必要な場合だけ使う。判断はhigh、指定済みの実行はmediumを基本とし、[AGENTS.md](../../../AGENTS.md)と[統括表](../../../target/orchestration-board.md)へ反映した。共有source・統合・合否用計時の直列化、最大2 cargo担当、旧結果と承認境界は維持する。
+
+[I12bの追加所在監査](../../../target/i12b-evidence-resume-20260930.md)はGit保存ref・履歴と両Codex homeの元記録から09-26親/F0担当threadを特定した。旧「取得中」推定が当時すでに撤回された原メッセージ5件と3 transcriptのhashを統括も照合したが、専用完了結果・固定baseは未特定である。09-23–25の元セッションは今回の保存先に収録されておらず、他機器や別保存先の不存在は意味しない。担当機器・成果manifest・完了判断・固定baseの所在照合を残し、同じ範囲の再探索は増やさない。
+
+F2は[保存仕事量の成立性判断](../../../target/body-fitness-feasibility-20260930/decision-v1.md)を完了した。kernel定数・履歴積再利用だけでは全候補×72 frameと重いband処理が残るため、現interval経路の追加cache試作・性能取得へ進まない。描画正本の処理済みdensityと最新環境での積分を共有出口とし、安価な構築法の設計を未完として残す。旧精度・資源不合格、同hop出生、I12b→I4→body F3→音色Phase 3の統合順序を変更しない。
+
+I11は元LTFAT読出しの別々の31／30帯域を使う[保存PCM参照](../../../target/i11-grid-reference-20260930/evidence-report.md)を一単位として完了した。登録・source review・係数読戻し後の単回取得と独立検算はいずれもexit 0。8終端配列・約433万要素を保存し、impulse限定の515局所数値比較、chunk/fork、78受理呼出し、32拒否記録の状態保持を確認した。Sol 6.1だけで実施し、過剰な精度証明を再開していない。知覚・行動消費者への写像と通常runtime採用は未完であり、[I11記録の末尾](i11-onset-comparison.md)で分母と限界を分ける。
+
+週100%までの継続では、Sol 6.1主力で[T1/T2消費者案と独立レビュー](../../../target/i11-consumer-design-20260930/review/review.md)を完了し、通常の未採用診断と作者による本番採用を分離した。T1のactual selectorとT2の同一source helperへの接点を、それぞれ独立した有限診断として準備中である。F2の[位相付き構築案レビュー](../../../target/body-fitness-cold-design-20260930/astra-review/review.md)だけは具体的な未解決の数学・仕事量判断としてAstraを使った。現案はHOLDだが、全未知入力の証明を試作開始の必須条件へ増やさない。登録済み領域での具体的な処理削減法が未成立という理由を保持する。
+
+T2の[group対応づけの再評価](../../../target/i11-consumer-design-20260930/group-association/proposal.md)は、独立group応答と、全体音の観測特徴を既存group帰属で条件付ける応答を区別した。後者の調査に群PCM再構成を必須としない。共有履歴・他group依存・未採用のgate方針は保持し、保存Sに対応する実group traceの不足を次の入力課題として特定した。初回helper診断の前提条件は増やしていない。
+
+[T2原関数への接点診断](../../../target/i11-t2-helper-mapping-20260930/evidence-report.md)は単回取得・別担当の単回検算ともexit 0だった。120 laneの1,560判定・8拒否試行を確認したが、153局所peak受理は実群のaccentではなく、13元baseline窓と実group対応づけは欠測のまま残る。period／arrival・通常runtimeの成立を認定せず、対応する観測入力と実消費者の比較を次の単位とする。
+
 ## 6. 過剰な準備を防ぐ実行規則
 
 - 着手前に対象I、前後で変わる動作、必要な検査、今回の終了点を一行ずつ定める。I/R/Aの終了条件を作業中に追加しない。新しい要求は担当行へ記録する。
@@ -712,4 +811,62 @@ I12bの保存記録と結果記録は未取得・技術完了未判定である�
 - Rust変更にはリポジトリ必須のテスト・ログ保存を行う。必要な検査が通れば、新しい変更・失敗・未解決の懸念なしに再検査を増やさない。最大全負荷・全感度・全回収を各Iで繰り返さない。
 - 通常の結果記録は本書の現在地と一つの検査記録に集約する。新しい段階別Markdown／JSON／source archiveは、独立した再現実験や比較版の凍結に必要な場合だけ作る。既存成果は削除しない。
 - 進捗報告は「完成した動作／検証対象の版／未接続部分／次の一単位」。旧M0の件数比やI/R/Aの単純平均を進捗率にしない。
-- 人の判断が必要なR/Aだけを待ち状態にする。ユーザーの明示した停止・再開・終了範囲を優先し、I7終了時の停止は、続く週次使用率50%超までの継続指示で更新された。使用率を定期確認し、超過時に進捗・検証・再開点を保存して停止する。
+- 人の判断が必要なR/Aだけを待ち状態にする。ユーザーの明示した停止・再開・終了範囲を優先し、I7終了時の停止は、その後の継続指示で更新された。9月29日の週次85%停止は同日22:30の指示で100%上限へ変更され、9月30日はSol 6.1主力での並列継続を指示された。[統括表](../../../target/orchestration-board.md)の最新記録と現在アカウントの使用率を確認し、上限到達時は進捗・検証・再開点を保存して止める。上限は不要な作業を追加して消費し切る指示ではなく、未完のI/R/Aを完了認定する条件でもない。
+
+
+### 2026-09-30：T1実selectorの指定入力診断完了
+
+[T1証拠報告](../../../target/i11-t1-selector-reference-20260930/evidence-report.md)の隔離取得・保存検算は各一回、exit 0。実selector六回・三対、支持済み二極性対の一対でoffset 0→1／onset 2048→2253。unknown対は旧trace・時計・母状態を保持し、新T1不適用。44終端・8,380,416要素、42 fork／母保持、21 contrastと42 candidate bindingを確認した。通常未来PCM、非zero旧overlap、一般skip、聴覚・資源・通常runtime・モデル採用は未認定。必須テスト／fmt／標準Clippy／全対象check成功と、追加全対象Clippyの既存17 lint失敗は別記録。T2実group・period・arrivalは同時計PCMと一つのfiltered eventを使う登録に沿って別隔離sourceを準備中。統合・commit・pushなし、I12b前提と既存資源不合格を維持。
+
+
+### 2026-09-30：T2実消費者の単回診断・別所有検算完了
+
+[T2証拠報告](../../../target/i11-t2-group-consumer-reference-20260930/evidence-report.md)の取得・別所有保存検算は各一回exit 0、必須テスト／fmt／標準Clippy／全対象check成功。各componentのowner-hop 2,210中、支持9・unknown 2,201、ownerなし310は別分母。BP10の局所Admitted 1件に元Accentはなく、baseline配送63→試作各0。未採用のunknown抑止が実period／arrivalへ届き、pair／peak／probability差385 owner-hop、forecast等差1,197 owner-hop、raw known coverage維持を確認した。局所受理・元event配送・consumer変化・独立群応答を区別する。1,440 frontend一致と12構造negative、源状態保全を確認、入力／閾値を調整せずゼロ結果を保持した。通常runtime・採用・資源合格とI12b統合前提は未完。Sol6.1主力、必要なF2数学レビューだけAstraを使用した配分も統括表に保存。
+
+
+### 2026-09-30：有限診断の保存値因果分解
+
+[T1保存分解](../../../target/i11-consumer-outcome-attribution-20260930/t1/report.md)で新費用項が時間変位費用を上回る実rank差を確定。[T2保存分解](../../../target/i11-consumer-outcome-attribution-20260930/t2/report.md)で残差優勢とfirst-anchor非所有が全63元Accentを止め、唯一局所受理と元eventが9 hop離れることを確定した。窓・閾値・帰属・時計を調整せず、DSP／取得／consumer再実行0のまま保存結果を解釈した。局所原関数受理、支持された実配送、unknown抑止によるconsumer差、資源／聴覚／通常runtime採用を引き続き区別する。
+
+
+### 2026-09-30：直接T2 eventの別仮説とF2別経路の限定HOLD
+
+[T2直接Accent案](../../../target/i11-t2-direct-event-design-20260930/proposal.md)は、保存結果を見た後に立てた別仮説である。支持された変調local peakからeventを構成し、元Accentの存在を要件にしない有限再生登録まで進めた。四hopの帰属・full Handle・raw区間・実観測prefixと同一Optionのperiod／arrival配送を保ち、baseline・旧gate四つ・直接四つを冷状態から比較する。保存NSGT scanとmono energyを実frontendへ渡すので、PCM・NSGT・T2の再取得を予定しない。自然候補1件、pair0・probability=Noneも結果として保持する。現在は独立レビューと隔離source準備であり、再生・本番採用・資源受入れは未実施。旧63event抑止と9hopの時刻差を変更せず、新データによる独立確認へ読み替えない。
+
+F2の[疎FFT入力・逆kernel incidence案](../../../target/body-fitness-alternative-cold-20260930/proposal.md)は、逆索引・零区間peak/massの具体的処理を示したが、冷状態からFFT支持を発見して複素係数を作る入口が未成立だった。既存代表描画を入口に使うと全候補Tone描画と72 FFTを再導入し、到達band履歴も全Bへ戻り得る。19入力のsource／行範囲を統括も照合し、この別案だけをHOLDとして閉じた。数値登録・試作・取得は行わず、出生目標一般の不可能性や作者契約の矛盾は主張しない。Sol6.1 highのみで判断し、Astraの追加使用はない。
+
+
+### 2026-09-30：直接T2 event再生の保存上限失敗と別表現修正
+
+[直接eventの単回再生](../../../target/i11-t2-direct-event-reference-20260930/evidence-report-failed-v1.md)は、登録済み1 GiB保存上限に達してexit 101となった。完全保存は338/360 hop、11ファイル・1,073,044,629 bytesで、統括が全サイズとhashを照合した。最終22 hop、九つの最終状態、八負例とsummaryは未完、独立readerは未実行である。前後source pin、全Rust検査1,160成功・0失敗・38 ignore、fmt・標準Clippy・全対象checkとsource/readerの静的レビューPASSは保持するが、取得完了や消費者の全結果を認定しない。これは有限保存capの失敗であり、計時合否や通常runtime資源受入れの判定ではない。
+
+元の失敗と封印source/readerを保存したまま、[別の保存表現登録](../../../target/i11-t2-direct-event-output-revision-20260930/registration-v1.md)で、九arm間に反復する大型状態三fieldだけを行内辞書で共有する修正を準備する。serialized bytesが完全一致する値だけを共有し、独立readerで全fieldと浮動小数bitを復元する。全記録、1 GiBの物理保存上限、刺激・閾値・時計・profile・九arm・360 hop・八負例は変えない。最初の338復元行は元の失敗traceと完全照合する。新source・reader準備をSol6.1で並行し、再seal・レビュー・既存必須検査後に新しい版の単回再生へ進む。上限増加、情報削減、同版の自動再試行、本番採用は行わない。
+
+
+### 2026-09-30：直接T2保存版の取得完了・reader初期座標照合失敗
+
+[新保存版の取得記録](../../../target/i11-t2-direct-event-output-revision-20260930/evidence-report-primary-complete-reader-failed-v1.md)は単回wrapper／consumer exit0、22ファイル・722,395,965 bytes、360 hopを完了した。固定1 GiB物理上限、元論理記録、九arm、刺激・閾値・時計は維持した。前後1,122 source pinと全22実ファイルを統括が照合、必須検査1,161成功・0失敗・38 ignoreとfmt・標準Clippy・全対象check成功を確認した。元338行・exit101の失敗版は不変である。
+
+初回独立readerは冷状態241-bin period座標の照合でexit1となり、全hop・338行の一致検証と科学結果解釈は未完である。実失敗記録を保存し、source／compiled経路／初期座標の原因調査を別単位で進める。許容差緩和、producer再取得、同版の自動reader再試行は行わない。取得側の直接BP10一配送というsummaryを、独立検証済みのperiod／arrival結果としてまだ扱わない。
+
+並列の[F2幾何producer独立レビュー](../../../target/body-fitness-geometric-cold-producer-20260930/review/review.md)は具体的な支持探索guardをHOLDとした。非増幅Modal frameで三角上界が閾値を常に上回り全leaf評価となり、条件付き持続一modeの静的費用も固定capを超える。32 source pinを確認、数値取得ゼロでこの案を閉じた。F2全体の不可能性、実測CPU成績、全728個体の失敗は主張しない。Sol6.1主力、Astraの新使用なし。
+
+
+### 2026-09-30：直接T2 event保存版の独立検算・因果読戻し完了
+
+[直接T2完了証拠報告](../../../target/i11-t2-direct-event-output-revision-20260930/evidence-report.md)で、新保存版の単回primaryと別版reader-v2は実exit0となった。全360 hop・九つの冷状態arm、元失敗trace338行との型／f64 bit論理一致、八つの科学negative、16 codec拒否と三つの陽性fixtureを確認した。必須検査1,161成功・0失敗・38 ignore、fmt・標準Clippy・全対象check成功、前後1,122 source pinを保持した。22file・722,395,965 bytesは固定1 GiB物理上限内であり、summary前1,159,122,330 bytesの論理カウンタはsourceのsame-serde読出し量で、PythonによるRust字面の独立再現ではない。元consumer exit101と初回reader exit1は失敗記録のまま残し、reader-v2はcompiled exp2経路への初期座標照合だけを別版修正した。許容差緩和やproducer再取得は行っていない。
+
+[compact causal witness](../../../target/i11-t2-direct-event-output-revision-20260930/outcome-readback/witness.json)は、step50・slot0・full Handle 0/2/2で元Accent=Noneから直接BP10 Accent一件を構成し、同じOption／bitを実estimator・arrivalへ渡して実Delivery一件・first anchor一件へ届いた経路を固定した。旧gateとの差はstep50..62の13旧owner processing hopであり、step62の旧owner処理後にgeneration9へreset、step63は冷状態から開始してanchorを継承しない。直接armのpair0・peak0・numerical probability0、13forecastのprobability=Noneを有効な有限結果として保持する。baseline63配送、旧gate四つと他direct三つの配送0、owner-hop2,210とownerなし310、各component支持9／unknown2,201も維持した。これは同じ保存入力への別仮説followupで独立sceneではなく、共有whole-bus帰属特徴の結果である。周期陽性、独立group PCM応答、校正、聴覚・資源・通常runtime・モデル採用とI12b統合前提は認定しない。完了記録作成に伴うCargo／reader／reducer／consumer／PCM実行はゼロ。
+
+
+### 2026-09-30：T1 非zero original overlap の有限 consumer 診断完了
+
+[完了 evidence](../../../target/i11-t1-nonzero-overlap-reference-20260930/evidence-report.md)、[actual scalar・full planned Context witness](../../../target/i11-t1-nonzero-overlap-reference-20260930/outcome-readback/witness.json)、[保存読戻し](../../../target/i11-t1-nonzero-overlap-reference-20260930/outcome-readback/report.md) を追加した。登録した単回 primary と単回 saved-reader は実 exit 0。四つの fresh actual selector call、各 21 eligible candidates、84 の正の actual original legacy receipts、各 candidate に 48 f32 point-band energy operands、replacement に 21 actual Used を保存・検算した。
+
+旧 offset 0 の C_old と Klegacy はともに非zero bits `1059881163`、実 cost `0.6738402247428894`。一回の L64→f32 cast と元の f32 演算順で `(C_old-Klegacy)+((coupling*sensitivity)*L32)` を使う実置換を確認した。旧選択は offset 0 / onset 2048、新選択は offset 1 / onset 2253。新 selected cost bits は `1061123368`、値は `0.7478814125061035`。丸め前 selected_at `2252.8`、resolve 後 due `6348.8` を含む actual clock と full planned Context を保持する。4 calls とも Some、各 `resolve(..., false)` は 1 回、skip 0。
+
+unknown pair は同じ正の legacy forecast peer を保持し、新側は no override。old/new とも offset 0 / onset 2048、before・candidate 後・resolve 後の full state、full trace、original、coverage、planned Context と resolve が保存 typed JSON 全体で一致した。archived `unknown_background_waveform` の消費結果であり、新たな backend unknown の取得ではない。
+
+科学 7 files は合計 1,808,008 bytes、16 MiB cap 内。必須 neutral validation は 1162 passed / 0 failed / 37 ignored、fmt・標準 Clippy・all-targets check は exit 0。source 1115 files / 13 dependencies、登録 123 inputs、reader 5 files / 149 dependencies の actual hash は一致した。source・READER の別作者 static review と root 実行の系譜を保持した。outcome 読戻し作者は saved-reader 作者であり、この読戻しを独立した第二 reduction と数えない。
+
+旧零 overlap assay は変更していない。同じ封印済み 21 L64・cut/window・support lineage を再利用する条件付き追試である。正の `[0.1f32;3]` legacy fixture と約 80 ms Proxy footprint は、T1 の 512-sample pulse から派生した energy ではない。母 B/Q は archived full bytes preservation のみ。future PCM support、一般 model 妥当性、校正、resource・musical/runtime adoption は未確認の境界を維持する。outcome 作成では reader/reducer/helper・fixture・consumer・Cargo・DSP・PCM decode を再実行していない。

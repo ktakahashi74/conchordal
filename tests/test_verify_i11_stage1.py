@@ -70,6 +70,38 @@ def report_fixture():
     return [footprint, decision, context]
 
 
+def configured_proxy_fixture():
+    records = copy.deepcopy(report_fixture())
+    _, decision, context = records
+    decision["current_identity"] = {**IDENTITY, "body_generation": 2}
+    decision["footprint_source"] = "proxy(setting)"
+    decision["sound_adsr"] = None
+    decision["footprint_power"] = [1.0] * v.BINS
+    for candidate in decision["candidates"]:
+        candidate["overlap"] = v.overlap(
+            OWN, decision["footprint_power"], candidate["external_energy"]
+        )
+        candidate["cost"] = v.cost_of(
+            decision, candidate, candidate["context_distance"],
+            candidate["overlap"], decision["footprint_power"]
+        )
+    best_offset, best_cost = v.first_minimum(
+        [(candidate["offset"], candidate["cost"]) for candidate in decision["candidates"]]
+    )
+    decision["selected_offset"] = best_offset
+    decision["selected_cost"] = best_cost
+    decision["selected_at"] = decision["candidates"][best_offset + 2]["at"]
+    decision["reference_cost"] = decision["candidates"][2]["cost"]
+    context.update(
+        onset_frame=v.rust_round(decision["selected_at"]),
+        selected_cost=best_cost,
+        reference_cost=decision["reference_cost"],
+        selected_offset=best_offset,
+        footprint_source="proxy(setting)",
+    )
+    return records
+
+
 def run(records):
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "report.jsonl"
@@ -88,6 +120,16 @@ class VerifyStageOneTest(unittest.TestCase):
         self.assertEqual(failed(summary), set())
         self.assertEqual(summary["5.1 cost"]["checked"], 23)
         self.assertEqual(intervention["body_decisions"], 1)
+
+    def test_configured_proxy_keeps_record_span_without_using_stale_body_power(self):
+        summary, _ = run(configured_proxy_fixture())
+        self.assertEqual(failed(summary), set())
+
+        stale_body = copy.deepcopy(report_fixture())
+        stale_body[1]["current_identity"] = {**IDENTITY, "body_generation": 2}
+        body_summary, _ = run(stale_body)
+        self.assertIn("5.3 body identity is current", failed(body_summary))
+        self.assertIn("5.3 stale identity falls back", failed(body_summary))
 
     def test_each_violation_is_caught_by_its_check(self):
         def cost(records):

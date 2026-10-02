@@ -5861,6 +5861,111 @@ keeps source/input/output provenance and single-caller resource limits. The resu
 is not full O04, MR3, T4/T6 adoption or M0 completion. The embodiment requirements
 above remain separate; no physical body law or R/H/C behavior changed.
 
+### 9.3.56 Layers of the listener model: what is fixed and who sets the rest
+
+Adopted 2026-09-29.
+
+**Boundary criterion.** The listener model is divided by who may change each quantity.
+The criterion is invariance across human listeners under ordinary development, not
+genetic determination. Harmonic templates are probably learned from exposure to
+voices, yet every listener grows up hearing voices, so they are invariant in practice
+and belong to the base. Octave equivalence looks biological but is weaker in some
+cultures (Jacoby et al. 2019), so it does not; Conchordal applies no chroma penalty,
+which is consistent with that. The boundary moves with evidence, so each parameter
+records its layer and evidence in the table below.
+
+Invariance evidence supports a function, not a computation. Fusion of intervals
+across cultures supports modeling fusion; it does not validate H's integer-template
+projection, its harmonic count or its weights. Fixing an implementation in layer 1 is
+a modeling decision taken so that the model can stand for the listener, and the table
+records the two separately. Layers are defined by who may change a quantity, not by
+where it came from: training and enculturation are both learned, but the listener's
+own history (hearing, training) is layer 2, while the culture a piece is written for
+is layer 3.
+
+**Sensation and valuation are split per quantity.** The same quantity has a sensed
+part (base) and a valued part (enculturation). The consonance kernel already has this
+form: `roughness01` and `harmonicity01` are sensation; the coefficients $a, b, c, d$,
+the level mapping $\beta, \theta$ and the density $\rho$ are valuation.
+
+**Five layers, by who sets them.**
+
+1. **Species base**: fixed, replaced only in research configuration.
+2. **Individual profile** (hearing thresholds, age, training): the listener's own,
+   not the composer's. Not modeled yet; a future biosignal loop would estimate it.
+3. **Enculturation** (valuation and priors): set by the composer as the implied
+   listener, in cognitive coordinates such as weights, prior strengths and category
+   priors, never as symbolic rules such as scales or time signatures.
+4. **In-performance listener dynamics** (habituation, expectation, learning of the
+   piece's statistics): modeled dynamics, not exposed as controls.
+5. **Producer-side tradition** (timbre and other traits the population inherits):
+   emergent, not exposed.
+
+A two-way genetic/learned split fails at layers 4 and 5. Both are learned and
+dynamic, but neither belongs to the composer: exposing layer 4 would manipulate the
+listener's state directly, and exposing layer 5 would specify what should emerge.
+
+**Review rule for composer-facing parameters.** The composer sets three things:
+listener-model layer 3, the initial conditions of what the ecology evolves (founder
+bodies through `modes`, `brightness`, `spread`, `unison`, `motion`, and placements),
+and the macro form. Controls on the listener model sit in layer 3 and may change
+valuation or priors, never layer-1 sensation; controls on bodies set founders and do
+not override traits the ecology has taken over. Configuration keys outside these are
+research settings. The first
+application, also on 2026-09-29 (branch `timbre-valuation-meter`, merged at the next
+integration point), replaced `set_roughness_k`. That control expressed
+tolerance by changing the `roughness01` saturation, so it altered sensed roughness
+everywhere it flows (field, density, habituation drive, UI). Its replacement
+`set_roughness_aversion(w)` weights the roughness terms $b$, $c$ and the density
+$\rho$; `roughness01` is now sensation only, and the default $w = 1$ reproduces the
+configured kernel bit-exact. No sample used the old control.
+
+**DCC.** The composer's layer-3 setting describes an implied listener; a real audience
+may differ. Once a biosignal loop exists, layer 3 is estimated from the listener, with
+the composer's setting as its initial value.
+
+**Deferred: learning layer 3 during a performance.** Real listeners are enculturated
+by what they hear. If layer 3 learned from the population's sound, the receiver would
+co-evolve with the signals, and the system would move from sensory exploitation to
+coevolution, where Fisherian runaway (preference and trait escalating each other)
+becomes possible. The Manifesto's history of ever-delayed resolution reads like one.
+This is a research line, not default instrument behavior, and it is not scheduled.
+It is reconsidered only after timbre heredity shows generational change and a
+measure of runaway (sustained drift of valuation and trait in the same direction) is
+registered before any run. The non-goal in
+[timbre.md](timbre.md) against templates rewritten by the population's sound applies to
+layer 1.
+
+**Parameter ledger (initial).** Kernel coefficients sit in layer 3 but stay in the
+configuration. Decided 2026-09-29: raw coefficients are not exposed to scenarios,
+because they are not cognitive coordinates. Composer-facing valuation stays the named
+controls (`set_roughness_aversion`, `set_pitch_objective`) and the meter priors. A new
+one needs a concrete scenario the existing controls cannot express, a name in
+cognitive coordinates, and this layer review.
+
+| Parameter or mechanism | Layer | Evidence for the function | Status of the implementation |
+|---|---|---|---|
+| Log2 tonotopy, ERB scale | 1 | Cochlear frequency analysis | NSGT settings are an engineering choice |
+| Roughness kernel shape; `roughness_k` saturation | 1 | Critical-band interference (Plomp & Levelt 1965) | Kernel form and saturation are modeling choices; valuation is separate |
+| Harmonicity (H) | 1 | Interval fusion without consonance preference (McPherson et al. 2020) | Integer-template projection fixed as the model's periodicity prior; not validated as the neural computation ([timbre.md](timbre.md)) |
+| Loudness exponent, A-weighting | 1 | Species-typical loudness growth | Individual hearing belongs to layer 2 |
+| Meter oscillator, beat band | 1 | Beat entrainment; small-integer rhythm priors across 15 countries, with varying weights (Jacoby et al. 2024) | The Hopf oscillator is a modeling choice, not directly validated |
+| Habituation mechanism | 1 | Satiation and recovery of response | Time constants are listener-state parameters (layer 4 candidates) |
+| Kernel $a, b, c, d$; $\beta, \theta$; density $\rho$ | 3 | Consonance preference varies across cultures (McDermott et al. 2016) | Configuration only; not exposed (decided 2026-09-29) |
+| `set_roughness_aversion` | 3 | Valuation weight | Aversion only for $b \le 0$ and $b + c \le 0$ (the defaults) |
+| `set_pitch_objective` | 3 | Valuation sign | |
+| `meter_stability`, `temporal_basin` | 3 | Metrical categories are enculturated (Hannon & Trehub 2005) | Soft priors; cannot fabricate a beat |
+| Octave equivalence | not in base | Weaker in some cultures (Jacoby et al. 2019) | No chroma penalty |
+| Habituation and adaptation state, expectation | 4 | | Modeled dynamics |
+| Founder bodies (`modes`, `brightness`, `spread`, `unison`, `motion`) | 5 (initial conditions) | | Set by the composer; inherited traits then belong to the ecology ([timbre.md](timbre.md)) |
+| Inherited traits | 5 | | Emergent; heritable per pathway ([timbre.md](timbre.md)) |
+
+References: Hannon, E. E., & Trehub, S. E. (2005), *Psychological Science* 16, 48–55.
+Jacoby, N., et al. (2019), *Current Biology* 29, 3229–3243. Jacoby, N., et al. (2024),
+*Nature Human Behaviour* 8, 846–877. McDermott, J. H., et al. (2016), *Nature* 535,
+547–550. McPherson, M. J., et al. (2020), *Nature Communications* 11, 2786. Plomp, R., &
+Levelt, W. J. M. (1965), *JASA* 38, 548–560.
+
 ## 9.4 Alignment and Extension Sequence
 
 The current scope and execution order follow the [2026-09-20 mechanism-selection rule](#mechanism-selection-rule),

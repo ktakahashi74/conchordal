@@ -1,0 +1,11 @@
+# 候補密度と現在pitchの分離: 限定検証結果
+
+2026-09-27。[取得前登録](body-fitness-glide-reuse-registration-20260927.md)に従い、local/non-ratio候補方式のcurrent pitch一致条件を取り除いた。candidate Hzを代入したRecipe Identityと必要候補全集合の照合は保持し、移動費用は消費gateのlive current pitchから計算する。
+
+代表密度の検査ではSine/Harmonic/Modalの三身体で、candidate Hzを330に固定し基準Recipeのfreqを220→440に変えてもscanとmassのbitが一致した。制御検査ではHarmonic 440→660 Hz、glide時定数0.2秒、非ゼロ移動費用10で8 hop提案を延期した。古い候補表と現gateで作り直した完全表のtarget・salience・adaptation・RNG・commit後pitchが一致し、双方が表を消費した。score値は制御fixtureであり、密度計算の試験とは分ける。
+
+unisonの実Capture世代更新はBodyGenerationMismatch、brightnessの実更新は同じ世代でもRecipeMismatchとして拒否された。表なしfallback対照との一致と、即時再準備での回復を維持した。既存のsource、birth、epoch、Recipe、route、control、target、RNG、space、habituation、欠落scoreの負例も通過した。current pitchだけの旧拒否例を正例へ、current pitchとhold変更の複合例をRecipeMismatchへ改訂した。
+
+最初の変更スクリプトが一部適用後に止まり、廃止したenum variantを検査が参照するコンパイル失敗を保存した。修正後はglide、三身体の密度不変性、既存負例のtargeted各1件が成功した。ログと終了値は統合worktreeの `target/glide-reuse-validation-20260927/`。最終全suiteは統合第十版に対応づける。
+
+環境scoreを現gateの環境・habituationから計算する契約は変更していない。今回の即時準備対照は非同期threadが動くpitchへ追随した実測ではない。global/ratio候補、通常runtimeの身体評価入力、現在pitchそのものの密度を使う代謝評価へは拡張しない。

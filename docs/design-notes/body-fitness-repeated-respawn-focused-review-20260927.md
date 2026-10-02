@@ -1,0 +1,17 @@
+# 第十八版b：反復親付きrespawnの検査範囲
+
+対象は事前登録 `body-fitness-repeated-respawn-registration-20260927.md` と、第十八版bの固定414 source（manifest SHA-256 `c235a2f40b25799bff59e099b8ff8f6395b3dde68a11ef43904fa548091c89b6`）。本表はソース上の検査対応を整理する。fmt、標準Clippy、全target checkはexit 0、`cargo test --lib respawn` の局所試験は39 pass、0 fail（17:20:30）。局所39件は先行v18のfocused取得。v18bの全suiteは1327 pass、0 fail、48 ignore、`cargo test exit=0 @ 2026-09-27T17:32:48+09:00`。新旧通常renderer統合3件も最終suiteで成功した。v18初回のreport項目欠落と修正は[検証記録](body-fitness-repeated-respawn-validation-20260927.md)へ保存した。
+
+| 登録した境界 | 実装・試験の入口 | 現時点の証拠範囲 |
+| --- | --- | --- |
+| 二つの通常機会、第二親poolに第一子を含む、ON/OFF各2回 | `tests/body_fitness_respawn.rs::registered_repeated_respawn_preserves_first_child_identity_and_uses_fresh_parent_pool` | v18b全suiteで成功。固定sceneの二死亡・二出生、各機会の記録、親pool、遷移と音声の再現性を確認した。RNG-onlyの死亡予測は実lifecycle結果ではない。 |
+| 機会の混線、同じsampleの再利用、未排出record、候補表の持越し、第二親の現在energy | `src/life/community/respawn/offline_respawn_tests.rs::two_chances_use_newborn_parent_and_fresh_candidate_table`、`drained_chance_rejects_same_sample_and_replayed_dead_identity`、`begin_chance_uses_current_parent_energy_and_rejects_same_hop_reuse` | production evaluatorの局所注入。focused libでpass。通常rendererへ故障を混入した試験ではない。 |
+| 退役以外のsource削除、予期しない追加、活動中ID衝突、系譜generation差、出生sampleの保持 | `src/runtime/mod.rs::repeated_respawn_source_transitions_preserve_birth_and_reject_faults` はproduction関数 `assert_respawn_source_transition` に局所注入。第一子の出生sampleを第二機会後も保持する正常列も検査。`offline_birth_metabolism_batch_rejects_set_time_epoch_and_space_errors` にgeneration差を追加し、既存のbirth_sample差と併せてbatch完全照合を検査。 | 前者はfocused libでpass。後者もv18b全suiteでpass。`advance_population` は各hopで実observer batchを完全照合し、cleanup後に同じtransition関数を呼ぶ。活動中ID衝突や破損batchを通常rendererへ混入した証拠ではない。同ID再利用の長期動作は対象外。 |
+| 子の出生hop自己PCM欠落・511 samples・非ゼロ | `src/runtime/mod.rs::respawn_birth_pcm_requires_full_zero_hop` がproduction関数 `assert_respawn_birth_pcm` へ3種を局所注入。描画後の通常経路も同じ関数を呼ぶ。 | 局所試験はfocused libでpass。新通常統合試験もv18b全suiteでpass。通常統合試験は正常な512ゼロPCMを検査し、異常PCMの生成を試すものではない。 |
+| 翌hop子source欠落・receipt欠測、epoch・出生sample・世代の照合 | `repeated_respawn_source_transitions_preserve_birth_and_reject_faults` がproduction関数 `assert_respawn_next_receipt` に子不在・receipt欠測を局所注入。通常経路はcleanup前に同関数でcurrent `SourceRemoved` receiptを照合し、cleanup後の集合でnext transitionを報告。 | 局所試験は子不在と欠測だけで、focused libでpass。receiptの各字段改竄は同関数のproduction assertと既存batch/evaluator局所試験による境界であり、第十八版の個別改竄注入は未追加。新通常統合試験もv18b全suiteでpass。 |
+| 前児next検証前の機会重なり、同hop二記録 | evaluatorの同sample・未排出record assertと、runtimeの `respawn_pending_next`・`record_seen` assert。 | evaluatorの同sample境界はfocused libでpass。runtimeではnext receiptをcleanup前に検証し、そのhopで別機会のrecordが出た場合、cleanup後のrecord処理で拒否する。したがって次機会のRNG/counter変更前に拒否する保証はない。また検証済みでも同hopの次機会を拒否するため、登録文言より受理範囲が狭い。登録sceneの二機会は11hop離れており、この分岐の実証ではない。 |
+| 既存一機会scene・最低level拒否の維持 | `registered_parentful_respawn_uses_post_update_energy_and_actual_child_body` と既存高閾値拒否対照、ならびに通常gate負例 | 第十七版fでは取得済み。第十八版bの全suiteで再取得・成功。拒否も機会番号を消費し、子receiptは要求しない。 |
+
+通常gateは3 founder、Entrain Sustain、Linear初期配置、同一Population、登録済policy/crowding、Finish一件を受理する。Harmonic、brightness、seed、死亡率、enduranceは固定fixtureの条件であり、gateの一般保証ではない。欠測・不一致はpanicで停止し、旧点値や前機会の候補表へ戻らない。正常rendererで観測する値、production関数への局所故障注入、既存の試験専用hook、実装assertだけの境界を混同しない。
+
+なお、evaluator局所試験は二機会のindex・spawn sequence・死亡sourceと新しい親pool・候補表を正常照合し、同sample・同一死亡sourceの再利用を拒否する。一方、runtimeへrecordの機会キーの一部だけを別機会から差し替える局所注入と、翌hop receiptの古い判断sampleを注入する個別試験は未実施。productionには字段のassertがあるが、これらを局所注入済みとは数えない。

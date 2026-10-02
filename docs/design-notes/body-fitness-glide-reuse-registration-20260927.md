@@ -1,0 +1,13 @@
+# 候補密度と現在pitchの分離: 取得前登録
+
+2026-09-27。現行の厳格照合で実glide中の表が拒否されることを確認した後の、新しい限定契約。元の[厳格照合結果](body-fitness-deferred-state-results-20260927.md)は保持する。
+
+独立の依存監査で、現F3eのlocal/non-ratio候補全集合はtarget、space、core設定、RNGから決まり、current pitchを参照しないことを確認した。代表密度もRecipeの基準freq_hzを読まず、別引数のcandidate_hzでToneを生成する。現在pitchに依存する移動費用は、表を使うproposalの時点でlive current pitchから計算する。したがってcurrent pitchだけの変化で候補密度を捨てる必要はない。global/ratio候補は準備入口で引き続き拒否する。
+
+PreparedVoiceDecisionのcurrent pitch bit一致と基準Recipeのfreqを含む照合を取り除く。候補Hzを代入した全candidate Identity、source、body generation、routing、control、target、RNG、epoch、space、habituationの照合と、必要な候補集合の再列挙は保持する。環境scoreは消費gateの現在の環境・habituationから計算する契約を維持し、古い環境scoreの再利用は許可しない。準備時current pitchは診断情報として保持する。
+
+数値検査は代表密度で基準freqだけを変えてcandidate Hzを固定し、Sine/Harmonic/Modal各々のscan・mass bit一致を要求する。Voice検査は48 kHz、512 sample/hop、seed 1、Harmonic、440→660 Hz、glide時定数0.2秒、8 hop提案延期。古い候補表を現gateで消費したVoiceと、そのgateの現在状態から作り直した表を使う対照のtarget、salience、adaptation、RNG、commit後pitchを比較する。移動費用は非ゼロにし、現在値を使う差が検出できる条件を含める。
+
+unisonによる実Capture世代更新、brightness変更、hold/route/target/control/RNG/space/epoch/habituationの既存負例は保持する。current pitchのみの旧拒否例は受理の正例へ、current pitchとRecipe変更の複合例はRecipeMismatchの負例へ変更する。表のscore fixtureによる制御検査と代表密度の数値検査を区別する。非同期threadの壁時計追随は別取得であり、ここでは主張しない。
+
+対象検査の初回ログを保存し、全suiteは次の統合版で実行する。通常runtimeの身体評価入力への昇格、ratio/global候補の対応、F4aの現在pitchにおける代謝評価への適用は範囲外。

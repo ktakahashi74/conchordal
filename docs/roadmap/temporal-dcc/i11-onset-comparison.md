@@ -1631,3 +1631,168 @@ proxy側のworker処理とrecord報告は増える。この変更は比較の対
 
 凍結入力が参照するprofile binaryはこのMacには無い。登録12条件の再取得、修正後Noneの§5.4a／b、
 その結果を使う§6の再判定は未実施であり、profileと基準取得を持つblancheでの実行が残る。
+
+## §5.7の現版専有再取得（2026-09-26、`06a4772`）
+
+上記は2026-09-24までの履歴である。blancheのmain `06a4772c43d06b41b44753bb0be891f23e16b93e` で、
+登録8条件の4／16 Voice・report有無・交互3反復を同じ専有窓で取り直した。
+出力先は `target/i11-resource-06a4772-prep-20260926-210125/`。
+元plan・15入力・共有profile、封印した取得器／検査器とinstrument／renderのhashを開始前に照合した。
+A/Aの`body`ラベルと`none`ラベルはどちらも`config-none.toml`の同一バイト入力である。
+A/A 3 pass各96本と現版body／none 96本の計384本はすべてexit 0。
+全passでsource209ファイルのhash集合とbinary hashが一致し、profile・log、report modeのjsonlに欠測はない。
+実行台帳、入力・source・binary・結果のhashは同出力先の `resource-capsule-manifest.json` に保存した。
+
+登録済みの改訂規則は、`population_us`／`synthesis_us` を同窓のA/A 3 pass floorで、
+`elapsed_us` の中央値・p99・最大および超過hopを待ちを除いた `own_us` で判定する。
+この組合せでは**14/16組合格、2/16組不合格**。不合格は以下の直接処理欄に限られる。
+
+| 条件 | 指標 | body | none | 差 | 許容 | A/A floor |
+|---|---|---:|---:|---:|---:|---:|
+| harmonic-flow-16 report | `population_us` 中央値 | 125.741 µs | 119.320 µs | 6.421 µs | 5.966 µs | 2.571 µs |
+| harmonic-flow-16 no-report | `synthesis_us` p99 | 3291.529 µs | 2944.656 µs | 346.873 µs | 261.851 µs | 261.851 µs |
+
+`own_us` は16/16組合格し、その時計での超過hopは全組のbody／noneで0。
+旧raw `elapsed_us` は11/16組合格。`aa-floor-verdict.json` の総合10/16は旧raw欄も含むため、
+改訂登録の技術判定ではない。`registered-technical-verdict.json` が改訂規則の16行を明示する。
+
+flow条件のbody・report mode・3反復合計について、返却遅延と欠測源も報告する。
+返却遅延は`participation_context`の受領済みrecordで測る。hold-4／16はfootprint要求0で遅延分布なし。
+
+| 条件 | 要求／完了 | 置換済み | 返却drop | 返却遅延 中央値／p99／最大 | `proxy(absent)`／`proxy(stale)` |
+|---|---:|---:|---:|---|---:|
+| sine-flow-4 | 24／24 | 0 | 0 | 0／0／0 ms | 0／0 |
+| sine-flow-16 | 96／96 | 0 | 0 | 0／0／0 ms | 0／3 |
+| harmonic-flow-4 | 24／24 | 6 | 0 | 32.0／53.3／53.3 ms | 0／0 |
+| harmonic-flow-16 | 96／96 | 24 | 0 | 85.3／106.7／106.7 ms | 9／0 |
+| modal-flow-4 | 24／24 | 0 | 0 | 21.3／32.0／32.0 ms | 0／0 |
+| modal-flow-16 | 96／96 | 0 | 0 | 32.0／74.7／74.7 ms | 0／3 |
+
+`proxy(absent)`／`proxy(stale)` は要求数に対する比率ではなく、`participation_context` のsource件数。
+harmonic-flow-16の`proxy(absent)`は9/615件（約1.46%）。ほかの非ゼロはsine-flow-16で3/615件、
+modal-flow-16で3/612件（各約0.49%）。全8条件の生集計は`footprint-report.json`に保存した。
+reportの`population_us`中央値のbody−none差は各反復で8.191／5.831／6.980 µs、
+no-reportの`synthesis_us` p99差は605.434／129.391／7.771 µs。
+後者は反復間で大きく揺れるが、登録した3反復の集約判定は不合格のまま維持する。
+
+専有中に既知のbuild・test・render競合を避けた一方、ホスト全体のCPU負荷を連続計測していない。
+A/Aの48比較の最大差は採用した許容floorであり、雑音の統計的上界ではない。
+したがって観測差をCPU競合だけ、または機構だけへ帰属できない。
+実際の`own_us`期限超過は観測されなかったが、直接処理欄の不合格を実害なしとして棄却しない。
+待ちを含む総hop負荷と全worker資源はR2の別条件。今回の§5.7を全欄合格、I11-1第1段を技術完了とはしない。
+
+## 2026-09-29：I11本体の再開引継ぎ
+
+milestones §5の同日「I11の引継ぎ」は途中で担当対象が移ったbody-aware F2の記録である。I11本体の現在地は本書末尾の資源結果と、milestones §5の2026-09-26の二記録から再構成し、[再開案](../../../target/i11-resume-20260929.md)を独立レビューした。F2の成功・失敗でI11の状態を上書きしない。
+
+| 管理する版・単位 | 現在の証拠と未完部分 |
+| --- | --- |
+| I11-1、本書のmain基準 `06a4772` | 上記の相対資源は14/16合格・2件不合格。own処理16/16や機能回帰の成功で、残る直接処理条件を棄却しない。 |
+| 隔離energy-loop版 | 別取得の相対資源13/16・3件不合格。観測joinは112判断中2件が同じ場面の反復で、110件unknown。mainの14/16へ合算・置換しない。 |
+| I11-3 / 新T1 | 原典対応、AMT16適応C比較、指定PCMの1チャンネル前処理比較が完了。作者は名前付きAMT参照候補と、未来PCM欠測時のunknown・新T1不適用を承認した。マスキング地形、知覚的成立、本体採用、通常runtime接続は未完。 |
+| I11-4 / 新T2 | Dau1997とAMT既定の違いを照合し、4変調出力の固定入力核比較が完了。T1末尾の20 ms LPは入力の前段として継承せず置換対象となる。原1997のlimit=10適応、複数帯域、accent・周期・Hazardへの写像と接続は未完。 |
+
+新T1の記録は[参照仕様・後続結果](i11-t1-reference-spec-20260929.md)、新T2は[原典対応・核比較結果](../../../target/i11-t2-reference-20260929.md)にある。いずれも固定入力での有限参照検査であり、旧I11の資源不合格やA1/R2/A3/A4を閉じる結果ではない。微小費用の自動調整・再測定は行っていない。
+
+次の一単位は、T2のlimit=10分岐を旧limit=0の検証済み参照と別に固定し、必要な入力・状態と原典との差を確かめること。その後の地形・accentへの写像は、原典由来の出力と作者規則を区別して登録する。未来背景PCMの不足を任意位相のenergy変換で埋めない。統合はI12b終結・基準版固定→I4→body-aware F3→音色Phase 3の順序を維持し、I12bの保存先照合を残す。旧60音は保管し、新T1/T2版の聴取受入へ流用しない。
+
+三系統の担当・取得・未解決点は[統括表](../../../target/orchestration-board.md)、まとめて扱う作者判断は[判断一覧](../../../target/orchestration-author-decisions-20260929.md)に保存する。mainのcommit・merge・pushは未実施である。
+
+
+### 2026-09-29 夜：AMT16 limit=10 適応部品の有限比較
+
+アカウント変更後の継続作業として、[取得前登録](../../../target/i11-t2-limit10-20260929/registration.md)を固定し、AMT 1.6.0の未変更Cを呼ぶ別wrapperと、独立したtanh式のPython参照を比較した。既存T1のlimit=0出力を再入力せず、その前のIHC出力4本と10個の固定fixtureを使った。旧wrapper・library・取得成果は変更していない。
+
+単回取得はcompile・実行ともexit 0。[結果](../../../target/i11-t2-limit10-20260929/acquisition/result.json)は14 fixture、45,700出力要素と228,500状態履歴要素、計274,200主要比較要素が登録許容内であることを記録する。70初期状態要素、24種類のmetadata値、各engineで512出力・2,560状態要素の定常解比較、fork間の2,048出力・10最終状態要素、20拒否ケースは別分母である。
+
+統括の[独立読戻し](../../../target/i11-t2-limit10-20260929/independent-reduction-v1.json)は726 rawのhash・長さ、主要比較の全要素、解析解、68数値比較、182一致検査、192 snapshotと34拒否記録を確認した。34記録は6個の両engine共有createケースと14個の各engine記録で、拒否条件は20種類のままである。途中の母状態・clock・metadata保全は保存rawとsnapshot対を照合した。検算器はproducerの比較関数をimportしていない。
+
+この結果で確認したのは、後年AMT16のlimit=10適応部品の有限入力に対する一致と状態操作である。Münkner原式との同一性、原Dau1997全体、全音響帯域、検出器・雑音校正、変調からaccent・周期・Hazardへの写像、本体採用とruntime接続は未確認のまま残る。未来背景PCMのunknown規則と、I11の既存資源不合格・作者受入境界は変更しない。
+
+
+### 2026-09-29 夜：1チャンネル部品合成の有限比較
+
+[登録](../../../target/i11-t2-composition-20260929/registration.md)を固定し、指定PCMからcascade GT、半波整流、direct IHC、AMT16 limit=10適応、4変調出力までを接続した。20 ms LPは挟んでいない。単回取得はexit 0。統括の[独立読戻し](../../../target/i11-t2-composition-20260929/independent-reduction-v1.json)は788保存ファイルと337 checkpointを照合し、28,672入力sampleの登録分母を確認した。
+
+歴史出力114,688要素と適応最終状態20要素はbit一致。変調の主要286,720成分とLP虚部28,672成分は同一MU入力に対する既登録の局所許容内だった。chunk出力430,080要素、fork出力645,120要素、31境界状態、31空呼出し状態・空出力、11 fork checkpoint、2,048共有prefix sampleも一致した。105受理呼出しの入力・support・clockと、10拒否条件の入力・理由・完全状態不変を保存証拠から確認した。検算器はproducerやengineをimportしていない。
+
+これは4固定PCMに対する名前付きAMT16部品合成の有限検査である。独立変調比較の許容を前処理からの総合誤差へ拡張しない。原Dau1997との同一性、複数音響帯域、知覚、accent・周期・Hazard写像、通常runtime接続と採用は未完。未来背景PCM欠測時のunknown規則と、I11の既存資源不合格は維持する。[証拠要約](../../../target/i11-t2-composition-20260929/evidence-report.md)に状態を分離して保存した。
+
+
+### 2026-09-29 夜：T1/T2の明示3帯域の有限参照
+
+[取得前登録](../../../target/i11-multiband-reference-20260929/registration-draft.md)に従い、80・1000・8000 Hzの3プローブを4固定PCMで検査した。T1はlimit=0適応と20 ms LP、T2はlimit=10適応と4変調出力を別の状態として保持する。AMT既定の音響周波数グリッドは再構成していない。
+
+係数の事前検査とsource review後の取得v2はexit 0。[独立読戻し](../../../target/i11-multiband-reference-20260929/reduction/result-v1/reduction.json)は1,396保存ファイル、495一致比較、180数値比較を検査した。24カテゴリの比較成分は延べ7,088,248要素であり、同一入力に由来する重複比較を含む。support拒否20件とcheckpoint拒否12件の試行内容・理由・状態不変も確認した。PCMの28,672 sampleは全て有限で、登録した入力上限0.0011以下だった。係数から再構成した各帯域の局所許容内であり、異なる比較の誤差を一つの総合誤差へまとめていない。
+
+初回取得v1は数値比較の保存名衝突でexit 1となり、部分成果と失敗記録を保持した。source v4は保存名のカテゴリ分離だけを修正し、算式・入力・閾値・分母を変えず、新規出力先で取得した。結果を見た数値調整はない。[証拠報告](../../../target/i11-multiband-reference-20260929/evidence-report.md)と[保存索引](../../../target/i11-multiband-reference-20260929/preservation-manifest-v1.json)に数値差・分母・履歴を保存した。
+
+この有限検査は原モデル全体との等価性、聴覚上の成立、音圧校正、全音響帯域、accent・周期・Hazardへの写像、通常runtime採用を示さない。検算器はDSP engineを再実行せず、保存値と登録式を独立に照合した。未来背景PCM欠測時のunknown規則と、I11の既存資源不合格は維持する。
+
+### 2026-09-29 夜：原LTFATコードからの中心周波数列の読出し
+
+LTFAT 2.6.0の元の `.m` を変更せず、初期化ファイルと既定引数の上書きを無効にしたOctave 11.1.0で、T1/T2の呼出しを各一回実行した。[保存結果](../../../target/i11-default-grid-readout-20260929/readout-v1.md)は次のとおり。依存コードの所在不足を解消した新しい参照読出しであり、過去のAMT実行環境やMATLABとの同値性を再現したものではない。
+
+| 名前付き参照の呼出し | 本数 | 最低・最高中心周波数 |
+| --- | ---: | --- |
+| T1：`erbspacebw(80,8000,1,[])` | 31 | 約86.938–7819.205 Hz |
+| T2：`erbspacebw(80,8000,1,1000)` | 30 | 約107.652–7469.673 Hz |
+
+両者を共通の31帯域として扱わない。T2の13番目は `1000.0000000000001` Hzであり、1000への置換はしていない。全61値のbinary64と十進表示、shape、関数の解決先、空の既定引数、exit 0を保存した。[統括の読戻し](../../../target/i11-default-grid-readout-20260929/root-readback-v1.json)は保存形式の一致・全本数・有限性・昇順・80–8000 Hz内の配置を確認した。
+
+全演算の丸め証明やMPFR/GMPによる検算は、作者の指摘を受けて過剰な精度追求として中止した。この読出しでは係数・PCM・全帯域DSPを取得せず、既存3プローブの検査を全帯域の成功へ拡張しない。モデル採用、知覚・行動への写像、通常runtime接続は未完のまま残す。
+
+### 2026-09-30：別々の31／30帯域による保存PCM参照
+
+作者のSol 6.1主力・並列継続指示の下で、上記の元コード読出しを入力として[登録](../../../target/i11-grid-reference-20260930/registration.md)を固定した。T1は31帯域のlimit=0適応と20 ms LP、T2は別の30帯域のlimit=10適応と4変調出力を保持する。中心列を共通化せず、T2の1000近傍値も置換していない。source review、係数preflightと統括の保存係数読戻し、独立検算器のsource review後、取得と検算を各一回実行し、どちらもexit 0だった。Astraは起動していない。
+
+[独立検算](../../../target/i11-grid-reference-20260930/reduction/result-v1/reduction.json)は1,612保存ファイルのhash・shape・有限性、8終端配列の4,329,472要素、impulse中間10配列の1,859,584要素を照合した。impulse限定の局所数値比較515記録・2,228,529要素は既登録の同入力部品許容内で、半波整流61記録・249,856要素はbit一致だった。chunk・fork・母状態保持と再開・空呼出し、78受理呼出しの入力とclock、support拒否20件・checkpoint拒否12件の試行内容・理由・完全状態不変も確認した。分母とカテゴリ別の差は[証拠報告](../../../target/i11-grid-reference-20260930/evidence-report.md)に保存した。
+
+独立した数値式の比較はimpulseに限り、残る3固定PCMは参照出力と状態証拠である。検算器はDSPをimport・再実行せず、局所誤差を全段の総合誤差へ拡張しない。拒否時のNone戻り値はproducerのassertionと保存出力の不存在に依存し、独立した戻り値raw記録はない。この参照は音圧校正、原Dau全体の同値性、知覚・資源・通常runtimeの受入ではない。
+
+次に必要なのは、別々の帯域軸から消費者への統合とLog2Space変換・支持域、マスキング価値、変調からaccent・周期・Hazardへの写像を区別した契約である。未来背景PCM欠測時のunknown・新T1不適用、既存資源不合格、I12b終結・固定baseを先にする統合順序は維持する。main sourceの変更・commit・統合・pushは行っていない。
+
+### 2026-09-30：消費者契約の具体化と未採用診断の準備
+
+次の[T1案](../../../target/i11-consumer-design-20260930/t1/proposal.md)と[T2案](../../../target/i11-consumer-design-20260930/t2/proposal.md)を並列で作り、[独立レビュー](../../../target/i11-consumer-design-20260930/review/review.md)の指摘を反映した。実際のT1消費者は23枠の時間候補とscalar費用であり、この接点にLog2Space再格子化は不要だった。T1案は背景あり／既知無音対照の内部表現変化からsigned費用を作る未採用の作者規則候補で、原Dauの検出確率ではない。普通runtimeの未来PCM・候補制御支持は依然不足し、指定PCMの隔離selector診断から通常予測の成立へ拡張しない。
+
+T2は保存Sの全30×4 laneを別々に読み、既存`accent_status`の同一sourceへ渡す未採用の接点診断を準備する。窓・算術順・source pinは通常の可逆調査として統括が固定でき、採用前の作者判断とは分ける。この初回helper診断へ全group・Ledger・period・arrivalの完成を前提にしない。後段のbehavior比較では、同じgate済みAccentをestimatorと別入口のarrivalへ渡す必要がある。helper判定だけでは両経路の変化を証明できない。
+
+T1では新しい許容差を一律に増やさず、固定したbinary64計算順・一回のf32変換・既存費用の算術順に対するbit一致を優先する。初回`forecast=None`はskipのguard自体を無効にするため、非zeroの旧overlap置換や一般のskipは検証対象に含めない。未採用の価値規則、T2のcomponent／channel帰属・group支持、通常runtimeの採用は別に残す。現在は登録と隔離sourceの準備段階で、新しい数値結果はまだない。
+
+その後の[group対応づけの再評価](../../../target/i11-consumer-design-20260930/group-association/proposal.md)は、群単独の波形を前段へ入力した応答と、全体音のT2特徴を既存の観測group帰属で条件付ける特徴を分けた。前者には群PCMと独立状態が必要だが、後者は同じ音源・時計の既存group energy scanとassignmentから調べられる。全体音の応答を群単独の応答と同値にはしない。具体案はnative帯域の代表区間でのmass fraction、4hopの帰属安定、窓内固定重みを使い、共有filter履歴と他groupへの依存を残す。現在の保存Sには対応する実group traceがなく、後者の数値・行動比較は未実施である。通常の隔離診断の選択と、本番の群支持・gate・unknown方針の採用判断を分離する。
+
+### 2026-09-30：保存T2から原関数への接点診断
+
+[登録済みhelper診断](../../../target/i11-t2-helper-mapping-20260930/evidence-report.md)を一回実行し、別担当の検算器も一回、両方exit 0で完了した。保存Sの30×4 laneを独立に扱い、1,920平均・1,800正上昇・1,560原`accent_status`判定、3,482主記録と8件の拒否試行を照合した。局所peak受理153件、threshold以下949件、局所peak外458件だった。符号付き成分をabsへ置換せず、平均の算術順・原関数bytes・支持時計・試行の実exitと不変inputを保持した。数値取得前に終了記録2件を補修した旧sourceとHOLDレビューも保存している。
+
+これは既存関数sourceへの有限接続であり、crateの実Stream・group配線は実行していない。13窓の元baselineと実group対応づけは欠測のまま残り、受理153件を実群accentやperiod／arrivalの成立へ拡張しない。検算器はDSPを再実行せず、拒否後の関数非呼出しはguard sourceと保存戻り値／出力による間接確認である。通常runtime・聴覚・資源採用は未認定のまま、同じ入力から実消費者への後続比較を登録する。
+
+
+### 2026-09-30：指定未来PCMから実T1 selectorへの有限接続
+
+[登録・証拠報告](../../../target/i11-t1-selector-reference-20260930/evidence-report.md)に従い、HEAD `06a4772`の隔離sourceで実`candidate()`を使った一回取得と一回の保存値検算を完了した。両方exit 0。31帯域の名前付きT1、指定背景と既知無音、cut 2048・共通窓[2048,8192)から、44終端配列・8,380,416要素、42母状態保持、1,302帯域energy・42総energy・21 contrast、42候補bindingを検査した。幾何を得た元selector一回を再利用し、後段五回との計六回・三対である。
+
+二つの支持済み極性対のうち一対で実選択が変わった。正感度はoffset 0→1、丸めonset 2048→2253。負感度はoffset 0のまま。unknown背景の一対はbackendのNone・母状態byte一致、新T1不適用、旧trace・planned・resolve clock完全一致だった。`resolve(selected,false)`であり、実発音や音楽的応答遅延を測った結果ではない。[保存検算](../../../target/i11-t1-selector-reference-20260930/reduction-v1/reduction.json)は登録した同演算順のbit一致を確認し、DSPを再実行していない。
+
+必須検証は全テスト1,162成功・0失敗・36ignored、fmt・標準Clippy・全対象check成功。追加の全対象Clippyは既存testの17 lintでexit 101となり、元archiveとの照合と失敗を別保存した。未関連testを修正せず、全suiteを繰り返していない。検算器の登録済みidentity binding補修とmetadata注記補正、旧HOLD・旧sealも保存している。
+
+指定未来PCMの有限介入であり、通常forecast支持はない。`forecast=None`は旧overlapとskipを無効にするため、非zero旧overlap置換・一般skip・原Dau検出校正・任意PCM全鎖独立数値同値・知覚・資源・通常runtime採用を閉じない。14/16と13/16の既存資源不合格、I12b終結・固定baseからの統合順序は維持する。並列のT2実group／period／arrival診断はsource準備中で、数値結果はまだない。
+
+
+### 2026-09-30：同時計PCMから実T2 group・period・arrivalへの有限接続
+
+[登録・証拠報告](../../../target/i11-t2-group-consumer-reference-20260930/evidence-report.md)に沿い、同じ184,320 sampleのf32 PCMを実default NSGTとexact f64拡張の30帯域T2へ入力した。隔離HEAD sourceと別所有の検算器を独立レビュー後、全suite 1,160成功・0失敗・37ignored、fmt・標準Clippy・全対象check成功。取得・保存値検算は各一回、exit 0。1,822保存ファイル・583,277,545 bytes、22,118,400終端値、361 T2状態、360 NSGT（31cold／329complete）、1,800実Recurrence、1,440 frontend一致、12構造negativeを照合した。
+
+各armで実ownerは44 full Handle・2,210 owner-hop、ownerなし310 slot-hopは別分母。各componentの条件支持9窓、unknown 2,201窓は、対応する支持済み帯域なし2,157と帰属変更44だった。支持9窓のBP10で原関数Admittedが1件あるが、全9窓に元Accentはなく、試作の実配送は各arm 0。baseline配送63件は未採用のunknown抑止規則によって各armで全て削除された。四componentは同じ場面・帰属traceを共有し、四つの独立した場面の成功とは数えない。
+
+同一filtered Optionを実estimatorとarrivalへ渡した結果、各armでbaselineとのpair／peak／probability差が385 owner-hop、ledger／forecast存在／支持／reset差が1,197 owner-hopに届いた。これらは状態継続のhop分母で、独立event数ではない。raw known coverageは全armで維持され、観測欠測とevent削除は区別されている。支持unionだけ変わった配送は0。保存検算はDSP・NSGTを再実行していない。
+
+source固定前の通常補修と、主取得前のexecutorファイル名確認exit 1／数値attempt 0も別保存した。取得結果を見たgain・閾値・帰属条件・窓の変更や救済再取得はない。この結果は、群条件付き全体音の局所受理1件と、unknown抑止の実consumer因果差であり、新T2 eventの自然配送、群単独の応答・独立履歴、原Dau校正、知覚・資源・通常runtime・本番規則採用を閉じない。I12b終結・固定baseの欠測、14/16・13/16の既存資源不合格、既存joinの二反復positive／110unknown、統合順序を維持する。
+
+
+### 2026-09-30：保存結果からの費用・帰属・event時計の分解
+
+[保存T1分解](../../../target/i11-consumer-outcome-attribution-20260930/t1/report.md)は全21候補・651帯域energy対を照合した。offset 0→1の新項差0.0338863730が変位費用差0.00249999994を上回り、実最終費用でoffset 1が0.0313863754有利だった。観測marginを新許容や採用条件へ変換しない。MU背景・既知無音対照の差と、物理校正・通常未来PCMの成立は別である。
+
+[保存T2分解](../../../target/i11-consumer-outcome-attribution-20260930/t2/report.md)はnative 10,800 channel-hopを残差優勢8,340・実owner支持1,530・cold 930へ分けた。empty-anchor 2,157 owner-hopのうち全channel残差1,868、他ownerのchannelあり289。元Accent 63件は全てempty-anchorで、帰属変更44件は全てchannel集合の先行branch。唯一BP10局所受理と最寄り同owner元Accentはevent-end／availability／cutで各4,608 sample、9 hop、0.096秒の差だった。窓をずらす再ラベル・再配送・救済取得は行わず、異なる分母と未知支持の原因を保存した。二担当とも取得／DSP／gate／consumer再実行0、既存source・raw hash不変。

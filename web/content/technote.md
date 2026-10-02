@@ -373,7 +373,7 @@ Sound generation is dispatched through the `AnyBackend` enum:
 *   **`Oscillator(OscillatorBank)`**: A struct-of-arrays layout for cache-efficient additive synthesis. Handles `Sine` and `Harmonic` bodies. Pitch refresh occurs every 64 samples; motion/vibrato refresh every 8 samples.
 *   **`Resonator(ModalEngine)`**: A Damped Modified Coupled Form resonator bank. Handles `Modal` bodies. Mode coefficients are rebuilt every 64 samples on pitch change.
 
-The `HarmonicBody` allows for the evolution of timbre. An agent with high stiffness might find survival difficult in a purely harmonic landscape, forcing it to seek out unique "spectral niches" where its inharmonic partials do not clash with the population.
+Body parameters change the emitted spectrum and therefore the shared Landscape. Current pitch, metabolism, and respawn evaluations sample that terrain at a fundamental frequency; they do not integrate the evaluating body's upper partials. A stiff body can affect the terrain through its sound, but this implementation does not directly charge it for collisions across its entire spectrum. Timbre inheritance is not implemented.
 
 ### 5.1.2 The Core Stack
 
@@ -432,7 +432,7 @@ This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Agent
 
 ## 5.3 Pitch Retargeting Logic
 
-Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target. Candidate evaluation reads the habituation-eroded score; exact leave-self-out recomputes the raw self-subtracted score and then applies the same local erosion before comparison.
+Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target. Candidate evaluation reads the habituation-eroded score at the candidate fundamental. `ExactScan` recomputes a raw score after clearing the current fundamental bin, then applies the same local erosion before comparison.
 
 ### 5.3.1 Pitch Application Modes
 
@@ -447,10 +447,12 @@ For `seek_consonance()` voices the mode is resolved automatically from the phona
 
 The crowding system prevents agents from collapsing to identical frequencies. Both crowding (mutual repulsion) and pitch adaptation read one shared occupancy field: a Gaussian penalty centered on each occupied fundamental (raw f0), with width set by `crowding_sigma_cents` (default 60) and strength by `crowding_strength`. A pairwise split bias further prevents frequency degeneracy. No octave-equivalence (chroma) penalty is applied; octave relations act only through the consonance potential.
 
-When evaluating landscape fitness, an agent can subtract its own spectral contribution via leave-self-out analysis. Two modes are supported:
+Pitch evaluation supports two leave-self-out approximations:
 
-*   **`ApproxHarmonics`**: Fast approximation using ~24 cent Gaussian subtraction. When the body defines explicit mode ratios, the voice subtracts its *own* partial set; bodies without ratios fall back to the integer harmonic series.
-*   **`ExactScan`**: Full ERB grid scan for precise spectral subtraction.
+*   **`ApproxHarmonics`**: Subtracts positive terrain-score contributions around assumed partial positions, using an exponential distance decay with a 24-cent scale and per-index weights `1/n`. Explicit body ratios determine the positions when available; otherwise an integer harmonic series is assumed. The weights do not measure the rendered partial amplitudes.
+*   **`ExactScan`**: Clears one bin at the current fundamental in the processed subjective-intensity density, then recomputes H, R, and C. Upper partials remain, and another source's contribution in the cleared bin is removed too. The name refers to the historical mode; it does not provide exact source separation. If that bin has no positive finite density, evaluation falls back to `ApproxHarmonics`.
+
+Neither mode reconstructs the audio of all other sources before spectral analysis. Both evaluate the resulting terrain at the candidate fundamental rather than averaging it over the candidate body's spectrum.
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 

@@ -1,0 +1,8 @@
+[Unit]
+Description=Memory budget for terminal and guarded computation jobs
+
+[Slice]
+MemoryAccounting=yes
+MemoryHigh=12G
+MemoryMax=16G
+MemorySwapMax=0

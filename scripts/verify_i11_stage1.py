@@ -189,7 +189,7 @@ def verify(decisions, footprints, contexts):
             f.check("5.3 body identity is current", identity == current, where)
         if record is not None:
             f.check("5.3 superseded record unused", not record["superseded"], where)
-            if identity != current:
+            if identity != current and source != "proxy(setting)":
                 f.check("5.3 stale identity falls back", source == "proxy(stale)", where)
 
         # §5.1 every candidate and every term.

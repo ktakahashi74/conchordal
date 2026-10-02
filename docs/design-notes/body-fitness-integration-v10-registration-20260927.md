@@ -1,0 +1,11 @@
+# 身体評価の統合第十版: 取得前登録
+
+2026-09-27。隔離した統合第九版の封印sourceを基準に、候補密度cache、current pitchと候補密度を分離する限定照合、PeakBiased出生の全bin身体評価と非ゼロ局所探索を取り込む。いずれも試験専用。通常runtimeの明示ON観測は第九版の実装を保持する。
+
+候補密度cacheは各sourceにつき256 entryかつ密度entryの確保量1 MiB以下。source・身体・Recipe・analysis構成・epoch・観測窓の同一性を照合し、同じcandidate pitchの密度だけを再利用する。環境scoreとhabituationはcacheしない。cacheの確保量上限は、analysis templateやReady表を含むprocess全体のメモリ上限ではない。専有live測定は別登録で固定440 Hzを対象にし、glideの受理検査とは区別する。
+
+第九版からの各差分の由来とhashを保存する。src・tests・Cargoファイルを封印し、全cargo testをbacktrace・全出力と同一shellの終了値付きで実行する。新規cache、glide・実世代変更、PeakBiased全bin評価の検査名を照合する。fmt、標準Clippy、全target check、release buildを実行する。all-targets Clippyは追加しない。
+
+通常release binaryが第九版と同じSHAなら、その固定4条件の比較結果へ対応づける。異なる場合は第九版と同じ入力・第六版の同じ比較器で、I4 bounded Sineと両ONのSine/Harmonic/Modalを再取得する。比較対象はWAV byte、主要記録、非診断temporal、共通候補、CDF、実消費集計。検査結果を見て良い試行だけを選ばない。
+
+初回spawn、parentありPeakBiased、通常runtimeでの身体評価消費、実device資源、長期選択、音色遺伝、作者採用は未完として残す。元のModal参照0、I11資源2条件、部分記憶の厳格OFF比較の未達を新しい合格で置き換えない。

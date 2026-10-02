@@ -165,6 +165,13 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 - The core perception model is **Landscape**. It ingests audio, transforms it to Log2-frequency space via NSGT, and computes two potentials:
   1. **Roughness (R)**: Amplitude fluctuations within critical bands (dissonance).
   2. **Harmonicity (H)**: Periodicity/Template matching (consonance/fusion).
+- Sound bodies (synthesis methods) are replaceable modules; the boundary is in
+  `docs/design-notes/timbre.md` ("Core and body modules"). Anything the ecology
+  evaluates is computed by the core from radiated sound. A body's self-report (ratios,
+  spectral or energy forecasts) is a fast path only and must match the body's own
+  render in the conformance tests. New ecology code must not branch on body kind;
+  existing branches are migrated in Phase 3 of
+  `docs/superpowers/plans/2026-09-29-timbre-synthesis.md`.
 
 
 
@@ -357,6 +364,14 @@ Scenarios should be approachable for newcomers while remaining expressive for ad
 - Complex behaviors emerge from composition, not configuration bloat
 - The full parameter space remains accessible for those who need it
 
+The composer sets three things: the modeled listener's enculturation layer (valuation
+such as objective sign and roughness aversion; priors such as meter stability and tempo
+basin), the initial conditions of what the ecology evolves (founder bodies and
+placements), and the macro form. Composer-facing controls never alter the sensation
+model (front end, `roughness01`, `harmonicity01`), the listener's in-performance state,
+or traits the ecology has taken over. See `docs/design-notes/technote-ledger.md`
+§9.3.56.
+
 Dedicated beat-carrier Voices or temporal scaffolds may be used in samples only
 when explicit synchronization is essential to the demonstration or assay.
 Do not add them as general musical support or merely to make synchronization
@@ -395,12 +410,51 @@ This restriction concerns dedicated synchronization support, not pitch-only
 - During the alpha phase, do not preserve backward compatibility by default.
 - Prefer clean architecture and correct behavior over compatibility shims, aliases, or migration layers.
 
+## Multi-agent Orchestration
+- Concurrent workstreams (I11 with T1/T2, body-aware fitness, the timbre plan) are run by one
+  orchestrating session that dispatches subagents; it keeps its state in
+  `target/orchestration-board.md` (machine-local, untracked) and escalates only author
+  decisions.
+- Model split for subagents (author instruction, 2026-10-02): `gpt-6.1-sol` is the
+  primary model for both judgment and execution. Use reasoning effort `xhigh` for design,
+  contracts, registrations, interpretation and reviews; use `high` for fully specified
+  acquisitions, hash/provenance checks, tests, Clippy, fmt, generated artifacts, prescribed
+  edits, logs and cross-references. Use `gpt-6-astra` with effort `xhigh` only when a concrete
+  unresolved design or review problem needs it; record that reason on the orchestration
+  board. Do not dispatch all judgment work to Astra automatically. Set `model` and
+  `reasoning_effort` explicitly and limit `fork_turns` so the override applies. An agent
+  encountering an unspecified author choice returns it to the orchestrator; changing
+  models does not expand the authorized scope.
+- One unit per subagent, with its worktree, `CARGO_TARGET_DIR`, sources to read, exit
+  criteria and report format stated.
+- Independent units run concurrently by default. Serialize only when two units change the
+  same files, when one needs the other's output, while a pass/fail timing measurement holds
+  the exclusive window (design and document units continue meanwhile), and for integration
+  into main. At most four subagents at once, of which at most two build or test with cargo.
+
 ## Git Operation Policy
 - Never create a commit unless the user explicitly asks for a commit in that turn.
 - Before creating any commit, always run `cargo clippy -- -D warnings` and confirm it passes.
 - If a commit is requested, commit only the files relevant to the requested task.
+- While several sessions share the main checkout, commit from a worktree branch, never in
+  the shared checkout: the pre-commit hook stages every tracked change there.
+- Timing measurements used for pass/fail run in an exclusive window:
+  `scripts/timing_lock.sh acquire <owner> <minutes>` before, `release <owner>` after. While
+  another owner holds the lock, run no cargo, tests or renders, even in another worktree. A
+  lock past its expected end is reported to the user, not removed.
 - Before every push, integrate the remote first with `git pull --rebase --autostash`.
   Two machines and several agents push to `main`.
 - If two appends to a record file (e.g. `docs/roadmap/**`) conflict, keep both entries,
   upstream first. Edits to the same paragraph and conflicts in code need a real merge;
   stop and report when the intent of either side is unclear.
+
+## Host Memory Safety (blanche)
+- The 2026-10-01 global Ptyxis memory policy and `run-guarded` deployment were withdrawn
+  after systemd-oomd killed two terminal scopes. Do not reinstall those templates.
+- Constrain explicitly owned computation jobs, not shared terminals or editor processes.
+  Existing scientific registrations retain their own limits and entry gates; do not
+  restart or move a live acquisition to change its operational limits.
+- Check systemd-oomd logs and monitored memory pressure as well as kernel OOM counters.
+  `OOMPolicy=continue` does not protect a cgroup from systemd-oomd killing it.
+- Save PID, command, cwd, actual limits, true exit, memory peak and the source of any kill.
+  Do not retry a scientific acquisition automatically. See `docs/operations/oom-prevention.md`.

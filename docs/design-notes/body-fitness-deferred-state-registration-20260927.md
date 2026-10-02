@@ -1,0 +1,11 @@
+# 提案延期中の実状態変化: 取得前登録
+
+2026-09-27。統合第九版の試験専用延期経路を対象とする。これまでの固定440 Hz試験と、表の期待値だけを書き換える負例を補い、実Voiceの状態進行とCaptureの世代更新を通す。
+
+48 kHz、512 sample/hop、seed 1、Harmonic 440 Hz。一つのVoiceと同じ初期条件のfallback対照を用意し、8 hopの間、提案だけを延期してdecide/commitを実dtで進める。事前に完全な候補表を保存し、解除時に古い表を実Voiceへ渡す。表の数値は決定的な有限fixtureで、身体密度の数値精度をこの検査では主張しない。無変化の正例で同じ表が実際に消費されることを先に確認する。
+
+負例は三つ。第一に、target 660 Hz・glide時定数0.2秒へ設定したVoiceを440 Hzから進め、target/RNGを保ったままcurrent pitchが変わる。第二に、延期途中にunisonを1から2へ更新し、実Captureがbody generationを増やす。第三に、brightnessを変更し、Captureのbody generationは不変でもRecipeが変わる。期待する拒否はそれぞれCurrentPitchChanged、BodyGenerationMismatch、RecipeMismatch。期待値だけを改変せず、公開されたVoice更新と実Captureのtokenから現在contextを作る。
+
+各負例では古い表のscore利用0と、表を持たないfallback対照とのtarget・salience・adaptation・RNG・commit後pitch一致を要求する。延期時間を二重計上しないことも維持する。拒否後の現在状態から作り直した完全表を次の即時gateで渡し、受理回復を確認する。この回復はofflineの即時準備であり、動くpitchに非同期処理が追随できた証拠とはしない。
+
+source変更は統合worktreeの `src/runtime/body_fitness_f3e_tests.rs` の検査追加のみ。対象検査の初回ログと終了値を保存し、最終全suiteは次の統合版で実行する。routeの実行中変更、source id再利用、通常runtimeの行動接続はこの検査では扱わない。

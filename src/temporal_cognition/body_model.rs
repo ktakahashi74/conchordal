@@ -187,7 +187,7 @@ impl Shared {
         }) {
             return;
         }
-        let descriptors = context.body_descriptors().map(|d| d.filter(&eligible));
+        let descriptors = context.body_descriptors().map(|d| d.filter(eligible));
         let candidates = descriptors.map(|d| {
             d.map_or(
                 Descriptor {

@@ -199,16 +199,12 @@ impl RtNsgtKernelLog2 {
         for state in &mut self.bands_state {
             state.smooth = 0.0;
         }
-        for x in &mut self.ring {
-            *x = 0.0;
-        }
+        self.ring.fill(0.0);
         self.write_pos = 0;
         for z in &mut self.fft_buf {
             *z = Complex32::new(0.0, 0.0);
         }
-        for y in &mut self.out_env {
-            *y = 0.0;
-        }
+        self.out_env.fill(0.0);
     }
 
     // ---- internal helpers ----

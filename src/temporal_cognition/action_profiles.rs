@@ -534,7 +534,7 @@ impl Profiles {
             });
         }
         let mut frames = Vec::with_capacity(trajectories * FRAMES);
-        for row in bytes[16 + header_len..].chunks_exact(96) {
+        for row in bytes[16 + header_len..].as_chunks::<96>().0 {
             let mask = u32::from_le_bytes(row[..4].try_into().unwrap());
             ensure!(
                 mask < 2048 && row[4..8] == [0; 4],

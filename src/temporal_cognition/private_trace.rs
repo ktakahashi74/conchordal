@@ -289,24 +289,46 @@ pub(crate) fn timing(
             retained[bin] += anchor.weight;
             continue;
         }
-        let mut inside = [0.; BINS];
-        let mut kept = [0.; BINS];
+        let mut inside = [0.; COORDINATES];
+        let mut kept = [0.; COORDINATES];
         let cycles = if periodic {
             (low / anchor.period).floor() as i64..=(high / anchor.period).floor() as i64
         } else {
             0..=0
         };
         for cycle in cycles {
-            for bin in 0..BINS {
-                let left = if periodic {
-                    (cycle as f64 + bin as f64 / BINS as f64) * anchor.period
+            for region in 0..BINS + if periodic { 0 } else { 2 } {
+                let bin = region.min(BINS);
+                let (left, right) = if region < BINS {
+                    let left = if periodic {
+                        (cycle as f64 + region as f64 / BINS as f64) * anchor.period
+                    } else {
+                        4. * anchor.period * region as f64 / BINS as f64
+                    };
+                    (
+                        left,
+                        left + anchor.period / BINS as f64 * if periodic { 1. } else { 4. },
+                    )
+                } else if region == BINS {
+                    if low >= 0. {
+                        continue;
+                    }
+                    (f64::NEG_INFINITY, 0.)
                 } else {
-                    4. * anchor.period * bin as f64 / BINS as f64
+                    if high <= 4. * anchor.period {
+                        continue;
+                    }
+                    (4. * anchor.period, f64::INFINITY)
                 };
-                let right = left + anchor.period / BINS as f64 * if periodic { 1. } else { 4. };
-                inside[bin] += (difference_cdf(right, interval, [a, b])
-                    - difference_cdf(left, interval, [a, b]))
-                .max(0.);
+                // Integrate outside support directly; complements invent tiny overflow mass.
+                let probability = if region < BINS {
+                    difference_cdf(right, interval, [a, b]) - difference_cdf(left, interval, [a, b])
+                } else if region == BINS {
+                    difference_cdf(right, interval, [a, b])
+                } else {
+                    difference_cdf(-left, [-end, -origin], [-b, -a])
+                };
+                inside[bin] += probability.max(0.);
                 if width == 0. {
                     continue;
                 }
@@ -358,25 +380,9 @@ pub(crate) fn timing(
                 }
             }
         }
-        for bin in 0..BINS {
+        for bin in 0..COORDINATES {
             support[bin] += anchor.weight * inside[bin];
             retained[bin] += anchor.weight * if width == 0. { inside[bin] } else { kept[bin] };
-        }
-        if !periodic {
-            support[BINS] += anchor.weight * (1. - inside.iter().sum::<f64>()).max(0.);
-            let total = if width == 0. {
-                1.
-            } else {
-                -(-width / tau).exp_m1() * tau / width
-            };
-            retained[BINS] += anchor.weight
-                * (total
-                    - if width == 0. {
-                        inside.iter().sum::<f64>()
-                    } else {
-                        kept.iter().sum::<f64>()
-                    })
-                .max(0.);
         }
     }
     (support, retained, coverage)

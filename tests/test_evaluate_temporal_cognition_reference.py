@@ -535,6 +535,16 @@ class PrivateCreditAndTimingTests(unittest.TestCase):
 
 
 class RetainedTimingTests(unittest.TestCase):
+    def test_fully_contained_support_does_not_create_rounding_overflow(self):
+        anchors = [{"weight": 0.7, "interval": (4.4, 4.5), "period_sec": 1.75},
+                   {"weight": 0.2, "interval": (4.0, 4.050000000000001), "period_sec": 1.75},
+                   {"weight": 0.1, "interval": None, "period_sec": 1.75}]
+        for result in (ref.integrate_timing_bins((4.86, 4.9), anchors, False),
+                       ref.integrate_retained_timing_bins((4.86, 4.9), anchors, False, 20)):
+            self.assertEqual(result["bins"][-1], 0.0)
+            self.assertAlmostEqual(result["unsupported"], 0.1)
+            self.assertGreater(sum(result["bins"][:-1]), 0.0)
+
     def test_full_cycle_matches_exponential_integrals_not_midpoint_time(self):
         anchors = [{"weight": 1, "interval": (0, 0), "period_sec": 1}]
         result = ref.integrate_retained_timing_bins((0, 1), anchors, True, 2)

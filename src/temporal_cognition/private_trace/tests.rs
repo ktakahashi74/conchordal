@@ -155,6 +155,104 @@ fn timing_support_and_retained_moments_match_independent_python_oracle() {
 }
 
 #[test]
+fn linear_overflow_has_exact_empty_support_and_keeps_both_real_tails() {
+    let mut reference = Reference {
+        key: Key {
+            epoch: 1,
+            episode: 4,
+            generation: 1,
+            family: Family::Nonperiodic,
+        },
+        weight: 0.1,
+        anchors: [Anchor::default(); 7],
+    };
+    reference.anchors[0] = Anchor {
+        interval: Some([4.4, 4.5]),
+        period: 1.75,
+        weight: 0.7,
+        ..Anchor::default()
+    };
+    reference.anchors[1] = Anchor {
+        interval: Some([4., 4.050000000000001]),
+        period: 1.75,
+        weight: 0.2,
+        ..Anchor::default()
+    };
+    let (support, retained, coverage) = timing([4.86, 4.9], &reference, parameters().tau);
+    close(coverage, 0.9);
+    assert_eq!(support[BINS], 0.);
+    assert_eq!(retained[BINS], 0.);
+    assert!(retained[..BINS].iter().sum::<f64>() > 0.);
+    let mut bank = Bank::new(1, parameters(), 16).unwrap();
+    bank.observe(Outcome {
+        id: 24,
+        head: Head::Release,
+        interval: Some([4.86, 4.9]),
+        references: &[reference],
+        observed_fraction: 0.8,
+        retained: &[reference.key],
+        confirmed: true,
+    })
+    .unwrap();
+    assert_eq!(
+        bank.traces[0].mass[Head::Release as usize][BINS],
+        f64::NEG_INFINITY
+    );
+    assert!(bank.probabilities(reference.key, Head::Onset).is_none());
+    assert!(bank.probabilities(reference.key, Head::Release).is_some());
+
+    reference.anchors = [Anchor::default(); 7];
+    reference.anchors[0].interval = Some([0., 0.]);
+    reference.anchors[0].weight = 1.;
+    let tau = parameters().tau;
+    let half_tail = -(-0.25 / tau).exp_m1() * tau / 0.5;
+    for (interval, expected_support, expected_retained) in [
+        ([0., 4.], 0., 0.),
+        ([-0.25, 0.25], 0.5, half_tail * (-0.25 / tau).exp()),
+        ([3.75, 4.25], 0.5, half_tail),
+        (
+            [-0.5, 4.5],
+            0.2,
+            -(-0.5 / tau).exp_m1() * tau / 5. * (1. + (-4.5 / tau).exp()),
+        ),
+    ] {
+        let (support, retained, coverage) = timing(interval, &reference, tau);
+        assert_eq!(coverage, 1.);
+        close(support[BINS], expected_support);
+        close(retained[BINS], expected_retained);
+        if expected_support == 0. {
+            assert_eq!(support[BINS], 0.);
+            assert_eq!(retained[BINS], 0.);
+        } else {
+            assert!(support[BINS] > 0. && retained[BINS] > 0.);
+        }
+    }
+    let upper = f64::from_bits(4.0_f64.to_bits() + 1);
+    let (support, retained, _) = timing([3.5, upper], &reference, tau);
+    assert!(support[BINS] > 0. && retained[BINS] > 0.);
+    close(support[BINS], (upper - 4.) / (upper - 3.5));
+    close(
+        retained[BINS],
+        -(-(upper - 4.) / tau).exp_m1() * tau / (upper - 3.5),
+    );
+
+    // Independent closed forms exercise affine support on both sides.
+    reference.anchors[0].interval = Some([0., 1.]);
+    let (support, retained, _) = timing([0., 1.], &reference, 1.);
+    close(support[BINS], 0.5);
+    close(retained[BINS], 1. - 2. / std::f64::consts::E);
+    let (support, retained, _) = timing([4., 5.], &reference, 1.);
+    close(support[BINS], 0.5);
+    close(retained[BINS], 1. / std::f64::consts::E);
+
+    reference.anchors[0].interval = None;
+    let (support, retained, coverage) = timing([4.86, 4.9], &reference, tau);
+    assert_eq!(coverage, 0.);
+    assert_eq!(support, [0.; COORDINATES]);
+    assert_eq!(retained, [0.; COORDINATES]);
+}
+
+#[test]
 fn stateful_filter_matches_all_native_oracle_transitions_without_growing_storage() {
     let fixture = fixture();
     let mut count = 0;

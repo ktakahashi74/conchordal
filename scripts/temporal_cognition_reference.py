@@ -481,7 +481,9 @@ def integrate_timing_bins(outcome_interval, anchor_alternatives, periodic, bins=
                                - uniform_difference_cdf(left, outcome_interval, anchor))
                 inside.append(max(0.0, probability))
                 masses[index] += weight * max(0.0, probability)
-            masses[-1] += weight * max(0.0, 1 - math.fsum(inside))
+            # Fully contained support has no overflow, including rounding residuals.
+            if low < 0 or high > 4 * period:
+                masses[-1] += weight * max(0.0, 1 - math.fsum(inside))
     return {"bins": masses, "unsupported": max(0.0, 1 - observed_anchor_weight)}
 
 
@@ -558,7 +560,7 @@ def integrate_retained_timing_bins(outcome_interval, anchor_alternatives, period
                     inside[index] += max(0.0, value)
         for index, mass in enumerate(inside):
             masses[index] += weight * mass
-        if not periodic:
+        if not periodic and (origin - anchor[1] < 0 or end - anchor[0] > 4 * period):
             total = -math.expm1(-width / tau_sec) * tau_sec / width
             masses[-1] += weight * max(0.0, total - math.fsum(inside))
     return {"bins": masses, "unsupported": support["unsupported"]}

@@ -151,9 +151,13 @@ it using `a[n+1] = r*a[n] + (1-r)*drive[n] + kick[n]`, with
 `r = 10^(-3/(sample_rate*T60))`, before radiating that sample. The admitted drive
 and kick ranges are finite and recorded in the body capability domain; this law
 does not license arbitrary overflowing inputs. Thus the steady response depends
-on drive level rather than the number of samples per second. This is an initial
-non-heritable body setting, not material physics or an audition result; the author
-must approve it before implementation. Harmonic's existing excitation-dependent
+on drive level rather than the number of samples per second. The author has
+adopted a Sine/Harmonic amplitude T60 of 0.5 s as a prototype value and the
+policy of freezing motion offset and spectral balance at effective Off. The T60
+remains an initial non-heritable body setting, not material physics or final
+listening acceptance. The recurrence, drive/kick domain, module rates and noise
+transfer, random generator, resource capacities and full A4 adoption remain
+unadopted unless separately recorded. Harmonic's existing excitation-dependent
 spectral damping remains a body response, with its existing floor applying to
 relative spectral balance, not an indefinitely audible carrier amplitude.
 The proposed 0.5 s T60 implies an amplitude time constant of about 72 ms;
@@ -183,9 +187,11 @@ While the Voice lives, this measured cost is charged to its source generation.
 After death, the tail's acoustic cost remains recorded against the retired source
 generation, but no living parent's or child's energy is debited. The tail still
 changes the habitat and consumes renderer resources. Presentation-only processing
-cannot reduce habitat cost. This accounting choice requires author approval;
-charging a descendant or reserving the full tail cost before death is a different
-policy and cannot be introduced as an implementation detail.
+cannot reduce habitat cost. Habitat cost attribution is already adopted: charge
+the living owning Voice; record a dead tail against its retired source generation
+without transferring cost to a parent or child. The conversion coefficient,
+renderer and capture budgets and capacities remain unapproved. Charging a
+descendant or reserving the full tail cost before death is a separate amendment.
 A pre-admission forecast may reserve a budget; it is identified as predicted and
 does not overwrite the render-derived observation.
 
@@ -262,8 +268,10 @@ the frozen values are those reached at its endpoint; Off adds no further
 coefficient step. The tail may retain a detuned frequency until disposal.
 Alternatives are immediate return to nominal/free coefficients (a frequency or
 spectral step), or a separately timed coefficient ramp (continued deterministic
-tail evolution requiring a registered duration). These remain author choices,
-not three interchangeable implementations. Test frequency/phase, balance and
+tail evolution requiring a registered duration). Effective-Off coefficient freeze
+is already adopted. Immediate reset or a post-Off coefficient-return ramp would
+amend that choice and require an explicit decision. The concrete source/Tone
+random generator and supported rate law remain unadopted. Test frequency/phase, balance and
 free decay immediately before/after Off, including motion extrema, zero drive
 and Harmonic damping. The external clock may continue for other Tones without
 perturbing this closed state.

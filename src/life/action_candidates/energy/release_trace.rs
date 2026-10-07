@@ -1,8 +1,9 @@
 //! Per-Tone terminal-time proxies preserve the event unit used by release learning.
 
-use super::{Body, Record};
+use super::Record;
+use crate::life::energy_window::Body;
 use crate::life::participation_trace::{Fit, Frozen, Origin};
-use crate::life::self_prediction::ToneEnergy;
+use crate::life::tone_energy::ToneEnergy;
 use crate::temporal_cognition::private_trace::Head;
 
 #[derive(Debug, serde::Serialize)]
@@ -152,7 +153,7 @@ mod tests {
     use super::super::{ScheduledRequest, evaluate_scheduled, tests::tone};
     use super::*;
     use crate::life::action_candidates::Class;
-    use crate::life::self_prediction::ScheduledRelease;
+    use crate::life::tone_energy::ScheduledRelease;
 
     #[test]
     fn multiple_tone_ends_remain_distinct_and_gap_removes_only_queued_events() {

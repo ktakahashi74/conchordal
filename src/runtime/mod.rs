@@ -1564,7 +1564,7 @@ struct WorkerState {
     #[cfg(test)]
     offline_body_probe: Option<OfflineBodyProbe>,
     body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
-    footprint_worker: Option<crate::life::action_candidates::footprint::Worker>,
+    footprint_worker: Option<crate::life::onset_footprint::Worker>,
     temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pop: Community,
     conductor: Conductor,
@@ -1693,7 +1693,7 @@ impl WorkerState {
             phonation_batches_buf: Vec::new(),
             body_snapshot: None,
             footprint_worker: cfg.onset_comparison.map(|_| {
-                let mut worker = crate::life::action_candidates::footprint::Worker::new();
+                let mut worker = crate::life::onset_footprint::Worker::new();
                 if cfg.deterministic_footprints {
                     worker.deliver_footprints_deterministically();
                 }
@@ -2605,11 +2605,8 @@ fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
         else {
             continue;
         };
-        let identity = crate::life::action_candidates::footprint::Identity::new(
-            voice.id(),
-            body_generation,
-            &recipe,
-        );
+        let identity =
+            crate::life::onset_footprint::Identity::new(voice.id(), body_generation, &recipe);
         let resent = voice
             .phonation_engine
             .footprint_hop(identity, now, &recipe, |request| {
@@ -2625,7 +2622,7 @@ fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
 /// A reply the full queue dropped releases the request, and the Voice resends it next hop.
 fn route_body_footprints(
     voices: &mut [crate::life::voice::Voice],
-    worker: &mut crate::life::action_candidates::footprint::Worker,
+    worker: &mut crate::life::onset_footprint::Worker,
     reporter: &mut Option<JsonlReporter>,
     now: Tick,
 ) {

@@ -9,8 +9,7 @@ const CAPACITY: usize = 64;
 mod descriptor;
 pub use descriptor::{DescriptorOutcome, DescriptorStats};
 mod energy;
-mod projection;
-pub(crate) use projection::{CoherentWindow, ToneEnergy};
+use super::tone_energy::{ScheduledRelease, ToneEnergy};
 mod ratios;
 pub(crate) use energy::WINDOWS as ENERGY_WINDOWS;
 pub use energy::{EnergyForecast, EnergyStats, RetainedEnergy};
@@ -31,12 +30,6 @@ pub(crate) struct Input {
     pub coherent_energy: [[Option<f64>; ENERGY_WINDOWS]; 2],
     pub descriptor_target_end: u64,
     pub descriptor_slot: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
-pub struct ScheduledRelease {
-    pub apply_at_sample: u64,
-    pub off_sample: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]

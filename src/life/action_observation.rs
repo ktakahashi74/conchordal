@@ -212,7 +212,7 @@ impl Observer {
             Item = Option<(
                 &'a super::sound::Tone,
                 crate::scenario::control::Routing,
-                Option<super::self_prediction::ScheduledRelease>,
+                Option<super::tone_energy::ScheduledRelease>,
                 super::sound::control_forecast::ControlForecast,
             )>,
         >,
@@ -224,8 +224,8 @@ impl Observer {
         {
             let start = pending.outcome.scheduled_action_sample.unwrap();
             let width = pending.outcome.window_end_sample.unwrap() - start;
-            let mut coherent = [[super::self_prediction::CoherentWindow::new(); 16]; 2];
-            let command = super::self_prediction::ToneEnergy {
+            let mut coherent = [[super::tone_energy::CoherentWindow::new(); 16]; 2];
+            let command = super::tone_energy::ToneEnergy {
                 amplitude: input.amplitude,
                 envelope: input.envelope,
                 control: input.control,
@@ -263,7 +263,7 @@ impl Observer {
                     continue;
                 };
                 let (_, amplitude, envelope) = tone.prediction_parameters(None);
-                let projected = super::self_prediction::ToneEnergy {
+                let projected = super::tone_energy::ToneEnergy {
                     amplitude,
                     envelope,
                     control: Some(control),

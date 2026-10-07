@@ -4,7 +4,6 @@
 use crate::core::timebase::Tick;
 
 pub(crate) mod energy;
-pub(crate) mod footprint;
 pub(crate) mod live;
 
 /// Facts passed to the phonation engine, not permission for a future candidate.

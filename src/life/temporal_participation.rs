@@ -2,7 +2,7 @@
 
 use crate::core::temporal_expectation::{OwnSoundHistory, TemporalForecast};
 use crate::core::temporal_history::AuditoryHistorySnapshot;
-use crate::life::action_candidates::footprint;
+use crate::life::onset_footprint as footprint;
 use crate::life::sound::ToneAdsr;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::collections::VecDeque;
@@ -1340,7 +1340,7 @@ mod tests {
 
     #[test]
     fn a_refused_request_is_resent_and_its_record_arrives_at_the_draining_hop() {
-        use crate::life::action_candidates::footprint::Worker;
+        use crate::life::onset_footprint::Worker;
         let recipe = bounded_recipe(220.0);
         let identity = footprint::Identity::new(7, 4, &recipe);
         let mut tracker = FootprintTracker::default();

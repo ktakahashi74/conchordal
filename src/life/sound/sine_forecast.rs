@@ -41,8 +41,8 @@ impl SineForecast {
 mod tests {
     use crate::core::{modulation::NeuralRhythms, timebase::Timebase};
     use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
-    use crate::life::self_prediction::ToneEnergy;
     use crate::life::sound::{RenderModulatorSpec, Tone, ToneAdsr};
+    use crate::life::tone_energy::ToneEnergy;
 
     #[test]
     fn amplitude_smoothing_forecast_tracks_the_actual_tone_waveform() {

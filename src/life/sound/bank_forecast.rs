@@ -167,8 +167,8 @@ pub(crate) fn struck_state([r, e]: [f32; 2], [b1, b2]: [f32; 2], impulse: f32) -
 mod tests {
     use crate::core::{modulation::NeuralRhythms, timebase::Timebase};
     use crate::life::phonation_engine::OnsetKick;
-    use crate::life::self_prediction::ToneEnergy;
     use crate::life::sound::{BodyKind, BodySnapshot, RenderModulatorSpec, Tone, ToneAdsr};
+    use crate::life::tone_energy::ToneEnergy;
 
     fn tone(kind: BodyKind, onset: u64, frequency: f32, seed: u64) -> Tone {
         let mut tone = Tone::from_parts(
@@ -289,7 +289,7 @@ mod tests {
     fn window_error(mut tone: Tone, now: u64, width: u64, rhythms: &NeuralRhythms) -> f64 {
         let frozen = model(&tone, now, rhythms);
         assert!(frozen.sine.is_some() || frozen.bank.is_some());
-        let predicted = crate::life::action_candidates::energy::project_window(
+        let predicted = crate::life::energy_window::project_window(
             &[(1, [true, true], frozen)],
             None,
             now,
@@ -468,7 +468,7 @@ mod tests {
             }
             retained.push((id, [true, true], model(&tone, 2048, &rhythms)));
         }
-        let window = crate::life::action_candidates::energy::project_window(
+        let window = crate::life::energy_window::project_window(
             &retained,
             None,
             2048,

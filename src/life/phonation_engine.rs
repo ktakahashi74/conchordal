@@ -1305,10 +1305,10 @@ impl PhonationEngine {
     /// Returns true when the supplier had already been asked for this identity.
     pub(crate) fn footprint_hop(
         &mut self,
-        identity: crate::life::action_candidates::footprint::Identity,
+        identity: crate::life::onset_footprint::Identity,
         now: Tick,
-        recipe: &crate::life::action_candidates::footprint::Recipe,
-        send: impl FnOnce(crate::life::action_candidates::footprint::Request) -> bool,
+        recipe: &crate::life::onset_footprint::Recipe,
+        send: impl FnOnce(crate::life::onset_footprint::Request) -> bool,
     ) -> bool {
         match &mut self.clock {
             PhonationClock::Participation(clock) => {
@@ -1321,7 +1321,7 @@ impl PhonationEngine {
     /// Returns true when this Voice was waiting for the dropped reply.
     pub(crate) fn footprint_release(
         &mut self,
-        identity: crate::life::action_candidates::footprint::Identity,
+        identity: crate::life::onset_footprint::Identity,
     ) -> bool {
         match &mut self.clock {
             PhonationClock::Participation(clock) => clock.footprint.release(identity),
@@ -1332,7 +1332,7 @@ impl PhonationEngine {
     /// Returns true when the record was discarded because its request was superseded.
     pub(crate) fn footprint_receive(
         &mut self,
-        record: &crate::life::action_candidates::footprint::Record,
+        record: &crate::life::onset_footprint::Record,
     ) -> bool {
         match &mut self.clock {
             PhonationClock::Participation(clock) => clock.footprint.receive(record),

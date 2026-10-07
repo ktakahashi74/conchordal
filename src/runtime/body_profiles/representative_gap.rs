@@ -1,9 +1,9 @@
 //! I11-1 §5.9: the representative footprint a decision used, against the tone that sounded.
 
 use super::*;
-use crate::life::action_candidates::energy::project_window;
-use crate::life::self_prediction::{ScheduledRelease, ToneEnergy};
+use crate::life::energy_window::project_window;
 use crate::life::sound::Tone;
+use crate::life::tone_energy::{ScheduledRelease, ToneEnergy};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;

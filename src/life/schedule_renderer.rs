@@ -29,7 +29,7 @@ struct RoutedTone {
     outcome_slots: [Option<(usize, u64)>; 2],
     source_generation: u32,
     body_slot: Option<(usize, u32)>,
-    scheduled_release: Option<super::self_prediction::ScheduledRelease>,
+    scheduled_release: Option<super::tone_energy::ScheduledRelease>,
 }
 
 struct SelfSound {
@@ -143,7 +143,7 @@ impl ScheduleRenderer {
         source_generation: u32,
         now: u64,
         rhythms: &NeuralRhythms,
-    ) -> impl Iterator<Item = (u64, [bool; 2], super::self_prediction::ToneEnergy)> + '_ {
+    ) -> impl Iterator<Item = (u64, [bool; 2], super::tone_energy::ToneEnergy)> + '_ {
         let rhythms = *rhythms;
         self.tones
             .iter()
@@ -155,7 +155,7 @@ impl ScheduleRenderer {
                 (
                     key.tone_id,
                     [rt.routing.to_habitat, rt.routing.to_presentation],
-                    super::self_prediction::ToneEnergy {
+                    super::tone_energy::ToneEnergy {
                         amplitude,
                         envelope,
                         control: Some(rt.tone.prediction_control(now, &rhythms)),
@@ -689,13 +689,11 @@ impl ScheduleRenderer {
                             {
                                 // Off changes attack clipping when its batch is applied.
                                 // Freeze that hop switch without changing the live Tone.
-                                scheduled_release =
-                                    Some(super::self_prediction::ScheduledRelease {
-                                        apply_at_sample: now
-                                            + (off - now) / self.time.hop as u64
-                                                * self.time.hop as u64,
-                                        off_sample: off,
-                                    });
+                                scheduled_release = Some(super::tone_energy::ScheduledRelease {
+                                    apply_at_sample: now
+                                        + (off - now) / self.time.hop as u64 * self.time.hop as u64,
+                                    off_sample: off,
+                                });
                             }
 
                             if let Some(receipt) = opportunity
@@ -746,7 +744,7 @@ impl ScheduleRenderer {
                                                 batch.routing.to_habitat,
                                                 batch.routing.to_presentation,
                                             ],
-                                            recipe: super::self_prediction::ToneEnergy {
+                                            recipe: super::tone_energy::ToneEnergy {
                                                 amplitude,
                                                 envelope,
                                                 scheduled_release,
@@ -1077,7 +1075,7 @@ impl ScheduleRenderer {
                     }));
                     schedule.scheduled_amplitude_tones +=
                         usize::from(control.is_some_and(|c| c.amplitude_updates.is_some()));
-                    let energy = super::self_prediction::ToneEnergy {
+                    let energy = super::tone_energy::ToneEnergy {
                         amplitude,
                         envelope,
                         scheduled_release: rt.scheduled_release,
@@ -2361,7 +2359,7 @@ mod tests {
                             })
                             .unwrap();
                         let (_, amplitude, envelope) = owned.tone.prediction_parameters(None);
-                        let frozen = crate::life::self_prediction::ToneEnergy {
+                        let frozen = crate::life::tone_energy::ToneEnergy {
                             amplitude,
                             envelope,
                             control: None,
@@ -2371,7 +2369,7 @@ mod tests {
                         };
                         predicted_end = frozen.renderer_end_after(
                             32,
-                            Some(crate::life::self_prediction::ScheduledRelease {
+                            Some(crate::life::tone_energy::ScheduledRelease {
                                 apply_at_sample: 32,
                                 off_sample: 64,
                             }),

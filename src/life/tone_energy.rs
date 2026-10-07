@@ -1,7 +1,12 @@
-//! The same fixed tone-energy prior for issued commands and conditional actions.
+//! Frozen tone energy and coherent integration for rendered bodies and onset footprints.
 
-use super::ScheduledRelease;
 use crate::life::sound::{control_forecast::ControlForecast, envelope::Envelope};
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+pub(crate) struct ScheduledRelease {
+    pub apply_at_sample: u64,
+    pub off_sample: u64,
+}
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 pub(crate) struct ToneEnergy {

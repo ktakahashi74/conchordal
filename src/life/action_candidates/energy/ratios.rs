@@ -1,8 +1,9 @@
 //! Direct frozen-body footprints; candidate evaluation never issues or learns a command.
 
-use super::{Body, Record};
+use super::Record;
 use crate::core::temporal_expectation::{ExternalEnergyFootprint, TemporalForecast};
-use crate::life::self_prediction::ToneEnergy;
+use crate::life::energy_window::Body;
+use crate::life::tone_energy::ToneEnergy;
 
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct Context {
@@ -163,8 +164,8 @@ pub(super) fn attach(
 mod tests {
     use super::super::tests::tone;
     use super::*;
-    use crate::life::self_prediction::ScheduledRelease;
     use crate::life::sound::sine_forecast::SineForecast;
+    use crate::life::tone_energy::ScheduledRelease;
 
     #[test]
     fn delayed_short_body_uses_its_own_support_without_onset_interpolation() {

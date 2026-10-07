@@ -1021,7 +1021,7 @@ mod tests {
 
     #[test]
     fn scheduled_amplitude_forecast_matches_renderer_order_and_release_clearing() {
-        use crate::life::self_prediction::{ScheduledRelease, ToneEnergy};
+        use crate::life::tone_energy::{ScheduledRelease, ToneEnergy};
         let mut amplitude_error = 0_f64;
         let mut waveform_error = 0_f64;
         let mut cases = 0;
@@ -1134,7 +1134,7 @@ mod tests {
 
     #[test]
     fn scheduled_amplitude_overflow_and_unknown_controls_bound_support() {
-        use crate::life::self_prediction::{ScheduledRelease, ToneEnergy};
+        use crate::life::tone_energy::{ScheduledRelease, ToneEnergy};
         let mut tone = Tone::from_parts(
             Timebase { fs: 8000., hop: 64 },
             0,

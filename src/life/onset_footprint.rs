@@ -1,17 +1,16 @@
 //! Representative-onset body footprint: a declared approximation frozen from the recipe
 //! alone, not a prediction of the tone that will actually sound.
 
-use super::energy::project_window;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::energy_window::project_window;
 use crate::life::phonation_engine::OnsetKick;
 use crate::life::schedule_renderer::modal_phase_seed;
-use crate::life::self_prediction::ToneEnergy;
 use crate::life::sound::{
     AutonomousPulseSpec, BodyKind, BodySnapshot, RenderModulatorSpec, RenderModulatorStateKind,
     Tone, ToneAdsr,
 };
-use crate::temporal_cognition::body::VOICES;
+use crate::life::tone_energy::ToneEnergy;
 use crossbeam_channel::{Receiver, Sender, bounded, select};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -26,6 +25,7 @@ const KICK_STRENGTH: f32 = 1.0;
 const AMP: f32 = 1.0;
 const CAP_SECONDS: f32 = 4.0;
 const HOP: usize = 64;
+const CAPACITY: usize = 64;
 
 /// Pins the live envelope state out of the recipe. The representative kick restarts an
 /// entrained envelope from zero and the prediction never reads the autonomous pulse phase,
@@ -367,9 +367,9 @@ pub(crate) struct Worker {
 
 impl Worker {
     pub(crate) fn new() -> Self {
-        let (footprint_input, requests) = bounded(VOICES);
-        let (replies, footprint_output) = bounded(VOICES);
-        let (dropped, footprint_dropped) = bounded(VOICES);
+        let (footprint_input, requests) = bounded(CAPACITY);
+        let (replies, footprint_output) = bounded(CAPACITY);
+        let (dropped, footprint_dropped) = bounded(CAPACITY);
         let counters = Arc::new(std::array::from_fn(|_| AtomicU64::new(0)));
         let shared = Arc::clone(&counters);
         let handle = std::thread::Builder::new()
@@ -389,10 +389,10 @@ impl Worker {
             footprint_input: Some(footprint_input),
             footprint_output,
             footprint_dropped,
-            footprints_released: Vec::with_capacity(VOICES),
+            footprints_released: Vec::with_capacity(CAPACITY),
             deterministic_footprints: false,
             footprints_in_flight: 0,
-            owners: (0..VOICES).map(|_| None).collect(),
+            owners: (0..CAPACITY).map(|_| None).collect(),
             next_generation: 1,
             handle: Some(handle),
             counters,
@@ -876,7 +876,7 @@ mod tests {
         let mut worker = Worker::new();
         let (mut accepted, mut before_refusal) = (0_u64, None);
         // The worker consumes while the queue fills, so only the first refusal is a bound.
-        for _ in 0..VOICES * 2 {
+        for _ in 0..CAPACITY * 2 {
             if worker.request_footprint(request(recipe(BodyKind::Sine, 24000))) {
                 accepted += 1;
             } else if before_refusal.is_none() {
@@ -884,13 +884,13 @@ mod tests {
             }
         }
         assert!(
-            before_refusal.is_some_and(|n| n >= VOICES as u64),
+            before_refusal.is_some_and(|n| n >= CAPACITY as u64),
             "{before_refusal:?}"
         );
         assert_eq!(worker.stats.footprint_requested, accepted);
         assert_eq!(
             worker.stats.footprint_dropped,
-            (VOICES * 2) as u64 - accepted
+            (CAPACITY * 2) as u64 - accepted
         );
         worker.finish();
         assert_eq!(worker.stats.footprint_completed, accepted);
@@ -905,7 +905,7 @@ mod tests {
     fn footprint_worker_runs_independently_of_a_candidate_backlog() {
         let mut worker = Worker::new();
         let mut candidates = CandidateWorker::new();
-        let submitted = (0..VOICES)
+        let submitted = (0..CAPACITY)
             .filter(|_| scheduled_packet(&mut candidates))
             .count() as u64;
         for _ in 0..4 {
@@ -926,7 +926,7 @@ mod tests {
             if deterministic {
                 worker.deliver_footprints_deterministically();
             }
-            let accepted = (0..VOICES * 2)
+            let accepted = (0..CAPACITY * 2)
                 .filter(|_| worker.request_footprint(request(recipe(BodyKind::Sine, 24000))))
                 .count();
             // Nothing drains while the worker fills the reply queue, so replies may drop.
@@ -938,7 +938,7 @@ mod tests {
             // The undrained reply queue holds exactly its capacity; the rest were dropped.
             assert_eq!(
                 returned,
-                accepted.min(VOICES),
+                accepted.min(CAPACITY),
                 "deterministic={deterministic}"
             );
             assert_eq!(

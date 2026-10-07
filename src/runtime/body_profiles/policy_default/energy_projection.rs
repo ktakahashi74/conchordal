@@ -1,9 +1,9 @@
 //! Offline seven-class evaluation of the ordinary fixed body-energy kernel.
 
 use super::*;
-use crate::life::action_candidates::energy::{Window, project_window};
-use crate::life::self_prediction::{ScheduledRelease, ToneEnergy};
+use crate::life::energy_window::{Window, project_window};
 use crate::life::sound::Tone;
+use crate::life::tone_energy::{ScheduledRelease, ToneEnergy};
 use std::io::BufRead;
 
 #[test]

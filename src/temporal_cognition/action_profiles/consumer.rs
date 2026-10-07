@@ -359,8 +359,8 @@ mod tests {
     #[test]
     fn candidate_worker_keeps_actual_and_prototype_routing_separate() {
         use crate::life::action_candidates::energy::{ScheduledRequest, Worker};
-        use crate::life::self_prediction::ToneEnergy;
         use crate::life::sound::envelope::Envelope;
+        use crate::life::tone_energy::ToneEnergy;
         for bus in 0..2 {
             for prototype_routed in [false, true] {
                 for actual_routed in [false, true] {
@@ -439,8 +439,8 @@ mod tests {
     #[test]
     fn queued_schedule_cannot_consume_a_fresh_excitation_profile() {
         use crate::life::action_candidates::energy::{ScheduledRequest, Worker};
-        use crate::life::self_prediction::ToneEnergy;
         use crate::life::sound::envelope::Envelope;
+        use crate::life::tone_energy::ToneEnergy;
         let (table, _, _) = fixture();
         let mut worker = Worker::new();
         let mut packet = worker.acquire().unwrap();

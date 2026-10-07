@@ -5,8 +5,11 @@ This file keeps the design decisions, upstream revisions, numerical registration
 pending judgments that the public note no longer carries; the technote itself now describes
 only the implemented state and a condensed ledger. Headings, section numbers (§9.1–§9.4,
 §9.3.1–§9.3.55) and HTML anchors are preserved verbatim so existing references remain valid.
-New design findings go here, not to the technote. Apart from relative links rewritten for
-the new location, the content below is unchanged from the technote at the time of the move.
+New design findings go here, not to the technote. The moved text is retained as history;
+later adoptions and revisions are recorded with their dates.
+Last updated: 2026-10-07. The current two-tier rule, acceptance criteria and revised
+adoptions are in [§9.3.57](#two-tier-rule); scope and execution order follow the
+[current plan](../roadmap/plan-current.md).
 Japanese counterpart: `technote-ledger.ja.md`.
 
 ---
@@ -4166,6 +4169,12 @@ audition. Evidence is stored under `target/phrase-expectation/2026-09-09-continu
 
 #### Mechanism-selection rule and revised core scope (adopted 2026-09-20; same-day review applied)
 
+The scope table and R/A/O mapping below preserve the 2026-09-20 record. Condition 3
+and the role of A1 incorporate the 2026-10-07 revision. Current core scope, acceptance
+and execution follow [§9.3.57](#two-tier-rule) and the
+[current plan](../roadmap/plan-current.md); the table's "Author audition" entries and
+the old A4 sequence are not current mandatory gates.
+
 On the harmonic side, DCC implements as landscape only mechanisms backed by established
 psychoacoustic models, roughness and harmonicity, and places habituation on the same side
 as an adaptation mechanism. Order that cannot be derived directly from such mechanisms, for
@@ -5971,9 +5980,265 @@ Jacoby, N., et al. (2019), *Current Biology* 29, 3229–3243. Jacoby, N., et al.
 547–550. McPherson, M. J., et al. (2020), *Nature Communications* 11, 2786. Plomp, R., &
 Levelt, W. J. M. (1965), *JASA* 38, 548–560.
 
+<a id="two-tier-rule"></a>
+
+### 9.3.57 Two-tier Rule, Acceptance and Revised Adoptions
+
+Updated 2026-10-07. This section supplies the two-tier rule referenced by other
+documents since 2026-09-24 and records the adoptions after the October review.
+Adoption is distinct from implementation, acquisition, author audition and integration.
+The [current plan](../roadmap/plan-current.md) is authoritative for work. Where earlier
+records prescribe different scope, gates or a fixed integration sequence, that plan
+supersedes them.
+
+#### Principle and author-rule layers
+
+The three conditions for placing a function in the core
+([§9.3.55](#mechanism-selection-rule)) are distinct from classifying its computation.
+A quantitative model from existing literature belongs to the **principle layer** only
+for the parts whose correspondence to the source has been checked. Original
+approximations, thresholds, scales, coupling coefficients, learning rules and learning
+rates belong to the **author-rule layer**. Evidence for a function does not establish
+an original implementation as a principle-layer model.
+
+Learned weights, memory contents, and observed accent, period and body descriptors
+are state, not configuration coefficients or cognitive constants. The T1 overlap ratio
+and T2 salience, period histogram and Hazard belong to the author-rule layer.
+Replacing them with masking or modulation-spectrum models does not establish a
+new principle-layer mechanism before source correspondence is checked. These two
+layers classify computation; the five layers of §9.3.56 instead distinguish who may
+change a quantity.
+
+Sources are the [2026-09-24 milestone amendment](../roadmap/temporal-dcc/milestones.md#two-tier-terrain-scope),
+the [I13 design boundary](../roadmap/temporal-dcc/i13-author-controls.md), and
+[§1 of the current plan](../roadmap/plan-current.md#1-原則).
+
+#### Three acceptance criteria and the conditions for evaluation
+
+Principle-layer acceptance uses three criteria:
+
+1. **Numerical agreement with the source model**, identifying the checked model
+   parts and their reference.
+2. **The registered causal difference**, using the registered interventions and
+   ablations to check the path from input to consumer.
+3. **Real-time operation on the declared load**, declaring the supported range and
+   counting the processing that actually runs within it.
+
+Subjective evaluation is not a principle-layer acceptance condition. It selects free
+parameters that neither principle nor a consumer fixes, once the applicable
+configuration is settled. The old per-version A1 gate is withdrawn. Author adoption
+at the level of works remains distinct from mechanism acceptance.
+
+Before placing either a numerical or subjective evaluation in a plan, state which
+decision its result changes, why principle, consumer sensitivity and saved data cannot
+already answer it, and how it can discriminate the alternatives. Do not add an
+evaluation without a decision that changes.
+
+Derive tolerances and load targets from principle, the error that changes a consumer's
+decision, or the declared supported range. Remove a strict precision or tolerance
+condition that cannot name the consumer decision or invariant it protects; absence
+of evidence that it is unnecessary does not justify retention. Do not impose
+intermediate floating-point bit identity, numerical branch identity or summation order
+on every predictive shortcut. Preserve the required error budget end to end, together
+with identity and generation, sample clocks, routing, known/unknown status, support,
+finite output and registered controls. Historical acquisitions and scoped exactness
+tests do not impose waveform compatibility on a new renderer.
+
+Where a proposal suffices, do not require the best. A Voice acts on local perception
+and reaction. Build exhaustive candidate tables or exact pre-hearing predictions only
+when a consumer needs them. A mechanism without a consumer on the default
+performance path is not a mandatory core requirement.
+
+Count completion over live requirements only. Each wave names a criterion it closes
+or a design problem it solves. If two consecutive waves in a stream close no criterion,
+stop that stream and return its design problem to the author. Usage limits are stop
+conditions, not targets for adding work. For each author recommendation, state the
+implementation, validation and acquisition it creates, the work avoided if it is not
+taken, the origin of its conditions and numbers, and the cost of changing it later.
+Do not bundle placeholder numbers into recommendations for adoption.
+
+These rules follow §§1 and 5 of the current plan, the Progress and Validation Scope,
+Multi-agent Orchestration and Author Decision Requests sections of `AGENTS.md`,
+and §§2–3 and 7 of the 2026-10-07 adoption record.
+
+<a id="body-beat-time-constants"></a>
+
+#### Historical body/beat time-constant references: the recoverable adopted scope
+
+The [A1 document](../roadmap/temporal-dcc/a1-i11-audition.md),
+[R2 preflight](../roadmap/temporal-dcc/r2-preflight.md) and
+[I4 separation](../roadmap/temporal-dcc/i4-recall-separation.md) cite this anchor and
+record the author's confirmed decision (b): I11-1 `footprint = "body"` uses a
+synthesizer-derived representative prediction; replacement by a learned footprint
+was a separate unit after the then-current A4. The 2026-09-24 milestone amendment
+also specifies a synthesizer-derived footprint for the T1 terrain.
+
+Those sources recover the footprint's origin and the historical separation of work.
+They do not recover numerical body/beat time constants, a learning rule or the full
+original decision. The instruction to repeat I11-1 A1 and affected R2 checks after
+replacement remains history; it does not reinstate the per-version A1 gate withdrawn
+on 2026-10-07. Current T-2 concerns the independent representative-onset footprint
+entry point and T-5 its connection to participation cost. Neither adds learned
+footprint replacement as a completion condition.
+
+#### Adoptions since 2026-09-29 and their revised status
+
+The following are adoption records, not passes for numerical conformance, runtime
+wiring, author audition or main integration. An older document's "not authorized in
+this decision" remains its dated boundary; later changes are stated below.
+
+**2026-09-29: temporal terrains and timbre planning.** Milestones §§1.3 and 5 record
+I11-3=T1 masking and I11-4=T2 modulation as management identifiers, and retention
+of the old 60 items for necessary non-acceptance presentation checks only. Their four
+production sessions are not started. This adoption does not select source models,
+coefficients, tolerances or acquisition registrations. Timbre planning adopts
+representative rendering as the reference, with predictive formulas as shortcuts
+checked against it. New ecology code does not add body-kind branches. The
+`timbre-valuation-meter` changes were on their branch at the time; current U-3 handles
+integration. This section does not declare them integrated.
+
+The [body-policy author record](../superpowers/specs/2026-09-29-body-policy-author-decisions.md)
+confirms these decisions from the same date:
+
+| Item | Adopted behavior | Status after the 2026-10-07 review |
+|---|---|---|
+| Pitch and voicing unit (body-contract A1) | Update retunes only open handles. Closed tails retain their old pitch; a new On follows closure, while re-excitation of an open handle is a re-kick. Unsupported Update is rejected without partial mutation. | Retained. This is distinct from audible-difference A1. Implementation, transitions and capacity conformance still need their own checks. |
+| After Off (body-contract A2) | Sine/Harmonic T60=0.5 s is a prototype value; effective-Off motion offset and spectral balance are held during decay. | The value is not final. Current M-3 selects decay time and other free parameters through audition. |
+| Cost attribution (body-contract A3) | Habitat radiation is charged to the living owner Voice; post-death tails are recorded against the retired source generation, not transferred to parents or children. | Retained. A retired-source record alone does not establish an effect on survival or reproduction; no advance reservation or capacity number is added. |
+| Limited exact-silence reference | Exact-zero representative radiation has zero acoustic recovery and extra dissonance cost, retaining basal cost, actual operation cost and existing parent participation from residual energy. | Retained. Not extended to rests, missing data or nonzero out-of-band sound, and not adoption of production metabolism. |
+
+The original silence proposal `target/timbre-silence-policy-proposal-20260929.md`
+and adoption record `target/timbre-silence-reference-20260929/author-decision-v1.json`
+were in `target/` and were lost on 2026-10-07. The table uses only the scope preserved
+in the surviving author-policy document; it does not reconstruct the lost proposal.
+
+**2026-09-29–30: source references and execution.** Milestones §5 records approval
+of an AMT16-modified named reference candidate and of leaving the new T1 unapplied
+with unknown future background PCM. This did not establish reproduction of the
+complete original Dau model or a working terrain in ordinary runtime. Current T-4
+derives a real-time form and evaluates its error, recording why it fails if it does.
+Source-comparison scope and reference sound pressure remain author decisions before
+that unit starts.
+
+The old fixed sequence, I12b closure/base freeze → I4 → body-aware F3 → timbre
+Phase 3, is superseded by the current plan's dependencies. Serial main integration
+and exclusive pass/fail timing remain. The 2026-09-30 model/effort arrangement is
+history; current §5 specifies a Claude Opus orchestrator and KEIO agent-shell
+`gpt-6.1-sol` / `xhigh` workers, with at most two cargo workers at once.
+
+**2026-10-01–06: F2 and I12b.**
+
+| Earlier adoption | Revised status | Surviving authority |
+|---|---|---|
+| 10-01 "F2はAで進める": lossless storage design retaining the full candidate table; 10-03 evidence scope C2: per-frame processed-density and mean audits. | Both withdrawn. Birth uses re-evaluation of K proposals; nominal optimization and acquisitions/evidence premised on the full table stop. Nominal is preserved as a slow reference. B-2 selects the evaluator, K and supported families; no unadopted number is supplied here. | 10-07 adoption record §§1 and 3 (C-10), current plan §2 and B-2. |
+| 10-03 I12b backward-intervention boundary: suppress only the retained-period pair of accepted Accent events. | Boundary retained. This does not establish an effect or arrival at actual sound. | Review proposal C-08 and its adoption in §2 of the 10-07 record. |
+| 10-03 prospective current-main registration, 10-05 full-comparison criterion, and 10-06 separate delivery/resource domain. | The 27-row/18-contrast registration and evidence move to research. I12b closes when both path-specific ablations execute and their results are recorded; backward non-arrival becomes an engineering issue of group-owner lifetime versus decision cadence. Extra acquisitions are not core completion conditions. U-4 owns recording results and closure; this section does not mark them complete. | Review proposal C-08, adoption record §§2 and 5, current plan §2.2 and U-4. |
+
+The original records `target/orchestration-new-author-scope-20261001.json`,
+`target/author-recommendations-adopted-20261003-v1/decision.json`,
+`target/i12b-full-comparison-adopted-20261006/decision.json` and
+`target/i12b-t08-delivery-resource-adopted-20261006-v1/adoption.json` were in
+`target/` and were lost on 2026-10-07. The table uses the surviving review/adoption
+documents and quoted adoption scope in the same day's session transcript. It does
+not reconstruct lost raw results or registration details.
+
+**2026-10-03: free decay, rate and randomness (C1A/C3A/C4A).** The body-policy
+author record documents "全部推奨" adopting C1A natural closed-tail response retained
+to exact zero with capacity derived from certified tail length, C3A limiting the first
+new family to 48 kHz, and C4A addressed SplitMix64, bounded source modulation with
+at most 16 components, and bounded clock advance through silence. Sixteen counts
+modulation components, not partials or Tone capacity. No finite pool size or mapping
+of inputs to bodies was adopted.
+
+The 10-07 adoption of D-10 and the current plan withdraw exact-zero tail retention
+and the 48 kHz restriction, replacing retention with amplitude-floor retirement.
+The floor and capacity numbers are not adopted; M-1 designs the retirement rule.
+Preservation of tail ownership, self-exclusion and random identity during slot reuse
+is unverified. Strict C4A validation stops until audition; only the selected settings
+are tightened afterward. The original adoption record
+`target/author-sound-recommendations-adopted-20261003-v1/decision.json` was in
+`target/` and was lost on 2026-10-07.
+
+**2026-10-07: purpose-specific references/tolerances and closed-amplitude law.**
+The body-policy record documents "1,2 推奨 3はあとでやる" adopting C5A fixed
+realized-PCM references and tolerances, and
+`RN32(a_close * (4193097/2^22)^N)` for a new Sine/Harmonic prototype, while
+deferring audition. Reference state is declared per purpose; LOO removes all of the
+actor's habitat-source PCM, including old tails, before reanalysis. Zero, support,
+status and mask agree before numerical comparisons, and passes do not transfer
+between purposes. Adopting numbers and a law is not measured conformance,
+auditory acceptance or adoption of body-wide release conditions.
+
+The initial same-day precision instruction removed universal intermediate-bit
+requirements and retained reuse of the existing RN32 proof and bounded evaluator.
+The later review asks which consumer each precision requirement protects. C5A is
+removed from the Phase 3 entry gate. Self-model conformance is checked when its
+consumer is enabled on the default path, deriving tolerance from that consumer's
+decision sensitivity. Unsupported shortcuts use the render-derived path. Historical
+C5A numbers remain in the dated author-policy document, not as universal requirements
+on the new renderer.
+
+The RN32 law remains the existing prototype's adopted law and proof; extending it or
+making it mandatory for the new renderer stops. Do not repeat the exact-zero proof;
+proceed to amplitude-floor retirement design. The original records
+`target/timbre-c5-scalar-adoption-20261007-v1/decision.json` and
+`target/numerical-precision-scope-20261007-v1/adoption.json` were in `target/` and
+were lost on 2026-10-07. This account relies on the surviving author-policy document
+and revised current plan, not a newly confirmed proof or native conformance result.
+
+**2026-10-07: transition to the current plan.** Adoption-record §§2–3 and 7 and the
+current plan establish the following:
+
+- Temporal core is limited to T2 terrain → accent → period → arrival → participation
+  cost and the representative-onset footprint. T1 is added if a real-time form can be
+  derived. Gesture, I4-related recall/search/reference_inventory/private trace, and
+  Hazard are to move to research. The final decision whether private trace remains
+  in the core is still due at T-1's exit.
+- Body self-exclusion shortcuts are compared once with the existing reference to
+  decide whether render-derived self-exclusion is needed. Candidate extraction uses
+  the existing point terrain; body scoring covers final movement candidates and
+  the current position, one current-position point for metabolism, and K birth
+  proposals. Asynchronous delivery is not introduced before the comparison result.
+- Timbre Phase 3 starts as a render-only prototype. D8's unified representation and
+  bundled A4 contract adoption are replaced by staged adoption per renderer,
+  self-model and heredity surface. M-1 designs excitation mapping, the open-interval
+  amplitude law, unsupported temporal self-model consumers on the new renderer,
+  and tail retirement. No pending law or number is adopted in this section.
+- Subjective evaluation runs once on its applicable configuration. M-3 selects decay
+  time, kick gain, attack/decay time-constant separation and fluctuation from nine
+  single-tone conditions; T-6 selects author-rule coupling coefficients. Neither is
+  a completed audition or a record of selected values.
+- Relative resource gates and large maximum-load acquisition matrices leave mandatory
+  core scope. R-1 declares a supported range and checks absolute criteria: zero output
+  shortages and whole-hop p99 within hop duration. Numerical support bounds and the
+  decision to revise old I11 §5.7 remain in current-plan §4. Historical registration
+  results are unchanged.
+
+#### Sources and unresolved boundaries
+
+The review's original documents are
+`.orchestration/records/author-instruction-review-20261007-v1/proposal.md` and `adopted.md`;
+these two files were restored after the same-day loss. The proposal was not adopted
+wholesale. Authority comes from the items explicitly adopted and from the current
+plan subsequently adopted as the plan of record. Quotations of the lost records
+above survive in the shared checkout's
+`.agent-shell/transcripts/2026-10-07-19-28-50.md`; they are not the lost original files
+or raw evidence.
+
+Private trace, I10 acceptance criteria, T1 comparison scope/reference pressure,
+I11 §5.7, birth-distribution error/fixed-hop delay for rendered evaluation, and
+numerical support bounds remain author decisions in current-plan §4. They are not
+added as adopted conditions here. This ledger update also does not imply completion
+of the design/implementation units or acceptance of scientific acquisitions.
+
 ## 9.4 Alignment and Extension Sequence
 
-The current scope and execution order follow the [2026-09-20 mechanism-selection rule](#mechanism-selection-rule),
+For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);
+execution dependencies and order follow the [current plan](../roadmap/plan-current.md).
+The following preserves the 2026-09-20 scope and subsequent numerical/implementation
+history, not current execution order or completion criteria.
+
+The scope and execution order as of 2026-09-20 followed the [same-day mechanism-selection rule](#mechanism-selection-rule),
 which subsumes the [2026-09-13 decision](#i9-scope-decision). Core covers T1, T2, the short-term recurrence part of T4, and I12b;
 the research extension covers the T3 rating head, T4 transformation/retrieval, T5–T7, I7–I9, I12a/c/d/e and O16.
 The preparation records below describe their respective historical stages. The first

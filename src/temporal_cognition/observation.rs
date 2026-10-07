@@ -610,10 +610,7 @@ mod tests {
                     }),
                     body_prototypes: None,
                     period: Some(crate::config::TemporalPeriodConfig {
-                        model: crate::config::ArrivalModel::Hazard,
-                        coefficients: [0.; 18],
-                        means: [0.; 8],
-                        deviations: [1.; 8],
+                        model: crate::config::ArrivalModel::Periodic,
                         horizon_sec: 0.1,
                     }),
                 },

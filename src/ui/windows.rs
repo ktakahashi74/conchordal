@@ -550,7 +550,7 @@ fn draw_listener_dashboard(
                             ui.label(format!("Period / arrival diagnostics: {error}"));
                         } else if let Some(period)=observation.period {
                             for group in period.groups.iter().flatten().filter(|g|g.active) {
-                                ui.label(format!("Group {}: {} accents · {} period alternatives · {} groupings · uncalibrated",group.ledger.group.generation,group.ledger.retained_accents,group.peaks.iter().flatten().count(),group.grouping.map_or(0,|g|g.proposals.iter().flatten().count())));
+                                ui.label(format!("Group {}: {} accents · {} period alternatives · uncalibrated",group.ledger.group.generation,group.ledger.retained_accents,group.peaks.iter().flatten().count()));
                                 if let Some(f)=group.forecast {
                                     ui.label(format!("{:?} arrival {:?} · elapsed {:?} s · reset unknown {} · forecast {}–{} · evidence {}–{} / available {}",f.model,f.probability,f.elapsed_seconds,f.reset_unknown,f.issued_at,f.horizon_end,f.source_start,f.source_end,f.available));
                                 }

@@ -2,7 +2,6 @@
 
 mod accents;
 pub(crate) mod arrival;
-mod auditory_timing;
 pub(crate) mod body;
 pub(crate) mod body_model;
 pub(crate) mod context;

@@ -1,4 +1,4 @@
-//! Acoustic-generation ownership from conserved energy through grouping proposals.
+//! Acoustic-generation ownership from conserved energy through periodic forecasts.
 
 #[cfg(test)]
 use super::Config;
@@ -6,11 +6,8 @@ use super::{Frontend, Observation, Output};
 #[cfg(test)]
 use crate::core::log2space::Log2Space;
 use crate::temporal_cognition::{
-    accents::{
-        Ledger, Summary,
-        periods::{self, groupings},
-    },
-    arrival, auditory_timing,
+    accents::{Ledger, Summary, periods},
+    arrival,
     ridge::Handle,
 };
 
@@ -21,14 +18,12 @@ struct Settings {
     window_samples: u64,
     rebuild_admissions: u64,
     peak_separation: f64,
-    grouping: groupings::Controls,
 }
 
 struct Slot {
     owner: Option<Handle>,
     arrival: Option<arrival::Engine>,
     estimator: periods::Estimator,
-    grouping: groupings::Inventory,
 }
 
 #[derive(Clone, Copy)]
@@ -38,7 +33,6 @@ struct GroupFrame {
     association_known: bool,
     period: periods::View,
     period_source: Option<[u64; 3]>,
-    grouping: Option<groupings::View>,
     forecast: Option<arrival::Forecast>,
 }
 
@@ -60,7 +54,6 @@ pub(crate) struct Recurrence {
     frame: Box<Option<Frame>>,
     received_at: u64,
     failure: Option<&'static str>,
-    timing: auditory_timing::Stream,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -71,7 +64,6 @@ pub(crate) struct GroupSnapshot {
     pub association_known: bool,
     pub peaks: [Option<periods::Peak>; 8],
     pub period_source: Option<[u64; 3]>,
-    pub grouping: Option<groupings::Snapshot>,
     pub forecast: Option<arrival::Forecast>,
 }
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -80,7 +72,6 @@ pub(crate) struct Snapshot {
     pub received_at: u64,
     pub groups: [Option<GroupSnapshot>; 7],
     pub residual: Summary,
-    pub timing: Option<auditory_timing::Snapshot>,
 }
 
 impl Recurrence {
@@ -102,12 +93,6 @@ impl Recurrence {
                 window_samples: 32 * u64::from(rate),
                 rebuild_admissions: 1024,
                 peak_separation: 1. / 24.,
-                grouping: groupings::Controls {
-                    tolerance: 0.1,
-                    integers_234_only: false,
-                    strict_integer: false,
-                    one_skip_words: false,
-                },
             },
         )
     }
@@ -131,11 +116,6 @@ impl Recurrence {
                     settings.window_samples,
                     settings.rebuild_admissions,
                     settings.peak_separation,
-                )?,
-                grouping: groupings::Inventory::new(
-                    placeholder,
-                    config.epoch_start,
-                    settings.grouping,
                 )?,
             });
         }
@@ -167,11 +147,6 @@ impl Recurrence {
             frame: Box::new(None),
             received_at: config.epoch_start,
             failure: None,
-            timing: auditory_timing::Stream::new(
-                config.group.sample_rate,
-                config.group.hop,
-                config.epoch_start,
-            ),
         })
     }
 
@@ -219,32 +194,20 @@ impl Recurrence {
         acoustic: &Output,
     ) -> Result<(), &'static str> {
         let mut evidence_groups = [None; 7];
-        let mut timing = [None; 7];
-        let assignment_total: f64 = acoustic
-            .groups
-            .assignment
-            .rows
-            .iter()
-            .flatten()
-            .flat_map(|r| r.weights)
-            .sum();
         // Consume the old assignment before any cache can be rebound to a newborn.
         for (index, slot) in self.slots.iter_mut().enumerate() {
             let Some(owner) = slot.owner else { continue };
             assert_eq!(acoustic.groups.assignment.group_handles[index], Some(owner));
             let mut delivered = false;
-            let mut delivered_accent = None;
             if let Some(update) = acoustic.features[index].as_ref() {
                 assert_eq!(update.raw.group, owner);
                 if let Some(accent) = update.detector.as_ref().and_then(|d| d.accent) {
                     delivered = slot.estimator.deliver(accent, received_at)?.is_some();
-                    delivered_accent = delivered.then_some(accent);
                 }
             }
             if !delivered {
                 slot.estimator.advance(received_at)?;
             }
-            let refreshed = slot.grouping.refresh(&slot.estimator)?;
             let forecast = if let Some(engine) = &mut slot.arrival {
                 let raw = acoustic.features[index]
                     .as_ref()
@@ -262,11 +225,6 @@ impl Recurrence {
                 let support = slot.estimator.source_support().unwrap_or([0; 3]);
                 let ctx = arrival::Context {
                     peak,
-                    word: peak.and_then(|p| {
-                        slot.grouping
-                            .snapshot()
-                            .and_then(|v| v.word_indicator(p.bin, slot.estimator.source_support()))
-                    }),
                     source_start: observation.map_or(support[0], |o| {
                         if support[2] == 0 {
                             o.source_start
@@ -287,33 +245,6 @@ impl Recurrence {
             } else {
                 None
             };
-            let known = observation.is_some()
-                && self.frontend.energy_eligible[index]
-                && self.frontend.shape_supported
-                && acoustic.features[index].is_some_and(|u| {
-                    u.raw.group == owner
-                        && u.raw.end == end
-                        && u.raw.start == end - self.frontend.config.group.hop
-                        && u.raw.known_samples == self.frontend.config.group.hop
-                        && u.raw.source_start <= u.raw.start
-                        && u.raw.source_end >= end
-                        && u.raw.source_end <= received_at
-                        && u.raw.available_end <= received_at
-                });
-            let alpha = if known && assignment_total > 0. {
-                acoustic
-                    .groups
-                    .assignment
-                    .rows
-                    .iter()
-                    .flatten()
-                    .map(|r| r.weights[index])
-                    .sum::<f64>()
-                    / assignment_total
-            } else {
-                0.
-            };
-            let _ = (known, alpha, refreshed);
             evidence_groups[index] = Some(GroupFrame {
                 ledger: slot.estimator.ledger_summary(),
                 acoustic_eligible: self.frontend.energy_eligible[index],
@@ -322,14 +253,7 @@ impl Recurrence {
                     && self.frontend.shape_supported,
                 period: slot.estimator.view(),
                 period_source: slot.estimator.source_support(),
-                grouping: slot.grouping.snapshot(),
                 forecast,
-            });
-            timing[index] = Some(auditory_timing::Input {
-                group: owner,
-                known,
-                accent: delivered_accent,
-                peaks: slot.estimator.view().peaks,
             });
         }
         if let Some(accent) = acoustic.features[7]
@@ -341,7 +265,6 @@ impl Recurrence {
         }
         self.residual.advance(received_at)?;
         let next_owners = self.frontend.lifecycle.retained_handles();
-        self.timing.advance(end, timing, next_owners);
         let mut newborn = [None; 7];
         for (index, (slot, &next)) in self.slots.iter_mut().zip(&next_owners).enumerate() {
             if slot.owner == next {
@@ -362,7 +285,6 @@ impl Recurrence {
                     .forecast
                     .map(arrival::Engine::new)
                     .transpose()?;
-                slot.grouping.reset(handle, received_at)?;
                 newborn[index] = Some(slot.estimator.ledger_summary());
             }
             slot.owner = next;
@@ -416,13 +338,10 @@ impl Recurrence {
 
     pub(crate) fn diagnostics(&self) -> Option<Snapshot> {
         let frame = self.frame.as_ref().as_ref()?;
-        let timing = Some(self.timing.snapshot()).filter(|s| s.window[1] == frame.end_sample);
         let snapshot = Snapshot {
             end_sample: frame.end_sample,
             received_at: frame.received_at,
             residual: frame.residual,
-            // Finishing at a later delivery clock does not invent acoustic coverage.
-            timing,
             groups: std::array::from_fn(|i| {
                 frame.evidence_groups[i].map(|g| {
                     let active = frame.next_owners[i] == Some(g.ledger.group);
@@ -439,7 +358,6 @@ impl Recurrence {
                         association_known: g.association_known,
                         peaks: g.period.peaks,
                         period_source: g.period_source,
-                        grouping: g.grouping.map(|v| v.diagnostics()),
                         forecast,
                     }
                 })
@@ -460,7 +378,6 @@ impl Recurrence {
         };
         for (index, slot) in self.slots.iter_mut().enumerate() {
             slot.estimator.advance(cut)?;
-            slot.grouping.refresh(&slot.estimator)?;
             if let Some(group) = frame.evidence_groups[index]
                 .as_mut()
                 .filter(|g| Some(g.ledger.group) == slot.owner)
@@ -468,7 +385,6 @@ impl Recurrence {
                 group.ledger = slot.estimator.ledger_summary();
                 group.period = slot.estimator.view();
                 group.period_source = slot.estimator.source_support();
-                group.grouping = slot.grouping.snapshot();
                 group.association_known = false;
                 let peak = group.period.peaks.iter().flatten().copied().max_by(|a, b| {
                     a.support
@@ -478,11 +394,6 @@ impl Recurrence {
                 let support = slot.estimator.source_support().unwrap_or([0; 3]);
                 let context = arrival::Context {
                     peak,
-                    word: peak.and_then(|p| {
-                        group
-                            .grouping
-                            .and_then(|v| v.word_indicator(p.bin, slot.estimator.source_support()))
-                    }),
                     source_start: support[0],
                     source_end: support[1],
                     available: support[2],

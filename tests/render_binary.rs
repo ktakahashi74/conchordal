@@ -112,12 +112,6 @@ section("author label is not an observation", || {
             "observe",
             true,
             true,
-            Some(conchordal::config::ArrivalModel::Hazard),
-        ),
-        (
-            "observe",
-            true,
-            true,
             Some(conchordal::config::ArrivalModel::Periodic),
         ),
     ] {
@@ -139,9 +133,6 @@ section("author label is not an observation", || {
             use std::io::Write;
             let period = conchordal::config::TemporalPeriodConfig {
                 model,
-                coefficients: [0.; 18],
-                means: [0.; 8],
-                deviations: [1.; 8],
                 horizon_sec: 0.1,
             };
             let text = format!("[temporal_period]\n{}", toml::to_string(&period).unwrap());
@@ -735,10 +726,7 @@ fn body_prototypes_match_actual_descriptors_without_changing_audio() {
         persistence_hops: 3,
     });
     config.temporal_period = Some(TemporalPeriodConfig {
-        model: ArrivalModel::Hazard,
-        coefficients: [0.; 18],
-        means: [0.; 8],
-        deviations: [1.; 8],
+        model: ArrivalModel::Periodic,
         horizon_sec: 0.1,
     });
     let run = |config: &AppConfig, mode: &str, reporting: bool| {

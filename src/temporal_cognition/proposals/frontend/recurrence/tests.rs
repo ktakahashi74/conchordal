@@ -9,12 +9,6 @@ fn settings(capacity: usize) -> Settings {
         window_samples: 48000 * 32,
         rebuild_admissions: 1024,
         peak_separation: 1. / 24.,
-        grouping: groupings::Controls {
-            tolerance: 0.1,
-            integers_234_only: false,
-            strict_integer: false,
-            one_skip_words: false,
-        },
     }
 }
 
@@ -27,72 +21,6 @@ fn pulse(step: u64) -> f64 {
 }
 
 #[test]
-fn ordinary_acoustic_recurrence_reports_public_within_timing_without_private_actions() {
-    let grid = space();
-    let mut scan = vec![0.; grid.n_bins()];
-    scan[20] = 1.;
-    let mut model = Recurrence::new(grid, config(0), settings(128)).unwrap();
-    let mut positive = 0;
-    let mut maximum_records = 0;
-    let mut bytes = None;
-    let mut density_frames = 0;
-    let mut grouping_frames = 0;
-    for step in 1..=720 {
-        let end = step * 512;
-        model
-            .advance(end, end, observed(end, &scan, pulse(step)))
-            .unwrap();
-        let snapshot = model.diagnostics().unwrap();
-        let timing = snapshot.timing.unwrap();
-        assert_eq!(timing.window[1], end);
-        assert!(timing.record_bytes <= 64);
-        assert_eq!(*bytes.get_or_insert(timing.owned_bytes), timing.owned_bytes);
-        for g in snapshot.groups.iter().flatten() {
-            density_frames += usize::from(g.active);
-            grouping_frames += usize::from(g.grouping.is_some());
-        }
-        for group in timing.groups.iter().flatten() {
-            assert!(group.group.generation > 1);
-            maximum_records = maximum_records.max(group.within.records);
-            if group.within.supported {
-                positive += 1;
-                assert!(group.within.coverage >= 0.9);
-                assert_eq!(group.within.reference, group.group);
-                assert_eq!(group.within.family, auditory_timing::Family::Periodic);
-                assert!((group.within.bins.iter().sum::<f64>() - 1.).abs() < 1e-10);
-                assert_eq!(group.within.overflow, 0.);
-                let values = group.timing_features[2];
-                assert!(group.within.mode_count.is_some());
-                assert_eq!(values[8], Some(1.));
-                assert_eq!(values[9], Some(1.));
-                assert_eq!(values[10], group.within.residual_dispersion);
-                assert_eq!(values[12], Some(0.));
-                assert_eq!(values[13], Some(group.within.coverage));
-                assert!(values.iter().flatten().all(|x| x.is_finite()));
-            }
-        }
-    }
-    assert!(
-        positive > 0 && maximum_records >= 4,
-        "positive={positive} records={maximum_records}"
-    );
-    assert!(
-        density_frames > 0 && grouping_frames > 0,
-        "active={density_frames} grouping={grouping_frames}"
-    );
-    let before = serde_json::to_value(model.diagnostics().unwrap().timing).unwrap();
-    model.finish(720 * 512 + 1000).unwrap();
-    assert_eq!(
-        before,
-        serde_json::to_value(model.diagnostics().unwrap().timing).unwrap()
-    );
-    println!(
-        "public timing ordinary recurrence: supported_frames={positive} maximum_records={maximum_records} owned_bytes={}",
-        bytes.unwrap()
-    );
-}
-
-#[test]
 fn energy_accents_reach_one_original_owner_and_newborns_start_without_credit() {
     let grid = space();
     let mut scan = vec![0.; grid.n_bins()];
@@ -102,7 +30,7 @@ fn energy_accents_reach_one_original_owner_and_newborns_start_without_credit() {
     let mut events = BTreeSet::new();
     let mut counts = BTreeMap::<Handle, u64>::new();
     let mut weights = BTreeMap::<Handle, f64>::new();
-    let (mut births, mut periodic, mut grouped, mut cap_loss, mut inserted) = (0, 0, 0, 0, 0);
+    let (mut births, mut periodic, mut cap_loss, mut inserted) = (0, 0, 0, 0);
     for step in 1..=360 {
         let end = step * 512;
         let output = model
@@ -140,12 +68,8 @@ fn energy_accents_reach_one_original_owner_and_newborns_start_without_credit() {
             assert!(g.ledger.retained_accents <= 8);
             inserted += g.period.work.inserted_pairs;
             periodic += usize::from(g.period.peaks.iter().any(Option::is_some));
-            grouped += usize::from(g.grouping.is_some_and(|v| v.proposal_count() > 0));
             cap_loss += usize::from(g.ledger.capacity_evicted_through.is_some());
-            if let Some(v) = g.grouping {
-                assert_eq!(v.group, g.ledger.group);
-                assert!(v.refreshed_at <= end);
-            }
+
             if g.association_known {
                 assert!(g.acoustic_eligible);
             }
@@ -181,7 +105,6 @@ fn energy_accents_reach_one_original_owner_and_newborns_start_without_credit() {
                     .iter()
                     .all(Option::is_none)
             );
-            assert!(model.slots[i].grouping.snapshot().is_none());
         }
         assert_eq!(
             buffers,
@@ -189,12 +112,12 @@ fn energy_accents_reach_one_original_owner_and_newborns_start_without_credit() {
         );
     }
     assert!(
-        births > 0 && periodic > 0 && grouped > 0 && cap_loss > 0 && inserted > 0,
-        "births={births} periodic={periodic} grouped={grouped} cap_loss={cap_loss} inserted={inserted}"
+        births > 0 && periodic > 0 && cap_loss > 0 && inserted > 0,
+        "births={births} periodic={periodic} cap_loss={cap_loss} inserted={inserted}"
     );
     println!(
         "RECURRENCE_OWNER_TRACE {}",
-        serde_json::json!({"hops":360,"unique_accents":events.len(),"births":births,"periodic_frames":periodic,"grouped_frames":grouped,"capacity_limited_frames":cap_loss,"inserted_pairs_reported":inserted,"capacity":8})
+        serde_json::json!({"hops":360,"unique_accents":events.len(),"births":births,"periodic_frames":periodic,"capacity_limited_frames":cap_loss,"inserted_pairs_reported":inserted,"capacity":8})
     );
 }
 
@@ -236,7 +159,6 @@ fn missing_time_expires_banks_without_retirement_and_known_silence_retires_owner
         assert_eq!(g.ledger.cumulative_count, totals[i]);
         assert!(!g.association_known);
         assert!(g.period.peaks.iter().all(Option::is_none));
-        assert_eq!(g.grouping.unwrap().proposal_count(), 0);
     }
     let mut retired = BTreeSet::new();
     for _ in 0..200 {
@@ -437,14 +359,7 @@ fn actual_nsgt_pulse_silence_and_steady_controls_reach_separate_inventories() {
         }
         let mut settings = settings(128);
         settings.forecast = Some(crate::config::TemporalPeriodConfig {
-            model: if index < 3 {
-                crate::config::ArrivalModel::Hazard
-            } else {
-                crate::config::ArrivalModel::Periodic
-            },
-            coefficients: [0.; 18],
-            means: [0.; 8],
-            deviations: [1.; 8],
+            model: crate::config::ArrivalModel::Periodic,
             horizon_sec: 0.1,
         });
         models.push(Recurrence::new(grid.clone(), cfg, settings).unwrap());
@@ -452,7 +367,6 @@ fn actual_nsgt_pulse_silence_and_steady_controls_reach_separate_inventories() {
     let mut audio: [_; 6] = std::array::from_fn(|_| vec![0.; 512]);
     let mut accents = [0usize; 6];
     let mut periodic = [0usize; 6];
-    let mut grouped = [0usize; 6];
     let mut target_period = [0usize; 6];
     let mut forecasts = [0usize; 6];
     for step in 1..=480 {
@@ -526,7 +440,6 @@ fn actual_nsgt_pulse_silence_and_steady_controls_reach_separate_inventories() {
                     }
                 }
                 periodic[bus] += usize::from(g.period.peaks.iter().any(Option::is_some));
-                grouped[bus] += usize::from(g.grouping.is_some_and(|v| v.proposal_count() > 0));
                 target_period[bus] += usize::from(
                     g.period
                         .peaks
@@ -539,69 +452,15 @@ fn actual_nsgt_pulse_silence_and_steady_controls_reach_separate_inventories() {
     }
     println!(
         "RECURRENCE_NSGT_TRACE {}",
-        serde_json::json!({"hops_per_instance":480,"sample_rate":48000,"hop":512,"nfft":2048,"instances":["diagnostic_pulse_bus0","diagnostic_silence_bus1","diagnostic_steady_bus0","baseline_pulse_bus0","baseline_silence_bus1","baseline_steady_bus0"],"thresholds":[0.05,0.05,0.05,1.,1.,1.],"salience_deviations":[0.2,0.2,0.2,1.,1.,1.],"accents":accents,"arrival_forecasts":forecasts,"periodic_frames":periodic,"grouped_frames":grouped,"frames_with_0_256s_candidate":target_period,"fixture":"500Hz carrier with24-hop amplitude pulses versus silence and separate steady-amplitude control; fixed supplied numeric scales; candidate presence alone is not full O11 recovery or perceptual acceptance"})
+        serde_json::json!({"hops_per_instance":480,"sample_rate":48000,"hop":512,"nfft":2048,"instances":["diagnostic_pulse_bus0","diagnostic_silence_bus1","diagnostic_steady_bus0","baseline_pulse_bus0","baseline_silence_bus1","baseline_steady_bus0"],"thresholds":[0.05,0.05,0.05,1.,1.,1.],"salience_deviations":[0.2,0.2,0.2,1.,1.,1.],"accents":accents,"arrival_forecasts":forecasts,"periodic_frames":periodic,"frames_with_0_256s_candidate":target_period,"fixture":"500Hz carrier with24-hop amplitude pulses versus silence and separate steady-amplitude control; fixed supplied numeric scales; candidate presence alone is not full O11 recovery or perceptual acceptance"})
     );
     assert!(forecasts[0] > 0 && forecasts[3] > 0);
     assert_eq!((forecasts[1], forecasts[4]), (0, 0));
-    assert!(accents[0] > 0 && periodic[0] > 0 && grouped[0] > 0 && target_period[0] > 0);
-    assert_eq!(
-        (accents[1], periodic[1], grouped[1], target_period[1]),
-        (0, 0, 0, 0)
-    );
-    assert!(accents[3] > 0 && periodic[3] > 0 && grouped[3] > 0 && target_period[3] > 0);
-    assert_eq!(
-        (accents[4], periodic[4], grouped[4], target_period[4]),
-        (0, 0, 0, 0)
-    );
-    assert_eq!((periodic[5], grouped[5], target_period[5]), (0, 0, 0));
-}
-
-#[test]
-#[ignore = "release composed recurrence ownership cost; excludes full O04"]
-fn recurrence_ownership_cost_probe() {
-    use std::{hint::black_box, time::Instant};
-    let grid = space();
-    let mut scan = vec![0.; grid.n_bins()];
-    for bin in [12, 36, 60, 84, 108, 132, 156] {
-        scan[bin] = 1.;
-    }
-    let mut model = Recurrence::new(grid, config(0), settings(128)).unwrap();
-    let buffers = model.slots.each_ref().map(|s| s.estimator.storage_layout());
-    let mut times = Vec::with_capacity(6000);
-    let mut max_owners = 0;
-    let mut resets = 0;
-    let mut grouped = 0;
-    for step in 1..=6600 {
-        let end = step * 512;
-        let energy = pulse(step);
-        let start = Instant::now();
-        let out = model
-            .advance(end, end, observed(end, black_box(&scan), energy))
-            .unwrap();
-        black_box(&out);
-        black_box(model.snapshot());
-        if step > 600 {
-            times.push(start.elapsed().as_secs_f64() * 1e6);
-        }
-        let frame = model.snapshot().unwrap();
-        max_owners = max_owners.max(frame.next_owners.iter().flatten().count());
-        resets += frame.newborn.iter().flatten().count();
-        grouped += frame
-            .evidence_groups
-            .iter()
-            .flatten()
-            .filter(|g| g.grouping.is_some_and(|v| v.proposal_count() > 0))
-            .count();
-    }
-    times.sort_by(f64::total_cmp);
-    assert_eq!(
-        buffers,
-        model.slots.each_ref().map(|s| s.estimator.storage_layout())
-    );
-    println!(
-        "recurrence_ownership_cost {}",
-        serde_json::json!({"calls":6000,"warmup_hops":600,"median_us":times[3000],"p99_us":times[5940],"max_us":times[5999],"maximum_owners":max_owners,"cache_resets":resets,"grouped_frames":grouped,"owner_bytes":std::mem::size_of::<Recurrence>(),"frame_bytes":std::mem::size_of::<Frame>(),"slot_pool_payload_bytes":7*std::mem::size_of::<Slot>(),"frame_pool_payload_bytes":std::mem::size_of::<Option<Frame>>(),"full_O04":false,"scope":"single bus acoustic frontend plus residual ledger,period/grouping pools and snapshots; seven input peaks do not assert seven active grouping banks; NSGT/beam/context/two-bus/device excluded"})
-    );
+    assert!(accents[0] > 0 && periodic[0] > 0 && target_period[0] > 0);
+    assert_eq!((accents[1], periodic[1], target_period[1]), (0, 0, 0));
+    assert!(accents[3] > 0 && periodic[3] > 0 && target_period[3] > 0);
+    assert_eq!((accents[4], periodic[4], target_period[4]), (0, 0, 0));
+    assert_eq!((periodic[5], target_period[5]), (0, 0));
 }
 
 #[test]
@@ -676,112 +535,4 @@ fn capacity_replacement_preserves_old_frame_before_rebinding_preallocated_slot()
         serde_json::json!({"hops":1200,"capacity_retirements":capacity_retirements,"same_hop_replacements":replacements})
     );
     assert!(capacity_retirements > 0 && replacements > 0);
-}
-
-#[test]
-fn mr2_frontend_exchange_preserves_candidates_on_omission_tempo_and_aperiodic_input() {
-    use crate::config::{ArrivalModel, TemporalPeriodConfig};
-    let mut models: Vec<_> = [ArrivalModel::Hazard, ArrivalModel::Periodic]
-        .into_iter()
-        .map(|model| {
-            Recurrence::configured(
-                Frontend::new(space(), config(0)).unwrap(),
-                TemporalPeriodConfig {
-                    model,
-                    coefficients: [0.; 18],
-                    means: [0.; 8],
-                    deviations: [1.; 8],
-                    horizon_sec: 0.1,
-                },
-            )
-            .unwrap()
-        })
-        .collect();
-    let mut scan = vec![0.; space().n_bins()];
-    scan[20] = 1.;
-    let mut comparisons = 0;
-    let mut alternatives = 0;
-    let mut differences = 0;
-    for step in 1..=360 {
-        let energy = if step < 120 {
-            if (72..96).contains(&step) {
-                0.01
-            } else {
-                pulse(step)
-            }
-        } else if step < 240 {
-            if (4..6).contains(&(step % 18)) {
-                0.16
-            } else {
-                0.01
-            }
-        } else if [249, 250, 281, 282, 300, 301, 347, 348].contains(&step) {
-            0.16
-        } else {
-            0.01
-        };
-        let end = step * 512;
-        for model in &mut models {
-            model
-                .advance(end, end, observed(end, &scan, energy))
-                .unwrap();
-        }
-        let a = models[0].diagnostics().unwrap();
-        let b = models[1].diagnostics().unwrap();
-        for (a, b) in a.groups.iter().flatten().zip(b.groups.iter().flatten()) {
-            assert_eq!(a.ledger.group, b.ledger.group);
-            assert_eq!(a.ledger.cumulative_count, b.ledger.cumulative_count);
-            assert_eq!(a.peaks, b.peaks);
-            assert_eq!(a.period_source, b.period_source);
-            assert_eq!(
-                serde_json::to_value(a.grouping).unwrap(),
-                serde_json::to_value(b.grouping).unwrap()
-            );
-            alternatives += usize::from(a.peaks.iter().flatten().count() > 1);
-            if let (Some(h), Some(p)) = (a.forecast, b.forecast) {
-                assert_eq!(
-                    (
-                        h.group,
-                        h.source_start,
-                        h.source_end,
-                        h.available,
-                        h.issued_at,
-                        h.horizon_end,
-                        h.last_accent,
-                        h.elapsed_seconds
-                    ),
-                    (
-                        p.group,
-                        p.source_start,
-                        p.source_end,
-                        p.available,
-                        p.issued_at,
-                        p.horizon_end,
-                        p.last_accent,
-                        p.elapsed_seconds
-                    )
-                );
-                comparisons += 1;
-                differences += usize::from(h.probability != p.probability);
-            }
-        }
-    }
-    assert!(comparisons > 100 && alternatives > 100 && differences > 100);
-    for model in &mut models {
-        let previous = model.diagnostics().unwrap();
-        model.finish(400 * 512).unwrap();
-        let finished = model.diagnostics().unwrap();
-        assert_eq!(finished.end_sample, previous.end_sample);
-        for g in finished.groups.iter().flatten().filter(|g| g.active) {
-            if let Some(f) = g.forecast {
-                assert!(f.reset_unknown);
-                assert_eq!(f.elapsed_seconds[0], 0.);
-                assert!(f.source_end <= previous.end_sample);
-            }
-        }
-    }
-    println!(
-        "I6_MR2_EXCHANGE {}",
-        serde_json::json!({"hops":360,"forecast_pairs":comparisons,"groups_with_alternatives":alternatives,"different_forecasts":differences,"input":"same acoustic power and energy; omitted pulses, changed tempo, aperiodic tail","calibrated":false})
-    );
 }

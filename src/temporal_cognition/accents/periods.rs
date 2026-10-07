@@ -95,11 +95,6 @@ impl Estimator {
         self.ledger.summary()
     }
 
-    #[cfg(test)]
-    pub(in crate::temporal_cognition) fn latest_accent_end(&self) -> Option<u64> {
-        self.ledger.last.map(|a| a.event_end)
-    }
-
     pub(in crate::temporal_cognition) fn source_support(&self) -> Option<[u64; 3]> {
         self.ledger.bank.front().map(|_| {
             [
@@ -383,6 +378,5 @@ fn select_peaks(
     (selected, count, comparisons)
 }
 
-pub(in crate::temporal_cognition) mod groupings;
 #[cfg(test)]
 mod tests;

@@ -372,7 +372,6 @@ pub struct TemporalAcousticConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ArrivalModel {
-    Hazard,
     Periodic,
 }
 
@@ -381,9 +380,6 @@ pub enum ArrivalModel {
 #[serde(deny_unknown_fields)]
 pub struct TemporalPeriodConfig {
     pub model: ArrivalModel,
-    pub coefficients: [f64; 18],
-    pub means: [f64; 8],
-    pub deviations: [f64; 8],
     pub horizon_sec: f64,
 }
 
@@ -974,10 +970,7 @@ mod tests {
     #[test]
     fn period_configuration_requires_explicit_valid_model_inputs() {
         let period = TemporalPeriodConfig {
-            model: ArrivalModel::Hazard,
-            coefficients: [0.; 18],
-            means: [0.; 8],
-            deviations: [1.; 8],
+            model: ArrivalModel::Periodic,
             horizon_sec: 0.1,
         };
         let cfg = AppConfig {
@@ -990,28 +983,48 @@ mod tests {
                 .to_string()
                 .contains("temporal_acoustic")
         );
-        for case in 0..5 {
-            let mut bad = period;
-            match case {
-                0 => bad.coefficients[17] = f64::INFINITY,
-                1 => bad.means[0] = f64::NAN,
-                2 => bad.deviations[0] = -1.,
-                3 => bad.horizon_sec = 0.,
-                _ => bad.horizon_sec = 33.,
-            }
-            assert!(crate::temporal_cognition::arrival::Engine::new(bad).is_err());
+        for horizon_sec in [f64::NAN, f64::INFINITY, -1., 0., 33.] {
+            assert!(
+                crate::temporal_cognition::arrival::Engine::new(TemporalPeriodConfig {
+                    horizon_sec,
+                    ..period
+                })
+                .is_err()
+            );
         }
         let text = toml::to_string(&period).unwrap();
         let parsed: TemporalPeriodConfig = toml::from_str(&text).unwrap();
         assert_eq!(parsed.model, period.model);
-        assert_eq!(parsed.coefficients, period.coefficients);
-        assert!(
-            toml::from_str::<TemporalPeriodConfig>(&text.replace("hazard", "other_model")).is_err()
-        );
+        assert_eq!(parsed.horizon_sec, period.horizon_sec);
+        for model in ["hazard", "other_model"] {
+            assert!(
+                toml::from_str::<TemporalPeriodConfig>(&text.replace("periodic", model)).is_err()
+            );
+        }
         assert!(
             toml::from_str::<TemporalPeriodConfig>(&text.replace("horizon_sec", "horizon_secs"))
                 .is_err()
         );
+        for field in ["coefficients", "means", "deviations"] {
+            assert!(
+                toml::from_str::<TemporalPeriodConfig>(&format!("{text}\n{field} = []\n")).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn research_configuration_keys_are_explicitly_rejected() {
+        for key in [
+            "temporal_memory",
+            "temporal_gesture",
+            "temporal_private_trace",
+            "temporal_action_profiles",
+        ] {
+            let error = toml::from_str::<AppConfig>(&format!("[{key}]\n"))
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(key), "{error}");
+        }
     }
 
     #[test]

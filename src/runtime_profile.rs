@@ -60,8 +60,6 @@ pub(crate) struct SharedWorkerProfile {
     pub source_missing_samples: u64,
     pub delivery_dropped_frames: u64,
     pub rejected_frames: u64,
-    pub worker_resources: Option<crate::temporal_cognition::resources::Snapshot>,
-    pub action_profile_resources: Option<crate::temporal_cognition::action_profiles::Resources>,
 }
 
 #[derive(Serialize)]
@@ -80,7 +78,6 @@ pub(crate) struct BackgroundProfile {
     pub scope: &'static str,
     pub shared: [Option<SharedWorkerProfile>; 2],
     pub body: Option<BodyWorkerProfile>,
-    pub candidate_energy: Option<crate::life::action_candidates::energy::Stats>,
 }
 
 #[derive(Serialize)]

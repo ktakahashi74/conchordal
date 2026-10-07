@@ -1,30 +1,5 @@
 use super::*;
-use crate::temporal_cognition::{
-    feature_projection::Feature, features, gesture, group, ridge::Handle,
-};
-
-thread_local! {
-    pub(in crate::temporal_cognition) static PROJECTION_NANOS: std::cell::Cell<Option<[u64; 11]>> = const { std::cell::Cell::new(None) };
-}
-
-pub(in crate::temporal_cognition) fn projection_clock() -> Option<std::time::Instant> {
-    PROJECTION_NANOS.with(|cost| cost.get().map(|_| std::time::Instant::now()))
-}
-
-pub(in crate::temporal_cognition) fn record_projection_cost(
-    clock: &mut Option<std::time::Instant>,
-    index: usize,
-) {
-    if let Some(start) = clock {
-        let now = std::time::Instant::now();
-        PROJECTION_NANOS.with(|cost| {
-            let mut values = cost.get().unwrap();
-            values[index] += now.duration_since(*start).as_nanos() as u64;
-            cost.set(Some(values));
-        });
-        *start = now;
-    }
-}
+use crate::temporal_cognition::{features, group, ridge::Handle};
 
 pub(in crate::temporal_cognition) fn input(step: u64, value: f64) -> frontend::Snapshot {
     let handle = Handle {
@@ -127,22 +102,8 @@ fn hop_input(step: u64) -> frontend::Snapshot {
 #[test]
 fn observed_context_keeps_group_identity_and_bounded_history() {
     let mut context = Context::new(1, 0, 0, 48000, 512).unwrap();
-    let mut model = gesture::Gesture::new(
-        1,
-        0,
-        48000,
-        512,
-        crate::config::TemporalGestureConfig {
-            rms_reference: 0.1,
-            means: [0.; 5],
-            deviations: [1.; 5],
-            coefficients: [[[0.; 11]; 4]; 4],
-        },
-    )
-    .unwrap();
     for step in 1..=300 {
         let acoustic = hop_input(step);
-        model.advance(&acoustic, &ridges(), step * 512).unwrap();
         context.advance(&acoustic, None, step * 512).unwrap();
     }
     let snapshot = context.snapshot();
@@ -166,96 +127,4 @@ fn observed_context_keeps_group_identity_and_bounded_history() {
     assert!(context.snapshot().censored);
     assert_eq!(context.snapshot().end_sample, 300 * 512 + 1000);
     assert!(context.finish(0).is_err());
-}
-
-#[test]
-fn candidate_windows_read_the_observed_prefix_without_changing_it() {
-    use crate::life::action_candidates::Class;
-    use crate::temporal_cognition::action_profiles;
-    let profiles = action_profiles::tests::model();
-    let mut context = Context::new(1, 0, 0, 48000, 512).unwrap();
-    let mut model = gesture::Gesture::new(
-        1,
-        0,
-        48000,
-        512,
-        crate::config::TemporalGestureConfig {
-            rms_reference: 0.1,
-            means: [0.; 5],
-            deviations: [1.; 5],
-            coefficients: [[[0.; 11]; 4]; 4],
-        },
-    )
-    .unwrap();
-    for step in 1..=8 {
-        let acoustic = hop_input(step);
-        model.advance(&acoustic, &ridges(), step * 512).unwrap();
-        context.advance(&acoustic, None, step * 512).unwrap();
-    }
-    let issue = 8 * 512;
-    let handle = context.snapshot().groups[0].unwrap().group;
-    let before = serde_json::to_value(context.snapshot()).unwrap();
-    let cell = context
-        .project_action_window(
-            &profiles,
-            0,
-            Class::Continue,
-            0,
-            issue + 4096,
-            handle,
-            1.,
-            Some(&model),
-            None,
-            None,
-        )
-        .unwrap();
-    assert_eq!(cell.issued_at, issue);
-    assert_eq!(cell.action_at, issue);
-    assert_eq!(cell.evaluation_at, issue + 4096);
-    assert_eq!(cell.group, handle);
-    assert!(cell.window_start <= issue);
-    // Projected frames may only extend the window past the issue clock.
-    assert!(
-        cell.short_projected_fraction
-            .iter()
-            .all(|v| (0. ..=1.).contains(v))
-    );
-    assert!(
-        cell.short_observed_fraction
-            .iter()
-            .zip(cell.short_projected_fraction)
-            .all(|(o, p)| o + p <= 1. + 1e-12)
-    );
-    assert!(matches!(
-        cell.accent_density.value,
-        Feature::Unsupported | Feature::Observed(_) | Feature::Projected(_)
-    ));
-    assert_eq!(cell.context_features[2], cell.grouping);
-
-    // A foreign or retired group, a rewound clock and an over-long horizon are refused.
-    let mut retired = handle;
-    retired.generation = u64::MAX;
-    for (group, evaluation) in [
-        (retired, issue),
-        (handle, issue - 1),
-        (handle, issue + 192_001),
-    ] {
-        assert!(
-            context
-                .project_action_window(
-                    &profiles,
-                    0,
-                    Class::Continue,
-                    0,
-                    evaluation,
-                    group,
-                    1.,
-                    Some(&model),
-                    None,
-                    None,
-                )
-                .is_none()
-        );
-    }
-    assert_eq!(before, serde_json::to_value(context.snapshot()).unwrap());
 }

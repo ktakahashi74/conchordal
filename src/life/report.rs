@@ -152,8 +152,6 @@ pub(crate) struct ParticipationOutcomeSample {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
-    BodyDefault(&'a crate::life::action_candidates::live::Record),
-    BodyCandidateEnergy(&'a crate::life::action_candidates::energy::Record),
     BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
     BodyDescriptor {
         #[serde(flatten)]
@@ -388,20 +386,6 @@ impl JsonlReporter {
         record: &crate::life::participation_trace::Record,
     ) -> Result<(), String> {
         self.write_record(&ReportRecord::PrivateParticipationTrace(record))
-    }
-
-    pub(crate) fn write_body_default(
-        &mut self,
-        record: &crate::life::action_candidates::live::Record,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::BodyDefault(record))
-    }
-
-    pub(crate) fn write_candidate_energy(
-        &mut self,
-        record: &crate::life::action_candidates::energy::Record,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::BodyCandidateEnergy(record))
     }
 
     pub(crate) fn write_descriptor_prediction(

@@ -98,6 +98,7 @@ impl ControlForecast {
         Some(target + (current - target) * decay)
     }
 
+    #[cfg(test)]
     pub(crate) fn known_on(self, [start, end]: [u64; 2]) -> bool {
         let mut edges = [start, end, start, start];
         edges[2] = self.starts_at.unwrap_or(start).clamp(start, end);

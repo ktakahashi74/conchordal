@@ -1,6 +1,8 @@
 //! Read-only carrier state of the multi-lane backends; amplitude envelopes stay separate.
 
+#[cfg(test)]
 use super::oscillator_bank::seeded_phase_state;
+#[cfg(test)]
 use crate::synth::resonator::{input_phase_seed, seeded_input_coupling};
 
 pub(crate) const LANES: usize = 16;
@@ -47,6 +49,7 @@ pub struct BankForecast {
 
 impl BankForecast {
     /// A delayed onset draws the phases the renderer would draw for that onset.
+    #[cfg(test)]
     pub(crate) fn for_new_onset(mut self, first_sample: u64, mut seed: u64) -> Self {
         self.first_sample = first_sample;
         match &mut self.response {

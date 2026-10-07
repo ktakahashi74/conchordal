@@ -103,16 +103,14 @@ section("author label is not an observation", || {
 });
 "#;
     let mut reference_audio = None;
-    for (mode, ridge_enabled, acoustic_enabled, memory_enabled, gesture_enabled, period_model) in [
-        ("off", false, false, false, false, None),
-        ("observe", false, false, false, false, None),
-        ("observe", true, false, false, false, None),
-        ("observe", true, true, false, false, None),
-        ("observe", true, true, true, false, None),
-        ("observe", true, true, true, true, None),
+    for (mode, ridge_enabled, acoustic_enabled, memory_enabled, period_model) in [
+        ("off", false, false, false, None),
+        ("observe", false, false, false, None),
+        ("observe", true, false, false, None),
+        ("observe", true, true, false, None),
+        ("observe", true, true, true, None),
         (
             "observe",
-            true,
             true,
             true,
             true,
@@ -120,7 +118,6 @@ section("author label is not an observation", || {
         ),
         (
             "observe",
-            true,
             true,
             true,
             true,
@@ -163,28 +160,7 @@ section("author label is not an observation", || {
                 .write_all(text.as_bytes())
                 .unwrap();
         }
-        if gesture_enabled {
-            use std::io::Write;
-            let mut coefficients = [[[0.; 11]; 4]; 4];
-            for row in &mut coefficients {
-                for cell in row {
-                    cell[0] = (1_f64 / 3.).exp_m1().ln();
-                }
-            }
-            let gesture = conchordal::config::TemporalGestureConfig {
-                rms_reference: 0.1,
-                means: [0.; 5],
-                deviations: [1.; 5],
-                coefficients,
-            };
-            let text = format!("[temporal_gesture]\n{}", toml::to_string(&gesture).unwrap());
-            fs::OpenOptions::new()
-                .append(true)
-                .open(&config)
-                .unwrap()
-                .write_all(text.as_bytes())
-                .unwrap();
-        }
+
         for reporting in [false, true] {
             let scenario = write_inline_scenario(&format!("temporal_mode(\"{mode}\");\n{body}"));
             let wav = unique_wav_path();
@@ -332,55 +308,7 @@ section("author label is not an observation", || {
                                 .as_f64()
                                 .is_some_and(|power| power > 0.0))
                     );
-                    if gesture_enabled {
-                        let mut supported_groups = 0;
-                        let mut candidates = 0;
-                        for record in &observations {
-                            let o = &record["observation"];
-                            assert!(o["gesture_error"].is_null(), "{o}");
-                            if let Some(groups) = o["gesture"]["groups"].as_array() {
-                                for group in groups.iter().filter(|g| g.is_object()) {
-                                    assert_eq!(group["group"]["bus"], o["bus"]);
-                                    let mass = group["states"]
-                                        .as_array()
-                                        .unwrap()
-                                        .iter()
-                                        .map(|v| v.as_f64().unwrap())
-                                        .sum::<f64>()
-                                        + group["unknown"].as_f64().unwrap();
-                                    assert!((mass - 1.).abs() < 1e-10);
-                                    if group["group"]["generation"].as_u64().unwrap() > 1 {
-                                        supported_groups += 1;
-                                    }
-                                }
-                            }
-                            if let Some(items) = o["gesture"]["candidates"].as_array() {
-                                let total =
-                                    items.iter().filter_map(|c| c["mass"].as_f64()).sum::<f64>()
-                                        + o["gesture"]["unresolved"].as_f64().unwrap();
-                                assert!((total - 1.).abs() < 1e-10);
-                                candidates += items.iter().filter(|c| c.is_object()).count();
-                                for member in items
-                                    .iter()
-                                    .filter_map(|c| c["members"].as_array())
-                                    .flatten()
-                                    .filter(|m| m.is_object())
-                                {
-                                    let run = &o["gesture"]["runs"]
-                                        [member["run_index"].as_u64().unwrap() as usize];
-                                    assert!(run["attack"].is_object());
-                                    assert!(
-                                        run["attack"]["available"].as_u64().unwrap()
-                                            <= o["available_sample"].as_u64().unwrap()
-                                    );
-                                }
-                            }
-                        }
-                        assert!(
-                            supported_groups > 0 && candidates > 0,
-                            "real audio did not reach gesture diagnostics"
-                        );
-                    }
+
                     if memory_enabled {
                         let mut queries = 0;
                         let mut matches = 0;
@@ -1085,7 +1013,6 @@ let turnover = place(
     sine().sustain().anchor().amp(0.02)
         .respawn_random().respawn_background_death_rate(1000000.0),
     at(220.0)
-);
 wait(0.1);
 let later = place(sine().sustain().anchor().amp(0.02), at(330.0).count(32));
 wait(0.1);
@@ -1115,7 +1042,6 @@ let turnover = place(
     sine().brain("drone").sustain().anchor().amp(0.1)
         .respawn_random().respawn_background_death_rate(40.0),
     at(220.0)
-);
 wait(0.4);
 let later = place(sine().sustain().anchor().amp(0.02), at(330.0).count(9));
 wait(0.08);
@@ -1261,8 +1187,8 @@ wait(0.1);
 fn body_prototypes_match_actual_descriptors_without_changing_audio() {
     use conchordal::config::{
         AppConfig, ArrivalModel, TemporalAcousticConfig, TemporalBodyConfig, TemporalBodyMedoid,
-        TemporalBodyPrototypesConfig, TemporalGestureConfig, TemporalMemoryConfig,
-        TemporalPeriodConfig, TemporalRidgeConfig,
+        TemporalBodyPrototypesConfig, TemporalMemoryConfig, TemporalPeriodConfig,
+        TemporalRidgeConfig,
     };
     let mut config = AppConfig::default();
     config.analysis.nfft = 2048;
@@ -1300,12 +1226,6 @@ fn body_prototypes_match_actual_descriptors_without_changing_audio() {
         episodes: 16,
         query_cadence_ms: 100,
         deadline_ms: 200,
-    });
-    config.temporal_gesture = Some(TemporalGestureConfig {
-        rms_reference: 0.1,
-        means: [0.; 5],
-        deviations: [1.; 5],
-        coefficients: [[[0.; 11]; 4]; 4],
     });
     config.temporal_period = Some(TemporalPeriodConfig {
         model: ArrivalModel::Hazard,

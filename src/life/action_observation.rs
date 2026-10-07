@@ -45,7 +45,6 @@ pub struct Outcome {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 pub struct Snapshot {
-    pub body_defaults: Option<super::action_candidates::live::Stats>,
     pub participation_trace: Option<super::participation_trace::Stats>,
     pub prediction: Option<super::self_prediction::Stats>,
     pub sample_rate: u32,
@@ -79,7 +78,6 @@ struct EnergyContext {
 }
 
 pub(crate) struct Observer {
-    body_defaults: Option<super::action_candidates::live::Bank>,
     trace: Option<Box<super::participation_trace::Bank>>,
     predictor: Option<Box<super::self_prediction::ModelBank>>,
     energy_contexts: Vec<EnergyContext>,
@@ -91,10 +89,26 @@ pub(crate) struct Observer {
 }
 
 impl Observer {
+    #[cfg(test)]
+    pub(crate) fn freeze_energy_context(
+        &self,
+        owner: (u64, u32, Option<u32>),
+        now: u64,
+    ) -> Option<crate::core::temporal_expectation::TemporalForecast> {
+        self.energy_contexts
+            .iter()
+            .find(|context| {
+                context.source_id == owner.0
+                    && context.source_generation == owner.1
+                    && Some(context.body_generation) == owner.2
+                    && context.issued_at == now
+            })
+            .map(|context| context.forecast)
+    }
+
     pub(crate) fn new(sample_rate: u32) -> Self {
         assert!(sample_rate > 0);
         Self {
-            body_defaults: None,
             trace: None,
             predictor: None,
             energy_contexts: Vec::new(),
@@ -112,18 +126,7 @@ impl Observer {
         }
     }
 
-    /// Diagnostic control: keep observation and learning, stop the default and candidate
-    /// bank, so a run can show that evaluating candidates changes neither.
-    pub(crate) fn disable_candidates(&mut self) {
-        self.body_defaults = None;
-        self.snapshot.body_defaults = None;
-    }
-
     pub(crate) fn enable_predictions(&mut self) {
-        self.body_defaults = Some(super::action_candidates::live::Bank::new(
-            self.snapshot.sample_rate,
-        ));
-        self.snapshot.body_defaults = Some(Default::default());
         self.predictor = Some(Box::new(super::self_prediction::ModelBank::new()));
         self.energy_contexts = Vec::with_capacity(crate::temporal_cognition::body::VOICES);
         self.snapshot.prediction = Some(Default::default());
@@ -153,30 +156,6 @@ impl Observer {
                 forecast,
             });
         }
-    }
-
-    pub(crate) fn candidate_energy_due(&self, owner: (u64, u32), now: u64) -> bool {
-        now >= self.next_sample
-            && self
-                .body_defaults
-                .as_ref()
-                .is_some_and(|bank| bank.sample_due(owner, now))
-    }
-
-    pub(crate) fn freeze_energy_context(
-        &self,
-        owner: (u64, u32, Option<u32>),
-        now: u64,
-    ) -> Option<crate::core::temporal_expectation::TemporalForecast> {
-        self.energy_contexts
-            .iter()
-            .find(|context| {
-                context.source_id == owner.0
-                    && context.source_generation == owner.1
-                    && Some(context.body_generation) == owner.2
-                    && context.issued_at == now
-            })
-            .map(|context| context.forecast)
     }
 
     pub(crate) fn enable_trace(&mut self, config: crate::config::TemporalPrivateTraceConfig) {
@@ -351,72 +330,10 @@ impl Observer {
         self.observing_hop = now >= self.next_sample;
     }
 
-    pub(crate) fn body_defaults(&mut self) -> Option<&mut super::action_candidates::live::Bank> {
-        self.body_defaults.as_mut().filter(|_| self.observing_hop)
-    }
-
-    pub(crate) fn drain_body_defaults(
-        &mut self,
-    ) -> impl Iterator<Item = super::action_candidates::live::Record> + '_ {
-        self.body_defaults.iter_mut().flat_map(|bank| bank.drain())
-    }
-
-    pub(crate) fn drain_candidate_energy(
-        &mut self,
-    ) -> impl Iterator<Item = super::action_candidates::energy::Record> + '_ {
-        self.body_defaults
-            .iter_mut()
-            .flat_map(|bank| bank.energy.drain())
-    }
-
-    pub(crate) fn freeze_onset_trace(
-        &self,
-        slot: (usize, u64),
-    ) -> Option<super::participation_trace::Frozen> {
-        let p = self.slots.get(slot.0)?.as_ref()?;
-        let o = &p.outcome;
-        if o.command_id != slot.1
-            || o.action != ActionKind::Onset
-            || o.command_status != "accepted"
-            || !o.buses[0].routed
-        {
-            return None;
-        }
-        self.trace.as_ref()?.freeze_onset(
-            o.command_id,
-            (o.source_id, o.source_generation),
-            o.issued_at_sample,
-        )
-    }
-
-    pub(crate) fn freeze_release_trace(
-        &self,
-        source: (u64, u32),
-        issued: u64,
-        period: Option<f64>,
-    ) -> Option<super::participation_trace::Frozen> {
-        self.trace.as_ref()?.freeze_release(source, issued, period)
-    }
-
     pub(crate) fn observe_body(&mut self, snapshot: &crate::temporal_cognition::body::Snapshot) {
-        if let Some(bank) = &mut self.body_defaults {
-            bank.bindings.clear();
-            bank.bindings
-                .extend(crate::temporal_cognition::body_model::bindings(snapshot));
-        }
         if let Some(predictor) = self.predictor.as_mut() {
             predictor.observe_body(snapshot);
             self.snapshot.prediction = Some(predictor.stats);
-        }
-    }
-
-    pub(crate) fn shared_candidates(
-        &mut self,
-        shared: [Option<std::sync::Arc<crate::temporal_cognition::action_profiles::consumer::Publication>>;
-            2],
-    ) {
-        if let Some(bank) = &mut self.body_defaults {
-            bank.shared = shared;
         }
     }
 
@@ -574,10 +491,7 @@ impl Observer {
             }
         }
         self.next_sample = end;
-        if let Some(bank) = self.body_defaults.as_mut() {
-            bank.end_hop();
-            self.snapshot.body_defaults = Some(bank.stats);
-        }
+
         if let Some(trace) = self.trace.as_mut() {
             let watermark = self
                 .slots
@@ -638,11 +552,6 @@ impl Observer {
     }
 
     pub(crate) fn finish(&mut self) {
-        if let Some(bank) = self.body_defaults.as_mut() {
-            bank.energy.finish();
-            bank.stats.candidate_energy = bank.energy.stats;
-            self.snapshot.body_defaults = Some(bank.stats);
-        }
         for i in 0..self.slots.len() {
             if self.slots[i].is_some() {
                 self.complete(i, self.next_sample);

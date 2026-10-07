@@ -1,10 +1,6 @@
 //! Frozen bodily inputs, not acoustic predictions or permission to execute them.
-//! Public for the offline temporal_action_profiles example; live policy remains local.
 
 use crate::core::timebase::Tick;
-
-pub(crate) mod energy;
-pub(crate) mod live;
 
 /// Facts passed to the phonation engine, not permission for a future candidate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]

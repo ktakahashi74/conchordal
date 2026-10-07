@@ -459,29 +459,7 @@ fn draw_listener_dashboard(
                         observation.commands, observation.completed, observation.pending,
                         observation.rejected, observation.capacity_dropped, observation.output_dropped));
                     if let Some(prediction) = observation.prediction {
-                        if let Some(defaults) = observation.body_defaults {
-                            let energy = defaults.candidate_energy;
-                            ui.label(format!("Conditional body energy: {} submitted · {} completed · {} unsupported · {} input / {} output drops",
-                                energy.submitted, energy.completed, energy.unsupported + energy.worker_unsupported,
-                                energy.capacity_dropped, energy.output_dropped));
-                            if energy.worker_failed { ui.label("Conditional body energy worker failed"); }
-                            ui.label(format!("Body default: {} mapped · {} unknown · {} capacity / {} output drops",
-                                defaults.mapped, defaults.unknown, defaults.capacity_dropped, defaults.output_dropped));
-                            if let Some(record) = defaults.latest {
-                                ui.label(format!("Voice {} / generation {} · {:?} · {}",
-                                    record.source_id, record.source_generation,
-                                    record.default_input.map(|input| input.class), record.status));
-                                if let Some(opportunity) = record.opportunity {
-                                    ui.label(format!("Clock opportunity: {} ({:?}) · {} candidate times",
-                                        opportunity.at, opportunity.basis, record.candidate_time_count));
-                                }
-                                if let Some(receipt) = record.onset_opportunity {
-                                    ui.label(format!("Onset recipe {:?}: {} · intrinsic due {:?} · release {:?}",
-                                        record.onset_recipe_tone_id, receipt.at,
-                                        receipt.intrinsic_due_at, receipt.planned_release_at));
-                                }
-                            }
-                        }
+
                         ui.label(format!("Self prediction: {} issued · {} bus outcomes scored · {} updated · {} unsupported",
                             prediction.issued, prediction.matched, prediction.updated, prediction.unsupported));
                         let d = prediction.descriptor;
@@ -573,62 +551,9 @@ fn draw_listener_dashboard(
                             ui.label(format!("Prototype/group matches: {} · {} descriptors · support end {}",
                                 context.assignments.iter().flatten().count(), context.descriptors.iter().flatten().count(), context.end_sample));
                         }
-                        if let Some(profiles) = observation.action_profile_features {
-                            ui.label(format!(
-                                "Action profile windows: {} · {} projected coordinates · uncalibrated",
-                                profiles.cells, profiles.projected_coordinates
-                            ));
-                            if let Some(delay) = profiles.evaluation_delay_samples {
-                                ui.label(format!(
-                                    "Evaluation: {:.0} ms after action, rounded up to a profile hop",
-                                    delay as f64 / 48.
-                                ));
-                            } else {
-                                ui.label("Evaluation: at action time");
-                            }
-                            ui.label(format!(
-                                "Issue coverage {:.0}% · articulation-supported cells {}",
-                                100. * profiles.issue_observed_coverage,
-                                profiles.articulation_supported_cells
-                            ));
-                            ui.label(format!("Candidate accent density: {} projected cells · uncalibrated",
-                                profiles.projected_accent_density_cells));
-                            ui.label(format!("Candidate arrival: {} projected cells · uncalibrated",
-                                profiles.projected_arrival_cells));
-                        }
-                        if let Some(resources) = observation.action_profile_resources {
-                            ui.label(format!(
-                                "Maximum assigned prototypes per build: {}",
-                                resources.builds_by_assigned_prototypes.iter().rposition(|n| *n > 0).unwrap_or(0)
-                            ));
-                            ui.label(format!(
-                                "Shared table builds: {} · deferred: {} · invalidated: {} · last/max {:.2}/{:.2} ms",
-                                resources.rebuilds, resources.deferred_calls, resources.invalidations,
-                                resources.last_build_us as f64 / 1000.,
-                                resources.max_build_us as f64 / 1000.
-                            ));
-                            ui.label(format!(
-                                "Shared table cells: {} evaluated · {} reused · {} outside evaluation range",
-                                resources.projection_calls, resources.reused_cells,
-                                resources.evaluation_unavailable_cells
-                            ));
-                            ui.label(format!(
-                                "Articulation hops: {} evaluated · {} reused",
-                                resources.articulation_frames, resources.reused_articulation_frames
-                            ));
-                        }
-                        if let Some(resources) = observation.worker_resources {
-                            ui.label(format!(
-                                "Worker: {} frames · max {:.2} ms · 100 ms windows {}/{} over 50 ms",
-                                resources.frames.count, resources.frames.maximum_ns as f64 / 1e6,
-                                resources.windows.over_limit, resources.windows.count
-                            ));
-                            ui.label(format!(
-                                "Publication age: max {:.2} ms · {}/{} over 25 ms",
-                                resources.delivery.maximum_ns as f64 / 1e6,
-                                resources.delivery.over_limit, resources.delivery.count
-                            ));
-                        }
+
+
+
                         if observation.acoustic_failed {
                             ui.label("Acoustic diagnostics: failed for this source epoch");
                         } else if let Some(acoustic) = observation.acoustic {
@@ -707,15 +632,7 @@ fn draw_listener_dashboard(
                                 }
                             }
                         }
-                        if let Some(error) = observation.gesture_error {
-                            ui.label(format!("Gesture diagnostics: {error}"));
-                        } else if let Some(gesture) = observation.gesture {
-                            let unions = gesture.candidates.iter().flatten().filter(|c| c.members[1].is_some()).count();
-                            ui.label(format!("Gesture hypotheses: {} · {} two-group unions · unresolved {:.3} · uncalibrated", gesture.candidates.iter().flatten().count(), unions, gesture.unresolved));
-                            for group in gesture.groups.iter().flatten() {
-                                ui.label(format!("Group {}: attack {:.2} · continuation {:.2} · release {:.2} · gap {:.2} · unknown {:.2}", group.group.generation, group.states[0], group.states[1], group.states[2], group.states[3], group.unknown));
-                            }
-                        }
+
 
                     }
                 }

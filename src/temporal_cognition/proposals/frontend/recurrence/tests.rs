@@ -498,16 +498,6 @@ fn actual_nsgt_pulse_silence_and_steady_controls_reach_separate_inventories() {
                 if let Some(issue) = issue {
                     assert_eq!(models[bus].slots[i].owner, Some(issue.group));
                     assert_eq!(issue.issued_at, end);
-                    let projected = issue.project(end).unwrap().finish().unwrap();
-                    let ordinary = models[bus].diagnostics().unwrap().groups[i]
-                        .unwrap()
-                        .forecast
-                        .unwrap();
-                    assert_eq!(projected.reset_unknown, ordinary.reset_unknown);
-                    let point = ordinary
-                        .probability
-                        .filter(|p| !ordinary.reset_unknown && p[0] == p[1]);
-                    assert_eq!(projected.probability.value(), point.map(|p| p[0]));
                 }
             }
             accents[bus] += out

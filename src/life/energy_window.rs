@@ -55,26 +55,6 @@ impl Body<'_> {
             )
     }
 
-    pub(crate) fn support_after(&self, after: u64, bus: usize) -> Option<[u64; 2]> {
-        self.tones(bus)
-            .filter_map(|(_, tone, release)| tone.support_after(after, release))
-            .reduce(|[a, b], [c, d]| [a.min(c), b.max(d)])
-    }
-
-    pub(crate) fn known_on(&self, interval: [u64; 2], bus: usize) -> bool {
-        self.tones(bus).all(|(_, tone, release)| {
-            let Some([start, end]) = tone.support_after(interval[0], release) else {
-                return true;
-            };
-            let end = end.min(interval[1]);
-            start >= end
-                || (tone.amplitude.is_finite()
-                    && tone
-                        .control_for(release)
-                        .is_some_and(|c| c.known_on([start, end])))
-        })
-    }
-
     pub(crate) fn point(
         &self,
         tick: u64,

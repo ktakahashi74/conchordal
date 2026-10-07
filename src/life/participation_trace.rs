@@ -57,6 +57,7 @@ pub(crate) struct TimingPreview {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+#[cfg(test)]
 pub(crate) struct Origin {
     pub command_id: Option<u64>,
     pub source_id: u64,
@@ -67,6 +68,7 @@ pub(crate) struct Origin {
     pub inventory_at_sample: Option<u64>,
 }
 
+#[cfg(test)]
 pub(crate) struct Frozen {
     pub origin: Origin,
     pub head: trace::Head,
@@ -76,6 +78,7 @@ pub(crate) struct Frozen {
     predictions: [[Option<[f64; 33]>; N]; 2],
 }
 
+#[cfg(test)]
 impl Frozen {
     pub fn fit(&self, rate: u32, candidate: u64, body_default: u64) -> [Fit; 2] {
         paired_fits(
@@ -446,6 +449,7 @@ impl Bank {
         self.stats.timing_queries += count as u64;
     }
 
+    #[cfg(test)]
     pub(crate) fn freeze_onset(
         &self,
         command_id: u64,
@@ -480,6 +484,7 @@ impl Bank {
     }
 
     /// A current release-head query creates neither a pending command nor a trace.
+    #[cfg(test)]
     pub(crate) fn freeze_release(
         &self,
         source: (u64, u32),

@@ -288,15 +288,11 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_memory: Option<TemporalMemoryConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_gesture: Option<TemporalGestureConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_period: Option<TemporalPeriodConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body: Option<TemporalBodyConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body_prototypes: Option<TemporalBodyPrototypesConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_action_profiles: Option<TemporalActionProfilesConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_private_trace: Option<TemporalPrivateTraceConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -361,17 +357,6 @@ pub struct TemporalBodyMedoid {
     pub mask: u8,
 }
 
-/// Frozen conditional descriptor-transfer data; no action or calibration is enabled.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalActionProfilesConfig {
-    pub file: String,
-    pub sha256: String,
-    /// Omitted: exact action time. Set: delay, then round up on the issue-relative hop grid.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub evaluation_delay_ms: Option<u32>,
-}
-
 /// Explicit research scales for passive ridge diagnostics, not an adopted fit.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -431,16 +416,6 @@ pub struct TemporalRetentionConfig {
     pub edit_penalty: f64,
     pub motion_scale: f64,
     pub interval_scale: f64,
-}
-
-/// Frozen research inputs for the single-context articulation/gesture diagnostic.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalGestureConfig {
-    pub rms_reference: f64,
-    pub means: [f64; 5],
-    pub deviations: [f64; 5],
-    pub coefficients: [[[f64; 11]; 4]; 4],
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -530,7 +505,6 @@ impl Default for PlaybackConfig {
 impl AppConfig {
     /// Validate the dimensions shared by the runtime and the NSGT kernel.
     pub fn validate(&self) -> Result<()> {
-        crate::temporal_cognition::action_profiles::validate_config(self)?;
         if let Some(ridge) = self.temporal_ridge {
             ensure!(
                 ridge.means.iter().all(|v| v.is_finite())
@@ -612,20 +586,7 @@ impl AppConfig {
             )
             .map_err(anyhow::Error::msg)?;
         }
-        if let Some(gesture) = self.temporal_gesture {
-            ensure!(
-                self.temporal_acoustic.is_some(),
-                "temporal_gesture requires temporal_acoustic"
-            );
-            crate::temporal_cognition::gesture::Gesture::new(
-                0,
-                0,
-                self.audio.sample_rate,
-                self.analysis.hop_size as u64,
-                gesture,
-            )
-            .map_err(anyhow::Error::msg)?;
-        }
+
         if let Some(trace) = self.temporal_private_trace {
             anyhow::ensure!(
                 self.temporal_memory.is_some_and(|m| m.retention.is_some()),
@@ -901,11 +862,9 @@ mod tests {
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_memory: None,
-            temporal_gesture: None,
             temporal_period: None,
             temporal_body: None,
             temporal_body_prototypes: None,
-            temporal_action_profiles: None,
             temporal_private_trace: None,
             temporal_onset_comparison: None,
             audio: AudioConfig {
@@ -1212,45 +1171,6 @@ mod tests {
         );
         assert!(
             toml::from_str::<TemporalPeriodConfig>(&text.replace("horizon_sec", "horizon_secs"))
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn gesture_configuration_requires_frozen_finite_inputs() {
-        let gesture = TemporalGestureConfig {
-            rms_reference: 0.1,
-            means: [0.; 5],
-            deviations: [1.; 5],
-            coefficients: [[[0.; 11]; 4]; 4],
-        };
-        let cfg = AppConfig {
-            temporal_gesture: Some(gesture),
-            ..Default::default()
-        };
-        assert!(
-            cfg.validate()
-                .unwrap_err()
-                .to_string()
-                .contains("temporal_acoustic")
-        );
-        for case in 0..4 {
-            let mut bad = gesture;
-            match case {
-                0 => bad.rms_reference = 0.,
-                1 => bad.coefficients[0][1][3] = f64::INFINITY,
-                2 => bad.means[0] = f64::NAN,
-                _ => bad.deviations[0] = -1.,
-            }
-            assert!(
-                crate::temporal_cognition::gesture::Gesture::new(0, 0, 48000, 512, bad).is_err()
-            );
-        }
-        let text = toml::to_string(&gesture).unwrap();
-        let parsed: TemporalGestureConfig = toml::from_str(&text).unwrap();
-        assert_eq!(parsed.coefficients, gesture.coefficients);
-        assert!(
-            toml::from_str::<TemporalGestureConfig>(&text.replace("rms_reference", "rms_refernce"))
                 .is_err()
         );
     }

@@ -529,7 +529,6 @@ impl Drop for Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::action_candidates::energy::{ScheduledRequest, Worker as CandidateWorker};
 
     const FS: f32 = 48000.;
 
@@ -819,46 +818,6 @@ mod tests {
         assert!(worker.body_generation((7, 1)).unwrap() > respawned);
     }
 
-    fn scheduled_packet(worker: &mut CandidateWorker) -> bool {
-        let mut tone = Tone::from_parts(
-            Timebase { fs: FS, hop: HOP },
-            0,
-            200_000,
-            293.,
-            0.2,
-            Some(recipe(BodyKind::Sine, 24000).body),
-            Some(RenderModulatorSpec::SeqGate { duration_sec: 10. }),
-            recipe(BodyKind::Sine, 24000).adsr,
-        )
-        .unwrap();
-        tone.seed_modal_phases(11);
-        tone.arm_onset_trigger(1.);
-        let (_, amplitude, envelope) = tone.prediction_parameters(None);
-        let frozen = ToneEnergy {
-            amplitude,
-            envelope,
-            control: Some(tone.prediction_control(800, &NeuralRhythms::default())),
-            scheduled_release: None,
-            sine: tone.prediction_sine(800),
-            bank: tone.prediction_bank(800),
-        };
-        let Some(mut packet) = worker.acquire() else {
-            return false;
-        };
-        packet.scheduled = Some(ScheduledRequest {
-            source_id: 2,
-            source_generation: 7,
-            body_generation: 3,
-            issued_at: 800,
-            sample_rate: 48000,
-            hop: 400,
-            period: Some(4000),
-        });
-        packet.retained.push((1, [true, true], frozen));
-        worker.submit(packet, true);
-        true
-    }
-
     fn poll_until(worker: &mut Worker, done: impl Fn(&Worker) -> bool) -> bool {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while std::time::Instant::now() < deadline {
@@ -899,24 +858,6 @@ mod tests {
         assert_eq!(records.len() as u64, expected);
         assert!(records.iter().all(|r| r.received_at == Some(12345)));
         assert!(records.iter().all(|r| r.state == State::Body));
-    }
-
-    #[test]
-    fn footprint_worker_runs_independently_of_a_candidate_backlog() {
-        let mut worker = Worker::new();
-        let mut candidates = CandidateWorker::new();
-        let submitted = (0..CAPACITY)
-            .filter(|_| scheduled_packet(&mut candidates))
-            .count() as u64;
-        for _ in 0..4 {
-            assert!(worker.request_footprint(request(recipe(BodyKind::Sine, 24000))));
-        }
-        assert!(poll_until(&mut worker, |w| w.stats.footprint_completed == 4));
-        assert!(submitted > 0);
-        worker.finish();
-        candidates.finish();
-        assert_eq!(candidates.stats.completed, submitted);
-        assert_eq!(worker.drain_footprints(7).count(), 4);
     }
 
     #[test]

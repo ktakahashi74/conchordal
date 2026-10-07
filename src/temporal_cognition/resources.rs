@@ -125,6 +125,7 @@ impl Meter {
         self.snapshot.delivery.record(delivery_ns);
     }
 
+    #[cfg(test)]
     pub fn rejected(&mut self, wall_ns: u64) {
         self.snapshot.rejected.record(wall_ns);
     }

@@ -1,7 +1,6 @@
 //! Ordered auditory evidence and M0 numerical model preparation.
 
 mod accents;
-pub(crate) mod action_profiles;
 pub(crate) mod arrival;
 mod auditory_timing;
 pub(crate) mod body;
@@ -10,7 +9,6 @@ pub(crate) mod context;
 mod descriptor;
 mod feature_projection;
 mod features;
-pub(crate) mod gesture;
 mod group;
 mod grouping;
 mod matcher;

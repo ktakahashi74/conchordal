@@ -2,8 +2,6 @@
 
 use crate::core::log2space::Log2Space;
 
-pub(super) mod window;
-
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 #[serde(tag = "origin", content = "value", rename_all = "snake_case")]
 pub(super) enum Feature {

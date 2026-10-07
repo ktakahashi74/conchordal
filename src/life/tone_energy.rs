@@ -20,6 +20,32 @@ pub(crate) struct ToneEnergy {
 }
 
 impl ToneEnergy {
+    #[cfg(test)]
+    pub(crate) fn renderer_end_after(
+        self,
+        after: u64,
+        intervention: Option<ScheduledRelease>,
+    ) -> Option<u64> {
+        let mut edges = [0, u64::MAX, 0, 0];
+        for (edge, release) in edges[2..]
+            .iter_mut()
+            .zip([self.scheduled_release, intervention])
+        {
+            *edge = release.map_or(0, |r| r.apply_at_sample);
+        }
+        edges.sort_unstable();
+        for pair in edges.windows(2) {
+            let end = self
+                .envelope_at(pair[0], intervention)
+                .release_end
+                .max(pair[0]);
+            if end < pair[1] {
+                return (end >= after).then_some(end);
+            }
+        }
+        None
+    }
+
     pub(crate) fn control_for(
         self,
         intervention: Option<ScheduledRelease>,
@@ -53,56 +79,6 @@ impl ToneEnergy {
             }
         }
         envelope
-    }
-
-    pub(crate) fn renderer_end_after(
-        self,
-        after: u64,
-        intervention: Option<ScheduledRelease>,
-    ) -> Option<u64> {
-        let mut edges = [0, u64::MAX, 0, 0];
-        for (edge, release) in edges[2..]
-            .iter_mut()
-            .zip([self.scheduled_release, intervention])
-        {
-            *edge = release.map_or(0, |r| r.apply_at_sample);
-        }
-        edges.sort_unstable();
-        for pair in edges.windows(2) {
-            let end = self
-                .envelope_at(pair[0], intervention)
-                .release_end
-                .max(pair[0]);
-            if end < pair[1] {
-                return (end >= after).then_some(end);
-            }
-        }
-        None
-    }
-
-    pub(crate) fn support_after(
-        self,
-        after: u64,
-        intervention: Option<ScheduledRelease>,
-    ) -> Option<[u64; 2]> {
-        let mut edges = [after, u64::MAX, after, after];
-        for (edge, release) in edges[2..]
-            .iter_mut()
-            .zip([self.scheduled_release, intervention])
-        {
-            *edge = release.map_or(after, |r| r.apply_at_sample.max(after));
-        }
-        edges.sort_unstable();
-        let mut support: Option<[u64; 2]> = None;
-        for pair in edges.windows(2) {
-            let envelope = self.envelope_at(pair[0], intervention);
-            let start = pair[0].max(envelope.onset);
-            let end = pair[1].min(envelope.release_end);
-            if start < end {
-                support = Some(support.map_or([start, end], |[a, b]| [a.min(start), b.max(end)]));
-            }
-        }
-        support
     }
 
     #[cfg(test)]

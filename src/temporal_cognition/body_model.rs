@@ -81,6 +81,10 @@ pub(crate) struct Binding {
     pub common_coordinates: usize,
 }
 
+#[expect(
+    dead_code,
+    reason = "Retained self-group boundary for the registered T-5 consumer"
+)]
 pub(crate) fn bindings(snapshot: &super::body::Snapshot) -> impl Iterator<Item = Binding> + '_ {
     snapshot
         .records

@@ -1,14 +1,10 @@
 //! Per-group observed acoustic context: a bounded two-second history of raw descriptors,
-//! energies and admitted accents, for body matching and candidate-window projection.
+//! energies and admitted accents, for body matching.
 
 use super::observables::WindowDescriptor;
 use super::{features::RawDescriptor, proposals::frontend, ridge::Handle};
 use serde::Serialize;
 use std::collections::VecDeque;
-
-mod accents;
-mod projection;
-pub(crate) use accents::AccentDensity;
 
 #[derive(Clone, Copy)]
 struct Sample {
@@ -16,7 +12,6 @@ struct Sample {
     energy: Option<f64>,
     spectral_shape_supported: bool,
     alpha: f64,
-    grouping: Option<f64>,
 }
 
 pub(crate) struct Group {
@@ -209,9 +204,6 @@ impl Context {
                     .flatten()
                     .find(|g| g.ledger.group == raw.group && g.active)
             });
-            let grouping = pg
-                .and_then(|p| p.grouping)
-                .and_then(|g| g.admission_support);
             let alpha = if observed && acoustic.spectral_shape_supported && denominator > 0. {
                 acoustic
                     .assignment
@@ -230,7 +222,6 @@ impl Context {
                     energy: acoustic.energy.map(|energies| energies[index]),
                     spectral_shape_supported: acoustic.spectral_shape_supported,
                     alpha,
-                    grouping,
                 });
             }
             while g.history.front().is_some_and(|s| s.raw.end <= window) {

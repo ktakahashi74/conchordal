@@ -10,15 +10,6 @@ pub struct SineForecast {
 }
 
 impl SineForecast {
-    pub(crate) fn for_new_onset(mut self, first_sample: u64, mut seed: u64) -> Self {
-        self.first_sample = first_sample;
-        // An out-of-band carrier stays silent when its onset moves.
-        if self.state != [0.; 2] {
-            self.state = super::oscillator_bank::seeded_phase_state(&mut seed);
-        }
-        self
-    }
-
     pub(crate) fn at(self, tick: u64) -> Option<[f64; 3]> {
         let elapsed = tick.checked_sub(self.first_sample)?;
         let [x, y] = self.state.map(f64::from);

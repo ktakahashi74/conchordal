@@ -384,6 +384,13 @@ impl Recurrence {
         self.frontend.snapshot(out)
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Retained owner and clock boundary for the registered T-5 consumer"
+        )
+    )]
     pub(in crate::temporal_cognition) fn arrival_issues(
         &self,
         cut: u64,

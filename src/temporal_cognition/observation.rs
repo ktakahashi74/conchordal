@@ -7,7 +7,7 @@ use std::time::Instant;
 use crossbeam_channel::{Sender, TrySendError};
 use serde::Serialize;
 
-use super::{context, gesture, proposals::frontend, recall, reference_inventory, resources, ridge};
+use super::{context, proposals::frontend, recall, reference_inventory, ridge};
 use crate::{
     config::{TemporalAcousticConfig, TemporalRidgeConfig},
     core::log2space::Log2Space,
@@ -61,27 +61,18 @@ pub(crate) struct Snapshot {
     pub memory_error: Option<&'static str>,
     pub reference_inventory: Option<reference_inventory::Snapshot>,
     pub reference_inventory_error: Option<&'static str>,
-    pub gesture_parameters: Option<crate::config::TemporalGestureConfig>,
-    pub gesture: Option<gesture::Snapshot>,
-    pub gesture_error: Option<&'static str>,
     pub period_parameters: Option<crate::config::TemporalPeriodConfig>,
     pub period: Option<frontend::recurrence::Snapshot>,
     pub period_error: Option<&'static str>,
     pub context: Option<context::Snapshot>,
     pub context_error: Option<&'static str>,
     pub group_prototypes: Option<super::body_model::Shared>,
-    pub action_profile_features: Option<super::action_profiles::Snapshot>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action_profile_resources: Option<super::action_profiles::Resources>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub worker_resources: Option<resources::Snapshot>,
     pub relations_implemented: bool,
     pub action_enabled: bool,
 }
 
 #[derive(Clone, Default)]
 pub(crate) struct Options {
-    pub action_profiles: Option<Arc<super::action_profiles::Profiles>>,
     pub body_prototypes: Option<(
         crate::config::TemporalBodyConfig,
         super::body_model::Prototypes,
@@ -90,7 +81,6 @@ pub(crate) struct Options {
     pub ridge: Option<TemporalRidgeConfig>,
     pub acoustic: Option<TemporalAcousticConfig>,
     pub memory: Option<crate::config::TemporalMemoryConfig>,
-    pub gesture: Option<crate::config::TemporalGestureConfig>,
     pub period: Option<crate::config::TemporalPeriodConfig>,
 }
 
@@ -123,7 +113,6 @@ enum Event {
 
 pub(crate) struct Tap {
     pub reference_context: Arc<Mutex<reference_inventory::Context>>,
-    pub candidate_table: Arc<Mutex<Option<Arc<super::action_profiles::consumer::Publication>>>>,
     tx: Option<Sender<Event>>,
     completed: Option<crossbeam_channel::Receiver<()>>,
     handle: Option<JoinHandle<()>>,
@@ -164,15 +153,12 @@ impl Tap {
             ridge_parameters: options.ridge,
             acoustic_parameters: options.acoustic,
             memory_parameters: options.memory,
-            gesture_parameters: options.gesture,
             period_parameters: options.period,
             ..Snapshot::default()
         };
         let snapshot = Arc::new(Mutex::new(initial));
         let reference_context = Arc::new(Mutex::new(reference_inventory::Context::default()));
         let reference_output = Arc::clone(&reference_context);
-        let candidate_table = Arc::new(Mutex::new(None));
-        let table_output = Arc::clone(&candidate_table);
         let output = Arc::clone(&snapshot);
         let state = Box::new(initial);
         let space = Arc::new(space);
@@ -180,7 +166,6 @@ impl Tap {
         let handle = std::thread::Builder::new()
             .name(format!("temporal-observation-{bus}"))
             .spawn(move || {
-                let resource_started = options.action_profiles.as_ref().map(|_| Instant::now());
                 let mut state = state;
                 let mut next_frame = 0;
                 let new_tracker = |epoch| {
@@ -229,21 +214,10 @@ impl Tap {
                         (f, None)
                     }
                 };
-                let mut published_key = None;
-                let mut action_table = options
-                    .action_profiles
-                    .as_ref()
-                    .map(|_| super::action_profiles::Table::new());
                 let new_memory = |epoch| {
                     options.memory.map(|config| {
                         recall::Recall::new(bus, epoch, sample_rate, hop as u64, config)
                             .expect("validated memory diagnostic configuration")
-                    })
-                };
-                let new_gesture = |epoch| {
-                    options.gesture.map(|cfg| {
-                        gesture::Gesture::new(bus, epoch, sample_rate, hop as u64, cfg)
-                            .expect("validated gesture diagnostic configuration")
                     })
                 };
                 let new_context = |epoch, start| {
@@ -257,7 +231,6 @@ impl Tap {
                 };
                 let mut inventory = new_inventory(0, 0);
                 let mut context = Some(new_context(0, 0));
-                let mut gesture = new_gesture(0);
                 let mut memory = new_memory(0);
                 let (mut acoustic, mut recurrence) = split_frontend(new_frontend(0, 0));
                 let mut tracker = if acoustic.is_none() && recurrence.is_none() {
@@ -265,17 +238,7 @@ impl Tap {
                 } else {
                     None
                 };
-                let mut resources = resource_started.map(|started| {
-                    resources::Meter::new(sample_rate, hop as u64, resources::elapsed_ns(started))
-                });
                 while let Ok(event) = rx.recv() {
-                    let started = resources.as_ref().map(|_| Instant::now());
-                    let published = match &event {
-                        Event::Frame(frame) => Some(frame.published),
-                        Event::End { .. } => None,
-                    };
-                    let received_before = state.received_frames;
-                    let mut table_ns = 0;
                     let mut finished = false;
                     match event {
                         Event::End {
@@ -289,13 +252,10 @@ impl Tap {
                                 context = None;
                                 state.context = None;
                                 state.group_prototypes = None;
-                                state.action_profile_features = None;
                                 recurrence = None;
                                 state.period = None;
                                 memory = None;
                                 state.reference_inventory = None;
-                                gesture = None;
-                                state.gesture = None;
                                 state.memory = None;
                             }
                             state.delivery_dropped_frames = dropped_frames;
@@ -307,17 +267,7 @@ impl Tap {
                                 }
                                 state.memory = Some(memory.snapshot());
                             }
-                            if let Some(g) =
-                                gesture.as_mut().filter(|_| state.gesture_error.is_none())
-                            {
-                                match g.finish(input_end_sample) {
-                                    Ok(()) => state.gesture = Some(g.snapshot()),
-                                    Err(error) => {
-                                        state.gesture_error = Some(error);
-                                        state.gesture = None;
-                                    }
-                                }
-                            }
+
                             if let Some(r) =
                                 recurrence.as_mut().filter(|_| state.period_error.is_none())
                             {
@@ -337,7 +287,6 @@ impl Tap {
                                     Err(e) => {
                                         state.context = None;
                                         state.group_prototypes = None;
-                                        state.action_profile_features = None;
                                         state.context_error = Some(e);
                                     }
                                 }
@@ -381,15 +330,11 @@ impl Tap {
                                     context = Some(new_context(frame.epoch, frame.start));
                                     state.context = None;
                                     state.group_prototypes = None;
-                                    state.action_profile_features = None;
                                     state.context_error = None;
                                     memory = new_memory(frame.epoch);
                                     inventory = new_inventory(frame.epoch, frame.start);
                                     state.reference_inventory = None;
                                     state.reference_inventory_error = None;
-                                    gesture = new_gesture(frame.epoch);
-                                    state.gesture = None;
-                                    state.gesture_error = None;
                                     state.memory = None;
                                     state.memory_failed = false;
                                     state.memory_error = None;
@@ -487,18 +432,7 @@ impl Tap {
                                                 }
                                                 state.memory = Some(memory.snapshot());
                                             }
-                                            if let Some(g) = gesture
-                                                .as_mut()
-                                                .filter(|_| state.gesture_error.is_none())
-                                            {
-                                                match g.advance(&summary, &out.ridges, frame.end) {
-                                                    Ok(()) => state.gesture = Some(g.snapshot()),
-                                                    Err(error) => {
-                                                        state.gesture_error = Some(error);
-                                                        state.gesture = None;
-                                                    }
-                                                }
-                                            }
+
                                             if let Some(context) = context
                                                 .as_mut()
                                                 .filter(|_| state.context_error.is_none())
@@ -533,41 +467,7 @@ impl Tap {
                                                 );
                                             } else {
                                                 state.group_prototypes = None;
-                                                state.action_profile_features = None;
                                             }
-                                            let table_started =
-                                                resources.as_ref().map(|_| Instant::now());
-                                            state.action_profile_features = match (
-                                                options.action_profiles.as_ref(),
-                                                action_table.as_mut(),
-                                                context
-                                                    .as_ref()
-                                                    .filter(|_| state.context_error.is_none()),
-                                                state.group_prototypes.as_ref(),
-                                                gesture
-                                                    .as_ref()
-                                                    .filter(|_| state.gesture_error.is_none()),
-                                            ) {
-                                                (
-                                                    Some(profiles),
-                                                    Some(table),
-                                                    Some(context),
-                                                    Some(shared),
-                                                    Some(gesture),
-                                                ) => table.refresh(
-                                                    profiles,
-                                                    context,
-                                                    shared,
-                                                    gesture,
-                                                    recurrence.as_ref(),
-                                                ),
-                                                _ => None,
-                                            };
-                                            table_ns =
-                                                table_started.map_or(0, resources::elapsed_ns);
-                                            state.action_profile_resources = action_table
-                                                .as_ref()
-                                                .map(super::action_profiles::Table::resources);
                                             state.reference_inventory = None;
                                             if let Some(inventory) =
                                                 inventory.as_mut().filter(|_| {
@@ -609,7 +509,6 @@ impl Tap {
                                         }
                                         Err(error) => {
                                             state.group_prototypes = None;
-                                            state.action_profile_features = None;
                                             state.reference_inventory = None;
                                             if recurrence.is_some() {
                                                 state.period = None;
@@ -619,11 +518,6 @@ impl Tap {
                                             state.context_error = Some(error);
                                             state.acoustic_failed = true;
                                             state.ridge_failed = true;
-                                            if gesture.is_some() {
-                                                state.gesture = None;
-                                                state.gesture_error =
-                                                    Some("acoustic input failed for this epoch");
-                                            }
                                         }
                                     }
                                 }
@@ -679,41 +573,9 @@ impl Tap {
                             }
                         }
                     }
-                    let key = state
-                        .action_profile_features
-                        .as_ref()
-                        .map(super::action_profiles::consumer::Key::from);
-                    if key != published_key {
-                        let published = key.and_then(|_| {
-                            action_table
-                                .as_ref()
-                                .zip(options.action_profiles.as_ref())
-                                .and_then(|(table, profiles)| table.publication(profiles))
-                        });
-                        *table_output.lock().expect("candidate table publication") = published;
-                        published_key = key;
-                    }
                     {
                         let mut destination = output.lock().expect("observation snapshot");
                         *destination = *state;
-                        if let (Some(meter), Some(started)) = (resources.as_mut(), started) {
-                            let wall_ns = resources::elapsed_ns(started);
-                            if finished {
-                                meter.finish(state.input_end_sample, wall_ns);
-                            } else if state.received_frames > received_before {
-                                meter.frame(
-                                    state.source_epoch,
-                                    state.hop_start_sample,
-                                    wall_ns,
-                                    table_ns,
-                                    resources::elapsed_ns(published.unwrap()),
-                                );
-                            } else {
-                                meter.rejected(wall_ns);
-                            }
-                            state.worker_resources = Some(meter.snapshot);
-                            destination.worker_resources = state.worker_resources;
-                        }
                     }
                     if finished {
                         return;
@@ -724,14 +586,9 @@ impl Tap {
                         return;
                     }
                 }
-                *table_output.lock().expect("candidate table publication") = None;
                 state.state = ObservationState::Failed;
                 state.group_prototypes = None;
-                state.action_profile_features = None;
-                if let Some(meter) = resources.as_mut() {
-                    meter.close(state.input_end_sample);
-                    state.worker_resources = Some(meter.snapshot);
-                }
+
                 reference_output
                     .lock()
                     .expect("reference context")
@@ -741,7 +598,6 @@ impl Tap {
             .expect("spawn temporal observer");
         Self {
             reference_context,
-            candidate_table,
             tx: Some(tx),
             completed,
             handle: Some(handle),
@@ -932,19 +788,12 @@ mod tests {
                         persistence_hops: 3,
                     }),
                     body_prototypes: None,
-                    action_profiles: None,
                     period: Some(crate::config::TemporalPeriodConfig {
                         model: crate::config::ArrivalModel::Hazard,
                         coefficients: [0.; 18],
                         means: [0.; 8],
                         deviations: [1.; 8],
                         horizon_sec: 0.1,
-                    }),
-                    gesture: Some(crate::config::TemporalGestureConfig {
-                        rms_reference: 0.1,
-                        means: [0.; 5],
-                        deviations: [1.; 5],
-                        coefficients: [[[0.; 11]; 4]; 4],
                     }),
                     memory: Some(crate::config::TemporalMemoryConfig {
                         retention: None,
@@ -988,7 +837,6 @@ mod tests {
             }
             drop(tap);
             let state = *output.lock().unwrap();
-            assert!(state.gesture_error.is_none());
             assert!(state.context_error.is_none(), "{:?}", state.context_error);
             assert!(state.period_error.is_none(), "{:?}", state.period_error);
             assert!(!state.memory_failed, "{:?}", state.memory_error);
@@ -997,7 +845,6 @@ mod tests {
             assert_eq!(state.received_frames, 40);
             if changed_epoch {
                 assert!(state.memory.is_none());
-                assert!(state.gesture.is_none());
                 assert!(state.period.is_none());
                 assert!(state.context.is_none());
             } else {
@@ -1025,7 +872,6 @@ mod tests {
                 assert!(memory.stored_total > 0);
                 assert!(memory.queries > 0 && memory.completed > 0);
                 assert!(memory.latest.is_none(), "expired result survived EOF");
-                assert_eq!(state.gesture.unwrap().unresolved, 1.);
             }
         }
     }
@@ -1058,10 +904,8 @@ mod tests {
                         query_cadence_ms: 100,
                         deadline_ms: 100,
                     }),
-                    gesture: None,
                     period: None,
                     body_prototypes: None,
-                    action_profiles: None,
                     acoustic: Some(TemporalAcousticConfig {
                         group_means: [0.; 3],
                         group_deviations: [0.05, 4., 1.],
@@ -1145,10 +989,8 @@ mod tests {
             deterministic: true,
             acoustic: None,
             memory: None,
-            gesture: None,
             period: None,
             body_prototypes: None,
-            action_profiles: None,
             ridge: Some(TemporalRidgeConfig {
                 means: [0.; 3],
                 deviations: [0.05, 4., 1.],
@@ -1341,7 +1183,6 @@ mod tests {
             512,
             space,
             Options {
-                action_profiles: Some(Arc::new(super::super::action_profiles::tests::model())),
                 deterministic: true,
                 ..Options::default()
             },
@@ -1387,14 +1228,6 @@ mod tests {
         drop(tap);
         let state = *output.lock().unwrap();
         assert_eq!(state.rejected_frames, 9);
-        let resources = state.worker_resources.unwrap();
-        assert_eq!(resources.frames.count, state.received_frames);
-        assert_eq!(resources.rejected.count, state.rejected_frames);
-        assert_eq!(resources.finish.count, 1);
-        assert_eq!(resources.delivery.count, state.received_frames);
-        assert_eq!(resources.table.total_ns, 0);
-        assert_eq!(resources.windows.total_ns, resources.frames.total_ns);
-        assert!(resources.open_window.is_none());
         assert_eq!(state.received_frames, 2);
         assert_eq!(state.source_epoch, 1);
         assert_eq!(state.frame_id, Some(11));

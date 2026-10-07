@@ -59,9 +59,8 @@ pub(crate) struct Engine {
     context: Context,
 }
 
-mod projection;
-pub(in crate::temporal_cognition) use projection::Scratch;
-pub(crate) use projection::{Frozen, Projection};
+mod frozen;
+pub(crate) use frozen::Frozen;
 
 impl Engine {
     pub(crate) fn new(config: TemporalPeriodConfig) -> Result<Self, &'static str> {

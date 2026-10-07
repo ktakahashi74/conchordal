@@ -966,22 +966,6 @@ fn wire_runtime(
         audio_counters,
     } = opts;
 
-    let action_profiles = if scenario.temporal_mode == crate::scenario::TemporalMode::Observe {
-        config
-            .temporal_action_profiles
-            .as_ref()
-            .map(|spec| {
-                crate::temporal_cognition::action_profiles::Profiles::load(config, spec)
-                    .map(Arc::new)
-            })
-            .transpose()
-            .map_err(|error| format!("{error:#}"))?
-    } else {
-        None
-    };
-    if action_profiles.is_some() && runtime_sample_rate != config.audio.sample_rate {
-        return Err("action profile sample rate differs from the runtime device".into());
-    }
     let core = build_analysis_runtime_core(config, runtime_sample_rate);
     let fs = core.fs;
     let hop = core.hop;
@@ -1002,7 +986,6 @@ fn wire_runtime(
     // NSGT-RT based audio analysis thread.
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
     let mut temporal_snapshots = [None, None];
-    let mut candidate_tables = [None, None];
     let mut reference_context = None;
     let mut taps = std::array::from_fn::<_, 2, _>(|bus| {
         observing.then(|| {
@@ -1013,7 +996,6 @@ fn wire_runtime(
                 core.nsgt.nfft(),
                 core.landscape.space.clone(),
                 crate::temporal_cognition::observation::Options {
-                    action_profiles: action_profiles.clone(),
                     body_prototypes: config.temporal_body_prototypes.as_ref().map(|model| {
                         let scales = config
                             .temporal_body
@@ -1027,12 +1009,10 @@ fn wire_runtime(
                     ridge: config.temporal_ridge,
                     acoustic: config.temporal_acoustic,
                     memory: config.temporal_memory,
-                    gesture: config.temporal_gesture,
                     period: config.temporal_period,
                 },
             );
             temporal_snapshots[bus] = Some(Arc::clone(&tap.snapshot));
-            candidate_tables[bus] = Some(Arc::clone(&tap.candidate_table));
             if bus == 0 && config.temporal_private_trace.is_some() {
                 reference_context = Some(Arc::clone(&tap.reference_context));
             }
@@ -1142,7 +1122,6 @@ fn wire_runtime(
         deterministic_footprints,
     };
     let channels = WorkerChannels {
-        candidate_tables,
         reference_context,
         temporal_snapshots,
         ui_tx: ui_frame_tx,
@@ -1536,13 +1515,6 @@ struct WorkerConfig {
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
 struct WorkerChannels {
-    candidate_tables: [Option<
-        Arc<
-            std::sync::Mutex<
-                Option<Arc<crate::temporal_cognition::action_profiles::consumer::Publication>>,
-            >,
-        >,
-    >; 2],
     reference_context:
         Option<Arc<std::sync::Mutex<crate::temporal_cognition::reference_inventory::Context>>>,
     temporal_snapshots:
@@ -1716,14 +1688,6 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                 .as_mut()
                 .unwrap()
                 .enable_predictions();
-            if std::env::var_os("CONCHORDAL_DISABLE_CANDIDATE_ENERGY").is_some() {
-                state
-                    .schedule_renderer
-                    .action_observer
-                    .as_mut()
-                    .unwrap()
-                    .disable_candidates();
-            }
         }
         if let Some(trace) = cfg.private_trace {
             state
@@ -1806,13 +1770,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
             }
             if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
                 observer.finish();
-                for record in observer.drain_candidate_energy() {
-                    report_try(
-                        &mut state.reporter,
-                        "final body candidate energy",
-                        |writer| writer.write_candidate_energy(&record),
-                    );
-                }
+
                 for record in observer.drain_traces() {
                     report_try(&mut state.reporter, "final private trace", |writer| {
                         writer.write_private_trace(&record)
@@ -1974,8 +1932,6 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                         source_missing_samples: snapshot.source_missing_samples,
                         delivery_dropped_frames: snapshot.delivery_dropped_frames,
                         rejected_frames: snapshot.rejected_frames,
-                        worker_resources: snapshot.worker_resources,
-                        action_profile_resources: snapshot.action_profile_resources,
                     }
                 })
             }),
@@ -1991,12 +1947,6 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                     outside_voice_hops: snapshot.outside_voice_hops,
                     worker_resources: snapshot.worker_resources,
                 }),
-            candidate_energy: state
-                .schedule_renderer
-                .action_observer
-                .as_ref()
-                .and_then(|observer| observer.snapshot.body_defaults)
-                .map(|defaults| defaults.candidate_energy),
         });
     }
     if let Some(profile) = state.profile.take()
@@ -2073,21 +2023,6 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         {
             *target = *current;
         }
-    }
-
-    if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
-        let tables = std::array::from_fn(|bus| {
-            let expected = state.temporal_frames[bus]
-                .action_profile_features
-                .as_ref()
-                .map(crate::temporal_cognition::action_profiles::consumer::Key::from)?;
-            let published = channels.candidate_tables[bus].as_ref()?.try_lock().ok()?;
-            published
-                .as_ref()
-                .filter(|p| p.key == expected && p.key.issued_at <= now_tick)
-                .cloned()
-        });
-        observer.shared_candidates(tables);
     }
 
     if let Some(context) = &channels.reference_context
@@ -2892,16 +2827,7 @@ fn render_and_route_audio(
     }
     if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
         // Drain regardless of reporting; snapshots and capacity remain observer-owned.
-        for record in observer.drain_candidate_energy() {
-            report_try(&mut state.reporter, "body candidate energy", |writer| {
-                writer.write_candidate_energy(&record)
-            });
-        }
-        for record in observer.drain_body_defaults() {
-            report_try(&mut state.reporter, "body default", |writer| {
-                writer.write_body_default(&record)
-            });
-        }
+
         for record in observer.drain_traces() {
             report_try(&mut state.reporter, "private trace", |writer| {
                 writer.write_private_trace(&record)
@@ -4021,6 +3947,3 @@ wait(0.08);
 
 #[cfg(test)]
 type OfflineBodyProbe = Box<dyn FnMut(&WorkerState, Tick, usize, [&[f32]; 2]) + Send>;
-
-#[cfg(test)]
-mod body_profiles;

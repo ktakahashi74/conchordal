@@ -1129,6 +1129,92 @@ mod tests {
     }
 
     #[test]
+    fn harmonic_window_energy_tracks_held_gain_refreshes() {
+        use crate::core::{modulation::NeuralRhythms, timebase::Timebase};
+        use crate::life::{
+            phonation_engine::OnsetKick,
+            schedule_renderer::modal_phase_seed,
+            sound::{BodyKind, BodySnapshot, RenderModulatorSpec, Tone, ToneAdsr},
+        };
+
+        let fs = 48_000.;
+        let rhythms = NeuralRhythms::default();
+        let mut native = Tone::from_parts(
+            Timebase { fs, hop: 64 },
+            0,
+            12_000,
+            293.,
+            1.,
+            Some(BodySnapshot {
+                kind: BodyKind::Harmonic,
+                amp_scale: 1.,
+                brightness: 0.6,
+                inharmonic: 0.,
+                spread: 0.,
+                unison: 1,
+                motion: 0.,
+                ratios: None,
+            }),
+            Some(RenderModulatorSpec::SeqGate { duration_sec: 10. }),
+            Some(ToneAdsr {
+                attack_sec: 0.001,
+                decay_sec: 0.,
+                sustain_level: 1.,
+                release_sec: 0.1,
+            }),
+        )
+        .unwrap();
+        native.set_smoothing_tau_sec(0.002);
+        native.seed_modal_phases(modal_phase_seed(3, 0, 0));
+        native.schedule_planned_kick(OnsetKick { strength: 1. });
+        native.arm_onset_trigger(1.);
+        let (_, amplitude, envelope) = native.prediction_parameters(None);
+        let frozen = ToneEnergy {
+            amplitude,
+            envelope,
+            control: Some(native.prediction_control(0, &rhythms)),
+            scheduled_release: None,
+            sine: native.prediction_sine(0),
+            bank: native.prediction_bank(0),
+        };
+        assert!(frozen.bank.is_some());
+        let end = native.end_tick();
+        let projected = project_window(
+            &[],
+            Some(([true, false], frozen)),
+            0,
+            (None, None),
+            0,
+            [0, end],
+            true,
+        )
+        .unwrap();
+
+        // Integrate native PCM independently of the forecast's span partition.
+        for (k, predicted) in projected.coherent_energies.into_iter().enumerate() {
+            let [left, right] =
+                [k, k + 1].map(|edge| (u128::from(end) * edge as u128).div_ceil(16) as u64);
+            let mut actual = 0.;
+            for tick in left..right {
+                native.kick_planned_if_due(tick);
+                let sample = f64::from(native.render_tick(tick, fs, 1. / fs, &rhythms));
+                assert!(sample.is_finite());
+                actual += sample * sample;
+            }
+            actual /= (right - left) as f64;
+            assert!(actual > 0.);
+            let predicted = predicted.expect("supported harmonic carrier");
+            let error = (predicted - actual).abs();
+            // Reuse the source fixture's energy allowance; do not require bit identity.
+            let allowance = 1e-10 + 0.001 * actual;
+            assert!(
+                error <= allowance,
+                "bin={k} predicted={predicted} actual={actual} error={error} allowance={allowance}"
+            );
+        }
+    }
+
+    #[test]
     fn candidate_energy_ratios_keep_a_common_context_and_supported_default() {
         use crate::core::temporal_expectation::TemporalForecast;
         let request = Request {

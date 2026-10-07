@@ -140,9 +140,9 @@ impl RunProfile {
         Ok(Self {
             file,
             audio_counters,
-            schema_version: 4,
+            schema_version: 5,
             scope: "worker process_hop entry through return; includes report serialization/write; excludes profile row storage, final profile write, worker pacing sleep, and final report summaries",
-            rendering_scope: "sequential wall intervals nested inside synthesis_us: setup includes capture acquisition and retired-tone cleanup; commands includes body/default prediction and candidate submission; samples includes tone rendering and per-sample private capture; history includes own-sound matching and its report writes; observation includes source-energy accumulation and outcome/trace completion; capture_delivery publishes the private PCM frame; not separate CPU times or the combined decision budget",
+            rendering_scope: "sequential wall intervals nested inside synthesis_us: setup includes capture acquisition and retired-tone cleanup; commands includes ordered phonation, source/body generation, tone creation and release; samples includes tone rendering and per-sample private capture; history includes own-sound matching and its report writes; capture_delivery publishes the private PCM frame; not separate CPU times or the combined decision budget",
             allocation_scope: "worker thread Rust alloc/alloc_zeroed/realloc successful calls and requested bytes during each hop; excludes profile storage, analysis/callback threads, native malloc, and final summaries",
             seed,
             report_enabled,

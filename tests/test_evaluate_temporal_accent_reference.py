@@ -8,7 +8,6 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import temporal_accent_reference as ref
-import temporal_section_reference as section
 
 
 def raw_hop(index, log_rms=0., width=64, rate=48000, **extra):
@@ -22,14 +21,6 @@ def raw_hop(index, log_rms=0., width=64, rate=48000, **extra):
 def event(index=0, level=1.5, width=64, **extra):
     hops = [raw_hop(index+i, value, width=width, **extra) for i, value in enumerate([0, 0, level, level])]
     return ref.accent_window(hops, [0, 0], [1, 1])["accent"]
-
-
-def activity_hop(index, **extra):
-    return {"epoch": 1, "generation": 4, "start": index/10, "end": (index+1)/10,
-            "observed": True, "association_known": True, "assignment_support": 1.,
-            "articulation": 1, "periodic_proposals": [], "timing_histories": [],
-            "resolved": True, "group_handle": 7, "bus_energy": 1.,
-            "resolved_energies": {7: 1.}, **extra}
 
 
 class AssignedEnergyTests(unittest.TestCase):
@@ -285,75 +276,6 @@ class AccentDeliveryTests(unittest.TestCase):
                 ledger.deliver({**accent, **change}, 1.)
         self.assertEqual(ledger.admission_count, 0)
         self.assertEqual(ref.AccentLedger(2, 4).snapshot(0.)['cumulative_admission_count'], 0)
-
-    def test_future_right_context_changes_peak_but_cannot_change_original_descriptor_or_counts(self):
-        hops = [raw_hop(i, v, width=4800) for i, v in enumerate([0, 0, 1.5, 1.5])]
-        accent = ref.accent_window(hops, [0, 0], [1, 1])['accent']
-        acoustic = [activity_hop(i, energy=h['energy'], spectrum=h['spectrum'], rise=0., flux=0.,
-                                 span_shares={1: 1.}) for i, h in enumerate(hops)]
-        kwargs = dict(log2_bins=[1.], epoch=1, generation=4, epoch_start=0., generation_start=0.,
-                      span_start=0., support_end=.3, means=[0.]*6, standard_deviations=[1.]*6)
-        expected = section.ending_descriptor(acoustic, [], **kwargs)
-        for level in (0., 1.5, 3., 8.):
-            changed = [*hops[:3], raw_hop(3, level, width=4800)]
-            candidate = ref.accent_window(changed, [0, 0], [1, 1])['accent']
-            accents = [candidate] if candidate else []
-            self.assertEqual(section.ending_descriptor(acoustic, accents, **kwargs), expected)
-            self.assertEqual(section.section_activity(acoustic, accents, 1, {4}, 0., .3)['numerators'][4], 0.)
-            owned = [{**a, 'span_shares': {1: 1.}} for a in accents]
-            self.assertEqual(section.partition_span_activity(acoustic, owned, {1: {'start': 0., 'support_end': .3}},
-                                                            1, {4}, .3)[1]['numerators'][4], 0.)
-        self.assertEqual(section.section_activity(acoustic, [accent], 1, {4}, 0., .4)['numerators'][4], .5)
-        self.assertEqual(expected['raw'][5], 0.)
-
-    def test_delivered_counts_reach_section_after_event_interval_without_retroactive_change(self):
-        history, ledger = section.SectionHistory(1, 4, 1, 0.), ref.AccentLedger(1, 4)
-        issued = None
-        delivery = None
-        for i in range(5):
-            hop = activity_hop(i)
-            delta = section.section_activity([hop], [], 1, {4}, hop['start'], hop['end'])
-            if i == 3:
-                delivery = ledger.deliver(event(width=4800), .4)
-            deliveries = [delivery] if i == 3 else []
-            history.observe(delta, 1, 4, deliveries)
-            if i == 2:
-                issued = history.snapshot()
-        self.assertEqual(issued['cumulative']['values'][34], 0.)
-        self.assertEqual(history.snapshot()['cumulative']['values'][34], 1.)
-        # A reread on a later receive delta cannot add the same sequence again.
-        hop = activity_hop(5)
-        delta = section.section_activity([hop], [], 1, {4}, .5, .6)
-        history.observe(delta, 1, 4, [{**delivery, 'delivered_at': .6}])
-        self.assertAlmostEqual(history.snapshot()['cumulative']['values'][34], .5/.6)
-        self.assertEqual(issued['cumulative']['values'][34], 0.)
-
-    def test_generation_continuation_keeps_totals_but_uses_new_delivery_sequence(self):
-        history = section.SectionHistory(1, 4, 1, 0.)
-        first = ref.AccentLedger(1, 4).deliver(event(width=4800), .4)
-        delta = section.section_activity([activity_hop(i) for i in range(4)], [], 1, {4}, 0., .4)
-        history.observe(delta, 1, 4, [first])
-        frozen = history.snapshot()
-        child = history.inherit(4, 5)
-        second = ref.AccentLedger(1, 5).deliver(event(4, width=4800, generation=5), .8)
-        delta = section.section_activity([activity_hop(i, generation=5) for i in range(4, 8)], [], 1, {5}, .4, .8)
-        child.observe(delta, 1, 5, [second])
-        self.assertAlmostEqual(child.snapshot()['cumulative']['values'][34], 1./.8)
-        self.assertEqual(history.snapshot(), frozen)
-        self.assertEqual(child.cumulative.integer(15), 1)
-
-    def test_delivery_validation_is_atomic_and_old_section_events_add_no_credit(self):
-        history = section.SectionHistory(1, 4, 1, .3)
-        ledger = ref.AccentLedger(1, 4)
-        delivery = ledger.deliver(event(width=4000), .4)
-        delta = section.section_activity([activity_hop(3)], [], 1, {4}, .3, .4)
-        before = bytes(history.cumulative.buffer)
-        for invalid in ({**delivery, 'delivered_at': .5}, {**delivery, 'weight': .75}):
-            with self.assertRaises(ValueError):
-                history.observe(delta, 1, 4, [invalid])
-            self.assertEqual(bytes(history.cumulative.buffer), before)
-        history.observe(delta, 1, 4, [delivery])
-        self.assertEqual(history.snapshot()['cumulative']['values'][34], 0.)
 
 
 if __name__ == '__main__':

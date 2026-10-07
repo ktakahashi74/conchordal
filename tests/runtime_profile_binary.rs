@@ -85,7 +85,7 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
             assert_success(&cmd.output().unwrap());
             let profile: serde_json::Value =
                 serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-            assert_eq!(profile["schema_version"], 4);
+            assert_eq!(profile["schema_version"], 5);
             let background = &profile["background"];
             assert!(background["scope"].as_str().unwrap().contains("terminal"));
             for bus in 0..2 {
@@ -112,7 +112,7 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
                 );
                 assert_eq!(resources["finish"]["count"], 1);
                 assert!(resources["open_window"].is_null());
-                assert!(background["candidate_energy"].is_object());
+                assert!(background.get("candidate_energy").is_none());
                 if report {
                     let rows: Vec<serde_json::Value> = fs::read_to_string(dir.join("report.jsonl"))
                         .unwrap()
@@ -130,7 +130,7 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
                 }
             } else {
                 assert!(background["body"].is_null());
-                assert!(background["candidate_energy"].is_null());
+                assert!(background.get("candidate_energy").is_none());
             }
             assert_eq!(profile["seed"], 42);
             assert_eq!(profile["report_enabled"], report);
@@ -176,13 +176,12 @@ fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() 
                         <= hop["render_route_us"].as_f64().unwrap()
                 );
                 let rendering = hop["rendering"].as_object().unwrap();
-                assert_eq!(rendering.len(), 6);
+                assert_eq!(rendering.len(), 5);
                 let renderer_phases: f64 = [
                     "setup_us",
                     "commands_us",
                     "samples_us",
                     "history_us",
-                    "observation_us",
                     "capture_delivery_us",
                 ]
                 .iter()

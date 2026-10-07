@@ -7,7 +7,7 @@ from pathlib import Path
 import random
 
 from temporal_accent_reference import accent_window
-from temporal_descriptor_reference import raw_descriptor
+from temporal_feature_reference import raw_descriptor
 
 
 def main():
@@ -65,7 +65,7 @@ def main():
         sequences.append(dict(name=f'feature-{seed}', config=cfg, steps=steps))
     refs = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in [root / 'scripts/temporal_accent_reference.py',
-                      root / 'scripts/temporal_descriptor_reference.py']}
+                      root / 'scripts/temporal_feature_reference.py']}
     output = dict(schema='temporal-raw-feature-fixture-v1', references=refs, sequences=sequences)
     target = root / 'tests/fixtures/temporal_cognition/features.json'
     target.write_text(json.dumps(output, indent=2, allow_nan=False) + '\n')

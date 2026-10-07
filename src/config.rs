@@ -375,7 +375,7 @@ pub enum ArrivalModel {
     Periodic,
 }
 
-/// Explicit uncalibrated arrival parameters; coefficient layout is versioned with the model.
+/// Explicit horizon for the uncalibrated Periodic arrival model.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TemporalPeriodConfig {

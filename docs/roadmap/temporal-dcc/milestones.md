@@ -213,6 +213,51 @@ R/Aは対象T行・component・版ごとに判定できる。一つの部分合�
 
 ## 5. 現在地と再開時の一単位
 
+<a id="i12b-closure-20261007"></a>
+
+### 2026-10-07：I12bの結果記録と工学課題による閉鎖（U-4）
+
+現行の完了条件は「二経路それぞれの除去比較が実行でき、結果（効果あり／なし／経路不達）を記録した」である。作者が採択したC-08と[現行計画 §3のU-4](../plan-current.md#3-単位と順序)に従い、以下の結果記録と課題起票をもってI12bのこの単位を閉じる。音への効果の確立、工学課題の解決、mainへの統合は、この記録の完了とは区別する。従前の未完判定と統合順は履歴として保存し、今後の作業は現行計画に従う。[S3]
+
+#### 保存履歴から再確認した除去比較の結果
+
+登録 `I12B-NEW-MAIN-20261003-P1` の母集団は27行・18対比である。入力は `regular_peer`・`peer_gap`・`peer_absent` とseed `2026100301`・`2026100302`・`2026100303` の組合せ。各入力に `Full`・`ForwardCut`・`BackwardA` の3腕があり、`Full-vs-ForwardCut` と `Full-vs-BackwardA` を比較した。効果判定の分母はpeerのある6条件で、`peer_absent` の3条件はabsence controlとして別に保持する。27行や18対比を効果判定の分母にはしない。[S1]
+
+| 判定層 | 効果あり | 効果観測なし | 経路不達・未知 | 保存履歴の判定 |
+|---|---|---|---|---|
+| forwardの音への効果（H_F） | 2／6 | 4／6 | なし | `ESTABLISHED` [S1, S2] |
+| backwardの推論 | 4／6 | 2／6 | なし | `ESTABLISHED` [S1, S2] |
+| backwardの音への効果（H_A） | 確立なし | 2／6 | 4／6 `NATIVE_UNKNOWN` | `NOT_ESTABLISHED` [S1, S2] |
+
+推論差と音への効果を同一視しない。H_Aの4条件は、元の推論Handleが指定された判断時点で失われた経路不達であり、「効果なし」へ置き換えない。元のPairAuditのH_A音判定は6／6 `UNKNOWN` のままであり、後続のnative照合による4件／2件の内訳とは別の層である。到来期待が発音時刻へ作用するという因果の主張は、現状では立てられない。[S1, S2]
+
+元の27行のnative記録、`engineering-finite-result.json`、`completed-summary.json`、owner診断の原記録は2026-10-07の共有`target/`消失後には確認できない。上記は保存された実行出力と、それを読んだtranscriptから再確認した集計値であり、本作業による再取得・元データの再解析ではない。全27行の個別数値と全18対比の完全なwitnessは再確認していない。失われた値は補わない。[S1, S2, S4]
+
+<a id="i12b-backward-owner-lifetime"></a>
+
+#### 工学課題：群ownerの寿命と判断周期の不整合
+
+状態：未解決。対象は、backwardの推論結果が同じownerの行為者判断へ届く前に容量退去で失われる経路である。局所診断は `pair001`、`regular_peer`、seed `2026100301`、bus 0の`Full`と`BackwardA`に限る。元の推論owner `b0/e0/g10` の初回推論はsample 96768、容量退去はsample 103424。保持期間は6656 samples（138.7 ms）で、その間の行為者の判断は0件だった。指定された最初の変更判断はsample 111104で、元ownerは既に存在しない。この時間と件数を全条件へ一般化しない。[S2]
+
+記録された容量退去と世代交代により推論・到来状態がresetされ、推論から判断への接続機会が失われている。課題はownerの保持期間と実際の判断周期の不整合として管理する。容量退去自体の契約違反や、未保存のBirth受理根拠はこの所見から認定しない。解決策の設計は行わず、この課題の未解決をI12bの結果記録完了とは分けて残す。[S2, S3]
+
+#### 研究拡張と後方介入境界の保持
+
+27行・18対比の科学登録と証跡の仕組み、および2026-10-06に別建てとした配送・資源領域は、研究拡張の記録として保存し、本体の完了条件から外す。[現行計画 §2.2](../plan-current.md#22-研究branchへ移すもの)と採択済みC-08に従う。履歴上の科学判定 `NOT_ESTABLISHED`、工学的な有限閉鎖判定 `INVALID_EVIDENCE` と元27行の `io.stat` 欠落も保持し、今回の単位閉鎖をそれらの合格へ読み替えない。追加取得・再実行は本単位に含めない。[S1, S3]
+
+2026-10-03に選択した後方介入境界、すなわち受理済みAccentの周期対だけを抑える選択は変更しない。D-12のmain統合方針（機構だけを入れ、実験用の腕と採取器をtestまたはrender限定に分ける）は別の実装作業として現行計画へ引き継ぐ。本単位は文書記録だけであり、そのコード移管・main統合は行っていない。[S3]
+
+#### 出典と再確認の範囲
+
+出典の `target/` と `.agent-shell/` は共有checkout基準、`~` はworkerのhome基準である。
+
+- [S1] `~/.codex-keio/sessions/2026/10/06/rollout-2026-10-06T21-47-03-01a11140-d4f6-7ce0-84f6-b8f4ce68af8b.jsonl:4075`。`completed-summary.json`を読んだCommandExecutionの保存出力。`original_population`（登録ID、入力、27行・18対比、6条件と3対照）、`H_F`・`H_A`・`backward_inference`、`original_receipt_sound_status_counts`と閉鎖判定を再確認。集計完了のtranscriptは `.agent-shell/transcripts/2026-10-06-21-47-02.md:13788-13798`。
+- [S2] 同rollout `:4373`。旧 `target/i12b-next-registered-assay-proposal-20261007-v1/report.md`を読んだ保存出力。判定内訳と、pair001/bus0のowner遷移・sample時刻・138.7 ms・判断0件を再確認。同じ内容を `.agent-shell/transcripts/2026-10-07-19-28-50.md:1784-1806` でも照合した。
+- [S3] `.orchestration/records/author-instruction-review-20261007-v1/proposal.md:77-83`（C-08）・`:266-269`（D-12）、同 `adopted.md:12-19`、[現行計画](../plan-current.md) §2.2・§3 U-4。2026-10-07の採択済み完了条件・研究拡張・後方介入境界・統合範囲の根拠。
+- [S4] `.orchestration/units/COMMON.md` の「2026-10-07のtarget/消失」と、本単位での旧結果パスの不在確認。失われた原記録の完全性、hash一致、個別行のwitnessは本作業で再検証していない。
+
+### 従前の現在地と引継ぎ（履歴）
+
 範囲再改訂（2026-09-20）: §1.3の機構選択規則を採用し、本体をT1・T2・T4の短期反復期待、I0–I3、I4の有界因果参照、I5、I6、I10、I11、
 I12b、I13へ縮小した。T3評定head、I7、I8、I12a／c／dは研究拡張へ移管し、R1・R4・R5は本体の完了条件から外した。
 同日、研究拡張のRust実装をmainから削除した。checkpointは `d579688`、保存先はbranch `research/temporal-dcc-extension`

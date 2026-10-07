@@ -69,6 +69,7 @@ fn profile_lap(checkpoint: &mut Option<Instant>) -> f64 {
 }
 
 pub struct ScheduleRenderer {
+    prototype: Option<crate::config::RenderPrototypeConfig>,
     time: Timebase,
     buf_presentation: Vec<f32>,
     buf_habitat: Vec<f32>,
@@ -84,6 +85,7 @@ pub type SoundRenderer = ScheduleRenderer;
 impl ScheduleRenderer {
     pub fn new(time: Timebase) -> Self {
         Self {
+            prototype: None,
             time,
             buf_presentation: vec![0.0; time.hop],
             buf_habitat: vec![0.0; time.hop],
@@ -95,12 +97,25 @@ impl ScheduleRenderer {
         }
     }
 
+    pub(crate) fn with_prototype(
+        mut self,
+        prototype: Option<crate::config::RenderPrototypeConfig>,
+    ) -> Self {
+        self.prototype = prototype;
+        self
+    }
+
+    pub(crate) fn phase3_enabled(&self) -> bool {
+        self.prototype.is_some()
+    }
+
     /// Copy only one actor's current sounding state for an offline forward model.
     /// The caller must resume at the next unrendered tick. Future commands and rhythm
     /// changes are supplied explicitly, never borrowed from other actors' state.
     /// Used by examples/action_prediction.rs; cloning allocates and is not an RT path.
     pub fn fork_source(&self, source_id: u64) -> Self {
         let mut fork = Self::new(self.time);
+        fork.prototype = self.prototype;
         fork.cutoff_tick = self.cutoff_tick;
         fork.tones = self
             .tones
@@ -241,6 +256,40 @@ impl ScheduleRenderer {
         self.render_with_prediction_matches(phonation_batches, now, rhythms, |_, _, _, _| {})
     }
 
+    fn retire_closed_sources(&mut self, now: Tick) {
+        use std::ops::Bound::{Excluded, Unbounded};
+        let mut after = None;
+        while let Some((key, generation)) = self
+            .tones
+            .range((after.map_or(Unbounded, Excluded), Unbounded))
+            .next()
+            .map(|(k, rt)| (*k, rt.source_generation))
+        {
+            after = Some(key);
+            let from = ToneKey {
+                source_id: key.source_id,
+                tone_id: 0,
+            };
+            let through = ToneKey {
+                source_id: key.source_id,
+                tone_id: u64::MAX,
+            };
+            let residual = self
+                .tones
+                .range(from..=through)
+                .filter(|(_, rt)| rt.source_generation == generation)
+                .filter_map(|(_, rt)| rt.tone.residual_bound(now))
+                .sum::<f64>();
+            if residual <= f64::from(crate::life::voice::Voice::AMP_EPS) {
+                for (_, rt) in self.tones.range_mut(from..=through) {
+                    if rt.source_generation == generation && rt.tone.residual_bound(now).is_some() {
+                        rt.tone.retire_phase3();
+                    }
+                }
+            }
+        }
+    }
+
     pub(crate) fn render_with_prediction_matches(
         &mut self,
         phonation_batches: &[PhonationBatch],
@@ -271,6 +320,9 @@ impl ScheduleRenderer {
                         == (source.id, source.generation)),
                 "duplicate source PCM identity"
             );
+        }
+        if self.prototype.is_some() {
+            self.retire_closed_sources(now);
         }
         let mut checkpoint = self.profile.as_ref().map(|_| Instant::now());
         self.profile = self.profile.map(|_| RenderProfile::default());
@@ -430,7 +482,11 @@ impl ScheduleRenderer {
                         {
                             continue;
                         }
-                        let hold_ticks = spec.hold_ticks.unwrap_or(default_hold_ticks);
+                        let hold_ticks = spec.hold_ticks.unwrap_or(if self.prototype.is_some() {
+                            Tick::MAX
+                        } else {
+                            default_hold_ticks
+                        });
                         if let Some(mut tone) = Tone::from_parts(
                             self.time,
                             spec.onset,
@@ -441,8 +497,19 @@ impl ScheduleRenderer {
                             Some(spec.render_modulator.clone()),
                             spec.adsr,
                         ) {
+                            if let Some(config) = self.prototype {
+                                tone.enable_phase3(config);
+                            }
                             tone.seed_modal_phases(modal_phase_seed(
-                                batch.source_id,
+                                if self.prototype.is_some() {
+                                    modal_phase_seed(
+                                        batch.source_id,
+                                        u64::from(batch.source_generation),
+                                        0,
+                                    )
+                                } else {
+                                    batch.source_id
+                                },
                                 spec.onset,
                                 tone_id,
                             ));
@@ -536,7 +603,13 @@ impl ScheduleRenderer {
                     continue;
                 }
                 let tick = at_tick.unwrap_or(now);
-                rt.tone.schedule_update(tick, update);
+                if !rt.tone.schedule_update(tick, update) {
+                    tracing::warn!(
+                        source_id = batch.source_id,
+                        tone_id,
+                        "phase3 Update rejected: closed input or invalid control"
+                    );
+                }
             }
         }
     }
@@ -563,6 +636,83 @@ mod tests {
     use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
     use crate::life::sound::{BodyKind, BodySnapshot, RenderModulatorSpec, default_release_ticks};
     use crate::life::voice::{PhonationBatch, ToneSpec};
+
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+    fn phase3_open_and_closed_hops_add_no_allocations_after_on_handoff() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+            let mut renderer = ScheduleRenderer::new(time).with_prototype(Some(Default::default()));
+            let mut batch = outcome_batch(kind);
+            batch.tones[0].onset = 0;
+            batch.tones[0].hold_ticks = Some(512);
+            batch.tones[0].render_modulator = RenderModulatorSpec::SeqGate { duration_sec: 2.0 };
+            renderer.render(std::slice::from_ref(&batch), 0, &NeuralRhythms::default());
+            crate::runtime_profile::begin_allocations();
+            for now in (64..96_000).step_by(64) {
+                let frame = renderer.render(&[], now, &NeuralRhythms::default());
+                std::hint::black_box(frame);
+            }
+            let count = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!((count.count, count.bytes), (0, 0), "{kind:?}");
+            assert!(renderer.is_idle());
+        }
+    }
+
+    #[test]
+    fn phase3_retirement_uses_source_generation_sum_not_single_sample() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let mut tone = Tone::from_parts(time, 0, 100, 220.0, 0.2, None, None, None).unwrap();
+        tone.enable_phase3(Default::default());
+        tone.arm_onset_trigger(1.0);
+        let mut now = 0;
+        loop {
+            tone.render_tick(now, time.fs, 1.0 / time.fs, &NeuralRhythms::default());
+            now += 1;
+            if tone.residual_bound(now).is_some_and(|b| b <= 0.75e-6) {
+                break;
+            }
+            assert!(now < 96_000);
+        }
+        let bound = tone.residual_bound(now).unwrap();
+        assert!(bound > 0.5e-6);
+        let mut renderer = ScheduleRenderer::new(time).with_prototype(Some(Default::default()));
+        for tone_id in [1, 2] {
+            renderer.tones.insert(
+                ToneKey {
+                    source_id: 2,
+                    tone_id,
+                },
+                RoutedTone {
+                    tone: tone.clone(),
+                    routing: Routing::default(),
+                    self_slot: None,
+                    source_generation: 7,
+                    body_slot: None,
+                    scheduled_release: None,
+                    source_pcm_slot: None,
+                },
+            );
+        }
+        renderer.retire_closed_sources(now);
+        assert!(renderer.tones.values().all(|rt| !rt.tone.is_done(now)));
+        renderer
+            .tones
+            .get_mut(&ToneKey {
+                source_id: 2,
+                tone_id: 2,
+            })
+            .unwrap()
+            .source_generation = 8;
+        renderer.retire_closed_sources(now);
+        assert!(renderer.tones.values().all(|rt| rt.tone.is_done(now)));
+    }
 
     fn outcome_batch(kind: BodyKind) -> PhonationBatch {
         PhonationBatch {

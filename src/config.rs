@@ -277,6 +277,9 @@ pub struct AppConfig {
     /// Body-weighted energy metabolism; omission leaves the point path unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body_metabolism: Option<BodyMetabolismConfig>,
+    /// Opt-in offline renderer prototype; absence preserves the instrument path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub render_prototype: Option<RenderPrototypeConfig>,
     #[serde(default)]
     pub audio: AudioConfig,
     #[serde(default)]
@@ -311,6 +314,30 @@ pub struct BodyMetabolismConfig {
     pub updates_per_hop: usize,
     pub observation_frames: usize,
     pub representative_hold_sec: f32,
+}
+
+/// M-3 audition parameters, not adopted production settings.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RenderPrototypeConfig {
+    pub decay_t60_sec: f32,
+    pub rise_tau_sec: Option<f32>,
+    pub kick_gain: f32,
+    pub motion_scale: f32,
+}
+
+impl Default for RenderPrototypeConfig {
+    fn default() -> Self {
+        Self {
+            // A2's existing trial T60; the shared rise tau is T60 / ln(1000).
+            decay_t60_sec: 0.5,
+            rise_tau_sec: None,
+            // Unit input coupling, as in the existing Modal impulse transfer.
+            kick_gain: 1.0,
+            // Preserve the existing preset motion level for the audition baseline.
+            motion_scale: 1.0,
+        }
+    }
 }
 
 /// Which footprint the participation onset comparison consumes (I11-1 §4.10).
@@ -518,6 +545,22 @@ impl AppConfig {
                 f64::from(body.representative_hold_sec) * f64::from(self.audio.sample_rate)
                     < u64::MAX as f64,
                 "body_metabolism representative hold exceeds the sample clock"
+            );
+        }
+        if let Some(p) = self.render_prototype {
+            let dt = 1.0 / self.audio.sample_rate as f32;
+            let r = (-std::f32::consts::LN_10 * 3.0 * dt / p.decay_t60_sec).exp();
+            ensure!(
+                p.decay_t60_sec.is_finite() && p.decay_t60_sec > 0.0 && r > 0.0 && r < 1.0,
+                "render_prototype decay must resolve at the sample rate"
+            );
+            ensure!(
+                p.rise_tau_sec.is_none_or(|v| v.is_finite() && v >= 0.0)
+                    && p.kick_gain.is_finite()
+                    && p.kick_gain >= 0.0
+                    && p.motion_scale.is_finite()
+                    && p.motion_scale >= 0.0,
+                "render_prototype requires finite nonnegative gains and rise tau"
             );
         }
         if let Some(ridge) = self.temporal_ridge {
@@ -896,6 +939,34 @@ mod tests {
     }
 
     #[test]
+    fn render_prototype_is_opt_in_and_accepts_shared_or_separate_rise() {
+        let legacy: AppConfig = toml::from_str("").unwrap();
+        assert!(legacy.render_prototype.is_none());
+        assert!(
+            !toml::to_string(&legacy)
+                .unwrap()
+                .contains("render_prototype")
+        );
+        for rise in ["", "rise_tau_sec = 0.0", "rise_tau_sec = 0.02"] {
+            let config: AppConfig =
+                toml::from_str(&format!("[render_prototype]\n{rise}\n")).unwrap();
+            assert!(config.render_prototype.is_some());
+            config.validate().unwrap();
+        }
+        for invalid in [
+            "decay_t60_sec = 0.0",
+            "decay_t60_sec = 1e30",
+            "rise_tau_sec = -0.1",
+            "kick_gain = nan",
+            "motion_scale = -1.0",
+        ] {
+            let config: AppConfig =
+                toml::from_str(&format!("[render_prototype]\n{invalid}\n")).unwrap();
+            assert!(config.validate().is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
     fn load_or_default_writes_defaults_cleanly() {
         assert!(!AppConfig::default().birth_surrogate);
         let path = unique_path("defaults.toml");
@@ -960,6 +1031,7 @@ mod tests {
         let custom = AppConfig {
             birth_surrogate: false,
             body_metabolism: None,
+            render_prototype: None,
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_period: None,

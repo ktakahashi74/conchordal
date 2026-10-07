@@ -12,7 +12,11 @@ struct FlagSnapshot {
     pcm: [Vec<u32>; 2],
 }
 
-fn render_birth_metabolism_flags(birth: bool, metabolism: Option<bool>) -> Vec<FlagSnapshot> {
+fn render_birth_metabolism_flags(
+    birth: bool,
+    metabolism: Option<bool>,
+    prototype: bool,
+) -> Vec<FlagSnapshot> {
     let path = "tests/scripts/body_birth_metabolism_flags.rhai";
     let mut config = AppConfig {
         birth_surrogate: birth,
@@ -22,6 +26,7 @@ fn render_birth_metabolism_flags(birth: bool, metabolism: Option<bool>) -> Vec<F
             observation_frames: 8,
             representative_hold_sec: 1.0,
         }),
+        render_prototype: prototype.then(crate::config::RenderPrototypeConfig::default),
         ..Default::default()
     };
     config.analysis.nfft = 2048;
@@ -36,6 +41,12 @@ fn render_birth_metabolism_flags(birth: bool, metabolism: Option<bool>) -> Vec<F
     let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured = Arc::clone(&snapshots);
     let probe: OfflineBodyProbe = Box::new(move |state, now, _, pcm| {
+        if prototype {
+            assert!(
+                state.pop.body_metabolism.is_none(),
+                "replacement renderer enabled legacy PCM capture and body evaluation"
+            );
+        }
         let voices: Vec<_> = state
             .pop
             .voices
@@ -74,6 +85,7 @@ fn render_birth_metabolism_flags(birth: bool, metabolism: Option<bool>) -> Vec<F
             pcm,
         });
     });
+    let (wav_tx, _wav_rx) = crossbeam_channel::unbounded();
     let wiring = wire_runtime(
         &config,
         48_000,
@@ -87,7 +99,7 @@ fn render_birth_metabolism_flags(birth: bool, metabolism: Option<bool>) -> Vec<F
             wait_user_exit: false,
             start_playing: true,
             audio_prod: None,
-            wav_tx: None,
+            wav_tx: prototype.then_some(wav_tx),
             reporter: None,
             deterministic_analysis: true,
             deterministic_footprints: true,
@@ -117,8 +129,8 @@ fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
     for birth in [false, true] {
         for metabolism in [false, true] {
             let enabled = metabolism.then_some(true);
-            let first = render_birth_metabolism_flags(birth, enabled);
-            let second = render_birth_metabolism_flags(birth, enabled);
+            let first = render_birth_metabolism_flags(birth, enabled, false);
+            let second = render_birth_metabolism_flags(birth, enabled, false);
             assert!(
                 first == second,
                 "non-deterministic flags: birth={birth}, metabolism={metabolism}"
@@ -158,7 +170,7 @@ fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
                         .iter()
                         .all(|row| row.slots.as_array().unwrap().is_empty())
                 );
-                let disabled = render_birth_metabolism_flags(birth, Some(false));
+                let disabled = render_birth_metabolism_flags(birth, Some(false), false);
                 assert!(
                     first == disabled,
                     "explicitly disabled metabolism changed birth={birth}"
@@ -203,6 +215,51 @@ fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
         first_field_birth(&runs[2]).1,
         "fixture did not exercise the body-aware Field placement"
     );
+    assert!(
+        runs[0]
+            .iter()
+            .zip(&runs[1])
+            .any(|(point, body)| point.voices != body.voices),
+        "fixture did not exercise body metabolism's energy input"
+    );
+}
+
+#[test]
+fn phase3_uses_point_metabolism_without_legacy_pcm_capture_even_with_birth_enabled() {
+    let control = render_birth_metabolism_flags(false, None, true);
+    assert!(!control.is_empty());
+    assert!(control.iter().any(|row| {
+        row.pcm
+            .iter()
+            .flatten()
+            .any(|sample| f32::from_bits(*sample) != 0.0)
+    }));
+    assert!(control.iter().any(|row| {
+        row.voices
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|voice| voice["id"].as_u64().unwrap() > 7)
+    }));
+    for birth in [false, true] {
+        for metabolism in [None, Some(false), Some(true)] {
+            let actual = render_birth_metabolism_flags(birth, metabolism, true);
+            assert!(
+                actual
+                    .iter()
+                    .all(|row| row.slots.as_array().unwrap().is_empty())
+            );
+            assert!(
+                actual == control,
+                "legacy body flag changed Phase 3 energy, births, tails or actual bus PCM: \
+                 birth={birth}, metabolism={metabolism:?}"
+            );
+            println!(
+                "Phase 3 birth={birth} metabolism={metabolism:?}: {} point-metabolism hops",
+                actual.len()
+            );
+        }
+    }
 }
 
 #[test]

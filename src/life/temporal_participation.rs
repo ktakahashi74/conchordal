@@ -1292,6 +1292,7 @@ mod tests {
 
     fn bounded_recipe(freq_hz: f32) -> footprint::Recipe {
         footprint::Recipe {
+            renderer_phase3: false,
             body: crate::life::sound::BodySnapshot {
                 kind: crate::life::sound::BodyKind::Sine,
                 amp_scale: 1.0,

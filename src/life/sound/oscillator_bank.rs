@@ -229,6 +229,72 @@ impl OscillatorBank {
         matches!(self.profile, OscillatorProfile::Sine)
     }
 
+    /// Separate carrier and spectral control from amplitude excitation. Closed tails
+    /// rotate at frozen coefficients; normalization bounds all future carrier samples.
+    pub(crate) fn phase3_carrier(
+        &mut self,
+        pitch: f32,
+        amp: f32,
+        spectral_drive: f32,
+        open: bool,
+    ) -> f32 {
+        if open {
+            self.advance_spectral_env(spectral_drive);
+            if self.pitch_counter == 0 || self.needs_pitch_state_refresh(pitch) {
+                self.refresh_pitch_state(pitch);
+                if self.spectral_damping_active {
+                    self.apply_spectral_damping();
+                }
+            }
+            if self.motion_counter == 0 {
+                self.refresh_motion_state(amp, pitch);
+            }
+            self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
+            self.motion_counter = (self.motion_counter + 1) % MOTION_REFRESH_PERIOD_SAMPLES;
+        }
+        let mut out = 0.0;
+        for i in 0..self.active_lane_len {
+            let x = self.x[i] as f64;
+            let y = self.y[i] as f64;
+            let c = self.rot_c[i] as f64;
+            let s = self.rot_s[i] as f64;
+            let mut nx = c * x - s * y;
+            let mut ny = s * x + c * y;
+            if self.current_motion_enabled {
+                let ms = self.current_motion_s as f64;
+                let mc = self.current_motion_c as f64;
+                (nx, ny) = (mc * nx - ms * ny, ms * nx + mc * ny);
+            }
+            let norm = nx.hypot(ny);
+            if norm > 0.0 {
+                self.x[i] = (nx / norm) as f32;
+                self.y[i] = (ny / norm) as f32;
+            }
+            out += self.gain_mask[i] * self.y[i];
+        }
+        out
+    }
+
+    pub(crate) fn phase3_motion_scale(&mut self, scale: f32) {
+        if let OscillatorProfile::Harmonic { genotype } = &mut self.profile {
+            genotype.vibrato_depth *= scale;
+            genotype.jitter *= scale;
+        }
+    }
+
+    pub(crate) fn phase3_carrier_bound(&self) -> f64 {
+        let gains = self.gain_mask[..self.active_lane_len]
+            .iter()
+            .map(|v| f64::from(v.abs()))
+            .sum::<f64>();
+        // Unit carriers, binary32 casts, products and the sequential sum.
+        let nu = f64::from(f32::EPSILON) / 2.0 * (self.active_lane_len + 2) as f64;
+        if nu >= 1.0 {
+            return f64::INFINITY;
+        }
+        gains / (1.0 - nu) + self.active_lane_len as f64 * f64::from(f32::from_bits(1))
+    }
+
     pub(crate) fn sine_state(&self, pitch_hz: f32) -> Option<([f32; 2], [f32; 2])> {
         if !self.is_sine() || !pitch_hz.is_finite() || pitch_hz <= 0. {
             return None;

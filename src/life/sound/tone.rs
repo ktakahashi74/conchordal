@@ -35,7 +35,18 @@ struct PendingTrigger {
 }
 
 #[derive(Clone)]
+struct ExcitedState {
+    config: crate::config::RenderPrototypeConfig,
+    amplitude: f32,
+    decay: f32,
+    rise_alpha: f32,
+    closed: bool,
+    retired: bool,
+}
+
+#[derive(Clone)]
 pub struct Tone {
+    excited: Option<ExcitedState>,
     backend: AnyBackend,
     render_modulator: Option<RenderModulator>,
     pending_impulse_energy: f32,
@@ -165,6 +176,7 @@ impl Tone {
         let pitch_alpha = smoothing_alpha(sample_dt, pitch_tau_sec);
 
         Some(Self {
+            excited: None,
             backend,
             render_modulator: render_modulator.map(RenderModulator::from_spec),
             pending_impulse_energy: 0.0,
@@ -201,6 +213,53 @@ impl Tone {
 
     pub fn seed_modal_phases(&mut self, seed: u64) {
         self.backend.seed_modal_phases(seed);
+        if self.excited.is_some() {
+            self.noise_state = seed;
+        }
+    }
+
+    pub(crate) fn enable_phase3(&mut self, config: crate::config::RenderPrototypeConfig) {
+        let tau = config.decay_t60_sec / (3.0 * std::f32::consts::LN_10);
+        self.excited = Some(ExcitedState {
+            config,
+            amplitude: 0.0,
+            decay: (-self.sample_dt / tau).exp(),
+            rise_alpha: -(-self.sample_dt / config.rise_tau_sec.unwrap_or(tau)).exp_m1(),
+            closed: false,
+            retired: false,
+        });
+        if let AnyBackend::Oscillator(bank) = &mut self.backend {
+            bank.phase3_motion_scale(config.motion_scale);
+        }
+    }
+
+    pub(crate) fn supports_self_model(&self) -> bool {
+        self.excited.is_none()
+    }
+
+    pub(crate) fn residual_bound(&self, now: Tick) -> Option<f64> {
+        let state = self.excited.as_ref()?;
+        if now < self.envelope.release_end {
+            return None;
+        }
+        if !self.started {
+            return Some(0.0);
+        }
+        if !state.closed {
+            return None;
+        }
+        Some(match &self.backend {
+            AnyBackend::Oscillator(bank) => {
+                f64::from(state.amplitude) * bank.phase3_carrier_bound()
+            }
+            AnyBackend::Resonator(engine) => engine.phase3_residual_bound(),
+        })
+    }
+
+    pub(crate) fn retire_phase3(&mut self) {
+        if let Some(state) = &mut self.excited {
+            state.retired = true;
+        }
     }
 
     pub fn note_off(&mut self, tick: Tick) {
@@ -231,6 +290,9 @@ impl Tone {
     }
 
     pub fn trigger_impulse(&mut self, energy: f32) {
+        if self.excited.as_ref().is_some_and(|s| s.closed || s.retired) {
+            return;
+        }
         if !energy.is_finite() || energy <= 0.0 {
             return;
         }
@@ -249,9 +311,22 @@ impl Tone {
         self.planned_kick_pending = Some(kick);
     }
 
-    pub fn schedule_update(&mut self, at_tick: Tick, update: ToneUpdate) {
+    pub fn schedule_update(&mut self, at_tick: Tick, update: ToneUpdate) -> bool {
+        if self.excited.is_some()
+            && (at_tick >= self.envelope.release_end
+                || self.excited.as_ref().is_some_and(|s| s.closed || s.retired)
+                || update
+                    .target_freq_hz
+                    .is_some_and(|v| !v.is_finite() || v <= 0.0)
+                || update.target_amp.is_some_and(|v| !v.is_finite() || v < 0.0)
+                || update
+                    .continuous_drive
+                    .is_some_and(|v| !v.is_finite() || v < 0.0))
+        {
+            return false;
+        }
         if update.is_empty() {
-            return;
+            return true;
         }
         let insert_at = self
             .pending_updates
@@ -260,9 +335,14 @@ impl Tone {
             .unwrap_or(self.pending_updates.len());
         self.pending_updates
             .insert(insert_at, PendingUpdate { at_tick, update });
+        true
     }
 
     pub fn apply_updates_if_due(&mut self, tick: Tick) {
+        if self.excited.is_some() && tick >= self.envelope.release_end {
+            self.pending_updates.clear();
+            return;
+        }
         while let Some(pending) = self.pending_updates.pop_front() {
             if pending.at_tick > tick {
                 self.pending_updates.push_front(pending);
@@ -270,12 +350,16 @@ impl Tone {
             }
             self.apply_update(&pending.update);
         }
-        if tick >= self.envelope.hold_end {
+        if self.excited.is_none() && tick >= self.envelope.hold_end {
             self.pending_updates.clear();
         }
     }
 
     pub fn kick_planned_if_due(&mut self, tick: Tick) -> bool {
+        if self.excited.is_some() && tick >= self.envelope.release_end {
+            self.planned_kick_pending = None;
+            return false;
+        }
         let Some(kick) = self.planned_kick_pending else {
             return false;
         };
@@ -287,6 +371,9 @@ impl Tone {
     }
 
     pub fn render_tick(&mut self, tick: Tick, _fs: f32, dt: f32, rhythms: &NeuralRhythms) -> f32 {
+        if self.excited.is_some() {
+            return self.render_excited_tick(tick, dt, rhythms);
+        }
         if let Some(trigger) = self.pending_trigger
             && tick >= trigger.at_tick
         {
@@ -356,6 +443,94 @@ impl Tone {
             sample *= 1.0 + self.sine_impulse_boost;
             self.sine_impulse_boost *= impulse_boost_decay(self.sample_dt);
         }
+        sample
+    }
+
+    fn render_excited_tick(&mut self, tick: Tick, dt: f32, rhythms: &NeuralRhythms) -> f32 {
+        if tick < self.envelope.onset || self.excited.as_ref().unwrap().retired {
+            return 0.0;
+        }
+        let open = tick < self.envelope.release_end;
+        if !open {
+            let state = self.excited.as_mut().unwrap();
+            state.closed = true;
+            self.pending_updates.clear();
+            self.pending_trigger = None;
+            self.planned_kick_pending = None;
+            self.pending_impulse_energy = 0.0;
+        } else {
+            if let Some(trigger) = self.pending_trigger
+                && tick >= trigger.at_tick
+            {
+                self.pending_trigger = None;
+                self.trigger_impulse(trigger.energy);
+            }
+            self.advance_smoothing();
+        }
+        if self.pending_impulse_energy > 0.0 {
+            self.started = true;
+        }
+        if !self.started {
+            return 0.0;
+        }
+        let impulse = std::mem::take(&mut self.pending_impulse_energy);
+        let mut z = 0.0;
+        if open {
+            let signal = self.render_modulator.as_mut().map_or_else(
+                || ArticulationSignal {
+                    amplitude: 1.0 + 0.05 * rhythms.theta.beta.clamp(0.0, 1.0),
+                    is_active: true,
+                    relaxation: rhythms.theta.alpha,
+                    tension: rhythms.theta.beta,
+                },
+                |m| m.process(rhythms, dt),
+            );
+            if signal.is_active {
+                z = self.envelope.gain_at(tick) * signal.amplitude.max(0.0);
+            }
+        }
+        let a = self.current_amp;
+        let qz = self.continuous_drive * z;
+        let state = self.excited.as_mut().unwrap();
+        let sample = match &mut self.backend {
+            AnyBackend::Oscillator(bank) => {
+                let target = if open {
+                    a * z
+                        * if bank.is_sine() {
+                            1.0
+                        } else {
+                            1.0 + 0.25 * qz.clamp(0.0, 4.0)
+                        }
+                } else {
+                    0.0
+                };
+                if open {
+                    let alpha = if target > state.amplitude {
+                        state.rise_alpha
+                    } else {
+                        1.0 - state.decay
+                    };
+                    state.amplitude += alpha * (target - state.amplitude);
+                    state.amplitude += state.config.kick_gain * a * z * impulse;
+                } else {
+                    state.amplitude *= state.decay;
+                }
+                state.amplitude * bank.phase3_carrier(self.current_pitch_hz, a, qz, open)
+            }
+            AnyBackend::Resonator(engine) => {
+                let mut drive = 0.0;
+                if open {
+                    // Address noise by Tone identity and sample clock, never pool order.
+                    let mut noise = self
+                        .noise_state
+                        .wrapping_add(tick.wrapping_mul(0x9E3779B97F4A7C15));
+                    drive = state.config.kick_gain * a * impulse
+                        + a * self.continuous_drive * z * z * fast_noise(&mut noise);
+                }
+                engine.phase3_sample(self.current_pitch_hz, drive, open)
+            }
+        };
+        assert!(sample.is_finite(), "phase3 produced non-finite PCM");
         sample
     }
 
@@ -430,6 +605,9 @@ impl Tone {
     }
 
     pub(crate) fn prediction_sine(&self, now: Tick) -> Option<super::sine_forecast::SineForecast> {
+        if !self.supports_self_model() {
+            return None;
+        }
         // Log-domain smoothing can settle one rounding step away from its target.
         if (self.current_pitch_hz != self.target_pitch_hz
             && self.next_pitch_hz() != self.current_pitch_hz)
@@ -478,6 +656,9 @@ impl Tone {
     /// Carrier lanes of the harmonic and modal backends under the same static-tone
     /// conditions as `prediction_sine`. Continuous drive is not forecast.
     pub(crate) fn prediction_bank(&self, now: Tick) -> Option<super::bank_forecast::BankForecast> {
+        if !self.supports_self_model() {
+            return None;
+        }
         if (self.current_pitch_hz != self.target_pitch_hz
             && self.next_pitch_hz() != self.current_pitch_hz)
             || self.continuous_drive != 0.
@@ -524,6 +705,10 @@ impl Tone {
         now: Tick,
         rhythms: &NeuralRhythms,
     ) -> super::control_forecast::ControlForecast {
+        assert!(
+            self.supports_self_model(),
+            "phase3 self model unsupported: renderer"
+        );
         use super::control_forecast::{
             AmplitudeModel, AmplitudeSmoothing, AmplitudeUpdate, AmplitudeUpdates, ControlForecast,
         };
@@ -575,11 +760,18 @@ impl Tone {
     }
 
     pub(crate) fn prediction_parameters(&self, release: Option<Tick>) -> (f32, f32, Envelope) {
+        assert!(
+            self.supports_self_model(),
+            "phase3 self model unsupported: renderer"
+        );
         let envelope = release.map_or(self.envelope, |at| self.envelope.with_release(at));
         (self.current_pitch_hz, self.current_amp, envelope)
     }
 
     pub fn end_tick(&self) -> Tick {
+        if self.excited.is_some() {
+            return Tick::MAX;
+        }
         self.envelope.release_end
     }
 
@@ -588,6 +780,9 @@ impl Tone {
     }
 
     pub fn is_done(&self, now: Tick) -> bool {
+        if let Some(state) = &self.excited {
+            return state.retired;
+        }
         now >= self.envelope.release_end
     }
 
@@ -740,6 +935,128 @@ fn default_body_snapshot() -> BodySnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn phase3_hold_release_pitch_and_future_residual_are_separate() {
+        for fs in [44_100.0, 48_000.0, 96_000.0] {
+            for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+                let time = Timebase { fs, hop: 64 };
+                let body = BodySnapshot {
+                    kind,
+                    motion: 0.2,
+                    ..default_body_snapshot()
+                };
+                let adsr = ToneAdsr {
+                    attack_sec: 0.001,
+                    decay_sec: 0.0,
+                    sustain_level: 1.0,
+                    release_sec: 0.005,
+                };
+                let mut tone =
+                    Tone::from_parts(time, 0, Tick::MAX, 220.0, 0.2, Some(body), None, Some(adsr))
+                        .unwrap();
+                tone.enable_phase3(Default::default());
+                tone.seed_modal_phases(73);
+                tone.arm_onset_trigger(1.0);
+                let close_request = time.sec_to_tick(0.2);
+                let mut hold_peak = 0.0_f32;
+                for tick in 0..close_request {
+                    if tick == close_request / 2 {
+                        assert!(tone.schedule_update(
+                            tick,
+                            ToneUpdate {
+                                target_freq_hz: Some(330.0),
+                                ..Default::default()
+                            }
+                        ));
+                    }
+                    tone.apply_updates_if_due(tick);
+                    let y = tone.render_tick(tick, fs, 1.0 / fs, &NeuralRhythms::default());
+                    if tick > close_request / 2 {
+                        hold_peak = hold_peak.max(y.abs());
+                    }
+                }
+                assert!(hold_peak > 1e-4, "{kind:?} sustained/struck voice vanished");
+                assert_eq!(tone.debug_current_freq_hz(), 330.0);
+                tone.note_off(close_request);
+                let close = tone.envelope.release_end;
+                // A release-ramp Update is still an open-handle operation.
+                assert!(tone.schedule_update(
+                    close - 1,
+                    ToneUpdate {
+                        target_freq_hz: Some(440.0),
+                        ..Default::default()
+                    }
+                ));
+                for tick in close_request..=close {
+                    tone.apply_updates_if_due(tick);
+                    tone.render_tick(tick, fs, 1.0 / fs, &NeuralRhythms::default());
+                }
+                assert_eq!(tone.debug_current_freq_hz(), 440.0);
+                assert!(!tone.is_done(close));
+                let bound = tone.residual_bound(close + 1).unwrap();
+                assert!(bound.is_finite() && bound > f64::from(crate::life::voice::Voice::AMP_EPS));
+                let mut control = tone.clone();
+                assert!(!tone.schedule_update(
+                    close + 1,
+                    ToneUpdate {
+                        target_freq_hz: Some(880.0),
+                        target_amp: Some(0.0),
+                        continuous_drive: Some(10.0)
+                    }
+                ));
+                tone.trigger_impulse(10.0);
+                let mut tail_peak = 0.0_f32;
+                for tick in close + 1..close + time.sec_to_tick(1.3) {
+                    tone.apply_updates_if_due(tick);
+                    let y = tone.render_tick(tick, fs, 1.0 / fs, &NeuralRhythms::default());
+                    let expected =
+                        control.render_tick(tick, fs, 1.0 / fs, &NeuralRhythms::default());
+                    assert_eq!(y.to_bits(), expected.to_bits());
+                    assert!(
+                        f64::from(y.abs()) <= bound,
+                        "future PCM exceeded {kind:?} bound"
+                    );
+                    tail_peak = tail_peak.max(y.abs());
+                }
+                assert!(tail_peak > 1e-6, "old release_end cut off the free tail");
+                assert_eq!(tone.debug_current_freq_hz(), 440.0);
+                assert!(
+                    tone.residual_bound(close + time.sec_to_tick(1.3)).unwrap()
+                        < f64::from(crate::life::voice::Voice::AMP_EPS)
+                );
+                assert!(!tone.supports_self_model());
+                assert!(tone.prediction_sine(close).is_none());
+                assert!(tone.prediction_bank(close).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn phase3_rejects_entire_invalid_update_and_prevents_old_energy_prior() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let mut tone = Tone::from_parts(time, 0, Tick::MAX, 220.0, 0.2, None, None, None).unwrap();
+        tone.enable_phase3(Default::default());
+        assert!(!tone.schedule_update(
+            0,
+            ToneUpdate {
+                target_freq_hz: Some(440.0),
+                target_amp: Some(f32::NAN),
+                continuous_drive: None
+            }
+        ));
+        tone.apply_updates_if_due(0);
+        assert_eq!(tone.debug_target_freq_hz(), 220.0);
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                || tone.prediction_parameters(None)
+            ))
+            .is_err()
+        );
+    }
 
     #[test]
     fn issued_envelope_preserves_attack_tail_and_snapshot_identity() {

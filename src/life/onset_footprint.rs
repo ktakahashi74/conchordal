@@ -61,6 +61,7 @@ pub(crate) fn representative_modulator(spec: RenderModulatorSpec) -> RenderModul
 /// Generation inputs of the representative tone. Everything here is hashed into `Identity`.
 #[derive(Clone, Debug)]
 pub(crate) struct Recipe {
+    pub renderer_phase3: bool,
     pub body: BodySnapshot,
     pub freq_hz: f32,
     pub hold: Tick,
@@ -80,6 +81,9 @@ pub(crate) struct Identity {
 impl Identity {
     pub(crate) fn new(source_id: u64, body_generation: u32, recipe: &Recipe) -> Self {
         let mut hasher = Sha256::new();
+        if recipe.renderer_phase3 {
+            hasher.update(b"renderer:phase3-v1");
+        }
         let body = &recipe.body;
         hasher.update([match body.kind {
             BodyKind::Sine => 0u8,
@@ -256,6 +260,10 @@ pub(crate) fn compute(request: &Request) -> Record {
             rhythms_default: true,
         },
     };
+    if recipe.renderer_phase3 {
+        record.state = State::Unsupported("renderer-phase3");
+        return record;
+    }
     // The worker has no hop clock; the finish time is the request plus the measured cost.
     let finish = |mut record: Record| {
         record.computed_at =
@@ -532,8 +540,31 @@ mod tests {
 
     const FS: f32 = 48000.;
 
+    #[test]
+    fn phase3_footprint_never_reuses_legacy_identity_or_energy_prior() {
+        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+            let legacy = recipe(kind, 1000);
+            let old = Identity::new(2, 7, &legacy);
+            let mut new = legacy;
+            new.renderer_phase3 = true;
+            let identity = Identity::new(2, 7, &new);
+            assert_ne!(identity, old);
+            let record = compute(&Request {
+                identity,
+                requested_at: 0,
+                recipe: new,
+            });
+            assert_eq!(record.state, State::Unsupported("renderer-phase3"));
+            assert_eq!(record.d_samples, 0);
+            assert!(record.power.iter().all(|v| *v == 0.0));
+            // Zero power is an unused lane, never a BodySilent classification.
+            assert_ne!(record.state, State::BodySilent);
+        }
+    }
+
     fn recipe(kind: BodyKind, hold: Tick) -> Recipe {
         Recipe {
+            renderer_phase3: false,
             body: BodySnapshot {
                 kind,
                 amp_scale: 1.,

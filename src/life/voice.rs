@@ -206,7 +206,7 @@ impl Dirty {
 }
 
 impl Voice {
-    const AMP_EPS: f32 = 1e-6;
+    pub(crate) const AMP_EPS: f32 = 1e-6;
     const PHONATION_AMP_UPDATE_EPS: f32 = 0.01;
     const PHONATION_UPDATE_SMOOTH_TAU_SEC: f32 = 0.02;
 
@@ -1164,6 +1164,7 @@ impl Voice {
             other => other,
         };
         crate::life::onset_footprint::Recipe {
+            renderer_phase3: false,
             body: self.body_snapshot(),
             freq_hz: self.body.base_freq_hz(),
             hold,
@@ -1180,6 +1181,7 @@ impl Voice {
         let (hold_sec, adsr) = self.phonation_engine.footprint_hold()?;
         let phonation_mode = self.phonation_engine.mode;
         Some(crate::life::onset_footprint::Recipe {
+            renderer_phase3: false,
             body: self.body_snapshot(),
             freq_hz: self.body.base_freq_hz(),
             hold: if matches!(phonation_mode, PhonationMode::Hold) {

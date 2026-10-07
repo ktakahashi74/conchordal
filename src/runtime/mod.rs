@@ -953,6 +953,9 @@ fn wire_runtime(
     stop_flag: Arc<AtomicBool>,
     opts: WiringOptions,
 ) -> Result<RuntimeWiring, String> {
+    if config.render_prototype.is_some() && opts.wav_tx.is_none() {
+        return Err("render_prototype is available only in conchordal-render".into());
+    }
     let WiringOptions {
         #[cfg(test)]
         offline_body_probe,
@@ -1085,14 +1088,18 @@ fn wire_runtime(
     let dorsal = core.dorsal;
 
     let mut pop = Community::new(crate::core::timebase::Timebase { fs, hop });
-    if let Some(settings) = config.body_metabolism.filter(|settings| settings.enabled) {
+    // Both capabilities describe the legacy renderer's radiated sound.
+    if let Some(settings) = config
+        .body_metabolism
+        .filter(|settings| settings.enabled && config.render_prototype.is_none())
+    {
         pop.body_metabolism = Some(crate::life::body_metabolism::BodyMetabolism::new(
             core.nsgt.clone(),
             &core.lparams,
             settings,
         ));
     }
-    if config.birth_surrogate {
+    if config.birth_surrogate && config.render_prototype.is_none() {
         pop.enable_birth_surrogate(core.lparams.loudness_exp, core.lparams.ref_power);
     }
     let scenario_max_id = scenario
@@ -1118,6 +1125,7 @@ fn wire_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
+        render_prototype: config.render_prototype,
         onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
         wait_user_exit,
@@ -1505,6 +1513,7 @@ fn join_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String>
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 struct WorkerConfig {
+    render_prototype: Option<crate::config::RenderPrototypeConfig>,
     onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     scenario_name: String,
     wait_user_exit: bool,
@@ -1670,7 +1679,7 @@ impl WorkerState {
             generator_model,
             hab_ecology,
             hab_listener,
-            schedule_renderer: ScheduleRenderer::new(timebase),
+            schedule_renderer: ScheduleRenderer::new(timebase).with_prototype(cfg.render_prototype),
             scenario_end_tick: None,
             phonation_batches_buf: Vec::new(),
             body_snapshot: None,
@@ -2060,7 +2069,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         .last_analysis_frame
         .map(|id| state.frame_idx.saturating_sub(id));
 
-    let finished_now = if state.pop.abort_requested {
+    let finished_now = if state.pop.abort_requested && cfg.render_prototype.is_none() {
         true
     } else {
         state.scenario_end_tick.is_some() && state.schedule_renderer.is_idle()
@@ -2473,6 +2482,7 @@ fn advance_population(
 /// The hop path carries the identity, the request and the reply; the projection
 /// itself runs on its independent worker.
 fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
+    let phase3 = state.schedule_renderer.phase3_enabled();
     let voices = &mut state.pop.voices;
     let Some(worker) = state.footprint_worker.as_mut() else {
         return;
@@ -2486,9 +2496,10 @@ fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
         if !voice.is_alive() {
             continue;
         }
-        let Some(recipe) = voice.footprint_recipe(fs) else {
+        let Some(mut recipe) = voice.footprint_recipe(fs) else {
             continue;
         };
+        recipe.renderer_phase3 = phase3;
         let Some(body_generation) = worker.body_generation((voice.id(), voice.metadata.generation))
         else {
             continue;
@@ -3375,6 +3386,7 @@ wait(0.08);
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
+            render_prototype: None,
             onset_comparison: None,
             scenario_name: "clock regression".into(),
             wait_user_exit: false,

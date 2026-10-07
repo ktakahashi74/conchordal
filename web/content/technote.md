@@ -475,14 +475,18 @@ using both the previous shared recurrence projection and a local history predict
 The action policy compares sounding near the due time, waiting up to one participation
 period, and omitting this event. Candidate cost combines squared displacement in
 participation periods, distance from experienced external energy shapes, and a
-three-band overlap integral. Context memory and candidate forecasts refer to the same
-two observation windows after an onset. A 64-point envelope estimate includes the duration
-rule's hold and the Voice's ADSR release. Omitting costs one plus the number of
+three-band overlap integral. Context memory retains three-band external energy in
+two post-onset windows (2×3); candidate forecasts use the same windows. The default
+64-point envelope proxy includes the duration rule's hold and the Voice's ADSR release.
+An optional footprint path uses 16 bins of body power approximated from a frozen
+representative-onset recipe, or an envelope proxy. Its worker is independent of the
+auditory-cognition observer; missing, stale or unsupported body results use the proxy.
+Omitting costs one plus the number of
 consecutive voluntary omissions; an emitted onset resets that count. This cost
 is an action preference, not a metabolic reward. It prevents
 bounded acoustic costs from prescribing permanent silence, but does not establish
-musical quality. The envelope omits additional body/modulator decay, and the
-energy proxy is not an auditory masking or consonant-fusion model.
+musical quality. The envelope proxy omits additional body/modulator decay; neither
+energy estimate is an auditory masking or consonant-fusion model.
 
 Experience memory updates only after an emitted onset and both matching acoustic windows. The intrinsic period, acoustically
 adapted participation period, and sound duration have separate roles. An entrained Voice
@@ -722,7 +726,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5, §7 | Implemented. Dedicated beat carriers appear only in explicit synchronization demonstrations (sample 07) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition |
-| Temporal structure grounded in auditory cognition | Ordered auditory observation, articulation gestures, period/arrival forecasts and a Voice's action-conditioned self-sound prediction exist in the engine as default-off diagnostics | — | Partial. None of these acts on generation yet, and they are not part of this note's description. Phrase, section and long-context memory are research outside the instrument's core |
+| Temporal structure grounded in auditory cognition | Ordered auditory observation, period estimation and Periodic arrival forecasts are default-off diagnostics | — | Partial. These diagnostics do not act on generation. Participation uses an independent onset-energy footprint (§5.4). Phrase, section and long-context memory are research outside the instrument's core |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented, off by default; the physical biosignal loop is open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |

@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 fn settings(capacity: usize) -> Settings {
     Settings {
         forecast: None,
+        arrival_payload: false,
         capacity,
         window_samples: 48000 * 32,
         rebuild_admissions: 1024,

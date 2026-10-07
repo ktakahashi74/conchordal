@@ -1,3 +1,4 @@
+use crate::life::arrival_cost::ArrivalContext;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
@@ -651,6 +652,7 @@ impl ParticipationClock {
         ctx: &CoreTickCtx,
         cursor: Tick,
         allowed: bool,
+        arrival: Option<&ArrivalContext<'_>>,
     ) -> Option<CandidatePoint> {
         if !ctx.fs.is_finite() || ctx.fs < 1.0 {
             return None;
@@ -676,7 +678,13 @@ impl ParticipationClock {
         policy.set_body_footprint(self.footprint.selected());
         policy.set_current_identity(self.footprint.identity());
         policy.set_decision_trace(self.decision_trace);
-        let tick = policy.candidate(cursor, ctx.frame_end, allowed, self.forecast.as_ref())?;
+        let tick = policy.candidate(
+            cursor,
+            ctx.frame_end,
+            allowed,
+            self.forecast.as_ref(),
+            arrival,
+        )?;
         self.pending_prediction = self.outcome_forecast.as_ref().and_then(|forecast| {
             let (start, end, energy) = forecast.energy_window_after(tick)?;
             Some(ParticipationPrediction {
@@ -787,7 +795,7 @@ impl PhonationClock {
             }
             PhonationClock::Participation(clock) => {
                 let mut cursor = ctx.now_tick;
-                while let Some(candidate) = clock.candidate(ctx, cursor, false) {
+                while let Some(candidate) = clock.candidate(ctx, cursor, false, None) {
                     clock.resolve(candidate.tick, false);
                     cursor = candidate.tick.saturating_add(1);
                     out.push(candidate);
@@ -1562,6 +1570,34 @@ impl PhonationEngine {
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
+        self.tick_with_arrival(
+            ctx,
+            state,
+            social,
+            social_coupling,
+            extra_gate_gain,
+            min_allowed_onset_tick,
+            None,
+            out_cmds,
+            out_events,
+            out_onsets,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn tick_with_arrival(
+        &mut self,
+        ctx: &CoreTickCtx,
+        state: &CoreState,
+        social: Option<&SocialDensityTrace>,
+        social_coupling: f32,
+        extra_gate_gain: f32,
+        min_allowed_onset_tick: Option<Tick>,
+        arrival: Option<&ArrivalContext<'_>>,
+        out_cmds: &mut Vec<ToneCmd>,
+        out_events: &mut Vec<ToneOnEvent>,
+        out_onsets: &mut Vec<OnsetEvent>,
+    ) {
         if matches!(self.mode, PhonationMode::Hold) {
             self.tick_hold(
                 ctx,
@@ -1585,7 +1621,7 @@ impl PhonationEngine {
                     unreachable!()
                 };
                 let Some(candidate) =
-                    clock.candidate(ctx, cursor, state.is_alive && state.onset_allowed)
+                    clock.candidate(ctx, cursor, state.is_alive && state.onset_allowed, arrival)
                 else {
                     break;
                 };
@@ -2239,6 +2275,7 @@ mod tests {
         );
         let mut config = TemporalOnsetComparisonConfig {
             footprint: FootprintSource::Proxy,
+            ..Default::default()
         };
         engine.set_onset_comparison(Some(config));
         let (hold_sec, adsr) = engine.footprint_hold().expect("a proxy recipe");

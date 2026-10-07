@@ -14,6 +14,7 @@ use crate::temporal_cognition::{
 #[derive(Clone, Copy)]
 struct Settings {
     forecast: Option<crate::config::TemporalPeriodConfig>,
+    arrival_payload: bool,
     capacity: usize,
     window_samples: u64,
     rebuild_admissions: u64,
@@ -65,6 +66,10 @@ pub(crate) struct GroupSnapshot {
     pub peaks: [Option<periods::Peak>; 8],
     pub period_source: Option<[u64; 3]>,
     pub forecast: Option<arrival::Forecast>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arrival: Option<arrival::Payload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arrival_unavailable: Option<&'static str>,
 }
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 pub(crate) struct Snapshot {
@@ -83,12 +88,14 @@ impl Recurrence {
     pub(crate) fn configured(
         frontend: Frontend,
         forecast: crate::config::TemporalPeriodConfig,
+        arrival_payload: bool,
     ) -> Result<Self, &'static str> {
         let rate = frontend.config.group.sample_rate;
         Self::with_frontend(
             frontend,
             Settings {
                 forecast: Some(forecast),
+                arrival_payload,
                 capacity: 128,
                 window_samples: 32 * u64::from(rate),
                 rebuild_admissions: 1024,
@@ -306,13 +313,6 @@ impl Recurrence {
         self.frontend.snapshot(out)
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Retained owner and clock boundary for the registered T-5 consumer"
-        )
-    )]
     pub(in crate::temporal_cognition) fn arrival_issues(
         &self,
         cut: u64,
@@ -338,6 +338,10 @@ impl Recurrence {
 
     pub(crate) fn diagnostics(&self) -> Option<Snapshot> {
         let frame = self.frame.as_ref().as_ref()?;
+        let issues = self
+            .settings
+            .arrival_payload
+            .then(|| self.arrival_issues(frame.received_at));
         let snapshot = Snapshot {
             end_sample: frame.end_sample,
             received_at: frame.received_at,
@@ -351,6 +355,13 @@ impl Recurrence {
                                 f.valid_for(g.ledger.group, c.model, frame.received_at)
                             })
                     });
+                    let payload = issues.as_ref().map(|issues| {
+                        if !active {
+                            return Err("arrival_inactive");
+                        }
+                        let forecast = forecast.ok_or("arrival_forecast_absent")?;
+                        issues[i].ok_or("arrival_issue_absent")?.payload(forecast)
+                    });
                     GroupSnapshot {
                         ledger: g.ledger,
                         active,
@@ -359,6 +370,8 @@ impl Recurrence {
                         peaks: g.period.peaks,
                         period_source: g.period_source,
                         forecast,
+                        arrival: payload.and_then(Result::ok),
+                        arrival_unavailable: payload.and_then(Result::err),
                     }
                 })
             }),

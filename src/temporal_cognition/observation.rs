@@ -75,6 +75,7 @@ pub(crate) struct Options {
     pub ridge: Option<TemporalRidgeConfig>,
     pub acoustic: Option<TemporalAcousticConfig>,
     pub period: Option<crate::config::TemporalPeriodConfig>,
+    pub arrival_payload: bool,
 }
 
 struct Observation {
@@ -195,8 +196,12 @@ impl Tap {
                         (
                             None,
                             f.map(|f| {
-                                frontend::recurrence::Recurrence::configured(f, config)
-                                    .expect("validated recurrence configuration")
+                                frontend::recurrence::Recurrence::configured(
+                                    f,
+                                    config,
+                                    options.arrival_payload,
+                                )
+                                .expect("validated recurrence configuration")
                             }),
                         )
                     } else {
@@ -609,6 +614,7 @@ mod tests {
                         persistence_hops: 3,
                     }),
                     body_prototypes: None,
+                    arrival_payload: false,
                     period: Some(crate::config::TemporalPeriodConfig {
                         model: crate::config::ArrivalModel::Periodic,
                         horizon_sec: 0.1,
@@ -692,6 +698,7 @@ mod tests {
 
                     period: None,
                     body_prototypes: None,
+                    arrival_payload: false,
                     acoustic: Some(TemporalAcousticConfig {
                         group_means: [0.; 3],
                         group_deviations: [0.05, 4., 1.],
@@ -763,6 +770,7 @@ mod tests {
             acoustic: None,
             period: None,
             body_prototypes: None,
+            arrival_payload: false,
             ridge: Some(TemporalRidgeConfig {
                 means: [0.; 3],
                 deviations: [0.05, 4., 1.],

@@ -7,7 +7,7 @@ pub(crate) struct Frozen {
     pub group: Handle,
     pub issued_at: u64,
     pub sample_rate: u32,
-    engine: Engine,
+    pub(super) engine: Engine,
 }
 
 impl Engine {

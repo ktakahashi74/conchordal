@@ -814,6 +814,32 @@ impl Voice {
         consonance: f32,
         out: &mut PhonationBatch,
     ) {
+        self.tick_phonation_into_with_arrival(
+            tb,
+            now,
+            rhythms,
+            social,
+            social_coupling,
+            extra_gate_gain,
+            consonance,
+            None,
+            out,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn tick_phonation_into_with_arrival(
+        &mut self,
+        tb: &Timebase,
+        now: Tick,
+        rhythms: &NeuralRhythms,
+        social: Option<&SocialDensityTrace>,
+        social_coupling: f32,
+        extra_gate_gain: f32,
+        consonance: f32,
+        arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
+        out: &mut PhonationBatch,
+    ) {
         out.source_id = self.id;
         out.source_generation = self.metadata.generation;
         out.routing = self.effective_control.body.routing;
@@ -850,13 +876,14 @@ impl Voice {
             out.body_opportunity = self.phonation_engine.clock.opportunity(&ctx);
             out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
         }
-        self.phonation_engine.tick(
+        self.phonation_engine.tick_with_arrival(
             &ctx,
             &state,
             social,
             social_coupling,
             extra_gate_gain,
             None,
+            arrival,
             &mut out.cmds,
             &mut self.phonation_scratch.events,
             &mut out.onsets,

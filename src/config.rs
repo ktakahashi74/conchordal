@@ -310,6 +310,9 @@ pub enum FootprintSource {
 pub struct TemporalOnsetComparisonConfig {
     #[serde(default)]
     pub footprint: FootprintSource,
+    #[serde(default)]
+    pub arrival: bool,
+    pub arrival_weight: Option<f32>,
 }
 
 /// Frozen development scales for private body diagnostics; no adopted calibration.
@@ -516,6 +519,24 @@ impl AppConfig {
             );
             crate::temporal_cognition::arrival::Engine::new(period).map_err(anyhow::Error::msg)?;
         }
+        if let Some(onset) = self.temporal_onset_comparison {
+            if let Some(weight) = onset.arrival_weight {
+                ensure!(
+                    weight.is_finite() && weight >= 0.,
+                    "arrival_weight must be finite and nonnegative"
+                );
+            }
+            if onset.arrival {
+                ensure!(
+                    onset.arrival_weight.is_some(),
+                    "arrival requires explicit arrival_weight"
+                );
+                ensure!(
+                    self.temporal_period.is_some(),
+                    "arrival requires temporal_period"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -668,12 +689,14 @@ mod tests {
     }
 
     #[test]
-    fn onset_comparison_defaults_to_body_and_rejects_removed_arrival_keys() {
+    fn onset_comparison_defaults_to_body_and_requires_explicit_arrival_inputs() {
         assert!(AppConfig::default().temporal_onset_comparison.is_none());
         let bare: AppConfig = toml::from_str("[temporal_onset_comparison]\n").unwrap();
         bare.validate().unwrap();
         let bare = bare.temporal_onset_comparison.unwrap();
         assert_eq!(bare.footprint, FootprintSource::Body);
+        assert!(!bare.arrival);
+        assert!(bare.arrival_weight.is_none());
 
         let proxy: AppConfig =
             toml::from_str("[temporal_onset_comparison]\nfootprint = \"proxy\"\n").unwrap();
@@ -686,11 +709,18 @@ mod tests {
                 .is_err()
         );
 
-        for key in ["arrival = false", "arrival = true", "arrival_weight = 1.0"] {
-            assert!(
-                toml::from_str::<AppConfig>(&format!("[temporal_onset_comparison]\n{key}\n"))
-                    .is_err()
-            );
+        let off: AppConfig =
+            toml::from_str("[temporal_onset_comparison]\narrival = false\n").unwrap();
+        off.validate().unwrap();
+        for keys in [
+            "arrival = true",
+            "arrival = true\narrival_weight = 4.0",
+            "arrival_weight = -1.0",
+            "arrival_weight = inf",
+        ] {
+            let config: AppConfig =
+                toml::from_str(&format!("[temporal_onset_comparison]\n{keys}\n")).unwrap();
+            assert!(config.validate().is_err());
         }
     }
 

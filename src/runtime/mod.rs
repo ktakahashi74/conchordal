@@ -982,9 +982,10 @@ fn wire_runtime(
 
     // NSGT-RT based audio analysis thread.
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
+    let arrival_enabled = config.temporal_onset_comparison.is_some_and(|c| c.arrival);
     let mut temporal_snapshots = [None, None];
     let mut taps = std::array::from_fn::<_, 2, _>(|bus| {
-        observing.then(|| {
+        (observing || (arrival_enabled && bus == 0)).then(|| {
             let tap = crate::temporal_cognition::observation::Tap::spawn(
                 bus as u8,
                 runtime_sample_rate,
@@ -1005,6 +1006,7 @@ fn wire_runtime(
                     ridge: config.temporal_ridge,
                     acoustic: config.temporal_acoustic,
                     period: config.temporal_period,
+                    arrival_payload: config.temporal_onset_comparison.is_some_and(|c| c.arrival),
                 },
             );
             temporal_snapshots[bus] = Some(Arc::clone(&tap.snapshot));
@@ -1012,7 +1014,7 @@ fn wire_runtime(
             tap
         })
     });
-    let body_capture = if observing {
+    let body_capture = if observing || arrival_enabled {
         config.temporal_body.map(|body| {
             crate::temporal_cognition::body::Capture::spawn(
                 core.nsgt.clone(),
@@ -2391,6 +2393,11 @@ fn advance_population(
             &mut state.generator_model,
             &state.current_landscape,
             now_tick,
+            cfg.onset_comparison
+                .filter(|c| c.arrival)
+                .map(|_| &state.temporal_frames[0]),
+            state.body_snapshot.as_deref(),
+            state.schedule_renderer.body_capture.as_ref(),
             &mut state.phonation_batches_buf,
         )
     } else {
@@ -3218,7 +3225,10 @@ wait(0.08);
             config.analysis.nfft = 2048;
             config.dcc.coupling_strength = 0.0;
             config.temporal_onset_comparison =
-                comparison.map(|footprint| TemporalOnsetComparisonConfig { footprint });
+                comparison.map(|footprint| TemporalOnsetComparisonConfig {
+                    footprint,
+                    ..Default::default()
+                });
             config.validate().unwrap();
             let scenario = compile_scenario_from_script(
                 &script,

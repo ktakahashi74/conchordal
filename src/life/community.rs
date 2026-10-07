@@ -4,6 +4,7 @@ use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::dcc_coupler::ListenerPressure;
+use crate::life::arrival_cost::{self, ArrivalContext};
 use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
 use crate::scenario::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
@@ -359,17 +360,28 @@ impl Community {
         now: Tick,
     ) -> Vec<PhonationBatch> {
         let mut batches = Vec::new();
-        let count =
-            self.collect_phonation_batches_into(generator_model, landscape, now, &mut batches);
+        let count = self.collect_phonation_batches_into(
+            generator_model,
+            landscape,
+            now,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
         batches.truncate(count);
         batches
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn collect_phonation_batches_into(
         &mut self,
         generator_model: &mut GeneratorModel,
         landscape: &LandscapeFrame,
         now: Tick,
+        arrival: Option<&crate::temporal_cognition::observation::Snapshot>,
+        body: Option<&crate::temporal_cognition::body::Snapshot>,
+        capture: Option<&crate::temporal_cognition::body::Capture>,
         out: &mut Vec<PhonationBatch>,
     ) -> usize {
         let tb = generator_model.time;
@@ -417,7 +429,46 @@ impl Community {
                 }
                 None => 1.0,
             };
-            voice.tick_phonation_into(
+            let arrival_context = arrival.map(|snapshot| {
+                let binding = body.and_then(|body| {
+                    crate::temporal_cognition::body_model::bindings(body).find(|binding| {
+                        binding.source_id == voice.id()
+                            && binding.source_generation == voice.metadata.generation
+                            && binding.bus == 0
+                    })
+                });
+                let body_generation = capture
+                    .and_then(|capture| capture.token(voice.id(), voice.metadata.generation))
+                    .map(|(_, generation)| generation);
+                let body_record = body.and_then(|body| {
+                    body.records.iter().copied().find(|record| {
+                        record.source_id == voice.id()
+                            && record.source_generation == voice.metadata.generation
+                            && record.bus == 0
+                    })
+                });
+                let habitat_routed = voice.effective_control.body.routing.to_habitat;
+                let self_group = arrival_cost::self_group(
+                    snapshot,
+                    binding,
+                    habitat_routed,
+                    body_record,
+                    (voice.id(), voice.metadata.generation, body_generation),
+                    now,
+                );
+                ArrivalContext {
+                    snapshot,
+                    self_group_state: self_group
+                        .as_ref()
+                        .map_or_else(|reason| *reason, |_| "known"),
+                    self_group: self_group.ok(),
+                    binding,
+                    habitat_routed,
+                    body_record,
+                    owner: (voice.id(), voice.metadata.generation, body_generation),
+                }
+            });
+            voice.tick_phonation_into_with_arrival(
                 &tb,
                 now,
                 &landscape.rhythm,
@@ -425,6 +476,7 @@ impl Community {
                 social_coupling,
                 extra_gate_gain,
                 consonance,
+                arrival_context.as_ref(),
                 batch,
             );
             if auto_observe_enabled && !was_gate_open && voice.phonation_gate_open() {
@@ -1426,7 +1478,15 @@ mod tests {
             }],
         }];
 
-        let used = pop.collect_phonation_batches_into(&mut world, &landscape, 0, &mut batches);
+        let used = pop.collect_phonation_batches_into(
+            &mut world,
+            &landscape,
+            0,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
         // Voice with default Sustain produces output, stale data is replaced
         assert!(used > 0 || batches[0].cmds.is_empty());
         // Source id is from the actual voice, not the stale 99
@@ -1434,7 +1494,15 @@ mod tests {
             assert_eq!(batches[0].source_id, 77);
             assert_eq!(batches[0].body_policy.unwrap().at, 0);
         }
-        let used = pop.collect_phonation_batches_into(&mut world, &landscape, 64, &mut batches);
+        let used = pop.collect_phonation_batches_into(
+            &mut world,
+            &landscape,
+            64,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
         assert_eq!(used, 1);
         assert!(batches[0].onsets.is_empty());
         assert_eq!(batches[0].body_policy.unwrap().at, 64);
@@ -1471,19 +1539,43 @@ mod tests {
         );
 
         let mut batches = Vec::new();
-        pop.collect_phonation_batches_into(&mut world, &landscape_low, 0, &mut batches);
+        pop.collect_phonation_batches_into(
+            &mut world,
+            &landscape_low,
+            0,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
         assert!(
             pop.drain_phonation_gate_open_events().is_empty(),
             "gate stays closed while consonance is below the viability low bound"
         );
 
-        pop.collect_phonation_batches_into(&mut world, &landscape_high, 64, &mut batches);
+        pop.collect_phonation_batches_into(
+            &mut world,
+            &landscape_high,
+            64,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
         let events = pop.drain_phonation_gate_open_events();
         assert_eq!(events.len(), 1, "exactly one latch-open record");
         assert_eq!(events[0].population_id, 9);
         assert_eq!(events[0].voice_id, 501);
 
-        pop.collect_phonation_batches_into(&mut world, &landscape_high, 128, &mut batches);
+        pop.collect_phonation_batches_into(
+            &mut world,
+            &landscape_high,
+            128,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
         assert!(
             pop.drain_phonation_gate_open_events().is_empty(),
             "the one-way latch must not re-fire once open"
@@ -1518,8 +1610,24 @@ mod tests {
         );
 
         let mut batches = Vec::new();
-        pop.collect_phonation_batches_into(&mut world, &landscape_high, 0, &mut batches);
-        pop.collect_phonation_batches_into(&mut world, &landscape_high, 64, &mut batches);
+        pop.collect_phonation_batches_into(
+            &mut world,
+            &landscape_high,
+            0,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
+        pop.collect_phonation_batches_into(
+            &mut world,
+            &landscape_high,
+            64,
+            None,
+            None,
+            None,
+            &mut batches,
+        );
         assert!(
             pop.drain_phonation_gate_open_events().is_empty(),
             "Immediate gates start open and never latch, so they never emit"

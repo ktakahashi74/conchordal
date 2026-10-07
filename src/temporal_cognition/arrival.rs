@@ -56,7 +56,9 @@ pub(crate) struct Engine {
 }
 
 mod frozen;
+mod payload;
 pub(crate) use frozen::Frozen;
+pub(crate) use payload::Payload;
 
 impl Engine {
     pub(crate) fn new(config: TemporalPeriodConfig) -> Result<Self, &'static str> {

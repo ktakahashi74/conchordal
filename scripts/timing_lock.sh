@@ -5,7 +5,7 @@
 # silently: ask the user.
 # usage: timing_lock.sh acquire <owner> <minutes> | release <owner> | check
 set -euo pipefail
-LOCK=/home/shafi/lwrk/conchordal/target/timing-exclusive.lock
+LOCK=/home/shafi/lwrk/conchordal/.orchestration/timing-exclusive.lock
 
 case "${1:-}" in
   acquire)

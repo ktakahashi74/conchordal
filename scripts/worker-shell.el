@@ -20,9 +20,10 @@ account is forced because Codex otherwise resolves this checkout to RIKEN."
                   :no-focus t
                   :new-session t
                   :session-strategy 'new)))
-    (with-current-buffer buffer
-      (rename-buffer (format "Codex worker %s @ conchordal" name) t)
-      (buffer-name))))
+    ;; A bare `rename-buffer' leaves shell-maker looking up the old name, and
+    ;; every later submit fails with (wrong-type-argument processp nil).
+    (shell-maker-set-buffer-name buffer (format "Codex worker %s @ conchordal" name))
+    (buffer-name buffer)))
 
 (defun conchordal-worker-send (buffer-name prompt)
   "Submit PROMPT to the worker shell BUFFER-NAME without selecting it."
@@ -43,6 +44,37 @@ account is forced because Codex otherwise resolves this checkout to RIKEN."
                      (bound-and-true-p my/codex-session-profile)
                      (and (bound-and-true-p shell-maker--busy) t)))))
          (agent-shell-buffers))))
+
+(defun conchordal-worker-frame (buffer-names &optional columns)
+  "Tile BUFFER-NAMES in a frame named \"conchordal workers\", COLUMNS per row.
+The frame is created on first use and reused afterwards, so the author's own
+frame keeps its windows.  COLUMNS defaults to 4."
+  (let* ((columns (or columns 4))
+         (orig (selected-frame))
+         (frame (or (seq-find (lambda (f)
+                                (equal (frame-parameter f 'name) "conchordal workers"))
+                              (frame-list))
+                    (make-frame '((name . "conchordal workers")
+                                  (width . 300) (height . 80)
+                                  (fullscreen . maximized)))))
+         (rows (ceiling (/ (float (length buffer-names)) columns)))
+         (window-min-width 2)
+         (window-min-height 1))
+    (with-selected-frame frame
+      (delete-other-windows)
+      (let ((row-windows (list (selected-window)))
+            (names buffer-names))
+        (dotimes (_ (1- rows))
+          (push (split-window (car row-windows) nil 'below) row-windows))
+        (dolist (row (nreverse row-windows))
+          (let ((w row))
+            (dotimes (i columns)
+              (when names
+                (when (> i 0) (setq w (split-window w nil 'right)))
+                (set-window-buffer w (get-buffer (pop names)))))))
+        (balance-windows)))
+    (select-frame orig)
+    (length (window-list frame 'no-minibuf))))
 
 (provide 'worker-shell)
 ;;; worker-shell.el ends here

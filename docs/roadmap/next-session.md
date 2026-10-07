@@ -18,7 +18,7 @@ workerは `gpt-6.1-sol` の `xhigh`、KEIOアカウントのagent-shell buffer�
 agent-emacsclient --eval '(progn (load "/home/shafi/lwrk/conchordal/scripts/worker-shell.el" nil t) (conchordal-worker-start "T-1"))'
 
 # 指示。briefはfileに書き、送る文は短くする
-agent-emacsclient --eval '(conchordal-worker-send "Codex worker T-1 @ conchordal" "target/orchestration/T-1/brief.md を読み、その単位を実行せよ。")'
+agent-emacsclient --eval '(conchordal-worker-send "Codex worker T-1 @ conchordal" ".orchestration/units/T-1/brief.md を読み、その単位を実行せよ。")'
 
 # 状態。各workerの (名前 アカウント 実行中か) を返す
 agent-emacsclient --eval '(conchordal-worker-status)'
@@ -32,8 +32,8 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 ## 2. 先に読むもの
 
 1. [plan-current.md](plan-current.md)：原則、範囲、単位と順序、未決の作者判断。
-2. `target/author-instruction-review-20261007-v1/adopted.md`：2026-10-07 の作者の返答の原文と採択範囲。
-3. `target/author-instruction-review-20261007-v1/proposal.md`：変更案 C-01〜C-19 と D-01〜D-14 の根拠。
+2. `.orchestration/records/author-instruction-review-20261007-v1/adopted.md`：2026-10-07 の作者の返答の原文と採択範囲。
+3. `.orchestration/records/author-instruction-review-20261007-v1/proposal.md`：変更案 C-01〜C-19 と D-01〜D-14 の根拠。
 4. `AGENTS.md` の Progress and Validation Scope、Multi-agent Orchestration、Author Decision Requests。
 
 ## 3. 現在の状態
@@ -62,9 +62,9 @@ cargoを使わない単位は、すべて並行できる。
 |---|---|---|
 | U-2 | 台帳に二層の規則と原則の節を起こす。参照されているanchorを実在させる。 | 台帳への差分 |
 | U-4 | I12bの27行の結果をmilestonesに記録し、ownerの寿命の課題を起票する。 | milestonesへの差分 |
-| T-1 | temporalの経路に要るmoduleと、研究branchへ移すmoduleの一覧。 | `target/orchestration/T-1/report.md` |
-| M-1 | Phase 3 の前提（励振への写像、開区間の法則、temporal側消費者の扱い、退役下限）。 | `target/orchestration/M-1/report.md` |
-| B-2 | 保存済みの全候補表に対する代理式の値の計算と、選択分布のずれ。 | `target/orchestration/B-2/report.md` |
+| T-1 | temporalの経路に要るmoduleと、研究branchへ移すmoduleの一覧。 | `.orchestration/units/T-1/report.md` |
+| M-1 | Phase 3 の前提（励振への写像、開区間の法則、temporal側消費者の扱い、退役下限）。 | `.orchestration/units/M-1/report.md` |
+| B-2 | 保存済みの全候補表に対する代理式の値の計算と、選択分布のずれ。 | `.orchestration/units/B-2/report.md` |
 
 cargoを使う単位は、同時に2本までとする。
 
@@ -80,6 +80,9 @@ U-1（要るworktree 4本の保全）は、commitの許可を作者に確認し�
 
 - commitは共有checkoutで行わない。worktreeのbranchで行う。pre-commit hookがfmtと `git add -u` を走らせる。
 - indexが全削除の状態のworktreeが5本ある（`f2-c2-*` の3本、`f2-nominal-resource-prototype-20261007-v1`、`f2-shared-control-feature-prototype-20261007-v1`）。内容はディスク上のfileにしかないので、gitの操作や削除をしない。
+- 統括の記録は `.orchestration/` に置く（`status.md`、`units/<単位>/` のbriefと報告、`records/`、計時のlock）。`target/` には唯一の写しを置かない。2026-10-07 に共有checkoutで `cargo clean` が実行され、`target/` 以下の追跡外の記録が失われた。復元できたのは `adopted.md` と `proposal.md` だけである。
+- workerの起動直後はsessionが未確立である。`agent-shell--state` の `(:session :id)` が入ってから `conchordal-worker-send` し、送信後は `~/.codex-keio/sessions/` のrolloutかbufferの伸びでturnの開始を確かめる。workerのbufferは `conchordal-worker-frame` で別frameに並べる。
+- 計算を走らせるworkerは、所有するjobだけにメモリの上限を掛ける（`.orchestration/units/COMMON.md` の「メモリ」）。端末やEmacsのscopeには掛けない。
 - `CARGO_TARGET_DIR` は系統ごとに一つを使い回す。単位ごとに新しいworktreeを作ってcacheを複製することはしない。
 - 合否に使う計時は `scripts/timing_lock.sh` の排他の時間枠で行い、その前に1セルを試行する。
 - 作者へ判断を求めるときは、推奨ごとに、採ると発生する作業、採らないと消える作業、数値の由来、後から変える費用を書く。

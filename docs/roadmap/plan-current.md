@@ -2,7 +2,7 @@
 
 状態：正本。2026-10-07 に作者が採択した。次のセッションの始め方は [next-session.md](next-session.md) にある。
 
-本書は、時間構造DCC、body-aware fitness、音色・合成の三系統について、「いま何を、どの順で、何をもって終わりとするか」を一つにまとめる。2026-10-07 の見直しで採択された変更を反映している。根拠と経緯は `target/author-instruction-review-20261007-v1/`（`proposal.md`、`adopted.md`）と `target/dcc-instrument-alignment-audit-20261007-v1/report.md` にある。
+本書は、時間構造DCC、body-aware fitness、音色・合成の三系統について、「いま何を、どの順で、何をもって終わりとするか」を一つにまとめる。2026-10-07 の見直しで採択された変更を反映している。根拠と経緯は `.orchestration/records/author-instruction-review-20261007-v1/`（`proposal.md`、`adopted.md`）にある。もう一つの根拠だった `target/dcc-instrument-alignment-audit-20261007-v1/report.md` は、2026-10-07 の `cargo clean` で `target/` ごと失われた。同じ経緯で、旧文書が参照する `target/...` の記録も存在しない。統括の記録は `.orchestration/` に置く。
 
 次の文書の「これから行う作業」の記述は、本書で置き換える。各文書は履歴と参照として保存し、削除や書き換えはしない。
 
@@ -59,7 +59,7 @@
 | U-2 | 台帳に1節を起こす。二層の規則、§1の原則、受入の三項。参照されているanchor（`two-tier-rule` など）を実在させる。9-29以後の採択を、見直し後の形で記載する。 | 他文書の参照が解決する。台帳の日付が現在に追いつく。 |
 | U-3 | 独立の小修正をmainへ入れる。`timbre-valuation-meter`（`a3a56fd`）、音の更新時の世代guard、Modal予測の修正、energy予測のHarmonic誤差の修正。 | 一件ごとに全テストが通り、mainに入る。 |
 | U-4 | I12bを閉じる。27行の結果（forward 2／6、backwardの推論4／6、backwardの音への効果は未確立）をdocsに記録する。backwardの不達を、群ownerの寿命と判断周期の不整合という課題として起票する。 | milestones に結果と課題が載る。 |
-| U-5 | 容量。済み（2026-10-07）。閉じたcache 14本と、未登録のビルド出力28個の `incremental/` を削除し、147.5 GiBを回収した（残り約300 GB）。記録は `target/author-instruction-review-20261007-v1/cache-deletion-log.txt`。それ以外のビルド出力は、要る場合に改めて一覧にする。 | 済み。 |
+| U-5 | 容量。済み（2026-10-07）。閉じたcache 14本と、未登録のビルド出力28個の `incremental/` を削除し、147.5 GiBを回収した（残り約300 GB）。削除記録（`cache-deletion-log.txt`）は 2026-10-07 の `cargo clean` で失われた。それ以外のビルド出力は、要る場合に改めて一覧にする。 | 済み。 |
 
 ### 段1：各系統の最初の設計単位
 

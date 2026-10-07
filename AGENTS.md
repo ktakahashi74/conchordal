@@ -491,9 +491,10 @@ This restriction concerns dedicated synchronization support, not pitch-only
 ## Multi-agent Orchestration
 - The plan of record is `docs/roadmap/plan-current.md`. Its units are run by one
   orchestrating session that dispatches workers and escalates only author decisions. It
-  keeps one line of status per unit in `target/orchestration-status.md` (machine-local,
-  untracked). `target/orchestration-board.md` is the history of the earlier orchestration,
-  not current state.
+  keeps one line of status per unit in `.orchestration/status.md`, and each unit's brief
+  and report under `.orchestration/units/<unit>/` (machine-local, untracked). Nothing that
+  is the only copy of a record goes under `target/`: `cargo clean` removes it, as it did on
+  2026-10-07 with the earlier decision records and the old orchestration board.
 - Roles (author instruction, 2026-10-07): the orchestrator is a Claude Opus session. The
   workers are `gpt-6.1-sol` at reasoning effort `xhigh`, each an agent-shell buffer on the
   KEIO account, started and addressed through `scripts/worker-shell.el`

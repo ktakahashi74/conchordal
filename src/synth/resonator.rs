@@ -584,6 +584,122 @@ mod tests {
     }
 
     #[test]
+    fn modal_forecast_extreme_coupling_matches_renderer_onsets() {
+        use crate::life::sound::bank_forecast::struck_state;
+        use crate::life::sound::control::{ControlRamp, ToneControlBlock};
+        use crate::life::sound::modal_engine::{ModalEngine, ModalMode, ModeShape};
+
+        let fs = 48_000.;
+        let pitch = 220.;
+        let mut mismatches = Vec::new();
+        for (in_gain, impulse) in [(1e-30, 1.), (f32::MAX, f32::MIN_POSITIVE)] {
+            let shape = ModeShape::Modal {
+                modes: vec![
+                    ModalMode {
+                        ratio: 1.,
+                        t60_s: 0.5,
+                        gain: 0.125,
+                        in_gain,
+                    },
+                    ModalMode {
+                        ratio: 2.,
+                        t60_s: 0.5,
+                        gain: 0.125,
+                        in_gain: 0.5,
+                    },
+                ],
+            };
+            let mut engine = ModalEngine::new(fs, shape.clone()).unwrap();
+            engine.seed_modal_phases(11);
+            let original = engine.bank_forecast(pitch, 37, Some(impulse)).unwrap();
+            for (seed, first_sample) in [(11, 37), (99, 5037)] {
+                let forecast = if seed == 11 {
+                    original
+                } else {
+                    original.for_new_onset(first_sample, seed)
+                };
+                let mut actual = ModalEngine::new(fs, shape.clone()).unwrap();
+                actual.seed_modal_phases(seed);
+                let mut bank = ResonatorBank::new(fs, 2).unwrap();
+                bank.set_modes_preserve_state(&[
+                    ModeParams {
+                        freq_hz: pitch,
+                        t60_s: 0.5,
+                        gain: 0.125,
+                        in_gain,
+                    },
+                    ModeParams {
+                        freq_hz: pitch * 2.,
+                        t60_s: 0.5,
+                        gain: 0.125,
+                        in_gain: 0.5,
+                    },
+                ])
+                .unwrap();
+                bank.randomize_input_phase_from_seed(seed);
+                // Skipped extreme lanes retain their coupling; the normal lane draws next.
+                assert_eq!(bank.b1[0].to_bits(), in_gain.to_bits());
+                assert_eq!(bank.b2[0].to_bits(), 0);
+                assert_ne!(bank.b2[1], 0.);
+                assert_eq!(forecast.first_sample, first_sample);
+                assert_eq!(forecast.len, bank.active_len());
+                for i in 0..bank.active_len() {
+                    let expected =
+                        struck_state([bank.r[i], bank.e[i]], [bank.b1[i], bank.b2[i]], impulse);
+                    if forecast.lanes[i].state.map(f32::to_bits) != expected.map(f32::to_bits) {
+                        mismatches.push((in_gain.to_bits(), seed, i));
+                    }
+                    assert_eq!(forecast.lanes[i].step, [bank.r[i], bank.e[i]]);
+                    assert_eq!(forecast.lanes[i].gain, bank.gain[i]);
+                }
+                let expected_held = if in_gain == f32::MAX {
+                    f32::INFINITY
+                } else {
+                    0.
+                };
+                if forecast.lanes[0].held.to_bits() != expected_held.to_bits() {
+                    mismatches.push((in_gain.to_bits(), seed, usize::MAX));
+                }
+                assert_eq!(forecast.lanes[1].held, 0.5);
+                let rendered = bank.process_sample(impulse);
+                let mut output = [0.];
+                actual.render_block(
+                    &[impulse],
+                    ToneControlBlock {
+                        pitch_hz: ControlRamp {
+                            start: pitch,
+                            step: 0.,
+                        },
+                        amp: ControlRamp {
+                            start: 1.,
+                            step: 0.,
+                        },
+                    },
+                    &mut output,
+                );
+                assert_eq!(output[0].to_bits(), rendered.to_bits());
+                assert!(rendered.is_finite());
+                let projected: f64 = (0..forecast.len)
+                    .map(|i| forecast.lane_at(i, first_sample).unwrap()[1])
+                    .sum();
+                // Reuse the existing forecast waveform tolerance, not bit identity.
+                if (projected - f64::from(rendered)).abs() >= 1e-4 {
+                    mismatches.push((in_gain.to_bits(), seed, usize::MAX - 1));
+                }
+                eprintln!(
+                    "EXTREME_FORECAST in_gain={in_gain:e} seed={seed} held={} coupling={:?} rendered={rendered:e} projected={projected:e}",
+                    forecast.lanes[0].held,
+                    [bank.b1[1], bank.b2[1]]
+                );
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "forecast/renderer mismatches: {mismatches:?}"
+        );
+    }
+
+    #[test]
     fn randomize_input_phase_preserves_coupling_magnitude_and_is_deterministic() {
         let fs = 48_000.0;
         let modes = vec![

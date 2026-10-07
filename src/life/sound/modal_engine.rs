@@ -107,7 +107,7 @@ impl ModalEngine {
                     },
                     self.bank.fs(),
                 );
-                let held = c.b1.hypot(c.b2);
+                let held = (c.b1 * c.b1 + c.b2 * c.b2).sqrt();
                 let coupling = seed
                     .as_mut()
                     .and_then(|state| resonator::seeded_input_coupling(state, held))

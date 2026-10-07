@@ -185,7 +185,7 @@ $$ x_{total} = \frac{R_{shape,total}}{r_{ref,total}} $$
 
 $$ R_{ref} = \frac{1}{1+k} $$
 
-$k$ が大きいほど同じ入力比に対する $R_{01}$ が減少し、システムの粗さ耐性が高まる。
+$k$ が大きいほど同じ入力比に対する $R_{01}$ が減少する。$k$ は感覚モデルに属し、設定ファイルでのみ変える。粗さをどれだけ嫌うかは評価の側の量であり、シナリオからは `set_roughness_aversion` で変える（3.4節）。
 
 **区分的飽和マッピング**: 正規化された粗さ $R_{01}$ は参照正規化された比 $x$ から以下のように計算される。
 
@@ -234,10 +234,10 @@ $$
 
 *   **ステップ1（下方）**: 100 Hz（$f/2$）、66.6 Hz（$f/3$）、50 Hz（$f/4$）等に基音を投影する。
 *   **ステップ2（上方）**: 100 Hz の基音は 100, 200, 300, 400, 500... Hz に安定性を投影する。
-    *   300 Hz は 100 Hz 基音の完全5度である。
-    *   500 Hz は 100 Hz 基音の長3度である。
+    *   300 Hz は 200 Hz の音の完全5度上（3:2）にある。
+    *   500 Hz はその長10度上（5:2）、つまり1オクターブと長3度上にある。
 
-したがって、西洋音楽理論のハードコードされた知識なしに、システムは倍音列の物理法則の帰結として、長3度および完全5度の関係に自然に安定性ピークを生成する。200 Hz のエージェントは 300 Hz と 500 Hz に「重力井戸」を作り出し、他のエージェントを長三和音の形成へと誘引する。
+コードに音程名は現れない。これらのピークはHの整数比テンプレートから生じる。Hは周期性にもとづく融合のモデルであり、整数比はカーネルが発見したものではなく、あらかじめ組み込まれた前提である。200 Hz のエージェントは 300 Hz と 500 Hz に「重力井戸」を作り、他のエージェントを開離配置の長三和音（2:3:5）の形成へと誘う。
 
 ## 3.4 協和性：フィールドの統合
 
@@ -248,6 +248,8 @@ $R_{01}$ と $H_{01}$ が揃えば、協和性は二段階で導出できる。�
 $$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 
 デフォルト係数：$a = 1.0$、$b = -1.35$、$c = 1.0$、$d = 0.0$。$b < 0$ であるため粗さはペナルティとして作用し、$c > 0$ であるため高い調波性がそのペナルティを減衰させる（相互作用項 $c \cdot H_{01} R_{01}$ は $H_{01}$ が大きいとき $b \cdot R_{01}$ を部分的に相殺する）。双線形族は以前の $\alpha H - wR$ 定式化を $c = 0$ の特殊ケースとして包含する。
+
+ディレクター操作 `set_roughness_aversion(w)` は、粗さの項 $b$、$c$ と後述の密度の $\rho$ に $w$ を掛ける（既定値1では設定値がビット単位でそのまま使われる）。$w$ は $[0, 100]$ に制限され、有限でない値は無視される。$w = 0$ では評価が粗さを無視する。設定されたカーネルがどの調波性でも粗さを罰する場合（$b \le 0$ かつ $b + c \le 0$。既定値はこれを満たす）、$w$ が大きいほど粗さをより強く嫌う。感覚され表示される $R_{01}$ 自体は変わらない。
 
 **第2層 — 表現：**
 
@@ -303,7 +305,7 @@ Conchordal はこの知見をそのまま実装する。マスタークロック
 $$ \dot{r} = \alpha r + \beta r^3 + F_a\, s(t) \cos\varphi $$
 $$ \dot{\varphi} = \omega - F_p \frac{s(t)}{r} \sin\varphi $$
 
-$\alpha > 0$、$\beta < 0$ のとき、強制項のない系は半径 $\sqrt{-\alpha/\beta} = 1$ の安定リミットサイクルを持つ。つまりビートは**自己持続的**で、入力が途切れても惰性で回り続ける（ビート誘導の持続レジームに相当）。駆動 $s(t)$ は整流されたオンセット信号であり、二つの源を併せたものである。一つは `DorsalStream`（`core/stream/dorsal.rs`、3帯域クロスオーバーのフラックス検出器）が抽出するスペクトルフラックス（フレーム間のスペクトルエネルギー増分。汎用のオンセット検出量）。もう一つは集団自身の発声オンセット強度で、こちらは低遅延の聴覚–運動強化経路にあたる。
+$\alpha > 0$、$\beta < 0$ のとき、強制項のない系は半径 $\sqrt{-\alpha/\beta} = 1$ の安定リミットサイクルを持つ。つまりビートは**自己持続的**で、入力が途切れても惰性で回り続ける（ビート誘導の持続レジームに相当）。駆動 $s(t)$ は整流されたオンセット信号であり、二つの源を併せたものである。一つは `DorsalStream`（`core/stream/dorsal.rs`、3帯域クロスオーバーのフラックス検出器）が抽出するスペクトルフラックス（フレーム間のスペクトルエネルギー増分。汎用のオンセット検出量）。もう一つはハビタットバスへ送られるボイスの発声オンセット強度で、こちらは低遅延の聴覚–運動強化経路にあたる。メーターが聴くのはハビタットバスなので、プレゼンテーション専用のボイスはここに加わらない。
 
 振動子の固有周波数は可塑的である。ヘッブ学習則が刺激への位相誤差を減らす方向に $\omega$ をシフトする：
 
@@ -542,7 +544,7 @@ Conchordal はリアルタイムオーディオの厳格な要件（レイテン
 1.  **ワーカースレッド**がバスごとにオーディオをレンダリングし、ハビタットホップを**解析スレッド**へ、プレゼンテーションホップを**リスナー解析スレッド**へ送信する。
 2.  **解析スレッド**がNSGT + subjective intensity + roughness + harmonicityパイプラインを実行し、raw `Landscape`スナップショットを返送する。
 3.  **ワーカースレッド**が解析結果を`LandscapeFrame`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
-4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）と集団自身の発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
+4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）とハビタットへ送られるボイスの発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
 5.  `Community`がeffective Landscapeを、ピッチ選択、代謝、spawn、respawn、Voiceのライフサイクルに使う。
 6.  DCC couplingが有効なら、`tension_pressure = tension_level * coupling_strength`から上限つきのtemperature bonusを作り、Voiceのpitch searchへ戻す。Listenerのtensionにはすでにresolvabilityが含まれるため、couplerでは重ねて掛けない。デフォルトのcoupling strengthは0であり、明示的に有効化しない限り挙動は変わらない。
 7.  `PhonationEngine`が`ToneCmd` batchを生成し、`ScheduleRenderer`がToneの生成・更新・releaseを実行する。
@@ -591,7 +593,7 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   `play(callback)` / `parallel([callbacks])`: スコープ付き/並行ブロック実行。
 
 **ディレクター操作**（両軸のシーングローバルな地形シェイピング）:
-*   調波地形: `set_roughness_k(v)`, `set_pitch_objective("consonance"|"dissonance")`。
+*   調波地形: `set_roughness_aversion(w)`, `set_pitch_objective("consonance"|"dissonance")`。どちらも評価を変え、感覚としての $R_{01}$ / $H_{01}$ は変えない。
 *   時間地形: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)`（4.4節）。
 *   相互作用: `set_global_coupling(v)`。
 
@@ -648,7 +650,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | 記号媒介なしの生成 | `Log2Space`+ランドスケープ。音名・音階・拍子記号はエンジンのどこにも存在しない | §2–4 | 実装済み |
 | 周波数軸の地形（蝸牛/脳幹モデル） | 粗さ・調波性・協和性カーネル | §3 | 実装済み |
 | 時間軸の地形（神経振動） | 創発メーター：強制リミットサイクル、ヘッブ的テンポ学習、PLV 確信度。`metric` は明示的な同期を保ち、`entrained`・`flow` は有界な音響観測と身体の参加方策を使う | §4, §5.4 | 部分。全条件での時間関係の持続は未解決。小節アクセントの結合は任意 |
-| 地形の可変性（文化・個人・未知の原理） | `roughness_k`、協和性カーネル係数、任意の habituation erosion | §3.4–3.5, §6.3.6 | 部分。文化的音律体系は未取込 |
+| 地形の可変性（文化・個人・未知の原理） | 協和性カーネル係数、`set_roughness_aversion`、任意の habituation erosion | §3.4–3.5, §6.3.6 | 部分。文化的音律体系は未取込 |
 | 順応と期待 | Voice ごとの `AdaptationContext`、ecology/listener の `HabituationField`、habitat 側の参加へ渡す短期の反復予測とエネルギー予測 | §3.5, §5 | 部分。関係の記憶、phrase/scene の期待、行動価値学習は未解決 |
 | 音響生命：知覚・代謝・自律 | Voice：アーティキュレーション生命コア、正規化エネルギー、時間領域の endurance/recovery、生存可能性 | §5 | 実装済み |
 | 集団：ニッチ・共生・地形変形 | クラウディング、リスポーン、閉ループ | §5 | 実装済み |
@@ -682,6 +684,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `kernel.c` | `ConsonanceKernel` | Float | 相互作用係数（デフォルト 1.0）。 |
 | `kernel.d` | `ConsonanceKernel` | Float | バイアス項（デフォルト 0.0）。 |
 | `beta` | `ConsonanceRepresentationParams` | Float | $C_{level01}$ のシグモイド急峻度（デフォルト 2.0）。 |
+| `roughness_aversion` | `LandscapeParams` | Float | 粗さの項 $b$、$c$ と密度の $\rho$ に掛かる評価の重み。`set_roughness_aversion` で設定する。デフォルト 1.0。 |
 | `theta` | `ConsonanceRepresentationParams` | Float | $C_{level01}$ のシグモイド閾値（デフォルト 0.0）。 |
 | `consonance_density_roughness_gain` | `LandscapeParams` | Float | 密度カーネルにおける $\rho$（デフォルト 1.0）。 |
 | `habituation.enabled` | `HabituationParams` | Bool | Landscape erosionを有効化。デフォルトはfalseで、effective viewはbase viewと同一。 |

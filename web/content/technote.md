@@ -185,7 +185,7 @@ $$ x_{total} = \frac{R_{shape,total}}{r_{ref,total}} $$
 
 $$ R_{ref} = \frac{1}{1+k} $$
 
-Larger $k$ reduces $R_{01}$ for the same input ratio, making the system more tolerant of roughness.
+Larger $k$ reduces $R_{01}$ for the same input ratio. $k$ belongs to the sensation model and is set only in the configuration; how much roughness is minded is a valuation, changed from scenarios through `set_roughness_aversion` (Section 3.4).
 
 **Piecewise Saturation Mapping**: The normalized roughness $R_{01}$ is computed from the reference-normalized ratio $x$ as:
 
@@ -234,10 +234,10 @@ The algorithm operates on the `Log2Space` spectrum in two passes, utilizing the 
 
 *   **Step 1 (Down)**: It projects roots at 100 Hz ($f/2$), 66.6 Hz ($f/3$), 50 Hz ($f/4$), etc.
 *   **Step 2 (Up)**: The 100 Hz root projects stability to 100, 200, 300, 400, 500... Hz.
-    *   300 Hz is the Perfect 5th of the 100 Hz root.
-    *   500 Hz is the Major 3rd of the 100 Hz root.
+    *   300 Hz lies a perfect fifth above the 200 Hz tone (3:2).
+    *   500 Hz lies a major tenth above it (5:2): an octave plus a major third.
 
-Thus, without any hardcoded knowledge of Western music theory, the system naturally generates stability peaks at the Major 3rd and Perfect 5th relationships, simply as a consequence of the physics of the harmonic series. An agent at 200 Hz creates a "gravity well" at 300 Hz and 500 Hz, inviting other agents to form a major triad.
+No interval name appears in the code. The peaks follow from H's integer-ratio templates, a model of periodicity-based fusion; the integer prior is built into the kernel, not discovered by it. An agent at 200 Hz creates a "gravity well" at 300 Hz and 500 Hz, inviting other agents to form a major triad in open position (2:3:5).
 
 ## 3.4 Consonance: Integrating the Fields
 
@@ -248,6 +248,8 @@ With $R_{01}$ and $H_{01}$ in hand, Consonance is derived in two layers: a **Con
 $$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 
 Default coefficients: $a = 1.0$, $b = -1.35$, $c = 1.0$, $d = 0.0$. Because $b < 0$, roughness acts as a penalty; because $c > 0$, high harmonicity attenuates that penalty (the interaction term $c \cdot H_{01} R_{01}$ partially cancels $b \cdot R_{01}$ when $H_{01}$ is large). The bilinear family subsumes the earlier $\alpha H - wR$ formulation as the special case $c = 0$.
+
+The director's `set_roughness_aversion(w)` multiplies the roughness terms $b$ and $c$, and the density $\rho$ below, by $w$ (default 1, which leaves the configured values bit-exact). $w$ is clamped to $[0, 100]$ and non-finite values are ignored. $w = 0$ makes valuation ignore roughness. Larger $w$ penalizes roughness more when the configured kernel penalizes it at every harmonicity ($b \le 0$ and $b + c \le 0$, true for the defaults). $R_{01}$ itself, as sensed and displayed, does not change.
 
 **Layer 2 — Representations:**
 
@@ -303,7 +305,7 @@ The `MeterNetwork` (`core/meter.rs`) maintains a beat oscillator as a forced Hop
 $$ \dot{r} = \alpha r + \beta r^3 + F_a\, s(t) \cos\varphi $$
 $$ \dot{\varphi} = \omega - F_p \frac{s(t)}{r} \sin\varphi $$
 
-With $\alpha > 0$ and $\beta < 0$ the unforced system has a stable limit cycle of radius $\sqrt{-\alpha/\beta} = 1$: the beat is **self-sustaining** and coasts through gaps in the input (the persistence regime of beat induction). The drive $s(t)$ is a rectified onset signal combining spectral flux—the frame-to-frame increase in spectral energy, a generic onset detector—extracted by the `DorsalStream` (`core/stream/dorsal.rs`, a 3-band crossover flux detector) with the population's own phonation onset strengths—a low-latency auditory–motor reinforcement path.
+With $\alpha > 0$ and $\beta < 0$ the unforced system has a stable limit cycle of radius $\sqrt{-\alpha/\beta} = 1$: the beat is **self-sustaining** and coasts through gaps in the input (the persistence regime of beat induction). The drive $s(t)$ is a rectified onset signal combining spectral flux—the frame-to-frame increase in spectral energy, a generic onset detector—extracted by the `DorsalStream` (`core/stream/dorsal.rs`, a 3-band crossover flux detector) with the phonation onset strengths of habitat-routed voices—a low-latency auditory–motor reinforcement path. Presentation-only voices do not reach it, because the meter hears the habitat bus.
 
 The oscillator's natural frequency is plastic. A Hebbian learning rule shifts $\omega$ to reduce the phase error to the stimulus:
 
@@ -587,7 +589,7 @@ To maintain data consistency without locking the audio thread, Conchordal uses a
 1.  The **Worker Thread** renders audio per bus and sends each habitat hop to the **Analysis Thread**; presentation hops go to the **Listener-Analysis Thread**.
 2.  The **Analysis Thread** runs the NSGT + subjective-intensity + Roughness + Harmonicity pipeline and sends the resulting raw `Landscape` snapshot back.
 3.  The **Worker Thread** merges the analysis result into the current `LandscapeFrame`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
-4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the population's own phonation onset strengths; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
+4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the phonation onset strengths of habitat-routed voices; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
 5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
 6.  When DCC coupling is enabled, `tension_pressure = tension_level * coupling_strength` produces a bounded temperature bonus that feeds the Voices' pitch search. Listener tension already includes resolvability; the coupler applies no second factor. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
 7.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders audio through ADSR-shaped backends.
@@ -653,7 +655,7 @@ Placements determine the founder Voices' initial frequency allocation when a Pop
 
 Scene-global terrain shaping, on both axes:
 
-*   **Harmonic terrain**: `set_roughness_k(v)`, `set_pitch_objective("consonance"|"dissonance")`.
+*   **Harmonic terrain**: `set_roughness_aversion(w)`, `set_pitch_objective("consonance"|"dissonance")`. Both change valuation, not the sensed $R_{01}$ / $H_{01}$.
 *   **Temporal terrain**: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)` (Section 4.4).
 *   **Interaction**: `set_global_coupling(v)` scales agent interaction strength.
 
@@ -714,7 +716,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Generation without symbolic intermediaries | `Log2Space` + landscape; no note names, scales, or time signatures anywhere in the engine | §2–4 | Implemented |
 | Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, Hebbian tempo learning, PLV confidence. `metric` keeps explicit synchronization; `entrained` and `flow` use a bounded acoustic observer and a bodily participation policy | §4, §5.4 | Partial. Persistence of temporal relations across all conditions is open; measure-accent coupling is opt-in |
-| Landscape variability (culture, individual, unknown principles) | `roughness_k`, consonance kernel coefficients, optional habituation erosion | §3.4–3.5, §6.3.6 | Partial. Cultural tuning systems are not yet absorbed |
+| Landscape variability (culture, individual, unknown principles) | consonance kernel coefficients, `set_roughness_aversion`, optional habituation erosion | §3.4–3.5, §6.3.6 | Partial. Cultural tuning systems are not yet absorbed |
 | Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, short-term recurrence and energy forecasts feeding habitat participation | §3.5, §5 | Partial. Relational memory, phrase/scene expectation and action-value learning are open |
 | Acoustic life: perception, metabolism, autonomy | The Voice: articulation-life cores, normalized energy, time-domain endurance/recovery, viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
@@ -745,6 +747,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `roughness_k` | `LandscapeParams` | Float | Saturation parameter for roughness mapping. Default: $(1/0.7) - 1 \approx 0.4286$ (so $x=1$ maps to $\approx 0.7$). |
 | `kernel.a` | `ConsonanceKernel` | Float | Harmonicity coefficient (default 1.0). |
 | `kernel.b` | `ConsonanceKernel` | Float | Roughness coefficient (default -1.35; negative penalizes roughness). |
+| `roughness_aversion` | `LandscapeParams` | Float | Valuation weight on the roughness terms $b$, $c$ and density $\rho$; set by `set_roughness_aversion`. Default 1.0. |
 | `kernel.c` | `ConsonanceKernel` | Float | Interaction coefficient (default 1.0; positive attenuates roughness penalty at high harmonicity). |
 | `kernel.d` | `ConsonanceKernel` | Float | Bias term (default 0.0). |
 | `beta` | `ConsonanceRepresentationParams` | Float | Sigmoid steepness for $C_{level01}$ (default 2.0). |

@@ -275,7 +275,7 @@ fn switching_evaluation_timing_rebuilds_frozen_table_without_mutating_observatio
     let before = serde_json::to_value(observed.snapshot()).unwrap();
     let mut table = Table::new();
     let mut frozen_publications = Vec::new();
-    let binding = consumer::Binding {
+    let binding = crate::temporal_cognition::body_model::Binding {
         source_id: 7,
         source_generation: 2,
         body_generation: 0,

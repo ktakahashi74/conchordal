@@ -1,6 +1,7 @@
 //! Candidate accent support stays separate from the observed event ledger.
 
 use super::*;
+use crate::temporal_cognition::feature_projection::{Feature, window};
 use crate::temporal_cognition::features::{Status, accent_salience, accent_status};
 
 #[derive(Clone, Copy, Debug, Serialize)]

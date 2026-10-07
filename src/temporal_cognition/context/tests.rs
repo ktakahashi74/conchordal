@@ -1,5 +1,7 @@
 use super::*;
-use crate::temporal_cognition::{features, group, ridge::Handle};
+use crate::temporal_cognition::{
+    feature_projection::Feature, features, gesture, group, ridge::Handle,
+};
 
 thread_local! {
     pub(in crate::temporal_cognition) static PROJECTION_NANOS: std::cell::Cell<Option<[u64; 11]>> = const { std::cell::Cell::new(None) };

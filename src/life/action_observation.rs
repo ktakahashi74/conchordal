@@ -402,7 +402,7 @@ impl Observer {
         if let Some(bank) = &mut self.body_defaults {
             bank.bindings.clear();
             bank.bindings
-                .extend(crate::temporal_cognition::action_profiles::consumer::bindings(snapshot));
+                .extend(crate::temporal_cognition::body_model::bindings(snapshot));
         }
         if let Some(predictor) = self.predictor.as_mut() {
             predictor.observe_body(snapshot);

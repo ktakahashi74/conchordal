@@ -97,7 +97,7 @@ pub(crate) struct Bank {
     pub(crate) shared: [Option<
         std::sync::Arc<crate::temporal_cognition::action_profiles::consumer::Publication>,
     >; 2],
-    pub(crate) bindings: Vec<crate::temporal_cognition::action_profiles::consumer::Binding>,
+    pub(crate) bindings: Vec<crate::temporal_cognition::body_model::Binding>,
     slots: Vec<Option<Slot>>,
     ready: Vec<Record>,
     sample_rate: u32,

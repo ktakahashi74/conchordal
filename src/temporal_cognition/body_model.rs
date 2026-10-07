@@ -67,6 +67,42 @@ pub(crate) fn validate(config: &AppConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub(crate) struct Binding {
+    pub source_id: u64,
+    pub source_generation: u32,
+    pub body_generation: u32,
+    pub bus: u8,
+    pub end: u64,
+    pub available: u64,
+    pub model_version: [u8; 32],
+    pub prototype: usize,
+    pub distance: f64,
+    pub common_coordinates: usize,
+}
+
+pub(crate) fn bindings(snapshot: &super::body::Snapshot) -> impl Iterator<Item = Binding> + '_ {
+    snapshot
+        .records
+        .iter()
+        .zip(&snapshot.prototype_assignments)
+        .filter_map(|(r, a)| {
+            let a = a.as_ref()?;
+            (r.active && a.key.1 == 0).then_some(Binding {
+                source_id: r.source_id,
+                source_generation: r.source_generation,
+                body_generation: r.body_generation,
+                bus: r.bus,
+                end: r.end,
+                available: r.available,
+                model_version: snapshot.prototype_model_version?,
+                prototype: usize::try_from(a.key.0).ok()?,
+                distance: a.distance,
+                common_coordinates: a.common_coordinates,
+            })
+        })
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Prototypes {
     pub version: [u8; 32],

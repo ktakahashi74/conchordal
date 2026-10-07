@@ -60,7 +60,7 @@ pub(crate) struct Packet {
     pub trace: Option<crate::life::participation_trace::Frozen>,
     pub release_trace: Option<crate::life::participation_trace::Frozen>,
     pub shared: [Option<Arc<consumer::Publication>>; 2],
-    pub bindings: [Option<consumer::Binding>; 2],
+    pub bindings: [Option<crate::temporal_cognition::body_model::Binding>; 2],
     pub default_schedule: Option<DefaultSchedule>,
     pub external: Option<crate::core::temporal_expectation::TemporalForecast>,
 }
@@ -116,7 +116,7 @@ pub(crate) struct Record {
     pub shared_usage: &'static str,
     pub shared_origins: [Option<consumer::Key>; 2],
     pub shared_bytes: [usize; 2],
-    pub shared_bindings: [Option<consumer::Binding>; 2],
+    pub shared_bindings: [Option<crate::temporal_cognition::body_model::Binding>; 2],
     pub energy_ratio_context: Option<ratios::Context>,
     pub candidates: Vec<Candidate>,
     pub processing_us: u64,

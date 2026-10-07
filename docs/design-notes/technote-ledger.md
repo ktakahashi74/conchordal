@@ -4184,9 +4184,12 @@ conditions hold:
    as an engineering rule with explicit thresholds and scales. As with R/H, adopting an
    existing model takes precedence; a new representation is not built first and then
    fitted to human ratings.
-3. Completion does not require new data collection from human participants. Adoption can
-   be decided by the author's own audition and audible-difference checks. Listening by
-   others is optional reference, never a collection required for the decision.
+3. Completion does not require new data collection from human participants. A
+   principle-layer mechanism is accepted by numerical agreement with its source model,
+   the registered causal difference and real-time operation. Subjective evaluation selects
+   free parameters that neither principle nor a consumer's decision sensitivity fixes, and
+   the author's own audition suffices for it. Listening by others is optional reference,
+   never a collection required for the decision.
 
 For a function that fails any condition, what is prohibited is creating or adopting a
 representation connected to core generation. Preserved research implementations and
@@ -4224,9 +4227,11 @@ data collection including institutional procedures), R4 (fitting and calibration
 (cognitive tasks) are removed from core completion and apply only when the research
 extension is selected; core thresholds and scales are registered through each I's contract
 checks (O03/O09) and are not fitted to human ratings. R2, R3 and A3 resource, freshness and
-recovery checks remain for everything that actually runs. Core author adoption is decided
-by A1 (audible difference), A2 (author adoption) and A4 (audit of the reduced scope); this
-decision does not establish the validity of a cognitive mechanism. Obligations O05–O08
+recovery checks remain for everything that actually runs. Core acceptance is decided by
+each I's contract checks and A4 (audit of the reduced scope). A1 (audible difference) runs
+once, on the settled configuration, when a free parameter of the author-rule layer has to
+be chosen; A2 (author adoption) remains a judgment at the level of works. These decisions
+do not establish the validity of a cognitive mechanism. Obligations O05–O08
 (human collection) and O16 (adoption conditions for long-term memory capacity, moved on
 2026-09-13) apply only to the research extension; O19 template replacement is judged in
 the core through A1/A2/A4. The R/A/O items named here are an excerpt; the obligation text

@@ -1,5 +1,7 @@
 # Timbre and Synthesis Implementation Plan
 
+> 2026-10-07: the remaining work, gates and integration order in this document are superseded by [the current plan](../../roadmap/plan-current.md). This document is kept as history and reference.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Carry the timbre design (a Voice's body under a listener model) from its adopted principles to working code, in an order where each step is testable and none presumes a later one.
@@ -335,7 +337,7 @@ Expected: 23 stimuli; realized RMS within about 0.25 cents of 3.00 or 8.00 for f
 
 - [ ] **Step 6: Author audition and record**
 
-The author listens blind, then reads the key, and records in `docs/design-notes/timbre.md` (micro-fluctuation bullet) a candidate: whether irregular fluctuation should be present while a body is driven, at what RMS, and whether it differs from periodic FM at equal RMS; and whether independent fluctuation separates the non-sharing pair. Nothing in `src/` changes on this basis alone; Phase 3 re-checks the candidate on the real synthesizer (drive, stop, tail, re-excitation).
+The author deferred this audition on October 7; this step remains incomplete. The author listens blind, then reads the key, and records in `docs/design-notes/timbre.md` (micro-fluctuation bullet) a candidate: whether irregular fluctuation should be present while a body is driven, at what RMS, and whether it differs from periodic FM at equal RMS; and whether independent fluctuation separates the non-sharing pair. Nothing in `src/` changes on this basis alone; Phase 3 re-checks the candidate on the real synthesizer (drive, stop, tail, re-excitation).
 
 ---
 
@@ -343,7 +345,41 @@ The author listens blind, then reads the key, and records in `docs/design-notes/
 
 A written contract, reviewed before any code, because Phases 3–5 depend on it. It covers the excitation and state semantics and the boundary between core and body modules (D6, D7).
 
-Draft prepared and revised on 2026-09-29: [body module contract](../specs/2026-09-29-body-module-contract.md). Body-aware B1–B7 responses are recorded. The [independent Claude review](../specs/2026-09-29-body-module-contract-claude-review.md), actual model `claude-opus-5-5[1m]`, read only the author-authorized six-document packet without tools. Its verdict is conditional readiness for author policy decisions, not readiness for A4 adoption. The [response](../specs/2026-09-29-body-module-contract-review-response.md) records fifteen dispositions. The later [author decision](../specs/2026-09-29-body-policy-author-decisions.md) adopts A1, A2's Off policy with 0.5 s T60 as a prototype value, and A3's cost attribution. Remaining numerical proposals and full A4 adoption are pending; Phase 3 remains unstarted.
+Draft prepared and revised on 2026-09-29: [body module contract](../specs/2026-09-29-body-module-contract.md). Body-aware B1–B7 responses are recorded. The [independent Claude review](../specs/2026-09-29-body-module-contract-claude-review.md), actual model `claude-opus-5-5[1m]`, read only the author-authorized six-document packet without tools. Its verdict is conditional readiness for author policy decisions, not readiness for A4 adoption. The [response](../specs/2026-09-29-body-module-contract-review-response.md) records fifteen dispositions. The later [author decision](../specs/2026-09-29-body-policy-author-decisions.md) adopts A1, A2's Off policy with 0.5 s T60 as a prototype value, and A3's cost attribution. The October 7 decision also adopts C5A's purpose-specific realized-PCM references and numerical criteria, plus the single-round closed-amplitude law for a new Sine/Harmonic prototype version. Remaining capacity/module-domain details and full A4 adoption are pending; Phase 3 remains unstarted.
+
+The October 3 decision also adopts natural certified closed tails (C1), an initial
+48 kHz-only new-module family (C3), and addressed SplitMix64 white excitation with
+at most sixteen source-modulation components (C4). These choices need no repeat
+approval. Standalone Rust checks now cover the exact C4 key/white/source-driver
+law and the now-adopted single-round scalar tail evaluator; see the
+[C4 implementation record](../../../target/addressed-noise-native-20261004/note.md)
+and [scalar arithmetic record](../../../target/closed-amplitude-native-20261004/note.md).
+The [Modal native checks](../../../target/modal-native-certificate-20261004/note.md)
+observe actual coefficients and scalar/SIMD rounding, while the
+[initialization checks](../../../target/addressed-init-coupling-20261004/note.md)
+supply the addressed key to the existing Modal coupling algorithm.
+The October 7 adoption selects `RN32(a_close * (4193097/2^22)^N)` for the new
+prototype version, with `N = checked(t-c)+1` and uniform zero exponent 669702.
+It covers finite nonnegative binary32 amplitudes and all u64 exponents; scalar
+zero alone does not establish body disposal. The isolated opt-in native
+`cfg(test)` prototype `sine-harmonic-closed-scalar-native-v1` now implements
+explicit immediate effective Off for Sine/Harmonic at 48 kHz with indefinite
+native hold. Its six focused native cases, fmt, Clippy and final full test pass
+(1,172 passed, 0 failed, 36 ignored). Production body/handle integration,
+complete input and capacity domains, consumer conformance and
+full A4 remain open. Author audition is explicitly deferred.
+
+The October 7 precision-scope decision keeps the adopted consumer thresholds
+and closed-amplitude law. An exact shared compiler's intermediate bit equality
+is evidence for that implementation, not an additional admission gate for all
+predictive fast paths. Reordered, vectorized or approximate arithmetic may use
+the existing combined error budget and is judged end to end against the original
+reference, coverage, supported-domain and resource requirements. Preserve the
+observation path, discrete ownership/clock/support contracts and frozen controls.
+Reuse the completed scalar certificate and arithmetic checks for native
+integration; do not repeat the universal sweep or add analogous proofs to other
+bodies. See the contract's [precision scope](../specs/2026-09-29-body-module-contract.md#precision-scope-adopted-on-october-7)
+and the [author decision record](../specs/2026-09-29-body-policy-author-decisions.md).
 
 **Files:**
 - Create: `docs/superpowers/specs/2026-09-29-body-module-contract.md`
@@ -375,7 +411,7 @@ specific Claude authorization govern this review; they are a task-specific
 requirement preserved under `AGENTS.md`'s Sol 6.1 primary routing (author
 instruction, 2026-09-30). No new external send is authorized by recording the
 response. Remaining A3 capacity/module details,
-the extra consumer reference/tolerance decisions and the F2 entry interpretation
+C5A consumer-domain/conformance work and the F2 entry interpretation
 must be resolved before A4; the later adopted policies are not awaiting repeat approval.
 
 ---
@@ -456,7 +492,21 @@ Starts when the temporal DCC track delivers source attribution from presented au
 
 Covered by tests now: the aversion weight reaches the worker's kernel and field arrays on update without touching `roughness01`/`harmonicity01`; validation (non-finite ignored, clamping, small changes recompute); bit-exact default over all bins; density falls back to uniform when aversion zeroes all mass; presentation-only onsets are excluded from the meter's onset sum.
 
-Still open, to add with the next change touching these paths: a Rhai-to-candidate-evaluation test (script sets the weight, a pitch candidate's score reflects it); a check that `drive_production_meter` itself sees only habitat onsets; a silent-onset control (a habitat Voice at near-zero level still drives the meter through its commanded accent); closed-loop reproducibility under a fixed seed.
+The four additional checks are implemented and validated in the isolated
+`.worktrees/timbre-controls-tests-20261002-v1` overlay: the Rhai setter changes
+an actual pitch proposal without changing sensation; `drive_production_meter`
+excludes presentation-only onsets; a near-silent habitat Voice still drives the
+meter through its commanded accent; and fixed-seed runs reproduce emitted
+habitat audio and controls through the real `process_hop` and `AnalysisStream`
+feedback path, with a feedback-cut contrast. The final ordinary suite passed
+1,169 tests, with zero failures and 36 ignored (2026-10-02). The source and primary
+report were rechecked on 2026-10-05; no test rerun was needed.
+
+These are isolated ordinary checks, pending integration at the existing agreed
+point. The near-silent fixture stays above `Voice::AMP_EPS` and emits nonzero
+audio; it does not establish onset behavior at exact zero. The closed-loop check
+compares audio values and ordered control observations; it is not a
+cross-platform bit-pattern or device-timing acceptance result.
 
 ## Coordination (2026-09-29)
 
@@ -479,3 +529,6 @@ Still open, to add with the next change touching these paths: a Rhai-to-candidat
 - 2026-09-29, user: D6 and D7 adopted (core and body modules; Task 2 widened to the body module contract, Phase 3 delivers the conformance harness and the migration). Task 2's independent review follows Step 2 (Claude when Astra drafts); the Astra plan review below is a separate review of the plan.
 - 2026-09-29, Task 2: body-aware B1–B7 coordination and initial Claude independent review received. The fixed six-document transmission was authorized; contract adoption was not. All fifteen findings are mapped in the response, with A1–A3, extra consumer tolerances/references and F2 entry decisions pending. Revised-draft independent re-review and author adoption remain undone. No Phase 3 start or gate relaxation follows.
 - 2026-09-29, Astra (gpt-6-astra, high; no file access, material embedded): **conditional pass**. Two major findings, both addressed here: R1, the determinism constraint contradicted itself (habitat synthesis is ecological input); R2, D5 conflated an audition question with a contract decision. Medium findings addressed: Phase 3 invalidates the Phase 2 pass (re-acceptance added); hitchhiking needs causal controls; heritability per pathway, not per parameter; monophony removed from the Phase 3 exit and made a Task 2 option; excitation unification must not flatten bodies; stimulus confounds (depth, band, shared partials, phase, loudness, order, priming) redesigned; aversion validation on every entry point, recomputation on any stored change, kernel version skew between worker and analysis frames fixed and tested; aversion's sign condition documented; `motion`'s jitter measured (0.03–0.1 cents RMS, not about one cent); success of a causal path separated from the sign of a result; the composer rule now covers founder bodies; F6 ownership unified. Minor: the bit-exact claim is now tested over all bins; the valuation action is renamed `Action::UpdateLandscape`. Full answer: `~/tmp/astra-timbre-20260928/review2_answer.md` (local).
+
+- 2026-10-07, user: C5A purpose-specific realized-PCM references and criteria adopted; new-version Sine/Harmonic single-round closed-amplitude prototype law adopted. Author audition deferred. Actual conformance, capacity, full A4 and Phase 3 entry remain open; the original integration order is preserved.
+- 2026-10-07, user: preserve necessary strict precision and improve unnecessary requirements. Keep original F2 and C5A criteria, the finite-zero scalar law and discrete/scientific controls. Intermediate float bits and evaluation order are not universal predictive admission gates; bounded-error alternatives use the original combined output budget. Reuse completed exact evidence without universal reruns. Existing acquisitions, live Sources and integration order remain unchanged.

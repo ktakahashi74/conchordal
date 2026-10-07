@@ -51,13 +51,19 @@
 ## Build, Test, and Development Commands
 - Build (debug): `cargo build`
 - Run (release): `cargo run --release` (Recommended for real-time DSP performance)
-- Tests: `cargo test`.  Run tests always after modifying code.
+- Tests: `cargo test` (required after `src/` changes; run once on the final revision).
 - Format: `cargo fmt --all`
 - Lint: `cargo clippy -- -D warnings`
 - Verify all targets: `cargo check --all-targets`
 - Test all targets: `cargo test --all-targets`
 - Check examples explicitly: `cargo check --examples`
 - Paper figures/manuscript flow is out of scope for this repository.
+
+Choose commands for the affected targets; this list is not a per-task checklist.
+`cargo test` also compiles the targets it covers. Do not precede it with redundant
+build/check commands unless a distinct target or an actual failure needs them.
+Clippy remains mandatory before a commit. Standalone prototypes outside the crate
+use their own focused tests rather than a full crate build.
 
 
 ## End-of-Task Test Record
@@ -76,7 +82,76 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 ```
 
 - test_report.txt must contain stdout + stderr of cargo test
-- test_status.txt must always exist after a task
+- After a task that changes `src/`, test_status.txt must exist even if tests fail.
+
+## Progress and Validation Scope
+
+- For ordinary, reversible changes, proceed from accepted decisions directly to
+  implementation and relevant checks. Separate design, Source review, independent
+  review and evidence sealing are required only by an explicit plan or a concrete
+  unresolved problem, not by default for every small repair.
+- Fix acceptance criteria before implementation. Add a gate only for an uncovered
+  requirement or an actual defect; do not recursively make historical recovery or
+  supplementary documentation a prerequisite for an unrelated repair.
+- Use focused tests while editing, then run the mandatory checks and full test
+  record on the final revision. Repeat checks when code changes, a check fails or
+  an unresolved concern requires it, not merely at each reporting boundary.
+- Reuse inactive isolated worktrees and build caches when source identity and
+  isolation remain intact. Preserve old acquired artifacts and test reports.
+  Ordinary repairs need concise change and test records, not repeated sealing of
+  every fixture and wrapper log. Scientific acquisitions retain their registered
+  provenance, resource limits and acceptance requirements.
+- Report implementation, scientific acceptance and author audition separately.
+  Preserve the original plan's scope and real integration dependencies; do not
+  turn every research or audition item into a gate for every ordinary repair.
+- Escalate only unresolved author choices. An accepted decision does not need
+  another approval before its prescribed implementation.
+- When changing a long validation pipeline, exercise the affected path with a
+  bounded case using the current producer's actual output shape before launching
+  the full matrix. Reuse an unchanged successful case; synthetic mocks alone do
+  not establish compatibility with the actual producer.
+- Reuse deterministic work over immutable inputs within a run. Preserve the
+  original checks, ordering and complete witness occurrences; do not repeatedly
+  normalize or decode the same publication prefix merely for another decision.
+  Keep large retained witnesses on disk rather than duplicating Python trees.
+- Count progress by completed implementation behavior and closed registered
+  criteria. Reviews, pins, plans and growing output are supporting work, not
+  additional completion units. Treat a missing implementation algorithm as an
+  unresolved design problem, not a queue of more verification artifacts.
+- Estimate remaining time from completed comparable work and explicit remaining
+  units. Do not extrapolate an unfinished case's elapsed time as its duration;
+  report unresolved design and author waiting time separately.
+- Numerical precision follows the consumer's adopted acceptance criteria. Do not
+  promote an exact optimization's intermediate float bits, branch choices or
+  evaluation order into an additional requirement for every predictive fast path.
+  Reordered or approximate arithmetic may use the existing error budget, measured
+  end to end against the unchanged reference; do not spend the whole budget anew
+  at each stage. Preserve identity, clocks, routing, known/unknown status, declared
+  support, finite output and the registered controls and resource requirements.
+- Keep exact arithmetic where a concrete invariant depends on it. The adopted
+  single-round closed-amplitude law retains its existing finite-zero certificate
+  and bounded evaluator. Reuse that evidence; do not repeat its universal sweep
+  for native integration or require analogous proofs of unrelated arithmetic.
+  Existing exact scientific controls and explicitly scoped regression tests
+  remain in force; they do not impose waveform compatibility on a new renderer.
+- Before adding any evaluation, numerical or subjective, to a plan, state three
+  things: which decision its result changes; why principle, the consumer's
+  decision sensitivity and saved data cannot already answer it; and that it can
+  discriminate the options. Without a decision that changes, do not add it.
+- A principle-layer mechanism (a published model adopted as is) is accepted by
+  numerical agreement with that model, the registered causal difference and
+  real-time operation on the declared load. Subjective evaluation selects free
+  parameters that neither principle nor a consumer fixes. It is not an acceptance
+  condition for the principle layer, and it runs once, on the configuration it
+  will apply to.
+- Every strict precision, tolerance or load target names the consumer decision
+  or invariant it protects. One that cannot is removed; it is not kept for lack
+  of proof that it is unnecessary. Derive tolerances from the principle, from
+  the error that changes the consumer's decision, or from the declared supported
+  range.
+- Where a proposal is enough, do not require the best: a Voice acts on local
+  perception and reaction. Do not build exhaustive candidate tables or exact
+  pre-hearing predictions unless a consumer needs them.
 
 
 ## Air-Gap Protocol
@@ -409,28 +484,43 @@ This restriction concerns dedicated synchronization support, not pitch-only
 ## Compatibility Policy
 - During the alpha phase, do not preserve backward compatibility by default.
 - Prefer clean architecture and correct behavior over compatibility shims, aliases, or migration layers.
+- Require legacy behavior or waveform equality only for an explicit contract or
+  scientific control. Keep those comparisons distinct from product compatibility;
+  a synthesis change does not inherit an old-waveform identity requirement.
 
 ## Multi-agent Orchestration
-- Concurrent workstreams (I11 with T1/T2, body-aware fitness, the timbre plan) are run by one
-  orchestrating session that dispatches subagents; it keeps its state in
-  `target/orchestration-board.md` (machine-local, untracked) and escalates only author
-  decisions.
-- Model split for subagents (author instruction, 2026-10-02): `gpt-6.1-sol` is the
-  primary model for both judgment and execution. Use reasoning effort `xhigh` for design,
-  contracts, registrations, interpretation and reviews; use `high` for fully specified
-  acquisitions, hash/provenance checks, tests, Clippy, fmt, generated artifacts, prescribed
-  edits, logs and cross-references. Use `gpt-6-astra` with effort `xhigh` only when a concrete
-  unresolved design or review problem needs it; record that reason on the orchestration
-  board. Do not dispatch all judgment work to Astra automatically. Set `model` and
-  `reasoning_effort` explicitly and limit `fork_turns` so the override applies. An agent
-  encountering an unspecified author choice returns it to the orchestrator; changing
-  models does not expand the authorized scope.
-- One unit per subagent, with its worktree, `CARGO_TARGET_DIR`, sources to read, exit
-  criteria and report format stated.
-- Independent units run concurrently by default. Serialize only when two units change the
-  same files, when one needs the other's output, while a pass/fail timing measurement holds
-  the exclusive window (design and document units continue meanwhile), and for integration
-  into main. At most four subagents at once, of which at most two build or test with cargo.
+- The plan of record is `docs/roadmap/plan-current.md`. Its units are run by one
+  orchestrating session that dispatches workers and escalates only author decisions. It
+  keeps one line of status per unit in `target/orchestration-status.md` (machine-local,
+  untracked). `target/orchestration-board.md` is the history of the earlier orchestration,
+  not current state.
+- Roles (author instruction, 2026-10-07): the orchestrator is a Claude Opus session. The
+  workers are `gpt-6.1-sol` at reasoning effort `xhigh`, each an agent-shell buffer on the
+  KEIO account, started and addressed through `scripts/worker-shell.el`
+  (`conchordal-worker-start`, `conchordal-worker-send`, `conchordal-worker-status`). A
+  worker that meets an unspecified author choice returns it to the orchestrator; a model
+  does not expand the authorized scope.
+- One unit per worker, with its worktree, `CARGO_TARGET_DIR`, sources to read, exit
+  criteria and report file stated. A worker writes its result to the report file named in
+  its brief; the orchestrator reads that file, not the shell buffer.
+- Independent units run concurrently, as many as are independent. Serialize only when two
+  units change the same files, when one needs the other's output, while a pass/fail timing
+  measurement holds the exclusive window (design and document units continue meanwhile),
+  and for integration into main. At most two workers build or test with cargo at once.
+- Each wave names the registered criterion it closes or the design problem it solves. A
+  stream that closes none in two consecutive waves stops and returns the design problem to
+  the author. Usage limits are stop conditions, never targets. Completion is counted over
+  live requirements only; requirements already complete or moved out of the core scope are
+  not in the denominator.
+
+## Author Decision Requests
+- For each recommended option state the implementation, validation and acquisition work it
+  creates, the work that disappears if it is not taken, the origin of every number or
+  condition (principle, consumer, existing practice or placeholder) and the cost of
+  changing it later.
+- Do not put a placeholder number into a bundle of recommendations offered for adoption.
+- Present independent decisions as separate items in dependency order, and ask only for
+  those needed now.
 
 ## Git Operation Policy
 - Never create a commit unless the user explicitly asks for a commit in that turn.

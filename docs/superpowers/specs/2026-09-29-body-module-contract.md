@@ -1,5 +1,7 @@
 # Body module contract
 
+> 2026-10-07: the remaining work, gates and integration order in this document are superseded by [the current plan](../../roadmap/plan-current.md). This document is kept as history and reference.
+
 Date: 2026-09-29. **Revised contract with partial author policy adoption;
 initial independent review received, revision not independently re-reviewed,
 full A4 adoption and Phase 3 implementation pending.**
@@ -7,8 +9,11 @@ This is Task 2 of the [timbre implementation
 plan](../plans/2026-09-29-timbre-synthesis.md). It does not authorize Phase 3.
 The [author decision record](2026-09-29-body-policy-author-decisions.md) adopts
 A1, A2's Off coefficient policy with 0.5 s T60 as a prototype value, and A3's
-cost-payer policy. Other numerical proposals below remain unadopted and are not
-amendments to an existing acquisition registration.
+cost-payer policy. The October 7 adoption adds C5A's purpose-specific realized-PCM
+references and numerical criteria, plus the single-round closed-amplitude law
+for a new Sine/Harmonic prototype version. It defers author audition. Remaining
+capacity and module-domain proposals are unadopted; these decisions do not amend
+existing acquisition registrations or establish measured conformance.
 
 The [Claude review](2026-09-29-body-module-contract-claude-review.md) found the
 draft conditionally usable for author policy decisions, but not ready for A4
@@ -88,7 +93,7 @@ and pending author approval are recorded separately at the end.
 | 3. Excitation units | Nonnegative dimensionless drive level specified at sample times plus a dimensionless instantaneous kick amplitude; time in sample ticks, pitch in Hz. Transfer functions and supported sample-rate domains remain body-specific. These inputs are not measured acoustic energy. | Changing drive changes radiation; every declared rate and cross-rate invariant passes its own drive/kick reference. Undeclared rates are unsupported. No Sine gain-boost exception. |
 | 4. Re-excitation | Preserve existing state. Separate Tone states may implement superposition only for a declared linear, fixed-coefficient response under identical output processing. No generic state merging. | One linear state with two kicks versus two summed response states; a nonlinear/damping negative control must not qualify for merging. |
 | 5. Sounding pitch/coefficient change | Pitch Update transfers state of addressed open handles only, through the core pitch ramp. Closed tails retain their last coefficients. Structural genotype changes apply to future On. See A1 and the lowering rules below. | Active-handle/tail selection, pitch-ramp continuity, unsupported retuning, new-On versus re-kick lowering, simultaneous old/new tails and complete source subtraction. |
-| 6. Fluctuation | The core owns a source-generation modulation clock and distinct Tone noise substreams; the module owns their effect. The logical clock continues through silence at bounded cost. Off ends fresh noise/modulation; the proposed free-tail policy freezes its last effective frequency offset and spectral balance. | Split-block equality, bounded silent-gap advance, independent noise, overlapping On, coefficient continuity at Off, tail evolution and checkpoint/replay equality. |
+| 6. Fluctuation | The core owns a source-generation modulation clock and distinct Tone noise substreams; the module owns their effect. The logical clock continues through silence at bounded cost. Off ends fresh noise/modulation; the adopted free-tail policy freezes its last effective frequency offset and spectral balance. | Split-block equality, bounded silent-gap advance, independent noise, overlapping On, coefficient continuity at Off, tail evolution and checkpoint/replay equality. |
 | 7. ADSR | ADSR shapes excitation only. Core output gain and a separately declared click guard remain outside the body. Ordinary release must not multiply a tail by the old ADSR output release. | Two release settings alter drive termination but do not erase an already free response; constant post-gain scales PCM and measured cost consistently. |
 | 8. Lifetime/resources | The renderer owns sounding state after Voice death. Fixed capacity, deterministic admission and finite tail bounds; no allocation in admitted block rendering or pool-backed Tone creation. | Repeated On/Off and Voice turnover at capacity, longest tails, full queues, rejected On, invalid module output, exact disposal identity, allocator instrumentation. |
 | 9. Regression scope | Preserve routing, determinism, identity, unknown handling, scan invariants and air-gap behavior. Re-register expected waveform changes from excitation/decay, not old audio goldens. | Existing invariant suites below plus Phase 2/F2–F4 re-acceptance on the new renderer. |
@@ -145,8 +150,9 @@ consequence or explicitly choose a source-wide retuning/crossfade amendment.
 ### Chosen initial body family
 
 For Sine/Harmonic, introduce a real amplitude state with a finite free decay. The
-proposed first implementation uses a 0.5-second amplitude T60 at zero drive,
-independent of frequency. A kick adds amplitude state; continuous drive replenishes
+adopted prototype uses a 0.5-second amplitude T60 at zero drive,
+independent of frequency. The open-state recurrence below remains proposed.
+A kick adds amplitude state; continuous drive replenishes
 it using `a[n+1] = r*a[n] + (1-r)*drive[n] + kick[n]`, with
 `r = 10^(-3/(sample_rate*T60))`, before radiating that sample. The admitted drive
 and kick ranges are finite and recorded in the body capability domain; this law
@@ -155,12 +161,15 @@ on drive level rather than the number of samples per second. The author has
 adopted a Sine/Harmonic amplitude T60 of 0.5 s as a prototype value and the
 policy of freezing motion offset and spectral balance at effective Off. The T60
 remains an initial non-heritable body setting, not material physics or final
-listening acceptance. The recurrence, drive/kick domain, module rates and noise
-transfer, random generator, resource capacities and full A4 adoption remain
-unadopted unless separately recorded. Harmonic's existing excitation-dependent
+listening acceptance. The October 3 [author decision](2026-09-29-body-policy-author-decisions.md)
+additionally selects an initial 48 kHz-only new-module family and addressed
+SplitMix64 Tone excitation with at most 16 source-modulation components.
+Existing application rates are not restricted by that choice. The recurrence,
+drive/kick domain, body-specific noise transfer, resource capacities and full A4
+adoption remain unadopted. Harmonic's existing excitation-dependent
 spectral damping remains a body response, with its existing floor applying to
 relative spectral balance, not an indefinitely audible carrier amplitude.
-The proposed 0.5 s T60 implies an amplitude time constant of about 72 ms;
+The prototype 0.5 s T60 implies an amplitude time constant of about 72 ms;
 a sharp onset therefore depends on the kick, not on continuous drive alone.
 
 Modal retains its declared mode-specific free decays and noisy drive transfer.
@@ -177,8 +186,9 @@ input preserves a physical-time power convention and how a kick's impulse/state
 increment scales with rate; tests compare those declared quantities and decay in
 seconds. Equal random sample streams or equal instantaneous input numbers alone
 do not establish cross-rate energy invariance. No declared/tested domain means
-unsupported at that rate. A2 leaves the concrete Modal normalization and admitted
-rate set for a written module specification before implementation/acquisition.
+unsupported at that rate. C3 fixes the initial new family at 48 kHz; concrete
+Modal drive/kick normalization still requires a written module specification
+before implementation/acquisition. Other-rate families remain separate work.
 
 The old `energy` name on an onset kick must not imply joules or measured radiated
 energy. Proposed A3 accounting uses the source's post-route habitat PCM, summing
@@ -258,6 +268,12 @@ live source is permitted by this proposal. Source retirement retains enough
 identity to render its already sounding tails, but creates no continuing drive.
 New source generations never inherit the live RNG state as genotype.
 
+The October 3 C4 decision selects addressed SplitMix64 white Tone excitation and
+a bounded source driver with at most 16 modulation components, including bounded
+silent-clock advancement. This count does not limit body partials or Tone states.
+Old PinkNoise bit-exact continuation is not required; this is a renderer-version
+change. The body's input mapping and downstream audition/conformance remain open.
+
 The body applies shared fluctuation to its driven components according to its own
 documented mapping. Existing Harmonic motion uses a shared Hz offset, not identical
 cents on every partial; a replacement must name any change. Revised A2 recommends
@@ -270,8 +286,10 @@ Alternatives are immediate return to nominal/free coefficients (a frequency or
 spectral step), or a separately timed coefficient ramp (continued deterministic
 tail evolution requiring a registered duration). Effective-Off coefficient freeze
 is already adopted. Immediate reset or a post-Off coefficient-return ramp would
-amend that choice and require an explicit decision. The concrete source/Tone
-random generator and supported rate law remain unadopted. Test frequency/phase, balance and
+amend that choice and require an explicit decision. C4 adopts the addressed
+source/Tone random law, and C3 adopts the initial 48 kHz family. Body-specific
+input mapping, the complete initialization/lifecycle recipe and conformance
+remain open. Test frequency/phase, balance and
 free decay immediately before/after Off, including motion extrema, zero drive
 and Harmonic damping. The external clock may continue for other Tones without
 perturbing this closed state.
@@ -407,14 +425,15 @@ for long Modal decays. A3 must choose a compatible declared envelope, larger
 preallocated limits with measured work/memory, or an explicit different lowering
 policy; ordinary onset refusal remains failure, not successful backpressure.
 
-Free state is disposable only when the module's tested residual-output bound falls
-below amplitude 1e-6 at the maximum admitted post-gain, or at a declared hard free
-tail cap. Proposed cap: 60 seconds after the last excitation; the final 5 ms use
-an explicit core retirement fade. There is no fade on ordinary Off. Cap truncation
-is recorded, included in all representative references/energy accounting, and
-invalidates an untruncated forecast. Future excitation handles are canceled on
-Voice death; existing free state keeps source/generation/route attribution until
-disposal. Empty instantaneous output alone is not a disposal criterion.
+The October 3 C1 decision retains the natural closed-tail free response and derives
+capacity from a certified tail bound and the complete event envelope. No timeout
+for open handles or hard free-tail truncation was adopted. The earlier amplitude
+1e-6 cutoff, 60-second cap and 5 ms retirement fade remain unadopted proposals.
+Disposal needs a tested residual-output certificate at the admitted post-gain,
+including floating-point rounding; its numeric tolerance and the resulting pool
+capacity are still unbound. T60 or empty instantaneous output alone does not
+certify finite disposal. Future excitation handles are canceled on Voice death;
+existing free state keeps source/generation/route attribution until disposal.
 
 At capacity, reject the newest state-creating On before it changes state, record
 the refusal, and preserve already sounding state. No silent tail stealing or
@@ -455,37 +474,41 @@ or the failed resource screen.
 
 ### Per-consumer reference, fallback and gate
 
-All new tolerances below are proposals for registration before Phase 3 acquisition.
+The author adopted the references and criteria below as C5A on October 7.
+Each consumer's domain, live cost and actual conformance still require validation
+and registration before its Phase 3 acquisition.
 Existing stronger local tests remain. F2's existing thresholds are unchanged.
+Those local tests retain their explicit scope; they do not add bitwise identity
+or a stricter numerical threshold to every alternative predictive fast path.
 Use exact known/unknown/support-mask agreement before any numerical comparison.
-For mean-square energies define the proposed error criterion as
+For mean-square energies the adopted error criterion is
 `abs(predicted - rendered) <= 1e-10 + 0.001 * abs(rendered)` per window;
 record both absolute and relative errors. Exact-zero fixtures must remain zero.
 Here `rendered` means a **fixed-randomness realization**, conditional on the
 request's complete random/state identity. It is not an ensemble expectation.
-The revised draft recommends this reference for the rows below. An analytic
+This reference is selected for the rows below. An analytic
 expected energy for noisy Modal cannot be silently compared as if it predicts
 that realization. An expectation-based consumer needs its own purpose, seed
 ensemble, estimator/uncertainty, error rule and behavioral meaning agreed by its
 owner and the author under B5. No such ensemble or tolerance is registered here;
-until then that shortcut is unsupported. This may rule out an otherwise useful
-analytic shortcut and is an explicit pending decision, not an accuracy failure
-to be remedied by increasing tolerance after acquisition.
+until then that shortcut is unsupported. The realized-PCM selection must not be
+changed to an expectation or a looser tolerance after acquisition to repair an
+accuracy failure.
 
 | Consumer / purpose | Render-derived fallback | Fast-path conformance gate and consequence |
 |---|---|---|
 | F2 whole-body candidate spectral mass, shared with the optional spectral self-model | Fixed registered render realization: render the registered representative schedule through the pinned front end, then core weighting/peak extraction and normalization. Keep the current 72-frame reference as its own version. | Every registered candidate: score error ≤0.025, level error ≤0.0125, zero strict reversals at reference gap ≥0.1. Preserve mass/distribution diagnostics and resource gates. No v1/v2 production admission by this document. |
-| `action_candidates/footprint.rs`: representative temporal footprint | Proposed fixed realization: render the declared representative Tone and integrate squared emitted samples in the exact 16 windows, with four-second cap/truncation metadata; normalize by peak only afterward. | Proposed energy criterion in every window and maximum absolute error ≤0.001 in normalized power; exact silence/support/truncation agreement. Existing Sine `<1e-3` relative-energy test remains. An unverified bank forecast falls back offline or returns unsupported. |
-| `action_candidates/energy.rs`: intervention/retained-source energy | Proposed conditional fixed realization: copy all routed states and random streams of the source, apply the explicitly frozen Continue/Off/On/Gap alternative, sum PCM, then integrate each requested window. Use one shared external context. | Proposed energy criterion per window, exact window/route/support agreement, plus preservation of the existing Sine carrier absolute-error `<0.002` test. Include constructive/destructive overlap. Incoherent energy cannot pass as a coherent mean when cross terms matter. |
+| `action_candidates/footprint.rs`: representative temporal footprint | Fixed realization: render the declared fresh representative Tone and integrate squared emitted samples in the exact 16 windows, with four-second cap/truncation metadata; normalize by peak only afterward. | Adopted energy criterion in every window and maximum absolute error ≤0.001 in normalized power; exact silence/support/truncation agreement. Existing Sine `<1e-3` relative-energy test remains. An unverified bank forecast falls back offline or returns unsupported. |
+| `action_candidates/energy.rs`: intervention/retained-source energy | Conditional fixed realization: copy all routed states and random streams of the source, apply the explicitly frozen Continue/Off/On/Gap alternative, sum PCM, then integrate each requested window. Use one shared external context. | Adopted energy criterion per window, exact window/route/support agreement, plus preservation of the existing Sine carrier absolute-error `<0.002` test. Include constructive/destructive overlap. Incoherent energy cannot pass as a coherent mean when cross terms matter. |
 | `src/temporal_cognition/body.rs`: acoustic descriptors and body identity | Actual observed realization: keep the current routed PCM → NSGT → features path. Replace introspection-based recipe identity with canonical module capture. | This observed path has no analytic substitute in Phase 3: same PCM/config must produce identical descriptors and masks. Any later predictive descriptor shortcut compares each raw coordinate under a separately registered tolerance; until then it is unsupported, not an observed descriptor. |
-| `self_prediction`: future energy/control/carrier and descriptor forecasts | Proposed conditional fixed realization: fork the complete frozen source state, commands, routes and random clock; render its declared horizon. Derive energy/descriptors using the same core code as observations. | Energy uses the proposed window gate above; timing, masks, owner generation and frozen issue support match exactly. Descriptor shortcuts remain disabled without their own registered per-coordinate gate. Learned residual models remain labeled predictions and do not redefine the physical render reference. |
-| `voice.rs` / `modal.rs`: `project_spectral_body` and predictive terrain | Proposed fixed realization: analyze a representative or frozen-state render, according to the declared prediction purpose, on the same Log2Space. Preserve emitted amplitude/mass before normalization. | Proposed normalized spectral-mass L1 ≤0.01 and total mass relative error ≤0.01 above the declared silence floor, plus the F2 downstream score/level/rank gates when used for ecological comparison. Amplitude projections cannot be compared directly with power or subjective mass. Unsupported projection is unavailable prediction, not an all-zero terrain. |
-| `pitch_core.rs`: ratio LOO | Actual observed realization: subtract the complete source's aligned habitat PCM, including old Tone tails, from the habitat input and rerun core analysis; use the body-aware F1 source-exclusion path. | Supplied ratios alone are not a certificate. A ratio/weight shortcut must pass the proposed spectral L1/mass gates and downstream F2 score/level/rank gates on the resulting source-excluded terrain, including overlap/unison/tails. If it fails, use source-PCM exclusion where admitted; otherwise mark exclusion unavailable. Do not substitute a generic harmonic series or call one-bin `ExactScan` whole-source removal. |
+| `self_prediction`: future energy/control/carrier and descriptor forecasts | Conditional fixed realization: fork the complete frozen source state, commands, routes and random clock; render its declared horizon. Derive energy/descriptors using the same core code as observations. | Energy uses the adopted window gate above; timing, masks, owner generation and frozen issue support match exactly. Descriptor shortcuts remain disabled without their own registered per-coordinate gate. Learned residual models remain labeled predictions and do not redefine the physical render reference. |
+| `voice.rs` / `modal.rs`: `project_spectral_body` and predictive terrain | Fixed realization: analyze a declared fresh representative or copied frozen-state render, according to the declared prediction purpose, on the same Log2Space. Preserve emitted amplitude/mass before normalization. | Adopted normalized spectral-mass L1 ≤0.01 and positive total mass relative error ≤0.01, with exact zero/support agreement first and no new silence floor, plus the F2 downstream score/level/rank gates when used for ecological comparison. Amplitude projections cannot be compared directly with power or subjective mass. Unsupported projection is unavailable prediction, not an all-zero terrain. |
+| `pitch_core.rs`: ratio LOO | Actual observed realization: subtract the complete source's aligned habitat PCM, including old Tone tails, from the habitat input and rerun core analysis; use the body-aware F1 source-exclusion path. | Supplied ratios alone are not a certificate. A ratio/weight shortcut must pass the adopted spectral L1/mass gates and downstream F2 score/level/rank gates on the resulting source-excluded terrain, including overlap/unison/tails. If it fails, use source-PCM exclusion where admitted; otherwise mark exclusion unavailable. Do not substitute a generic harmonic series or call one-bin `ExactScan` whole-source removal. |
 
 The F2 score limits come from the existing registered comparison, not a proof of
 musical acceptability or correct parent selection. The additional spectral/energy
-limits proposed here are engineering gates, not perceptual thresholds. Body-aware
-and I-series owners must resolve their scope before registration. Passing one
+limits adopted here are engineering gates, not perceptual thresholds. Body-aware
+and I-series owners must bind their supported scope before registration. Passing one
 consumer's gate does not enable another consumer, and passing a numerical gate
 does not pass the resource, ordinary-runtime, listening or author-approval gates.
 
@@ -495,6 +518,40 @@ version. Conformance exercises interior/boundary cases and adversarial examples;
 it is not a proof over arbitrary continuous parameters. The runtime checks the
 declared domain. Any excluded condition produces explicit unsupported evidence.
 It does not try all-candidate representative rendering synchronously in the hop.
+
+### Precision scope adopted on October 7
+
+The author requested preservation of necessary strict precision and removal of
+unnecessary requirements. Consumer outputs are judged by the adopted criteria
+above. An exact shared-control compiler's sample-word, intermediate-state and
+Block equality checks support that implementation's exactness claim; they are
+not an additional F2 admission gate for a bounded-error implementation. Internal
+numeric branch equality, identical intermediate density bits and serial floating
+point summation are likewise not universal requirements for predictive fast
+paths. Reordering, vectorization and numerical approximations may consume the
+existing combined error budget, provided the complete output meets the original
+reference comparison, coverage, supported-domain and resource requirements.
+No stage receives a separate copy of the full error allowance. The actual
+observation path, owner/generation, sample clocks, routes, known/unknown status,
+declared support and frozen scientific controls retain their existing contracts.
+
+The original F2 maximum score error 0.025, level error 0.0125 and zero strict
+reversals at reference gaps of at least 0.1 remain. C5A's fixed-realization
+references, energy and spectral criteria also remain: none has been demonstrated
+unnecessary for its consumer, so this decision does not relax them. A local
+rounding or summation difference alone does not disqualify a predictive method
+that meets those output criteria. Existing exact implementations and their
+completed tests may be reused without changing their claims or rerunning them.
+
+The adopted single-round closed-amplitude law also remains. Its existing
+finite-zero certificate addresses rounded-tail persistence, and its evaluator
+uses at most 40 fixed-width products without allocation. Native integration
+reuses that certificate and the completed arithmetic checks; it does not repeat
+the 669,700-exponent sweep or impose a new all-parameter proof on each body.
+Scalar zero is still insufficient for disposal without the admitted finite
+carrier/gain path and canceled future inputs. No cutoff, hard tail cap or larger
+silence floor is introduced. Other module conformance remains bounded by its
+declared capability domain, rather than arbitrary unsupported parameters.
 
 ## Tests and expected changes
 
@@ -566,7 +623,7 @@ agent, not the independent Claude review required before author approval.
 | B2 | Pin the old selected-bin readout and the diagnostic's distinct partial-frequency readout explicitly. | Frozen references, interpolation, weighting and temporal order stay versioned; historical failures remain. | Anchor readback passes but old-render comparison still fails (93/728); whole-suite regression has an unresolved asynchronous preparation failure. No runtime/resource acceptance follows. |
 | B3 | No supported runtime domain has passed the complete registered error-and-cost gate. | Keep the whole registered domain, including 576 lanes and candidate-dependent body preparation. | A representation meeting that domain and the complete birth/hop budget remains unestablished. |
 | B4 | Use the actual child's resolved inputs and identity; keep the canonical numerical render offline. | Preserve scheduled, unexpected and respawn same-hop Voice creation targets; record acoustic onset separately. | An admitted fast path satisfying those targets remains unimplemented/unaccepted. |
-| B5 | Retain existing F2 tolerances. Do not approve the additional consumer tolerances through F2 agreement. | Each new consumer purpose needs its own registration before acquisition. | Extra energy, mass, spectral and temporal limits require their consumer owners and author decision. |
+| B5 | Retain existing F2 tolerances. C5A separately adopts purpose-specific realized-PCM references and extra consumer criteria. | Each consumer needs its own supported-domain and cost registration before acquisition. | Actual energy, mass, spectral and temporal conformance and runtime admission remain unestablished. |
 | B6 | Whole-source, route-correct PCM subtraction before analysis is the generic observed-audio LOO boundary. | Preserve identity, alignment, analysis history and retained-tail ownership. | Evidence covers bounded existing implementations, not every future module or ordinary-runtime generation transition. |
 | B7 | Preserve I12b closure/base freeze → I4 wiring → body-aware F3 → timbre Phase 3, then Phase 2 re-acceptance before Phase 5. | Preserve old manifests and version every changed renderer reference. | The concrete integration base, assignments and new acquisition registrations await the orchestrator's integration point. |
 
@@ -688,7 +745,7 @@ solution for unexpected requests, death or environment-dependent bodies.
 Evidence: [runtime restart §§1–3 and preserved time4 limitations](../../design-notes/body-fitness-runtime-restart-20260929.md).
 No fast path has yet established these runtime guarantees.
 
-### B5 — Existing values versus proposed consumer limits
+### B5 — Existing values and adopted consumer criteria
 
 F2 keeps maximum score error 0.025, maximum level error 0.0125, and zero strict
 rank reversals for old score gaps of at least 0.1; ties remain separate. These
@@ -699,14 +756,16 @@ and diagnostic replay/control tolerances serve different checks and stay as
 registered. Evidence: [direct-model §4](../../design-notes/body-fitness-direct-model-contract-20260929.md)
 and [diagnostic §§3–4](../../design-notes/body-fitness-anchor-readout-diagnostic-20260929.md).
 
-This draft's proposed per-window energy bound `1e-10 + 0.001 * abs(render)`,
+The September 29 response did not approve the then-proposed per-window energy
+bound `1e-10 + 0.001 * abs(render)`,
 normalized temporal-power limit 0.001, spectral normalized-L1 limit 0.01 and
-mass-relative limit 0.01 are **not accepted by this response**. Neither their
-numerical adequacy nor their applicability follows from F2. Before acquisition,
-consumer owners must specify units, windows, silence/support handling, realization
-versus expectation, random-state/ensemble identity, render reference and behavioral
-consequence, then agree limits with the author. The per-consumer table proposes
-fixed realizations; it does not approve that choice on the owners' behalf. T1/T2
+mass-relative limit 0.01. The October 7 C5A author decision adopts those criteria
+and the purpose-specific fixed-realization references in the per-consumer table.
+Their numerical adequacy and applicability still require actual conformance;
+neither follows from F2. Before acquisition, consumer owners bind units, windows,
+silence/support handling, random/state identity, render reference, supported domain,
+live cost and behavioral consequence. An ensemble expectation is not selected.
+T1/T2
 owners must settle temporal windows/descriptors and Phase 4 controls: attack,
 decay and re-excitation; mean spectrum; level, onset density, modulation and
 meter; human, detector and behavioral differences reported separately. No
@@ -797,8 +856,8 @@ before acquisition; this answer does not initiate them or approve A1–A3.
 
 These seven responses were included in Claude's initial independent contract
 review. They establish existing F2 boundaries and evidence limits, not adoption.
-Author/owner decisions remain the extra consumer tolerances and the draft's
-A1–A3 policies; the fast
+The later author decisions select A1/A2, A3 cost attribution and C5A's consumer
+references and criteria. Capacity and module-domain details remain open; the fast
 representation and whole-domain feasibility also remain unresolved engineering
 work. Review may assess these open items, but author adoption and Phase 3 entry
 cannot be inferred from this response.
@@ -806,18 +865,36 @@ cannot be inferred from this response.
 ## Remaining author decisions and review record
 
 Current adoption: A1 and A3 cost attribution are adopted; A2's Off behavior is
-selected and its 0.5 s T60 is a prototype value. The table retains the full
+selected and its 0.5 s T60 is a prototype value. C1/C3/C4 and C5A are adopted in
+the author record. The October 7 decision also selects
+`RN32(a_close * (4193097/2^22)^N)` for a new Sine/Harmonic prototype version:
+one final binary32 rounding, every finite nonnegative binary32 input and every
+u64 exponent, canonical positive zero, and rejection of invalid inputs.
+For effective close sample `c`, use `N = checked(t-c)+1`; the uniform zero
+exponent is 669702 and its tick is `checked(c+669701)`. Scalar zero alone is not
+body disposal: finite carrier/gains/routes, absence of independent radiation and
+cancellation of future inputs must hold on the actual path. The earlier iterative
+tail's waveform identity is not a requirement for this new version.
+An isolated opt-in native `cfg(test)` prototype implements this closed law for
+48 kHz Sine/Harmonic with indefinite hold and explicit immediate effective Off.
+It freezes the previous actual open sample's common coefficient and the last
+used native carrier controls, preserves the native scalar/SIMD carrier kernel,
+and separates scalar zero from checked renderer disposal. Focused and full
+ordinary checks pass. Release-shaped input lowering, other rates and Modal are
+unsupported in this prototype; production integration and consumer admission
+remain open.
+Author audition is explicitly deferred and remains incomplete. The table retains the full
 decision scope so that pending capacity, module details and A4 are not confused
 with these adopted policies. See the [author record](2026-09-29-body-policy-author-decisions.md).
 
 | ID | Decision needed | Draft recommendation |
 |---|---|---|
 | A1 | Pitch scope, lowering and unsupported operation | Retune open handles only; preserve closed tails. New phonation after closure uses fresh On, repeated excitation of an open handle uses re-kick. Reject unsupported live retuning atomically, with no implicit deferral/reset; future On gets a separate pitch request. Structural genotype affects future On. Accept cross-phonation pitch overlap, or explicitly amend this policy. |
-| A2 | Drive/free decay, Off coefficients, noise and rate domain | Propose 0.5 s free T60 for Sine/Harmonic; freeze last motion offset and spectral balance at effective Off. Alternatives: immediate return or a separately registered coefficient ramp. Shared source modulation and independent Tone noise; bounded silent-clock advancement. Each module declares/tests rate normalization, including Modal. Task 1 audition remains separate. |
-| A3 | Capacity, lowering envelope, retirement and cost payer | Retain registered load including 64 live Voices and ordinary births. Total source capacity awaits a bound including retired tails; the earlier 64-total proposal is withheld. The proposed 16 states per source remains unproven. Keep 576 lanes per built-in state, queue 16, 1e-6 residual threshold, 60 s free-tail cap and 5 ms retirement fade as unadopted proposals. No ordinary onset refusal accepted as success. Determine capacity and lowering without silently reducing load or delaying birth, and register a numeric renderer budget before measurement. Charge post-route habitat PCM to the live owner; keep dead-tail cost on its retired generation, without debiting parent/child. |
-| B5 decision | Additional consumer limits and stochastic reference | Proposed fixed realizations and energy `1e-10 + 0.001*abs(render)`, normalized temporal power 0.001, spectral L1/mass relative 0.01. Consumer owner plus author must approve purpose/reference and numbers; an ensemble expectation requires a distinct registration. Existing F2 limits remain fixed. |
+| A2 | Adopted decay policy; remaining native integration and module domain | Adopted 0.5 s free T60 prototype for Sine/Harmonic; freeze last motion offset and spectral balance at effective Off. The new prototype version uses the adopted single-round scalar law above. Shared source modulation and independent Tone noise; bounded silent-clock advancement. Each module declares/tests its rate and input domain, including Modal. Task 1 audition is deferred, not complete. |
+| A3 | Capacity, lowering envelope, retirement and cost payer | Retain registered load including 64 live Voices and ordinary births. Total source capacity awaits a bound including retired tails; the earlier 64-total proposal is withheld. The proposed 16 states per source remains unproven. The earlier 576 lanes per built-in state, queue 16 and 1e-6 residual threshold remain unadopted proposals. C1 selects certified natural tails; the earlier 60 s cap and 5 ms retirement fade were not adopted. No ordinary onset refusal accepted as success. Determine capacity and lowering without silently reducing load or delaying birth, and register a numeric renderer budget before measurement. Charge post-route habitat PCM to the live owner; keep dead-tail cost on its retired generation, without debiting parent/child. |
+| B5 decision | Adopted C5A references and criteria; remaining domain/conformance | Selected purpose-specific fixed realizations and energy `1e-10 + 0.001*abs(render)`, normalized temporal power 0.001, spectral L1/positive-mass relative 0.01. Exact zero/support/status/masks precede numerical checks; no new silence floor. Ensemble expectation and predictive descriptor shortcuts are unavailable without distinct registrations. Existing F2 limits remain fixed. |
 | F2 entry decision | What satisfies the Phase 3 dependency | Retain the existing unresolved production-representation gate and integration order in B7. Request identity alone is insufficient. Render-only integration with disabled consumers is an explicit possible amendment, not an adopted consequence of the review. No global fast-model feasibility claim. |
-| A4 | Adoption of the completed contract | Requires recorded A1–A3 decisions, B1–B7 disposition, owner/author agreement on extra reference/tolerance choices, explicit F2 entry interpretation, and resolution of the independent review. This revised draft has not been independently re-reviewed. Contract adoption is separate from runtime admission and Phase 3 integration. |
+| A4 | Adoption of the completed contract | Requires recorded A1–A3 decisions, B1–B7 disposition, the adopted C5A reference/criteria with resolved consumer domain and conformance scope, explicit F2 entry interpretation, and resolution of the independent review. This revised draft has not been independently re-reviewed. Contract adoption is separate from runtime admission and Phase 3 integration. |
 
 Review status:
 
@@ -840,17 +917,18 @@ Review status:
   for independent review or author adoption. A second Claude review is not an
   automatic new gate: any further review scope is determined by the changes and
   unresolved concerns. A4 remains unready because A3 capacity, remaining module
-  details, B5 and the F2 entry decision remain open, not merely because the
+  details, B5's domain/conformance work and the F2 entry decision remain open, not merely because the
   revision has not been re-reviewed.
   The previous send approval covered the fixed old packet, not this revision.
 - Review history: an earlier local attempt failed OAuth refresh; automatic
   approval review rejected a retry before the destination/payload authorization.
   The author subsequently authorized the fixed packet, and review was received.
   Those historical failures are no longer the current review status.
-- Body-aware responses: **recorded, 2026-09-29** in B1–B7; existing boundaries confirmed, fast-path admission and additional consumer tolerances unresolved. Joint design only; not independent review.
+- Body-aware responses: **recorded, 2026-09-29** in B1–B7; existing boundaries confirmed. C5A's additional references and criteria were adopted on October 7; actual conformance and fast-path admission remain unresolved. Joint design only; not independent review.
 - Author approval: **partial policies adopted** in the later
   [decision record](2026-09-29-body-policy-author-decisions.md): A1, A2 Off policy
-  with prototype T60, and A3 cost attribution. Capacity and full A4 adoption
+  with prototype T60, A3 cost attribution, C1/C3/C4, C5A and the new-version
+  closed-amplitude prototype law. Capacity and full A4 adoption
   remain pending. The old six-document send approval was separate. No listening
   or subjective acceptance is claimed.
 - Phase 3 implementation/integration: **not started by this task**. Entry requires

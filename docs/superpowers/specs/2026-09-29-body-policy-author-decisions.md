@@ -22,3 +22,42 @@
 契約全体のA4採用、A3の保持容量、B5の追加許容差、F2の本番表現・精度・資源・同hop条件の緩和、Phase 3開始、main統合、commit、push、外部送信は含まない。I12bの終結・固定基準→I4→body-aware F3→音色Phase 3の順序を維持する。
 
 この判断でA1/A2/A3費用部分と限定無音参照を再び承認待ちへ戻さない。新たに必要となる作者判断は、未解決の容量や目的関数など、上記の範囲を実際に超えるものに限る。
+
+## 2026-10-03：自由減衰・rate・乱数の追加採用
+
+作者はC1/C3/C4の選択肢と推奨を示した回答に対して「全部推奨」と返答した。この追加採用は次の3項目に限り、上記のA1/A2/A3費用部分を変更しない。
+
+| 対象 | 追加採用した範囲 | 残る境界 |
+| --- | --- | --- |
+| C1：自由減衰と保持容量 | 閉鎖済みtailの自然な自由応答を保持し、認証したtail長と実際のevent envelopeから容量を導く。開いているhandleをtimeoutで閉じない。 | 有限poolの数値、残差許容値、f32丸めを含む終了証明、queue・到着負荷の適合は未確定。旧案の60秒capや5 ms退役fadeを採用していない。 |
+| C3：新moduleのrate領域 | 最初の新module familyは48 kHzだけを対応領域とする。別rateのdeviceは対応外と明示する。 | 既存application全体の対応rateを48 kHzへ制限しない。他rateのfamilyとrate間のtransfer適合は別途必要。 |
+| C4：乱数と無音中のclock | Toneのwhite excitationにaddressed SplitMix64を使い、source modulationは最大16成分の有界構成とする。無音区間のclock進行も有界費用で扱う。 | 16はmodulation成分数でありpartial数やTone容量ではない。身体への具体的な入力写像と適合は未確定。旧PinkNoiseとのbit-exact継続は要求せず、renderer version変更として扱う。試聴受入は別。 |
+
+この追加採用はA4契約全体、本番F2表現、実測の精度・資源受入、Phase 3の統合、Source5の再取得を承認したものではない。元の64 live Voiceを含む負荷と統合順は維持する。未確定の数値や未実装の適合を、この3項目の採用から推定しない。
+
+## 2026-10-07：用途別参照・許容差と閉鎖後振幅法則の採用
+
+作者は用途別参照・許容差、閉鎖後振幅法則、試聴の3項目を示した回答に対して「1,2 推奨 3はあとでやる」と返答した。1と2を採用し、3の作者試聴を延期する。9月29日の未承認項目は当日の記録として保存し、現在の採用範囲は次の表に従う。
+
+| 対象 | 追加採用した範囲 | 残る境界 |
+| --- | --- | --- |
+| C5A：用途別参照 | 乱数・状態・経路を固定した実際のPCMを参照とする。temporal footprintは新規の代表状態、介入energyとself-predictionは経路上の全source状態を複製、spectral massは用途ごとに新規状態か複製状態を宣言する。LOOは旧tailを含む全sourceのhabitat PCMを除外して再解析する。 | ensemble期待値は選択していない。観測descriptorは同じPCMからの実際の解析を維持し、座標別許容差のないpredictive descriptor shortcutは利用不可。対応領域・実行費用・実際の適合は別に検証する。 |
+| C5A：用途別許容差 | window energyは各windowで `abs(Ehat-E) <= 1e-10 + 0.001*abs(E)`、正規化temporal powerの最大絶対誤差は0.001、正規化spectral massのL1誤差と正の総massの相対誤差は各0.01。F2のscore 0.025、level 0.0125、参照差0.1以上のstrict reversal 0を維持する。 | 数値比較の前にzero・support・status・maskの一致を要求し、新しいsilence floorを置かない。用途間で合格を流用しない。既存の限定Sine検査も維持する。許容差の採用は実測合格や聴取受入ではない。 |
+| Sine/Harmonicの閉鎖後振幅 | 新しい試作versionで `RN32(a_close * (4193097/2^22)^N)` を採用する。最後に一度だけbinary32へ丸める。有限・非負binary32の全 `a_close` と全u64の `N` を対象とし、負zeroは正zeroへ正規化、不正入力は拒否する。実効閉鎖sampleを `c` とし、`N = checked(t-c)+1`。全入力でzeroとなる指数は669702、tickは `checked(c+669701)`。 | 旧逐次丸めの波形同一性は要求しない。T60=0.5秒と新familyの48 kHzは試作範囲を維持する。実効Off時のmotion offsetとspectral balanceを保持する。scalarのzeroだけで身体状態を破棄しない。carrier・gain・routeの有限性、独立放射の不在、未来入力の取消を実際の経路で確認する。容量や全体tail capは採用していない。 |
+| 作者試聴 | Task 1 Step 6を後回しにする。 | 未完了のまま保持する。この延期は計画全体の停止や聴取受入を意味しない。 |
+
+この採用に従い、仕様の同期と隔離したnative試作の実装・検証を進める。A4契約全体、実測の精度・資源受入、Phase 3開始、main統合は引き続き未完了。I12bの終結・固定基準→I4→body-aware F3→音色Phase 3の統合順を維持する。
+
+## 2026-10-07：必要精度の維持と不要な厳密制約の除去
+
+作者指示：「このうち、必要があって設定されている厳密精度はそのまま。必要がないものを判断して、それらを改善」。前項の数値や法則を一括して緩和する指示とは扱わず、要求の根拠と適用範囲を点検した。
+
+| 対象 | 判断と適用 |
+| --- | --- |
+| F2の最終出力 | score差0.025、level差0.0125、参照gap 0.1以上のstrict reversal 0を維持する。近似誤差は全経路を合わせてこの範囲に収める。 |
+| F2内部の浮動小数点演算 | 全sample・中間state・Blockのbit一致、同じ内部数値分岐、同じ加算順序を、すべてのpredictive fast pathに課す追加条件から除外する。exact共有方式が自らの同値性を主張する検査は、その方式の限定検査として保持する。別方式では元の最終出力・coverage・対応領域・資源条件で判定し、演算の再結合・vectorization・近似を許す。 |
+| 必要な離散契約と対照 | owner/generation、sample時計、route、既知／未知、宣言したsupport、finite出力、固定実験の対照条件を維持する。観測経路を予測値へ置換せず、内部近似の許容を過去の不合格の救済に使わない。 |
+| 閉鎖後振幅法則 | 採用済みRN32法則と有限zeroの保証を維持する。丸めを伴うtailの持続問題に対応する既存証明と、allocationなし・最大40固定幅productの実装が存在する。native統合では既存結果を再利用し、669,700指数の証明や3,826算術検査を再実行しない。別のbody全般へ同等の全領域証明を追加しない。scalar zeroとbody解放は引き続き区別する。 |
+| C5Aのenergy・spectral基準 | 各consumerで不要と示せる根拠がないため、固定実音参照・energy許容差・spectral L1／mass基準を維持する。知覚閾とは呼ばず、実測適合と作者試聴も区別する。 |
+
+現在のexact共有compilerとその通過済み検査は再利用できる。新たな近似方式の採否を、内部bit不一致だけで拒否しない。上の方針は今後の実装・判定へ適用し、実行中Source、既存の科学取得・登録・結果は変更しない。新しいepsilon、silence floor、tail cap、受入済みという推定は追加しない。

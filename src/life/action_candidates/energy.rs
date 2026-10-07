@@ -122,14 +122,43 @@ impl Body<'_> {
             let spans = (to - from).div_ceil(limit);
             for k in 0..spans {
                 let [a, b] = [k, k + 1].map(|edge| from + (to - from) * edge / spans);
-                let middle = a + (b - a) / 2;
-                let mut window = CoherentWindow::new();
-                for (_, tone, release) in self.tones(bus) {
-                    tone.add_span(&mut window, [a, b], middle, release);
+                let mut cursor = a;
+                while cursor < b {
+                    // Held partial gains change at the bank's actual refresh boundary.
+                    let next = self
+                        .tones(bus)
+                        .filter_map(|(_, tone, _)| {
+                            let crate::life::sound::bank_forecast::Response::Oscillator {
+                                refresh_at,
+                                refresh_period,
+                                ..
+                            } = tone.bank?.response
+                            else {
+                                return None;
+                            };
+                            if cursor < refresh_at {
+                                Some(refresh_at)
+                            } else {
+                                let period = refresh_period.max(1);
+                                cursor.checked_add(period - (cursor - refresh_at) % period)
+                            }
+                        })
+                        .min()
+                        .unwrap_or(b)
+                        .min(b);
+                    let middle = cursor + (next - cursor) / 2;
+                    let mut window = CoherentWindow::new();
+                    for (_, tone, release) in self.tones(bus) {
+                        tone.add_span(&mut window, [cursor, next], middle, release);
+                    }
+                    coherent =
+                        coherent
+                            .zip(window.mean(cursor, next, middle))
+                            .map(|(sum, mean)| {
+                                sum + mean * (next - cursor) as f64 / (right - left) as f64
+                            });
+                    cursor = next;
                 }
-                coherent = coherent
-                    .zip(window.mean(a, b, middle))
-                    .map(|(sum, mean)| sum + mean * (b - a) as f64 / (right - left) as f64);
             }
         }
         (energy, coherent)

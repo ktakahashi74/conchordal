@@ -190,7 +190,6 @@ fn analysis_ok(frame_idx: u64, last_analysis: Option<u64>, max_lag: u64) -> bool
 
 struct RuntimeUiFrameInput<'a> {
     body: Option<&'a crate::temporal_cognition::body::Snapshot>,
-    self_sound: Option<crate::life::action_observation::Snapshot>,
     temporal: &'a [crate::temporal_cognition::observation::Snapshot; 2],
     scenario_name: &'a str,
     conductor: &'a Conductor,
@@ -220,7 +219,6 @@ fn build_initial_ui_frame(
     fs: f32,
 ) -> UiFrame {
     UiFrame {
-        self_sound: None,
         body: None,
         wave: WaveFrame {
             fs,
@@ -298,7 +296,6 @@ fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame {
 
     UiFrame {
         wave,
-        self_sound: input.self_sound,
         body: input.body.map(|b| Arc::new(*b)),
         temporal: Arc::new(*input.temporal),
         spec,
@@ -986,7 +983,6 @@ fn wire_runtime(
     // NSGT-RT based audio analysis thread.
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
     let mut temporal_snapshots = [None, None];
-    let mut reference_context = None;
     let mut taps = std::array::from_fn::<_, 2, _>(|bus| {
         observing.then(|| {
             let tap = crate::temporal_cognition::observation::Tap::spawn(
@@ -1008,14 +1004,11 @@ fn wire_runtime(
                     deterministic: deterministic_analysis,
                     ridge: config.temporal_ridge,
                     acoustic: config.temporal_acoustic,
-                    memory: config.temporal_memory,
                     period: config.temporal_period,
                 },
             );
             temporal_snapshots[bus] = Some(Arc::clone(&tap.snapshot));
-            if bus == 0 && config.temporal_private_trace.is_some() {
-                reference_context = Some(Arc::clone(&tap.reference_context));
-            }
+
             tap
         })
     });
@@ -1103,7 +1096,6 @@ fn wire_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
-        private_trace: config.temporal_private_trace,
         onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
         wait_user_exit,
@@ -1122,7 +1114,6 @@ fn wire_runtime(
         deterministic_footprints,
     };
     let channels = WorkerChannels {
-        reference_context,
         temporal_snapshots,
         ui_tx: ui_frame_tx,
         report_error_tx,
@@ -1492,7 +1483,6 @@ fn join_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String>
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 struct WorkerConfig {
-    private_trace: Option<crate::config::TemporalPrivateTraceConfig>,
     onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     scenario_name: String,
     wait_user_exit: bool,
@@ -1515,8 +1505,6 @@ struct WorkerConfig {
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
 struct WorkerChannels {
-    reference_context:
-        Option<Arc<std::sync::Mutex<crate::temporal_cognition::reference_inventory::Context>>>,
     temporal_snapshots:
         [Option<Arc<std::sync::Mutex<crate::temporal_cognition::observation::Snapshot>>>; 2],
     ui_tx: Sender<UiFrame>,
@@ -1677,27 +1665,7 @@ impl WorkerState {
 
 fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: WorkerState) {
     state.schedule_renderer.profile = state.profile.as_ref().map(|_| Default::default());
-    if channels.temporal_snapshots.iter().any(Option::is_some) {
-        state.schedule_renderer.action_observer = Some(Box::new(
-            crate::life::action_observation::Observer::new(cfg.fs as u32),
-        ));
-        if state.schedule_renderer.body_capture.is_some() {
-            state
-                .schedule_renderer
-                .action_observer
-                .as_mut()
-                .unwrap()
-                .enable_predictions();
-        }
-        if let Some(trace) = cfg.private_trace {
-            state
-                .schedule_renderer
-                .action_observer
-                .as_mut()
-                .unwrap()
-                .enable_trace(trace);
-        }
-    }
+
     if cfg.start_flag.load(Ordering::SeqCst) {
         state.playback_state = PlaybackState::Playing;
         if let Some(count) = cfg.underrun_frames.as_ref() {
@@ -1725,11 +1693,6 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
         cfg.fs,
     );
     initial_frame.temporal = Arc::new(*state.temporal_frames);
-    initial_frame.self_sound = state
-        .schedule_renderer
-        .action_observer
-        .as_ref()
-        .map(|o| o.snapshot);
     let _ = channels.ui_tx.try_send(initial_frame);
 
     loop {
@@ -1758,9 +1721,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
             if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
                 capture.finish();
                 let snapshot = capture.snapshot();
-                if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
-                    observer.observe_body(&snapshot);
-                }
+
                 if let Some(current) = state.body_snapshot.as_mut() {
                     **current = snapshot;
                 }
@@ -1768,27 +1729,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                     writer.write_body_observation(&snapshot)
                 });
             }
-            if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
-                observer.finish();
 
-                for record in observer.drain_traces() {
-                    report_try(&mut state.reporter, "final private trace", |writer| {
-                        writer.write_private_trace(&record)
-                    });
-                }
-                for prediction in observer.drain_descriptor_predictions() {
-                    report_try(
-                        &mut state.reporter,
-                        "final self sound descriptor prediction",
-                        |writer| writer.write_descriptor_prediction(&prediction),
-                    );
-                }
-                for outcome in observer.drain() {
-                    report_try(&mut state.reporter, "final self sound outcome", |writer| {
-                        writer.write_self_sound_outcome(&outcome)
-                    });
-                }
-            }
             if channels.temporal_snapshots.iter().any(Option::is_some)
                 && channels.audio_to_analysis_tx.is_some()
             {
@@ -1801,13 +1742,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                     for _ in rx {}
                 }
                 let now_sec = state.current_time();
-                if let Some(observer) = state.schedule_renderer.action_observer.as_ref() {
-                    report_try(
-                        &mut state.reporter,
-                        "final self sound observation",
-                        |writer| writer.write_self_sound_observation(&observer.snapshot),
-                    );
-                }
+
                 for (target, snapshot) in state
                     .temporal_frames
                     .iter_mut()
@@ -2025,12 +1960,6 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         }
     }
 
-    if let Some(context) = &channels.reference_context
-        && let Ok(context) = context.try_lock()
-        && let Some(observer) = state.schedule_renderer.action_observer.as_mut()
-    {
-        observer.trace_context(context.clone(), now_tick);
-    }
     let population_start = state.profile.as_ref().map(|_| Instant::now());
     let phonation_count = advance_population(state, cfg, now_tick, listener_pressure);
     let population_elapsed = population_start
@@ -2468,14 +2397,6 @@ fn advance_population(
         0
     };
 
-    if let Some(acoustic) = state.temporal_expectation.as_ref() {
-        state.schedule_renderer.prepare_energy_contexts(
-            acoustic,
-            &state.phonation_batches_buf[..phonation_count],
-            now_tick,
-        );
-    }
-
     if state.reporter.is_some() {
         for voice in &mut state.pop.voices {
             let id = voice.id();
@@ -2808,9 +2729,7 @@ fn render_and_route_audio(
     }
     if let Some(capture) = state.schedule_renderer.body_capture.as_ref() {
         let snapshot = capture.snapshot();
-        if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
-            observer.observe_body(&snapshot);
-        }
+
         if let Some(current) = state.body_snapshot.as_mut()
             && (current.version != snapshot.version
                 || current.capture_drops != snapshot.capture_drops
@@ -2825,27 +2744,7 @@ fn render_and_route_audio(
     if let Some(worker) = state.footprint_worker.as_mut() {
         route_body_footprints(&mut state.pop.voices, worker, &mut state.reporter, now_tick);
     }
-    if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
-        // Drain regardless of reporting; snapshots and capacity remain observer-owned.
 
-        for record in observer.drain_traces() {
-            report_try(&mut state.reporter, "private trace", |writer| {
-                writer.write_private_trace(&record)
-            });
-        }
-        for prediction in observer.drain_descriptor_predictions() {
-            report_try(
-                &mut state.reporter,
-                "self sound descriptor prediction",
-                |writer| writer.write_descriptor_prediction(&prediction),
-            );
-        }
-        for outcome in observer.drain() {
-            report_try(&mut state.reporter, "self sound outcome", |writer| {
-                writer.write_self_sound_outcome(&outcome)
-            });
-        }
-    }
     if state.reporter.is_some() {
         // Drain after actual rendering, before a later hop can retire a Voice.
         state
@@ -3005,11 +2904,6 @@ fn send_runtime_ui_frame(
         .ui_tx
         .try_send(build_runtime_ui_frame(RuntimeUiFrameInput {
             body: state.body_snapshot.as_deref(),
-            self_sound: state
-                .schedule_renderer
-                .action_observer
-                .as_ref()
-                .map(|o| o.snapshot),
             temporal: &state.temporal_frames,
             scenario_name: &cfg.scenario_name,
             conductor: &state.conductor,
@@ -3338,7 +3232,6 @@ wait(0.08);
             let probe: OfflineBodyProbe = Box::new(move |state, _, _, _| {
                 assert!(state.schedule_renderer.body_capture.is_none());
                 assert!(state.body_snapshot.is_none());
-                assert!(state.schedule_renderer.action_observer.is_none());
                 assert!(
                     state
                         .temporal_frames
@@ -3413,7 +3306,6 @@ wait(0.08);
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
-            private_trace: None,
             onset_comparison: None,
             scenario_name: "clock regression".into(),
             wait_user_exit: false,

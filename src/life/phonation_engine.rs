@@ -1217,13 +1217,6 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
-    #[cfg(test)]
-    pub(crate) fn planned_releases(&self) -> impl Iterator<Item = (ToneId, Tick)> + '_ {
-        self.pending_off
-            .iter()
-            .map(|Reverse(off)| (off.tone_id, off.off_tick))
-    }
-
     pub(crate) fn observe_participation_context(
         &mut self,
         own: &crate::core::temporal_expectation::OwnSoundHistory,

@@ -20,32 +20,6 @@ pub(crate) struct ToneEnergy {
 }
 
 impl ToneEnergy {
-    #[cfg(test)]
-    pub(crate) fn renderer_end_after(
-        self,
-        after: u64,
-        intervention: Option<ScheduledRelease>,
-    ) -> Option<u64> {
-        let mut edges = [0, u64::MAX, 0, 0];
-        for (edge, release) in edges[2..]
-            .iter_mut()
-            .zip([self.scheduled_release, intervention])
-        {
-            *edge = release.map_or(0, |r| r.apply_at_sample);
-        }
-        edges.sort_unstable();
-        for pair in edges.windows(2) {
-            let end = self
-                .envelope_at(pair[0], intervention)
-                .release_end
-                .max(pair[0]);
-            if end < pair[1] {
-                return (end >= after).then_some(end);
-            }
-        }
-        None
-    }
-
     pub(crate) fn control_for(
         self,
         intervention: Option<ScheduledRelease>,

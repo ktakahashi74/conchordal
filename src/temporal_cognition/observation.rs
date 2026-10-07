@@ -1,4 +1,4 @@
-//! Ordered auditory observations with optional uncalibrated group and memory diagnostics.
+//! Ordered auditory observations with optional group and periodic diagnostics.
 
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -7,7 +7,7 @@ use std::time::Instant;
 use crossbeam_channel::{Sender, TrySendError};
 use serde::Serialize;
 
-use super::{context, proposals::frontend, recall, reference_inventory, ridge};
+use super::{context, proposals::frontend, ridge};
 use crate::{
     config::{TemporalAcousticConfig, TemporalRidgeConfig},
     core::log2space::Log2Space,
@@ -55,12 +55,6 @@ pub(crate) struct Snapshot {
     pub acoustic_parameters: Option<TemporalAcousticConfig>,
     pub acoustic: Option<frontend::Snapshot>,
     pub acoustic_failed: bool,
-    pub memory_parameters: Option<crate::config::TemporalMemoryConfig>,
-    pub memory: Option<recall::Snapshot>,
-    pub memory_failed: bool,
-    pub memory_error: Option<&'static str>,
-    pub reference_inventory: Option<reference_inventory::Snapshot>,
-    pub reference_inventory_error: Option<&'static str>,
     pub period_parameters: Option<crate::config::TemporalPeriodConfig>,
     pub period: Option<frontend::recurrence::Snapshot>,
     pub period_error: Option<&'static str>,
@@ -80,7 +74,6 @@ pub(crate) struct Options {
     pub deterministic: bool,
     pub ridge: Option<TemporalRidgeConfig>,
     pub acoustic: Option<TemporalAcousticConfig>,
-    pub memory: Option<crate::config::TemporalMemoryConfig>,
     pub period: Option<crate::config::TemporalPeriodConfig>,
 }
 
@@ -112,7 +105,6 @@ enum Event {
 }
 
 pub(crate) struct Tap {
-    pub reference_context: Arc<Mutex<reference_inventory::Context>>,
     tx: Option<Sender<Event>>,
     completed: Option<crossbeam_channel::Receiver<()>>,
     handle: Option<JoinHandle<()>>,
@@ -152,13 +144,10 @@ impl Tap {
             sample_rate,
             ridge_parameters: options.ridge,
             acoustic_parameters: options.acoustic,
-            memory_parameters: options.memory,
             period_parameters: options.period,
             ..Snapshot::default()
         };
         let snapshot = Arc::new(Mutex::new(initial));
-        let reference_context = Arc::new(Mutex::new(reference_inventory::Context::default()));
-        let reference_output = Arc::clone(&reference_context);
         let output = Arc::clone(&snapshot);
         let state = Box::new(initial);
         let space = Arc::new(space);
@@ -214,24 +203,11 @@ impl Tap {
                         (f, None)
                     }
                 };
-                let new_memory = |epoch| {
-                    options.memory.map(|config| {
-                        recall::Recall::new(bus, epoch, sample_rate, hop as u64, config)
-                            .expect("validated memory diagnostic configuration")
-                    })
-                };
                 let new_context = |epoch, start| {
                     context::Context::new(bus, epoch, start, sample_rate, hop as u64)
                         .expect("validated context stream")
                 };
-                let new_inventory = |epoch, start| {
-                    options.memory.and_then(|m| m.retention).map(|_| {
-                        reference_inventory::Stream::new(bus, epoch, start, sample_rate, hop as u64)
-                    })
-                };
-                let mut inventory = new_inventory(0, 0);
                 let mut context = Some(new_context(0, 0));
-                let mut memory = new_memory(0);
                 let (mut acoustic, mut recurrence) = split_frontend(new_frontend(0, 0));
                 let mut tracker = if acoustic.is_none() && recurrence.is_none() {
                     new_tracker(0)
@@ -254,19 +230,9 @@ impl Tap {
                                 state.group_prototypes = None;
                                 recurrence = None;
                                 state.period = None;
-                                memory = None;
-                                state.reference_inventory = None;
-                                state.memory = None;
                             }
                             state.delivery_dropped_frames = dropped_frames;
                             state.source_missing_samples = source_missing_samples;
-                            if let Some(memory) = memory.as_mut().filter(|_| !state.memory_failed) {
-                                if let Err(error) = memory.finish(input_end_sample) {
-                                    state.memory_failed = true;
-                                    state.memory_error = Some(error);
-                                }
-                                state.memory = Some(memory.snapshot());
-                            }
 
                             if let Some(r) =
                                 recurrence.as_mut().filter(|_| state.period_error.is_none())
@@ -292,10 +258,7 @@ impl Tap {
                                 }
                             }
                             state.state = ObservationState::Finished;
-                            reference_output
-                                .lock()
-                                .expect("reference context")
-                                .inventory = None;
+
                             finished = true;
                         }
                         Event::Frame(frame) => {
@@ -331,13 +294,6 @@ impl Tap {
                                     state.context = None;
                                     state.group_prototypes = None;
                                     state.context_error = None;
-                                    memory = new_memory(frame.epoch);
-                                    inventory = new_inventory(frame.epoch, frame.start);
-                                    state.reference_inventory = None;
-                                    state.reference_inventory_error = None;
-                                    state.memory = None;
-                                    state.memory_failed = false;
-                                    state.memory_error = None;
                                     tracker = if acoustic.is_none() && recurrence.is_none() {
                                         new_tracker(frame.epoch)
                                     } else {
@@ -369,16 +325,7 @@ impl Tap {
                                     .then(|| frame.power_scan.iter().map(|x| f64::from(*x)).sum());
                                 state.hop_start_sample = frame.start;
                                 state.mono_mean_square = Some(frame.mono_energy);
-                                if let Some(memory) = memory.as_mut() {
-                                    memory
-                                        .observe_acquisition(
-                                            frame.start,
-                                            frame.end,
-                                            frame.available,
-                                        )
-                                        .expect("validated current-epoch acquisition frame");
-                                    state.memory = Some(memory.snapshot());
-                                }
+
                                 state.trajectories =
                                     (acoustic.is_none() && recurrence.is_none() && frame.complete)
                                         .then(|| {
@@ -422,17 +369,6 @@ impl Tap {
                                             state.trajectories = out.partition;
                                             state.ridges = Some(out.ridges);
 
-                                            if let Some(memory) =
-                                                memory.as_mut().filter(|_| !state.memory_failed)
-                                            {
-                                                let result = memory.advance(&summary, frame.end);
-                                                if let Err(error) = result {
-                                                    state.memory_failed = true;
-                                                    state.memory_error = Some(error);
-                                                }
-                                                state.memory = Some(memory.snapshot());
-                                            }
-
                                             if let Some(context) = context
                                                 .as_mut()
                                                 .filter(|_| state.context_error.is_none())
@@ -468,48 +404,10 @@ impl Tap {
                                             } else {
                                                 state.group_prototypes = None;
                                             }
-                                            state.reference_inventory = None;
-                                            if let Some(inventory) =
-                                                inventory.as_mut().filter(|_| {
-                                                    state.reference_inventory_error.is_none()
-                                                })
-                                            {
-                                                if let Some(m) = state
-                                                    .memory
-                                                    .as_ref()
-                                                    .filter(|_| !state.memory_failed)
-                                                {
-                                                    match inventory.advance(
-                                                        &summary,
-                                                        state.period.as_ref(),
-                                                        m,
-                                                        options
-                                                            .memory
-                                                            .unwrap()
-                                                            .retention
-                                                            .unwrap()
-                                                            .no_memory_bias,
-                                                        frame.end,
-                                                    ) {
-                                                        Ok(snapshot) => {
-                                                            state.reference_inventory =
-                                                                Some(snapshot)
-                                                        }
-                                                        Err(e) => {
-                                                            state.reference_inventory_error =
-                                                                Some(e)
-                                                        }
-                                                    }
-                                                } else {
-                                                    state.reference_inventory_error =
-                                                        Some("shared memory input unavailable");
-                                                }
-                                            }
                                             state.acoustic = Some(summary);
                                         }
                                         Err(error) => {
                                             state.group_prototypes = None;
-                                            state.reference_inventory = None;
                                             if recurrence.is_some() {
                                                 state.period = None;
                                                 state.period_error = Some(error);
@@ -559,18 +457,6 @@ impl Tap {
                                     .checked_add(1)
                                     .expect("observation frame overflow");
                             }
-                            if options.memory.is_some_and(|m| m.retention.is_some()) {
-                                let mut context =
-                                    reference_output.lock().expect("reference context");
-                                context.inventory = state.reference_inventory;
-                                if let Some(memory) =
-                                    memory.as_mut().filter(|_| !state.memory_failed)
-                                {
-                                    context.retained = memory.retained_ids();
-                                } else {
-                                    context.inventory = None;
-                                }
-                            }
                         }
                     }
                     {
@@ -589,15 +475,10 @@ impl Tap {
                 state.state = ObservationState::Failed;
                 state.group_prototypes = None;
 
-                reference_output
-                    .lock()
-                    .expect("reference context")
-                    .inventory = None;
                 *output.lock().expect("observation snapshot") = *state;
             })
             .expect("spawn temporal observer");
         Self {
-            reference_context,
             tx: Some(tx),
             completed,
             handle: Some(handle),
@@ -698,67 +579,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deterministic_delivery_waits_for_reference_and_snapshot_publication() {
-        let space = Log2Space::new(100., 200., 12);
-        let power = vec![1.; space.n_bins()];
-        let mut tap = Tap::spawn(
-            0,
-            48_000,
-            128,
-            512,
-            space,
-            Options {
-                deterministic: true,
-                memory: Some(crate::config::TemporalMemoryConfig {
-                    retention: Some(crate::config::TemporalRetentionConfig {
-                        tau_sec: 20.,
-                        kappa: 0.7,
-                        strength_max: 1.2,
-                        r_max: 1.,
-                        no_memory_bias: 0.,
-                        match_temperature: 1.,
-                        edit_penalty: 1.,
-                        motion_scale: 1.,
-                        interval_scale: 1.,
-                    }),
-                    candidates: None,
-                    scales: [1.; 10],
-                    span_hops: 8,
-                    episodes: 16,
-                    query_cadence_ms: 100,
-                    deadline_ms: 100,
-                }),
-                ..Options::default()
-            },
-        );
-        let context = Arc::clone(&tap.reference_context);
-        let snapshot = Arc::clone(&tap.snapshot);
-        let held = context.lock().unwrap();
-        let (started_tx, started_rx) = crossbeam_channel::bounded(1);
-        let (done_tx, done_rx) = crossbeam_channel::bounded(1);
-        let worker = std::thread::spawn(move || {
-            started_tx.send(()).unwrap();
-            tap.observe(0, &power, 0.25);
-            done_tx.send(()).unwrap();
-            tap
-        });
-        started_rx.recv().unwrap();
-        assert_eq!(
-            done_rx.recv_timeout(std::time::Duration::from_millis(20)),
-            Err(crossbeam_channel::RecvTimeoutError::Timeout)
-        );
-        drop(held);
-        done_rx
-            .recv_timeout(std::time::Duration::from_secs(5))
-            .unwrap();
-        assert_eq!(snapshot.lock().unwrap().received_frames, 1);
-        assert_eq!(snapshot.lock().unwrap().support_end_sample, 128);
-        drop(worker.join().unwrap());
-        assert_eq!(snapshot.lock().unwrap().state, ObservationState::Finished);
-    }
-
-    #[test]
-    fn eof_uses_input_clock_and_discards_memory_after_undelivered_epoch_change() {
+    fn eof_uses_input_clock_and_discards_context_after_undelivered_epoch_change() {
         let space = Log2Space::new(100., 6400., 32);
         let mut scan = vec![0.; space.n_bins()];
         scan[20] = 1.;
@@ -795,15 +616,6 @@ mod tests {
                         deviations: [1.; 8],
                         horizon_sec: 0.1,
                     }),
-                    memory: Some(crate::config::TemporalMemoryConfig {
-                        retention: None,
-                        candidates: None,
-                        scales: [1.; 10],
-                        span_hops: 8,
-                        episodes: 16,
-                        query_cadence_ms: 100,
-                        deadline_ms: 100,
-                    }),
                 },
             );
             let output = Arc::clone(&tap.snapshot);
@@ -839,12 +651,10 @@ mod tests {
             let state = *output.lock().unwrap();
             assert!(state.context_error.is_none(), "{:?}", state.context_error);
             assert!(state.period_error.is_none(), "{:?}", state.period_error);
-            assert!(!state.memory_failed, "{:?}", state.memory_error);
             assert_eq!(state.support_end_sample, 40 * 512);
             assert_eq!(state.input_end_sample, 100 * 512);
             assert_eq!(state.received_frames, 40);
             if changed_epoch {
-                assert!(state.memory.is_none());
                 assert!(state.period.is_none());
                 assert!(state.context.is_none());
             } else {
@@ -859,19 +669,6 @@ mod tests {
                 );
                 assert_eq!(state.period.unwrap().received_at, 100 * 512);
                 assert_eq!(after.end_sample, 100 * 512);
-                let memory = state.memory.unwrap();
-                let acquisition = memory.acquisition.unwrap();
-                assert_eq!(acquisition.end_sample, 40 * 512);
-                assert_eq!(acquisition.delivery_cut_sample, 40 * 512);
-                assert_eq!(acquisition.missing_seconds, 0.);
-                // Fixed-span episodes seal as each span fills; EOF adds none of its own.
-                assert_eq!(
-                    memory.stored_total as usize, memory.stored_episodes,
-                    "EOF sealed an episode outside the observed spans"
-                );
-                assert!(memory.stored_total > 0);
-                assert!(memory.queries > 0 && memory.completed > 0);
-                assert!(memory.latest.is_none(), "expired result survived EOF");
             }
         }
     }
@@ -895,15 +692,7 @@ mod tests {
                         means: [0.; 3],
                         deviations: [0.05, 4., 1.],
                     }),
-                    memory: Some(crate::config::TemporalMemoryConfig {
-                        retention: None,
-                        candidates: None,
-                        scales: [1.; 10],
-                        span_hops: 8,
-                        episodes: 16,
-                        query_cadence_ms: 100,
-                        deadline_ms: 100,
-                    }),
+
                     period: None,
                     body_prototypes: None,
                     acoustic: Some(TemporalAcousticConfig {
@@ -936,19 +725,6 @@ mod tests {
             drop(tap);
             let s = *output.lock().unwrap();
             assert!(!s.acoustic_failed);
-            assert!(!s.memory_failed, "{:?}", s.memory_error);
-            let clock = s.memory.unwrap().acquisition.unwrap();
-            assert_eq!(clock.end_sample, 43 * 512);
-            assert_eq!(clock.record_bytes, 12288);
-            if source_gap {
-                assert_eq!(clock.origin_sample, 42 * 512);
-                assert_eq!(clock.retained_records, 1);
-                assert_eq!(clock.missing_seconds, 0.);
-            } else {
-                assert_eq!(clock.origin_sample, 0);
-                assert_eq!(clock.retained_records, 41);
-                assert!((clock.missing_seconds - 1024. / 48000.).abs() < 1e-12);
-            }
             let a = s.acoustic.unwrap();
             assert_eq!(s.source_epoch, u64::from(source_gap));
             if source_gap {
@@ -988,7 +764,6 @@ mod tests {
         let options = Options {
             deterministic: true,
             acoustic: None,
-            memory: None,
             period: None,
             body_prototypes: None,
             ridge: Some(TemporalRidgeConfig {

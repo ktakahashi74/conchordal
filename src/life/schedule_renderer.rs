@@ -1,4 +1,3 @@
-use super::action_observation::ActionKind;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::temporal_expectation::{AcousticTemporalExpectation, OwnSoundHistory};
 use crate::core::timebase::{Tick, Timebase};
@@ -25,7 +24,6 @@ struct RoutedTone {
     tone: Tone,
     routing: Routing,
     self_slot: Option<usize>,
-    outcome_slots: [Option<(usize, u64)>; 2],
     source_generation: u32,
     body_slot: Option<(usize, u32)>,
     scheduled_release: Option<super::tone_energy::ScheduledRelease>,
@@ -50,7 +48,6 @@ pub(crate) struct RenderProfile {
     commands_us: f64,
     samples_us: f64,
     history_us: f64,
-    observation_us: f64,
     capture_delivery_us: f64,
 }
 
@@ -71,7 +68,6 @@ pub struct ScheduleRenderer {
     cutoff_tick: Option<Tick>,
     self_sound: Vec<Option<Box<SelfSound>>>,
     pub(crate) body_capture: Option<crate::temporal_cognition::body::Capture>,
-    pub(crate) action_observer: Option<Box<super::action_observation::Observer>>,
     pub(crate) profile: Option<RenderProfile>,
 }
 
@@ -86,7 +82,6 @@ impl ScheduleRenderer {
             tones: BTreeMap::new(),
             cutoff_tick: None,
             self_sound: Vec::new(),
-            action_observer: None,
             body_capture: None,
             profile: None,
         }
@@ -110,7 +105,6 @@ impl ScheduleRenderer {
                         tone: routed.tone.clone(),
                         routing: routed.routing,
                         self_slot: None,
-                        outcome_slots: [None; 2],
                         source_generation: routed.source_generation,
                         body_slot: None,
                         scheduled_release: routed.scheduled_release,
@@ -119,51 +113,6 @@ impl ScheduleRenderer {
             })
             .collect();
         fork
-    }
-
-    #[cfg(test)]
-    pub(crate) fn source_envelopes(
-        &self,
-        source_id: u64,
-        source_generation: u32,
-    ) -> impl Iterator<Item = (u64, crate::life::sound::envelope::Envelope)> + '_ {
-        self.tones
-            .iter()
-            .filter(move |(key, tone)| {
-                key.source_id == source_id && tone.source_generation == source_generation
-            })
-            .map(|(key, tone)| (key.tone_id, tone.tone.prediction_parameters(None).2))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn source_energy_models(
-        &self,
-        source_id: u64,
-        source_generation: u32,
-        now: u64,
-        rhythms: &NeuralRhythms,
-    ) -> impl Iterator<Item = (u64, [bool; 2], super::tone_energy::ToneEnergy)> + '_ {
-        let rhythms = *rhythms;
-        self.tones
-            .iter()
-            .filter(move |(key, rt)| {
-                key.source_id == source_id && rt.source_generation == source_generation
-            })
-            .map(move |(key, rt)| {
-                let (_, amplitude, envelope) = rt.tone.prediction_parameters(None);
-                (
-                    key.tone_id,
-                    [rt.routing.to_habitat, rt.routing.to_presentation],
-                    super::tone_energy::ToneEnergy {
-                        amplitude,
-                        envelope,
-                        control: Some(rt.tone.prediction_control(now, &rhythms)),
-                        scheduled_release: rt.scheduled_release,
-                        sine: rt.tone.prediction_sine(now),
-                        bank: rt.tone.prediction_bank(now),
-                    },
-                )
-            })
     }
 
     pub(crate) fn prepare_self_sound(
@@ -232,38 +181,6 @@ impl ScheduleRenderer {
             .map(|sound| &mut sound.history)
     }
 
-    pub(crate) fn prepare_energy_contexts(
-        &mut self,
-        acoustic: &AcousticTemporalExpectation,
-        batches: &[PhonationBatch],
-        now: Tick,
-    ) {
-        let (Some(capture), Some(observer)) =
-            (self.body_capture.as_ref(), self.action_observer.as_mut())
-        else {
-            return;
-        };
-        let contexts = self.self_sound.iter().filter_map(|sound| {
-            let sound = sound.as_ref()?;
-            let batch = batches.iter().find(|batch| {
-                batch.source_id == sound.source_id
-                    && batch
-                        .cmds
-                        .iter()
-                        .any(|cmd| matches!(cmd, ToneCmd::On { .. } | ToneCmd::Off { .. }))
-            })?;
-            let (_, body_generation) = capture.token(batch.source_id, batch.source_generation)?;
-            let forecast = acoustic.preview_external_energy(&sound.history.external)?;
-            Some((
-                batch.source_id,
-                batch.source_generation,
-                body_generation,
-                forecast,
-            ))
-        });
-        observer.refresh_energy_contexts(now, contexts);
-    }
-
     pub(crate) fn drain_prediction_errors(
         &mut self,
         mut emit: impl FnMut(
@@ -303,9 +220,7 @@ impl ScheduleRenderer {
         if let Some(capture) = self.body_capture.as_mut() {
             capture.begin(now);
         }
-        if let Some(observer) = self.action_observer.as_mut() {
-            observer.begin_hop(now);
-        }
+
         if self.buf_presentation.len() != hop {
             self.buf_presentation.resize(hop, 0.0);
         }
@@ -327,21 +242,11 @@ impl ScheduleRenderer {
             };
         }
 
-        self.tones.retain(|key, rt| {
+        self.tones.retain(|_, rt| {
             if !rt.tone.is_done(now) {
                 return true;
             }
-            if let Some(observer) = self.action_observer.as_mut() {
-                for slot in rt.outcome_slots.into_iter().flatten() {
-                    observer.sample(
-                        slot,
-                        (key.source_id, rt.source_generation, key.tone_id),
-                        now,
-                        0.0,
-                        true,
-                    );
-                }
-            }
+
             false
         });
 
@@ -349,31 +254,17 @@ impl ScheduleRenderer {
         let dt = 1.0 / fs;
         let mut rhythms = *rhythms;
         let setup_us = profile_lap(&mut checkpoint);
-        self.apply_phonation_batches(phonation_batches, now, &rhythms, dt);
+        self.apply_phonation_batches(phonation_batches, now);
         let commands_us = profile_lap(&mut checkpoint);
         for tick in now..end {
             let idx = (tick - now) as usize;
             let mut acc_presentation = 0.0f32;
             let mut acc_habitat = 0.0f32;
-            for (key, rt) in &mut self.tones {
+            for rt in self.tones.values_mut() {
                 rt.tone.apply_updates_if_due(tick);
                 rt.tone.kick_planned_if_due(tick);
                 let sample = rt.tone.render_tick(tick, fs, dt, &rhythms);
-                if let Some(observer) = self.action_observer.as_mut() {
-                    for slot in &mut rt.outcome_slots {
-                        if let Some(index) = *slot
-                            && !observer.sample(
-                                index,
-                                (key.source_id, rt.source_generation, key.tone_id),
-                                tick,
-                                sample,
-                                rt.tone.is_done(tick),
-                            )
-                        {
-                            *slot = None;
-                        }
-                    }
-                }
+
                 if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
                     capture.sample(slot, idx, sample, rt.routing);
                 }
@@ -409,13 +300,6 @@ impl ScheduleRenderer {
             );
         }
         let history_us = profile_lap(&mut checkpoint);
-        if let Some(observer) = self.action_observer.as_mut() {
-            if let Some(capture) = self.body_capture.as_ref() {
-                observer.observe_source_energy(capture);
-            }
-            observer.end_hop(now, end);
-        }
-        let observation_us = profile_lap(&mut checkpoint);
 
         if let Some(capture) = self.body_capture.as_mut() {
             capture.end();
@@ -427,7 +311,6 @@ impl ScheduleRenderer {
                 commands_us,
                 samples_us,
                 history_us,
-                observation_us,
                 capture_delivery_us,
             };
         }
@@ -447,70 +330,22 @@ impl ScheduleRenderer {
 
     pub fn shutdown_at(&mut self, tick: Tick) {
         self.cutoff_tick = Some(tick);
-        self.tones.retain(|key, rt| {
+        self.tones.retain(|_, rt| {
             if rt.tone.onset() <= tick {
                 return true;
             }
-            if let Some(observer) = self.action_observer.as_mut() {
-                for slot in rt.outcome_slots.into_iter().flatten() {
-                    observer.interrupt(
-                        slot,
-                        (key.source_id, rt.source_generation, key.tone_id),
-                        tick,
-                        "cancelled",
-                    );
-                }
-            }
+
             false
         });
-        for (key, rt) in &mut self.tones {
-            if let Some(observer) = self.action_observer.as_mut() {
-                let owner = PhonationBatch {
-                    intrinsic_period_sec: None,
-                    source_id: key.source_id,
-                    source_generation: rt.source_generation,
-                    routing: rt.routing,
-                    ..Default::default()
-                };
-                let status = if rt.tone.is_done(tick) {
-                    "already_ended"
-                } else {
-                    "accepted"
-                };
-                if status == "accepted" {
-                    if let Some(slot) = rt.outcome_slots[1].take() {
-                        observer.interrupt(
-                            slot,
-                            (key.source_id, rt.source_generation, key.tone_id),
-                            tick,
-                            "superseded",
-                        );
-                    }
-                    rt.outcome_slots[1] = observer.command(
-                        &owner,
-                        key.tone_id,
-                        Some(tick),
-                        tick,
-                        status,
-                        ActionKind::Shutdown,
-                    );
-                }
-            }
+        for rt in self.tones.values_mut() {
             rt.tone.note_off(tick);
         }
     }
 
-    fn apply_phonation_batches(
-        &mut self,
-        phonation_batches: &[PhonationBatch],
-        now: Tick,
-        rhythms: &NeuralRhythms,
-        _dt: f32,
-    ) {
+    fn apply_phonation_batches(&mut self, phonation_batches: &[PhonationBatch], now: Tick) {
         let default_hold_ticks = max_phonation_hold_ticks(self.time);
         for batch in phonation_batches {
             for cmd in &batch.cmds {
-                let mut prediction = None;
                 match *cmd {
                     ToneCmd::On { tone_id, kick } => {
                         let key = ToneKey {
@@ -519,44 +354,14 @@ impl ScheduleRenderer {
                         };
                         let spec = batch.tones.iter().find(|t| t.tone_id == tone_id);
                         if self.tones.contains_key(&key) {
-                            if let Some(observer) = self.action_observer.as_mut() {
-                                observer.command(
-                                    batch,
-                                    tone_id,
-                                    spec.map(|s| s.onset),
-                                    now,
-                                    "duplicate",
-                                    ActionKind::Onset,
-                                );
-                            }
                             continue;
                         }
                         let Some(spec) = spec else {
-                            if let Some(observer) = self.action_observer.as_mut() {
-                                observer.command(
-                                    batch,
-                                    tone_id,
-                                    None,
-                                    now,
-                                    "missing_spec",
-                                    ActionKind::Onset,
-                                );
-                            }
                             continue;
                         };
                         if let Some(cutoff) = self.cutoff_tick
                             && spec.onset >= cutoff
                         {
-                            if let Some(observer) = self.action_observer.as_mut() {
-                                observer.command(
-                                    batch,
-                                    tone_id,
-                                    Some(spec.onset),
-                                    now,
-                                    "cutoff",
-                                    ActionKind::Onset,
-                                );
-                            }
                             continue;
                         }
                         let hold_ticks = spec.hold_ticks.unwrap_or(default_hold_ticks);
@@ -603,33 +408,6 @@ impl ScheduleRenderer {
                                     off_sample: off,
                                 });
                             }
-                            let outcome_slot = self.action_observer.as_mut().and_then(|observer| {
-                                observer.command(
-                                    batch,
-                                    tone_id,
-                                    Some(spec.onset),
-                                    now,
-                                    "accepted",
-                                    ActionKind::Onset,
-                                )
-                            });
-
-                            if let (Some(_), Some(slot), Some(capture)) = (
-                                self.action_observer.as_mut(),
-                                outcome_slot,
-                                self.body_capture.as_ref(),
-                            ) && let Some(token) =
-                                capture.token(batch.source_id, batch.source_generation)
-                                && let Some(mut input) = capture.prediction_input(
-                                    token,
-                                    now,
-                                    spec.onset,
-                                    tone.prediction_parameters(None),
-                                )
-                            {
-                                input.scheduled_release = scheduled_release;
-                                prediction = Some((slot, input, key));
-                            }
                             debug!(
                                 target: "phonation::tone_on",
                                 source_id = batch.source_id,
@@ -649,21 +427,11 @@ impl ScheduleRenderer {
                                             .as_ref()
                                             .is_some_and(|sound| sound.source_id == batch.source_id)
                                     }),
-                                    outcome_slots: [outcome_slot, None],
                                     source_generation: batch.source_generation,
                                     body_slot: self.body_capture.as_ref().and_then(|c| {
                                         c.token(batch.source_id, batch.source_generation)
                                     }),
                                 },
-                            );
-                        } else if let Some(observer) = self.action_observer.as_mut() {
-                            observer.command(
-                                batch,
-                                tone_id,
-                                Some(spec.onset),
-                                now,
-                                "invalid_tone",
-                                ActionKind::Onset,
                             );
                         }
                     }
@@ -672,109 +440,13 @@ impl ScheduleRenderer {
                             source_id: batch.source_id,
                             tone_id,
                         };
-                        if let Some(rt) = self.tones.get_mut(&key) {
-                            if let Some(observer) = self.action_observer.as_mut() {
-                                let status = if rt.source_generation != batch.source_generation {
-                                    "generation_mismatch"
-                                } else if rt.tone.is_done(off_tick) {
-                                    "already_ended"
-                                } else {
-                                    "accepted"
-                                };
-
-                                // Routing belongs to the sounding tone, not this command batch.
-                                let owner = PhonationBatch {
-                                    intrinsic_period_sec: batch.intrinsic_period_sec,
-                                    source_id: key.source_id,
-                                    source_generation: rt.source_generation,
-                                    routing: rt.routing,
-                                    ..Default::default()
-                                };
-                                if status == "accepted"
-                                    && let Some(slot) = rt.outcome_slots[1].take()
-                                {
-                                    observer.interrupt(
-                                        slot,
-                                        (key.source_id, rt.source_generation, tone_id),
-                                        now,
-                                        "superseded",
-                                    );
-                                }
-                                let slot = observer.command(
-                                    &owner,
-                                    tone_id,
-                                    Some(off_tick),
-                                    now,
-                                    status,
-                                    ActionKind::Release,
-                                );
-                                if let Some(slot) = slot {
-                                    rt.outcome_slots[1] = Some(slot);
-                                    if let (Some(capture), Some(token)) =
-                                        (self.body_capture.as_ref(), rt.body_slot)
-                                        && let Some(input) = capture.prediction_input(
-                                            token,
-                                            now,
-                                            off_tick,
-                                            rt.tone.prediction_parameters(Some(off_tick)),
-                                        )
-                                    {
-                                        prediction = Some((slot, input, key));
-                                    }
-                                }
-                            }
-                            if rt.source_generation == batch.source_generation {
-                                rt.tone.note_off(off_tick);
-                            }
-                        } else if let Some(observer) = self.action_observer.as_mut() {
-                            observer.command(
-                                batch,
-                                tone_id,
-                                Some(off_tick),
-                                now,
-                                "missing_tone",
-                                ActionKind::Release,
-                            );
+                        if let Some(rt) = self.tones.get_mut(&key)
+                            && rt.source_generation == batch.source_generation
+                        {
+                            rt.tone.note_off(off_tick);
                         }
                     }
                     ToneCmd::Update { .. } => {}
-                }
-                if let Some((slot, mut input, command_key)) = prediction {
-                    input.control = self
-                        .tones
-                        .get(&command_key)
-                        .map(|rt| rt.tone.prediction_control(now, rhythms));
-                    input.sine = self
-                        .tones
-                        .get(&command_key)
-                        .and_then(|rt| rt.tone.prediction_sine(now));
-                    let source_id = command_key.source_id;
-                    let retained = self
-                        .tones
-                        .range(
-                            ToneKey {
-                                source_id,
-                                tone_id: 0,
-                            }..=ToneKey {
-                                source_id,
-                                tone_id: u64::MAX,
-                            },
-                        )
-                        .map(|(key, rt)| {
-                            (*key != command_key && rt.source_generation == batch.source_generation)
-                                .then(|| {
-                                    (
-                                        &rt.tone,
-                                        rt.routing,
-                                        rt.scheduled_release,
-                                        rt.tone.prediction_control(now, rhythms),
-                                    )
-                                })
-                        });
-                    self.action_observer
-                        .as_mut()
-                        .unwrap()
-                        .predict(slot, input, retained);
                 }
             }
             for cmd in &batch.cmds {
@@ -863,310 +535,6 @@ mod tests {
     }
 
     /// The control keeps observation and learning but strips the policy facts and
-
-    #[test]
-    fn onset_outcomes_match_private_rendered_audio_without_changing_either_mix() {
-        use super::super::action_observation::{ACTIVITY_THRESHOLD, Observer};
-        let time = Timebase { fs: 8000., hop: 32 };
-        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
-            for routing in [(true, true), (true, false), (false, true), (false, false)] {
-                let mut actor = outcome_batch(kind);
-                actor.routing.to_habitat = routing.0;
-                actor.routing.to_presentation = routing.1;
-                let mut other = outcome_batch(BodyKind::Sine);
-                other.source_id = 99;
-                other.tones[0].onset = 0;
-                other.tones[0].freq_hz = 800.;
-                other.tones[0].amp = 0.8;
-                let all = [actor.clone(), other];
-                let mut renderer = ScheduleRenderer::new(time);
-                renderer.action_observer = Some(Box::new(Observer::new(8000)));
-                let mut control = ScheduleRenderer::new(time);
-                let mut isolated = ScheduleRenderer::new(time);
-                let mut private = [Vec::new(), Vec::new()];
-                let mut outcomes = Vec::new();
-                for now in (0..256).step_by(32) {
-                    let batches = if now == 0 { &all[..] } else { &[] };
-                    let actual = renderer.render(batches, now, &NeuralRhythms::default());
-                    let reference = control.render(batches, now, &NeuralRhythms::default());
-                    assert_eq!(actual.habitat, reference.habitat);
-                    assert_eq!(actual.presentation, reference.presentation);
-                    let frame = isolated.render(
-                        if now == 0 {
-                            std::slice::from_ref(&actor)
-                        } else {
-                            &[]
-                        },
-                        now,
-                        &NeuralRhythms::default(),
-                    );
-                    private[0].extend_from_slice(frame.habitat);
-                    private[1].extend_from_slice(frame.presentation);
-                    outcomes.extend(renderer.action_observer.as_mut().unwrap().drain());
-                }
-                let result = outcomes.iter().find(|o| o.source_id == 2).unwrap();
-                assert_eq!(result.source_generation, 7);
-                assert_eq!(result.observed_samples, 160);
-                assert_eq!(result.available_at_sample, 192);
-                for (bus, pcm) in result.buses.iter().zip(private) {
-                    let pcm = &pcm[13..173];
-                    let expected = pcm
-                        .iter()
-                        .position(|v| v.abs() > ACTIVITY_THRESHOLD)
-                        .map(|p| p as u64 + 13);
-                    assert_eq!(bus.first_activity_sample, expected);
-                    if bus.routed {
-                        let rms =
-                            (pcm.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>() / 160.).sqrt();
-                        assert!((bus.rms.unwrap() - rms).abs() < 1e-12);
-                        assert!(bus.first_activity_sample.unwrap() >= 13);
-                    } else {
-                        assert_eq!(bus.status, "not_routed");
-                        assert_eq!(bus.rms, None);
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn release_outcomes_match_isolated_tail_and_preserve_both_mixes() {
-        use super::super::action_observation::{ACTIVITY_THRESHOLD, Observer};
-        use crate::life::sound::ToneAdsr;
-        let time = Timebase { fs: 8000., hop: 32 };
-        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
-            for routing in [(true, true), (true, false), (false, true), (false, false)] {
-                let mut actor = outcome_batch(kind);
-                actor.tones[0].hold_ticks = Some(24000);
-                actor.tones[0].render_modulator =
-                    RenderModulatorSpec::SeqGate { duration_sec: 10. };
-                actor.tones[0].adsr = Some(ToneAdsr {
-                    attack_sec: 0.001,
-                    decay_sec: 0.,
-                    sustain_level: 1.,
-                    release_sec: 0.05,
-                });
-                actor.routing.to_habitat = routing.0;
-                actor.routing.to_presentation = routing.1;
-                let mut other = outcome_batch(BodyKind::Sine);
-                other.source_id = 99;
-                let release = PhonationBatch {
-                    intrinsic_period_sec: None,
-                    source_id: actor.source_id,
-                    source_generation: actor.source_generation,
-                    // Deliberately different: release must use the original tone's routing.
-                    routing: Routing {
-                        to_habitat: !routing.0,
-                        to_presentation: !routing.1,
-                    },
-                    cmds: vec![ToneCmd::Off {
-                        tone_id: actor.tones[0].tone_id,
-                        off_tick: 64,
-                    }],
-                    ..Default::default()
-                };
-                let all = [actor.clone(), other];
-                let mut tracked = ScheduleRenderer::new(time);
-                tracked.action_observer = Some(Box::new(Observer::new(8000)));
-                let mut control = ScheduleRenderer::new(time);
-                let mut isolated = ScheduleRenderer::new(time);
-                let mut pcm = [Vec::new(), Vec::new()];
-                let mut outcomes = Vec::new();
-                let mut predicted_end = None;
-                for now in (0..16064).step_by(32) {
-                    let batches = if now == 0 {
-                        &all[..]
-                    } else if now == 32 {
-                        std::slice::from_ref(&release)
-                    } else {
-                        &[]
-                    };
-                    let actual = tracked.render(batches, now, &NeuralRhythms::default());
-                    let reference = control.render(batches, now, &NeuralRhythms::default());
-                    assert_eq!(actual.habitat, reference.habitat);
-                    assert_eq!(actual.presentation, reference.presentation);
-                    if now == 0 {
-                        let owned = tracked
-                            .tones
-                            .get(&ToneKey {
-                                source_id: actor.source_id,
-                                tone_id: actor.tones[0].tone_id,
-                            })
-                            .unwrap();
-                        let (_, amplitude, envelope) = owned.tone.prediction_parameters(None);
-                        let frozen = crate::life::tone_energy::ToneEnergy {
-                            amplitude,
-                            envelope,
-                            control: None,
-                            scheduled_release: None,
-                            sine: None,
-                            bank: None,
-                        };
-                        predicted_end = frozen.renderer_end_after(
-                            32,
-                            Some(crate::life::tone_energy::ScheduledRelease {
-                                apply_at_sample: 32,
-                                off_sample: 64,
-                            }),
-                        );
-                    }
-                    let private_batches = if now == 0 {
-                        std::slice::from_ref(&actor)
-                    } else if now == 32 {
-                        std::slice::from_ref(&release)
-                    } else {
-                        &[]
-                    };
-                    let private = isolated.render(private_batches, now, &NeuralRhythms::default());
-                    pcm[0].extend_from_slice(private.habitat);
-                    pcm[1].extend_from_slice(private.presentation);
-                    outcomes.extend(tracked.action_observer.as_mut().unwrap().drain());
-                }
-                let result = outcomes
-                    .iter()
-                    .find(|o| o.action == ActionKind::Release)
-                    .unwrap();
-                assert_eq!(result.command_status, "accepted");
-                assert_eq!(result.issued_at_sample, 32);
-                assert_eq!(result.scheduled_action_sample, Some(64));
-                assert_eq!(result.renderer_end_sample, Some(464));
-                assert_eq!(result.renderer_end_sample, predicted_end);
-                assert_eq!(result.observed_samples, 16000);
-                assert_eq!(result.available_at_sample, 16064);
-                for (bus, pcm) in result.buses.iter().zip(pcm) {
-                    let tail = &pcm[64..16064];
-                    let first = tail
-                        .iter()
-                        .position(|v| v.abs() > ACTIVITY_THRESHOLD)
-                        .map(|i| i as u64 + 64);
-                    let last = tail
-                        .iter()
-                        .rposition(|v| v.abs() > ACTIVITY_THRESHOLD)
-                        .map(|i| i as u64 + 64);
-                    assert_eq!(bus.first_activity_sample, first);
-                    assert_eq!(bus.last_activity_sample, last);
-                    if bus.routed {
-                        let rms = (tail.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>()
-                            / 16000.)
-                            .sqrt();
-                        assert!((bus.rms.unwrap() - rms).abs() < 1e-12);
-                        assert!(last.unwrap() > 64 && last.unwrap() < 464);
-                    } else {
-                        assert_eq!(bus.status, "not_routed");
-                        assert_eq!(bus.rms, None);
-                    }
-                }
-                assert_eq!(
-                    tracked.action_observer.as_ref().unwrap().snapshot.pending,
-                    0
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn repeated_release_missing_tones_generations_and_shutdown_are_explicit() {
-        use super::super::action_observation::Observer;
-        let time = Timebase { fs: 8000., hop: 32 };
-        let mut renderer = ScheduleRenderer::new(time);
-        renderer.action_observer = Some(Box::new(Observer::new(8000)));
-        let mut batch = outcome_batch(BodyKind::Sine);
-        batch.tones[0].hold_ticks = Some(8000);
-        batch.tones[0].adsr = Some(crate::life::sound::ToneAdsr {
-            attack_sec: 0.001,
-            decay_sec: 0.,
-            sustain_level: 1.,
-            release_sec: 0.5,
-        });
-        renderer.render(std::slice::from_ref(&batch), 0, &NeuralRhythms::default());
-        let tone_id = batch.tones[0].tone_id;
-        batch.tones.clear();
-        batch.cmds = vec![ToneCmd::Off {
-            tone_id,
-            off_tick: 96,
-        }];
-        renderer.render(std::slice::from_ref(&batch), 32, &NeuralRhythms::default());
-        batch.cmds = vec![ToneCmd::Off {
-            tone_id,
-            off_tick: 80,
-        }];
-        renderer.render(std::slice::from_ref(&batch), 64, &NeuralRhythms::default());
-        batch.source_generation += 1;
-        renderer.render(std::slice::from_ref(&batch), 96, &NeuralRhythms::default());
-        batch.cmds = vec![ToneCmd::Off {
-            tone_id: 999,
-            off_tick: 128,
-        }];
-        renderer.render(std::slice::from_ref(&batch), 128, &NeuralRhythms::default());
-        renderer.shutdown_at(160);
-        renderer.render(&[], 160, &NeuralRhythms::default());
-        let observer = renderer.action_observer.as_mut().unwrap();
-        observer.finish();
-        let outcomes: Vec<_> = observer.drain().collect();
-        assert_eq!(
-            outcomes
-                .iter()
-                .filter(|o| o.command_status == "superseded")
-                .count(),
-            2
-        );
-        assert!(
-            outcomes
-                .iter()
-                .any(|o| o.command_status == "generation_mismatch" && o.observed_samples == 0)
-        );
-        assert!(
-            outcomes
-                .iter()
-                .any(|o| o.command_status == "missing_tone" && o.observed_samples == 0)
-        );
-        let shutdown = outcomes
-            .iter()
-            .find(|o| o.action == ActionKind::Shutdown)
-            .unwrap();
-        assert_eq!(shutdown.buses[0].status, "incomplete");
-        assert_eq!(shutdown.observed_samples, 32);
-        assert_eq!(shutdown.renderer_end_sample, None);
-        assert_eq!(observer.snapshot.pending, 0);
-    }
-
-    #[test]
-    fn refused_commands_and_eof_never_claim_confirmed_audio() {
-        use super::super::action_observation::Observer;
-        for status in [
-            "duplicate",
-            "missing_spec",
-            "cutoff",
-            "invalid_tone",
-            "accepted",
-        ] {
-            let time = Timebase { fs: 8000., hop: 32 };
-            let mut renderer = ScheduleRenderer::new(time);
-            renderer.action_observer = Some(Box::new(Observer::new(8000)));
-            let mut batch = outcome_batch(BodyKind::Sine);
-            match status {
-                "duplicate" => batch.cmds.push(batch.cmds[0]),
-                "missing_spec" => batch.tones.clear(),
-                "cutoff" => renderer.shutdown_at(0),
-                "invalid_tone" => batch.tones[0].amp = 0.,
-                _ => {}
-            }
-            renderer.render(&[batch], 0, &NeuralRhythms::default());
-            let observer = renderer.action_observer.as_mut().unwrap();
-            observer.finish();
-            let records: Vec<_> = observer.drain().collect();
-            let outcome = records.iter().find(|o| o.command_status == status).unwrap();
-            if status == "accepted" {
-                assert_eq!(outcome.buses[0].status, "incomplete");
-                assert_eq!(outcome.observed_samples, 19);
-            } else {
-                assert_eq!(outcome.observed_samples, 0);
-                assert_eq!(outcome.buses[0].status, "unobserved");
-                assert_eq!(outcome.buses[0].first_activity_sample, None);
-            }
-            assert_eq!(outcome.buses[0].rms, None);
-        }
-    }
 
     #[test]
     fn owned_fork_preserves_ringing_pending_controls_and_rng_without_other_sources() {

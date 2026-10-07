@@ -159,10 +159,6 @@ enum ReportRecord<'a> {
         standardized: [Option<f64>; 6],
         prototype_assignment: Option<crate::temporal_cognition::body_model::Assignment>,
     },
-    SelfSoundOutcome(&'a crate::life::action_observation::Outcome),
-    SelfSoundDescriptorPrediction(&'a crate::life::self_prediction::DescriptorOutcome),
-    SelfSoundObservation(&'a crate::life::action_observation::Snapshot),
-    PrivateParticipationTrace(&'a crate::life::participation_trace::Record),
     TemporalObservation {
         time_sec: f32,
         observation: &'a crate::temporal_cognition::observation::Snapshot,
@@ -374,33 +370,6 @@ impl JsonlReporter {
         Ok(())
     }
 
-    pub(crate) fn write_self_sound_outcome(
-        &mut self,
-        outcome: &crate::life::action_observation::Outcome,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::SelfSoundOutcome(outcome))
-    }
-
-    pub(crate) fn write_private_trace(
-        &mut self,
-        record: &crate::life::participation_trace::Record,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::PrivateParticipationTrace(record))
-    }
-
-    pub(crate) fn write_descriptor_prediction(
-        &mut self,
-        outcome: &crate::life::self_prediction::DescriptorOutcome,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::SelfSoundDescriptorPrediction(outcome))
-    }
-
-    pub(crate) fn write_self_sound_observation(
-        &mut self,
-        snapshot: &crate::life::action_observation::Snapshot,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::SelfSoundObservation(snapshot))
-    }
     pub fn create(path: &str) -> Result<Self, String> {
         let file = File::create(path).map_err(|err| format!("create report {path}: {err}"))?;
         Ok(Self {

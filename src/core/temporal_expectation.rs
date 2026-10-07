@@ -969,6 +969,7 @@ impl AcousticTemporalExpectation {
     }
 
     /// Energy-only diagnostic; neither recurrence scratch nor comparison learning is advanced.
+    #[cfg(test)]
     pub(crate) fn preview_external_energy(
         &self,
         external: &BandEnergyHistory,

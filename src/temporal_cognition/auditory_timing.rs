@@ -78,8 +78,8 @@ impl Record {
             for (bin, mass) in masses[..BINS].iter_mut().enumerate() {
                 let left = cycle as f64 + bin as f64 * width;
                 let right = left + width;
-                *mass += super::private_trace::difference_cdf(right, self.target, self.anchor)
-                    - super::private_trace::difference_cdf(left, self.target, self.anchor);
+                *mass += difference_cdf(right, self.target, self.anchor)
+                    - difference_cdf(left, self.target, self.anchor);
             }
         }
         if !periodic {
@@ -662,3 +662,37 @@ impl Stream {
 
 #[cfg(test)]
 mod tests;
+
+pub(super) fn difference_cdf(value: f64, [a, b]: [f64; 2], [c, d]: [f64; 2]) -> f64 {
+    let lower = a - d;
+    let upper = b - c;
+    if value < lower {
+        return 0.;
+    }
+    if value >= upper {
+        return 1.;
+    }
+    let x = b - a;
+    let y = d - c;
+    let position = value - lower;
+    if x == 0. || y == 0. {
+        return position / x.max(y);
+    }
+    let reflected = position > (x + y) / 2.;
+    let z = if reflected {
+        x + y - position
+    } else {
+        position
+    };
+    let small = x.min(y);
+    let cumulative = if z <= small {
+        z * z / (2. * x * y)
+    } else {
+        (z - small / 2.) / x.max(y)
+    };
+    if reflected {
+        1. - cumulative
+    } else {
+        cumulative
+    }
+}

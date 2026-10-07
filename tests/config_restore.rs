@@ -145,11 +145,9 @@ fn config_load_custom_values() {
     let custom = AppConfig {
         temporal_ridge: None,
         temporal_acoustic: None,
-        temporal_memory: None,
         temporal_period: None,
         temporal_body: None,
         temporal_body_prototypes: None,
-        temporal_private_trace: None,
         temporal_onset_comparison: None,
         audio: AudioConfig {
             latency_ms: 75.0,

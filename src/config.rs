@@ -286,15 +286,11 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_acoustic: Option<TemporalAcousticConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_memory: Option<TemporalMemoryConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_period: Option<TemporalPeriodConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body: Option<TemporalBodyConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body_prototypes: Option<TemporalBodyPrototypesConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temporal_private_trace: Option<TemporalPrivateTraceConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_onset_comparison: Option<TemporalOnsetComparisonConfig>,
 }
@@ -314,14 +310,6 @@ pub enum FootprintSource {
 pub struct TemporalOnsetComparisonConfig {
     #[serde(default)]
     pub footprint: FootprintSource,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalPrivateTraceConfig {
-    pub tau_sec: f64,
-    pub kappa: f64,
-    pub strength_max: f64,
 }
 
 /// Frozen development scales for private body diagnostics; no adopted calibration.
@@ -381,43 +369,6 @@ pub struct TemporalAcousticConfig {
     pub persistence_hops: u8,
 }
 
-/// Explicit assay windows and scales for passive, uncalibrated memory diagnostics.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalMemoryConfig {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retention: Option<TemporalRetentionConfig>,
-    /// Explicit search capacity; absent selects the frozen 16-candidate baseline.
-    pub candidates: Option<usize>,
-    pub scales: [f64; 10],
-    /// Assay span, and with it the sealed episode length: a span is sealed into one episode
-    /// once this many observed hops accumulate. Short spans seal often and evict the bank
-    /// before a retained reference can be reused.
-    pub span_hops: u64,
-    /// Episode bank capacity. It bounds how far back a reference can still be retained.
-    pub episodes: usize,
-    pub query_cadence_ms: u64,
-    pub deadline_ms: u64,
-}
-
-/// Explicit diagnostic retention parameters; no implicit stage-1 fit.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TemporalRetentionConfig {
-    pub tau_sec: f64,
-    pub kappa: f64,
-    pub strength_max: f64,
-    pub r_max: f64,
-    pub no_memory_bias: f64,
-    /// Explicit match rule: score = -(distance / match_temperature) - edit_penalty * edits,
-    /// where distance sums the coordinate RMS residuals over `scales`, the motion RMS over
-    /// `motion_scale` and the interval RMS over `interval_scale`. No fitted coefficients.
-    pub match_temperature: f64,
-    pub edit_penalty: f64,
-    pub motion_scale: f64,
-    pub interval_scale: f64,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ArrivalModel {
@@ -434,17 +385,6 @@ pub struct TemporalPeriodConfig {
     pub means: [f64; 8],
     pub deviations: [f64; 8],
     pub horizon_sec: f64,
-}
-
-pub(crate) mod fixed_array {
-    use serde::Serialize;
-
-    pub fn serialize<T: Serialize, S: serde::Serializer, const N: usize>(
-        values: &[T; N],
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        values.as_slice().serialize(serializer)
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -572,33 +512,7 @@ impl AppConfig {
             )
             .map_err(anyhow::Error::msg)?;
         }
-        if let Some(memory) = self.temporal_memory {
-            ensure!(
-                self.temporal_acoustic.is_some(),
-                "temporal_memory requires temporal_acoustic"
-            );
-            crate::temporal_cognition::recall::Recall::new(
-                0,
-                0,
-                self.audio.sample_rate,
-                self.analysis.hop_size as u64,
-                memory,
-            )
-            .map_err(anyhow::Error::msg)?;
-        }
 
-        if let Some(trace) = self.temporal_private_trace {
-            anyhow::ensure!(
-                self.temporal_memory.is_some_and(|m| m.retention.is_some()),
-                "temporal_private_trace requires temporal_memory.retention"
-            );
-            anyhow::ensure!(
-                [trace.tau_sec, trace.kappa, trace.strength_max]
-                    .iter()
-                    .all(|v| v.is_finite() && *v > 0.),
-                "temporal_private_trace requires finite positive parameters"
-            );
-        }
         if let Some(period) = self.temporal_period {
             ensure!(
                 self.temporal_acoustic.is_some(),
@@ -861,11 +775,9 @@ mod tests {
         let custom = AppConfig {
             temporal_ridge: None,
             temporal_acoustic: None,
-            temporal_memory: None,
             temporal_period: None,
             temporal_body: None,
             temporal_body_prototypes: None,
-            temporal_private_trace: None,
             temporal_onset_comparison: None,
             audio: AudioConfig {
                 latency_ms: 75.0,
@@ -1057,79 +969,6 @@ mod tests {
             assert!(message.contains(path.to_str().unwrap()), "{message}");
             fs::remove_file(path).unwrap();
         }
-    }
-
-    #[test]
-    fn temporal_diagnostics_require_explicit_dependencies_and_valid_scales() {
-        let acoustic = TemporalAcousticConfig {
-            group_means: [0.; 3],
-            group_deviations: [0.05, 4., 1.],
-            accent_means: [0.; 2],
-            accent_deviations: [1.; 2],
-            group_retirement_sec: 2.,
-            inactive_energy_max: 1e-8,
-            correlation_window_sec: 0.25,
-            min_pairs: 8,
-            min_coverage: 0.9,
-            persistence_hops: 3,
-        };
-        let memory = TemporalMemoryConfig {
-            retention: None,
-            candidates: None,
-            scales: [1.; 10],
-            span_hops: 128,
-            episodes: 16,
-            query_cadence_ms: 100,
-            deadline_ms: 200,
-        };
-        let mut cfg = AppConfig {
-            temporal_memory: Some(memory),
-            ..Default::default()
-        };
-        assert!(
-            cfg.validate()
-                .unwrap_err()
-                .to_string()
-                .contains("temporal_acoustic")
-        );
-        cfg.temporal_acoustic = Some(acoustic);
-        assert!(
-            cfg.validate()
-                .unwrap_err()
-                .to_string()
-                .contains("temporal_ridge")
-        );
-        cfg.temporal_ridge = Some(TemporalRidgeConfig {
-            means: [0.; 3],
-            deviations: [0.05, 4., 1.],
-        });
-        cfg.validate().unwrap();
-        for change in 0..9 {
-            let mut bad = cfg.clone();
-            let m = bad.temporal_memory.as_mut().unwrap();
-            match change {
-                0 => m.scales[0] = f64::NAN,
-                1 => m.scales[0] = 0.,
-                2 => m.span_hops = 0,
-                3 => m.episodes = 16385,
-                4 => m.query_cadence_ms = 75,
-                5 => m.deadline_ms = u64::MAX,
-                7 => m.candidates = Some(0),
-                8 => m.candidates = Some(1025),
-                _ => {
-                    bad.temporal_acoustic
-                        .as_mut()
-                        .unwrap()
-                        .correlation_window_sec = -1.
-                }
-            }
-            assert!(bad.validate().is_err(), "accepted invalid case {change}");
-        }
-        let text = toml::to_string(&cfg).unwrap();
-        let parsed: AppConfig = toml::from_str(&text).unwrap();
-        parsed.validate().unwrap();
-        assert_eq!(parsed.temporal_memory.unwrap().scales, memory.scales);
-        assert!(toml::from_str::<AppConfig>(&text.replace("span_hops", "span_hpos")).is_err());
     }
 
     #[test]

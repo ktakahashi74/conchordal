@@ -453,43 +453,7 @@ fn draw_listener_dashboard(
             Vec2::new(right_width, dashboard_height),
             egui::Layout::top_down(egui::Align::LEFT),
             |ui| {
-                if let Some(observation) = &frame.self_sound {
-                    ui.heading("Voice self-sound observation");
-                    ui.label(format!("{} commands · {} complete · {} pending · {} rejected · {} capacity / {} output drops",
-                        observation.commands, observation.completed, observation.pending,
-                        observation.rejected, observation.capacity_dropped, observation.output_dropped));
-                    if let Some(prediction) = observation.prediction {
 
-                        ui.label(format!("Self prediction: {} issued · {} bus outcomes scored · {} updated · {} unsupported",
-                            prediction.issued, prediction.matched, prediction.updated, prediction.unsupported));
-                        let d = prediction.descriptor;
-                        let energy = prediction.energy;
-                        ui.label(format!("Source energy: {} windows scored · {} updated · {} unsupported · {} retired",
-                            energy.scored_windows, energy.updated, energy.unsupported_windows, energy.retired));
-                        ui.label(format!("Habitat energy ratios: {} issued · {} supported · {} unknown",
-                            energy.ratio_previews, energy.ratio_supported, energy.ratio_unknown));
-                        ui.label(format!("Future body descriptors: {} issued · {} scored · {} updated · {} pending · {} unsupported",
-                            d.issued, d.matched, d.updated, d.pending, d.unsupported));
-                    }
-                    if let Some(trace) = observation.participation_trace {
-                        ui.label(format!("Private participation: {} issued · {} learned · {:.3} assigned · {} pending · {} errors",
-                            trace.issued, trace.learned, trace.assigned, trace.pending, trace.errors));
-                        ui.label(format!("Private timing fit: {} previews · {} queries · {} rate-limited",
-                            trace.timing_previews, trace.timing_queries, trace.timing_rate_limited));
-                    }
-                    if let Some(outcome) = observation.latest {
-                        ui.label(format!("Voice {} / generation {} · tone {} · {:?} {} · habitat {} · presentation {}",
-                            outcome.source_id, outcome.source_generation, outcome.tone_id,
-                            outcome.action, outcome.command_status, outcome.buses[0].status, outcome.buses[1].status));
-                        ui.label(format!("Command {:?} · detected {:?} / {:?} · {} observed samples",
-                            outcome.scheduled_action_sample, outcome.buses[0].first_activity_sample,
-                            outcome.buses[1].first_activity_sample, outcome.observed_samples));
-                        ui.label(format!("Last activity {:?} / {:?} · renderer end {:?}",
-                            outcome.buses[0].last_activity_sample, outcome.buses[1].last_activity_sample,
-                            outcome.renderer_end_sample));
-                    }
-                    ui.separator();
-                }
                 if let Some(body) = &frame.body {
                     ui.heading("Private body descriptors (uncalibrated)");
                     if let Some(version) = body.prototype_model_version {
@@ -568,46 +532,6 @@ fn draw_listener_dashboard(
                                     .filter(|f| { f.detector.is_some_and(|d| d.accent.is_some()) })
                                     .count(),
                             ));
-                        }
-                        if let Some(error) = observation.reference_inventory_error {
-                            ui.label(format!("Reference inventory: {error}"));
-                        } else if let Some(inventory) = &observation.reference_inventory {
-                            ui.label(format!("Private references: {} · assigned {:.3} · unassigned {:.3}",
-                                inventory.references.iter().flatten().count(), inventory.assigned, inventory.unassigned));
-                        }
-                        if observation.memory_failed {
-                            ui.label("Memory diagnostics: failed for this source epoch");
-                        } else if let Some(memory) = observation.memory {
-                            ui.label(format!(
-                                "{} stored intervals · {} completed queries · {} pruned candidates ({} tied) · uncalibrated",
-                                memory.stored_episodes, memory.completed, memory.pruned_candidates, memory.pruned_ties
-                            ));
-                            if let Some(retention) = memory.retention {
-                                ui.label(format!("Retention: {} admissions · {} records · {} evictions · rate invalid {} / unverified {}",
-                                    retention.sequence, retention.records, retention.evictions,
-                                    retention.rate.envelope_invalid, retention.rate.envelope_unverified));
-                                if let Some(group) = memory.retrieval.iter().flatten().max_by_key(|g| g.query_id) {
-                                    ui.label(format!("Stored-match probability: {:.3}–{:.3} · {} scored episodes",
-                                        group.recognition.lower, group.recognition.upper, group.scored_episodes));
-                                }
-                            }
-                            if let Some(result) = memory.latest {
-                                if let Some(best) = result.best {
-                                    ui.label(format!(
-                                        "Query {} → interval {} · cost {:.4} · {}–{} samples",
-                                        result.query_id,
-                                        best.episode_id,
-                                        best.cost,
-                                        best.support_start_sample,
-                                        best.support_end_sample
-                                    ));
-                                } else {
-                                    ui.label(format!(
-                                        "Query {}: no supported match among {} earlier intervals",
-                                        result.query_id, result.candidates
-                                    ));
-                                }
-                            }
                         }
                         if let Some(error) = observation.context_error {
                             ui.label(format!("Observed context: {error}"));

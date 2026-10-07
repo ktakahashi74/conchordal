@@ -107,7 +107,6 @@ pub(crate) struct Capture {
     slots: Vec<Option<Slot>>,
     next_generation: u32,
     hop: usize,
-    sample_rate: u32,
     frame: Option<Box<Frame>>,
     free: Receiver<Box<Frame>>,
     tx: Option<Sender<Box<Frame>>>,
@@ -444,7 +443,6 @@ impl Capture {
             slots: (0..VOICES).map(|_| None).collect(),
             next_generation: 1,
             hop,
-            sample_rate,
             frame: None,
             free,
             tx: Some(tx),
@@ -509,61 +507,6 @@ impl Capture {
             slot.as_ref()
                 .filter(|s| s.owner.id == id && s.owner.generation == generation)
                 .map(|s| (i, s.owner.body_generation))
-        })
-    }
-
-    pub(crate) fn prediction_input(
-        &self,
-        token: (usize, u32),
-        now: u64,
-        scheduled: u64,
-        parameters: (f32, f32, crate::life::sound::envelope::Envelope),
-    ) -> Option<crate::life::self_prediction::Input> {
-        let owner = self.slots[token.0].as_ref()?.owner;
-        if owner.body_generation != token.1 {
-            return None;
-        }
-        let snapshot = self.snapshot.lock().expect("private prediction inputs");
-        let mut descriptors = [[None; 6]; 2];
-        let mut descriptor_support = [None; 2];
-        for record in &snapshot.records {
-            if record.active
-                && record.source_id == owner.id
-                && record.source_generation == owner.generation
-                && record.body_generation == owner.body_generation
-                && record.available <= now
-                && record.end <= now
-                && now - record.end <= u64::from(self.sample_rate) / 2
-            {
-                descriptors[record.bus as usize] = record.standardized(snapshot.config);
-                descriptor_support[record.bus as usize] =
-                    Some([record.start, record.end, record.available]);
-            }
-        }
-        Some(crate::life::self_prediction::Input {
-            body_generation: owner.body_generation,
-            descriptors,
-            descriptor_support,
-            frequency_hz: parameters.0,
-            amplitude: parameters.1,
-            envelope: parameters.2,
-            scheduled_release: None,
-            control: None,
-            retained_energy: [Default::default(); 2],
-            coherent_energy: [[None; 16]; 2],
-            sine: None,
-            bank: None,
-            descriptor_slot: token.0,
-            descriptor_target_end: {
-                let period = u64::from(self.sample_rate)
-                    .div_ceil(10)
-                    .div_ceil(self.hop as u64)
-                    * self.hop as u64;
-                let earliest = now
-                    .max(scheduled)
-                    .saturating_add(u64::from(self.sample_rate).div_ceil(10));
-                owner.changed + earliest.saturating_sub(owner.changed).div_ceil(period) * period
-            },
         })
     }
 
@@ -638,26 +581,6 @@ impl Capture {
         }
     }
 
-    pub(crate) fn source_audio(
-        &self,
-        slot: usize,
-        identity: (u64, u32, u32),
-    ) -> Option<(u64, [Option<&[f32]>; 2])> {
-        let frame = self.frame.as_ref()?;
-        let owner = frame.owners.get(slot)?.as_ref()?;
-        if (owner.id, owner.generation, owner.body_generation) != identity {
-            return None;
-        }
-        Some((
-            frame.start,
-            std::array::from_fn(|bus| {
-                let index = slot * 2 + bus;
-                frame.supported[index]
-                    .then_some(&frame.pcm[index * self.hop..(index + 1) * self.hop])
-            }),
-        ))
-    }
-
     pub(crate) fn snapshot(&self) -> Snapshot {
         let mut snapshot = *self.snapshot.lock().expect("private descriptor snapshot");
         snapshot.capture_drops = self.dropped;
@@ -681,6 +604,3 @@ impl Drop for Capture {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod action_targets;

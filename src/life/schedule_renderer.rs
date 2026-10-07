@@ -1005,6 +1005,9 @@ impl ScheduleRenderer {
                 let Some(rt) = self.tones.get_mut(&key) else {
                     continue;
                 };
+                if rt.source_generation != batch.source_generation {
+                    continue;
+                }
                 let tick = at_tick.unwrap_or(now);
                 rt.tone.schedule_update(tick, update);
             }
@@ -2713,6 +2716,89 @@ mod tests {
         let rt = renderer.tones.get(&key).expect("tone");
         assert!((rt.tone.debug_current_freq_hz() - 440.0).abs() < 1e-6);
         assert!((rt.tone.debug_current_amp() - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn update_commands_ignore_other_source_generations() {
+        let time = Timebase { fs: 8000., hop: 32 };
+        let rhythms = NeuralRhythms::default();
+        for at_tick in [None, Some(96)] {
+            for generation in [6, 7, 8] {
+                for update in [
+                    ToneUpdate {
+                        target_freq_hz: Some(220.),
+                        target_amp: None,
+                        continuous_drive: None,
+                    },
+                    ToneUpdate {
+                        target_freq_hz: None,
+                        target_amp: Some(0.05),
+                        continuous_drive: None,
+                    },
+                    ToneUpdate {
+                        target_freq_hz: None,
+                        target_amp: None,
+                        continuous_drive: Some(2.0),
+                    },
+                ] {
+                    let mut renderer = ScheduleRenderer::new(time);
+                    let mut reference = ScheduleRenderer::new(time);
+                    let mut batch = outcome_batch(BodyKind::Harmonic);
+                    batch.tones[0].hold_ticks = Some(8000);
+                    let tone_id = batch.tones[0].tone_id;
+                    let key = ToneKey {
+                        source_id: batch.source_id,
+                        tone_id,
+                    };
+                    let initial = renderer.render(std::slice::from_ref(&batch), 0, &rhythms);
+                    let baseline = reference.render(std::slice::from_ref(&batch), 0, &rhythms);
+                    assert!(initial.habitat.iter().any(|sample| *sample != 0.));
+                    assert_eq!(initial.habitat, baseline.habitat);
+                    assert_eq!(initial.presentation, baseline.presentation);
+                    batch.tones.clear();
+                    batch.source_generation = generation;
+                    batch.cmds = vec![ToneCmd::Update {
+                        tone_id,
+                        at_tick,
+                        update,
+                    }];
+                    for now in [32, 64, 96, 128] {
+                        let batches = if now == 32 {
+                            std::slice::from_ref(&batch)
+                        } else {
+                            &[]
+                        };
+                        let actual = renderer.render(batches, now, &rhythms);
+                        let unchanged = reference.render(&[], now, &rhythms);
+                        let applied = generation == 7 && now >= at_tick.unwrap_or(32);
+                        if applied {
+                            assert_ne!(actual.habitat, unchanged.habitat);
+                            assert_ne!(actual.presentation, unchanged.presentation);
+                        } else {
+                            assert_eq!(actual.habitat, unchanged.habitat);
+                            assert_eq!(actual.presentation, unchanged.presentation);
+                        }
+                        let tone = &renderer.tones[&key].tone;
+                        assert_eq!(
+                            tone.debug_current_freq_hz(),
+                            if applied {
+                                update.target_freq_hz.unwrap_or(337.)
+                            } else {
+                                337.
+                            }
+                        );
+                        assert_eq!(
+                            tone.debug_current_amp(),
+                            if applied {
+                                update.target_amp.unwrap_or(0.2)
+                            } else {
+                                0.2
+                            }
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

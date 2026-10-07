@@ -1326,7 +1326,7 @@ impl ScriptHost {
                     pitch_objective_mode: Some(mode),
                     ..crate::core::landscape::LandscapeUpdate::default()
                 };
-                ctx.push_event(cursor, vec![Action::SetHarmonicityParams { update }]);
+                ctx.push_event(cursor, vec![Action::UpdateLandscape { update }]);
             },
         );
 
@@ -1430,15 +1430,17 @@ impl ScriptHost {
             },
         );
 
-        let ctx_for_set_roughness_k = ctx.clone();
+        let ctx_for_set_roughness_aversion = ctx.clone();
         engine.register_fn(
-            "set_roughness_k",
+            "set_roughness_aversion",
             move |_call_ctx: NativeCallContext, value: FLOAT| {
-                let mut ctx = ctx_for_set_roughness_k.lock().expect("lock script context");
+                let mut ctx = ctx_for_set_roughness_aversion
+                    .lock()
+                    .expect("lock script context");
                 let cursor = ctx.cursor;
                 ctx.push_event(
                     cursor,
-                    vec![Action::SetRoughnessTolerance {
+                    vec![Action::SetRoughnessAversion {
                         value: value as f32,
                     }],
                 );

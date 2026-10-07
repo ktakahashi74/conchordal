@@ -95,7 +95,7 @@ pub struct Community {
     last_pred_gate_stats: Option<PredGateStats>,
     last_gate_boundary_in_hop: Option<bool>,
     last_phonation_onsets_in_hop: Option<u32>,
-    last_phonation_onset_strength_in_hop: Option<f32>,
+    last_habitat_onset_strength_in_hop: Option<f32>,
     death_records: Vec<LifeRecord>,
     auto_observe: Option<ObservationConfig>,
     runtime_events: Vec<RuntimeEvent>,
@@ -220,7 +220,7 @@ impl Community {
             last_pred_gate_stats: None,
             last_gate_boundary_in_hop: None,
             last_phonation_onsets_in_hop: None,
-            last_phonation_onset_strength_in_hop: None,
+            last_habitat_onset_strength_in_hop: None,
             death_records: Vec::new(),
             auto_observe: None,
             runtime_events: Vec::new(),
@@ -342,11 +342,13 @@ impl Community {
         self.last_phonation_onsets_in_hop
     }
 
-    /// Sum of onset strengths fired this hop. Accented onsets weigh more, so the
-    /// production meter can sense a recurring downbeat (the seed of an emergent
-    /// measure), not just an onset count.
-    pub fn last_phonation_onset_strength_in_hop(&self) -> Option<f32> {
-        self.last_phonation_onset_strength_in_hop
+    /// Sum of onset strengths fired this hop by habitat-routed Voices. Accented
+    /// onsets weigh more, so the production meter can sense a recurring downbeat
+    /// (the seed of an emergent measure), not just an onset count. This is the
+    /// meter's motor-side input beside habitat flux; presentation-only decor stays
+    /// outside it. Strength is the commanded accent, not the rendered level.
+    pub fn last_habitat_onset_strength_in_hop(&self) -> Option<f32> {
+        self.last_habitat_onset_strength_in_hop
     }
 
     /// One batch per Voice, including policy facts when no sound command is emitted.
@@ -387,7 +389,7 @@ impl Community {
             });
         let mut pred_acc = PredGateAccum::default();
         let mut phonation_onsets_in_hop = 0u32;
-        let mut phonation_onset_strength_in_hop = 0.0f32;
+        let mut habitat_onset_strength_in_hop = 0.0f32;
         let mut used = 0usize;
         let social_trace = self.social_trace.as_ref();
         let auto_observe_enabled = self.auto_observe.is_some();
@@ -435,11 +437,13 @@ impl Community {
             }
             phonation_onsets_in_hop = phonation_onsets_in_hop
                 .saturating_add(batch.onsets.len().min(u32::MAX as usize) as u32);
-            phonation_onset_strength_in_hop += batch
-                .onsets
-                .iter()
-                .map(|o| o.strength.max(0.0))
-                .sum::<f32>();
+            if batch.routing.to_habitat {
+                habitat_onset_strength_in_hop += batch
+                    .onsets
+                    .iter()
+                    .map(|o| o.strength.max(0.0))
+                    .sum::<f32>();
+            }
             // Silent owners still carry current policy facts and must not appear retired.
             used += 1;
         }
@@ -461,7 +465,7 @@ impl Community {
         }
         self.last_gate_boundary_in_hop = Some(gate_boundary_in_hop);
         self.last_phonation_onsets_in_hop = Some(phonation_onsets_in_hop);
-        self.last_phonation_onset_strength_in_hop = Some(phonation_onset_strength_in_hop);
+        self.last_habitat_onset_strength_in_hop = Some(habitat_onset_strength_in_hop);
         self.last_pred_gate_stats = pred_acc.finalize();
         self.phonation_gate_open_events
             .append(&mut self.gate_open_scratch);

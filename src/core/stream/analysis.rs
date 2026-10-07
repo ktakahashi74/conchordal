@@ -35,7 +35,7 @@ impl AnalysisStream {
             params.roughness_kernel.params.suppress_sigma_erb.max(1e-6);
         last_landscape.roughness_kernel_params = params.roughness_kernel.params;
         last_landscape.harmonicity_params = params.harmonicity_kernel.params;
-        last_landscape.consonance_kernel = params.consonance_kernel;
+        last_landscape.consonance_kernel = params.consonance_field_kernel();
         last_landscape.roughness_k = params.roughness_k;
         last_landscape.roughness_ref_peak = roughness_ref_peak;
         last_landscape.roughness_ref_eps = params.roughness_ref_eps;
@@ -120,7 +120,7 @@ impl AnalysisStream {
             .max(1e-6);
         self.last_landscape.roughness_kernel_params = self.params.roughness_kernel.params;
         self.last_landscape.harmonicity_params = self.params.harmonicity_kernel.params;
-        self.last_landscape.consonance_kernel = self.params.consonance_kernel;
+        self.last_landscape.consonance_kernel = self.params.consonance_field_kernel();
         self.last_landscape.roughness_k = self.params.roughness_k;
         self.last_landscape.roughness_ref_peak = self.roughness_ref_peak;
         self.last_landscape.roughness_ref_eps = self.params.roughness_ref_eps;
@@ -187,7 +187,7 @@ impl AnalysisStream {
             .max(1e-6);
         landscape.roughness_kernel_params = self.params.roughness_kernel.params;
         landscape.harmonicity_params = self.params.harmonicity_kernel.params;
-        landscape.consonance_kernel = self.params.consonance_kernel;
+        landscape.consonance_kernel = self.params.consonance_field_kernel();
         landscape.roughness_k = self.params.roughness_k;
         landscape.roughness_ref_peak = self.roughness_ref_peak;
         landscape.roughness_ref_eps = self.params.roughness_ref_eps;
@@ -195,8 +195,8 @@ impl AnalysisStream {
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
-        if let Some(k) = upd.roughness_k {
-            self.params.roughness_k = k.max(1e-6);
+        if let Some(w) = upd.roughness_aversion {
+            self.params.set_roughness_aversion(w);
         }
         if let Some(mode) = upd.pitch_objective_mode {
             self.last_landscape.pitch_objective_mode = mode;
@@ -223,6 +223,7 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
+            roughness_aversion: 1.0,
             habituation: crate::core::habituation::HabituationParams::default(),
             loudness_exp: 1.0,
             ref_power: 1.0,

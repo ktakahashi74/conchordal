@@ -1622,7 +1622,7 @@ fn set_pitch_objective_emits_landscape_update() {
         .iter()
         .flat_map(|event| event.actions.iter())
         .filter_map(|action| match action {
-            Action::SetHarmonicityParams { update } => update.pitch_objective_mode,
+            Action::UpdateLandscape { update } => update.pitch_objective_mode,
             _ => None,
         })
         .collect();

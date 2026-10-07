@@ -119,6 +119,7 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
+            roughness_aversion: 1.0,
             habituation: crate::core::habituation::HabituationParams::default(),
             loudness_exp: 1.0,
             ref_power: 1.0,

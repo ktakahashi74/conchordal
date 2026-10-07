@@ -1183,13 +1183,13 @@ viability_scope(name)
 
 ### Directorとglobal parameter
 
-#### `set_roughness_k`
+#### `set_roughness_aversion`
 
 ```rhai,ignore
-set_roughness_k(value)
+set_roughness_aversion(weight)
 ```
 
-Roughness tolerance of the landscape.
+How much the modeled listener minds roughness (default 1.0). Scales the configured roughness terms of consonance valuation (field and density), clamped to [0, 100]; non-finite values are ignored. 0 ignores roughness in valuation. It acts as aversion, with larger values penalizing roughness more, when the configured kernel penalizes roughness at every harmonicity (b <= 0 and b + c <= 0, true for the defaults). Roughness itself, as sensed and displayed, does not change.
 
 #### `set_global_coupling`
 

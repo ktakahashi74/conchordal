@@ -103,3 +103,35 @@ fn both_flags_off_produces_silence_everywhere() {
     assert!(!presentation);
     assert!(!habitat);
 }
+
+fn habitat_onset_strength_first_hop(routing: Routing) -> f32 {
+    let tb = test_timebase();
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    let mut world = GeneratorModel::new(tb, space.clone());
+    let mut pop = Community::new(tb);
+    let meta = VoiceMetadata {
+        population_id: 0,
+        member_idx: 0,
+        generation: 0,
+        parent_id: None,
+    };
+    pop.add_voice(spawn_voice_with_routing(routing).spawn(1, 0, meta, tb.fs, 0));
+    let landscape = Landscape::new(space);
+    let batches = pop.collect_phonation_batches(&mut world, &landscape, 0);
+    assert!(
+        batches.iter().any(|b| !b.onsets.is_empty()),
+        "the voice must fire an onset in the first hop"
+    );
+    pop.last_habitat_onset_strength_in_hop()
+        .expect("strength is recorded every hop")
+}
+
+#[test]
+fn production_meter_onset_drive_ignores_presentation_only_voices() {
+    assert!(habitat_onset_strength_first_hop(Routing::default()) > 0.0);
+    let presentation_only = Routing {
+        to_presentation: true,
+        to_habitat: false,
+    };
+    assert_eq!(habitat_onset_strength_first_hop(presentation_only), 0.0);
+}

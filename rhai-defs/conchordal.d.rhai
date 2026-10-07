@@ -523,8 +523,8 @@ fn set_global_coupling(arg0: f64);
 /// [research] `"consonance"`/`"positive"` or `"dissonance"`/`"negative"`. Research control.
 fn set_pitch_objective(arg0: String);
 
-/// [tuning] Roughness tolerance of the landscape.
-fn set_roughness_k(arg0: f64);
+/// [tuning] How much the modeled listener minds roughness (default 1.0).
+fn set_roughness_aversion(arg0: f64);
 
 /// [research] Disable the external rhythm scaffold.
 fn set_scaffold_off();

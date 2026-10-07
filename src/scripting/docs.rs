@@ -99,8 +99,8 @@ const TUNING_FNS: &[&str] = &[
     "leave_self_out_harmonics",
     // lifecycle / respawn details
     "viability_scope",
-    // global psychoacoustic tuning
-    "set_roughness_k",
+    // global valuation and coupling
+    "set_roughness_aversion",
     "set_global_coupling",
 ];
 
@@ -1551,14 +1551,18 @@ fabricates a beat from non-metric input.",
 not place a beat, and never forces a measure.",
     },
     FnDoc {
-        name: "set_roughness_k",
+        name: "set_roughness_aversion",
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
         patch: Patch::Na,
-        usage: &["set_roughness_k(value)"],
-        summary: "Roughness tolerance of the landscape.",
-        details: "",
+        usage: &["set_roughness_aversion(weight)"],
+        summary: "How much the modeled listener minds roughness (default 1.0).",
+        details: "Scales the configured roughness terms of consonance valuation (field and \
+density), clamped to [0, 100]; non-finite values are ignored. 0 ignores roughness in \
+valuation. It acts as aversion, with larger values penalizing roughness more, when the \
+configured kernel penalizes roughness at every harmonicity (b <= 0 and b + c <= 0, true \
+for the defaults). Roughness itself, as sensed and displayed, does not change.",
     },
     FnDoc {
         name: "set_global_coupling",

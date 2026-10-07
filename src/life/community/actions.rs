@@ -62,14 +62,14 @@ impl Community {
                     other_population_visible,
                 );
             }
-            Action::SetHarmonicityParams { update } => {
+            Action::UpdateLandscape { update } => {
                 self.merge_landscape_update(update);
             }
             Action::SetGlobalCoupling { value } => {
                 self.global_coupling = value.max(0.0);
             }
-            Action::SetRoughnessTolerance { value } => {
-                self.on_set_roughness_tolerance(value);
+            Action::SetRoughnessAversion { value } => {
+                self.on_set_roughness_aversion(value);
             }
         }
     }
@@ -256,9 +256,9 @@ impl Community {
         }
     }
 
-    fn on_set_roughness_tolerance(&mut self, value: f32) {
+    fn on_set_roughness_aversion(&mut self, value: f32) {
         let update = LandscapeUpdate {
-            roughness_k: Some(value),
+            roughness_aversion: Some(value),
             ..LandscapeUpdate::default()
         };
         self.merge_landscape_update(update);
@@ -266,8 +266,8 @@ impl Community {
 
     fn merge_landscape_update(&mut self, update: LandscapeUpdate) {
         let mut merged = self.pending_update.unwrap_or_default();
-        if update.roughness_k.is_some() {
-            merged.roughness_k = update.roughness_k;
+        if update.roughness_aversion.is_some() {
+            merged.roughness_aversion = update.roughness_aversion;
         }
         if update.pitch_objective_mode.is_some() {
             merged.pitch_objective_mode = update.pitch_objective_mode;

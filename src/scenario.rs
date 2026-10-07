@@ -676,13 +676,13 @@ pub enum Action {
         same_population_visible: bool,
         other_population_visible: bool,
     },
-    SetHarmonicityParams {
+    UpdateLandscape {
         update: LandscapeUpdate,
     },
     SetGlobalCoupling {
         value: f32,
     },
-    SetRoughnessTolerance {
+    SetRoughnessAversion {
         value: f32,
     },
     Finish,
@@ -731,16 +731,16 @@ impl fmt::Display for Action {
                 "SetPopulationCrowdingTarget population={} same={} other={}",
                 population_id, same_population_visible, other_population_visible
             ),
-            Action::SetHarmonicityParams { update } => write!(
+            Action::UpdateLandscape { update } => write!(
                 f,
-                "SetHarmonicityParams roughness_k={:?}",
-                update.roughness_k
+                "UpdateLandscape roughness_aversion={:?} pitch_objective={:?}",
+                update.roughness_aversion, update.pitch_objective_mode
             ),
             Action::SetGlobalCoupling { value } => {
                 write!(f, "SetGlobalCoupling value={:.3}", value)
             }
-            Action::SetRoughnessTolerance { value } => {
-                write!(f, "SetRoughnessTolerance value={:.3}", value)
+            Action::SetRoughnessAversion { value } => {
+                write!(f, "SetRoughnessAversion value={:.3}", value)
             }
             Action::Finish => write!(f, "Finish"),
         }

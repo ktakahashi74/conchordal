@@ -440,7 +440,9 @@ fn merge_latest_analysis_results(
     current_landscape.loudness_mass = frame.loudness_mass;
     current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
     current_landscape.harmonicity_params = frame.harmonicity_params;
-    current_landscape.consonance_kernel = frame.consonance_kernel;
+    // Frames analyzed before a valuation update still carry the old kernel;
+    // the worker's params are authoritative for everything recomputed here.
+    current_landscape.consonance_kernel = lparams.consonance_field_kernel();
     current_landscape.roughness_k = frame.roughness_k;
     current_landscape.roughness_ref_peak = frame.roughness_ref_peak;
     current_landscape.roughness_ref_eps = frame.roughness_ref_eps;
@@ -657,6 +659,7 @@ fn build_analysis_runtime_core(
             theta: config.psychoacoustics.consonance.field.level.theta,
         },
         consonance_density_roughness_gain: config.psychoacoustics.consonance.density.roughness_gain,
+        roughness_aversion: 1.0,
         habituation: crate::core::habituation::HabituationParams {
             enabled: config.psychoacoustics.habituation.enabled,
             satiation_sec: config.psychoacoustics.habituation.satiation_sec,
@@ -784,9 +787,9 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 | Action::ReleasePopulation { .. }
                 | Action::SetRespawnPolicy { .. }
                 | Action::SetPopulationCrowdingTarget { .. } => {}
-                Action::SetHarmonicityParams { .. }
+                Action::UpdateLandscape { .. }
                 | Action::SetGlobalCoupling { .. }
-                | Action::SetRoughnessTolerance { .. } => {}
+                | Action::SetRoughnessAversion { .. } => {}
             }
         }
     }
@@ -3033,7 +3036,7 @@ fn drive_production_meter(state: &mut WorkerState, cfg: &WorkerConfig, habitat_c
     const ONSET_DRIVE_GAIN: f32 = 0.25;
     let onset_drive = (state
         .pop
-        .last_phonation_onset_strength_in_hop()
+        .last_habitat_onset_strength_in_hop()
         .unwrap_or(0.0)
         * ONSET_DRIVE_GAIN)
         .clamp(0.0, 1.0);
@@ -3103,7 +3106,7 @@ fn send_runtime_ui_frame(
 #[derive(Clone, Copy, Debug, Default)]
 struct ParamsUpdateEffect {
     harmonicity_changed: bool,
-    roughness_changed: bool,
+    valuation_changed: bool,
 }
 
 fn apply_pending_landscape_update(
@@ -3121,7 +3124,8 @@ fn apply_pending_landscape_update(
         if effect.harmonicity_changed {
             let _ = recompute_harmonicity_from_nsgt_power(current_landscape, params);
         }
-        if effect.harmonicity_changed || effect.roughness_changed {
+        if effect.harmonicity_changed || effect.valuation_changed {
+            current_landscape.consonance_kernel = params.consonance_field_kernel();
             current_landscape.recompute_consonance(params);
         }
         if let Err(err) = analysis_update_tx.send(update) {
@@ -3132,7 +3136,7 @@ fn apply_pending_landscape_update(
         {
             warn!("listener analysis update disconnected: {err}");
         }
-        return effect.harmonicity_changed || effect.roughness_changed;
+        return effect.harmonicity_changed || effect.valuation_changed;
     }
     false
 }
@@ -3158,11 +3162,8 @@ fn recompute_harmonicity_from_nsgt_power(
 
 fn apply_params_update(params: &mut LandscapeParams, upd: &LandscapeUpdate) -> ParamsUpdateEffect {
     let mut effect = ParamsUpdateEffect::default();
-    if let Some(k) = upd.roughness_k {
-        let roughness_k = if k.is_finite() { k.max(1e-6) } else { 1e-6 };
-        let prev = params.roughness_k;
-        params.roughness_k = roughness_k;
-        effect.roughness_changed = (prev - roughness_k).abs() > f32::EPSILON;
+    if let Some(w) = upd.roughness_aversion {
+        effect.valuation_changed = params.set_roughness_aversion(w);
     }
     if let Some(mode) = upd.pitch_objective_mode {
         effect.harmonicity_changed |= false;
@@ -3176,7 +3177,7 @@ fn compose_consonance_field_score_level_with_params(
     r_state01: f32,
     params: &LandscapeParams,
 ) -> (f32, f32) {
-    let c_score = params.consonance_kernel.score(h_state01, r_state01);
+    let c_score = params.consonance_field_kernel().score(h_state01, r_state01);
     let c_level = params.consonance_representation.level(c_score);
     (c_score, c_level)
 }
@@ -3373,6 +3374,7 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
+            roughness_aversion: 1.0,
             habituation: crate::core::habituation::HabituationParams::default(),
             loudness_exp: 1.0,
             ref_power: 1.0,
@@ -3849,9 +3851,9 @@ mod tests {
         });
 
         pop.apply_action(
-            Action::SetHarmonicityParams {
+            Action::UpdateLandscape {
                 update: LandscapeUpdate {
-                    roughness_k: Some(2.0),
+                    roughness_aversion: Some(2.0),
                     pitch_objective_mode: None,
                 },
             },
@@ -3869,6 +3871,57 @@ mod tests {
             None,
         );
         assert!(changed);
+    }
+
+    #[test]
+    fn roughness_aversion_update_reaches_kernel_and_fields_without_touching_sensation() {
+        let space = Log2Space::new(80.0, 2_000.0, 96);
+        let mut params = build_test_params(&space);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = vec![0.6; n];
+        landscape.roughness01 = vec![0.5; n];
+        landscape.recompute_consonance(&params);
+        let r01_before = landscape.roughness01.clone();
+        let h01_before = landscape.harmonicity01.clone();
+        let score_before = landscape.consonance_field_score[0];
+        let mut pop = Community::new(Timebase {
+            fs: 48_000.0,
+            hop: 256,
+        });
+        let (tx, rx) = bounded::<LandscapeUpdate>(4);
+
+        pop.apply_action(
+            Action::UpdateLandscape {
+                update: LandscapeUpdate {
+                    roughness_aversion: Some(0.0),
+                    pitch_objective_mode: None,
+                },
+            },
+            &landscape,
+            None::<&mut crate::core::stream::analysis::AnalysisStream>,
+        );
+        assert!(apply_pending_landscape_update(
+            &mut pop,
+            &mut params,
+            &mut landscape,
+            &tx,
+            None,
+        ));
+
+        assert_eq!(params.roughness_aversion, 0.0);
+        assert_eq!(
+            rx.try_recv()
+                .expect("forwarded to analysis")
+                .roughness_aversion,
+            Some(0.0)
+        );
+        let kernel = params.consonance_field_kernel();
+        assert_eq!(landscape.consonance_kernel.b.to_bits(), kernel.b.to_bits());
+        assert_eq!(landscape.consonance_kernel.c.to_bits(), kernel.c.to_bits());
+        assert_eq!(landscape.roughness01, r01_before);
+        assert_eq!(landscape.harmonicity01, h01_before);
+        assert_ne!(landscape.consonance_field_score[0], score_before);
     }
 }
 

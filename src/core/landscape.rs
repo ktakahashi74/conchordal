@@ -18,6 +18,10 @@ pub struct LandscapeParams {
     pub consonance_kernel: ConsonanceKernel,
     pub consonance_representation: ConsonanceRepresentationParams,
     pub consonance_density_roughness_gain: f32,
+    /// Valuation weight on roughness: scales the field kernel's roughness terms
+    /// (`b`, `c`) and the density `rho`. 1.0 keeps the configured valuation; 0.0
+    /// makes valuation ignore roughness. `roughness01` (the sensation) is untouched.
+    pub roughness_aversion: f32,
     pub habituation: crate::core::habituation::HabituationParams,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
@@ -42,9 +46,42 @@ pub struct LandscapeParams {
     pub roughness_ref_eps: f32,
 }
 
+/// Upper bound on the roughness-aversion weight; keeps scaled coefficients finite.
+pub const ROUGHNESS_AVERSION_MAX: f32 = 100.0;
+
+impl LandscapeParams {
+    /// Every entry point applies aversion through here. Non-finite updates are
+    /// ignored; finite ones are clamped to `[0, ROUGHNESS_AVERSION_MAX]`.
+    /// Returns whether the stored weight changed.
+    pub fn set_roughness_aversion(&mut self, w: f32) -> bool {
+        if !w.is_finite() {
+            return false;
+        }
+        let w = w.clamp(0.0, ROUGHNESS_AVERSION_MAX);
+        let changed = w != self.roughness_aversion;
+        self.roughness_aversion = w;
+        changed
+    }
+
+    pub fn consonance_field_kernel(&self) -> ConsonanceKernel {
+        let w = self.roughness_aversion;
+        ConsonanceKernel {
+            b: self.consonance_kernel.b * w,
+            c: self.consonance_kernel.c * w,
+            ..self.consonance_kernel
+        }
+    }
+
+    pub fn consonance_density_kernel(&self) -> ConsonanceKernel {
+        ConsonanceKernel::density_with_rho(
+            self.consonance_density_roughness_gain * self.roughness_aversion,
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LandscapeUpdate {
-    pub roughness_k: Option<f32>,
+    pub roughness_aversion: Option<f32>,
     pub pitch_objective_mode: Option<PitchObjectiveMode>,
 }
 
@@ -331,10 +368,11 @@ impl Landscape {
     fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
         let n = self.consonance_field_score.len();
+        let kernel = params.consonance_field_kernel();
         for i in 0..n {
             let h01 = sanitize01(self.harmonicity01[i]);
             let r01 = sanitize01(self.roughness01[i]);
-            let score = params.consonance_kernel.score(h01, r01);
+            let score = kernel.score(h01, r01);
             self.consonance_field_score[i] = score;
             self.consonance_field_level[i] = params.consonance_representation.level(score);
             self.consonance_field_energy[i] = params.consonance_representation.energy(score);
@@ -343,8 +381,7 @@ impl Landscape {
 
     fn recompute_consonance_density_mass(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
-        let density_kernel =
-            ConsonanceKernel::density_with_rho(params.consonance_density_roughness_gain);
+        let density_kernel = params.consonance_density_kernel();
         let n = self.consonance_density_mass.len();
         for i in 0..n {
             let h01 = sanitize01(self.harmonicity01[i]);
@@ -486,6 +523,7 @@ mod tests {
             consonance_kernel: ConsonanceKernel::default(),
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
+            roughness_aversion: 1.0,
             habituation: crate::core::habituation::HabituationParams::default(),
             loudness_exp: 1.0,
             ref_power: 1.0,
@@ -641,6 +679,90 @@ mod tests {
                 "i={i} got={got} expected={expected}"
             );
         }
+    }
+
+    #[test]
+    fn roughness_aversion_scales_valuation_not_sensation() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        params.consonance_density_roughness_gain = 0.8;
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = vec![0.6; n];
+        landscape.roughness01 = vec![0.5; n];
+
+        landscape.recompute_consonance(&params);
+        let h = landscape.harmonicity01[0];
+        let density_base =
+            ConsonanceKernel::density_with_rho(params.consonance_density_roughness_gain);
+        for i in 0..n {
+            let (hi, ri) = (landscape.harmonicity01[i], landscape.roughness01[i]);
+            assert_eq!(
+                landscape.consonance_field_score[i].to_bits(),
+                params.consonance_kernel.score(hi, ri).to_bits(),
+                "default weight must reproduce the configured field kernel bit-exact"
+            );
+            assert_eq!(
+                landscape.consonance_density_mass[i].to_bits(),
+                density_base.score(hi, ri).max(0.0).to_bits(),
+                "default weight must reproduce the configured density kernel bit-exact"
+            );
+        }
+        let r01_before = landscape.roughness01.clone();
+
+        params.roughness_aversion = 0.0;
+        landscape.recompute_consonance(&params);
+        assert_eq!(landscape.roughness01, r01_before);
+        let k = params.consonance_kernel;
+        assert!((landscape.consonance_field_score[0] - (k.a * h + k.d)).abs() < 1e-6);
+        assert!((landscape.consonance_density_mass[0] - h).abs() < 1e-6);
+
+        params.roughness_aversion = 2.0;
+        landscape.recompute_consonance(&params);
+        let doubled = k.a * h + 2.0 * (k.b * 0.5 + k.c * h * 0.5) + k.d;
+        assert!((landscape.consonance_field_score[0] - doubled).abs() < 1e-6);
+        assert!((landscape.consonance_density_mass[0] - h * (1.0 - 1.6 * 0.5)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn set_roughness_aversion_validates_and_reports_changes() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        assert!(!params.set_roughness_aversion(1.0), "unchanged value");
+        assert!(!params.set_roughness_aversion(f32::NAN));
+        assert!(!params.set_roughness_aversion(f32::INFINITY));
+        assert_eq!(params.roughness_aversion, 1.0);
+        assert!(
+            params.set_roughness_aversion(1.0 + 1.0e-6),
+            "small changes count"
+        );
+        assert!(params.set_roughness_aversion(-3.0));
+        assert_eq!(params.roughness_aversion, 0.0);
+        assert!(params.set_roughness_aversion(1.0e9));
+        assert_eq!(params.roughness_aversion, ROUGHNESS_AVERSION_MAX);
+        let k = params.consonance_field_kernel();
+        assert!(k.b.is_finite() && k.c.is_finite());
+    }
+
+    #[test]
+    fn density_falls_back_to_uniform_when_aversion_zeroes_all_mass() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        params.set_roughness_aversion(ROUGHNESS_AVERSION_MAX);
+        let mut landscape = Landscape::new(space);
+        let n = landscape.roughness01.len();
+        landscape.harmonicity = vec![0.6; n];
+        landscape.roughness01 = vec![1.0; n];
+        landscape.recompute_consonance(&params);
+        assert!(landscape.consonance_density_mass.iter().all(|&m| m == 0.0));
+        let total: f32 = landscape.consonance_density.iter().sum();
+        assert!((total - 1.0).abs() < 1e-5, "total={total}");
+        assert!(
+            landscape
+                .consonance_density
+                .iter()
+                .all(|p| p.is_finite() && *p > 0.0)
+        );
     }
 
     #[test]

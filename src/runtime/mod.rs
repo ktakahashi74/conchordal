@@ -1564,6 +1564,7 @@ struct WorkerState {
     #[cfg(test)]
     offline_body_probe: Option<OfflineBodyProbe>,
     body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
+    footprint_worker: Option<crate::life::action_candidates::footprint::Worker>,
     temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pop: Community,
     conductor: Conductor,
@@ -1691,6 +1692,13 @@ impl WorkerState {
             scenario_end_tick: None,
             phonation_batches_buf: Vec::new(),
             body_snapshot: None,
+            footprint_worker: cfg.onset_comparison.map(|_| {
+                let mut worker = crate::life::action_candidates::footprint::Worker::new();
+                if cfg.deterministic_footprints {
+                    worker.deliver_footprints_deterministically();
+                }
+                worker
+            }),
         }
     }
 }
@@ -1708,15 +1716,6 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                 .as_mut()
                 .unwrap()
                 .enable_predictions();
-            if cfg.deterministic_footprints
-                && let Some(worker) = state
-                    .schedule_renderer
-                    .action_observer
-                    .as_mut()
-                    .and_then(|observer| observer.footprint_worker())
-            {
-                worker.deliver_footprints_deterministically();
-            }
             if std::env::var_os("CONCHORDAL_DISABLE_CANDIDATE_ENERGY").is_some() {
                 state
                     .schedule_renderer
@@ -1778,6 +1777,20 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
             cfg.exiting.store(true, Ordering::SeqCst);
         }
         if cfg.exiting.load(Ordering::SeqCst) || state.finished {
+            if let Some(worker) = state.footprint_worker.as_mut() {
+                worker.finish();
+                route_body_footprints(
+                    &mut state.pop.voices,
+                    worker,
+                    &mut state.reporter,
+                    state.timebase.frame_start_tick(state.frame_idx),
+                );
+                report_try(
+                    &mut state.reporter,
+                    "final body footprint worker",
+                    |writer| writer.write_body_footprint_worker(&worker.stats),
+                );
+            }
             if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
                 capture.finish();
                 let snapshot = capture.snapshot();
@@ -2570,19 +2583,17 @@ fn advance_population(
 
 /// I11-1 §4.2: at most one representative-onset footprint request per Voice per hop.
 /// The hop path carries the identity, the request and the reply; the projection
-/// itself runs on the candidate worker.
+/// itself runs on its independent worker.
 fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
     let voices = &mut state.pop.voices;
-    let renderer = &mut state.schedule_renderer;
-    let (Some(capture), Some(observer)) = (
-        renderer.body_capture.as_ref(),
-        renderer.action_observer.as_mut(),
-    ) else {
+    let Some(worker) = state.footprint_worker.as_mut() else {
         return;
     };
-    let Some(worker) = observer.footprint_worker() else {
-        return;
-    };
+    worker.prepare(
+        voices
+            .iter()
+            .map(|voice| (voice.id(), voice.metadata.generation, voice.body_snapshot())),
+    );
     for voice in voices {
         if !voice.is_alive() {
             continue;
@@ -2590,7 +2601,7 @@ fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
         let Some(recipe) = voice.footprint_recipe(fs) else {
             continue;
         };
-        let Some((_, body_generation)) = capture.token(voice.id(), voice.metadata.generation)
+        let Some(body_generation) = worker.body_generation((voice.id(), voice.metadata.generation))
         else {
             continue;
         };
@@ -2614,13 +2625,10 @@ fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
 /// A reply the full queue dropped releases the request, and the Voice resends it next hop.
 fn route_body_footprints(
     voices: &mut [crate::life::voice::Voice],
-    observer: &mut crate::life::action_observation::Observer,
+    worker: &mut crate::life::action_candidates::footprint::Worker,
     reporter: &mut Option<JsonlReporter>,
     now: Tick,
 ) {
-    let Some(worker) = observer.footprint_worker() else {
-        return;
-    };
     let mut superseded = 0;
     for record in worker.drain_footprints(now) {
         let discarded = voices
@@ -2882,6 +2890,9 @@ fn render_and_route_audio(
             });
         }
     }
+    if let Some(worker) = state.footprint_worker.as_mut() {
+        route_body_footprints(&mut state.pop.voices, worker, &mut state.reporter, now_tick);
+    }
     if let Some(observer) = state.schedule_renderer.action_observer.as_mut() {
         // Drain regardless of reporting; snapshots and capacity remain observer-owned.
         for record in observer.drain_candidate_energy() {
@@ -2894,12 +2905,6 @@ fn render_and_route_audio(
                 writer.write_body_default(&record)
             });
         }
-        route_body_footprints(
-            &mut state.pop.voices,
-            observer,
-            &mut state.reporter,
-            now_tick,
-        );
         for record in observer.drain_traces() {
             report_try(&mut state.reporter, "private trace", |writer| {
                 writer.write_private_trace(&record)
@@ -3363,6 +3368,98 @@ mod tests {
         assert_eq!(core.lparams.consonance_representation.beta, 3.0);
         assert_eq!(core.lparams.consonance_density_roughness_gain, 1.5);
         assert_eq!(core.landscape.space.n_bins(), core.nsgt.space().n_bins());
+    }
+
+    #[test]
+    fn footprint_only_wiring_leaves_observation_and_candidate_analysis_off() {
+        use crate::config::{FootprintSource, TemporalOnsetComparisonConfig};
+        let script = std::env::temp_dir().join(format!(
+            "conchordal-footprint-only-{}-{}.rhai",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::write(
+            &script,
+            r#"
+seed(20261007);
+let group = place(sine().amp(0.03).flow().cycles(3), at(440.0));
+wait(0.08);
+release(group);
+wait(0.08);
+"#,
+        )
+        .unwrap();
+        for comparison in [
+            None,
+            Some(FootprintSource::Body),
+            Some(FootprintSource::Proxy),
+        ] {
+            let mut config = AppConfig::default();
+            config.analysis.nfft = 2048;
+            config.dcc.coupling_strength = 0.0;
+            config.temporal_onset_comparison =
+                comparison.map(|footprint| TemporalOnsetComparisonConfig { footprint });
+            config.validate().unwrap();
+            let scenario = compile_scenario_from_script(
+                &script,
+                &render_compile_args(script.to_str().unwrap(), None),
+                &config,
+            )
+            .unwrap();
+            assert_eq!(scenario.temporal_mode, crate::scenario::TemporalMode::Off);
+            let saw_request = Arc::new(AtomicBool::new(false));
+            let observed = Arc::clone(&saw_request);
+            let probe: OfflineBodyProbe = Box::new(move |state, _, _, _| {
+                assert!(state.schedule_renderer.body_capture.is_none());
+                assert!(state.body_snapshot.is_none());
+                assert!(state.schedule_renderer.action_observer.is_none());
+                assert!(
+                    state
+                        .temporal_frames
+                        .iter()
+                        .all(|frame| frame.received_frames == 0)
+                );
+                assert_eq!(state.footprint_worker.is_some(), comparison.is_some());
+                if let Some(worker) = &state.footprint_worker
+                    && worker.stats.footprint_requested > 0
+                {
+                    observed.store(true, Ordering::Relaxed);
+                }
+            });
+            let wiring = wire_runtime(
+                &config,
+                config.audio.sample_rate,
+                "footprint only".into(),
+                scenario,
+                Arc::new(AtomicBool::new(false)),
+                WiringOptions {
+                    offline_body_probe: Some(probe),
+                    ui_channel_capacity: 1,
+                    listener_forced: false,
+                    wait_user_exit: false,
+                    start_playing: true,
+                    audio_prod: None,
+                    wav_tx: None,
+                    reporter: None,
+                    deterministic_analysis: true,
+                    deterministic_footprints: true,
+                    guard_meter: None,
+                    underrun_frames: None,
+                    reserve_runtime_ids_through: 0,
+                    profile: None,
+                    audio_counters: None,
+                },
+            )
+            .unwrap();
+            assert!(wiring.listener_analysis_handle.is_none());
+            join_thread("worker", wiring.worker_handle).unwrap();
+            join_thread("analysis", wiring.analysis_handle).unwrap();
+            assert_eq!(saw_request.load(Ordering::Relaxed), comparison.is_some());
+        }
+        std::fs::remove_file(script).unwrap();
     }
 
     fn build_test_params(space: &Log2Space) -> LandscapeParams {

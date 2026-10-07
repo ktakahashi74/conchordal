@@ -256,6 +256,7 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         decision: &'a crate::life::temporal_participation::ParticipationDecision,
     },
+    BodyFootprintWorker(&'a crate::life::action_candidates::footprint::Stats),
     BodyFootprint {
         /// The Voice discarded the record because its request was superseded.
         superseded: bool,
@@ -508,6 +509,13 @@ impl JsonlReporter {
             sample_rate,
             decision,
         })
+    }
+
+    pub(crate) fn write_body_footprint_worker(
+        &mut self,
+        stats: &crate::life::action_candidates::footprint::Stats,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::BodyFootprintWorker(stats))
     }
 
     pub(crate) fn write_body_footprint(

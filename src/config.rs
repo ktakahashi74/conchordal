@@ -313,31 +313,11 @@ pub enum FootprintSource {
 }
 
 /// Absent keeps the legacy 64-point proxy path; present selects the bounded comparison.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TemporalOnsetComparisonConfig {
     #[serde(default)]
     pub footprint: FootprintSource,
-    #[serde(default)]
-    pub arrival: bool,
-    #[serde(default = "TemporalOnsetComparisonConfig::default_arrival_weight")]
-    pub arrival_weight: f64,
-}
-
-impl TemporalOnsetComparisonConfig {
-    fn default_arrival_weight() -> f64 {
-        1.0
-    }
-}
-
-impl Default for TemporalOnsetComparisonConfig {
-    fn default() -> Self {
-        Self {
-            footprint: FootprintSource::default(),
-            arrival: false,
-            arrival_weight: Self::default_arrival_weight(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -665,12 +645,6 @@ impl AppConfig {
             );
             crate::temporal_cognition::arrival::Engine::new(period).map_err(anyhow::Error::msg)?;
         }
-        if let Some(onset) = self.temporal_onset_comparison {
-            ensure!(
-                onset.arrival_weight.is_finite() && (0.0..=4.0).contains(&onset.arrival_weight),
-                "temporal_onset_comparison.arrival_weight must lie within 0..=4"
-            );
-        }
         Ok(())
     }
 
@@ -823,14 +797,12 @@ mod tests {
     }
 
     #[test]
-    fn onset_comparison_defaults_to_body_and_bounds_arrival_weight() {
+    fn onset_comparison_defaults_to_body_and_rejects_removed_arrival_keys() {
         assert!(AppConfig::default().temporal_onset_comparison.is_none());
         let bare: AppConfig = toml::from_str("[temporal_onset_comparison]\n").unwrap();
         bare.validate().unwrap();
         let bare = bare.temporal_onset_comparison.unwrap();
         assert_eq!(bare.footprint, FootprintSource::Body);
-        assert!(!bare.arrival);
-        assert_eq!(bare.arrival_weight, 1.0);
 
         let proxy: AppConfig =
             toml::from_str("[temporal_onset_comparison]\nfootprint = \"proxy\"\n").unwrap();
@@ -843,16 +815,10 @@ mod tests {
                 .is_err()
         );
 
-        for weight in [5.0, -0.5, f64::NAN] {
-            let mut invalid: AppConfig = toml::from_str("[temporal_onset_comparison]\n").unwrap();
-            invalid
-                .temporal_onset_comparison
-                .as_mut()
-                .unwrap()
-                .arrival_weight = weight;
+        for key in ["arrival = false", "arrival = true", "arrival_weight = 1.0"] {
             assert!(
-                invalid.validate().is_err(),
-                "weight {weight} must be rejected"
+                toml::from_str::<AppConfig>(&format!("[temporal_onset_comparison]\n{key}\n"))
+                    .is_err()
             );
         }
     }

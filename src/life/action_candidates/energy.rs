@@ -1,10 +1,9 @@
 //! Conditional frozen-body diagnostics, isolated from command execution and learning.
 
-use super::footprint;
 use super::{BodyState, Class, Input, OnsetOpportunity};
 use crate::life::self_prediction::{CoherentWindow, ScheduledRelease, ToneEnergy};
 use crate::temporal_cognition::action_profiles::consumer;
-use crossbeam_channel::{Receiver, Sender, TryRecvError, bounded, select};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -768,14 +767,6 @@ pub(crate) struct Stats {
     pub output_dropped: u64,
     pub max_processing_us: u64,
     pub worker_failed: bool,
-    pub footprint_requested: u64,
-    pub footprint_dropped: u64,
-    pub footprint_completed: u64,
-    pub footprint_output_dropped: u64,
-    /// Consumer-side bookkeeping (I11-1 §4.2), counted by the Voice that asked.
-    pub footprint_superseded: u64,
-    pub footprint_resent: u64,
-    pub footprint_released: u64,
 }
 
 pub(crate) struct Worker {
@@ -783,24 +774,15 @@ pub(crate) struct Worker {
     recycle: Sender<Box<Packet>>,
     input: Option<Sender<Box<Packet>>>,
     output: Receiver<Record>,
-    footprint_input: Option<Sender<footprint::Request>>,
-    footprint_output: Receiver<footprint::Record>,
-    /// Identities whose record the full reply queue dropped (I11-1 §4.2).
-    footprint_dropped: Receiver<footprint::Identity>,
-    /// Drop notices taken while a deterministic drain waited, held for the next release.
-    footprints_released: Vec<footprint::Identity>,
-    /// Offline renders wait for every accepted footprint at the hop that asked (I11-1).
-    deterministic_footprints: bool,
-    footprints_in_flight: usize,
     handle: Option<JoinHandle<()>>,
-    counters: Arc<[AtomicU64; 6]>,
+    counters: Arc<[AtomicU64; 4]>,
     pub stats: Stats,
 }
 
 /// Returns false once the packet pool is gone and the worker must stop.
 fn process_packet(
     mut packet: Box<Packet>,
-    shared: &[AtomicU64; 6],
+    shared: &[AtomicU64; 4],
     tx: &Sender<Record>,
     returned: &Sender<Box<Packet>>,
 ) -> bool {
@@ -876,9 +858,6 @@ impl Worker {
         let (recycle, free) = bounded(CAPACITY);
         let (input, rx) = bounded::<Box<Packet>>(CAPACITY);
         let (tx, output) = bounded(CAPACITY);
-        let (footprint_input, footprint_rx) = bounded(crate::temporal_cognition::body::VOICES);
-        let (ftx, footprint_output) = bounded(crate::temporal_cognition::body::VOICES);
-        let (dropped_tx, footprint_dropped) = bounded(crate::temporal_cognition::body::VOICES);
         for _ in 0..CAPACITY {
             recycle
                 .send(Box::new(Packet {
@@ -898,62 +877,9 @@ impl Worker {
         let shared = Arc::clone(&counters);
         let returned = recycle.clone();
         let handle = std::thread::spawn(move || {
-            let handle_footprint = |request: footprint::Request| {
-                let record = footprint::compute(&request);
-                shared[4].fetch_add(1, Ordering::Relaxed);
-                if let Err(full) = ftx.try_send(record) {
-                    shared[5].fetch_add(1, Ordering::Relaxed);
-                    // The asking Voice releases its outstanding request on this notice.
-                    let _ = dropped_tx.try_send(full.into_inner().identity);
-                }
-            };
-            let mut pending: Option<Box<Packet>> = None;
-            let (mut packets_open, mut footprints_open) = (true, true);
-            loop {
-                // Footprint requests are taken before candidate packets.
-                loop {
-                    match footprint_rx.try_recv() {
-                        Ok(request) => handle_footprint(request),
-                        Err(TryRecvError::Empty) => break,
-                        Err(TryRecvError::Disconnected) => {
-                            footprints_open = false;
-                            break;
-                        }
-                    }
-                }
-                if pending.is_none() && packets_open {
-                    match rx.try_recv() {
-                        Ok(packet) => pending = Some(packet),
-                        Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Disconnected) => packets_open = false,
-                    }
-                }
-                if let Some(packet) = pending.take() {
-                    if !process_packet(packet, &shared, &tx, &returned) {
-                        break;
-                    }
-                    continue;
-                }
-                match (packets_open, footprints_open) {
-                    (false, false) => break,
-                    (true, false) => match rx.recv() {
-                        Ok(packet) => pending = Some(packet),
-                        Err(_) => packets_open = false,
-                    },
-                    (false, true) => match footprint_rx.recv() {
-                        Ok(request) => handle_footprint(request),
-                        Err(_) => footprints_open = false,
-                    },
-                    (true, true) => select! {
-                        recv(footprint_rx) -> request => match request {
-                            Ok(request) => handle_footprint(request),
-                            Err(_) => footprints_open = false,
-                        },
-                        recv(rx) -> packet => match packet {
-                            Ok(packet) => pending = Some(packet),
-                            Err(_) => packets_open = false,
-                        },
-                    },
+            for packet in rx {
+                if !process_packet(packet, &shared, &tx, &returned) {
+                    break;
                 }
             }
         });
@@ -962,12 +888,6 @@ impl Worker {
             recycle,
             input: Some(input),
             output,
-            footprint_input: Some(footprint_input),
-            footprint_output,
-            footprint_dropped,
-            footprints_released: Vec::with_capacity(crate::temporal_cognition::body::VOICES),
-            deterministic_footprints: false,
-            footprints_in_flight: 0,
             handle: Some(handle),
             counters,
             stats: Stats::default(),
@@ -1007,78 +927,17 @@ impl Worker {
             let _ = self.recycle.try_send(packet);
         }
     }
-    /// False when the queue is full; the caller re-sends on the next hop.
-    pub fn request_footprint(&mut self, request: footprint::Request) -> bool {
-        let accepted = self
-            .footprint_input
-            .as_ref()
-            .is_some_and(|tx| tx.try_send(request).is_ok());
-        if accepted {
-            self.stats.footprint_requested += 1;
-            self.footprints_in_flight += 1;
-        } else {
-            self.stats.footprint_dropped += 1;
-        }
-        accepted
-    }
     pub fn poll(&mut self) {
         self.stats.completed = self.counters[0].load(Ordering::Relaxed);
         self.stats.worker_unsupported = self.counters[2].load(Ordering::Relaxed);
         self.stats.output_dropped = self.counters[1].load(Ordering::Relaxed);
         self.stats.max_processing_us = self.counters[3].load(Ordering::Relaxed);
-        self.stats.footprint_completed = self.counters[4].load(Ordering::Relaxed);
-        self.stats.footprint_output_dropped = self.counters[5].load(Ordering::Relaxed);
     }
     pub fn drain(&mut self) -> impl Iterator<Item = Record> + '_ {
         self.output.try_iter()
     }
-    /// Delivery then no longer follows the worker's pace, so a render repeats exactly.
-    pub(crate) fn deliver_footprints_deterministically(&mut self) {
-        self.deterministic_footprints = true;
-    }
-
-    pub fn drain_footprints(&mut self, now: u64) -> impl Iterator<Item = footprint::Record> + '_ {
-        std::iter::from_fn(move || {
-            let mut record = if self.deterministic_footprints {
-                // Every accepted request either returns or is dropped with a notice.
-                loop {
-                    if self.footprints_in_flight == 0 {
-                        return None;
-                    }
-                    select! {
-                        recv(self.footprint_output) -> record => break record.ok()?,
-                        recv(self.footprint_dropped) -> identity => {
-                            self.footprints_in_flight -= 1;
-                            self.footprints_released.push(identity.ok()?);
-                        }
-                    }
-                }
-            } else {
-                self.footprint_output.try_recv().ok()?
-            };
-            self.footprints_in_flight = self.footprints_in_flight.saturating_sub(1);
-            record.received_at = Some(now);
-            Some(record)
-        })
-    }
-
-    /// Requests whose record was dropped; the Voice clears its outstanding request and resends.
-    pub fn drain_released_footprints(&mut self) -> impl Iterator<Item = footprint::Identity> + '_ {
-        let Self {
-            footprint_dropped,
-            footprints_released,
-            footprints_in_flight,
-            ..
-        } = self;
-        footprints_released
-            .drain(..)
-            .chain(footprint_dropped.try_iter().inspect(|_| {
-                *footprints_in_flight = footprints_in_flight.saturating_sub(1);
-            }))
-    }
     pub fn finish(&mut self) {
         self.input.take();
-        self.footprint_input.take();
         if let Some(handle) = self.handle.take() {
             self.stats.worker_failed = handle.join().is_err();
         }

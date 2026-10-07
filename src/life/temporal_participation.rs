@@ -957,8 +957,6 @@ mod tests {
         let forecast = bounded_forecast();
         let config = TemporalOnsetComparisonConfig {
             footprint: FootprintSource::Proxy,
-            arrival: false,
-            arrival_weight: 1.0,
         };
         let mut policy = bounded_policy(Some(config));
         let tick = policy.candidate(0, 1200, true, Some(&forecast)).unwrap();
@@ -1010,8 +1008,6 @@ mod tests {
         let forecast = bounded_forecast();
         let config = TemporalOnsetComparisonConfig {
             footprint: FootprintSource::Body,
-            arrival: false,
-            arrival_weight: 1.0,
         };
         let mut absent = bounded_policy(Some(config));
         absent.set_body_footprint(None);
@@ -1120,8 +1116,6 @@ mod tests {
     fn bounded_body_config() -> crate::config::TemporalOnsetComparisonConfig {
         crate::config::TemporalOnsetComparisonConfig {
             footprint: crate::config::FootprintSource::Body,
-            arrival: false,
-            arrival_weight: 1.0,
         }
     }
 
@@ -1346,7 +1340,7 @@ mod tests {
 
     #[test]
     fn a_refused_request_is_resent_and_its_record_arrives_at_the_draining_hop() {
-        use crate::life::action_candidates::energy::Worker;
+        use crate::life::action_candidates::footprint::Worker;
         let recipe = bounded_recipe(220.0);
         let identity = footprint::Identity::new(7, 4, &recipe);
         let mut tracker = FootprintTracker::default();

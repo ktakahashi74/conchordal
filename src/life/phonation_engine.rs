@@ -2246,8 +2246,6 @@ mod tests {
         );
         let mut config = TemporalOnsetComparisonConfig {
             footprint: FootprintSource::Proxy,
-            arrival: false,
-            arrival_weight: 1.0,
         };
         engine.set_onset_comparison(Some(config));
         let (hold_sec, adsr) = engine.footprint_hold().expect("a proxy recipe");

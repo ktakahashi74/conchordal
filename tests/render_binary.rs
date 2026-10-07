@@ -1747,7 +1747,7 @@ wait(2.1);
 }
 
 #[test]
-fn body_footprint_renders_repeat_exactly() {
+fn footprint_only_renders_repeat_exactly_without_observe_or_body_analysis() {
     let config = unique_temp_path("toml");
     fs::write(
         &config,
@@ -1759,11 +1759,6 @@ nfft = 2048
 hop_size = 512
 [dcc]
 coupling_strength = 0.0
-[temporal_body]
-means = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-deviations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-accent_means = [0.0, 0.0]
-accent_deviations = [1.0, 1.0]
 [temporal_onset_comparison]
 footprint = "body"
 "#,
@@ -1771,7 +1766,6 @@ footprint = "body"
     .unwrap();
     let scenario = write_inline_scenario(
         r#"
-temporal_mode("observe");
 seed(20260923);
 let voice = modal().amp(0.03).flow().cycles(3).adsr(0.03, 0.3, 0.5, 0.7)
     .send(habitat_bus | presentation_bus);
@@ -1801,6 +1795,33 @@ wait(1.0);
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
+        let all_records: Vec<serde_json::Value> = fs::read_to_string(&report)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        for kind in [
+            "temporal_observation",
+            "body_observation",
+            "body_descriptor",
+            "body_candidate_energy",
+            "body_default",
+            "self_sound_observation",
+            "self_sound_outcome",
+            "self_sound_descriptor_prediction",
+        ] {
+            assert!(
+                all_records.iter().all(|record| record["type"] != kind),
+                "unexpected analysis: {kind}"
+            );
+        }
+        let stats = all_records
+            .iter()
+            .find(|record| record["type"] == "body_footprint_worker")
+            .unwrap();
+        assert!(stats["footprint_requested"].as_u64().unwrap() > 0);
+        assert_eq!(stats["footprint_requested"], stats["footprint_completed"]);
+        assert_eq!(stats["worker_failed"], false);
         // Everything a decision can depend on; `computed_at` is a wall-clock field.
         let records: Vec<serde_json::Value> = fs::read_to_string(&report)
             .unwrap()

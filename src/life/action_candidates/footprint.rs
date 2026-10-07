@@ -11,8 +11,13 @@ use crate::life::sound::{
     AutonomousPulseSpec, BodyKind, BodySnapshot, RenderModulatorSpec, RenderModulatorStateKind,
     Tone, ToneAdsr,
 };
+use crate::temporal_cognition::body::VOICES;
+use crossbeam_channel::{Receiver, Sender, bounded, select};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread::JoinHandle;
 
 /// Registered representative values (i11-onset-comparison §4.2).
 const KICK_STRENGTH: f32 = 1.0;
@@ -325,12 +330,206 @@ pub(crate) fn compute(request: &Request) -> Record {
     finish(record)
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+pub(crate) struct Stats {
+    pub footprint_requested: u64,
+    pub footprint_dropped: u64,
+    pub footprint_completed: u64,
+    pub footprint_output_dropped: u64,
+    /// Consumer-side bookkeeping (I11-1 §4.2), counted by the Voice that asked.
+    pub footprint_superseded: u64,
+    pub footprint_resent: u64,
+    pub footprint_released: u64,
+    pub worker_failed: bool,
+}
+
+struct Owner {
+    source: (u64, u32),
+    body_generation: u32,
+    body: BodySnapshot,
+    live: bool,
+}
+
+/// Independent of diagnostic candidate packets and private PCM analysis.
+pub(crate) struct Worker {
+    footprint_input: Option<Sender<Request>>,
+    footprint_output: Receiver<Record>,
+    footprint_dropped: Receiver<Identity>,
+    footprints_released: Vec<Identity>,
+    deterministic_footprints: bool,
+    footprints_in_flight: usize,
+    owners: Vec<Option<Owner>>,
+    next_generation: u32,
+    handle: Option<JoinHandle<()>>,
+    counters: Arc<[AtomicU64; 2]>,
+    pub stats: Stats,
+}
+
+impl Worker {
+    pub(crate) fn new() -> Self {
+        let (footprint_input, requests) = bounded(VOICES);
+        let (replies, footprint_output) = bounded(VOICES);
+        let (dropped, footprint_dropped) = bounded(VOICES);
+        let counters = Arc::new(std::array::from_fn(|_| AtomicU64::new(0)));
+        let shared = Arc::clone(&counters);
+        let handle = std::thread::Builder::new()
+            .name("body-footprint".into())
+            .spawn(move || {
+                for request in requests {
+                    let record = compute(&request);
+                    shared[0].fetch_add(1, Ordering::Relaxed);
+                    if let Err(full) = replies.try_send(record) {
+                        shared[1].fetch_add(1, Ordering::Relaxed);
+                        let _ = dropped.try_send(full.into_inner().identity);
+                    }
+                }
+            })
+            .expect("spawn body footprint worker");
+        Self {
+            footprint_input: Some(footprint_input),
+            footprint_output,
+            footprint_dropped,
+            footprints_released: Vec::with_capacity(VOICES),
+            deterministic_footprints: false,
+            footprints_in_flight: 0,
+            owners: (0..VOICES).map(|_| None).collect(),
+            next_generation: 1,
+            handle: Some(handle),
+            counters,
+            stats: Stats::default(),
+        }
+    }
+
+    /// Keep the structural body-generation rule without capturing or analysing PCM.
+    pub(crate) fn prepare(&mut self, voices: impl Iterator<Item = (u64, u32, BodySnapshot)>) {
+        for owner in self.owners.iter_mut().flatten() {
+            owner.live = false;
+        }
+        for (id, generation, body) in voices {
+            let source = (id, generation);
+            if let Some(owner) = self
+                .owners
+                .iter_mut()
+                .flatten()
+                .find(|o| o.source == source)
+            {
+                owner.live = true;
+                if owner.body.kind != body.kind
+                    || owner.body.unison != body.unison
+                    || owner.body.ratios != body.ratios
+                {
+                    owner.body_generation = self.next_generation;
+                    self.next_generation += 1;
+                }
+                owner.body = body;
+            } else if let Some(slot) = self.owners.iter_mut().find(|slot| slot.is_none()) {
+                *slot = Some(Owner {
+                    source,
+                    body_generation: self.next_generation,
+                    body,
+                    live: true,
+                });
+                self.next_generation += 1;
+            }
+        }
+        for slot in &mut self.owners {
+            if slot.as_ref().is_some_and(|owner| !owner.live) {
+                *slot = None;
+            }
+        }
+    }
+
+    pub(crate) fn body_generation(&self, source: (u64, u32)) -> Option<u32> {
+        self.owners
+            .iter()
+            .flatten()
+            .find(|o| o.source == source)
+            .map(|o| o.body_generation)
+    }
+
+    /// False when the queue is full; the caller re-sends on the next hop.
+    pub(crate) fn request_footprint(&mut self, request: Request) -> bool {
+        let accepted = self
+            .footprint_input
+            .as_ref()
+            .is_some_and(|tx| tx.try_send(request).is_ok());
+        if accepted {
+            self.stats.footprint_requested += 1;
+            self.footprints_in_flight += 1;
+        } else {
+            self.stats.footprint_dropped += 1;
+        }
+        accepted
+    }
+
+    pub(crate) fn poll(&mut self) {
+        self.stats.footprint_completed = self.counters[0].load(Ordering::Relaxed);
+        self.stats.footprint_output_dropped = self.counters[1].load(Ordering::Relaxed);
+    }
+    /// Delivery then no longer follows the worker's pace, so a render repeats exactly.
+    pub(crate) fn deliver_footprints_deterministically(&mut self) {
+        self.deterministic_footprints = true;
+    }
+
+    pub(crate) fn drain_footprints(&mut self, now: u64) -> impl Iterator<Item = Record> + '_ {
+        std::iter::from_fn(move || {
+            let mut record = if self.deterministic_footprints {
+                // Every accepted request either returns or is dropped with a notice.
+                loop {
+                    if self.footprints_in_flight == 0 {
+                        return None;
+                    }
+                    select! {
+                        recv(self.footprint_output) -> record => break record.ok()?,
+                        recv(self.footprint_dropped) -> identity => {
+                            self.footprints_in_flight -= 1;
+                            self.footprints_released.push(identity.ok()?);
+                        }
+                    }
+                }
+            } else {
+                self.footprint_output.try_recv().ok()?
+            };
+            self.footprints_in_flight = self.footprints_in_flight.saturating_sub(1);
+            record.received_at = Some(now);
+            Some(record)
+        })
+    }
+
+    /// Requests whose record was dropped; the Voice clears its outstanding request and resends.
+    pub(crate) fn drain_released_footprints(&mut self) -> impl Iterator<Item = Identity> + '_ {
+        let Self {
+            footprint_dropped,
+            footprints_released,
+            footprints_in_flight,
+            ..
+        } = self;
+        footprints_released
+            .drain(..)
+            .chain(footprint_dropped.try_iter().inspect(|_| {
+                *footprints_in_flight = footprints_in_flight.saturating_sub(1);
+            }))
+    }
+
+    pub(crate) fn finish(&mut self) {
+        self.footprint_input.take();
+        if let Some(handle) = self.handle.take() {
+            self.stats.worker_failed = handle.join().is_err();
+        }
+        self.poll();
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::life::action_candidates::energy::{ScheduledRequest, Worker};
-    use crate::temporal_cognition::body::VOICES;
-    use std::sync::Arc;
+    use crate::life::action_candidates::energy::{ScheduledRequest, Worker as CandidateWorker};
 
     const FS: f32 = 48000.;
 
@@ -588,7 +787,39 @@ mod tests {
         }
     }
 
-    fn scheduled_packet(worker: &mut Worker) -> bool {
+    #[test]
+    fn body_generation_tracks_structure_and_source_lifetime_without_pcm_capture() {
+        let mut worker = Worker::new();
+        let mut body = recipe(BodyKind::Sine, 24000).body;
+        worker.prepare(std::iter::once((7, 0, body.clone())));
+        let original = worker.body_generation((7, 0)).unwrap();
+        body.brightness = 0.4;
+        body.amp_scale = 0.3;
+        worker.prepare(std::iter::once((7, 0, body.clone())));
+        assert_eq!(worker.body_generation((7, 0)), Some(original));
+        body.kind = BodyKind::Harmonic;
+        worker.prepare(std::iter::once((7, 0, body.clone())));
+        let changed = worker.body_generation((7, 0)).unwrap();
+        assert!(changed > original);
+        body.ratios = Some(Arc::from([1.0, 2.0, 3.0]));
+        worker.prepare(std::iter::once((7, 0, body.clone())));
+        let ratios_changed = worker.body_generation((7, 0)).unwrap();
+        assert!(ratios_changed > changed);
+        body.unison = 2;
+        worker.prepare(std::iter::once((7, 0, body.clone())));
+        let unison_changed = worker.body_generation((7, 0)).unwrap();
+        assert!(unison_changed > ratios_changed);
+        worker.prepare(std::iter::once((7, 1, body.clone())));
+        assert!(worker.body_generation((7, 0)).is_none());
+        let respawned = worker.body_generation((7, 1)).unwrap();
+        assert!(respawned > unison_changed);
+        worker.prepare(std::iter::empty());
+        assert!(worker.body_generation((7, 1)).is_none());
+        worker.prepare(std::iter::once((7, 1, body)));
+        assert!(worker.body_generation((7, 1)).unwrap() > respawned);
+    }
+
+    fn scheduled_packet(worker: &mut CandidateWorker) -> bool {
         let mut tone = Tone::from_parts(
             Timebase { fs: FS, hop: HOP },
             0,
@@ -671,22 +902,20 @@ mod tests {
     }
 
     #[test]
-    fn footprint_requests_are_taken_before_a_candidate_backlog() {
+    fn footprint_worker_runs_independently_of_a_candidate_backlog() {
         let mut worker = Worker::new();
+        let mut candidates = CandidateWorker::new();
         let submitted = (0..VOICES)
-            .filter(|_| scheduled_packet(&mut worker))
+            .filter(|_| scheduled_packet(&mut candidates))
             .count() as u64;
         for _ in 0..4 {
             assert!(worker.request_footprint(request(recipe(BodyKind::Sine, 24000))));
         }
         assert!(poll_until(&mut worker, |w| w.stats.footprint_completed == 4));
-        assert!(
-            worker.stats.completed < submitted,
-            "footprints waited for the candidate backlog: {}",
-            worker.stats.completed
-        );
+        assert!(submitted > 0);
         worker.finish();
-        assert_eq!(worker.stats.completed, submitted);
+        candidates.finish();
+        assert_eq!(candidates.stats.completed, submitted);
         assert_eq!(worker.drain_footprints(7).count(), 4);
     }
 

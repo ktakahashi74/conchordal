@@ -496,6 +496,45 @@ bounded acoustic costs from prescribing permanent silence, but does not establis
 musical quality. The envelope proxy omits additional body/modulator decay; neither
 energy estimate is an auditory masking or consonant-fusion model.
 
+An optional **T2 preprocessing path** supplies accents from the actual audio of
+each observed bus. Its principle layer is a named composition of AMT 1.6 auditory
+components: 30 gammatone bands on the LTFAT `erbspacebw(80,8000,1,1000)` grid,
+half-wave rectification and a 1 kHz inner-hair-cell low-pass stage, five adaptation
+loops with `limit=10`, and four modulation outputs: LP 2.5 Hz, signed BP 5 and
+10 Hz, and absolute BP $50/3$ Hz. Numerical checks on finite inputs establish
+agreement with the corresponding reference realizations. These component
+references are described in the AMT implementations of
+[gammatone](https://amtoolbox.org/amt-1.6.0/doc/common/gammatone_code.php),
+[ihcenvelope](https://amtoolbox.org/amt-1.6.0/doc/common/ihcenvelope_code.php),
+[adaptloop](https://amtoolbox.org/amt-1.6.0/doc/common/adaptloop_code.php), and
+[modfilterbank](https://amtoolbox.org/amt-1.6.0/doc/common/modfilterbank_code.php).
+The analysis worker derives coefficients from the actual sample rate and retains
+filter state across hops. An input gap starts a new cold state; support records
+include the input prefix on which the recursive filters depend.
+
+Group attribution and event formation are **author rules**, separate from those
+auditory components. Existing NSGT assignments supply each group's fraction of
+the bus mass in each native band, including residual mass in the denominator.
+These fractions condition the whole-bus responses; groups do not have separate
+PCM streams or filter banks. The current rule takes signed hop means, freezes
+the first hop's fractions over four consecutive hops, and combines the positive
+component rises with explicit component weights and gain. A supported local
+peak above the explicit threshold creates an accent directly, with an explicit
+event-weight gain. It does not require an accent from the other acoustic detector.
+The event time and the later time at which it becomes available remain distinct.
+The same accent goes to the period estimator and next-arrival model, with credit
+retained by its owner and a reset when that owner changes. Missing PCM, unknown
+ownership or broken support suppress an event; supported zero remains known zero.
+
+T2 is disabled by default, and its producer runs only when `[temporal_t2]` is
+present. Enabling it requires the acoustic-group and period configurations and
+every T2 setting explicitly: `component_weights`, `gain`, `threshold`,
+`weight_gain`, `window = "hop_mean"`, `combination = "positive_component_rise"`,
+`attribution = "first_hop_mass_fraction"`, and `unknown = "suppress"`.
+The free numerical parameters have no selected values or defaults. Reference
+agreement establishes the preprocessing behavior; it does not select those
+parameters or establish a musical effect.
+
 The policy can additionally use **Periodic next-arrival forecasts** from observed
 habitat groups to select a participation candidate. Using the observed period and
 last accent, each forecast fixes the next arrival time at issuance and represents
@@ -760,7 +799,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5, §7 | Implemented. Dedicated beat carriers appear only in explicit synchronization demonstrations (sample 07) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition |
-| Temporal structure grounded in auditory cognition | Ordered auditory observation and period estimation supply optional Periodic next-arrival costs for participation; disabled by default | §5.4 | Partial. Arrival costs affect candidate selection using a common eligible-group set, evidence-based self-group exclusion and explicit unknowns. The coupling weight is a free parameter with no selected value |
+| Temporal structure grounded in auditory cognition | Optional T2 preprocessing with reference-matched auditory components, author-defined group attribution and direct accents, and Periodic next-arrival costs; disabled by default | §5.4 | Partial. Accent and arrival mechanisms are implemented, with owner credit, causal support and explicit unknowns. T2's numerical free parameters and the arrival coupling weight have no selected values or defaults |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented, off by default; the physical biosignal loop is open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |

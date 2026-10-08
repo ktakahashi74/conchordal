@@ -6275,8 +6275,9 @@ of the new renderer itself.
 GUI performances, arbitrary scripts, other machines or devices, configurations
 with the temporal path enabled, and concurrent heavy computation are outside
 this acceptance scope. Under external load that slowed all processing by about
-three times, the body-aware configuration suffered audio interruptions; median
-hop duration was 5.2 ms. The exclusive timing window does not cover jobs in other
+three times, the body-aware configuration suffered audio interruptions. Its
+median hop duration without disturbance is 5.2 ms, about half the hop budget. The
+exclusive timing window does not cover jobs in other
 projects on the same machine. The quiet-condition pass does not establish a pass
 under disturbance.
 

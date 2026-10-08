@@ -239,8 +239,8 @@ impl Community {
                 landscape,
                 rng,
                 &[],
-                linear_idx,
-                population.spawn_count_hint.max(1),
+                (linear_idx, population.spawn_count_hint.max(1)),
+                &population.template.control,
             )
             .max(MIN_FREQ_HZ)
         } else {
@@ -411,8 +411,8 @@ impl Community {
                         landscape,
                         rng,
                         &[],
-                        member_idx + idx,
-                        candidate_count,
+                        (member_idx + idx, candidate_count),
+                        &population.template.control,
                     )
                     .max(MIN_FREQ_HZ),
                 _ => match population.respawn_policy {
@@ -1215,5 +1215,118 @@ mod tests {
             counts[2] > counts[1],
             "higher scene scores should win more often than lower ones"
         );
+    }
+
+    #[test]
+    fn birth_surrogate_preserves_respawn_final_selection_and_lineage() {
+        let mut enabled = test_pop();
+        enabled.enable_birth_surrogate(0.23, 1e-4);
+        let legacy = test_pop();
+        let mut landscape = peak_bias_landscape();
+        landscape.consonance_density_mass_eff.fill(0.5);
+        let mut spec = spawn_spec_with_freq(220.0);
+        spec.control.body.method = crate::scenario::control::BodyMethod::Harmonic;
+        spec.control.body.timbre.spread = 0.0;
+        spec.control.body.timbre.unison = 1;
+        enabled.apply_action(
+            Action::Spawn {
+                population_id: 1,
+                ids: vec![1],
+                spec,
+                strategy: None,
+            },
+            &landscape,
+            None,
+        );
+        let mut population = enabled.populations[&1].clone();
+        population.strategy = Some(SpawnStrategy::Field {
+            target: crate::scenario::FieldTarget::Consonance,
+            sampling: crate::scenario::FieldSampling::Density,
+            min_freq: 220.0,
+            max_freq: 880.0,
+            min_dist_erb: 0.0,
+            tension: 0.0,
+        });
+        let parents = BTreeMap::from([(
+            1,
+            vec![ParentCandidate {
+                id: 17,
+                freq_hz: 330.0,
+                energy: 1.0,
+                generation: 3,
+            }],
+        )]);
+        population.respawn_policy = RespawnPolicy::Random;
+        let mut rng = SmallRng::seed_from_u64(83);
+        let mut expected_rng = rng.clone();
+        assert_eq!(RESPAWN_CANDIDATE_COUNT, 16);
+        let proposals: Vec<f32> = (0..16)
+            .map(|i| {
+                enabled.random_respawn_frequency(&population, &landscape, &mut expected_rng, i)
+            })
+            .collect();
+        let expected =
+            choose_candidate_by_scene_score(&landscape, &proposals, &mut expected_rng).unwrap();
+        assert_eq!(
+            enabled.pick_respawn_candidate(1, &population, &parents, &landscape, &mut rng, 0),
+            Some((expected, None, None))
+        );
+        assert_eq!(rng.next_u64(), expected_rng.next_u64());
+
+        for policy in [
+            RespawnPolicy::Hereditary { sigma_oct: 0.1 },
+            RespawnPolicy::PeakBiased {
+                config: RespawnPeakBiasConfig::default(),
+            },
+        ] {
+            population.respawn_policy = policy;
+            for seed in 0..32 {
+                let mut old_rng = SmallRng::seed_from_u64(seed);
+                let mut new_rng = old_rng.clone();
+                let old = legacy.pick_respawn_candidate(
+                    1,
+                    &population,
+                    &parents,
+                    &landscape,
+                    &mut old_rng,
+                    0,
+                );
+                let new = enabled.pick_respawn_candidate(
+                    1,
+                    &population,
+                    &parents,
+                    &landscape,
+                    &mut new_rng,
+                    0,
+                );
+                assert_eq!(old, new);
+                assert_eq!(new.unwrap().1, Some(17));
+                assert_eq!(new.unwrap().2, Some(3));
+                assert_eq!(old_rng.next_u64(), new_rng.next_u64());
+            }
+        }
+        landscape.consonance_field_level_eff.fill(0.25);
+        population.respawn_min_c_level = Some(0.5);
+        for policy in [
+            RespawnPolicy::Random,
+            RespawnPolicy::Hereditary { sigma_oct: 0.1 },
+            RespawnPolicy::PeakBiased {
+                config: RespawnPeakBiasConfig::default(),
+            },
+        ] {
+            population.respawn_policy = policy;
+            assert!(
+                enabled
+                    .pick_respawn_candidate(
+                        1,
+                        &population,
+                        &parents,
+                        &landscape,
+                        &mut SmallRng::seed_from_u64(83),
+                        0
+                    )
+                    .is_none()
+            );
+        }
     }
 }

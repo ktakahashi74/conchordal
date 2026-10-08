@@ -1,5 +1,6 @@
 pub mod any_backend;
 pub(crate) mod bank_forecast;
+pub(crate) mod birth_surrogate;
 pub mod control;
 pub(crate) mod control_forecast;
 pub(crate) mod envelope;

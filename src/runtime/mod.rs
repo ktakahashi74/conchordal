@@ -624,6 +624,15 @@ fn apply_scaffold(
     rhythms.env_level = 1.0;
 }
 
+#[cfg(test)]
+pub(crate) fn birth_surrogate_assay_core(
+    config: &AppConfig,
+    runtime_sample_rate: u32,
+) -> (LandscapeParams, RtNsgtKernelLog2, usize) {
+    let core = build_analysis_runtime_core(config, runtime_sample_rate);
+    (core.lparams, core.nsgt, core.hop)
+}
+
 struct AnalysisRuntimeCore {
     fs: f32,
     hop: usize,
@@ -1075,6 +1084,9 @@ fn wire_runtime(
     let dorsal = core.dorsal;
 
     let mut pop = Community::new(crate::core::timebase::Timebase { fs, hop });
+    if config.birth_surrogate {
+        pop.enable_birth_surrogate(core.lparams.loudness_exp, core.lparams.ref_power);
+    }
     let scenario_max_id = scenario
         .events
         .iter()

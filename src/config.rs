@@ -271,6 +271,9 @@ impl Default for PsychoAcousticsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct AppConfig {
+    /// Evaluate birth placements with the legacy direct body model.
+    #[serde(default)]
+    pub birth_surrogate: bool,
     #[serde(default)]
     pub audio: AudioConfig,
     #[serde(default)]
@@ -739,6 +742,7 @@ mod tests {
 
     #[test]
     fn load_or_default_writes_defaults_cleanly() {
+        assert!(!AppConfig::default().birth_surrogate);
         let path = unique_path("defaults.toml");
         let path_str = path.to_string_lossy().to_string();
         // Ensure clean slate
@@ -799,6 +803,7 @@ mod tests {
         let path = unique_path("custom.toml");
         let path_str = path.to_string_lossy().to_string();
         let custom = AppConfig {
+            birth_surrogate: false,
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_period: None,

@@ -79,6 +79,7 @@ impl PredGateAccum {
 }
 
 pub struct Community {
+    birth_surrogate: std::cell::RefCell<Option<super::sound::birth_surrogate::BirthSurrogate>>,
     pub voices: Vec<Voice>,
     current_frame: u64,
     pub abort_requested: bool,
@@ -204,6 +205,7 @@ impl Community {
     pub fn new(time: Timebase) -> Self {
         debug!("Community sample rate: {:.1} Hz", time.fs);
         Self {
+            birth_surrogate: std::cell::RefCell::new(None),
             voices: Vec::new(),
             current_frame: 0,
             abort_requested: false,
@@ -241,6 +243,14 @@ impl Community {
 
     pub fn set_seed(&mut self, seed: u64) {
         self.seed = seed;
+    }
+
+    pub(crate) fn enable_birth_surrogate(&mut self, loudness_exp: f32, ref_power: f32) {
+        *self.birth_surrogate.get_mut() = Some(super::sound::birth_surrogate::BirthSurrogate::new(
+            self.time,
+            loudness_exp,
+            ref_power,
+        ));
     }
 
     pub fn set_control_update_mode(&mut self, mode: ControlUpdateMode) {

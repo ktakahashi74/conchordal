@@ -93,7 +93,12 @@ impl Community {
                 .as_ref()
                 .map(|strat| {
                     self.resolve_strategy_frequency(
-                        strat, landscape, &mut rng, &reserved, member_idx, total,
+                        strat,
+                        landscape,
+                        &mut rng,
+                        &reserved,
+                        (member_idx, total),
+                        &spec.control,
                     )
                 })
                 .unwrap_or(spec.control.pitch.freq)

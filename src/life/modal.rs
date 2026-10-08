@@ -207,6 +207,10 @@ impl SoundBody for ModalBody {
 struct ModalBodyFactory;
 
 impl SoundBodyFactory for ModalBodyFactory {
+    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+        Some(BodyKind::Modal)
+    }
+
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
         let fallback_space;
         let eval_space = if let Some(frame) = input.landscape {

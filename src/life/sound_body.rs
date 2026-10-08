@@ -472,6 +472,22 @@ pub struct SoundBodyBuildInput<'a> {
 
 pub trait SoundBodyFactory: Send + Sync {
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody;
+
+    /// Opt in only for the legacy renderer covered by the direct-model fixtures.
+    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+        None
+    }
+}
+
+pub(crate) fn birth_surrogate_kind(control: &VoiceControl) -> Option<BodyKind> {
+    let registry = global_factory_registry()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let method = body_method_id(control.body.method);
+    registry.factories.get(method).map_or_else(
+        || HarmonicBodyFactory.birth_surrogate_kind(),
+        |factory| factory.birth_surrogate_kind(),
+    )
 }
 
 #[derive(Default)]
@@ -561,6 +577,10 @@ pub fn build_sound_body_from_control(
 struct SineBodyFactory;
 
 impl SoundBodyFactory for SineBodyFactory {
+    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+        Some(BodyKind::Sine)
+    }
+
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
         AnySoundBody::Sine(SineBody {
             freq_hz: input.base_freq_hz.max(1.0),
@@ -573,6 +593,10 @@ impl SoundBodyFactory for SineBodyFactory {
 struct HarmonicBodyFactory;
 
 impl SoundBodyFactory for HarmonicBodyFactory {
+    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+        Some(BodyKind::Harmonic)
+    }
+
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
         let timbre = &input.control.body.timbre;
         let genotype = TimbreGenotype {

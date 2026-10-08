@@ -189,6 +189,169 @@ impl ModePattern {
         }
     }
 
+    /// Allocation-free preview of deterministic birth recipes. Jitter stays on
+    /// the existing spawn path because it consumes the child's private RNG.
+    pub(crate) fn eval_without_jitter_into(
+        &self,
+        base_hz: f32,
+        landscape: &LandscapeFrame,
+        ratios: &mut Vec<f32>,
+        weights: &mut Vec<f32>,
+        candidates: &mut Vec<(usize, f32)>,
+    ) -> bool {
+        ratios.clear();
+        weights.clear();
+        candidates.clear();
+        let count = self.count.max(1);
+        if !base_hz.is_finite()
+            || base_hz <= 0.0
+            || count > ratios.capacity()
+            || self.jitter_cents.is_some_and(|c| !c.is_finite() || c > 0.0)
+        {
+            return false;
+        }
+        let space = &landscape.space;
+        match &self.kind {
+            ModePatternKind::Custom { ratios: source }
+            | ModePatternKind::ModalTable { ratios: source, .. } => {
+                if source.len() > ratios.capacity() {
+                    return false;
+                }
+                ratios.extend_from_slice(source);
+            }
+            ModePatternKind::LandscapeDensity | ModePatternKind::LandscapePeaks => {
+                let (min_mul, max_mul) = sanitized_range(self.min_mul, self.max_mul);
+                let range = freq_range_to_bins(space, base_hz * min_mul, base_hz * max_mul);
+                if let Some((lo, hi)) = range {
+                    if hi - lo + 1 > weights.capacity() || hi - lo + 1 > candidates.capacity() {
+                        return false;
+                    }
+                    if matches!(&self.kind, ModePatternKind::LandscapeDensity) {
+                        space.assert_scan_len_named(
+                            &landscape.consonance_density_mass,
+                            "birth_mode_density_mass_scan",
+                        );
+                        let gamma = sanitize_positive_finite(self.gamma, 1.0);
+                        for i in lo..=hi {
+                            weights.push(
+                                sanitize_nonnegative_finite(landscape.consonance_density_mass[i])
+                                    .powf(gamma),
+                            );
+                        }
+                        for _ in 0..count {
+                            let mut best = None;
+                            let mut best_weight = f32::NEG_INFINITY;
+                            for (offset, &weight) in weights.iter().enumerate() {
+                                if weight > best_weight {
+                                    best = Some(offset);
+                                    best_weight = weight;
+                                }
+                            }
+                            let Some(offset) = best else { break };
+                            if !best_weight.is_finite() || best_weight <= 0.0 {
+                                break;
+                            }
+                            let idx = lo + offset;
+                            ratios.push(space.freq_of_index(idx) / base_hz);
+                            suppress_neighbor_weights(
+                                space,
+                                lo,
+                                hi,
+                                idx,
+                                sanitize_nonnegative_finite(self.min_dist_erb),
+                                weights,
+                            );
+                        }
+                    } else {
+                        space.assert_scan_len_named(
+                            &landscape.consonance_field_level,
+                            "birth_mode_field_level_scan",
+                        );
+                        let scan = &landscape.consonance_field_level;
+                        for i in lo..=hi {
+                            let center = sanitize_nonnegative_finite(scan[i]);
+                            let left = if i > 0 {
+                                sanitize_nonnegative_finite(scan[i - 1])
+                            } else {
+                                center
+                            };
+                            let right = if i + 1 < scan.len() {
+                                sanitize_nonnegative_finite(scan[i + 1])
+                            } else {
+                                center
+                            };
+                            if center > 0.0 && center >= left && center >= right {
+                                candidates.push((i, center));
+                            }
+                        }
+                        // The original stable sort keeps ascending bin order on ties.
+                        candidates.sort_unstable_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+                        let spacing = sanitize_nonnegative_finite(self.min_dist_erb);
+                        for &(idx, _) in candidates.iter() {
+                            let freq = space.freq_of_index(idx);
+                            let erb = hz_to_erb(freq.max(1e-6));
+                            if ratios
+                                .iter()
+                                .any(|&f| (hz_to_erb(f.max(1e-6)) - erb).abs() < spacing)
+                            {
+                                continue;
+                            }
+                            ratios.push(freq);
+                            if ratios.len() == count {
+                                break;
+                            }
+                        }
+                        for freq in ratios.iter_mut() {
+                            *freq /= base_hz;
+                        }
+                    }
+                }
+                if ratios.is_empty() {
+                    let mut k = 1usize;
+                    while ratios.len() < count && k <= count.saturating_mul(64) {
+                        let r = k as f32;
+                        if r >= min_mul && r <= max_mul {
+                            ratios.push(r);
+                        }
+                        k += 1;
+                    }
+                    if ratios.is_empty() {
+                        ratios.push(min_mul.max(1.0));
+                    }
+                }
+            }
+            kind => {
+                let mut k = 1usize;
+                while ratios.len() < count && k <= count.saturating_mul(128) {
+                    let r = match kind {
+                        ModePatternKind::Harmonic => k as f32,
+                        ModePatternKind::Odd => (2 * k - 1) as f32,
+                        ModePatternKind::PowerLaw { beta } => {
+                            (k as f32).powf(sanitize_positive_finite(*beta, 1.0).max(1e-3))
+                        }
+                        ModePatternKind::StiffString { stiffness } => {
+                            let f = k as f32;
+                            f * (1.0 + sanitize_nonnegative_finite(*stiffness) * f * f).sqrt()
+                        }
+                        _ => unreachable!(),
+                    };
+                    if r.is_finite() && r > 0.0 {
+                        ratios.push(r);
+                    }
+                    k += 1;
+                }
+            }
+        }
+        ratios.retain(|r| r.is_finite() && *r > 0.0);
+        ratios.sort_unstable_by(f32::total_cmp);
+        ratios.dedup_by(|a, b| (*a - *b).abs() <= 1e-4);
+        ratios.truncate(count);
+        if ratios.is_empty() {
+            ratios.push(1.0);
+        }
+        true
+    }
+
     fn eval_with_rng<R: Rng + ?Sized>(
         &self,
         base_hz: f32,

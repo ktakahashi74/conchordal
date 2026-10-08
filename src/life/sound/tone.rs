@@ -475,6 +475,7 @@ impl Tone {
         }
         let impulse = std::mem::take(&mut self.pending_impulse_energy);
         let mut z = 0.0;
+        let mut spectral_drive = 0.0;
         if open {
             let signal = self.render_modulator.as_mut().map_or_else(
                 || ArticulationSignal {
@@ -485,6 +486,9 @@ impl Tone {
                 },
                 |m| m.process(rhythms, dt),
             );
+            // Preserve the legacy harmonic burst independently of amplitude kick.
+            spectral_drive =
+                impulse + self.continuous_drive * (signal.amplitude * self.envelope.gain_at(tick));
             if signal.is_active {
                 z = self.envelope.gain_at(tick) * signal.amplitude.max(0.0);
             }
@@ -515,7 +519,9 @@ impl Tone {
                 } else {
                     state.amplitude *= state.decay;
                 }
-                state.amplitude * bank.phase3_carrier(self.current_pitch_hz, a, qz, open)
+                let spectral_drive = if bank.is_sine() { qz } else { spectral_drive };
+                state.amplitude
+                    * bank.phase3_carrier(self.current_pitch_hz, a, spectral_drive, open)
             }
             AnyBackend::Resonator(engine) => {
                 let mut drive = 0.0;
@@ -935,6 +941,108 @@ fn default_body_snapshot() -> BodySnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn phase3_harmonic_spectral_burst_matches_legacy_and_freezes_at_off() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let rhythms = NeuralRhythms::default();
+        for attack_sec in [0.0, 0.005, 0.010, 0.024, 0.2] {
+            for continuous_drive in [0.0, 1.25] {
+                for kick_gain in [0.0, 1.0] {
+                    let mut old = Tone::from_parts(
+                        time,
+                        0,
+                        time.sec_to_tick(0.4),
+                        220.0,
+                        0.2,
+                        Some(BodySnapshot {
+                            kind: BodyKind::Harmonic,
+                            brightness: 0.7,
+                            ..default_body_snapshot()
+                        }),
+                        None,
+                        Some(ToneAdsr {
+                            attack_sec,
+                            decay_sec: 0.1,
+                            sustain_level: 0.55,
+                            release_sec: 0.1,
+                        }),
+                    )
+                    .unwrap();
+                    old.set_continuous_drive(continuous_drive);
+                    old.seed_modal_phases(73);
+                    old.arm_onset_trigger(1.0);
+                    let mut new = old.clone();
+                    new.enable_phase3(crate::config::RenderPrototypeConfig {
+                        kick_gain,
+                        ..Default::default()
+                    });
+                    let off = new.envelope.release_end;
+                    let mut frozen = None;
+                    let mut checkpoints = Vec::new();
+                    let mut frozen_gains = Vec::new();
+                    let mut tail_nonzero = false;
+                    for tick in 0..off + time.sec_to_tick(0.1) {
+                        // The driven case also checks an independent later spectral burst.
+                        if continuous_drive > 0.0 && tick == time.sec_to_tick(0.24) {
+                            old.trigger_impulse(0.4);
+                            new.trigger_impulse(0.4);
+                        }
+                        if tick == off + 1 {
+                            new.trigger_impulse(1.0);
+                        }
+                        let old_pcm = old.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+                        let new_pcm = new.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+                        assert!(old_pcm.is_finite() && new_pcm.is_finite());
+                        let AnyBackend::Oscillator(old_bank) = &old.backend else {
+                            unreachable!()
+                        };
+                        let AnyBackend::Oscillator(new_bank) = &new.backend else {
+                            unreachable!()
+                        };
+                        let (old_env, _) = old_bank.spectral_state_for_test();
+                        let (new_env, new_gains) = new_bank.spectral_state_for_test();
+                        if tick < off {
+                            assert_eq!(old_env, new_env, "spectral state at tick {tick}");
+                            if tick == 0 {
+                                assert_eq!(new_env, 1.0, "ADSR suppressed the onset burst");
+                            }
+                            if tick == off - 1 {
+                                frozen = Some(new_env);
+                                frozen_gains.extend_from_slice(new_gains);
+                            }
+                        } else {
+                            assert_eq!(Some(new_env), frozen, "Off changed spectral state");
+                            assert_eq!(new_gains, frozen_gains, "Off changed partial gains");
+                            tail_nonzero |= new_pcm != 0.0;
+                        }
+                        if [0, 3840, 9600, off - 1, off, off + 4799].contains(&tick) {
+                            checkpoints.push(serde_json::json!({
+                                "tick": tick, "old_env": old_env, "new_env": new_env,
+                            }));
+                        }
+                    }
+                    assert!(
+                        tail_nonzero,
+                        "the frozen check must exercise a sounding tail"
+                    );
+                    println!(
+                        "M3R_SPECTRAL {}",
+                        serde_json::json!({
+                            "attack_sec": attack_sec, "continuous_drive": continuous_drive,
+                            "kick_gain": kick_gain, "open_samples": off,
+                            "closed_samples": 4800, "open_max_abs_difference": 0.0,
+                            "closed_max_abs_state_change": 0.0,
+                            "closed_max_abs_gain_change": 0.0, "checkpoints": checkpoints,
+                        })
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn phase3_default_rise_follows_composer_attack() {

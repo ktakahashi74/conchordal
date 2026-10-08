@@ -424,6 +424,11 @@ impl OscillatorBank {
         self.motion_refresh_count
     }
 
+    #[cfg(test)]
+    pub(super) fn spectral_state_for_test(&self) -> (f32, &[f32]) {
+        (self.spectral_env, &self.gain_mask)
+    }
+
     fn apply_phase_seed_if_needed(&mut self) {
         let Some(mut state) = self.pending_phase_seed.take() else {
             return;

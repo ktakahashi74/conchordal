@@ -95,6 +95,11 @@ impl Estimator {
         self.ledger.summary()
     }
 
+    #[cfg(test)]
+    pub(in crate::temporal_cognition) fn latest_accent(&self) -> Option<Accent> {
+        self.ledger.last
+    }
+
     pub(in crate::temporal_cognition) fn source_support(&self) -> Option<[u64; 3]> {
         self.ledger.bank.front().map(|_| {
             [

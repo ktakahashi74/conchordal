@@ -14,6 +14,7 @@ pub(crate) mod observation;
 pub(crate) mod proposals;
 pub(crate) mod resources;
 mod ridge;
+pub(crate) mod t2;
 mod trajectory;
 
 #[cfg(test)]

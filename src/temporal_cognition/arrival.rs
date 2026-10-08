@@ -61,6 +61,11 @@ pub(crate) use frozen::Frozen;
 pub(crate) use payload::Payload;
 
 impl Engine {
+    #[cfg(test)]
+    pub(in crate::temporal_cognition) fn latest_accent(&self) -> Option<Accent> {
+        self.last
+    }
+
     pub(crate) fn new(config: TemporalPeriodConfig) -> Result<Self, &'static str> {
         if !config.horizon_sec.is_finite() || config.horizon_sec <= 0. || config.horizon_sec > 32. {
             return Err("invalid periodic arrival horizon");

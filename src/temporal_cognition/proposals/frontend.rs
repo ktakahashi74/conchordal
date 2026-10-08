@@ -41,6 +41,8 @@ pub(crate) struct Frontend {
     shape_supported: bool,
     last_end: u64,
     failure: Option<&'static str>,
+    t2: Option<Box<crate::temporal_cognition::t2::adapter::Adapter>>,
+    t2_frame: Option<crate::temporal_cognition::t2::Frame>,
 }
 
 pub(in crate::temporal_cognition) struct Output {
@@ -52,6 +54,7 @@ pub(in crate::temporal_cognition) struct Output {
     pub energy: Option<group::Energy>,
     pub features: [Option<features::Update>; 8],
     pub feature_gaps: [Option<features::RawDescriptor>; 8],
+    pub t2: Option<[crate::temporal_cognition::t2::adapter::Diagnostic; 7]>,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -65,6 +68,8 @@ pub(crate) struct Snapshot {
     pub spectral_shape_supported: bool,
     pub features: [Option<features::Update>; 8],
     pub feature_gaps: [Option<features::RawDescriptor>; 8],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub t2: Option<[crate::temporal_cognition::t2::adapter::Diagnostic; 7]>,
     pub admissions: usize,
     pub admissions_by_kind: [usize; 3],
     pub rejections: usize,
@@ -96,6 +101,22 @@ pub(super) struct EnergySnapshot<'a> {
 }
 
 impl Frontend {
+    pub(crate) fn with_t2(
+        mut self,
+        config: crate::config::TemporalT2Config,
+    ) -> Result<Self, &'static str> {
+        self.t2 = Some(Box::new(
+            crate::temporal_cognition::t2::adapter::Adapter::new(&self.space, config)?,
+        ));
+        Ok(self)
+    }
+
+    pub(in crate::temporal_cognition) fn observe_t2(
+        &mut self,
+        frame: Option<crate::temporal_cognition::t2::Frame>,
+    ) {
+        self.t2_frame = frame;
+    }
     pub(crate) fn configured(
         space: Log2Space,
         bus: u8,
@@ -175,6 +196,7 @@ impl Frontend {
             spectral_shape_supported: self.shape_supported,
             features: out.features,
             feature_gaps: out.feature_gaps,
+            t2: out.t2,
             admissions: out
                 .groups
                 .admissions
@@ -265,6 +287,8 @@ impl Frontend {
             shape_supported: false,
             last_end: config.epoch_start,
             failure: None,
+            t2: None,
+            t2_frame: None,
         })
     }
 
@@ -450,9 +474,24 @@ impl Frontend {
         self.shape_supported = energy.as_ref().is_some_and(|e| e.spectral_shape_supported);
         let mut features = std::array::from_fn(|_| None);
         let mut feature_gaps = [None; 8];
+        if let Some(adapter) = self.t2.as_mut() {
+            adapter.prepare(&self.space, &self.energy_scans);
+        }
+        let mut t2 = self.t2.as_ref().map(|_| {
+            [crate::temporal_cognition::t2::adapter::Diagnostic {
+                known: false,
+                unknown: Some("t2_owner_absent"),
+                values: None,
+            }; 7]
+        });
         for (i, stream) in self.feature_streams.iter_mut().enumerate() {
             let Some(handle) = self.energy_handles[i] else {
                 stream.clear();
+                if i < 7
+                    && let Some(adapter) = self.t2.as_mut()
+                {
+                    adapter.clear(i);
+                }
                 self.energy_eligible[i] = false;
                 continue;
             };
@@ -524,6 +563,34 @@ impl Frontend {
                 },
                 available_end,
             )?;
+            if i < 7
+                && let (Some(adapter), Some(update)) = (self.t2.as_mut(), features[i].as_mut())
+            {
+                let (detector, diagnostic) = adapter.push(
+                    i,
+                    features::Stamp {
+                        group: handle,
+                        association: (eligible && self.shape_supported)
+                            .then_some(handle.generation),
+                        grid_id: 1,
+                        start: feature_start,
+                        end,
+                        source_start,
+                        source_end,
+                        available_end,
+                        known_samples: if observation.is_some() {
+                            self.config.group.hop
+                        } else {
+                            0
+                        },
+                        observed: observation.is_some(),
+                    },
+                    self.t2_frame.as_ref(),
+                    available_end,
+                )?;
+                update.detector = Some(detector);
+                t2.as_mut().unwrap()[i] = diagnostic;
+            }
         }
         self.last_end = end;
         Ok(Output {
@@ -535,6 +602,7 @@ impl Frontend {
             energy,
             features,
             feature_gaps,
+            t2,
         })
     }
 

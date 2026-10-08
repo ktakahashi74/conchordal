@@ -994,7 +994,7 @@ fn wire_runtime(
     let arrival_enabled = config.temporal_onset_comparison.is_some_and(|c| c.arrival);
     let mut temporal_snapshots = [None, None];
     let mut taps = std::array::from_fn::<_, 2, _>(|bus| {
-        (observing || (arrival_enabled && bus == 0)).then(|| {
+        (observing || ((arrival_enabled || config.temporal_t2.is_some()) && bus == 0)).then(|| {
             let tap = crate::temporal_cognition::observation::Tap::spawn(
                 bus as u8,
                 runtime_sample_rate,
@@ -1016,6 +1016,7 @@ fn wire_runtime(
                     acoustic: config.temporal_acoustic,
                     period: config.temporal_period,
                     arrival_payload: config.temporal_onset_comparison.is_some_and(|c| c.arrival),
+                    t2: config.temporal_t2,
                 },
             );
             temporal_snapshots[bus] = Some(Arc::clone(&tap.snapshot));

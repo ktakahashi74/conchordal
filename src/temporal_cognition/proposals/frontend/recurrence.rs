@@ -35,6 +35,8 @@ struct GroupFrame {
     period: periods::View,
     period_source: Option<[u64; 3]>,
     forecast: Option<arrival::Forecast>,
+    #[cfg(test)]
+    delivered: [Option<crate::temporal_cognition::features::Accent>; 2],
 }
 
 struct Frame {
@@ -80,6 +82,12 @@ pub(crate) struct Snapshot {
 }
 
 impl Recurrence {
+    pub(in crate::temporal_cognition) fn observe_t2(
+        &mut self,
+        frame: Option<crate::temporal_cognition::t2::Frame>,
+    ) {
+        self.frontend.observe_t2(frame);
+    }
     #[cfg(test)]
     fn new(space: Log2Space, config: Config, settings: Settings) -> Result<Self, &'static str> {
         Self::with_frontend(Frontend::new(space, config)?, settings)
@@ -205,10 +213,14 @@ impl Recurrence {
         for (index, slot) in self.slots.iter_mut().enumerate() {
             let Some(owner) = slot.owner else { continue };
             assert_eq!(acoustic.groups.assignment.group_handles[index], Some(owner));
+            // Select once: both consumers receive the same direct event or the same None.
+            let accent = acoustic.features[index]
+                .as_ref()
+                .and_then(|u| u.detector.and_then(|d| d.accent));
             let mut delivered = false;
             if let Some(update) = acoustic.features[index].as_ref() {
                 assert_eq!(update.raw.group, owner);
-                if let Some(accent) = update.detector.as_ref().and_then(|d| d.accent) {
+                if let Some(accent) = accent {
                     delivered = slot.estimator.deliver(accent, received_at)?.is_some();
                 }
             }
@@ -219,10 +231,11 @@ impl Recurrence {
                 let raw = acoustic.features[index]
                     .as_ref()
                     .map(|u| &u.raw)
-                    .filter(|_| self.frontend.energy_eligible[index] && observation.is_some());
-                let accent = acoustic.features[index]
-                    .as_ref()
-                    .and_then(|u| u.detector.and_then(|d| d.accent));
+                    .filter(|_| {
+                        self.frontend.energy_eligible[index]
+                            && observation.is_some()
+                            && acoustic.t2.as_ref().is_none_or(|t2| t2[index].known)
+                    });
                 let view = slot.estimator.view();
                 let peak = view.peaks.iter().flatten().copied().max_by(|a, b| {
                     a.support
@@ -253,6 +266,11 @@ impl Recurrence {
                 None
             };
             evidence_groups[index] = Some(GroupFrame {
+                #[cfg(test)]
+                delivered: [
+                    slot.estimator.latest_accent(),
+                    slot.arrival.as_ref().and_then(|a| a.latest_accent()),
+                ],
                 ledger: slot.estimator.ledger_summary(),
                 acoustic_eligible: self.frontend.energy_eligible[index],
                 association_known: observation.is_some()
@@ -263,10 +281,11 @@ impl Recurrence {
                 forecast,
             });
         }
-        if let Some(accent) = acoustic.features[7]
-            .as_ref()
-            .and_then(|u| u.detector.as_ref())
-            .and_then(|d| d.accent)
+        if self.frontend.t2.is_none()
+            && let Some(accent) = acoustic.features[7]
+                .as_ref()
+                .and_then(|u| u.detector.as_ref())
+                .and_then(|d| d.accent)
         {
             self.residual.deliver(accent, received_at)?;
         }

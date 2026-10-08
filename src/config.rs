@@ -291,6 +291,8 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_period: Option<TemporalPeriodConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_t2: Option<TemporalT2Config>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body: Option<TemporalBodyConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_body_prototypes: Option<TemporalBodyPrototypesConfig>,
@@ -387,6 +389,44 @@ pub enum ArrivalModel {
 pub struct TemporalPeriodConfig {
     pub model: ArrivalModel,
     pub horizon_sec: f64,
+}
+
+/// Explicit author rules for whole-bus T2 attribution and direct accent events.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemporalT2Config {
+    pub component_weights: [f64; 4],
+    pub gain: f64,
+    pub threshold: f64,
+    pub weight_gain: f64,
+    pub window: T2Window,
+    pub combination: T2Combination,
+    pub attribution: T2Attribution,
+    pub unknown: T2Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum T2Window {
+    HopMean,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum T2Combination {
+    PositiveComponentRise,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum T2Attribution {
+    FirstHopMassFraction,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum T2Unknown {
+    Suppress,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -499,6 +539,15 @@ impl AppConfig {
             }
         }
         crate::temporal_cognition::body_model::validate(self)?;
+        if let Some(t2) = self.temporal_t2 {
+            crate::temporal_cognition::t2::validate_config(t2).map_err(anyhow::Error::msg)?;
+            crate::temporal_cognition::t2::Producer::new(self.audio.sample_rate)
+                .map_err(anyhow::Error::msg)?;
+            ensure!(
+                self.temporal_acoustic.is_some() && self.temporal_period.is_some(),
+                "temporal_t2 requires temporal_acoustic and temporal_period"
+            );
+        }
         if let Some(acoustic) = self.temporal_acoustic {
             let ridge = self
                 .temporal_ridge
@@ -663,6 +712,64 @@ impl AppConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn t2_has_no_implicit_author_values_and_requires_its_consumers() {
+        use super::*;
+        let empty: AppConfig = toml::from_str("").unwrap();
+        assert!(empty.temporal_t2.is_none());
+        assert!(!toml::to_string(&empty).unwrap().contains("temporal_t2"));
+        assert!(toml::from_str::<TemporalT2Config>("gain = 1.0").is_err());
+        let explicit = "component_weights = [0.0,0.0,1.0,0.0]\ngain = 1.0\nthreshold = 0.0\nweight_gain = 1.0\nwindow = 'hop_mean'\ncombination = 'positive_component_rise'\nattribution = 'first_hop_mass_fraction'\nunknown = 'suppress'\n";
+        let t2: TemporalT2Config = toml::from_str(explicit).unwrap();
+        crate::temporal_cognition::t2::validate_config(t2).unwrap();
+        let config = AppConfig {
+            temporal_t2: Some(t2),
+            ..AppConfig::default()
+        };
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("temporal_t2 requires")
+        );
+        for field in [
+            "component_weights",
+            "gain",
+            "threshold",
+            "weight_gain",
+            "window",
+            "combination",
+            "attribution",
+            "unknown",
+        ] {
+            let partial = explicit
+                .lines()
+                .filter(|line| !line.starts_with(field))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                toml::from_str::<TemporalT2Config>(&partial).is_err(),
+                "{field} must be explicit"
+            );
+        }
+        for c in [
+            TemporalT2Config {
+                gain: f64::NAN,
+                ..t2
+            },
+            TemporalT2Config {
+                threshold: -1.0,
+                ..t2
+            },
+            TemporalT2Config {
+                component_weights: [0.0; 4],
+                ..t2
+            },
+        ] {
+            assert!(crate::temporal_cognition::t2::validate_config(c).is_err());
+        }
+    }
     use super::*;
     use std::fs;
 
@@ -807,6 +914,7 @@ mod tests {
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_period: None,
+            temporal_t2: None,
             temporal_body: None,
             temporal_body_prototypes: None,
             temporal_onset_comparison: None,

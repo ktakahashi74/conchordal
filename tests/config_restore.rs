@@ -147,6 +147,7 @@ fn config_load_custom_values() {
         temporal_ridge: None,
         temporal_acoustic: None,
         temporal_period: None,
+        temporal_t2: None,
         temporal_body: None,
         temporal_body_prototypes: None,
         temporal_onset_comparison: None,

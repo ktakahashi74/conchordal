@@ -2,6 +2,130 @@ use super::super::tests::{config, observed, space};
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
+#[test]
+fn actual_pcm_t2_delivers_without_legacy_accent_to_both_consumers() {
+    use crate::config::{T2Attribution, T2Combination, T2Unknown, T2Window, TemporalT2Config};
+    use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
+    use crate::core::nsgt_rt::RtNsgtKernelLog2;
+    use crate::temporal_cognition::t2;
+    let grid = space();
+    let mut c = config(0);
+    c.features.means = [1e100; 2];
+    let frontend = Frontend::new(grid.clone(), c).unwrap();
+    let mut baseline = Recurrence::configured(
+        Frontend::new(grid.clone(), c).unwrap(),
+        crate::config::TemporalPeriodConfig {
+            model: crate::config::ArrivalModel::Periodic,
+            horizon_sec: 4.0,
+        },
+        true,
+    )
+    .unwrap();
+    let frontend = frontend
+        .with_t2(TemporalT2Config {
+            component_weights: [0.0, 0.0, 1.0, 0.0],
+            gain: 1.0,
+            threshold: 0.0,
+            weight_gain: 1.0,
+            window: T2Window::HopMean,
+            combination: T2Combination::PositiveComponentRise,
+            attribution: T2Attribution::FirstHopMassFraction,
+            unknown: T2Unknown::Suppress,
+        })
+        .unwrap();
+    let mut model = Recurrence::configured(
+        frontend,
+        crate::config::TemporalPeriodConfig {
+            model: crate::config::ArrivalModel::Periodic,
+            horizon_sec: 4.0,
+        },
+        true,
+    )
+    .unwrap();
+    let mut nsgt = RtNsgtKernelLog2::new(NsgtKernelLog2::new(
+        NsgtLog2Config {
+            fs: 48000.0,
+            overlap: 0.75,
+            nfft_override: Some(2048),
+            ..Default::default()
+        },
+        grid,
+        None,
+        PowerMode::Coherent,
+    ));
+    let mut producer = t2::Producer::new(48000).unwrap();
+    let mut events = 0;
+    let mut forecasts = 0;
+    for step in 0_u64..600 {
+        let start = step * 512;
+        let end = start + 512;
+        let pcm: Vec<f32> = (start..end)
+            .map(|n| {
+                let time = n as f64 / 48000.0;
+                (0.001
+                    * (1.0 + 0.5 * (2.0 * std::f64::consts::PI * 5.0 * time).sin())
+                    * (2.0 * std::f64::consts::PI * 440.0 * time).sin()) as f32
+            })
+            .collect();
+        let mono = pcm.iter().map(|&x| f64::from(x).powi(2)).sum::<f64>() / 512.0;
+        let power = nsgt.process_hop(&pcm);
+        let observation = (end >= 2048).then_some(Observation {
+            power_scan: power,
+            mono_energy: mono,
+            source_start: end.saturating_sub(2048),
+            source_end: end,
+            available_end: end,
+        });
+        model.observe_t2(Some(producer.process(start, &pcm).unwrap()));
+        let old = baseline.advance(end, end, observation).unwrap();
+        assert!(
+            old.features
+                .iter()
+                .flatten()
+                .all(|u| u.detector.is_none_or(|d| d.accent.is_none()))
+        );
+        let output = model.advance(end, end, observation).unwrap();
+        for (i, update) in output.features[..7].iter().enumerate() {
+            if let Some(accent) = update.and_then(|u| u.detector.and_then(|d| d.accent)) {
+                events += 1;
+                assert_eq!(
+                    Some(accent.group),
+                    output.groups.assignment.group_handles[i]
+                );
+                assert!(accent.event_end < accent.available_end);
+                assert_eq!(accent.source_start, 0);
+                // Validate actual consumer state, including weight, prefix and all support clocks.
+                assert_eq!(
+                    model.frame.as_ref().as_ref().unwrap().evidence_groups[i]
+                        .unwrap()
+                        .delivered,
+                    [Some(accent); 2]
+                );
+                if model.slots[i].owner != Some(accent.group) {
+                    assert_eq!(
+                        model.slots[i].estimator.ledger_summary().cumulative_count,
+                        0
+                    );
+                }
+            }
+        }
+        if let Some(snapshot) = model.diagnostics() {
+            forecasts += snapshot
+                .groups
+                .iter()
+                .flatten()
+                .filter(|g| g.arrival.is_some())
+                .count();
+        }
+    }
+    assert!(events > 0, "actual T2 produced no supported direct event");
+    assert!(
+        forecasts > 0,
+        "actual T2 produced no Periodic arrival payload"
+    );
+    println!("T2_ACTUAL_PCM_DELIVERY events={events} arrival_payloads={forecasts} legacy_events=0");
+}
+
 fn settings(capacity: usize) -> Settings {
     Settings {
         forecast: None,

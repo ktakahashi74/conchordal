@@ -55,6 +55,10 @@ pub(crate) struct Snapshot {
     pub acoustic_parameters: Option<TemporalAcousticConfig>,
     pub acoustic: Option<frontend::Snapshot>,
     pub acoustic_failed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub t2_parameters: Option<crate::config::TemporalT2Config>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub t2: Option<super::t2::Snapshot>,
     pub period_parameters: Option<crate::config::TemporalPeriodConfig>,
     pub period: Option<frontend::recurrence::Snapshot>,
     pub period_error: Option<&'static str>,
@@ -76,6 +80,7 @@ pub(crate) struct Options {
     pub acoustic: Option<TemporalAcousticConfig>,
     pub period: Option<crate::config::TemporalPeriodConfig>,
     pub arrival_payload: bool,
+    pub t2: Option<crate::config::TemporalT2Config>,
 }
 
 struct Observation {
@@ -93,6 +98,7 @@ struct Observation {
     published: Instant,
     power_scan: Arc<[f32]>,
     mono_energy: f64,
+    t2: Option<Box<super::t2::Frame>>,
 }
 
 enum Event {
@@ -120,6 +126,7 @@ pub(crate) struct Tap {
     source_missing_samples: u64,
     dropped_frames: u64,
     deterministic: bool,
+    t2_producer: Option<super::t2::Producer>,
 }
 
 impl Tap {
@@ -146,6 +153,7 @@ impl Tap {
             ridge_parameters: options.ridge,
             acoustic_parameters: options.acoustic,
             period_parameters: options.period,
+            t2_parameters: options.t2,
             ..Snapshot::default()
         };
         let snapshot = Arc::new(Mutex::new(initial));
@@ -153,6 +161,9 @@ impl Tap {
         let state = Box::new(initial);
         let space = Arc::new(space);
         let worker_space = Arc::clone(&space);
+        let t2_producer = options
+            .t2
+            .map(|_| super::t2::Producer::new(sample_rate).expect("validated T2 sample rate"));
         let handle = std::thread::Builder::new()
             .name(format!("temporal-observation-{bus}"))
             .spawn(move || {
@@ -177,7 +188,7 @@ impl Tap {
                 };
                 let new_frontend = |epoch, start| {
                     options.acoustic.map(|config| {
-                        frontend::Frontend::configured(
+                        let frontend = frontend::Frontend::configured(
                             worker_space.as_ref().clone(),
                             bus,
                             (epoch, start),
@@ -188,7 +199,12 @@ impl Tap {
                                 .expect("acoustic diagnostics require ridge scales"),
                             config,
                         )
-                        .expect("validated acoustic diagnostic configuration")
+                        .expect("validated acoustic diagnostic configuration");
+                        if let Some(t2) = options.t2 {
+                            frontend.with_t2(t2).expect("validated T2 author rules")
+                        } else {
+                            frontend
+                        }
                     })
                 };
                 let split_frontend = |f: Option<frontend::Frontend>| {
@@ -230,6 +246,7 @@ impl Tap {
                         } => {
                             state.input_end_sample = input_end_sample;
                             if source_epoch != state.source_epoch {
+                                state.t2 = None;
                                 context = None;
                                 state.context = None;
                                 state.group_prototypes = None;
@@ -330,6 +347,14 @@ impl Tap {
                                     .then(|| frame.power_scan.iter().map(|x| f64::from(*x)).sum());
                                 state.hop_start_sample = frame.start;
                                 state.mono_mean_square = Some(frame.mono_energy);
+                                state.t2 = frame.t2.as_deref().map(|t2| super::t2::Snapshot {
+                                    model: super::t2::MODEL,
+                                    sample_rate,
+                                    epoch_start: t2.epoch_start,
+                                    start: t2.start,
+                                    end: t2.end,
+                                    processing_us: t2.processing_us,
+                                });
 
                                 state.trajectories =
                                     (acoustic.is_none() && recurrence.is_none() && frame.complete)
@@ -355,6 +380,7 @@ impl Tap {
                                             available_end: frame.available,
                                         });
                                     let result = if let Some(r) = recurrence.as_mut() {
+                                        r.observe_t2(frame.t2.as_deref().copied());
                                         r.advance(frame.end, frame.available, observation).map(
                                             |out| {
                                                 let summary = r.acoustic_snapshot(&out);
@@ -364,6 +390,7 @@ impl Tap {
                                         )
                                     } else {
                                         let a = acoustic.as_mut().unwrap();
+                                        a.observe_t2(frame.t2.as_deref().copied());
                                         a.advance(frame.end, observation).map(|out| {
                                             let summary = a.snapshot(&out);
                                             (out, summary)
@@ -498,10 +525,37 @@ impl Tap {
             source_missing_samples: 0,
             dropped_frames: 0,
             deterministic: options.deterministic,
+            t2_producer,
         }
     }
 
+    #[cfg(test)]
     pub fn observe(&mut self, frame_id: u64, power_scan: &[f32], mono_energy: f64) {
+        self.observe_input(frame_id, power_scan, mono_energy, None);
+    }
+
+    pub fn observe_pcm(
+        &mut self,
+        frame_id: u64,
+        power_scan: &[f32],
+        mono_energy: f64,
+        pcm: &[f32],
+    ) {
+        assert_eq!(
+            pcm.len() as u64,
+            self.hop,
+            "T2 observes complete analysis hops"
+        );
+        self.observe_input(frame_id, power_scan, mono_energy, Some(pcm));
+    }
+
+    fn observe_input(
+        &mut self,
+        frame_id: u64,
+        power_scan: &[f32],
+        mono_energy: f64,
+        pcm: Option<&[f32]>,
+    ) {
         self.space
             .assert_scan_len_named(power_scan, "temporal_tap_power_scan");
         assert!(
@@ -521,8 +575,25 @@ impl Tap {
                 .checked_add(1)
                 .expect("observation epoch overflow");
             self.epoch_start = start;
+            if let Some(producer) = &mut self.t2_producer {
+                producer.reset(start);
+            }
         }
         self.next_frame = frame_id.checked_add(1).expect("observation frame overflow");
+        let t2 = if let Some(producer) = self.t2_producer.as_mut() {
+            if let Some(pcm) = pcm {
+                Some(Box::new(
+                    producer
+                        .process(start, pcm)
+                        .expect("ordered finite analysis PCM for T2"),
+                ))
+            } else {
+                producer.reset(end);
+                None
+            }
+        } else {
+            None
+        };
         let event = Event::Frame(Observation {
             version: OBSERVATION_VERSION,
             bus: self.bus,
@@ -538,6 +609,7 @@ impl Tap {
             published: Instant::now(),
             power_scan: Arc::from(power_scan),
             mono_energy,
+            t2,
         });
         if self.deterministic {
             // Offline analysis may advance only after both observer outputs are published.
@@ -584,6 +656,59 @@ mod tests {
     use super::*;
 
     #[test]
+    fn t2_is_optional_and_input_gap_starts_cold_history_at_the_actual_sample() {
+        use crate::config::{T2Attribution, T2Combination, T2Unknown, T2Window};
+        let space = Log2Space::new(100.0, 6400.0, 32);
+        let power = vec![1.0; space.n_bins()];
+        let pcm = vec![0.001; 512];
+        for enabled in [false, true] {
+            let mut tap = Tap::spawn(
+                0,
+                48000,
+                512,
+                2048,
+                space.clone(),
+                Options {
+                    deterministic: true,
+                    t2: enabled.then_some(crate::config::TemporalT2Config {
+                        component_weights: [0.0, 0.0, 1.0, 0.0],
+                        gain: 1.0,
+                        threshold: 0.0,
+                        weight_gain: 1.0,
+                        window: T2Window::HopMean,
+                        combination: T2Combination::PositiveComponentRise,
+                        attribution: T2Attribution::FirstHopMassFraction,
+                        unknown: T2Unknown::Suppress,
+                    }),
+                    ..Options::default()
+                },
+            );
+            assert_eq!(tap.t2_producer.is_some(), enabled);
+            let output = Arc::clone(&tap.snapshot);
+            for frame in 0..4 {
+                tap.observe_pcm(frame, &power, 1e-6, &pcm);
+            }
+            let snapshot = *output.lock().unwrap();
+            assert_eq!(snapshot.t2.is_some(), enabled);
+            if enabled {
+                assert_eq!(snapshot.t2.unwrap().epoch_start, 0);
+            }
+            tap.observe_pcm(8, &power, 1e-6, &pcm);
+            let snapshot = *output.lock().unwrap();
+            assert_eq!(snapshot.source_epoch, 1);
+            if enabled {
+                let t2 = snapshot.t2.unwrap();
+                assert_eq!(t2.epoch_start, 4096);
+                assert_eq!((t2.start, t2.end), (4096, 4608));
+                tap.observe(9, &power, 1e-6);
+                assert!(output.lock().unwrap().t2.is_none());
+                tap.observe_pcm(10, &power, 1e-6, &pcm);
+                assert_eq!(output.lock().unwrap().t2.unwrap().epoch_start, 5120);
+            }
+        }
+    }
+
+    #[test]
     fn eof_uses_input_clock_and_discards_context_after_undelivered_epoch_change() {
         let space = Log2Space::new(100., 6400., 32);
         let mut scan = vec![0.; space.n_bins()];
@@ -615,6 +740,7 @@ mod tests {
                     }),
                     body_prototypes: None,
                     arrival_payload: false,
+                    t2: None,
                     period: Some(crate::config::TemporalPeriodConfig {
                         model: crate::config::ArrivalModel::Periodic,
                         horizon_sec: 0.1,
@@ -699,6 +825,7 @@ mod tests {
                     period: None,
                     body_prototypes: None,
                     arrival_payload: false,
+                    t2: None,
                     acoustic: Some(TemporalAcousticConfig {
                         group_means: [0.; 3],
                         group_deviations: [0.05, 4., 1.],
@@ -771,6 +898,7 @@ mod tests {
             period: None,
             body_prototypes: None,
             arrival_payload: false,
+            t2: None,
             ridge: Some(TemporalRidgeConfig {
                 means: [0.; 3],
                 deviations: [0.05, 4., 1.],
@@ -983,6 +1111,7 @@ mod tests {
             published: Instant::now(),
             power_scan: Arc::clone(&power),
             mono_energy: 0.25,
+            t2: None,
         };
         let tx = tap.tx.as_ref().unwrap();
         tx.send(Event::Frame(frame(10, 1))).unwrap();

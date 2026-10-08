@@ -65,7 +65,7 @@ pub(crate) fn run(
             if let Some(tap) = temporal_tap.as_mut() {
                 let mono_energy =
                     hop.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / hop.len() as f64;
-                tap.observe(frame_id, &frame.nsgt_power, mono_energy);
+                tap.observe_pcm(frame_id, &frame.nsgt_power, mono_energy, hop.as_ref());
             }
             spectral_history.observe(
                 frame_id * hop_samples as u64,

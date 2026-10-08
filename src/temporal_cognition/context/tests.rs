@@ -22,6 +22,7 @@ pub(in crate::temporal_cognition) fn input(step: u64, value: f64) -> frontend::S
         spectral_shape_supported: true,
         features: [None; 8],
         feature_gaps: [None; 8],
+        t2: None,
         admissions: 0,
         admissions_by_kind: [0; 3],
         rejections: 0,

@@ -266,7 +266,13 @@ $$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 
 ここで$\sigma(x) = 1/(1+e^{-x})$、$\beta$はシグモイドの急峻度（デフォルト2.0）、$\theta$はその閾値（デフォルト0.0）である。density massには係数$a{=}1, b{=}0, c{=}{-}\rho, d{=}0$の別個の$\rho$-kernelを用いる。$\rho$（`consonance_density_roughness_gain`、デフォルト1.0）は、roughnessがdensity placementをどれだけ抑えるかを決める。
 
-spawnは全域の$C_{density\_pmf}$を直接サンプルしない。`SpawnStrategy::Field`は、まず指定された周波数範囲だけを切り出し、effective viewから対象別のlocal massを作る。そこへ占有maskをかけ、その局所vectorだけを正規化する。massが全て0なら未占有ビン上の一様分布へ、全ビン占有なら範囲全体の一様分布へfallbackする。peak placementは$C_{score}^{eff}$を決定論的に読む。全域PMFは正規化されたLandscape表現として残るが、現在これを直接使うのはcore testだけである。
+出生は指定範囲内の分布から抽選する。既定の`SpawnStrategy::Field`は、その周波数範囲だけを切り出し、浸食後の地形から対象別の局所massを作る。そこへ占有maskをかけ、その範囲だけで正規化する。massが全て0なら未占有ビン上の一様分布へ、全ビンが占有されていれば範囲全体の一様分布へ戻る。peak配置は対象の極値を決定論的に選び、tensionを指定した場合は目標field-scoreに最も近い候補を選ぶ。全域の$C_{density\_pmf}$は正規化されたLandscape表現として残り、core testが使う。
+
+設定ファイルの最上位で`birth_surrogate = true`を指定すると、Field配置に身体の代理密度を使う機能が有効になる。既定は無効である。候補となる基音ごとに、旧rendererの直接モデルが身体のsubjective-intensity densityを推定する。density配置では、この密度と浸食後の対象地形のmassをERBセル上で積分し、身体の帯域内massで割った値を出生の重みにする。peak配置では対象のscoreを積分する。全候補を同じhopで評価し、同じ身体とrecipeの準備を再利用しながら、出生ごとに占有とspacingを反映する。範囲内での正規化と零mass時の一様分布への切替は維持する。対応外の身体やrecipeは従来の地形だけによる配置を使う。対応条件は5.1.1節に示す。
+
+この設定が作用するのは初期出生と、再出生で使うFieldの周波数提案である。再出生の最終選択は従来どおりであり、RandomとHereditaryの16候補、親の選択、最低levelによる拒否を維持する。HereditaryとPeakBiasedの選択方策も変更していない。
+
+代理式による抽選分布と実音の生成・解析から得た参照分布との全変動距離は、対応する測定条件ごとの最大値を0.1以下とする作者規則である。0.1は音響モデルから導出した値ではなく、測定したSineの約0.095を含めるために作者が定めた。この上限を確認したのは、保存したConsonance/Densityの測定点に限られる。参照は440 Hzと1800 Hz付近の7候補からなる104群で、48 kHz、hop 512を使い、他者だけの音による無音、Sine 440 Hz、Sine 660 Hz、Harmonic 330 Hzの4環境を含む。占有、spacing、tensionはない。保証範囲はこの参照中で対応する身体の測定条件に限定され、任意の設定や環境、peak配置、再出生の最終分布には広げていない。
 
 この共有地形とは別に、Voiceごとの適応もある。`AdaptationContext`は共有された**基音占有場**に対する速いboredomと遅いfamiliarityを追跡し、pitch candidateごとのscoreを補正する。これは次節のLandscape-level habituationと併存する。adaptationはエージェント固有の記憶であり、habituationは共有された知覚地形の浸食である。
 
@@ -363,7 +369,9 @@ $$ \dot{\omega} = -\eta\, s(t) \sin\varphi $$
 
 `OscillatorBank` はキャッシュ効率のためにストラクト・オブ・アレイ（struct-of-arrays）レイアウトを採用している。`ModalEngine` は内部で `ResonatorBank` を保持し、周期的にピッチパラメータを更新する。
 
-身体のパラメータは放射スペクトルを変え、共有Landscapeへ影響する。現行の移動・代謝・respawnの評価は基音位置の地形を読み、評価する身体の上部部分音までは積分しない。非調和な身体も自分の音を通して地形へ作用するが、自分の全部分音の衝突を直接コストとして払う機構ではない。音色の遺伝も未実装である。
+身体のパラメータは放射スペクトルを変え、共有Landscapeへ影響する。現行の移動・代謝の評価と再出生の最終選択は基音位置の地形を読み、評価する身体の上部部分音までは積分しない。Field配置の出生には、3.4節で述べた身体の代理密度による評価を任意で使える。非調和な身体も自分の音を通して地形へ作用するが、自分の全部分音の衝突を直接コストとして払う機構ではない。音色の遺伝も未実装である。
+
+出生の代理式を使うには、身体を生成するfactoryが旧rendererの直接モデルへの適合を申告する必要がある。現行のSineは対応する。Harmonicはmotionが0で、実際に有効なunisonコピーが一つの場合に対応する。Modalは有効なunisonコピーが一つで、brightnessがちょうど1の場合に対応する。spreadが0、または`unison = 1`ならコピーは一つになる。rendererが使わない設定値は、この判定でも無視する。Modalのそれ以外のbrightness、HarmonicやModalのmodeに指定したランダムjitter、能力申告のないfactory、モデルの扱える範囲外の入力は、従来の地形だけによる出生を使う。別のrendererへこの能力が自動で付与されることはない。これらは実装上の適用条件であり、数値的な保証は3.4節の保存参照に含まれる測定点に限る。
 
 ### 5.1.2 コアスタック（Articulation, Pitch, Phonation）
 

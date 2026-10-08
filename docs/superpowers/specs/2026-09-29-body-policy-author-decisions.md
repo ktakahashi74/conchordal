@@ -61,3 +61,32 @@
 | C5Aのenergy・spectral基準 | 各consumerで不要と示せる根拠がないため、固定実音参照・energy許容差・spectral L1／mass基準を維持する。知覚閾とは呼ばず、実測適合と作者試聴も区別する。 |
 
 現在のexact共有compilerとその通過済み検査は再利用できる。新たな近似方式の採否を、内部bit不一致だけで拒否しない。上の方針は今後の実装・判定へ適用し、実行中Source、既存の科学取得・登録・結果は変更しない。新しいepsilon、silence floor、tail cap、受入済みという推定は追加しない。
+
+## 2026-10-08：音量の規則を作者指定と既存のonset応答で決める
+
+作者は19:40に、Sine/Harmonicの身体に駆動停止後の鳴りを持たせないと判断した。
+試聴で四つの自由量を選ぶ方式をやめ、作曲者の指定、既存の決まりと信号検査で決める。
+
+| 対象 | 採択した規則 | 根拠と境界 |
+| --- | --- | --- |
+| 立ち上がり | 作曲者のADSR attackへ即時追従する。振幅stateによる追加の遅れを入れない。 | 秒指定は作曲者の入力。旧試作では10 ms attackの10→90%が159.041667 msとなり、即時追従では励振rampの8.020833 msを保つ。onsetの持ち上げによる可聴振幅の差は別の応答として残す。 |
+| Sine/Harmonicの鳴り | ADSRの上昇・下降・releaseと既存のonset整形へ遅れなく応答し、実効Off後の放射は既知の0とする。 | 旧試作T60=0.5秒ではrelease=0.26秒の−60 dB到達が0.6654375秒、旧Sineは0.259750秒だった。decay=0.1秒・sustain=0.55の90→10%下降は試作164.458333 ms、ADSR励振31.791667 ms。新しい規則は旧onset整形を残すため、純粋なADSRと放射振幅の曲線を同一視しない。 |
+| onset | Sineは旧のgain 0.2、上限1、tau 80 msと再打撃の加算を使う。Harmonicは旧excitation_gain・drive_envの80 ms応答とspectral burstを使う。 | 既存の実装値からの採用。旧80 msへ合わせた鳴りの案はattack=0で近づいたが、attack 5/10/24 msでは新peak約0.2に対して旧約0.237/0.235/0.229となり、一般のattackの写像にはならなかった。 |
+| 揺らぎ | 既定は既存のmotion=0。明示したbody motionは維持し、試聴用の倍率は削る。 | 旧のmotion入力は残す。文献の聴覚閾を製品の普遍的な尺度へ転用せず、新しいmotion語彙や方式の分離を今回追加しない。 |
+| Modalと退役 | Modalのmodeごとの自由減衰・打撃・雑音駆動・tailを変えない。Off、放射0、退役は別の状態とする。 | 鳴りを持つ身体一般の規則は残す。oscillatorの既知の0には既存の残差合計・退役経路を使い、click guardや新しい退役手順を足さない。 |
+
+この判断は、Sine/Harmonicについて以前のA2の0.5秒T60試作値と、10月7日の
+RN32閉鎖後振幅法則を置き換える。過去の証明・取得は過去versionの証拠として保存し、
+実効Off後に放射しない身体へその法則や再取得を課さない。将来の鳴りを持つoscillatorは、
+別の身体としてその設定・法則を定められるが、今回は追加しない。
+
+隔離実装の信号検査では48 kHz、Sine/Harmonic、5 attack、5 release、decay 0.1秒・
+sustain 0.55、再打撃と連続駆動の有無、および定常release対照の計210条件で、
+旧・新の実renderから読んだ放射振幅係数の最大差は0だった。ADSRとonsetの時間則を
+確認した結果であり、carrier演算が異なるPCMの一致、全module domainの科学的受入、
+主観評価、main統合を意味しない。試聴用のT60・rise・kick利得・motion倍率は削り、
+空のrender_prototype表によるofflineの入口と、既定の旧rendererを維持する。
+
+temporalの代表onset footprintなどの自己モデルの対応外を解除する判断は別とする。
+振幅の一致だけでは、carrier、window energy、source世代、route、supportの適合を
+確認したことにならない。用途別の既存精度と対応領域を維持する。

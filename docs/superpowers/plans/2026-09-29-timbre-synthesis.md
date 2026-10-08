@@ -2,6 +2,8 @@
 
 > 2026-10-07: the remaining work, gates and integration order in this document are superseded by [the current plan](../../roadmap/plan-current.md). This document is kept as history and reference.
 
+> 2026-10-08 author amendment: rules and signal checks replace the four-parameter audition; Sine/Harmonic follow ADSR and existing onset shaping without a free tail. See the [amended body contract](../specs/2026-09-29-body-module-contract.md); the tasks below remain historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Carry the timbre design (a Voice's body under a listener model) from its adopted principles to working code, in an order where each step is testable and none presumes a later one.

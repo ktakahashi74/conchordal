@@ -7,9 +7,12 @@ only the implemented state and a condensed ledger. Headings, section numbers (§
 §9.3.1–§9.3.55) and HTML anchors are preserved verbatim so existing references remain valid.
 New design findings go here, not to the technote. The moved text is retained as history;
 later adoptions and revisions are recorded with their dates.
-Last updated: 2026-10-07. The current two-tier rule, acceptance criteria and revised
-adoptions are in [§9.3.57](#two-tier-rule); scope and execution order follow the
-[current plan](../roadmap/plan-current.md).
+Last updated: 2026-10-08. The two-tier rule, acceptance criteria and revised
+adoptions are in [§9.3.57](#two-tier-rule); real-time acceptance results are in
+[§9.3.58](#realtime-acceptance-scope), and timbre/temporal selection results and
+unresolved design are in [§9.3.59](#temporal-rule-calibration-outcome). Scope,
+execution order and results of the 20 units follow the
+[current plan](../roadmap/plan-current.md). Earlier sections remain dated records.
 Japanese counterpart: `technote-ledger.ja.md`.
 
 ---
@@ -6230,6 +6233,154 @@ I11 §5.7, birth-distribution error/fixed-hop delay for rendered evaluation, and
 numerical support bounds remain author decisions in current-plan §4. They are not
 added as adopted conditions here. This ledger update also does not imply completion
 of the design/implementation units or acceptance of scientific acquisitions.
+
+<a id="realtime-acceptance-scope"></a>
+
+### 9.3.58 Real-time acceptance (R-1) and its scope
+
+This section records the author's declaration and device measurements of
+2026-10-08. R-1 closed under the following scope and absolute criteria.
+
+#### Declared scope and criteria
+
+Play each of the 12 numbered études once from start to finish on this machine
+(blanche), using the default ALSA device (48 kHz, two channels), a release build
+and no GUI. Configuration A uses the defaults; configuration B enables
+body-aware birth and metabolism. No separate numerical caps on Voice or birth
+counts are declared. Requests beyond the scope are not rejected: the declaration
+states the range of performances actually checked.
+
+Acceptance requires zero cumulative underrun from playback start to the terminal
+record, and whole-hop p99 no greater than the hop duration calculated from the
+actual device sample rate. The recorded hop budget is 10,667 µs. Maximum hop
+duration and relative cost differences are not additional pass/fail criteria.
+
+#### Failed measurements, correction and reacquisition
+
+| Measurement | Result and evidence |
+|---|---|
+| v1: A and B | Failed due to a startup race. Four performances each had 512 frames of underrun when the callback ran before the first chunk entered the ring. Rather than narrowing the observation interval afterward, correction `20a6904` moved the counter's starting point immediately after insertion of the first chunk. |
+| v2: A | All 12 performances had zero cumulative underrun; maximum p99 was 4,683 µs. Passed. |
+| v2: B | Retained as a failure with external disturbance. Études 10 and 11 had 115,200 and 22,528 underrun frames respectively. A concurrent check job in another project consumed 11 minutes 10 seconds of CPU time; all processing in the two performances was uniformly about three times slower. |
+| v3: B | Each of the 12 performances was reacquired once under quiet conditions. All had zero cumulative underrun; maximum p99 was 7,579 µs. Passed. One hop exceeded the budget, while the adopted p99 criterion was met. |
+
+On the corrected revision, A met acceptance in v2 and B in v3 within the declared
+scope. v1 and the disturbed B measurements in v2 remain failed records. The
+renderer-selection checks added to the default path by integration of the new
+renderer are included in these measurements. This is not real-time acceptance
+of the new renderer itself.
+
+#### Exclusions and the observed weakness
+
+GUI performances, arbitrary scripts, other machines or devices, configurations
+with the temporal path enabled, and concurrent heavy computation are outside
+this acceptance scope. Under external load that slowed all processing by about
+three times, the body-aware configuration suffered audio interruptions; median
+hop duration was 5.2 ms. The exclusive timing window does not cover jobs in other
+projects on the same machine. The quiet-condition pass does not establish a pass
+under disturbance.
+
+Sources are the orchestrator's decisions of 2026-10-08 at 22:16, 22:55 and 23:29
+in `.orchestration/records/decisions-20261007-orchestrator.md`, R-1's `report-2.md`
+and `report-3.md`, and the following acquisition/analysis records within R-1.
+Worker reports of preparation and code correction alone do not establish device
+acceptance. Device measurements were run from the orchestrator's shell.
+
+- `realtime-20261008/device-full-v1-analysis/analysis.md`
+- `realtime-20261008-v2/device-full-v2-analysis/analysis.md`
+- `realtime-20261008-v2/device-B-v3-analysis/analysis.md`
+- `realtime-20261008-v2/device-full-v2-disturbance.json`
+
+<a id="temporal-rule-calibration-outcome"></a>
+
+### 9.3.59 Temporal structure: what rules and signal checks settled, and what they did not (M-3, T-6)
+
+On 2026-10-08, the author replaced audition with rules and signal checks for
+selecting the free quantities in M-3 and T-6. This section separates adopted rules
+from quantities that could not be selected under the current mechanism.
+
+#### Timbre: decisions in M-3 and M-4
+
+The rise follows the composer's attack specification immediately. Sine and
+Harmonic have no ringing that persists after drive stops. The amplitude shape
+comes from the composer's ADSR and the existing onset boost. Old and new
+renderers had zero difference in radiated amplitude coefficients across the
+registered 210 conditions. This is coefficient agreement, not equality of their
+PCM waveforms. Fluctuation is absent by default.
+
+M-4 integrated the new renderer into main (`7e5d3ed`). The old renderer remains
+the default; the new renderer is an opt-in for offline rendering with
+`conchordal-render`, selected by `render_prototype = true`. Details are in the
+[body module contract](../superpowers/specs/2026-09-29-body-module-contract.md)
+and the [author's decision record](../superpowers/specs/2026-09-29-body-policy-author-decisions.md).
+Signal checks do not constitute an author audition record.
+
+#### Temporal structure: an adopted weight and unselected numbers
+
+Arrival has no additional weighting factor: its weight is 1 (main, `1f0335d`).
+This aligns it with the existing context terms. The origin is existing practice,
+not a principle.
+
+After eliminating redundant scales, accent detection retains five independent
+degrees of freedom: three component ratios, one threshold and one event-weight
+scale. The author's selection criterion requires the estimated period and next
+arrival to match actual events in regularly sounding groups, while aperiodic
+scenes must not confirm a period. Recovering every NoteOn is not the criterion.
+
+A single Sine Voice was examined at four frequencies. The executed onsets in the
+periodic controls were exactly 0.5 seconds apart. None of the 109,777 combinations
+in the finite grid met the period and next-arrival conditions, so the intersection
+with the aperiodic condition was also empty. Even combinations with exactly one
+event per onset failed. This is a negative result for the retained controls and
+finite grid, not a proof of impossibility over the continuous coefficient space.
+It is not generalized to Harmonic, Modal or mixtures.
+
+#### Separating causes and comparing retained assets with the original model
+
+- The strongest peak in the all-pair IOI distribution selects 1 second, or
+  0.445 seconds caused by the first late detection, instead of 0.5 seconds.
+- The single-step arrival points to the preceding or following cycle at cycle
+  boundaries. Failures remain in a control that fixes the period to the correct
+  value, so correcting period selection alone does not resolve them.
+- There is no rule for rejecting aperiodicity: a supported IOI peak confirms a
+  period. Unknown results caused by event suppression or insufficient support
+  within an owner are not successful detection of aperiodicity.
+
+IOI consistency derived from the consumer's window and selection of the shortest
+explainable period were tested separately and together. They still failed within
+the examined range. This comparison covered 113 settings, not a new search of all
+109,777 combinations under a redesigned mechanism. The consumer's arrival-error
+window did not determine how many IOIs suffice to confirm a period.
+
+With its retained test coefficients and integration rule, Hazard on the research
+branch returns unknown for the compared four-second horizons. The adaptive
+oscillator of Large & Jones (1999), using the verified original values from
+Simulation 2B in a cold start on these short event sequences, also fails the
+period conditions. This does not establish failure of the original model in
+general. The paper supplies neither a binary period-confirmation rule nor a
+mapping from expectancy density to the probability of the next accent.
+
+#### Remaining design problem
+
+The author must decide whether to proceed with a single entrainment state for
+period, phase and confidence, separating a period hypothesis from period
+confirmation. That would replace the single-step Periodic representation adopted
+on 2026-10-08. Two rules would need definition: when to confirm a period, and how
+expectancy maps to the probability of the next event. **This change is undecided;
+redesign has not begun.**
+
+T-6 closed under its revised exit criterion by adopting arrival weight 1 and
+naming the failure to select detection numbers that meet the criterion under
+the current mechanism. This does not mean coefficient adoption or scientific
+acceptance of temporal structure is complete. The temporal path remains disabled
+by default, and accent-detection numbers have no defaults. The recording/replay
+mechanism (`work/t6-calibration-20261008-v1`, `ff9c856`) has not entered main.
+
+Sources are M-3r's `report-4.md`, M-4's `report-2.md`, T-6r's `report.md`, T-6s's
+`report-4.md` and T-6d's `report.md`, all under `.orchestration/units/`, and the
+orchestrator's decisions of 2026-10-08 at 19:40, 20:55, 22:11 and 23:57. This
+section includes research status and unresolved design and is not copied to the
+public technote.
 
 ## 9.4 Alignment and Extension Sequence
 

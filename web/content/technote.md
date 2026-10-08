@@ -270,7 +270,7 @@ Spawn samples a range-local distribution. By default, a `SpawnStrategy::Field` s
 
 The root configuration key `birth_surrogate = true` enables optional body-density evaluation for Field placement; it is disabled by default. For each candidate fundamental, the legacy direct model estimates the body's subjective-intensity density. Density placement integrates that density against the effective target mass over ERB cells, divides by the body's in-band mass, and uses the result as the local birth weight. Peak placement integrates the target score instead. All candidates are evaluated within the same hop; equal body recipes reuse their preparation while occupancy and spacing are updated after each birth. Range-local normalization and the zero-mass fallbacks remain in force. Unsupported bodies and recipes use the existing terrain-only placement (the supported conditions are listed in Section 5.1.1).
 
-The birth option is independent of body-aware metabolism (Section 5.2); both can be enabled together. This option affects founder placements and Field frequency proposals used during respawn. Respawn's final selection remains unchanged: Random and Hereditary retain their 16 candidates, parent selection and minimum-level rejection, and Hereditary and PeakBiased retain their existing selection policies.
+With the legacy renderer, the birth option is independent of body-aware metabolism (Section 5.2); both can be enabled together. The optional offline excitation renderer uses terrain-only birth placement even when `birth_surrogate = true`. This option affects founder placements and Field frequency proposals used during respawn. Respawn's final selection remains unchanged: Random and Hereditary retain their 16 candidates, parent selection and minimum-level rejection, and Hereditary and PeakBiased retain their existing selection policies.
 
 The author adopted a maximum total-variation distance of 0.1 from the rendered-and-analyzed selection distribution for each supported measured body condition. The value is an author acceptance rule chosen to include the measured Sine result (about 0.095); it is not derived from the psychoacoustic model. The bound was checked only at the measured points in saved Consonance/Density fixtures: 104 groups of seven candidates near 440 and 1800 Hz, at 48 kHz with hop 512, in silence and other-only Sine 440 Hz, Sine 660 Hz and Harmonic 330 Hz environments. These fixtures have no occupancy, spacing or tension. The guarantee is limited to the supported conditions in those fixtures; it does not extend to arbitrary parameters or environments, Peak placement or final respawn distributions.
 
@@ -369,7 +369,7 @@ The `BodyMethod` enum defines three synthesis body types, each projecting a dist
     *   `stiffness`: Inharmonicity coefficient (stretching the partial series).
     *   `brightness`: Spectral slope (decay of higher partials).
     *   `comb`: Even harmonic attenuation.
-    *   `damping`: Energy-dependent thinning of upper partials. A slow spectral-energy envelope tracks the excitation (fast attack, ~0.5 s release, floored so ringing notes stay audible) and darkens the tone as drive fades.
+    *   `damping`: Energy-dependent thinning of upper partials. A slow spectral-energy envelope tracks the excitation (fast attack, ~0.5 s release) and darkens the tone as drive fades. Its floor bounds the relative partial balance; it does not create a free tail in the excitation renderer.
     *   `vibrato_rate` / `vibrato_depth`: LFO-based pitch modulation.
     *   `jitter`: 1/f pink noise FM strength for organic fluctuation.
     *   `unison`: Detuned copy amount for chorus-like thickening.
@@ -381,11 +381,20 @@ Sound generation is dispatched through the `AnyBackend` enum:
 *   **`Oscillator(OscillatorBank)`**: A struct-of-arrays layout for cache-efficient additive synthesis. Handles `Sine` and `Harmonic` bodies. Pitch refresh occurs every 64 samples; motion/vibrato refresh every 8 samples.
 *   **`Resonator(ModalEngine)`**: A Damped Modified Coupled Form resonator bank. Handles `Modal` bodies. Mode coefficients are rebuilt every 64 samples on pitch change.
 
+The default renderer retains the legacy body response. The optional offline
+excitation renderer separates shaped excitation from body radiation (Sections
+5.1.3 and 6.1). Sine and Harmonic respond immediately to composer ADSR and the
+existing onset transient, with no free radiation after effective Off. Sine retains
+its additive onset boost (gain 0.2, maximum 1, time constant 80 ms); Harmonic retains
+its 80 ms drive response and onset spectral burst. Modal retains mode-specific
+free decay, impulses and noise drive, including radiation after Off. Explicit body
+motion remains effective, with zero as its default.
+
 Body parameters change the emitted spectrum and therefore the shared Landscape. Movement and final respawn selection sample that terrain at a fundamental frequency. Field birth placement has the optional body-density evaluation described in Section 3.4. Metabolism can also use a body's representative density to evaluate its current position against an environment with its own sound removed (Section 5.2). This option is disabled by default. Timbre inheritance is not implemented.
 
 The birth surrogate requires a body factory to declare conformance with the legacy direct model. The current Sine implementation is supported. Harmonic requires zero motion and one active unison copy; Modal requires one active unison copy and brightness exactly 1. A single copy results from zero spread or `unison = 1`. Controls ignored by a body's renderer are ignored in this decision too. Other Modal brightness values, randomized mode recipes used by Harmonic or Modal, unsupported factories and inputs outside the model's bounded domain use the existing terrain-only birth path. A replacement renderer receives no surrogate capability by default. These conditions identify the implemented fast path; its numerical guarantee remains limited to the saved measurements in Section 3.4.
 
-Body-aware metabolism uses the factory's declaration of conformance with the legacy renderer, but obtains its density by rendering and analyzing a representative Tone. It does not apply the birth surrogate's stricter recipe conditions. Factories that do not declare this capability use the existing point-based metabolism.
+Body-aware metabolism uses the factory's declaration of conformance with the legacy renderer, but obtains its density by rendering and analyzing a representative Tone. It does not apply the birth surrogate's stricter recipe conditions. Factories that do not declare this capability use the existing point-based metabolism. The excitation renderer enables neither the legacy birth surrogate nor body-aware metabolism; both use their existing fallback paths.
 
 ### 5.1.2 The Core Stack
 
@@ -406,7 +415,7 @@ Behavior is split into three focused cores plus the `PhonationEngine`, each defi
 
 ### 5.1.3 The Sound Pipeline
 
-Audio rendering is handled by `ScheduleRenderer` (`life/schedule_renderer.rs`), which maintains a `HashMap<ToneKey, RoutedTone>` of active tones, each routed to one of two buses (Section 6.2): the **habitat bus** (analyzed as the landscape's environment) and the **presentation bus** (what the audience hears).
+Audio rendering is handled by `ScheduleRenderer` (`life/schedule_renderer.rs`), which maintains a `BTreeMap<ToneKey, RoutedTone>` of active tones, each routed to one of two buses (Section 6.2): the **habitat bus** (analyzed as the landscape's environment) and the **presentation bus** (what the audience hears).
 
 The `Tone` struct (`life/sound/tone.rs`) combines:
 
@@ -416,9 +425,23 @@ The `Tone` struct (`life/sound/tone.rs`) combines:
 *   Smoothed pitch and amplitude transitions with configurable time constants.
 *   Continuous drive for sustained excitation.
 
-The processing flow proceeds as follows: the `PhonationEngine` emits `ToneCmd` commands; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly; each `Tone` renders through its backend with ADSR shaping; the results are mixed per bus.
+The `PhonationEngine` emits `ToneCmd` commands; the `ScheduleRenderer` creates,
+updates or releases Tones and mixes their radiation per bus. The legacy renderer
+keeps its output ADSR. In the excitation renderer, ADSR and articulation shape
+the input, with no second ADSR applied to body output. An Off request starts the
+specified release ramp; effective Off is its endpoint. Sine and Harmonic then
+radiate known zero, while Modal continues its free response. A zero-second
+release uses the existing minimum of one sample.
 
-When body-aware metabolism is enabled, the renderer also captures each Voice's habitat PCM by `(id, generation)`. Subtracting it from the habitat mix gives that Voice's environment. Presentation-only audio and other generations are excluded from its own signal. The shared mix is analyzed continuously. Each Voice's environmental PCM history is retained; its analysis advances on its turn, accounting for the intervening hops in one update rather than restarting from a finite window.
+In the excitation renderer, pitch Updates address open handles, including their release interval, and retain
+carrier phase or resonator state. Closed handles reject Updates and future kicks;
+Modal tails keep their last coefficients. A new On creates a separate Tone that
+may overlap retained radiation. Ownership and routing remain attached to each
+source generation. Effective Off and disposal are distinct: closed states are
+retired when the summed residual bound for their source generation reaches the
+renderer threshold. A silent open handle is not disposed merely for being silent.
+
+With the legacy renderer and body-aware metabolism enabled, the renderer also captures each Voice's habitat PCM by `(id, generation)`. Subtracting it from the habitat mix gives that Voice's environment. Presentation-only audio and other generations are excluded from its own signal. The shared mix is analyzed continuously. Each Voice's environmental PCM history is retained; its analysis advances on its turn, accounting for the intervening hops in one update rather than restarting from a finite window.
 
 ### 5.1.4 Control-Plane Signals: Planned and Error
 
@@ -444,7 +467,7 @@ Energy depletion disables retriggering and starts the envelope tail. Reports the
 
 By default, energy updates use the effective consonance level at the Voice's fundamental. Optional body-aware metabolism instead evaluates the current position against the environment after subtracting the Voice's own sound. It averages the effective consonance score over the representative body's subjective-intensity density, weighted by ERB cell widths and normalized by in-band mass, then applies the existing score-to-level sigmoid. The current-position density is retained per Voice and rebuilt when the fundamental, recipe, generation or analysis settings change.
 
-The `[body_metabolism]` configuration section enables this path with `enabled = true`; `updates_per_hop`, `observation_frames` and `representative_hold_sec` must be specified explicitly. Omitting the section or setting `enabled = false` keeps point-based metabolism. The author adopted `updates_per_hop = 2` from comparison results; 2 is a configured update budget, not a constant of the psychoacoustic model.
+The `[body_metabolism]` configuration section enables this path with `enabled = true`; `updates_per_hop`, `observation_frames` and `representative_hold_sec` must be specified explicitly. Omitting the section or setting `enabled = false` keeps point-based metabolism. With `render_prototype = true`, point-based metabolism remains active even if this section requests body-aware evaluation; its legacy representative-Tone workspace and metabolism-specific source-PCM subtraction are not created. The author adopted `updates_per_hop = 2` from comparison results; 2 is a configured update budget, not a constant of the psychoacoustic model.
 
 Each hop updates at most the configured number of supported Voices in round-robin order. Per-Voice slots carry monotonically increasing visit numbers: the smallest numbers are selected first, and both visited Voices and newborns receive new numbers at the back. Other Voices keep their last body score. Until its first evaluation, a newborn uses the existing point score. Unsupported bodies and unavailable evaluations also use the point score; an unknown result is not treated as a known zero. These body scores feed energy updates; life diagnostics, direct phonation gates and final respawn scoring retain their point evaluations.
 
@@ -499,6 +522,11 @@ two post-onset windows (2×3); candidate forecasts use the same windows. The def
 An optional footprint path uses 16 bins of body power approximated from a frozen
 representative-onset recipe, or an envelope proxy. Its worker is independent of the
 auditory-cognition observer; missing, stale or unsupported body results use the proxy.
+The excitation renderer reports the representative body footprint as unsupported
+(`renderer-phase3`) for all three bodies, so participation uses the envelope proxy.
+Its legacy analytic Tone-energy forecasts are also unavailable. Actual-PCM
+observation, including T2 and the external/self-sound history predictor, continues
+through the rendered bus audio.
 Omitting costs one plus the number of
 consecutive voluntary omissions; an emitted onset resets that count. This cost
 is an action preference, not a metabolic reward. It prevents
@@ -646,6 +674,19 @@ Conchordal is implemented in Rust to satisfy the stringent requirements of real-
 
 ## 6.1 Threading Model
 
+The separate `conchordal-render` binary supports an optional excitation renderer.
+Enable it at the top level of the TOML configuration:
+
+```toml
+render_prototype = true
+```
+
+Omission or `false` selects the legacy renderer. The setting is a boolean and has
+no decay, rise, kick-gain or motion-scale subsettings. The instrument binary
+`conchordal` rejects activation of this renderer and exposes no audio-file output.
+In offline rendering, scenario completion closes excitation and Finish waits for
+retained body radiation to retire before closing the WAV.
+
 The application creates four primary thread contexts, plus the GUI event loop:
 
 1.  **Audio Thread (Real-Time Priority)**:
@@ -680,7 +721,7 @@ To maintain data consistency without locking the audio thread, Conchordal uses a
 4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the phonation onset strengths of habitat-routed voices; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
 5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
 6.  When DCC coupling is enabled, `tension_pressure = tension_level * coupling_strength` produces a bounded temperature bonus that feeds the Voices' pitch search. Listener tension already includes resolvability; the coupler applies no second factor. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
-7.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders audio through ADSR-shaped backends.
+7.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders the selected body response into each bus (Section 5.1.3).
 8.  Rendered presentation audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
 
 This decoupled architecture ensures that the audio thread always sees a consistent stream of samples, even if the analysis thread lags slightly behind real-time. The analysis thread processes all hops in-order to maintain NSGT time continuity.
@@ -810,9 +851,10 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5, §7 | Implemented. Dedicated beat carriers appear only in explicit synchronization demonstrations (sample 07) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition |
-| Temporal structure grounded in auditory cognition | Optional T2 preprocessing with reference-matched auditory components, author-defined group attribution and direct accents, and Periodic next-arrival costs; disabled by default | §5.4 | Partial. Accent and arrival mechanisms are implemented, with owner credit, causal support and explicit unknowns. T2's numerical free parameters and the arrival coupling weight have no selected values or defaults |
+| Temporal structure grounded in auditory cognition | Optional T2 preprocessing with reference-matched auditory components, author-defined group attribution and direct accents, and Periodic next-arrival costs; disabled by default | §5.4 | Partial. Accent and arrival mechanisms are implemented, with owner credit, causal support and explicit unknowns. T2's numerical free parameters have no defaults; an omitted arrival weight uses 1 |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented, off by default; the physical biosignal loop is open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
+| Excitation and body radiation | Offline excitation renderer: immediate Sine/Harmonic response and Modal free decay, with separate Off and disposal | §5.1, §6.1 | Implemented as an offline opt-in; the instrument retains the legacy renderer |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |
 | Dissolution of roles; spatial landscapes; heredity of timbre; other domains | Hereditary respawn exists as assays | — | Horizon |
 
@@ -824,6 +866,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 - Cognitive retention and interference, and stream identity in overlapping sound.
 - The physical biosignal loop of DCC stage two.
 - Real-time acceptance under device overload and large populations.
+- Body-aware birth/metabolism and representative-onset footprints are unavailable in the optional offline excitation renderer.
 
 # Appendix A: Key System Parameters
 

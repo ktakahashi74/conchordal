@@ -1125,7 +1125,7 @@ fn wire_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
-        render_prototype: config.render_prototype,
+        render_prototype: config.render_prototype.is_some(),
         onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
         wait_user_exit,
@@ -1513,7 +1513,7 @@ fn join_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String>
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 struct WorkerConfig {
-    render_prototype: Option<crate::config::RenderPrototypeConfig>,
+    render_prototype: bool,
     onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     scenario_name: String,
     wait_user_exit: bool,
@@ -2069,7 +2069,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
         .last_analysis_frame
         .map(|id| state.frame_idx.saturating_sub(id));
 
-    let finished_now = if state.pop.abort_requested && cfg.render_prototype.is_none() {
+    let finished_now = if state.pop.abort_requested && !cfg.render_prototype {
         true
     } else {
         state.scenario_end_tick.is_some() && state.schedule_renderer.is_idle()
@@ -3386,7 +3386,7 @@ wait(0.08);
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
-            render_prototype: None,
+            render_prototype: false,
             onset_comparison: None,
             scenario_name: "clock regression".into(),
             wait_user_exit: false,

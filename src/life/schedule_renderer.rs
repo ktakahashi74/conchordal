@@ -69,7 +69,7 @@ fn profile_lap(checkpoint: &mut Option<Instant>) -> f64 {
 }
 
 pub struct ScheduleRenderer {
-    prototype: Option<crate::config::RenderPrototypeConfig>,
+    prototype: bool,
     time: Timebase,
     buf_presentation: Vec<f32>,
     buf_habitat: Vec<f32>,
@@ -85,7 +85,7 @@ pub type SoundRenderer = ScheduleRenderer;
 impl ScheduleRenderer {
     pub fn new(time: Timebase) -> Self {
         Self {
-            prototype: None,
+            prototype: false,
             time,
             buf_presentation: vec![0.0; time.hop],
             buf_habitat: vec![0.0; time.hop],
@@ -97,16 +97,13 @@ impl ScheduleRenderer {
         }
     }
 
-    pub(crate) fn with_prototype(
-        mut self,
-        prototype: Option<crate::config::RenderPrototypeConfig>,
-    ) -> Self {
+    pub(crate) fn with_prototype(mut self, prototype: bool) -> Self {
         self.prototype = prototype;
         self
     }
 
     pub(crate) fn phase3_enabled(&self) -> bool {
-        self.prototype.is_some()
+        self.prototype
     }
 
     /// Copy only one actor's current sounding state for an offline forward model.
@@ -321,7 +318,7 @@ impl ScheduleRenderer {
                 "duplicate source PCM identity"
             );
         }
-        if self.prototype.is_some() {
+        if self.prototype {
             self.retire_closed_sources(now);
         }
         let mut checkpoint = self.profile.as_ref().map(|_| Instant::now());
@@ -482,7 +479,7 @@ impl ScheduleRenderer {
                         {
                             continue;
                         }
-                        let hold_ticks = spec.hold_ticks.unwrap_or(if self.prototype.is_some() {
+                        let hold_ticks = spec.hold_ticks.unwrap_or(if self.prototype {
                             Tick::MAX
                         } else {
                             default_hold_ticks
@@ -497,11 +494,11 @@ impl ScheduleRenderer {
                             Some(spec.render_modulator.clone()),
                             spec.adsr,
                         ) {
-                            if let Some(config) = self.prototype {
-                                tone.enable_phase3(config);
+                            if self.prototype {
+                                tone.enable_phase3();
                             }
                             tone.seed_modal_phases(modal_phase_seed(
-                                if self.prototype.is_some() {
+                                if self.prototype {
                                     modal_phase_seed(
                                         batch.source_id,
                                         u64::from(batch.source_generation),
@@ -645,7 +642,7 @@ mod tests {
             hop: 64,
         };
         for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
-            let mut renderer = ScheduleRenderer::new(time).with_prototype(Some(Default::default()));
+            let mut renderer = ScheduleRenderer::new(time).with_prototype(true);
             let mut batch = outcome_batch(kind);
             batch.tones[0].onset = 0;
             batch.tones[0].hold_ticks = Some(512);
@@ -668,8 +665,18 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        let mut tone = Tone::from_parts(time, 0, 100, 220.0, 0.2, None, None, None).unwrap();
-        tone.enable_phase3(Default::default());
+        let mut tone = Tone::from_parts(
+            time,
+            0,
+            100,
+            220.0,
+            0.2,
+            Some(outcome_batch(BodyKind::Modal).tones[0].body.clone()),
+            None,
+            None,
+        )
+        .unwrap();
+        tone.enable_phase3();
         tone.arm_onset_trigger(1.0);
         let mut now = 0;
         loop {
@@ -682,7 +689,7 @@ mod tests {
         }
         let bound = tone.residual_bound(now).unwrap();
         assert!(bound > 0.5e-6);
-        let mut renderer = ScheduleRenderer::new(time).with_prototype(Some(Default::default()));
+        let mut renderer = ScheduleRenderer::new(time).with_prototype(true);
         for tone_id in [1, 2] {
             renderer.tones.insert(
                 ToneKey {

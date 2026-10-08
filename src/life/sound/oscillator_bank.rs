@@ -275,26 +275,6 @@ impl OscillatorBank {
         out
     }
 
-    pub(crate) fn phase3_motion_scale(&mut self, scale: f32) {
-        if let OscillatorProfile::Harmonic { genotype } = &mut self.profile {
-            genotype.vibrato_depth *= scale;
-            genotype.jitter *= scale;
-        }
-    }
-
-    pub(crate) fn phase3_carrier_bound(&self) -> f64 {
-        let gains = self.gain_mask[..self.active_lane_len]
-            .iter()
-            .map(|v| f64::from(v.abs()))
-            .sum::<f64>();
-        // Unit carriers, binary32 casts, products and the sequential sum.
-        let nu = f64::from(f32::EPSILON) / 2.0 * (self.active_lane_len + 2) as f64;
-        if nu >= 1.0 {
-            return f64::INFINITY;
-        }
-        gains / (1.0 - nu) + self.active_lane_len as f64 * f64::from(f32::from_bits(1))
-    }
-
     pub(crate) fn sine_state(&self, pitch_hz: f32) -> Option<([f32; 2], [f32; 2])> {
         if !self.is_sine() || !pitch_hz.is_finite() || pitch_hz <= 0. {
             return None;
@@ -429,6 +409,15 @@ impl OscillatorBank {
         (self.spectral_env, &self.gain_mask)
     }
 
+    #[cfg(test)]
+    pub(super) fn excitation_gain_for_test(&self) -> f32 {
+        if self.is_sine() {
+            1.0
+        } else {
+            1.0 + 0.25 * self.drive_env
+        }
+    }
+
     fn apply_phase_seed_if_needed(&mut self) {
         let Some(mut state) = self.pending_phase_seed.take() else {
             return;
@@ -530,7 +519,7 @@ impl OscillatorBank {
         }
     }
 
-    fn excitation_gain(&mut self, drive: f32) -> f32 {
+    pub(super) fn excitation_gain(&mut self, drive: f32) -> f32 {
         match &self.profile {
             OscillatorProfile::Sine => 1.0,
             OscillatorProfile::Harmonic { .. } => {

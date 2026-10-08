@@ -2,6 +2,69 @@ use std::fs;
 use std::process::Command;
 
 #[test]
+fn phase3_finish_waits_for_modal_tail_but_not_oscillator_tails() {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "conchordal-phase3-finish-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir(&dir).unwrap();
+    let config = dir.join("config.toml");
+    fs::write(&config, "[render_prototype]\n[analysis]\nnfft = 2048\nhop_size = 512\n[dcc]\ncoupling_strength = 0.0\n").unwrap();
+    let mut lengths = Vec::new();
+    for body in ["sine", "harmonic", "modal"] {
+        let script = dir.join(format!("{body}.rhai"));
+        fs::write(
+            &script,
+            format!(
+                r#"
+let a = place({body}().amp(0.05).sustain().anchor().adsr(0.01, 0.0, 1.0, 0.01), at(220.0));
+wait(0.1);
+release(a);
+wait(0.03);
+"#
+            ),
+        )
+        .unwrap();
+        let wav = dir.join(format!("{body}.wav"));
+        let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
+            .arg(&script)
+            .arg("--config")
+            .arg(&config)
+            .arg("--seed")
+            .arg("73")
+            .arg("-o")
+            .arg(&wav)
+            .env("RUST_LOG", "warn")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let pcm: Vec<i16> = hound::WavReader::open(&wav)
+            .unwrap()
+            .samples::<i16>()
+            .map(Result::unwrap)
+            .collect();
+        assert!(pcm.iter().any(|v| *v != 0));
+        if body != "modal" {
+            assert_eq!(pcm.last(), Some(&0));
+        }
+        lengths.push(pcm.len());
+    }
+    assert!(
+        lengths[2] > lengths[0] && lengths[2] > lengths[1],
+        "Finish must retain Modal radiation and retire zero-residual oscillators: {lengths:?}"
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn phase3_binary_is_seeded_and_reports_unsupported_models_with_real_audio() {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

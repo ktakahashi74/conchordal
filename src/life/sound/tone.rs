@@ -36,10 +36,6 @@ struct PendingTrigger {
 
 #[derive(Clone)]
 struct ExcitedState {
-    config: crate::config::RenderPrototypeConfig,
-    amplitude: f32,
-    decay: f32,
-    rise_alpha: f32,
     closed: bool,
     retired: bool,
 }
@@ -67,6 +63,8 @@ pub struct Tone {
     noise_state: u64,
     started: bool,
     sine_impulse_boost: f32,
+    #[cfg(test)]
+    radiated_amplitude: f32,
 }
 
 impl Tone {
@@ -208,6 +206,8 @@ impl Tone {
             noise_state: 0x9E3779B97F4A7C15_u64.wrapping_add(onset),
             started: false,
             sine_impulse_boost: 0.0,
+            #[cfg(test)]
+            radiated_amplitude: 0.0,
         })
     }
 
@@ -218,19 +218,11 @@ impl Tone {
         }
     }
 
-    pub(crate) fn enable_phase3(&mut self, config: crate::config::RenderPrototypeConfig) {
-        let tau = config.decay_t60_sec / (3.0 * std::f32::consts::LN_10);
+    pub(crate) fn enable_phase3(&mut self) {
         self.excited = Some(ExcitedState {
-            config,
-            amplitude: 0.0,
-            decay: (-self.sample_dt / tau).exp(),
-            rise_alpha: -(-self.sample_dt / config.rise_tau_sec.unwrap_or(tau)).exp_m1(),
             closed: false,
             retired: false,
         });
-        if let AnyBackend::Oscillator(bank) = &mut self.backend {
-            bank.phase3_motion_scale(config.motion_scale);
-        }
     }
 
     pub(crate) fn supports_self_model(&self) -> bool {
@@ -249,9 +241,7 @@ impl Tone {
             return None;
         }
         Some(match &self.backend {
-            AnyBackend::Oscillator(bank) => {
-                f64::from(state.amplitude) * bank.phase3_carrier_bound()
-            }
+            AnyBackend::Oscillator(_) => 0.0,
             AnyBackend::Resonator(engine) => engine.phase3_residual_bound(),
         })
     }
@@ -371,6 +361,10 @@ impl Tone {
     }
 
     pub fn render_tick(&mut self, tick: Tick, _fs: f32, dt: f32, rhythms: &NeuralRhythms) -> f32 {
+        #[cfg(test)]
+        {
+            self.radiated_amplitude = 0.0;
+        }
         if self.excited.is_some() {
             return self.render_excited_tick(tick, dt, rhythms);
         }
@@ -438,6 +432,16 @@ impl Tone {
         if !signal.is_active {
             return 0.0;
         }
+        #[cfg(test)]
+        if let AnyBackend::Oscillator(bank) = &self.backend {
+            self.radiated_amplitude = self.current_amp.max(0.0)
+                * signal.amplitude
+                * if bank.is_sine() {
+                    1.0 + self.sine_impulse_boost
+                } else {
+                    bank.excitation_gain_for_test()
+                };
+        }
         let mut sample = out[0] * signal.amplitude;
         if self.backend.is_sine() {
             sample *= 1.0 + self.sine_impulse_boost;
@@ -458,6 +462,9 @@ impl Tone {
             self.pending_trigger = None;
             self.planned_kick_pending = None;
             self.pending_impulse_energy = 0.0;
+            if matches!(self.backend, AnyBackend::Oscillator(_)) {
+                return 0.0;
+            }
         } else {
             if let Some(trigger) = self.pending_trigger
                 && tick >= trigger.at_tick
@@ -476,6 +483,7 @@ impl Tone {
         let impulse = std::mem::take(&mut self.pending_impulse_energy);
         let mut z = 0.0;
         let mut spectral_drive = 0.0;
+        let mut active = false;
         if open {
             let signal = self.render_modulator.as_mut().map_or_else(
                 || ArticulationSignal {
@@ -489,39 +497,35 @@ impl Tone {
             // Preserve the legacy harmonic burst independently of amplitude kick.
             spectral_drive =
                 impulse + self.continuous_drive * (signal.amplitude * self.envelope.gain_at(tick));
-            if signal.is_active {
+            active = signal.is_active;
+            if active {
                 z = self.envelope.gain_at(tick) * signal.amplitude.max(0.0);
             }
         }
         let a = self.current_amp;
-        let qz = self.continuous_drive * z;
-        let state = self.excited.as_mut().unwrap();
         let sample = match &mut self.backend {
             AnyBackend::Oscillator(bank) => {
-                let target = if open {
-                    a * z
-                        * if bank.is_sine() {
-                            1.0
-                        } else {
-                            1.0 + 0.25 * qz.clamp(0.0, 4.0)
-                        }
+                let gain = if bank.is_sine() {
+                    if impulse > 0.0 {
+                        self.sine_impulse_boost = (self.sine_impulse_boost
+                            + impulse * SINE_IMPULSE_BOOST_GAIN)
+                            .clamp(0.0, SINE_IMPULSE_BOOST_MAX);
+                    }
+                    let gain = 1.0 + self.sine_impulse_boost;
+                    if active && z > 0.0 {
+                        self.sine_impulse_boost *= impulse_boost_decay(self.sample_dt);
+                    }
+                    gain
                 } else {
-                    0.0
+                    bank.excitation_gain(spectral_drive)
                 };
-                if open {
-                    let alpha = if target > state.amplitude {
-                        state.rise_alpha
-                    } else {
-                        1.0 - state.decay
-                    };
-                    state.amplitude += alpha * (target - state.amplitude);
-                    state.amplitude += state.config.kick_gain * a * z * impulse;
-                } else {
-                    state.amplitude *= state.decay;
+                let excitation = if active && z > 0.0 { a * z * gain } else { 0.0 };
+                #[cfg(test)]
+                {
+                    self.radiated_amplitude = excitation;
                 }
-                let spectral_drive = if bank.is_sine() { qz } else { spectral_drive };
-                state.amplitude
-                    * bank.phase3_carrier(self.current_pitch_hz, a, spectral_drive, open)
+                let spectral_drive = if bank.is_sine() { 0.0 } else { spectral_drive };
+                excitation * bank.phase3_carrier(self.current_pitch_hz, a, spectral_drive, open)
             }
             AnyBackend::Resonator(engine) => {
                 let mut drive = 0.0;
@@ -530,8 +534,8 @@ impl Tone {
                     let mut noise = self
                         .noise_state
                         .wrapping_add(tick.wrapping_mul(0x9E3779B97F4A7C15));
-                    drive = state.config.kick_gain * a * impulse
-                        + a * self.continuous_drive * z * z * fast_noise(&mut noise);
+                    drive =
+                        a * impulse + a * self.continuous_drive * z * z * fast_noise(&mut noise);
                 }
                 engine.phase3_sample(self.current_pitch_hz, drive, open)
             }
@@ -943,6 +947,130 @@ mod tests {
     use super::*;
 
     #[test]
+    fn phase3_oscillator_amplitudes_match_legacy() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let rhythms = NeuralRhythms::default();
+        let mut cases = Vec::new();
+        for attack in [0.0, 0.005, 0.010, 0.024, 0.2] {
+            for release in [0.0, 0.01, 0.1, 0.26, 2.5] {
+                for rekick in [false, true] {
+                    for drive in [0.0, 1.25] {
+                        cases.push((attack, release, rekick, drive, 0.55));
+                    }
+                }
+            }
+        }
+        // Preserve the earlier isolated release definition, with steady level A.
+        for release in [0.0, 0.01, 0.1, 0.26, 2.5] {
+            cases.push((0.0, release, false, 0.0, 1.0));
+        }
+        for kind in [BodyKind::Sine, BodyKind::Harmonic] {
+            for &(attack, release, rekick, drive, sustain) in &cases {
+                let hold = time.sec_to_tick(1.2);
+                let mut old = Tone::from_parts(
+                    time,
+                    0,
+                    hold,
+                    220.0,
+                    0.2,
+                    Some(BodySnapshot {
+                        kind,
+                        brightness: 0.7,
+                        ..default_body_snapshot()
+                    }),
+                    None,
+                    Some(ToneAdsr {
+                        attack_sec: attack,
+                        decay_sec: 0.1,
+                        sustain_level: sustain,
+                        release_sec: release,
+                    }),
+                )
+                .unwrap();
+                old.seed_modal_phases(73);
+                old.set_continuous_drive(drive);
+                old.arm_onset_trigger(1.0);
+                let mut new = old.clone();
+                new.enable_phase3();
+                let off = new.envelope.release_end;
+                let decay_start = new.envelope.attack_ticks;
+                let mut max_difference = 0.0_f32;
+                let mut peak80 = [0.0_f32; 2];
+                let mut peak_onset = [0.0_f32; 2];
+                let mut minus60 = [None; 2];
+                let mut decay90 = [None; 2];
+                let mut decay10 = [None; 2];
+                let mut decay_end_amplitude = [0.0; 2];
+                for tick in 0..off + 4800 {
+                    if rekick && tick == time.sec_to_tick(0.24) {
+                        // Exercise additive Sine saturation and Harmonic drive saturation.
+                        old.trigger_impulse(6.0);
+                        new.trigger_impulse(6.0);
+                    }
+                    let pcm = [
+                        old.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms),
+                        new.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms),
+                    ];
+                    let amplitudes = [old.radiated_amplitude, new.radiated_amplitude];
+                    assert!(pcm.iter().chain(amplitudes.iter()).all(|v| v.is_finite()));
+                    max_difference = max_difference.max((amplitudes[0] - amplitudes[1]).abs());
+                    for i in 0..2 {
+                        if tick < 3840 {
+                            peak80[i] = peak80[i].max(pcm[i].abs());
+                        }
+                        if tick < decay_start + 3840 {
+                            peak_onset[i] = peak_onset[i].max(pcm[i].abs());
+                        }
+                        if tick >= hold && minus60[i].is_none() && amplitudes[i] <= 0.2 / 1000.0 {
+                            minus60[i] = Some(tick - hold);
+                        }
+                        if sustain < 1.0 && tick >= decay_start {
+                            let excess = (amplitudes[i] - 0.2 * sustain) / (0.2 * (1.0 - sustain));
+                            if decay90[i].is_none() && excess <= 0.9 {
+                                decay90[i] = Some(tick - decay_start);
+                            }
+                            if decay10[i].is_none() && excess <= 0.1 {
+                                decay10[i] = Some(tick - decay_start);
+                            }
+                        }
+                        if tick == decay_start + new.envelope.decay_ticks {
+                            decay_end_amplitude[i] = amplitudes[i];
+                        }
+                    }
+                    if tick >= off {
+                        assert_eq!(pcm[1], 0.0, "oscillator radiated after Off");
+                        assert_eq!(new.residual_bound(tick), Some(0.0));
+                        assert!(!new.is_done(tick), "Off implicitly disposed the handle");
+                    }
+                }
+                assert_eq!(
+                    max_difference, 0.0,
+                    "{kind:?} attack={attack} release={release}"
+                );
+                assert_eq!(minus60[0], minus60[1]);
+                assert_eq!(decay90[0], decay90[1]);
+                assert_eq!(decay10[0], decay10[1]);
+                new.retire_phase3();
+                assert!(new.is_done(off + 4800));
+                println!(
+                    "OSCILLATOR_AMPLITUDE {}",
+                    serde_json::json!({
+                        "body": format!("{kind:?}"), "attack": attack, "release": release,
+                        "sustain": sustain, "rekick": rekick, "drive": drive,
+                        "max_amplitude_difference": max_difference, "frames": off + 4800,
+                        "release_minus60_samples": minus60, "decay90_samples": decay90,
+                        "decay10_samples": decay10, "decay_end_amplitude": decay_end_amplitude,
+                        "peak80": peak80, "peak_onset": peak_onset,
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
     fn phase3_harmonic_spectral_burst_matches_legacy_and_freezes_at_off() {
         let time = Timebase {
             fs: 48_000.0,
@@ -951,134 +1079,87 @@ mod tests {
         let rhythms = NeuralRhythms::default();
         for attack_sec in [0.0, 0.005, 0.010, 0.024, 0.2] {
             for continuous_drive in [0.0, 1.25] {
-                for kick_gain in [0.0, 1.0] {
-                    let mut old = Tone::from_parts(
-                        time,
-                        0,
-                        time.sec_to_tick(0.4),
-                        220.0,
-                        0.2,
-                        Some(BodySnapshot {
-                            kind: BodyKind::Harmonic,
-                            brightness: 0.7,
-                            ..default_body_snapshot()
-                        }),
-                        None,
-                        Some(ToneAdsr {
-                            attack_sec,
-                            decay_sec: 0.1,
-                            sustain_level: 0.55,
-                            release_sec: 0.1,
-                        }),
-                    )
-                    .unwrap();
-                    old.set_continuous_drive(continuous_drive);
-                    old.seed_modal_phases(73);
-                    old.arm_onset_trigger(1.0);
-                    let mut new = old.clone();
-                    new.enable_phase3(crate::config::RenderPrototypeConfig {
-                        kick_gain,
-                        ..Default::default()
-                    });
-                    let off = new.envelope.release_end;
-                    let mut frozen = None;
-                    let mut checkpoints = Vec::new();
-                    let mut frozen_gains = Vec::new();
-                    let mut tail_nonzero = false;
-                    for tick in 0..off + time.sec_to_tick(0.1) {
-                        // The driven case also checks an independent later spectral burst.
-                        if continuous_drive > 0.0 && tick == time.sec_to_tick(0.24) {
-                            old.trigger_impulse(0.4);
-                            new.trigger_impulse(0.4);
-                        }
-                        if tick == off + 1 {
-                            new.trigger_impulse(1.0);
-                        }
-                        let old_pcm = old.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
-                        let new_pcm = new.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
-                        assert!(old_pcm.is_finite() && new_pcm.is_finite());
-                        let AnyBackend::Oscillator(old_bank) = &old.backend else {
-                            unreachable!()
-                        };
-                        let AnyBackend::Oscillator(new_bank) = &new.backend else {
-                            unreachable!()
-                        };
-                        let (old_env, _) = old_bank.spectral_state_for_test();
-                        let (new_env, new_gains) = new_bank.spectral_state_for_test();
-                        if tick < off {
-                            assert_eq!(old_env, new_env, "spectral state at tick {tick}");
-                            if tick == 0 {
-                                assert_eq!(new_env, 1.0, "ADSR suppressed the onset burst");
-                            }
-                            if tick == off - 1 {
-                                frozen = Some(new_env);
-                                frozen_gains.extend_from_slice(new_gains);
-                            }
-                        } else {
-                            assert_eq!(Some(new_env), frozen, "Off changed spectral state");
-                            assert_eq!(new_gains, frozen_gains, "Off changed partial gains");
-                            tail_nonzero |= new_pcm != 0.0;
-                        }
-                        if [0, 3840, 9600, off - 1, off, off + 4799].contains(&tick) {
-                            checkpoints.push(serde_json::json!({
-                                "tick": tick, "old_env": old_env, "new_env": new_env,
-                            }));
-                        }
-                    }
-                    assert!(
-                        tail_nonzero,
-                        "the frozen check must exercise a sounding tail"
-                    );
-                    println!(
-                        "M3R_SPECTRAL {}",
-                        serde_json::json!({
-                            "attack_sec": attack_sec, "continuous_drive": continuous_drive,
-                            "kick_gain": kick_gain, "open_samples": off,
-                            "closed_samples": 4800, "open_max_abs_difference": 0.0,
-                            "closed_max_abs_state_change": 0.0,
-                            "closed_max_abs_gain_change": 0.0, "checkpoints": checkpoints,
-                        })
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn phase3_default_rise_follows_composer_attack() {
-        for fs in [44_100.0, 48_000.0, 96_000.0] {
-            let time = Timebase { fs, hop: 64 };
-            for attack_sec in [0.0, 0.001, 0.01, 0.8] {
-                let adsr = ToneAdsr {
-                    attack_sec,
-                    decay_sec: 0.0,
-                    sustain_level: 1.0,
-                    release_sec: 0.1,
-                };
-                let mut tone = Tone::from_parts(
+                let mut old = Tone::from_parts(
                     time,
                     0,
-                    Tick::MAX,
+                    time.sec_to_tick(0.4),
                     220.0,
                     0.2,
-                    Some(default_body_snapshot()),
+                    Some(BodySnapshot {
+                        kind: BodyKind::Harmonic,
+                        brightness: 0.7,
+                        ..default_body_snapshot()
+                    }),
                     None,
-                    Some(adsr),
+                    Some(ToneAdsr {
+                        attack_sec,
+                        decay_sec: 0.1,
+                        sustain_level: 0.55,
+                        release_sec: 0.1,
+                    }),
                 )
                 .unwrap();
-                // Isolate attack from the still-unselected onset coupling.
-                tone.enable_phase3(crate::config::RenderPrototypeConfig {
-                    kick_gain: 0.0,
-                    ..Default::default()
-                });
-                tone.arm_onset_trigger(1.0);
-                for tick in 0..=time.sec_to_tick(attack_sec) {
-                    let sample = tone.render_tick(tick, fs, 1.0 / fs, &NeuralRhythms::default());
-                    let expected = 0.2 * tone.envelope.gain_at(tick);
-                    let actual = tone.excited.as_ref().unwrap().amplitude;
-                    assert!(sample.is_finite());
-                    assert!((actual - expected).abs() <= f32::EPSILON * 0.2);
+                old.set_continuous_drive(continuous_drive);
+                old.seed_modal_phases(73);
+                old.arm_onset_trigger(1.0);
+                let mut new = old.clone();
+                new.enable_phase3();
+                let off = new.envelope.release_end;
+                let mut frozen = None;
+                let mut checkpoints = Vec::new();
+                let mut frozen_gains = Vec::new();
+                let mut tail_peak = 0.0_f32;
+                for tick in 0..off + time.sec_to_tick(0.1) {
+                    // The driven case also checks an independent later spectral burst.
+                    if continuous_drive > 0.0 && tick == time.sec_to_tick(0.24) {
+                        old.trigger_impulse(0.4);
+                        new.trigger_impulse(0.4);
+                    }
+                    if tick == off + 1 {
+                        new.trigger_impulse(1.0);
+                    }
+                    let old_pcm = old.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+                    let new_pcm = new.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+                    assert!(old_pcm.is_finite() && new_pcm.is_finite());
+                    let AnyBackend::Oscillator(old_bank) = &old.backend else {
+                        unreachable!()
+                    };
+                    let AnyBackend::Oscillator(new_bank) = &new.backend else {
+                        unreachable!()
+                    };
+                    let (old_env, _) = old_bank.spectral_state_for_test();
+                    let (new_env, new_gains) = new_bank.spectral_state_for_test();
+                    if tick < off {
+                        assert_eq!(old_env, new_env, "spectral state at tick {tick}");
+                        if tick == 0 {
+                            assert_eq!(new_env, 1.0, "ADSR suppressed the onset burst");
+                        }
+                        if tick == off - 1 {
+                            frozen = Some(new_env);
+                            frozen_gains.extend_from_slice(new_gains);
+                        }
+                    } else {
+                        assert_eq!(Some(new_env), frozen, "Off changed spectral state");
+                        assert_eq!(new_gains, frozen_gains, "Off changed partial gains");
+                        tail_peak = tail_peak.max(new_pcm.abs());
+                    }
+                    if [0, 3840, 9600, off - 1, off, off + 4799].contains(&tick) {
+                        checkpoints.push(serde_json::json!({
+                            "tick": tick, "old_env": old_env, "new_env": new_env,
+                        }));
+                    }
                 }
+                assert_eq!(tail_peak, 0.0, "oscillator radiated after Off");
+                println!(
+                    "M3R_SPECTRAL {}",
+                    serde_json::json!({
+                        "attack_sec": attack_sec, "continuous_drive": continuous_drive,
+                        "open_samples": off,
+                        "closed_samples": 4800, "open_max_abs_difference": 0.0,
+                        "closed_max_abs_state_change": 0.0,
+                        "closed_max_abs_gain_change": 0.0, "checkpoints": checkpoints,
+                    })
+                );
             }
         }
     }
@@ -1095,7 +1176,7 @@ mod tests {
             sustain_level: 1.0,
             release_sec: 0.1,
         };
-        let make = |motion, scale| {
+        let make = |motion| {
             let mut tone = Tone::from_parts(
                 time,
                 0,
@@ -1111,20 +1192,16 @@ mod tests {
                 Some(adsr),
             )
             .unwrap();
-            tone.enable_phase3(crate::config::RenderPrototypeConfig {
-                motion_scale: scale,
-                ..Default::default()
-            });
+            tone.enable_phase3();
             tone.seed_modal_phases(73);
             tone.arm_onset_trigger(1.0);
             tone
         };
-        let scale = crate::config::RenderPrototypeConfig::default().motion_scale;
         let motion = crate::scenario::control::TimbreControl::default().motion;
         assert_eq!(motion, 0.0);
-        let mut default = make(motion, scale);
-        let mut zero = make(0.0, 0.0);
-        let mut explicit = make(0.2, scale);
+        let mut default = make(motion);
+        let mut zero = make(0.0);
+        let mut explicit = make(0.2);
         let mut differs = false;
         for tick in 0..24_000 {
             let rhythms = NeuralRhythms::default();
@@ -1157,7 +1234,7 @@ mod tests {
                 let mut tone =
                     Tone::from_parts(time, 0, Tick::MAX, 220.0, 0.2, Some(body), None, Some(adsr))
                         .unwrap();
-                tone.enable_phase3(Default::default());
+                tone.enable_phase3();
                 tone.seed_modal_phases(73);
                 tone.arm_onset_trigger(1.0);
                 let close_request = time.sec_to_tick(0.2);
@@ -1197,7 +1274,13 @@ mod tests {
                 assert_eq!(tone.debug_current_freq_hz(), 440.0);
                 assert!(!tone.is_done(close));
                 let bound = tone.residual_bound(close + 1).unwrap();
-                assert!(bound.is_finite() && bound > f64::from(crate::life::voice::Voice::AMP_EPS));
+                if kind == BodyKind::Modal {
+                    assert!(
+                        bound.is_finite() && bound > f64::from(crate::life::voice::Voice::AMP_EPS)
+                    );
+                } else {
+                    assert_eq!(bound, 0.0);
+                }
                 let mut control = tone.clone();
                 assert!(!tone.schedule_update(
                     close + 1,
@@ -1221,7 +1304,13 @@ mod tests {
                     );
                     tail_peak = tail_peak.max(y.abs());
                 }
-                assert!(tail_peak > 1e-6, "old release_end cut off the free tail");
+                if kind == BodyKind::Modal {
+                    assert!(tail_peak > 1e-6, "Modal lost its free tail");
+                } else {
+                    assert_eq!(tail_peak, 0.0);
+                }
+                tone.retire_phase3();
+                assert!(tone.is_done(close + time.sec_to_tick(1.3)));
                 assert_eq!(tone.debug_current_freq_hz(), 440.0);
                 assert!(
                     tone.residual_bound(close + time.sec_to_tick(1.3)).unwrap()
@@ -1241,7 +1330,7 @@ mod tests {
             hop: 64,
         };
         let mut tone = Tone::from_parts(time, 0, Tick::MAX, 220.0, 0.2, None, None, None).unwrap();
-        tone.enable_phase3(Default::default());
+        tone.enable_phase3();
         assert!(!tone.schedule_update(
             0,
             ToneUpdate {

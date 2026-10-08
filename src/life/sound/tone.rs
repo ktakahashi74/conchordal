@@ -937,6 +937,100 @@ mod tests {
     use super::*;
 
     #[test]
+    fn phase3_default_rise_follows_composer_attack() {
+        for fs in [44_100.0, 48_000.0, 96_000.0] {
+            let time = Timebase { fs, hop: 64 };
+            for attack_sec in [0.0, 0.001, 0.01, 0.8] {
+                let adsr = ToneAdsr {
+                    attack_sec,
+                    decay_sec: 0.0,
+                    sustain_level: 1.0,
+                    release_sec: 0.1,
+                };
+                let mut tone = Tone::from_parts(
+                    time,
+                    0,
+                    Tick::MAX,
+                    220.0,
+                    0.2,
+                    Some(default_body_snapshot()),
+                    None,
+                    Some(adsr),
+                )
+                .unwrap();
+                // Isolate attack from the still-unselected onset coupling.
+                tone.enable_phase3(crate::config::RenderPrototypeConfig {
+                    kick_gain: 0.0,
+                    ..Default::default()
+                });
+                tone.arm_onset_trigger(1.0);
+                for tick in 0..=time.sec_to_tick(attack_sec) {
+                    let sample = tone.render_tick(tick, fs, 1.0 / fs, &NeuralRhythms::default());
+                    let expected = 0.2 * tone.envelope.gain_at(tick);
+                    let actual = tone.excited.as_ref().unwrap().amplitude;
+                    assert!(sample.is_finite());
+                    assert!((actual - expected).abs() <= f32::EPSILON * 0.2);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn phase3_preserves_explicit_motion_and_has_no_implicit_motion() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let adsr = ToneAdsr {
+            attack_sec: 0.0,
+            decay_sec: 0.0,
+            sustain_level: 1.0,
+            release_sec: 0.1,
+        };
+        let make = |motion, scale| {
+            let mut tone = Tone::from_parts(
+                time,
+                0,
+                Tick::MAX,
+                220.0,
+                0.2,
+                Some(BodySnapshot {
+                    kind: BodyKind::Harmonic,
+                    motion,
+                    ..default_body_snapshot()
+                }),
+                None,
+                Some(adsr),
+            )
+            .unwrap();
+            tone.enable_phase3(crate::config::RenderPrototypeConfig {
+                motion_scale: scale,
+                ..Default::default()
+            });
+            tone.seed_modal_phases(73);
+            tone.arm_onset_trigger(1.0);
+            tone
+        };
+        let scale = crate::config::RenderPrototypeConfig::default().motion_scale;
+        let motion = crate::scenario::control::TimbreControl::default().motion;
+        assert_eq!(motion, 0.0);
+        let mut default = make(motion, scale);
+        let mut zero = make(0.0, 0.0);
+        let mut explicit = make(0.2, scale);
+        let mut differs = false;
+        for tick in 0..24_000 {
+            let rhythms = NeuralRhythms::default();
+            let sample = default.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+            assert_eq!(
+                sample,
+                zero.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms)
+            );
+            differs |= sample != explicit.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+        }
+        assert!(differs, "explicit composer motion was erased");
+    }
+
+    #[test]
     fn phase3_hold_release_pitch_and_future_residual_are_separate() {
         for fs in [44_100.0, 48_000.0, 96_000.0] {
             for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {

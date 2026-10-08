@@ -316,7 +316,7 @@ pub struct BodyMetabolismConfig {
     pub representative_hold_sec: f32,
 }
 
-/// M-3 audition parameters, not adopted production settings.
+/// Offline prototype rules; decay and kick remain unselected trial settings.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RenderPrototypeConfig {
@@ -329,12 +329,13 @@ pub struct RenderPrototypeConfig {
 impl Default for RenderPrototypeConfig {
     fn default() -> Self {
         Self {
-            // A2's existing trial T60; the shared rise tau is T60 / ln(1000).
+            // A2's trial T60 remains pending the release mapping decision.
             decay_t60_sec: 0.5,
-            rise_tau_sec: None,
+            // Composer attack already shapes excitation; do not add a rise lag.
+            rise_tau_sec: Some(0.0),
             // Unit input coupling, as in the existing Modal impulse transfer.
             kick_gain: 1.0,
-            // Preserve the existing preset motion level for the audition baseline.
+            // Body motion defaults to zero; preserve explicit composer motion.
             motion_scale: 1.0,
         }
     }

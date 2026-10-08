@@ -664,7 +664,7 @@ impl TemporalParticipation {
                     selected_cost_without_arrival: None,
                     minimum_cost_without_arrival: None,
                     arrival_weight: arrival_enabled
-                        .then(|| self.onset_comparison.unwrap().arrival_weight.unwrap()),
+                        .then(|| self.onset_comparison.unwrap().arrival_weight.unwrap_or(1.0)),
                     candidates: [None; 23],
                     reference_cost: f32::INFINITY,
                     selected_offset: 0,
@@ -762,7 +762,7 @@ impl TemporalParticipation {
                 };
                 let arrival_cost = arrival_probability.map(|probability| {
                     self.coupling
-                        * self.onset_comparison.unwrap().arrival_weight.unwrap()
+                        * self.onset_comparison.unwrap().arrival_weight.unwrap_or(1.0)
                         * (1.0 - probability) as f32
                 });
                 if let Some(term) = arrival_cost {
@@ -991,6 +991,54 @@ impl TemporalParticipation {
 mod tests {
     use super::*;
     use crate::core::temporal_expectation::AcousticTemporalExpectation;
+
+    #[test]
+    fn omitted_arrival_weight_uses_unit_cost_and_disabled_weights_are_inert() {
+        use crate::config::TemporalOnsetComparisonConfig;
+        let omitted: TemporalOnsetComparisonConfig =
+            toml::from_str("footprint = \"proxy\"\narrival = true\n").unwrap();
+        let snapshot = crate::life::arrival_cost::tests::fixture();
+        let context = ArrivalContext {
+            snapshot: &snapshot,
+            self_group: None,
+            self_group_state: "binding_absent",
+            binding: None,
+            habitat_routed: true,
+            body_record: None,
+            owner: (0, 0, None),
+        };
+        let mut choices = Vec::new();
+        for arrival in [true, false] {
+            let mut costs = Vec::new();
+            for weight in [None, Some(1.0), Some(4.0)] {
+                let mut policy = TemporalParticipation::new(48_000, 2.0, 1.0, 0, 17, 48_000);
+                policy.due_frame = 24_000.0;
+                policy.set_onset_comparison(Some(TemporalOnsetComparisonConfig {
+                    arrival,
+                    arrival_weight: weight,
+                    ..omitted
+                }));
+                policy.set_decision_trace(true);
+                choices.push(policy.candidate(0, 60_000, true, None, Some(&context)));
+                let decision = policy.drain_decisions().next().unwrap();
+                if arrival && weight.is_none() {
+                    assert_eq!(decision.arrival_weight, Some(1.0));
+                    assert_eq!(decision.candidates[2].unwrap().cost, 1.0);
+                }
+                costs.push(
+                    decision
+                        .candidates
+                        .map(|candidate| candidate.map(|c| c.cost.to_bits())),
+                );
+            }
+            assert_eq!(costs[0], costs[1]);
+            if !arrival {
+                assert_eq!(costs[0], costs[2]);
+            }
+        }
+        assert_eq!(choices[..3], [Some(26_400); 3]);
+        assert_eq!(choices[3..], [Some(24_000); 3]);
+    }
 
     #[test]
     fn arrival_moves_choice_but_missing_group_remains_unknown() {

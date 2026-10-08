@@ -330,6 +330,7 @@ pub struct TemporalOnsetComparisonConfig {
     pub footprint: FootprintSource,
     #[serde(default)]
     pub arrival: bool,
+    // Omission uses unit weight, matching the context term by convention, not principle.
     pub arrival_weight: Option<f32>,
 }
 
@@ -612,10 +613,6 @@ impl AppConfig {
             }
             if onset.arrival {
                 ensure!(
-                    onset.arrival_weight.is_some(),
-                    "arrival requires explicit arrival_weight"
-                );
-                ensure!(
                     self.temporal_period.is_some(),
                     "arrival requires temporal_period"
                 );
@@ -850,7 +847,7 @@ mod tests {
     }
 
     #[test]
-    fn onset_comparison_defaults_to_body_and_requires_explicit_arrival_inputs() {
+    fn onset_comparison_defaults_to_body_and_requires_period_for_arrival() {
         assert!(AppConfig::default().temporal_onset_comparison.is_none());
         let bare: AppConfig = toml::from_str("[temporal_onset_comparison]\n").unwrap();
         bare.validate().unwrap();

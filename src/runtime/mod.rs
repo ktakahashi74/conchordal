@@ -1699,9 +1699,6 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
 
     if cfg.start_flag.load(Ordering::SeqCst) {
         state.playback_state = PlaybackState::Playing;
-        if let Some(count) = cfg.underrun_frames.as_ref() {
-            count.store(0, Ordering::Relaxed);
-        }
     }
     let idle_silence = vec![0.0f32; cfg.hop];
 
@@ -1812,9 +1809,6 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
             continue;
         } else if state.playback_state == PlaybackState::NotStarted {
             state.playback_state = PlaybackState::Playing;
-            if let Some(count) = cfg.underrun_frames.as_ref() {
-                count.store(0, Ordering::Relaxed);
-            }
         }
 
         if state.finished && cfg.wait_user_exit {
@@ -1835,7 +1829,7 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
             }
             if let Some(prod) = channels.audio_prod.as_mut() {
                 while prod.vacant_len() >= cfg.hop {
-                    AudioOutput::push_samples(prod, &idle_silence);
+                    AudioOutput::push_samples(prod, &idle_silence, None);
                 }
             }
             thread::sleep(Duration::from_millis(10));
@@ -2789,7 +2783,12 @@ fn render_and_route_audio(
     }
 
     if let Some(prod) = channels.audio_prod.as_mut() {
-        AudioOutput::push_samples(prod, frame.presentation);
+        let reset_underrun_frames = if state.frame_idx == 0 {
+            cfg.underrun_frames.as_deref()
+        } else {
+            None
+        };
+        AudioOutput::push_samples(prod, frame.presentation, reset_underrun_frames);
     }
 
     let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);

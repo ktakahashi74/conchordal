@@ -251,8 +251,12 @@ impl AudioOutput {
         Arc::clone(&self.counters)
     }
 
-    /// Worker loop pushes new samples.
-    pub fn push_samples(prod: &mut HeapProd<f32>, samples: &[f32]) {
+    /// The first published chunk starts underrun accounting, excluding setup callbacks.
+    pub fn push_samples(
+        prod: &mut HeapProd<f32>,
+        samples: &[f32],
+        reset_underrun_frames: Option<&AtomicU64>,
+    ) {
         let mut offset = 0;
         while offset < samples.len() {
             let written = prod.push_slice(&samples[offset..]);
@@ -261,6 +265,9 @@ impl AudioOutput {
             if offset < samples.len() {
                 std::thread::sleep(std::time::Duration::from_micros(200));
             }
+        }
+        if let Some(count) = reset_underrun_frames {
+            count.store(0, Ordering::Relaxed);
         }
     }
 }
@@ -329,6 +336,32 @@ mod tests {
         fill_output(&mut cons, &mut data, 1, &missing);
         assert_eq!(data, [0.0; 4]);
         assert_eq!(missing.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn first_chunk_excludes_startup_callbacks_but_later_underruns_count() {
+        let (mut prod, mut cons) = HeapRb::<f32>::new(4).split();
+        let missing = AtomicU64::new(0);
+        let mut data = [9.0; 8];
+
+        // Callbacks during user wait and first-hop computation see an empty ring.
+        fill_output(&mut cons, &mut data, 2, &missing);
+        fill_output(&mut cons, &mut data, 2, &missing);
+        assert_eq!(missing.load(Ordering::Relaxed), 8);
+
+        AudioOutput::push_samples(&mut prod, &[0.25, -0.5, 0.0, 0.75], Some(&missing));
+        assert_eq!(missing.load(Ordering::Relaxed), 0);
+        assert_eq!(cons.occupied_len(), 4);
+        fill_output(&mut cons, &mut data, 2, &missing);
+        assert_eq!(data, [0.25, 0.25, -0.5, -0.5, 0.0, 0.0, 0.75, 0.75]);
+        assert_eq!(missing.load(Ordering::Relaxed), 0);
+
+        fill_output(&mut cons, &mut data, 2, &missing);
+        assert_eq!(missing.load(Ordering::Relaxed), 4);
+        AudioOutput::push_samples(&mut prod, &[0.5; 4], None);
+        fill_output(&mut cons, &mut data, 2, &missing);
+        fill_output(&mut cons, &mut data, 2, &missing);
+        assert_eq!(missing.load(Ordering::Relaxed), 8);
     }
 
     #[test]

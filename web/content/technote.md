@@ -551,9 +551,10 @@ last accent, each forecast fixes the next arrival time at issuance and represent
 it as a single right-continuous step.
 The arrival term is disabled by default; `arrival = true` in
 `[temporal_onset_comparison]` enables it with the configured auditory observation
-and period estimator. Enabling it requires an explicit, finite, nonnegative
-`arrival_weight`. This coupling weight is a free parameter with no selected value
-or default.
+and period estimator. An omitted `arrival_weight` uses 1, placing arrival
+mismatch on the same scale as the context mismatch term by convention. Explicit
+finite, nonnegative weights remain supported. The existing participation coupling
+sets the strength of both terms; the unit weight is not a preprocessing constant.
 
 Each decision uses one common set of active habitat groups with causal forecasts
 that cover every valid candidate window. A group is excluded as the acting Voice's

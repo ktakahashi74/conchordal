@@ -35,6 +35,30 @@ pub(crate) fn cost(key: &str, seconds: f64) {
 pub(crate) fn take_costs() -> Value {
     COSTS.with_borrow_mut(|c| serde_json::to_value(std::mem::take(c)).unwrap())
 }
+pub(crate) fn slot_snapshot(runtime: &BodyMetabolism) -> Value {
+    let slots: Vec<_> = runtime
+        .sources
+        .iter()
+        .zip(&runtime.pcm)
+        .map(|(source, pcm)| {
+            assert_eq!((source.id, source.generation), (pcm.id, pcm.generation));
+            if source.last_evaluated.is_none() {
+                assert_eq!(source.evaluations, 0);
+                assert!(source.held.is_none());
+            }
+            let held = source.held.map(|fitness| {
+                assert!(fitness.score.is_finite());
+                assert!((0.0..=1.0).contains(&fitness.level));
+                assert!(fitness.in_band_mass.is_finite() && fitness.in_band_mass > 0.0);
+                [fitness.score.to_bits(), fitness.level.to_bits()]
+            });
+            json!({"id":source.id,"generation":source.generation,
+                "birth":source.birth_sample,"last":source.last_evaluated,
+                "visit":source.visit_number,"evaluations":source.evaluations,"held":held})
+        })
+        .collect();
+    json!(slots)
+}
 pub(crate) fn log_move(owner: (u64, u32), target: f32) {
     let Ok(path) = std::env::var("B7_MOVES") else {
         return;

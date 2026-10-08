@@ -22,6 +22,8 @@ pub(crate) mod social_density;
 pub(crate) mod telemetry;
 pub(crate) mod temporal_participation;
 
+pub(crate) mod body_fitness;
+pub(crate) mod body_metabolism;
 pub mod sound;
 #[cfg(test)]
 mod tests;

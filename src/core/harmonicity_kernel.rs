@@ -130,6 +130,26 @@ impl HarmonicityKernel {
         envelope: &[f32],
         space: &Log2Space,
     ) -> (Vec<f32>, f32) {
+        let mut smeared = vec![0.0; envelope.len()];
+        let mut roots = vec![0.0; self.root_buffer_len(space)];
+        let mut output = vec![0.0; envelope.len()];
+        let maximum = self.potential_h_into(envelope, space, &mut smeared, &mut roots, &mut output);
+        (output, maximum)
+    }
+
+    pub(crate) fn root_buffer_len(&self, space: &Log2Space) -> usize {
+        space.n_bins() + 2 * self.pad_bins
+    }
+
+    pub(crate) fn potential_h_into(
+        &self,
+        envelope: &[f32],
+        space: &Log2Space,
+        smeared_env: &mut [f32],
+        root_spectrum: &mut [f32],
+        landscape: &mut [f32],
+    ) -> f32 {
+        space.assert_scan_len_named(smeared_env, "h_smeared_scan");
         assert_eq!(
             space.bins_per_oct, self.bins_per_oct,
             "Log2Space bins_per_oct mismatch (space={}, kernel={})",
@@ -149,7 +169,7 @@ impl HarmonicityKernel {
         let k_diag = sub_limit.min(harm_limit).max(1);
 
         // Step 0: Smooth Input (O(N))
-        let smeared_env = self.convolve_smooth(envelope);
+        self.convolve_smooth_into(envelope, smeared_env);
 
         // Diagonal self-term correction factor.
         let diag_w = self.params.diag_weight.clamp(0.0, 1.0);
@@ -168,7 +188,8 @@ impl HarmonicityKernel {
         let padding = self.pad_bins;
         let center_offset = padding as f32;
         let buf_len = n_bins + 2 * padding;
-        let mut root_spectrum = vec![0.0f32; buf_len];
+        assert_eq!(root_spectrum.len(), buf_len);
+        root_spectrum.fill(0.0);
 
         // Common-root series: project the spectrum down to virtual roots,
         // then back up to harmonics.
@@ -176,21 +197,22 @@ impl HarmonicityKernel {
             let shift_bins = (k as f32).log2() * bins_per_oct;
             let weight = (k as f32).powf(-self.params.rho_common_root);
             let offset = center_offset - shift_bins;
-            Self::accumulate_shifted(&smeared_env, &mut root_spectrum, offset, weight);
+            Self::accumulate_shifted(smeared_env, root_spectrum, offset, weight);
         }
         let gamma_root = self.params.gamma_root.max(1e-3);
         if (gamma_root - 1.0).abs() > 1e-6 {
-            for v in &mut root_spectrum {
+            for v in root_spectrum.iter_mut() {
                 *v = v.max(0.0).powf(gamma_root);
             }
         }
 
-        let mut landscape = vec![0.0f32; n_bins];
+        space.assert_scan_len_named(landscape, "h_pot_scan");
+        landscape.fill(0.0);
         for m in 1..=harm_limit {
             let shift_bins = (m as f32).log2() * bins_per_oct;
             let weight = (m as f32).powf(-self.params.rho_common_root);
             let offset = shift_bins - center_offset;
-            Self::accumulate_shifted(&root_spectrum, &mut landscape, offset, weight);
+            Self::accumulate_shifted(root_spectrum, landscape, offset, weight);
         }
         if diag_w < 1.0 {
             let scale = 1.0 - diag_w;
@@ -214,13 +236,12 @@ impl HarmonicityKernel {
         }
         if do_norm {
             let scale = 1.0 / max_val;
-            for v in &mut landscape {
+            for v in landscape.iter_mut() {
                 *v *= scale;
             }
         }
 
-        let report_max = if do_norm { 1.0 } else { max_val };
-        (landscape, report_max)
+        if do_norm { 1.0 } else { max_val }
     }
     fn sanitize_params(mut params: HarmonicityParams) -> HarmonicityParams {
         let defaults = HarmonicityParams::default();
@@ -282,17 +303,21 @@ impl HarmonicityKernel {
         }
     }
 
-    fn convolve_smooth(&self, input: &[f32]) -> Vec<f32> {
+    fn convolve_smooth_into(&self, input: &[f32], output: &mut [f32]) {
         // Convolution is heavy, but here kernel is small.
         // Optimization: Use separate loop for the main part to avoid boundary checks.
         if self.smooth_kernel.len() == 1 {
-            return input
-                .iter()
-                .map(|&v| if v.is_finite() { v.max(0.0) } else { 0.0 })
-                .collect();
+            for (out, &value) in output.iter_mut().zip(input) {
+                *out = if value.is_finite() {
+                    value.max(0.0)
+                } else {
+                    0.0
+                };
+            }
+            return;
         }
         let n = input.len();
-        let mut output = vec![0.0; n];
+        assert_eq!(output.len(), n);
         let k_len = self.smooth_kernel.len();
         let half = k_len / 2;
 
@@ -319,7 +344,6 @@ impl HarmonicityKernel {
             }
             *out_val = acc;
         }
-        output
     }
 
     #[inline]

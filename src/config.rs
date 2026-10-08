@@ -274,6 +274,9 @@ pub struct AppConfig {
     /// Evaluate birth placements with the legacy direct body model.
     #[serde(default)]
     pub birth_surrogate: bool,
+    /// Body-weighted energy metabolism; omission leaves the point path unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_metabolism: Option<BodyMetabolismConfig>,
     #[serde(default)]
     pub audio: AudioConfig,
     #[serde(default)]
@@ -298,6 +301,16 @@ pub struct AppConfig {
     pub temporal_body_prototypes: Option<TemporalBodyPrototypesConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal_onset_comparison: Option<TemporalOnsetComparisonConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BodyMetabolismConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    pub updates_per_hop: usize,
+    pub observation_frames: usize,
+    pub representative_hold_sec: f32,
 }
 
 /// Which footprint the participation onset comparison consumes (I11-1 §4.10).
@@ -487,6 +500,25 @@ impl Default for PlaybackConfig {
 impl AppConfig {
     /// Validate the dimensions shared by the runtime and the NSGT kernel.
     pub fn validate(&self) -> Result<()> {
+        if let Some(body) = self.body_metabolism.filter(|body| body.enabled) {
+            ensure!(
+                body.updates_per_hop > 0,
+                "body_metabolism updates_per_hop must be positive"
+            );
+            ensure!(
+                body.observation_frames > 0,
+                "body_metabolism observation_frames must be positive"
+            );
+            ensure!(
+                body.representative_hold_sec.is_finite() && body.representative_hold_sec > 0.,
+                "body_metabolism representative_hold_sec must be finite and positive"
+            );
+            ensure!(
+                f64::from(body.representative_hold_sec) * f64::from(self.audio.sample_rate)
+                    < u64::MAX as f64,
+                "body_metabolism representative hold exceeds the sample clock"
+            );
+        }
         if let Some(ridge) = self.temporal_ridge {
             ensure!(
                 ridge.means.iter().all(|v| v.is_finite())
@@ -713,6 +745,25 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn body_metabolism_requires_explicit_budget_and_probe_settings() {
+        assert!(AppConfig::default().body_metabolism.is_none());
+        let missing = "[body_metabolism]\nenabled = true\nobservation_frames = 8\nrepresentative_hold_sec = 1.0\n";
+        assert!(toml::from_str::<AppConfig>(missing).is_err());
+        let valid = "[body_metabolism]\nenabled = true\nupdates_per_hop = 2\nobservation_frames = 8\nrepresentative_hold_sec = 1.0\n";
+        let config: AppConfig = toml::from_str(valid).unwrap();
+        config.validate().unwrap();
+        let zero = valid.replace("updates_per_hop = 2", "updates_per_hop = 0");
+        assert!(
+            toml::from_str::<AppConfig>(&zero)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+        let typo = valid.replace("updates_per_hop", "update_per_hop");
+        assert!(toml::from_str::<AppConfig>(&typo).is_err());
+    }
+
+    #[test]
     fn t2_has_no_implicit_author_values_and_requires_its_consumers() {
         use super::*;
         let empty: AppConfig = toml::from_str("").unwrap();
@@ -911,6 +962,7 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         let custom = AppConfig {
             birth_surrogate: false,
+            body_metabolism: None,
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_period: None,

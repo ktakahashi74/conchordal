@@ -27,6 +27,14 @@ struct RoutedTone {
     source_generation: u32,
     body_slot: Option<(usize, u32)>,
     scheduled_release: Option<super::tone_energy::ScheduledRelease>,
+    source_pcm_slot: Option<usize>,
+}
+
+/// Caller-owned habitat scratch, separated by Voice identity and generation.
+pub(crate) struct SourcePcm {
+    pub id: u64,
+    pub generation: u32,
+    pub habitat: Vec<f32>,
 }
 
 struct SelfSound {
@@ -108,6 +116,32 @@ impl ScheduleRenderer {
                         source_generation: routed.source_generation,
                         body_slot: None,
                         scheduled_release: routed.scheduled_release,
+                        source_pcm_slot: None,
+                    },
+                )
+            })
+            .collect();
+        fork
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fork_all_without_capture(&self) -> Self {
+        let mut fork = Self::new(self.time);
+        fork.cutoff_tick = self.cutoff_tick;
+        fork.tones = self
+            .tones
+            .iter()
+            .map(|(key, routed)| {
+                (
+                    *key,
+                    RoutedTone {
+                        tone: routed.tone.clone(),
+                        routing: routed.routing,
+                        self_slot: None,
+                        source_generation: routed.source_generation,
+                        body_slot: None,
+                        scheduled_release: routed.scheduled_release,
+                        source_pcm_slot: None,
                     },
                 )
             })
@@ -212,8 +246,32 @@ impl ScheduleRenderer {
         phonation_batches: &[PhonationBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
+        emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
+    ) -> RenderFrame<'_> {
+        self.render_with_source_pcm(phonation_batches, now, rhythms, &mut [], emit)
+    }
+
+    pub(crate) fn render_with_source_pcm(
+        &mut self,
+        phonation_batches: &[PhonationBatch],
+        now: Tick,
+        rhythms: &NeuralRhythms,
+        sources: &mut [SourcePcm],
         mut emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
     ) -> RenderFrame<'_> {
+        for source in sources.iter_mut() {
+            assert_eq!(source.habitat.len(), self.time.hop, "source PCM hop length");
+            source.habitat.fill(0.);
+        }
+        for (index, source) in sources.iter().enumerate() {
+            assert!(
+                !sources[..index]
+                    .iter()
+                    .any(|previous| (previous.id, previous.generation)
+                        == (source.id, source.generation)),
+                "duplicate source PCM identity"
+            );
+        }
         let mut checkpoint = self.profile.as_ref().map(|_| Instant::now());
         self.profile = self.profile.map(|_| RenderProfile::default());
         let hop = self.time.hop;
@@ -255,6 +313,11 @@ impl ScheduleRenderer {
         let mut rhythms = *rhythms;
         let setup_us = profile_lap(&mut checkpoint);
         self.apply_phonation_batches(phonation_batches, now);
+        for (key, tone) in &mut self.tones {
+            tone.source_pcm_slot = sources.iter().position(|source| {
+                source.id == key.source_id && source.generation == tone.source_generation
+            });
+        }
         let commands_us = profile_lap(&mut checkpoint);
         for tick in now..end {
             let idx = (tick - now) as usize;
@@ -282,6 +345,9 @@ impl ScheduleRenderer {
                 }
                 if rt.routing.to_habitat {
                     acc_habitat += sample;
+                    if let Some(slot) = rt.source_pcm_slot {
+                        sources[slot].habitat[idx] += sample;
+                    }
                 }
             }
             self.buf_presentation[idx] = acc_presentation;
@@ -421,6 +487,7 @@ impl ScheduleRenderer {
                                 RoutedTone {
                                     tone,
                                     scheduled_release,
+                                    source_pcm_slot: None,
                                     routing: batch.routing,
                                     self_slot: self.self_sound.iter().position(|sound| {
                                         sound
@@ -535,6 +602,77 @@ mod tests {
     }
 
     /// The control keeps observation and learning but strips the policy facts and
+
+    #[test]
+    fn source_pcm_preserves_mix_and_separates_routing_and_generation() {
+        let time = Timebase { fs: 8000., hop: 64 };
+        let rhythms = NeuralRhythms::default();
+        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+            let own = outcome_batch(kind);
+            let mut other = own.clone();
+            other.source_id = 3;
+            other.tones[0].freq_hz = 466.;
+            let mut decor = own.clone();
+            decor.tones[0].tone_id = 2;
+            decor.cmds[0] = ToneCmd::On {
+                tone_id: 2,
+                kick: OnsetKick { strength: 1. },
+            };
+            decor.routing.to_habitat = false;
+            let batches = [own.clone(), other, decor];
+            let mut captured = ScheduleRenderer::new(time);
+            let mut ordinary = ScheduleRenderer::new(time);
+            let mut own_reference = ScheduleRenderer::new(time);
+            let mut scratch = [
+                SourcePcm {
+                    id: 2,
+                    generation: 7,
+                    habitat: vec![0.; time.hop],
+                },
+                SourcePcm {
+                    id: 2,
+                    generation: 8,
+                    habitat: vec![0.; time.hop],
+                },
+                SourcePcm {
+                    id: 999,
+                    generation: 0,
+                    habitat: vec![0.; time.hop],
+                },
+            ];
+            for frame in 0..20 {
+                let now = frame * time.hop as Tick;
+                let commands = if frame == 0 { &batches[..] } else { &[] };
+                let actual = captured.render_with_source_pcm(
+                    commands,
+                    now,
+                    &rhythms,
+                    &mut scratch,
+                    |_, _, _, _| {},
+                );
+                let expected = ordinary.render(commands, now, &rhythms);
+                assert_eq!(actual.habitat, expected.habitat);
+                assert_eq!(actual.presentation, expected.presentation);
+                let expected_own = own_reference.render(
+                    if frame == 0 {
+                        std::slice::from_ref(&own)
+                    } else {
+                        &[]
+                    },
+                    now,
+                    &rhythms,
+                );
+                assert_eq!(scratch[0].habitat, expected_own.habitat);
+                assert!(
+                    scratch[1]
+                        .habitat
+                        .iter()
+                        .chain(&scratch[2].habitat)
+                        .all(|value| *value == 0.)
+                );
+            }
+        }
+    }
 
     #[test]
     fn owned_fork_preserves_ringing_pending_controls_and_rng_without_other_sources() {

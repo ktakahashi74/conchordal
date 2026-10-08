@@ -55,7 +55,7 @@ fn deterministic_recipe_preview_matches_each_builtin_body() {
                 let slot = work
                     .candidates(&control, &landscape, 0, (hz, hz), |_| 1.0)
                     .unwrap();
-                assert_eq!(birth_surrogate_kind(&control), Some(actual.kind));
+                assert_eq!(legacy_renderer_kind(&control), Some(actual.kind));
                 assert!(BirthSurrogate::supports_snapshot(&actual));
                 assert!(
                     (work.candidate_mass(slot, landscape.space.nearest_index(hz)) - 1.0).abs()
@@ -92,7 +92,7 @@ fn new_factories_do_not_claim_legacy_renderer_conformance() {
             unreachable!()
         }
     }
-    assert_eq!(NewRenderer.birth_surrogate_kind(), None);
+    assert_eq!(NewRenderer.legacy_renderer_kind(), None);
 }
 
 #[test]

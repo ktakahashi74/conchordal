@@ -79,6 +79,7 @@ impl PredGateAccum {
 }
 
 pub struct Community {
+    pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
     birth_surrogate: std::cell::RefCell<Option<super::sound::birth_surrogate::BirthSurrogate>>,
     pub voices: Vec<Voice>,
     current_frame: u64,
@@ -205,6 +206,7 @@ impl Community {
     pub fn new(time: Timebase) -> Self {
         debug!("Community sample rate: {:.1} Hz", time.fs);
         Self {
+            body_metabolism: None,
             birth_surrogate: std::cell::RefCell::new(None),
             voices: Vec::new(),
             current_frame: 0,
@@ -882,7 +884,22 @@ impl Community {
             if let Some(voice) = self.voices.get_mut(entry.voice_idx)
                 && voice.is_alive()
             {
-                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                if let Some((source, params)) = self
+                    .body_metabolism
+                    .as_mut()
+                    .and_then(|runtime| runtime.source(voice.id(), voice.metadata.generation))
+                {
+                    voice.commit_with_body_metabolism(
+                        dt_step_sec,
+                        rhythms,
+                        landscape,
+                        global_coupling,
+                        source,
+                        params,
+                    );
+                } else {
+                    voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                }
             }
         }
     }
@@ -937,7 +954,22 @@ impl Community {
                     neighbor_weights,
                     listener_pressure,
                 );
-                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                if let Some((source, params)) = self
+                    .body_metabolism
+                    .as_mut()
+                    .and_then(|runtime| runtime.source(voice.id(), voice.metadata.generation))
+                {
+                    voice.commit_with_body_metabolism(
+                        dt_step_sec,
+                        rhythms,
+                        landscape,
+                        global_coupling,
+                        source,
+                        params,
+                    );
+                } else {
+                    voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                }
             }
         }
     }

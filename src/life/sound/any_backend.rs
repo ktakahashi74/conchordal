@@ -23,6 +23,13 @@ pub enum AnyBackend {
 }
 
 impl AnyBackend {
+    pub(super) fn reset_representative(&mut self) {
+        match self {
+            Self::Oscillator(bank) => bank.reset_representative(),
+            Self::Resonator(engine) => engine.reset_representative(),
+        }
+    }
+
     pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
         match snapshot.kind {
             BodyKind::Sine | BodyKind::Harmonic => Ok(Self::Oscillator(

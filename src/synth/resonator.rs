@@ -67,6 +67,22 @@ pub struct ResonatorBank {
 }
 
 impl ResonatorBank {
+    pub(crate) fn reset_representative(&mut self) {
+        self.active_len = 0;
+        for buffer in [
+            &mut self.x,
+            &mut self.y,
+            &mut self.e,
+            &mut self.r,
+            &mut self.b1,
+            &mut self.b2,
+            &mut self.gain,
+            &mut self.theta,
+        ] {
+            buffer.fill(0.0);
+        }
+    }
+
     /// Create a new bank with a fixed capacity.
     pub fn new(fs: f32, max_modes: usize) -> Result<Self, SynthError> {
         if !fs.is_finite() || fs <= 0.0 {

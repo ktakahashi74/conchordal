@@ -8,6 +8,8 @@ use rand::rngs::SmallRng;
 
 #[derive(Debug)]
 pub struct PitchController {
+    #[cfg(test)]
+    pub(crate) trace_owner: Option<(u64, u32)>,
     core: AnyPitchCore,
     adaptation: AdaptationContext,
     target_pitch_log2: f32,
@@ -35,6 +37,8 @@ impl PitchController {
         rng: SmallRng,
     ) -> Self {
         Self {
+            #[cfg(test)]
+            trace_owner: None,
             core,
             adaptation,
             target_pitch_log2,
@@ -248,6 +252,10 @@ impl PitchController {
         };
         target_pitch_log2 = clamped;
         self.target_pitch_log2 = target_pitch_log2;
+        #[cfg(test)]
+        if should_propose && let Some(owner) = self.trace_owner {
+            crate::life::body_metabolism::assay::log_move(owner, target_pitch_log2);
+        }
     }
 }
 

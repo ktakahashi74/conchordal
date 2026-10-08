@@ -144,6 +144,7 @@ fn config_load_custom_values() {
     let path_str = path.to_string_lossy().to_string();
     let custom = AppConfig {
         birth_surrogate: false,
+        body_metabolism: None,
         temporal_ridge: None,
         temporal_acoustic: None,
         temporal_period: None,

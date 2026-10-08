@@ -4,7 +4,10 @@
 use crate::core::density;
 use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
-use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density_with_grid};
+use crate::core::peak_extraction::{
+    PeakExtractConfig, PeakScratch, extract_peaks_density_with_grid,
+    extract_peaks_density_with_grid_reuse,
+};
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::utils::a_weighting_gain_pow;
 
@@ -14,7 +17,12 @@ pub struct SpectralFrame {
     pub loudness_mass: f32,
 }
 
-#[cfg_attr(test, derive(Clone))]
+pub(crate) struct SpectralFrameView<'a> {
+    pub subjective_intensity: &'a [f32],
+    pub loudness_mass: f32,
+}
+
+#[derive(Clone)]
 pub struct SpectralFrontEnd {
     space: Log2Space,
     erb: Vec<f32>,
@@ -22,6 +30,10 @@ pub struct SpectralFrontEnd {
     loudness_weights_pow: Vec<f32>,
     norm_state: Vec<f32>,
     peak_cfg: PeakExtractConfig,
+    raw_density: Vec<f32>,
+    subj_density_delta: Vec<f32>,
+    subjective_intensity: Vec<f32>,
+    peak_scratch: PeakScratch,
 }
 
 impl SpectralFrontEnd {
@@ -40,6 +52,10 @@ impl SpectralFrontEnd {
             loudness_weights_pow,
             norm_state: vec![0.0; n],
             peak_cfg: PeakExtractConfig::nsgt_default(),
+            raw_density: vec![0.0; n],
+            subj_density_delta: vec![0.0; n],
+            subjective_intensity: vec![0.0; n],
+            peak_scratch: PeakScratch::new(n),
         }
     }
 
@@ -96,6 +112,62 @@ impl SpectralFrontEnd {
 
         SpectralFrame {
             subjective_intensity,
+            loudness_mass,
+        }
+    }
+    pub(crate) fn process_nsgt_power_reuse<'a>(
+        &'a mut self,
+        nsgt_power: &[f32],
+        dt_sec: f32,
+        params: &LandscapeParams,
+    ) -> SpectralFrameView<'a> {
+        self.space
+            .assert_scan_len_named(nsgt_power, "nsgt_power_scan");
+        assert_eq!(nsgt_power.len(), self.du.len());
+
+        let exp = params.loudness_exp.max(0.01);
+        let tau_s = params.tau_ms.max(1.0) * 1e-3;
+        let a = (-dt_sec / tau_s).exp();
+        let ref_power = params.ref_power.max(1e-12);
+
+        for (i, &pow) in nsgt_power.iter().enumerate() {
+            let dui = self.du[i].max(1e-12);
+            let density = (pow / dui).max(0.0);
+            self.raw_density[i] = density;
+        }
+
+        let peaks = extract_peaks_density_with_grid_reuse(
+            &self.raw_density,
+            &self.erb,
+            &self.du,
+            &self.peak_cfg,
+            &mut self.peak_scratch,
+        );
+
+        self.subj_density_delta.fill(0.0);
+        for peak in peaks {
+            if peak.bin_idx >= self.du.len() {
+                continue;
+            }
+            let dui = self.du[peak.bin_idx];
+            if dui <= 0.0 {
+                continue;
+            }
+            let weight_pow = self.loudness_weights_pow[peak.bin_idx];
+            let subj_mass = ((peak.mass * weight_pow) / ref_power).powf(exp);
+            self.subj_density_delta[peak.bin_idx] += subj_mass / dui;
+        }
+
+        for i in 0..nsgt_power.len() {
+            let y = a * self.norm_state[i] + (1.0 - a) * self.subj_density_delta[i];
+            self.norm_state[i] = y;
+            self.subjective_intensity[i] = y;
+        }
+
+        let loudness_mass = density::density_to_mass(&self.subjective_intensity, &self.du);
+
+        SpectralFrameView {
+            subjective_intensity: &self.subjective_intensity,
             loudness_mass,
         }
     }

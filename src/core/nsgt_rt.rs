@@ -152,6 +152,21 @@ impl RtNsgtKernelLog2 {
     }
 
     /// Process an arbitrary block and emit per-hop band power/PSD slices via callback.
+    pub(crate) fn push_without_analysis(&mut self, audio: &[f32]) {
+        assert_eq!(audio.len(), self.hop);
+        self.write_hop(audio);
+    }
+
+    /// Keep the full raw window while approximating skipped smoothing inputs.
+    pub(crate) fn process_hop_gap(&mut self, audio: &[f32], gap: i32) -> &[f32] {
+        assert_eq!(audio.len(), self.hop);
+        assert!(gap > 0);
+        self.write_hop(audio);
+        self.analyze_one_and_update_gap(gap);
+        &self.out_env
+    }
+
+    /// Process an arbitrary block and emit per-hop band power/PSD slices via callback.
     pub fn process_block_emit<F: FnMut(&[f32])>(&mut self, block: &[f32], mut emit: F) {
         let mut i = 0usize;
         while i + self.hop <= block.len() {
@@ -253,6 +268,10 @@ impl RtNsgtKernelLog2 {
 
     /// Build contiguous FFT frame from ring, run FFT, accumulate bands, and update smoothing.
     fn analyze_one_and_update(&mut self) {
+        self.analyze_one_and_update_gap(1);
+    }
+
+    fn analyze_one_and_update_gap(&mut self, gap: i32) {
         // Reassemble latest nfft samples: [write_pos..end) then [0..write_pos)
         let n = self.nfft;
         let left = n - self.write_pos;
@@ -308,7 +327,12 @@ impl RtNsgtKernelLog2 {
 
             // Exponential smoothing
             let state = &mut self.bands_state[bi];
-            state.smooth = (1.0 - state.alpha) * p + state.alpha * state.smooth;
+            let alpha = if gap == 1 {
+                state.alpha
+            } else {
+                state.alpha.powi(gap)
+            };
+            state.smooth = (1.0 - alpha) * p + alpha * state.smooth;
             // Rounding can pin a decaying subnormal at a positive fixed point.
             if state.smooth.is_subnormal() {
                 state.smooth = 0.0;

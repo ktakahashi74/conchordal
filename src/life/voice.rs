@@ -622,6 +622,10 @@ impl Voice {
         neighbor_salience: &[f32],
         listener_pressure: ListenerPressure,
     ) {
+        #[cfg(test)]
+        {
+            self.pitch_ctl.trace_owner = Some((self.id(), self.metadata.generation));
+        }
         self.update_pitch_target_with_listener_pressure(
             rhythms,
             dt_sec,
@@ -630,6 +634,28 @@ impl Voice {
             neighbor_salience,
             listener_pressure,
         );
+    }
+
+    pub(crate) fn commit_with_body_metabolism(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        global_coupling: f32,
+        evaluator: &mut super::body_metabolism::Evaluator,
+        params: &crate::core::landscape::LandscapeParams,
+    ) -> ArticulationSignal {
+        self.update_articulation_autonomous(dt_sec, rhythms);
+        let body = evaluator
+            .score(self.body.base_freq_hz().max(1.).log2(), params, landscape)
+            .ok();
+        self.tick_articulation_lifecycle_with_body(
+            dt_sec,
+            rhythms,
+            landscape,
+            global_coupling,
+            body,
+        )
     }
 
     /// Commit phase: applies articulation/body/lifecycle using already-decided targets.
@@ -731,6 +757,23 @@ impl Voice {
         landscape: &Landscape,
         global_coupling: f32,
     ) -> ArticulationSignal {
+        self.tick_articulation_lifecycle_with_body(
+            dt_sec,
+            rhythms,
+            landscape,
+            global_coupling,
+            None,
+        )
+    }
+
+    fn tick_articulation_lifecycle_with_body(
+        &mut self,
+        dt_sec: f32,
+        rhythms: &NeuralRhythms,
+        landscape: &Landscape,
+        global_coupling: f32,
+        body: Option<super::body_fitness::BodyFitness>,
+    ) -> ArticulationSignal {
         let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
         let selection_score = if self.selection_approx_loo {
             let ratios = self.body.snapshot().ratios;
@@ -744,8 +787,8 @@ impl Voice {
             landscape.evaluate_pitch_score(self.body.base_freq_hz())
         };
         let mut signal = self.articulation.process(
-            consonance_level,
-            selection_score,
+            body.map_or(consonance_level, |value| value.level),
+            body.map_or(selection_score, |value| value.score),
             rhythms,
             dt_sec,
             global_coupling,
@@ -1096,6 +1139,39 @@ impl Voice {
 
     pub(crate) fn body_snapshot(&self) -> BodySnapshot {
         self.body.snapshot()
+    }
+
+    pub(crate) fn supports_body_metabolism(&self) -> bool {
+        sound_body::supports_legacy_renderer(&self.effective_control, &self.body.snapshot())
+    }
+
+    pub(crate) fn representative_body_recipe(
+        &self,
+        fs: f32,
+        hold: Tick,
+    ) -> crate::life::onset_footprint::Recipe {
+        let modulator = crate::life::onset_footprint::representative_modulator(
+            self.articulation
+                .render_modulator_spec(self.phonation_engine.mode),
+        );
+        let modulator = match modulator {
+            crate::life::sound::RenderModulatorSpec::DroneSway { sway_rate, .. } => {
+                crate::life::sound::RenderModulatorSpec::DroneSway {
+                    phase: 0.0,
+                    sway_rate,
+                }
+            }
+            other => other,
+        };
+        crate::life::onset_footprint::Recipe {
+            body: self.body_snapshot(),
+            freq_hz: self.body.base_freq_hz(),
+            hold,
+            adsr: self.voice_adsr,
+            modulator,
+            smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
+            fs,
+        }
     }
 
     /// The representative recipe of I11-1 §4.2, frozen from what this Voice would

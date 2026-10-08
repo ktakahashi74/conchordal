@@ -207,7 +207,7 @@ impl SoundBody for ModalBody {
 struct ModalBodyFactory;
 
 impl SoundBodyFactory for ModalBodyFactory {
-    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+    fn legacy_renderer_kind(&self) -> Option<BodyKind> {
         Some(BodyKind::Modal)
     }
 

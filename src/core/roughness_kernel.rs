@@ -224,10 +224,28 @@ impl RoughnessKernel {
         erb: &[f32],
         du: &[f32],
     ) -> (Vec<f32>, f32) {
-        use crate::core::erb::erb_to_hz;
-
         if amps_density.is_empty() || space.centers_hz.is_empty() {
             return (vec![], 0.0);
+        }
+        let mut output = vec![0.0; amps_density.len()];
+        let total = self.potential_r_into(amps_density, space, erb, du, &mut output);
+        (output, total)
+    }
+
+    pub(crate) fn potential_r_into(
+        &self,
+        amps_density: &[f32],
+        space: &Log2Space,
+        erb: &[f32],
+        du: &[f32],
+        r: &mut [f32],
+    ) -> f32 {
+        use crate::core::erb::erb_to_hz;
+
+        space.assert_scan_len_named(amps_density, "r_input_scan");
+        space.assert_scan_len_named(r, "r_pot_scan");
+        if amps_density.is_empty() || space.centers_hz.is_empty() {
+            return 0.0;
         }
         assert_eq!(
             amps_density.len(),
@@ -249,7 +267,6 @@ impl RoughnessKernel {
             KernelParams::default().half_width_erb,
         )
         .max(0.0);
-        let mut r = vec![0.0f32; n];
 
         for i in 0..n {
             let fi_erb = erb[i];
@@ -271,9 +288,7 @@ impl RoughnessKernel {
         }
 
         // (3) Integration over ERB axis
-        let r_total = density::density_to_mass(&r, du);
-
-        (r, r_total)
+        density::density_to_mass(r, du)
     }
 }
 

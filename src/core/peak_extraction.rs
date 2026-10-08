@@ -13,6 +13,42 @@ pub struct Peak {
     pub bin_idx: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Candidate {
+    idx: usize,
+    u_erb: f32,
+    power: f32,
+}
+
+#[derive(Default)]
+pub(crate) struct PeakScratch {
+    candidates: Vec<Candidate>,
+    selected: Vec<Candidate>,
+    mass_sum: Vec<f32>,
+    u_weighted: Vec<f32>,
+    keep: Vec<bool>,
+    peaks: Vec<Peak>,
+}
+
+impl Clone for PeakScratch {
+    fn clone(&self) -> Self {
+        Self::new(self.candidates.capacity())
+    }
+}
+
+impl PeakScratch {
+    pub(crate) fn new(bins: usize) -> Self {
+        Self {
+            candidates: Vec::with_capacity(bins),
+            selected: Vec::with_capacity(bins),
+            mass_sum: Vec::with_capacity(bins),
+            u_weighted: Vec::with_capacity(bins),
+            keep: Vec::with_capacity(bins),
+            peaks: Vec::with_capacity(bins),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PeakExtractConfig {
     pub max_peaks: Option<usize>,
@@ -291,6 +327,175 @@ pub fn extract_peaks_density_with_grid(
     }
 
     peaks
+}
+
+pub(crate) fn extract_peaks_density_with_grid_reuse<'a>(
+    power_density: &[f32],
+    erb: &[f32],
+    du: &[f32],
+    cfg: &PeakExtractConfig,
+    scratch: &'a mut PeakScratch,
+) -> &'a [Peak] {
+    scratch.peaks.clear();
+    if power_density.is_empty() || erb.is_empty() || du.is_empty() {
+        return &scratch.peaks;
+    }
+    assert_eq!(power_density.len(), erb.len());
+    assert_eq!(power_density.len(), du.len());
+
+    let max_power = power_density.iter().cloned().fold(0.0f32, f32::max);
+    if max_power <= 0.0 {
+        return &scratch.peaks;
+    }
+
+    let min_abs_rel = max_power * db::db_to_power_ratio(cfg.min_rel_db_power);
+    let min_abs_abs = cfg.min_abs_power_density.unwrap_or(0.0);
+    let min_abs = min_abs_rel.max(min_abs_abs);
+
+    scratch.candidates.clear();
+    if power_density.len() >= 3 {
+        for i in 1..(power_density.len() - 1) {
+            let a = power_density[i];
+            if a < min_abs {
+                continue;
+            }
+            if a > power_density[i - 1] && a >= power_density[i + 1] {
+                let prom_db = local_prominence_db_power(power_density, i);
+                if prom_db >= cfg.min_prominence_db_power {
+                    scratch.candidates.push(Candidate {
+                        idx: i,
+                        u_erb: erb[i],
+                        power: a,
+                    });
+                }
+            }
+        }
+    }
+
+    if scratch.candidates.is_empty() {
+        return &scratch.peaks;
+    }
+
+    // Stable insertion order avoids the temporary allocation of stable sort.
+    for index in 1..scratch.candidates.len() {
+        let mut at = index;
+        while at > 0 && scratch.candidates[at].power > scratch.candidates[at - 1].power {
+            scratch.candidates.swap(at, at - 1);
+            at -= 1;
+        }
+    }
+
+    scratch.selected.clear();
+    for cand in scratch.candidates.drain(..) {
+        if scratch
+            .selected
+            .iter()
+            .any(|p| (p.u_erb - cand.u_erb).abs() < cfg.min_sep_erb)
+        {
+            continue;
+        }
+        scratch.selected.push(cand);
+        if let Some(max_peaks) = cfg.max_peaks
+            && scratch.selected.len() >= max_peaks
+        {
+            break;
+        }
+    }
+
+    if scratch.selected.is_empty() {
+        return &scratch.peaks;
+    }
+
+    scratch.mass_sum.clear();
+    scratch.mass_sum.resize(scratch.selected.len(), 0.0);
+    scratch.u_weighted.clear();
+    scratch.u_weighted.resize(scratch.selected.len(), 0.0);
+
+    for (j, &power) in power_density.iter().enumerate() {
+        if power < min_abs {
+            continue;
+        }
+        let u = erb[j];
+        let mut best = 0usize;
+        let mut best_d = (u - scratch.selected[0].u_erb).abs();
+        for (k, sel) in scratch.selected.iter().enumerate().skip(1) {
+            let d = (u - sel.u_erb).abs();
+            if d < best_d {
+                best_d = d;
+                best = k;
+            }
+        }
+        let mass = power * du[j];
+        scratch.mass_sum[best] += mass;
+        scratch.u_weighted[best] += u * mass;
+    }
+
+    let max_mass = scratch.mass_sum.iter().cloned().fold(0.0f32, f32::max);
+    let total_mass: f32 = scratch.mass_sum.iter().sum();
+    let min_mass_rel = max_mass * db::db_to_power_ratio(cfg.min_rel_mass_db_power);
+    let min_mass_total = cfg.min_mass_fraction.map(|frac| total_mass * frac);
+    scratch.keep.clear();
+    scratch.keep.extend(scratch.mass_sum.iter().map(|&mass| {
+        let mut remove = mass < min_mass_rel;
+        if let Some(min_total) = min_mass_total {
+            remove |= mass < min_total;
+        }
+        !remove
+    }));
+
+    if scratch.keep.iter().all(|&k| !k)
+        && max_mass > 0.0
+        && let Some((idx, _)) = scratch
+            .mass_sum
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+    {
+        scratch.keep[idx] = true;
+    }
+
+    if scratch.keep.iter().any(|&k| k) {
+        for i in 0..scratch.mass_sum.len() {
+            if scratch.keep[i] || scratch.mass_sum[i] <= 0.0 {
+                continue;
+            }
+            let u_i = scratch.selected[i].u_erb;
+            let mut best = None;
+            let mut best_d = f32::MAX;
+            for (k, &is_keep) in scratch.keep.iter().enumerate() {
+                if !is_keep {
+                    continue;
+                }
+                let d = (scratch.selected[k].u_erb - u_i).abs();
+                if d < best_d {
+                    best_d = d;
+                    best = Some(k);
+                }
+            }
+            if let Some(k) = best {
+                scratch.mass_sum[k] += scratch.mass_sum[i];
+                scratch.u_weighted[k] += scratch.u_weighted[i];
+                scratch.mass_sum[i] = 0.0;
+                scratch.u_weighted[i] = 0.0;
+            }
+        }
+    }
+
+    for (k, sel) in scratch.selected.iter().enumerate() {
+        let mass = scratch.mass_sum[k];
+        if mass <= 0.0 {
+            continue;
+        }
+        let u_erb = scratch.u_weighted[k] / mass;
+        let bin_idx = sel.idx;
+        scratch.peaks.push(Peak {
+            u_erb,
+            mass,
+            bin_idx,
+        });
+    }
+
+    &scratch.peaks
 }
 
 #[cfg(test)]

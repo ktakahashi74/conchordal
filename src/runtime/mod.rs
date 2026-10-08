@@ -1085,6 +1085,13 @@ fn wire_runtime(
     let dorsal = core.dorsal;
 
     let mut pop = Community::new(crate::core::timebase::Timebase { fs, hop });
+    if let Some(settings) = config.body_metabolism.filter(|settings| settings.enabled) {
+        pop.body_metabolism = Some(crate::life::body_metabolism::BodyMetabolism::new(
+            core.nsgt.clone(),
+            &core.lparams,
+            settings,
+        ));
+    }
     if config.birth_surrogate {
         pop.enable_birth_surrogate(core.lparams.loudness_exp, core.lparams.ref_power);
     }
@@ -2327,6 +2334,8 @@ fn advance_population(
     now_tick: Tick,
     listener_pressure: ListenerPressure,
 ) -> usize {
+    #[cfg(test)]
+    crate::life::body_metabolism::assay::begin_hop(now_tick);
     state.conductor.dispatch_until(
         state.current_time(),
         state.frame_idx,
@@ -2334,6 +2343,9 @@ fn advance_population(
         None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut state.pop,
     );
+    if let Some(runtime) = state.pop.body_metabolism.as_mut() {
+        runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
+    }
     if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
         capture.prepare(
             state
@@ -2708,17 +2720,51 @@ fn render_and_route_audio(
     now_tick: Tick,
     phonation_count: usize,
 ) -> (Arc<[f32]>, Arc<[f32]>, f32, Duration) {
+    if let Some(runtime) = state.pop.body_metabolism.as_mut() {
+        runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
+    }
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
-    let frame = state.schedule_renderer.render_with_prediction_matches(
+    #[cfg(test)]
+    let capture_reference = if std::env::var_os("B7_PROFILE_CAPTURE").is_some() {
+        let mut reference = state.schedule_renderer.fork_all_without_capture();
+        let started = Instant::now();
+        reference.render(
+            &state.phonation_batches_buf[..phonation_count],
+            now_tick,
+            &state.current_landscape.rhythm,
+        );
+        Some(started.elapsed().as_secs_f64())
+    } else {
+        None
+    };
+    #[cfg(test)]
+    let captured_start = Instant::now();
+    let sources = state
+        .pop
+        .body_metabolism
+        .as_mut()
+        .map_or(&mut [][..], |runtime| runtime.pcm.as_mut_slice());
+    let frame = state.schedule_renderer.render_with_source_pcm(
         &state.phonation_batches_buf[..phonation_count],
         now_tick,
         &state.current_landscape.rhythm,
+        sources,
         |id, start, window, matched| {
             report_try(&mut state.reporter, "local prediction match", |writer| {
                 writer.write_local_prediction_match(id, cfg.fs as u32, start, window, matched)
             });
         },
     );
+    #[cfg(test)]
+    if let Some(baseline) = capture_reference {
+        crate::life::body_metabolism::assay::cost(
+            "capture",
+            captured_start.elapsed().as_secs_f64() - baseline,
+        );
+    }
+    if let Some(runtime) = state.pop.body_metabolism.as_mut() {
+        runtime.observe(now_tick, frame.habitat, &state.lparams);
+    }
     let synthesis_elapsed = synthesis_start
         .map(|start| start.elapsed())
         .unwrap_or_default();
@@ -3862,3 +3908,12 @@ wait(0.08);
 
 #[cfg(test)]
 type OfflineBodyProbe = Box<dyn FnMut(&WorkerState, Tick, usize, [&[f32]; 2]) + Send>;
+
+#[cfg(test)]
+mod body_metabolism_assay;
+
+#[cfg(test)]
+pub(crate) fn body_metabolism_test_core() -> (RtNsgtKernelLog2, LandscapeParams) {
+    let core = build_analysis_runtime_core(&AppConfig::default(), 48_000);
+    (core.nsgt, core.lparams)
+}

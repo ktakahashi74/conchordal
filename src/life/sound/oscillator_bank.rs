@@ -84,6 +84,32 @@ pub struct OscillatorBank {
 }
 
 impl OscillatorBank {
+    pub(super) fn reset_representative(&mut self) {
+        self.x.fill(1.0);
+        self.y.fill(0.0);
+        self.rot_c.fill(1.0);
+        self.rot_s.fill(0.0);
+        self.gain_mask.fill(0.0);
+        self.active_lane_len = 0;
+        self.last_modes_len = 0;
+        self.last_built_pitch_hz = 0.0;
+        self.pending_phase_seed = None;
+        self.lfo_phase_rad = 0.0;
+        self.jitter_gen = PinkNoise::new(0xA5A5_5A5A_DEAD_BEEF, 0.001);
+        self.drive_env = 0.0;
+        self.spectral_env = 0.0;
+        self.pitch_counter = 0;
+        self.motion_counter = 0;
+        self.current_motion_s = 0.0;
+        self.current_motion_c = 1.0;
+        self.current_motion_enabled = false;
+        #[cfg(test)]
+        {
+            self.rebuild_count = 0;
+            self.motion_refresh_count = 0;
+        }
+    }
+
     pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
         if !fs.is_finite() || fs <= 0.0 {
             return Err(SynthError::InvalidSampleRate);

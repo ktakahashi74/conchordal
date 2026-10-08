@@ -473,20 +473,24 @@ pub struct SoundBodyBuildInput<'a> {
 pub trait SoundBodyFactory: Send + Sync {
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody;
 
-    /// Opt in only for the legacy renderer covered by the direct-model fixtures.
-    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+    /// Declare the legacy renderer used by the birth and PCM body models.
+    fn legacy_renderer_kind(&self) -> Option<BodyKind> {
         None
     }
 }
 
-pub(crate) fn birth_surrogate_kind(control: &VoiceControl) -> Option<BodyKind> {
+pub(crate) fn supports_legacy_renderer(control: &VoiceControl, snapshot: &BodySnapshot) -> bool {
+    legacy_renderer_kind(control) == Some(snapshot.kind)
+}
+
+pub(crate) fn legacy_renderer_kind(control: &VoiceControl) -> Option<BodyKind> {
     let registry = global_factory_registry()
         .lock()
         .unwrap_or_else(|p| p.into_inner());
     let method = body_method_id(control.body.method);
     registry.factories.get(method).map_or_else(
-        || HarmonicBodyFactory.birth_surrogate_kind(),
-        |factory| factory.birth_surrogate_kind(),
+        || HarmonicBodyFactory.legacy_renderer_kind(),
+        |factory| factory.legacy_renderer_kind(),
     )
 }
 
@@ -577,7 +581,7 @@ pub fn build_sound_body_from_control(
 struct SineBodyFactory;
 
 impl SoundBodyFactory for SineBodyFactory {
-    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+    fn legacy_renderer_kind(&self) -> Option<BodyKind> {
         Some(BodyKind::Sine)
     }
 
@@ -593,7 +597,7 @@ impl SoundBodyFactory for SineBodyFactory {
 struct HarmonicBodyFactory;
 
 impl SoundBodyFactory for HarmonicBodyFactory {
-    fn birth_surrogate_kind(&self) -> Option<BodyKind> {
+    fn legacy_renderer_kind(&self) -> Option<BodyKind> {
         Some(BodyKind::Harmonic)
     }
 

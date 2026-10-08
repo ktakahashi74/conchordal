@@ -14,7 +14,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::{DEFAULT_MODE_COUNT, ModePattern, ModePatternKind};
 use crate::core::timebase::Timebase;
 use crate::core::utils::a_weighting_gain_pow;
-use crate::life::voice::sound_body::birth_surrogate_kind;
+use crate::life::voice::sound_body::legacy_renderer_kind;
 use crate::scenario::control::VoiceControl;
 use crate::scenario::{HarmonicMode, TimbreGenotype};
 use sha2::{Digest, Sha256};
@@ -285,7 +285,7 @@ impl BirthSurrogate {
         freq_range: (f32, f32),
         mut terrain: impl FnMut(usize) -> f32,
     ) -> Option<usize> {
-        let kind = birth_surrogate_kind(control)?;
+        let kind = legacy_renderer_kind(control)?;
         let t = &control.body.timbre;
         let mut snapshot = BodySnapshot {
             kind,

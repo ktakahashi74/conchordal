@@ -953,7 +953,7 @@ fn wire_runtime(
     stop_flag: Arc<AtomicBool>,
     opts: WiringOptions,
 ) -> Result<RuntimeWiring, String> {
-    if config.render_prototype.is_some() && opts.wav_tx.is_none() {
+    if config.render_prototype && opts.wav_tx.is_none() {
         return Err("render_prototype is available only in conchordal-render".into());
     }
     let WiringOptions {
@@ -1091,7 +1091,7 @@ fn wire_runtime(
     // Both capabilities describe the legacy renderer's radiated sound.
     if let Some(settings) = config
         .body_metabolism
-        .filter(|settings| settings.enabled && config.render_prototype.is_none())
+        .filter(|settings| settings.enabled && !config.render_prototype)
     {
         pop.body_metabolism = Some(crate::life::body_metabolism::BodyMetabolism::new(
             core.nsgt.clone(),
@@ -1099,7 +1099,7 @@ fn wire_runtime(
             settings,
         ));
     }
-    if config.birth_surrogate && config.render_prototype.is_none() {
+    if config.birth_surrogate && !config.render_prototype {
         pop.enable_birth_surrogate(core.lparams.loudness_exp, core.lparams.ref_power);
     }
     let scenario_max_id = scenario
@@ -1125,7 +1125,7 @@ fn wire_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
-        render_prototype: config.render_prototype.is_some(),
+        render_prototype: config.render_prototype,
         onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
         wait_user_exit,

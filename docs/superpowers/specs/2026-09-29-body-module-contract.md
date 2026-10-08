@@ -174,7 +174,7 @@ oscillator tail to govern. It remains the policy for bodies with free radiation.
 Harmonic's spectral damping and floor still govern relative balance while driven;
 they do not sustain radiation after Off. Explicit body motion remains effective,
 with zero as its existing default. The decay/rise/kick/motion trial scales are
-removed; the existing empty `[render_prototype]` table still opts in offline,
+removed; `render_prototype = true` opts in offline,
 and the default renderer remains the legacy path.
 
 The October 3 decision's initial 48 kHz family, addressed Tone excitation and

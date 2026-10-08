@@ -636,26 +636,33 @@ mod tests {
 
     #[cfg(feature = "profile-alloc")]
     #[test]
-    fn phase3_open_and_closed_hops_add_no_allocations_after_on_handoff() {
+    fn legacy_and_phase3_hops_add_no_allocations_after_on_handoff() {
         let time = Timebase {
             fs: 48_000.0,
             hop: 64,
         };
-        for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
-            let mut renderer = ScheduleRenderer::new(time).with_prototype(true);
-            let mut batch = outcome_batch(kind);
-            batch.tones[0].onset = 0;
-            batch.tones[0].hold_ticks = Some(512);
-            batch.tones[0].render_modulator = RenderModulatorSpec::SeqGate { duration_sec: 2.0 };
-            renderer.render(std::slice::from_ref(&batch), 0, &NeuralRhythms::default());
-            crate::runtime_profile::begin_allocations();
-            for now in (64..96_000).step_by(64) {
-                let frame = renderer.render(&[], now, &NeuralRhythms::default());
-                std::hint::black_box(frame);
+        for prototype in [false, true] {
+            for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+                let mut renderer = ScheduleRenderer::new(time).with_prototype(prototype);
+                let mut batch = outcome_batch(kind);
+                batch.tones[0].onset = 0;
+                batch.tones[0].hold_ticks = Some(512);
+                batch.tones[0].render_modulator =
+                    RenderModulatorSpec::SeqGate { duration_sec: 2.0 };
+                renderer.render(std::slice::from_ref(&batch), 0, &NeuralRhythms::default());
+                crate::runtime_profile::begin_allocations();
+                for now in (64..96_000).step_by(64) {
+                    let frame = renderer.render(&[], now, &NeuralRhythms::default());
+                    std::hint::black_box(frame);
+                }
+                let count = crate::runtime_profile::finish_allocations().unwrap();
+                assert_eq!((count.count, count.bytes), (0, 0), "{prototype} {kind:?}");
+                assert!(renderer.is_idle());
+                println!(
+                    "RENDER_ALLOCATION prototype={prototype} body={kind:?} count={} bytes={}",
+                    count.count, count.bytes
+                );
             }
-            let count = crate::runtime_profile::finish_allocations().unwrap();
-            assert_eq!((count.count, count.bytes), (0, 0), "{kind:?}");
-            assert!(renderer.is_idle());
         }
     }
 

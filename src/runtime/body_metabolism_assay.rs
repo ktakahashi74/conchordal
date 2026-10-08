@@ -26,7 +26,7 @@ fn render_birth_metabolism_flags(
             observation_frames: 8,
             representative_hold_sec: 1.0,
         }),
-        render_prototype: prototype.then(toml::Table::new),
+        render_prototype: prototype,
         ..Default::default()
     };
     config.analysis.nfft = 2048;

@@ -277,9 +277,9 @@ pub struct AppConfig {
     /// Body-weighted energy metabolism; omission leaves the point path unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body_metabolism: Option<BodyMetabolismConfig>,
-    /// Opt-in offline renderer prototype; absence preserves the instrument path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub render_prototype: Option<toml::Table>,
+    /// Opt-in offline renderer; omission preserves the legacy path.
+    #[serde(default)]
+    pub render_prototype: bool,
     #[serde(default)]
     pub audio: AudioConfig,
     #[serde(default)]
@@ -523,12 +523,6 @@ impl AppConfig {
                 "body_metabolism representative hold exceeds the sample clock"
             );
         }
-        ensure!(
-            self.render_prototype
-                .as_ref()
-                .is_none_or(|table| table.is_empty()),
-            "render_prototype is an empty opt-in table and accepts no settings"
-        );
         if let Some(ridge) = self.temporal_ridge {
             ensure!(
                 ridge.means.iter().all(|v| v.is_finite())
@@ -905,19 +899,23 @@ mod tests {
     }
 
     #[test]
-    fn render_prototype_is_an_empty_opt_in_table() {
+    fn render_prototype_is_a_false_by_default_bool() {
         let legacy: AppConfig = toml::from_str("").unwrap();
-        assert!(legacy.render_prototype.is_none());
+        assert!(!legacy.render_prototype);
+        assert!(!AppConfig::default().render_prototype);
         assert!(
-            !toml::to_string(&legacy)
+            toml::to_string(&legacy)
                 .unwrap()
-                .contains("render_prototype")
+                .contains("render_prototype = false")
         );
-        let config: AppConfig = toml::from_str("[render_prototype]\n").unwrap();
-        assert!(config.render_prototype.is_some());
-        config.validate().unwrap();
-        let stale: AppConfig = toml::from_str("[render_prototype]\nkick_gain = 1.0\n").unwrap();
-        assert!(stale.validate().is_err());
+        for enabled in [false, true] {
+            let config: AppConfig =
+                toml::from_str(&format!("render_prototype = {enabled}\n")).unwrap();
+            assert_eq!(config.render_prototype, enabled);
+            config.validate().unwrap();
+        }
+        assert!(toml::from_str::<AppConfig>("[render_prototype]\n").is_err());
+        assert!(toml::from_str::<AppConfig>("render_prototype = true\nkick_gain = 1.0\n").is_err());
     }
 
     #[test]
@@ -985,7 +983,7 @@ mod tests {
         let custom = AppConfig {
             birth_surrogate: false,
             body_metabolism: None,
-            render_prototype: None,
+            render_prototype: false,
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_period: None,

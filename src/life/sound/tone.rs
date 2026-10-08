@@ -1024,11 +1024,15 @@ mod tests {
                         if tick < decay_start + 3840 {
                             peak_onset[i] = peak_onset[i].max(pcm[i].abs());
                         }
-                        if tick >= hold && minus60[i].is_none() && amplitudes[i] <= 0.2 / 1000.0 {
+                        if tick >= hold
+                            && minus60[i].is_none()
+                            && f64::from(amplitudes[i]) <= 0.2 / 1000.0
+                        {
                             minus60[i] = Some(tick - hold);
                         }
                         if sustain < 1.0 && tick >= decay_start {
-                            let excess = (amplitudes[i] - 0.2 * sustain) / (0.2 * (1.0 - sustain));
+                            let excess = (f64::from(amplitudes[i]) - 0.2 * f64::from(sustain))
+                                / (0.2 * (1.0 - f64::from(sustain)));
                             if decay90[i].is_none() && excess <= 0.9 {
                                 decay90[i] = Some(tick - decay_start);
                             }

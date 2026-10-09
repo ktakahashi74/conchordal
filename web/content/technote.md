@@ -392,6 +392,13 @@ its 80 ms drive response and onset spectral burst. Modal retains mode-specific
 free decay, impulses and noise drive, including radiation after Off. Explicit body
 motion remains effective, with zero as its default.
 
+Sine and Harmonic share the legacy f32 partial-rotation kernel, without per-sample
+normalization. Pitch and motion retain their 64- and 8-sample refresh clocks.
+The carrier has the same floating-point drift as the legacy kernel. Isolated
+constant-level holds can match legacy PCM bits, while excitation multiplication
+order and handle scheduling can still change the complete waveform. Effective
+Off still stops oscillator radiation; Modal keeps its existing free response.
+
 Body parameters change the emitted spectrum and therefore the shared Landscape. Movement samples that terrain at a fundamental frequency. Birth placement and supported final respawn selections have the optional body-density evaluation described in Section 3.4. Metabolism can also use a body's representative density to evaluate its current position against an environment with its own sound removed (Section 5.2). This option is disabled by default. Timbre inheritance is not implemented.
 
 The birth surrogate requires a body factory to declare direct-model conformance for the selected renderer. The current Sine implementation is supported. Harmonic requires zero motion and one active unison copy. With the legacy renderer, Modal requires one active unison copy and brightness exactly 1. Native Modal is unsupported because its radiation is not shaped by output ADSR and persists after Off. A single copy results from zero spread or `unison = 1`. Controls ignored by a body's renderer are ignored in this decision too. Other Modal brightness values, randomized mode recipes used by Harmonic or Modal, unsupported factories and inputs outside the model's bounded domain use the existing terrain-only birth path. A replacement renderer receives no surrogate capability by default. These conditions identify the implemented fast path; its numerical guarantee remains limited to the saved measurements in Section 3.4.

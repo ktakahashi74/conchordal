@@ -888,6 +888,20 @@ separate from this author choice. The table retains the full decision scope so
 that pending capacity, module details and A4 are not confused
 with these adopted policies. See the [author record](2026-09-29-body-policy-author-decisions.md).
 
+On 2026-10-09, the author adopted the legacy f32 partial-rotation kernel for the
+excitation renderer's Sine/Harmonic carriers, without per-sample normalization.
+The previous normalized-carrier bound for a closed oscillator tail has no live
+consumer after the October 8 amendment: effective Off emits known zero before
+carrier evaluation, and its residual bound is zero. Open pitch/phase updates,
+64-sample pitch and 8-sample motion clocks, spectral control, excitation shaping,
+source generations and routing remain unchanged. Floating-point drift follows
+existing legacy practice; no exact unit-circle guarantee is adopted. Sharing
+partial calculations establishes PCM identity only for the demonstrated control
+and multiplication scope, not every ADSR, retrigger or overlap. Modal's free
+response and tail bound remain unchanged. Native final respawn body evaluation
+and legacy analytic self-models remain disabled; this carrier decision alone
+does not admit those consumers.
+
 | ID | Decision needed | Draft recommendation |
 |---|---|---|
 | A1 | Pitch scope, lowering and unsupported operation | Retune open handles only; preserve closed tails. New phonation after closure uses fresh On, repeated excitation of an open handle uses re-kick. Reject unsupported live retuning atomically, with no implicit deferral/reset; future On gets a separate pitch request. Structural genotype affects future On. Accept cross-phonation pitch overlap, or explicitly amend this policy. |

@@ -268,13 +268,13 @@ $$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 
 出生は指定範囲内の分布から抽選する。既定の`SpawnStrategy::Field`は、その周波数範囲だけを切り出し、浸食後の地形から対象別の局所massを作る。そこへ占有maskをかけ、その範囲だけで正規化する。massが全て0なら未占有ビン上の一様分布へ、全ビンが占有されていれば範囲全体の一様分布へ戻る。peak配置は対象の極値を決定論的に選び、tensionを指定した場合は目標field-scoreに最も近い候補を選ぶ。全域の$C_{density\_pmf}$は正規化されたLandscape表現として残り、core testが使う。
 
-設定ファイルの最上位で`birth_surrogate = true`を指定すると、Field配置に身体の代理密度を使う機能が有効になる。既定は無効である。候補となる基音ごとに、旧rendererの直接モデルが身体のsubjective-intensity densityを推定する。density配置では、この密度と浸食後の対象地形のmassをERBセル上で積分し、身体の帯域内massで割った値を出生の重みにする。peak配置では対象のscoreを積分する。全候補を同じhopで評価し、同じ身体とrecipeの準備を再利用しながら、出生ごとに占有とspacingを反映する。範囲内での正規化と零mass時の一様分布への切替は維持する。対応外の身体やrecipeは従来の地形だけによる配置を使う。対応条件は5.1.1節に示す。
+設定ファイルの最上位で`birth_surrogate = true`を指定すると、Field配置に身体の代理密度を使う機能が有効になる。既定は無効である。候補となる基音ごとに、選んだrendererへの適合を確認した直接モデルが、身体のsubjective-intensity densityを推定する。density配置では、この密度と浸食後の対象地形のmassをERBセル上で積分し、身体の帯域内massで割った値を出生の重みにする。peak配置では対象のscoreを積分する。全候補を同じhopで評価し、同じ身体とrecipeの準備を再利用しながら、出生ごとに占有とspacingを反映する。範囲内での正規化と零mass時の一様分布への切替は維持する。対応外の身体やrecipeは従来の地形だけによる配置を使う。対応条件は5.1.1節に示す。
 
-旧rendererでは、出生の設定と5.2節の身体込みの代謝は独立しており、両方を同時に有効にできる。offlineの励振rendererを選ぶと、`birth_surrogate = true`でも従来の地形による出生配置を使う。この設定は初期出生、Fieldの周波数提案、対応する再出生の最終評価に作用する。Randomは16候補を作り、非負のscene-scoreで再抽選する。Hereditaryは親を一度選び、16候補から最大levelを選ぶ。PeakBiasedは地形のpeakによる候補生成、親へのbias、局所探索の刻みを維持し、対応する身体では最終抽選の重みと局所探索に身体込みのscoreを使う。積分したscoreを地形と同じ設定のsigmoidでlevelへ変換するため、最低levelによる拒否の尺度と閾値は維持する。対応外の方式と身体の組合せでは、従来の点評価を使う。
+出生の設定と5.2節の身体込みの代謝は独立しており、両方を同時に有効にできる。励振rendererでは、Sineと対応するHarmonicのrecipeがField配置と周波数提案に身体の代理密度を使い、Modalは従来の地形による配置を使う。旧rendererでは、この設定が対応する再出生の最終評価にも作用する。Randomは16候補を作り、非負のscene-scoreで再抽選する。Hereditaryは親を一度選び、16候補から最大levelを選ぶ。PeakBiasedは地形のpeakによる候補生成、親へのbias、局所探索の刻みを維持し、対応する身体では最終抽選の重みと局所探索に身体込みのscoreを使う。積分したscoreを地形と同じ設定のsigmoidでlevelへ変換するため、最低levelによる拒否の尺度と閾値は維持する。対応外の方式と身体の組合せでは、従来の点評価を使う。励振rendererでは最終選択分布のnative参照との適合を確認していないため、再出生の最終抽選、局所探索、最低levelによる拒否には従来の点評価を使う。
 
-代理式による抽選分布と実音の生成・解析から得た参照分布との全変動距離は、対応する測定条件ごとの最大値を0.1以下とする作者規則である。0.1は音響モデルから導出した値ではなく、測定したSineの約0.095を含めるために作者が定めた。この上限を確認したのは、保存したConsonance/Densityの測定点に限られる。参照は440 Hzと1800 Hz付近の7候補からなる104群で、48 kHz、hop 512を使い、他者だけの音による無音、Sine 440 Hz、Sine 660 Hz、Harmonic 330 Hzの4環境を含む。占有、spacing、tensionはない。保証範囲はこの参照中で対応する身体の測定条件に限定され、任意の設定や環境、peak配置には広げていない。再出生の最終選択には、以下の別の測定範囲がある。
+代理式による抽選分布と実音の生成・解析から得た参照分布との全変動距離は、対応する測定条件ごとの最大値を0.1以下とする作者規則である。0.1は音響モデルから導出した値ではなく、測定したSineの約0.095を含めるために作者が定めた。この上限を確認したのは、保存したConsonance/Densityの測定点に限られる。旧rendererの参照は440 Hzと1800 Hz付近の7候補からなる104群で、48 kHz、hop 512を使い、他者だけの音による無音、Sine 440 Hz、Sine 660 Hz、Harmonic 330 Hzの4環境を含む。占有、spacing、tensionはない。励振rendererのSine／Harmonicでは、同じ測定条件の64群をnativeの候補PCMと照合した。環境の地形と実現済みのmode比率は保存値に固定している。保証範囲はこの参照中で対応する身体の測定条件に限定され、任意の設定や環境、peak配置、再出生の最終分布には広げていない。旧rendererの再出生の最終選択には、以下の別の測定範囲がある。
 
-再出生の最終評価にも、全変動距離を0.1以下とする同じ作者規則を使う。保存された描画由来の候補scoreを従来のRandomとHereditaryの選択則へ通し、測定済みの7周波数を順に繰り返して16候補にした。対応する測定条件での最大TVは、それぞれ0.095963と0だった。PeakBiasedは、他者だけのHarmonic 330 Hz環境、440 Hz付近で従来の生成器が地形から作る16候補を使って検査した。親へのbiasと局所探索は既定設定を使い、探索半径は0.50半音、刻みは0.05半音である。48 kHz、hop 512で身体ごとに72 hopを観測し、条件ごとに158周波数を生成・解析した。比較には局所探索後の最終分布まで含めた。対応条件での最大TVは0.025876だった。保証はこれらの保存測定と有界のPeakBiasedの検査に限り、任意の設定、環境、候補集合には広げない。作者規則を超えた条件では点評価を維持する。方式ごとの対応範囲は5.1.1節に示す。
+旧rendererの再出生の最終評価にも、全変動距離を0.1以下とする同じ作者規則を使う。保存された描画由来の候補scoreを従来のRandomとHereditaryの選択則へ通し、測定済みの7周波数を順に繰り返して16候補にした。対応する測定条件での最大TVは、それぞれ0.095963と0だった。PeakBiasedは、他者だけのHarmonic 330 Hz環境、440 Hz付近で従来の生成器が地形から作る16候補を使って検査した。親へのbiasと局所探索は既定設定を使い、探索半径は0.50半音、刻みは0.05半音である。48 kHz、hop 512で身体ごとに72 hopを観測し、条件ごとに158周波数を生成・解析した。比較には局所探索後の最終分布まで含めた。対応条件での最大TVは0.025876だった。保証はこれらの保存測定と有界のPeakBiasedの検査に限り、任意の設定、環境、候補集合には広げない。作者規則を超えた条件では点評価を維持する。方式ごとの対応範囲は5.1.1節に示す。
 
 この共有地形とは別に、Voiceごとの適応もある。`AdaptationContext`は共有された**基音占有場**に対する速いboredomと遅いfamiliarityを追跡し、pitch candidateごとのscoreを補正する。これは次節のLandscape-level habituationと併存する。adaptationはエージェント固有の記憶であり、habituationは共有された知覚地形の浸食である。
 
@@ -371,7 +371,7 @@ $$ \dot{\omega} = -\eta\, s(t) \sin\varphi $$
 
 `OscillatorBank` はキャッシュ効率のためにストラクト・オブ・アレイ（struct-of-arrays）レイアウトを採用している。`ModalEngine` は内部で `ResonatorBank` を保持し、周期的にピッチパラメータを更新する。
 
-既定は従来のrendererである。別のoffline用の励振rendererでは、身体への入力の
+既定は従来のrendererである。任意で有効にする励振rendererでは、身体への入力の
 整形と、身体からの放射を分けて扱う（5.1.3節、6.1節）。SineとHarmonicは
 作曲者のADSRと既存のonset整形へ遅れなく応答し、実効Off後には放射しない。
 Sineのonsetは利得0.2、上限1、時定数80 msで、再打撃を加算する。Harmonicは
@@ -381,11 +381,11 @@ Sineのonsetは利得0.2、上限1、時定数80 msで、再打撃を加算す�
 
 身体のパラメータは放射スペクトルを変え、共有Landscapeへ影響する。移動の評価は基音位置の地形を読む。出生の配置と対応する再出生の最終選択には、3.4節で述べた身体の代理密度による評価を任意で使える。代謝にも、自分の音を除いた環境に対し、代表Toneの密度で現在位置を評価する機能がある（5.2節）。この機能の既定は無効である。音色の遺伝は未実装である。
 
-出生の代理式を使うには、身体を生成するfactoryが旧rendererの直接モデルへの適合を申告する必要がある。現行のSineは対応する。Harmonicはmotionが0で、実際に有効なunisonコピーが一つの場合に対応する。Modalは有効なunisonコピーが一つで、brightnessがちょうど1の場合に対応する。spreadが0、または`unison = 1`ならコピーは一つになる。rendererが使わない設定値は、この判定でも無視する。Modalのそれ以外のbrightness、HarmonicやModalのmodeに指定したランダムjitter、能力申告のないfactory、モデルの扱える範囲外の入力は、従来の地形だけによる出生を使う。別のrendererへこの能力が自動で付与されることはない。これらは実装上の適用条件であり、数値的な保証は3.4節の保存参照に含まれる測定点に限る。
+出生の代理式を使うには、身体を生成するfactoryが、選んだrendererの直接モデルへの適合を申告する必要がある。現行のSineは対応する。Harmonicはmotionが0で、実際に有効なunisonコピーが一つの場合に対応する。旧rendererのModalは有効なunisonコピーが一つで、brightnessがちょうど1の場合に対応する。nativeのModalは出力にADSRが掛からず、Off後も放射が続くため対応外である。spreadが0、または`unison = 1`ならコピーは一つになる。rendererが使わない設定値は、この判定でも無視する。Modalのそれ以外のbrightness、HarmonicやModalのmodeに指定したランダムjitter、能力申告のないfactory、モデルの扱える範囲外の入力は、従来の地形だけによる出生を使う。別のrendererへこの能力が自動で付与されることはない。これらは実装上の適用条件であり、数値的な保証は3.4節の保存参照に含まれる測定点に限る。
 
-身体込みの代謝でも、factoryによる旧rendererへの適合の申告を使う。ただし密度は代表Toneを実際に生成・解析して得るため、出生の代理式に固有の厳しいrecipe条件は適用しない。この能力を申告しないfactoryには、従来の点地形による代謝を使う。励振rendererは旧rendererの能力申告を使わず、身体込みの出生と代謝を従来の配置・点評価へ戻す。
+身体込みの代謝でも、factoryが申告する、選択したrendererへの適合を使う。密度は、そのrendererの代表Toneを実際に生成・解析して得るため、出生の代理式に固有の厳しいrecipe条件は適用しない。この能力を申告しないfactoryには、従来の点地形による代謝を使う。励振rendererでもSineとHarmonicの身体込みの代謝を使える。Modalには従来の点地形による代謝を使う。
 
-再出生の最終評価では、この身体の共通条件に加え、方式ごとに対応範囲を絞る。RandomはSineとLandscapeDensityのrecipeを点評価する。HereditaryはLandscapeDensityとLandscapePeaksのrecipeを点評価する。PeakBiasedで対応するのは、明示的なmode recipeを持たない旧Harmonic、または地形からmodeを作るLandscapeDensity/Peaksの旧Harmonicである。Sine、Modal、明示的な固定ratioのrecipeは点評価を維持する。これらは実装の適用条件であり、数値的な保証は3.4節の測定条件に限る。
+身体込みの再出生の最終評価は旧rendererだけで有効になり、この身体の共通条件に加え、方式ごとに対応範囲を絞る。励振rendererでは全bodyの最終評価を従来の点評価へ戻すが、対応するSine／HarmonicのField提案は身体込みのままである。RandomはSineとLandscapeDensityのrecipeを点評価する。HereditaryはLandscapeDensityとLandscapePeaksのrecipeを点評価する。PeakBiasedで対応するのは、明示的なmode recipeを持たない旧Harmonic、または地形からmodeを作るLandscapeDensity/Peaksの旧Harmonicである。Sine、Modal、明示的な固定ratioのrecipeは点評価を維持する。これらは実装の適用条件であり、数値的な保証は3.4節の測定条件に限る。
 
 ### 5.1.2 コアスタック（Articulation, Pitch, Phonation）
 
@@ -424,7 +424,7 @@ Modalは自由応答を続ける。release=0の指定も、従来どおり最短
 source世代ごとに合計して、rendererの下限へ達したときに退役する。
 開いたhandleを、音量が0という理由だけで破棄しない。
 
-旧rendererで身体込みの代謝を有効にすると、VoiceごとのハビタットPCMも`(id, generation)`で識別して採取する。それをハビタットのmixから引き、自分の音を除いた環境を得る。プレゼンテーション専用の音や別世代の音は、自分の音には含めない。共有mixは連続して解析する。Voiceごとの環境PCMの履歴は保持し、そのVoiceの番が来たときに、飛ばしたhopの分をまとめて解析状態へ反映する。有限窓から解析し直す方式ではない。
+身体込みの代謝を有効にすると、新旧のrendererで対応するVoiceのハビタットPCMも`(id, generation)`で識別して採取する。それをハビタットのmixから引き、自分の音を除いた環境を得る。プレゼンテーション専用の音や別世代の音は、自分の音には含めない。共有mixは連続して解析する。Voiceごとの環境PCMの履歴は保持し、そのVoiceの番が来たときに、飛ばしたhopの分をまとめて解析状態へ反映する。有限窓から解析し直す方式ではない。
 
 ### 5.1.4 制御プレーン信号：Planned と Error
 
@@ -448,9 +448,9 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 既定のenergy更新は、Voiceの基音位置にある浸食後の協和性levelを使う。任意で有効にした身体込みの代謝は、自分の音を除いた環境に対して現在位置を評価する。代表Toneから得た主観的強度の密度（subjective-intensity density）とERBセル幅で浸食後の協和性scoreを重み付けし、帯域内massで正規化してから、従来のシグモイドでlevelへ変換する。現在位置の密度はVoiceごとに一つ保持し、基音、recipe、世代、解析設定が変わったときに作り直す。
 
-設定は`[body_metabolism]`の`enabled = true`で有効にし、`updates_per_hop`、`observation_frames`、`representative_hold_sec`を明示する。この設定節を省略するか`enabled = false`なら、従来の点地形による代謝を使う。作者は比較結果から`updates_per_hop = 2`を採った。2は設定する更新数であり、音響モデルの原理定数ではない。
+設定は`[body_metabolism]`の`enabled = true`で有効にし、`updates_per_hop`、`observation_frames`、`representative_hold_sec`を明示する。この設定節を省略するか`enabled = false`なら、従来の点地形による代謝を使う。`render_prototype = true`では、SineとHarmonicにnativeの代表Toneと自分のPCMの減算を使い、Modalは点地形による代謝を維持する。作者は比較結果から`updates_per_hop = 2`を採った。2は設定する更新数であり、音響モデルの原理定数ではない。
 
-毎hop、対応するVoiceの中から、設定数を上限として順番に更新する。Voiceごとのslotに単調増加する訪問番号を持ち、小さい番号から選ぶ。評価したVoiceと生まれたVoiceには新しい番号を振り、列の末尾に回す。それ以外のVoiceは直前の身体点数を保持する。出生直後は自分の番が来るまで従来の点数を使う。対応外の身体や評価を得られない場合も従来の点数へ戻り、unknownを既知の0として扱わない。この代謝の身体点数を使うのはenergyの更新であり、生存状態の協和性診断値と発音ゲートへの直接入力は基音位置の点評価を維持する。代謝の設定だけでは再出生の最終採点は変わらない。独立した出生の設定によって、3.4節で述べた対応範囲の身体評価を有効にできる。
+毎hop、対応するVoiceの中から、設定数を上限として順番に更新する。Voiceごとのslotに単調増加する訪問番号を持ち、小さい番号から選ぶ。評価したVoiceと生まれたVoiceには新しい番号を振り、列の末尾に回す。それ以外のVoiceは直前の身体点数を保持する。出生直後は自分の番が来るまで従来の点数を使う。対応外の身体や評価を得られない場合も従来の点数へ戻り、unknownを既知の0として扱わない。この代謝の身体点数を使うのはenergyの更新であり、生存状態の協和性診断値と発音ゲートへの直接入力は基音位置の点評価を維持する。代謝の設定だけでは再出生の最終採点は変わらない。独立した出生の設定によって、3.4節で述べた旧rendererの対応範囲の身体評価を有効にできる。
 
 この仕組みはダーウィン的圧力を生む：**協和なるものの生存（Survival of the Consonant）**。音響的な適合が低ければenergyが減り、高ければ維持・回復できる。適合は既定では基音位置のlevel、任意の身体評価を得られたときには身体密度で重み付けしたlevelである。Landscape habituationを有効にすると、かつて支えとなった環境も、活動が続けばeffective valueを失い、音が退いた後に回復する。生存は音響的な適合だけでなく、直近の知覚履歴にも左右される。
 
@@ -492,9 +492,11 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 VoiceのADSR releaseを64点の包絡proxyで近似する。任意で有効にするfootprint workerは
 時間認知の観測器から独立し、発音条件を固定した代表音のパワーを近似して16 binで
 参加方策へ渡す。包絡proxyも選べ、bodyの結果が未着・失効・未対応ならproxyへ戻る。
-励振rendererでは、3種類の身体すべてで代表onsetのfootprintが対応外
-（`renderer-phase3`）となり、参加方策は包絡proxyを使う。旧renderer用の
-解析的なTone energy予測も利用できない。実PCMを観測するT2や、周囲・自分の
+励振rendererのSineとHarmonicでは、nativeの代表PCMから16区間の平均energyを
+求め、最大区間で正規化する。旧rendererの解析的なfootprintとはidentityを分ける。
+nativeのModalはOff後の自由な放射を旧ADSRのsupportで扱えないため、引き続き
+対応外（`renderer-phase3`）とし、参加方策は包絡proxyを使う。旧renderer用の
+解析的なTone energy予測は、励振rendererでは対応外のままである。実PCMを観測するT2や、周囲・自分の
 音の履歴による予測は、放射されたbus音声から引き続き動作する。
 見送りのコストは1に連続見送り回数を加え、実際の発音指令で回数をリセットする。
 これは行動の選好であり、代謝報酬ではない。有界な音響コストだけを理由に
@@ -617,7 +619,8 @@ Conchordal はリアルタイムオーディオの厳格な要件（レイテン
 
 ## 6.1 スレッディングモデル
 
-別binaryの`conchordal-render`は、offline用の励振rendererを選べる。
+楽器binaryの`conchordal`と、offline用の別binary`conchordal-render`で、
+励振rendererを任意に選べる。
 TOML設定の最上位に次を置くと有効になる。
 
 ```toml
@@ -625,10 +628,12 @@ render_prototype = true
 ```
 
 省略時と`false`では従来のrendererを使う。設定はbool一つであり、decay、rise、
-kick利得、motion倍率の下位設定は持たない。楽器binaryの`conchordal`では
-このrendererを有効にできず、音声ファイルの出力経路も持たない。
-offlineではscenarioの終了時に励振を閉じ、残った身体の放射が退役するまで
-Finishを待ってからWAVを閉じる。
+kick利得、motion倍率の下位設定は持たない。楽器binaryの`conchordal`は
+音声ファイルの出力経路を持たない。自然なFinishでは、どちらの実行経路でも
+scenarioの終了時に励振を閉じ、残った身体の放射が退役するまで待つ。
+offlineはその後にWAVを閉じ、headlessは終了する。GUIは既定ではユーザーの
+終了を待ち、Finish後はringへ無音を送る。`wait_user_exit = false`なら終了する。
+これは生成側の完了であり、deviceやringの再生完了を待つ規則は追加していない。
 
 アプリケーションは4つの主要なスレッドコンテキストとGUIイベントループを生成する。
 
@@ -776,7 +781,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | 時間構造を聴覚認知に根差させる | 参照に対応した聴覚部品によるT2前処理、作者規則による群への帰属と直接アクセント、Periodicの次回到来費用。任意に有効化でき、既定は無効 | §5.4 | 部分。アクセントと到来の機構は実装済み。元の音群への帰属、因果的な支持、unknownの区別を保つ。T2の数値自由量は既定値を持たず、到来の重みは省略時に1を使う |
 | DCC 第2段階：生体信号閉ループ | `[dcc]` coupling 有効時、`ListenerTwin` 圧力を pitch-search temperature へ戻す | §4.1, §6.2 | 模擬ループは実装済み・既定無効。実生体信号ループは未解決 |
 | 実際に提示された音との認知的結合 | presentation 専用分析。入力欠落時は観測を無効化し、連続した1窓分が揃うまで DCC 圧力を停止 | §6.2 | 実装済み。実機での過負荷検証は未解決 |
-| 励振と身体の放射 | offlineの励振renderer。Sine/Harmonicの即時応答、Modalの自由減衰、Offと退役の分離 | §5.1, §6.1 | offlineで任意に有効化できる。楽器の既定は従来のrenderer |
+| 励振と身体の放射 | 楽器とoffline用binaryで任意に選べる励振renderer。Sine/Harmonicの即時応答、Modalの自由減衰、Offと退役の分離 | §5.1, §6.1 | 実装済み。既定は従来のrenderer |
 | 生きた演奏としての音楽 | 楽器は音声ファイル出力を持たず、別バイナリ `conchordal-render` がオフライン検証を担う | §6 | バイナリ境界として実装済み |
 | 役割の溶解・空間ランドスケープ・音色の遺伝・他領域 | 遺伝的リスポーンはアッセイとして存在 | — | 地平 |
 
@@ -788,7 +793,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 - 認知的な保持と干渉、重なる音の中での流れの同定。
 - DCC 第2段階の実生体信号ループ。
 - 実機の過負荷と大きな個体数での実時間受入。
-- offlineの励振rendererでは、身体込みの出生・代謝と代表onsetのfootprintは利用できない。
+- nativeのModalでは、身体込みの出生・代謝と代表onsetのfootprintは対応外。励振rendererの旧解析的なTone energy予測も対応外のまま。
 
 # 付録A：主要システムパラメータ
 

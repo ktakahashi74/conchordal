@@ -268,13 +268,13 @@ where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.
 
 Spawn samples a range-local distribution. By default, a `SpawnStrategy::Field` slices the requested frequency range, derives target-specific local mass from the effective views, masks occupied bins, and normalizes only that local vector. A zero-mass range falls back to an unoccupied-uniform distribution and then to full-range uniform if every bin is occupied. Peak placement chooses the target extremum deterministically, or the nearest field-score target when tension is specified. The global $C_{density\_pmf}$ remains a normalized Landscape representation exercised by core tests.
 
-The root configuration key `birth_surrogate = true` enables optional body-density evaluation for Field placement; it is disabled by default. For each candidate fundamental, the legacy direct model estimates the body's subjective-intensity density. Density placement integrates that density against the effective target mass over ERB cells, divides by the body's in-band mass, and uses the result as the local birth weight. Peak placement integrates the target score instead. All candidates are evaluated within the same hop; equal body recipes reuse their preparation while occupancy and spacing are updated after each birth. Range-local normalization and the zero-mass fallbacks remain in force. Unsupported bodies and recipes use the existing terrain-only placement (the supported conditions are listed in Section 5.1.1).
+The root configuration key `birth_surrogate = true` enables optional body-density evaluation for Field placement; it is disabled by default. For each candidate fundamental, a direct model of the selected renderer estimates the body's subjective-intensity density. Density placement integrates that density against the effective target mass over ERB cells, divides by the body's in-band mass, and uses the result as the local birth weight. Peak placement integrates the target score instead. All candidates are evaluated within the same hop; equal body recipes reuse their preparation while occupancy and spacing are updated after each birth. Range-local normalization and the zero-mass fallbacks remain in force. Unsupported bodies and recipes use the existing terrain-only placement (the supported conditions are listed in Section 5.1.1).
 
-With the legacy renderer, the birth option is independent of body-aware metabolism (Section 5.2); both can be enabled together. The optional offline excitation renderer uses terrain-only birth placement even when `birth_surrogate = true`. This option affects founder placement, Field proposals and supported final respawn evaluations. Random retains 16 proposals and resamples their non-negative scene scores. Hereditary selects one parent and keeps the maximum-level choice among 16 proposals. PeakBiased keeps its terrain-peak proposals, parent bias and local search grid, but uses integrated body scores for its final weights and local search when supported. The integrated score is converted to level with the same configured sigmoid as the terrain; minimum-level rejection therefore retains its scale and threshold. Unsupported policy/body combinations use the existing point evaluation.
+The birth option is independent of body-aware metabolism (Section 5.2); both can be enabled together. The excitation renderer supports Field placement and frequency proposals for Sine and the supported Harmonic recipes; Modal retains terrain-only placement. With the legacy renderer, the option also affects supported final respawn evaluations. Random retains 16 proposals and resamples their non-negative scene scores. Hereditary selects one parent and keeps the maximum-level choice among 16 proposals. PeakBiased keeps its terrain-peak proposals, parent bias and local search grid, but uses integrated body scores for its final weights and local search when supported. The integrated score is converted to level with the same configured sigmoid as the terrain; minimum-level rejection therefore retains its scale and threshold. Unsupported policy/body combinations use the existing point evaluation. With the excitation renderer, final respawn selection, local search and minimum-level rejection retain point evaluation because native final-selection distributions have not been conformed.
 
-The author adopted a maximum total-variation distance of 0.1 from the rendered-and-analyzed selection distribution for each supported measured body condition. The value is an author acceptance rule chosen to include the measured Sine result (about 0.095); it is not derived from the psychoacoustic model. The bound was checked only at the measured points in saved Consonance/Density fixtures: 104 groups of seven candidates near 440 and 1800 Hz, at 48 kHz with hop 512, in silence and other-only Sine 440 Hz, Sine 660 Hz and Harmonic 330 Hz environments. These fixtures have no occupancy, spacing or tension. The guarantee is limited to the supported conditions in those fixtures; it does not extend to arbitrary parameters or environments, Peak placement. Final respawn selection has the separate measured scope below.
+The author adopted a maximum total-variation distance of 0.1 from the rendered-and-analyzed selection distribution for each supported measured body condition. The value is an author acceptance rule chosen to include the measured Sine result (about 0.095); it is not derived from the psychoacoustic model. For the legacy renderer, the bound was checked only at the measured points in saved Consonance/Density fixtures: 104 groups of seven candidates near 440 and 1800 Hz, at 48 kHz with hop 512, in silence and other-only Sine 440 Hz, Sine 660 Hz and Harmonic 330 Hz environments. These fixtures have no occupancy, spacing or tension. For the excitation renderer, the corresponding 64 Sine/Harmonic groups were checked against native candidate PCM, keeping the saved terrain and realized mode ratios fixed. The guarantee is limited to the supported conditions in those fixtures; it does not extend to arbitrary parameters or environments, Peak placement or final respawn distributions. Legacy final respawn selection has the separate measured scope below.
 
-Final respawn evaluation uses the same author rule of total-variation distance at most 0.1. Saved rendered candidate scores were passed through the existing Random and Hereditary selectors, with the seven measured frequencies repeated cyclically to form 16 proposals; the supported measured conditions reached maxima of 0.095963 and 0, respectively. PeakBiased was checked with 16 terrain-derived proposals from its existing generator and the default parent bias and local search (0.50-semitone radius, 0.05-semitone step), around 440 Hz in the other-only Harmonic 330 Hz environment. At 48 kHz with hop 512 and 72-hop body observations, its complete final distribution included 158 rendered candidate frequencies per body condition; the supported conditions reached a maximum of 0.025876. These results cover those saved measurements and that bounded PeakBiased case, not arbitrary parameters, environments or proposal sets. Conditions exceeding the author rule retain point evaluation; the policy-specific supported domains are listed in Section 5.1.1.
+Legacy final respawn evaluation uses the same author rule of total-variation distance at most 0.1. Saved rendered candidate scores were passed through the existing Random and Hereditary selectors, with the seven measured frequencies repeated cyclically to form 16 proposals; the supported measured conditions reached maxima of 0.095963 and 0, respectively. PeakBiased was checked with 16 terrain-derived proposals from its existing generator and the default parent bias and local search (0.50-semitone radius, 0.05-semitone step), around 440 Hz in the other-only Harmonic 330 Hz environment. At 48 kHz with hop 512 and 72-hop body observations, its complete final distribution included 158 rendered candidate frequencies per body condition; the supported conditions reached a maximum of 0.025876. These results cover those saved measurements and that bounded PeakBiased case, not arbitrary parameters, environments or proposal sets. Conditions exceeding the author rule retain point evaluation; the policy-specific supported domains are listed in Section 5.1.1.
 
 There is also a distinct, per-Voice adaptation mechanism. `AdaptationContext` tracks fast boredom and slow familiarity over the shared **fundamental-occupancy** field and adds a candidate-specific score adjustment during pitch selection. It coexists with the Landscape-level habituation below: adaptation is agent-relative memory; habituation is a shared perceptual erosion field.
 
@@ -383,7 +383,7 @@ Sound generation is dispatched through the `AnyBackend` enum:
 *   **`Oscillator(OscillatorBank)`**: A struct-of-arrays layout for cache-efficient additive synthesis. Handles `Sine` and `Harmonic` bodies. Pitch refresh occurs every 64 samples; motion/vibrato refresh every 8 samples.
 *   **`Resonator(ModalEngine)`**: A Damped Modified Coupled Form resonator bank. Handles `Modal` bodies. Mode coefficients are rebuilt every 64 samples on pitch change.
 
-The default renderer retains the legacy body response. The optional offline
+The default renderer retains the legacy body response. The optional
 excitation renderer separates shaped excitation from body radiation (Sections
 5.1.3 and 6.1). Sine and Harmonic respond immediately to composer ADSR and the
 existing onset transient, with no free radiation after effective Off. Sine retains
@@ -394,11 +394,11 @@ motion remains effective, with zero as its default.
 
 Body parameters change the emitted spectrum and therefore the shared Landscape. Movement samples that terrain at a fundamental frequency. Birth placement and supported final respawn selections have the optional body-density evaluation described in Section 3.4. Metabolism can also use a body's representative density to evaluate its current position against an environment with its own sound removed (Section 5.2). This option is disabled by default. Timbre inheritance is not implemented.
 
-The birth surrogate requires a body factory to declare conformance with the legacy direct model. The current Sine implementation is supported. Harmonic requires zero motion and one active unison copy; Modal requires one active unison copy and brightness exactly 1. A single copy results from zero spread or `unison = 1`. Controls ignored by a body's renderer are ignored in this decision too. Other Modal brightness values, randomized mode recipes used by Harmonic or Modal, unsupported factories and inputs outside the model's bounded domain use the existing terrain-only birth path. A replacement renderer receives no surrogate capability by default. These conditions identify the implemented fast path; its numerical guarantee remains limited to the saved measurements in Section 3.4.
+The birth surrogate requires a body factory to declare direct-model conformance for the selected renderer. The current Sine implementation is supported. Harmonic requires zero motion and one active unison copy. With the legacy renderer, Modal requires one active unison copy and brightness exactly 1. Native Modal is unsupported because its radiation is not shaped by output ADSR and persists after Off. A single copy results from zero spread or `unison = 1`. Controls ignored by a body's renderer are ignored in this decision too. Other Modal brightness values, randomized mode recipes used by Harmonic or Modal, unsupported factories and inputs outside the model's bounded domain use the existing terrain-only birth path. A replacement renderer receives no surrogate capability by default. These conditions identify the implemented fast path; its numerical guarantee remains limited to the saved measurements in Section 3.4.
 
-Body-aware metabolism uses the factory's declaration of conformance with the legacy renderer, but obtains its density by rendering and analyzing a representative Tone. It does not apply the birth surrogate's stricter recipe conditions. Factories that do not declare this capability use the existing point-based metabolism. The excitation renderer enables neither the legacy birth surrogate nor body-aware metabolism; both use their existing fallback paths.
+Body-aware metabolism uses the factory's declaration of conformance for the selected renderer and obtains its density by rendering and analyzing a representative Tone with that renderer. It does not apply the birth surrogate's stricter recipe conditions. Factories that do not declare this capability use the existing point-based metabolism. The excitation renderer supports Sine and Harmonic body metabolism; Modal retains point-based metabolism.
 
-Final respawn evaluation adds policy-specific restrictions to this shared body capability. Random uses point evaluation for Sine and LandscapeDensity recipes. Hereditary uses point evaluation for LandscapeDensity and LandscapePeaks recipes. PeakBiased supports legacy Harmonic bodies with implicit modes or terrain-derived LandscapeDensity/Peaks recipes; Sine, Modal and explicit fixed-ratio recipes keep point evaluation. These runtime domains identify the implemented paths; their numerical guarantees remain limited to the measured conditions in Section 3.4.
+Final respawn body evaluation is enabled only with the legacy renderer and adds policy-specific restrictions to this shared body capability. With the excitation renderer, all bodies retain point evaluation at final selection; the supported Sine/Harmonic Field proposals remain body-aware. Random uses point evaluation for Sine and LandscapeDensity recipes. Hereditary uses point evaluation for LandscapeDensity and LandscapePeaks recipes. PeakBiased supports legacy Harmonic bodies with implicit modes or terrain-derived LandscapeDensity/Peaks recipes; Sine, Modal and explicit fixed-ratio recipes keep point evaluation. These runtime domains identify the implemented paths; their numerical guarantees remain limited to the measured conditions in Section 3.4.
 
 ### 5.1.2 The Core Stack
 
@@ -445,7 +445,7 @@ source generation. Effective Off and disposal are distinct: closed states are
 retired when the summed residual bound for their source generation reaches the
 renderer threshold. A silent open handle is not disposed merely for being silent.
 
-With the legacy renderer and body-aware metabolism enabled, the renderer also captures each Voice's habitat PCM by `(id, generation)`. Subtracting it from the habitat mix gives that Voice's environment. Presentation-only audio and other generations are excluded from its own signal. The shared mix is analyzed continuously. Each Voice's environmental PCM history is retained; its analysis advances on its turn, accounting for the intervening hops in one update rather than restarting from a finite window.
+With body-aware metabolism enabled, either renderer also captures each supported Voice's habitat PCM by `(id, generation)`. Subtracting it from the habitat mix gives that Voice's environment. Presentation-only audio and other generations are excluded from its own signal. The shared mix is analyzed continuously. Each Voice's environmental PCM history is retained; its analysis advances on its turn, accounting for the intervening hops in one update rather than restarting from a finite window.
 
 ### 5.1.4 Control-Plane Signals: Planned and Error
 
@@ -471,9 +471,9 @@ Energy depletion disables retriggering and starts the envelope tail. Reports the
 
 By default, energy updates use the effective consonance level at the Voice's fundamental. Optional body-aware metabolism instead evaluates the current position against the environment after subtracting the Voice's own sound. It averages the effective consonance score over the representative body's subjective-intensity density, weighted by ERB cell widths and normalized by in-band mass, then applies the existing score-to-level sigmoid. The current-position density is retained per Voice and rebuilt when the fundamental, recipe, generation or analysis settings change.
 
-The `[body_metabolism]` configuration section enables this path with `enabled = true`; `updates_per_hop`, `observation_frames` and `representative_hold_sec` must be specified explicitly. Omitting the section or setting `enabled = false` keeps point-based metabolism. With `render_prototype = true`, point-based metabolism remains active even if this section requests body-aware evaluation; its legacy representative-Tone workspace and metabolism-specific source-PCM subtraction are not created. The author adopted `updates_per_hop = 2` from comparison results; 2 is a configured update budget, not a constant of the psychoacoustic model.
+The `[body_metabolism]` configuration section enables this path with `enabled = true`; `updates_per_hop`, `observation_frames` and `representative_hold_sec` must be specified explicitly. Omitting the section or setting `enabled = false` keeps point-based metabolism. With `render_prototype = true`, Sine and Harmonic use native representative Tones and source-PCM subtraction; Modal uses point-based metabolism. The author adopted `updates_per_hop = 2` from comparison results; 2 is a configured update budget, not a constant of the psychoacoustic model.
 
-Each hop updates at most the configured number of supported Voices in round-robin order. Per-Voice slots carry monotonically increasing visit numbers: the smallest numbers are selected first, and both visited Voices and newborns receive new numbers at the back. Other Voices keep their last body score. Until its first evaluation, a newborn uses the existing point score. Unsupported bodies and unavailable evaluations also use the point score; an unknown result is not treated as a known zero. These metabolism scores feed energy updates; life diagnostics and direct phonation gates retain their point evaluations. Metabolism alone does not change final respawn scoring; the independent birth option can enable the supported body evaluations described in Section 3.4.
+Each hop updates at most the configured number of supported Voices in round-robin order. Per-Voice slots carry monotonically increasing visit numbers: the smallest numbers are selected first, and both visited Voices and newborns receive new numbers at the back. Other Voices keep their last body score. Until its first evaluation, a newborn uses the existing point score. Unsupported bodies and unavailable evaluations also use the point score; an unknown result is not treated as a known zero. These metabolism scores feed energy updates; life diagnostics and direct phonation gates retain their point evaluations. Metabolism alone does not change final respawn scoring; the independent birth option can enable the supported legacy-renderer body evaluations described in Section 3.4.
 
 This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Poor acoustic fit depletes energy; good fit can maintain or replenish it. The fit is a point level by default and a body-weighted level when the optional evaluation is available. With Landscape habituation enabled, a formerly supportive environment can lose effective value under sustained activity and recover after withdrawal, so survival depends on both acoustic fit and recent perceptual history.
 
@@ -526,10 +526,12 @@ two post-onset windows (2×3); candidate forecasts use the same windows. The def
 An optional footprint path uses 16 bins of body power approximated from a frozen
 representative-onset recipe, or an envelope proxy. Its worker is independent of the
 auditory-cognition observer; missing, stale or unsupported body results use the proxy.
-The excitation renderer reports the representative body footprint as unsupported
-(`renderer-phase3`) for all three bodies, so participation uses the envelope proxy.
-Its legacy analytic Tone-energy forecasts are also unavailable. Actual-PCM
-observation, including T2 and the external/self-sound history predictor, continues
+For Sine and Harmonic, the excitation renderer computes these 16 bins from native
+representative PCM and normalizes them to their peak; its identity is separate from
+the legacy analytic footprint. Native Modal remains unsupported (`renderer-phase3`)
+and uses the envelope proxy because its free radiation has different support.
+Legacy analytic Tone-energy forecasts remain unavailable in the excitation renderer.
+Actual-PCM observation, including T2 and the external/self-sound history predictor, continues
 through the rendered bus audio.
 Omitting costs one plus the number of
 consecutive voluntary omissions; an emitted onset resets that count. This cost
@@ -678,7 +680,8 @@ Conchordal is implemented in Rust to satisfy the stringent requirements of real-
 
 ## 6.1 Threading Model
 
-The separate `conchordal-render` binary supports an optional excitation renderer.
+The instrument `conchordal` and the separate offline `conchordal-render` binary
+support an optional excitation renderer.
 Enable it at the top level of the TOML configuration:
 
 ```toml
@@ -687,9 +690,11 @@ render_prototype = true
 
 Omission or `false` selects the legacy renderer. The setting is a boolean and has
 no decay, rise, kick-gain or motion-scale subsettings. The instrument binary
-`conchordal` rejects activation of this renderer and exposes no audio-file output.
-In offline rendering, scenario completion closes excitation and Finish waits for
-retained body radiation to retire before closing the WAV.
+`conchordal` exposes no audio-file output. In either execution path, natural Finish
+closes excitation and waits for retained body radiation to retire. Offline rendering
+then closes the WAV. Headless execution exits; the GUI waits for user exit by default
+and feeds silence to the ring after Finish, or exits when `wait_user_exit = false`.
+This is generator completion; no additional device or ring-drain wait is introduced.
 
 The application creates four primary thread contexts, plus the GUI event loop:
 
@@ -858,7 +863,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Temporal structure grounded in auditory cognition | Optional T2 preprocessing with reference-matched auditory components, author-defined group attribution and direct accents, and Periodic next-arrival costs; disabled by default | §5.4 | Partial. Accent and arrival mechanisms are implemented, with owner credit, causal support and explicit unknowns. T2's numerical free parameters have no defaults; an omitted arrival weight uses 1 |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented, off by default; the physical biosignal loop is open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
-| Excitation and body radiation | Offline excitation renderer: immediate Sine/Harmonic response and Modal free decay, with separate Off and disposal | §5.1, §6.1 | Implemented as an offline opt-in; the instrument retains the legacy renderer |
+| Excitation and body radiation | Optional excitation renderer in the instrument and offline binary: immediate Sine/Harmonic response and Modal free decay, with separate Off and disposal | §5.1, §6.1 | Implemented as an opt-in; the default remains the legacy renderer |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |
 | Dissolution of roles; spatial landscapes; heredity of timbre; other domains | Hereditary respawn exists as assays | — | Horizon |
 
@@ -870,7 +875,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 - Cognitive retention and interference, and stream identity in overlapping sound.
 - The physical biosignal loop of DCC stage two.
 - Real-time acceptance under device overload and large populations.
-- Body-aware birth/metabolism and representative-onset footprints are unavailable in the optional offline excitation renderer.
+- Native Modal remains unsupported for body-aware birth/metabolism and representative-onset footprints. Legacy analytic Tone-energy forecasts remain unavailable in the excitation renderer.
 
 # Appendix A: Key System Parameters
 

@@ -8,7 +8,8 @@ use crate::core::psycho_state::roughness_ratio_to_state01;
 use crate::core::psycho_state::{
     compute_roughness_reference, h_pot_scan_to_h_state01_scan, r_pot_scan_to_r_state01_scan,
 };
-use crate::core::roughness_kernel::erb_grid;
+use crate::core::roughness_kernel::{RoughnessGeometry, erb_grid};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct SynchronousAnalysis {
@@ -17,6 +18,7 @@ pub(crate) struct SynchronousAnalysis {
     pub landscape: Landscape,
     pub du: Vec<f32>,
     erb: Vec<f32>,
+    roughness_geometry: Arc<RoughnessGeometry>,
     normalized: Vec<f32>,
     smeared: Vec<f32>,
     roots: Vec<f32>,
@@ -35,6 +37,10 @@ mod tests {
             let (nsgt, mut params) = crate::runtime::body_metabolism_test_core();
             let mut full_shared = SynchronousAnalysis::new(nsgt, &params);
             let mut density_shared = full_shared.clone();
+            assert!(Arc::ptr_eq(
+                &full_shared.roughness_geometry,
+                &density_shared.roughness_geometry
+            ));
             let mut full = full_shared.clone();
             let mut body = density_shared.clone();
             let mut audio = vec![0.; full.nsgt.hop()];
@@ -55,6 +61,16 @@ mod tests {
                     params.loudness_exp = 0.71;
                     params.ref_power *= 1.3;
                     params.tau_ms *= 0.8;
+                }
+                if frame == 5 {
+                    params.roughness_kernel = crate::core::roughness_kernel::RoughnessKernel::new(
+                        crate::core::roughness_kernel::KernelParams {
+                            half_width_erb: 2.5,
+                            mix_tail: 0.2,
+                            ..Default::default()
+                        },
+                        0.005,
+                    );
                 }
                 full_shared.process(&audio, &params);
                 density_shared.density(&audio, &params);
@@ -181,12 +197,14 @@ impl SynchronousAnalysis {
         let bins = space.n_bins();
         let reference = compute_roughness_reference(params, space);
         let (erb, du) = erb_grid(space);
+        let roughness_geometry = Arc::new(params.roughness_kernel.prepare_geometry(space, &erb));
         let mut landscape = Landscape::new(space.clone());
         landscape.recompute_consonance(params);
         Self {
             frontend: SpectralFrontEnd::new(space.clone(), params),
             landscape,
             erb,
+            roughness_geometry,
             du,
             normalized: vec![0.; bins],
             smeared: vec![0.; bins],
@@ -263,10 +281,16 @@ impl SynchronousAnalysis {
             }
         }
         if mass > eps {
-            params.roughness_kernel.potential_r_into(
+            if !self
+                .roughness_geometry
+                .matches(&params.roughness_kernel, space, &self.erb)
+            {
+                self.roughness_geometry =
+                    Arc::new(params.roughness_kernel.prepare_geometry(space, &self.erb));
+            }
+            self.roughness_geometry.potential_r_into(
                 &self.normalized,
                 space,
-                &self.erb,
                 &self.du,
                 &mut self.landscape.roughness_shape_raw,
             );

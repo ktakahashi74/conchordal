@@ -188,7 +188,123 @@ pub struct RoughnessKernel {
     pub hw: usize,
 }
 
+#[derive(Debug)]
+pub(crate) struct RoughnessGeometry {
+    grid_key: [u32; 4],
+    erb_bits: Vec<u32>,
+    kernel_key: [u32; 2],
+    hw: usize,
+    lut_bits: Vec<u32>,
+    rows: Vec<(usize, usize, usize)>,
+    weights: Vec<f32>,
+}
+
+impl RoughnessGeometry {
+    pub(crate) fn matches(&self, kernel: &RoughnessKernel, space: &Log2Space, erb: &[f32]) -> bool {
+        self.rows.len() == space.n_bins()
+            && self.grid_key
+                == [
+                    space.fmin.to_bits(),
+                    space.fmax.to_bits(),
+                    space.step_log2.to_bits(),
+                    space.centers_log2.first().copied().unwrap_or(0.).to_bits(),
+                ]
+            && self.kernel_key
+                == [
+                    kernel.params.half_width_erb.to_bits(),
+                    kernel.erb_step.to_bits(),
+                ]
+            && self.hw == kernel.hw
+            && erb
+                .iter()
+                .map(|v| v.to_bits())
+                .eq(self.erb_bits.iter().copied())
+            && kernel
+                .lut
+                .iter()
+                .map(|v| v.to_bits())
+                .eq(self.lut_bits.iter().copied())
+    }
+
+    pub(crate) fn potential_r_into(
+        &self,
+        density_scan: &[f32],
+        space: &Log2Space,
+        du: &[f32],
+        r: &mut [f32],
+    ) -> f32 {
+        space.assert_scan_len_named(density_scan, "r_input_scan");
+        space.assert_scan_len_named(r, "r_pot_scan");
+        space.assert_scan_len_named(du, "du_scan");
+        assert_eq!(
+            self.rows.len(),
+            space.n_bins(),
+            "roughness geometry bin count"
+        );
+        for (i, &(lo, hi, offset)) in self.rows.iter().enumerate() {
+            let mut sum = 0.0f32;
+            for j in lo..=hi {
+                if j == i {
+                    continue;
+                }
+                let w = self.weights[offset + j - lo];
+                // Retain the original left-associated products and summation order.
+                sum += density_scan[j] * w * du[j];
+            }
+            r[i] = sum;
+        }
+        density::density_to_mass(r, du)
+    }
+}
+
 impl RoughnessKernel {
+    pub(crate) fn prepare_geometry(&self, space: &Log2Space, erb: &[f32]) -> RoughnessGeometry {
+        use crate::core::erb::erb_to_hz;
+        space.assert_scan_len_named(erb, "erb_grid_scan");
+        let n = space.n_bins();
+        let half_width = finite_or(
+            self.params.half_width_erb,
+            KernelParams::default().half_width_erb,
+        )
+        .max(0.);
+        let mut rows = Vec::with_capacity(n);
+        let mut count = 0;
+        for &value in erb {
+            let (lo, hi) = space
+                .bin_range_of_freqs(erb_to_hz(value - half_width), erb_to_hz(value + half_width))
+                .unwrap_or((0, n - 1));
+            rows.push((lo, hi, count));
+            count += hi - lo + 1;
+        }
+        let mut weights = Vec::with_capacity(count);
+        for (i, &(lo, hi, _)) in rows.iter().enumerate() {
+            for j in lo..=hi {
+                weights.push(if j == i {
+                    0.
+                } else {
+                    lut_interp(&self.lut, self.erb_step, self.hw, erb[i] - erb[j])
+                });
+            }
+        }
+        RoughnessGeometry {
+            grid_key: [
+                space.fmin.to_bits(),
+                space.fmax.to_bits(),
+                space.step_log2.to_bits(),
+                space.centers_log2.first().copied().unwrap_or(0.).to_bits(),
+            ],
+            erb_bits: erb.iter().map(|v| v.to_bits()).collect(),
+            kernel_key: [
+                self.params.half_width_erb.to_bits(),
+                self.erb_step.to_bits(),
+            ],
+            hw: self.hw,
+            lut_bits: self.lut.iter().map(|v| v.to_bits()).collect(),
+            rows,
+            weights,
+        }
+    }
+
     /// Create a new kernel and precompute LUT.
     pub fn new(params: KernelParams, erb_step: f32) -> Self {
         let (lut, hw) = build_kernel_erbstep(&params, erb_step);
@@ -307,6 +423,89 @@ mod tests {
     use std::path::Path;
 
     const ERB_STEP: f32 = 0.005;
+
+    #[test]
+    fn fixed_geometry_matches_original_r_bits_and_scalar() {
+        for space in [
+            Log2Space::new(55., 8000., 96),
+            Log2Space::new(100., 100.1, 1),
+        ] {
+            let (erb, du) = erb_grid(&space);
+            for width in [0., 1.7, 4., f32::NAN] {
+                let params = KernelParams {
+                    half_width_erb: width,
+                    w_neural: 0.27,
+                    ..Default::default()
+                };
+                let kernel = RoughnessKernel::new(params, ERB_STEP);
+                let geometry = kernel.prepare_geometry(&space, &erb);
+                assert!(geometry.matches(&kernel, &space, &erb));
+                let mut reference = vec![0.; space.n_bins()];
+                let mut actual = reference.clone();
+                for pattern in 0..4 {
+                    let input: Vec<_> = (0..space.n_bins())
+                        .map(|i| match pattern {
+                            0 => 0.,
+                            1 => (i % 17) as f32 * 0.13,
+                            2 => {
+                                if i % 19 == 0 {
+                                    -0.
+                                } else {
+                                    f32::MIN_POSITIVE
+                                }
+                            }
+                            _ => match i % 29 {
+                                0 => f32::NAN,
+                                1 => f32::INFINITY,
+                                2 => -1.,
+                                _ => 0.7,
+                            },
+                        })
+                        .collect();
+                    let a = kernel.potential_r_into(&input, &space, &erb, &du, &mut reference);
+                    let b = geometry.potential_r_into(&input, &space, &du, &mut actual);
+                    assert_eq!(a.to_bits(), b.to_bits());
+                    assert_eq!(
+                        reference.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                        actual.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fixed_geometry_invalidates_every_input_used_by_interpolation_and_bin_ranges() {
+        let space = Log2Space::new(55., 8000., 96);
+        let (erb, _) = erb_grid(&space);
+        let kernel = make_kernel();
+        let geometry = kernel.prepare_geometry(&space, &erb);
+        for change in 0..4 {
+            let mut changed = kernel.clone();
+            match change {
+                0 => changed.params.half_width_erb *= 0.9,
+                1 => changed.erb_step *= 1.1,
+                2 => changed.hw += 1,
+                _ => changed.lut[3] = f32::from_bits(changed.lut[3].to_bits() + 1),
+            }
+            assert!(!geometry.matches(&changed, &space, &erb));
+        }
+        for change in 0..4 {
+            let mut changed = space.clone();
+            match change {
+                0 => changed.fmin = f32::from_bits(changed.fmin.to_bits() + 1),
+                1 => changed.fmax = f32::from_bits(changed.fmax.to_bits() + 1),
+                2 => changed.step_log2 *= 1.1,
+                _ => {
+                    changed.centers_log2[0] = f32::from_bits(changed.centers_log2[0].to_bits() + 1)
+                }
+            }
+            assert!(!geometry.matches(&kernel, &changed, &erb));
+        }
+        let mut changed = erb.clone();
+        changed[0] = f32::from_bits(changed[0].to_bits() + 1);
+        assert!(!geometry.matches(&kernel, &space, &changed));
+    }
 
     fn make_kernel() -> RoughnessKernel {
         let p = KernelParams::default();

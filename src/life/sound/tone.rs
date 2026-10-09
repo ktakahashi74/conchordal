@@ -1013,6 +1013,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn phase3_flat_unit_hold_matches_legacy_pcm_without_changing_release_rules() {
+        let time = Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        };
+        let rhythms = NeuralRhythms::default();
+        for kind in [BodyKind::Sine, BodyKind::Harmonic] {
+            let hold = time.sec_to_tick(0.25);
+            let mut legacy = Tone::from_parts(
+                time,
+                0,
+                hold,
+                220.0,
+                1.0,
+                Some(BodySnapshot {
+                    kind,
+                    brightness: 0.7,
+                    ..default_body_snapshot()
+                }),
+                Some(RenderModulatorSpec::SeqGate { duration_sec: 1.0 }),
+                Some(ToneAdsr {
+                    attack_sec: 0.0,
+                    decay_sec: 0.0,
+                    sustain_level: 1.0,
+                    release_sec: 0.05,
+                }),
+            )
+            .unwrap();
+            legacy.seed_modal_phases(73);
+            legacy.schedule_planned_kick(OnsetKick { strength: 1.0 });
+            legacy.arm_onset_trigger(1.0);
+            let mut native = legacy.clone();
+            native.enable_phase3();
+            let mut release_differences = 0;
+            let mut maximum = 0.0_f32;
+            for tick in 0..native.envelope.release_end + 1 {
+                legacy.kick_planned_if_due(tick);
+                native.kick_planned_if_due(tick);
+                let a = legacy.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+                let b = native.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms);
+                if tick < hold {
+                    assert_eq!(a.to_bits(), b.to_bits(), "{kind:?} hold tick={tick}");
+                } else {
+                    release_differences += usize::from(a.to_bits() != b.to_bits());
+                    maximum = maximum.max((a - b).abs());
+                }
+            }
+            println!(
+                "OSCILLATOR_PCM_SCOPE {}",
+                serde_json::json!({
+                    "body": format!("{kind:?}"), "hold_bit_identical_frames": hold, "hold_first_tick": 0,
+                    "release_different_frames": release_differences,
+                    "release_max_absolute_difference": maximum,
+                })
+            );
+        }
+    }
+
+    #[test]
     fn phase3_oscillator_amplitudes_match_legacy() {
         let time = Timebase {
             fs: 48_000.0,
@@ -1064,6 +1123,8 @@ mod tests {
                 let off = new.envelope.release_end;
                 let decay_start = new.envelope.attack_ticks;
                 let mut max_difference = 0.0_f32;
+                let mut pcm_differences = 0_u64;
+                let mut pcm_max_difference = 0.0_f32;
                 let mut peak80 = [0.0_f32; 2];
                 let mut peak_onset = [0.0_f32; 2];
                 let mut minus60 = [None; 2];
@@ -1080,6 +1141,8 @@ mod tests {
                         old.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms),
                         new.render_tick(tick, time.fs, 1.0 / time.fs, &rhythms),
                     ];
+                    pcm_differences += u64::from(pcm[0].to_bits() != pcm[1].to_bits());
+                    pcm_max_difference = pcm_max_difference.max((pcm[0] - pcm[1]).abs());
                     let amplitudes = [old.radiated_amplitude, new.radiated_amplitude];
                     assert!(pcm.iter().chain(amplitudes.iter()).all(|v| v.is_finite()));
                     max_difference = max_difference.max((amplitudes[0] - amplitudes[1]).abs());
@@ -1131,6 +1194,7 @@ mod tests {
                         "body": format!("{kind:?}"), "attack": attack, "release": release,
                         "sustain": sustain, "rekick": rekick, "drive": drive,
                         "max_amplitude_difference": max_difference, "frames": off + 4800,
+                        "pcm_different_frames": pcm_differences, "pcm_max_absolute_difference": pcm_max_difference,
                         "release_minus60_samples": minus60, "decay90_samples": decay90,
                         "decay10_samples": decay10, "decay_end_amplitude": decay_end_amplitude,
                         "peak80": peak80, "peak_onset": peak_onset,

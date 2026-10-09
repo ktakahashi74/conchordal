@@ -263,8 +263,8 @@ impl OscillatorBank {
         matches!(self.profile, OscillatorProfile::Sine)
     }
 
-    /// Separate carrier and spectral control from amplitude excitation. Closed tails
-    /// rotate at frozen coefficients; normalization bounds all future carrier samples.
+    /// Keep native excitation separate while sharing the legacy f32 carrier kernel.
+    /// The Tone stops oscillator radiation at effective Off before reaching this path.
     pub(crate) fn phase3_carrier(
         &mut self,
         pitch: f32,
@@ -286,27 +286,11 @@ impl OscillatorBank {
             self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
             self.motion_counter = (self.motion_counter + 1) % MOTION_REFRESH_PERIOD_SAMPLES;
         }
-        let mut out = 0.0;
-        for i in 0..self.active_lane_len {
-            let x = self.x[i] as f64;
-            let y = self.y[i] as f64;
-            let c = self.rot_c[i] as f64;
-            let s = self.rot_s[i] as f64;
-            let mut nx = c * x - s * y;
-            let mut ny = s * x + c * y;
-            if self.current_motion_enabled {
-                let ms = self.current_motion_s as f64;
-                let mc = self.current_motion_c as f64;
-                (nx, ny) = (mc * nx - ms * ny, ms * nx + mc * ny);
-            }
-            let norm = nx.hypot(ny);
-            if norm > 0.0 {
-                self.x[i] = (nx / norm) as f32;
-                self.y[i] = (ny / norm) as f32;
-            }
-            out += self.gain_mask[i] * self.y[i];
-        }
-        out
+        self.process_sample(
+            self.current_motion_enabled,
+            self.current_motion_s,
+            self.current_motion_c,
+        )
     }
 
     pub(crate) fn sine_state(&self, pitch_hz: f32) -> Option<([f32; 2], [f32; 2])> {
@@ -1031,6 +1015,59 @@ mod tests {
             unison: 1,
             motion,
             ratios: None,
+        }
+    }
+
+    #[test]
+    fn native_carrier_matches_legacy_kernel_with_motion_spectral_and_pitch_updates() {
+        for kind in [BodyKind::Sine, BodyKind::Harmonic] {
+            for motion in [0.0, 0.2] {
+                for unison in [1, 3] {
+                    let mut snapshot = harmonic_snapshot(motion);
+                    snapshot.kind = kind;
+                    snapshot.unison = unison;
+                    snapshot.spread = 0.1;
+                    let mut legacy = OscillatorBank::from_snapshot(48_000.0, &snapshot).unwrap();
+                    legacy.seed_phases(73);
+                    let mut native = legacy.clone();
+                    for tick in 0..48_000 {
+                        let pitch = if tick < 12_037 { 220.0 } else { 330.0 };
+                        let drive = if tick == 0 || tick == 8_013 { 1.0 } else { 0.0 };
+                        let gain = native.excitation_gain(drive);
+                        let actual = gain * native.phase3_carrier(pitch, 1.0, drive, true);
+                        let mut expected = [0.0];
+                        legacy.render_block(
+                            &[drive],
+                            ToneControlBlock {
+                                pitch_hz: ControlRamp {
+                                    start: pitch,
+                                    step: 0.0,
+                                },
+                                amp: ControlRamp {
+                                    start: 1.0,
+                                    step: 0.0,
+                                },
+                            },
+                            &mut expected,
+                        );
+                        assert_eq!(
+                            actual.to_bits(),
+                            expected[0].to_bits(),
+                            "{kind:?} motion={motion} unison={unison} tick={tick}"
+                        );
+                        for (a, b) in native
+                            .x
+                            .iter()
+                            .chain(&native.y)
+                            .zip(legacy.x.iter().chain(&legacy.y))
+                        {
+                            assert_eq!(a.to_bits(), b.to_bits());
+                        }
+                        assert_eq!(native.pitch_counter, legacy.pitch_counter);
+                        assert_eq!(native.motion_counter, legacy.motion_counter);
+                    }
+                }
+            }
         }
     }
 

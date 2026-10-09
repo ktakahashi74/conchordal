@@ -262,6 +262,54 @@ impl ScheduleRenderer {
     }
 
     fn retire_closed_sources(&mut self, now: Tick) {
+        #[cfg(test)]
+        if self.sample_major_oracle {
+            self.retire_closed_sources_oracle(now);
+            return;
+        }
+        use std::ops::Bound::{Excluded, Unbounded};
+        let mut after = None;
+        while let Some((key, generation)) = self
+            .tones
+            .range((after.map_or(Unbounded, Excluded), Unbounded))
+            .next()
+            .map(|(k, rt)| (*k, rt.source_generation))
+        {
+            after = Some(key);
+            let from = ToneKey {
+                source_id: key.source_id,
+                tone_id: 0,
+            };
+            let through = ToneKey {
+                source_id: key.source_id,
+                tone_id: u64::MAX,
+            };
+            // Generations may interleave in ToneKey order; evaluate each group once.
+            if self
+                .tones
+                .range(from..key)
+                .any(|(_, rt)| rt.source_generation == generation)
+            {
+                continue;
+            }
+            let residual = self
+                .tones
+                .range(from..=through)
+                .filter(|(_, rt)| rt.source_generation == generation)
+                .filter_map(|(_, rt)| rt.tone.residual_bound(now))
+                .sum::<f64>();
+            if residual <= f64::from(crate::life::voice::Voice::AMP_EPS) {
+                for (_, rt) in self.tones.range_mut(from..=through) {
+                    if rt.source_generation == generation && rt.tone.residual_bound(now).is_some() {
+                        rt.tone.retire_phase3();
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn retire_closed_sources_oracle(&mut self, now: Tick) {
         use std::ops::Bound::{Excluded, Unbounded};
         let mut after = None;
         while let Some((key, generation)) = self

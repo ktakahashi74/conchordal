@@ -7,7 +7,7 @@ only the implemented state and a condensed ledger. Headings, section numbers (§
 §9.3.1–§9.3.55) and HTML anchors are preserved verbatim so existing references remain valid.
 New design findings go here, not to the technote. The moved text is retained as history;
 later adoptions and revisions are recorded with their dates.
-Last updated: 2026-10-08. The two-tier rule, acceptance criteria and revised
+Last updated: 2026-10-09. The two-tier rule, acceptance criteria and revised
 adoptions are in [§9.3.57](#two-tier-rule); real-time acceptance results are in
 [§9.3.58](#realtime-acceptance-scope), and timbre/temporal selection results and
 unresolved design are in [§9.3.59](#temporal-rule-calibration-outcome). Scope,
@@ -6275,11 +6275,19 @@ of the new renderer itself.
 GUI performances, arbitrary scripts, other machines or devices, configurations
 with the temporal path enabled, and concurrent heavy computation are outside
 this acceptance scope. Under external load that slowed all processing by about
-three times, the body-aware configuration suffered audio interruptions. Its
-median hop duration without disturbance is 5.2 ms, about half the hop budget. The
+three times, the body-aware configuration suffered audio interruptions. The
 exclusive timing window does not cover jobs in other
 projects on the same machine. The quiet-condition pass does not establish a pass
 under disturbance.
+
+**Correction, 2026-10-09.** The previous statement, "median hop duration without
+disturbance is 5.2 ms, about half the hop budget," did not accurately describe
+headroom for the configuration as a whole. The 5.2 ms value was a median from
+études 10 and 11 examined to diagnose the failure. N-3's aggregation of all hops across
+R-1's 12 performances gave medians of 0.496 ms for A and 3.589 ms for B. B's
+medians for études 09 and 10 were 5.405 ms and 5.074 ms respectively
+(`.orchestration/units/N-3/report.md`). A pooled median is distinct from the
+maximum of the per-performance p99 values.
 
 Sources are the orchestrator's decisions of 2026-10-08 at 22:16, 22:55 and 23:29
 in `.orchestration/records/decisions-20261007-orchestrator.md`, R-1's `report-2.md`
@@ -6291,6 +6299,60 @@ acceptance. Device measurements were run from the orchestrator's shell.
 - `realtime-20261008-v2/device-full-v2-analysis/analysis.md`
 - `realtime-20261008-v2/device-B-v3-analysis/analysis.md`
 - `realtime-20261008-v2/device-full-v2-disturbance.json`
+
+<a id="realtime-remeasurement-20261009"></a>
+
+#### Remeasurement on 2026-10-09
+
+N-2 extended body-aware birth to final respawn selection, and N-1 made the new
+renderer selectable in the instrument binary. Body-aware birth, metabolism and
+representative onset footprints were restored for Sine and Harmonic in that
+renderer. Two sets of reductions preserving results were also integrated: N-3
+omits unused body-analysis calculations and shares fixed R geometry; N-4 renders
+blocks per Tone.
+
+The release binary from final main `09fb100` was measured under the same scope
+and criteria as R-1: 12 études, blanche, default ALSA device at 48 kHz and two
+channels, no GUI, seed 1. Four configurations were used. A is the default legacy
+renderer; A′ adds `render_prototype = true` to A; B enables body-aware birth and
+metabolism in the legacy renderer; B′ enables those same features in A′. The
+temporal path remains disabled in these configurations.
+
+| Configuration/acquisition | Result | Maximum per-performance p99 | Hops over budget | Cumulative underrun | Median of all hops across 12 performances |
+|---|---|---:|---|---:|---:|
+| A, quiet | Pass | 4,234 µs (09) | 0 | 0 | 0.502 ms |
+| B, quiet | Pass | 5,731 µs (09) | 0 | 0 | 2.442 ms |
+| A′ v1, disturbed | Pass | 10,047 µs (09) | 19 | 0 | — |
+| A′ v2, quiet | Pass | 8,768 µs (09) | 2 | 0 | — |
+| B′, quiet | **Fail** | **11,870 µs (09 Rain)** | 47 in 09; 8 in 12 | 0 | — |
+
+The budget is 10,667 µs. All configurations had zero underrun, but B′ exceeded
+the p99 budget in 09. Enabling the new renderer and body-aware evaluation
+together does not meet real-time acceptance in this scope. The eight
+over-budget hops in 12 are retained too, although its p99 met the criterion.
+
+The first A′ acquisition overlapped another project's check job, running from
+13:17:55 to 13:20:07 and consuming 8 minutes 30 seconds of CPU time. Before
+acquisition, the orchestrator decided to report any overlap together with its
+pass/fail result as disturbed, then reacquire that configuration once under quiet
+conditions. v1 passed, and v2 was acquired under this rule. Other-project jobs ran
+about every ten minutes, so each configuration was measured between them. The
+failed B′ acquisition had no such overlap.
+
+Legacy B gained headroom compared with R-1 on 10-08, whose maximum p99 was
+7,579 µs and pooled median was 3.589 ms. Default A also gained headroom. The new
+renderer, however, is more expensive to render in scenes with many Tones; 09 had
+a maximum of 245 Tones. A′ passed, but its headroom in 09 is small. This does not
+establish a pass for every configuration of the new renderer.
+
+Sources under `.orchestration/units/N-5/realtime/` are
+`device-A-v1-analysis/analysis.md`, `device-B-v1-analysis/analysis.md`,
+`device-A-prime-v1-analysis/analysis.md`, `device-A-prime-v2-analysis/analysis.md`,
+`device-B-prime-v1-analysis/analysis.md`, `orchestrator-results-full.json` and
+`orchestrator-run-quiet.log`, together with the orchestrator's decision of
+2026-10-09 at 13:43. The orchestrator performed the device acquisitions. N-5's
+worker report establishes preparation of the measurement inputs, separately
+from the device pass/fail results.
 
 <a id="temporal-rule-calibration-outcome"></a>
 
@@ -6382,6 +6444,71 @@ Sources are M-3r's `report-4.md`, M-4's `report-2.md`, T-6r's `report.md`, T-6s'
 orchestrator's decisions of 2026-10-08 at 19:40, 20:55, 22:11 and 23:57. This
 section includes research status and unresolved design and is not copied to the
 public technote.
+
+<a id="temporal-multilayer-desk-20261009"></a>
+
+#### 2026-10-09: desk checks of the existing meter and expectations across layers
+
+The author questioned whether T-6d's proposed single period/phase/confidence
+state per group could handle more than one period, and whether it was musical.
+The criticism is correct: 1 second can be a two-beat layer over a 0.5-second beat
+and is not wrong merely because its value differs. The orchestrator withdrew
+the recommendation for T-6d's single-period design. Directly interpreting that
+layer as a physical accent arriving in 1 second still misses the actual accent
+in 0.5 seconds. A layer's existence and the event being predicted are distinct.
+
+**T-6e.** The existing meter mechanism (`src/core/meter.rs` and its
+[design note](neural-rhythm-meter.md)) implements beat, subdivision and bar.
+Its implementation is one Hopf oscillator plus integer-ratio detectors, not a
+network entraining to several independent periods simultaneously. In the same
+Sine controls, listener-side beat-confidence peaks were 0.879–0.910 for periodic
+inputs and 0.451–0.748 for aperiodic inputs. Reading the beat's phase zero as the
+next arrival missed the consumer's 60 ms window on all 12 onsets at each of the
+four periodic-control frequencies. Phase coherence and phase zero coinciding
+with physical onsets are different quantities. The 0.5-second control equals the
+oscillator's initial 2 Hz, so period acquisition was not demonstrated. No record
+was found establishing, through comparison, that a limitation of the existing
+meter required the separate period-estimation path.
+
+**T-6f.** The two undefined rules were expressed as computable candidates.
+Events enter as impulses and directly contribute their original-time phase to
+the phase statistics. Mean onset-phase direction supplies the expectation
+center, with concentration derived from resultant length. Two mappings were
+compared: A assumes one event per cycle; B uses observed rate and phase-modulated
+intensity to construct survival. Both provide next-accent distributions. These
+engineering rules remain unadopted; they are not presented as mappings supplied
+unchanged by the original model.
+
+The candidates cannot be adopted as they stand. For the 0.5-second, 440 Hz
+control, the next centers from onset 3 through the remaining 10 onsets fall
+inside the window; only three onsets each do so at 220 and 330 Hz. The 2.25 Hz
+control, distinct from the initial 2 Hz, reaches only 4/14. Expectations do not
+become flat on the aperiodic controls. Retaining a distribution for the next
+single accent does not make both candidates satisfy unchanged demands for equal
+probability in every window at low concentration and probability 1 at high
+concentration. With phase-modulated Poisson intensity averaging one event per
+cycle, the first peak has probability 0.632121. Phase concentration, event rate
+and the probability of the next single event are separate quantities.
+
+Rescoring the same 63 saved decisions changed 24 choices under A and 21 under B.
+The new choices were not executed as audio or a closed loop. Self-group identity
+was unknown in all 63 decisions, so groups containing this single Voice's own
+sound were treated as external. Events also split across multiple groups: one
+Voice cannot be equated with one auditory group.
+
+Two author decisions remain: (1) retain the consumer's next-accent distribution
+or change it to occupancy/phase expectation within future windows; (2) adopt the
+per-group, multilayer direction and revised criterion as the design of record.
+Neither the current meter nor T-6f's impulse rule has been adopted as a bundle.
+The available desk analysis stops here; no further unit has been opened before
+these decisions. The temporal path remains disabled by default and detection
+numbers remain unadopted.
+
+Sources are `.orchestration/units/T-6e/report.md`, `T-6f/report.md` and the
+orchestrator's decisions of 2026-10-09 at 09:40 and 11:04. WAV replay for unsaved
+phase is approximate. These short, single-Voice controls do not establish general
+success on mixtures or multiple periods, or scientific acceptance. This research
+record is not copied to the public technote.
 
 ## 9.4 Alignment and Extension Sequence
 

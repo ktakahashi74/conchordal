@@ -1,8 +1,8 @@
 # 次のセッションの始め方
 
-2026-10-08更新。現行計画の20単位は同日にすべて出口に達した。結果は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。時間構造の再設計は始めていない。
+2026-10-09更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果と翌日の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。2026-10-09には新しいrendererの楽器への接続、身体評価の接続・拡張と、結果を変えない削減を入れた。実機の再測定はA・B・A′が合格、B′（新しいrenderer＋身体込み）が不合格だった。
 
-次に決めるのは、未pushのmainをoriginへ送るかと、周期の確定・到来の予測の設計へ進むかである。設計案は単一段差Periodicの置換を含み、確定の条件と期待から次のeventの確率への対応が未定義である。20単位の終了を、その設計の採択や実装完了と読み替えない。
+時間構造は、既存meterと複数層の期待をT-6e／T-6fで机上検査した。群ごとに周期を一つ持つT-6dの推奨は取り下げた。次に要る作者判断は、消費者が読む量の意味と、群ごと・複数層の方向と基準の改訂を設計の正本にするかである。この判断の前に次の単位は起こしていない。20単位の終了を、その設計の採択や実装完了と読み替えない。
 
 ## 1. 始め方
 
@@ -27,16 +27,20 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 
 ## 2. 先に読むもの
 
-1. [plan-current.md §7](plan-current.md#7-結果)：20単位の閉じ方と、計画の外へ残した課題。§1〜§6は計画時点の記録である。
-2. 設計台帳[§9.3.58](../design-notes/technote-ledger.ja.md#realtime-acceptance-scope)：R-1の合格範囲、開始時の競合の修正、外乱下の不合格。[§9.3.59](../design-notes/technote-ledger.ja.md#temporal-rule-calibration-outcome)：音色・時間構造の選定結果と未決の設計。英語版にも同じ結果がある。
+1. [plan-current.md §7](plan-current.md#7-結果)：20単位の閉じ方、[2026-10-09の追加作業](plan-current.md#additional-work-20261009)、残る設計と作者判断。§1〜§6と20単位の表は計画時点・終了時点の記録である。
+2. 設計台帳[§9.3.58の再測定](../design-notes/technote-ledger.ja.md#realtime-remeasurement-20261009)：2026-10-09の四構成の合否、中央値の訂正、外乱の扱い。[§9.3.59の机上検査](../design-notes/technote-ledger.ja.md#temporal-multilayer-desk-20261009)：T-6e／T-6fの結果と、残る二つの作者判断。英語版にも同じ結果がある。
 3. `.orchestration/HANDOFF.md`：統括の最新の引継ぎ。`.orchestration/status.md`は単位別の表、`.orchestration/records/decisions-20261007-orchestrator.md`は時刻付きの判断記録である。古い冒頭の更新日時や件数だけで状態を判断しない。
 4. `AGENTS.md`のProgress and Validation Scope、Multi-agent Orchestration、Author Decision Requests、Git Operation Policyと、`.orchestration/units/COMMON.md`。
 
-## 3. 計画終了時点の状態と、残るもの
+## 3. 現在の状態と、残るもの
 
-2026-10-08の計画終了時点でmainは`20a6904`、未pushである。記録と再計算の仕組みは`work/t6-calibration-20261008-v1`（`ff9c856`）に残し、mainには入れていない。共有checkoutのHEAD・差分とbranchの状態は、着手時に改めて確認する。
+2026-10-09にmainの一部をoriginへpushし、その後のcommitは未pushである。mainのHEAD・差分、originとの関係、branchの状態は着手時に確認する。校正の記録と再計算の仕組みは`work/t6-calibration-20261008-v1`（`ff9c856`）に残し、mainには入れていない。これは新しい時間構造の実装が済んだ記録ではない。
 
-新しいrendererはofflineのopt-inで、楽器では使えない。身体込みの出生・代謝と代表onset footprintも新rendererでは対応外である。既定化・楽器への接続、再出生への身体評価の拡張、揺らぎの語彙、H／RとT2の聴覚前処理の共有は、plan-current.md §7に残した判断・設計課題である。
+新しいrendererは楽器でも`render_prototype = true`で選べる。Sine／Harmonicで身体込みの出生8 family、代謝、代表onset footprintが使えるが、Modalは対応外である。旧rendererの再出生の最終選択は方式とfamilyの対応する組だけ身体込みで評価し、新しいrendererではnativeの参照分布がないため身体評価を使わない。
+
+実時間ではA・B・A′が今回の範囲で合格し、B′は静かな状態でも09 Rainで不合格だった。A′の合格を身体込みのB′まで広げない。既定は旧rendererのままであり、新しいrendererを既定にするか、B′の実時間受入、Modalの対応、nativeの再出生の最終選択の参照が残る。
+
+時間構造は既定で無効で、検出の数値は未採用である。T-6e／T-6fの机上検査後にも、消費者が次のaccentの分布を読むか、窓の占有・位相の期待を読むかと、群ごと・複数層の方向と基準の採択が残る。揺らぎの語彙も未決である。H／RとT2の聴覚前処理の共有は計画しており、作者の2026-10-09の指示は実施時期の延期であって取り下げではない。これらは[plan-current.md §7](plan-current.md#7-結果)で追跡する。
 
 ## 4. 2026-10-07の開始手順の履歴
 

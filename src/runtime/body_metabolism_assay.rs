@@ -4,6 +4,146 @@ use super::*;
 use serde_json::json;
 use std::io::Write;
 
+#[test]
+#[ignore = "N-3 explicit offline bit comparison and advisory phase timings"]
+fn n3_offline_body_equivalence() {
+    let path = std::env::var("N3_SCENARIO").unwrap();
+    let directory = std::path::PathBuf::from(std::env::var("N3_DIRECTORY").unwrap());
+    let seed = std::env::var("N3_SEED").unwrap().parse::<u64>().unwrap();
+    let enabled = std::env::var("N3_ENABLED").unwrap() == "1";
+    let mut config = AppConfig {
+        render_prototype: std::env::var("N3_NATIVE").as_deref() == Ok("1"),
+        birth_surrogate: std::env::var("N3_BIRTH").map_or(enabled, |value| value == "1"),
+        body_metabolism: Some(crate::config::BodyMetabolismConfig {
+            enabled: std::env::var("N3_METABOLISM").map_or(enabled, |value| value == "1"),
+            updates_per_hop: 2,
+            observation_frames: 8,
+            representative_hold_sec: 1.,
+        }),
+        ..Default::default()
+    };
+    if path.ends_with("body_birth_metabolism_flags.rhai") {
+        config.analysis.nfft = 2048;
+    }
+    crate::life::modal::register_modal();
+    let scenario = compile_scenario_from_script(
+        std::path::Path::new(&path),
+        &render_compile_args(&path, Some(seed)),
+        &config,
+    )
+    .unwrap();
+    let mut states =
+        std::io::BufWriter::new(std::fs::File::create(directory.join("states.jsonl")).unwrap());
+    let mut habitat =
+        std::io::BufWriter::new(std::fs::File::create(directory.join("habitat.f32le")).unwrap());
+    let mut presentation = std::io::BufWriter::new(
+        std::fs::File::create(directory.join("presentation.f32le")).unwrap(),
+    );
+    let mut sources =
+        std::io::BufWriter::new(std::fs::File::create(directory.join("sources.pcm")).unwrap());
+    let probe: OfflineBodyProbe = Box::new(move |state, now, _, pcm| {
+        for (writer, bus) in [(&mut habitat, pcm[0]), (&mut presentation, pcm[1])] {
+            for &sample in bus {
+                assert!(sample.is_finite());
+                writer.write_all(&sample.to_bits().to_le_bytes()).unwrap();
+            }
+        }
+        sources.write_all(&now.to_le_bytes()).unwrap();
+        let runtime = state.pop.body_metabolism.as_ref();
+        let source_pcm = runtime.map_or(&[][..], |runtime| runtime.pcm.as_slice());
+        sources
+            .write_all(&(source_pcm.len() as u64).to_le_bytes())
+            .unwrap();
+        for source in source_pcm {
+            sources.write_all(&source.id.to_le_bytes()).unwrap();
+            sources.write_all(&source.generation.to_le_bytes()).unwrap();
+            sources
+                .write_all(&(source.habitat.len() as u64).to_le_bytes())
+                .unwrap();
+            for sample in &source.habitat {
+                sources.write_all(&sample.to_bits().to_le_bytes()).unwrap();
+            }
+        }
+        let voices: Vec<_> = state
+            .pop
+            .voices
+            .iter()
+            .map(|voice| {
+                let energy = match &voice.articulation.core {
+                    crate::life::voice::AnyArticulationCore::Entrain(core) => {
+                        Some(core.energy.to_bits())
+                    }
+                    _ => None,
+                };
+                json!({"id":voice.id(),"generation":voice.metadata.generation,
+                "alive":voice.is_alive(),"energy_bits":energy,
+                "frequency_bits":voice.body.base_freq_hz().to_bits(),
+                "target_bits":voice.pitch_ctl.target_pitch_log2().to_bits()})
+            })
+            .collect();
+        writeln!(
+            states,
+            "{}",
+            json!({"sample":now,"voices":voices,
+            "slots":runtime.map(crate::life::body_metabolism::assay::slot_snapshot),
+            "cost_seconds":crate::life::body_metabolism::assay::take_costs()})
+        )
+        .unwrap();
+        for writer in [&mut habitat, &mut presentation, &mut sources, &mut states] {
+            writer.flush().unwrap();
+        }
+    });
+    let mut reporter =
+        JsonlReporter::create(directory.join("native.jsonl").to_str().unwrap()).unwrap();
+    reporter.write_meta(seed).unwrap();
+    let profile = RunProfile::create(
+        directory.join("profile.json").to_str().unwrap(),
+        seed,
+        true,
+        0.,
+        false,
+        48_000,
+        config.analysis.hop_size,
+        None,
+    )
+    .unwrap();
+    let wiring = wire_runtime(
+        &config,
+        48_000,
+        "N-3 offline".into(),
+        scenario,
+        Arc::new(AtomicBool::new(false)),
+        WiringOptions {
+            offline_body_probe: Some(probe),
+            ui_channel_capacity: 1,
+            listener_forced: false,
+            wait_user_exit: false,
+            start_playing: true,
+            audio_prod: None,
+            wav_tx: None,
+            reporter: Some(reporter),
+            deterministic_analysis: true,
+            deterministic_footprints: true,
+            guard_meter: None,
+            underrun_frames: None,
+            reserve_runtime_ids_through: 0,
+            profile: Some(profile),
+            audio_counters: None,
+        },
+    )
+    .unwrap();
+    join_thread("worker", wiring.worker_handle).unwrap();
+    join_thread("analysis", wiring.analysis_handle).unwrap();
+    if let Some(handle) = wiring.listener_analysis_handle {
+        join_thread("listener", handle).unwrap();
+    }
+    if let Some(rx) = wiring.report_error_rx
+        && let Ok(error) = rx.try_recv()
+    {
+        panic!("{error}");
+    }
+}
+
 #[derive(PartialEq)]
 struct FlagSnapshot {
     sample: Tick,

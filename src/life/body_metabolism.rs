@@ -212,15 +212,14 @@ impl Evaluator {
             self.density_pitch = Some(hz.to_bits());
             self.density_builds += 1;
         }
-        let environment = &mut self.environment.landscape;
-        environment.recompute_consonance(params);
-        if params.habituation.enabled {
-            environment.apply_habituation(
-                &shared.perc_habituation_state_scan,
-                params.consonance_representation.theta,
-                &params.consonance_representation,
-            );
-        }
+        self.environment.recompute_body_score(
+            params,
+            params
+                .habituation
+                .enabled
+                .then_some(shared.perc_habituation_state_scan.as_slice()),
+        );
+        let environment = &self.environment.landscape;
         let value = evaluate(
             &environment.space,
             &self.density_scan,
@@ -497,7 +496,7 @@ impl BodyMetabolism {
                             .expect("body environment hop clock fits i32");
                     source
                         .environment
-                        .process_gap(&self.subtraction, gap, params);
+                        .process_body_gap(&self.subtraction, gap, params);
                     source.support_end_sample = end;
                 } else {
                     source.environment.skip(&self.subtraction);
@@ -505,7 +504,7 @@ impl BodyMetabolism {
             }
         }
         if self.valid {
-            self.shared.process(mixed, params);
+            self.shared.density(mixed, params);
         }
         self.next_sample = end;
         #[cfg(test)]

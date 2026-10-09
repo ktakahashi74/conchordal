@@ -54,11 +54,20 @@ pub(crate) fn slot_snapshot(runtime: &BodyMetabolism) -> Value {
                 assert!(fitness.score.is_finite());
                 assert!((0.0..=1.0).contains(&fitness.level));
                 assert!(fitness.in_band_mass.is_finite() && fitness.in_band_mass > 0.0);
-                [fitness.score.to_bits(), fitness.level.to_bits()]
+                [
+                    fitness.score.to_bits(),
+                    fitness.level.to_bits(),
+                    fitness.in_band_mass.to_bits(),
+                ]
             });
             json!({"id":source.id,"generation":source.generation,
                 "birth":source.birth_sample,"last":source.last_evaluated,
-                "visit":source.visit_number,"evaluations":source.evaluations,"held":held})
+                "visit":source.visit_number,"evaluations":source.evaluations,"held":held,
+                "epoch":source.epoch,"scored_epoch":source.scored_epoch,
+                "support_end":source.support_end_sample,"current":source.current_sample,
+                "valid":source.valid,"density_builds":source.density_builds,
+                "density_pitch_changes":source.density_pitch_changes,
+                "density_recipe_changes":source.density_recipe_changes})
         })
         .collect();
     json!(slots)
@@ -302,6 +311,7 @@ fn newborn_unknown_hold_and_exact_density_invalidation() {
     let source = &mut runtime.sources[0];
     source.current_sample = runtime.next_sample;
     let first = source.score(440_f32.log2(), &params, &shared).unwrap();
+    assert_eq!(first.score.to_bits(), 0.0_f32.to_bits());
     let builds = source.density_builds;
     let held = source.score(441_f32.log2(), &params, &shared).unwrap();
     assert_eq!(first.score.to_bits(), held.score.to_bits());

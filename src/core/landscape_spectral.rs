@@ -19,6 +19,7 @@ pub struct SpectralFrame {
 
 pub(crate) struct SpectralFrameView<'a> {
     pub subjective_intensity: &'a [f32],
+    #[cfg(test)]
     pub loudness_mass: f32,
 }
 
@@ -164,10 +165,12 @@ impl SpectralFrontEnd {
             self.subjective_intensity[i] = y;
         }
 
+        #[cfg(test)]
         let loudness_mass = density::density_to_mass(&self.subjective_intensity, &self.du);
 
         SpectralFrameView {
             subjective_intensity: &self.subjective_intensity,
+            #[cfg(test)]
             loudness_mass,
         }
     }

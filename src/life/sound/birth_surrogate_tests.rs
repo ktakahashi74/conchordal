@@ -450,3 +450,84 @@ fn saved_v1_density_and_distribution_conformance() {
     .unwrap();
     println!("{summary}");
 }
+
+#[test]
+fn respawn_point_scores_keep_preallocated_capacity_and_exact_frequency_mapping() {
+    let mut work = BirthSurrogate::new(
+        Timebase {
+            fs: 48000.0,
+            hop: 512,
+        },
+        0.23,
+        1e-4,
+    );
+    let mut control = VoiceControl::default();
+    control.body.method = crate::scenario::control::BodyMethod::Sine;
+    let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+    let hz = 440.37;
+    let bin = landscape.space.nearest_index(hz);
+    landscape.consonance_field_score_eff[bin] = 1.0;
+    let before: Vec<usize> = work.cache.iter().map(|c| c.masses.capacity()).collect();
+    let scratch_before = [
+        work.du_scan.capacity(),
+        work.power_scan.capacity(),
+        work.density_scan.capacity(),
+        work.terrain_scan.capacity(),
+        work.lanes.capacity(),
+        work.ratios.capacity(),
+    ];
+    for frame in 0..10 {
+        let slot = work
+            .respawn_scores(
+                &control,
+                crate::scenario::RespawnPolicy::Hereditary { sigma_oct: 0.1 },
+                &landscape,
+                frame,
+                &[hz; 16],
+            )
+            .unwrap();
+        assert_eq!(work.candidate_mass(slot, 0), 1.0);
+    }
+    assert_eq!(
+        before,
+        work.cache
+            .iter()
+            .map(|c| c.masses.capacity())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        scratch_before,
+        [
+            work.du_scan.capacity(),
+            work.power_scan.capacity(),
+            work.density_scan.capacity(),
+            work.terrain_scan.capacity(),
+            work.lanes.capacity(),
+            work.ratios.capacity()
+        ]
+    );
+}
+
+#[test]
+#[should_panic(expected = "respawn_consonance_field_score_eff_scan")]
+fn respawn_score_boundary_rejects_misaligned_scan() {
+    let mut work = BirthSurrogate::new(
+        Timebase {
+            fs: 48000.0,
+            hop: 512,
+        },
+        0.23,
+        1e-4,
+    );
+    let mut control = VoiceControl::default();
+    control.body.method = crate::scenario::control::BodyMethod::Sine;
+    let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+    landscape.consonance_field_score_eff.pop();
+    work.respawn_scores(
+        &control,
+        crate::scenario::RespawnPolicy::Hereditary { sigma_oct: 0.1 },
+        &landscape,
+        0,
+        &[440.0],
+    );
+}

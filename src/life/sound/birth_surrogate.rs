@@ -1,4 +1,4 @@
-//! Legacy direct-model v1 density for synchronous birth placement.
+//! Legacy direct-model v1 density for synchronous birth and respawn selection.
 
 use super::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
@@ -8,6 +8,7 @@ use super::spectral::{
     brightness_from_spectral_slope, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
 };
 use super::{BodyKind, BodySnapshot};
+use crate::core::consonance_kernel::ConsonanceRepresentationParams;
 use crate::core::erb::hz_to_erb;
 use crate::core::landscape::LandscapeFrame;
 use crate::core::log2space::Log2Space;
@@ -16,7 +17,7 @@ use crate::core::timebase::Timebase;
 use crate::core::utils::a_weighting_gain_pow;
 use crate::life::voice::sound_body::legacy_renderer_kind;
 use crate::scenario::control::VoiceControl;
-use crate::scenario::{HarmonicMode, TimbreGenotype};
+use crate::scenario::{HarmonicMode, RespawnPolicy, TimbreGenotype};
 use sha2::{Digest, Sha256};
 
 const MAX_BINS: usize = 2048;
@@ -41,6 +42,7 @@ pub(crate) struct BirthSurrogate {
     time: Timebase,
     exponent: f32,
     ref_power: f32,
+    pub(crate) level_repr: ConsonanceRepresentationParams,
     space_key: Option<(u32, u32, u32, usize)>,
     du_scan: Vec<f32>,
     a_power_scan: Vec<f32>,
@@ -64,6 +66,7 @@ impl BirthSurrogate {
             time,
             exponent: exponent.max(0.01),
             ref_power: ref_power.max(1e-12),
+            level_repr: ConsonanceRepresentationParams::default(),
             space_key: None,
             du_scan: Vec::with_capacity(MAX_BINS),
             a_power_scan: Vec::with_capacity(MAX_BINS),
@@ -283,6 +286,76 @@ impl BirthSurrogate {
         landscape: &LandscapeFrame,
         frame: u64,
         freq_range: (f32, f32),
+        terrain: impl FnMut(usize) -> f32,
+    ) -> Option<usize> {
+        self.evaluate_candidates(control, landscape, frame, (freq_range, None), terrain)
+    }
+
+    pub(crate) fn respawn_scores(
+        &mut self,
+        control: &VoiceControl,
+        policy: RespawnPolicy,
+        landscape: &LandscapeFrame,
+        frame: u64,
+        frequencies: &[f32],
+    ) -> Option<usize> {
+        let kind = legacy_renderer_kind(control)?;
+        // Sixteen proposals amplify the saved Sine Random discrepancy beyond TV 0.1.
+        if kind == BodyKind::Sine && matches!(policy, RespawnPolicy::Random) {
+            return None;
+        }
+        if matches!(policy, RespawnPolicy::PeakBiased { .. }) {
+            // Fixed-ratio recipes fail local-search TV; their envelope variants share a body.
+            // The measured implicit inharmonic and terrain-derived recipes pass.
+            if kind != BodyKind::Harmonic
+                || control.body.modes.as_ref().is_some_and(|p| {
+                    !matches!(
+                        p.kind,
+                        ModePatternKind::LandscapeDensity | ModePatternKind::LandscapePeaks
+                    )
+                })
+            {
+                return None;
+            }
+        }
+        landscape.space.assert_scan_len_named(
+            &landscape.consonance_field_score_eff,
+            "respawn_consonance_field_score_eff_scan",
+        );
+        if kind != BodyKind::Sine
+            && let Some(pattern) = &control.body.modes
+        {
+            // Saved final-selection controls fail these domains, although Field mass passes.
+            let excluded = match policy {
+                RespawnPolicy::Random => matches!(pattern.kind, ModePatternKind::LandscapeDensity),
+                RespawnPolicy::Hereditary { .. } => matches!(
+                    pattern.kind,
+                    ModePatternKind::LandscapeDensity | ModePatternKind::LandscapePeaks
+                ),
+                _ => false,
+            };
+            if excluded {
+                return None;
+            }
+        }
+        if frequencies.is_empty() || frequencies.len() > MAX_BINS {
+            return None;
+        }
+        self.evaluate_candidates(
+            control,
+            landscape,
+            frame,
+            (landscape.freq_bounds(), Some(frequencies)),
+            |i| landscape.consonance_field_score_eff[i],
+        )
+    }
+
+    fn evaluate_candidates(
+        &mut self,
+        control: &VoiceControl,
+        landscape: &LandscapeFrame,
+        frame: u64,
+        (freq_range, frequencies): ((f32, f32), Option<&[f32]>),
         mut terrain: impl FnMut(usize) -> f32,
     ) -> Option<usize> {
         let kind = legacy_renderer_kind(control)?;
@@ -356,6 +429,12 @@ impl BirthSurrogate {
         let bins = space.n_bins();
         let mut hash = Sha256::new();
         hash.update(frame.to_le_bytes());
+        hash.update([u8::from(frequencies.is_some())]);
+        if let Some(frequencies) = frequencies {
+            for &hz in frequencies {
+                hash.update(hz.to_bits().to_le_bytes());
+            }
+        }
         hash.update([kind as u8]);
         for v in [
             space.fmin,
@@ -417,16 +496,21 @@ impl BirthSurrogate {
         let slot = self.next_cache;
         self.next_cache = (slot + 1) % CACHE_ENTRIES;
         self.cache[slot].key = None;
-        self.cache[slot].masses.resize(bins, 0.0);
+        self.cache[slot]
+            .masses
+            .resize(frequencies.map_or(bins, <[f32]>::len), 0.0);
         self.cache[slot].masses.fill(0.0);
         #[cfg(test)]
         {
             self.preparations += 1;
         }
-        let lo = space.nearest_index(freq_range.0);
-        let hi = space.nearest_index(freq_range.1);
+        let lo = frequencies.map_or_else(|| space.nearest_index(freq_range.0), |_| 0);
+        let hi = frequencies.map_or_else(|| space.nearest_index(freq_range.1), |f| f.len() - 1);
         for idx in lo..=hi {
-            let hz = space.freq_of_index(idx).clamp(freq_range.0, freq_range.1);
+            let hz = frequencies.map_or_else(
+                || space.freq_of_index(idx).clamp(freq_range.0, freq_range.1),
+                |f| f[idx],
+            );
             self.ratios.clear();
             if kind != BodyKind::Sine {
                 let fallback = ModePattern::harmonic_modes();

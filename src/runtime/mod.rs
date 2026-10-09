@@ -1100,7 +1100,11 @@ fn wire_runtime(
         ));
     }
     if config.birth_surrogate && !config.render_prototype {
-        pop.enable_birth_surrogate(core.lparams.loudness_exp, core.lparams.ref_power);
+        pop.enable_birth_surrogate(
+            core.lparams.loudness_exp,
+            core.lparams.ref_power,
+            core.lparams.consonance_representation,
+        );
     }
     let scenario_max_id = scenario
         .events

@@ -147,6 +147,18 @@ pub(super) fn peak_bias_local_search_frequency(
     max_hz: f32,
     config: RespawnPeakBiasConfig,
 ) -> f32 {
+    peak_bias_local_search_with(center_hz, min_hz, max_hz, config, |hz| {
+        landscape.evaluate_pitch_score(hz)
+    })
+}
+
+fn peak_bias_local_search_with(
+    center_hz: f32,
+    min_hz: f32,
+    max_hz: f32,
+    config: RespawnPeakBiasConfig,
+    mut score_at: impl FnMut(f32) -> f32,
+) -> f32 {
     let lo = min_hz.min(max_hz).max(MIN_FREQ_HZ);
     let hi = max_hz.max(min_hz).clamp(lo, MAX_FREQ_HZ);
     let center_hz = center_hz.clamp(lo, hi);
@@ -163,11 +175,11 @@ pub(super) fn peak_bias_local_search_frequency(
     let min_log2 = lo.log2().max(center_log2 - radius_log2);
     let max_log2 = hi.log2().min(center_log2 + radius_log2);
     let mut best_freq = center_hz;
-    let mut best_score = landscape.evaluate_pitch_score(center_hz);
+    let mut best_score = score_at(center_hz);
     let mut cur = min_log2;
     while cur <= max_log2 + 1e-6 {
         let freq_hz = 2.0f32.powf(cur).clamp(lo, hi);
-        let score = landscape.evaluate_pitch_score(freq_hz);
+        let score = score_at(freq_hz);
         if score.is_finite() && (!best_score.is_finite() || score > best_score) {
             best_score = score;
             best_freq = freq_hz;
@@ -225,6 +237,52 @@ pub(super) fn choose_candidate_by_scene_score<R: Rng + ?Sized>(
 }
 
 impl Community {
+    fn respawn_body_scores(
+        &self,
+        population: &RuntimePopulationState,
+        landscape: &LandscapeFrame,
+        frequencies: &[f32],
+        scores: &mut [f32],
+    ) -> bool {
+        assert_eq!(frequencies.len(), scores.len());
+        let mut workspace = self.birth_surrogate.borrow_mut();
+        let Some(work) = workspace.as_mut() else {
+            return false;
+        };
+        let Some(slot) = work.respawn_scores(
+            &population.template.control,
+            population.respawn_policy,
+            landscape,
+            self.current_frame,
+            frequencies,
+        ) else {
+            return false;
+        };
+        for (idx, score) in scores.iter_mut().enumerate() {
+            *score = work.candidate_mass(slot, idx);
+        }
+        true
+    }
+
+    fn respawn_level(
+        &self,
+        population: &RuntimePopulationState,
+        landscape: &LandscapeFrame,
+        freq_hz: f32,
+    ) -> f32 {
+        let mut scores = [0.0];
+        if self.respawn_body_scores(population, landscape, &[freq_hz], &mut scores) {
+            self.birth_surrogate
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .level_repr
+                .level(scores[0])
+        } else {
+            landscape.evaluate_pitch_level(freq_hz)
+        }
+    }
+
     fn random_respawn_frequency<R: Rng + ?Sized>(
         &self,
         population: &RuntimePopulationState,
@@ -289,11 +347,26 @@ impl Community {
             let parent_freq_hz = selected_parent
                 .map(|parent| parent.freq_hz.max(MIN_FREQ_HZ))
                 .filter(|freq_hz| freq_hz.is_finite() && *freq_hz > 0.0);
+            let mut body_scores = [0.0; RESPAWN_CANDIDATE_COUNT];
+            let mut centers = [0.0; RESPAWN_CANDIDATE_COUNT];
+            for (idx, &bin) in candidate_bins.iter().enumerate() {
+                centers[idx] = landscape.space.centers_hz[bin].clamp(lo, hi);
+            }
+            let body_enabled = self.respawn_body_scores(
+                population,
+                landscape,
+                &centers[..candidate_bins.len()],
+                &mut body_scores[..candidate_bins.len()],
+            );
             let mut scene_weights = Vec::with_capacity(candidate_bins.len());
             let mut final_weights = Vec::with_capacity(candidate_bins.len());
-            for &bin_idx in &candidate_bins {
+            for (idx, &bin_idx) in candidate_bins.iter().enumerate() {
                 let center_hz = landscape.space.centers_hz[bin_idx].clamp(lo, hi);
-                let mut scene_weight = landscape.consonance_field_score_eff[bin_idx].max(0.0);
+                let mut scene_weight = if body_enabled {
+                    body_scores[idx].max(0.0)
+                } else {
+                    landscape.consonance_field_score_eff[bin_idx].max(0.0)
+                };
                 if scene_exp > 0.0 {
                     scene_weight = scene_weight.powf(scene_exp);
                 }
@@ -336,11 +409,22 @@ impl Community {
                     .unwrap_or(0)
             };
             let center_hz = landscape.space.centers_hz[candidate_bins[chosen_idx]].clamp(lo, hi);
-            peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config)
+            if body_enabled {
+                peak_bias_local_search_with(center_hz, lo, hi, config, |hz| {
+                    let mut score = [0.0];
+                    if self.respawn_body_scores(population, landscape, &[hz], &mut score) {
+                        score[0]
+                    } else {
+                        landscape.evaluate_pitch_score(hz)
+                    }
+                })
+            } else {
+                peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config)
+            }
         };
 
         if let Some(min_c_level) = population.respawn_min_c_level
-            && landscape.evaluate_pitch_level(chosen_freq) < min_c_level
+            && self.respawn_level(population, landscape, chosen_freq) < min_c_level
         {
             return None;
         }
@@ -448,18 +532,56 @@ impl Community {
             candidates.push(freq);
         }
 
-        let chosen_freq = match population.respawn_policy {
-            RespawnPolicy::Random => choose_candidate_by_scene_score(landscape, &candidates, rng)?,
-            _ => *candidates.iter().max_by(|a, b| {
-                landscape
-                    .evaluate_pitch_level(**a)
-                    .partial_cmp(&landscape.evaluate_pitch_level(**b))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })?,
+        let mut body_scores = [0.0; RESPAWN_CANDIDATE_COUNT];
+        let body_enabled =
+            self.respawn_body_scores(population, landscape, &candidates, &mut body_scores);
+        let chosen_freq = if body_enabled {
+            let idx = if matches!(population.respawn_policy, RespawnPolicy::Random) {
+                let weights = body_scores.map(|score| score.max(0.0));
+                if weights.iter().any(|w| *w > 0.0) {
+                    if weights.iter().sum::<f32>().is_finite()
+                        && let Ok(dist) = WeightedIndex::new(weights)
+                    {
+                        dist.sample(rng)
+                    } else {
+                        weights
+                            .iter()
+                            .enumerate()
+                            .max_by(|a, b| a.1.total_cmp(b.1))?
+                            .0
+                    }
+                } else {
+                    body_scores
+                        .iter()
+                        .enumerate()
+                        .max_by(|a, b| a.1.total_cmp(b.1))?
+                        .0
+                }
+            } else {
+                let repr = self.birth_surrogate.borrow().as_ref().unwrap().level_repr;
+                body_scores
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| repr.level(*a.1).total_cmp(&repr.level(*b.1)))?
+                    .0
+            };
+            candidates[idx]
+        } else {
+            match population.respawn_policy {
+                RespawnPolicy::Random => {
+                    choose_candidate_by_scene_score(landscape, &candidates, rng)?
+                }
+                _ => *candidates.iter().max_by(|a, b| {
+                    landscape
+                        .evaluate_pitch_level(**a)
+                        .partial_cmp(&landscape.evaluate_pitch_level(**b))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })?,
+            }
         };
 
         if let Some(min_c_level) = population.respawn_min_c_level
-            && landscape.evaluate_pitch_level(chosen_freq) < min_c_level
+            && self.respawn_level(population, landscape, chosen_freq) < min_c_level
         {
             return None;
         }
@@ -1218,9 +1340,9 @@ mod tests {
     }
 
     #[test]
-    fn birth_surrogate_preserves_respawn_final_selection_and_lineage() {
+    fn unsupported_birth_surrogate_preserves_respawn_final_selection_and_lineage() {
         let mut enabled = test_pop();
-        enabled.enable_birth_surrogate(0.23, 1e-4);
+        enabled.enable_birth_surrogate(0.23, 1e-4, Default::default());
         let legacy = test_pop();
         let mut landscape = peak_bias_landscape();
         landscape.consonance_density_mass_eff.fill(0.5);
@@ -1228,6 +1350,7 @@ mod tests {
         spec.control.body.method = crate::scenario::control::BodyMethod::Harmonic;
         spec.control.body.timbre.spread = 0.0;
         spec.control.body.timbre.unison = 1;
+        spec.control.body.timbre.motion = 0.9;
         enabled.apply_action(
             Action::Spawn {
                 population_id: 1,
@@ -1330,3 +1453,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "respawn_body_tests.rs"]
+mod body_tests;

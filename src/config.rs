@@ -271,7 +271,7 @@ impl Default for PsychoAcousticsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct AppConfig {
-    /// Evaluate birth placements with the legacy direct body model.
+    /// Evaluate supported birth placements and respawn choices with the legacy body model.
     #[serde(default)]
     pub birth_surrogate: bool,
     /// Body-weighted energy metabolism; omission leaves the point path unchanged.

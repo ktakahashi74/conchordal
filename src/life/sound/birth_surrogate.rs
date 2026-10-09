@@ -1,4 +1,4 @@
-//! Legacy direct-model v1 density for synchronous birth and respawn selection.
+//! Renderer-conformed density for Field birth and legacy final respawn selection.
 
 use super::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
@@ -15,7 +15,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::{DEFAULT_MODE_COUNT, ModePattern, ModePatternKind};
 use crate::core::timebase::Timebase;
 use crate::core::utils::a_weighting_gain_pow;
-use crate::life::voice::sound_body::legacy_renderer_kind;
+use crate::life::voice::sound_body::model_kind;
 use crate::scenario::control::VoiceControl;
 use crate::scenario::{HarmonicMode, RespawnPolicy, TimbreGenotype};
 use sha2::{Digest, Sha256};
@@ -40,6 +40,7 @@ struct CandidateCache {
 
 pub(crate) struct BirthSurrogate {
     time: Timebase,
+    renderer_phase3: bool,
     exponent: f32,
     ref_power: f32,
     pub(crate) level_repr: ConsonanceRepresentationParams,
@@ -64,6 +65,7 @@ impl BirthSurrogate {
     pub(crate) fn new(time: Timebase, exponent: f32, ref_power: f32) -> Self {
         Self {
             time,
+            renderer_phase3: false,
             exponent: exponent.max(0.01),
             ref_power: ref_power.max(1e-12),
             level_repr: ConsonanceRepresentationParams::default(),
@@ -88,6 +90,11 @@ impl BirthSurrogate {
             #[cfg(test)]
             preparations: 0,
         }
+    }
+
+    pub(crate) fn with_renderer_phase3(mut self, renderer_phase3: bool) -> Self {
+        self.renderer_phase3 = renderer_phase3;
+        self
     }
 
     /// The narrow Modal domain has a measured endpoint, not an inferred cutoff.
@@ -299,7 +306,12 @@ impl BirthSurrogate {
         frame: u64,
         frequencies: &[f32],
     ) -> Option<usize> {
-        let kind = legacy_renderer_kind(control)?;
+        // Native final-selection distributions have no acquired reference.
+        // This gate leaves conformed native Field placement and proposals enabled.
+        if self.renderer_phase3 {
+            return None;
+        }
+        let kind = model_kind(control, self.renderer_phase3)?;
         // Sixteen proposals amplify the saved Sine Random discrepancy beyond TV 0.1.
         if kind == BodyKind::Sine && matches!(policy, RespawnPolicy::Random) {
             return None;
@@ -358,7 +370,7 @@ impl BirthSurrogate {
         (freq_range, frequencies): ((f32, f32), Option<&[f32]>),
         mut terrain: impl FnMut(usize) -> f32,
     ) -> Option<usize> {
-        let kind = legacy_renderer_kind(control)?;
+        let kind = model_kind(control, self.renderer_phase3)?;
         let t = &control.body.timbre;
         let mut snapshot = BodySnapshot {
             kind,

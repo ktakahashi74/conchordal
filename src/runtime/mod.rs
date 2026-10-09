@@ -953,9 +953,6 @@ fn wire_runtime(
     stop_flag: Arc<AtomicBool>,
     opts: WiringOptions,
 ) -> Result<RuntimeWiring, String> {
-    if config.render_prototype && opts.wav_tx.is_none() {
-        return Err("render_prototype is available only in conchordal-render".into());
-    }
     let WiringOptions {
         #[cfg(test)]
         offline_body_probe,
@@ -1088,22 +1085,22 @@ fn wire_runtime(
     let dorsal = core.dorsal;
 
     let mut pop = Community::new(crate::core::timebase::Timebase { fs, hop });
-    // Both capabilities describe the legacy renderer's radiated sound.
-    if let Some(settings) = config
-        .body_metabolism
-        .filter(|settings| settings.enabled && !config.render_prototype)
-    {
-        pop.body_metabolism = Some(crate::life::body_metabolism::BodyMetabolism::new(
-            core.nsgt.clone(),
-            &core.lparams,
-            settings,
-        ));
+    if let Some(settings) = config.body_metabolism.filter(|settings| settings.enabled) {
+        pop.body_metabolism = Some(
+            crate::life::body_metabolism::BodyMetabolism::new(
+                core.nsgt.clone(),
+                &core.lparams,
+                settings,
+            )
+            .with_renderer_phase3(config.render_prototype),
+        );
     }
-    if config.birth_surrogate && !config.render_prototype {
+    if config.birth_surrogate {
         pop.enable_birth_surrogate(
             core.lparams.loudness_exp,
             core.lparams.ref_power,
             core.lparams.consonance_representation,
+            config.render_prototype,
         );
     }
     let scenario_max_id = scenario
@@ -3361,6 +3358,155 @@ wait(0.08);
         std::fs::remove_file(script).unwrap();
     }
 
+    #[test]
+    fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
+        use ringbuf::traits::{Consumer, Split};
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "conchordal-instrument-renderer-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        for wait_user_exit in [false, true] {
+            let mut native_hops = Vec::new();
+            for body in ["sine", "harmonic", "modal"] {
+                #[cfg(feature = "profile-alloc")]
+                let mut legacy_counts = Vec::new();
+                for prototype in [false, true] {
+                    let script = dir.join("scenario.rhai");
+                    std::fs::write(&script, format!(
+                        "let a = place({body}().brain(\"drone\").sustain().anchor().amp(0.05).adsr(0.01, 0.0, 1.0, 0.01), at(220.0));\nwait(0.1);\nrelease(a);\nwait(0.03);\n"
+                    )).unwrap();
+                    let mut config = AppConfig {
+                        render_prototype: prototype,
+                        ..Default::default()
+                    };
+                    config.analysis.nfft = 2048;
+                    config.dcc.coupling_strength = 0.0;
+                    let scenario = compile_scenario_from_script(
+                        &script,
+                        &render_compile_args(script.to_str().unwrap(), Some(73)),
+                        &config,
+                    )
+                    .unwrap();
+                    let stop = Arc::new(AtomicBool::new(false));
+                    let consume_stop = Arc::clone(&stop);
+                    let (prod, mut cons) = ringbuf::HeapRb::<f32>::new(2048).split();
+                    let consumer = thread::spawn(move || {
+                        let mut scratch = [0.0_f32; 512];
+                        let mut peak = 0.0_f32;
+                        loop {
+                            let count = cons.pop_slice(&mut scratch);
+                            for &sample in &scratch[..count] {
+                                assert!(sample.is_finite());
+                                peak = peak.max(sample.abs());
+                            }
+                            if count == 0 && consume_stop.load(Ordering::SeqCst) {
+                                return peak;
+                            }
+                            thread::yield_now();
+                        }
+                    });
+                    let profile_path = dir.join("profile.json");
+                    let profile = RunProfile::create(
+                        profile_path.to_str().unwrap(),
+                        73,
+                        false,
+                        0.0,
+                        wait_user_exit,
+                        48_000,
+                        512,
+                        None,
+                    )
+                    .unwrap();
+                    let probe: OfflineBodyProbe = Box::new(move |state, _, _, _| {
+                        assert_eq!(state.schedule_renderer.phase3_enabled(), prototype);
+                        // Exclude wall-clock UI publication from the allocation control.
+                        state.last_ui_update = Instant::now();
+                    });
+                    let wiring = wire_runtime(
+                        &config,
+                        48_000,
+                        "instrument renderer".into(),
+                        scenario,
+                        Arc::clone(&stop),
+                        WiringOptions {
+                            offline_body_probe: Some(probe),
+                            ui_channel_capacity: 16,
+                            listener_forced: wait_user_exit,
+                            wait_user_exit,
+                            start_playing: true,
+                            audio_prod: Some(prod),
+                            wav_tx: None,
+                            reporter: None,
+                            deterministic_analysis: true,
+                            deterministic_footprints: false,
+                            guard_meter: None,
+                            underrun_frames: None,
+                            reserve_runtime_ids_through: 0,
+                            profile: Some(profile),
+                            audio_counters: None,
+                        },
+                    )
+                    .unwrap();
+                    loop {
+                        let frame = wiring
+                            .ui_frame_rx
+                            .recv_timeout(Duration::from_secs(30))
+                            .unwrap();
+                        if frame.meta.playback_state == PlaybackState::Finished {
+                            break;
+                        }
+                    }
+                    if wait_user_exit {
+                        assert!(!wiring.worker_handle.is_finished());
+                        stop.store(true, Ordering::SeqCst);
+                    }
+                    join_thread("worker", wiring.worker_handle).unwrap();
+                    join_thread("analysis", wiring.analysis_handle).unwrap();
+                    if let Some(handle) = wiring.listener_analysis_handle {
+                        join_thread("listener", handle).unwrap();
+                    }
+                    assert!(consumer.join().unwrap() > 0.0);
+                    let profile: serde_json::Value =
+                        serde_json::from_slice(&std::fs::read(&profile_path).unwrap()).unwrap();
+                    let hops = profile["hops"].as_array().unwrap();
+                    if prototype {
+                        native_hops.push(hops.len());
+                    }
+                    #[cfg(feature = "profile-alloc")]
+                    {
+                        let counts: Vec<_> = hops
+                            .iter()
+                            .filter(|h| (0.02..0.08).contains(&h["time_sec"].as_f64().unwrap()))
+                            .map(|h| {
+                                (
+                                    h["worker_allocations"]["count"].as_u64().unwrap(),
+                                    h["worker_allocations"]["bytes"].as_u64().unwrap(),
+                                )
+                            })
+                            .collect();
+                        assert!(!counts.is_empty());
+                        if prototype {
+                            assert_eq!(counts, legacy_counts, "{body} GUI={wait_user_exit}");
+                            println!(
+                                "INSTRUMENT_ALLOC body={body} GUI={wait_user_exit} quiet_hops={} counts={counts:?}",
+                                counts.len()
+                            );
+                        } else {
+                            legacy_counts = counts;
+                        }
+                    }
+                }
+            }
+            assert!(native_hops[2] > native_hops[0] && native_hops[2] > native_hops[1]);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     fn build_test_params(space: &Log2Space) -> LandscapeParams {
         LandscapeParams {
             fs: 48_000.0,
@@ -3922,7 +4068,7 @@ wait(0.08);
 }
 
 #[cfg(test)]
-type OfflineBodyProbe = Box<dyn FnMut(&WorkerState, Tick, usize, [&[f32]; 2]) + Send>;
+type OfflineBodyProbe = Box<dyn FnMut(&mut WorkerState, Tick, usize, [&[f32]; 2]) + Send>;
 
 #[cfg(test)]
 mod body_metabolism_assay;

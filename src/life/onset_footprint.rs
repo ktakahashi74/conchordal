@@ -82,7 +82,7 @@ impl Identity {
     pub(crate) fn new(source_id: u64, body_generation: u32, recipe: &Recipe) -> Self {
         let mut hasher = Sha256::new();
         if recipe.renderer_phase3 {
-            hasher.update(b"renderer:phase3-v1");
+            hasher.update(b"renderer:phase3-pcm-v2");
         }
         let body = &recipe.body;
         hasher.update([match body.kind {
@@ -260,7 +260,11 @@ pub(crate) fn compute(request: &Request) -> Record {
             rhythms_default: true,
         },
     };
-    if recipe.renderer_phase3 {
+    if !recipe
+        .body
+        .kind
+        .supports_body_models(recipe.renderer_phase3)
+    {
         record.state = State::Unsupported("renderer-phase3");
         return record;
     }
@@ -286,6 +290,9 @@ pub(crate) fn compute(request: &Request) -> Record {
     ) else {
         return finish(record);
     };
+    if recipe.renderer_phase3 {
+        tone.enable_phase3();
+    }
     tone.set_smoothing_tau_sec(recipe.smoothing_tau_sec);
     tone.seed_modal_phases(seed);
     tone.schedule_planned_kick(OnsetKick {
@@ -293,37 +300,58 @@ pub(crate) fn compute(request: &Request) -> Record {
     });
     tone.arm_onset_trigger(KICK_STRENGTH);
 
-    let (_, amplitude, envelope) = tone.prediction_parameters(None);
-    let frozen = ToneEnergy {
-        amplitude,
-        envelope,
-        control: Some(tone.prediction_control(0, &NeuralRhythms::default())),
-        scheduled_release: None,
-        sine: tone.prediction_sine(0),
-        bank: tone.prediction_bank(0),
-    };
-    record.d_samples = envelope.release_end.min(cap);
-    record.truncated = envelope.release_end > cap;
-
-    record.state = State::Unsupported("window");
-    let Some(window) = project_window(
-        &[],
-        Some(([true, false], frozen)),
-        0,
-        (None, None),
-        0,
-        [0, record.d_samples],
-        true,
-    ) else {
-        return finish(record);
-    };
-    record.state = State::Unsupported("coherent");
     let mut energies = [0.; 16];
-    for (out, coherent) in energies.iter_mut().zip(window.coherent_energies) {
-        let Some(value) = coherent else {
+    if recipe.renderer_phase3 {
+        // Oscillators have no free tail: excitation closure is the support end.
+        record.d_samples = tone.excitation_end_tick().min(cap);
+        record.truncated = tone.excitation_end_tick() > cap;
+        record.state = State::Unsupported("window");
+        if record.d_samples < 16 {
+            return finish(record);
+        }
+        let rhythms = NeuralRhythms::default();
+        for (k, energy) in energies.iter_mut().enumerate() {
+            let [left, right] = [k, k + 1]
+                .map(|edge| (u128::from(record.d_samples) * edge as u128).div_ceil(16) as Tick);
+            for tick in left..right {
+                tone.kick_planned_if_due(tick);
+                let sample = f64::from(tone.render_tick(tick, recipe.fs, 1. / recipe.fs, &rhythms));
+                *energy += sample * sample;
+            }
+            *energy /= (right - left) as f64;
+        }
+    } else {
+        let (_, amplitude, envelope) = tone.prediction_parameters(None);
+        let frozen = ToneEnergy {
+            amplitude,
+            envelope,
+            control: Some(tone.prediction_control(0, &NeuralRhythms::default())),
+            scheduled_release: None,
+            sine: tone.prediction_sine(0),
+            bank: tone.prediction_bank(0),
+        };
+        record.d_samples = envelope.release_end.min(cap);
+        record.truncated = envelope.release_end > cap;
+
+        record.state = State::Unsupported("window");
+        let Some(window) = project_window(
+            &[],
+            Some(([true, false], frozen)),
+            0,
+            (None, None),
+            0,
+            [0, record.d_samples],
+            true,
+        ) else {
             return finish(record);
         };
-        *out = value;
+        record.state = State::Unsupported("coherent");
+        for (out, coherent) in energies.iter_mut().zip(window.coherent_energies) {
+            let Some(value) = coherent else {
+                return finish(record);
+            };
+            *out = value;
+        }
     }
     record.energies = energies;
     let peak = energies.iter().copied().fold(0., f64::max);
@@ -554,11 +582,16 @@ mod tests {
                 requested_at: 0,
                 recipe: new,
             });
-            assert_eq!(record.state, State::Unsupported("renderer-phase3"));
-            assert_eq!(record.d_samples, 0);
-            assert!(record.power.iter().all(|v| *v == 0.0));
-            // Zero power is an unused lane, never a BodySilent classification.
-            assert_ne!(record.state, State::BodySilent);
+            if kind == BodyKind::Modal {
+                assert_eq!(record.state, State::Unsupported("renderer-phase3"));
+                assert_eq!(record.d_samples, 0);
+                assert!(record.power.iter().all(|v| *v == 0.0));
+                assert_ne!(record.state, State::BodySilent);
+            } else {
+                assert_eq!(record.state, State::Body);
+                assert!(record.d_samples > 0);
+                assert!(record.power.iter().any(|v| *v > 0.0));
+            }
         }
     }
 
@@ -595,6 +628,41 @@ mod tests {
             identity: Identity::new(3, 1, &recipe),
             requested_at: 8192,
             recipe,
+        }
+    }
+
+    #[test]
+    fn native_footprints_preserve_support_and_silent_status() {
+        for kind in [BodyKind::Sine, BodyKind::Harmonic] {
+            let mut body = recipe(kind, Tick::MAX);
+            body.renderer_phase3 = true;
+            let record = compute(&request(body.clone()));
+            assert_eq!(record.state, State::Body);
+            assert!(record.truncated);
+            assert_eq!(record.d_samples, 4 * FS as Tick);
+            body.body.amp_scale = 0.;
+            assert_eq!(
+                compute(&request(body.clone())).state,
+                State::Unsupported("tone")
+            );
+            body.body.amp_scale = 1.;
+            body.hold = 1;
+            body.adsr = Some(ToneAdsr {
+                attack_sec: 0.,
+                decay_sec: 0.,
+                sustain_level: 0.,
+                release_sec: 0.,
+            });
+            assert_eq!(
+                compute(&request(body.clone())).state,
+                State::Unsupported("window")
+            );
+            body.hold = 1000;
+            body.modulator = RenderModulatorSpec::SeqGate { duration_sec: 0. };
+            let silent = compute(&request(body));
+            assert_eq!(silent.state, State::BodySilent);
+            assert!(silent.d_samples > 0);
+            assert_eq!(silent.power, [0.; 16]);
         }
     }
 
@@ -781,39 +849,59 @@ mod tests {
 
     #[test]
     fn the_sine_footprint_matches_the_rendered_bin_energies() {
-        let recipe = recipe(BodyKind::Sine, (0.25 * FS) as Tick);
-        let record = compute(&request(recipe.clone()));
-        assert_eq!(record.state, State::Body);
-        let mut tone = Tone::from_parts(
-            Timebase { fs: FS, hop: HOP },
-            0,
-            recipe.hold,
-            recipe.freq_hz,
-            AMP,
-            Some(recipe.body.clone()),
-            Some(recipe.modulator.clone()),
-            recipe.adsr,
-        )
-        .unwrap();
-        tone.set_smoothing_tau_sec(recipe.smoothing_tau_sec);
-        tone.seed_modal_phases(modal_phase_seed(3, 0, 0));
-        tone.schedule_planned_kick(OnsetKick { strength: 1. });
-        tone.arm_onset_trigger(1.);
-        let rhythms = NeuralRhythms::default();
-        let width = record.d_samples;
-        let mut rendered = [0.; 16];
-        for tick in 0..width {
-            tone.kick_planned_if_due(tick);
-            let sample = f64::from(tone.render_tick(tick, FS, 1. / FS, &rhythms));
-            let bin = ((u128::from(tick) * 16 / u128::from(width)) as usize).min(15);
-            rendered[bin] += sample * sample;
-        }
-        for k in 0..16 {
-            let [left, right] =
-                [k, k + 1].map(|edge| (u128::from(width) * edge as u128).div_ceil(16) as u64);
-            let actual = rendered[k] / (right - left) as f64;
-            let error = (record.energies[k] / actual - 1.).abs();
-            assert!(error < 1e-3, "bin {k} relative_error={error}");
+        for (native, kind) in [
+            (false, BodyKind::Sine),
+            (true, BodyKind::Sine),
+            (true, BodyKind::Harmonic),
+        ] {
+            let mut recipe = recipe(kind, (0.25 * FS) as Tick);
+            recipe.renderer_phase3 = native;
+            if native && kind == BodyKind::Harmonic {
+                recipe.body.motion = 0.5;
+                recipe.body.unison = 3;
+                recipe.body.spread = 0.2;
+            }
+            let record = compute(&request(recipe.clone()));
+            assert_eq!(record.state, State::Body);
+            let mut tone = Tone::from_parts(
+                Timebase { fs: FS, hop: HOP },
+                0,
+                recipe.hold,
+                recipe.freq_hz,
+                AMP,
+                Some(recipe.body.clone()),
+                Some(recipe.modulator.clone()),
+                recipe.adsr,
+            )
+            .unwrap();
+            if native {
+                tone.enable_phase3();
+            }
+            tone.set_smoothing_tau_sec(recipe.smoothing_tau_sec);
+            tone.seed_modal_phases(modal_phase_seed(3, 0, 0));
+            tone.schedule_planned_kick(OnsetKick { strength: 1. });
+            tone.arm_onset_trigger(1.);
+            let rhythms = NeuralRhythms::default();
+            let width = record.d_samples;
+            let mut rendered = [0.; 16];
+            for tick in 0..width {
+                tone.kick_planned_if_due(tick);
+                let sample = f64::from(tone.render_tick(tick, FS, 1. / FS, &rhythms));
+                let bin = ((u128::from(tick) * 16 / u128::from(width)) as usize).min(15);
+                rendered[bin] += sample * sample;
+            }
+            let mut maximum_error = 0.0f64;
+            for k in 0..16 {
+                let [left, right] =
+                    [k, k + 1].map(|edge| (u128::from(width) * edge as u128).div_ceil(16) as u64);
+                let actual = rendered[k] / (right - left) as f64;
+                let error = (record.energies[k] / actual - 1.).abs();
+                maximum_error = maximum_error.max(error);
+                assert!(error < 1e-3, "bin {k} relative_error={error}");
+            }
+            println!(
+                "FOOTPRINT_PCM native={native} kind={kind:?} bins=16 max_relative_error={maximum_error}"
+            );
         }
     }
 

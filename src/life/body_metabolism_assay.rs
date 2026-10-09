@@ -8,6 +8,10 @@ use crate::scenario::{ArticulationCoreConfig, VoiceSpec};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 
+pub(crate) fn native_reference() -> bool {
+    std::env::var("N1_METABOLISM_REFERENCE").as_deref() == Ok("1")
+}
+
 #[derive(Default, serde::Serialize)]
 struct Costs {
     prepare: f64,
@@ -171,24 +175,32 @@ fn b7_static_current_scores() {
     );
     let (nsgt, params) = crate::runtime::body_metabolism_test_core();
     let gaps = [1_i32, 2, 4, 8, 18];
+    let native = std::env::var("N1_NATIVE").as_deref() == Ok("1");
     let mut count = 0;
     for line in BufReader::new(inputs).lines() {
         let row: Value = serde_json::from_str(&line.unwrap()).unwrap();
-        let own = recipe(&row, params.fs);
-        let other = recipe(
+        let mut own = recipe(&row, params.fs);
+        if native && own.body.kind == crate::life::sound::BodyKind::Modal {
+            continue;
+        }
+        own.renderer_phase3 = native;
+        let mut other = recipe(
             &json!({"family":"sine", "base_hz":row["other_hz"].as_f64().unwrap_or(440.),
             "body":{"kind":"Sine","amp_scale":1.,"brightness":0.8,"inharmonic":0.,
                 "spread":0.,"unison":1,"motion":0.,"ratios":null}}),
             params.fs,
         );
+        other.renderer_phase3 = native;
         let mut runtime = BodyMetabolism::new(
             nsgt.clone(),
             &params,
             settings(row["representative_frames"].as_u64().unwrap() as usize),
-        );
+        )
+        .with_renderer_phase3(native);
         runtime.prepare(&[voice(2, 0, BodyMethod::Sine)], 0, &params);
         runtime.sources[0].prepare_body(&own);
-        let mut renderer = super::super::schedule_renderer::ScheduleRenderer::new(runtime.time);
+        let mut renderer = super::super::schedule_renderer::ScheduleRenderer::new(runtime.time)
+            .with_prototype(native);
         let mut batches = vec![batch(2, &own)];
         if !row["other_hz"].is_null() {
             batches.push(batch(3, &other));
@@ -258,8 +270,20 @@ fn b7_static_current_scores() {
         }
         assert!((f64::from(reference.score) - saved).abs() <= 0.025);
         count += 1;
+        if std::env::var("N1_STATIC_PILOT").as_deref() == Ok("1") {
+            break;
+        }
     }
-    assert_eq!(count, 84);
+    assert_eq!(
+        count,
+        if std::env::var("N1_STATIC_PILOT").as_deref() == Ok("1") {
+            1
+        } else if native {
+            57
+        } else {
+            84
+        }
+    );
 }
 
 #[test]
@@ -447,70 +471,102 @@ fn bounded_number_selection_matches_sort_without_depending_on_slot_order() {
 #[cfg(feature = "profile-alloc")]
 #[test]
 fn prepared_body_slots_capture_skip_and_density_rebuild_without_allocating() {
-    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
-    crate::life::modal::register_modal();
-    let mut runtime = BodyMetabolism::new(nsgt, &params, settings(8));
-    let voices = [
-        voice(3, 0, BodyMethod::Modal),
-        voice(1, 0, BodyMethod::Sine),
-        voice(2, 0, BodyMethod::Harmonic),
-    ];
-    runtime.prepare(&voices, 0, &params);
-    let shared = runtime.shared.landscape.clone();
-    let mut renderer = crate::life::schedule_renderer::ScheduleRenderer::new(runtime.time);
-    let batches: Vec<_> = voices
-        .iter()
-        .map(|voice| {
-            batch(
-                voice.id(),
-                &voice.representative_body_recipe(params.fs, 48000),
-            )
-        })
-        .collect();
-    let frame = renderer.render_with_source_pcm(
-        &batches,
-        0,
-        &NeuralRhythms::default(),
-        &mut runtime.pcm,
-        |_, _, _, _| {},
-    );
-    runtime.observe(0, frame.habitat, &params);
-    // Warm diagnostic TLS before measuring the production body path.
-    let _ = take_costs();
-    for frame in 1..25 {
-        let now = frame * runtime.time.hop as Tick;
-        crate::runtime_profile::begin_allocations();
-        runtime.prepare(&voices, now, &params);
-        for source in &mut runtime.sources {
-            // Force a new current density and modulator recipe, with existing Tone storage.
-            let mut recipe = voices
-                .iter()
-                .find(|voice| voice.id() == source.id)
-                .unwrap()
-                .representative_body_recipe(params.fs, 48000);
-            recipe.modulator = RenderModulatorSpec::DroneSway {
-                phase: 0.,
-                sway_rate: 0.3 + frame as f32 * 0.01,
-            };
-            source.prepare_body(&recipe);
-            let _ = source.score((440. + frame as f32).log2(), &params, &shared);
-        }
-        let rendered = renderer.render_with_source_pcm(
-            &[],
-            now,
+    for native in [false, true] {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        crate::life::modal::register_modal();
+        let mut runtime =
+            BodyMetabolism::new(nsgt, &params, settings(8)).with_renderer_phase3(native);
+        let voices = [
+            voice(3, 0, BodyMethod::Modal),
+            voice(1, 0, BodyMethod::Sine),
+            voice(2, 0, BodyMethod::Harmonic),
+        ];
+        runtime.prepare(&voices, 0, &params);
+        let shared = runtime.shared.landscape.clone();
+        let mut renderer = crate::life::schedule_renderer::ScheduleRenderer::new(runtime.time)
+            .with_prototype(native);
+        let batches: Vec<_> = voices
+            .iter()
+            .map(|voice| {
+                batch(
+                    voice.id(),
+                    &voice.representative_body_recipe(params.fs, 48000),
+                )
+            })
+            .collect();
+        let frame = renderer.render_with_source_pcm(
+            &batches,
+            0,
             &NeuralRhythms::default(),
             &mut runtime.pcm,
             |_, _, _, _| {},
         );
-        runtime.observe(now, rendered.habitat, &params);
-        let counts = crate::runtime_profile::finish_allocations().unwrap();
-        assert_eq!(counts.count, 0, "prepared body hop {frame}");
-        assert_eq!(counts.bytes, 0, "prepared body hop {frame}");
+        runtime.observe(0, frame.habitat, &params);
+        // Warm diagnostic TLS before measuring the production body path.
+        let _ = take_costs();
+        for frame in 1..25 {
+            let now = frame * runtime.time.hop as Tick;
+            crate::runtime_profile::begin_allocations();
+            runtime.prepare(&voices, now, &params);
+            for source in &mut runtime.sources {
+                // Force a new current density and modulator recipe, with existing Tone storage.
+                let mut recipe = voices
+                    .iter()
+                    .find(|voice| voice.id() == source.id)
+                    .unwrap()
+                    .representative_body_recipe(params.fs, 48000);
+                recipe.renderer_phase3 = native;
+                recipe.modulator = RenderModulatorSpec::DroneSway {
+                    phase: 0.,
+                    sway_rate: 0.3 + frame as f32 * 0.01,
+                };
+                source.prepare_body(&recipe);
+                let _ = source.score((440. + frame as f32).log2(), &params, &shared);
+            }
+            let rendered = renderer.render_with_source_pcm(
+                &[],
+                now,
+                &NeuralRhythms::default(),
+                &mut runtime.pcm,
+                |_, _, _, _| {},
+            );
+            runtime.observe(now, rendered.habitat, &params);
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!(counts.count, 0, "prepared body hop {frame}");
+            assert_eq!(counts.bytes, 0, "prepared body hop {frame}");
+        }
+        assert!(
+            runtime
+                .sources
+                .iter()
+                .all(|source| source.density_builds > 1)
+        );
     }
-    assert!(
-        runtime
-            .sources
-            .iter()
-            .all(|source| source.density_builds > 1)
-    );
+}
+
+#[test]
+fn native_body_models_exclude_modal_sources() {
+    crate::life::modal::register_modal();
+    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+    let voices = [
+        voice(1, 0, BodyMethod::Sine),
+        voice(2, 0, BodyMethod::Harmonic),
+        voice(3, 0, BodyMethod::Modal),
+    ];
+    for native in [false, true] {
+        let mut runtime =
+            BodyMetabolism::new(nsgt.clone(), &params, settings(8)).with_renderer_phase3(native);
+        runtime.prepare(&voices, 0, &params);
+        assert_eq!(runtime.sources.len(), if native { 2 } else { 3 });
+        assert_eq!(runtime.pcm.len(), runtime.sources.len());
+        assert!(
+            runtime.sources.iter().all(|source| source
+                .probe
+                .as_ref()
+                .unwrap()
+                .recipe
+                .renderer_phase3
+                == native)
+        );
+    }
 }

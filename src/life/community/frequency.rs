@@ -448,7 +448,7 @@ mod tests {
         let hi = 400.0;
         let occupied_hz = space.freq_of_index(space.nearest_index(220.0));
         let mut pop = test_pop();
-        pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+        pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
         let control = VoiceControl::default();
         let mut rng = rand::rngs::StdRng::seed_from_u64(73);
         let strategy = SpawnStrategy::Field {
@@ -494,7 +494,7 @@ mod tests {
         }
         let legacy = test_pop();
         let mut enabled = test_pop();
-        enabled.enable_birth_surrogate(0.23, 1e-4, Default::default());
+        enabled.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
         let mut control = VoiceControl::default();
         control.body.method = BodyMethod::Harmonic;
         control.body.timbre.motion = 0.9;
@@ -537,8 +537,6 @@ mod tests {
         let mut landscape = LandscapeFrame::new(Log2Space::new(100.0, 1600.0, 24));
         let upper = landscape.space.nearest_index(440.0);
         landscape.consonance_density_mass_eff[upper] = 1.0;
-        let mut pop = test_pop();
-        pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
         let mut control = VoiceControl::default();
         control.body.method = BodyMethod::Harmonic;
         control.body.timbre.spread = 0.0;
@@ -552,13 +550,17 @@ mod tests {
             min_dist_erb: 0.0,
             tension: 0.0,
         };
-        let mut rng = rand::rngs::StdRng::seed_from_u64(9);
-        for _ in 0..32 {
-            let f = pop.decide_frequency(&strategy, &landscape, &mut rng, &[], Some(&control));
-            assert_eq!(
-                landscape.space.nearest_index(f),
-                landscape.space.nearest_index(220.0)
-            );
+        for renderer_phase3 in [false, true] {
+            let mut pop = test_pop();
+            pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), renderer_phase3);
+            let mut rng = rand::rngs::StdRng::seed_from_u64(9);
+            for _ in 0..32 {
+                let f = pop.decide_frequency(&strategy, &landscape, &mut rng, &[], Some(&control));
+                assert_eq!(
+                    landscape.space.nearest_index(f),
+                    landscape.space.nearest_index(220.0)
+                );
+            }
         }
     }
 
@@ -581,7 +583,7 @@ mod tests {
                     fs: 48000.0,
                     hop: 512,
                 });
-                pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+                pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
                 let mut spec = super::super::tests::spawn_spec_with_freq(440.0);
                 spec.control.body.method = BodyMethod::Harmonic;
                 spec.control.body.timbre.spread = 0.0;

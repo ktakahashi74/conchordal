@@ -41,12 +41,6 @@ fn render_birth_metabolism_flags(
     let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured = Arc::clone(&snapshots);
     let probe: OfflineBodyProbe = Box::new(move |state, now, _, pcm| {
-        if prototype {
-            assert!(
-                state.pop.body_metabolism.is_none(),
-                "replacement renderer enabled legacy PCM capture and body evaluation"
-            );
-        }
         let voices: Vec<_> = state
             .pop
             .voices
@@ -123,14 +117,13 @@ fn render_birth_metabolism_flags(
         .unwrap()
 }
 
-#[test]
-fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
+fn check_birth_metabolism_flags(prototype: bool) {
     let mut runs = Vec::new();
     for birth in [false, true] {
         for metabolism in [false, true] {
             let enabled = metabolism.then_some(true);
-            let first = render_birth_metabolism_flags(birth, enabled, false);
-            let second = render_birth_metabolism_flags(birth, enabled, false);
+            let first = render_birth_metabolism_flags(birth, enabled, prototype);
+            let second = render_birth_metabolism_flags(birth, enabled, prototype);
             assert!(
                 first == second,
                 "non-deterministic flags: birth={birth}, metabolism={metabolism}"
@@ -170,7 +163,7 @@ fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
                         .iter()
                         .all(|row| row.slots.as_array().unwrap().is_empty())
                 );
-                let disabled = render_birth_metabolism_flags(birth, Some(false), false);
+                let disabled = render_birth_metabolism_flags(birth, Some(false), prototype);
                 assert!(
                     first == disabled,
                     "explicitly disabled metabolism changed birth={birth}"
@@ -225,41 +218,13 @@ fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
 }
 
 #[test]
-fn phase3_uses_point_metabolism_without_legacy_pcm_capture_even_with_birth_enabled() {
-    let control = render_birth_metabolism_flags(false, None, true);
-    assert!(!control.is_empty());
-    assert!(control.iter().any(|row| {
-        row.pcm
-            .iter()
-            .flatten()
-            .any(|sample| f32::from_bits(*sample) != 0.0)
-    }));
-    assert!(control.iter().any(|row| {
-        row.voices
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|voice| voice["id"].as_u64().unwrap() > 7)
-    }));
-    for birth in [false, true] {
-        for metabolism in [None, Some(false), Some(true)] {
-            let actual = render_birth_metabolism_flags(birth, metabolism, true);
-            assert!(
-                actual
-                    .iter()
-                    .all(|row| row.slots.as_array().unwrap().is_empty())
-            );
-            assert!(
-                actual == control,
-                "legacy body flag changed Phase 3 energy, births, tails or actual bus PCM: \
-                 birth={birth}, metabolism={metabolism:?}"
-            );
-            println!(
-                "Phase 3 birth={birth} metabolism={metabolism:?}: {} point-metabolism hops",
-                actual.len()
-            );
-        }
-    }
+fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
+    check_birth_metabolism_flags(false);
+}
+
+#[test]
+fn phase3_body_flags_are_deterministic_and_keep_unknown_births() {
+    check_birth_metabolism_flags(true);
 }
 
 #[test]
@@ -271,6 +236,7 @@ fn b7_dynamic_etude_render() {
         .map(|value| value.parse::<u64>().unwrap())
         .unwrap_or(42);
     let config = AppConfig {
+        render_prototype: std::env::var("N1_NATIVE").as_deref() == Ok("1"),
         body_metabolism: Some(crate::config::BodyMetabolismConfig {
             enabled: true,
             updates_per_hop: 2,

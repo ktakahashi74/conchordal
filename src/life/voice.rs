@@ -1141,8 +1141,12 @@ impl Voice {
         self.body.snapshot()
     }
 
-    pub(crate) fn supports_body_metabolism(&self) -> bool {
-        sound_body::supports_legacy_renderer(&self.effective_control, &self.body.snapshot())
+    pub(crate) fn supports_body_metabolism(&self, renderer_phase3: bool) -> bool {
+        sound_body::supports_body_model(
+            &self.effective_control,
+            &self.body.snapshot(),
+            renderer_phase3,
+        )
     }
 
     pub(crate) fn representative_body_recipe(

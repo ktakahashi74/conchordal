@@ -55,6 +55,29 @@ wait(0.03);
         if body != "modal" {
             assert_eq!(pcm.last(), Some(&0));
         }
+        let profile = dir.join(format!("{body}-instrument.json"));
+        let instrument = Command::new(env!("CARGO_BIN_EXE_conchordal"))
+            .arg(&script)
+            .arg("--config")
+            .arg(&config)
+            .args(["--nogui", "--play=false", "--seed", "73", "--profile"])
+            .arg(&profile)
+            .env("RUST_LOG", "warn")
+            .output()
+            .unwrap();
+        assert!(
+            instrument.status.success(),
+            "{}",
+            String::from_utf8_lossy(&instrument.stderr)
+        );
+        let instrument: serde_json::Value =
+            serde_json::from_slice(&fs::read(profile).unwrap()).unwrap();
+        assert_eq!(instrument["audio_output"], "no_device");
+        assert_eq!(
+            instrument["summary"]["hop_count"].as_u64().unwrap() as usize * 512,
+            pcm.len(),
+            "instrument Finish differs from offline disposal for {body}"
+        );
         lengths.push(pcm.len());
     }
     assert!(
@@ -65,7 +88,7 @@ wait(0.03);
 }
 
 #[test]
-fn phase3_binary_is_seeded_and_reports_unsupported_models_with_real_audio() {
+fn phase3_binary_is_seeded_and_reports_body_capabilities_with_real_audio() {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -166,11 +189,24 @@ wait(0.1);
             .filter(|row| row["type"] == "body_footprint")
             .collect();
         assert!(!footprints.is_empty());
-        assert!(
-            footprints
-                .iter()
-                .all(|row| row["state"]["unsupported"] == "renderer-phase3")
-        );
+        for row in &footprints {
+            let source = row["identity"]["source_id"].as_u64().unwrap();
+            if matches!(source, 3 | 6) {
+                assert_eq!(row["state"]["unsupported"], "renderer-phase3");
+                assert_eq!(row["d_samples"], 0);
+            } else {
+                assert!(matches!(source, 1 | 2 | 4 | 5));
+                assert_eq!(row["state"], "body");
+                assert!(row["d_samples"].as_u64().unwrap() > 0);
+            }
+        }
+        for source in [4, 5, 6] {
+            assert!(
+                footprints
+                    .iter()
+                    .any(|row| row["identity"]["source_id"] == source)
+            );
+        }
         if let Some(expected) = &baseline {
             assert_eq!(&pcm, expected);
         }
@@ -184,7 +220,7 @@ wait(0.1);
 }
 
 #[test]
-fn phase3_field_birth_uses_legacy_placement_instead_of_factory_surrogates() {
+fn phase3_modal_field_birth_keeps_terrain_placement() {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -198,11 +234,9 @@ fn phase3_field_birth_uses_legacy_placement_instead_of_factory_surrogates() {
     fs::write(&script, r#"
 let terrain = place(sine().amp(0.2).sustain().anchor(), at(440.0));
 wait(1.5);
-let a = place(sine().amp(0.01).sustain().anchor(), consonance(180.0, 500.0).count(3));
-let b = place(harmonic().modes(custom_modes([1.0, 2.9])).amp(0.01).sustain().anchor(), consonance(180.0, 500.0).count(3));
 let c = place(modal().modes(custom_modes([1.0, 2.9])).brightness(1.0).amp(0.01).sustain().anchor(), consonance(180.0, 500.0).peak().count(3));
 wait(0.15);
-release(a); release(b); release(c); release(terrain);
+release(c); release(terrain);
 wait(0.1);
 "#).unwrap();
     let mut legacy_births = Vec::new();
@@ -240,13 +274,13 @@ wait(0.1);
                 .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
                 .filter(|row| row["type"] == "spawn")
                 .collect();
-            assert_eq!(births.len(), 10);
+            assert_eq!(births.len(), 4);
             if prototype {
                 let result = (births, fs::read(&wav).unwrap());
                 if let Some(control) = &prototype_control {
                     assert_eq!(
                         &result, control,
-                        "new renderer inherited the legacy factory capability"
+                        "native Modal must retain terrain-only placement"
                     );
                 } else {
                     prototype_control = Some(result);

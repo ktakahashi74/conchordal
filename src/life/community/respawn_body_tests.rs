@@ -54,7 +54,7 @@ fn respawn_body_level_uses_configured_sigmoid_and_upper_partials() {
         beta: 3.0,
         theta: 0.1,
     };
-    pop.enable_birth_surrogate(0.23, 1e-4, repr);
+    pop.enable_birth_surrogate(0.23, 1e-4, repr, false);
     let mut control = crate::scenario::control::VoiceControl::default();
     control.body.method = BodyMethod::Harmonic;
     control.body.timbre.motion = 0.0;
@@ -104,7 +104,7 @@ fn respawn_body_level_uses_configured_sigmoid_and_upper_partials() {
 #[test]
 fn excluded_final_patterns_keep_legacy_selection_and_rng() {
     let mut pop = test_pop();
-    pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+    pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
     let legacy = test_pop();
     let mut control = crate::scenario::control::VoiceControl::default();
     control.body.method = BodyMethod::Harmonic;
@@ -181,7 +181,7 @@ fn n2_saved_final_distribution() {
         fs: 48000.0,
         hop: 512,
     });
-    pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+    pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
     let mut landscape = None;
     let mut old = Vec::new();
     let mut new = Vec::new();
@@ -384,7 +384,7 @@ fn n2_peak_render_reference() {
         fs: 48000.0,
         hop: 512,
     });
-    pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+    pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
     let pilot = std::env::var_os("N2_PILOT").is_some();
     let file = if pilot {
         "peak-pilot.jsonl"
@@ -544,7 +544,7 @@ fn n2_peak_render_reference() {
 #[test]
 fn peak_body_capability_matches_measured_recipe_domains() {
     let mut pop = test_pop();
-    pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+    pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
     let landscape = super::super::tests::peak_bias_landscape();
     let mut state = population(crate::scenario::control::VoiceControl::default());
     state.respawn_policy = RespawnPolicy::PeakBiased {
@@ -575,7 +575,7 @@ fn peak_body_capability_matches_measured_recipe_domains() {
 #[test]
 fn constant_body_scene_keeps_random_and_hereditary_rng_and_parent_rules() {
     let mut pop = test_pop();
-    pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+    pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
     let legacy = test_pop();
     let mut control = crate::scenario::control::VoiceControl::default();
     control.body.method = BodyMethod::Harmonic;
@@ -623,6 +623,103 @@ fn constant_body_scene_keeps_random_and_hereditary_rng_and_parent_rules() {
 }
 
 #[test]
+fn native_respawn_field_proposals_keep_body_placement() {
+    let mut native = test_pop();
+    native.enable_birth_surrogate(0.23, 1e-4, Default::default(), true);
+    let mut control = crate::scenario::control::VoiceControl::default();
+    control.body.method = BodyMethod::Harmonic;
+    control.body.timbre.spread = 0.0;
+    control.body.timbre.motion = 0.0;
+    control.body.modes = Some(ModePattern::custom_modes(vec![1.0, 2.0]));
+    let mut state = population(control);
+    state.strategy = Some(SpawnStrategy::Field {
+        target: crate::scenario::FieldTarget::Consonance,
+        sampling: crate::scenario::FieldSampling::Density,
+        min_freq: 200.0,
+        max_freq: 240.0,
+        min_dist_erb: 0.0,
+        tension: 0.0,
+    });
+    let mut landscape = LandscapeFrame::new(Log2Space::new(100.0, 1600.0, 24));
+    let upper = landscape.space.nearest_index(440.0);
+    landscape.consonance_density_mass_eff[upper] = 1.0;
+    let mut rng = SmallRng::seed_from_u64(9);
+    for _ in 0..32 {
+        let frequency = native.random_respawn_frequency(&state, &landscape, &mut rng, 0);
+        assert_eq!(
+            landscape.space.nearest_index(frequency),
+            landscape.space.nearest_index(220.0)
+        );
+    }
+}
+
+#[test]
+fn native_final_respawn_keeps_terrain_selection_rng_lineage_and_thresholds() {
+    let mut native = test_pop();
+    let repr = ConsonanceRepresentationParams {
+        beta: 3.0,
+        theta: 0.1,
+    };
+    native.enable_birth_surrogate(0.23, 1e-4, repr, true);
+    let terrain = test_pop();
+    let mut landscape = super::super::tests::peak_bias_landscape();
+    landscape.consonance_density_mass_eff.fill(0.5);
+    let parents = BTreeMap::from([(
+        1,
+        vec![ParentCandidate {
+            id: 17,
+            freq_hz: 440.0,
+            energy: 1.0,
+            generation: 3,
+        }],
+    )]);
+    for method in [BodyMethod::Sine, BodyMethod::Harmonic, BodyMethod::Modal] {
+        let mut control = crate::scenario::control::VoiceControl::default();
+        control.body.method = method;
+        control.body.timbre.spread = 0.0;
+        control.body.timbre.motion = 0.0;
+        control.body.modes = Some(ModePattern::custom_modes(vec![2.0]));
+        let mut state = population(control);
+        // Keep proposals identical to isolate final selection from Field placement.
+        state.strategy = Some(SpawnStrategy::Linear {
+            start_freq: 220.0,
+            end_freq: 880.0,
+        });
+        state.spawn_count_hint = 16;
+        for policy in [
+            RespawnPolicy::None,
+            RespawnPolicy::Random,
+            RespawnPolicy::Hereditary { sigma_oct: 0.1 },
+            RespawnPolicy::PeakBiased {
+                config: Default::default(),
+            },
+        ] {
+            state.respawn_policy = policy;
+            let mut scores = [f32::NAN];
+            assert!(!native.respawn_body_scores(&state, &landscape, &[440.0], &mut scores));
+            assert!(scores[0].is_nan());
+            assert_eq!(
+                native.respawn_level(&state, &landscape, 440.0).to_bits(),
+                landscape.evaluate_pitch_level(440.0).to_bits()
+            );
+            for minimum in [None, Some(0.22), Some(0.8)] {
+                state.respawn_min_c_level = minimum;
+                for seed in 0..16 {
+                    let mut a = SmallRng::seed_from_u64(seed);
+                    let mut b = a.clone();
+                    let on =
+                        native.pick_respawn_candidate(1, &state, &parents, &landscape, &mut a, 0);
+                    let off =
+                        terrain.pick_respawn_candidate(1, &state, &parents, &landscape, &mut b, 0);
+                    assert_eq!(on, off, "{method:?} {policy:?} {minimum:?} {seed}");
+                    assert_eq!(a.next_u64(), b.next_u64());
+                }
+            }
+        }
+    }
+}
+
+#[test]
 #[ignore = "registered release respawn cost diagnostic; requires N2_ARTIFACT_DIR"]
 fn n2_respawn_cost() {
     let dir = std::path::PathBuf::from(std::env::var("N2_ARTIFACT_DIR").unwrap());
@@ -635,7 +732,7 @@ fn n2_respawn_cost() {
         fs: 48000.0,
         hop: 512,
     });
-    pop.enable_birth_surrogate(0.23, 1e-4, Default::default());
+    pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
     let legacy = Community::new(Timebase {
         fs: 48000.0,
         hop: 512,
@@ -707,7 +804,7 @@ fn n2_respawn_cost() {
 #[test]
 fn finite_body_scores_with_overflowing_weight_sum_still_choose_a_candidate() {
     let mut pop = test_pop();
-    pop.enable_birth_surrogate(0.23, 1e30, Default::default());
+    pop.enable_birth_surrogate(0.23, 1e30, Default::default(), false);
     let mut control = crate::scenario::control::VoiceControl::default();
     control.body.method = BodyMethod::Harmonic;
     control.body.timbre.spread = 0.0;

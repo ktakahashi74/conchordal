@@ -252,12 +252,12 @@ impl Community {
         loudness_exp: f32,
         ref_power: f32,
         repr: crate::core::consonance_kernel::ConsonanceRepresentationParams,
+        renderer_phase3: bool,
     ) {
-        *self.birth_surrogate.get_mut() = Some(super::sound::birth_surrogate::BirthSurrogate::new(
-            self.time,
-            loudness_exp,
-            ref_power,
-        ));
+        *self.birth_surrogate.get_mut() = Some(
+            super::sound::birth_surrogate::BirthSurrogate::new(self.time, loudness_exp, ref_power)
+                .with_renderer_phase3(renderer_phase3),
+        );
         self.birth_surrogate.get_mut().as_mut().unwrap().level_repr = repr;
     }
 

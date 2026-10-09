@@ -76,6 +76,7 @@ impl Tone {
     pub(crate) fn reset_representative(&mut self, template: &Self, pitch_hz: f32) {
         assert!(!template.started && template.pending_updates.is_empty());
         self.backend.reset_representative();
+        self.excited = template.excited.clone();
         self.render_modulator = template.render_modulator.clone();
         self.pending_impulse_energy = template.pending_impulse_energy;
         self.envelope = template.envelope;
@@ -776,6 +777,10 @@ impl Tone {
         );
         let envelope = release.map_or(self.envelope, |at| self.envelope.with_release(at));
         (self.current_pitch_hz, self.current_amp, envelope)
+    }
+
+    pub(crate) fn excitation_end_tick(&self) -> Tick {
+        self.envelope.release_end
     }
 
     pub fn end_tick(&self) -> Tick {

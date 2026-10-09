@@ -48,6 +48,8 @@ pub(crate) struct Evaluator {
     last_evaluated: Option<Tick>,
     visit_number: u64,
     scored_epoch: u64,
+    #[cfg(test)]
+    reference_every_substep: bool,
     held: Option<BodyFitness>,
     density_pitch: Option<u32>,
     analysis_key: [u32; 4],
@@ -76,6 +78,7 @@ impl Evaluator {
         self.density_recipe_changes += u64::from(self.density_pitch.is_some());
         self.density_pitch = None;
         if let Some(probe) = self.probe.as_mut()
+            && probe.recipe.renderer_phase3 == recipe.renderer_phase3
             && probe.recipe.body == recipe.body
             && probe.recipe.hold == recipe.hold
             && probe.recipe.adsr == recipe.adsr
@@ -103,6 +106,9 @@ impl Evaluator {
             self.probe = None;
             return;
         };
+        if recipe.renderer_phase3 {
+            template.enable_phase3();
+        }
         template.set_smoothing_tau_sec(recipe.smoothing_tau_sec);
         let kick = OnsetKick { strength: 1. };
         template.schedule_planned_kick(kick);
@@ -134,6 +140,10 @@ impl Evaluator {
     ) -> Result<BodyFitness, Unavailable> {
         #[cfg(test)]
         let started = std::time::Instant::now();
+        #[cfg(test)]
+        if self.reference_every_substep {
+            return self.score_valid(pitch_log2, params, shared);
+        }
         if self.scored_epoch != self.epoch {
             self.held = self.score_valid(pitch_log2, params, shared).ok();
             self.scored_epoch = self.epoch;
@@ -234,6 +244,7 @@ pub(crate) struct BodyMetabolism {
     subtraction: Vec<f32>,
     time: Timebase,
     settings: BodyMetabolismConfig,
+    renderer_phase3: bool,
     next_sample: Tick,
     latest_visit: u64,
     valid: bool,
@@ -257,11 +268,17 @@ impl BodyMetabolism {
             subtraction: vec![0.; time.hop],
             time,
             settings,
+            renderer_phase3: false,
             next_sample: 0,
             latest_visit: 0,
             valid: true,
             params: params.clone(),
         }
+    }
+
+    pub(crate) fn with_renderer_phase3(mut self, renderer_phase3: bool) -> Self {
+        self.renderer_phase3 = renderer_phase3;
+        self
     }
 
     pub(crate) fn prepare(&mut self, voices: &[Voice], now: Tick, params: &LandscapeParams) {
@@ -295,7 +312,7 @@ impl BodyMetabolism {
         for voice in voices {
             if !self.sources.iter().any(|source| {
                 (source.id, source.generation) == (voice.id(), voice.metadata.generation)
-            }) && !voice.supports_body_metabolism()
+            }) && !voice.supports_body_metabolism(self.renderer_phase3)
             {
                 continue;
             }
@@ -332,6 +349,8 @@ impl BodyMetabolism {
                         last_evaluated: None,
                         visit_number: self.latest_visit,
                         scored_epoch: 0,
+                        #[cfg(test)]
+                        reference_every_substep: assay::native_reference(),
                         held: None,
                         density_pitch: None,
                         analysis_key: [
@@ -357,7 +376,9 @@ impl BodyMetabolism {
             if !source.valid {
                 source.held = None;
             }
-            source.prepare_body(&voice.representative_body_recipe(self.time.fs, hold));
+            let mut recipe = voice.representative_body_recipe(self.time.fs, hold);
+            recipe.renderer_phase3 = self.renderer_phase3;
+            source.prepare_body(&recipe);
         }
         #[cfg(test)]
         assay::cost("prepare", started.elapsed().as_secs_f64());
@@ -407,6 +428,12 @@ impl BodyMetabolism {
 
     fn select_next(&mut self, now: Tick, end: Tick) {
         let budget = self.settings.updates_per_hop.min(self.sources.len());
+        #[cfg(test)]
+        let budget = if assay::native_reference() {
+            self.sources.len()
+        } else {
+            budget
+        };
         if budget == 0 {
             return;
         }

@@ -207,8 +207,10 @@ impl SoundBody for ModalBody {
 struct ModalBodyFactory;
 
 impl SoundBodyFactory for ModalBodyFactory {
-    fn legacy_renderer_kind(&self) -> Option<BodyKind> {
-        Some(BodyKind::Modal)
+    fn model_kind(&self, renderer_phase3: bool) -> Option<BodyKind> {
+        BodyKind::Modal
+            .supports_body_models(renderer_phase3)
+            .then_some(BodyKind::Modal)
     }
 
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {

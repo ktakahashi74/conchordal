@@ -1342,7 +1342,7 @@ mod tests {
     #[test]
     fn unsupported_birth_surrogate_preserves_respawn_final_selection_and_lineage() {
         let mut enabled = test_pop();
-        enabled.enable_birth_surrogate(0.23, 1e-4, Default::default());
+        enabled.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
         let legacy = test_pop();
         let mut landscape = peak_bias_landscape();
         landscape.consonance_density_mass_eff.fill(0.5);

@@ -277,7 +277,7 @@ pub struct AppConfig {
     /// Body-weighted energy metabolism; omission leaves the point path unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body_metabolism: Option<BodyMetabolismConfig>,
-    /// Opt-in offline renderer; omission preserves the legacy path.
+    /// Opt-in excitation renderer; omission preserves the legacy path.
     #[serde(default)]
     pub render_prototype: bool,
     #[serde(default)]

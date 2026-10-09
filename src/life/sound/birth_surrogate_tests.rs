@@ -55,7 +55,11 @@ fn deterministic_recipe_preview_matches_each_builtin_body() {
                 let slot = work
                     .candidates(&control, &landscape, 0, (hz, hz), |_| 1.0)
                     .unwrap();
-                assert_eq!(legacy_renderer_kind(&control), Some(actual.kind));
+                assert_eq!(model_kind(&control, false), Some(actual.kind));
+                assert_eq!(
+                    model_kind(&control, true),
+                    (actual.kind != BodyKind::Modal).then_some(actual.kind)
+                );
                 assert!(BirthSurrogate::supports_snapshot(&actual));
                 assert!(
                     (work.candidate_mass(slot, landscape.space.nearest_index(hz)) - 1.0).abs()
@@ -92,7 +96,8 @@ fn new_factories_do_not_claim_legacy_renderer_conformance() {
             unreachable!()
         }
     }
-    assert_eq!(NewRenderer.legacy_renderer_kind(), None);
+    assert_eq!(NewRenderer.model_kind(false), None);
+    assert_eq!(NewRenderer.model_kind(true), None);
 }
 
 #[test]
@@ -530,4 +535,181 @@ fn respawn_score_boundary_rejects_misaligned_scan() {
         0,
         &[440.0],
     );
+}
+
+#[test]
+#[ignore = "registered birth distribution acquisition against native PCM"]
+fn native_birth_distribution_conformance() {
+    use crate::core::stream::synchronous::SynchronousAnalysis;
+    use crate::life::phonation_engine::OnsetKick;
+    use crate::life::schedule_renderer::modal_phase_seed;
+    use crate::life::sound::{RenderModulatorSpec, Tone, ToneAdsr};
+    let input = std::env::var("B4_REFERENCE_JSONL").unwrap();
+    let output_dir = std::path::PathBuf::from(std::env::var("N1_BIRTH_OUTPUT").unwrap());
+    let pilot = std::env::var("N1_BIRTH_PILOT").as_deref() == Ok("1");
+    let mut terrains = BTreeMap::new();
+    for line in
+        BufReader::new(std::fs::File::open(std::env::var("B4_ENVIRONMENTS").unwrap()).unwrap())
+            .lines()
+    {
+        let row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        terrains.insert(
+            row["environment"].as_str().unwrap().to_owned(),
+            serde_json::from_value::<Vec<f32>>(row["density_mass_eff_scan"].clone()).unwrap(),
+        );
+    }
+    let (params, kernel, hop) =
+        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+    let space = kernel.space().clone();
+    let mut surrogate = BirthSurrogate::new(
+        Timebase { fs: 48000., hop },
+        params.loudness_exp,
+        params.ref_power,
+    )
+    .with_renderer_phase3(true);
+    assert!(surrogate.set_space(&space));
+    let mut actual_weights = Vec::<f64>::new();
+    let mut model_weights = Vec::<f64>::new();
+    let mut maxima = BTreeMap::<String, f64>::new();
+    let mut output = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(output_dir.join("distributions.jsonl"))
+        .unwrap();
+    let mut candidates = 0;
+    let mut groups = 0;
+    let mut accepted = false;
+    for line in BufReader::new(std::fs::File::open(input).unwrap()).lines() {
+        let row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        if row["schema"] == "direct-body-v2-candidate" {
+            let recipe = &row["recipe"];
+            let body: BodySnapshot = serde_json::from_value(recipe["body"].clone()).unwrap();
+            accepted = body.kind != BodyKind::Modal && BirthSurrogate::supports_snapshot(&body);
+            if !accepted {
+                continue;
+            }
+            let hz = row["candidate_hz"].as_f64().unwrap() as f32;
+            let terrain = &terrains[row["environment"].as_str().unwrap()];
+            space.assert_scan_len_named(terrain, "native_birth_environment_density_mass_scan");
+            assert!(surrogate.prepare(&body, body.ratios.as_deref()));
+            let mass = surrogate.density(body.kind, hz, &space).unwrap();
+            let mut control = VoiceControl::default();
+            control.body.method = match body.kind {
+                BodyKind::Sine => crate::scenario::control::BodyMethod::Sine,
+                BodyKind::Harmonic => crate::scenario::control::BodyMethod::Harmonic,
+                BodyKind::Modal => unreachable!(),
+            };
+            control.body.timbre.brightness = body.brightness;
+            control.body.timbre.inharmonic = body.inharmonic;
+            control.body.timbre.spread = body.spread;
+            control.body.timbre.unison = body.unison;
+            control.body.timbre.motion = body.motion;
+            control.body.modes = body
+                .ratios
+                .as_ref()
+                .map(|r| ModePattern::custom_modes(r.to_vec()));
+            assert_eq!(model_kind(&control, true), Some(body.kind));
+            let mut landscape = LandscapeFrame::new(space.clone());
+            landscape.consonance_density_mass_eff.clone_from(terrain);
+            let slot = surrogate
+                .candidates(&control, &landscape, 0, (hz, hz), |i| terrain[i])
+                .unwrap();
+            model_weights.push(f64::from(
+                surrogate.candidate_mass(slot, space.nearest_index(hz)),
+            ));
+            assert!(mass > 0.);
+            let a = &recipe["adsr"];
+            let adsr = ToneAdsr {
+                attack_sec: a["attack_sec"].as_f64().unwrap() as f32,
+                decay_sec: a["decay_sec"].as_f64().unwrap() as f32,
+                sustain_level: a["sustain_level"].as_f64().unwrap() as f32,
+                release_sec: a["release_sec"].as_f64().unwrap() as f32,
+            };
+            let modulator: RenderModulatorSpec =
+                serde_json::from_value(recipe["modulator"].clone()).unwrap();
+            let mut tone = Tone::from_parts(
+                Timebase { fs: 48000., hop },
+                0,
+                recipe["hold"].as_u64().unwrap(),
+                hz,
+                1.,
+                Some(body),
+                Some(modulator),
+                Some(adsr),
+            )
+            .unwrap();
+            tone.enable_phase3();
+            tone.set_smoothing_tau_sec(recipe["smoothing_tau_sec"].as_f64().unwrap() as f32);
+            tone.seed_modal_phases(modal_phase_seed(row["source_id"].as_u64().unwrap(), 0, 0));
+            tone.schedule_planned_kick(OnsetKick { strength: 1. });
+            tone.arm_onset_trigger(1.);
+            let mut analysis = SynchronousAnalysis::new(kernel.clone(), &params);
+            let mut density_scan = vec![0.; space.n_bins()];
+            let mut pcm = vec![0.; hop];
+            let mut rhythms = crate::core::modulation::NeuralRhythms::default();
+            for frame in 0..72 {
+                let now = frame as u64 * hop as u64;
+                tone.kick_planned_if_due(now);
+                tone.render_block(now, 48000., 1. / 48000., &mut rhythms, &mut pcm);
+                assert!(pcm.iter().all(|v| v.is_finite()));
+                for (sum, &value) in density_scan
+                    .iter_mut()
+                    .zip(analysis.density(&pcm, &params).subjective_intensity)
+                {
+                    *sum += value;
+                }
+            }
+            let total = density_scan
+                .iter()
+                .zip(&surrogate.du_scan)
+                .map(|(&d, &w)| f64::from(d) * f64::from(w))
+                .sum::<f64>();
+            assert!(total.is_finite() && total > 0.);
+            let weight = density_scan
+                .iter()
+                .zip(&surrogate.du_scan)
+                .zip(terrain)
+                .map(|((&d, &w), &m)| f64::from(d) * f64::from(w) * f64::from(m))
+                .sum::<f64>()
+                / total;
+            actual_weights.push(weight);
+            candidates += 1;
+        } else if row["schema"] == "direct-body-v2-selection" && accepted {
+            assert_eq!(actual_weights.len(), 7);
+            assert_eq!(model_weights.len(), 7);
+            let normalize = |v: &[f64]| {
+                let sum = v.iter().sum::<f64>();
+                v.iter()
+                    .map(|&x| {
+                        if sum > 0. {
+                            x / sum
+                        } else {
+                            1. / v.len() as f64
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let p = normalize(&actual_weights);
+            let q = normalize(&model_weights);
+            let tv = 0.5 * p.iter().zip(&q).map(|(p, q)| (p - q).abs()).sum::<f64>();
+            let family = row["case"].as_str().unwrap().to_owned();
+            let max = maxima.entry(family).or_insert(0.);
+            *max = max.max(tv);
+            writeln!(output,"{}",serde_json::json!({"environment":row["environment"],"family":row["case"],"base_hz":row["base_hz"],"tv":tv,"native_pcm_weights":actual_weights,"surrogate_weights":model_weights,"native_probabilities":p,"surrogate_probabilities":q})).unwrap();
+            actual_weights.clear();
+            model_weights.clear();
+            groups += 1;
+            if pilot {
+                break;
+            }
+        }
+    }
+    assert_eq!(
+        (groups, candidates, maxima.len()),
+        if pilot { (1, 7, 1) } else { (64, 448, 8) }
+    );
+    let summary = serde_json::json!({"groups":groups,"candidates":candidates,"families":maxima,"limit":0.1,"pass":maxima.values().all(|&v|v<=0.1),"environment":"immutable recovered B-4 conditions","reference":"72 native PCM hops per saved candidate recipe"});
+    std::fs::write(output_dir.join("summary.json"), format!("{summary}\n")).unwrap();
+    println!("{summary}");
+    assert!(maxima.values().all(|&v| v <= 0.1), "{summary}");
 }

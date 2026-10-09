@@ -1,8 +1,8 @@
 # 次のセッションの始め方
 
-2026-10-09更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果と翌日の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。2026-10-09には新しいrendererの楽器への接続、身体評価の接続・拡張と、結果を変えない削減を入れた。実機の再測定はA・B・A′が合格、B′（新しいrenderer＋身体込み）が不合格だった。
+2026-10-10更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-6の削減とN-7のf32回転kernel共有を経て、2026-10-09夜のN-7のsourceによる再測定はA′（新renderer）・B′（新renderer＋身体込み）とも合格した。昼のB′不合格は履歴として残している。
 
-時間構造は、既存meterと複数層の期待をT-6e／T-6fで机上検査した。群ごとに周期を一つ持つT-6dの推奨は取り下げた。次に要る作者判断は、消費者が読む量の意味と、群ごと・複数層の方向と基準の改訂を設計の正本にするかである。この判断の前に次の単位は起こしていない。20単位の終了を、その設計の採択や実装完了と読み替えない。
+作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れたが、mainへのfast-forwardは未了である。時間構造はT-6g〜T-6jの結果を記録し、原典の図の数値再現を一律の門にした誤りを撤回した。複数周期の設計を先に閉じる作者の方針に従い、T-6kで原理に基づく工学則として継続中である。20単位の終了、作者の受入、mainへの統合、時間構造の設計・実装完了を区別する。
 
 ## 1. 始め方
 
@@ -27,20 +27,24 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 
 ## 2. 先に読むもの
 
-1. [plan-current.md §7](plan-current.md#7-結果)：20単位の閉じ方、[2026-10-09の追加作業](plan-current.md#additional-work-20261009)、残る設計と作者判断。§1〜§6と20単位の表は計画時点・終了時点の記録である。
-2. 設計台帳[§9.3.58の再測定](../design-notes/technote-ledger.ja.md#realtime-remeasurement-20261009)：2026-10-09の四構成の合否、中央値の訂正、外乱の扱い。[§9.3.59の机上検査](../design-notes/technote-ledger.ja.md#temporal-multilayer-desk-20261009)：T-6e／T-6fの結果と、残る二つの作者判断。英語版にも同じ結果がある。
+1. [plan-current.md §7](plan-current.md#7-結果)：20単位の閉じ方、[追加作業](plan-current.md#additional-work-20261009)のN-6・N-7、作者の受入と未統合の区別、残るもの。§1〜§6と20単位の表は計画時点・終了時点の記録である。
+2. 設計台帳[§9.3.58の夜の再測定](../design-notes/technote-ledger.ja.md#native-carrier-remeasurement-20261009)と[動的代謝の受入改訂](../design-notes/technote-ledger.ja.md#body-metabolism-acceptance-revision-20261010)：A′・B′の合格、波形の一致範囲、二つの動的分岐、合否と診断の分離。[§9.3.59の設計継続](../design-notes/technote-ledger.ja.md#temporal-engineering-design-20261010)：T-6g〜T-6jと作者の判断、T-6kの位置づけ。英語版にも同じ結果がある。
 3. `.orchestration/HANDOFF.md`：統括の最新の引継ぎ。`.orchestration/status.md`は単位別の表、`.orchestration/records/decisions-20261007-orchestrator.md`は時刻付きの判断記録である。古い冒頭の更新日時や件数だけで状態を判断しない。
 4. `AGENTS.md`のProgress and Validation Scope、Multi-agent Orchestration、Author Decision Requests、Git Operation Policyと、`.orchestration/units/COMMON.md`。
 
 ## 3. 現在の状態と、残るもの
 
-2026-10-09にmainの一部をoriginへpushし、その後のcommitは未pushである。mainのHEAD・差分、originとの関係、branchの状態は着手時に確認する。校正の記録と再計算の仕組みは`work/t6-calibration-20261008-v1`（`ff9c856`）に残し、mainには入れていない。これは新しい時間構造の実装が済んだ記録ではない。
+2026-10-09にmainを二度originへpushし、N-6以後は未pushである。N-7はbranch `work/n7-oscillator-carrier-20261009-v1`で作者の受入済みだが、mainへのfast-forwardは統括の操作が権限で止まり、作者の操作待ちである。mainのHEAD・差分、originとの関係、N-7の統合状態とbranchの状態は着手時に確認する。校正の記録と再計算の仕組みは`work/t6-calibration-20261008-v1`（`ff9c856`）に残し、mainには入れていない。これは新しい時間構造の実装が済んだ記録ではない。
 
 新しいrendererは楽器でも`render_prototype = true`で選べる。Sine／Harmonicで身体込みの出生8 family、代謝、代表onset footprintが使えるが、Modalは対応外である。旧rendererの再出生の最終選択は方式とfamilyの対応する組だけ身体込みで評価し、新しいrendererではnativeの参照分布がないため身体評価を使わない。
 
-実時間ではA・B・A′が今回の範囲で合格し、B′は静かな状態でも09 Rainで不合格だった。A′の合格を身体込みのB′まで広げない。既定は旧rendererのままであり、新しいrendererを既定にするか、B′の実時間受入、Modalの対応、nativeの再出生の最終選択の参照が残る。
+N-7のsourceによる夜の測定は、A′・B′とも宣言範囲で合格し、昼のB′不合格を解消した。A・Bの旧rendererはN-7で変わらずWAVが一致するため、実機を測り直していない。既定は旧rendererのままで、新しいrendererを既定にするか、Modalの対応、nativeの再出生の最終選択の参照が残る。単音holdのPCM一致を波形全体の旧renderer互換へ広げない。
 
-時間構造は既定で無効で、検出の数値は未採用である。T-6e／T-6fの机上検査後にも、消費者が次のaccentの分布を読むか、窓の占有・位相の期待を読むかと、群ごと・複数層の方向と基準の採択が残る。揺らぎの語彙も未決である。H／RとT2の聴覚前処理の共有は計画しており、作者の2026-10-09の指示は実施時期の延期であって取り下げではない。これらは[plan-current.md §7](plan-current.md#7-結果)で追跡する。
+動的代謝の合否は、静的照合（既存上限0.025）、更新の順番と漏れのなさ、同じseedでの再現性で判定する。動的比較は件数と最初の分岐の原因の報告として残す。更新数2の設定は変更していないが、seed 42での全件一致で選んだ根拠は弱くなり、見直しが残る。静的上限を動的scoreの誤差上限にはしない。別seed・別étudeでの発生率や生態の偏りは未検証である。
+
+時間の期待は拍と間隔の二択にせず、既存の作曲者の語彙でどれだけ拍に乗るかを選ぶ。複数周期の設計をT-6kで先に閉じ、単一拍のES1を先に本体へ入れない。原典との数値照合は公表モデルをそのまま採る場合の条件であり、この設計を一律に止める門にはしない。量の出どころを明示し、自由な量は作者の一度の試聴で選ぶ。試聴は受入条件ではない。T-6kの設計・比較・本体実装は未了で、次の一回型の到来項は既定で無効、検出の数値は未採用のままである。
+
+揺らぎの語彙も未決である。H／RとT2の聴覚前処理の共有は計画しており、作者の2026-10-09の指示は実施時期の延期であって取り下げではない。これらは[plan-current.md §7](plan-current.md#7-結果)で追跡する。
 
 ## 4. 2026-10-07の開始手順の履歴
 

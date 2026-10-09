@@ -7,10 +7,11 @@ only the implemented state and a condensed ledger. Headings, section numbers (§
 §9.3.1–§9.3.55) and HTML anchors are preserved verbatim so existing references remain valid.
 New design findings go here, not to the technote. The moved text is retained as history;
 later adoptions and revisions are recorded with their dates.
-Last updated: 2026-10-09. The two-tier rule, acceptance criteria and revised
-adoptions are in [§9.3.57](#two-tier-rule); real-time acceptance results are in
-[§9.3.58](#realtime-acceptance-scope), and timbre/temporal selection results and
-unresolved design are in [§9.3.59](#temporal-rule-calibration-outcome). Scope,
+Last updated: 2026-10-10. The two-tier rule, acceptance criteria and revised
+adoptions are in [§9.3.57](#two-tier-rule); real-time results and the revised
+dynamic-metabolism acceptance are in [§9.3.58](#realtime-acceptance-scope), and
+timbre/temporal selection results and continuing design are in
+[§9.3.59](#temporal-rule-calibration-outcome). Scope,
 execution order and results of the 20 units follow the
 [current plan](../roadmap/plan-current.md). Earlier sections remain dated records.
 Japanese counterpart: `technote-ledger.ja.md`.
@@ -6354,6 +6355,139 @@ Sources under `.orchestration/units/N-5/realtime/` are
 worker report establishes preparation of the measurement inputs, separately
 from the device pass/fail results.
 
+<a id="native-carrier-remeasurement-20261009"></a>
+
+#### Evening of 2026-10-09: N-6, N-7 and new-renderer remeasurement
+
+**N-6 (`26452a4`, `ceadb4c`).** Coefficients are reused at unchanged pitch, and
+retirement is evaluated once per source/generation per hop. These reductions
+preserve results: all bytes of the WAV files matched the prior version in 28
+conditions. In offline 09, mean sample-rendering time fell by 1.2% for the new
+renderer and 3.0% with body-aware features. The effect was small. The dominant
+cost, carrier normalization per lane and sample, could not be removed while
+preserving results.
+
+**N-7 (implementation `57deac7`, documentation `b754424`).** On 2026-10-09 the
+author adopted the legacy renderer's f32 rotation kernel for Sine/Harmonic
+partials in the new renderer, removing per-sample normalization. Normalization
+had protected future samples of closed tails; the 2026-10-08 decision that
+Sine/Harmonic do not radiate after Off removed that consumer. Modal is unchanged.
+N-7 was accepted on 2026-10-10 under the revised criteria below, but its
+fast-forward into main remains pending. Acceptance and main integration are
+distinct; the commits above identify the version here.
+
+| Check | Result |
+|---|---|
+| Single-tone constant-amplitude hold | All 12,000 samples matched the legacy renderer bit for bit for both Sine and Harmonic. Multiplication-order differences remain during release: maximum absolute differences are 5.96e-8 for Sine and 1.19e-7 for Harmonic. Whole-waveform legacy compatibility is not claimed. |
+| Radiated amplitude | Difference 0 in 210 conditions, separately from whole-PCM equality. |
+| Body-aware birth | Maximum total variation 0.0953 across 8 families and 64 groups, below the existing 0.1 limit. |
+| Static metabolism | Maximum difference from saved reference 1.19e-7 across 57 scenes, below the existing 0.025 limit. |
+| Footprint, default output and tests | Footprints matched native PCM. All bytes of the 12 legacy-renderer WAV files matched the baseline. Full tests: 1,022 passed. |
+
+The new renderer still does not use body-aware final respawn evaluation.
+Single-tone hold equality does not establish native references for general ADSR,
+recipes or respawn policies. Three alternating before/after binary comparisons
+gave offline reductions of 37.4% in sample rendering for native 09, 30.1% in
+synthesis for body-aware 09, and 18.4% in synthesis for body-aware 10. These are
+closed-loop diagnostics using the same inputs, separate from device acceptance.
+
+**Device remeasurement.** The N-7-source release binary was measured on
+2026-10-09 from 22:36 to 22:45. Scope remained R-1's 12 études, blanche, ALSA
+48 kHz/two channels, no GUI and seed 1. Acceptance required zero underrun and
+whole-hop p99 no greater than 10,667 µs. A′ uses the new renderer; B′ also enables
+body-aware birth and metabolism. Neither window overlapped another project's
+job.
+
+| Configuration | Result | Maximum per-performance p99 | Quiet acquisition at `09fb100` | Underrun | Callback errors |
+|---|---|---:|---|---:|---:|
+| A′ | Pass | 6,894 µs (09) | 8,768 µs, pass | 0 | 0 |
+| B′ | **Pass** | 8,929 µs (09) | 11,870 µs, fail | 0 | 0 |
+
+B′'s maximum individual hops were 14,018 µs in 09 and 12,341 µs in 12, above
+budget, but the adopted p99 and underrun criteria were met. The daytime B′
+failure on 2026-10-09 is resolved for this version and declared scope; its failed
+record remains. N-7 does not change the legacy renderer used by A and B. Legacy
+WAV equality was verified, and those configurations were not remeasured on the
+device.
+
+At acquisition time, the candidate still failed the previous dynamic-metabolism
+criterion, so these measurements were reported as candidate diagnostics. On
+2026-10-10 the author revised that acceptance rule and accepted N-7. Because the
+source is unchanged, these acquisitions now provide real-time acceptance. They
+do not record completed main integration.
+
+Sources are `.orchestration/units/N-6/report-2.md`, `N-7/report-2.md`,
+`N-7/realtime/orchestrator-run-quiet.log`,
+`device-A-prime-v1-analysis/analysis.md`, `device-B-prime-v1-analysis/analysis.md`,
+and the orchestrator's decisions at 21:32, 21:53 and 22:45 on 2026-10-09 and
+05:35 on 2026-10-10. The orchestrator performed the device acquisitions.
+
+<a id="body-metabolism-acceptance-revision-20261010"></a>
+
+#### 2026-10-10: revised acceptance for dynamic metabolism
+
+N-7's dynamic metabolism was compared with the native reference that evaluates
+every control substep. Under the existing 10 Generations conditions—seed 42,
+two updates, eight observation frames, a one-second representative hold, birth
+surrogate disabled—identity, parent, generation or time differed in two of 30
+deaths and two of 20 respawns. All events matched for 09 Rain. The prior
+`ceadb4c` matched all registered death/parent-selection fields under the same
+conditions. The new mismatch therefore cannot be separated from N-7 by
+claiming it already existed before that change.
+
+Stage 3 found no local implementation defect. Selection matched FIFO on all
+2,926 hops, with no missed updates, identity mix-ups or invalid observations.
+No evidence indicated that carrier replacement broke metabolism observations
+or own-PCM subtraction. This diagnosis of the observed path is not a general
+proof that the whole implementation is defect-free. Two independent branches
+accounted for the discrepancies.
+
+| Branch | Cause verified from saved inputs |
+|---|---|
+| Voice 20's parent at 13.738667 s | Parent selection samples energy weights. With the same unit-interval draw 0.31443941593170166, the margin at the Voice 17/18 boundary was +0.008292913437 in the reference and −0.013843178749 in the implementation. Total weights were 1.612353801727 and 1.546258091927; the boundary was crossed in opposite directions. |
+| Voice 17's death time | Its envelope crossed threshold 0.001 two control substeps earlier, across a hop boundary. Death report times differed by one hop: 22.688 s in the reference and 22.677334 s in the implementation. This independent threshold crossing came from envelopes already differing before the parent branch, rather than downstream of Voice 20's changed parent. |
+
+Voice 20's generation difference follows directly from the parent branch.
+Voice 26's parent and birth time are downstream of both the parent branch and
+the independent death-hop difference. The first changed parent alone does not
+explain every subsequent discrepancy.
+
+The underlying approximation holds scores until the next update in the
+two-update implementation. Maximum observed age was 39 substeps, or 52 ms.
+Even before the first target branch, the maximum held-score/reference
+difference was 0.308566. The static 0.025 limit is not a dynamic-error bound.
+The prior `ceadb4c` also had a first energy difference at the same 1.002667 s
+and a first target difference at 15.872 s. Its full trajectories were not
+identical; only death and parent decisions all matched.
+
+The orchestrator placed complete death/parent/generation/time equality at seed
+42 in the B-7 and N-1 unit exit criteria. Two updates were selected using that
+equality too: B-6 compared one, two and nine; one differed, while two and nine
+matched death/parent selection. The principle did not specify two updates.
+
+**Author decision, 2026-10-10.** Pass/fail now rests on stationary-scene
+agreement with the reference under the existing 0.025 limit, correct update
+order without omissions, and same-seed reproducibility. Dynamic comparisons
+remain reports of counts and the first branch's cause, rather than pass/fail
+gates. N-7 is accepted in this form. Complete-event equality depended on whether
+the seed encountered close sampling or threshold boundaries, as well as on the
+approximation's quality; waveform differences of order 1e-7 changed the result
+here.
+
+Rates across other seeds or études, and a general dynamic held-score error
+bound, have not been acquired. Statistical absence of ecological bias has not
+been established. This revision weakens the original basis for choosing two
+updates. The value remains configurable and unchanged here, with reassessment
+left for later.
+
+Sources are `.orchestration/units/N-7/report-2.md`, `report-3.md`,
+`stage3/baseline-pinned-analysis.json`, `recording-analysis.json`,
+`parent26-details.json`, `audit.json`, `B-6/report-2.md`, `B-7/brief.md`, and the
+orchestrator's decisions at 23:29 on 2026-10-09 and 05:35 on 2026-10-10. The
+first two `stage3/baseline/` records, for which the shared cache returned the
+candidate test binary, were excluded as baseline evidence. The results used
+come from `stage3/baseline-pinned/` and the saved correct baseline binary.
+
 <a id="temporal-rule-calibration-outcome"></a>
 
 ### 9.3.59 Temporal structure: what rules and signal checks settled, and what they did not (M-3, T-6)
@@ -6509,6 +6643,106 @@ orchestrator's decisions of 2026-10-09 at 09:40 and 11:04. WAV replay for unsave
 phase is approximate. These short, single-Voice controls do not establish general
 success on mixtures or multiple periods, or scientific acceptance. This research
 record is not copied to the public technote.
+
+<a id="temporal-engineering-design-20261010"></a>
+
+#### Evening of 2026-10-09 to 2026-10-10: beat expectations and multiple-period design
+
+**Author decision, evening of 2026-10-09.** Beat-based expectations and
+expectations based on intervals/elapsed time are not an either/or choice.
+Composers use existing `metric()`/`entrained()`/`flow()`, `meter_stability` and
+`temporal_basin` vocabulary to choose how strongly to follow the beat. No new
+knob is added. Beat-based expectations are examined first through the existing
+meter mechanism; the next-single-event arrival term stays disabled by default.
+The consumer choice presented in the preceding entry is no longer the current
+pending either/or decision.
+
+**T-6g.** Checks of Teki et al. (2011), Breska & Deouell (2017) and Bouwer et al.
+(2020) supported distinguishing beat and interval expectations. Both can operate
+on periodic sequences; the studies checked did not supply an exclusive switching
+rule. The orchestrator's claim that the sound determines which operates was too
+strong. CDF representations are not synonymous with interval expectations, nor
+fields with beat expectations.
+
+Reading mean onset-phase direction from the existing production meter put the
+0.5-second control inside the window from onset 3. The 2.25 Hz control remained
+outside: the meter could not move from its initial 2 Hz because drive integrated
+over time was insufficient and approximately 90% of its signed contributions
+cancelled. The field did not flatten on aperiodic controls either. The original
+phase zero was about 150 ms away from onsets. Changing mean-direction readout
+alone does not fix tempo acquisition.
+
+**T-6h.** Candidate ES0 combined an initial hypothesis from observed onset
+intervals, onset-by-onset phase/period corrections, and phase zero aligned with
+the predicted onset. Corrections used the Large & Jones (1999) form; ηφ 0.6 and
+ηp 0.1 came from the checked Simulation 2B, rather than unique product constants.
+Controls acquired 2.25 Hz by onset 6 and 3 Hz by onset 5. The window alignment
+counted here is a phase-error diagnostic, distinct from a future-only next-center
+diagnostic. A single interval's initial hypothesis jumped to 3.81 Hz and 2.96 Hz
+at étude starts, substantially changing 07 and 12, which use default `metric()`.
+This candidate has not been implemented in the main code.
+
+**T-6i.** ES1 withholds that initial hypothesis until the next onset falls in
+the predicted `min(0.2×period, 60 ms)` window. Reusing the existing participation
+window is an engineering rule, not a new period-confirmation threshold. The
+early high-frequency jumps disappeared; maxima became 2.105 Hz in 07 and
+2.066 Hz in 12, although 12 temporarily fell to 1.576 Hz. Requirements to track
+within a fixed number of seconds or confirm within a fixed number of onsets had
+no source and are not imposed.
+
+Passive control B145 placed 145 oscillators over 0.5–4 Hz using the current Hopf
+constants. Periodic-control phases aligned from onset 3, but 2 Hz input produced
+almost equal confidence at 4 Hz: 0.950723 at 2 Hz and 0.947843 at 4 Hz. The checked
+literature did not uniquely determine which beat to pass to `metric()` or how to
+apply the existing tempo preference. B145 is not equated with the full GFNN
+model and its higher-order coupling. The existing mechanism and ES1 have beat
+plus subdivision (2, 3, 4) and bar detectors. What they cannot hold is an
+independent tempo outside integer ratios.
+
+**Author decision, 2026-10-09 at 23:21.** Close the multiple-period design first;
+do not introduce the single-beat ES1 repair into the main code ahead of it.
+
+**T-6j.** The orchestrator placed a gate at the first stage: choose a published
+model and numerically reproduce its figure. For Large, Herrera & Velasco (2015),
+an independent computation used the equations and values of model 6 in the
+authors' public GrFNNRhythm implementation. The preregistered Figure 5B
+comparison expected the motor response maximum at 2 Hz, but the computed
+maximum was 0.75 Hz. Amplitudes were 0.073145454 at 0.75 Hz, 0.057714159 at
+2 Hz, and 0.034445947 at 4 Hz; coefficients were not changed. The public
+implementation simplifies the paper's equations, and the chosen public MIDI
+example has not been shown identical to the figure's stimulus. This is neither
+a refutation of the original model nor a completed reproduction.
+
+With public motor values α −0.4, β1 1.75, β2 −1.25 and ε 1, an isolated
+oscillator lies in the region where only rest is stable, below the DLC boundary
+α≈−0.37701665. Persistence through network coupling is a separate issue. The
+worker followed the gate and stopped without changing coefficients or stimuli
+to obtain a match, or proceeding to the next stages.
+
+**Author correction, 2026-10-10.** Grounding DCC in principles does not require
+numerical equality to an original model. Such comparison is an acceptance
+condition when adopting a published model unchanged. The second condition of
+the [2026-09-20 selection rule](#mechanism-selection-rule) also permits
+engineering rules with explicit thresholds and scales, alongside models
+identified in the literature. The orchestrator's gate for T-6j and the resulting
+recommendation to stop were mistaken and withdrawn. The unmatched T-6j result
+is retained, but does not justify stopping multiple-period design.
+
+Design continues in T-6k as engineering rules grounded in principles. Every
+quantity receives an origin: principle/literature, consumer, existing
+implementation value, or free. Free quantities fixed by neither principle nor
+consumer are selected once by the author's audition. Acceptance uses registered
+causal differences and real-time operation under declared load; audition is
+not an acceptance gate. Neither transplantation of a published model's full
+coefficient set nor early introduction of single-beat ES1 has been adopted.
+T-6k's design, comparison and implementation are not recorded as completed.
+
+Sources are `.orchestration/units/T-6g/report.md`, `T-6h/report.md`,
+`T-6i/report.md`, `T-6j/report-1.md`, `T-6j/report.md`, `T-6k/brief.md`, and the
+orchestrator's decisions at 21:08, 21:37, 21:53, 23:23 and 23:52 on 2026-10-09
+and 05:35 on 2026-10-10. Desk controls and checks in copies outside the main code
+do not establish product implementation, scientific acceptance or completed
+author audition.
 
 ## 9.4 Alignment and Extension Sequence
 

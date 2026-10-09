@@ -73,6 +73,10 @@ pub struct ScheduleRenderer {
     time: Timebase,
     buf_presentation: Vec<f32>,
     buf_habitat: Vec<f32>,
+    scratch_rhythms: Vec<NeuralRhythms>,
+    scratch_pcm: Vec<f32>,
+    #[cfg(test)]
+    sample_major_oracle: bool,
     tones: BTreeMap<ToneKey, RoutedTone>,
     cutoff_tick: Option<Tick>,
     self_sound: Vec<Option<Box<SelfSound>>>,
@@ -89,6 +93,10 @@ impl ScheduleRenderer {
             time,
             buf_presentation: vec![0.0; time.hop],
             buf_habitat: vec![0.0; time.hop],
+            scratch_rhythms: vec![NeuralRhythms::default(); time.hop],
+            scratch_pcm: vec![0.0; time.hop],
+            #[cfg(test)]
+            sample_major_oracle: false,
             tones: BTreeMap::new(),
             cutoff_tick: None,
             self_sound: Vec::new(),
@@ -359,7 +367,7 @@ impl ScheduleRenderer {
 
         let end = now.saturating_add(hop as Tick);
         let dt = 1.0 / fs;
-        let mut rhythms = *rhythms;
+        let rhythms = *rhythms;
         let setup_us = profile_lap(&mut checkpoint);
         self.apply_phonation_batches(phonation_batches, now);
         for (key, tone) in &mut self.tones {
@@ -368,6 +376,110 @@ impl ScheduleRenderer {
             });
         }
         let commands_us = profile_lap(&mut checkpoint);
+        #[cfg(test)]
+        let use_blocks = !self.sample_major_oracle;
+        #[cfg(not(test))]
+        let use_blocks = true;
+        if use_blocks {
+            let samples = (end - now) as usize;
+            let mut sample_rhythms = rhythms;
+            for rhythm in &mut self.scratch_rhythms[..samples] {
+                *rhythm = sample_rhythms;
+                sample_rhythms.advance_in_place(dt);
+            }
+            // Each sample still accumulates in ToneKey order, starting from zero.
+            for rt in self.tones.values_mut() {
+                for (idx, sample) in self.scratch_pcm[..samples].iter_mut().enumerate() {
+                    let tick = now + idx as Tick;
+                    rt.tone.apply_updates_if_due(tick);
+                    rt.tone.kick_planned_if_due(tick);
+                    *sample = rt
+                        .tone
+                        .render_tick(tick, fs, dt, &self.scratch_rhythms[idx]);
+                }
+                let pcm = &self.scratch_pcm[..samples];
+                if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
+                    for (idx, &sample) in pcm.iter().enumerate() {
+                        capture.sample(slot, idx, sample, rt.routing);
+                    }
+                }
+                if let Some(slot) = rt.self_slot {
+                    let sound = self.self_sound[slot]
+                        .as_mut()
+                        .expect("active self-sound slot");
+                    for (out, sample) in sound.body.iter_mut().zip(pcm) {
+                        *out += sample;
+                    }
+                    if rt.routing.to_habitat {
+                        for (out, sample) in sound.habitat.iter_mut().zip(pcm) {
+                            *out += sample;
+                        }
+                    }
+                }
+                if rt.routing.to_presentation {
+                    for (out, sample) in self.buf_presentation.iter_mut().zip(pcm) {
+                        *out += sample;
+                    }
+                }
+                if rt.routing.to_habitat {
+                    for (out, sample) in self.buf_habitat.iter_mut().zip(pcm) {
+                        *out += sample;
+                    }
+                    if let Some(slot) = rt.source_pcm_slot {
+                        for (out, sample) in sources[slot].habitat.iter_mut().zip(pcm) {
+                            *out += sample;
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(test)]
+        if !use_blocks {
+            self.render_sample_major_oracle(now, end, rhythms, sources);
+        }
+        let samples_us = profile_lap(&mut checkpoint);
+
+        for sound in self.self_sound.iter_mut().flatten() {
+            sound.history.process(
+                now,
+                &sound.body,
+                &sound.habitat,
+                &self.buf_habitat,
+                |start, window, matched| emit(sound.source_id, start, window, matched),
+            );
+        }
+        let history_us = profile_lap(&mut checkpoint);
+
+        if let Some(capture) = self.body_capture.as_mut() {
+            capture.end();
+        }
+        let capture_delivery_us = profile_lap(&mut checkpoint);
+        if let Some(profile) = self.profile.as_mut() {
+            *profile = RenderProfile {
+                setup_us,
+                commands_us,
+                samples_us,
+                history_us,
+                capture_delivery_us,
+            };
+        }
+        RenderFrame {
+            presentation: &self.buf_presentation,
+            habitat: &self.buf_habitat,
+        }
+    }
+
+    // Frozen sample-major loop from main 792ae36; test oracle only.
+    #[cfg(test)]
+    fn render_sample_major_oracle(
+        &mut self,
+        now: Tick,
+        end: Tick,
+        mut rhythms: NeuralRhythms,
+        sources: &mut [SourcePcm],
+    ) {
+        let fs = self.time.fs;
+        let dt = 1.0 / fs;
         for tick in now..end {
             let idx = (tick - now) as usize;
             let mut acc_presentation = 0.0f32;
@@ -402,36 +514,6 @@ impl ScheduleRenderer {
             self.buf_presentation[idx] = acc_presentation;
             self.buf_habitat[idx] = acc_habitat;
             rhythms.advance_in_place(dt);
-        }
-        let samples_us = profile_lap(&mut checkpoint);
-
-        for sound in self.self_sound.iter_mut().flatten() {
-            sound.history.process(
-                now,
-                &sound.body,
-                &sound.habitat,
-                &self.buf_habitat,
-                |start, window, matched| emit(sound.source_id, start, window, matched),
-            );
-        }
-        let history_us = profile_lap(&mut checkpoint);
-
-        if let Some(capture) = self.body_capture.as_mut() {
-            capture.end();
-        }
-        let capture_delivery_us = profile_lap(&mut checkpoint);
-        if let Some(profile) = self.profile.as_mut() {
-            *profile = RenderProfile {
-                setup_us,
-                commands_us,
-                samples_us,
-                history_us,
-                capture_delivery_us,
-            };
-        }
-        RenderFrame {
-            presentation: &self.buf_presentation,
-            habitat: &self.buf_habitat,
         }
     }
 
@@ -633,6 +715,354 @@ mod tests {
     use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
     use crate::life::sound::{BodyKind, BodySnapshot, RenderModulatorSpec, default_release_ticks};
     use crate::life::voice::{PhonationBatch, ToneSpec};
+
+    fn assert_pcm_bits(actual: &[f32], expected: &[f32]) {
+        assert_eq!(actual.len(), expected.len());
+        for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(actual.to_bits(), expected.to_bits(), "sample {index}");
+        }
+    }
+
+    #[test]
+    fn tone_blocks_match_sample_major_pcm_controls_and_history_bits() {
+        use crate::core::modulation::RhythmBand;
+        use crate::life::sound::{AutonomousPulseSpec, RenderModulatorStateKind};
+        let time = Timebase { fs: 8000., hop: 64 };
+        let rhythms = NeuralRhythms {
+            theta: RhythmBand {
+                phase: 2.9,
+                freq_hz: 7.1,
+                mag: 0.8,
+                alpha: 0.7,
+                beta: 0.3,
+            },
+            delta: RhythmBand {
+                phase: -2.5,
+                freq_hz: 2.3,
+                mag: 0.6,
+                alpha: 0.9,
+                beta: 0.1,
+            },
+            measure: RhythmBand {
+                phase: 0.4,
+                freq_hz: 0.8,
+                mag: 0.5,
+                alpha: 0.6,
+                beta: 0.4,
+            },
+            measure_ratio: 3,
+            env_open: 0.37,
+            env_level: 0.8,
+        };
+        let match_bits =
+            |id: u64,
+             start: u64,
+             window: usize,
+             m: &crate::core::history_prediction::PredictionMatch<'_>| {
+                let mut bits = vec![
+                    id,
+                    start,
+                    window as u64,
+                    m.issued_step,
+                    m.target_step,
+                    m.requested_frame.unwrap_or(u64::MAX),
+                    m.completed_before_issue,
+                ];
+                for values in [
+                    m.history_weight,
+                    m.recurrence,
+                    m.history,
+                    m.mixed,
+                    m.observed,
+                ] {
+                    bits.extend(values.map(|v| u64::from(v.to_bits())));
+                }
+                bits.extend(m.issued_features.unwrap_or(&[]).iter().map(|v| v.to_bits()));
+                bits
+            };
+        for prototype in [false, true] {
+            for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+                let mut actual = ScheduleRenderer::new(time).with_prototype(prototype);
+                let mut oracle = ScheduleRenderer::new(time).with_prototype(prototype);
+                oracle.sample_major_oracle = true;
+                let mut observer = AcousticTemporalExpectation::new(time.fs as u32).unwrap();
+                let mut sources = [2, 2, 3, 9, 12, 999]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, id)| SourcePcm {
+                        id,
+                        generation: if index == 1 { 8 } else { 7 },
+                        habitat: vec![0.; time.hop],
+                    })
+                    .collect::<Vec<_>>();
+                let mut expected_sources = sources
+                    .iter()
+                    .map(|s| SourcePcm {
+                        id: s.id,
+                        generation: s.generation,
+                        habitat: s.habitat.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                let mut batches = Vec::new();
+                // Deliberately insert in a different order from ToneKey traversal.
+                for (index, (source, tone, generation, routing)) in [
+                    (
+                        9,
+                        7,
+                        7,
+                        Routing {
+                            to_presentation: true,
+                            to_habitat: false,
+                        },
+                    ),
+                    (
+                        2,
+                        5,
+                        7,
+                        Routing {
+                            to_presentation: false,
+                            to_habitat: true,
+                        },
+                    ),
+                    (3, 1, 7, Routing::default()),
+                    (2, 3, 8, Routing::default()),
+                    (2, 1, 7, Routing::default()),
+                    (
+                        2,
+                        2,
+                        7,
+                        Routing {
+                            to_presentation: false,
+                            to_habitat: false,
+                        },
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let mut batch = outcome_batch(kind);
+                    batch.source_id = source;
+                    batch.source_generation = generation;
+                    batch.routing = routing;
+                    batch.cmds[0] = ToneCmd::On {
+                        tone_id: tone,
+                        kick: OnsetKick { strength: 0.7 },
+                    };
+                    let spec = &mut batch.tones[0];
+                    spec.tone_id = tone;
+                    spec.onset = [127, 63, 64, 17, 13, 0][index];
+                    spec.hold_ticks = Some(2500);
+                    spec.freq_hz += index as f32 * 59.3;
+                    spec.amp = [0.2, 0.001, 0.7, 0.1, 0.003, 0.4][index];
+                    spec.smoothing_tau_sec = 0.002;
+                    spec.body.spread = 0.23;
+                    spec.body.unison = 3;
+                    spec.body.motion = 0.31;
+                    spec.body.inharmonic = 0.12;
+                    spec.render_modulator = match index % 3 {
+                        0 => RenderModulatorSpec::DroneSway {
+                            phase: 0.3,
+                            sway_rate: 0.7,
+                        },
+                        1 => RenderModulatorSpec::SeqGate { duration_sec: 0.2 },
+                        _ => RenderModulatorSpec::EntrainPulse {
+                            attack_step: 0.03,
+                            decay_rate: 0.97,
+                            sustain_level: 0.4,
+                            initial_state: RenderModulatorStateKind::Idle,
+                            initial_env_level: 0.,
+                            alpha_gain: 0.4,
+                            beta_gain: 0.2,
+                            autonomous_pulse: Some(AutonomousPulseSpec {
+                                rate_hz: 83.,
+                                phase_0_1: 0.3,
+                                retrigger: true,
+                                env_open_threshold: 0.1,
+                                mag_threshold: 0.1,
+                                alpha_threshold: 0.1,
+                            }),
+                        },
+                    };
+                    batches.push(batch);
+                }
+                let mut matched_count = 0;
+                let mut sounded = false;
+                let mut retired_with_tail = false;
+                for hop in 0..600 {
+                    let now = hop * time.hop as Tick;
+                    let ids = if hop < 8 { [2, 3, 9] } else { [2, 3, 12] };
+                    actual.prepare_self_sound(ids.into_iter(), now, &observer);
+                    oracle.prepare_self_sound(ids.into_iter(), now, &observer);
+                    let mut commands = if hop == 0 {
+                        batches.clone()
+                    } else {
+                        Vec::new()
+                    };
+                    if hop == 1 {
+                        let mut controls = batches[4].clone();
+                        controls.tones.clear();
+                        controls.cmds = vec![
+                            ToneCmd::Update {
+                                tone_id: 1,
+                                at_tick: Some(now + 31),
+                                update: ToneUpdate {
+                                    target_freq_hz: Some(521.),
+                                    target_amp: Some(0.11),
+                                    continuous_drive: Some(0.5),
+                                },
+                            },
+                            ToneCmd::Update {
+                                tone_id: 1,
+                                at_tick: Some(now + 31),
+                                update: ToneUpdate {
+                                    target_freq_hz: Some(613.),
+                                    ..Default::default()
+                                },
+                            },
+                            ToneCmd::Update {
+                                tone_id: 1,
+                                at_tick: Some(now + 64),
+                                update: ToneUpdate {
+                                    target_amp: Some(0.04),
+                                    ..Default::default()
+                                },
+                            },
+                            ToneCmd::Off {
+                                tone_id: 1,
+                                off_tick: now + 57,
+                            },
+                        ];
+                        commands.push(controls.clone());
+                        controls.source_generation = 6;
+                        controls.cmds = vec![ToneCmd::Update {
+                            tone_id: 1,
+                            at_tick: None,
+                            update: ToneUpdate {
+                                target_amp: Some(0.9),
+                                ..Default::default()
+                            },
+                        }];
+                        commands.push(controls);
+                    }
+                    if hop == 8 {
+                        retired_with_tail = actual.tones.keys().any(|k| k.source_id == 9);
+                        let mut newborn = batches[0].clone();
+                        newborn.source_id = 12;
+                        newborn.tones[0].onset = now + 23;
+                        commands.push(newborn);
+                    }
+                    if hop == 40 {
+                        actual.shutdown_at(now + 21);
+                        oracle.shutdown_at(now + 21);
+                    }
+                    let mut matches = Vec::new();
+                    let mut expected_matches = Vec::new();
+                    let frame = actual.render_with_source_pcm(
+                        &commands,
+                        now,
+                        &rhythms,
+                        &mut sources,
+                        |id, start, window, m| matches.push(match_bits(id, start, window, m)),
+                    );
+                    let expected = oracle.render_with_source_pcm(
+                        &commands,
+                        now,
+                        &rhythms,
+                        &mut expected_sources,
+                        |id, start, window, m| {
+                            expected_matches.push(match_bits(id, start, window, m))
+                        },
+                    );
+                    assert_pcm_bits(frame.presentation, expected.presentation);
+                    assert_pcm_bits(frame.habitat, expected.habitat);
+                    sounded |= frame.habitat.iter().any(|v| *v != 0.);
+                    observer.process(now, frame.habitat, |_| {});
+                    assert_eq!(matches, expected_matches);
+                    matched_count += matches.len();
+                    for (source, expected) in sources.iter().zip(&expected_sources) {
+                        assert_pcm_bits(&source.habitat, &expected.habitat);
+                    }
+                    assert_eq!(
+                        actual.tones.keys().collect::<Vec<_>>(),
+                        oracle.tones.keys().collect::<Vec<_>>()
+                    );
+                    for id in ids {
+                        let own = actual
+                            .self_sound
+                            .iter_mut()
+                            .flatten()
+                            .find(|s| s.source_id == id)
+                            .unwrap();
+                        let other = oracle
+                            .self_sound
+                            .iter_mut()
+                            .flatten()
+                            .find(|s| s.source_id == id)
+                            .unwrap();
+                        assert_pcm_bits(&own.body, &other.body);
+                        assert_pcm_bits(&own.habitat, &other.habitat);
+                        assert_pcm_bits(&own.history.profile, &other.history.profile);
+                        let through = own.history.observed_through_frame();
+                        assert_eq!(through, other.history.observed_through_frame());
+                        if let Some(start) = through.checked_sub(80) {
+                            assert_eq!(
+                                own.history
+                                    .observed_external_energy(start, through)
+                                    .map(|a| a.map(f32::to_bits)),
+                                other
+                                    .history
+                                    .observed_external_energy(start, through)
+                                    .map(|a| a.map(f32::to_bits))
+                            );
+                        }
+                        if let Some(mut forecast) = observer.forecast() {
+                            let mut expected = forecast.clone();
+                            observer.use_external_energy(&mut forecast, &mut own.history.external);
+                            observer
+                                .use_external_energy(&mut expected, &mut other.history.external);
+                            for ahead in [0, 80, 800, 8000, 32000] {
+                                assert_eq!(
+                                    forecast
+                                        .band_energy_at((now + ahead) as f64)
+                                        .map(|a| a.map(f32::to_bits)),
+                                    expected
+                                        .band_energy_at((now + ahead) as f64)
+                                        .map(|a| a.map(f32::to_bits))
+                                );
+                            }
+                        }
+                        let errors = own.history.take_prediction_errors();
+                        let expected = other.history.take_prediction_errors();
+                        let error_bits = |errors: Option<(
+                            u64,
+                            u64,
+                            usize,
+                            crate::core::history_prediction::PredictionErrorTotals,
+                        )>| {
+                            errors.map(|(from, through, window, e)| {
+                                let mut bits = vec![from, through, window as u64, e.issued];
+                                bits.extend(e.completed);
+                                for matrix in [
+                                    e.recurrence_squared_error,
+                                    e.history_squared_error,
+                                    e.mixed_squared_error,
+                                ] {
+                                    bits.extend(matrix.into_iter().flatten().map(f64::to_bits));
+                                }
+                                bits
+                            })
+                        };
+                        assert_eq!(error_bits(errors), error_bits(expected));
+                    }
+                }
+                assert!(sounded && retired_with_tail && matched_count > 0);
+                assert!(actual.is_idle() && oracle.is_idle(), "{prototype} {kind:?}");
+                println!(
+                    "BLOCK_ORACLE prototype={prototype} body={kind:?} hops=600 matches={matched_count}"
+                );
+            }
+        }
+    }
 
     #[cfg(feature = "profile-alloc")]
     #[test]

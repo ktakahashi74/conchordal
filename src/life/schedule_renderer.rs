@@ -592,6 +592,8 @@ impl ScheduleRenderer {
                                 spec.onset,
                                 tone_id,
                             ));
+                            #[cfg(test)]
+                            tone.set_render_cost_oracle(self.sample_major_oracle);
                             tone.set_smoothing_tau_sec(spec.smoothing_tau_sec);
                             tone.note_on(spec.onset);
                             tone.schedule_planned_kick(kick);
@@ -986,6 +988,11 @@ mod tests {
                         actual.tones.keys().collect::<Vec<_>>(),
                         oracle.tones.keys().collect::<Vec<_>>()
                     );
+                    for (key, actual_tone) in &actual.tones {
+                        actual_tone
+                            .tone
+                            .assert_render_state_bits(&oracle.tones[key].tone);
+                    }
                     for id in ids {
                         let own = actual
                             .self_sound

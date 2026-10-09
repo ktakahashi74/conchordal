@@ -210,6 +210,25 @@ impl ResonatorBank {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn assert_render_state_bits(&self, other: &Self) {
+        for (a, b) in [
+            (&self.x, &other.x),
+            (&self.y, &other.y),
+            (&self.e, &other.e),
+            (&self.r, &other.r),
+            (&self.b1, &other.b1),
+            (&self.b2, &other.b2),
+            (&self.gain, &other.gain),
+            (&self.theta, &other.theta),
+        ] {
+            assert_eq!(
+                a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                b.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+            );
+        }
+    }
+
     pub(crate) fn fs(&self) -> f32 {
         self.fs
     }

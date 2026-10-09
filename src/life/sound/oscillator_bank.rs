@@ -49,6 +49,8 @@ enum OscillatorProfile {
 
 #[derive(Debug, Clone)]
 pub struct OscillatorBank {
+    #[cfg(test)]
+    render_cost_oracle: bool,
     fs: f32,
     profile: OscillatorProfile,
     freq_mul: Vec<f32>,
@@ -190,6 +192,8 @@ impl OscillatorBank {
         damp_exp_padded[..lane_len_real].copy_from_slice(&damp_exp);
 
         Ok(Self {
+            #[cfg(test)]
+            render_cost_oracle: false,
             fs,
             profile,
             freq_mul: freq_mul_padded,
@@ -223,6 +227,36 @@ impl OscillatorBank {
             #[cfg(test)]
             motion_refresh_count: 0,
         })
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_render_cost_oracle(&mut self, enabled: bool) {
+        self.render_cost_oracle = enabled;
+    }
+
+    #[cfg(test)]
+    pub(super) fn assert_render_state_bits(&self, other: &Self) {
+        for (a, b) in [
+            (&self.freq_mul, &other.freq_mul),
+            (&self.base_gain, &other.base_gain),
+            (&self.damp_exp, &other.damp_exp),
+            (&self.x, &other.x),
+            (&self.y, &other.y),
+            (&self.rot_c, &other.rot_c),
+            (&self.rot_s, &other.rot_s),
+            (&self.gain_mask, &other.gain_mask),
+        ] {
+            assert_eq!(
+                a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                b.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+            );
+        }
+        let mut a = self.clone();
+        let mut b = other.clone();
+        a.render_cost_oracle = false;
+        b.render_cost_oracle = false;
+        // Debug uses round-trip representations for the remaining finite scalars.
+        assert_eq!(format!("{a:?}"), format!("{b:?}"));
     }
 
     pub fn is_sine(&self) -> bool {
@@ -428,6 +462,67 @@ impl OscillatorBank {
     }
 
     fn refresh_pitch_state(&mut self, nominal_pitch_hz: f32) {
+        #[cfg(test)]
+        if self.render_cost_oracle {
+            self.refresh_pitch_state_oracle(nominal_pitch_hz);
+            return;
+        }
+        #[cfg(test)]
+        {
+            self.rebuild_count = self.rebuild_count.saturating_add(1);
+        }
+
+        if !nominal_pitch_hz.is_finite() || nominal_pitch_hz <= 0.0 {
+            self.gain_mask.fill(0.0);
+            self.active_lane_len = 0;
+            self.last_modes_len = 0;
+            self.last_built_pitch_hz = nominal_pitch_hz;
+            return;
+        }
+
+        // Identical pitch has identical rotations; damping still resets its base gains.
+        if nominal_pitch_hz.to_bits() == self.last_built_pitch_hz.to_bits() {
+            self.gain_mask[..self.active_lane_len]
+                .copy_from_slice(&self.base_gain[..self.active_lane_len]);
+            self.apply_phase_seed_if_needed();
+            return;
+        }
+
+        let max_freq_hz = (self.fs * 0.49).max(1.0);
+
+        self.active_lane_len = 0;
+        self.last_modes_len = 0;
+        let mut culled_from = self.lane_len_real;
+        for idx in 0..self.lane_len_real {
+            let freq_hz = nominal_pitch_hz * self.freq_mul[idx];
+            let is_active = freq_hz.is_finite() && freq_hz > 0.0 && freq_hz <= max_freq_hz;
+            if !is_active {
+                culled_from = idx;
+                break;
+            }
+
+            let dphi = TAU * freq_hz / self.fs;
+            self.rot_c[idx] = dphi.cos();
+            self.rot_s[idx] = dphi.sin();
+            self.gain_mask[idx] = self.base_gain[idx];
+            self.last_modes_len += 1;
+            self.active_lane_len = idx + 1;
+        }
+        for idx in culled_from..self.lane_len_real {
+            self.gain_mask[idx] = 0.0;
+        }
+        for idx in self.lane_len_real..self.lane_len_simd {
+            self.rot_c[idx] = 1.0;
+            self.rot_s[idx] = 0.0;
+            self.gain_mask[idx] = 0.0;
+        }
+
+        self.apply_phase_seed_if_needed();
+        self.last_built_pitch_hz = nominal_pitch_hz;
+    }
+
+    #[cfg(test)]
+    fn refresh_pitch_state_oracle(&mut self, nominal_pitch_hz: f32) {
         #[cfg(test)]
         {
             self.rebuild_count = self.rebuild_count.saturating_add(1);

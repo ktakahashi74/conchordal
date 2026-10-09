@@ -68,6 +68,67 @@ pub struct Tone {
 }
 
 impl Tone {
+    #[cfg(test)]
+    pub(crate) fn set_render_cost_oracle(&mut self, enabled: bool) {
+        match &mut self.backend {
+            AnyBackend::Oscillator(bank) => bank.set_render_cost_oracle(enabled),
+            AnyBackend::Resonator(engine) => engine.set_render_cost_oracle(enabled),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn assert_render_state_bits(&self, other: &Self) {
+        let floats = |t: &Self| {
+            [
+                t.pending_impulse_energy,
+                t.current_amp,
+                t.target_amp,
+                t.current_pitch_hz,
+                t.target_pitch_hz,
+                t.amp_tau_sec,
+                t.pitch_tau_sec,
+                t.amp_alpha,
+                t.pitch_alpha,
+                t.sample_dt,
+                t.continuous_drive,
+                t.sine_impulse_boost,
+                t.radiated_amplitude,
+                t.envelope.sustain_level,
+                t.envelope.decay_lambda,
+            ]
+            .map(f32::to_bits)
+        };
+        assert_eq!(floats(self), floats(other));
+        assert_eq!(self.envelope, other.envelope);
+        assert_eq!(self.started, other.started);
+        assert_eq!(self.noise_state, other.noise_state);
+        assert_eq!(
+            self.excited.as_ref().map(|s| (s.closed, s.retired)),
+            other.excited.as_ref().map(|s| (s.closed, s.retired))
+        );
+        assert_eq!(
+            format!("{:?}", self.pending_updates),
+            format!("{:?}", other.pending_updates)
+        );
+        assert_eq!(
+            format!("{:?}", self.pending_trigger),
+            format!("{:?}", other.pending_trigger)
+        );
+        assert_eq!(
+            format!("{:?}", self.planned_kick_pending),
+            format!("{:?}", other.planned_kick_pending)
+        );
+        assert_eq!(
+            format!("{:?}", self.render_modulator),
+            format!("{:?}", other.render_modulator)
+        );
+        match (&self.backend, &other.backend) {
+            (AnyBackend::Oscillator(a), AnyBackend::Oscillator(b)) => a.assert_render_state_bits(b),
+            (AnyBackend::Resonator(a), AnyBackend::Resonator(b)) => a.assert_render_state_bits(b),
+            _ => panic!("backend changed"),
+        }
+    }
+
     pub(crate) fn set_representative_modulator(&mut self, spec: RenderModulatorSpec) {
         assert!(!self.started);
         self.render_modulator = Some(RenderModulator::from_spec(spec));

@@ -32,6 +32,9 @@ pub struct ModalMode {
 
 #[derive(Debug, Clone)]
 pub struct ModalEngine {
+    #[cfg(test)]
+    render_cost_oracle: bool,
+    coefficients_seeded: bool,
     bank: ResonatorBank,
     shape: ModeShape,
     scratch: Vec<ModeParams>,
@@ -45,6 +48,7 @@ pub struct ModalEngine {
 impl ModalEngine {
     pub(super) fn reset_representative(&mut self) {
         self.bank.reset_representative();
+        self.coefficients_seeded = false;
         self.scratch.clear();
         self.last_built_pitch_hz = 0.0;
         self.counter = 0;
@@ -57,6 +61,9 @@ impl ModalEngine {
         let bank = ResonatorBank::new(fs, max_modes)?;
         let scratch = Vec::with_capacity(max_modes);
         Ok(Self {
+            #[cfg(test)]
+            render_cost_oracle: false,
+            coefficients_seeded: false,
             bank,
             shape,
             scratch,
@@ -66,6 +73,23 @@ impl ModalEngine {
             last_modes_len: 0,
             pending_modal_phase_seed: None,
         })
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_render_cost_oracle(&mut self, enabled: bool) {
+        self.render_cost_oracle = enabled;
+    }
+
+    #[cfg(test)]
+    pub(super) fn assert_render_state_bits(&self, other: &Self) {
+        self.bank.assert_render_state_bits(&other.bank);
+        let mut a = self.clone();
+        let mut b = other.clone();
+        a.render_cost_oracle = false;
+        b.render_cost_oracle = false;
+        a.coefficients_seeded = false;
+        b.coefficients_seeded = false;
+        assert_eq!(format!("{a:?}"), format!("{b:?}"));
     }
 
     pub fn last_modes_len(&self) -> usize {
@@ -216,6 +240,43 @@ impl ModalEngine {
     }
 
     fn rebuild_modes(&mut self, pitch_hz: f32) {
+        #[cfg(test)]
+        if self.render_cost_oracle {
+            self.rebuild_modes_oracle(pitch_hz);
+            return;
+        }
+        // A seeded coupling must be restored at the next refresh, as before.
+        if pitch_hz.is_finite()
+            && pitch_hz > 0.0
+            && pitch_hz.to_bits() == self.last_built_pitch_hz.to_bits()
+            && !self.coefficients_seeded
+            && self.pending_modal_phase_seed.is_none()
+        {
+            return;
+        }
+        if !pitch_hz.is_finite() || pitch_hz <= 0.0 {
+            self.last_modes_len = 0;
+            let _ = self.bank.set_modes_preserve_state(&[]);
+            self.last_built_pitch_hz = pitch_hz;
+            return;
+        }
+        let limit = self.bank.capacity();
+        self.shape.build_modes(pitch_hz, limit, &mut self.scratch);
+        self.last_modes_len = self.scratch.len();
+        let _ = self
+            .bank
+            .set_modes_preserve_state(&self.scratch[..self.last_modes_len]);
+        self.coefficients_seeded = false;
+        if matches!(self.shape, ModeShape::Modal { .. })
+            && let Some(seed) = self.pending_modal_phase_seed.take()
+        {
+            self.bank.randomize_input_phase_from_seed(seed);
+            self.coefficients_seeded = true;
+        }
+        self.last_built_pitch_hz = pitch_hz;
+    }
+    #[cfg(test)]
+    fn rebuild_modes_oracle(&mut self, pitch_hz: f32) {
         if !pitch_hz.is_finite() || pitch_hz <= 0.0 {
             self.last_modes_len = 0;
             let _ = self.bank.set_modes_preserve_state(&[]);

@@ -183,7 +183,9 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
     unless `--report` attached a reporter;
   - the harmonicity projection in `drive_and_apply_habituation`
     (`src/runtime/mod.rs`, `potential_h_from_log2_spectrum` returns an owned `Vec`),
-    which only runs when `[psychoacoustics.habituation]` is enabled (default off).
+    which now runs on the default steady-state path because
+    `[psychoacoustics.habituation]` is enabled by default. Explicit `enabled = false`
+    skips this existing projection; the default change adds no allocation path.
   Two more sit off the steady-state path: the analysis-lag warning string in
   `AudioMonitor::update` (`src/runtime/mod.rs`, at most once a second) and the space
   clones in `merge_latest_analysis_results` (`src/runtime/mod.rs`, only on a
@@ -332,7 +334,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
     `src/listener_twin/mod.rs`.
   - UI and diagnostics read the base views (`src/ui/windows.rs`), so the display
     shows the un-eroded terrain.
-- With habituation disabled (the default) the `_eff` views equal their base variants
+- With habituation explicitly disabled the `_eff` views equal their base variants
   bit-exact, so reading the eroded view is always correct for behavior.
 
 ## Config Keys
@@ -344,7 +346,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - `roughness_gain` (`rho`, default: `1.0`)
 - `rho` is density roughness sensitivity; negative values clamp to `0`, non-finite values sanitize to `1`.
 - `[psychoacoustics.habituation]`
-- `enabled` (default: `false`), `satiation_sec` (`5.0`), `recovery_sec` (`8.0`),
+- `enabled` (default: `true`), `satiation_sec` (`5.0`), `recovery_sec` (`8.0`),
   `ref_drive` (`0.25`)
 - When `enabled = false` the `_eff` consonance views equal their base variants.
 

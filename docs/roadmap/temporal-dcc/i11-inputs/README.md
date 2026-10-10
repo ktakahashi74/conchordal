@@ -258,3 +258,11 @@ python3 scripts/summarize_i11_representative_gap.py "$OUT" --output "$OUT/summar
 変更後、既存の取得データに対して `hop_path.py`・`api_effect.py`・`aa_floor_check.py` を走らせ、移設前の
 出力と一致することを確認した（`hop_path.py` は `plan.json` の `cases` が12条件に戻るため64 Voiceの4条件が
 増えるが、共通する8条件の中身は完全に一致する）。
+
+## 2026-10-10：慣れの既定変更後の対照
+
+ここにある入力と登録済みhashは変更しない。`acquire.py`は元入力を照合した後、
+慣れを明示的に無効にした派生設定を測定先の`habituation-off-controls/`へ作り、
+元設定と実行設定の両hashを記録する。現在の既定で元TOMLを直接実行すると対照の意味が変わる。
+同じ方法をstage-2の手動再生にも使い、元の登録と取得結果は保持する。
+この追記は再取得の指示でも、新しい結果の登録でもない。

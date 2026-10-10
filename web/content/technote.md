@@ -288,9 +288,9 @@ The state relaxes asymmetrically toward that drive:
 
 $$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
 
-with $\tau=\tau_e$ while the drive is rising and $\tau=\tau_r$ while it is falling. `satiation_sec` and `recovery_sec` are defined as the times to reach 90% erosion and 90% recovery respectively, so the implementation uses $\tau_e=T_s/\ln 10$ and $\tau_r=T_r/\ln 10$. The effective score relaxes toward the neutral sigmoid threshold $\theta$, while density mass is eroded multiplicatively, as shown in the table above.
+with $\tau=\tau_e$ when the drive exceeds the current state and $\tau=\tau_r$ otherwise. `satiation_sec` and `recovery_sec` are the times to reduce the discrepancy from the respective equilibrium by 90%, so the implementation uses $\tau_e=T_s/\ln 10$ and $\tau_r=T_r/\ln 10$. The sustained-drive equilibrium depends on drive strength; after complete withdrawal it is zero. The effective score relaxes toward the neutral sigmoid threshold $\theta$, while density mass is eroded multiplicatively, as shown in the table above.
 
-The default is `enabled=false`, with `satiation_sec=5.0`, `recovery_sec=8.0`, and `ref_drive=0.25`. Disabled habituation is an exact identity: every effective view equals its base view bit-for-bit. When enabled, movement, prediction, metabolism, respawn, density placement, and the listener read effective views; the UI terrain and diagnostics intentionally retain the un-eroded base views.
+The default is `enabled=true`, with `satiation_sec=5.0`, `recovery_sec=8.0`, and `ref_drive=0.25`. Explicit `enabled=false` is an exact identity: every effective view equals its base view bit-for-bit. When enabled, movement, prediction, metabolism, respawn, density placement, and the listener read effective views; the UI terrain and diagnostics intentionally retain the un-eroded base views. Habituation belongs to the sensation and in-performance listener model; Rhai provides no switch for it. Scientific controls use explicit `enabled=false`.
 
 With `--report`, an additional `habituation_scan` record at each generated second carries
 `fmin_hz`, `bins_per_octave`, `n_bins`, and the habitat's `state_scan`, `raw_score_scan`,
@@ -852,7 +852,7 @@ Conchordal establishes a foundation for Bio-Mimetic Computational Audio. By repl
 
 The paper "Conchordal: Emergent Harmony via Direct Cognitive Coupling in a Psychoacoustic Landscape" (arXiv:2603.25637) validated the psychoacoustic landscape as an effective ALife terrain through controlled experiments demonstrating self-organization, selection, synchronization, and hereditary accumulation. These results confirm that the Roughness-Harmonicity-Consonance pipeline and the Kuramoto entrainment model produce musically coherent emergent behavior under a range of initial conditions.
 
-Version 0.4.0 integrates the paper findings into the instrument and adds the temporal axis of the architecture: the fixed rhythm filterbank is replaced by an emergent meter (a forced limit-cycle oscillator with corroborated interval adaptation and PLV confidence), voice timing is expressed as synchronized (`metric`) or acoustic-participation (`entrained`, `flow`) intentions (Section 5.4), and the composer's temporal control is reduced to terrain priors (`meter_stability`, `temporal_basin`) that shape where a pulse forms without ever scheduling one. A dual-bus design separates the habitat (what the ecosystem senses) from the presentation (what the audience hears). The release also includes opt-in Landscape habituation and a simulated `ListenerTwin` feedback path that can raise pitch-search temperature; both default to behaviorally inert settings.
+Version 0.4.0 integrates the paper findings into the instrument and adds the temporal axis of the architecture: the fixed rhythm filterbank is replaced by an emergent meter (a forced limit-cycle oscillator with corroborated interval adaptation and PLV confidence), voice timing is expressed as synchronized (`metric`) or acoustic-participation (`entrained`, `flow`) intentions (Section 5.4), and the composer's temporal control is reduced to terrain priors (`meter_stability`, `temporal_basin`) that shape where a pulse forms without ever scheduling one. A dual-bus design separates the habitat (what the ecosystem senses) from the presentation (what the audience hears). Landscape habituation is enabled by default. A simulated `ListenerTwin` feedback path can raise pitch-search temperature; its coupling remains zero by default.
 
 The technical architecture—anchored by the `Log2Space` coordinate system and the "Sibling Projection" algorithm—provides a robust mathematical foundation for this paradigm. The use of Rust ensures that these complex biological simulations can run in real-time, bridging the gap between ALife research and performative musical instruments.
 
@@ -869,7 +869,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Generation without symbolic intermediaries | `Log2Space` + landscape; no note names, scales, or time signatures anywhere in the engine | §2–4 | Implemented |
 | Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, corroborated interval adaptation, PLV confidence. `metric` keeps explicit synchronization; `entrained` and `flow` use a bounded acoustic observer and a bodily participation policy | §4, §5.4 | Partial. Persistence of temporal relations across all conditions is open; measure-accent coupling is opt-in |
-| Landscape variability (culture, individual, unknown principles) | consonance kernel coefficients, `set_roughness_aversion`, optional habituation erosion | §3.4–3.5, §6.3.6 | Partial. Cultural tuning systems are not yet absorbed |
+| Landscape variability (culture, individual, unknown principles) | consonance kernel coefficients, `set_roughness_aversion`, default-enabled habituation erosion | §3.4–3.5, §6.3.6 | Partial. Cultural tuning systems are not yet absorbed |
 | Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, short-term recurrence and energy forecasts feeding habitat participation | §3.5, §5 | Partial. Relational memory, phrase/scene expectation and action-value learning are open |
 | Acoustic life: perception, metabolism, autonomy | The Voice: articulation-life cores, normalized energy, time-domain endurance/recovery, viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
@@ -907,8 +907,8 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `beta` | `ConsonanceRepresentationParams` | Float | Sigmoid steepness for $C_{level01}$ (default 2.0). |
 | `theta` | `ConsonanceRepresentationParams` | Float | Sigmoid threshold for $C_{level01}$ (default 0.0). |
 | `consonance_density_roughness_gain` | `LandscapeParams` | Float | $\rho$ in density kernel $H(1-\rho R)$ (default 1.0). |
-| `habituation.enabled` | `HabituationParams` | Bool | Enable Landscape erosion; default false, making effective views identical to base views. |
-| `habituation.satiation_sec` | `HabituationParams` | Seconds | Time to reach 90% erosion under sustained unit drive (default 5.0). |
+| `habituation.enabled` | `HabituationParams` | Bool | Enable Landscape erosion; configuration default true. Explicit false makes effective views bit-identical to base views. |
+| `habituation.satiation_sec` | `HabituationParams` | Seconds | Time to reduce the discrepancy from a sustained-drive equilibrium by 90% (default 5.0). |
 | `habituation.recovery_sec` | `HabituationParams` | Seconds | Time to recover 90% after drive withdrawal (default 8.0). |
 | `habituation.ref_drive` | `HabituationParams` | Float | Half-saturation drive in the habituation transfer function (default 0.25). |
 | `loudness_exp` | `LandscapeParams` | Float | Compressive exponent applied to A-weighted peak power in the subjective-intensity front end (default 0.23). |

@@ -29,7 +29,7 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 | Generation without symbolic intermediaries | `Log2Space` + landscape; no note names, scales, or time signatures anywhere in the engine | §2–4 | Implemented |
 | Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, Hebbian tempo learning, PLV confidence | §4, §5.4 | Metric retains explicit synchronization. Entrained/flow use a bounded acoustic observer and bodily participation policy through normal Voice rendering (9.3). Device load checks and the author's no-collapse report for Sample 08 apply to their recorded versions; later changes require separate author judgments. Relation persistence across all conditions remains open. Measure-accent coupling is opt-in |
-| Landscape variability (culture, individual, unknown principles) | `roughness_k`, consonance kernel coefficients, optional habituation erosion | §3.4–3.5, §6.3.6 | Partial — cultural tuning systems not yet absorbed |
+| Landscape variability (culture, individual, unknown principles) | `roughness_k`, consonance kernel coefficients, default-enabled habituation erosion | §3.4–3.5, §6.3.6 | Partial — cultural tuning systems not yet absorbed |
 | Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, passive ListenerTwin interval observations and acoustic participation memory | §3.5, §5 | Partial: short-term recurrence, energy forecasts updated from matching observed windows, and experienced context memory are connected to habitat participation (9.3.32–9.3.35). Continuous relational histories and action-conditioned acoustic hypotheses remain research work (9.3.8–9.3.31). Ordinary samples do not provide scorable intervals. Cognitive retention/interference, stream identity, phrase/scene expectation and action-value learning remain open. |
 | Acoustic life: perception, metabolism, autonomy | The Voice: distinct articulation-life cores plus normalized energy, time-domain endurance/recovery, and viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
@@ -45,7 +45,7 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 
 Adaptation, expectation, and segmentation need distinct mechanisms. The former division here into a roughly three-second perceptual present, a 3–8-second prediction window, and a 15–30-second scene window was neither derived from DCC nor fitted to cognitive tasks in this implementation. Duration alone does not prescribe boredom, phrase length, or the time to change a scene. Sections 9.3.1–9.3.5 distinguish constraints from cognitive tasks, candidate mathematical mechanisms, and numerical windows. Scenario timing remains an authorial choice.
 
-The design metaphor **consonance is a meal, not a place** corresponds to two mechanisms that change the action environment with occupancy history. Each Voice's `AdaptationContext` keeps fast and slow traces over the fundamental-occupancy field, producing boredom and familiarity adjustments during pitch choice. At the shared-environment level, the optional `HabituationField` devalues sustained perceived-consonance activity and recovers after withdrawal (Section 3.5). The ecology and `ListenerTwin` keep separate states because the habitat and presentation buses can contain different sounds. Implementing these update rules does not identify human boredom or attentional change.
+The design metaphor **consonance is a meal, not a place** corresponds to two mechanisms that change the action environment with occupancy history. Each Voice's `AdaptationContext` keeps fast and slow traces over the fundamental-occupancy field, producing boredom and familiarity adjustments during pitch choice. At the shared-environment level, the default-enabled `HabituationField` devalues sustained perceived-consonance activity and recovers after withdrawal (Section 3.5). The ecology and `ListenerTwin` keep separate states because the habitat and presentation buses can contain different sounds. Implementing these update rules does not identify human boredom or attentional change.
 
 The remaining gap is **expectation**, not the absence of adaptation. No phrase-level predictor yet represents what event should occur next, and no scene-level mechanism autonomously creates or evaluates segmentation boundaries. In the current implementation, the **body** owns the micro layer (jitter, breath, beating), the **ecology** owns the meso layer (adaptation-driven movement, life and death), and the **scenario** provides macro direction. This describes the present division of labor, not a principle excluding long temporal structure from DCC (9.3.55). `ListenerTwin` tension and resolvability can already close a simulated feedback loop by adding pitch-search temperature when `[dcc].coupling_strength > 0`; the default is zero, and connection to a physical listener's biosignals remains future work. The roughly eight-second value used by existing sample diagnostics is also an assay setting, not a universal boredom threshold or a system invariant.
 
@@ -7114,6 +7114,73 @@ before/after counts were made by the orchestrator from saved records, not
 reacquired or recomputed by this documentation unit. Author audition, the
 code's target, onset statistics, and the orchestrator's correction and
 unverified comparison are kept distinct.
+
+<a id="habituation-default-on-20261010"></a>
+
+### 9.3.60 Habituation enabled by default: author decision and real-time evidence
+
+**Author decision, 2026-10-10.** Landscape habituation is enabled by default.
+The July 17 specification had kept it off to preserve the then-current études
+and defer promotion pending assays. The author has now removed preservation of
+those earlier étude sounds as a requirement. The author described an audition
+with sustained sound, glide, short proposal intervals and shared habituation as
+quite natural melody; this is an author judgment about that scene, not an
+identification of habituation as the sole cause or a general musical claim.
+Earlier autonomous-closure verdicts remain PARTIAL.
+
+`HabituationConfig` now defaults to `enabled=true`. The equations and existing
+`satiation_sec=5.0`, `recovery_sec=8.0` and `ref_drive=0.25` are unchanged; these
+engineering values have not been re-estimated as universal auditory constants.
+Habituation belongs to the sensation model and the listener's in-performance
+state, not the composer's cultural priors. No Rhai switch or parameter vocabulary
+is added. The effective field and density views are used by default; explicit
+`enabled=false` preserves the base views bit-for-bit. Registered scientific
+controls and exact comparisons pin that disabled setting on the control side.
+Frozen inputs, recorded values, hashes and historical results are retained;
+derived replay settings make the disabled control explicit.
+
+**Real-time evidence, acquired before the default change.** The orchestrator
+measured the same source as the branch base (`1f55a45`; source, Cargo and samples
+unchanged since the release build at `44331aa`) with habituation explicitly on.
+The load was 12 études, seed 1, release, headless ALSA output at 48 kHz stereo.
+The adopted criteria were zero output underflows and hop p99 at most 10,667 µs.
+Each row reports the largest étude p99, not the largest individual hop.
+
+| Configuration | Pass used | Maximum p99, µs (étude) | Window on October 10 | Disturbance |
+|---|---|---:|---|---|
+| A: default legacy renderer | v1 | 5,896 (09) | 22:02–22:06 | Another project's dev server, load about 3 |
+| B: legacy renderer with body-aware evaluation | v2 | 6,196 (12) | 22:21–22:25 | Quiet |
+| A′: excitation renderer | v2 | 7,442 (09) | 22:25–22:30 | Another project's tests occurred in the window; the pass is retained |
+| B′: excitation renderer with body-aware evaluation | v2 | 9,308 (09) | 22:17–22:21 | Quiet |
+
+All 48 performances in these retained passes exited zero, with zero underflows
+and callback errors. B′ had individual maximum hops of 12,203 µs in 09 and
+15,004 µs in 12; the adopted p99/underflow criteria still passed. The disabled
+control also had individual overruns in those two études, and its largest B′ p99
+was 9,258 µs. That cross-window difference is not a causal cost estimate.
+Direct profile-interval median differences were +25 µs for field update and
++25 µs for listener wait; those intervals are not asserted to be additive.
+
+The earlier v1 B′ failed: 09 reached p99 11,225 µs and two other études failed.
+Another project's tests caused load 8–10 and zero free swap during that window.
+The v1 B and A′ runs stopped at the MemAvailable ≥12 GiB entry gate. These
+failures and incomplete attempts are preserved; quieter v2 runs of those three
+configurations all passed. The A′ v2 disturbance is recorded separately rather
+than labeling that window quiet. The default-change unit reuses these real-time
+results and does not reacquire them. The existing harmonicity-projection
+allocation path now runs by default; no allocation or kernel change is made.
+
+**Delivery state.** The implementation and controls are prepared on
+`work/h3-habituation-default-20261010-v1` (implementation `6a7b6b2`).
+Documentation is a separate commit on that branch. Main integration and push
+remain pending the author's instruction. This default decision neither closes
+long-form expectation nor establishes musical quality.
+
+Sources: the July 17 [design specification](../superpowers/specs/2026-07-17-habituation-field-design.md),
+the author's October 10 decision and audition, and the orchestrator's retained
+four-configuration device analyses, failed v1 runs, quiet-window runner log and
+v2 disturbance logs. Exact local evidence paths and this unit's validation are
+listed in its orchestration report.
 
 ## 9.4 Alignment and Extension Sequence
 

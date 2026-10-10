@@ -186,3 +186,20 @@
 2026-10-09朝にmainをoriginへpushした（`f87b1ca`まで）。この時点では後続のcommitは未pushだった。同日20:40に`596a04f`まで再びpushした。この時点のN-6以後は未pushで、N-7のmainへのfast-forwardは権限の分類で止まり、作者の操作待ちだった。
 
 2026-10-10、作者がN-7とD-3の記録をmainへ統合し、その版を10:52にoriginへpushした。その後、11:49に拍子の仕組みの7 commitをmainへfast-forwardし、mainと同じ最終sourceで統括がfmt・Clippy・全テストを実行した。結果は1,027 passed、0 failed、34 ignored、exit 0（11:50:29）。同日11:50に拍子の仕組みを含む版もoriginへpushした。N-7とT-7の統合・pushは済んでいる。mainのHEAD・差分とoriginとの関係は、着手時に確認する。経過は台帳[§9.3.58の統合・push完了の追記](../design-notes/technote-ledger.ja.md#integration-push-completed-20261010)と、統括の同日10:05・10:54・11:49・11:51の判断記録にある。
+
+<a id="habituation-default-branch-20261010"></a>
+
+### 2026-10-10：慣れの既定有効化をbranchで用意
+
+作者は慣れ（`[psychoacoustics.habituation]`）を既定で有効にする判断を採った。
+`main`の`1f55a45`を基準に、`work/h3-habituation-default-20261010-v1`へ実装と検査
+（`6a7b6b2`）、文書同期を別commitで用意した。mainへの統合とpushは行っていない。
+次の統合は作者の指示を待つ。既存の5秒・8秒・0.25と慣れの式、上位の12 étude、Rhaiの語彙は変えていない。
+科学的な対照とbit一致の検査には明示offを使い、凍結済みの登録値・hash・結果を保持した。
+
+慣れを有効にした四構成は、統括の実機取得で既に合格している。演奏別p99の最大は
+Aが5,896 µs、Bが6,196 µs、A′が7,442 µs、B′が9,308 µsで、採る全48演奏が終了0、
+出力不足とcallback errorは0だった。初回B′の不合格、B・A′のメモリ入口での中断、
+取り直しの窓とA′の外乱を含む経過は、台帳[§9.3.60](../design-notes/technote-ledger.ja.md#habituation-default-on-20261010)に記録した。
+実時間は取得し直していない。branchでの全テストと既定設定による12 étudeの全長offline描画の記録は
+`.orchestration/units/H-3/report.md`にある。20単位の分母を増やさず、作者の試聴評価と実時間の合格を分ける。

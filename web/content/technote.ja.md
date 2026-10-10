@@ -288,9 +288,9 @@ $$ d_i^{raw}=L_iP_i, \qquad d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}} $$
 
 $$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
 
-driveが上昇するときは$\tau=\tau_e$、下降するときは$\tau=\tau_r$を使う。`satiation_sec`は90%浸食まで、`recovery_sec`は90%回復までの時間として定義されるため、実装は$\tau_e=T_s/\ln 10$、$\tau_r=T_r/\ln 10$とする。effective scoreはsigmoidの中立閾値$\theta$へ近づき、density massは上表のとおり乗算的に浸食される。
+driveが現在の状態を上回るときは$\tau=\tau_e$、それ以外は$\tau=\tau_r$を使う。`satiation_sec`と`recovery_sec`は、それぞれの平衡状態までの差が90%縮む時間であり、実装は$\tau_e=T_s/\ln 10$、$\tau_r=T_r/\ln 10$とする。持続刺激の平衡状態はdriveの強さに依存し、完全に刺激を取り去った後は0となる。effective scoreはsigmoidの中立閾値$\theta$へ近づき、density massは上表のとおり乗算的に浸食される。
 
-デフォルトは`enabled=false`、`satiation_sec=5.0`、`recovery_sec=8.0`、`ref_drive=0.25`である。無効時のhabituationは完全な恒等写像で、全effective viewはbase viewとbit単位で一致する。有効時には、移動、予測、代謝、respawn、density placement、listenerがeffective viewを読む。一方、UIのterrainとdiagnosticsは意図的に非浸食のbase viewを表示する。
+既定は`enabled=true`、`satiation_sec=5.0`、`recovery_sec=8.0`、`ref_drive=0.25`である。`enabled=false`を明示したときは完全な恒等写像となり、全effective viewはbase viewとbit単位で一致する。有効時には、移動、予測、代謝、respawn、density placement、listenerがeffective viewを読む。一方、UIの地形表示と診断は浸食前のbase viewを使う。慣れは感覚モデルと演奏中の聴き手の状態に属し、Rhaiから切り替える語彙は設けていない。科学的な対照では`enabled=false`を明示する。
 
 `--report`では、生成時刻の1秒ごとに`habituation_scan`も出力する。
 `fmin_hz`、`bins_per_octave`、`n_bins`と、habitatの`state_scan`、`raw_score_scan`、
@@ -771,7 +771,7 @@ Conchordal は生体模倣的計算音響のプルーフオブコンセプトを
 
 `Log2Space` 座標系と「シブリング投影」アルゴリズムに支えられた技術アーキテクチャは、この新しいパラダイムに堅牢な数学的基盤を提供する。Rust の採用により、これらの複雑な生物学的シミュレーションがリアルタイムで実行可能となり、ALife研究と演奏的楽器の間の溝を橋渡しする。
 
-v0.4.0は論文の知見を楽器そのものに統合し、アーキテクチャに時間軸を加えた。固定のリズムフィルタバンクは、発音間隔の確認によるテンポ適応とPLV確信度を備えた強制リミットサイクル振動子——創発メーター——に置き換わった。Voiceのタイミングは、同期する`metric`と、音響への参加である`entrained`・`flow`の意図として表す（5.4節）。そして作曲家による時間の制御は、パルスをスケジュールすることなくその形成場所だけを形づくる地形事前分布（`meter_stability`、`temporal_basin`）へと還元された。デュアルバス設計は、ハビタット（エコシステムが感じるもの）とプレゼンテーション（聴衆が聴くもの）を分離する。このreleaseには、任意で有効化するLandscape habituationと、pitch-search temperatureを上げられる`ListenerTwin`の模擬feedback pathも含まれる。どちらもデフォルトでは挙動を変えない。
+v0.4.0は論文の知見を楽器そのものに統合し、アーキテクチャに時間軸を加えた。固定のリズムフィルタバンクは、発音間隔の確認によるテンポ適応とPLV確信度を備えた強制リミットサイクル振動子——創発メーター——に置き換わった。Voiceのタイミングは、同期する`metric`と、音響への参加である`entrained`・`flow`の意図として表す（5.4節）。そして作曲家による時間の制御は、パルスをスケジュールすることなくその形成場所だけを形づくる地形事前分布（`meter_stability`、`temporal_basin`）へと還元された。デュアルバス設計は、ハビタット（エコシステムが感じるもの）とプレゼンテーション（聴衆が聴くもの）を分離する。Landscapeの慣れは既定で有効である。`ListenerTwin`の模擬feedback pathはpitch探索のtemperatureを上げられるが、その結合強度は引き続き既定で0である。
 
 第9章は、Manifesto の公約について果たされたものと未解決のものを縮約した台帳として示し、本書を閉じる。各行の背後の設計判断と、実装が逆に教えたものは、本ノートではなくリポジトリの設計台帳に置く。
 
@@ -786,7 +786,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | 記号媒介なしの生成 | `Log2Space`+ランドスケープ。音名・音階・拍子記号はエンジンのどこにも存在しない | §2–4 | 実装済み |
 | 周波数軸の地形（蝸牛/脳幹モデル） | 粗さ・調波性・協和性カーネル | §3 | 実装済み |
 | 時間軸の地形（神経振動） | 創発メーター：強制リミットサイクル、発音間隔の確認によるテンポ適応、PLV 確信度。`metric` は明示的な同期を保ち、`entrained`・`flow` は有界な音響観測と身体の参加方策を使う | §4, §5.4 | 部分。全条件での時間関係の持続は未解決。小節アクセントの結合は任意 |
-| 地形の可変性（文化・個人・未知の原理） | 協和性カーネル係数、`set_roughness_aversion`、任意の habituation erosion | §3.4–3.5, §6.3.6 | 部分。文化的音律体系は未取込 |
+| 地形の可変性（文化・個人・未知の原理） | 協和性カーネル係数、`set_roughness_aversion`、既定で有効な慣れによる浸食 | §3.4–3.5, §6.3.6 | 部分。文化的音律体系は未取込 |
 | 順応と期待 | Voice ごとの `AdaptationContext`、ecology/listener の `HabituationField`、habitat 側の参加へ渡す短期の反復予測とエネルギー予測 | §3.5, §5 | 部分。関係の記憶、phrase/scene の期待、行動価値学習は未解決 |
 | 音響生命：知覚・代謝・自律 | Voice：アーティキュレーション生命コア、正規化エネルギー、時間領域の endurance/recovery、生存可能性 | §5 | 実装済み |
 | 集団：ニッチ・共生・地形変形 | クラウディング、リスポーン、閉ループ | §5 | 実装済み |
@@ -824,8 +824,8 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `roughness_aversion` | `LandscapeParams` | Float | 粗さの項 $b$、$c$ と密度の $\rho$ に掛かる評価の重み。`set_roughness_aversion` で設定する。デフォルト 1.0。 |
 | `theta` | `ConsonanceRepresentationParams` | Float | $C_{level01}$ のシグモイド閾値（デフォルト 0.0）。 |
 | `consonance_density_roughness_gain` | `LandscapeParams` | Float | 密度カーネルにおける $\rho$（デフォルト 1.0）。 |
-| `habituation.enabled` | `HabituationParams` | Bool | Landscape erosionを有効化。デフォルトはfalseで、effective viewはbase viewと同一。 |
-| `habituation.satiation_sec` | `HabituationParams` | 秒 | 単位driveが持続したとき90% erosionへ達する時間（デフォルト 5.0）。 |
+| `habituation.enabled` | `HabituationParams` | Bool | Landscapeの慣れによる浸食を有効にする。設定の既定値はtrue。falseを明示するとeffective viewはbase viewとbit単位で一致する。 |
+| `habituation.satiation_sec` | `HabituationParams` | 秒 | 持続刺激の平衡状態までの差が90%縮む時間（既定5.0）。 |
 | `habituation.recovery_sec` | `HabituationParams` | 秒 | driveがなくなってから90%回復する時間（デフォルト 8.0）。 |
 | `habituation.ref_drive` | `HabituationParams` | Float | habituationの伝達関数における半飽和drive（デフォルト 0.25）。 |
 | `loudness_exp` | `LandscapeParams` | Float | subjective-intensity front endでA-weighted peak powerに適用する圧縮指数（デフォルト 0.23）。 |

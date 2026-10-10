@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c9abfc44.js";
+            window.path_to_searchindex_js = "../searchindex-4741587d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -217,8 +217,20 @@ beat (the time-axis analogue of <code>consonance(min, max)</code>). It seeds the
 the center and confines adaptation to the band. At stability <code>0</code>, it adds no
 center preference or restoring pull. Higher stability strengthens both the
 preferred reading and confidence-weighted center restoring. It shapes the
-terrain; it does not place a beat, and it never forces a measure.</li>
+terrain; it does not place a beat, and it never forces a measure. The same
+sanitized band center also sets the intrinsic starting rate of <code>metric()</code>
+Voices, independently of stability. Without a basin, that rate remains 2 Hz.</li>
 </ul>
+<p>The basin is one initial condition for the whole scene. The final declaration
+in the script applies to every metric Population, through both <code>place()</code> and
+<code>create()</code>. A declaration after a Population or after <code>wait()</code> still replaces
+that same scene value; it does not change the basin during performance.</p>
+<p>A body’s initial tempo is distinct from a beat confirmed by the listener.
+Metric Voices start with independent phases. Until sound corroborates a beat,
+confidence and shared-beat attraction remain zero. After confirmation, the
+existing coupling follows the heard beat. Respawn starts from the Population’s
+resolved template; it does not inherit the parent’s current clock rate.
+Entrained/flow bodily priors and explicit <code>pulse(rate_hz)</code> are unaffected.</p>
 <p>From a cold start, a regular 4 Hz input in the default band is read as a 4 Hz
 beat at stability <code>0</code>, and as duple subdivision of a 2 Hz beat at stability <code>1</code>.
 Depth also retains its effects on forcing and evidence presence; it is not an
@@ -227,9 +239,10 @@ interval hypothesis is corroborated. Chance corroboration in irregular input
 can still produce temporary rises afterward.</p>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
 <p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
-<code>flow()</code>. Configure them on a <code>PopulationSpec</code> before calling <code>place()</code>. The temporal
-basin shapes metric timing. Entrained/flow participants begin with their own
-2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
+<code>flow()</code>. Configure them on a <code>PopulationSpec</code> before calling <code>place()</code> or
+<code>create()</code>. Metric timing begins at the basin center, or 2 Hz without a basin,
+then responds to the acoustically confirmed production beat. Entrained/flow
+participants begin with their own 2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
 changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
 scale for its irregular renewal intervals.</p>
 <p>Do not confuse <code>.entrained()</code> with <code>brain("entrain")</code>. The preset controls

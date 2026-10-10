@@ -715,8 +715,14 @@ forever with a slow sway -- useful as terrain material.",
         patch: Patch::Initial,
         usage: &["metric()"],
         summary: "High coupling to the shared emergent meter: deep attractor, stable pulse.",
-        details: "Takes no rate argument: the tempo region is director-level terrain \
-(`temporal_basin`).",
+        details: "Takes no rate argument. With `temporal_basin`, its intrinsic starting rate \
+is the sanitized band center; without a basin it is 2 Hz. This initial rate is independent \
+of `meter_stability`. Every metric Population created by `place` or `create` reads the \
+scene's final basin, including calls after `wait`; repeated basin declarations use the \
+last value, not timed changes. Initial phases remain independent. Attraction follows \
+positive confidence in a beat confirmed from sound; the starting rate is not a confirmed \
+beat. Respawn uses the Population template, not the parent's current clock rate. \
+`entrained`, `flow`, and explicit `pulse(rate_hz)` are outside this initialization rule.",
     },
     FnDoc {
         name: "entrained",
@@ -1554,8 +1560,13 @@ integer subdivision reading of faster input.",
         details: "The time-axis analogue of `consonance(min, max)`: it seeds the beat at the \
 band center and confines tempo adaptation to the band. At `meter_stability(0)`, the band \
 adds no center preference or restoring pull; with higher stability, candidate preference \
-and confidence-weighted center restoring grow with the depth. It shapes the terrain, does \
-not place a beat, and never forces a measure.",
+and confidence-weighted center restoring grow with the depth. The same sanitized center \
+sets the intrinsic starting rate of `metric()` Voices, even at stability 0; without a \
+basin that rate is 2 Hz. `entrained()`/`flow()` retain their 2 Hz prior and explicit \
+`pulse(rate_hz)` retains its rate. This is one scene initial condition: the last basin \
+declaration applies to every metric Population, regardless of its position before or \
+after `place`, `create`, or `wait`. It is not an in-performance change. Independent Voice \
+phases and acoustic confirmation remain required; this does not place a beat or force a measure.",
     },
     FnDoc {
         name: "set_roughness_aversion",

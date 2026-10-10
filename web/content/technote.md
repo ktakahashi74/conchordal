@@ -353,7 +353,9 @@ The director can bend the terrain the pulse forms on—never schedule it—via `
 *   `meter_stability(v)` — attractor depth in $[0,1]$. Scales amplitude and event correction, and lowers the existing evidence-presence thresholds. It changes how readily the meter commits without raising the confidence ceiling. The same depth directly weights the preferred tempo: higher values favor an integer-ratio reading closer to the basin center, or 2 Hz without an explicit basin. The default is 0 (neutral).
 *   `temporal_basin(min_hz, max_hz)` — a continuous tempo-prior band. Seeds the beat at its arithmetic center and confines candidate adoption and frequency adaptation to the band. At stability 0 there is no additional center preference or restoring pull. At higher stability, candidate preference and confidence-weighted restoring grow in direct proportion to the depth.
 
-These are the temporal analogue of the consonance-field operations: soft priors on an emergent process, in keeping with the Manifesto's rejection of imposed grids.
+The basin has a second role: it initializes `metric()` Voices at the same sanitized arithmetic center, independently of stability. Without a basin, their intrinsic starting rate remains 2 Hz. The final basin declaration applies to every metric Population created by `place()` or `create()`, including declarations after `wait()`; it is one scene initial condition, not a timed change. Entrained/flow retain their 2 Hz prior, and explicit `pulse(rate_hz)` retains its rate. Initial Voice phases remain independent, and shared-beat coupling stays zero until sound confirms a beat. Respawn reads the Population template rather than a parent's current clock rate.
+
+These operations shape an emergent process without placing a beat grid; the listener's tempo adaptation remains confined to the declared band. This implementation is prepared on a branch. The orchestrator integrates it into main after instrument real-time measurements.
 
 # 5. The Life Engine: Agents and Autonomy
 
@@ -772,7 +774,7 @@ A PopulationSpec begins with a preset and is refined through method chaining. It
 
 **Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`.
 
-**Rhythm (Section 5.4)**: `metric()` selects shared-beat attraction; `entrained()` and `flow()` select acoustic participation. `entrainment(v)` changes the influence within that intention. `microtiming(v)` offsets the synchronized target only. `temporal_basin` shapes the production meter, while participation retains a bodily prior. Articulation controls remain separate: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, and `rhythm_reward(rho_t, "attack_phase_match")`.
+**Rhythm (Section 5.4)**: `metric()` selects shared-beat attraction; `entrained()` and `flow()` select acoustic participation. `entrainment(v)` changes the influence within that intention. `microtiming(v)` offsets the synchronized target only. `temporal_basin` shapes the production meter and initializes metric bodies at its center; participation retains its 2 Hz bodily prior. Articulation controls remain separate: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, and `rhythm_reward(rho_t, "attack_phase_match")`.
 
 **Lifecycle/Viability**: `endurance(sec)`, optional `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, and `phonate_when_viable()` (withhold the first onset until the viability window opens).
 
@@ -916,7 +918,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `loudness_exp` | `LandscapeParams` | Float | Compressive exponent applied to A-weighted peak power in the subjective-intensity front end (default 0.23). |
 | `tau_ms` | `LandscapeParams` | Milliseconds | Leaky normalization time constant after peak extraction (`[analysis].tau_ms`). |
 | `stability` | `MeterShaping` | 0.0-1.0 | Beat attractor depth (`meter_stability`): scales entrainment forcing and tempo learning. |
-| `basin_hz` | `MeterShaping` | Hz pair | Tempo prior region (`temporal_basin`): seeds and confines beat-frequency learning. |
+| `basin_hz` | `MeterShaping` | Hz pair | Scene tempo region (`temporal_basin`): seeds and confines beat-frequency learning; its center initializes metric bodies independently of stability. |
 | `coupling` | `CoupledTimingSpec` | 0.0-1.0 | Per-voice lock strength onto the shared beat (`entrainment`). |
 | `flow_depth` | `CoupledTimingSpec` | 0.0-1.0 | Renewal clustering of free-running onsets (0 = regular). |
 | `microtiming` | `CoupledTimingSpec` | cycles | Signed beat-phase offset of the lock target. |

@@ -353,7 +353,9 @@ $\eta_\varphi=0.6$、$\eta_p=0.1$はLarge & Jones（1999）のsimulationに由�
 *   `meter_stability(v)` — $[0,1]$のアトラクタ深度。振幅と発音ごとの補正を強め、既存presenceの閾値を下げる。確信に踏み切る速さを変えるが、確信度の上限は上げない。同じ深さで、好みのtempoに寄せて拍を読む強さも決める。深いほどbasinの中心、帯域を置かなければ2 Hzに近い整数比の読みを選びやすくなる。既定は0（中立）である。
 *   `temporal_basin(min_hz, max_hz)` — 連続したtempoの事前帯域。拍を算術平均の中心から始め、候補の採用と周波数の適応を帯域内に保つ。stabilityが0なら中心への追加の好みや復元を持たず、帯域を限るだけである。高いstabilityでは、候補の好みと、確信度に依存する中心への復元が深さに比例して強まる。
 
-これらは consonance field 操作の時間軸版にあたる。創発する過程に与えるソフトな事前分布であり、課されたグリッドを拒む Manifesto と矛盾しない。
+basinは、`metric()`のVoiceが自走を始める周期にも作用する。meterと同じ整形済みの算術中心を使い、stabilityには掛けない。指定がなければ初期値は2 Hzのままである。scriptの最後のbasinを、`place()`と`create()`で作る全てのmetricのPopulationに適用する。`wait()`の後の指定もsceneの初期条件を上書きし、演奏途中の変更にはならない。entrained／flowの2 Hzと、`pulse(rate_hz)`の明示した速さは変えない。各Voiceは別々の初期位相を持ち、音から拍を確認するまで共有拍への結合は0である。再生成はPopulationに保存した初期設定を読み、親の現在の時計の周期を継がない。
+
+これらは拍を配置せず、創発する過程の初期条件と地形を与える。聴き手のtempoの適応は指定帯域内に限られる。この実装はbranchに用意した。mainへの統合は統括が実機の計測の後に行う。
 
 # 5. ライフエンジン：エージェントと自律性
 
@@ -700,7 +702,7 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   ピッチ: `anchor()`（ピッチを保持。`freq(hz)` はアンカーを含意）, `seek_consonance()`（協和地形を登る。適用モードは自動解決される——持続ボイスはグライド、再アタックするボイスはオンセットでスナップ——`pitch_apply_mode("gate_snap"|"glide")` で明示上書き可）, `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `tessitura_gravity(v)`, `temperature(v)`（両コア共有の探索ノブ。0 で貪欲に落ち着く——音楽的にはこれが運動の緊張のノブで、高温ではボイスが協和から外れて彷徨い、冷ますと解決する）ほか。
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。
-*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`と`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形を設定し、参加方策は身体の固有ペースを維持する。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
+*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`と`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、参加方策は2 Hzの固有ペースを維持する。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
 *   ライフサイクル/生存可能性: `endurance(sec)`, 任意の`recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, `phonate_when_viable()`（viability windowが開くまで最初のonsetを保留）。
 *   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
 
@@ -833,7 +835,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `loudness_exp` | `LandscapeParams` | Float | subjective-intensity front endでA-weighted peak powerに適用する圧縮指数（デフォルト 0.23）。 |
 | `tau_ms` | `LandscapeParams` | ミリ秒 | peak抽出後のleaky normalization時定数（`[analysis].tau_ms`）。 |
 | `stability` | `MeterShaping` | 0.0-1.0 | ビートアトラクタ深度（`meter_stability`）：強制力とテンポ学習をスケール。 |
-| `basin_hz` | `MeterShaping` | Hz ペア | テンポ事前領域（`temporal_basin`）：ビート周波数学習のシードと制限。 |
+| `basin_hz` | `MeterShaping` | Hz ペア | sceneのテンポ領域（`temporal_basin`）：拍の周波数学習の初期値と帯域制限。中心はstabilityに依らずmetricの身体の初期周期にも使う。 |
 | `coupling` | `CoupledTimingSpec` | 0.0-1.0 | 共有ビートへのボイスごとのロック強度（`entrainment`）。 |
 | `flow_depth` | `CoupledTimingSpec` | 0.0-1.0 | 自由走行オンセットの更新クラスタリング（0 = 規則的）。 |
 | `microtiming` | `CoupledTimingSpec` | cycles | ロック目標への符号付きビート位相オフセット。 |

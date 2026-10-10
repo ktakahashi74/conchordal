@@ -229,14 +229,42 @@ forcing and evidence-presence effects. It preserves an established tactus
 across integer missing beats, at the cost of distinguishing them from a sudden
 integer-factor slowdown. The former internal audition constant and test-only
 weight argument are removed. The earlier hierarchy was integrated in T-7.
-The recurrence extension is implemented on
-`work/t13-meter-recurrence-20261011-v1` from main `217c7e8`; integration into
-main awaits the author's decision. It adds no composer vocabulary or hop-path
-allocation. Its private state stays in the sole consumer, `core/meter.rs`;
+The recurrence extension was implemented on
+`work/t13-meter-recurrence-20261011-v1` from main `217c7e8`. On 2026-10-11,
+the author adopted it, the orchestrator passed all 48 instrument performances
+in A/B/A′/B′, and main advanced to `c2b8308`. The basin-initialization extension
+is stacked on that final source; its main integration is still owned by the
+orchestrator. Exact 12-étude equality permits reuse of the T-13 measurement
+scope. Branch implementation and hardware acceptance remain separate. It adds
+no composer vocabulary or hop-path allocation. Its private state stays in the
+sole consumer, `core/meter.rs`;
 constructor buffers are reused. Offline controls, feedback sensitivity and
 workload are recorded in the
 [ledger](technote-ledger.md#meter-onset-recurrence-branch-20261011).
-Real-time operation of this extension has not been measured.
+Instrument real-time measurements and main integration are owned by the
+orchestrator; this branch implementation performs neither.
+
+#### Metric intrinsic initialization (2026-10-11, adopted minimal C)
+
+An explicit temporal basin now also initializes Synchronized Voice timing at
+its sanitized arithmetic center. Without a basin, `CoupledTimingSpec::default`
+remains 2 Hz. This body initial condition is independent of `meter_stability`;
+the listener's existing hard acquisition/adaptation band remains unchanged.
+The final scenario lowering step applies the one last basin to every Spawn,
+covering create and place regardless of declaration order or waits. There is no
+in-performance basin change. Participating entrained/flow retain their 2 Hz
+prior, and explicit Pulse rates remain explicit. Respawn keeps the resolved
+Population template, without live parent clock inheritance.
+
+This changes neither acoustic confirmation nor phase initialization: metric
+Voices have independent initial phases, and shared-beat coupling remains zero
+before confirmation. Setting a body initial rate is not passing its internal
+state to the meter or prescribing a listener beat. Associations between
+spontaneous motor tempo and perceptual/music preference (McAuley et al., 2006;
+Hine et al., 2022) motivate a correspondence, not exact equality. Center
+assignment is the adopted engineering convention. The unadopted soft-band
+alternatives and evidence are recorded in
+[ledger §9.3.68](technote-ledger.md#metric-basin-initial-rate-20261011).
 
 ### Accent and groove (Regime B)
 

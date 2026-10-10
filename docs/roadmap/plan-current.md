@@ -151,7 +151,7 @@
 
 ### 残る設計と作者判断
 
-- **時間構造の周期の確定と到来の予測**：T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と因果差・未使用tempoの対照を確認した。確認前の拍・分割・小節は未知に保つ。2026-10-10の作者の指摘で、tempoの好みは文化層の事前分布と整理し、内部の一度の試聴選択を撤回した。好みの重みは既存の`meter_stability`（既定0）そのものとし、新しい語彙は足していない。統括が最終sourceのA・B・A′・B′をmainへの統合前に実機で測り、全48演奏が終了0、四構成ともR-1と同じ宣言範囲・基準で合格した。mainへの統合とpushは2026-10-10に済んだ。数値と取得範囲は台帳[§9.3.58のT-7再測定](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。根拠は台帳[§9.3.59の文化層の訂正](../design-notes/technote-ledger.ja.md#meter-tempo-prior-20261010)。作者の[試聴の記録](../design-notes/technote-ledger.ja.md#metric-phase-degeneracy-audition-20261010)を受けたT-8〜T-10は、同日午後の範囲の判断で停止した。拍と旋律・拍より細かい単位・grooveを分け、位相の分化は既存の参加の経路と区別する（[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)）。拍の同期の二つの失敗は、T-11で設計の選択と分類した。複数位置の再来を獲得するF1はT-12で最終設計Cを本体の外で閉じ、T-13でbranchに実装・検査・文書を用意した。mainへの統合は作者の判断待ちである。F2のbasinのhard bandは変更せず、意味の判断を別に残す（[§9.3.62](../design-notes/technote-ledger.ja.md#metric-beat-sync-regressions-20261010)）。
+- **時間構造の周期の確定と到来の予測**：T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と因果差・未使用tempoの対照を確認した。確認前の拍・分割・小節は未知に保つ。2026-10-10の作者の指摘で、tempoの好みは文化層の事前分布と整理し、内部の一度の試聴選択を撤回した。好みの重みは既存の`meter_stability`（既定0）そのものとし、新しい語彙は足していない。統括が最終sourceのA・B・A′・B′をmainへの統合前に実機で測り、全48演奏が終了0、四構成ともR-1と同じ宣言範囲・基準で合格した。mainへの統合とpushは2026-10-10に済んだ。数値と取得範囲は台帳[§9.3.58のT-7再測定](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。根拠は台帳[§9.3.59の文化層の訂正](../design-notes/technote-ledger.ja.md#meter-tempo-prior-20261010)。作者の[試聴の記録](../design-notes/technote-ledger.ja.md#metric-phase-degeneracy-audition-20261010)を受けたT-8〜T-10は、同日午後の範囲の判断で停止した。拍と旋律・拍より細かい単位・grooveを分け、位相の分化は既存の参加の経路と区別する（[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)）。拍の同期の二つの失敗は、T-11で設計の選択と分類した。複数位置の再来を獲得するF1はT-12で最終設計Cを本体の外で閉じ、T-13でbranchに実装・検査・文書を用意した。2026-10-11 08:28に統括が四構成の実機合格後、mainの`c2b8308`へ統合した。F2は作者がC＋hardの最小形を採り、T-16で本体実装を積む（[§9.3.62](../design-notes/technote-ledger.ja.md#metric-beat-sync-regressions-20261010)）。
 - **新しいrendererの採用範囲**：楽器binaryでもopt-inで選べ、Sine／Harmonicで身体込みの出生・代謝と代表onset footprintを使える。N-7のsourceによる夜の再測定で、新しいrenderer単独と身体込みの構成はともに実時間の基準を満たした。N-7は作者の受入済みで、mainへの統合も済んでいる。残るのは既定にするかの判断、Modalへの対応、再出生の最終選択を身体込みで評価するためのnativeの参照分布である。
 - **身体込みの出生の拡張**：旧rendererで再出生の最終選択への拡張は済んだ。ただし対応は方式とfamilyの組ごとに分かれ、登録済みの基準を満たさない組は従来の評価を使う。新しいrendererの再出生の最終選択には身体評価を使わない。
 - **身体込みの代謝**：作者は2026-10-10に[動的な受入の形を改訂した](../design-notes/technote-ledger.ja.md#body-metabolism-acceptance-revision-20261010)。合否は静的照合（既存上限0.025）、更新の順番と漏れのなさ、同じseedでの再現性で判定し、動的比較は件数と最初の分岐の原因を報告する。別seed・別étudeでの発生率や生態の偏りは未検証。seed 42での全件一致で選んだ更新数2の根拠は弱くなり、その見直しが残る。
@@ -230,6 +230,18 @@ Aが5,896 µs、Bが6,196 µs、A′が7,442 µs、B′が9,308 µsで、採る�
 
 ### 2026-10-11：発音の再来からの拍の獲得をbranchへ実装
 
+**08:28の状態更新。** 作者の採択後、統括が最終T-13のA・B・A′・B′を実機で測り、全48演奏が合格・終了0だった。mainへの統合は`c2b8308`として済んだ。pushは作者の明示の指示を待つ。以下はbranchを渡した時点の記録であり、現在の採用待ちや実機未実施を意味しない。取得範囲と数値は[台帳§9.3.67](../design-notes/technote-ledger.ja.md#meter-onset-recurrence-branch-20261011)の追記で確認する。
+
 T-11はF1・F2とも設計の選択と分類し、修理せずに止めた。保存済み36条件の集計で失敗がseed 21・8体に固有でなく、2体でも確認されない場合があると分かった。作者の「行けるところまで進めて」を受け、T-12はF1の最終設計Cを本体の外で閉じた。保持の最終値は4.06秒で、4秒版とは区別する。T-13はmain `217c7e8`から`work/t13-meter-recurrence-20261011-v1`へ実装と検査（`1000b99`）、文書を別commitで用意した。mainへの統合は作者の判断待ちであり、統合・push・実機の計測は行っていない。F2、作曲語彙・既定、Voice、rendererは変えていない。
 
 既存T-7の期待を保ち、事前分布なし18条件、通常の実PCM回帰二件、全テスト1,035件成功・失敗0を確認した。20 ms・12秒を合格の閾値にしていない。既定の12 étudeの全長offline描画は終了0だった。07の保持端点の敏感さと雨の一時的なconfidence上昇は保存し、採用判断の材料とする。meter部分の参考計時は実時間の合格に数えない。統括が作者へ知らせてから行う実機の重点はB′の09・12である。数値・量の札・限界は台帳[§9.3.67](../design-notes/technote-ledger.ja.md#meter-onset-recurrence-branch-20261011)、取得・検査の記録は機械に固有の`.orchestration/units/T-13/report.md`にある。§3の20単位の分母は増やさない。
+
+<a id="metric-basin-initial-rate-20261011"></a>
+
+### 2026-10-11：F1のmain統合とC＋hardのbranch実装
+
+作者はT-14・T-15の比較を読み、F1のT-13を実機の計測後にmainへ入れる方向、metricの身体の初期周期をbasinの中心から取るC、聴き手の帯域はhardのまま、を採った。これより前の採用待ちとF2未決の記述は履歴であり、現在の選択を表さない。統括は08:28に実機の四構成の合格を確認し、F1をmainの`c2b8308`へ統合した。T-16の統合はその後に統括が行う。
+
+T-16はT-13の最終先端`c2b8308`から`work/t16-basin-voice-rate-20261011-v1`へ実装した。scenarioの確定段階で最後の一つのbasinを全Synchronized Spawnに適用し、createとplaceを覆う。stabilityを初期値に掛けない。Participatingのentrained／flow、明示Pulse、親の時計を継がずPopulationの初期設定を読む再生成は保つ。basinはsceneの初期条件であり、waitをまたぐ複数指定も最後の値となる。演奏中の切替えは足さない。
+
+実装・検査と文書の二commitを用意した。最終sourceの全テスト1,044件、F2の18条件とF3、既存のF1の18条件が通過した。F1の18条件、07・12の保存済み検査設定、既定の12 étudeの全長で、WAVと意味のあるreportが一致した。hopの仕事と測定入力を変えないため、取得済みのT-13の実機の計測で足りる。統括が実機の計測の後にmainへ統合する。workerは統合、push、実機の計測を行わない。S1とその四つの規約、位相分離の停止した線、V-1の未決は採った扱いにしない。判断と出どころは[台帳§9.3.68](../design-notes/technote-ledger.ja.md#metric-basin-initial-rate-20261011)、機械に固有の報告は`.orchestration/units/T-16/report.md`に置く。旧20単位の分母を増やさない。

@@ -45,7 +45,21 @@ set the bodily rate or recurrence candidates of entrained/flow participants:
   the center and confines adaptation to the band. At stability `0`, it adds no
   center preference or restoring pull. Higher stability strengthens both the
   preferred reading and confidence-weighted center restoring. It shapes the
-  terrain; it does not place a beat, and it never forces a measure.
+  terrain; it does not place a beat, and it never forces a measure. The same
+  sanitized band center also sets the intrinsic starting rate of `metric()`
+  Voices, independently of stability. Without a basin, that rate remains 2 Hz.
+
+The basin is one initial condition for the whole scene. The final declaration
+in the script applies to every metric Population, through both `place()` and
+`create()`. A declaration after a Population or after `wait()` still replaces
+that same scene value; it does not change the basin during performance.
+
+A body's initial tempo is distinct from a beat confirmed by the listener.
+Metric Voices start with independent phases. Until sound corroborates a beat,
+confidence and shared-beat attraction remain zero. After confirmation, the
+existing coupling follows the heard beat. Respawn starts from the Population's
+resolved template; it does not inherit the parent's current clock rate.
+Entrained/flow bodily priors and explicit `pulse(rate_hz)` are unaffected.
 
 From a cold start, a regular 4 Hz input in the default band is read as a 4 Hz
 beat at stability `0`, and as duple subdivision of a 2 Hz beat at stability `1`.
@@ -57,9 +71,10 @@ can still produce temporary rises afterward.
 ## Per-voice presets and modifiers
 
 The Tier-1 presets take **no rate argument**: `metric()`, `entrained()`, and
-`flow()`. Configure them on a `PopulationSpec` before calling `place()`. The temporal
-basin shapes metric timing. Entrained/flow participants begin with their own
-2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
+`flow()`. Configure them on a `PopulationSpec` before calling `place()` or
+`create()`. Metric timing begins at the basin center, or 2 Hz without a basin,
+then responds to the acoustically confirmed production beat. Entrained/flow
+participants begin with their own 2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
 changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
 scale for its irregular renewal intervals.
 

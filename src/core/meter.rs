@@ -46,8 +46,6 @@ const FORCE_AMP: f32 = 1.0; // drive -> amplitude pumping (in phase)
 // Large & Jones (1999) simulation gains, verified in the temporal design review.
 const PHASE_GAIN: f32 = 0.6;
 const PERIOD_GAIN: f32 = 0.1;
-// Free internal prior; artist audition choice pending, 2026-10-10. Branch value only.
-const TEMPO_PREFERENCE_WEIGHT: f32 = 0.0;
 
 // Confidence accumulators decay over this timescale, so confidence persists
 // through short gaps (a beat or two) but fades in sustained silence.
@@ -105,11 +103,11 @@ pub struct MeterState {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MeterShaping {
     /// Attractor depth in [0, 1]. How strongly a pulse wants to form: scales the
-    /// entrainment forcing. 0 = neutral baseline.
+    /// entrainment forcing and weights the preferred tempo. 0 = neutral baseline.
     pub stability: f32,
     /// Frequency-prior region in Hz `(min, max)`. Seeds the beat at its center
-    /// and confines adaptation to the band. The internal preference weight
-    /// controls any additional restoring pull. `None` = the default beat band.
+    /// and confines adaptation to the band. Stability weights the tempo
+    /// preference and restoring pull. `None` = the default beat band.
     pub basin_hz: Option<(f32, f32)>,
 }
 
@@ -198,15 +196,8 @@ impl MeterNetwork {
     /// Advance the network by `dt` seconds under acoustic onset `drive` in
     /// [0, 1] (rectified spectral flux). Returns the updated meter state.
     pub fn process(&mut self, dt: f32, drive: f32) -> MeterState {
-        self.process_with_preference(dt, drive, TEMPO_PREFERENCE_WEIGHT)
-    }
-
-    fn process_with_preference(
-        &mut self,
-        dt: f32,
-        drive: f32,
-        preference_weight: f32,
-    ) -> MeterState {
+        // Composer enculturation: attractor depth is also the tempo-prior weight.
+        let preference_weight = self.shaping.stability.clamp(0.0, 1.0);
         let dt = dt.max(MIN_STEP_SEC);
         let drive = drive.clamp(0.0, 1.0);
         let onset = self.onset_detector.process(dt, drive);
@@ -864,39 +855,37 @@ mod tests {
     #[test]
     fn higher_stability_speeds_beat_lock() {
         // Compare after corroboration: resetting old coordinates invalidates the old 1.5 s cut.
-        for preference in [0.0, 1.0] {
-            let mut neutral = MeterNetwork::new();
-            let mut deep = MeterNetwork::new();
-            deep.set_shaping(MeterShaping {
-                stability: 1.0,
-                basin_hz: None,
-            });
-            let mut t = 0.0_f32;
-            let mut early_difference = 0.0_f32;
-            let mut saturated_peaks = [0.0_f32; 2];
-            // Reuse the clean metric fixture; compare saturated presence, not a lock deadline.
-            for _ in 0..(20.0 / DT) as usize {
-                let drive = pulse(t % 0.5, 0.02);
-                let a = neutral.process_with_preference(DT, drive, preference);
-                let b = deep.process_with_preference(DT, drive, preference);
-                if neutral.seeded && deep.seeded {
-                    early_difference = early_difference.max(b.beat.confidence - a.beat.confidence);
-                }
-                if neutral.plv_count >= 4.0 && deep.plv_count >= 2.0 {
-                    saturated_peaks[0] = saturated_peaks[0].max(a.beat.confidence);
-                    saturated_peaks[1] = saturated_peaks[1].max(b.beat.confidence);
-                }
-                t += DT;
+        let mut neutral = MeterNetwork::new();
+        let mut deep = MeterNetwork::new();
+        deep.set_shaping(MeterShaping {
+            stability: 1.0,
+            basin_hz: None,
+        });
+        let mut t = 0.0_f32;
+        let mut early_difference = 0.0_f32;
+        let mut saturated_peaks = [0.0_f32; 2];
+        // Reuse the clean metric fixture; compare saturated presence, not a lock deadline.
+        for _ in 0..(20.0 / DT) as usize {
+            let drive = pulse(t % 0.5, 0.02);
+            let a = neutral.process(DT, drive);
+            let b = deep.process(DT, drive);
+            if neutral.seeded && deep.seeded {
+                early_difference = early_difference.max(b.beat.confidence - a.beat.confidence);
             }
-            assert!(
-                early_difference > 0.2,
-                "high stability must precede neutral after corroboration"
-            );
-            assert!(
-                saturated_peaks[0] > 0.8 && (saturated_peaks[1] - saturated_peaks[0]).abs() < 0.1,
-                "stability must not raise the ceiling"
-            );
+            if neutral.plv_count >= 4.0 && deep.plv_count >= 2.0 {
+                saturated_peaks[0] = saturated_peaks[0].max(a.beat.confidence);
+                saturated_peaks[1] = saturated_peaks[1].max(b.beat.confidence);
+            }
+            t += DT;
         }
+        assert!(
+            early_difference > 0.2,
+            "high stability must precede neutral after corroboration"
+        );
+        assert!(
+            saturated_peaks[0] > 0.8 && (saturated_peaks[1] - saturated_peaks[0]).abs() < 0.1,
+            "stability must not raise the ceiling"
+        );
     }
 
     #[test]

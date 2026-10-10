@@ -4754,6 +4754,14 @@ Voice 20の世代差は親の分岐の直接の下流である。Voice 26の親�
 
 出典は`.orchestration/units/T-7/brief-4.md`、`realtime/orchestrator-run-quiet.log`、`realtime/device-{A,B,A-prime,B-prime}-v1-analysis/analysis.md`と`performances.csv`である。四構成それぞれの全12行を表とCSVで突き合わせ、整数µsに丸めた値がbriefの表と一致することを確認した。試しの出典は`realtime/device-trial-A-06-v1-analysis/`にある。実機取得と判定は統括が行い、区切り4のworkerは文書への反映だけを行った。
 
+<a id="integration-push-completed-20261010"></a>
+
+#### 2026-10-10：N-7・T-7のmain統合とpush完了
+
+上のN-7未統合とT-7統合前の記録は、それぞれの記録時点の状態として保持する。その後、作者はN-7とD-3の記録をmainへ統合した。10:52にその版をoriginへpushし、11:49には拍子の仕組みの7 commitをmainへfast-forwardした。統括はmainと同じ最終sourceでfmt・Clippy・全テストを実行し、1,027 passed、0 failed、34 ignored、exit 0を確認した（2026-10-10 11:50:29）。同日11:50に拍子の仕組みを含む版をoriginへpushした。N-7の軽量化と動的代謝の受入改訂、T-6kの設計を実装したT-7、上の四構成の実時間合格は、mainとoriginに反映済みである。mainのHEAD・差分とoriginとの関係は、着手時に確認する。
+
+これは統括による統合・最終検査・pushの追記であり、先のworkerによる文書更新がそれらを実行したという意味ではない。出典は`.orchestration/records/decisions-20261007-orchestrator.md`の2026-10-10 10:05・10:54・11:49・11:51の記録、`.orchestration/HANDOFF.md`のT-7の統合・最終テスト・pushの追記、同日の最終`test_report.txt`・`test_status.txt`である。
+
 <a id="temporal-rule-calibration-outcome"></a>
 
 ### 9.3.59 時間構造：決まりと信号検査で決めたものと、決まらなかったもの（M-3、T-6）
@@ -4891,6 +4899,50 @@ T-7は`core/meter.rs`の一つの非公開経路として実装し、`MeterState
 旧実装の重みとshapingの深さを同じ端にした対照は、今回の対照の全hop・全計測fieldと一致した。一方、以前の中立の深さのλ1対照と比べると、駆動とpresenceも変わるため、確信度と位相は同一ではない。例えば1.4 Hzの最終確信度は0.754392から0.999815へ変わり、タクトゥスは1.398603 Hzのままである。雨は最初の確認まで未知を保ち、深さ0/1の最終確信度は0.164832／0.159814、最大は0.581111／0.540077だった。採用後の偶然の確認は残る。
 
 scriptingの文書registry、生成した定義とAPI参照、本のリズム章日英、technote、Engineの対応を、この作曲者の制御に合わせた。既存の経路でdirectorのshapingを受けるのは生成メーターであり、listenerは同じ機構を中立のshapingで使う。listenerの変化はプレゼンテーション音声を介して生じる。最終sourceの検査、描画比較、実機計測入力の根拠は`.orchestration/units/T-7/report-3.md`に置く。実機用bundleはR-1と同じ道具でA・B・A′・B′を扱う。統括はこの入力を使い、mainへの統合前に実機計測を終え、四構成とも宣言範囲で合格した。結果と取得範囲は[§9.3.58のT-7再測定](#t7-meter-remeasurement-20261010)に記録した。実機取得は統括が行い、workerによる文書更新ではmainへの統合とpushを行っていない。
+
+<a id="metric-phase-degeneracy-audition-20261010"></a>
+
+#### 2026-10-10：作者の試聴と、拍に乗るVoiceの位相の縮退
+
+T-6kの設計とT-7の本体実装は、その後mainへ統合してpushした。上の設計継続・branch未統合という記録は当時の状態であり、現在の未了事項ではない。統合と最終検査の経過は[§9.3.58の追記](#integration-push-completed-20261010)に記録した。
+
+**作者の試聴。** 作者は2026-10-10、mainに入った版を聴き、次のように述べた。
+
+> 周期は揃っているようだ。
+>
+> 音楽性であれば、位相が揃って縮退しているので音楽的ではない。同期はされていると思う。
+
+機構としては周期が合い、同期している、という試聴の読み方である。音楽としてはVoiceの位相が一つに揃って縮退している。機構の検査と実時間の合格を、音楽的な成立と同一視しない。
+
+**コードで確かめた事実。** `src/life/phonation_engine.rs`の`velocity`では、合わせ先は`target_frac = ((ctx.rhythms.delta.phase / TAU) + self.microtiming).rem_euclid(1.0)`である。拍の位相を周期内の座標へ直し、作曲者の`microtiming`を足す。指定しなければ、すべての`metric()`のVoiceが同じ拍位相を合わせ先に持つ。`samples/12_emergence_and_resolution.rhai`は`metric()`の種に`microtiming`を置いていない。`samples/07_heartbeat.rhai`は`rhythm_role("subdivision")`の種にだけ`.microtiming(0.5)`を置いている。位相の配置は作曲者が手で置くもので、Voiceどうしの関係から生じるものではない。
+
+**作者の追加の言葉（2026-10-10）。**
+
+> 聴感は、今回のtemporal DCC以前とほぼ変わっていない。heartbeatを注入している影響もあるかもしれない。
+
+heartbeatの影響は作者が挙げた可能性であり、ここで原因として確認したものではない。
+
+**保存記録による前後比較。** 統括は2026-10-10 13:19、保存済みの演奏記録の`type: onset`だけを数えた。変更前は`.orchestration/units/T-7/<曲名>-base.jsonl`（`68a8e43`）、変更後は`T-7/stage3/<曲名>-final.jsonl`（mainと同じsource）で、どちらもseed 21、既定rendererである。12の`metric()`のpopulation 2は、前後とも8 Voice・440発音だった。
+
+| 12のmetric集団 | 変更前 | 変更後 |
+|---|---:|---:|
+| 同じpopulationの別Voiceの最近傍発音までの時間の中央値 | 0.0 ms | 0.0 ms |
+| 最近傍発音が20 ms以内の割合 | 0.97（97%） | 0.97（97%） |
+| 最近傍発音が50 ms以内の割合 | 1.00 | 0.99 |
+| 発音間隔の中央値 | 0.509 s | 0.504 s |
+| R | 0.99 | 0.41 |
+
+Rは、後半の発音時刻をVoiceごとの発音間隔の中央値で割った位相の合成長であり、Voiceどうしの同時性を表す値ではない。`metric()`のVoiceどうしは変更前からほぼ同じ瞬間に発音し、変更後も97%が20 ms以内だった。変わったのは、変更前に乗っていた固定の2 Hzの格子への集中である。変更後は拍が聴こえたtempoに合い、格子が固定でなくなった。12の`flow()`集団は、この記録で数えた量が前後で一致した。
+
+**統括の説明の訂正（2026-10-10）。** 当初の因果説明は誤りで、撤回した。位相の縮退は、T-7の変更で生じたものでも、初めて表に出たものでもない。共通の位相基準のずれと、Voiceどうしの発音の同時性を取り違えていた。なぜ同じ瞬間に発音するのかは、この集計では切り分けていない。出生時刻・位相・固有の速さと共通の合わせ先の寄与は未検証であり、上の統計は聴感や音楽性の評価そのものではない。
+
+**作者の問いと実装範囲。** 作者は「メロディーが生まれる機構はここまでで入ってるのか？拍だけなのか？」と問うた。今回mainに入った時間構造の機構は、拍のtempo獲得と位相までであり、旋律が生まれる機構は実装していない。[Manifesto](../../web/content/manifesto.ja.md)は旋律を目標に挙げ、「機構を検討していく」としている。§9.2の2026-09-06の旋律輪郭の予測の比較は[研究用の結果](../roadmap/phrase-expectation-evidence-2026-09-06.md)にとどまり、旋律生成の実装を意味しない。
+
+**残る設計の問題。** 拍に乗るVoiceの位相が、Voiceどうしの関係から分かれていく仕組みがない。ここでは問題を名指しするにとどめ、解き方は定めない。
+
+**統括の見立て（未検証）。** 音高の軸には、引き寄せるharmonicityと、近すぎるものを離すroughness・crowdingの両方があり、Voiceは一つの音高に潰れない。一方、時間の軸には現在、拍の位相へ引き寄せる力しかない。分割と小節の層はmeterの中にあるが、Voiceがそれらへ自分から分かれて乗る経路はない、という対比である。この見立ては未検証である。
+
+出典は`.orchestration/records/decisions-20261007-orchestrator.md`の2026-10-10 13:15・13:20の記録、D-4への同日の訂正指示、`.orchestration/units/T-8/sync-check-20261010.md`、上記の`velocity`と07・12のsample、Manifestoと§9.2の研究用比較である。前後の数値は統括が保存記録から数えたもので、この文書単位で再取得・再集計した結果ではない。作者の試聴、コードの合わせ先、発音の統計、統括の訂正と未検証の見立てを区別する。
 
 ## 9.4 整合と拡張の順序
 

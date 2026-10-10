@@ -6542,6 +6542,28 @@ with the brief's table. Trial evidence is under
 performed by the orchestrator; the fourth-checkpoint worker only records them
 in documentation.
 
+<a id="integration-push-completed-20261010"></a>
+
+#### 2026-10-10: N-7 and T-7 integrated into main and pushed
+
+The earlier N-7 unmerged and T-7 pre-integration entries retain their state at
+the time of writing. The author subsequently integrated N-7 and the D-3
+record into main. That revision was pushed to origin at 10:52; at 11:49 the
+seven meter commits were fast-forwarded into main. The orchestrator ran fmt,
+Clippy and the full tests on the same final source as main: 1,027 passed,
+0 failed, 34 ignored, exit 0 (2026-10-10 at 11:50:29). The revision including
+the meter was pushed to origin at 11:50. N-7's optimization and revised
+dynamic-metabolism acceptance, T-7's implementation of T-6k's design, and the
+four-configuration real-time pass above are now reflected in main and origin.
+Check main's HEAD, changes and relationship to origin when starting work.
+
+This records the orchestrator's integration, final checks and push; it does
+not attribute those actions to the earlier worker documentation update.
+Sources are the orchestrator's decisions on 2026-10-10 at 10:05, 10:54, 11:49
+and 11:51, the T-7 integration/final-test/push additions in
+`.orchestration/HANDOFF.md`, and that day's final `test_report.txt` and
+`test_status.txt`.
+
 <a id="temporal-rule-calibration-outcome"></a>
 
 ### 9.3.59 Temporal structure: what rules and signal checks settled, and what they did not (M-3, T-6)
@@ -6990,6 +7012,108 @@ Results and acquisition scope are recorded in
 [§9.3.58, T-7 remeasurement](#t7-meter-remeasurement-20261010). Device acquisition was
 performed by the orchestrator; this worker documentation update does not
 perform main integration or push.
+
+<a id="metric-phase-degeneracy-audition-20261010"></a>
+
+#### 2026-10-10: author audition and phase collapse among beat-following Voices
+
+T-6k's design and T-7's native implementation have subsequently been integrated
+into main and pushed. The design-in-progress and unmerged-branch entries above
+record their historical state, not current outstanding work. Integration and
+final checks are recorded in the [§9.3.58 addition](#integration-push-completed-20261010).
+
+**Author audition.** On 2026-10-10 the author listened to the revision integrated
+into main and said, in the original Japanese:
+
+> 周期は揃っているようだ。
+>
+> 音楽性であれば、位相が揃って縮退しているので音楽的ではない。同期はされていると思う。
+
+In translation: the periods appear aligned; musically, the phases align and
+collapse, so the result is not musical, although it appears synchronized.
+The audition is read as period agreement and synchronization at the mechanism
+level, with the Voices collapsing onto one phase musically. Mechanism checks
+and real-time acceptance do not establish musical success.
+
+**Facts checked in code.** In `velocity` in `src/life/phonation_engine.rs`, the
+target is `target_frac = ((ctx.rhythms.delta.phase / TAU) + self.microtiming).rem_euclid(1.0)`.
+The beat phase is converted to a within-cycle coordinate and the composer's
+`microtiming` is added. Without an offset, all `metric()` Voices have the same
+beat phase as their lock target. `samples/12_emergence_and_resolution.rhai`
+sets no `microtiming` on its `metric()` founder.
+`samples/07_heartbeat.rhai` sets `.microtiming(0.5)` only on its
+`rhythm_role("subdivision")` founder. Phase placement is assigned manually by
+the composer; it does not emerge from relations among Voices.
+
+**Additional author statement, 2026-10-10.** In the original Japanese:
+
+> 聴感は、今回のtemporal DCC以前とほぼ変わっていない。heartbeatを注入している影響もあるかもしれない。
+
+In translation: the sound is almost unchanged from before this temporal DCC;
+injecting a heartbeat might also have an effect. The heartbeat explanation is
+a possibility raised by the author, not an established cause here.
+
+**Comparison from saved records.** At 13:19 on 2026-10-10, the orchestrator
+counted only `type: onset` records from saved performances. Inputs were
+`.orchestration/units/T-7/<piece>-base.jsonl` before the change (`68a8e43`)
+and `T-7/stage3/<piece>-final.jsonl` afterward (the same source as main), both
+at seed 21 with the default renderer. In piece 12, `metric()` population 2
+contained eight Voices and 440 onsets in both revisions.
+
+| Piece 12 metric population | Before | After |
+|---|---:|---:|
+| Median time to the nearest onset by another Voice in the same population | 0.0 ms | 0.0 ms |
+| Fraction with a nearest onset within 20 ms | 0.97 (97%) | 0.97 (97%) |
+| Fraction with a nearest onset within 50 ms | 1.00 | 0.99 |
+| Median onset interval | 0.509 s | 0.504 s |
+| R | 0.99 | 0.41 |
+
+R is the resultant length of phases obtained by dividing second-half onset
+times by each Voice's median onset interval; it does not measure simultaneity
+between Voices. The `metric()` Voices already sounded at almost the same
+instant before the change, and 97% still had a neighbor within 20 ms afterward.
+What changed was concentration on the formerly fixed 2 Hz grid: afterward,
+the beat follows the heard tempo, so the grid is no longer fixed. All measured
+quantities for piece 12's `flow()` population were unchanged.
+
+**Orchestrator correction, 2026-10-10.** The initial causal explanation was
+wrong and is withdrawn. Phase collapse neither originated with T-7 nor first
+became apparent because of it. The explanation confused a shared phase-reference
+offset with simultaneity between Voices. These counts do not isolate why
+onsets coincide: contributions from birth times, phases, intrinsic rates and
+the shared target remain unverified. The statistics are not themselves an
+assessment of listening impressions or musicality.
+
+**Author question and implemented scope.** The author asked, in Japanese,
+「メロディーが生まれる機構はここまでで入ってるのか？拍だけなのか？」:
+whether a mechanism that generates melody has been included, or only the beat.
+The temporal mechanism integrated into main covers beat tempo acquisition
+and phase; a melody-generating mechanism has not been implemented. The
+[Manifesto](../../web/content/manifesto.md) names melody as a goal and describes
+mechanisms to be investigated. The 2026-09-06 melodic-contour prediction
+comparison in §9.2 remains a [research result](../roadmap/phrase-expectation-evidence-2026-09-06.md),
+not an implementation of melody generation.
+
+**Remaining design problem.** There is no mechanism by which the phases of
+beat-following Voices differentiate through their relations with one another.
+The problem is named here without specifying a solution.
+
+**Orchestrator interpretation, unverified.** The pitch axis has attraction
+through harmonicity and separation of overly close Voices through roughness
+and crowding, preventing collapse onto one pitch. In contrast, the temporal
+axis currently has only attraction toward the beat phase. Subdivision and
+measure layers exist inside the meter, but there is no route for Voices to
+differentiate themselves onto those layers. This comparison remains
+unverified.
+
+Sources are the orchestrator's decisions at 13:15 and 13:20 on 2026-10-10,
+the correction sent to D-4 that day,
+`.orchestration/units/T-8/sync-check-20261010.md`, the `velocity` and 07/12
+samples above, the Manifesto and the research comparison in §9.2. The
+before/after counts were made by the orchestrator from saved records, not
+reacquired or recomputed by this documentation unit. Author audition, the
+code's target, onset statistics, and the orchestrator's correction and
+unverified comparison are kept distinct.
 
 ## 9.4 Alignment and Extension Sequence
 

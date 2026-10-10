@@ -151,7 +151,7 @@
 
 ### 残る設計と作者判断
 
-- **時間構造の周期の確定と到来の予測**：T-6kで整数比の階層の設計を閉じ、T-7で本体branchへの実装と因果差・未使用tempoの対照を確認した。確認前の拍・分割・小節は未知に保つ。2026-10-10の作者の指摘で、tempoの好みは文化層の事前分布と整理し、内部の一度の試聴選択を撤回した。好みの重みは既存の`meter_stability`（既定0）そのものとし、新しい語彙は足していない。作者はmainへの統合とpushを承認済みである。統括が最終sourceのA・B・A′・B′をmainへの統合前に実機で測り、全48演奏が終了0、四構成ともR-1と同じ宣言範囲・基準で合格した。mainへの統合とpushは未了である。数値と取得範囲は台帳[§9.3.58のT-7再測定](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。根拠は台帳[§9.3.59の文化層の訂正](../design-notes/technote-ledger.ja.md#meter-tempo-prior-20261010)。
+- **時間構造の周期の確定と到来の予測**：T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と因果差・未使用tempoの対照を確認した。確認前の拍・分割・小節は未知に保つ。2026-10-10の作者の指摘で、tempoの好みは文化層の事前分布と整理し、内部の一度の試聴選択を撤回した。好みの重みは既存の`meter_stability`（既定0）そのものとし、新しい語彙は足していない。統括が最終sourceのA・B・A′・B′をmainへの統合前に実機で測り、全48演奏が終了0、四構成ともR-1と同じ宣言範囲・基準で合格した。mainへの統合とpushは2026-10-10に済んだ。数値と取得範囲は台帳[§9.3.58のT-7再測定](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。根拠は台帳[§9.3.59の文化層の訂正](../design-notes/technote-ledger.ja.md#meter-tempo-prior-20261010)。作者の試聴では周期と同期は成立したが、位相が揃って縮退し、音楽的ではなかった。残る設計問題は、拍に乗るVoiceの位相がVoiceどうしの関係から分かれる仕組みがないことである（[試聴の記録](../design-notes/technote-ledger.ja.md#metric-phase-degeneracy-audition-20261010)）。
 - **新しいrendererの採用範囲**：楽器binaryでもopt-inで選べ、Sine／Harmonicで身体込みの出生・代謝と代表onset footprintを使える。N-7のsourceによる夜の再測定で、新しいrenderer単独と身体込みの構成はともに実時間の基準を満たした。N-7は作者の受入済みで、mainへの統合も済んでいる。残るのは既定にするかの判断、Modalへの対応、再出生の最終選択を身体込みで評価するためのnativeの参照分布である。
 - **身体込みの出生の拡張**：旧rendererで再出生の最終選択への拡張は済んだ。ただし対応は方式とfamilyの組ごとに分かれ、登録済みの基準を満たさない組は従来の評価を使う。新しいrendererの再出生の最終選択には身体評価を使わない。
 - **身体込みの代謝**：作者は2026-10-10に[動的な受入の形を改訂した](../design-notes/technote-ledger.ja.md#body-metabolism-acceptance-revision-20261010)。合否は静的照合（既存上限0.025）、更新の順番と漏れのなさ、同じseedでの再現性で判定し、動的比較は件数と最初の分岐の原因を報告する。別seed・別étudeでの発生率や生態の偏りは未検証。seed 42での全件一致で選んだ更新数2の根拠は弱くなり、その見直しが残る。
@@ -162,7 +162,7 @@
 
 ### 2026-10-09 の追加作業
 
-追加の実装と検証・受入の結果を記す。N-2〜N-6はmainへ統合した。N-7は2026-10-10に作者が受け入れたが、mainへのfast-forwardは未了である。既定の旧rendererの挙動は保持し、§3の20単位の分母を増やさない。
+追加の実装と検証・受入の結果を記す。N-2〜N-7はmainへ統合し、originへpushした。N-7は2026-10-10に作者が受け入れ、同日に統合・pushを済ませた。rendererの既定は旧方式のままで、§3の20単位の分母を増やさない。
 
 | 単位・commit | 実装と検証 |
 |---|---|
@@ -171,7 +171,7 @@
 | N-3（`ec68484`、`33dff48`） | 身体用のH／R解析と地形の未使用の計算を省き、Rの固定の幾何を共有した。旧・新rendererの24条件で変更前binaryに対する両bus・sourceのPCM、energy、移動・死・親、時計・状態の一致を確認し、参照器との照合テストと準備後のhop内の割当て増0も確認した。 |
 | N-4（`09fb100`） | 両rendererをTone単位のblock描画にし、sampleごとのf32の混合順を保った。変更前binaryとの28 WAVのbyte一致と、参照器に対する両bus・source・自己除去・履歴のbit一致を確認した。offlineの速度診断は実時間の受入とは別である。 |
 | N-6（`26452a4`、`ceadb4c`） | 同じ音高の係数を再利用し、同じsource・世代の退役判定を一hopに一回にした。変更前との28条件のWAVは全byte一致。offlineの09の描画区間は新rendererで1.2%、身体込みで3.0%短縮した。結果を変えない削減の効果は小さく、毎sampleのcarrier正規化は残った。 |
-| N-7（`57deac7`、`b754424`） | 新rendererのSine／Harmonicを旧f32回転kernelへ替え、毎sampleの正規化をやめた。出生8 family・64 groupの全変動距離最大0.0953、静的代謝57 sceneの保存参照との差最大1.19e-7、native PCMとfootprintの一致、全テスト1,022 passed、旧12 WAVの全byte一致を確認した。単音holdは12,000 sampleが旧rendererと全bit一致し、releaseには最大1.19e-7の差が残る。動的代謝の従来の全件一致は未達だったが、2026-10-10の受入改訂で作者が受け入れた。main未統合、Modalとnativeの再出生の最終身体評価の境界は保持した。 |
+| N-7（`57deac7`、`b754424`） | 新rendererのSine／Harmonicを旧f32回転kernelへ替え、毎sampleの正規化をやめた。出生8 family・64 groupの全変動距離最大0.0953、静的代謝57 sceneの保存参照との差最大1.19e-7、native PCMとfootprintの一致、全テスト1,022 passed、旧12 WAVの全byte一致を確認した。単音holdは12,000 sampleが旧rendererと全bit一致し、releaseには最大1.19e-7の差が残る。動的代謝の従来の全件一致は未達だったが、2026-10-10の受入改訂で作者が受け入れた。mainへ統合してpush済み。Modalとnativeの再出生の最終身体評価の境界は保持した。 |
 
 2026-10-09昼の`09fb100`による実機測定は、A（既定の旧renderer）、B（旧renderer＋身体込みの出生・代謝）、A′（新renderer）が合格、B′（新renderer＋身体込み）が不合格だった。その後、22:36〜22:45のN-7のsourceのrelease binaryによる再測定では、A′・B′とも合格した。p99の最大はA′が6,894 µs、B′が8,929 µs（ともに09）、出力不足とcallback errorは両構成で0。sourceが変わらないため、2026-10-10の作者の受入後はこの取得を受入に使う。A・BはN-7で旧rendererが変わらずWAVが一致するため、実機を測り直していない。昼の失敗を含む履歴と夜の合格範囲は、台帳[§9.3.58の夜の再測定](../design-notes/technote-ledger.ja.md#native-carrier-remeasurement-20261009)に記録した。
 
@@ -183,4 +183,6 @@
 
 2026-10-08の終了時点でmainは`20a6904`。originへpushしていない。pushは作者の明示の指示を待つ。
 
-2026-10-09朝にmainをoriginへpushした（`f87b1ca`まで）。この時点では後続のcommitは未pushだった。同日20:40に`596a04f`まで再びpushした。N-6以後は未pushである。N-7（`57deac7`、`b754424`）のmainへのfast-forwardは、統括の操作が権限の分類で止まり、作者の操作待ちである。受入済みという記録を、統合やpush済みへ読み替えない。
+2026-10-09朝にmainをoriginへpushした（`f87b1ca`まで）。この時点では後続のcommitは未pushだった。同日20:40に`596a04f`まで再びpushした。この時点のN-6以後は未pushで、N-7のmainへのfast-forwardは権限の分類で止まり、作者の操作待ちだった。
+
+2026-10-10、作者がN-7とD-3の記録をmainへ統合し、その版を10:52にoriginへpushした。その後、11:49に拍子の仕組みの7 commitをmainへfast-forwardし、mainと同じ最終sourceで統括がfmt・Clippy・全テストを実行した。結果は1,027 passed、0 failed、34 ignored、exit 0（11:50:29）。同日11:50に拍子の仕組みを含む版もoriginへpushした。N-7とT-7の統合・pushは済んでいる。mainのHEAD・差分とoriginとの関係は、着手時に確認する。経過は台帳[§9.3.58の統合・push完了の追記](../design-notes/technote-ledger.ja.md#integration-push-completed-20261010)と、統括の同日10:05・10:54・11:49・11:51の判断記録にある。

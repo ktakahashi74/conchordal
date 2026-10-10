@@ -7184,6 +7184,141 @@ four-configuration device analyses, failed v1 runs, quiet-window runner log and
 v2 disturbance logs. Exact local evidence paths and this unit's validation are
 listed in its orchestration report.
 
+<a id="metric-phase-separation-stopped-20261010"></a>
+
+### 9.3.61 Stopping phase separation inside metric, and the participation route
+
+**Scope decision, afternoon of 2026-10-10.** The author distinguished the mechanism that determines the beat from melody, units smaller than the beat and groove, and asked to establish beat synchronization at this stage. T-8 through T-10, which added separation forces inside `metric()`, were stopped. They were external prototypes and were not adopted into main. The [audition and problem statement in §9.3.59](#metric-phase-degeneracy-audition-20261010) do not constitute a subsequent decision to continue this line.
+
+| Unit | Mechanism tried | What remained unmet |
+|---|---|---|
+| T-8 | Phase occupancy from band energy of actual sound after removing self PCM; one local proposal per bodily cycle updates a Voice's private target offset | In 12, simultaneity within 20 ms fell from 0.9727 to 0.4954, but phases kept moving relative to the shared beat and periodic support decreased. Approximately 0.5-second IOIs from a common intrinsic 2 Hz do not establish synchronization. |
+| T-9 | Periodic support from integer-multiple moments, separate from a continuous shared beat phase; local position choice with and without movement cost | Four positions stabilized in the minimal 8-Voice case. In 12, positions and subdivision interpretation kept moving without the cost; adding it largely preserved concentration at one point. This was not a completed design awaiting only coefficient selection. |
+| T-10 | Mixed-sound distribution M and self-PCM-excluded external-sound distribution V accumulated in the shared coordinate at event time; distribution recurrence supplies support and common rotation is read as an audible tempo change | The minimal representative case stabilized into two nearby groups of five and three Voices. In 12, median support was 0 and target movement remained in the last interval. Removing flow and anchor did not close the result, and T-7's existing test that stability does not change the support ceiling failed. |
+
+T-10 first stopped because subtracting a self contribution from the mixed onset history did not yield the required external observation. A separate V observation after removing self PCM resolved that issue. The subsequent inability to identify the cause of common rotation was also removed from the gate by adopting an audible-rotation convention, allowing actual closed-loop comparison. The final stop was the unmet closed-loop result above. Do not restore the earlier stop reasons or infer impossibility of this model family. T-8 through T-10 use different support definitions; their values are not calibrated probabilities on one common scale.
+
+[Design memo §4.2](dcc-neurocognitive-hierarchy.md#42-beat-meter-and-groove) already separated tempo tracking, grouping inference and deciding where to sound. Participation has an existing `entrained()` / `flow()` route. The orchestrator overlooked that division before pursuing phase separation inside `metric()`; this is recorded as an oversight.
+
+The orchestrator changed only the colony's `metric()` line in 12 to `entrained()`, using seed 21 and the same T-7 final renderer and configuration. Saved aggregates for the eight-Voice colony are:
+
+| Route | Onsets | Another Voice within 20 ms, whole / late | Median nearest neighbor | Median per-Voice IOI (quartiles) | Listener beat confidence, mean / maximum |
+|---|---:|---:|---:|---|---|
+| metric | 440 | 0.97 / 1.00 | 0.0 ms | 0.504 s (0.491–0.526) | 0.504 / 0.961 |
+| entrained | 213 | 0.28 / 0.21 | 32.9 ms | 1.000 s (0.980–1.000) | 0.194 / 0.706 |
+
+Participation produced different phases at a common approximately one-second period. It did not preserve metric's approximately half-second period unchanged. Late per-Voice phase resultant lengths were 0.43–0.99, median 0.61. The 20 ms measure diagnoses simultaneity, not musical quality. Other seeds, long-term retention and musical evaluation were not checked.
+
+Sources are machine-local, untracked records: `.orchestration/units/T-8/report.md`, `T-9/report.md`, `T-10/report.md`, `report-final.md` and `report-closed-loop.md`, `participation-check-20261010/README.md`, and `.orchestration/records/decisions-20261007-orchestrator.md`, 2026-10-10 13:34–16:50. T-10's final result follows `report-closed-loop.md`.
+
+<a id="metric-beat-sync-regressions-20261010"></a>
+
+### 9.3.62 Beat synchronization and two unresolved conditions in main
+
+Following the scope decision, the orchestrator compared eight `metric()` Voices without a dedicated beat Voice or anchor. Seed 21 and T-7's configuration were retained; only the prior declarations changed. Before uses the baseline renderer at `68a8e43`; after uses T-7's final renderer. All measures below concern onsets after 12 seconds: another Voice within 20 ms, median per-Voice IOIs, the production beat frequency range, and median listener beat confidence.
+
+| Prior | Within 20 ms, before→after | IOI s, before→after | Production beat Hz, before→after | Confidence, before→after |
+|---|---|---|---|---|
+| stability 0.85, basin 1.8–2.2 | 1.00→1.00 | 0.501→0.501 | 1.99–2.00→1.99–2.04 | 0.97→0.97 |
+| no stability, basin 1.8–2.2 | 1.00→1.00 | 0.500→0.470 | 2.00→1.99–2.13 | 0.98→0.99 |
+| stability 0.85, no basin | 1.00→1.00 | 0.513→0.490 | 1.95–1.96→2.03–2.04 | 0.97→0.97 |
+| stability 1.0, no basin | 1.00→1.00 | 0.514→0.490 | 1.94–1.96→2.04–2.08 | 0.97→0.98 |
+| neither, the default | 1.00→0.68 | 0.509→0.466–0.480 | 1.96–1.97→2.03–3.23 | 0.99→0.12 |
+| stability 0.85, basin 1.2–1.6 | 0.88→1.00 | 0.522–0.527→0.610 | 1.39–1.43→1.44–1.60 | 0.46→0.79 |
+| stability 0.85, basin 2.8–3.4 | 0.83→0.62 | 0.331–0.358→0.500 | 2.99–3.11→2.95–3.27 | 0.12→0.13 |
+
+The prior used by 07 and 12 synchronized before and after. Two failures remained: the default without either prior, and basin 2.8–3.4. In the latter, the production beat indicated approximately 3 Hz while Voices stayed at 2 Hz. Basin 1.2–1.6 improved. Existing scripts using `metric()` are 07 and 12, both with stability 0.85 and basin 1.8–2.2, so they do not cover the two failures.
+
+T-7 acceptance exercised a single input train and études with priors, but not a multiple-Voice closed loop without priors. This was a gap in the orchestrator's acceptance coverage. The [real-time pass](#t7-meter-remeasurement-20261010) does not establish a pass for synchronization behavior in those conditions.
+
+**Cause and repair remain unresolved.** The orchestrator's explanations, that a zero-weight tempo prior permits successive short neighboring-interval hypotheses and that a basin excluding intrinsic 2 Hz prevents confirmation and coupling, are unverified interpretations. As of 2026-10-10 23:03, T-11 is investigating the cause and a branch repair if it fits the adopted design. Its result is not anticipated here. Forward repair versus reverting, and integration into main, remain author decisions. Other seeds and Voice counts are untested.
+
+Sources are the machine-local, untracked `.orchestration/units/beat-sync-check-20261010/README.md` and the decisions at 16:50 and 23:03 that day. The table is a saved comparison before H-3's default change, not a remeasurement of current main by this documentation unit.
+
+<a id="motif-phrase-generation-gap-20261010"></a>
+
+### 9.3.63 The motif and phrase generation gap, and two ecological routes
+
+**Inventory of 2026-10-10.** Main has beat tempo and phase, measures, several-second repetition expectation and habituation, own-sound prediction, participation decisions to sound, wait or skip, and pitch adaptation to the consonance field. It lacks a mechanism that retains pitch and timing order jointly and changes the next production at the 2–10-second scale considered for motifs and phrases. That range comes from the author's question; it is neither a universal phrase length nor a fixed generation period. This is distinct from lacking memory altogether.
+
+With shared habituation disabled, P-0 counted nonoverlapping 2–10-second windows of at least three successive onsets, matching absolute pitches and IOIs. Nonconstant-pitch matches within or across Voices were 0 at all three resolutions: exact values, 25 cents and 100 cents. One constant-pitch pair was not counted as a motif. These are results of that configuration and detector, not evidence that lines with habituation or transformed melodic relations cannot occur. [H-1's findings](#habituation-melodic-materials-20261010) update this distinction.
+
+**How the gap arose.** The [selection rule in §9.3.55](#mechanism-selection-rule) reviewed the listener hierarchy. Whole-context work moved to research on 2026-09-13; correspondence and memory, phrase/closure, section/return and groove rating moved on September 20. Effects on generation were delegated to local ALife decisions and Scenario, but the delegated side was neither checked nor designed for pattern formation at this scale. Local generation in design memo §9.6 covered action kind and timing, excluding pitch sequences. Technical checks of research recognition mechanisms do not establish current melody generation.
+
+The author allowed old pieces to be discarded and the sample structure rebuilt as needed, and described both cooperation among individuals and pattern formation within one individual. The author also allowed composers to use both if principle did not uniquely determine one. P-A recommended learning private relations from an audible cue to one response pitch and delay, linking responses across the ecology. P-B recommended growing relative-pitch and interval motor chunks from actual own movement and sound into a private branching graph. These were developed as independent founder dispositions rather than exclusive alternatives. The reports are design proposals, not acceptance of 2–10-second pattern formation or adoption into main.
+
+Sources are machine-local, untracked `.orchestration/units/P-COMMON.md`, `P-0/report.md`, `P-A/report.md`, `P-B/report.md`, and the decisions at 17:02, 17:32 and 19:00 that day. The orchestrator's time-scale estimates at 17:32 were unverified and are not recorded as measurements.
+
+<a id="learned-pattern-prototypes-negative-20261010"></a>
+
+### 9.3.64 Negative results from two learned-pattern proposal prototypes
+
+P-A1 and P-B1 each added one private learning mechanism to a copy of main `1f55a45`. The orchestrator's common rule allowed one proposal to existing local judgment, without forcing adoption or adding a preference weight or reward. Under that restriction, neither demonstrated that the added mechanism newly produced a joint pitch/timing pattern.
+
+| Prototype | What worked | What stopped |
+|---|---|---|
+| P-A1, ordinary case in the follow-up | An empty cue-response delay memory grew and ordinary-register content could be read. Of 201 cues matched to one source, 198 identified the actual source's pitch side. After retaining observed delays, there were 189 proposals, 132 comparisons and 5 adopted/executed responses, all 5 with confirmed own-sound onsets. | Adopted response to next adopted response connections were 0; repeating chains were 0. Among 127 rejections, overlap was the largest cost difference in 81 cases, and the entire opportunity was skipped in 53. Stage 2 pitch-relation learning was not started. |
+| P-B1, habituation enabled | Measured own movements grew a two-movement direction context and branches storing relative pitch and interval. 8 branches formed; 10 of 27 pitch proposals were adopted. | Of 110 timing requests, 20 were legal and 0 were adopted. All 98 relative-repeat witnesses in the added and disconnected cases matched the mechanism-free reference in both signature and time. They are not achievements of the added mechanism. |
+
+P-B1's ordinary case without habituation stopped after one pitch movement without growing branches. Shortening only the proposal interval to 0.5 seconds yielded three branches, two pitch proposals and no adoption. P-A1's pitch cue is a dominant spectral-change coordinate, not guaranteed source identity or fundamental separation in a mix. No acquisition ran both private mechanisms together.
+
+**P-A1 corrections.** The first report's 75 proposals described as expiring before comparison were corrected to 72 replacements by new cues and three unconsumed proposals at the 36-second boundary. Separate out-of-range cases numbered 78: 76 already past and two before the opportunity's lower bound. Period deviation dominated the relative cost differences in the original 101 rejections; overlap with a cue's tail did not establish principled exclusion of responses in general. This differs from overlap being a major local competitor in the ordinary-register follow-up. The original single approximately 0.58-second two-step response was excluded from the stage 2 chain condition by the orchestrator's instruction recorded at 19:34.
+
+The negative results do not prove either route impossible in general. Continuing with a preference for learned intention would require deciding the participation objective and the layer owning that weight. It has not been started or adopted, and its priority was lowered when the author chose existing habituation investigation first at 20:25. No generation API or vocabulary was adopted into main.
+
+Sources are machine-local, untracked `.orchestration/units/P-A1/report.md` and `report-2.md`, `P-B1/report.md`, `P-PROTO-COMMON.md`, and the decisions at 19:34, 20:19 and 20:25 that day. P-A1's final outcome and corrections follow the second report.
+
+<a id="habituation-melodic-materials-20261010"></a>
+
+### 9.3.65 Melodic lines from habituation and existing vocabulary
+
+**Author audition.** On 2026-10-10, the author described the third material, `legato-fast`, as a considerably natural melody compared with earlier results, while noting lower volume in legato. It places one harmonic Voice over a 220 Hz anchor, with shared habituation, `sustain()`, `pitch_apply_mode("glide")`, `glide(0.03)` and `proposal_interval(0.5)`. Only existing vocabulary is used; a note-sequence memory was not added. Default-on habituation and its real-time evidence are already recorded in [§9.3.60](#habituation-default-on-20261010).
+
+H-1's addendum classified a single Voice's body fundamental into 25-cent bins over 96 seconds, counting stays of at least 0.3 seconds. Start-to-next-start time includes glide. There was still only one actual onset; movement counts are not onset counts.
+
+| Seed | Pitch movements | Median start-to-next-stay time | Small movements ±25/50 cents | Jumps 300–700 cents |
+|---|---:|---:|---:|---:|
+| 21 | 135 | 0.523 s | 32 | 37 |
+| 42 | 138 | 0.512 s | 47 | 21 |
+| 123 | 138 | 0.512 s | 35 | 30 |
+
+Proposal interval determines the opportunities for pace. With habituation, the approximately two-second default produced 44 movements with a 2.080-second median; an explicit one-second interval produced 81 with a 1.013-second median. Disabling habituation at the same 0.5-second proposal interval reduced movements to five. Habituation retains erosion and recovery by location, changing whether a proposal stays and where it moves or returns. Its five/eight-second settings are not direct note-length conversions. `glide(0.03)` is a 30 ms time constant, not a contract to finish movement in 30 ms.
+
+Seed 21 frequently occupied 1175, 700, 500, 0, 875 and 375 cents relative to the anchor. Of 136 stays, 94 fell within ±25 cents of the simple interval classes defined in the addendum. This is neither a scripted scale nor a rule that successive intervals must always be fourths or fifths. Register and ordering vary among seeds, with few strict 2–10-second repeating windows. The author's natural-melody assessment does not establish a long-score or general phrase generator.
+
+**Three materials assessed by the author.** Sending the anchor only to `habitat_bus` leaves it sounding to the ecology while excluding it from presentation. All 9,000 hops of the melodic pitch trajectory, field and habituation matched the original legato-fast. This differs from removing the anchor from the ecology. Without an anchor, an approximately self-excluded single Voice made regular jumps; a slow/fast pair used the shared field as a changing reference. The author considered the regular single-Voice motion usable in composition and the pair's interaction somewhat musical and moving in a good direction. These are author judgments of those materials, not worker rankings of new seeds or exclusion modes.
+
+A single Voice without an anchor and including self sound made 141 movements, of which 114 were −25 cents and 19 were −50 cents: small descent dominated. Self-derived peaks move with the Voice, without the anchor's independent fixed reference. Initial jumps and returns also occurred, so this does not mean inevitable descent or no possible melody without an anchor. The approximately self-excluded solo made 190 movements even with habituation disabled. The pair also uses a field retaining self components, not strict self-PCM exclusion where each hears only the other.
+
+**Volume constraints.** Legato-fast's 5–45-second peak was 0.0443 and RMS −37.40 dBFS. Changing sustain level from 0.4 to 1.0 increased peak to 0.0658 and RMS to −34.55 dBFS, but changed 135 movements at 0.523 seconds to 80 at 0.971 seconds. Body volume is also ecological input, changing relative strength against the anchor, raw field and habituation state. Current buses lack an independent presentation gain. Playback gain after acquisition can preserve the trajectory; native volume separation and its layer remain deferred. No script vocabulary toggles habituation; TOML's enabled flag and the adopted default are available.
+
+**Corrections and limits.** H-1 corrected the orchestrator's explanation that a sine's lack of harmonics implies no consonance peaks. It also does not support generalizations that all positive temporal memory is missing, that timing patterns are absent in every scene, or that shared habituation is necessary for every regular jump. The 60–120 ms analysis value was a typical-value comment; configured `tau_ms` defaults to 10 ms. The addendum further established that ApproxHarmonics for ordinary harmonic bodies dents the current fundamental while leaving self-derived common-root peaks, and that ExactScan recomputes kernels after changing one bin rather than excluding the whole self body. The first report's explanation about supplied ratios was corrected. More Voices, all-fast configurations or exact mode did not uniformly strengthen the same line. These are 96-second, three-seed harmonic diagnostics; long runs, other bodies, birth/inheritance, a coupling-enabled closed loop and psychological phrase or naturalness mechanisms remain untested.
+
+Sources are machine-local, untracked `.orchestration/units/H-1/report.md`, initial §§7–9 and its 2026-10-10 addendum, `articulation-check-20261010/README.md`, `self-reference-check-20261010/README.md`, `habituation-check-20261010/README.md`, and the decisions at 20:34–21:55 that day. The addendum's diagnostics take precedence over early coarse counts and unverified explanations.
+
+<a id="pitch-adoption-articulation-prototype-20261010"></a>
+
+### 9.3.66 One onset per adopted pitch target: an articulation prototype
+
+Following the author's idea of avoiding rearticulation while pitch stays unchanged, two decisions were adopted at 21:55 on 2026-10-10: **one onset per adoption of a new pitch target, with attack at the beginning of movement**. V-1 prototyped this production policy in a copy of main `1f55a45`. A changed, range-limited, unquantized adopted target is one local event: release the old Tone and attack a fresh Tone at the new pitch from its beginning. Intermediate glide updates, unchanged targets, rejection and absent proposals do not create extra Ons. Locked anchors and existing Gated voices are excluded.
+
+Across the final prototype's ten new-policy acquisitions, 1,472 computed adoptions comprised 1,471 permitted outputs and one release cancellation. Adding 11 initial onsets gave 1,482 onsets. Every permitted adoption matched one On in target bits and sample time. Same-seed replay and disabled-policy comparison with the existing renderer matched WAV bytes and all telemetry except wall timing. This verifies prototype rules, not native integration acceptance.
+
+| Seed over anchor | Valid adoptions / onsets | Onset interval min / p25 / median / p75 / p95 / max, seconds | RMS, 5–45 s dBFS |
+|---|---|---|---:|
+| 21 | 136 / 137 | 0.500 / 0.500 / 0.500 / 1.000 / 1.500 / 1.500 | −34.72 |
+| 42 | 143 / 144 | 0.500 / 0.500 / 0.500 / 1.000 / 1.500 / 2.000 | −34.67 |
+| 123 | 179 / 180 | 0.500 / 0.500 / 0.500 / 0.500 / 0.501 / 2.000 | −34.61 |
+
+Duration means actual onset to next onset; the final note is separately right-censored at the 96-second release. Seed 21's peak was 0.1597 over the full file and 0.1482 over 5–45 seconds; all WAVs had zero clipping. RMS increased from the same seed's gliding reference at −37.40 dBFS, without adding a downstream gain.
+
+**Pitch behavior also changes.** Seed 123's small movements increased from 35/138 in the gliding version to 123/179; 300–700-cent jumps decreased from 30/138 to 9/179. The gliding version uses H-1's stay sequence, while the new policy uses all adopted onset events. New attacks, immediate pitch changes and old release tails feed the field and habituation, so legato-fast behavior was not uniformly preserved across three seeds. This did not isolate attack's causal contribution. Approximately self-excluded solo and slow/fast pair materials were also acquired; the policy alone does not guarantee varied durations.
+
+**Native integration awaits author audition and decision.** The two adopted rules do not need reselection; the remaining choice is whether to integrate this policy with its feedback effects, including seed 123. `pitch_articulated()` is a suggested independent articulation mode: name and API are unadopted and unimplemented in Rhai. The prototype covers 48 kHz, hop 512, 96 seconds, three seeds, harmonic/Drone solo and pair scenes. Other bodies, birth/inheritance, arbitrary hops, participating partners, nonzero DCC coupling and real-time margin are untested. Entrain has only bounded energy, release/death and related checks.
+
+Sources are machine-local, untracked `.orchestration/units/V-1/registration.md` and `report.md`, and the decisions at 20:34, 21:55, 22:58 and 23:03 that day. V-1's fixed-copy results do not validate main after the H-3 update.
+
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

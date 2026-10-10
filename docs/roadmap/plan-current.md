@@ -151,7 +151,7 @@
 
 ### 残る設計と作者判断
 
-- **時間構造の周期の確定と到来の予測**：T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と因果差・未使用tempoの対照を確認した。確認前の拍・分割・小節は未知に保つ。2026-10-10の作者の指摘で、tempoの好みは文化層の事前分布と整理し、内部の一度の試聴選択を撤回した。好みの重みは既存の`meter_stability`（既定0）そのものとし、新しい語彙は足していない。統括が最終sourceのA・B・A′・B′をmainへの統合前に実機で測り、全48演奏が終了0、四構成ともR-1と同じ宣言範囲・基準で合格した。mainへの統合とpushは2026-10-10に済んだ。数値と取得範囲は台帳[§9.3.58のT-7再測定](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。根拠は台帳[§9.3.59の文化層の訂正](../design-notes/technote-ledger.ja.md#meter-tempo-prior-20261010)。作者の試聴では周期と同期は成立したが、位相が揃って縮退し、音楽的ではなかった。残る設計問題は、拍に乗るVoiceの位相がVoiceどうしの関係から分かれる仕組みがないことである（[試聴の記録](../design-notes/technote-ledger.ja.md#metric-phase-degeneracy-audition-20261010)）。
+- **時間構造の周期の確定と到来の予測**：T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と因果差・未使用tempoの対照を確認した。確認前の拍・分割・小節は未知に保つ。2026-10-10の作者の指摘で、tempoの好みは文化層の事前分布と整理し、内部の一度の試聴選択を撤回した。好みの重みは既存の`meter_stability`（既定0）そのものとし、新しい語彙は足していない。統括が最終sourceのA・B・A′・B′をmainへの統合前に実機で測り、全48演奏が終了0、四構成ともR-1と同じ宣言範囲・基準で合格した。mainへの統合とpushは2026-10-10に済んだ。数値と取得範囲は台帳[§9.3.58のT-7再測定](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。根拠は台帳[§9.3.59の文化層の訂正](../design-notes/technote-ledger.ja.md#meter-tempo-prior-20261010)。作者の[試聴の記録](../design-notes/technote-ledger.ja.md#metric-phase-degeneracy-audition-20261010)を受けたT-8〜T-10は、同日午後の範囲の判断で停止した。拍と旋律・拍より細かい単位・grooveを分け、位相の分化は既存の参加の経路と区別する（[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)）。拍の同期には事前分布なしとbasin 2.8〜3.4の二つの失敗が残り、T-11が原因を調査している。修理とmainへの統合は未決である（[§9.3.62](../design-notes/technote-ledger.ja.md#metric-beat-sync-regressions-20261010)）。
 - **新しいrendererの採用範囲**：楽器binaryでもopt-inで選べ、Sine／Harmonicで身体込みの出生・代謝と代表onset footprintを使える。N-7のsourceによる夜の再測定で、新しいrenderer単独と身体込みの構成はともに実時間の基準を満たした。N-7は作者の受入済みで、mainへの統合も済んでいる。残るのは既定にするかの判断、Modalへの対応、再出生の最終選択を身体込みで評価するためのnativeの参照分布である。
 - **身体込みの出生の拡張**：旧rendererで再出生の最終選択への拡張は済んだ。ただし対応は方式とfamilyの組ごとに分かれ、登録済みの基準を満たさない組は従来の評価を使う。新しいrendererの再出生の最終選択には身体評価を使わない。
 - **身体込みの代謝**：作者は2026-10-10に[動的な受入の形を改訂した](../design-notes/technote-ledger.ja.md#body-metabolism-acceptance-revision-20261010)。合否は静的照合（既存上限0.025）、更新の順番と漏れのなさ、同じseedでの再現性で判定し、動的比較は件数と最初の分岐の原因を報告する。別seed・別étudeでの発生率や生態の偏りは未検証。seed 42での全件一致で選んだ更新数2の根拠は弱くなり、その見直しが残る。
@@ -205,3 +205,22 @@ Aが5,896 µs、Bが6,196 µs、A′が7,442 µs、B′が9,308 µsで、採る�
 取り直しの窓とA′の外乱を含む経過は、台帳[§9.3.60](../design-notes/technote-ledger.ja.md#habituation-default-on-20261010)に記録した。
 実時間は取得し直していない。branchでの全テストと既定設定による12 étudeの全長offline描画の記録は
 `.orchestration/units/H-3/report.md`にある。20単位の分母を増やさず、作者の試聴評価と実時間の合格を分ける。
+
+<a id="temporal-melodic-outcomes-20261010"></a>
+
+### 2026-10-10午後〜夜の検討と、次の判断
+
+以下は同日23:03までの報告と判断に基づく状態である。D-6着手時のmainはD-5の文書修正を含む`4da4726`、origin/mainはH-3を含む`39e6840`で、mainは文書1 commit先だった。branchの現況は次の着手時に確認する。文書単位は本体を変更せず、§3の20単位の分母を増やさない。
+
+| 単位・検討 | 結果と、続ける範囲 |
+|---|---|
+| T-8〜T-10 | metric内の位相分離の試作を停止。本体へ採らない。既存の参加経路は、共通周期のまま位相を分ける対照を持つ。[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)。 |
+| 拍の同期、T-11 | 07・12と同じpriorでは同期を確認したが、既定のpriorなしとbasin 2.8〜3.4は失敗。T-7の受入にはpriorなしの複数Voice閉ループが無かった。T-11の原因調査と、採択済み設計内で可能なbranch修理は進行中。結果を先取りせず、修理を進めるか戻すか、mainへの統合は作者判断。[§9.3.62](../design-notes/technote-ledger.ja.md#metric-beat-sync-regressions-20261010)。 |
+| P-0、P-A、P-B | 2〜10秒の音高・時刻の型の生成状態の空白を棚卸し。複数個体の応答と個体内の形成は二択にせず、創始の気質として共存できる案を検討。旧曲を維持する前提は置かない。[§9.3.63](../design-notes/technote-ledger.ja.md#motif-phrase-generation-gap-20261010)。 |
+| P-A1、P-B1 | 提案だけで新しい重みを足さない条件では、型を新たに生んだと示せず陰性で終了。学んだ意図に重みを持たせる続きは未着手・未採択で、優先を下げた。[§9.3.64](../design-notes/technote-ledger.ja.md#learned-pattern-prototypes-negative-20261010)。 |
+| H-1 | 慣れと既存語彙のlegato-fastを作者が「かなり自然なメロディー」と評価。聴かせないanchor、一体の近似自己除外、遅い／速い二体も作曲の材料として評価した。一般的な系列生成の受入とはしない。慣れの既定有効化は上記H-3で完了。[§9.3.65](../design-notes/technote-ledger.ja.md#habituation-melodic-materials-20261010)。 |
+| V-1 | 外部試作で、新目標の採用一回に発音一回、移動開始でattackする規則を確認。音量と音高の動きも変わる。作者の試聴と本体統合の判断待ち。語彙の名称・APIは未採択。[§9.3.66](../design-notes/technote-ledger.ja.md#pitch-adoption-articulation-prototype-20261010)。 |
+
+次はT-11の報告で原因と採択済み設計内の修理範囲を確認し、V-1の打ち直す版・滑る版・採用で発音する版とseed 123を作者が聴いて、本体へ入れるか判断する。V-1の二つの発音規則は決定済みで、再選定しない。聴こえる音量と生態入力の分離は保留、学んだ意図の重みの設計は優先を下げた未決の続きである。これらを試作完了や実時間合格によって自動的に採択したとはしない。
+
+出典は機械に固有の追跡外記録 `.orchestration/units/`の各報告と、`.orchestration/records/decisions-20261007-orchestrator.md`の同日13:20以後である。次の着手で読むfileと試聴材料は[next-session](next-session.md#2-先に読むもの)にまとめる。

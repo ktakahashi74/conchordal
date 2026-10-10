@@ -7,10 +7,9 @@
 //!
 //! Design rationale: `docs/design-notes/neural-rhythm-meter.md`.
 //!
-//! Phase boundary: the beat (tactus) limit cycle and PLV confidence are live and
-//! observable from onset timing alone. The measure subharmonic and grouping
-//! selection are deferred to the accent layer (Regime B), where they have real
-//! support; shipping them here would be inert.
+//! The tactus adapts to corroborated acoustic intervals. Integer-ratio layers
+//! retain separate subdivision and accent evidence; they are not independent
+//! noninteger tempi or a learned coupling network.
 
 use std::f32::consts::TAU;
 
@@ -21,11 +20,16 @@ use crate::core::phase::wrap_pm_pi;
 #[path = "meter_assay.rs"]
 mod audio_assay;
 
-// Beat (tactus) range. Faster onset streams lock the beat at the top of this
-// band; anything faster is subdivision territory, not a separate beat.
+#[cfg(test)]
+#[path = "meter_hierarchy_tests.rs"]
+mod hierarchy_tests;
+
+// Existing tactus band; faster input is read through an integer subdivision.
 const F_BEAT_MIN: f32 = 0.5;
 const F_BEAT_MAX: f32 = 4.0;
 const F_BEAT_INIT: f32 = 2.0;
+// Existing integration floor, also bounds the number of interval additions.
+const MIN_STEP_SEC: f32 = 1e-4;
 
 // `temporal_basin` restoring rate (per second): a weak pull of the beat
 // frequency toward the basin center. Kept gentle so onset entrainment within
@@ -39,8 +43,11 @@ const BASIN_PULL: f32 = 0.6;
 const ALPHA: f32 = 1.0;
 const BETA: f32 = -1.0;
 const FORCE_AMP: f32 = 1.0; // drive -> amplitude pumping (in phase)
-const FORCE_PHASE: f32 = 1.0; // drive -> phase entrainment
-const ETA_OMEGA: f32 = 3.0; // Hebbian frequency-learning rate
+// Large & Jones (1999) simulation gains, verified in the temporal design review.
+const PHASE_GAIN: f32 = 0.6;
+const PERIOD_GAIN: f32 = 0.1;
+// Free internal prior; artist audition choice pending, 2026-10-10. Branch value only.
+const TEMPO_PREFERENCE_WEIGHT: f32 = 0.0;
 
 // Confidence accumulators decay over this timescale, so confidence persists
 // through short gaps (a beat or two) but fades in sustained silence.
@@ -100,9 +107,9 @@ pub struct MeterShaping {
     /// Attractor depth in [0, 1]. How strongly a pulse wants to form: scales the
     /// entrainment forcing. 0 = neutral baseline.
     pub stability: f32,
-    /// Frequency-prior region in Hz `(min, max)`. The beat is seeded at the
-    /// center and gently pulled toward it, and its frequency learning is confined
-    /// to this band. `None` = the full default beat band, no prior.
+    /// Frequency-prior region in Hz `(min, max)`. Seeds the beat at its center
+    /// and confines adaptation to the band. The internal preference weight
+    /// controls any additional restoring pull. `None` = the default beat band.
     pub basin_hz: Option<(f32, f32)>,
 }
 
@@ -116,6 +123,10 @@ pub struct MeterNetwork {
     beat_r: f32,
 
     onset_detector: OnsetDetector,
+    onset_age: Option<f32>,
+    pending_period: Option<f32>,
+    seeded: bool,
+    previous_phase_error: Option<f32>,
 
     // Leaky resultant accumulators (numerator complex sum + count denominator),
     // all decayed at PERSIST_TAU so PLV is rate-independent and silence-fading.
@@ -124,7 +135,6 @@ pub struct MeterNetwork {
     beat_im: f32,
     sub_re: [f32; 3],
     sub_im: [f32; 3],
-    offbeat_num: f32,
 
     // Measure (accent subharmonic) state. beat_cycles is the unwrapped beat
     // count; accent-weighted resultants at candidate subharmonics select the
@@ -147,12 +157,15 @@ impl Default for MeterNetwork {
             beat_omega: TAU * F_BEAT_INIT,
             beat_r: 0.1,
             onset_detector: OnsetDetector::default(),
+            onset_age: None,
+            pending_period: None,
+            seeded: false,
+            previous_phase_error: None,
             plv_count: 0.0,
             beat_re: 0.0,
             beat_im: 0.0,
             sub_re: [0.0; 3],
             sub_im: [0.0; 3],
-            offbeat_num: 0.0,
             beat_cycles: 0.0,
             strength_baseline: 0.0,
             meas_re: [0.0; 3],
@@ -185,51 +198,156 @@ impl MeterNetwork {
     /// Advance the network by `dt` seconds under acoustic onset `drive` in
     /// [0, 1] (rectified spectral flux). Returns the updated meter state.
     pub fn process(&mut self, dt: f32, drive: f32) -> MeterState {
-        let dt = dt.max(1e-4);
+        self.process_with_preference(dt, drive, TEMPO_PREFERENCE_WEIGHT)
+    }
+
+    fn process_with_preference(
+        &mut self,
+        dt: f32,
+        drive: f32,
+        preference_weight: f32,
+    ) -> MeterState {
+        let dt = dt.max(MIN_STEP_SEC);
         let drive = drive.clamp(0.0, 1.0);
-
         let onset = self.onset_detector.process(dt, drive);
-
-        // Attractor depth: a deeper basin (higher stability) forces phase and
-        // amplitude harder toward the stimulus. The forcing only acts in the
-        // stimulus direction, so random drive still cancels and no beat is
-        // fabricated.
         let force_gain = 1.0 + self.shaping.stability.clamp(0.0, 1.0);
-        let force_amp = FORCE_AMP * force_gain;
-        let force_phase = FORCE_PHASE * force_gain;
-
-        // --- Beat oscillator: forced limit cycle, integrated in polar form so
-        // the rotation is exact and only the slow amplitude/forcing terms use
-        // Euler steps. ---
         let phi_before = self.beat_phi;
-        let r = self.beat_r.max(1e-3);
-        let dr =
-            ALPHA * self.beat_r + BETA * self.beat_r.powi(3) + force_amp * drive * phi_before.cos();
+        let omega_before = self.beat_omega;
+        let dr = ALPHA * self.beat_r
+            + BETA * self.beat_r.powi(3)
+            + FORCE_AMP * force_gain * drive * phi_before.cos();
         self.beat_r = (self.beat_r + dr * dt).clamp(0.0, 2.0);
+        self.beat_phi = wrap_pm_pi(phi_before + omega_before * dt);
+        self.beat_cycles += omega_before * dt / TAU;
 
-        let dphi = self.beat_omega - force_phase * (drive / r) * phi_before.sin();
-        self.beat_phi = wrap_pm_pi(phi_before + dphi * dt);
-
-        // Hebbian frequency learning: shift omega to reduce the phase error to
-        // the stimulus. A deeper attractor adapts frequency faster (scaled by the
-        // same gain), so it locks sooner. Random (renewal) input still averages
-        // to ~0 net shift, so the beat does not chase noise.
-        self.beat_omega -= ETA_OMEGA * force_gain * drive * phi_before.sin() * dt;
-        // A temporal basin adds a weak restoring pull toward its center and
-        // confines learning to the band; otherwise the full beat band applies.
-        let (omega_lo, omega_hi) = match self.shaping.basin_hz {
+        let (lo, hi, center) = match self.shaping.basin_hz {
             Some((min_hz, max_hz)) => {
                 let (lo, hi) = sane_basin(min_hz, max_hz);
-                let center_omega = TAU * 0.5 * (lo + hi);
-                self.beat_omega += BASIN_PULL * (center_omega - self.beat_omega) * dt;
-                (TAU * lo, TAU * hi)
+                let center = 0.5 * (lo + hi);
+                // Existing restoring ceiling; auditory evidence suppresses the prior.
+                self.beat_omega += preference_weight
+                    * (1.0 - self.last.beat.confidence)
+                    * BASIN_PULL
+                    * (TAU * center - self.beat_omega)
+                    * dt;
+                (lo, hi, center)
             }
-            None => (TAU * F_BEAT_MIN, TAU * F_BEAT_MAX),
+            None => (F_BEAT_MIN, F_BEAT_MAX, F_BEAT_INIT),
         };
+        let (omega_lo, omega_hi) = (TAU * lo, TAU * hi);
         self.beat_omega = self.beat_omega.clamp(omega_lo, omega_hi);
+        let observed_phi = wrap_pm_pi(phi_before + omega_before * dt * onset.frac);
+        let mut seeded_now = false;
 
-        // Unwrapped beat count, used to phase the slow measure subharmonic.
-        self.beat_cycles += dphi * dt / TAU;
+        if onset.fired {
+            let mut proposal = None;
+            if let Some(age) = self.onset_age {
+                let ioi = age + dt * onset.frac;
+                if let Some(period) = self.pending_period {
+                    // Reuse temporal_participation's min(0.2*IOI, 60 ms) candidate window.
+                    if (ioi - period).abs() <= (0.2 * period).min(0.06) {
+                        let observed_frequency = 1.0 / period;
+                        let mut best_score = -1.0;
+                        // Positive f32 interval sums: gamma_n bounds roundoff at the band edge.
+                        // At most 1/lo seconds at the existing minimum step, plus endpoint arithmetic.
+                        let n_epsilon = ((1.0 / lo / MIN_STEP_SEC).ceil() + 3.0) * f32::EPSILON;
+                        let relative_roundoff = n_epsilon / (1.0 - n_epsilon);
+                        // Existing integer layers, evaluated at continuous observed frequencies.
+                        for ratio in [1.0_f32, 0.5, 1.0 / 3.0, 0.25, 2.0, 3.0, 4.0] {
+                            let raw_frequency = ratio * observed_frequency;
+                            let frequency = raw_frequency.clamp(lo, hi);
+                            let raw_period = 1.0 / raw_frequency;
+                            if (raw_period - 1.0 / frequency).abs()
+                                > (relative_roundoff * raw_period).min((0.2 * raw_period).min(0.06))
+                            {
+                                continue;
+                            }
+                            // Free log-distance profile, not a fitted literature resonance curve.
+                            let distance = if frequency <= center {
+                                (frequency / center).ln() / (lo / center).ln()
+                            } else {
+                                (frequency / center).ln() / (hi / center).ln()
+                            };
+                            let preference = (1.0 - distance).clamp(0.0, 1.0);
+                            // Ideal nested event trains: intersection / union coverage.
+                            let support = ratio.min(1.0 / ratio);
+                            let score = support
+                                * ((1.0 - preference_weight) + preference_weight * preference);
+                            if score > best_score {
+                                best_score = score;
+                                proposal = Some(frequency);
+                            }
+                        }
+                        // Preserve an established tactus across whole missed beats.
+                        if self.seeded {
+                            let current_period = TAU / self.beat_omega;
+                            for missing_ratio in [2.0_f32, 3.0, 4.0] {
+                                let expected = missing_ratio * current_period;
+                                let raw_frequency = missing_ratio / period;
+                                let frequency = raw_frequency.clamp(lo, hi);
+                                let raw_period = 1.0 / raw_frequency;
+                                if (period - expected).abs() <= (0.2 * expected).min(0.06)
+                                    && (raw_period - 1.0 / frequency).abs()
+                                        <= (relative_roundoff * raw_period)
+                                            .min((0.2 * raw_period).min(0.06))
+                                {
+                                    proposal = Some(frequency);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                self.pending_period =
+                    if (1.0 / (F_BEAT_MAX * 4.0)..=1.0 / F_BEAT_MIN).contains(&ioi) {
+                        Some(ioi)
+                    } else {
+                        None
+                    };
+            }
+            if !self.seeded
+                && let Some(frequency) = proposal
+            {
+                self.beat_omega = TAU * frequency;
+                self.beat_phi = wrap_pm_pi(self.beat_omega * dt * (1.0 - onset.frac));
+                self.beat_cycles = self.beat_omega * dt * (1.0 - onset.frac) / TAU;
+                // A new coordinate discards old evidence; this onset cannot certify itself.
+                self.plv_count = 0.0;
+                self.beat_re = 0.0;
+                self.beat_im = 0.0;
+                self.sub_re = [0.0; 3];
+                self.sub_im = [0.0; 3];
+                self.meas_re = [0.0; 3];
+                self.meas_im = [0.0; 3];
+                self.meas_norm = 0.0;
+                self.previous_phase_error = Some(0.0);
+                self.seeded = true;
+                seeded_now = true;
+            }
+            if !seeded_now {
+                if let Some(previous_error) = self.previous_phase_error {
+                    let period = TAU / self.beat_omega;
+                    self.beat_omega = TAU
+                        / (period * (1.0 + PERIOD_GAIN * force_gain * previous_error.sin() / TAU));
+                }
+                let correction = -PHASE_GAIN * force_gain * observed_phi.sin();
+                let tail = (self.beat_omega - omega_before) * dt * (1.0 - onset.frac);
+                self.beat_phi = wrap_pm_pi(self.beat_phi + correction + tail);
+                self.beat_cycles += (correction + tail) / TAU;
+                self.previous_phase_error = Some(observed_phi);
+                if let Some(frequency) = proposal {
+                    let omega = TAU * frequency;
+                    let tail = (omega - self.beat_omega) * dt * (1.0 - onset.frac);
+                    self.beat_phi = wrap_pm_pi(self.beat_phi + tail);
+                    self.beat_cycles += tail / TAU;
+                    self.beat_omega = omega;
+                }
+            }
+            self.beat_omega = self.beat_omega.clamp(omega_lo, omega_hi);
+            self.onset_age = Some(dt * (1.0 - onset.frac));
+        } else if let Some(age) = self.onset_age.as_mut() {
+            *age += dt;
+        }
 
         // --- Confidence accumulators: decay every tick (persistence), add an
         // impulse at each onset. ---
@@ -237,7 +355,6 @@ impl MeterNetwork {
         self.plv_count *= decay;
         self.beat_re *= decay;
         self.beat_im *= decay;
-        self.offbeat_num *= decay;
         for k in 0..SUB_RATIOS.len() {
             self.sub_re[k] *= decay;
             self.sub_im[k] *= decay;
@@ -249,13 +366,11 @@ impl MeterNetwork {
             self.meas_im[k] *= m_decay;
         }
 
-        if onset.fired {
-            let onset_phi = wrap_pm_pi(phi_before + dphi * dt * onset.frac);
+        if onset.fired && !seeded_now {
+            let onset_phi = observed_phi;
             self.plv_count += 1.0;
             self.beat_re += onset_phi.cos();
             self.beat_im += onset_phi.sin();
-            // off-beat support: 0 on the beat, 1 in anti-phase.
-            self.offbeat_num += 0.5 * (1.0 - onset_phi.cos());
             // ratio competition: which integer multiple of the beat phase do
             // onsets lock to.
             for (k, ratio) in SUB_RATIOS.iter().enumerate() {
@@ -326,7 +441,7 @@ impl MeterNetwork {
             }
         }
         let sub_plv = best_mag / count;
-        let offbeat_support = (self.offbeat_num / count).clamp(0.0, 1.0);
+        let offbeat_support = 0.5 * (1.0 - beat_plv.clamp(0.0, 1.0));
         // Subdivision is real only when onsets actually fall off the beat; a
         // beat-only signal yields ~0 here even though every harmonic is coherent.
         let sub_conf = (sub_plv * offbeat_support * presence).clamp(0.0, 1.0);
@@ -743,71 +858,42 @@ mod tests {
         );
     }
 
-    /// Run a jittered beat through a configured network and report the
-    /// confidence reached after `secs`. Shared by the stability assays.
-    fn run_jittered(shaping: MeterShaping, beat_hz: f32, secs: f32, jitter: f32) -> f32 {
-        let mut net = MeterNetwork::new();
-        net.set_shaping(shaping);
-        let mut seed: u32 = 0x51A8_1117;
-        let mut next_rng = || {
-            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            (seed >> 8) as f32 / (1u32 << 24) as f32
-        };
-        let period = 1.0 / beat_hz;
-        let total = secs;
-        let n = (total / DT) as usize;
-        let mut t = 0.0f32;
-        let mut next_beat = 0.0f32;
-        let mut last = 0.0f32;
-        for _ in 0..n {
-            let mut drive = 0.0;
-            if t >= next_beat {
-                drive = 1.0;
-                next_beat = t + period + jitter * (next_rng() - 0.5);
-            }
-            last = net.process(DT, drive).beat.confidence;
-            t += DT;
-        }
-        last
-    }
-
     #[test]
     fn higher_stability_speeds_beat_lock() {
-        // Clean 2 Hz beat, measured in a short window before either net has fully
-        // committed. A deeper attractor (higher stability) is a top-down prior
-        // that commits with less evidence, so it reads a far higher confidence
-        // early. Both reach the same ceiling given enough time (checked below) --
-        // stability sets how readily a pulse forms, not the confidence cap, which
-        // the stimulus regularity owns.
-        let neutral_early = run_jittered(MeterShaping::default(), 2.0, 1.5, 0.0);
-        let deep_early = run_jittered(
-            MeterShaping {
+        // Compare after corroboration: resetting old coordinates invalidates the old 1.5 s cut.
+        for preference in [0.0, 1.0] {
+            let mut neutral = MeterNetwork::new();
+            let mut deep = MeterNetwork::new();
+            deep.set_shaping(MeterShaping {
                 stability: 1.0,
                 basin_hz: None,
-            },
-            2.0,
-            1.5,
-            0.0,
-        );
-        assert!(
-            deep_early > neutral_early + 0.2,
-            "high stability should commit sooner: neutral {neutral_early} deep {deep_early}"
-        );
-        // Same ceiling once both have enough evidence.
-        let neutral_late = run_jittered(MeterShaping::default(), 2.0, 5.0, 0.0);
-        let deep_late = run_jittered(
-            MeterShaping {
-                stability: 1.0,
-                basin_hz: None,
-            },
-            2.0,
-            5.0,
-            0.0,
-        );
-        assert!(
-            (deep_late - neutral_late).abs() < 0.1,
-            "stability must not raise the ceiling: neutral {neutral_late} deep {deep_late}"
-        );
+            });
+            let mut t = 0.0_f32;
+            let mut early_difference = 0.0_f32;
+            let mut saturated_peaks = [0.0_f32; 2];
+            // Reuse the clean metric fixture; compare saturated presence, not a lock deadline.
+            for _ in 0..(20.0 / DT) as usize {
+                let drive = pulse(t % 0.5, 0.02);
+                let a = neutral.process_with_preference(DT, drive, preference);
+                let b = deep.process_with_preference(DT, drive, preference);
+                if neutral.seeded && deep.seeded {
+                    early_difference = early_difference.max(b.beat.confidence - a.beat.confidence);
+                }
+                if neutral.plv_count >= 4.0 && deep.plv_count >= 2.0 {
+                    saturated_peaks[0] = saturated_peaks[0].max(a.beat.confidence);
+                    saturated_peaks[1] = saturated_peaks[1].max(b.beat.confidence);
+                }
+                t += DT;
+            }
+            assert!(
+                early_difference > 0.2,
+                "high stability must precede neutral after corroboration"
+            );
+            assert!(
+                saturated_peaks[0] > 0.8 && (saturated_peaks[1] - saturated_peaks[0]).abs() < 0.1,
+                "stability must not raise the ceiling"
+            );
+        }
     }
 
     #[test]

@@ -40,7 +40,7 @@ fn observe_audio(
         // Inspect the same detector without changing the live analysis state.
         let onset = meter.onset_detector.clone().process(dt, drive);
         let phase_before = meter.beat_phi;
-        let cycles_before = meter.beat_cycles;
+        let omega_before = meter.beat_omega;
         let state = meter.process(dt, drive);
         let start_sec = (index * hop) as f64 / sample_rate as f64;
         rows.push(Observation {
@@ -57,9 +57,8 @@ fn observe_audio(
             onset: onset.fired.then(|| {
                 (
                     start_sec + dt as f64 * onset.frac as f64,
-                    wrap_pm_pi(
-                        phase_before + TAU * (meter.beat_cycles - cycles_before) * onset.frac,
-                    ),
+                    // Prediction before this onset corrects or seeds the meter.
+                    wrap_pm_pi(phase_before + omega_before * dt * onset.frac),
                 )
             }),
         });

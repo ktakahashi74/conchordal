@@ -273,3 +273,74 @@ fn meter_hierarchy_process_adds_no_allocations_at_either_stability_endpoint() {
         assert_eq!(counts.bytes, 0);
     }
 }
+
+#[test]
+fn recurrence_candidates_share_the_complete_observation_denominator() {
+    let mut recurrence = Recurrence::new();
+    recurrence.history.extend([0.0, 0.5, 1.0, 1.5]);
+    assert_eq!(recurrence.coverage(0.5, 0.06), 0.75);
+    assert_eq!(recurrence.coverage(1.0, 0.06), 0.5);
+}
+
+#[test]
+fn an_accepted_period_remains_available_without_a_new_confirming_triple() {
+    let mut recurrence = Recurrence::new();
+    for _ in 0..6 {
+        recurrence.observe(0.5, true, 1.0);
+    }
+    recurrence.accept(0.5, 1.0);
+    assert_eq!(recurrence.observe(0.75, true, 1.0), Some(0.5));
+}
+
+#[test]
+fn confirmation_retains_the_maximum_period_plus_its_window_tail() {
+    let mut recurrence = Recurrence::new();
+    assert_eq!(recurrence.observe(0.0001, true, 0.0), None);
+    assert_eq!(recurrence.observe(1.9999, true, 1.0), None);
+    assert_eq!(recurrence.observe(2.06, true, 1.0), Some(2.0));
+    assert_eq!(recurrence.history.len(), 3);
+}
+
+#[test]
+fn alternating_and_eight_position_patterns_confirm_the_radiated_period() {
+    for offsets in [
+        vec![0.0, 0.13],
+        vec![0.0, 0.25],
+        vec![
+            0.112250, 0.133000, 0.143708, 0.220938, 0.235833, 0.240271, 0.292188, 0.477875,
+        ],
+    ] {
+        let expected = if offsets == [0.0, 0.25] { 0.25 } else { 0.5 };
+        let mut recurrence = Recurrence::new();
+        let mut now = 0.0;
+        let mut selected = None;
+        for cycle in 0..12 {
+            for &offset in &offsets {
+                let time = cycle as f64 * 0.5 + offset;
+                selected = recurrence.observe((time - now) as f32, true, 1.0);
+                now = time;
+                if let Some(period) = selected {
+                    recurrence.accept(period, 1.0);
+                }
+            }
+        }
+        let period = selected.expect("repeated positions must confirm a period");
+        assert!((period - expected).abs() <= (0.2 * expected).min(0.06));
+    }
+}
+
+#[test]
+fn uniform_streams_keep_the_registered_native_frequency_and_confidence() {
+    // Immutable T-7/T-12 controls: regular streams retain the adjacent-interval path.
+    for (hz, stability, expected_hz, expected_confidence) in [
+        (1.4, 0.0, 1.3986026, 0.7543916),
+        (1.4, 1.0, 1.3986026, 0.99981546),
+        (4.0, 0.0, 4.0, 0.9999992),
+        (4.0, 1.0, 2.0000007, 0.05000431),
+    ] {
+        let net = periodic(hz, stability, false);
+        assert!(net.recurrence.uniform);
+        assert_eq!(net.last.beat.freq_hz, expected_hz);
+        assert_eq!(net.last.beat.confidence, expected_confidence);
+    }
+}

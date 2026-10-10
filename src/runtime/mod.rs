@@ -4130,3 +4130,6 @@ pub(crate) fn body_metabolism_test_core() -> (RtNsgtKernelLog2, LandscapeParams)
     let core = build_analysis_runtime_core(&config, 48_000);
     (core.nsgt, core.lparams)
 }
+
+#[cfg(test)]
+mod meter_recurrence_tests;

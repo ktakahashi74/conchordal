@@ -2,8 +2,8 @@
 //!
 //! This is the perception-side meter model: a self-sustaining limit-cycle beat
 //! oscillator entrained by acoustic onset drive, plus integer-ratio subdivision
-//! detection. Salience is reported as *entrainment confidence* (a windowed
-//! phase-locking value, PLV), kept strictly distinct from the drive amplitude.
+//! detection. Salience is reported as *entrainment confidence* (phase locking
+//! and corroborated pattern recurrence), kept strictly distinct from the drive amplitude.
 //!
 //! Design rationale: `docs/design-notes/neural-rhythm-meter.md`.
 //!
@@ -74,7 +74,7 @@ pub struct MeterBand {
     pub freq_hz: f32,
     /// Limit-cycle amplitude (presence). Not salience.
     pub amplitude: f32,
-    /// Entrainment confidence in [0, 1] from phase prediction (PLV). This is the
+    /// Entrainment confidence in [0, 1] from phase and pattern recurrence. This is the
     /// salience: a clean quiet beat reads high, a loud wandering beat reads low.
     pub confidence: f32,
 }
@@ -111,10 +111,215 @@ pub struct MeterShaping {
     pub basin_hz: Option<(f32, f32)>,
 }
 
+const RECURRENCE_HISTORY_SECONDS: f64 = 2.0 / F_BEAT_MIN as f64 + 0.06;
+
+#[derive(Debug)]
+struct Echo {
+    observation_deadline: f64,
+    target: f64,
+    window: f64,
+    weight: Option<f64>,
+    observation_done: bool,
+    prediction_done: bool,
+}
+
+#[derive(Debug)]
+struct Recurrence {
+    history: Vec<f64>,
+    echo: Vec<Echo>,
+    time: f64,
+    steps: u64,
+    period: Option<f32>,
+    multi: bool,
+    uniform: bool,
+    ratio_support: f32,
+    observed: f64,
+    predicted: f64,
+    matched: f64,
+}
+
+impl Recurrence {
+    fn new() -> Self {
+        // Two maximum intervals plus the existing confirmation-window tail.
+        let capacity = (RECURRENCE_HISTORY_SECONDS / MIN_STEP_SEC as f64).ceil() as usize + 2;
+        Self {
+            history: Vec::with_capacity(capacity),
+            echo: Vec::with_capacity(capacity),
+            time: 0.0,
+            steps: 0,
+            period: None,
+            multi: false,
+            uniform: false,
+            ratio_support: 0.0,
+            observed: 0.0,
+            predicted: 0.0,
+            matched: 0.0,
+        }
+    }
+
+    fn observe(&mut self, dt: f32, fired: bool, frac: f32) -> Option<f32> {
+        let onset_time = self.time + dt as f64 * frac as f64;
+        self.time += dt as f64;
+        self.steps += 1;
+        let decay = (-dt as f64 / PERSIST_TAU as f64).exp();
+        self.observed *= decay;
+        self.predicted *= decay;
+        self.matched *= decay;
+        if fired {
+            let mut best = None;
+            let mut error = f64::INFINITY;
+            for (index, echo) in self.echo.iter().enumerate() {
+                let distance = (onset_time - echo.target).abs();
+                if !echo.prediction_done
+                    && echo.weight.is_none()
+                    && distance <= echo.window
+                    && distance < error
+                {
+                    best = Some(index);
+                    error = distance;
+                }
+            }
+            if let Some(index) = best {
+                let echo = &mut self.echo[index];
+                echo.weight = Some((1.0 - error / echo.window).max(0.0));
+            }
+        }
+        for echo in &mut self.echo {
+            if !echo.observation_done && self.time > echo.observation_deadline {
+                self.observed += 1.0;
+                echo.observation_done = true;
+            }
+            if !echo.prediction_done && self.time > echo.target + echo.window {
+                self.predicted += 1.0;
+                self.matched += echo.weight.unwrap_or(0.0);
+                echo.prediction_done = true;
+            }
+        }
+        self.echo
+            .retain(|e| !(e.observation_done && e.prediction_done));
+        let start = self
+            .history
+            .partition_point(|t| *t < onset_time - RECURRENCE_HISTORY_SECONDS);
+        self.history.drain(..start);
+        if !fired {
+            return None;
+        }
+        assert!(self.history.len() < self.history.capacity());
+        self.history.push(onset_time);
+        let n = self.history.len();
+        self.uniform = if n >= 3 {
+            let p = self.history[n - 2] - self.history[n - 3];
+            self.history
+                .windows(2)
+                .all(|x| ((x[1] - x[0]) - p).abs() <= (0.2 * p).min(0.06))
+        } else {
+            false
+        };
+        // Confirmation admits a new hypothesis; it does not delete an accepted one.
+        let mut best_period = self.period.map(f64::from).unwrap_or(0.0);
+        let mut best_coverage = self
+            .period
+            .map(|p| {
+                let p = p as f64;
+                self.coverage(p, (0.2 * p).min(0.06))
+            })
+            .unwrap_or(-1.0);
+        for j in 1..n.saturating_sub(1) {
+            for k in 0..j {
+                let period = self.history[j] - self.history[k];
+                if !(0.0625..=2.0).contains(&period) {
+                    continue;
+                }
+                let window = (0.2 * period).min(0.06);
+                if ((onset_time - self.history[j]) - period).abs() > window {
+                    continue;
+                }
+                let coverage = self.coverage(period, window);
+                // Bound timestamp summation and subsequent coverage arithmetic roundoff.
+                let q = self.steps as f64 * f64::EPSILON;
+                let gamma = q / (1.0 - q);
+                let roundoff =
+                    4.0 * gamma * self.time.abs() / window + (8 * n + 32) as f64 * f64::EPSILON;
+                if coverage > best_coverage + roundoff
+                    || ((coverage - best_coverage).abs() <= roundoff
+                        && (best_period == 0.0 || period < best_period))
+                {
+                    best_period = period;
+                    best_coverage = coverage;
+                }
+            }
+        }
+        (best_period > 0.0).then_some(best_period as f32)
+    }
+
+    fn coverage(&self, period: f64, window: f64) -> f64 {
+        let start = self.history[0] + period;
+        let end = *self.history.last().unwrap();
+        let mut j = self.history.partition_point(|t| *t < start);
+        let mut mass = 0.0;
+        for t in &self.history {
+            let target = *t + period;
+            if target > end {
+                break;
+            }
+            while j < self.history.len() && self.history[j] < target - window {
+                j += 1;
+            }
+            if j < self.history.len() && (self.history[j] - target).abs() <= window {
+                mass += (1.0 - (self.history[j] - target).abs() / window).max(0.0);
+                j += 1;
+            }
+        }
+        // All candidate lags share one observation denominator (autocorrelation).
+        mass / self.history.len() as f64
+    }
+
+    fn accept(&mut self, period: f32, ratio_support: f32) {
+        self.period = Some(period);
+        self.ratio_support = ratio_support;
+        self.multi = self
+            .history
+            .windows(2)
+            .any(|x| x[1] - x[0] < period as f64 - (0.2 * period as f64).min(0.06));
+    }
+
+    fn reset_evidence(&mut self) {
+        self.echo.clear();
+        self.observed = 0.0;
+        self.predicted = 0.0;
+        self.matched = 0.0;
+    }
+
+    fn issue(&mut self, frac: f32, dt: f32) {
+        if let Some(period) = self.period {
+            let t = self.time - dt as f64 * (1.0 - frac as f64);
+            assert!(self.echo.len() < self.echo.capacity());
+            self.echo.push(Echo {
+                observation_deadline: t + 0.06,
+                target: t + period as f64,
+                window: (0.2 * period as f64).min(0.06),
+                weight: None,
+                observation_done: false,
+                prediction_done: false,
+            });
+        }
+    }
+
+    fn support(&self) -> f32 {
+        let union = self.predicted + self.observed - self.matched;
+        if union > 0.0 {
+            (self.matched / union).clamp(0.0, 1.0) as f32 * self.ratio_support
+        } else {
+            0.0
+        }
+    }
+}
+
 /// Coupled limit-cycle meter network (single beat oscillator + subdivision
 /// detection). One instance per listener.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MeterNetwork {
+    recurrence: Recurrence,
     // Beat oscillator state.
     beat_phi: f32,
     beat_omega: f32,
@@ -151,6 +356,7 @@ pub struct MeterNetwork {
 impl Default for MeterNetwork {
     fn default() -> Self {
         Self {
+            recurrence: Recurrence::new(),
             beat_phi: 0.0,
             beat_omega: TAU * F_BEAT_INIT,
             beat_r: 0.1,
@@ -201,6 +407,17 @@ impl MeterNetwork {
         let dt = dt.max(MIN_STEP_SEC);
         let drive = drive.clamp(0.0, 1.0);
         let onset = self.onset_detector.process(dt, drive);
+        let confirmed_period = self.recurrence.observe(dt, onset.fired, onset.frac);
+        let confirmed_period = if self.recurrence.uniform {
+            self.onset_age
+                .zip(self.pending_period)
+                .and_then(|(age, period)| {
+                    ((age + dt * onset.frac - period).abs() <= (0.2 * period).min(0.06))
+                        .then_some(period)
+                })
+        } else {
+            confirmed_period
+        };
         let force_gain = 1.0 + self.shaping.stability.clamp(0.0, 1.0);
         let phi_before = self.beat_phi;
         let omega_before = self.beat_omega;
@@ -234,9 +451,9 @@ impl MeterNetwork {
             let mut proposal = None;
             if let Some(age) = self.onset_age {
                 let ioi = age + dt * onset.frac;
-                if let Some(period) = self.pending_period {
+                if let Some(period) = confirmed_period {
                     // Reuse temporal_participation's min(0.2*IOI, 60 ms) candidate window.
-                    if (ioi - period).abs() <= (0.2 * period).min(0.06) {
+                    {
                         let observed_frequency = 1.0 / period;
                         let mut best_score = -1.0;
                         // Positive f32 interval sums: gamma_n bounds roundoff at the band edge.
@@ -296,6 +513,10 @@ impl MeterNetwork {
                         None
                     };
             }
+            if let (Some(period), Some(frequency)) = (confirmed_period, proposal) {
+                let ratio = frequency * period;
+                self.recurrence.accept(period, ratio.min(1.0 / ratio));
+            }
             if !self.seeded
                 && let Some(frequency) = proposal
             {
@@ -303,6 +524,7 @@ impl MeterNetwork {
                 self.beat_phi = wrap_pm_pi(self.beat_omega * dt * (1.0 - onset.frac));
                 self.beat_cycles = self.beat_omega * dt * (1.0 - onset.frac) / TAU;
                 // A new coordinate discards old evidence; this onset cannot certify itself.
+                self.recurrence.reset_evidence();
                 self.plv_count = 0.0;
                 self.beat_re = 0.0;
                 self.beat_im = 0.0;
@@ -392,6 +614,9 @@ impl MeterNetwork {
             }
         }
 
+        if onset.fired && self.seeded && !seeded_now {
+            self.recurrence.issue(onset.frac, dt);
+        }
         let att_a = (-dt / 0.3).exp();
         self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
 
@@ -413,7 +638,12 @@ impl MeterNetwork {
         let presence = smoothstep(1.0 - 0.5 * stab, 4.0 - 2.0 * stab, self.plv_count);
 
         let beat_plv = (self.beat_re * self.beat_re + self.beat_im * self.beat_im).sqrt() / count;
-        let beat_conf = (beat_plv * presence).clamp(0.0, 1.0);
+        let support = if self.recurrence.multi {
+            beat_plv.max(self.recurrence.support())
+        } else {
+            beat_plv
+        };
+        let beat_conf = (support * presence).clamp(0.0, 1.0);
         let beat_freq = self.beat_omega / TAU;
 
         let beat = MeterBand {

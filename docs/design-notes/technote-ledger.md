@@ -7170,10 +7170,12 @@ than labeling that window quiet. The default-change unit reuses these real-time
 results and does not reacquire them. The existing harmonicity-projection
 allocation path now runs by default; no allocation or kernel change is made.
 
-**Delivery state.** The implementation and controls are prepared on
-`work/h3-habituation-default-20261010-v1` (implementation `6a7b6b2`).
-Documentation is a separate commit on that branch. Main integration and push
-remain pending the author's instruction. This default decision neither closes
+**Delivery state.** The implementation and controls were prepared on
+`work/h3-habituation-default-20261010-v1` (implementation `6a7b6b2`,
+documentation in the separate commit `39e6840`). Following the author's
+instruction on 2026-10-10, the orchestrator fast-forwarded main to that branch
+and pushed at 22:57 (`1f55a45..39e6840`). Main and origin/main were both
+`39e6840` after the push. This default decision neither closes
 long-form expectation nor establishes musical quality.
 
 Sources: the July 17 [design specification](../superpowers/specs/2026-07-17-habituation-field-design.md),

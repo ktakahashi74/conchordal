@@ -2349,6 +2349,137 @@ fn measure_accent_tuning_is_bounded_and_order_independent() {
 }
 
 #[test]
+fn metric_founders_read_the_final_scene_basin_through_create_and_place() {
+    for placement in [
+        "create(sine().metric(), 2);",
+        "place(sine().metric(), line(220.0, 440.0).count(2));",
+    ] {
+        for script in [
+            format!("temporal_basin(2.8, 3.4); {placement}"),
+            format!("{placement} wait(1.0); temporal_basin(2.8, 3.4);"),
+            format!(
+                "temporal_basin(1.2, 1.6); {placement} wait(1.0); temporal_basin(2.8, 3.4); {placement}"
+            ),
+        ] {
+            let (scenario, _) = run_script(&script);
+            assert_eq!(scenario.meter_shaping.stability, 0.0);
+            assert_eq!(scenario.meter_shaping.basin_hz, Some((2.8, 3.4)));
+            let mut founders = 0;
+            for action in scenario.events.iter().flat_map(|event| &event.actions) {
+                if let Action::Spawn { spec, ids, .. } = action {
+                    let PhonationTiming::Coupled(timing) = &spec.control.phonation.spec.timing
+                    else {
+                        panic!("expected metric timing");
+                    };
+                    assert_eq!(timing.base_rate_hz, 0.5 * (2.8 + 3.4));
+                    founders += ids.len();
+                }
+            }
+            assert!(founders >= 2);
+        }
+    }
+    let spawn = first_spawn_spec_for_script("create(sine().metric(), 1);");
+    let PhonationTiming::Coupled(timing) = spawn.control.phonation.spec.timing else {
+        panic!("expected metric timing");
+    };
+    assert_eq!(timing.base_rate_hz, 2.0);
+    assert_eq!(CoupledTimingSpec::default().base_rate_hz, 2.0);
+}
+
+#[test]
+fn metric_basin_sanitization_matches_the_listener_center() {
+    for (a, b) in [(3.4, 2.8), (-1.0, 8.0), (0.5, 0.5), (4.0, 4.0)] {
+        let spawn = first_spawn_spec_for_script(&format!(
+            "create(sine().metric(), 1); temporal_basin({a}, {b});"
+        ));
+        let PhonationTiming::Coupled(timing) = spawn.control.phonation.spec.timing else {
+            panic!("expected metric timing");
+        };
+        let (lo, hi) = sane_basin(a, b);
+        assert_eq!(timing.base_rate_hz, 0.5 * (lo + hi));
+    }
+}
+
+#[test]
+fn basin_preserves_participating_and_explicit_pulse_rates() {
+    for preset in ["entrained", "flow"] {
+        let spawn = first_spawn_spec_for_script(&format!(
+            "create(sine().{preset}(), 1); temporal_basin(2.8, 3.4);"
+        ));
+        let PhonationTiming::Coupled(timing) = spawn.control.phonation.spec.timing else {
+            panic!("expected participating timing");
+        };
+        assert_eq!(timing.relation, RhythmRelation::Participating);
+        assert_eq!(timing.base_rate_hz, 2.0);
+    }
+    let spawn = first_spawn_spec_for_script(
+        "create(sine().repeat().pulse(1.7), 1); temporal_basin(2.8, 3.4);",
+    );
+    assert!(matches!(spawn.control.phonation.spec.timing,
+        PhonationTiming::Pulse { rate_hz, .. } if rate_hz == 1.7));
+}
+
+#[test]
+fn metric_respawn_starts_from_the_resolved_population_template() {
+    let (scenario, _) = run_script_with_seed(
+        "create(sine().metric().anchor().respawn_random().respawn_background_death_rate(10000.0), 1); \
+         temporal_basin(2.8, 3.4);",
+        21,
+    );
+    let mut population = Community::new(Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    });
+    population.set_seed(scenario.seed);
+    let landscape = LandscapeFrame::default();
+    for action in scenario.events.iter().flat_map(|event| &event.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            population.apply_action(action.clone(), &landscape, None);
+        }
+    }
+    let founder = population.voices[0].id();
+    let period = population.voices[0]
+        .phonation_engine
+        .clock
+        .intrinsic_period_sec();
+    assert_eq!(period, Some(1.0 / f64::from(0.5 * (2.8f32 + 3.4))));
+    // A child's template rate must not become the parent's current clock rate.
+    let mut changed = population.voices[0]
+        .effective_control
+        .phonation
+        .spec
+        .clone();
+    let PhonationTiming::Coupled(timing) = &mut changed.timing else {
+        panic!("expected metric timing");
+    };
+    timing.base_rate_hz = 1.3;
+    population.voices[0]
+        .phonation_engine
+        .update_from_spec(&changed);
+    assert_ne!(
+        population.voices[0]
+            .phonation_engine
+            .clock
+            .intrinsic_period_sec(),
+        period
+    );
+    population.advance(64, 48_000.0, 0, 64.0 / 48_000.0, &landscape);
+    population.cleanup_dead(0, 64.0 / 48_000.0, false, &landscape);
+    assert_eq!(population.voices.len(), 1);
+    assert_ne!(population.voices[0].id(), founder);
+    assert_eq!(
+        population.voices[0]
+            .phonation_engine
+            .clock
+            .intrinsic_period_sec(),
+        period
+    );
+}
+
+#[test]
 fn metric_and_pulse_tuning_are_order_independent() {
     for (label, script) in [
         (

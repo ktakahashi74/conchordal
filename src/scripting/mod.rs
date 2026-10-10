@@ -14,7 +14,7 @@ use crate::core::float::sanitize01;
 use crate::core::landscape::PitchObjectiveMode;
 use crate::core::mode_pattern::ModePattern;
 
-use crate::core::meter::MeterShaping;
+use crate::core::meter::{MeterShaping, sane_basin};
 use crate::scenario::PhonationTiming;
 use crate::scenario::control::{
     BodyMethod, ControlUpdate, LeaveSelfOutMode, MAX_FREQ_HZ, MIN_FREQ_HZ, MoveCostTimeScale,
@@ -24,8 +24,9 @@ use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, CoupledTimingSpec, DurationSpec,
     EnvelopeConfig, FieldDurationSpec, FieldSampling, FieldTarget, MetabolismRhythmReward,
-    PhonationSpec, RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRewardMetric,
-    RhythmRole, ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
+    PhonationSpec, RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRelation,
+    RhythmRewardMetric, RhythmRole, ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy,
+    TimedEvent, VoiceSpec,
 };
 
 const DEFAULT_SEQ_DURATION_SEC: f32 = 1.0;
@@ -1377,6 +1378,22 @@ impl ScriptContext {
 
     fn finish(&mut self) {
         self.emit_pending_actions();
+        // Both the listener and metric founders read the scene's final basin.
+        if let Some((a, b)) = self.scenario.meter_shaping.basin_hz {
+            let (lo, hi) = sane_basin(a, b);
+            let rate = 0.5 * (lo + hi);
+            for event in &mut self.scenario.events {
+                for action in &mut event.actions {
+                    if let Action::Spawn { spec, .. } = action
+                        && let PhonationTiming::Coupled(timing) =
+                            &mut spec.control.phonation.spec.timing
+                        && timing.relation == RhythmRelation::Synchronized
+                    {
+                        timing.base_rate_hz = rate;
+                    }
+                }
+            }
+        }
         let mut end_time = self.finalize_duration();
         let release_tail = self.max_release_tail();
         if release_tail > end_time {

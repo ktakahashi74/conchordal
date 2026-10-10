@@ -730,7 +730,7 @@ impl MeterNetwork {
 }
 
 /// Sanitize a basin `(min, max)` into an ordered, finite, in-band pair.
-fn sane_basin(min_hz: f32, max_hz: f32) -> (f32, f32) {
+pub(crate) fn sane_basin(min_hz: f32, max_hz: f32) -> (f32, f32) {
     let a = if min_hz.is_finite() {
         min_hz
     } else {
@@ -783,6 +783,26 @@ mod tests {
             t += DT;
         }
         net.state()
+    }
+
+    #[test]
+    fn basin_without_acoustic_drive_keeps_the_beat_unconfirmed() {
+        for stability in [0.0, 0.85, 1.0] {
+            let mut net = MeterNetwork::new();
+            net.set_shaping(MeterShaping {
+                stability,
+                basin_hz: Some((2.8, 3.4)),
+            });
+            for _ in 0..(24.0 / DT) as usize {
+                let state = net.process(DT, 0.0);
+                assert!(!net.seeded);
+                assert_eq!(state.beat.confidence, 0.0);
+                assert_eq!(state.subdivision.confidence, 0.0);
+                assert_eq!(state.measure.confidence, 0.0);
+                assert_eq!(state.subdivision_ratio, 0);
+                assert_eq!(state.measure_ratio, 0);
+            }
+        }
     }
 
     #[test]

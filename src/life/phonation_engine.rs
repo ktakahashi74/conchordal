@@ -2819,6 +2819,19 @@ mod tests {
     }
 
     #[test]
+    fn basin_rate_preserves_independent_initial_metric_phases() {
+        let mut phases = Vec::new();
+        for seed in 1..=8 {
+            let default = CouplingClock::new(0.95, 2.0, 0.0, 0.0, seed ^ 21);
+            let basin = CouplingClock::new(0.95, 0.5 * (2.8 + 3.4), 0.0, 0.0, seed ^ 21);
+            assert_eq!(default.phase, basin.phase);
+            assert!((0.0..1.0).contains(&basin.phase));
+            assert!(!phases.contains(&basin.phase));
+            phases.push(basin.phase);
+        }
+    }
+
+    #[test]
     fn coupling_clock_free_runs_at_base_rate_with_zero_confidence() {
         // No metrical confidence -> lock collapses to 0 and the clock free-runs
         // at its intrinsic base rate (renewal/flow limit). depth = 0 keeps the

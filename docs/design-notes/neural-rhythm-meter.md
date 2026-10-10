@@ -235,9 +235,7 @@ the author adopted it, the orchestrator passed all 48 instrument performances
 in A/B/A′/B′, and main advanced to `c2b8308`. The basin-initialization extension
 was stacked on that final source and fast-forwarded by the orchestrator into
 main at `000b884` on 2026-10-11 at 08:46. Exact 12-étude equality permitted
-reuse of the T-13 measurement scope without remeasurement. At that update,
-origin/main remained `39e6840`, six commits behind main; push has not been
-performed and awaits the author's explicit instruction. Implementation,
+reuse of the T-13 measurement scope without remeasurement. Implementation,
 hardware acceptance, main integration and push remain separate. It adds
 no composer vocabulary or hop-path allocation. Its private state stays in the
 sole consumer, `core/meter.rs`;

@@ -355,7 +355,7 @@ The director can bend the terrain the pulse forms on—never schedule it—via `
 
 The basin has a second role: it initializes `metric()` Voices at the same sanitized arithmetic center, independently of stability. Without a basin, their intrinsic starting rate remains 2 Hz. The final basin declaration applies to every metric Population created by `place()` or `create()`, including declarations after `wait()`; it is one scene initial condition, not a timed change. Entrained/flow retain their 2 Hz prior, and explicit `pulse(rate_hz)` retains its rate. Initial Voice phases remain independent, and shared-beat coupling stays zero until sound confirms a beat. Respawn reads the Population template rather than a parent's current clock rate.
 
-These operations shape an emergent process without placing a beat grid; the listener's tempo adaptation remains confined to the declared band. The orchestrator integrated this implementation into main at `000b884` on 2026-10-11 at 08:46, reusing the T-13 instrument measurements without remeasurement. Push has not been performed and awaits the author's explicit instruction.
+These operations shape an emergent process without placing a beat grid; the listener's tempo adaptation remains confined to the declared band.
 
 # 5. The Life Engine: Agents and Autonomy
 

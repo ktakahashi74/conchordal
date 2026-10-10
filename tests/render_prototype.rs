@@ -13,7 +13,7 @@ fn phase3_finish_waits_for_modal_tail_but_not_oscillator_tails() {
     ));
     fs::create_dir(&dir).unwrap();
     let config = dir.join("config.toml");
-    fs::write(&config, "render_prototype = true\n[analysis]\nnfft = 2048\nhop_size = 512\n[dcc]\ncoupling_strength = 0.0\n").unwrap();
+    fs::write(&config, "render_prototype = true\n[analysis]\nnfft = 2048\nhop_size = 512\n[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n").unwrap();
     let mut lengths = Vec::new();
     for body in ["sine", "harmonic", "modal"] {
         let script = dir.join(format!("{body}.rhai"));
@@ -104,6 +104,8 @@ render_prototype = true
 [analysis]
 nfft = 2048
 hop_size = 512
+[psychoacoustics.habituation]
+enabled = false
 [dcc]
 coupling_strength = 0.0
 [temporal_body]
@@ -245,7 +247,7 @@ wait(0.1);
         for surrogate in [false, true] {
             let config = dir.join("config.toml");
             fs::write(&config, format!(
-                "birth_surrogate = {surrogate}\n{}[analysis]\nnfft = 2048\nhop_size = 512\n[dcc]\ncoupling_strength = 0.0\n",
+                "birth_surrogate = {surrogate}\n{}[analysis]\nnfft = 2048\nhop_size = 512\n[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n",
                 if prototype { "render_prototype = true\n" } else { "" }
             )).unwrap();
             let wav = dir.join("render.wav");

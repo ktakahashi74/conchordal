@@ -90,7 +90,7 @@ fn temporal_observation_preserves_audio_and_finishes_both_buses() {
     let config = unique_temp_path("toml");
     fs::write(
         &config,
-        "[audio]\nsample_rate = 48000\n[dcc]\ncoupling_strength = 0.0\n",
+        "[audio]\nsample_rate = 48000\n[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n",
     )
     .unwrap();
     let body = r#"
@@ -118,9 +118,9 @@ section("author label is not an observation", || {
         fs::write(
             &config,
             if ridge_enabled {
-                "[audio]\nsample_rate = 48000\n[dcc]\ncoupling_strength = 0.0\n[temporal_ridge]\nmeans = [0.0, 0.0, 0.0]\ndeviations = [0.05, 4.0, 1.0]\n"
+                "[audio]\nsample_rate = 48000\n[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n[temporal_ridge]\nmeans = [0.0, 0.0, 0.0]\ndeviations = [0.05, 4.0, 1.0]\n"
             } else {
-                "[audio]\nsample_rate = 48000\n[dcc]\ncoupling_strength = 0.0\n"
+                "[audio]\nsample_rate = 48000\n[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n"
             },
         ).unwrap();
         if acoustic_enabled {
@@ -698,6 +698,7 @@ fn body_prototypes_match_actual_descriptors_without_changing_audio() {
         TemporalBodyPrototypesConfig, TemporalPeriodConfig, TemporalRidgeConfig,
     };
     let mut config = AppConfig::default();
+    config.psychoacoustics.habituation.enabled = false;
     config.analysis.nfft = 2048;
     config.analysis.hop_size = 512;
     config.audio.sample_rate = 48000;
@@ -940,6 +941,8 @@ sample_rate = 48000
 [analysis]
 nfft = 2048
 hop_size = 512
+[psychoacoustics.habituation]
+enabled = false
 [dcc]
 coupling_strength = 0.0
 [temporal_body]
@@ -1056,6 +1059,8 @@ sample_rate = 48000
 [analysis]
 nfft = 2048
 hop_size = 512
+[psychoacoustics.habituation]
+enabled = false
 [dcc]
 coupling_strength = 0.0
 [temporal_onset_comparison]

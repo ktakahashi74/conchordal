@@ -97,6 +97,19 @@ def main():
     modes = args.mode or MODES
     inputs = (args.inputs or (plan_path.parent / "inputs")).resolve()
 
+    # Preserve registered input hashes; pin the old control in derived configs.
+    control_dir = root / "habituation-off-controls"
+    control_dir.mkdir(exist_ok=True)
+    controls = {}
+    for variant in variants:
+        source = inputs / f"config-{variant}.toml"
+        text = source.read_text()
+        assert "[psychoacoustics.habituation]" not in text
+        target = control_dir / source.name
+        target.write_text(text + "\n[psychoacoustics.habituation]\nenabled = false\n")
+        controls[variant] = {"source": str(source), "source_sha256": sha256(source),
+                             "runtime": str(target), "runtime_sha256": sha256(target)}
+
     # Copy the binaries into the measurement directory, as the I10 acquisition
     # does, so the artifacts stay readable after target/release is rebuilt.
     binaries = {}
@@ -138,7 +151,7 @@ def main():
     for case, variant, mode, rep in jobs:
         label = f"{case}-{variant}-{mode}-{rep}"
         script = str(inputs / f"{case}.rhai")
-        config = str(inputs / f"config-{variant}.toml")
+        config = controls[variant]["runtime"]
         if mode == "render":
             cmd = [str(root / "render"), script, "--config", config,
                    "-o", str(root / f"{label}.wav"), "--report", str(root / f"{label}.jsonl")]
@@ -156,7 +169,7 @@ def main():
                          elapsed_sec=round(time.monotonic() - start, 3), finished_at=now_iso()))
         ledger.write_text(json.dumps(
             {"schema": "conchordal/i11-stage1-runs/1", "generated_at": now_iso(),
-             "binaries": binaries, "runs": runs}, ensure_ascii=False, indent=2) + "\n")
+             "binaries": binaries, "control_configs": controls, "runs": runs}, ensure_ascii=False, indent=2) + "\n")
         print(label, result.returncode, f"{runs[-1]['elapsed_sec']:.1f}s", flush=True)
         if result.returncode:
             failures += 1

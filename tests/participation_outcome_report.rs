@@ -11,7 +11,11 @@ fn participation_outcomes_join_actions_to_habitat_audio_without_changing_the_sou
     ));
     fs::create_dir_all(&root).unwrap();
     let config = root.join("config.toml");
-    fs::write(&config, "[dcc]\ncoupling_strength = 0.0\n").unwrap();
+    fs::write(
+        &config,
+        "[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n",
+    )
+    .unwrap();
     let report = root.join("report.jsonl");
     for enabled in [false, true] {
         let mut command = Command::new(env!("CARGO_BIN_EXE_conchordal-render"));

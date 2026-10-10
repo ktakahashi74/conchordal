@@ -132,7 +132,7 @@ fn dcc_feedback_uses_listener_tension_once_and_changes_pitch() {
         // Amplify feedback for a causal fixture, not a recommended listening preset.
         fs::write(
             &config_path,
-            format!("[dcc]\ncoupling_strength = {strength:.1}\nmax_temperature_bonus = 10.0\n"),
+            format!("[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = {strength:.1}\nmax_temperature_bonus = 10.0\n"),
         )
         .expect("write coupling config");
         let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
@@ -208,7 +208,7 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
     let config_path = config_path();
     fs::write(
         &config_path,
-        "[dcc]\ncoupling_strength = 0.0\nmax_temperature_bonus = 0.1\n",
+        "[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\nmax_temperature_bonus = 0.1\n",
     )
     .expect("write test config");
     let output = Command::new(exe)

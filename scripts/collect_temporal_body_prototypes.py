@@ -22,6 +22,8 @@ nfft = 2048
 hop_size = 512
 [dcc]
 coupling_strength = 0.0
+[psychoacoustics.habituation]
+enabled = false
 [temporal_body]
 means = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 deviations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]

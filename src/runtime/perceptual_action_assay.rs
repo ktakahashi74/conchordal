@@ -99,7 +99,18 @@ fn export_perceptual_action_assay() -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("CONCHORDAL_PERCEPTUAL_ACTION_PLAN is required"))?;
     let plan: Plan = serde_json::from_slice(&fs::read(path)?)?;
     // Reading a research plan must never create a missing config file.
-    let config: AppConfig = toml::from_str(&fs::read_to_string(plan.config)?)?;
+    let text = fs::read_to_string(plan.config)?;
+    let mut config: AppConfig = toml::from_str(&text)?;
+    let values: toml::Value = toml::from_str(&text)?;
+    // Preserve the registered off default while still rejecting explicit on.
+    if values
+        .get("psychoacoustics")
+        .and_then(|v| v.get("habituation"))
+        .and_then(|v| v.get("enabled"))
+        .is_none()
+    {
+        config.psychoacoustics.habituation.enabled = false;
+    }
     anyhow::ensure!(!plan.cases.is_empty(), "no cases");
     for case in plan.cases {
         anyhow::ensure!(
@@ -198,6 +209,7 @@ fn export_perceptual_action_assay() -> anyhow::Result<()> {
 fn perceptual_forks_preserve_history_pending_pcm_and_branch_independence() {
     for fs in [24_000, 48_000] {
         let mut config = AppConfig::default();
+        config.psychoacoustics.habituation.enabled = false;
         config.analysis.nfft = 2048;
         config.analysis.hop_size = 128;
         let core = build_analysis_runtime_core(&config, fs);
@@ -286,6 +298,7 @@ fn perceptual_forks_preserve_history_pending_pcm_and_branch_independence() {
 #[test]
 fn perceptual_distribution_cannot_be_replaced_by_its_mean_waveform() {
     let mut config = AppConfig::default();
+    config.psychoacoustics.habituation.enabled = false;
     config.analysis.nfft = 2048;
     config.analysis.hop_size = 128;
     let core = build_analysis_runtime_core(&config, 24_000);

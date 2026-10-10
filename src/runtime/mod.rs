@@ -3252,6 +3252,7 @@ mod tests {
 
         let core = build_analysis_runtime_core(&config, 44_100);
 
+        assert!(core.lparams.habituation.enabled);
         assert_eq!(core.fs, 44_100.0);
         assert_eq!(core.hop, 256);
         assert!((core.hop_duration.as_secs_f32() - 256.0 / 44_100.0).abs() < 1e-9);
@@ -3587,6 +3588,54 @@ wait(0.08);
     }
 
     #[test]
+    fn explicitly_disabled_habituation_preserves_base_view_bits() {
+        let config: AppConfig =
+            toml::from_str("[psychoacoustics.habituation]\nenabled = false\n").unwrap();
+        let mut core = build_analysis_runtime_core(&config, 48_000);
+        assert!(!core.lparams.habituation.enabled);
+        let mut hab = crate::core::habituation::HabituationField::new(
+            &core.lparams.habituation,
+            core.lparams.consonance_representation.theta,
+            core.landscape.space.n_bins(),
+        );
+        for hop in 0..3 {
+            for i in 0..core.landscape.space.n_bins() {
+                core.landscape.harmonicity01[i] = ((i + hop) % 7) as f32 / 7.0;
+                core.landscape.roughness01[i] = ((i + hop) % 11) as f32 / 11.0;
+                core.landscape.subjective_intensity[i] = 0.25;
+            }
+            core.landscape.recompute_consonance(&core.lparams);
+            drive_and_apply_habituation(
+                &mut core.landscape,
+                &mut hab,
+                &core.lparams,
+                core.hop as f32 / core.fs,
+            );
+            for (base, effective) in [
+                (
+                    &core.landscape.consonance_field_score,
+                    &core.landscape.consonance_field_score_eff,
+                ),
+                (
+                    &core.landscape.consonance_field_level,
+                    &core.landscape.consonance_field_level_eff,
+                ),
+                (
+                    &core.landscape.consonance_density_mass,
+                    &core.landscape.consonance_density_mass_eff,
+                ),
+            ] {
+                assert!(
+                    base.iter()
+                        .zip(effective)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+                );
+            }
+            assert!(hab.state().iter().all(|h| h.to_bits() == 0.0f32.to_bits()));
+        }
+    }
+
+    #[test]
     fn listener_memory_is_independent_of_receive_batching() {
         let space = Log2Space::new(200.0, 4_000.0, 12);
         let mut params = build_test_params(&space);
@@ -3891,6 +3940,7 @@ wait(0.08);
             for strength in [0.0, 0.1, 0.25, 0.5, 1.0] {
                 let mut config = AppConfig::default();
                 config.dcc.coupling_strength = strength;
+                config.psychoacoustics.habituation.enabled = false;
                 let script = "tests/scripts/dcc_pitch_feedback.rhai";
                 let mut scenario = compile_scenario_from_script(
                     Path::new(script),
@@ -4075,6 +4125,8 @@ mod body_metabolism_assay;
 
 #[cfg(test)]
 pub(crate) fn body_metabolism_test_core() -> (RtNsgtKernelLog2, LandscapeParams) {
-    let core = build_analysis_runtime_core(&AppConfig::default(), 48_000);
+    let mut config = AppConfig::default();
+    config.psychoacoustics.habituation.enabled = false;
+    let core = build_analysis_runtime_core(&config, 48_000);
     (core.nsgt, core.lparams)
 }

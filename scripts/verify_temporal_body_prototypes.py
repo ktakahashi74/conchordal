@@ -27,7 +27,11 @@ def verify(binary, corpus_path, model_path, output):
     output.mkdir(parents=True, exist_ok=False)
     extraction = corpus_path.parent / "extraction.toml"
     config = output / "model-runtime.toml"
-    config.write_text(extraction.read_text().split("[temporal_body]")[0] + configuration(model))
+    base_config = extraction.read_text().split("[temporal_body]")[0]
+    # Keep frozen pre-default-on corpora intact; pin their derived replay control.
+    if "[psychoacoustics.habituation]" not in base_config:
+        base_config += "\n[psychoacoustics.habituation]\nenabled = false\n"
+    config.write_text(base_config + configuration(model))
     sources = {row["scenario"]: row for row in corpus["records"]}
     counts = Counter()
     strata = {}

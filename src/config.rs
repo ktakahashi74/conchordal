@@ -196,7 +196,7 @@ pub struct HabituationConfig {
 
 impl HabituationConfig {
     fn default_enabled() -> bool {
-        false
+        true
     }
     fn default_satiation_sec() -> f32 {
         5.0
@@ -970,6 +970,8 @@ mod tests {
             "should write commented dcc.coupling_strength"
         );
 
+        assert!(contents.contains("[psychoacoustics.habituation]\n# enabled = true"));
+
         // Written defaults must survive a reload under deny_unknown_fields.
         AppConfig::load_or_default(&path_str).expect("written defaults must reload");
 
@@ -1279,23 +1281,29 @@ roughness_gain = 0.5
     }
 
     #[test]
-    fn habituation_defaults_off_and_parses() {
+    fn habituation_defaults_on_and_parses() {
         let cfg = AppConfig::default();
-        assert!(!cfg.psychoacoustics.habituation.enabled);
+        assert!(cfg.psychoacoustics.habituation.enabled);
         assert_eq!(cfg.psychoacoustics.habituation.satiation_sec, 5.0);
         assert_eq!(cfg.psychoacoustics.habituation.recovery_sec, 8.0);
         assert_eq!(cfg.psychoacoustics.habituation.ref_drive, 0.25);
 
         let text = "\
 [psychoacoustics.habituation]
-enabled = true
+enabled = false
 satiation_sec = 3.0
 recovery_sec = 6.0
 ref_drive = 0.4
 ";
         let parsed: AppConfig = toml::from_str(text).expect("parse habituation keys");
-        assert!(parsed.psychoacoustics.habituation.enabled);
+        assert!(!parsed.psychoacoustics.habituation.enabled);
         assert_eq!(parsed.psychoacoustics.habituation.satiation_sec, 3.0);
+        assert_eq!(parsed.psychoacoustics.habituation.recovery_sec, 6.0);
+        assert_eq!(parsed.psychoacoustics.habituation.ref_drive, 0.4);
+        for text in ["", "[psychoacoustics.habituation]\nsatiation_sec = 3.0\n"] {
+            let omitted: AppConfig = toml::from_str(text).unwrap();
+            assert!(omitted.psychoacoustics.habituation.enabled);
+        }
     }
 
     #[test]

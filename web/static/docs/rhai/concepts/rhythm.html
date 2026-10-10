@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-69ac5d88.js";
+            window.path_to_searchindex_js = "../searchindex-c9abfc44.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -206,13 +206,25 @@ acceptance still under evaluation.</p>
 operations. These operations shape the production meter used by metric timing. They do not
 set the bodily rate or recurrence candidates of entrained/flow participants:</p>
 <ul>
-<li><code>meter_stability(value)</code> — attractor depth in <code>[0,1]</code>: how readily a pulse
-forms. It only deepens the basin for a <em>real</em> periodicity; it never
-fabricates a beat from non-metric input.</li>
-<li><code>temporal_basin(min_hz, max_hz)</code> — the tempo region the emergent beat
-gravitates toward (the time-axis analogue of <code>consonance(min, max)</code>). It shapes
-the terrain; it does not place a beat, and it never forces a measure.</li>
+<li><code>meter_stability(value)</code> — attractor depth in <code>[0,1]</code>, default <code>0</code> (neutral):
+how readily a pulse forms and how strongly its reading favors a preferred
+tempo. The tempo-preference weight equals this depth. The preferred center is
+the center of <code>temporal_basin</code>, or 2 Hz in the default band. It only deepens
+the basin for a <em>real</em> periodicity; it never fabricates a beat from non-metric
+input. This is a composer-set cultural prior of the modeled listener.</li>
+<li><code>temporal_basin(min_hz, max_hz)</code> — a continuous tempo region for the emergent
+beat (the time-axis analogue of <code>consonance(min, max)</code>). It seeds the beat at
+the center and confines adaptation to the band. At stability <code>0</code>, it adds no
+center preference or restoring pull. Higher stability strengthens both the
+preferred reading and confidence-weighted center restoring. It shapes the
+terrain; it does not place a beat, and it never forces a measure.</li>
 </ul>
+<p>From a cold start, a regular 4 Hz input in the default band is read as a 4 Hz
+beat at stability <code>0</code>, and as duple subdivision of a 2 Hz beat at stability <code>1</code>.
+Depth also retains its effects on forcing and evidence presence; it is not an
+independent control of tempo weighting. Confidence remains zero until the first
+interval hypothesis is corroborated. Chance corroboration in irregular input
+can still produce temporary rises afterward.</p>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
 <p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
 <code>flow()</code>. Configure them on a <code>PopulationSpec</code> before calling <code>place()</code>. The temporal

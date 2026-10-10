@@ -6883,6 +6883,56 @@ updated, λ remains unchosen, and live performance/final real-time acceptance
 remain outside this checkpoint. Detailed evidence is in
 `.orchestration/units/T-7/report-2.md` and its adjacent `stage2/` artifacts.
 
+<a id="meter-tempo-prior-20261010"></a>
+#### 2026-10-10: tempo preference belongs to composer enculturation (T-7, third checkpoint)
+
+The author asked whether λ should be exposed as a composing parameter. The
+orchestrator had assigned this quantity to the wrong layer: tempo preference
+is a cultural prior of the modeled listener, which the composer sets under
+§9.3.56. The earlier entries above preserve the provisional internal audition
+constant; they no longer describe the current control or an outstanding choice.
+The author has authorized main integration and push.
+
+The prior weight now directly equals `shaping.stability.clamp(0, 1)`, using the
+existing `meter_stability` vocabulary and its neutral default 0. The internal
+constant, its pending-audition comment, and the test-only weight argument are
+removed. The tempo-preference profile still favors the center of an explicit
+`temporal_basin`, or the existing 2 Hz center in the default band. At depth 0,
+an explicit basin confines tempo without an additional center preference or
+restoring pull. Greater depth strengthens the candidate preference and the
+existing confidence-weighted restoring term. No new control, configuration
+key, curve or coefficient is added. The identity mapping occupies one line;
+forcing and evidence-presence effects of depth remain in place.
+
+The same 4 Hz causal input yields a 4 Hz tactus at depth 0 and a 2 Hz tactus
+with duple subdivision at depth 1. The other registered tempo, step, missing
+beat, basin and unknown-evidence controls pass at both depths, as do the
+existing stability, gap and audio tests. The stability-rise test now compares
+the two actual shaped meters through their public process path; the independent
+fixed-λ loop is removed, while its rise and confidence-ceiling assertions are
+preserved. A first compile exposed two leftover calls to the removed private
+method; that record is retained and the calls were replaced without weakening
+assertions.
+
+Holding both the old preference weight and old shaping depth at the same
+endpoint reproduces every measured field at every hop of the new controls.
+Compared with the older neutral-depth λ1 controls, forcing and presence also
+change, so confidence and phase need not match. For example, the final
+1.4 Hz confidence changes from 0.754392 to 0.999815 while its tactus remains
+1.398603 Hz. Renewal rain retains unknown confidence before first corroboration;
+at depths 0/1 its final confidence is 0.164832/0.159814 and its maximum is
+0.581111/0.540077. Chance corroboration after adoption is still possible.
+
+The scripting documentation registry, generated definitions/API references,
+English/Japanese rhythm chapters, technote and engine mapping describe this
+composer control. The source routes director shaping to the production meter;
+the listener meter uses the same algorithm with its existing neutral shaping,
+and can change indirectly through presentation audio. Final source tests,
+render comparisons and source-pinned real-time inputs are recorded in
+`.orchestration/units/T-7/report-3.md`. The real-time bundle covers A/B/A′/B′
+using unchanged R-1 tools. Measurement takes place before integration; no
+worker live performance or real-time acceptance is claimed here.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

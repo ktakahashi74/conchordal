@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-03a4b3da.js";
+            window.path_to_searchindex_js = "../searchindex-7ecad989.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -194,11 +194,23 @@ ADSRのreleaseを含む範囲で評価します。見送りを続けるほどコ
 <p>演出者は次の操作で、metricが参照する生成側の拍の地形を調整します。
 entrainedとflowの身体の速さや、反復予測の周期候補を直接指定する操作ではありません。</p>
 <ul>
-<li><code>meter_stability(value)</code> — <code>[0,1]</code>のattractor depth。実在するperiodicityに対する
-basinを深くするだけで、非metric inputからbeatを捏造しない。</li>
-<li><code>temporal_basin(min_hz, max_hz)</code> — 創発beatが引き寄せられるtempo領域。
-<code>consonance(min, max)</code>の時間軸版で、beatを配置したりmeasureを強制したりはしない。</li>
+<li><code>meter_stability(value)</code> — 拍を引き込む深さ（attractor depth）を<code>[0,1]</code>で指定します。
+既定値は<code>0</code>で、中立の状態です。拍が形成されやすい度合いに加え、好みのテンポに
+寄せて拍を読む強さも、同じ深さで決まります。好みの中心は<code>temporal_basin</code>の中心、
+帯域を置かなければ2 Hzです。これは作曲者が置く、モデル化した聴き手の文化層の
+事前分布です。実際の周期性への引き込みを強める操作であり、非周期の入力から
+拍を作り出しません。</li>
+<li><code>temporal_basin(min_hz, max_hz)</code> — 拍が適応できるテンポの帯域を指定します。
+拍はその中心から始まり、適応も帯域内に限られます。stabilityが<code>0</code>なら、中心を
+好む重みも、中心へ戻す力も足しません。深くするほど、中心に寄せた拍の読みと、
+確信度に依存する中心への復元が強まります。<code>consonance(min, max)</code>の時間軸版であり、
+拍を配置したり、小節を強制したりはしません。</li>
 </ul>
+<p>既定の帯域で4 Hzの等間隔の入力を最初から観測する対照では、stabilityが<code>0</code>なら
+4 Hzの拍、<code>1</code>なら2 Hzの拍の二分割として読みます。深さは駆動の強さと証拠を読む
+速さにも従来どおり作用し、テンポの好みだけを独立に動かす操作ではありません。
+間隔の仮説を初めて確認するまでは確信度を0に保ちます。ただし、確認後の不規則な
+入力が偶然まとまり、一時的に確信度が上がる場合は残ります。</p>
 <h2 id="voiceごとのプリセットと調整"><a class="header" href="#voiceごとのプリセットと調整">Voiceごとのプリセットと調整</a></h2>
 <p><code>metric()</code>、<code>entrained()</code>、<code>flow()</code>は速さの引数を取りません。<code>place()</code>より前に
 PopulationSpecへ設定します。metricは地形が誘導する拍へ近づきます。entrainedとflowは

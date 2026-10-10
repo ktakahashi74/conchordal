@@ -842,7 +842,7 @@ Scene-global terrain shaping and research controls. Director verbs are soft prio
 meter_stability(value)
 ```
 
-Attractor depth in 0-1: how readily a pulse forms. A soft prior: it only deepens the basin for a real periodicity; it never fabricates a beat from non-metric input.
+Attractor depth in 0-1: how readily a pulse forms. Default 0 (neutral). A soft prior: it only deepens the basin for a real periodicity; it never fabricates a beat from non-metric input. It also weights the tempo preference toward the center of `temporal_basin`, or 2 Hz in the default beat band. The preference weight equals the depth, clamped to [0,1]; it is part of the modeled listener's enculturation. Higher depth favors an in-band tactus nearer that center, including an integer subdivision reading of faster input.
 
 #### `temporal_basin`
 
@@ -850,7 +850,7 @@ Attractor depth in 0-1: how readily a pulse forms. A soft prior: it only deepens
 temporal_basin(min_hz, max_hz)
 ```
 
-Tempo region the emergent beat gravitates toward. The time-axis analogue of `consonance(min, max)`: it shapes the terrain, does not place a beat, and never forces a measure.
+Tempo region the emergent beat gravitates toward. The time-axis analogue of `consonance(min, max)`: it seeds the beat at the band center and confines tempo adaptation to the band. At `meter_stability(0)`, the band adds no center preference or restoring pull; with higher stability, candidate preference and confidence-weighted center restoring grow with the depth. It shapes the terrain, does not place a beat, and never forces a measure.
 
 ## Experimental
 

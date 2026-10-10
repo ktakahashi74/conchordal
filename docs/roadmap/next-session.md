@@ -28,13 +28,13 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 ## 2. 先に読むもの
 
 1. [plan-current.md §7](plan-current.md#7-結果)：20単位の閉じ方、[追加作業](plan-current.md#additional-work-20261009)のN-6・N-7、作者の受入と未統合の区別、残るもの。§1〜§6と20単位の表は計画時点・終了時点の記録である。
-2. 設計台帳[§9.3.58の夜の再測定](../design-notes/technote-ledger.ja.md#native-carrier-remeasurement-20261009)と[動的代謝の受入改訂](../design-notes/technote-ledger.ja.md#body-metabolism-acceptance-revision-20261010)：A′・B′の合格、波形の一致範囲、二つの動的分岐、合否と診断の分離。[§9.3.59の設計継続](../design-notes/technote-ledger.ja.md#temporal-engineering-design-20261010)：T-6g〜T-6jと作者の判断、T-6kの位置づけ。英語版にも同じ結果がある。
+2. 設計台帳[§9.3.58の夜の再測定](../design-notes/technote-ledger.ja.md#native-carrier-remeasurement-20261009)と[動的代謝の受入改訂](../design-notes/technote-ledger.ja.md#body-metabolism-acceptance-revision-20261010)：A′・B′の合格、波形の一致範囲、二つの動的分岐、合否と診断の分離。[§9.3.59の文化層の訂正](../design-notes/technote-ledger.ja.md#meter-tempo-prior-20261010)：T-6kの設計、T-7の実装・検査、既存の作曲者の語彙への接続。英語版にも同じ結果がある。
 3. `.orchestration/HANDOFF.md`：統括の最新の引継ぎ。`.orchestration/status.md`は単位別の表、`.orchestration/records/decisions-20261007-orchestrator.md`は時刻付きの判断記録である。古い冒頭の更新日時や件数だけで状態を判断しない。
 4. `AGENTS.md`のProgress and Validation Scope、Multi-agent Orchestration、Author Decision Requests、Git Operation Policyと、`.orchestration/units/COMMON.md`。
 
 ## 3. 現在の状態と、残るもの
 
-2026-10-09にmainを二度originへpushし、N-6以後は未pushである。N-7はbranch `work/n7-oscillator-carrier-20261009-v1`で作者の受入済みだが、mainへのfast-forwardは統括の操作が権限で止まり、作者の操作待ちである。mainのHEAD・差分、originとの関係、N-7の統合状態とbranchの状態は着手時に確認する。校正の記録と再計算の仕組みは`work/t6-calibration-20261008-v1`（`ff9c856`）に残し、mainには入れていない。これは新しい時間構造の実装が済んだ記録ではない。
+2026-10-09にmainを二度originへpushし、その後のpushは未了である。N-7は作者の受入後、mainへの統合を確認した。T-7は本体branchに実装済みで、作者はmainへの統合とpushを承認済みである。最終sourceの実機計測は統合の前に行う。mainのHEAD・差分、originとの関係、N-7の統合状態とbranchの状態は着手時に確認する。校正の記録と再計算の仕組みは`work/t6-calibration-20261008-v1`（`ff9c856`）に残し、mainには入れていない。これは新しい時間構造の実装が済んだ記録ではない。
 
 新しいrendererは楽器でも`render_prototype = true`で選べる。Sine／Harmonicで身体込みの出生8 family、代謝、代表onset footprintが使えるが、Modalは対応外である。旧rendererの再出生の最終選択は方式とfamilyの対応する組だけ身体込みで評価し、新しいrendererではnativeの参照分布がないため身体評価を使わない。
 
@@ -42,7 +42,7 @@ N-7のsourceによる夜の測定は、A′・B′とも宣言範囲で合格し
 
 動的代謝の合否は、静的照合（既存上限0.025）、更新の順番と漏れのなさ、同じseedでの再現性で判定する。動的比較は件数と最初の分岐の原因の報告として残す。更新数2の設定は変更していないが、seed 42での全件一致で選んだ根拠は弱くなり、見直しが残る。静的上限を動的scoreの誤差上限にはしない。別seed・別étudeでの発生率や生態の偏りは未検証である。
 
-時間の期待は拍と間隔の二択にせず、既存の作曲者の語彙でどれだけ拍に乗るかを選ぶ。複数周期の設計をT-6kで先に閉じ、単一拍のES1を先に本体へ入れない。原典との数値照合は公表モデルをそのまま採る場合の条件であり、この設計を一律に止める門にはしない。量の出どころを明示し、自由な量は作者の一度の試聴で選ぶ。試聴は受入条件ではない。T-6kの設計・比較・本体実装は未了で、次の一回型の到来項は既定で無効、検出の数値は未採用のままである。
+時間の期待は拍と間隔の二択にせず、既存の作曲者の語彙でどれだけ拍に乗るかを選ぶ。T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と検査を済ませた。初回の確認前は三層の確からしさと比を0に保つ。2026-10-10の作者の指摘で、tempoの好みを文化層の事前分布と整理し、重みを既存の`meter_stability`（既定0）から取る形に直した。内部定数の試聴選択は残っていない。A・B・A′・B′の最終sourceのrelease instrument、設定、R-1と同じ道具とcommandは`.orchestration/units/T-7/realtime/`にある。計測は統合の前に行う。実時間の数値は統括の計測後に追記する。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。
 
 揺らぎの語彙も未決である。H／RとT2の聴覚前処理の共有は計画しており、作者の2026-10-09の指示は実施時期の延期であって取り下げではない。これらは[plan-current.md §7](plan-current.md#7-結果)で追跡する。
 

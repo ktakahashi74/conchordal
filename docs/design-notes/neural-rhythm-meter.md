@@ -203,11 +203,16 @@ The same mechanism serves the production and listener meters, with the existing
 The equation above describes the broader design. This implementation has no
 independent noninteger-tempo oscillators, adaptive `K_ij`, or plastic coupling
 network. Ideal event coverage ranks the continuous integer-ratio candidates;
-the internal tempo preference is an engineering profile, rather than a
-numerically reproduced published network. It preserves an established tactus
+the tempo-preference profile is an engineering rule, rather than a numerically
+reproduced published network. Its weight directly equals clamped
+`meter_stability`: a composer-set cultural prior, with the basin center (or
+2 Hz in the default band) as its preferred tempo. The same depth retains its
+forcing and evidence-presence effects. It preserves an established tactus
 across integer missing beats, at the cost of distinguishing them from a sudden
-integer-factor slowdown. Branch integration and the free preference choice
-are recorded separately in the [ledger](technote-ledger.md#temporal-rule-calibration-outcome).
+integer-factor slowdown. The former internal audition constant and test-only
+weight argument are removed. Integration is authorized; real-time measurement
+precedes integration. Implementation history is recorded separately in the
+[ledger](technote-ledger.md#temporal-rule-calibration-outcome).
 
 ### Accent and groove (Regime B)
 
@@ -274,8 +279,10 @@ views.
 
 Field level (Scenario / director), symmetric to consonance-field operations:
 
-- `meter_stability`: attractor depth -- how strongly a pulse wants to form. A
-  property of the temporal terrain, not a tempo.
+- `meter_stability`: attractor depth -- how strongly a pulse wants to form and
+  how strongly its tempo reading favors the basin center. Default 0 is neutral;
+  tempo-preference weight equals this depth. It is a cultural prior of the
+  temporal terrain, not a scheduled tempo.
 - temporal basin: the time scale the pulse gravitates toward, expressed as the
   time-axis analogue of `consonance(min_hz, max_hz)` -- a period/rate region that
   shapes the terrain (a basin), never a scheduled `beat_hz`. Numeric ranges are

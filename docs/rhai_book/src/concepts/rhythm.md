@@ -34,12 +34,25 @@ The director shapes the rhythmic terrain, symmetric to the consonance-field
 operations. These operations shape the production meter used by metric timing. They do not
 set the bodily rate or recurrence candidates of entrained/flow participants:
 
-- `meter_stability(value)` — attractor depth in `[0,1]`: how readily a pulse
-  forms. It only deepens the basin for a *real* periodicity; it never
-  fabricates a beat from non-metric input.
-- `temporal_basin(min_hz, max_hz)` — the tempo region the emergent beat
-  gravitates toward (the time-axis analogue of `consonance(min, max)`). It shapes
-  the terrain; it does not place a beat, and it never forces a measure.
+- `meter_stability(value)` — attractor depth in `[0,1]`, default `0` (neutral):
+  how readily a pulse forms and how strongly its reading favors a preferred
+  tempo. The tempo-preference weight equals this depth. The preferred center is
+  the center of `temporal_basin`, or 2 Hz in the default band. It only deepens
+  the basin for a *real* periodicity; it never fabricates a beat from non-metric
+  input. This is a composer-set cultural prior of the modeled listener.
+- `temporal_basin(min_hz, max_hz)` — a continuous tempo region for the emergent
+  beat (the time-axis analogue of `consonance(min, max)`). It seeds the beat at
+  the center and confines adaptation to the band. At stability `0`, it adds no
+  center preference or restoring pull. Higher stability strengthens both the
+  preferred reading and confidence-weighted center restoring. It shapes the
+  terrain; it does not place a beat, and it never forces a measure.
+
+From a cold start, a regular 4 Hz input in the default band is read as a 4 Hz
+beat at stability `0`, and as duple subdivision of a 2 Hz beat at stability `1`.
+Depth also retains its effects on forcing and evidence presence; it is not an
+independent control of tempo weighting. Confidence remains zero until the first
+interval hypothesis is corroborated. Chance corroboration in irregular input
+can still produce temporary rises afterward.
 
 ## Per-voice presets and modifiers
 

@@ -6744,6 +6744,96 @@ and 05:35 on 2026-10-10. Desk controls and checks in copies outside the main cod
 do not establish product implementation, scientific acceptance or completed
 author audition.
 
+#### 2026-10-10: integer-ratio design closed; branch implementation (T-6k, T-7)
+
+After the preceding entry, the author accepted T-6k's design Y and instructed
+completion on a branch. Y maintains one self-sustaining tactus with separately
+accumulated integer subdivision and measure evidence. Confirmed intervals
+continually revise continuous tempo candidates; ideal shared-event/union
+coverage ranks their support, resolving the equal-PLV double-rate ambiguity.
+Initial adoption clears the former coordinate evidence and excludes its own
+onset. Later updates correct prediction error without resetting phase.
+Established whole missing beats retain the tactus, sacrificing identification
+of an abrupt integer-factor slowdown. This is a principle-grounded engineering
+mechanism, not a numerically reproduced published GFNN or an independent
+noninteger-tempo bank. It has no coupling plasticity.
+
+| Quantity | Origin |
+|---|---|
+| Self-sustaining oscillation and integer layers | Neural-resonance structure in the checked literature |
+| Beat band 0.5–4 Hz, ratios 2/3/4, Hopf amplitude and decay/presence rules | Existing mechanism and its consumers |
+| Phase/period gains 0.6/0.1 | Large & Jones (1999) simulation, checked in T-6h; the whole network is not transplanted |
+| Corroboration window min(0.2×IOI, 60 ms) | Existing acoustic participation candidate window |
+| Shared-event/union support, min(r,1/r) for ideal nested trains | Consumer definition distinguishing supported beats from unfilled predictions |
+| Piecewise log-distance preference and λ | Free engineering profile; the author selects λ once through audition |
+| Explicit-basin restoring ceiling 0.6/s, suppressed by confidence and λ | Existing ceiling plus the consumer's evidence/prior distinction |
+| Boundary projection | f32 epsilon and the addition-count bound from existing minimum dt, capped by the consumer window; no fitted tolerance |
+
+T-6k's outside-core comparisons closed the design before implementation. They
+included periodic sound-body controls, a tempo step, gaps and rain, and 07/12
+WAVs at λ=0/1. The three-Hz missed-onset alias was repaired structurally with
+the existing integer ratios and consumer window. The author's correction of
+the original-figure gate remains in force; no figure was reproduced or fit.
+
+T-7 implements one private mechanism in `core/meter.rs`, retaining `MeterState`,
+config/Rhai/CLI and f32 without adding hop allocations. The branch is based on
+`68a8e43` and remains **unmerged into main**. Its private λ constant is 0 only
+to make the branch buildable: **λ is unchosen**. Tests exercise both endpoints;
+a source copy differing only in that constant supplies λ=1 renders. Experimental
+modes, environment switches, bank functions and JSONL probes stay outside the
+native path.
+
+Preregistered unused rates were 1.4, 4 and 1/0.21 Hz from the existing rhythm
+campaign. Tactus results were about 1.398603 Hz for both weights, 4 Hz at λ0
+versus 2 Hz with duple subdivision at λ1, and 2.380953 Hz with duple subdivision
+for the faster-than-band input. Step and missing-beat controls pass. The latter corroborates two consecutive
+double intervals and checks for transient halving, not only the final tempo. The first
+native draft rejected 4 Hz because f32 interval accumulation crossed the band
+edge; its failures were retained and the roundoff-only boundary repair did not
+change any coefficient. The stability test now compares rise after confirmation
+and saturated evidence, replacing the old 1.5-second deadline.
+
+All 12 études were rendered at baseline/λ0/λ1 (seed 21, 48 kHz, hop 512,
+DCC off, default renderer). All 36 WAVs are finite, nonzero and unclipped;
+eight études change WAVs at each weight. Onsets for 07 are 488/487/483 and for
+12 are 611/595/595. The same-Voice/generation ordinal comparison in 12 gives
+absolute-time median/max differences 0.554771/0.952520 seconds at λ0 and
+0.443479/1.219749 at λ1; these include accumulated ordinal differences, not
+just per-onset local jitter. Production published delta ranges and listener
+beat/confidence trajectories are reported separately. A repeated 07 at the
+same seed matches WAV, pre-synth records and listener state. Native 07 WAVs
+match T-6k's endpoint WAVs; 12 differs. The f32 elapsed-interval representation replaces the copy's f64 cumulative
+clock. Replaying the saved T-6k drive isolates the first frequency differences
+at 5.813333 seconds (about 3.58e-7 Hz, λ0) and 3.264 seconds (about 1.19e-7 Hz,
+λ1). Before/after boundary-repair native states match on all 3395 saved hops;
+that repair is not the cause of this difference. A one-sample onset difference first appears at 6.433 seconds (λ0) or 7.399 seconds (λ1)
+and feeds the coupled ecology. Old-WAV equality is not acceptance.
+
+The existing high-stability renewal rain peaks at 0.810918, versus baseline
+0.633787. The peak precedes interval adoption: three coincidently clustered
+phase observations leave about 2.64 leaky evidence units. Adoption occurs at
+about 10.45 seconds, clearing old evidence; it is not the source of the early
+peak. Final confidence is 0.365385/0.159814 for λ0/1, below 0.5. Confidence
+exceeds baseline for a total 13.305/13.385 seconds, counting even float-sized
+differences. Peak coupling×confidence is 0.405459 for entrained's 0.5 and
+0.770372 for metric's 0.95. This transient is integration evidence, not a new
+failure gate or a reason to invent a suppressing threshold.
+
+The shared cache returned a λ1 binary as a fresh final λ0 artifact once;
+actual 07 output exposed the mismatch. That artifact is excluded. A forced
+source rebuild has the assigned manifest and fresh=false; final 07/12 WAVs
+match the saved endpoint files, permitting reuse after the syntax-only fix.
+
+Full native tests and clippy pass, as do both endpoint meter suites, audio
+assays and profile-alloc checks. Meter processing adds zero allocations at
+both weights; existing instrument allocation comparisons remain unchanged.
+No live performance or new timing acceptance was run. The final main revision
+gets its single real-time acceptance through the orchestrator. The only author
+choices left by this unit are main integration and λ audition/selection.
+Evidence and audition WAVs are in `.orchestration/units/T-7/report.md` and its
+adjacent artifacts; they are machine-local. This entry records branch
+implementation and checks, not main deployment or completed author audition.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

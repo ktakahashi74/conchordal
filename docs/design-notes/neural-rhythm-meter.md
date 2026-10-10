@@ -185,6 +185,26 @@ dphi_i/dt = omega_i
 - `input_i(t)` is the acoustic drive (spectral flux from `DorsalStream`). Drive
   is the force term only; it is not the salience.
 
+#### Implementation mapping (2026-10-10)
+
+The engine now realizes the integer-ratio subset in `core/meter.rs`: a
+self-sustaining Hopf beat, onset-event phase/period correction, and continually
+corroborated interval candidates. Subdivision phases are 2/3/4 times the beat;
+measure detectors divide unwrapped beat cycles by 2/3/4 and retain accent
+resultants. Their evidence is separate even though their frequencies are
+constrained. Phase zero predicts an onset, and first adoption clears old
+coordinates without counting its own onset. The same mechanism serves the
+production and listener meters, with the existing `MeterState` and composer API.
+
+The equation above describes the broader design. This implementation has no
+independent noninteger-tempo oscillators, adaptive `K_ij`, or plastic coupling
+network. Ideal event coverage ranks the continuous integer-ratio candidates;
+the internal tempo preference is an engineering profile, rather than a
+numerically reproduced published network. It preserves an established tactus
+across integer missing beats, at the cost of distinguishing them from a sudden
+integer-factor slowdown. Branch integration and the free preference choice
+are recorded separately in the [ledger](technote-ledger.md#temporal-rule-calibration-outcome).
+
 ### Accent and groove (Regime B)
 
 - accent: the beat (delta) phase weights subdivision-event salience.

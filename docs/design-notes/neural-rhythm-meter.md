@@ -185,12 +185,30 @@ dphi_i/dt = omega_i
 - `input_i(t)` is the acoustic drive (spectral flux from `DorsalStream`). Drive
   is the force term only; it is not the salience.
 
-#### Implementation mapping (2026-10-10)
+#### Implementation mapping (2026-10-11, recurrence branch)
 
 The engine now realizes the integer-ratio subset in `core/meter.rs`: a
 self-sustaining Hopf beat, onset-event phase/period correction, and continually
-corroborated interval candidates. Subdivision phases are 2/3/4 times the beat;
-measure detectors divide unwrapped beat cycles by 2/3/4 and retain accent
+corroborated recurrence candidates. Detected acoustic onset times are retained
+for 4.06 seconds: two maximum two-second intervals plus the existing 60 ms
+confirmation tail. Three possibly nonadjacent onsets confirm a lag within
+`min(0.2 * period, 60 ms)`. Candidate coverage is triangular one-to-one
+matching mass divided by the same full-history event count for every lag.
+An accepted period remains in this comparison even without a new confirming
+triple. A history whose adjacent intervals all agree within the existing
+window uses the previous adjacent-interval path unchanged.
+
+After first confirmation, each later onset predicts its next recurrence at
+its then-current basic period. Issued targets are immutable; prediction,
+observation and matching masses are finalized after their windows and leak
+with the existing 2.5-second time constant. Their intersection/union support
+`J` is weighted by the selected integer-ratio support `S_r`. A history with
+an interval shorter than `period - window` reads beat confidence as
+`max(PLV, J * S_r) * presence`; a single-position history retains
+`PLV * presence`. Confirmation history is scratch for hypothesis acquisition,
+not confidence evidence before confirmation.
+
+Subdivision phases are 2/3/4 times the beat; measure detectors divide unwrapped beat cycles by 2/3/4 and retain accent
 resultants. Their evidence is separate even though their frequencies are
 constrained. Until the first corroborated hypothesis, no beat, subdivision or
 measure evidence is accumulated: all confidences and subdivision/measure ratios
@@ -210,9 +228,15 @@ reproduced published network. Its weight directly equals clamped
 forcing and evidence-presence effects. It preserves an established tactus
 across integer missing beats, at the cost of distinguishing them from a sudden
 integer-factor slowdown. The former internal audition constant and test-only
-weight argument are removed. Integration is authorized; real-time measurement
-precedes integration. Implementation history is recorded separately in the
-[ledger](technote-ledger.md#temporal-rule-calibration-outcome).
+weight argument are removed. The earlier hierarchy was integrated in T-7.
+The recurrence extension is implemented on
+`work/t13-meter-recurrence-20261011-v1` from main `217c7e8`; integration into
+main awaits the author's decision. It adds no composer vocabulary or hop-path
+allocation. Its private state stays in the sole consumer, `core/meter.rs`;
+constructor buffers are reused. Offline controls, feedback sensitivity and
+workload are recorded in the
+[ledger](technote-ledger.md#meter-onset-recurrence-branch-20261011).
+Real-time operation of this extension has not been measured.
 
 ### Accent and groove (Regime B)
 
@@ -222,14 +246,16 @@ precedes integration. Implementation history is recorded separately in the
 
 ### Salience and confidence (Regime C)
 
-Each band reports a confidence derived from phase prediction quality (a
-PLV/coherence measure over a window, plus persistence/anticipation), not from
-drive amplitude. This drives both UI brightness and behavioral weight.
+Each band reports confidence from accumulated evidence: phase coherence,
+beat-pattern recurrence or measure accents, with persistence and presence.
+Drive amplitude remains a distinct quantity. This drives both UI brightness and behavioral weight.
 Consequences:
 
 - A clean isochronous beat reads strong even when quiet.
 - A wobbling or ambiguous beat reads weak even when loud.
-- A non-metric texture (rain) reads weak in all bands: the correct null result.
+- Before confirmation a non-metric texture remains unknown. Chance confirmation
+  can produce transient support afterward; this implementation does not classify
+  every rain segment as non-metric or impose a confidence cap.
 - Content gating is automatic: theta confidence stays low when there is no
   subdivision content to lock to. There is no separate gating rule.
 

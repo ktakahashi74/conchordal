@@ -1,8 +1,8 @@
 # 次のセッションの始め方
 
-2026-10-10更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
+2026-10-11更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
-作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れた。N-7は同日にmainへ統合され、originへpush済みである。時間構造は、原典の図の数値再現を一律の門にした誤りを撤回し、T-6kで整数比の階層の設計を閉じ、T-7で本体に実装した。T-7も同日にmainへ統合し、最終検査の後、11:50にoriginへpushした。作者の試聴を受けたmetric内の位相分離のT-8〜T-10は、午後の範囲の判断で停止した。拍の同期には二つの失敗が残り、T-11が調査中である。慣れと既存語彙の旋律らしい線を作者が評価し、「動いた時にだけ発音する」V-1は外部試作を終えた。本体統合は作者の試聴と判断待ちである。[午後〜夜の状態](plan-current.md#temporal-melodic-outcomes-20261010)を次の作業の入口にする。20単位の終了、実装・統合・push、作者の音楽的な評価を区別する。
+作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れた。N-7は同日にmainへ統合され、originへpush済みである。時間構造は、原典の図の数値再現を一律の門にした誤りを撤回し、T-6kで整数比の階層の設計を閉じ、T-7で本体に実装した。T-7も同日にmainへ統合し、最終検査の後、11:50にoriginへpushした。作者の試聴を受けたmetric内の位相分離のT-8〜T-10は、午後の範囲の判断で停止した。拍の同期の二つの失敗はT-11で設計の選択と分類した。F1はT-12で設計を本体の外で閉じ、T-13で実装・回帰・文書をbranchへ用意した。mainへの統合は作者の判断待ち、F2のbasinは未変更である。慣れと既存語彙の旋律らしい線を作者が評価し、「動いた時にだけ発音する」V-1は外部試作を終えた。本体統合は作者の試聴と判断待ちである。[午後〜夜の状態](plan-current.md#temporal-melodic-outcomes-20261010)を次の作業の入口にする。20単位の終了、実装・統合・push、作者の音楽的な評価を区別する。
 
 作者は同日、慣れを既定で有効にする判断も採った。[H-3の既定有効化](#habituation-default-branch-20261010)はbranchで用意した後、作者の指示を受けた統括がmainへ統合し、22:57にoriginへpushした。push後のmainとorigin/mainはともに`39e6840`だった。慣れ有効の四構成の実時間は既に合格しており、既存の科学的な対照では無効を明示する。
 
@@ -29,16 +29,16 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 
 ## 2. 先に読むもの
 
-1. [plan-currentの午後〜夜の結果](plan-current.md#temporal-melodic-outcomes-20261010)：止めた線、進行中のT-11、作者の判断待ち。§7の20単位とN-7・T-7・H-3の実装・統合記録は保持し、過去の状態を現在の作業指示にしない。
+1. [plan-currentの午後〜夜の結果](plan-current.md#temporal-melodic-outcomes-20261010)：止めた線と当時の状態。その後の[2026-10-11の追記](plan-current.md#meter-onset-recurrence-branch-20261011)でT-11の分類とT-13のbranch準備完了を確認する。§7の20単位とN-7・T-7・H-3の実装・統合記録は保持し、過去の状態を現在の作業指示にしない。
 2. 台帳[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)〜[§9.3.66](../design-notes/technote-ledger.ja.md#pitch-adoption-articulation-prototype-20261010)：位相分離の停止、拍の同期の失敗、動機・phraseの空白、二つの陰性試作、H-1の三素材と読みの訂正、V-1の規則と限界。慣れの既定有効化と実時間は[§9.3.60](../design-notes/technote-ledger.ja.md#habituation-default-on-20261010)、N-7とT-7の取得・受入範囲は[§9.3.58](../design-notes/technote-ledger.ja.md#realtime-acceptance-scope)、文化層と先の試聴は[§9.3.59](../design-notes/technote-ledger.ja.md#temporal-rule-calibration-outcome)。英語版も同じ結果を記す。
-3. 機械に固有の追跡外記録 `.orchestration/units/T-11/`の届いた報告とbrief、`beat-sync-check-20261010/README.md`、`participation-check-20261010/README.md`。T-11の調査・branch修理がmainへ入ったとは扱わない。[設計メモ§4.2](../design-notes/dcc-neurocognitive-hierarchy.md#42-beat-meter-and-groove)でtempo・まとまり・どこで鳴らすかの分担を先に確かめる。
+3. 機械に固有の追跡外記録 `.orchestration/units/T-11/`の届いた報告とbrief、`beat-sync-check-20261010/README.md`、`participation-check-20261010/README.md`。T-11の原因分類・保存済み36条件、T-12の最終4.06秒の設計、T-13の報告・branch・全テストを読む。台帳[§9.3.67](../design-notes/technote-ledger.ja.md#meter-onset-recurrence-branch-20261011)に採用の状態を記した。T-13がmainへ入ったとは扱わない。[設計メモ§4.2](../design-notes/dcc-neurocognitive-hierarchy.md#42-beat-meter-and-groove)でtempo・まとまり・どこで鳴らすかの分担を先に確かめる。
 4. 同じローカル記録の`H-1/report.md`の追補と`V-1/registration.md`・`report.md`。作者が次に聴く三つは`articulation-check-20261010/rearticulated.wav`、`articulation-check-20261010/legato-fast.wav`、`V-1/runs/adopt-s21/audio.wav`。seed 123の変化は`H-1/addition-articulation/runs/fast-s123/audio.wav`と`V-1/runs/adopt-s123/audio.wav`で比較する。fileの共通prefixは`.orchestration/units/`である。
 5. `.orchestration/records/decisions-20261007-orchestrator.md`の2026-10-10 13:20以後と`.orchestration/HANDOFF.md`、`.orchestration/status.md`。更新日時だけでなく、時刻付きの追記と各単位の報告を確認する。
 6. `AGENTS.md`のProgress and Validation Scope、Multi-agent Orchestration、Author Decision Requests、Git Operation Policyと、`.orchestration/units/COMMON.md`。
 
 ## 3. 現在の状態と、残るもの
 
-N-7とT-7はmainへ統合・push済みで、H-3の慣れの既定有効化も2026-10-10 22:57に統合・push済みである。D-6着手時点のmainはD-5の文書修正を含む`4da4726`、origin/mainは`39e6840`で、mainが文書1 commit先だった。HEAD・差分、originとの関係、各branchの状態は着手時に確認する。T-11の修理とV-1の本体統合は未決であり、文書のcheckpointへ他のworktreeの作業を混ぜない。校正の記録は`work/t6-calibration-20261008-v1`（`ff9c856`）に残したままで、T-7の本体実装とは区別する。
+N-7とT-7はmainへ統合・push済みで、H-3の慣れの既定有効化も2026-10-10 22:57に統合・push済みである。D-6着手時点のmainはD-5の文書修正を含む`4da4726`、origin/mainは`39e6840`で、mainが文書1 commit先だった。HEAD・差分、originとの関係、各branchの状態は着手時に確認する。T-13のF1のbranch採用とV-1の本体統合は未決であり、文書のcheckpointへ他のworktreeの作業を混ぜない。校正の記録は`work/t6-calibration-20261008-v1`（`ff9c856`）に残したままで、T-7の本体実装とは区別する。
 
 新しいrendererは楽器でも`render_prototype = true`で選べる。Sine／Harmonicで身体込みの出生8 family、代謝、代表onset footprintが使えるが、Modalは対応外である。旧rendererの再出生の最終選択は方式とfamilyの対応する組だけ身体込みで評価し、新しいrendererではnativeの参照分布がないため身体評価を使わない。
 
@@ -46,7 +46,7 @@ N-7のsourceによる夜の測定は、A′・B′とも宣言範囲で合格し
 
 動的代謝の合否は、静的照合（既存上限0.025）、更新の順番と漏れのなさ、同じseedでの再現性で判定する。動的比較は件数と最初の分岐の原因の報告として残す。更新数2の設定は変更していないが、seed 42での全件一致で選んだ根拠は弱くなり、見直しが残る。静的上限を動的scoreの誤差上限にはしない。別seed・別étudeでの発生率や生態の偏りは未検証である。
 
-時間の期待は拍と間隔の二択にせず、既存の作曲者の語彙でどれだけ拍に乗るかを選ぶ。T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と検査を済ませた。初回の確認前は三層の確からしさと比を0に保つ。2026-10-10の作者の指摘で、tempoの好みを文化層の事前分布と整理し、重みを既存の`meter_stability`（既定0）から取る形に直した。内部定数の試聴選択は残っていない。最終sourceの実機計測の入力・取得・集計は`.orchestration/units/T-7/realtime/`に保存し、四構成の合格は台帳[§9.3.58](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。同日の午後、作者は拍の同期と旋律・拍より細かい単位・grooveを分ける判断を採り、metric内で位相を分けるT-8〜T-10を停止した。既存の参加の経路の対照は、約1秒の共通周期を保ち位相が分かれる。拍の同期は07・12と同じpriorでは確認したが、既定のpriorなしとbasin 2.8〜3.4で失敗が残る。T-11の原因調査と採択済み設計内で可能なbranch修理を確認する。結果、修理を進めるか戻すか、mainへの統合は未決である（台帳[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)・[§9.3.62](../design-notes/technote-ledger.ja.md#metric-beat-sync-regressions-20261010)）。
+時間の期待は拍と間隔の二択にせず、既存の作曲者の語彙でどれだけ拍に乗るかを選ぶ。T-6kで整数比の階層の設計を閉じ、T-7で本体への実装と検査を済ませた。初回の確認前は三層の確からしさと比を0に保つ。2026-10-10の作者の指摘で、tempoの好みを文化層の事前分布と整理し、重みを既存の`meter_stability`（既定0）から取る形に直した。内部定数の試聴選択は残っていない。最終sourceの実機計測の入力・取得・集計は`.orchestration/units/T-7/realtime/`に保存し、四構成の合格は台帳[§9.3.58](../design-notes/technote-ledger.ja.md#t7-meter-remeasurement-20261010)に記録した。次の一回型の到来項は既定で無効、検出の数値は未採用のままである。同日の午後、作者は拍の同期と旋律・拍より細かい単位・grooveを分ける判断を採り、metric内で位相を分けるT-8〜T-10を停止した。既存の参加の経路の対照は、約1秒の共通周期を保ち位相が分かれる。拍の同期は07・12と同じpriorでは確認したが、既定のpriorなしとbasin 2.8〜3.4で失敗が残る。T-11は二つとも設計判断と分類し、修理せずに停止した。F1の続きはT-12最終設計CをT-13のbranchへ実装済みで、採用・mainへの統合は作者の判断待ちである。F2のhard bandの意味は別の未決である（台帳[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)・[§9.3.62](../design-notes/technote-ledger.ja.md#metric-beat-sync-regressions-20261010)）。
 
 動機・phraseの2〜10秒の音高・時刻の共同の生成状態は空白である。P-A1とP-B1は、既存の判断へ提案だけを渡す条件で陰性の結果を返した。学んだ意図に重みを持たせる続きは未着手・未採択で、優先を下げた。既存の語彙と慣れのlegato-fastは作者が「かなり自然なメロディー」と評価し、聴かせないanchor、一体の近似自己除外、遅い／速い二体も作曲の材料として評価した。これは一般的な系列生成の受入ではない。慣れはH-3で既定有効化済みで、scriptから切り替える語彙は無い。
 
@@ -91,3 +91,10 @@ Aが5,896 µs、Bが6,196 µs、A′が7,442 µs、B′が9,308 µsで、採る�
 取り直しの窓とA′の外乱を含む経過は、台帳[§9.3.60](../design-notes/technote-ledger.ja.md#habituation-default-on-20261010)に記録した。
 実時間は取得し直していない。branchでの全テストと既定設定による12 étudeの全長offline描画の記録は
 `.orchestration/units/H-3/report.md`にある。20単位の分母を増やさず、作者の試聴評価と実時間の合格を分ける。
+
+
+<a id="meter-onset-recurrence-branch-20261011"></a>
+
+### 2026-10-11：T-13のbranchを読む入口
+
+mainの基準は`217c7e8`。実装先は`.worktrees/t13-meter-recurrence-20261011-v1`、branchは`work/t13-meter-recurrence-20261011-v1`である。実装・検査`1000b99`と文書の二commitを用意した。mainは動かさず、pushしていない。次は`.orchestration/units/T-13/report.md`の07の端点の敏感さ、雨、仕事量と検査の限界を読み、F1をmainへ採るか作者が判断する。実機の計測は未実施であり、統括が作者に知らせてから四構成の取得を行う。過去のT-7・H-3の合格をこの新しい閉ループの合格へ読み替えない。F2とV-1の選択は独立して残る。

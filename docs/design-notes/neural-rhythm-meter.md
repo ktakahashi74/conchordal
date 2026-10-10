@@ -185,7 +185,7 @@ dphi_i/dt = omega_i
 - `input_i(t)` is the acoustic drive (spectral flux from `DorsalStream`). Drive
   is the force term only; it is not the salience.
 
-#### Implementation mapping (2026-10-11, recurrence branch)
+#### Implementation mapping (2026-10-11, recurrence implementation)
 
 The engine now realizes the integer-ratio subset in `core/meter.rs`: a
 self-sustaining Hopf beat, onset-event phase/period correction, and continually
@@ -233,16 +233,19 @@ The recurrence extension was implemented on
 `work/t13-meter-recurrence-20261011-v1` from main `217c7e8`. On 2026-10-11,
 the author adopted it, the orchestrator passed all 48 instrument performances
 in A/B/A′/B′, and main advanced to `c2b8308`. The basin-initialization extension
-is stacked on that final source; its main integration is still owned by the
-orchestrator. Exact 12-étude equality permits reuse of the T-13 measurement
-scope. Branch implementation and hardware acceptance remain separate. It adds
+was stacked on that final source and fast-forwarded by the orchestrator into
+main at `000b884` on 2026-10-11 at 08:46. Exact 12-étude equality permitted
+reuse of the T-13 measurement scope without remeasurement. At that update,
+origin/main remained `39e6840`, six commits behind main; push has not been
+performed and awaits the author's explicit instruction. Implementation,
+hardware acceptance, main integration and push remain separate. It adds
 no composer vocabulary or hop-path allocation. Its private state stays in the
 sole consumer, `core/meter.rs`;
 constructor buffers are reused. Offline controls, feedback sensitivity and
 workload are recorded in the
 [ledger](technote-ledger.md#meter-onset-recurrence-branch-20261011).
-Instrument real-time measurements and main integration are owned by the
-orchestrator; this branch implementation performs neither.
+The orchestrator performed the T-13 instrument measurements; T-16 reused
+that acquisition for its completed main integration without remeasurement.
 
 #### Metric intrinsic initialization (2026-10-11, adopted minimal C)
 

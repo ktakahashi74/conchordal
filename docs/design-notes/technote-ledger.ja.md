@@ -4733,6 +4733,27 @@ Voice 20の世代差は親の分岐の直接の下流である。Voice 26の親�
 
 出典は`.orchestration/units/N-7/report-2.md`、`report-3.md`、`stage3/baseline-pinned-analysis.json`、`recording-analysis.json`、`parent26-details.json`、`audit.json`、`B-6/report-2.md`、`B-7/brief.md`と、統括の2026-10-09 23:29、2026-10-10 05:35の判断記録である。共有cacheが候補のtest binaryを返した最初の`stage3/baseline/`の二記録は基準証拠から除外され、保存した正しい基準binaryによる`stage3/baseline-pinned/`の結果を使っている。
 
+<a id="t7-meter-remeasurement-20261010"></a>
+
+#### 2026-10-10：拍子の仕組みを更新した版の四構成を再測定（T-7）
+
+統括が2026-10-10 11:22:13〜11:39:43に、T-7の最終source `44331aa`のrelease instrumentで実機を測った。binaryは`.orchestration/units/T-7/realtime/bin/conchordal`、SHA-256は`36617a368b2a7a4afcd63312042f030c1395dab8367ae7fb11557d29f5bc39dd`である。拍子の仕組みの整数比の適応階層、確認前の未知の扱い、既存の`meter_stability`から取るtempoの好みの重みを含む版であり、mainへの統合前に測定した。
+
+範囲と基準はR-1と同じ、12 étude、blanche、ALSA 48 kHz 2ch、release、GUIなし、seed 1である。累積出力不足0、hop全体のp99≤10,667 µsを判定に使う（実際の予算は512 frame／48 kHzから換算した10,666.666… µs）。Aの06を試しに1曲実行した後、構成ごとにlockを取り、A、B、A′、B′の順で各12曲を一度ずつ取得した。四つの時間枠のどれにも別projectの`run-p*`のscopeは重ならず、取り直しはしていない。開始時の1分load averageは1.44〜2.32で、別の端末のjobは動いていた。
+
+| 構成 | 判定 | 演奏別p99の最大（曲） | 累積出力不足 | callback error | 予算超過の個々のhopの最大 |
+|---|---|---:|---:|---:|---|
+| A（既定、旧renderer） | 合格 | 3,912 µs（09） | 0 | 0 | なし |
+| B（旧renderer＋身体込み） | 合格 | 6,769 µs（10） | 0 | 0 | 09 で 10,861 µs |
+| A′（新renderer） | 合格 | 7,497 µs（09） | 0 | 0 | なし |
+| B′（新renderer＋身体込み） | 合格 | 9,258 µs（09） | 0 | 0 | 09 で 12,930 µs、12 で 11,747 µs |
+
+全48演奏がexit 0で、四構成とも宣言した範囲で合格した。Bの09とB′の09・12には、予算を超えた個々のhopがある。この最大値を消さずに残すが、最大hop時間は採択した合否条件ではなく、p99と出力不足の基準を全構成で満たした。試しの1曲は、この48演奏と表の集計に含めていない。
+
+前の版の演奏別p99最大は、2026-10-09昼の`09fb100`でAが4,234 µs、Bが5,731 µs、同日夜のN-7のsourceでA′が6,894 µs、B′が8,929 µsだった。別の日・別の負荷の取得なので、今回との差を拍子の仕組みの変更の費用とは読まない。合格をGUI付き、他の機械・device、任意のscriptや任意の外部負荷へ広げない。mainへの統合とpushは作者が承認済みだが、この文書更新では実行していない。
+
+出典は`.orchestration/units/T-7/brief-4.md`、`realtime/orchestrator-run-quiet.log`、`realtime/device-{A,B,A-prime,B-prime}-v1-analysis/analysis.md`と`performances.csv`である。四構成それぞれの全12行を表とCSVで突き合わせ、整数µsに丸めた値がbriefの表と一致することを確認した。試しの出典は`realtime/device-trial-A-06-v1-analysis/`にある。実機取得と判定は統括が行い、区切り4のworkerは文書への反映だけを行った。
+
 <a id="temporal-rule-calibration-outcome"></a>
 
 ### 9.3.59 時間構造：決まりと信号検査で決めたものと、決まらなかったもの（M-3、T-6）
@@ -4869,7 +4890,7 @@ T-7は`core/meter.rs`の一つの非公開経路として実装し、`MeterState
 
 旧実装の重みとshapingの深さを同じ端にした対照は、今回の対照の全hop・全計測fieldと一致した。一方、以前の中立の深さのλ1対照と比べると、駆動とpresenceも変わるため、確信度と位相は同一ではない。例えば1.4 Hzの最終確信度は0.754392から0.999815へ変わり、タクトゥスは1.398603 Hzのままである。雨は最初の確認まで未知を保ち、深さ0/1の最終確信度は0.164832／0.159814、最大は0.581111／0.540077だった。採用後の偶然の確認は残る。
 
-scriptingの文書registry、生成した定義とAPI参照、本のリズム章日英、technote、Engineの対応を、この作曲者の制御に合わせた。既存の経路でdirectorのshapingを受けるのは生成メーターであり、listenerは同じ機構を中立のshapingで使う。listenerの変化はプレゼンテーション音声を介して生じる。最終sourceの検査、描画比較、実機計測入力の根拠は`.orchestration/units/T-7/report-3.md`に置く。実機用bundleはR-1と同じ道具でA・B・A′・B′を扱う。計測は統合の前に行う。workerが実機演奏や実時間の受入を行った記録ではない。
+scriptingの文書registry、生成した定義とAPI参照、本のリズム章日英、technote、Engineの対応を、この作曲者の制御に合わせた。既存の経路でdirectorのshapingを受けるのは生成メーターであり、listenerは同じ機構を中立のshapingで使う。listenerの変化はプレゼンテーション音声を介して生じる。最終sourceの検査、描画比較、実機計測入力の根拠は`.orchestration/units/T-7/report-3.md`に置く。実機用bundleはR-1と同じ道具でA・B・A′・B′を扱う。統括はこの入力を使い、mainへの統合前に実機計測を終え、四構成とも宣言範囲で合格した。結果と取得範囲は[§9.3.58のT-7再測定](#t7-meter-remeasurement-20261010)に記録した。実機取得は統括が行い、workerによる文書更新ではmainへの統合とpushを行っていない。
 
 ## 9.4 整合と拡張の順序
 

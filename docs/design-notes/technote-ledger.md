@@ -6488,6 +6488,60 @@ first two `stage3/baseline/` records, for which the shared cache returned the
 candidate test binary, were excluded as baseline evidence. The results used
 come from `stage3/baseline-pinned/` and the saved correct baseline binary.
 
+<a id="t7-meter-remeasurement-20261010"></a>
+
+#### 2026-10-10: four configurations remeasured with T-7's adaptive meter
+
+The orchestrator measured the final T-7 source `44331aa` from 11:22:13 to
+11:39:43 on 2026-10-10, using its release instrument at
+`.orchestration/units/T-7/realtime/bin/conchordal`, SHA-256
+`36617a368b2a7a4afcd63312042f030c1395dab8367ae7fb11557d29f5bc39dd`.
+This version includes the adaptive integer-ratio hierarchy, unknown evidence
+before first corroboration, and tempo preference drawn from the existing
+`meter_stability`. Measurement was completed before main integration.
+
+Scope and criteria remain those of R-1: twelve études, blanche, ALSA at 48 kHz
+and two channels, release, no GUI, seed 1. Acceptance requires cumulative
+underrun zero and whole-hop p99 ≤ 10,667 µs (the recorded budget is
+10,666.666… µs, derived from 512 frames at 48 kHz). After a one-étude trial of
+A/06, the orchestrator held a lock separately for each configuration and
+acquired A, B, A′ and B′ in that order, twelve performances each, once. No
+other project's `run-p*` scope overlapped any of the four windows; none was
+reacquired. Starting one-minute load averages ranged from 1.44 to 2.32, with
+jobs active in another terminal.
+
+| Configuration | Result | Largest per-performance p99 (étude) | Cumulative underrun | Callback errors | Maximum individual hop above budget |
+|---|---|---:|---:|---:|---|
+| A (default, legacy renderer) | Pass | 3,912 µs (09) | 0 | 0 | None |
+| B (legacy renderer + body-aware) | Pass | 6,769 µs (10) | 0 | 0 | 10,861 µs in 09 |
+| A′ (new renderer) | Pass | 7,497 µs (09) | 0 | 0 | None |
+| B′ (new renderer + body-aware) | Pass | 9,258 µs (09) | 0 | 0 | 12,930 µs in 09; 11,747 µs in 12 |
+
+All 48 performances exited zero; all four configurations passed in the
+declared scope. Individual hops exceeded budget in B/09 and B′/09 and B′/12.
+Those maxima are retained, but maximum hop time is not an adopted pass/fail
+criterion: every configuration met the p99 and underrun requirements. The
+one-étude trial is excluded from these 48 performances and the table.
+
+Earlier largest per-performance p99 values were 4,234 µs for A and 5,731 µs
+for B on the afternoon of 2026-10-09 with `09fb100`, and 6,894 µs for A′ and
+8,929 µs for B′ that evening with the N-7 source. These acquisitions occurred
+on different days and under different loads; their differences do not measure
+the cost of the meter change. Passing does not extend to GUI use, other
+machines or devices, arbitrary scripts or arbitrary external load. The author
+has approved main integration and push; neither is performed by this document
+update.
+
+Sources are `.orchestration/units/T-7/brief-4.md`,
+`realtime/orchestrator-run-quiet.log`, and
+`realtime/device-{A,B,A-prime,B-prime}-v1-analysis/analysis.md` and
+`performances.csv`. All twelve rows of each configuration were checked between
+the Markdown and CSV tables, and values rounded to integer microseconds agree
+with the brief's table. Trial evidence is under
+`realtime/device-trial-A-06-v1-analysis/`. Device acquisition and judgment were
+performed by the orchestrator; the fourth-checkpoint worker only records them
+in documentation.
+
 <a id="temporal-rule-calibration-outcome"></a>
 
 ### 9.3.59 Temporal structure: what rules and signal checks settled, and what they did not (M-3, T-6)
@@ -6930,8 +6984,12 @@ the listener meter uses the same algorithm with its existing neutral shaping,
 and can change indirectly through presentation audio. Final source tests,
 render comparisons and source-pinned real-time inputs are recorded in
 `.orchestration/units/T-7/report-3.md`. The real-time bundle covers A/B/A′/B′
-using unchanged R-1 tools. Measurement takes place before integration; no
-worker live performance or real-time acceptance is claimed here.
+using unchanged R-1 tools. The orchestrator has completed device measurement
+before main integration; all four configurations passed in the declared scope.
+Results and acquisition scope are recorded in
+[§9.3.58, T-7 remeasurement](#t7-meter-remeasurement-20261010). Device acquisition was
+performed by the orchestrator; this worker documentation update does not
+perform main integration or push.
 
 ## 9.4 Alignment and Extension Sequence
 

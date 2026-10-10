@@ -192,9 +192,13 @@ self-sustaining Hopf beat, onset-event phase/period correction, and continually
 corroborated interval candidates. Subdivision phases are 2/3/4 times the beat;
 measure detectors divide unwrapped beat cycles by 2/3/4 and retain accent
 resultants. Their evidence is separate even though their frequencies are
-constrained. Phase zero predicts an onset, and first adoption clears old
-coordinates without counting its own onset. The same mechanism serves the
-production and listener meters, with the existing `MeterState` and composer API.
+constrained. Until the first corroborated hypothesis, no beat, subdivision or
+measure evidence is accumulated: all confidences and subdivision/measure ratios
+remain zero (unknown). Oscillator motion and onset corrections continue; the
+running onset-strength baseline is also retained. Phase zero predicts an onset,
+and first adoption clears old coordinates without counting its own onset.
+The same mechanism serves the production and listener meters, with the existing
+`MeterState` and composer API.
 
 The equation above describes the broader design. This implementation has no
 independent noninteger-tempo oscillators, adaptive `K_ij`, or plastic coupling

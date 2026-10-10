@@ -6834,6 +6834,55 @@ Evidence and audition WAVs are in `.orchestration/units/T-7/report.md` and its
 adjacent artifacts; they are machine-local. This entry records branch
 implementation and checks, not main deployment or completed author audition.
 
+#### 2026-10-10: keep unconfirmed metrical evidence unknown (T-7, second checkpoint)
+
+This dated correction preserves the preceding acquisition record. The early
+0.810918 renewal-rain peak came from coordinates with `seeded=false`; their
+evidence was discarded at first adoption in periodic input. Beat and
+subdivision phasors/counts and measure accent resultants/mass now accumulate
+only after `seeded` becomes true. Before that confirmation, all three
+confidences and subdivision/measure ratios are zero (unknown). First adoption
+still excludes its own onset. The running onset-strength baseline keeps its
+previous updates, preserving later accent evaluation. Oscillator motion,
+onset-event phase/period correction, corroboration, gains, windows and later
+adoptions are unchanged; no threshold, onset count or deadline was added.
+
+Preregistered rates 1.4, 4 and 1/0.21 Hz, plus step, corroborated missing-beat
+and in-basin controls retain exactly the preceding post-adoption beat/subdivision/measure
+confidence, phase and evidence trajectories at both preference endpoints.
+The same holds for renewal rain at stability 0 and 1. An out-of-basin stream
+remains unconfirmed and reports zero confidence. With λ1, removing its earlier
+confidence can indirectly change the existing confidence-weighted basin pull;
+the correction law itself is unchanged.
+
+In the original stability-1 rain fixture (seed 0x12345678, mean interval
+0.5 seconds, 25 seconds), the first adoption remains at 10.450191 seconds.
+All 2090 earlier hops have zero metrical evidence and confidence. Maximum
+confidence is now 0.502939/0.540077 at λ0/1, and final confidence remains
+0.365385/0.159814. Baseline-exceeding time falls from 13.305/13.385 to
+6.925/7.005 seconds. The remaining metric-default coupling×confidence peaks
+are 0.477792/0.513073. Chance corroboration and later rises remain; this change
+does not add a post-adoption suppression rule.
+
+All 12 études were rendered again at each endpoint with the preceding seed,
+audio settings and default renderer. All 24 PCM16 WAVs are finite, nonzero
+and unclipped (absolute peaks 0.079956–0.598480). At both weights, 03/04/05,
+07/08/09/10 and 12 change from the first checkpoint; 01/02/06/11 retain their
+WAVs. Production and listener frequency ranges are recorded separately. The
+new 07/12 endpoint audition files are under `.orchestration/units/T-7/stage2/`;
+the original files remain. Repeated 07 renders match WAVs, pre-synth records
+and listener state at both weights.
+
+Existing meter/audio tests pass at both weights without weakening assertions.
+Full native tests pass (1027 passed, 34 ignored); fmt, clippy and the meter
+profile-alloc suite pass, with zero meter allocations at both endpoints. The
+source copy differs only in the private preference constant; pinned renderer
+artifacts identify their sources and report fresh=false. The two original
+commits are retained, followed by fix and documentation commits. Main is not
+updated, λ remains unchosen, and live performance/final real-time acceptance
+remain outside this checkpoint. Detailed evidence is in
+`.orchestration/units/T-7/report-2.md` and its adjacent `stage2/` artifacts.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

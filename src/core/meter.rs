@@ -368,15 +368,18 @@ impl MeterNetwork {
 
         if onset.fired && !seeded_now {
             let onset_phi = observed_phi;
-            self.plv_count += 1.0;
-            self.beat_re += onset_phi.cos();
-            self.beat_im += onset_phi.sin();
-            // ratio competition: which integer multiple of the beat phase do
-            // onsets lock to.
-            for (k, ratio) in SUB_RATIOS.iter().enumerate() {
-                let a = (*ratio as f32) * onset_phi;
-                self.sub_re[k] += a.cos();
-                self.sub_im[k] += a.sin();
+            // An uncorroborated coordinate is unknown, not weak beat evidence.
+            if self.seeded {
+                self.plv_count += 1.0;
+                self.beat_re += onset_phi.cos();
+                self.beat_im += onset_phi.sin();
+                // ratio competition: which integer multiple of the beat phase do
+                // onsets lock to.
+                for (k, ratio) in SUB_RATIOS.iter().enumerate() {
+                    let a = (*ratio as f32) * onset_phi;
+                    self.sub_re[k] += a.cos();
+                    self.sub_im[k] += a.sin();
+                }
             }
 
             // Accent: how much louder this onset is than the running baseline.
@@ -385,7 +388,7 @@ impl MeterNetwork {
             let strength = drive;
             self.strength_baseline += STRENGTH_BL_RATE * (strength - self.strength_baseline);
             let accent = (strength - self.strength_baseline).max(0.0);
-            if accent > 0.0 {
+            if self.seeded && accent > 0.0 {
                 self.meas_norm += accent;
                 let cycles = self.beat_cycles;
                 for (k, m) in MEASURE_RATIOS.iter().enumerate() {

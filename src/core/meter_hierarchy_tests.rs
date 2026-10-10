@@ -170,8 +170,34 @@ fn first_interval_does_not_confirm_itself() {
                 assert_eq!(state.beat.confidence, 0.0);
                 assert_eq!(net.plv_count, 0.0);
             }
+            if !before {
+                assert_eq!(state.beat.confidence, 0.0);
+                assert_eq!(state.subdivision.confidence, 0.0);
+                assert_eq!(state.measure.confidence, 0.0);
+                assert_eq!(state.subdivision_ratio, 0);
+                assert_eq!(state.measure_ratio, 0);
+                assert_eq!(net.plv_count, 0.0);
+                assert_eq!((net.beat_re, net.beat_im), (0.0, 0.0));
+                assert_eq!(net.sub_re, [0.0; 3]);
+                assert_eq!(net.sub_im, [0.0; 3]);
+                assert_eq!(net.meas_re, [0.0; 3]);
+                assert_eq!(net.meas_im, [0.0; 3]);
+                assert_eq!(net.meas_norm, 0.0);
+            }
         }
         assert!(net.seeded);
+        for tick in 0..(1.0 / DT) as usize {
+            let time = 2.0 + tick as f64 * DT as f64;
+            let drive = if time >= next {
+                next += 1.0 / 1.4;
+                1.0
+            } else {
+                0.0
+            };
+            net.process_with_preference(DT, drive, preference);
+        }
+        assert!(net.plv_count > 0.0);
+        assert!(net.last.beat.confidence > 0.0);
     }
 }
 
@@ -195,6 +221,13 @@ fn basin_follows_in_band_evidence_and_retains_unknowns_without_it() {
                 };
                 let state = net.process_with_preference(DT, drive, preference);
                 assert!((2.8..=3.4).contains(&state.beat.freq_hz));
+                if !net.seeded {
+                    assert_eq!(state.beat.confidence, 0.0);
+                    assert_eq!(state.subdivision.confidence, 0.0);
+                    assert_eq!(state.measure.confidence, 0.0);
+                    assert_eq!(state.subdivision_ratio, 0);
+                    assert_eq!(state.measure_ratio, 0);
+                }
             }
             if hz == 3.0 {
                 assert!(

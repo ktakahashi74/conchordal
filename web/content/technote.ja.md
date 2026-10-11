@@ -479,7 +479,7 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 エージェントは静的ではない。適応度を改善するために周波数空間を移動する。候補評価は候補基音位置のhabituationで浸食されたscoreを読む。`ExactScan`は現在の基音ビンを消してraw scoreを計算し直し、比較前に同じlocal erosionを適用する。身体込みの代謝を有効にしても、移動の候補採点はこの点評価のままである。energyの変化は、既存のenergyに依存する振る舞いを通じて、その後の移動へ波及しうる。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
 
-**GateSnap vs. Glide**: ピッチ移動は `PitchApplyMode` が決める。`GateSnap` はノートの境界でピッチを離散的に切り替え（各ノートは一つの安定した周波数で鳴る）、`Glide` は連続的なポルタメントで移る。`seek_consonance()` を使うボイスでは、スクリプトが明示しない限りモードは発声タイミングから自動的に決まる。持続するボイス（`once()`）はグライドし、打ち直すボイス（pulse / coupled）はオンセットで切り替わる。
+**GateSnap vs. Glide**: ピッチ移動は `PitchApplyMode` が決める。`GateSnap` はノートの境界でピッチを離散的に切り替え（各ノートは一つの安定した周波数で鳴る）、`Glide` は連続的なポルタメントで移る。`seek_consonance()` を使うボイスでは、スクリプトが明示しない限りモードは発声タイミングから自動的に決まる。持続するVoice（`once()`）と明示の持続＋参加はGlide、打ち直すVoice（pulse / coupled）は発音時に切り替わる。参加の時計を持たない自由音高のHoldでは、Rearticulateが採用時に旧音を離し、新しい音高で発音する。
 
 **クラウディング**: クラウディング（相互排斥）とピッチ適応は、単一の共有された占有場（occupancy field）を参照する。各占有*基音*（生 f0）を中心とするガウシアンペナルティで、その幅は `crowding_sigma_cents`（デフォルト 60）が定め、強度は `crowding_strength` が制御する。これにより、エージェント同士が同一周波数に収束して「団子」状態になるのを防ぐ。オクターブ等価（クロマ）のペナルティは適用せず、オクターブ関係は協和ポテンシャルを通してだけ作用する。
 
@@ -711,6 +711,24 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 対象外のlive指定も状態を書き換える前に拒否する。Holdには`sustain()`を使い、
 Gatedでは`"gate_snap"`か`"glide"`を選ぶ。既定は変えない。新しいattackと旧音のrelease tailは、
 既存の合成、energyの費用、生態が音を聴く経路を通る。
+
+`sustain()`と`entrained()`または`flow()`を両方明示すると、書く順に依存せず、
+持続するToneと参加の時計を併せ持つ。機会ごとに鳴らすと選べば、旧音を離し、
+そのsampleの身体の音高で新音を立ち上げる。待つ・見送るなら音を保つ。
+音高の採用時には、そのsampleでの発音を未決の合法な機会へ候補として渡し、既存の候補と
+費用で比較する。同点なら既存の候補を残し、決定済みの予定は動かさない。
+採られなかった移動は滑らかに進み、採用と時計の発音が同じsampleなら発音は一回である。
+時計だけによる発音は、移動中もその時点の身体音高を使う。release、死亡、removeは
+保留中の発音を取り消し、発行した発音はenergyと音響の経路へ一回だけ流れる。
+予測は有限長の代表的な音のfootprintを使い、継続と打ち直しの波形を厳密に比較しない。
+
+この併用で音高の適用方法を省略するとGlideになる。自由な音高への明示のGateSnapと、
+この形へのRearticulateは、配置時の最終設定でerrorにする。演奏中もVoice、保留中の更新、
+再生成用の設定を書き換える前に拒否する。Glideを使うか、sustainを省いてGatedの
+発音時に音高を切り替える形にする。音高採用のたびに発音するHoldには参加の指定を省く。
+再生成したVoiceはこの解決済みの形を継ぐ。既定のWhileAliveや`while_alive()`だけでは
+この形にならない。各プリセットの単独使用と、metric、pulse、repeatに対するsustainの
+後勝ちは変えない。参加のプリセットは配置前の指定である。
 
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。

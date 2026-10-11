@@ -695,7 +695,15 @@ forever with a slow sway -- useful as terrain material.",
         patch: Patch::Initial,
         usage: &["sustain()"],
         summary: "Sustain phonation mode (default).",
-        details: "",
+        details: "Explicit sustain() combined with entrained() or flow(), in either order, \
+keeps a Tone sounding between participation opportunities. Sounding releases the old Tone \
+and attacks at that sample's body pitch; waiting or skipping keeps the Tone. A pitch \
+adoption offers its sample to an undecided legal opportunity using the existing costs; \
+if not selected it glides. Coincident adoption and clock onset produce one attack. \
+This combination defaults to glide; explicit gate_snap with free pitch, and rearticulate, \
+are errors at final placement and before live writes. An implicit WhileAlive default or \
+while_alive() alone does not enable this combination. Sustain alone is unchanged; \
+metric(), pulse() and repeat() retain their existing last-write-wins behavior.",
     },
     FnDoc {
         name: "repeat",
@@ -733,7 +741,10 @@ beat. Respawn uses the Population template, not the parent's current clock rate.
         usage: &["entrained()"],
         summary: "Bodily pacing with remembered acoustic context and predicted overlap avoidance.",
         details: "Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. \
-Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation.",
+Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation. \
+With explicit sustain(), in either builder order, sounding re-attacks the current body \
+pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application \
+resolves to glide. Without explicit sustain(), finite gated phonation is unchanged.",
     },
     FnDoc {
         name: "flow",
@@ -744,7 +755,10 @@ Relations are learned from emitted onsets. Musical acceptance of this timing pol
         usage: &["flow()"],
         summary: "Clustered bodily renewal with weak acoustic participation, for non-metric texture.",
         details: "Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. \
-Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period.",
+Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period. \
+With explicit sustain(), in either builder order, sounding re-attacks the current body \
+pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application \
+resolves to glide. Without explicit sustain(), finite gated phonation is unchanged.",
     },
     FnDoc {
         name: "entrainment",
@@ -1011,7 +1025,11 @@ by replacement Voices. Locked voices (`anchor()`, `at()` or `freq()`) are unaffe
 Free-pitch Gated phonation is incompatible with `\"rearticulate\"`: the final placement \
 spec is checked independently of builder order, and an incompatible live call fails \
 before modifying the Voice, pending patch or replacement template. Use `sustain()`, \
-or choose `\"gate_snap\"` or `\"glide\"` for Gated phonation.",
+or choose `\"gate_snap\"` or `\"glide\"` for Gated phonation. \
+For explicit sustain() plus entrained()/flow(), the omitted mode is glide. Explicit \
+gate_snap with free pitch, or rearticulate with this combination, fails at final placement \
+and before live state writes; use glide, omit sustain() for Gated snap-and-hold, or \
+omit the participation preset for pitch-triggered Hold rearticulation.",
     },
     FnDoc {
         name: "landscape_weight",

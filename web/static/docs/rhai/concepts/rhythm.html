@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-50c56f13.js";
+            window.path_to_searchindex_js = "../searchindex-8b04763c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -292,13 +292,52 @@ place(drift, consonance(300.0, 1200.0).count(4));
 place(offbeat, at(220.0));
 wait(12.0);
 </code></pre>
-<p>Calls on the same axis are last-write-wins: the last timing mode and the last
+<p>Except for explicit sustain plus participation described below, calls on the same axis are last-write-wins: the last timing mode and the last
 duration mode determine the final behavior. <code>cycles(n)</code> counts the intrinsic
 bodily period for entrained/flow and the effective beat period for metric timing;
 flow retains its existing threefold hold multiplier. Modifiers are remembered and
 applied when their matching preset is selected, so <code>entrainment(0.8).metric()</code>
 and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
+<h2 id="sustained-sound-with-participation-opportunities"><a class="header" href="#sustained-sound-with-participation-opportunities">Sustained sound with participation opportunities</a></h2>
+<p>Explicit <code>sustain()</code> plus <code>entrained()</code> or <code>flow()</code> keeps a Tone sounding while
+its Voice continues to consider participation opportunities. Either builder order
+has the same meaning: <code>sustain().entrained()</code> and <code>entrained().sustain()</code> are equivalent.
+At an opportunity, choosing to sound releases the old Tone and attacks a new Tone
+at the body’s pitch at that sample. Waiting or omitting an opportunity retains the
+ongoing Tone, so omission does not create a gap. An unchanged pitch can be re-attacked.</p>
+<pre><code class="language-rhai">let p = place(
+    harmonic().sustain().entrained().seek_consonance().glide(0.03),
+    consonance(220.0, 660.0).count(1)
+);
+wait(3.0);
+release(p);
+</code></pre>
+<p>A newly adopted pitch target also offers its sample as a candidate for an undecided,
+legal participation opportunity. The existing timing, acoustic-context and overlap
+costs choose among this candidate and the existing candidates; ties retain the
+existing candidate, and a committed plan is not moved. If the adoption is not
+selected for an attack, movement glides. An adoption and clock onset at the same
+sample produce one attack. A clock onset during a glide uses the current body
+pitch; it does not jump ahead to the unfinished target. Release, death and removal
+cancel pending requests. Emitted attacks enter the usual energy and acoustic paths once.</p>
+<p>This uses the existing finite representative footprint for participation prediction;
+it does not compare an exact rendering of continuing against release plus a new attack.
+It does not add a phrase-boundary detector or a pitch-interval threshold.</p>
+<p>For this combination the omitted pitch application mode resolves to <code>"glide"</code>,
+even though the timing is coupled. Explicit <code>"gate_snap"</code> with free pitch and
+<code>"rearticulate"</code> with this combination are script errors on the final placement
+spec, independent of builder order. Incompatible live calls fail before modifying
+a Voice, pending patch or replacement template. Use <code>"glide"</code>; omit <code>sustain()</code>
+for Gated snap-and-hold, or omit the participation preset for pitch-triggered
+Hold rearticulation. A compatible live <code>"glide"</code> call preserves the ongoing Tone
+and pending requests. The timing presets themselves remain initial-only; replacement
+Voices inherit the resolved combination.</p>
+<p>The implicit WhileAlive default and <code>while_alive()</code> alone do not select this form.
+<code>sustain()</code> alone, <code>entrained()</code> alone and <code>flow()</code> alone retain their previous
+behavior. With <code>metric()</code>, <code>pulse()</code> or <code>repeat()</code>, <code>sustain()</code> still uses the
+existing last-write-wins rule. A later finite duration via <code>cycles()</code> or
+<code>adaptive_duration()</code> replaces the sustained form.</p>
 <h2 id="explicit-whenduration-tier-2"><a class="header" href="#explicit-whenduration-tier-2">Explicit when/duration (Tier 2)</a></h2>
 <p>Below the presets sit explicit controls: <code>once()</code>, <code>pulse(rate_hz)</code>,
 <code>while_alive()</code>, <code>cycles(n)</code>, and <code>adaptive_duration()</code> (with

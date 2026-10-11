@@ -502,12 +502,14 @@ Agents are not static; they move through frequency space to improve their fitnes
 
 ### 5.3.1 Pitch Application Modes
 
-Two modes govern how a new pitch target is applied:
+Three modes govern how a new pitch target is applied:
 
 *   **GateSnap**: Discrete hop at note boundaries. The pitch snaps to the new target at note onset, so each note sounds a single stable frequency. Ordering matters: on the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency.
 *   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like Voices or slow melodic movement.
 
-For `seek_consonance()` voices the mode is resolved automatically from the phonation timing unless the script chooses explicitly: sustained voices (`once()`) glide, while re-attacking voices (pulse or coupled timing) snap at onsets.
+*   **Rearticulate**: For free-pitch Hold Voices without a participation clock, each adopted target releases the old Tone and attacks at the new pitch at the adoption sample.
+
+For `seek_consonance()` voices the mode is resolved automatically from the phonation timing unless the script chooses explicitly: sustained voices (`once()`) glide, while re-attacking voices (pulse or coupled timing) snap at onsets. Explicit sustain with participation also resolves to Glide.
 
 ### 5.3.2 Crowding and Leave-Self-Out
 
@@ -784,6 +786,27 @@ Use `sustain()` for Hold, or `"gate_snap"` or `"glide"` with Gated phonation.
 Defaults are unchanged. Both the new attack and the old release tail follow
 the existing synthesis, energy-cost and habitat-perception paths.
 
+
+Explicit `sustain()` with `entrained()` or `flow()`, in either builder order,
+combines an ongoing Tone with participation opportunities. Sounding releases the
+old Tone and attacks at the body's pitch at that sample; waiting or skipping
+keeps the Tone. A pitch adoption offers its sample to an undecided legal
+opportunity with the existing candidates and costs; ties retain an existing
+candidate, committed plans stay fixed, and unselected movement glides. A coincident
+adoption and clock onset emit one attack. Clock-only onsets use the current body
+pitch, including during a glide. Release, death and removal cancel pending attacks;
+energy and acoustic paths receive each emitted attack once. Prediction retains the
+finite representative footprint rather than an exact comparison of continuing
+sound against release plus attack.
+
+The omitted pitch mode for this combination is Glide. Explicit GateSnap with
+free pitch, and Rearticulate with this combination, are errors at final placement
+and before live writes to Voices, pending patches or replacement templates. Use
+Glide, omit sustain for Gated snap-and-hold, or omit participation for pitch-triggered
+Hold rearticulation. Replacement Voices inherit the resolved combination. An implicit
+WhileAlive default or `while_alive()` alone does not select this form. Single presets
+are unchanged; sustain with metric, pulse or repeat retains the existing last-write-wins
+rule. Participation presets remain initial-only.
 
 **Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
 

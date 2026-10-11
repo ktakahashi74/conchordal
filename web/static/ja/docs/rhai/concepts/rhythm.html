@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-dd0f819a.js";
+            window.path_to_searchindex_js = "../searchindex-7cf06b33.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -267,9 +267,45 @@ place(drift, consonance(300.0, 1200.0).count(4));
 place(offbeat, at(220.0));
 wait(12.0);
 </code></pre>
-<p>同じ軸では最後の指定が優先されます。調整値は記憶され、対応するプリセットを選んだ時に適用されるため、
+<p>下で説明する明示の持続と参加の併用を除き、同じ軸では最後の指定が優先されます。調整値は記憶され、対応するプリセットを選んだ時に適用されるため、
 <code>entrainment(0.8).metric()</code>と<code>metric().entrainment(0.8)</code>は同等です。
 <code>duration_range(...).adaptive_duration()</code>と逆順も同様です。</p>
+<h2 id="持続音を保ちながら参加する"><a class="header" href="#持続音を保ちながら参加する">持続音を保ちながら参加する</a></h2>
+<p><code>sustain()</code>と<code>entrained()</code>または<code>flow()</code>を両方明示すると、Voiceは音を保ちながら、
+参加の機会ごとに鳴らす・待つ・見送るを判断します。書く順には依存しません。
+<code>sustain().entrained()</code>と<code>entrained().sustain()</code>は同じ形です。
+鳴らすと選んだ時は、旧いToneを離し、そのsampleの身体の音高で新しいToneを立ち上げます。
+待つ・見送ると選んだ時は、鳴っているToneを保ちます。見送りを無音の間隙には変えません。
+音高が同じでも、参加の機会で打ち直す場合があります。</p>
+<pre><code class="language-rhai">let p = place(
+    harmonic().sustain().entrained().seek_consonance().glide(0.03),
+    consonance(220.0, 660.0).count(1)
+);
+wait(3.0);
+release(p);
+</code></pre>
+<p>新しい音高目標を採用した時は、そのsampleでの発音も、まだ決めていない合法な参加の機会へ
+候補として渡します。既存の時刻、音響の文脈、重なりの費用で比較し、同じ費用なら既存の
+候補を残します。既に決めた発音の予定は動かしません。採用時の発音が選ばれなければ、
+音高は滑らかに移ります。採用と時計の発音が同じsampleに重なった時は、一回だけ発音します。
+移動中に時計が発音を選んだ時も、その時点の身体の音高を使い、移動先へ先に跳びません。
+release、死亡、removeは保留中の要求を取り消します。発行した発音は、通常のenergyと
+音響の経路へ一回だけ渡ります。</p>
+<p>参加の予測には、既存の有限長の代表的な音のfootprintを使います。音を続ける案と、
+旧音を離して打ち直す案の波形を、その場で厳密に描いて比べる仕組みではありません。
+フレーズの境界の検出や、音程による打ち直しの閾値も追加しません。</p>
+<p>この併用では、音高の適用方法を省略すると<code>"glide"</code>になります。自由な音高に明示の
+<code>"gate_snap"</code>を指定した場合と、この形に<code>"rearticulate"</code>を併用した場合はscript errorです。
+配置時の最終設定を検査するため、呼び出し順で結果は変わりません。演奏中の対象外の指定も、
+Voice、保留中の更新、再生成用の設定を書き換える前に拒否します。<code>"glide"</code>を使うか、
+<code>sustain()</code>を省いてGatedの発音時に音高を切り替える形にします。音高採用のたびに発音する
+Holdの形には、参加のプリセットを省きます。適合する<code>"glide"</code>の演奏中の指定は、
+鳴っているToneと保留中の要求を保ちます。参加のプリセット自体は配置前の設定で、
+再生成したVoiceも、この解決済みの形を継ぎます。</p>
+<p>既定のWhileAliveと、<code>while_alive()</code>だけでは、この形を選びません。<code>sustain()</code>だけ、
+<code>entrained()</code>だけ、<code>flow()</code>だけの挙動は変えません。<code>metric()</code>、<code>pulse()</code>、<code>repeat()</code>と
+<code>sustain()</code>の併用は、従来どおり後の指定が優先されます。後に<code>cycles()</code>や
+<code>adaptive_duration()</code>で有限の音長を指定すれば、持続する形を置き換えます。</p>
 <h2 id="明示的なwhendurationtier-2"><a class="header" href="#明示的なwhendurationtier-2">明示的なwhen/duration（Tier 2）</a></h2>
 <p>presetの下には<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、<code>cycles(n)</code>、
 <code>adaptive_duration()</code>があり、<code>duration_range</code>、<code>duration_curve</code>、<code>shorten_on_drop</code>で

@@ -128,13 +128,60 @@ place(offbeat, at(220.0));
 wait(12.0);
 ```
 
-Calls on the same axis are last-write-wins: the last timing mode and the last
+Except for explicit sustain plus participation described below, calls on the same axis are last-write-wins: the last timing mode and the last
 duration mode determine the final behavior. `cycles(n)` counts the intrinsic
 bodily period for entrained/flow and the effective beat period for metric timing;
 flow retains its existing threefold hold multiplier. Modifiers are remembered and
 applied when their matching preset is selected, so `entrainment(0.8).metric()`
 and `metric().entrainment(0.8)` are equivalent. The same applies to
 `duration_range(...).adaptive_duration()` and the reverse order.
+
+## Sustained sound with participation opportunities
+
+Explicit `sustain()` plus `entrained()` or `flow()` keeps a Tone sounding while
+its Voice continues to consider participation opportunities. Either builder order
+has the same meaning: `sustain().entrained()` and `entrained().sustain()` are equivalent.
+At an opportunity, choosing to sound releases the old Tone and attacks a new Tone
+at the body's pitch at that sample. Waiting or omitting an opportunity retains the
+ongoing Tone, so omission does not create a gap. An unchanged pitch can be re-attacked.
+
+```rhai
+let p = place(
+    harmonic().sustain().entrained().seek_consonance().glide(0.03),
+    consonance(220.0, 660.0).count(1)
+);
+wait(3.0);
+release(p);
+```
+
+A newly adopted pitch target also offers its sample as a candidate for an undecided,
+legal participation opportunity. The existing timing, acoustic-context and overlap
+costs choose among this candidate and the existing candidates; ties retain the
+existing candidate, and a committed plan is not moved. If the adoption is not
+selected for an attack, movement glides. An adoption and clock onset at the same
+sample produce one attack. A clock onset during a glide uses the current body
+pitch; it does not jump ahead to the unfinished target. Release, death and removal
+cancel pending requests. Emitted attacks enter the usual energy and acoustic paths once.
+
+This uses the existing finite representative footprint for participation prediction;
+it does not compare an exact rendering of continuing against release plus a new attack.
+It does not add a phrase-boundary detector or a pitch-interval threshold.
+
+For this combination the omitted pitch application mode resolves to `"glide"`,
+even though the timing is coupled. Explicit `"gate_snap"` with free pitch and
+`"rearticulate"` with this combination are script errors on the final placement
+spec, independent of builder order. Incompatible live calls fail before modifying
+a Voice, pending patch or replacement template. Use `"glide"`; omit `sustain()`
+for Gated snap-and-hold, or omit the participation preset for pitch-triggered
+Hold rearticulation. A compatible live `"glide"` call preserves the ongoing Tone
+and pending requests. The timing presets themselves remain initial-only; replacement
+Voices inherit the resolved combination.
+
+The implicit WhileAlive default and `while_alive()` alone do not select this form.
+`sustain()` alone, `entrained()` alone and `flow()` alone retain their previous
+behavior. With `metric()`, `pulse()` or `repeat()`, `sustain()` still uses the
+existing last-write-wins rule. A later finite duration via `cycles()` or
+`adaptive_duration()` replaces the sustained form.
 
 ## Explicit when/duration (Tier 2)
 

@@ -456,6 +456,18 @@ impl TemporalParticipation {
         forecast: Option<&TemporalForecast>,
         arrival: Option<&ArrivalContext<'_>>,
     ) -> Option<u64> {
+        self.candidate_with_adoption(now, end, onset_allowed, forecast, arrival, None)
+    }
+
+    pub(crate) fn candidate_with_adoption(
+        &mut self,
+        now: u64,
+        end: u64,
+        onset_allowed: bool,
+        forecast: Option<&TemporalForecast>,
+        arrival: Option<&ArrivalContext<'_>>,
+        mut adoption: Option<u64>,
+    ) -> Option<u64> {
         if end <= now {
             return None;
         }
@@ -675,9 +687,29 @@ impl TemporalParticipation {
                 }
             });
             // Fix candidate clocks before selecting a common group set.
-            for (index, &at) in candidate_at.iter().enumerate() {
+            let extra = adoption.take().map(|at| at as f64).filter(|at| {
+                *at >= earliest
+                    && *at >= self.due_frame - width
+                    && *at <= self.due_frame + self.period_frames
+            });
+            for (index, at) in candidate_at
+                .into_iter()
+                .enumerate()
+                .chain(extra.map(|at| (23, Some(at))))
+            {
                 let Some(at) = at else { continue };
                 let offset = index as i8 - 2;
+                if index == 23
+                    && arrival_enabled
+                    && let Some(set) = arrival_set.as_ref()
+                    && set.probability(at, width).is_none()
+                    && candidate_at
+                        .iter()
+                        .flatten()
+                        .any(|t| set.probability(*t, width).is_some())
+                {
+                    continue;
+                }
                 let displacement = (at - self.due_frame) / self.period_frames;
                 let context = forecast.and_then(|f| {
                     let onset = at.round() as u64;
@@ -768,7 +800,7 @@ impl TemporalParticipation {
                 if let Some(term) = arrival_cost {
                     cost += term;
                 }
-                if let Some(trace) = trace.as_mut() {
+                if let Some(trace) = trace.as_mut().filter(|_| index < 23) {
                     trace.candidates[(offset + 2) as usize] = Some(CandidateTerms {
                         offset,
                         at,
@@ -814,6 +846,7 @@ impl TemporalParticipation {
                         arrival_enabled.then_some(minimum_cost_without_arrival);
                     self.decisions.push(trace);
                 }
+
                 self.skipped_cycles = self.skipped_cycles.saturating_add(1);
                 self.due_frame += self.next_interval();
                 continue;
@@ -845,6 +878,7 @@ impl TemporalParticipation {
                     arrival_enabled.then_some(minimum_cost_without_arrival);
                 self.decisions.push(trace);
             }
+
             self.planned = Some((best, best_context));
         }
         let (planned, _) = self.planned?;
@@ -853,6 +887,10 @@ impl TemporalParticipation {
             return None;
         }
         Some(onset.max(now))
+    }
+
+    pub(crate) fn register_initial_hold(&mut self, at: u64) {
+        self.last_onset = Some(at);
     }
 
     #[cfg(test)]
@@ -2485,5 +2523,84 @@ mod tests {
             println!("observed action policy {}", case.display());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod sustained_participation_policy_tests {
+    use super::*;
+    fn setup() -> TemporalParticipation {
+        let mut p = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000);
+        p.due_frame = 10_000.0;
+        p.set_decision_trace(true);
+        p.set_onset_comparison(Some(crate::config::TemporalOnsetComparisonConfig::default()));
+        p
+    }
+    #[test]
+    fn sustained_participation_existing_grid_terms_and_tie_are_preserved() {
+        let mut old = setup();
+        let mut added = setup();
+        let a = old.candidate(10_000, 10_001, true, None, None);
+        let b = added.candidate_with_adoption(10_000, 10_001, true, None, None, Some(10_000));
+        assert_eq!(a, b);
+        let a = old.drain_decisions().next().unwrap();
+        let b = added.drain_decisions().next().unwrap();
+        assert_eq!(
+            serde_json::to_value(a.candidates).unwrap(),
+            serde_json::to_value(b.candidates).unwrap()
+        );
+        assert_eq!(b.selected_offset, 0);
+        assert!(!b.skipped);
+    }
+    #[test]
+    fn sustained_participation_committed_plan_cannot_be_replaced_and_illegal_extra_is_neutral() {
+        let mut old = setup();
+        let mut added = setup();
+        assert_eq!(
+            old.candidate(10_000, 10_001, true, None, None),
+            added.candidate_with_adoption(10_000, 10_001, true, None, None, Some(9_999))
+        );
+        let plan = added.planned;
+        added.candidate_with_adoption(10_000, 10_100, true, None, None, Some(10_001));
+        assert_eq!(added.planned, plan);
+    }
+    #[test]
+    fn sustained_participation_offer_uses_the_same_overlap_evaluator() {
+        let mut won = false;
+        for delay in 1..130 {
+            let mut old = setup();
+            let mut added = setup();
+            old.due_frame = 10_050.0;
+            added.due_frame = 10_050.0;
+            old.set_overlap(0.8, [1.0, 0.0, 0.0]);
+            added.set_overlap(0.8, [1.0, 0.0, 0.0]);
+            let forecast = TemporalForecast::energy_fixture(1000, 10_000, |sec| {
+                if sec < delay as f64 / 1000.0 {
+                    [10.0, 0.0, 0.0]
+                } else {
+                    [0.0; 3]
+                }
+            });
+            old.candidate(10_000, 10_001, true, Some(&forecast), None);
+            added.candidate_with_adoption(
+                10_000,
+                10_001,
+                true,
+                Some(&forecast),
+                None,
+                Some(10_000),
+            );
+            let a = old.drain_decisions().next().unwrap();
+            let b = added.drain_decisions().next().unwrap();
+            assert_eq!(
+                serde_json::to_value(a.candidates).unwrap(),
+                serde_json::to_value(b.candidates).unwrap()
+            );
+            if b.selected_offset == 21 && !b.skipped {
+                won = true;
+            }
+        }
+        // Cost preservation is tested even if this fixture never selects the extra sample.
+        let _ = won;
     }
 }

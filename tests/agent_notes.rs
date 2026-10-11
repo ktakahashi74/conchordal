@@ -23,6 +23,7 @@ fn agents_publish_notes_and_render_audio() {
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.spec = PhonationSpec {
+        sustain_participation: false,
         timing: PhonationTiming::Pulse {
             rate_hz: 3.3,
             sync: 0.0,
@@ -87,6 +88,7 @@ fn publish_notes_runs_when_gate_in_hop_window() {
     control.pitch.freq = 440.0;
     control.body.amp = 0.4;
     control.phonation.spec = PhonationSpec {
+        sustain_participation: false,
         timing: PhonationTiming::Pulse {
             rate_hz: 3.3,
             sync: 0.0,

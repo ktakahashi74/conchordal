@@ -85,7 +85,11 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
         };
         return PhonationConfig {
             measure_accent: coupled.measure_accent,
-            mode: PhonationMode::Gated,
+            mode: if spec.is_sustained_participation() {
+                PhonationMode::Hold
+            } else {
+                PhonationMode::Gated
+            },
             onset: OnsetConfig::Always {
                 strength: onset_strength_for_role(coupled.role),
             },

@@ -69,6 +69,8 @@ pub struct Voice {
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
     amp_update_pending: bool,
+    sustain_participation: bool,
+    participation_pitch_steps: Vec<ParticipationPitchStep>,
     pitch_application: PitchApplyMode,
     pitch_adopted: bool,
     control_tick: Option<Tick>,
@@ -102,6 +104,14 @@ pub struct ToneSpec {
 #[derive(Debug, Default)]
 pub(crate) struct PhonationScratch {
     events: Vec<ToneOnEvent>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ParticipationPitchStep {
+    at: Tick,
+    before_log2: f32,
+    target_log2: f32,
+    dt: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -267,6 +277,10 @@ impl Voice {
             AnyArticulationCore::from_config(&articulation_config, fs, assigned_id, &mut rng);
 
         let phonation_engine = PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        let sustain_participation = effective_control
+            .phonation
+            .spec
+            .is_sustained_participation();
         let social_coupling = effective_control.phonation.spec.social_coupling();
 
         let mut pitch = AnyPitchCore::from_control(&effective_control.pitch, target_pitch_log2);
@@ -342,6 +356,8 @@ impl Voice {
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
         Voice {
+            sustain_participation,
+            participation_pitch_steps: Vec::new(),
             id: assigned_id,
             metadata,
             fixed_body_method: effective_control.body.method,
@@ -352,7 +368,8 @@ impl Voice {
                 core,
                 breath_gain,
                 matches!(phonation_engine.mode, PhonationMode::Hold)
-                    && pitch_application != PitchApplyMode::Rearticulate,
+                    && pitch_application != PitchApplyMode::Rearticulate
+                    && !sustain_participation,
             ),
             pitch_ctl,
             phonation_engine,
@@ -379,11 +396,14 @@ impl Voice {
     }
 
     pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize) {
-        if self.effective_control.pitch.mode == PitchMode::Free
+        if (self.effective_control.pitch.mode == PitchMode::Free || self.sustain_participation)
             && matches!(self.phonation_engine.mode, PhonationMode::Hold)
         {
             let capacity = (hop / control_step).max(1);
             self.rearticulations.reserve(capacity);
+            if self.sustain_participation {
+                self.participation_pitch_steps.reserve(capacity);
+            }
             self.phonation_scratch.events.reserve(capacity + 1);
             self.active_render_notes.reserve(capacity + 1);
         }
@@ -407,7 +427,7 @@ impl Voice {
     }
 
     pub(crate) fn reports_onset_pitch(&self) -> bool {
-        self.pitch_application == PitchApplyMode::Rearticulate
+        self.pitch_application == PitchApplyMode::Rearticulate || self.sustain_participation
     }
 
     fn apply_body_runtime(&mut self) {
@@ -451,7 +471,8 @@ impl Voice {
             self.pitch_application = next;
             self.articulation.set_autonomous_attack_enabled(
                 matches!(self.phonation_engine.mode, PhonationMode::Hold)
-                    && next != PitchApplyMode::Rearticulate,
+                    && next != PitchApplyMode::Rearticulate
+                    && !self.sustain_participation,
             );
         }
         let pitch = &self.effective_control.pitch;
@@ -461,9 +482,15 @@ impl Voice {
     fn apply_phonation_control(&mut self) {
         self.phonation_engine
             .update_from_spec(&self.effective_control.phonation.spec);
+        self.sustain_participation = self
+            .effective_control
+            .phonation
+            .spec
+            .is_sustained_participation();
         self.articulation.set_autonomous_attack_enabled(
             matches!(self.phonation_engine.mode, PhonationMode::Hold)
-                && self.pitch_application != PitchApplyMode::Rearticulate,
+                && self.pitch_application != PitchApplyMode::Rearticulate
+                && !self.sustain_participation,
         );
         self.social_coupling = self.effective_control.phonation.spec.social_coupling();
     }
@@ -619,7 +646,8 @@ impl Voice {
         );
         if self.pitch_adopted {
             self.pitch_application = select_pitch_application(&self.effective_control.pitch);
-            if self.pitch_application == PitchApplyMode::Rearticulate
+            if (self.pitch_application == PitchApplyMode::Rearticulate
+                || self.sustain_participation)
                 && self.phonation_engine.has_active_notes()
                 && self.phonation_gate_open
                 && self.is_alive()
@@ -813,6 +841,17 @@ impl Voice {
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
         self.pitch_application = select_pitch_application(&self.effective_control.pitch);
         let current_freq = self.body.base_freq_hz().max(1.0);
+        if self.sustain_participation {
+            assert!(
+                self.participation_pitch_steps.len() < self.participation_pitch_steps.capacity()
+            );
+            self.participation_pitch_steps.push(ParticipationPitchStep {
+                at: self.control_tick.expect("control sample"),
+                before_log2: current_freq.log2(),
+                target_log2: self.target_pitch_log2(),
+                dt: dt_sec,
+            });
+        }
         let current_pitch_log2 = current_freq.log2();
         let target_pitch_log2 = self.target_pitch_log2();
         let planned = PlannedPitch {
@@ -1023,6 +1062,10 @@ impl Voice {
         if !matches!(self.phonation_engine.mode, PhonationMode::Hold) {
             out.body_opportunity = self.phonation_engine.clock.opportunity(&ctx);
             out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
+        }
+        if self.sustain_participation {
+            self.emit_sustained_participation(&ctx, &state, consonance, target_amp, arrival, out);
+            return;
         }
         self.phonation_engine.tick_with_arrival(
             &ctx,
@@ -1740,6 +1783,7 @@ mod tests {
         control.body.amp = 0.5;
         control.phonation.gate = PhonationGate::WhenViable;
         control.phonation.spec = crate::scenario::PhonationSpec {
+            sustain_participation: false,
             timing: crate::scenario::PhonationTiming::Coupled(crate::scenario::CoupledTimingSpec {
                 relation: crate::scenario::RhythmRelation::Synchronized,
                 coupling: 0.0,
@@ -1796,3 +1840,6 @@ mod tests {
 #[cfg(test)]
 #[path = "pitch_application_tests.rs"]
 mod pitch_application_tests;
+
+#[path = "sustained_participation.rs"]
+mod sustained_participation;

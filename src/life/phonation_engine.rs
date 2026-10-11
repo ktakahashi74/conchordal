@@ -625,6 +625,8 @@ pub(crate) struct ParticipationPrediction {
 
 /// Public as the payload of PhonationClock; observations remain crate-internal.
 pub struct ParticipationClock {
+    adoption_candidate: Option<Tick>,
+    initial_hold_on: Option<Tick>,
     base_rate_hz: f32,
     coupling: f32,
     flow_depth: f32,
@@ -673,6 +675,9 @@ impl ParticipationClock {
             policy.set_flow_depth(self.flow_depth);
             policy
         });
+        if let Some(at) = self.initial_hold_on.take() {
+            policy.register_initial_hold(at);
+        }
         if policy.needs_forecast(cursor, ctx.frame_end) {
             policy.update_reference(cursor, self.forecast.as_ref());
         }
@@ -682,13 +687,25 @@ impl ParticipationClock {
         policy.set_body_footprint(self.footprint.selected());
         policy.set_current_identity(self.footprint.identity());
         policy.set_decision_trace(self.decision_trace);
-        let tick = policy.candidate(
-            cursor,
-            ctx.frame_end,
-            allowed,
-            self.forecast.as_ref(),
-            arrival,
-        )?;
+        let extra = self.adoption_candidate.take();
+        let tick = if extra.is_some() {
+            policy.candidate_with_adoption(
+                cursor,
+                ctx.frame_end,
+                allowed,
+                self.forecast.as_ref(),
+                arrival,
+                extra,
+            )
+        } else {
+            policy.candidate(
+                cursor,
+                ctx.frame_end,
+                allowed,
+                self.forecast.as_ref(),
+                arrival,
+            )
+        }?;
         self.pending_prediction = self.outcome_forecast.as_ref().and_then(|forecast| {
             let (start, end, energy) = forecast.energy_window_after(tick)?;
             Some(ParticipationPrediction {
@@ -852,6 +869,8 @@ impl PhonationClock {
                 base_rate_hz,
                 flow_depth,
             } => Self::Participation(Box::new(ParticipationClock {
+                adoption_candidate: None,
+                initial_hold_on: None,
                 base_rate_hz: if base_rate_hz.is_finite() {
                     base_rate_hz.clamp(0.01, MAX_ONSET_RATE_HZ)
                 } else {
@@ -1201,6 +1220,7 @@ struct HoldCore {
 }
 
 pub struct PhonationEngine {
+    pub(crate) sustain_participation: bool,
     pub clock: PhonationClock,
     pub onset_rule: OnsetRule,
     pub duration_rule: DurationRule,
@@ -1370,6 +1390,8 @@ impl PhonationEngine {
         let onset_rule = OnsetRule::from_config(&config.onset, seed);
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
+            sustain_participation: config.mode == PhonationMode::Hold
+                && matches!(config.clock, PhonationClockConfig::Participation { .. }),
             clock: PhonationClock::from_config(&config.clock, seed),
             onset_rule,
             duration_rule,
@@ -1391,6 +1413,8 @@ impl PhonationEngine {
 
     pub(crate) fn update_from_config(&mut self, config: &PhonationConfig) {
         self.mode = config.mode;
+        self.sustain_participation = config.mode == PhonationMode::Hold
+            && matches!(config.clock, PhonationClockConfig::Participation { .. });
         self.measure_accent = sanitize01(config.measure_accent);
         let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
         self.onset_rule.update_config(&config.onset, seed);
@@ -1517,6 +1541,29 @@ impl PhonationEngine {
         self.tick_hold(ctx, state, None, out_cmds, out_events, out_onsets);
     }
 
+    pub(crate) fn initial_participating_hold(
+        &mut self,
+        ctx: &CoreTickCtx,
+        state: &CoreState,
+        cmds: &mut Vec<ToneCmd>,
+        events: &mut Vec<ToneOnEvent>,
+        onsets: &mut Vec<OnsetEvent>,
+    ) {
+        let before = onsets.len();
+        self.tick_hold(ctx, state, None, cmds, events, onsets);
+        if onsets.len() > before
+            && let PhonationClock::Participation(c) = &mut self.clock
+        {
+            c.initial_hold_on = Some(ctx.now_tick);
+        }
+    }
+
+    pub(crate) fn set_adoption_candidate(&mut self, at: Option<Tick>) {
+        if let PhonationClock::Participation(c) = &mut self.clock {
+            c.adoption_candidate = at;
+        }
+    }
+
     fn schedule_note_off(&mut self, tone_id: ToneId, off_tick: Tick) {
         self.pending_off
             .push(Reverse(PendingOff { off_tick, tone_id }));
@@ -1626,7 +1673,7 @@ impl PhonationEngine {
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
-        if matches!(self.mode, PhonationMode::Hold) {
+        if matches!(self.mode, PhonationMode::Hold) && !self.sustain_participation {
             self.tick_hold(
                 ctx,
                 state,
@@ -1837,8 +1884,26 @@ impl PhonationEngine {
                     kick.strength *=
                         1.0 + 0.35 * self.measure_accent * sanitize01(measure.alpha) * phase.cos();
                 }
+                if self.sustain_participation {
+                    if out_events.iter().any(|e| e.onset_tick == c.tick) {
+                        self.last_tick = Some(c.tick);
+                        prev_gate_exc = Some(step.exc_gate);
+                        continue;
+                    }
+                    if let Some(tone_id) = self.hold.tone_id.take() {
+                        out_cmds.push(ToneCmd::Off {
+                            tone_id,
+                            off_tick: c.tick,
+                        });
+                        self.active_notes = self.active_notes.saturating_sub(1);
+                    }
+                }
                 let tone_id = self.next_tone_id;
                 self.next_tone_id = self.next_tone_id.wrapping_add(1);
+                if self.sustain_participation {
+                    self.hold.tone_id = Some(tone_id);
+                    self.hold.note_on_sent = true;
+                }
                 out_cmds.push(ToneCmd::On { tone_id, kick });
                 self.active_notes = self.active_notes.saturating_add(1);
                 out_events.push(ToneOnEvent {
@@ -1869,7 +1934,11 @@ impl PhonationEngine {
                     exc_gate: step.exc_gate,
                     exc_slope: step.exc_slope,
                 };
-                let release = self.schedule_duration(onset, ctx, timing_grid, fixed_period);
+                let release = if self.sustain_participation {
+                    None
+                } else {
+                    self.schedule_duration(onset, ctx, timing_grid, fixed_period)
+                };
                 out_events
                     .last_mut()
                     .unwrap()
@@ -2325,6 +2394,7 @@ mod tests {
 
     fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
         PhonationEngine {
+            sustain_participation: false,
             clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
             onset_rule,
             duration_rule,
@@ -2414,6 +2484,7 @@ mod tests {
         use crate::scenario::{CoupledTimingSpec, DurationSpec, PhonationTiming};
         let mut engine = PhonationEngine::from_spec(
             &PhonationSpec {
+                sustain_participation: false,
                 timing: PhonationTiming::Coupled(CoupledTimingSpec {
                     coupling: 0.0,
                     base_rate_hz: 2.0,

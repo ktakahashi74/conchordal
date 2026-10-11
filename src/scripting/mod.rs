@@ -112,6 +112,7 @@ struct PopulationSpec {
     rhythm_freq: Option<f32>,
     consonance_movement: bool,
     pitch_apply_mode_user_set: bool,
+    explicit_sustain: bool,
 }
 
 impl PopulationSpec {
@@ -152,6 +153,7 @@ impl PopulationSpec {
             rhythm_freq: None,
             consonance_movement: false,
             pitch_apply_mode_user_set: false,
+            explicit_sustain: false,
         }
     }
 
@@ -274,11 +276,17 @@ impl PopulationSpec {
         // Resolve how seek_consonance() pitch decisions land, unless the script
         // chose explicitly: re-attacking voices snap at onsets, sustained voices
         // glide. Order-independent (resolved at placement, not at call time).
-        if self.consonance_movement && !self.pitch_apply_mode_user_set {
-            let apply = match self.phonation_spec.timing {
-                PhonationTiming::Once => PitchApplyMode::Glide,
-                PhonationTiming::Pulse { .. } | PhonationTiming::Coupled(_) => {
-                    PitchApplyMode::GateSnap
+        if !self.pitch_apply_mode_user_set
+            && (self.consonance_movement || self.phonation_spec.is_sustained_participation())
+        {
+            let apply = if self.phonation_spec.is_sustained_participation() {
+                PitchApplyMode::Glide
+            } else {
+                match self.phonation_spec.timing {
+                    PhonationTiming::Once => PitchApplyMode::Glide,
+                    PhonationTiming::Pulse { .. } | PhonationTiming::Coupled(_) => {
+                        PitchApplyMode::GateSnap
+                    }
                 }
             };
             control.pitch.set_pitch_apply_mode(apply);
@@ -530,10 +538,27 @@ impl PopulationSpec {
 
     fn set_phonation(&mut self, kind: PhonationKind) {
         match kind {
-            PhonationKind::Sustain => self.set_duration_while_alive(),
+            PhonationKind::Sustain => {
+                self.explicit_sustain = true;
+                if matches!(
+                    self.phonation_spec.timing,
+                    PhonationTiming::Coupled(CoupledTimingSpec {
+                        relation: crate::scenario::RhythmRelation::Participating,
+                        ..
+                    })
+                ) {
+                    self.phonation_spec.duration = DurationSpec::WhileAlive;
+                    self.phonation_spec.sustain_participation = true;
+                } else {
+                    self.clear_rhythm_preset_controls();
+                    self.phonation_spec = PhonationSpec::default();
+                }
+            }
             PhonationKind::Repeat => {
+                self.explicit_sustain = false;
                 self.clear_rhythm_preset_controls();
                 self.phonation_spec = PhonationSpec {
+                    sustain_participation: false,
                     timing: PhonationTiming::Pulse {
                         rate_hz: DEFAULT_PULSE_RATE,
                         sync: self.pulse_sync_or(DEFAULT_PULSE_SYNC),
@@ -555,6 +580,8 @@ impl PopulationSpec {
     /// reads as a stable pulse. No Hz argument -- the tempo region is the
     /// director's `temporal_basin`; this only sets how hard the voice locks.
     fn set_metric(&mut self) {
+        self.explicit_sustain = false;
+        self.phonation_spec.sustain_participation = false;
         self.clear_rhythm_preset_controls();
         self.phonation_spec.timing = PhonationTiming::Coupled(
             CoupledTimingSpec {
@@ -586,7 +613,12 @@ impl PopulationSpec {
         }
         .sanitized();
         self.phonation_spec.timing = PhonationTiming::Coupled(spec);
-        self.ensure_gated_duration(DEFAULT_GATE_COUNT);
+        if self.explicit_sustain {
+            self.phonation_spec.duration = DurationSpec::WhileAlive;
+            self.phonation_spec.sustain_participation = true;
+        } else {
+            self.ensure_gated_duration(DEFAULT_GATE_COUNT);
+        }
         self.rhythm_coupling = RhythmCouplingMode::TemporalTimesVitality {
             lambda_v: spec.vitality_lambda,
             v_floor: spec.vitality_floor,
@@ -613,7 +645,12 @@ impl PopulationSpec {
             }
             .sanitized(),
         );
-        self.ensure_gated_duration(1);
+        if self.explicit_sustain {
+            self.phonation_spec.duration = DurationSpec::WhileAlive;
+            self.phonation_spec.sustain_participation = true;
+        } else {
+            self.ensure_gated_duration(1);
+        }
     }
 
     fn set_entrainment(&mut self, strength: f32) {
@@ -664,11 +701,15 @@ impl PopulationSpec {
     }
 
     fn set_when_once(&mut self) {
+        self.explicit_sustain = false;
+        self.phonation_spec.sustain_participation = false;
         self.clear_rhythm_preset_controls();
         self.phonation_spec.timing = PhonationTiming::Once;
     }
 
     fn set_when_pulse(&mut self, rate: f32) {
+        self.explicit_sustain = false;
+        self.phonation_spec.sustain_participation = false;
         let rate = rate.max(0.01);
         self.clear_rhythm_preset_controls();
         match &mut self.phonation_spec.timing {
@@ -693,11 +734,9 @@ impl PopulationSpec {
     }
 
     fn set_duration_while_alive(&mut self) {
+        self.explicit_sustain = false;
         self.clear_rhythm_preset_controls();
-        self.phonation_spec = PhonationSpec {
-            timing: PhonationTiming::Once,
-            duration: DurationSpec::WhileAlive,
-        };
+        self.phonation_spec = PhonationSpec::default();
     }
 
     /// Withhold the voice's first onset until perceived consonance reaches the
@@ -709,10 +748,14 @@ impl PopulationSpec {
     }
 
     fn set_duration_cycles(&mut self, n: u32) {
+        self.explicit_sustain = false;
+        self.phonation_spec.sustain_participation = false;
         self.phonation_spec.duration = DurationSpec::Gates(n.max(1));
     }
 
     fn set_adaptive_duration(&mut self) {
+        self.explicit_sustain = false;
+        self.phonation_spec.sustain_participation = false;
         self.phonation_spec.duration = DurationSpec::Field(self.field_duration_spec.clone());
     }
 

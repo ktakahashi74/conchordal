@@ -207,7 +207,10 @@ impl ScriptHost {
         );
         register_population_spec_numeric_methods(
             &mut engine,
-            &[("glide", PopulationSpec::set_pitch_glide_tau_sec)],
+            &[
+                ("glide", PopulationSpec::set_pitch_glide_tau_sec),
+                ("rearticulate_above", PopulationSpec::set_rearticulate_above),
+            ],
         );
         engine.register_fn(
             "seek_consonance",
@@ -1247,11 +1250,18 @@ impl ScriptHost {
         register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
-            &[(
-                "glide",
-                PopulationSpec::set_pitch_glide_tau_sec,
-                patch_pitch_glide_tau,
-            )],
+            &[
+                (
+                    "glide",
+                    PopulationSpec::set_pitch_glide_tau_sec,
+                    patch_pitch_glide_tau,
+                ),
+                (
+                    "rearticulate_above",
+                    PopulationSpec::set_rearticulate_above,
+                    patch_rearticulate_above,
+                ),
+            ],
         );
         // Initial-only configuration is deliberately registered only on
         // PopulationSpec. A placed Population exposes live patches and release.

@@ -73,6 +73,8 @@ pub struct Voice {
     participation_pitch_steps: Vec<ParticipationPitchStep>,
     pitch_application: PitchApplyMode,
     pitch_adopted: bool,
+    adoption_application: PitchApplyMode,
+    last_onset_pitch_log2: Option<f32>,
     control_tick: Option<Tick>,
     rearticulations: Vec<Rearticulation>,
     pulse_update_pending: bool,
@@ -121,11 +123,31 @@ struct Rearticulation {
 }
 
 // The configured policy is the current source of the per-adoption decision.
-fn select_pitch_application(pitch: &crate::scenario::control::PitchControl) -> PitchApplyMode {
+fn select_pitch_application(
+    pitch: &crate::scenario::control::PitchControl,
+    movement: Option<(&Log2Space, f32, f32)>,
+) -> PitchApplyMode {
     if pitch.mode == PitchMode::Lock && pitch.pitch_apply_mode == PitchApplyMode::Rearticulate {
         PitchApplyMode::GateSnap
+    } else if pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
+        && pitch.rearticulate_above_cents > 0.0
+        && let Some((space, reference, target)) = movement
+        && onset_distance_cents(space, reference, target) <= pitch.rearticulate_above_cents as f64
+    {
+        PitchApplyMode::Glide
     } else {
         pitch.pitch_apply_mode
+    }
+}
+
+fn onset_distance_cents(space: &Log2Space, a: f32, b: f32) -> f64 {
+    if let (Some(i), Some(j)) = (space.index_of_log2(a), space.index_of_log2(b))
+        && space.centers_log2[i].to_bits() == a.to_bits()
+        && space.centers_log2[j].to_bits() == b.to_bits()
+    {
+        i.abs_diff(j) as f64 * 1200.0 / space.bins_per_oct as f64
+    } else {
+        1200.0 * (b as f64 - a as f64).abs()
     }
 }
 
@@ -225,7 +247,8 @@ impl Dirty {
             || update.move_cost_time_scale.is_some()
             || update.leave_self_out_harmonics.is_some()
             || update.pitch_apply_mode.is_some()
-            || update.pitch_glide_tau_sec.is_some();
+            || update.pitch_glide_tau_sec.is_some()
+            || update.rearticulate_above_cents.is_some();
         Self {
             body,
             pitch,
@@ -258,7 +281,7 @@ impl Voice {
             .validate_pitch_application()
             .expect("valid voice pitch application");
         let effective_control = control.clone();
-        let pitch_application = select_pitch_application(&effective_control.pitch);
+        let pitch_application = select_pitch_application(&effective_control.pitch, None);
         let target_freq = effective_control.pitch.freq.max(1.0);
         let target_pitch_log2 = target_freq.log2();
         let integration_window = PitchController::integration_window_for_freq(target_freq);
@@ -386,6 +409,8 @@ impl Voice {
             amp_update_pending: false,
             pitch_application,
             pitch_adopted: false,
+            adoption_application: pitch_application,
+            last_onset_pitch_log2: None,
             control_tick: None,
             rearticulations: Vec::new(),
             pulse_update_pending: false,
@@ -462,13 +487,14 @@ impl Voice {
     }
 
     fn apply_pitch_control(&mut self) {
-        let next = select_pitch_application(&self.effective_control.pitch);
+        let next = select_pitch_application(&self.effective_control.pitch, None);
         if next != self.pitch_application {
             self.rearticulations.clear();
             self.pitch_adopted = false;
             self.pulse_update_pending |= (next == PitchApplyMode::Rearticulate)
                 != (self.pitch_application == PitchApplyMode::Rearticulate);
             self.pitch_application = next;
+            self.adoption_application = next;
             self.articulation.set_autonomous_attack_enabled(
                 matches!(self.phonation_engine.mode, PhonationMode::Hold)
                     && next != PitchApplyMode::Rearticulate
@@ -634,6 +660,7 @@ impl Voice {
         listener_pressure: ListenerPressure,
     ) {
         let current_freq = self.body.base_freq_hz();
+        let previous = self.target_pitch_log2();
         self.pitch_adopted = self.pitch_ctl.update_pitch_target(
             current_freq,
             rhythms,
@@ -645,8 +672,9 @@ impl Voice {
             listener_pressure.temperature_bonus,
         );
         if self.pitch_adopted {
-            self.pitch_application = select_pitch_application(&self.effective_control.pitch);
-            if (self.pitch_application == PitchApplyMode::Rearticulate
+            self.pitch_application = select_pitch_application(&self.effective_control.pitch, None);
+            self.select_adoption_application(&landscape.space, previous);
+            if (self.adoption_application == PitchApplyMode::Rearticulate
                 || self.sustain_participation)
                 && self.phonation_engine.has_active_notes()
                 && self.phonation_gate_open
@@ -666,6 +694,20 @@ impl Voice {
                 tracing::debug!(target: "pitch::adoption", id = self.id, at, pitch_log2);
             }
         }
+    }
+
+    fn select_adoption_application(&mut self, space: &Log2Space, previous: f32) {
+        // Earlier legal requests in this output hop precede the last materialized onset.
+        let reference = self
+            .rearticulations
+            .last()
+            .map(|r| r.pitch_log2.exp2().log2())
+            .or(self.last_onset_pitch_log2)
+            .unwrap_or(previous);
+        self.adoption_application = select_pitch_application(
+            &self.effective_control.pitch,
+            Some((space, reference, self.target_pitch_log2())),
+        );
     }
 
     /// Control-rate entry point for pitch + articulation updates.
@@ -839,7 +881,11 @@ impl Voice {
     }
 
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
-        self.pitch_application = select_pitch_application(&self.effective_control.pitch);
+        let configured = select_pitch_application(&self.effective_control.pitch, None);
+        if configured != self.pitch_application {
+            self.adoption_application = configured;
+            self.pitch_application = configured;
+        }
         let current_freq = self.body.base_freq_hz().max(1.0);
         if self.sustain_participation {
             assert!(
@@ -865,7 +911,12 @@ impl Voice {
             self.body.set_pitch_log2(planned.target_pitch_log2);
             return;
         }
-        match self.pitch_application {
+        let application = if self.pitch_application == PitchApplyMode::Rearticulate {
+            self.adoption_application
+        } else {
+            self.pitch_application
+        };
+        match application {
             PitchApplyMode::GateSnap => {
                 if apply_planned_pitch {
                     self.body.set_pitch_log2(planned.target_pitch_log2);
@@ -1289,6 +1340,9 @@ impl Voice {
     }
 
     fn track_new_render_notes(&mut self, tones: &[ToneSpec]) {
+        if let Some(tone) = tones.last() {
+            self.last_onset_pitch_log2 = Some(tone.freq_hz.log2());
+        }
         self.active_render_notes
             .extend(tones.iter().map(|tone| TrackedRenderNote {
                 tone_id: tone.tone_id,
@@ -1843,3 +1897,7 @@ mod pitch_application_tests;
 
 #[path = "sustained_participation.rs"]
 mod sustained_participation;
+
+#[cfg(test)]
+#[path = "rearticulation_boundary_tests.rs"]
+mod rearticulation_boundary_tests;

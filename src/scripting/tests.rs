@@ -3112,3 +3112,101 @@ fn sustained_participation_native_rejection_preserves_voice_and_respawn() {
         }
     }
 }
+
+#[test]
+fn boundary_respawn_inherits_initial_and_live_population_template() {
+    for live in [false, true] {
+        let mode = if live { "glide" } else { "rearticulate" };
+        let update = if live {
+            "p.pitch_apply_mode(\"rearticulate\"); p.rearticulate_above(100);"
+        } else {
+            ""
+        };
+        let (scenario, _) = run_script_with_seed(
+            &format!(
+                "let p = create(sine().sustain().seek_consonance().pitch_apply_mode(\"{mode}\").rearticulate_above(100).respawn_random().respawn_background_death_rate(10000.0), 1); {update} flush();"
+            ),
+            21,
+        );
+        let mut community = Community::new(Timebase {
+            fs: 48_000.0,
+            hop: 257,
+        });
+        community.set_seed(scenario.seed);
+        let landscape = LandscapeFrame::default();
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            if matches!(
+                action,
+                Action::Spawn { .. }
+                    | Action::SetRespawnPolicy { .. }
+                    | Action::UpdatePopulation { .. }
+            ) {
+                community.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let founder = community.voices[0].id();
+        community.advance(257, 48_000.0, 0, 257.0 / 48_000.0, &landscape);
+        community.cleanup_dead(0, 257.0 / 48_000.0, false, &landscape);
+        assert!(community.voices.iter().any(|v| v.id() != founder));
+        for child in community.voices.iter().filter(|v| v.id() != founder) {
+            assert_eq!(
+                child.effective_control.pitch.pitch_apply_mode,
+                PitchApplyMode::Rearticulate
+            );
+            assert!(child.reports_onset_pitch());
+            assert_eq!(
+                child.effective_control.pitch.rearticulate_above_cents,
+                100.0
+            );
+        }
+    }
+}
+
+#[test]
+fn boundary_script_order_sanitize_and_outside_mode_ignore() {
+    for chain in [
+        "rearticulate_above(50).pitch_apply_mode(\"rearticulate\")",
+        "pitch_apply_mode(\"rearticulate\").rearticulate_above(50)",
+    ] {
+        let (scenario, _) = run_script(&format!("create(sine().sustain().{chain}, 1);"));
+        let spec = scenario
+            .events
+            .iter()
+            .flat_map(|e| &e.actions)
+            .find_map(|a| match a {
+                Action::Spawn { spec, .. } => Some(spec),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(spec.control.pitch.rearticulate_above_cents, 50.0);
+    }
+    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
+    let engine = ScriptHost::create_engine(ctx.clone());
+    let mut scope = rhai::Scope::new();
+    let _ = engine.eval_with_scope::<Dynamic>(&mut scope, "let p = create(sine().sustain().pitch_apply_mode(\"glide\").rearticulate_above(50), 1); p.rearticulate_above(100); p.amp(0.2);").unwrap();
+    {
+        let state = ctx.lock().unwrap();
+        let p = state.populations.values().next().unwrap();
+        assert_eq!(p.spec.control.pitch.rearticulate_above_cents, 0.0);
+        assert_eq!(p.pending_patch.rearticulate_above_cents, None);
+    }
+    let _ = engine
+        .eval_with_scope::<Dynamic>(
+            &mut scope,
+            "p.pitch_apply_mode(\"rearticulate\"); p.rearticulate_above(100);",
+        )
+        .unwrap();
+    {
+        let state = ctx.lock().unwrap();
+        let p = state.populations.values().next().unwrap();
+        assert_eq!(p.spec.control.pitch.rearticulate_above_cents, 100.0);
+        assert_eq!(p.pending_patch.rearticulate_above_cents, Some(100.0));
+    }
+    let mut pitch = crate::scenario::control::PitchControl::default();
+    for value in [-1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        pitch.set_rearticulate_above_cents_clamped(value);
+        assert_eq!(pitch.rearticulate_above_cents, 0.0);
+    }
+    pitch.set_rearticulate_above_cents_clamped(f32::MAX);
+    assert_eq!(pitch.rearticulate_above_cents, f32::MAX);
+}

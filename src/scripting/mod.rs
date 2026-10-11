@@ -452,6 +452,12 @@ impl PopulationSpec {
         self.control.pitch.set_pitch_apply_mode(mode);
     }
 
+    fn set_rearticulate_above(&mut self, value: f32) {
+        self.control
+            .pitch
+            .set_rearticulate_above_cents_clamped(value);
+    }
+
     fn set_pitch_glide_tau_sec(&mut self, value: f32) {
         self.control.pitch.set_pitch_glide_tau_sec_clamped(value);
     }
@@ -1450,7 +1456,7 @@ impl ScriptContext {
 
     fn create_population(
         &mut self,
-        population_spec: PopulationSpecHandle,
+        mut population_spec: PopulationSpecHandle,
         count: i64,
         strategy: Option<SpawnStrategy>,
         position: Position,
@@ -1499,6 +1505,18 @@ impl ScriptContext {
             .control
             .validate_pitch_application()
             .map_err(|message| Box::new(EvalAltResult::ErrorRuntime(message.into(), position)))?;
+        if population_spec
+            .spec
+            .spawn_spec()
+            .control
+            .pitch
+            .pitch_apply_mode
+            != PitchApplyMode::Rearticulate
+            && population_spec.spec.control.pitch.rearticulate_above_cents != 0.0
+        {
+            warn!("rearticulate_above() ignored outside pitch_apply_mode(\"rearticulate\")");
+            population_spec.spec.control.pitch.rearticulate_above_cents = 0.0;
+        }
         let id = self.next_population_id;
         self.next_population_id = self.next_population_id.wrapping_add(1);
         let mut ids = Vec::with_capacity(count);
@@ -1718,6 +1736,13 @@ fn apply_population_numeric_patch(
     };
     match population.status {
         PopulationStatus::Live => {
+            if label == "rearticulate_above"
+                && population.spec.spawn_spec().control.pitch.pitch_apply_mode
+                    != PitchApplyMode::Rearticulate
+            {
+                warn!("rearticulate_above() ignored outside pitch_apply_mode(\"rearticulate\")");
+                return Ok(handle);
+            }
             spec_setter(&mut population.spec, value);
             patch_setter(&mut population.pending_patch, value);
         }
@@ -1957,6 +1982,10 @@ fn patch_sigma_cents(update: &mut ControlUpdate, value: f32) {
 
 fn patch_random_candidates(update: &mut ControlUpdate, value: f32) {
     update.random_candidates = Some(value.round() as i64);
+}
+
+fn patch_rearticulate_above(update: &mut ControlUpdate, value: f32) {
+    update.rearticulate_above_cents = Some(value);
 }
 
 fn patch_pitch_glide_tau(update: &mut ControlUpdate, value: f32) {

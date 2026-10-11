@@ -252,6 +252,7 @@ pub struct PitchControl {
     pub leave_self_out_harmonics: u8,
     pub pitch_apply_mode: PitchApplyMode,
     pub pitch_glide_tau_sec: f32,
+    pub rearticulate_above_cents: f32,
 }
 
 impl Default for PitchControl {
@@ -285,6 +286,7 @@ impl Default for PitchControl {
             leave_self_out_harmonics: 1,
             pitch_apply_mode: PitchApplyMode::GateSnap,
             pitch_glide_tau_sec: DEFAULT_PITCH_GLIDE_TAU_SEC,
+            rearticulate_above_cents: 0.0,
         }
     }
 }
@@ -361,6 +363,7 @@ pub struct ControlUpdate {
     pub leave_self_out_harmonics: Option<i64>,
     pub pitch_apply_mode: Option<PitchApplyMode>,
     pub pitch_glide_tau_sec: Option<f32>,
+    pub rearticulate_above_cents: Option<f32>,
 }
 
 impl PitchControl {
@@ -539,7 +542,18 @@ impl PitchControl {
         };
     }
 
+    pub fn set_rearticulate_above_cents_clamped(&mut self, value: f32) {
+        self.rearticulate_above_cents = if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        };
+    }
+
     pub fn apply_update(&mut self, update: &ControlUpdate) {
+        if let Some(cents) = update.rearticulate_above_cents {
+            self.set_rearticulate_above_cents_clamped(cents);
+        }
         if let Some(freq) = update.freq {
             self.set_freq_lock_clamped(freq);
         }
@@ -686,6 +700,7 @@ mod tests {
             leave_self_out_harmonics: Some(0),
             pitch_apply_mode: Some(PitchApplyMode::Glide),
             pitch_glide_tau_sec: Some(-0.2),
+            rearticulate_above_cents: None,
         };
         control.apply_update(&update);
 

@@ -76,6 +76,7 @@ pub struct Voice {
     adoption_application: PitchApplyMode,
     last_onset_pitch_log2: Option<f32>,
     pending_participation_pitch: Option<f32>,
+    participation_glide_target: Option<f32>,
     control_tick: Option<Tick>,
     rearticulations: Vec<Rearticulation>,
     pulse_update_pending: bool,
@@ -425,6 +426,7 @@ impl Voice {
             adoption_application: pitch_application,
             last_onset_pitch_log2: None,
             pending_participation_pitch: None,
+            participation_glide_target: None,
             control_tick: None,
             rearticulations: Vec::new(),
             pulse_update_pending: false,
@@ -506,6 +508,7 @@ impl Voice {
             self.rearticulations.clear();
             self.participation_pitch_steps.clear();
             self.pending_participation_pitch = None;
+            self.participation_glide_target = None;
             self.pitch_adopted = false;
             self.pulse_update_pending |= (next == PitchApplyMode::Rearticulate)
                 != (self.pitch_application == PitchApplyMode::Rearticulate);
@@ -715,7 +718,10 @@ impl Voice {
     fn defers_participation_pitch(&self) -> bool {
         self.sustain_participation
             && self.effective_control.pitch.mode == PitchMode::Free
-            && self.pitch_application == PitchApplyMode::GateSnap
+            && matches!(
+                self.pitch_application,
+                PitchApplyMode::GateSnap | PitchApplyMode::Rearticulate
+            )
     }
 
     fn select_adoption_application(&mut self, space: &Log2Space, previous: f32) {
@@ -1085,6 +1091,7 @@ impl Voice {
             extra_gate_gain,
             consonance,
             None,
+            None,
             out,
         );
     }
@@ -1100,6 +1107,7 @@ impl Voice {
         extra_gate_gain: f32,
         consonance: f32,
         arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
+        space: Option<&Log2Space>,
         out: &mut PhonationBatch,
     ) {
         out.source_id = self.id;
@@ -1141,7 +1149,9 @@ impl Voice {
             out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
         }
         if self.sustain_participation {
-            self.emit_sustained_participation(&ctx, &state, consonance, target_amp, arrival, out);
+            self.emit_sustained_participation(
+                &ctx, &state, consonance, target_amp, arrival, space, out,
+            );
             return;
         }
         self.phonation_engine.tick_with_arrival(
@@ -1927,3 +1937,6 @@ mod sustained_participation;
 #[cfg(test)]
 #[path = "rearticulation_boundary_tests.rs"]
 mod rearticulation_boundary_tests;
+
+#[path = "bounded_participation.rs"]
+mod bounded_participation;

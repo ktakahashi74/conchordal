@@ -500,6 +500,7 @@ impl Community {
                 extra_gate_gain,
                 consonance,
                 arrival_context.as_ref(),
+                Some(&landscape.space),
                 batch,
             );
             if auto_observe_enabled && !was_gate_open && voice.phonation_gate_open() {

@@ -56,9 +56,11 @@ V-1の外部試作は、新目標の採用一回に発音一回、移動の始�
 
 2026-10-11の次の判断では、作者が「スタッカート自体は音楽表現としてありえる。それが意図的ならば」と述べ、A-2の持続＋参加を本体へ入れる方向を採った。V-3はsustainとentrained／flowを両方明示した時だけこの形へ下ろす実装・検査・文書をbranchに用意した。書く順には依存しない。待つ・見送る時も音を保ち、時計の発音はその時点の身体音高で打ち直す。採用時の候補は既存の費用で競合させ、採られなければ滑る。保存したA-2場面で採用時の発音が0件だった限界を保つ。自由音高への明示のgate_snapはerror、省略時はGlideとする統括の技術的な規則を実装した。V-3には、採用済みの目標へ機会の発音で跳ぶgate_snapを含めていない。作者は2026-10-11、`sustain()`と`entrained()`／`flow()`を両方明示した時だけ持続＋参加にする語彙を確定した。統括が同日、実装と文書をmainの`23a550b`へ統合した。[台帳§9.3.69](../design-notes/technote-ledger.ja.md#sustained-participation-native-20261011)と[計画の追記](plan-current.md#sustained-participation-native-20261011)を入口にする。
 
-- **rearticulateの境界（採択済み・未実装）**：作者は2026-10-11、作曲者が境界を置く`rearticulate_above(cents)`、省略時0を採った。本体への実装はV-4が進める。
-- **持続＋参加のgate_snap（採択済み・未実装）**：作者は2026-10-11、採用した行き先を保留し、Voiceが鳴らすと決めた機会の発音で跳ぶ意味を採った。本体への実装はV-4が進める。
+- **rearticulateの境界（branchに実装済み）**：作者は2026-10-11、作曲者が境界を置く`rearticulate_above(cents)`、省略時0を採った。V-4で最後の実発音からの正味の変位を測る境界を実装し、検査と日英文書をそろえた。[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)を参照する。mainへの統合は統括の作業として残る。
+- **持続＋参加のgate_snap（branchに実装済み）**：作者は2026-10-11、採用した行き先を保留し、Voiceが鳴らすと決めた機会の発音で跳ぶ意味を採った。V-4で実装・検査・文書をそろえ、省略Glideを保持した。[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)を参照する。mainへの統合は統括の作業として残る。
 - **短く切る・間を空ける試作（採択済み・未実装）**：作者は2026-10-11、音の長さの気質と能動的な間を使い、間の起点を音が鳴り終わってからとする試作を採った。試作はA-5が進める。
+
+2026-10-11 12:50頃、作者は発音の境界を作曲パラメータとし、`rearticulate_above(cents)`を採った。最後の実発音からの正味の変位で選び、省略0は従来の採用ごとの発音を保つ。正の値を既定へ置かない。統括が固定の規則として入れようとした誤り、A-3とA-3bの結果は台帳に残す。作者は持続＋参加の明示のGateSnapも、A-2cの一つの目標を機会まで保留する意味へ替える判断を採った。V-4は両方をbranchへ実装し、Glideとの切り替え、取消、継承、既定の描画対照、身体と両renderer、聴く材料と日英文書をそろえた。統合や任意負荷の実時間を済んだと扱わない。再開時はV-4の最終報告と[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)、[計画の追記](plan-current.md#articulation-boundary-and-deferred-target-20261011)から、branchの検査結果と未確認の範囲を読む。
 
 聴こえる音量と生態入力の分離は保留であり、身体ampやADSRの変更を独立した出力gainの代用にしない。この未決を先回りして実装へ進めない。
 

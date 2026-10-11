@@ -391,7 +391,7 @@ sustain()
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Sustain phonation mode (default). Explicit sustain() combined with entrained() or flow(), in either order, keeps a Tone sounding between participation opportunities. Sounding releases the old Tone and attacks at that sample's body pitch; waiting or skipping keeps the Tone. A pitch adoption offers its sample to an undecided legal opportunity using the existing costs; if not selected it glides. Coincident adoption and clock onset produce one attack. This combination defaults to glide; explicit gate_snap with free pitch, and rearticulate, are errors at final placement and before live writes. An implicit WhileAlive default or while_alive() alone does not enable this combination. Sustain alone is unchanged; metric(), pulse() and repeat() retain their existing last-write-wins behavior.
+Sustain phonation mode (default). Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with this combination is a script error at final placement and before live writes. Implicit WhileAlive and while_alive() alone do not enable the combination. Metric, pulse and repeat retain their last-write-wins rule.
 
 #### `repeat`
 
@@ -515,7 +515,17 @@ glide(tau_sec)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Pitch glide time constant in seconds. This changes the time constant, not the pitch apply mode. For a voice that snaps at onsets, call `pitch_apply_mode("glide")` to enable continuous pitch movement.
+Pitch glide time constant in seconds. Sets the sliding time constant, without changing pitch apply mode. It controls glide mode and movement at or below a positive rearticulate_above boundary; gate_snap does not slide.
+
+#### `rearticulate_above`
+
+```rhai,ignore
+rearticulate_above(cents)
+```
+
+適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
+
+Reattack only above this distance from the last sounded onset pitch. For free-pitch Hold rearticulate, a positive boundary measures net displacement from the last actual ToneSpec onset to the adopted target: strictly above attacks, at or below glides with glide(tau). Selection persists until the next adoption. Earlier legal onsets in the same output hop provide the reference; cancelled requests do not replace the last actual onset. Exact Log2Space centers use bin-distance in cents, otherwise continuous log2 distance is used without rounding or epsilon. Zero is the default and retains every-adoption rearticulation. Negative or nonfinite values become zero; no upper limit is imposed. A live boundary change emits no attack and applies at the next adoption. Outside rearticulate, a call warns and is ignored. Builder order is independent at placement; replacement Voices inherit the boundary but not the onset-pitch memory. The composer chooses the boundary; 50 or 100 cents are examples, not recommendations.
 
 #### `temperature`
 
@@ -1014,7 +1024,7 @@ pitch_apply_mode(name)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-`"gate_snap"`, `"glide"` or `"rearticulate"`: choose how adopted pitch targets are applied. Without an explicit call, moving voices resolve this at placement from their phonation: sustained voices glide, re-attacking voices snap at onsets. For a free-pitch Hold voice (`sustain()`), `"rearticulate"` releases the old Tone and attacks a new Tone at the adopted target's sample time, starting at the new pitch. An unchanged target, a rejected proposal or a step without a proposal creates no onset; this does not wait for a beat. `glide(tau)` controls sliding only in `"glide"` mode. A live Hold switch between glide and rearticulate keeps the sounding Tone and creates no onset by itself; it cancels unrendered rearticulation requests. The mode is inherited by replacement Voices. Locked voices (`anchor()`, `at()` or `freq()`) are unaffected. Free-pitch Gated phonation is incompatible with `"rearticulate"`: the final placement spec is checked independently of builder order, and an incompatible live call fails before modifying the Voice, pending patch or replacement template. Use `sustain()`, or choose `"gate_snap"` or `"glide"` for Gated phonation. For explicit sustain() plus entrained()/flow(), the omitted mode is glide. Explicit gate_snap with free pitch, or rearticulate with this combination, fails at final placement and before live state writes; use glide, omit sustain() for Gated snap-and-hold, or omit the participation preset for pitch-triggered Hold rearticulation.
+`"gate_snap"`, `"glide"` or `"rearticulate"`: choose how adopted pitch targets are applied. Choose gate_snap, glide or rearticulate. Without an explicit call, moving sustained voices resolve to glide and Gated voices to gate_snap. Free-pitch Hold rearticulate couples each changed adopted target to an attack at its sample, releasing the old Tone; a positive rearticulate_above(cents) instead glides at or below the distance boundary from the last actual onset. Rejected or unchanged targets and proposal-free updates cause no attack. Glide(tau) controls sliding, including below that boundary. With explicit sustain() plus entrained()/flow(), the omitted mode is glide: clock attacks use current body pitch and unselected movement glides. Explicit gate_snap on free pitch holds one latest adopted target for the next sounded opportunity, jumps there and attacks; wait/skip retains pitch and pending state, and no extra adoption-time candidate is offered. Without a pending target the clock re-attacks the current pitch. Live mode changes preserve the Tone, emit no attack and cancel unrendered requests and pending attacks. Returning to glide follows the controller's retained target at the next control update; gate_snap waits for later adoptions. Repeating the same mode retains pending state. Replacement Voices inherit controls, not performance state. Anchored Voices remain locked. Free-pitch Gated rearticulate and rearticulate with sustained participation are script errors at final placement and before live writes, independent of builder order; use Hold without participation, or glide/gate_snap for participation.
 
 #### `landscape_weight`
 

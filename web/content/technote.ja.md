@@ -479,7 +479,7 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 エージェントは静的ではない。適応度を改善するために周波数空間を移動する。候補評価は候補基音位置のhabituationで浸食されたscoreを読む。`ExactScan`は現在の基音ビンを消してraw scoreを計算し直し、比較前に同じlocal erosionを適用する。身体込みの代謝を有効にしても、移動の候補採点はこの点評価のままである。energyの変化は、既存のenergyに依存する振る舞いを通じて、その後の移動へ波及しうる。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
 
-**GateSnap vs. Glide**: ピッチ移動は `PitchApplyMode` が決める。`GateSnap` はノートの境界でピッチを離散的に切り替え（各ノートは一つの安定した周波数で鳴る）、`Glide` は連続的なポルタメントで移る。`seek_consonance()` を使うボイスでは、スクリプトが明示しない限りモードは発声タイミングから自動的に決まる。持続するVoice（`once()`）と明示の持続＋参加はGlide、打ち直すVoice（pulse / coupled）は発音時に切り替わる。参加の時計を持たない自由音高のHoldでは、Rearticulateが採用時に旧音を離し、新しい音高で発音する。
+**音高の適用**: ピッチ移動は `PitchApplyMode` が決める。`GateSnap` はノートの境界でピッチを離散的に切り替え（各ノートは一つの安定した周波数で鳴る）、`Glide` は連続的なポルタメントで移る。`seek_consonance()` を使うボイスでは、スクリプトが明示しない限りモードは発声タイミングから自動的に決まる。持続するVoice（`once()`）と明示の持続＋参加はGlide、打ち直すVoice（pulse / coupled）は発音時に切り替わる。参加の時計を持たない自由音高のHoldでは、Rearticulateの境界0は採用時に打ち直し、正の境界は最後の発音音高からの変位に応じて滑るか打ち直すかを選ぶ。持続＋参加の明示のGateSnapは、採用した目標を鳴らすと選ぶ機会まで保留する。
 
 **クラウディング**: クラウディング（相互排斥）とピッチ適応は、単一の共有された占有場（occupancy field）を参照する。各占有*基音*（生 f0）を中心とするガウシアンペナルティで、その幅は `crowding_sigma_cents`（デフォルト 60）が定め、強度は `crowding_strength` が制御する。これにより、エージェント同士が同一周波数に収束して「団子」状態になるのを防ぐ。オクターブ等価（クロマ）のペナルティは適用せず、オクターブ関係は協和ポテンシャルを通してだけ作用する。
 
@@ -701,34 +701,45 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 *   ボディ: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)`（ハビタット/プレゼンテーションのルーティング）。
 *   ピッチ: `anchor()`（ピッチを保持。`freq(hz)` はアンカーを含意）, `seek_consonance()`（協和地形を登る。適用モードは自動解決される——持続ボイスはグライド、再アタックするボイスはオンセットでスナップ——`pitch_apply_mode("gate_snap"|"glide"|"rearticulate")` で明示上書き可）, `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `tessitura_gravity(v)`, `temperature(v)`（両コア共有の探索ノブ。0 で貪欲に落ち着く——音楽的にはこれが運動の緊張のノブで、高温ではボイスが協和から外れて彷徨い、冷ますと解決する）ほか。
 
-音高が自由なHoldのVoiceでは、`pitch_apply_mode("rearticulate")`を指定すると、
-新しい行き先の採用一回につき一回発音し直す。採用のsample時刻に旧いToneのreleaseを始め、
-新しいToneは頭から新しい音高でattackする。同じ行き先、棄却した提案、提案のないstepでは
-余分な発音を起こさない。`"glide"`では滑らかに移る。演奏中の両modeの切り替えは、
-鳴っているToneを保ち、切り替えだけでは発音せず、まだ出力していない再発音の要求を取り消す。
-再出生するVoiceはPopulationのmodeを継承する。固定されたVoiceには作用しない。
-自由音高のGated発音との併用は、呼び出し順にかかわらず配置時の最終specでscript errorになる。
-対象外のlive指定も状態を書き換える前に拒否する。Holdには`sustain()`を使い、
-Gatedでは`"gate_snap"`か`"glide"`を選ぶ。既定は変えない。新しいattackと旧音のrelease tailは、
-既存の合成、energyの費用、生態が音を聴く経路を通る。
+音高が自由なHoldのVoiceでは、`pitch_apply_mode("rearticulate")`の境界を省略するか0にすると、
+行き先が変わる採用一回につき一回発音する。採用のsample時刻に旧いToneのreleaseを始め、
+新しいToneを新しい音高で立ち上げる。正の`rearticulate_above(cents)`を添えると、最後に
+実際に発音した音高から行き先までの正味の変位で選ぶ。境界を超えれば打ち直し、境界以下なら
+同じToneで`glide(tau)`に従って滑る。選択は次の採用まで保つ。両端がLog2Spaceの正確な
+bin中心ならbin差をcentへ換算し、それ以外は連続したlog2座標の差を使う。目標の丸め直しや
+epsilonは加えない。同じ未出力hopで先行する合法な発音があれば、その音高を基準にし、
+取り消した要求は実発音の記憶へ残さない。
 
-`sustain()`と`entrained()`または`flow()`を両方明示すると、書く順に依存せず、
-持続するToneと参加の時計を併せ持つ。機会ごとに鳴らすと選べば、旧音を離し、
-そのsampleの身体の音高で新音を立ち上げる。待つ・見送るなら音を保つ。
-音高の採用時には、そのsampleでの発音を未決の合法な機会へ候補として渡し、既存の候補と
-費用で比較する。同点なら既存の候補を残し、決定済みの予定は動かさない。
-採られなかった移動は滑らかに進み、採用と時計の発音が同じsampleなら発音は一回である。
-時計だけによる発音は、移動中もその時点の身体音高を使う。release、死亡、removeは
-保留中の発音を取り消し、発行した発音はenergyと音響の経路へ一回だけ流れる。
-予測は有限長の代表的な音のfootprintを使い、継続と打ち直しの波形を厳密に比較しない。
+境界は作曲者が創始のVoiceへ置く量で、既定0、負値と有限でない値は0、上限は置かない。
+Rearticulate以外への指定は警告して無視する。演奏中の境界変更だけでは発音せず、次の採用から
+使う。再生成したVoiceは境界を継ぐが、親の最後の発音音高は継がない。固定されたVoiceの
+音高は固定のままである。同じ行き先、棄却した提案、提案のない更新も余分な発音を作らない。
+Glideは滑らかな移動を保つ。modeの切り替えでは鳴っているToneを保ち、未出力の発音要求を
+取り消す。自由音高のGatedとRearticulateの併用は、呼び出し順によらず配置時の最終設定と
+演奏中の書き込み前にerrorにする。新しい発音と旧音のrelease tailは、既存の合成、energy、
+生態が音を聴く経路を通る。
 
-この併用で音高の適用方法を省略するとGlideになる。自由な音高への明示のGateSnapと、
-この形へのRearticulateは、配置時の最終設定でerrorにする。演奏中もVoice、保留中の更新、
-再生成用の設定を書き換える前に拒否する。Glideを使うか、sustainを省いてGatedの
-発音時に音高を切り替える形にする。音高採用のたびに発音するHoldには参加の指定を省く。
-再生成したVoiceはこの解決済みの形を継ぐ。既定のWhileAliveや`while_alive()`だけでは
-この形にならない。各プリセットの単独使用と、metric、pulse、repeatに対するsustainの
-後勝ちは変えない。参加のプリセットは配置前の指定である。
+`sustain()`と`entrained()`または`flow()`を両方明示すると、書く順によらず、持続音と参加の
+機会を併せ持つ。待つ・見送るならToneを保つ。省略時のmodeはGlideで、鳴らすと選んだ
+機会に、そのsampleの身体音高で打ち直す。採用時の一候補は、元の費用、同点時の順序、
+決定済みの予定を変えずに比較する。採られなかった移動は滑り、採用と時計の発音が同じ
+sampleなら一回にまとめる。
+
+自由音高でGateSnapを明示すると、採用した行き先を一つ保留する。次の採用で置き換え、
+参加の機会で鳴らすと選んだ時だけ消費し、旧音を離して新しい音高へ跳んで立ち上げる。
+保留がなければ現在の音高を打ち直す。待つ・見送る間は音高も保留も保ち、滑りや期限を
+加えない。採用時刻の追加候補は渡さず、参加の費用と見送りの規則も変えない。同じsampleでは
+採用を先に処理し、未来の採用を過去の発音へ使わない。release、死亡、removeは保留を
+取り消す。発行した発音はenergyと音響の経路へ一回だけ流れ、予測は既存の有限長の代表的な
+音のfootprintを使う。
+
+演奏中のGlideとGateSnapの切り替えでは、Toneを保ち、保留と未出力の制御記録を取り消す。
+Glideへ戻すと、音高の判断側に残った目標へ次の制御更新から滑る。GateSnapへ替えた後は、
+その後の採用を保留する。同じmodeの再指定は保留を保つ。この形とRearticulateの併用は
+配置時と演奏中の書き込み前に拒否し、その境界で時計の発音を間引く処理も行わない。
+再生成したVoiceは解決済みの設定を継ぐが、親の演奏中の状態は継がない。既定のWhileAliveや
+`while_alive()`だけではこの形を選ばない。単独のプリセットと、metric、pulse、repeatへの
+sustainの後勝ちは保ち、参加のプリセットは配置前の指定のままである。
 
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。

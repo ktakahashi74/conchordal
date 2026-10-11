@@ -172,7 +172,7 @@ A live switch between glide and rearticulate preserves the sounding Tone and
 does not trigger a note by itself. Unrendered rearticulation requests are
 cancelled by that switch; the new mode handles subsequent adoptions. The mode
 also belongs to the Population template used for replacements. `glide(tau)`
-sets the sliding time constant only in glide mode. Anchored Voices are
+sets the sliding time constant in glide mode and below a rearticulation boundary. Anchored Voices are
 unaffected by rearticulate.
 
 Rearticulate requires free pitch and Hold phonation. Combining free-pitch
@@ -181,6 +181,48 @@ regardless of builder order; an incompatible live call also fails before any
 state is changed. Use `sustain()`, or choose gate_snap or glide with Gated
 phonation. This mode does not offer same-pitch rearticulation or autonomous
 per-note selection.
+
+### Choosing how pitch changes become notes
+
+These choices distinguish target adoption from a participation opportunity.
+The boundary is a composer parameter of the founder Voice's articulation, not
+a universal auditory threshold. Values such as 50 or 100 cents are examples;
+the composer chooses them.
+
+| Intention | Explicit form | When an attack occurs |
+|---|---|---|
+| Legato | `sustain().pitch_apply_mode("glide")` | Initial onset; subsequent pitch movement slides |
+| Every adopted target | `sustain().pitch_apply_mode("rearticulate")` | Each adoption, with the boundary omitted or zero |
+| Small moves slide | `sustain().pitch_apply_mode("rearticulate").rearticulate_above(50)` | Adoption strictly above 50 cents from the last sounded onset |
+| Sustained participation with sliding | `sustain().entrained().pitch_apply_mode("glide")` | A sounded opportunity at its current body pitch; other movement slides |
+| Sustained participation with jumps | `sustain().flow().pitch_apply_mode("gate_snap")` | A sounded opportunity consumes the latest pending target |
+
+Entrained and flow can each be used in either participation row. See
+[Rhythm](rhythm.md#sustained-sound-with-participation-opportunities) for their clocks.
+
+With a positive boundary, `rearticulate_above(cents)` measures net displacement from the last actual onset,
+not accumulated path length. At or below the boundary, the existing Tone glides
+with `glide(tau)`; above it, a new Tone attacks. That choice lasts until the next
+adoption. Exact Log2Space bin centers use their bin-distance in cents; off-grid
+endpoints use the continuous log2 distance, without rounding the target or adding
+an epsilon. Earlier legal attacks in the same output hop provide the reference,
+and cancelled requests never replace the last materialized onset.
+
+The boundary defaults to zero, retaining every-adoption rearticulation. Negative
+and nonfinite values become zero; no upper limit is imposed. Changing the boundary
+live causes no attack and applies at the next adoption. A call outside Rearticulate
+warns and is ignored. Builder order is independent at placement. Replacement
+Voices inherit the boundary, with no inherited onset-pitch memory.
+
+```rhai
+let moving = harmonic().sustain().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(50).glide(0.03);
+let voices = place(moving, consonance(220.0, 660.0).count(2));
+wait(3.0);
+voices.rearticulate_above(100);
+wait(3.0);
+release(voices);
+```
 
 Mechanism-level controls (`pitch_core()` and
 the hill-climb / peak-sampler tuning in the

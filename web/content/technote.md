@@ -504,10 +504,10 @@ Agents are not static; they move through frequency space to improve their fitnes
 
 Three modes govern how a new pitch target is applied:
 
-*   **GateSnap**: Discrete hop at note boundaries. The pitch snaps to the new target at note onset, so each note sounds a single stable frequency. Ordering matters: on the sample where the snap occurs, the pitch is updated *before* consonance is evaluated, ensuring the Landscape score reflects the agent's actual sounding frequency.
+*   **GateSnap**: Discrete pitch changes at sounded note boundaries. Gated phonation uses the target at onset; sustained participation retains the latest adopted target until a sounded opportunity.
 *   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like Voices or slow melodic movement.
 
-*   **Rearticulate**: For free-pitch Hold Voices without a participation clock, each adopted target releases the old Tone and attacks at the new pitch at the adoption sample.
+*   **Rearticulate**: For free-pitch Hold Voices without a participation clock, the default zero boundary releases the old Tone and attacks at each changed target's adoption sample. A positive rearticulate_above boundary instead slides at or below its distance from the last sounded onset.
 
 For `seek_consonance()` voices the mode is resolved automatically from the phonation timing unless the script chooses explicitly: sustained voices (`once()`) glide, while re-attacking voices (pulse or coupled timing) snap at onsets. Explicit sustain with participation also resolves to Glide.
 
@@ -772,41 +772,57 @@ A PopulationSpec begins with a preset and is refined through method chaining. It
 
 **Pitch**: `anchor()` (hold the voice at its pitch; implied by `freq(hz)`), `seek_consonance()` (climb the consonance terrain; the apply mode is then resolved automatically—sustained voices glide, re-attacking voices snap at onsets—unless overridden via `pitch_apply_mode("gate_snap"|"glide"|"rearticulate")`), `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `temperature(v)` (one search-stochasticity knob shared by both cores; 0 settles greedily — this *is* the movement-tension knob: a hot search keeps a voice restless and straying off consonance, cooling it resolves), `move_cost(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `sigma_cents`, `random_candidates`).
 
-For a free-pitch Hold Voice, `pitch_apply_mode("rearticulate")` couples each
-adopted change of target to one onset. At the adoption's sample time the old
-Tone begins its release and a new Tone attacks directly at the new pitch.
-Unchanged targets, rejected proposals and steps without proposals create no
-extra onsets. `"glide"` retains legato movement; a live switch between these
-modes preserves the sounding Tone and creates no onset by itself, cancelling
-unrendered rearticulation requests. Replacement Voices inherit the Population
-mode. Anchored Voices are unaffected. Free-pitch Gated phonation with
-`"rearticulate"` is a script error on the final placement spec, independently
-of builder order; incompatible live calls fail before changing any state.
-Use `sustain()` for Hold, or `"gate_snap"` or `"glide"` with Gated phonation.
-Defaults are unchanged. Both the new attack and the old release tail follow
-the existing synthesis, energy-cost and habitat-perception paths.
+For a free-pitch Hold Voice, `pitch_apply_mode("rearticulate")` with the
+boundary omitted or zero couples each changed adopted target to one onset.
+At its sample time the old Tone begins release and a new Tone attacks at the
+new pitch. A positive `rearticulate_above(cents)` measures net displacement from
+the last actual onset: strictly above the boundary attacks, at or below it glides
+with `glide(tau)`, retaining that selection until the next adoption. Exact
+Log2Space centers use bin-distance in cents; other endpoints use continuous log2
+distance without rounding or epsilon. Earlier legal attacks in the same output
+hop provide the reference, while cancelled requests do not update actual onset
+memory. The boundary is a composer parameter; it defaults to zero, sanitizes
+negative or nonfinite values to zero and imposes no upper limit. Outside
+Rearticulate, a call warns and is ignored. Live boundary changes cause no attack
+and affect the next adoption. Replacement Voices inherit the boundary, not the
+parent's last-onset pitch. Anchored Voices remain locked.
 
+Unchanged targets, rejected proposals and steps without proposals create no
+extra onsets. Glide retains legato movement. Live mode changes preserve the
+sounding Tone, create no onset by themselves and cancel unrendered articulation
+requests. Free-pitch Gated Rearticulate is a script error at final placement,
+independent of builder order, and before live writes. Use Hold with sustain, or
+Glide/GateSnap for Gated phonation. Attacks and release tails follow the existing
+synthesis, energy and habitat-perception paths.
 
 Explicit `sustain()` with `entrained()` or `flow()`, in either builder order,
-combines an ongoing Tone with participation opportunities. Sounding releases the
-old Tone and attacks at the body's pitch at that sample; waiting or skipping
-keeps the Tone. A pitch adoption offers its sample to an undecided legal
-opportunity with the existing candidates and costs; ties retain an existing
-candidate, committed plans stay fixed, and unselected movement glides. A coincident
-adoption and clock onset emit one attack. Clock-only onsets use the current body
-pitch, including during a glide. Release, death and removal cancel pending attacks;
-energy and acoustic paths receive each emitted attack once. Prediction retains the
-finite representative footprint rather than an exact comparison of continuing
-sound against release plus attack.
+combines sustained sound and participation opportunities. Waiting or skipping
+retains the Tone. The omitted mode is Glide: sounding releases the old Tone and
+attacks at that sample's body pitch. A pitch adoption offers one legal candidate
+using the unchanged costs, tie order and committed plans; unselected movement
+glides, and coincident adoption and clock onset emit one attack.
 
-The omitted pitch mode for this combination is Glide. Explicit GateSnap with
-free pitch, and Rearticulate with this combination, are errors at final placement
-and before live writes to Voices, pending patches or replacement templates. Use
-Glide, omit sustain for Gated snap-and-hold, or omit participation for pitch-triggered
-Hold rearticulation. Replacement Voices inherit the resolved combination. An implicit
-WhileAlive default or `while_alive()` alone does not select this form. Single presets
-are unchanged; sustain with metric, pulse or repeat retains the existing last-write-wins
-rule. Participation presets remain initial-only.
+Explicit GateSnap with free pitch instead holds one adopted target. Later
+adoptions replace it; only a sounded participation opportunity consumes it,
+releases the old Tone and attacks at the target pitch. With no pending target,
+the current pitch is re-attacked. Waiting and skipping retain pitch and pending
+target, without sliding or expiry. This mode offers no extra adoption-time
+candidate and leaves participation costs and skip unchanged. At the same sample,
+adoption precedes opportunity; a future adoption cannot affect an earlier onset.
+Release, death and removal cancel pending targets. Each emitted attack enters
+energy and acoustic paths once. Prediction retains the existing finite
+representative footprint.
+
+Live Glide ↔ GateSnap changes cancel pending attacks and unrendered control
+records, retaining the Tone. Returning to Glide follows the controller's retained
+target at the next control update; GateSnap waits for later adoptions. Repeating
+the same mode retains pending state. Rearticulate with sustained participation
+remains an error at final placement and before writes to Voices, patches or
+replacement templates. Its distance boundary does not filter clock attacks.
+Replacement Voices inherit the resolved controls with fresh performance state.
+Implicit WhileAlive or `while_alive()` alone does not select sustained participation.
+Single presets and sustain with metric, pulse or repeat retain their existing
+meaning. Participation presets remain initial-only.
 
 **Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
 

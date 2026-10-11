@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8b04763c.js";
+            window.path_to_searchindex_js = "../searchindex-613e97c4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -317,7 +317,7 @@ wait(12.0);
 does not trigger a note by itself. Unrendered rearticulation requests are
 cancelled by that switch; the new mode handles subsequent adoptions. The mode
 also belongs to the Population template used for replacements. <code>glide(tau)</code>
-sets the sliding time constant only in glide mode. Anchored Voices are
+sets the sliding time constant in glide mode and below a rearticulation boundary. Anchored Voices are
 unaffected by rearticulate.</p>
 <p>Rearticulate requires free pitch and Hold phonation. Combining free-pitch
 Gated phonation with it is a script error, checked on the final placement spec
@@ -325,6 +325,47 @@ regardless of builder order; an incompatible live call also fails before any
 state is changed. Use <code>sustain()</code>, or choose gate_snap or glide with Gated
 phonation. This mode does not offer same-pitch rearticulation or autonomous
 per-note selection.</p>
+<h3 id="choosing-how-pitch-changes-become-notes"><a class="header" href="#choosing-how-pitch-changes-become-notes">Choosing how pitch changes become notes</a></h3>
+<p>These choices distinguish target adoption from a participation opportunity.
+The boundary is a composer parameter of the founder Voice’s articulation, not
+a universal auditory threshold. Values such as 50 or 100 cents are examples;
+the composer chooses them.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Intention</th><th>Explicit form</th><th>When an attack occurs</th></tr>
+</thead>
+<tbody>
+<tr><td>Legato</td><td><code>sustain().pitch_apply_mode("glide")</code></td><td>Initial onset; subsequent pitch movement slides</td></tr>
+<tr><td>Every adopted target</td><td><code>sustain().pitch_apply_mode("rearticulate")</code></td><td>Each adoption, with the boundary omitted or zero</td></tr>
+<tr><td>Small moves slide</td><td><code>sustain().pitch_apply_mode("rearticulate").rearticulate_above(50)</code></td><td>Adoption strictly above 50 cents from the last sounded onset</td></tr>
+<tr><td>Sustained participation with sliding</td><td><code>sustain().entrained().pitch_apply_mode("glide")</code></td><td>A sounded opportunity at its current body pitch; other movement slides</td></tr>
+<tr><td>Sustained participation with jumps</td><td><code>sustain().flow().pitch_apply_mode("gate_snap")</code></td><td>A sounded opportunity consumes the latest pending target</td></tr>
+</tbody>
+</table>
+</div>
+<p>Entrained and flow can each be used in either participation row. See
+<a href="rhythm.html#sustained-sound-with-participation-opportunities">Rhythm</a> for their clocks.</p>
+<p>With a positive boundary, <code>rearticulate_above(cents)</code> measures net displacement from the last actual onset,
+not accumulated path length. At or below the boundary, the existing Tone glides
+with <code>glide(tau)</code>; above it, a new Tone attacks. That choice lasts until the next
+adoption. Exact Log2Space bin centers use their bin-distance in cents; off-grid
+endpoints use the continuous log2 distance, without rounding the target or adding
+an epsilon. Earlier legal attacks in the same output hop provide the reference,
+and cancelled requests never replace the last materialized onset.</p>
+<p>The boundary defaults to zero, retaining every-adoption rearticulation. Negative
+and nonfinite values become zero; no upper limit is imposed. Changing the boundary
+live causes no attack and applies at the next adoption. A call outside Rearticulate
+warns and is ignored. Builder order is independent at placement. Replacement
+Voices inherit the boundary, with no inherited onset-pitch memory.</p>
+<pre><code class="language-rhai">let moving = harmonic().sustain().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(50).glide(0.03);
+let voices = place(moving, consonance(220.0, 660.0).count(2));
+wait(3.0);
+voices.rearticulate_above(100);
+wait(3.0);
+release(voices);
+</code></pre>
 <p>Mechanism-level controls (<code>pitch_core()</code> and
 the hill-climb / peak-sampler tuning in the
 <a href="../reference/api.html">API Reference</a>) remain available for research scripts;

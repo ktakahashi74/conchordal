@@ -152,7 +152,7 @@ wait(12.0);
 演奏中にglideとrearticulateを切り替えても、鳴っているToneを止めたり、
 切り替えだけで新しい発音を起こしたりしません。まだ出力していない再発音の要求を取り消し、
 次の採用から新しいmodeを使います。再出生するVoiceにもPopulationのtemplateから
-同じmodeが渡ります。`glide(tau)`はglide modeの移動の時定数です。
+同じmodeが渡ります。`glide(tau)`はGlideと、打ち直しの境界以下で滑る時の移動の時定数です。
 `anchor()`などで固定されたVoiceにrearticulateは作用しません。
 
 対象は音高が自由なHoldのVoiceです。自由音高のGated発音とrearticulateの組み合わせは、
@@ -160,6 +160,45 @@ builderの呼び出し順にかかわらず、配置時の最終specでscript er
 演奏中の対象外の指定も、状態を書き換える前に拒否します。`sustain()`でHoldにするか、
 Gatedではgate_snapまたはglideを選んでください。同音高での打ち直しや、Voice自身による
 一音ごとの選択は、このmodeの機能には含まれません。
+
+### 音高の移動と発音の結びつきを選ぶ
+
+行き先を採用する時と、参加の機会で鳴らすと選ぶ時は別です。次の表で、移動を音の区切りに
+どう結びつけるかを選べます。境界は創始のVoiceに置く発音の気質で、作曲者が選ぶ量です。
+50や100 centは使い方の例であり、聴覚の原理から決まる値や推奨値ではありません。
+
+| 書きたい形 | 明示する指定 | 発音の区切り |
+|---|---|---|
+| レガート | `sustain().pitch_apply_mode("glide")` | 初回に発音し、その後の移動は滑る |
+| 採用ごとに打ち直す | `sustain().pitch_apply_mode("rearticulate")` | 境界を省略するか0にすると、採用ごとに打ち直す |
+| 小さく動く時は滑る | `sustain().pitch_apply_mode("rearticulate").rearticulate_above(50)` | 最後の発音音高から行き先までが50 centを超えた採用で打ち直す |
+| 持続しながら参加し、音高は滑る | `sustain().entrained().pitch_apply_mode("glide")` | 鳴らすと選んだ機会で、その時点の身体音高を打ち直す |
+| 持続しながら参加し、発音時に跳ぶ | `sustain().flow().pitch_apply_mode("gate_snap")` | 鳴らすと選んだ機会で、最後に保留した行き先へ跳んで打ち直す |
+
+参加の二行では、entrainedとflowをそれぞれ選べます。時計の違いは
+[リズム](rhythm.md)の章で説明します。
+
+正の境界を指定した`rearticulate_above(cents)`は、最後に実際に発音した音高からの正味の変位を測ります。
+経路の距離を足し合わせる量ではなく、元の音高へ戻れば相殺されます。境界以下なら同じToneで
+`glide(tau)`に従って滑り、境界を超えれば新しいToneを立ち上げます。選択は次の採用まで
+保持します。両端がLog2Spaceの正確なbin中心ならbin差をcentへ換算し、それ以外は連続した
+log2座標の差を使います。行き先の丸め直しやepsilonは加えません。同じ未出力hopに先行する
+合法な発音があれば、その音高を基準にします。取り消した要求を実発音の記憶へ残しません。
+
+省略値は0で、採用ごとに打ち直す従来の形です。負値と有限でない値は0にし、上限は置きません。
+演奏中に境界を変えても、それだけでは発音せず、次の採用から使います。Rearticulate以外への
+指定は警告して無視します。配置前の書く順に依存しません。再生成したVoiceは境界を継ぎますが、
+親が最後に発音した音高は継ぎません。
+
+```rhai
+let moving = harmonic().sustain().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(50).glide(0.03);
+let voices = place(moving, consonance(220.0, 660.0).count(2));
+wait(3.0);
+voices.rearticulate_above(100);
+wait(3.0);
+release(voices);
+```
 
 研究scriptには`pitch_core()`など機構水準のcontrolもありますが、作品では
 `seek_consonance()`を入口にし、発音し直すか滑らかに移るかを選んでください。

@@ -154,7 +154,7 @@ wait(3.0);
 release(p);
 ```
 
-A newly adopted pitch target also offers its sample as a candidate for an undecided,
+With the default `"glide"` mode, a newly adopted pitch target also offers its sample as a candidate for an undecided,
 legal participation opportunity. The existing timing, acoustic-context and overlap
 costs choose among this candidate and the existing candidates; ties retain the
 existing candidate, and a committed plan is not moved. If the adoption is not
@@ -167,15 +167,39 @@ This uses the existing finite representative footprint for participation predict
 it does not compare an exact rendering of continuing against release plus a new attack.
 It does not add a phrase-boundary detector or a pitch-interval threshold.
 
-For this combination the omitted pitch application mode resolves to `"glide"`,
-even though the timing is coupled. Explicit `"gate_snap"` with free pitch and
-`"rearticulate"` with this combination are script errors on the final placement
-spec, independent of builder order. Incompatible live calls fail before modifying
-a Voice, pending patch or replacement template. Use `"glide"`; omit `sustain()`
-for Gated snap-and-hold, or omit the participation preset for pitch-triggered
-Hold rearticulation. A compatible live `"glide"` call preserves the ongoing Tone
-and pending requests. The timing presets themselves remain initial-only; replacement
-Voices inherit the resolved combination.
+For this combination the omitted pitch application mode resolves to `"glide"`.
+Explicit `"gate_snap"` with free pitch instead holds one adopted target until the
+Voice chooses to sound at a participation opportunity. The old Tone then releases
+and a new Tone attacks at that target. A later adoption replaces the pending target.
+Waiting and omission retain the sounding pitch and the pending target; movement
+does not glide. Without a pending target, a sounded opportunity re-attacks the same
+pitch. GateSnap offers no extra candidate at the adoption sample and uses the
+unchanged participation costs and skip rule. At the same sample, adoption precedes
+the opportunity; a future adoption cannot affect an earlier onset. Release, death
+and removal cancel the pending target.
+
+```rhai
+let p = place(
+    harmonic().sustain().flow().seek_consonance().pitch_apply_mode("gate_snap"),
+    consonance(220.0, 660.0).count(1)
+);
+wait(3.0);
+p.pitch_apply_mode("glide");
+wait(3.0);
+release(p);
+```
+
+Live Glide ↔ GateSnap switching preserves the sounding Tone and emits no extra
+attack. It cancels unrendered requests and the pending attack target. On returning
+to Glide, movement follows the controller's retained target at the next control
+update. GateSnap waits for subsequent adoptions. Calling the same mode again keeps
+its pending state. Replacement Voices inherit the mode, starting with no pending
+performance state. Timing presets remain initial-only.
+
+Rearticulate with sustained participation remains a script error on the final
+placement spec and before any live writes, independent of builder order. Omit the
+participation preset for pitch-triggered Hold rearticulation. Its
+`rearticulate_above(cents)` boundary does not control clock-driven attacks.
 
 The implicit WhileAlive default and `while_alive()` alone do not select this form.
 `sustain()` alone, `entrained()` alone and `flow()` alone retain their previous

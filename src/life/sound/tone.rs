@@ -863,6 +863,11 @@ impl Tone {
     }
 
     fn apply_update(&mut self, update: &ToneUpdate) {
+        if let Some(pulse) = update.autonomous_pulse
+            && let Some(modulator) = &mut self.render_modulator
+        {
+            modulator.set_autonomous_pulse(pulse);
+        }
         if let Some(freq_hz) = update.target_freq_hz
             && freq_hz.is_finite()
             && freq_hz > 0.0
@@ -1419,6 +1424,7 @@ mod tests {
                 assert!(!tone.schedule_update(
                     close + 1,
                     ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: Some(880.0),
                         target_amp: Some(0.0),
                         continuous_drive: Some(10.0)
@@ -1468,6 +1474,7 @@ mod tests {
         assert!(!tone.schedule_update(
             0,
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: Some(440.0),
                 target_amp: Some(f32::NAN),
                 continuous_drive: None
@@ -1710,6 +1717,7 @@ mod tests {
         tone.schedule_update(
             4,
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: None,
                 target_amp: Some(0.25),
                 continuous_drive: None,
@@ -1737,6 +1745,7 @@ mod tests {
         tone.schedule_update(
             1600,
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: Some(220.),
                 target_amp: None,
                 continuous_drive: None,
@@ -1745,6 +1754,7 @@ mod tests {
         tone.schedule_update(
             800,
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: None,
                 target_amp: Some(0.25),
                 continuous_drive: None,
@@ -1777,6 +1787,7 @@ mod tests {
         tone.schedule_update(
             800,
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: None,
                 target_amp: Some(0.25),
                 continuous_drive: None,
@@ -1835,6 +1846,7 @@ mod tests {
                             tone.schedule_update(
                                 at,
                                 ToneUpdate {
+                                    autonomous_pulse: None,
                                     target_freq_hz: None,
                                     target_amp: Some(target),
                                     continuous_drive: None,
@@ -1922,6 +1934,7 @@ mod tests {
             tone.schedule_update(
                 at,
                 ToneUpdate {
+                    autonomous_pulse: None,
                     target_freq_hz: None,
                     target_amp: Some(0.4),
                     continuous_drive: None,
@@ -1952,11 +1965,13 @@ mod tests {
         }
         for update in [
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: Some(220.),
                 target_amp: Some(0.1),
                 continuous_drive: None,
             },
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: None,
                 target_amp: Some(0.1),
                 continuous_drive: Some(0.1),
@@ -1973,6 +1988,7 @@ mod tests {
         tone.schedule_update(
             300,
             ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: None,
                 target_amp: Some(f32::NAN),
                 continuous_drive: None,
@@ -1994,6 +2010,7 @@ mod tests {
         let mut tone = Tone::from_parts(tb, 0, 1_000, 440.0, 0.5, None, None, None).expect("tone");
         tone.set_smoothing_tau_sec(0.0);
         let amp_update = |amp: f32| ToneUpdate {
+            autonomous_pulse: None,
             target_freq_hz: None,
             target_amp: Some(amp),
             continuous_drive: None,

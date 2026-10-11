@@ -335,13 +335,14 @@ impl Community {
         hasher.finish() ^ 0xBADC_0FFE_E0DD_F00D
     }
 
-    pub fn add_voice(&mut self, voice: Voice) {
+    pub fn add_voice(&mut self, mut voice: Voice) {
         let id = voice.id();
         if self.voices.iter().any(|a| a.id() == id) {
             warn!("AddVoice: id collision for {id}");
             return;
         }
         self.track_runtime_id(id);
+        voice.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES);
         self.voices.push(voice);
     }
 
@@ -432,6 +433,7 @@ impl Community {
                 out.push(PhonationBatch::default());
             }
             let batch = &mut out[used];
+            voice.prepare_phonation_batch(batch);
             let consonance = landscape.evaluate_pitch_level(voice.body.base_freq_hz());
             let was_gate_open = voice.phonation_gate_open();
             let extra_gate_gain = match pred_scan.as_ref() {
@@ -592,6 +594,7 @@ impl Community {
                 core.enable_plv(observe.plv_window);
             }
         }
+        spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES);
         self.voices.push(spawned);
         self.track_runtime_id(id);
         if self.auto_observe.is_some() {
@@ -674,6 +677,14 @@ impl Community {
         let global_coupling = self.global_coupling;
         for substep_idx in 0..steps {
             self.apply_background_turnover(dt_step_sec, substep_idx);
+            // Control prepares the next unrendered hop; each adoption keeps its sample.
+            let tick = self
+                .time
+                .frame_start_tick(current_frame.saturating_add(1))
+                .saturating_add((substep_idx * samples_len / steps) as Tick);
+            for voice in &mut self.voices {
+                voice.set_control_tick(tick);
+            }
             let crowding_active = self.crowding_active();
             match self.control_update_mode {
                 ControlUpdateMode::SnapshotPhased => {

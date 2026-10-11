@@ -34,6 +34,9 @@ pub struct ToneUpdate {
     /// Final output target amp (linear).
     pub target_amp: Option<f32>,
     pub continuous_drive: Option<f32>,
+    /// None preserves the current pulse; Some(None) disables it without an onset.
+    #[cfg_attr(test, serde(default, skip_serializing_if = "Option::is_none"))]
+    pub autonomous_pulse: Option<Option<crate::life::sound::AutonomousPulseSpec>>,
 }
 
 impl ToneUpdate {
@@ -41,6 +44,7 @@ impl ToneUpdate {
         self.target_freq_hz.is_none()
             && self.target_amp.is_none()
             && self.continuous_drive.is_none()
+            && self.autonomous_pulse.is_none()
     }
 }
 
@@ -1487,6 +1491,30 @@ impl PhonationEngine {
             });
             self.active_notes = self.active_notes.saturating_sub(1);
         }
+    }
+
+    /// Restart a held tone at the requested sample, independent of pitch selection.
+    pub(crate) fn rearticulate_hold(
+        &mut self,
+        ctx: &CoreTickCtx,
+        state: &CoreState,
+        out_cmds: &mut Vec<ToneCmd>,
+        out_events: &mut Vec<ToneOnEvent>,
+        out_onsets: &mut Vec<OnsetEvent>,
+    ) {
+        assert!(matches!(self.mode, PhonationMode::Hold));
+        if !state.is_alive || !state.onset_allowed {
+            return;
+        }
+        if let Some(tone_id) = self.hold.tone_id.take() {
+            out_cmds.push(ToneCmd::Off {
+                tone_id,
+                off_tick: ctx.now_tick,
+            });
+            self.active_notes = self.active_notes.saturating_sub(1);
+        }
+        self.hold.note_on_sent = false;
+        self.tick_hold(ctx, state, None, out_cmds, out_events, out_onsets);
     }
 
     fn schedule_note_off(&mut self, tone_id: ToneId, off_tick: Tick) {

@@ -56,6 +56,7 @@ fn note(
                 tone_id,
                 at_tick: Some(onset),
                 update: ToneUpdate {
+                    autonomous_pulse: None,
                     target_freq_hz: None,
                     target_amp: None,
                     continuous_drive: Some(if kind == BodyKind::Modal {
@@ -172,6 +173,7 @@ fn main() {
                                         tone_id: 1,
                                         at_tick: Some(issue + hop as u64 / 2),
                                         update: ToneUpdate {
+                                            autonomous_pulse: None,
                                             target_freq_hz: Some(f * 1.03),
                                             target_amp: Some(0.065),
                                             continuous_drive: None,

@@ -121,7 +121,8 @@ impl PitchController {
         neighbor_pitch_log2: &[f32],
         neighbor_salience: &[f32],
         temperature_bonus: f32,
-    ) {
+    ) -> bool {
+        let previous_target = self.target_pitch_log2;
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
         let current_pitch_log2 = current_freq.log2();
@@ -228,7 +229,7 @@ impl PitchController {
             // of which frequencies the current landscape can evaluate.
             self.target_pitch_log2 = freq.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ).log2();
             self.last_target_salience = 1.0;
-            return;
+            return false;
         }
         let (fmin, fmax) = landscape.freq_bounds_log2();
         let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {
@@ -256,6 +257,7 @@ impl PitchController {
         if should_propose && let Some(owner) = self.trace_owner {
             crate::life::body_metabolism::assay::log_move(owner, target_pitch_log2);
         }
+        should_propose && previous_target > 0.0 && target_pitch_log2 != previous_target
     }
 }
 

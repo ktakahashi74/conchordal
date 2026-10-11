@@ -956,6 +956,7 @@ mod tests {
                                 tone_id: 1,
                                 at_tick: Some(now + 31),
                                 update: ToneUpdate {
+                                    autonomous_pulse: None,
                                     target_freq_hz: Some(521.),
                                     target_amp: Some(0.11),
                                     continuous_drive: Some(0.5),
@@ -1350,6 +1351,7 @@ mod tests {
                             tone_id: 1,
                             at_tick: Some(80),
                             update: ToneUpdate {
+                                autonomous_pulse: None,
                                 target_freq_hz: Some(451.0),
                                 target_amp: Some(0.14),
                                 continuous_drive: Some(0.02),
@@ -1462,6 +1464,7 @@ mod tests {
                     tone_id,
                     at_tick: Some(0),
                     update: ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: Some(440.0),
                         target_amp: Some(0.25),
                         continuous_drive: None,
@@ -1514,16 +1517,19 @@ mod tests {
             for generation in [6, 7, 8] {
                 for update in [
                     ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: Some(220.),
                         target_amp: None,
                         continuous_drive: None,
                     },
                     ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: None,
                         target_amp: Some(0.05),
                         continuous_drive: None,
                     },
                     ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: None,
                         target_amp: None,
                         continuous_drive: Some(2.0),
@@ -1690,6 +1696,7 @@ mod tests {
                     tone_id,
                     at_tick: Some(0),
                     update: ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: Some(330.0),
                         target_amp: None,
                         continuous_drive: None,
@@ -1699,6 +1706,7 @@ mod tests {
                     tone_id,
                     at_tick: Some(0),
                     update: ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: Some(440.0),
                         target_amp: None,
                         continuous_drive: None,

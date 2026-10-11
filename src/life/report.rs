@@ -1225,6 +1225,15 @@ pub fn onset_samples_from_batches(
         };
         let freq_hz = agent.body.base_freq_hz();
         for onset in &batch.onsets {
+            let freq_hz = if agent.reports_onset_pitch() {
+                batch
+                    .tones
+                    .iter()
+                    .find(|tone| tone.onset == onset.onset_tick)
+                    .map_or(freq_hz, |tone| tone.freq_hz)
+            } else {
+                freq_hz
+            };
             let time_sec = (onset.onset_tick as f64 / sample_rate as f64) as f32;
             out.push(OnsetSample {
                 time_sec,

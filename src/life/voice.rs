@@ -69,6 +69,11 @@ pub struct Voice {
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
     amp_update_pending: bool,
+    pitch_application: PitchApplyMode,
+    pitch_adopted: bool,
+    control_tick: Option<Tick>,
+    rearticulations: Vec<Rearticulation>,
+    pulse_update_pending: bool,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
     voice_adsr: Option<super::sound::ToneAdsr>,
     /// One-way latch for `phonate_when_viable()`: starts open for
@@ -97,6 +102,21 @@ pub struct ToneSpec {
 #[derive(Debug, Default)]
 pub(crate) struct PhonationScratch {
     events: Vec<ToneOnEvent>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Rearticulation {
+    at: Tick,
+    pitch_log2: f32,
+}
+
+// The configured policy is the current source of the per-adoption decision.
+fn select_pitch_application(pitch: &crate::scenario::control::PitchControl) -> PitchApplyMode {
+    if pitch.mode == PitchMode::Lock && pitch.pitch_apply_mode == PitchApplyMode::Rearticulate {
+        PitchApplyMode::GateSnap
+    } else {
+        pitch.pitch_apply_mode
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -224,7 +244,11 @@ impl Voice {
         let seed = seed_offset ^ assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
 
+        control
+            .validate_pitch_application()
+            .expect("valid voice pitch application");
         let effective_control = control.clone();
+        let pitch_application = select_pitch_application(&effective_control.pitch);
         let target_freq = effective_control.pitch.freq.max(1.0);
         let target_pitch_log2 = target_freq.log2();
         let integration_window = PitchController::integration_window_for_freq(target_freq);
@@ -327,7 +351,8 @@ impl Voice {
             articulation: ArticulationWrapper::new(
                 core,
                 breath_gain,
-                matches!(phonation_engine.mode, PhonationMode::Hold),
+                matches!(phonation_engine.mode, PhonationMode::Hold)
+                    && pitch_application != PitchApplyMode::Rearticulate,
             ),
             pitch_ctl,
             phonation_engine,
@@ -342,10 +367,47 @@ impl Voice {
             phonation_scratch: Default::default(),
             active_render_notes: Vec::new(),
             amp_update_pending: false,
+            pitch_application,
+            pitch_adopted: false,
+            control_tick: None,
+            rearticulations: Vec::new(),
+            pulse_update_pending: false,
             life_accumulator: None,
             voice_adsr,
             phonation_gate_open,
         }
+    }
+
+    pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize) {
+        if self.effective_control.pitch.mode == PitchMode::Free
+            && matches!(self.phonation_engine.mode, PhonationMode::Hold)
+        {
+            let capacity = (hop / control_step).max(1);
+            self.rearticulations.reserve(capacity);
+            self.phonation_scratch.events.reserve(capacity + 1);
+            self.active_render_notes.reserve(capacity + 1);
+        }
+    }
+
+    pub(crate) fn prepare_phonation_batch(&self, out: &mut PhonationBatch) {
+        let capacity = self.rearticulations.capacity();
+        if capacity > 0 {
+            // Batch storage is initialized alongside its Voice, then reused.
+            out.cmds
+                .reserve((3 * (capacity + 1)).saturating_sub(out.cmds.len()));
+            out.tones
+                .reserve((capacity + 1).saturating_sub(out.tones.len()));
+            out.onsets
+                .reserve((capacity + 1).saturating_sub(out.onsets.len()));
+        }
+    }
+
+    pub(crate) fn set_control_tick(&mut self, tick: Tick) {
+        self.control_tick = Some(tick);
+    }
+
+    pub(crate) fn reports_onset_pitch(&self) -> bool {
+        self.pitch_application == PitchApplyMode::Rearticulate
     }
 
     fn apply_body_runtime(&mut self) {
@@ -380,6 +442,18 @@ impl Voice {
     }
 
     fn apply_pitch_control(&mut self) {
+        let next = select_pitch_application(&self.effective_control.pitch);
+        if next != self.pitch_application {
+            self.rearticulations.clear();
+            self.pitch_adopted = false;
+            self.pulse_update_pending |= (next == PitchApplyMode::Rearticulate)
+                != (self.pitch_application == PitchApplyMode::Rearticulate);
+            self.pitch_application = next;
+            self.articulation.set_autonomous_attack_enabled(
+                matches!(self.phonation_engine.mode, PhonationMode::Hold)
+                    && next != PitchApplyMode::Rearticulate,
+            );
+        }
         let pitch = &self.effective_control.pitch;
         self.pitch_ctl.apply_control(pitch);
     }
@@ -387,10 +461,10 @@ impl Voice {
     fn apply_phonation_control(&mut self) {
         self.phonation_engine
             .update_from_spec(&self.effective_control.phonation.spec);
-        self.articulation.set_autonomous_attack_enabled(matches!(
-            self.phonation_engine.mode,
-            PhonationMode::Hold
-        ));
+        self.articulation.set_autonomous_attack_enabled(
+            matches!(self.phonation_engine.mode, PhonationMode::Hold)
+                && self.pitch_application != PitchApplyMode::Rearticulate,
+        );
         self.social_coupling = self.effective_control.phonation.spec.social_coupling();
     }
 
@@ -465,6 +539,7 @@ impl Voice {
         let mut control = self.effective_control.clone();
         control.apply_update(patch);
         self.ensure_fixed_kinds(&control)?;
+        control.validate_pitch_application()?;
         let dirty = Dirty::from_update(patch);
         self.base_control = control.clone();
         self.apply_effective_control(control, dirty);
@@ -532,7 +607,7 @@ impl Voice {
         listener_pressure: ListenerPressure,
     ) {
         let current_freq = self.body.base_freq_hz();
-        self.pitch_ctl.update_pitch_target(
+        self.pitch_adopted = self.pitch_ctl.update_pitch_target(
             current_freq,
             rhythms,
             dt_sec,
@@ -542,6 +617,27 @@ impl Voice {
             neighbor_salience,
             listener_pressure.temperature_bonus,
         );
+        if self.pitch_adopted {
+            self.pitch_application = select_pitch_application(&self.effective_control.pitch);
+            if self.pitch_application == PitchApplyMode::Rearticulate
+                && self.phonation_engine.has_active_notes()
+                && self.phonation_gate_open
+                && self.is_alive()
+                && !self.release_pending
+                && !self.remove_pending
+            {
+                assert!(
+                    self.rearticulations.len() < self.rearticulations.capacity(),
+                    "control hop capacity must be configured at birth"
+                );
+                let at = self
+                    .control_tick
+                    .expect("control must timestamp pitch adoption");
+                let pitch_log2 = self.target_pitch_log2();
+                self.rearticulations.push(Rearticulation { at, pitch_log2 });
+                tracing::debug!(target: "pitch::adoption", id = self.id, at, pitch_log2);
+            }
+        }
     }
 
     /// Control-rate entry point for pitch + articulation updates.
@@ -715,6 +811,7 @@ impl Voice {
     }
 
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
+        self.pitch_application = select_pitch_application(&self.effective_control.pitch);
         let current_freq = self.body.base_freq_hz().max(1.0);
         let current_pitch_log2 = current_freq.log2();
         let target_pitch_log2 = self.target_pitch_log2();
@@ -729,9 +826,15 @@ impl Voice {
             self.body.set_pitch_log2(planned.target_pitch_log2);
             return;
         }
-        match self.effective_control.pitch.pitch_apply_mode {
+        match self.pitch_application {
             PitchApplyMode::GateSnap => {
                 if apply_planned_pitch {
+                    self.body.set_pitch_log2(planned.target_pitch_log2);
+                }
+            }
+            PitchApplyMode::Rearticulate => {
+                self.articulation.set_gate(1.0);
+                if self.pitch_adopted {
                     self.body.set_pitch_log2(planned.target_pitch_log2);
                 }
             }
@@ -906,7 +1009,9 @@ impl Voice {
         self.update_phonation_gate(consonance);
         let onset_allowed = target_amp > Self::AMP_EPS && self.phonation_gate_open;
         let state = CoreState {
-            is_alive: self.is_alive() && !self.remove_pending,
+            is_alive: self.is_alive()
+                && !self.remove_pending
+                && !(self.reports_onset_pitch() && self.release_pending),
             onset_allowed,
         };
         out.body_policy = Some(super::action_candidates::PolicySnapshot {
@@ -931,6 +1036,27 @@ impl Voice {
             &mut self.phonation_scratch.events,
             &mut out.onsets,
         );
+        if self.reports_onset_pitch() {
+            for request in &self.rearticulations {
+                assert!(
+                    request.at >= now && request.at < frame_end,
+                    "rearticulation timestamp must belong to the next output hop"
+                );
+                let request_ctx = CoreTickCtx {
+                    now_tick: request.at,
+                    ..ctx
+                };
+                self.phonation_engine.rearticulate_hold(
+                    &request_ctx,
+                    &state,
+                    &mut out.cmds,
+                    &mut self.phonation_scratch.events,
+                    &mut out.onsets,
+                );
+            }
+            // Released tails must retain their pitch before surviving-note updates.
+            self.prune_tracked_render_notes(&out.cmds);
+        }
         let phonation_mode = self.phonation_engine.mode;
         let had_tone_on = out.cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. }));
         if self.remove_pending {
@@ -939,9 +1065,10 @@ impl Voice {
             self.phonation_scratch.events.clear();
             out.onsets.clear();
             self.prune_tracked_render_notes(&out.cmds);
+            self.rearticulations.clear();
             return;
         }
-        if matches!(phonation_mode, PhonationMode::Gated) {
+        if matches!(phonation_mode, PhonationMode::Gated) || self.reports_onset_pitch() {
             for onset in &out.onsets {
                 self.articulation
                     .apply_phonation_onset(consonance, onset.strength);
@@ -950,10 +1077,7 @@ impl Voice {
             // target at the note onset, then holds that pitch for the note (no
             // mid-note glide). Successive notes step toward consonance discretely.
             if !out.onsets.is_empty()
-                && matches!(
-                    self.effective_control.pitch.pitch_apply_mode,
-                    PitchApplyMode::GateSnap
-                )
+                && matches!(self.pitch_application, PitchApplyMode::GateSnap)
                 && !matches!(self.effective_control.pitch.mode, PitchMode::Lock)
             {
                 self.body.set_pitch_log2(self.target_pitch_log2());
@@ -967,6 +1091,7 @@ impl Voice {
             if had_tone_on {
                 Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
+            self.rearticulations.clear();
             return;
         }
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
@@ -975,6 +1100,7 @@ impl Voice {
                 Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
             self.phonation_scratch.events.clear();
+            self.rearticulations.clear();
             return;
         }
         // `onset_allowed` already prevented the engine from emitting any onset
@@ -984,7 +1110,13 @@ impl Voice {
             target_amp > Self::AMP_EPS,
             "onset gating must prevent tone events at/below AMP_EPS"
         );
-        let render_modulator = self.articulation.render_modulator_spec(phonation_mode);
+        let render_modulator =
+            self.articulation
+                .render_modulator_spec(if self.reports_onset_pitch() {
+                    PhonationMode::Gated
+                } else {
+                    phonation_mode
+                });
         let body = self.body_snapshot();
         let smoothing_tau_sec = Self::PHONATION_UPDATE_SMOOTH_TAU_SEC;
         let hold_ticks = if matches!(phonation_mode, PhonationMode::Hold) {
@@ -998,7 +1130,11 @@ impl Voice {
                 tone_id: event.tone_id,
                 onset: event.onset_tick,
                 hold_ticks,
-                freq_hz,
+                freq_hz: self
+                    .rearticulations
+                    .iter()
+                    .find(|request| request.at == event.onset_tick)
+                    .map_or(freq_hz, |request| request.pitch_log2.exp2()),
                 amp: target_amp,
                 smoothing_tau_sec,
                 body: body.clone(),
@@ -1006,6 +1142,7 @@ impl Voice {
                 adsr: self.voice_adsr,
             });
         }
+        self.rearticulations.clear();
         self.track_new_render_notes(&out.tones);
         // An onset and its note-off can share a hop. Track first, then remove
         // every note already scheduled to end, including the newly added ones.
@@ -1043,6 +1180,24 @@ impl Voice {
         continuous_drive: f32,
         out_cmds: &mut Vec<ToneCmd>,
     ) {
+        let autonomous_pulse = if self.pulse_update_pending {
+            Some(
+                match self
+                    .articulation
+                    .render_modulator_spec(if self.reports_onset_pitch() {
+                        PhonationMode::Gated
+                    } else {
+                        self.phonation_engine.mode
+                    }) {
+                    RenderModulatorSpec::EntrainPulse {
+                        autonomous_pulse, ..
+                    } => autonomous_pulse,
+                    _ => None,
+                },
+            )
+        } else {
+            None
+        };
         for tracked in &mut self.active_render_notes {
             // Explicit amplitude controls bypass the threshold for autonomous vitality drift.
             let amp_changed = self.amp_update_pending
@@ -1051,13 +1206,14 @@ impl Voice {
                 && freq_hz > 0.0
                 && (freq_hz - tracked.last_target_freq_hz).abs() > 0.01;
             let drive_changed = (continuous_drive - tracked.last_continuous_drive).abs() > 1e-4;
-            if !amp_changed && !freq_changed && !drive_changed {
+            if !amp_changed && !freq_changed && !drive_changed && autonomous_pulse.is_none() {
                 continue;
             }
             out_cmds.push(ToneCmd::Update {
                 tone_id: tracked.tone_id,
                 at_tick: Some(now),
                 update: ToneUpdate {
+                    autonomous_pulse,
                     target_freq_hz: if freq_changed { Some(freq_hz) } else { None },
                     target_amp: if amp_changed { Some(target_amp) } else { None },
                     continuous_drive: if drive_changed {
@@ -1078,21 +1234,15 @@ impl Voice {
             }
         }
         self.amp_update_pending = false;
+        self.pulse_update_pending = false;
     }
 
     fn prune_tracked_render_notes(&mut self, cmds: &[ToneCmd]) {
-        let off_tone_ids: Vec<ToneId> = cmds
-            .iter()
-            .filter_map(|cmd| match cmd {
-                ToneCmd::Off { tone_id, .. } => Some(*tone_id),
-                _ => None,
-            })
-            .collect();
-        if off_tone_ids.is_empty() {
-            return;
-        }
-        self.active_render_notes
-            .retain(|tracked| !off_tone_ids.contains(&tracked.tone_id));
+        self.active_render_notes.retain(|tracked| {
+            !cmds.iter().any(
+                |cmd| matches!(cmd, ToneCmd::Off { tone_id, .. } if *tone_id == tracked.tone_id),
+            )
+        });
     }
 
     fn track_new_render_notes(&mut self, tones: &[ToneSpec]) {
@@ -1642,3 +1792,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "pitch_application_tests.rs"]
+mod pitch_application_tests;

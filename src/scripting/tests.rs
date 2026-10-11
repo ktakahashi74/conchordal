@@ -2750,3 +2750,167 @@ fn microtiming_sets_signed_beat_phase_offset() {
     };
     assert!((spec.microtiming + 0.1).abs() <= 1e-6);
 }
+
+#[test]
+fn rearticulate_final_placement_validates_both_builder_orders() {
+    for timing in [
+        "repeat().pulse(2.0)",
+        "metric()",
+        "entrained()",
+        "cycles(1)",
+    ] {
+        for chain in [
+            format!("sine().seek_consonance().pitch_apply_mode(\"rearticulate\").{timing}"),
+            format!("sine().{timing}.seek_consonance().pitch_apply_mode(\"rearticulate\")"),
+        ] {
+            let err = run_script_err(&format!("place({chain}, line(330.0, 330.0).count(1));"));
+            let message = err.to_string();
+            assert!(message.contains("Gated"), "{message}");
+            assert!(message.contains("rearticulate"));
+            assert!(message.contains("sustain()"));
+            assert!(message.contains("gate_snap"));
+            assert!(message.contains("glide"));
+        }
+    }
+    for script in [
+        "place(sine().seek_consonance().pitch_apply_mode(\"rearticulate\").pulse(2.0).sustain(), line(330.0, 330.0));",
+        "place(sine().sustain().pitch_apply_mode(\"rearticulate\").seek_consonance(), line(330.0, 330.0));",
+        "place(sine().anchor().pulse(2.0).pitch_apply_mode(\"rearticulate\"), at(330.0));",
+        "let p = place(sine().sustain().seek_consonance(), line(330.0, 330.0)); p.pitch_apply_mode(\"rearticulate\"); wait(1.0); p.pitch_apply_mode(\"glide\"); wait(1.0);",
+    ] {
+        run_script(script);
+    }
+}
+
+#[test]
+fn rearticulate_live_error_preserves_spec_pending_patch_and_future_template() {
+    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
+    let engine = ScriptHost::create_engine(ctx.clone());
+    let mut scope = rhai::Scope::new();
+    let _ = engine.eval_with_scope::<Dynamic>(&mut scope, "let p = place(sine().repeat().pulse(2.0).seek_consonance(), line(330.0, 330.0)); p.amp(0.2);").unwrap();
+    let (mode, patch, event_count) = {
+        let state = ctx.lock().unwrap();
+        let population = state.populations.values().next().unwrap();
+        (
+            population.spec.spawn_spec().control.pitch.pitch_apply_mode,
+            population.pending_patch.clone(),
+            state.scenario.events.len(),
+        )
+    };
+    let error = engine
+        .eval_with_scope::<Dynamic>(&mut scope, "p.pitch_apply_mode(\"rearticulate\");")
+        .expect_err("incompatible live designation");
+    assert!(error.to_string().contains("Gated"));
+    let state = ctx.lock().unwrap();
+    let population = state.populations.values().next().unwrap();
+    assert_eq!(
+        population.spec.spawn_spec().control.pitch.pitch_apply_mode,
+        mode
+    );
+    assert_eq!(population.pending_patch, patch);
+    assert_eq!(state.scenario.events.len(), event_count);
+}
+
+#[test]
+fn rearticulate_respawn_inherits_initial_and_live_population_template() {
+    for live in [false, true] {
+        let mode = if live { "glide" } else { "rearticulate" };
+        let update = if live {
+            "p.pitch_apply_mode(\"rearticulate\");"
+        } else {
+            ""
+        };
+        let (scenario, _) = run_script_with_seed(
+            &format!(
+                "let p = create(sine().sustain().seek_consonance().pitch_apply_mode(\"{mode}\").respawn_random().respawn_background_death_rate(10000.0), 1); {update} flush();"
+            ),
+            21,
+        );
+        let mut community = Community::new(Timebase {
+            fs: 48_000.0,
+            hop: 257,
+        });
+        community.set_seed(scenario.seed);
+        let landscape = LandscapeFrame::default();
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            if matches!(
+                action,
+                Action::Spawn { .. }
+                    | Action::SetRespawnPolicy { .. }
+                    | Action::UpdatePopulation { .. }
+            ) {
+                community.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let founder = community.voices[0].id();
+        community.advance(257, 48_000.0, 0, 257.0 / 48_000.0, &landscape);
+        community.cleanup_dead(0, 257.0 / 48_000.0, false, &landscape);
+        assert!(community.voices.iter().any(|v| v.id() != founder));
+        for child in community.voices.iter().filter(|v| v.id() != founder) {
+            assert_eq!(
+                child.effective_control.pitch.pitch_apply_mode,
+                PitchApplyMode::Rearticulate
+            );
+            assert!(child.reports_onset_pitch());
+        }
+    }
+}
+
+#[test]
+fn rearticulate_native_invalid_patch_keeps_voice_and_respawn_template() {
+    let (scenario, _) = run_script_with_seed(
+        "create(sine().repeat().pulse(2.0).seek_consonance().respawn_random().respawn_background_death_rate(10000.0), 1);",
+        21,
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    });
+    community.set_seed(scenario.seed);
+    let landscape = LandscapeFrame::default();
+    for action in scenario.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape, None);
+        }
+    }
+    let patch = ControlUpdate {
+        pitch_apply_mode: Some(PitchApplyMode::Rearticulate),
+        ..Default::default()
+    };
+    let v = &mut community.voices[0];
+    assert!(v.apply_patch(&patch).is_err());
+    assert_eq!(
+        v.base_control.pitch.pitch_apply_mode,
+        PitchApplyMode::GateSnap
+    );
+    assert_eq!(
+        v.effective_control.pitch.pitch_apply_mode,
+        PitchApplyMode::GateSnap
+    );
+    let population_id = v.metadata.population_id;
+    let founder = v.id();
+    community.apply_action(
+        Action::UpdatePopulation {
+            population_id,
+            patch,
+        },
+        &landscape,
+        None,
+    );
+    assert_eq!(
+        community.voices[0].effective_control.pitch.pitch_apply_mode,
+        PitchApplyMode::GateSnap
+    );
+    community.advance(64, 48_000.0, 0, 64.0 / 48_000.0, &landscape);
+    community.cleanup_dead(0, 64.0 / 48_000.0, false, &landscape);
+    assert!(community.voices.iter().any(|v| v.id() != founder));
+    for child in community.voices.iter().filter(|v| v.id() != founder) {
+        assert_eq!(
+            child.effective_control.pitch.pitch_apply_mode,
+            PitchApplyMode::GateSnap
+        );
+    }
+}

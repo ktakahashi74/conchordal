@@ -329,6 +329,7 @@ mod tests {
                 stepped.schedule_update(
                     at,
                     crate::life::phonation_engine::ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: None,
                         target_amp: Some(target),
                         continuous_drive: None,
@@ -463,6 +464,7 @@ mod tests {
                 tone.schedule_update(
                     2100 + id * 8 + step * 400,
                     crate::life::phonation_engine::ToneUpdate {
+                        autonomous_pulse: None,
                         target_freq_hz: None,
                         target_amp: Some(0.1 + step as f32 * 0.1),
                         continuous_drive: None,
@@ -512,6 +514,7 @@ mod tests {
         moving.schedule_update(
             100,
             crate::life::phonation_engine::ToneUpdate {
+                autonomous_pulse: None,
                 target_freq_hz: Some(440.),
                 target_amp: None,
                 continuous_drive: None,

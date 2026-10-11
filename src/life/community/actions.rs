@@ -170,6 +170,14 @@ impl Community {
     ) {
         // Population-wide runtime semantics:
         // updates apply to all current members with matching population_id.
+        if let Some(population) = self.populations.get(&population_id) {
+            let mut proposed = population.template.control.clone();
+            proposed.apply_update(&patch);
+            if let Err(error) = proposed.validate_pitch_application() {
+                warn!("Update: population {population_id} rejected update: {error}");
+                return;
+            }
+        }
         let mut updated = 0usize;
         for voice in self
             .voices

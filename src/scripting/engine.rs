@@ -1202,7 +1202,8 @@ impl ScriptHost {
         let ctx_for_population_pitch_apply_mode = ctx.clone();
         engine.register_fn(
             "pitch_apply_mode",
-            move |handle: PopulationHandle,
+            move |call: NativeCallContext,
+                  handle: PopulationHandle,
                   name: &str|
                   -> Result<PopulationHandle, Box<EvalAltResult>> {
                 let mut ctx = ctx_for_population_pitch_apply_mode
@@ -1219,6 +1220,7 @@ impl ScriptHost {
                 let mode = match lowered.as_str() {
                     "gate_snap" | "gatesnap" | "snap" => PitchApplyMode::GateSnap,
                     "glide" | "gliss" | "glissando" => PitchApplyMode::Glide,
+                    "rearticulate" => PitchApplyMode::Rearticulate,
                     _ => {
                         ctx.warn_population_inactive(handle.id, "pitch_apply_mode");
                         return Ok(handle);
@@ -1226,6 +1228,14 @@ impl ScriptHost {
                 };
                 match population.status {
                     PopulationStatus::Live => {
+                        let mut proposed = population.spec.spawn_spec().control;
+                        proposed.pitch.pitch_apply_mode = mode;
+                        proposed.validate_pitch_application().map_err(|message| {
+                            Box::new(EvalAltResult::ErrorRuntime(
+                                message.into(),
+                                call.call_position(),
+                            ))
+                        })?;
                         population.spec.set_pitch_apply_mode_resolved(mode);
                         population.pending_patch.pitch_apply_mode = Some(mode);
                     }

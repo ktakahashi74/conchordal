@@ -53,7 +53,7 @@ impl From<RenderModulatorStateKind> for ArticulationState {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct AutonomousPulseSpec {
     pub rate_hz: f32,
@@ -144,6 +144,19 @@ impl RenderModulator {
                     sway_rate: sway_rate.max(0.01),
                 })
             }
+        }
+    }
+
+    pub(crate) fn set_autonomous_pulse(&mut self, pulse: Option<AutonomousPulseSpec>) {
+        if let Self::EntrainPulse(modulator) = self {
+            modulator.autonomous_pulse = pulse.map(|pulse| AutonomousPulseRuntime {
+                rate_hz: pulse.rate_hz.max(0.01),
+                phase_0_1: pulse.phase_0_1.rem_euclid(1.0),
+                retrigger: pulse.retrigger,
+                env_open_threshold: pulse.env_open_threshold,
+                mag_threshold: pulse.mag_threshold,
+                alpha_threshold: pulse.alpha_threshold,
+            });
         }
     }
 
@@ -276,6 +289,37 @@ mod tests {
         rhythms.theta.alpha = 0.7;
         rhythms.theta.beta = 0.4;
         rhythms
+    }
+
+    #[test]
+    fn rearticulate_live_pulse_switch_keeps_envelope_state() {
+        let pulse = AutonomousPulseSpec {
+            rate_hz: 2.0,
+            phase_0_1: 0.75,
+            retrigger: true,
+            env_open_threshold: 0.1,
+            mag_threshold: 0.1,
+            alpha_threshold: 0.1,
+        };
+        let mut modulator = RenderModulator::from_spec(RenderModulatorSpec::EntrainPulse {
+            attack_step: 100.0,
+            decay_rate: 10.0,
+            sustain_level: 0.4,
+            initial_state: RenderModulatorStateKind::Decay,
+            initial_env_level: 0.6,
+            alpha_gain: 0.5,
+            beta_gain: 0.25,
+            autonomous_pulse: Some(pulse),
+        });
+        for next in [None, Some(pulse)] {
+            modulator.set_autonomous_pulse(next);
+            let RenderModulator::EntrainPulse(core) = &modulator else {
+                unreachable!()
+            };
+            assert_eq!(core.state, ArticulationState::Decay);
+            assert_eq!(core.env_level.to_bits(), 0.6f32.to_bits());
+            assert_eq!(core.autonomous_pulse.is_some(), next.is_some());
+        }
     }
 
     #[test]

@@ -69,6 +69,7 @@ mod tests {
                     tone.schedule_update(
                         512,
                         ToneUpdate {
+                            autonomous_pulse: None,
                             target_freq_hz: None,
                             target_amp: Some(target),
                             continuous_drive: None,
@@ -166,6 +167,7 @@ mod tests {
                     tone.schedule_update(
                         100000,
                         ToneUpdate {
+                            autonomous_pulse: None,
                             target_freq_hz: Some(440.),
                             target_amp: None,
                             continuous_drive: None,

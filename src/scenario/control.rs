@@ -21,6 +21,22 @@ pub struct VoiceControl {
 }
 
 impl VoiceControl {
+    pub(crate) fn validate_pitch_application(&self) -> Result<(), String> {
+        if self.pitch.mode == PitchMode::Free
+            && self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
+            && !(matches!(
+                self.phonation.spec.timing,
+                crate::scenario::PhonationTiming::Once
+            ) && matches!(
+                self.phonation.spec.duration,
+                crate::scenario::DurationSpec::WhileAlive
+            ))
+        {
+            return Err(r#"free-pitch Gated phonation is incompatible with pitch_apply_mode("rearticulate"); use Hold with sustain(), or pitch_apply_mode("gate_snap") or pitch_apply_mode("glide")"#.into());
+        }
+        Ok(())
+    }
+
     #[inline]
     pub fn set_amp_clamped(&mut self, amp: f32) {
         self.body.amp = amp.clamp(0.0, 1.0);
@@ -192,6 +208,7 @@ pub enum PitchApplyMode {
     #[default]
     GateSnap,
     Glide,
+    Rearticulate,
 }
 
 #[derive(Debug, Clone)]

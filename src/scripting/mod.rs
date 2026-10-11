@@ -427,9 +427,10 @@ impl PopulationSpec {
         let mode = match lowered.as_str() {
             "gate_snap" | "gatesnap" | "snap" => PitchApplyMode::GateSnap,
             "glide" | "gliss" | "glissando" => PitchApplyMode::Glide,
+            "rearticulate" => PitchApplyMode::Rearticulate,
             other => {
                 warn!(
-                    "pitch_apply_mode() expects 'gate_snap' or 'glide', got '{}'",
+                    "pitch_apply_mode() expects 'gate_snap', 'glide' or 'rearticulate', got '{}'",
                     other
                 );
                 return;
@@ -1449,6 +1450,12 @@ impl ScriptContext {
                 position,
             )));
         }
+        population_spec
+            .spec
+            .spawn_spec()
+            .control
+            .validate_pitch_application()
+            .map_err(|message| Box::new(EvalAltResult::ErrorRuntime(message.into(), position)))?;
         let id = self.next_population_id;
         self.next_population_id = self.next_population_id.wrapping_add(1);
         let mut ids = Vec::with_capacity(count);

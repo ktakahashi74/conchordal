@@ -86,6 +86,12 @@ impl Voice {
         out: &mut PhonationBatch,
     ) {
         let deferred = self.defers_participation_pitch();
+        // Release drops out-of-hop control samples before either sound-production path.
+        self.participation_pitch_steps.retain(|step| {
+            let in_hop = step.at >= ctx.now_tick && step.at < ctx.frame_end;
+            debug_assert!(in_hop);
+            in_hop
+        });
         let previous_tone = self.active_render_notes.last().map(|n| n.tone_id);
         out.body_opportunity = self.phonation_engine.clock.opportunity(ctx);
         out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
@@ -99,7 +105,6 @@ impl Voice {
         let mut cursor = ctx.now_tick;
         if state.is_alive {
             for step in &self.participation_pitch_steps {
-                assert!(step.at >= ctx.now_tick && step.at < ctx.frame_end);
                 if cursor < step.at {
                     let segment = CoreTickCtx {
                         now_tick: cursor,
@@ -1350,6 +1355,114 @@ mod tests {
         .unwrap();
         (v, tb, r, out)
     }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn hop_fallback_drops_unmatched_and_gridless_adoptions() {
+        for missing_grid in [false, true] {
+            let (mut v, tb, r, mut out) = bounded_fixture(false);
+            bounded_emit(&mut v, &tb, &r, 0, &mut out);
+            let pitch = v.body.base_freq_hz();
+            let pending = Some(440.0f32.log2());
+            v.pending_participation_pitch = pending;
+            out.clear();
+            if missing_grid {
+                adoption(&mut v, 512, 550.0);
+            } else {
+                v.rearticulations.push(Rearticulation {
+                    at: 1024,
+                    pitch_log2: 550.0f32.log2(),
+                });
+            }
+            v.emit_bounded_participation(
+                &CoreState {
+                    is_alive: true,
+                    onset_allowed: true,
+                },
+                0.8,
+                0.1,
+                512,
+                (!missing_grid).then_some(bounded_space()),
+                &mut out,
+            );
+            assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
+            assert_eq!(v.pending_participation_pitch, pending);
+            assert!(out.tones.is_empty() && out.onsets.is_empty());
+            assert!(v.rearticulations.is_empty() && v.participation_pitch_steps.is_empty());
+        }
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn hop_fallback_skips_untimed_control_and_grows_undersized_buffer() {
+        let (mut v, _, r, _) = bounded_fixture(false);
+        v.participation_pitch_steps = Vec::new();
+        v.control_tick = None;
+        v.update_articulation_autonomous(64.0 / 48000.0, &r);
+        assert!(v.participation_pitch_steps.is_empty());
+        v.set_control_tick(512);
+        v.update_articulation_autonomous(64.0 / 48000.0, &r);
+        assert_eq!(v.participation_pitch_steps.len(), 1);
+        assert_eq!(v.participation_pitch_steps[0].at, 512);
+        assert!(v.body.base_freq_hz().is_finite());
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn hop_fallback_drops_out_of_hop_samples_and_restarts() {
+        for participating in [false, true] {
+            let (mut v, tb, r, mut out) = bounded_fixture(false);
+            bounded_emit(&mut v, &tb, &r, 0, &mut out);
+            let pitch = v.body.base_freq_hz();
+            v.sustain_participation = participating;
+            v.phonation_engine.sustain_participation = participating;
+            adoption(&mut v, 511, 550.0);
+            adoption(&mut v, 1024, 660.0);
+            bounded_emit(&mut v, &tb, &r, 512, &mut out);
+            assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
+            assert!(out.tones.is_empty() && out.onsets.is_empty());
+            assert!(v.rearticulations.is_empty());
+            if participating {
+                assert!(v.participation_pitch_steps.is_empty());
+            }
+            bounded_emit(&mut v, &tb, &r, 1024, &mut out);
+            assert!(out.tones.is_empty(), "discarded requests must not replay");
+        }
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn hop_fallback_gridless_shape_and_hold_restart_keep_existing_sound() {
+        let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.75);
+        bounded_emit(&mut v, &tb, &r, 0, &mut out);
+        let pitch = v.body.base_freq_hz();
+        adoption(&mut v, 512, 335.0);
+        emit(&mut v, &tb, &r, 512, &mut out);
+        assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
+        assert!(out.tones.is_empty());
+        v.pending_participation_pitch = Some(440.0f32.log2());
+        v.phonation_engine.mode = PhonationMode::Gated;
+        v.phonation_engine.rearticulate_hold(
+            &CoreTickCtx {
+                now_tick: 1024,
+                frame_end: 1536,
+                fs: tb.fs,
+                rhythms: r,
+            },
+            &CoreState {
+                is_alive: true,
+                onset_allowed: true,
+            },
+            &mut out.cmds,
+            &mut v.phonation_scratch.events,
+            &mut out.onsets,
+        );
+        assert_eq!(v.pending_participation_pitch, Some(440.0f32.log2()));
+        assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
+        assert!(out.tones.is_empty() && out.onsets.is_empty());
+        assert!(v.phonation_engine.has_active_notes());
+    }
+
     #[test]
     fn bounded_small_glides_without_attack_and_large_freezes() {
         let (mut v, tb, r, mut out) = bounded_fixture(false);

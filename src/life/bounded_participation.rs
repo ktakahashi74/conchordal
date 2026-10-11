@@ -59,14 +59,16 @@ impl Voice {
                     && self.rearticulations[m_index].at <= step.at
                 {
                     let m = self.rearticulations[m_index];
+                    debug_assert!(space.is_some(), "pitch adoption needs the current grid");
+                    // Release drops an adoption without a grid and keeps the processed pitch.
+                    let Some(space) = space else {
+                        m_index += 1;
+                        continue;
+                    };
                     let reference = self.last_onset_pitch_log2.unwrap_or(pitch);
                     self.adoption_application = select_pitch_application(
                         &self.effective_control.pitch,
-                        Some((
-                            space.expect("pitch adoption needs the current grid"),
-                            reference,
-                            m.pitch_log2,
-                        )),
+                        Some((space, reference, m.pitch_log2)),
                     );
                     if self.adoption_application == PitchApplyMode::Glide {
                         self.pending_participation_pitch = None;
@@ -122,7 +124,8 @@ impl Voice {
                 self.emit_bounded_on(on_index, &mut pitch, target_amp, out);
                 on_index += 1;
             }
-            assert_eq!(
+            // Release keeps the processed pitch; the hop cleanup drops unmatched adoptions.
+            debug_assert_eq!(
                 m_index,
                 self.rearticulations.len(),
                 "each adoption has a control sample"

@@ -737,16 +737,21 @@ impl Voice {
                 && !self.release_pending
                 && !self.remove_pending
             {
-                assert!(
+                // Release grows the buffer if the birth capacity is insufficient.
+                debug_assert!(
                     self.rearticulations.len() < self.rearticulations.capacity(),
                     "control hop capacity must be configured at birth"
                 );
-                let at = self
-                    .control_tick
-                    .expect("control must timestamp pitch adoption");
-                let pitch_log2 = self.target_pitch_log2();
-                self.rearticulations.push(Rearticulation { at, pitch_log2 });
-                tracing::debug!(target: "pitch::adoption", id = self.id, at, pitch_log2);
+                debug_assert!(
+                    self.control_tick.is_some(),
+                    "control must timestamp pitch adoption"
+                );
+                // Release drops an untimed adoption instead of inventing its sample.
+                if let Some(at) = self.control_tick {
+                    let pitch_log2 = self.target_pitch_log2();
+                    self.rearticulations.push(Rearticulation { at, pitch_log2 });
+                    tracing::debug!(target: "pitch::adoption", id = self.id, at, pitch_log2);
+                }
             }
         }
     }
@@ -952,15 +957,20 @@ impl Voice {
         }
         let current_freq = self.body.base_freq_hz().max(1.0);
         if self.sustain_participation {
-            assert!(
+            // Release grows the buffer if the birth capacity is insufficient.
+            debug_assert!(
                 self.participation_pitch_steps.len() < self.participation_pitch_steps.capacity()
             );
-            self.participation_pitch_steps.push(ParticipationPitchStep {
-                at: self.control_tick.expect("control sample"),
-                before_log2: current_freq.log2(),
-                target_log2: self.target_pitch_log2(),
-                dt: dt_sec,
-            });
+            debug_assert!(self.control_tick.is_some(), "control sample");
+            // Release skips an untimed control sample and continues the control update.
+            if let Some(at) = self.control_tick {
+                self.participation_pitch_steps.push(ParticipationPitchStep {
+                    at,
+                    before_log2: current_freq.log2(),
+                    target_log2: self.target_pitch_log2(),
+                    dt: dt_sec,
+                });
+            }
         }
         let current_pitch_log2 = current_freq.log2();
         let target_pitch_log2 = self.target_pitch_log2();
@@ -1215,10 +1225,15 @@ impl Voice {
         );
         if self.reports_onset_pitch() {
             for request in &self.rearticulations {
-                assert!(
-                    request.at >= now && request.at < frame_end,
+                let in_hop = request.at >= now && request.at < frame_end;
+                debug_assert!(
+                    in_hop,
                     "rearticulation timestamp must belong to the next output hop"
                 );
+                // Release drops requests outside this hop without replaying them later.
+                if !in_hop {
+                    continue;
+                }
                 let request_ctx = CoreTickCtx {
                     now_tick: request.at,
                     ..ctx

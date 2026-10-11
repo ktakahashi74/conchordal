@@ -3,10 +3,19 @@ use crate::life::shape_policy::Shape;
 
 impl Voice {
     fn articulation_persistence_clear_before(&mut self, at: Tick) {
+        // Release leaves the pending pitch unchanged without the private policy.
+        debug_assert!(matches!(
+            self.phonation_engine.clock,
+            PhonationClock::Participation(_)
+        ));
         let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock else {
-            unreachable!()
+            return;
         };
-        if clock.shape.as_mut().unwrap().clear_before(at) {
+        debug_assert!(clock.shape.is_some());
+        let Some(shape) = clock.shape.as_mut() else {
+            return;
+        };
+        if shape.clear_before(at) {
             self.pending_participation_pitch = None;
         }
     }
@@ -26,10 +35,18 @@ impl Voice {
             *index += 1;
         }
         self.articulation_persistence_clear_before(until);
+        // Release keeps the emitted tones when the private policy is unavailable.
+        debug_assert!(matches!(
+            self.phonation_engine.clock,
+            PhonationClock::Participation(_)
+        ));
         let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock else {
-            unreachable!()
+            return;
         };
-        clock.shape.as_mut().unwrap().finish_segment();
+        debug_assert!(clock.shape.is_some());
+        if let Some(shape) = clock.shape.as_mut() {
+            shape.finish_segment();
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -99,24 +116,36 @@ impl Voice {
                     && self.rearticulations[m_index].at <= step.at
                 {
                     let m = self.rearticulations[m_index];
+                    debug_assert!(space.is_some(), "adoption needs the current grid");
+                    // Release drops an adoption without a grid and keeps the processed pitch.
+                    let Some(space) = space else {
+                        m_index += 1;
+                        continue;
+                    };
                     let reference = self.last_onset_pitch_log2.unwrap_or(pitch);
                     let base = select_pitch_application(
                         &self.effective_control.pitch,
-                        Some((
-                            space.expect("adoption needs the current grid"),
-                            reference,
-                            m.pitch_log2,
-                        )),
+                        Some((space, reference, m.pitch_log2)),
                     );
+                    // Release drops this adoption if its private policy is unavailable.
+                    debug_assert!(matches!(
+                        self.phonation_engine.clock,
+                        PhonationClock::Participation(_)
+                    ));
                     let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
                     else {
-                        unreachable!()
+                        m_index += 1;
+                        continue;
                     };
                     let locked = clock
                         .policy
                         .as_ref()
                         .is_some_and(|p| p.articulation_persistence_planned());
-                    let shape = clock.shape.as_mut().unwrap();
+                    debug_assert!(clock.shape.is_some());
+                    let Some(shape) = clock.shape.as_mut() else {
+                        m_index += 1;
+                        continue;
+                    };
                     shape.propose(
                         if base == PitchApplyMode::Glide {
                             Shape::Connect
@@ -248,5 +277,62 @@ impl Voice {
         self.phonation_scratch.events.clear();
         self.rearticulations.clear();
         self.participation_pitch_steps.clear();
+    }
+}
+
+#[cfg(all(test, not(debug_assertions)))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hop_fallback_missing_private_policy_keeps_pending_pitch_and_sound() {
+        let mut v = Voice::spawn_from_control(
+            VoiceControl::default(),
+            ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+            2,
+            0,
+            VoiceMetadata::default(),
+            48000.0,
+            None,
+            21,
+        );
+        let pending = Some(440.0f32.log2());
+        v.pending_participation_pitch = pending;
+        let pitch = v.body.base_freq_hz().log2();
+        let mut processed_pitch = pitch;
+        let mut index = 0;
+        let mut out = PhonationBatch::default();
+        for participation in [false, true] {
+            v.phonation_engine.clock = if participation {
+                PhonationEngine::from_config(
+                    &crate::scenario::PhonationConfig {
+                        clock: crate::scenario::PhonationClockConfig::Participation {
+                            coupling: 0.8,
+                            base_rate_hz: 2.0,
+                            flow_depth: 0.0,
+                        },
+                        ..Default::default()
+                    },
+                    21,
+                )
+                .clock
+            } else {
+                PhonationClock::Custom(Box::new(|_, _| {}))
+            };
+            v.articulation_persistence_clear_before(512);
+            v.articulation_persistence_drain_ons(
+                &mut index,
+                &mut processed_pitch,
+                0.1,
+                512,
+                &mut out,
+            );
+            assert_eq!(v.pending_participation_pitch, pending);
+            assert_eq!(processed_pitch.to_bits(), pitch.to_bits());
+            assert!(out.tones.is_empty() && out.onsets.is_empty() && out.cmds.is_empty());
+        }
     }
 }

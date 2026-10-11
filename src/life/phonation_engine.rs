@@ -1592,7 +1592,11 @@ impl PhonationEngine {
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
-        assert!(matches!(self.mode, PhonationMode::Hold));
+        debug_assert!(matches!(self.mode, PhonationMode::Hold));
+        // Release ignores a held-tone restart on another phonation mode.
+        if !matches!(self.mode, PhonationMode::Hold) {
+            return;
+        }
         if !state.is_alive || !state.onset_allowed {
             return;
         }
@@ -1629,7 +1633,11 @@ impl PhonationEngine {
             c.initial_hold_on = Some(ctx.now_tick);
         }
         if onsets.len() > before && self.rest.is_some() {
-            let tone_id = self.hold.tone_id.unwrap();
+            debug_assert!(self.hold.tone_id.is_some());
+            // Release skips duration scheduling when no held tone can receive its Off.
+            let Some(tone_id) = self.hold.tone_id else {
+                return;
+            };
             let onset = OnsetContext {
                 tone_id,
                 tick: ctx.now_tick,

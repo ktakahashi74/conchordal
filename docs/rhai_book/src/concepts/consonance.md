@@ -239,6 +239,11 @@ boundary does not filter clock attacks. Zero or omission uses the GateSnap behav
 including zero-distance adoptions. See [Rhythm](rhythm.md#sustained-sound-with-participation-opportunities)
 for mode switching.
 
+The positive-boundary sustained-participation form also accepts initial-only
+`articulation_persistence(p)` to retain Base/Connect across existing events.
+This changes policy inertia, not the movement boundary or a prescribed legato
+proportion. See [Retaining an articulation policy](rhythm.md#retaining-an-articulation-policy).
+
 ### Cutting notes and leaving a rest
 
 For sustained participation, `rest()` adds a finite end to every sounded note

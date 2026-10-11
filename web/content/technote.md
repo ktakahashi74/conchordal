@@ -524,6 +524,31 @@ Neither mode reconstructs the audio of all other sources before spectral analysi
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 
+### Retaining the Voice's articulation policy
+
+For free-pitch sustained participation with Rearticulate and a positive movement
+boundary, `articulation_persistence(p)` adds a private Base/Connect policy. Base
+uses the existing boundary and participation rules. While a Tone lives, Connect
+slides all adopted targets and intentionally withholds sounded opportunities,
+without a new Tone, onset metabolism or onset-context learning. Small adoptions
+and cost skips propose Connect; large adoptions and newly selected sounded
+opportunities propose Base. For `0 < p < 1`, an opposing proposal retains the
+current policy with probability `p`; a matching proposal does not draw. Each
+planned opportunity keeps its decision until execution, independently of waiting
+hops. Entering Connect cancels pending pitch without changing last-onset memory;
+cancelled adoptions never replay and policy changes alone never sound.
+
+The parameter is initial-only and inherited through templates; replacements
+start in Base with fresh performance state and a dedicated random stream.
+Default zero and endpoint one bypass this state and retain the existing path.
+Live mode changes reset Base; the same mode and boundary-only changes preserve
+it, and a zero boundary suspends its path. Finite Off, rest, tails, gaps and
+lifecycle constraints take priority, and a legal onset without a living Tone
+cannot be vetoed. Retention acts on both policies, so increasing `p` need not
+monotonically increase Connect time or reduce attacks. Its duration follows
+existing events, not seconds or beats; it is inertia without inferred cadence,
+contour, rest or phrase boundaries.
+
 ## 5.4 Onset Timing: Synchronization and Participation
 
 `RhythmRelation` distinguishes synchronized timing (`metric()`) from acoustic

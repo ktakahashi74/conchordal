@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5c4f3d77.js";
+            window.path_to_searchindex_js = "../searchindex-dc23cac0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -333,6 +333,44 @@ release(p);
 <code>cycles()</code>や<code>adaptive_duration()</code>で有限の音長を指定すると、持続する形を置き換えます。
 <code>rest()</code>があれば音長と持続＋参加を独立に保ち、音を離し、実際の余韻の終了から間を
 数えます。<a href="consonance.html#音を切って間を置く">音を切って間を置く</a>を参照してください。</p>
+<h2 id="発音の方針を保つ"><a class="header" href="#発音の方針を保つ">発音の方針を保つ</a></h2>
+<p>自由音高の持続＋参加に<code>articulation_persistence(p)</code>を添えると、Voiceが音高の採用や
+参加の機会をまたいで、発音の方針を保ちます。対象は、
+<code>sustain()</code>と<code>entrained()</code>／<code>flow()</code>を明示し、<code>pitch_apply_mode("rearticulate")</code>と
+正の<code>rearticulate_above(cents)</code>を指定した形です。配置前の指定で、演奏中の
+Populationには呼べません。</p>
+<pre><code class="language-rhai">let p = place(
+    harmonic().sustain().entrained().seek_consonance()
+        .pitch_apply_mode("rearticulate").rearticulate_above(50)
+        .articulation_persistence(0.75),
+    consonance(220.0, 660.0).count(1)
+);
+wait(3.0);
+release(p);
+</code></pre>
+<p>この例の境界と保持確率は比較用の値で、推奨値ではありません。Voiceは、既存の境界と
+参加の規則に従う<strong>Base</strong>から始まります。もう一つの<strong>Connect</strong>では、Toneが生きている間、
+大小どちらの採用でも滑り、参加が鳴らすと選んだ機会の発音を控えて、現在の音を伸ばします。
+これは費用による見送りとは別の意図による抑止です。新しいTone、発音による回復、
+発音由来の参加文脈の学習は起こしません。</p>
+<p>小さい採用と費用による見送りはConnect、大きい採用と新しく鳴らすと選んだ機会はBaseを
+提案します。<code>0 &lt; p &lt; 1</code>では、現在と反対の提案だけで専用の乱数を一回引き、確率<code>p</code>で
+方針を保ち、<code>1-p</code>で替えます。同じ提案や待ちのhopでは引き直しません。既に決めた
+将来の機会は、実行まで同じ判断を使います。Connectへ替わる時は旧保留を取り消し、
+最後の実発音音高を保ちます。取り消した採用を後で再演しません。</p>
+<p>pは<strong>つなぐ割合ではなく、方針の続きやすさ</strong>です。保持はBaseにも働くため、pを
+上げてもConnectの時間や発音数は単調には動きません。長さは既存の出来事の回数で決まり、
+秒や拍の数を指定しません。この保持は惰性であり、聴こえた終止、輪郭、間とは結び付かず、
+フレーズの境界を推定する働きもありません。</p>
+<p>既定の0と端の1は、私有状態や追加の乱数を通らず既存の経路を使います。1では出生時の
+Baseのまま替わりません。有限値は0〜1へ丸め、正の無限大は1、負の無限大とNaNは0に
+します。対象外の最終指定は警告して無視します。書く順には依存しません。再生成では
+templateのpだけを継ぎ、方針、乱数の途中、保留、最後の発音音高を継がずBaseから
+始まります。演奏中のmode変更はBaseへ戻します。同じmodeの再指定と境界だけの変更は
+保持を続け、境界0の間は私有経路を休止します。</p>
+<p>有限音のOff、<code>rest()</code>、余韻終了、間、release、死亡、removeは保持より優先します。
+Toneが無ければ、Connectも合法な初回発音や休止後の復帰を塞ぎません。方針は個々の
+発音や休止をまたぎますが、一音ごとに伸ばすか切るかを選ぶ働きではありません。</p>
 <h2 id="明示的なwhendurationtier-2"><a class="header" href="#明示的なwhendurationtier-2">明示的なwhen/duration（Tier 2）</a></h2>
 <p>presetの下には<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、<code>cycles(n)</code>、
 <code>adaptive_duration()</code>があり、<code>duration_range</code>、<code>duration_curve</code>、<code>shorten_on_drop</code>で

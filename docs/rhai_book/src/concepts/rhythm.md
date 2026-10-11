@@ -218,6 +218,59 @@ finite note length and sustained participation are retained independently, and
 each note releases before a pause measured from actual tail completion. See
 [Cutting notes and leaving a rest](consonance.md#cutting-notes-and-leaving-a-rest).
 
+## Retaining an articulation policy
+
+Within free-pitch sustained participation, `articulation_persistence(p)` lets a Voice
+keep a private articulation policy across several pitch adoptions and participation
+opportunities. It requires `sustain()` plus `entrained()` or `flow()`,
+`pitch_apply_mode("rearticulate")`, and a positive `rearticulate_above(cents)`.
+The value is set before placement; it is not a live Population method.
+
+```rhai
+let p = place(
+    harmonic().sustain().entrained().seek_consonance()
+        .pitch_apply_mode("rearticulate").rearticulate_above(50)
+        .articulation_persistence(0.75),
+    consonance(220.0, 660.0).count(1)
+);
+wait(3.0);
+release(p);
+```
+
+The boundary and persistence in this example are comparison inputs, not recommended
+values. The private policy starts in **Base**, using the existing boundary and
+participation rules. **Connect** slides adopted targets of either size while a Tone
+lives, and intentionally withholds opportunities that the participation policy
+selected to sound. It extends the current Tone rather than recording a cost skip.
+It creates no new Tone, onset recharge, or onset-derived context learning.
+
+Small adoptions and cost skips propose Connect; large adoptions and newly selected
+sounded opportunities propose Base. For `0 < p < 1`, a proposal against the current
+policy keeps it with probability `p` and changes it with probability `1-p`.
+Matching proposals and waiting hops do not draw again. A future planned opportunity
+keeps its decision until execution. Entering Connect cancels pending pitch; the
+last actual onset remains the reference, and cancelled adoptions never replay.
+
+Persistence is **policy inertia, not a legato proportion**. It acts on Base as well
+as Connect. Raising `p` need not increase Connect time or decrease the number of
+attacks monotonically. Duration follows existing events, not a fixed number of
+seconds or beats. These retained intervals are not tied to audible cadence,
+contour, or rests, and do not infer phrase boundaries.
+
+The default `0` and endpoint `1` both use the existing path without a private
+policy or extra random draws; at `1`, birth in Base never changes. Finite inputs
+clamp to `[0,1]`; positive infinity becomes `1`, negative infinity and NaN become
+`0`. An unsupported final Voice specification warns and ignores the modifier,
+regardless of builder order. Replacements inherit the template value and start
+in Base with fresh random and performance state. A live mode change resets Base;
+repeating the same mode or changing only the boundary retains the policy.
+While the boundary is zero, the private path is suspended.
+
+Finite Off, `rest()`, tail completion, gaps, release, death and removal take priority.
+When no Tone lives, Connect allows the next legal onset, including the initial
+onset and return from a rest. The policy survives individual notes and rests; it
+does not decide whether each note should sustain or release.
+
 ## Explicit when/duration (Tier 2)
 
 Below the presets sit explicit controls: `once()`, `pulse(rate_hz)`,

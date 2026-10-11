@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-46873a09.js";
+            window.path_to_searchindex_js = "../searchindex-850ca147.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -369,6 +369,50 @@ existing last-write-wins rule. Without <code>rest()</code>, a later finite durat
 finite note length and sustained participation are retained independently, and
 each note releases before a pause measured from actual tail completion. See
 <a href="consonance.html#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a>.</p>
+<h2 id="retaining-an-articulation-policy"><a class="header" href="#retaining-an-articulation-policy">Retaining an articulation policy</a></h2>
+<p>Within free-pitch sustained participation, <code>articulation_persistence(p)</code> lets a Voice
+keep a private articulation policy across several pitch adoptions and participation
+opportunities. It requires <code>sustain()</code> plus <code>entrained()</code> or <code>flow()</code>,
+<code>pitch_apply_mode("rearticulate")</code>, and a positive <code>rearticulate_above(cents)</code>.
+The value is set before placement; it is not a live Population method.</p>
+<pre><code class="language-rhai">let p = place(
+    harmonic().sustain().entrained().seek_consonance()
+        .pitch_apply_mode("rearticulate").rearticulate_above(50)
+        .articulation_persistence(0.75),
+    consonance(220.0, 660.0).count(1)
+);
+wait(3.0);
+release(p);
+</code></pre>
+<p>The boundary and persistence in this example are comparison inputs, not recommended
+values. The private policy starts in <strong>Base</strong>, using the existing boundary and
+participation rules. <strong>Connect</strong> slides adopted targets of either size while a Tone
+lives, and intentionally withholds opportunities that the participation policy
+selected to sound. It extends the current Tone rather than recording a cost skip.
+It creates no new Tone, onset recharge, or onset-derived context learning.</p>
+<p>Small adoptions and cost skips propose Connect; large adoptions and newly selected
+sounded opportunities propose Base. For <code>0 &lt; p &lt; 1</code>, a proposal against the current
+policy keeps it with probability <code>p</code> and changes it with probability <code>1-p</code>.
+Matching proposals and waiting hops do not draw again. A future planned opportunity
+keeps its decision until execution. Entering Connect cancels pending pitch; the
+last actual onset remains the reference, and cancelled adoptions never replay.</p>
+<p>Persistence is <strong>policy inertia, not a legato proportion</strong>. It acts on Base as well
+as Connect. Raising <code>p</code> need not increase Connect time or decrease the number of
+attacks monotonically. Duration follows existing events, not a fixed number of
+seconds or beats. These retained intervals are not tied to audible cadence,
+contour, or rests, and do not infer phrase boundaries.</p>
+<p>The default <code>0</code> and endpoint <code>1</code> both use the existing path without a private
+policy or extra random draws; at <code>1</code>, birth in Base never changes. Finite inputs
+clamp to <code>[0,1]</code>; positive infinity becomes <code>1</code>, negative infinity and NaN become
+<code>0</code>. An unsupported final Voice specification warns and ignores the modifier,
+regardless of builder order. Replacements inherit the template value and start
+in Base with fresh random and performance state. A live mode change resets Base;
+repeating the same mode or changing only the boundary retains the policy.
+While the boundary is zero, the private path is suspended.</p>
+<p>Finite Off, <code>rest()</code>, tail completion, gaps, release, death and removal take priority.
+When no Tone lives, Connect allows the next legal onset, including the initial
+onset and return from a rest. The policy survives individual notes and rests; it
+does not decide whether each note should sustain or release.</p>
 <h2 id="explicit-whenduration-tier-2"><a class="header" href="#explicit-whenduration-tier-2">Explicit when/duration (Tier 2)</a></h2>
 <p>Below the presets sit explicit controls: <code>once()</code>, <code>pulse(rate_hz)</code>,
 <code>while_alive()</code>, <code>cycles(n)</code>, and <code>adaptive_duration()</code> (with

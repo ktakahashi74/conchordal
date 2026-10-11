@@ -7557,6 +7557,76 @@ outside this evidence. No new auditory principle or recommended boundary is
 claimed. Machine-local sources: `A-6/report.md`, `registration.md`, `source.patch`,
 `V-5/report.md`, and `V-6/brief.md` / `report.md`.
 
+<a id="articulation-policy-persistence-20261011"></a>
+
+### 9.3.74 Private articulation-policy persistence
+
+**Requirement, correction and adoption (2026-10-11).** The final requirement is
+phrase-level choice by both composer and Voice, mixing legato, rearticulation and
+repeated pitch. A-7 identified the missing production-side state: retaining an
+articulation policy across several adoptions and opportunities. Shared habituation,
+private adaptation, participation memory and acoustic histories already existed.
+The four-label median run length of one in A-6 partly resulted from interleaving
+adoption and opportunity events. In the onset-only sequence, 7 of 20 individual
+conditions exceeded the shuffled p95 for adjacent agreement. **The orchestrator's
+claim to the author that shapes mix independently per note was overstated.** This
+corrects that reading of §9.3.73's earlier acquisition, without changing its saved
+results or treating existing runs as recognized phrases.
+
+A-7 separated (a) composer section switches, (b) modulation of the existing boundary
+by slow state, and (c) a privately retained Base/Connect policy. The orchestrator's
+"from one gap to the next" idea did not establish a multi-note phrase: finite note,
+tail and Gap ordinarily delimit one Tone. The author adopted (c) for external
+prototyping, then chose to include A-8's shape at about 19:17. Naming, scope, default,
+inheritance and live handling follow the orchestrator's unchanged recommendations:
+`articulation_persistence(p)`, default zero, initial-only, and the minimal free-pitch
+sustain plus entrained/flow plus Rearticulate plus positive-boundary scope.
+
+**A-8 evidence and connection correction.** The repaired external prototype used
+existing one-/two-Voice, seed-21, J50, 96-second inputs, with comparison p values
+0/0.5/0.75/0.875/1. They are neither recommendations nor a calibrated default.
+For one Voice, middle-p onset counts were 86/74/76 and Connect residency about
+41.1/39.5/35.1%; retention acts on Base too and is not a legato-proportion control.
+Mixed event rates and the feedback loop change the retained intervals. The fixed
+Base private-path control exposed two missing post-release prediction rows in the
+two-Voice case, despite identical WAVs. The prototype mistakenly ticked a stopped
+Voice's engine. The repair retains the existing stopped behavior; repaired controls
+matched all meaningful native rows including post-release and WAV bytes. Endpoint
+bypass alone could not test this connection.
+
+**Implemented scope.** Base uses the existing boundary and participation; Connect
+slides all adoptions while a Tone lives and intentionally withholds sounded
+opportunities. Small adoptions/cost skips propose Connect, large adoptions/new
+sounded opportunities propose Base. Only an opposing proposal in `0 < p < 1` draws
+from a dedicated individual stream: retain with p, switch with 1-p. Planned decisions
+are frozen until execution; no waiting-hop trials or additional clock are added.
+Connect cancels pending pitch, retains the last actual onset and never replays
+cancelled adoptions. Intentional withholding has no Tone, onset metabolism or onset
+context learning and is separate from cost skip. The original candidate, cost,
+boundary and skip rules remain. p0/p1 allocate no private policy and retain the
+original path. Existing sanitize01 handles values; unsupported final specs warn
+and ignore the parameter. Order-independent place/create share one generation point.
+
+Templates inherit p; replacements start in Base without parental RNG, policy,
+pending decisions or last-onset memory. Live mode changes reset Base; the same
+mode or boundary-only updates retain it, with the private path suspended at zero
+boundary. Finite Off, rest, tails, gaps and lifecycle constraints take priority.
+A legal onset without a living Tone remains possible. Production has no prototype
+environment controls, policy measurement log/state or new per-hop allocation.
+
+**Validation scope and remaining work.** V-7 records focused state/order/value/
+inheritance/live/rest/lifecycle tests, fixed Base with full one-/two-Voice audio and
+post-release native reports, repeatability, all three bodies and both renderers,
+warmed additional-allocation checks, feature-free full tests, default études and
+saved main-scene comparisons. Listening files and private-policy residency belong
+to bounded offline acquisition, not author audition or arbitrary-load real-time
+acceptance. Retention is inertia measured by existing events, not seconds or beats;
+it is not tied to heard cadence, contour or rests. Per-note sustain/release choice,
+phrase-boundary recognition and learned intention weights remain absent. This does
+not complete the author's final phrase-level requirement or solve the P-series
+learned timing rejection. Sources: machine-local `A-7/report.md` §8, revised
+`A-8/report.md` §3.1, `V-7/brief.md` and `report.md`.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

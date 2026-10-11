@@ -27,6 +27,11 @@ fn amp(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// Hold the voice at its pitch: an anchored voice never moves.
 fn anchor(arg0: PopulationSpec) -> PopulationSpec;
 
+/// Retain a Voice's private articulation policy across pitch adoptions and participation opportunities.
+fn articulation_persistence(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
+/// Retain a Voice's private articulation policy across pitch adoptions and participation opportunities.
+fn articulation_persistence(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
+
 /// Place at a fixed frequency in Hz.
 fn at(arg0: f64) -> Placement;
 /// Place at a fixed frequency in Hz.

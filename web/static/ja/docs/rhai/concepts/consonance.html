@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5c4f3d77.js";
+            window.path_to_searchindex_js = "../searchindex-dc23cac0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -354,6 +354,9 @@ release(voices);
 既に始まった滑りは続きます。同じsampleでは採用を先に処理し、採用時刻の発音候補を
 追加しません。境界で時計の発音を間引きません。境界の省略と0はGateSnapと同じ形で、
 距離0の採用も保留します。演奏中の切り替えは<a href="rhythm.html">リズム</a>の章で説明します。</p>
+<p>正の境界を持つこの形では、配置前の<code>articulation_persistence(p)</code>でBase／Connectを
+既存の出来事にまたがって保てます。移動の境界やつなぐ割合を変える指定ではありません。
+<a href="rhythm.html#発音の方針を保つ">発音の方針を保つ</a>を参照してください。</p>
 <h3 id="音を切って間を置く"><a class="header" href="#音を切って間を置く">音を切って間を置く</a></h3>
 <p>持続音と参加の機会を併せ持つVoiceに<code>rest()</code>を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は<code>cycles(n)</code>、または

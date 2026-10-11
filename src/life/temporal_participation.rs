@@ -466,7 +466,21 @@ impl TemporalParticipation {
         onset_allowed: bool,
         forecast: Option<&TemporalForecast>,
         arrival: Option<&ArrivalContext<'_>>,
+        adoption: Option<u64>,
+    ) -> Option<u64> {
+        self.candidate_with_shape(now, end, onset_allowed, forecast, arrival, adoption, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn candidate_with_shape(
+        &mut self,
+        now: u64,
+        end: u64,
+        onset_allowed: bool,
+        forecast: Option<&TemporalForecast>,
+        arrival: Option<&ArrivalContext<'_>>,
         mut adoption: Option<u64>,
+        mut shape: Option<&mut super::shape_policy::ShapePolicy>,
     ) -> Option<u64> {
         if end <= now {
             return None;
@@ -846,7 +860,9 @@ impl TemporalParticipation {
                         arrival_enabled.then_some(minimum_cost_without_arrival);
                     self.decisions.push(trace);
                 }
-
+                if let Some(shape) = shape.as_deref_mut() {
+                    shape.propose(super::shape_policy::Shape::Connect, now, false);
+                }
                 self.skipped_cycles = self.skipped_cycles.saturating_add(1);
                 self.due_frame += self.next_interval();
                 continue;
@@ -878,7 +894,11 @@ impl TemporalParticipation {
                     arrival_enabled.then_some(minimum_cost_without_arrival);
                 self.decisions.push(trace);
             }
-
+            if let Some(shape) = shape.as_deref_mut() {
+                shape.propose(super::shape_policy::Shape::Base, now, false);
+                shape.veto_plan =
+                    shape.state == super::shape_policy::Shape::Connect && shape.has_tone;
+            }
             self.planned = Some((best, best_context));
         }
         let (planned, _) = self.planned?;
@@ -887,6 +907,10 @@ impl TemporalParticipation {
             return None;
         }
         Some(onset.max(now))
+    }
+
+    pub(crate) fn articulation_persistence_planned(&self) -> bool {
+        self.planned.is_some()
     }
 
     pub(crate) fn register_initial_hold(&mut self, at: u64) {
@@ -2602,5 +2626,71 @@ mod sustained_participation_policy_tests {
         }
         // Cost preservation is tested even if this fixture never selects the extra sample.
         let _ = won;
+    }
+}
+
+#[cfg(test)]
+mod articulation_persistence_clock_tests {
+    use super::*;
+    use crate::life::shape_policy::ShapePolicy;
+
+    #[test]
+    fn articulation_persistence_intent_resolve_does_not_update_memory_last_onset_or_skip_cost() {
+        let mut clock = TemporalParticipation::new(48000, 2.0, 0.8, 0, 21, 512);
+        clock.register_initial_hold(0);
+        let forecast = TemporalForecast::energy_fixture(48000, 0, |_| [0.1, 0.2, 0.3]);
+        let mut shape = ShapePolicy::new(0.875, 21, 48000.0);
+        shape.reserve(16, 512);
+        let tick = clock
+            .candidate_with_shape(
+                0,
+                48000,
+                true,
+                Some(&forecast),
+                None,
+                None,
+                Some(&mut shape),
+            )
+            .unwrap();
+        assert!(clock.planned.unwrap().1.is_some());
+        let due = clock.planned.unwrap().0 + clock.period_frames;
+        clock.resolve(tick, false);
+        assert!(clock.pending_contexts.is_empty());
+        assert!(clock.memory.is_none());
+        assert_eq!(clock.last_onset, Some(0));
+        assert_eq!(clock.skipped_cycles, 0);
+        assert_eq!(clock.due_frame.to_bits(), due.to_bits());
+        assert!(clock.planned.is_none());
+    }
+
+    #[test]
+    fn articulation_persistence_future_plan_is_reused_without_new_shape_decisions() {
+        let mut clock = TemporalParticipation::new(48000, 2.0, 0.8, 0, 21, 512);
+        clock.due_frame = 24000.0;
+        let mut shape = ShapePolicy::new(0.75, 21, 48000.0);
+        shape.reserve(16, 512);
+        assert!(
+            clock
+                .candidate_with_shape(22000, 22500, true, None, None, None, Some(&mut shape))
+                .is_none()
+        );
+        assert!(clock.planned.is_some());
+        let state = shape.state;
+        let pending = clock.planned;
+        for now in 22500..23999 {
+            assert!(
+                clock
+                    .candidate_with_shape(now, now + 1, true, None, None, None, Some(&mut shape))
+                    .is_none()
+            );
+            assert_eq!(shape.state, state);
+            assert_eq!(clock.planned, pending);
+        }
+        assert_eq!(
+            clock.candidate_with_shape(24000, 24001, true, None, None, None, Some(&mut shape)),
+            Some(24000)
+        );
+        clock.resolve(24000, true);
+        assert_eq!(clock.last_onset, Some(24000));
     }
 }

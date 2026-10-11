@@ -4156,3 +4156,6 @@ pub(crate) fn body_metabolism_test_core() -> (RtNsgtKernelLog2, LandscapeParams)
 
 #[cfg(test)]
 mod meter_recurrence_tests;
+
+#[cfg(test)]
+mod articulation_persistence_tests;

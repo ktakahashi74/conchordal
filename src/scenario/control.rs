@@ -21,6 +21,13 @@ pub struct VoiceControl {
 }
 
 impl VoiceControl {
+    pub(crate) fn supports_articulation_persistence(&self) -> bool {
+        self.pitch.mode == PitchMode::Free
+            && self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
+            && self.pitch.rearticulate_above_cents > 0.0
+            && self.phonation.spec.is_sustained_participation()
+    }
+
     pub(crate) fn validate_pitch_application(&self) -> Result<(), String> {
         if self.phonation.rest_periods.is_some() {
             if !self.phonation.spec.is_sustained_participation() {
@@ -304,6 +311,11 @@ pub struct PhonationControl {
     pub gate: PhonationGate,
     pub(crate) finite_duration: Option<crate::scenario::DurationSpec>,
     pub(crate) rest_periods: Option<f32>,
+    pub(crate) articulation_persistence: f32,
+    #[cfg(test)]
+    pub(crate) force_articulation_base: bool,
+    #[cfg(test)]
+    pub(crate) observe_articulation: bool,
 }
 
 /// When a voice is allowed to phonate its first onset.

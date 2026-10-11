@@ -18,6 +18,7 @@ pub(crate) mod modal;
 pub mod phonation_engine;
 pub(crate) mod report;
 pub mod schedule_renderer;
+pub(crate) mod shape_policy;
 pub(crate) mod social_density;
 pub(crate) mod telemetry;
 pub(crate) mod temporal_participation;

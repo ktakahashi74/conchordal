@@ -1,7 +1,7 @@
 use super::*;
 
 impl Voice {
-    fn emit_bounded_on(
+    pub(super) fn emit_bounded_on(
         &mut self,
         index: usize,
         pitch: &mut f32,

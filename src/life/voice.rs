@@ -5,7 +5,8 @@ use crate::core::timebase::{Tick, Timebase};
 use crate::dcc_coupler::ListenerPressure;
 use crate::life::control_adapters::adaptation_config_from_control;
 use crate::life::phonation_engine::{
-    CoreState, CoreTickCtx, OnsetEvent, PhonationEngine, ToneCmd, ToneId, ToneOnEvent, ToneUpdate,
+    CoreState, CoreTickCtx, OnsetEvent, PhonationClock, PhonationEngine, ToneCmd, ToneId,
+    ToneOnEvent, ToneUpdate,
 };
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::{BodySnapshot, RenderModulatorSpec};
@@ -318,6 +319,30 @@ impl Voice {
             .phonation
             .spec
             .is_sustained_participation();
+        let persistence = effective_control.phonation.articulation_persistence;
+        #[cfg(test)]
+        let force_base = effective_control.phonation.force_articulation_base;
+        #[cfg(not(test))]
+        let force_base = false;
+        // An inherited policy starts in Base even while mode or J suspends its use.
+        if effective_control.pitch.mode == PitchMode::Free
+            && sustain_participation
+            && ((persistence > 0.0 && persistence < 1.0) || force_base)
+            && let PhonationClock::Participation(clock) = &mut phonation_engine.clock
+        {
+            clock.shape = Some(super::shape_policy::ShapePolicy::new(
+                if force_base { 1.0 } else { persistence },
+                seed,
+                fs,
+            ));
+            clock.shape.as_mut().unwrap().enabled =
+                effective_control.supports_articulation_persistence();
+            #[cfg(test)]
+            if effective_control.phonation.observe_articulation {
+                clock.shape.as_mut().unwrap().observations =
+                    Some(vec![(start_frame, super::shape_policy::Shape::Base)]);
+            }
+        }
         let social_coupling = effective_control.phonation.spec.social_coupling();
 
         let mut pitch = AnyPitchCore::from_control(&effective_control.pitch, target_pitch_log2);
@@ -442,6 +467,11 @@ impl Voice {
         {
             let capacity = (hop / control_step).max(1);
             self.rearticulations.reserve(capacity);
+            if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
+                && let Some(shape) = clock.shape.as_mut()
+            {
+                shape.reserve(capacity, hop);
+            }
             if self.sustain_participation {
                 self.participation_pitch_steps.reserve(capacity);
             }
@@ -505,6 +535,12 @@ impl Voice {
     fn apply_pitch_control(&mut self) {
         let next = select_pitch_application(&self.effective_control.pitch, None);
         if next != self.pitch_application {
+            if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
+                && let Some(shape) = clock.shape.as_mut()
+            {
+                shape.state = super::shape_policy::Shape::Base;
+                shape.veto_plan = false;
+            }
             self.rearticulations.clear();
             self.participation_pitch_steps.clear();
             self.pending_participation_pitch = None;
@@ -1147,6 +1183,17 @@ impl Voice {
         if !matches!(self.phonation_engine.mode, PhonationMode::Hold) {
             out.body_opportunity = self.phonation_engine.clock.opportunity(&ctx);
             out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
+        }
+        if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
+            && let Some(shape) = clock.shape.as_mut()
+        {
+            shape.enabled = self.effective_control.supports_articulation_persistence();
+            if shape.enabled {
+                self.emit_shape_participation(
+                    &ctx, &state, consonance, target_amp, arrival, space, out,
+                );
+                return;
+            }
         }
         if self.sustain_participation {
             self.emit_sustained_participation(
@@ -1931,6 +1978,8 @@ mod tests {
 #[path = "pitch_application_tests.rs"]
 mod pitch_application_tests;
 
+#[path = "shape_participation.rs"]
+mod shape_participation;
 #[path = "sustained_participation.rs"]
 mod sustained_participation;
 

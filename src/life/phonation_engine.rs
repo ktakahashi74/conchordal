@@ -625,13 +625,14 @@ pub(crate) struct ParticipationPrediction {
 
 /// Public as the payload of PhonationClock; observations remain crate-internal.
 pub struct ParticipationClock {
+    pub(crate) shape: Option<super::shape_policy::ShapePolicy>,
     adoption_candidate: Option<Tick>,
     initial_hold_on: Option<Tick>,
     base_rate_hz: f32,
     coupling: f32,
     flow_depth: f32,
     seed: u64,
-    policy: Option<TemporalParticipation>,
+    pub(crate) policy: Option<TemporalParticipation>,
     forecast: Option<TemporalForecast>,
     outcome_forecast: Option<TemporalForecast>,
     pending_prediction: Option<ParticipationPrediction>,
@@ -688,7 +689,17 @@ impl ParticipationClock {
         policy.set_current_identity(self.footprint.identity());
         policy.set_decision_trace(self.decision_trace);
         let extra = self.adoption_candidate.take();
-        let tick = if extra.is_some() {
+        let tick = if self.shape.as_ref().is_some_and(|s| s.enabled) {
+            policy.candidate_with_shape(
+                cursor,
+                ctx.frame_end,
+                allowed,
+                self.forecast.as_ref(),
+                arrival,
+                extra,
+                self.shape.as_mut(),
+            )
+        } else if extra.is_some() {
             policy.candidate_with_adoption(
                 cursor,
                 ctx.frame_end,
@@ -733,6 +744,9 @@ impl ParticipationClock {
             && sounded
         {
             self.issued_predictions.push(prediction);
+        }
+        if let Some(shape) = self.shape.as_mut() {
+            shape.veto_plan = false;
         }
         self.gate_index = self.gate_index.saturating_add(1);
     }
@@ -869,6 +883,7 @@ impl PhonationClock {
                 base_rate_hz,
                 flow_depth,
             } => Self::Participation(Box::new(ParticipationClock {
+                shape: None,
                 adoption_candidate: None,
                 initial_hold_on: None,
                 base_rate_hz: if base_rate_hz.is_finite() {
@@ -1803,6 +1818,9 @@ impl PhonationEngine {
                 let PhonationClock::Participation(clock) = &mut self.clock else {
                     unreachable!()
                 };
+                if let Some(shape) = clock.shape.as_mut() {
+                    shape.has_tone = self.hold.tone_id.is_some();
+                }
                 let Some(candidate) = clock.candidate(
                     &segment_ctx,
                     cursor,
@@ -1988,7 +2006,14 @@ impl PhonationEngine {
                 #[cfg(test)]
                 PhonationClock::Custom(_) => (None, None),
             };
+            let intentional = allow_onset
+                && state.is_alive
+                && state.onset_allowed
+                && self.hold.tone_id.is_some()
+                && matches!(&self.clock, PhonationClock::Participation(clock)
+                    if clock.shape.as_ref().is_some_and(|s| s.enabled && s.veto_plan));
             if allow_onset
+                && !intentional
                 && state.onset_allowed
                 && let Some(mut kick) = self.onset_rule.on_candidate(&input, state)
             {

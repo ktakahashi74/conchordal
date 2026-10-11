@@ -469,6 +469,10 @@ impl PopulationSpec {
         self.control.pitch.set_pitch_apply_mode(mode);
     }
 
+    fn set_articulation_persistence(&mut self, value: f32) {
+        self.control.phonation.articulation_persistence = crate::core::float::sanitize01(value);
+    }
+
     fn set_rearticulate_above(&mut self, value: f32) {
         self.control
             .pitch
@@ -1546,6 +1550,27 @@ impl ScriptContext {
         {
             warn!("rearticulate_above() ignored outside pitch_apply_mode(\"rearticulate\")");
             population_spec.spec.control.pitch.rearticulate_above_cents = 0.0;
+        }
+        if population_spec
+            .spec
+            .control
+            .phonation
+            .articulation_persistence
+            != 0.0
+            && !population_spec
+                .spec
+                .spawn_spec()
+                .control
+                .supports_articulation_persistence()
+        {
+            warn!(
+                "articulation_persistence() ignored outside free-pitch sustain() with entrained()/flow(), rearticulate, and a positive rearticulate_above()"
+            );
+            population_spec
+                .spec
+                .control
+                .phonation
+                .articulation_persistence = 0.0;
         }
         let id = self.next_population_id;
         self.next_population_id = self.next_population_id.wrapping_add(1);

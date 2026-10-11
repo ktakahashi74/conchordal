@@ -1801,4 +1801,317 @@ mod tests {
         }
         assert!(found);
     }
+
+    fn articulation_persistence_fixture(
+        p: f32,
+    ) -> (Voice, Timebase, NeuralRhythms, PhonationBatch) {
+        let (mut v, tb, r, out) = bounded_fixture(false);
+        let PhonationClock::Participation(clock) = &mut v.phonation_engine.clock else {
+            panic!()
+        };
+        clock.shape = Some(crate::life::shape_policy::ShapePolicy::new(p, 21, tb.fs));
+        v.configure_control_hop(tb.hop, 64);
+        (v, tb, r, out)
+    }
+
+    #[test]
+    fn articulation_persistence_connect_has_multiple_moves_and_suppresses_without_replaying() {
+        let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.875);
+        bounded_emit(&mut v, &tb, &r, 0, &mut out);
+        let first = v.last_onset_pitch_log2;
+        let mut ons = 0;
+        let mut connected = 0;
+        for at in (512..144000).step_by(512) {
+            adoption(&mut v, at, 335.0);
+            bounded_emit(&mut v, &tb, &r, at, &mut out);
+            ons += out.tones.len();
+            let PhonationClock::Participation(c) = &v.phonation_engine.clock else {
+                panic!()
+            };
+            if c.shape.as_ref().unwrap().state == crate::life::shape_policy::Shape::Connect {
+                connected += 1;
+                assert!(v.pending_participation_pitch.is_none());
+            }
+            assert!(out.tones.len() <= 1);
+        }
+        assert!(connected > 1);
+        assert!(ons < 6);
+        assert!(first.is_some());
+        assert!(v.phonation_engine.drain_participation_predictions().count() == 0);
+    }
+
+    #[test]
+    fn articulation_persistence_initial_on_is_never_vetoed_and_same_sample_is_one_on() {
+        let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.75);
+        let PhonationClock::Participation(c) = &mut v.phonation_engine.clock else {
+            panic!()
+        };
+        c.shape.as_mut().unwrap().state = crate::life::shape_policy::Shape::Connect;
+        adoption(&mut v, 0, 335.0);
+        bounded_emit(&mut v, &tb, &r, 0, &mut out);
+        assert_eq!(out.tones.len(), 1);
+        assert_eq!(out.tones[0].onset, 0);
+        assert_eq!(v.last_onset_pitch_log2, Some(out.tones[0].freq_hz.log2()));
+    }
+
+    #[test]
+    fn articulation_persistence_lifecycle_wins_without_on_or_pitch_updates() {
+        for which in 0..3 {
+            let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.5);
+            bounded_emit(&mut v, &tb, &r, 0, &mut out);
+            let reference = v.last_onset_pitch_log2;
+            adoption(&mut v, 512, 440.0);
+            match which {
+                0 => v.release_pending = true,
+                1 => v.remove_pending = true,
+                _ => {
+                    v.last_signal.is_active = false;
+                    v.release_gain = 0.0;
+                }
+            }
+            bounded_emit(&mut v, &tb, &r, 512, &mut out);
+            assert!(out.tones.is_empty());
+            assert!(v.pending_participation_pitch.is_none());
+            assert_eq!(v.last_onset_pitch_log2, reference);
+        }
+    }
+
+    #[test]
+    fn articulation_persistence_live_mode_returns_to_base_and_same_mode_preserves_state() {
+        let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.75);
+        bounded_emit(&mut v, &tb, &r, 0, &mut out);
+        let PhonationClock::Participation(c) = &mut v.phonation_engine.clock else {
+            panic!()
+        };
+        c.shape.as_mut().unwrap().state = crate::life::shape_policy::Shape::Connect;
+        v.apply_patch(&ControlUpdate {
+            pitch_apply_mode: Some(PitchApplyMode::Rearticulate),
+            ..Default::default()
+        })
+        .unwrap();
+        let PhonationClock::Participation(c) = &v.phonation_engine.clock else {
+            panic!()
+        };
+        assert_eq!(
+            c.shape.as_ref().unwrap().state,
+            crate::life::shape_policy::Shape::Connect
+        );
+        for cents in [100.0, 0.0, 50.0] {
+            v.apply_patch(&ControlUpdate {
+                rearticulate_above_cents: Some(cents),
+                ..Default::default()
+            })
+            .unwrap();
+            let PhonationClock::Participation(c) = &v.phonation_engine.clock else {
+                panic!()
+            };
+            assert_eq!(
+                c.shape.as_ref().unwrap().state,
+                crate::life::shape_policy::Shape::Connect
+            );
+            bounded_emit(&mut v, &tb, &r, 512, &mut out);
+            let PhonationClock::Participation(c) = &v.phonation_engine.clock else {
+                panic!()
+            };
+            assert_eq!(c.shape.as_ref().unwrap().enabled, cents > 0.0);
+        }
+        v.apply_patch(&ControlUpdate {
+            pitch_apply_mode: Some(PitchApplyMode::Glide),
+            ..Default::default()
+        })
+        .unwrap();
+        let PhonationClock::Participation(c) = &v.phonation_engine.clock else {
+            panic!()
+        };
+        assert_eq!(
+            c.shape.as_ref().unwrap().state,
+            crate::life::shape_policy::Shape::Base
+        );
+        bounded_emit(&mut v, &tb, &r, 512, &mut out);
+        assert!(out.tones.is_empty());
+    }
+
+    #[test]
+    fn articulation_persistence_finite_off_tail_gap_and_ready_survive_connect() {
+        use crate::life::phonation_engine::RestPhase;
+        let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.875);
+        v.phonation_engine.enable_rest(
+            &DurationConfig::Field {
+                hold_min_theta: 0.2,
+                hold_max_theta: 0.2,
+                curve_k: 2.0,
+                curve_x0: 0.5,
+                drop_gain: 0.5,
+            },
+            1.0,
+        );
+        bounded_emit(&mut v, &tb, &r, 0, &mut out);
+        assert_eq!(out.tones.len(), 1);
+        for at in (512..61440).step_by(512) {
+            adoption(&mut v, at, 335.0);
+            bounded_emit(&mut v, &tb, &r, at, &mut out);
+            assert!(out.tones.is_empty());
+        }
+        assert_eq!(
+            v.phonation_engine.rest.unwrap().phase,
+            RestPhase::Waiting(4800)
+        );
+        v.phonation_engine.rest_tail_finished(61440, tb.fs);
+        assert!(matches!(
+            v.phonation_engine.rest.unwrap().phase,
+            RestPhase::Gap {
+                until: Some(85440),
+                ..
+            }
+        ));
+        let mut ons = 0;
+        for at in (61440..120320).step_by(512) {
+            bounded_emit(&mut v, &tb, &r, at, &mut out);
+            assert!(out.tones.iter().all(|t| t.onset >= 85440));
+            ons += out.tones.len();
+        }
+        assert!(ons > 0);
+    }
+
+    #[test]
+    fn articulation_persistence_shape_hop_path_has_no_added_allocations() {
+        let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.5);
+        bounded_emit(&mut v, &tb, &r, 0, &mut out);
+        let mut warmed = None;
+        for at in (512..98304).step_by(512) {
+            bounded_emit(&mut v, &tb, &r, at, &mut out);
+            if out.tones.iter().any(|tone| tone.opportunity.is_some()) {
+                warmed = Some(at + 512);
+                break;
+            }
+        }
+        let warmed = warmed.expect("the existing clock grid must have processed an opportunity");
+        let space = bounded_space();
+        crate::runtime_profile::begin_allocations();
+        for at in (warmed..98304).step_by(512) {
+            adoption(&mut v, at, if at % 1024 == 0 { 335.0 } else { 440.0 });
+            v.tick_phonation_into_with_arrival(
+                &tb,
+                at,
+                &r,
+                None,
+                0.0,
+                1.0,
+                0.8,
+                None,
+                Some(space),
+                &mut out,
+            );
+        }
+        if let Some(counts) = crate::runtime_profile::finish_allocations() {
+            assert_eq!((counts.count, counts.bytes), (0, 0));
+        }
+    }
+    #[test]
+    fn articulation_persistence_cost_skip_cannot_be_forced_into_an_on() {
+        use crate::core::temporal_expectation::TemporalForecast;
+        for p in [0.5, 0.75, 0.875] {
+            let (mut v, tb, r, mut out) = articulation_persistence_fixture(p);
+            bounded_emit(&mut v, &tb, &r, 0, &mut out);
+            let actual = v.last_onset_pitch_log2;
+            let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
+            v.phonation_engine.set_onset_comparison(Some(
+                crate::config::TemporalOnsetComparisonConfig::default(),
+            ));
+            v.phonation_engine.set_decision_trace(true);
+            v.phonation_engine
+                .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
+            let mut skipped = false;
+            for at in (512..51200).step_by(512) {
+                bounded_emit(&mut v, &tb, &r, at, &mut out);
+                if v.phonation_engine
+                    .drain_participation_decisions()
+                    .any(|d| d.skipped)
+                {
+                    assert!(out.tones.is_empty());
+                    assert!(out.onsets.is_empty());
+                    assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+                    assert_eq!(v.last_onset_pitch_log2, actual);
+                    assert_eq!(v.active_render_notes.len(), 1);
+                    skipped = true;
+                    break;
+                }
+            }
+            assert!(skipped);
+        }
+    }
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+    fn articulation_persistence_initial_clock_grid_allocation_is_inherited_from_baseline() {
+        let (mut base, tb, r, mut a) = bounded_fixture(false);
+        let (mut shape, _, _, mut b) = articulation_persistence_fixture(0.5);
+        for at in (0..4096).step_by(512) {
+            bounded_emit(&mut base, &tb, &r, at, &mut a);
+            bounded_emit(&mut shape, &tb, &r, at, &mut b);
+        }
+        let space = bounded_space();
+        crate::runtime_profile::begin_allocations();
+        for at in (4096..32768).step_by(512) {
+            base.tick_phonation_into_with_arrival(
+                &tb,
+                at,
+                &r,
+                None,
+                0.0,
+                1.0,
+                0.8,
+                None,
+                Some(space),
+                &mut a,
+            );
+        }
+        let old = crate::runtime_profile::finish_allocations().unwrap();
+        crate::runtime_profile::begin_allocations();
+        for at in (4096..32768).step_by(512) {
+            shape.tick_phonation_into_with_arrival(
+                &tb,
+                at,
+                &r,
+                None,
+                0.0,
+                1.0,
+                0.8,
+                None,
+                Some(space),
+                &mut b,
+            );
+        }
+        let new = crate::runtime_profile::finish_allocations().unwrap();
+        assert_eq!((new.count, new.bytes), (old.count, old.bytes));
+        eprintln!(
+            "inherited initial-clock allocations: baseline={}/{}B private={}/{}B",
+            old.count, old.bytes, new.count, new.bytes
+        );
+    }
+    #[test]
+    fn articulation_persistence_fixed_base_stopped_voice_has_legacy_batch_and_clock_state() {
+        let (mut base, tb, r, mut a) = bounded_fixture(false);
+        let (mut shape, _, _, mut b) = articulation_persistence_fixture(0.5);
+        for at in (0..32768).step_by(512) {
+            bounded_emit(&mut base, &tb, &r, at, &mut a);
+            bounded_emit(&mut shape, &tb, &r, at, &mut b);
+            assert_eq!(
+                serde_json::to_value(&a).unwrap(),
+                serde_json::to_value(&b).unwrap()
+            );
+        }
+        base.last_signal.is_active = false;
+        base.release_gain = 0.0;
+        shape.last_signal.is_active = false;
+        shape.release_gain = 0.0;
+        for at in (32768..35840).step_by(512) {
+            bounded_emit(&mut base, &tb, &r, at, &mut a);
+            bounded_emit(&mut shape, &tb, &r, at, &mut b);
+            assert_eq!(
+                serde_json::to_value(&a).unwrap(),
+                serde_json::to_value(&b).unwrap(),
+                "at {at}"
+            );
+        }
+    }
 }

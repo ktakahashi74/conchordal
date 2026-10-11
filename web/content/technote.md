@@ -772,7 +772,7 @@ A PopulationSpec begins with a preset and is refined through method chaining. It
 
 **Pitch**: `anchor()` (hold the voice at its pitch; implied by `freq(hz)`), `seek_consonance()` (climb the consonance terrain; the apply mode is then resolved automatically—sustained voices glide, re-attacking voices snap at onsets—unless overridden via `pitch_apply_mode("gate_snap"|"glide"|"rearticulate")`), `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `temperature(v)` (one search-stochasticity knob shared by both cores; 0 settles greedily — this *is* the movement-tension knob: a hot search keeps a voice restless and straying off consonance, cooling it resolves), `move_cost(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `sigma_cents`, `random_candidates`).
 
-For a free-pitch Hold Voice, `pitch_apply_mode("rearticulate")` with the
+For a free-pitch Hold Voice without participation, `pitch_apply_mode("rearticulate")` with the
 boundary omitted or zero couples each changed adopted target to one onset.
 At its sample time the old Tone begins release and a new Tone attacks at the
 new pitch. A positive `rearticulate_above(cents)` measures net displacement from
@@ -813,12 +813,24 @@ Release, death and removal cancel pending targets. Each emitted attack enters
 energy and acoustic paths once. Prediction retains the existing finite
 representative footprint.
 
-Live Glide ↔ GateSnap changes cancel pending attacks and unrendered control
-records, retaining the Tone. Returning to Glide follows the controller's retained
-target at the next control update; GateSnap waits for later adoptions. Repeating
-the same mode retains pending state. Rearticulate with sustained participation
-remains an error at final placement and before writes to Voices, patches or
-replacement templates. Its distance boundary does not filter clock attacks.
+With sustained participation, explicit Rearticulate uses the last actual onset
+pitch to classify each adopted target. At or below a positive distance boundary,
+it cancels any old pending target and starts gliding immediately, without an
+attack. Above the boundary, it stops the glide, holds body pitch and replaces the
+single pending target. Only a sounded opportunity consumes that target, jumping
+and attacking there; without a target it attacks at current body pitch. That pitch
+can differ from the preceding onset during a glide. Both attacks update actual
+onset memory. Waiting and skipping retain sound and pending state while existing
+glides continue. Same-sample adoption precedes opportunity; no adoption-time
+candidate is added, and the boundary does not filter clock attacks. Zero or omission
+matches GateSnap, including zero-distance adoption. Without participation,
+Rearticulate attacks at adoption; with participation, it attacks at sounded opportunities.
+
+Live Glide ↔ GateSnap ↔ Rearticulate changes cancel pending attacks, selected glides
+and unrendered control records, retaining the Tone and the controller's target.
+Returning to Glide follows that target at the next control update; GateSnap and
+Rearticulate wait for later adoptions. Repeating the same mode retains pending
+state. A boundary change retains the selected behavior until the next adoption.
 Replacement Voices inherit the resolved controls with fresh performance state.
 Implicit WhileAlive or `while_alive()` alone does not select sustained participation.
 Single presets and sustain with metric, pulse or repeat retain their existing
@@ -839,10 +851,13 @@ The end of the rest permits participation but emits no forced onset. Existing
 candidates, costs and skip rules are retained, and intentional suppression is not
 learned as a cost-based skip. GateSnap retains the latest pending target through
 sounding, tails and rest until the next sounded opportunity; Glide does not update
+released tails. Rearticulate processes adoptions through release and rest using
+the same small-target cancellation and large-target deferral. The last actual
+onset remains its reference until the next attack; body glides never retune
 released tails. Lifecycle endings take precedence. `rest` and finite duration are
 initial-only controls, inherited by replacements with fresh performance state.
-Missing finite duration, timing outside explicit sustain plus entrained/flow, or
-fixed Rearticulate is a placement error before writes. Explicit `while_alive()`
+Missing finite duration or timing outside explicit sustain plus entrained/flow
+is a placement error before writes. All three pitch application modes are available. Explicit `while_alive()`
 clears finite intent. Absence of `rest` retains existing behavior. Every note in
 this form has a finite end; per-note selection of sustain versus release is not
 implemented.

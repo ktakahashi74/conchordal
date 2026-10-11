@@ -437,13 +437,13 @@ fn ratio_candidates(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Ratio-based movement candidates; 0 disables.
 fn ratio_candidates(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Reattack only above this distance from the last sounded onset pitch.
+/// Choose sliding or rearticulation by distance from the last sounded onset pitch.
 fn rearticulate_above(arg0: Population, arg1: f64) -> Population;
-/// Reattack only above this distance from the last sounded onset pitch.
+/// Choose sliding or rearticulation by distance from the last sounded onset pitch.
 fn rearticulate_above(arg0: Population, arg1: i64) -> Population;
-/// Reattack only above this distance from the last sounded onset pitch.
+/// Choose sliding or rearticulation by distance from the last sounded onset pitch.
 fn rearticulate_above(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// Reattack only above this distance from the last sounded onset pitch.
+/// Choose sliding or rearticulation by distance from the last sounded onset pitch.
 fn rearticulate_above(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Time to refill normalized energy from empty at full viability.

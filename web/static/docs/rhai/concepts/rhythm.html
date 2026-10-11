@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9458fd8a.js";
+            window.path_to_searchindex_js = "../searchindex-46873a09.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -343,16 +343,24 @@ p.pitch_apply_mode("glide");
 wait(3.0);
 release(p);
 </code></pre>
-<p>Live Glide ↔ GateSnap switching preserves the sounding Tone and emits no extra
+<p>Live Glide ↔ GateSnap ↔ Rearticulate switching preserves the sounding Tone and emits no extra
 attack. It cancels unrendered requests and the pending attack target. On returning
 to Glide, movement follows the controller’s retained target at the next control
-update. GateSnap waits for subsequent adoptions. Calling the same mode again keeps
+update. GateSnap and Rearticulate wait for subsequent adoptions. Calling the same mode again keeps
 its pending state. Replacement Voices inherit the mode, starting with no pending
 performance state. Timing presets remain initial-only.</p>
-<p>Rearticulate with sustained participation remains a script error on the final
-placement spec and before any live writes, independent of builder order. Omit the
-participation preset for pitch-triggered Hold rearticulation. Its
-<code>rearticulate_above(cents)</code> boundary does not control clock-driven attacks.</p>
+<p>With <code>pitch_apply_mode("rearticulate")</code>, <code>rearticulate_above(cents)</code> combines
+sliding and deferred jumps. A small adoption cancels old pending pitch and starts
+gliding; a large one stops sliding and defers the target to the next sounded
+opportunity. A sounded opportunity without a target attacks at current body pitch.
+Waiting and skipping do not stop existing glides. The boundary uses the last actual
+onset pitch, updated by every attack, and does not suppress clock attacks. Zero or
+omission matches GateSnap. Unlike Hold without participation, Rearticulate here
+attacks at a sounded opportunity rather than at adoption. Boundary changes preserve
+the selected behavior until the next adoption. Mode changes clear unrendered
+requests, pending pitch and the selected glide without changing the Tone or the
+controller’s target. Builder order does not change this form; replacements inherit
+controls, not pending pitch, selected glide or last-onset memory.</p>
 <p>The implicit WhileAlive default and <code>while_alive()</code> alone do not select this form.
 <code>sustain()</code> alone, <code>entrained()</code> alone and <code>flow()</code> alone retain their previous
 behavior. With <code>metric()</code>, <code>pulse()</code> or <code>repeat()</code>, <code>sustain()</code> still uses the

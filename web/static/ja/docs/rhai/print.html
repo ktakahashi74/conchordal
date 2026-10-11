@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3668d86c.js";
+            window.path_to_searchindex_js = "searchindex-5c4f3d77.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ddfde326.js"></script>
@@ -834,7 +834,7 @@ wait(12.0);
 移ります。<code>pitch_apply_mode("gate_snap")</code>と<code>pitch_apply_mode("glide")</code>で、
 この反映方法を明示的に選べます。</p>
 <p>持続するVoiceで、新しい音高の行き先を採用するたびに発音し直したい場合は、
-<code>pitch_apply_mode("rearticulate")</code>を指定します。移動の始まりで旧いToneをreleaseし、
+参加の時計を付けず、<code>pitch_apply_mode("rearticulate")</code>を指定します。移動の始まりで旧いToneをreleaseし、
 新しいToneは頭から新しい音高でattackします。棄却した提案、同じ行き先、
 glideの途中の更新では発音し直しません。提案の間隔は行き先を選ぶ機会の間隔であって、
 一定の音符を刻む時計ではありません。発音を拍に合わせて遅らせる処理もありません。</p>
@@ -853,8 +853,9 @@ wait(12.0);
 <p>対象は音高が自由なHoldのVoiceです。自由音高のGated発音とrearticulateの組み合わせは、
 builderの呼び出し順にかかわらず、配置時の最終specでscript errorになります。
 演奏中の対象外の指定も、状態を書き換える前に拒否します。<code>sustain()</code>でHoldにするか、
-Gatedではgate_snapまたはglideを選んでください。同音高での打ち直しや、Voice自身による
-一音ごとの選択は、このmodeの機能には含まれません。</p>
+Gatedではgate_snapまたはglideを選んでください。参加の時計がないHoldには、同音高の
+発音だけを求める指定はありません。持続＋参加では機会による現在音高の打ち直しも
+できます。Voice自身が一音ごとに方策を選ぶ機能は含まれません。</p>
 <h3 id="音高の移動と発音の結びつきを選ぶ"><a class="header" href="#音高の移動と発音の結びつきを選ぶ">音高の移動と発音の結びつきを選ぶ</a></h3>
 <p>行き先を採用する時と、参加の機会で鳴らすと選ぶ時は別です。次の表で、移動を音の区切りに
 どう結びつけるかを選べます。境界は創始のVoiceに置く発音の気質で、作曲者が選ぶ量です。
@@ -870,18 +871,19 @@ Gatedではgate_snapまたはglideを選んでください。同音高での打�
 <tr><td>小さく動く時は滑る</td><td><code>sustain().pitch_apply_mode("rearticulate").rearticulate_above(50)</code></td><td>最後の発音音高から行き先までが50 centを超えた採用で打ち直す</td></tr>
 <tr><td>持続しながら参加し、音高は滑る</td><td><code>sustain().entrained().pitch_apply_mode("glide")</code></td><td>鳴らすと選んだ機会で、その時点の身体音高を打ち直す</td></tr>
 <tr><td>持続しながら参加し、発音時に跳ぶ</td><td><code>sustain().flow().pitch_apply_mode("gate_snap")</code></td><td>鳴らすと選んだ機会で、最後に保留した行き先へ跳んで打ち直す</td></tr>
+<tr><td>持続しながら参加し、移動の大きさで分ける</td><td><code>sustain().entrained().pitch_apply_mode("rearticulate").rearticulate_above(50)</code></td><td>小さい採用は滑り、大きい採用は鳴らす機会まで保留する</td></tr>
 </tbody>
 </table>
 </div>
-<p>参加の二行では、entrainedとflowをそれぞれ選べます。時計の違いは
+<p>参加の各行では、entrainedとflowをそれぞれ選べます。時計の違いは
 <a href="#リズム時間の知覚と個体の参加">リズム</a>の章で説明します。</p>
-<p>正の境界を指定した<code>rearticulate_above(cents)</code>は、最後に実際に発音した音高からの正味の変位を測ります。
+<p>参加の時計がない場合、正の境界を指定した<code>rearticulate_above(cents)</code>は、最後に実際に発音した音高からの正味の変位を測ります。
 経路の距離を足し合わせる量ではなく、元の音高へ戻れば相殺されます。境界以下なら同じToneで
 <code>glide(tau)</code>に従って滑り、境界を超えれば新しいToneを立ち上げます。選択は次の採用まで
 保持します。両端がLog2Spaceの正確なbin中心ならbin差をcentへ換算し、それ以外は連続した
 log2座標の差を使います。行き先の丸め直しやepsilonは加えません。同じ未出力hopに先行する
 合法な発音があれば、その音高を基準にします。取り消した要求を実発音の記憶へ残しません。</p>
-<p>省略値は0で、採用ごとに打ち直す従来の形です。負値と有限でない値は0にし、上限は置きません。
+<p>参加の時計がない場合、省略値0は採用ごとに打ち直す従来の形です。負値と有限でない値は0にし、上限は置きません。
 演奏中に境界を変えても、それだけでは発音せず、次の採用から使います。Rearticulate以外への
 指定は警告して無視します。配置前の書く順に依存しません。再生成したVoiceは境界を継ぎますが、
 親が最後に発音した音高は継ぎません。</p>
@@ -893,6 +895,15 @@ voices.rearticulate_above(100);
 wait(3.0);
 release(voices);
 </code></pre>
+<p>参加の時計を持つRearticulateでは、同じ距離の測り方を使い、打ち直しの時刻は時計に
+委ねます。正の境界以下の採用は、その時刻から滑り始め、発音せず、旧い保留を取り消します。
+境界を超える採用は進行中の滑りを止め、身体の音高を保ち、最新の行き先を一つ保留します。
+鳴らすと選んだ機会で保留を消費し、そこへ跳んで打ち直します。保留がなければ、その時点の
+身体音高で打ち直します。滑っている途中なら、前の発音と音高が違う場合もあります。
+どちらの打ち直しでも最後の実発音音高を更新します。待つ・見送るなら音と保留を保ち、
+既に始まった滑りは続きます。同じsampleでは採用を先に処理し、採用時刻の発音候補を
+追加しません。境界で時計の発音を間引きません。境界の省略と0はGateSnapと同じ形で、
+距離0の採用も保留します。演奏中の切り替えは<a href="#リズム時間の知覚と個体の参加">リズム</a>の章で説明します。</p>
 <h3 id="音を切って間を置く"><a class="header" href="#音を切って間を置く">音を切って間を置く</a></h3>
 <p>持続音と参加の機会を併せ持つVoiceに<code>rest()</code>を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は<code>cycles(n)</code>、または
@@ -908,7 +919,10 @@ generationに属する全Toneの終了を確認してから、間を数えます
 0にし、有限の非負値に上限は置きません。</p>
 <p>間が終わると、既存の参加の判断で鳴らす・待つ・見送るを選べます。間の終わりだけで
 発音を強制しません。GateSnapは発音中、余韻待ち、間のあいだも最新の行き先を保留し、
-次に鳴らすと選んだ機会で消費します。GlideではOff後の余韻に音高更新を渡しません。
+次に鳴らすと選んだ機会で消費します。Rearticulateも余韻待ちや間のあいだに採用を扱い、
+小さい採用は旧保留を取り消し、大きい採用は保留します。次の実発音まで、最後の発音音高を
+基準にします。Off後も身体の滑りは続きますが、離した余韻は動かしません。Glideでも
+Off後の余韻に音高更新を渡しません。
 release、死亡、removeが優先します。再生成したVoiceは設定を継ぎ、演奏の状態は
 新たに始めます。</p>
 <pre><code class="language-rhai">let notes = harmonic().sustain().entrained()
@@ -918,8 +932,8 @@ wait(3.0);
 release(voices);
 </code></pre>
 <p>ここでの0.2周期と間の2周期は使い方の例で、推奨値ではありません。<code>rest</code>は音長の
-語と同じく配置前の指定です。明示の持続＋entrained／flow、有限の音長、Glideまたは
-GateSnapとの組み合わせで使い、対象外の配置は状態を書き換える前に拒否します。
+語と同じく配置前の指定です。明示の持続＋entrained／flowと有限の音長が必要で、
+Glide、GateSnap、Rearticulateを選べます。対象外の配置は状態を書き換える前に拒否します。
 <code>rest</code>がなければ既存の規則を保ちます。この形では全ての音が有限長で終わり、Voiceが
 一音ごとに伸ばすか切るかを選ぶ機能は含まれません。</p>
 <p>研究scriptには<code>pitch_core()</code>など機構水準のcontrolもありますが、作品では
@@ -1121,14 +1135,22 @@ p.pitch_apply_mode("glide");
 wait(3.0);
 release(p);
 </code></pre>
-<p>演奏中のGlideとGateSnapの切り替えでは、鳴っているToneを保ち、余分な発音を起こしません。
+<p>演奏中のGlide、GateSnap、Rearticulateの切り替えでは、鳴っているToneを保ち、余分な発音を起こしません。
 未出力の要求と、保留していた発音用の行き先は取り消します。Glideへ戻すと、音高の判断側に
-残っている目標へ、次の制御更新から滑り始めます。GateSnapへ替えた後は、その後の採用を
+残っている目標へ、次の制御更新から滑り始めます。GateSnapやRearticulateへ替えた後は、その後の採用を
 保留します。同じmodeをもう一度指定した場合は保留を保ちます。再生成したVoiceはmodeを
 継ぎますが、親の演奏中の保留は継ぎません。参加のプリセット自体は配置前の指定です。</p>
-<p>この形とRearticulateの併用は、配置時の最終設定と演奏中の書き込み前にscript errorとして
-拒否します。音高採用を発音へ結びつけるHoldには、参加の指定を省いてください。
-<code>rearticulate_above(cents)</code>の境界で、時計による打ち直しを間引く処理はありません。</p>
+<p>この形に<code>pitch_apply_mode("rearticulate")</code>を添えると、<code>rearticulate_above(cents)</code>で
+滑りと保留を組み合わせられます。最後の実発音音高から測り、正の境界以下の採用は
+旧い保留を取り消して滑り、超える採用は滑りを止め、次に鳴らす機会まで行き先を保留します。
+保留のない機会は、その時点の身体音高で打ち直します。待つ・見送る時も既に始まった滑りは
+続きます。どの打ち直しでも最後の実発音音高を更新し、境界は時計の発音を間引きません。
+境界の省略と0はGateSnapと同じです。参加の時計がないHoldのRearticulateは採用時に
+発音し、この形では鳴らすと選んだ機会で発音します。</p>
+<p>演奏中の境界変更は、それまで選んだ挙動を次の採用まで保ちます。mode変更では未出力の
+要求、保留、選んだ滑りを取り消し、Toneと判断側の目標を保ちます。配置前の書く順に
+依存しません。再生成したVoiceは設定を継ぎ、親の保留、滑りの選択、最後の発音音高は
+継ぎません。</p>
 <p>既定のWhileAliveと、<code>while_alive()</code>だけでは、この形を選びません。<code>sustain()</code>だけ、
 <code>entrained()</code>だけ、<code>flow()</code>だけの挙動は変えません。<code>metric()</code>、<code>pulse()</code>、<code>repeat()</code>と
 <code>sustain()</code>の併用は、従来どおり後の指定が優先されます。<code>rest()</code>がない場合は、後に
@@ -1536,13 +1558,13 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">sustain()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Sustain phonation mode (default). Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with this combination is a script error at final placement and before live writes. Implicit WhileAlive and while_alive() alone do not enable the combination. Metric, pulse and repeat retain their last-write-wins rule. With rest(), finite duration and sustained participation are retained independently of builder order; every sounded note releases at that duration and waits for its tails before the rest.</p>
+<p>Sustain phonation mode (default). Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with a positive rearticulate_above boundary glides small adoptions, cancelling older pending pitch, and defers large ones to a sounded opportunity. Zero or omission matches gate_snap; clock attacks are not filtered by the boundary. Implicit WhileAlive and while_alive() alone do not enable the combination. Metric, pulse and repeat retain their last-write-wins rule. With rest(), finite duration and sustained participation are retained independently of builder order; every sounded note releases at that duration and waits for its tails before the rest.</p>
 <h4 id="rest"><a class="header" href="#rest"><code>rest</code></a></h4>
 <pre><code class="language-rhai ignore">rest()
 rest(periods)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Release each finite participation note, then leave a rest after all its tails finish. Requires explicit sustain() plus entrained() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits participation again but never forces an onset; costs, candidates and skip are unchanged. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Missing finite duration, other timing forms and fixed rearticulate fail at final placement before writes; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note.</p>
+<p>Release each finite participation note, then leave a rest after all its tails finish. Requires explicit sustain() plus entrained() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits participation again but never forces an onset; costs, candidates and skip are unchanged. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Rearticulate processes adoptions during tails and rest: small ones cancel pending pitch and glide the body, large ones defer the latest target, using the last actual onset as reference until the next sounded opportunity. Released tails never move. Missing finite duration and other timing forms fail at final placement before writes; all three pitch application modes are available; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note.</p>
 <h4 id="repeat"><a class="header" href="#repeat"><code>repeat</code></a></h4>
 <pre><code class="language-rhai ignore">repeat()
 </code></pre>
@@ -1609,7 +1631,7 @@ rest(periods)
 <pre><code class="language-rhai ignore">rearticulate_above(cents)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
-<p>Reattack only above this distance from the last sounded onset pitch. For free-pitch Hold rearticulate, a positive boundary measures net displacement from the last actual ToneSpec onset to the adopted target: strictly above attacks, at or below glides with glide(tau). Selection persists until the next adoption. Earlier legal onsets in the same output hop provide the reference; cancelled requests do not replace the last actual onset. Exact Log2Space centers use bin-distance in cents, otherwise continuous log2 distance is used without rounding or epsilon. Zero is the default and retains every-adoption rearticulation. Negative or nonfinite values become zero; no upper limit is imposed. A live boundary change emits no attack and applies at the next adoption. Outside rearticulate, a call warns and is ignored. Builder order is independent at placement; replacement Voices inherit the boundary but not the onset-pitch memory. The composer chooses the boundary; 50 or 100 cents are examples, not recommendations.</p>
+<p>Choose sliding or rearticulation by distance from the last sounded onset pitch. For free-pitch Hold without participation, a positive boundary measures net displacement from the last actual ToneSpec onset to the adopted target: strictly above attacks, at or below glides with glide(tau). Selection persists until the next adoption. Earlier legal onsets in the same output hop provide the reference; cancelled requests do not replace the last actual onset. Exact Log2Space centers use bin-distance in cents, otherwise continuous log2 distance is used without rounding or epsilon. Without participation, zero retains every-adoption rearticulation. With explicit sustain plus entrained/flow, a small adoption cancels older pending pitch and glides immediately; a large adoption stops the glide, holds body pitch and defers one latest target to the next sounded opportunity. A sounded opportunity without pending pitch attacks at current body pitch; either attack updates the reference. Waiting/skipping retain sound and pending pitch while existing glides continue. Zero or omission matches GateSnap, including zero-distance adoptions. The boundary does not suppress clock attacks and adds no adoption-time candidate. Negative or nonfinite values become zero; no upper limit is imposed. A live boundary change emits no attack and applies at the next adoption. Outside rearticulate, a call warns and is ignored. Builder order is independent at placement; replacement Voices inherit the boundary but not the onset-pitch memory. The composer chooses the boundary; 50 or 100 cents are examples, not recommendations.</p>
 <h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
 <pre><code class="language-rhai ignore">temperature(value)
 </code></pre>
@@ -1859,7 +1881,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">pitch_apply_mode(name)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
-<p><code>"gate_snap"</code>, <code>"glide"</code> or <code>"rearticulate"</code>: choose how adopted pitch targets are applied. Choose gate_snap, glide or rearticulate. Without an explicit call, moving sustained voices resolve to glide and Gated voices to gate_snap. Free-pitch Hold rearticulate couples each changed adopted target to an attack at its sample, releasing the old Tone; a positive rearticulate_above(cents) instead glides at or below the distance boundary from the last actual onset. Rejected or unchanged targets and proposal-free updates cause no attack. Glide(tau) controls sliding, including below that boundary. With explicit sustain() plus entrained()/flow(), the omitted mode is glide: clock attacks use current body pitch and unselected movement glides. Explicit gate_snap on free pitch holds one latest adopted target for the next sounded opportunity, jumps there and attacks; wait/skip retains pitch and pending state, and no extra adoption-time candidate is offered. Without a pending target the clock re-attacks the current pitch. Live mode changes preserve the Tone, emit no attack and cancel unrendered requests and pending attacks. Returning to glide follows the controller’s retained target at the next control update; gate_snap waits for later adoptions. Repeating the same mode retains pending state. Replacement Voices inherit controls, not performance state. Anchored Voices remain locked. Free-pitch Gated rearticulate and rearticulate with sustained participation are script errors at final placement and before live writes, independent of builder order; use Hold without participation, or glide/gate_snap for participation.</p>
+<p><code>"gate_snap"</code>, <code>"glide"</code> or <code>"rearticulate"</code>: choose how adopted pitch targets are applied. Choose gate_snap, glide or rearticulate. Without an explicit call, moving sustained voices resolve to glide and Gated voices to gate_snap. Free-pitch Hold without participation rearticulate couples each changed adopted target to an attack at its sample, releasing the old Tone; a positive rearticulate_above(cents) instead glides at or below the distance boundary from the last actual onset. Rejected or unchanged targets and proposal-free updates cause no attack. Glide(tau) controls sliding, including below that boundary. With explicit sustain() plus entrained()/flow(), the omitted mode is glide: clock attacks use current body pitch and unselected movement glides. Explicit gate_snap on free pitch holds one latest adopted target for the next sounded opportunity, jumps there and attacks; wait/skip retains pitch and pending state, and no extra adoption-time candidate is offered. Without a pending target the clock re-attacks the current pitch. With explicit sustained participation, rearticulate measures each adopted target from the last actual onset using the current Log2Space: at or below a positive boundary it cancels old pending pitch and glides immediately; above it, it stops the glide and holds one latest target for the next sounded opportunity. Without pending pitch, that opportunity attacks at current body pitch. Every actual attack updates onset memory. Same-sample adoption precedes opportunity; no adoption-time candidate is added. Zero or omission matches gate_snap. Hold without participation attacks at adoption; sustained participation attacks only at sounded opportunities. Rest retains this adoption policy through tails and gaps without retuning released tails. Live three-mode changes preserve the Tone, emit no attack and cancel unrendered requests, pending attacks and selected glides. Boundary changes preserve the selected behavior until the next adoption. Returning to glide follows the controller’s retained target at the next control update; gate_snap and rearticulate wait for later adoptions. Repeating the same mode retains pending state. Replacement Voices inherit controls, not performance state. Anchored Voices remain locked. Free-pitch Gated rearticulate remains a script error at final placement and before live writes, independent of builder order; use Hold with sustain(), including explicit sustain plus entrained/flow, or choose glide/gate_snap for Gated phonation.</p>
 <h4 id="landscape_weight"><a class="header" href="#landscape_weight"><code>landscape_weight</code></a></h4>
 <pre><code class="language-rhai ignore">landscape_weight(value)
 </code></pre>

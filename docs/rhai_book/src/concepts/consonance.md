@@ -152,7 +152,7 @@ re-attacking movers (`pulse()`, `metric()`, `entrained()`, `flow()`) snap to
 their new pitch at each onset. `pitch_apply_mode("gate_snap")` and
 `pitch_apply_mode("glide")` override that choice.
 
-For sustained movers, `pitch_apply_mode("rearticulate")` gives each newly
+For sustained movers without a participation clock, `pitch_apply_mode("rearticulate")` gives each newly
 adopted pitch target a fresh attack. The old Tone releases while the new Tone
 starts directly at the adopted pitch, at the sample when movement begins.
 Rejected proposals, unchanged targets and intermediate glide updates do not
@@ -179,8 +179,9 @@ Rearticulate requires free pitch and Hold phonation. Combining free-pitch
 Gated phonation with it is a script error, checked on the final placement spec
 regardless of builder order; an incompatible live call also fails before any
 state is changed. Use `sustain()`, or choose gate_snap or glide with Gated
-phonation. This mode does not offer same-pitch rearticulation or autonomous
-per-note selection.
+phonation. Hold without participation does not offer a separate same-pitch attack request.
+Sustained participation can re-attack its current body pitch at a sounded opportunity;
+autonomous per-note selection is not provided.
 
 ### Choosing how pitch changes become notes
 
@@ -196,11 +197,12 @@ the composer chooses them.
 | Small moves slide | `sustain().pitch_apply_mode("rearticulate").rearticulate_above(50)` | Adoption strictly above 50 cents from the last sounded onset |
 | Sustained participation with sliding | `sustain().entrained().pitch_apply_mode("glide")` | A sounded opportunity at its current body pitch; other movement slides |
 | Sustained participation with jumps | `sustain().flow().pitch_apply_mode("gate_snap")` | A sounded opportunity consumes the latest pending target |
+| Sustained participation with a movement boundary | `sustain().entrained().pitch_apply_mode("rearticulate").rearticulate_above(50)` | Small adoptions slide; large ones wait for a sounded opportunity |
 
-Entrained and flow can each be used in either participation row. See
+Entrained and flow can each be used in any participation row. See
 [Rhythm](rhythm.md#sustained-sound-with-participation-opportunities) for their clocks.
 
-With a positive boundary, `rearticulate_above(cents)` measures net displacement from the last actual onset,
+Without participation, a positive `rearticulate_above(cents)` measures net displacement from the last actual onset,
 not accumulated path length. At or below the boundary, the existing Tone glides
 with `glide(tau)`; above it, a new Tone attacks. That choice lasts until the next
 adoption. Exact Log2Space bin centers use their bin-distance in cents; off-grid
@@ -208,7 +210,7 @@ endpoints use the continuous log2 distance, without rounding the target or addin
 an epsilon. Earlier legal attacks in the same output hop provide the reference,
 and cancelled requests never replace the last materialized onset.
 
-The boundary defaults to zero, retaining every-adoption rearticulation. Negative
+Without participation, the boundary defaults to zero, retaining every-adoption rearticulation. Negative
 and nonfinite values become zero; no upper limit is imposed. Changing the boundary
 live causes no attack and applies at the next adoption. A call outside Rearticulate
 warns and is ignored. Builder order is independent at placement. Replacement
@@ -223,6 +225,19 @@ voices.rearticulate_above(100);
 wait(3.0);
 release(voices);
 ```
+
+With a participation clock, Rearticulate applies the same distance measure to each
+adoption but uses the clock for attacks. At or below a positive boundary, movement
+starts gliding immediately without an attack and cancels any older pending target.
+Above it, an active glide stops, body pitch is held, and the latest target waits
+for a sounded opportunity. That opportunity consumes the target and attacks there;
+without a target it re-attacks the current body pitch, which may have changed during
+a glide. Waiting and skipping retain sound and pending state while existing glides
+continue. Both kinds of attack update the last actual onset reference. Same-sample
+adoption precedes the opportunity. No adoption-time candidate is added, and the
+boundary does not filter clock attacks. Zero or omission uses the GateSnap behavior,
+including zero-distance adoptions. See [Rhythm](rhythm.md#sustained-sound-with-participation-opportunities)
+for mode switching.
 
 ### Cutting notes and leaving a rest
 
@@ -244,7 +259,10 @@ and nonfinite arguments become zero; finite nonnegative values have no upper lim
 At the end of the rest, the existing participation decision can sound, wait or skip;
 the end itself does not force an attack. GateSnap retains the latest adopted target
 through sounding, release and rest, and consumes it at the next sounded opportunity.
-Glide leaves released tails at their released pitch. Release, death and removal
+Rearticulate applies its small-adoption cancellation and large-target deferral
+during release and rest too. Its last actual onset remains the reference until
+the next sounded opportunity. Sliding changes body pitch after Off but never
+retunes released tails. Glide leaves released tails at their released pitch. Release, death and removal
 take precedence. Replacements inherit controls, with fresh performance state.
 
 ```rhai
@@ -257,7 +275,8 @@ release(voices);
 
 Here 0.2 cycles and two periods are example inputs, not recommended values.
 `rest` is initial-only, like the note-length controls. It is valid only with explicit
-sustain plus entrained/flow, a finite note length, and Glide or GateSnap; incompatible
+sustain plus entrained/flow and a finite note length; Glide, GateSnap and
+Rearticulate are all available. Incompatible
 placements fail before state changes. Without `rest`, the existing rules remain.
 This form ends every note; choosing to sustain or release each individual note is
 not implemented by this control.

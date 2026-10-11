@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3668d86c.js";
+            window.path_to_searchindex_js = "../searchindex-5c4f3d77.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -311,14 +311,22 @@ p.pitch_apply_mode("glide");
 wait(3.0);
 release(p);
 </code></pre>
-<p>演奏中のGlideとGateSnapの切り替えでは、鳴っているToneを保ち、余分な発音を起こしません。
+<p>演奏中のGlide、GateSnap、Rearticulateの切り替えでは、鳴っているToneを保ち、余分な発音を起こしません。
 未出力の要求と、保留していた発音用の行き先は取り消します。Glideへ戻すと、音高の判断側に
-残っている目標へ、次の制御更新から滑り始めます。GateSnapへ替えた後は、その後の採用を
+残っている目標へ、次の制御更新から滑り始めます。GateSnapやRearticulateへ替えた後は、その後の採用を
 保留します。同じmodeをもう一度指定した場合は保留を保ちます。再生成したVoiceはmodeを
 継ぎますが、親の演奏中の保留は継ぎません。参加のプリセット自体は配置前の指定です。</p>
-<p>この形とRearticulateの併用は、配置時の最終設定と演奏中の書き込み前にscript errorとして
-拒否します。音高採用を発音へ結びつけるHoldには、参加の指定を省いてください。
-<code>rearticulate_above(cents)</code>の境界で、時計による打ち直しを間引く処理はありません。</p>
+<p>この形に<code>pitch_apply_mode("rearticulate")</code>を添えると、<code>rearticulate_above(cents)</code>で
+滑りと保留を組み合わせられます。最後の実発音音高から測り、正の境界以下の採用は
+旧い保留を取り消して滑り、超える採用は滑りを止め、次に鳴らす機会まで行き先を保留します。
+保留のない機会は、その時点の身体音高で打ち直します。待つ・見送る時も既に始まった滑りは
+続きます。どの打ち直しでも最後の実発音音高を更新し、境界は時計の発音を間引きません。
+境界の省略と0はGateSnapと同じです。参加の時計がないHoldのRearticulateは採用時に
+発音し、この形では鳴らすと選んだ機会で発音します。</p>
+<p>演奏中の境界変更は、それまで選んだ挙動を次の採用まで保ちます。mode変更では未出力の
+要求、保留、選んだ滑りを取り消し、Toneと判断側の目標を保ちます。配置前の書く順に
+依存しません。再生成したVoiceは設定を継ぎ、親の保留、滑りの選択、最後の発音音高は
+継ぎません。</p>
 <p>既定のWhileAliveと、<code>while_alive()</code>だけでは、この形を選びません。<code>sustain()</code>だけ、
 <code>entrained()</code>だけ、<code>flow()</code>だけの挙動は変えません。<code>metric()</code>、<code>pulse()</code>、<code>repeat()</code>と
 <code>sustain()</code>の併用は、従来どおり後の指定が優先されます。<code>rest()</code>がない場合は、後に

@@ -7496,6 +7496,67 @@ in which the Voice selects sustain or release per note, remains unstarted.** No
 phrase-boundary inference is required or implemented. Sources are machine-local
 `A-4/report.md`, `A-5/report.md` and `V-5/brief.md` / `report.md`.
 
+
+<a id="bounded-sustained-participation-20261011"></a>
+
+### 9.3.73 A movement boundary within sustained participation
+
+**Requirement and author adoption, 2026-10-11.** The final requirement is to mix
+legato, rearticulation and repeated pitch according to phrases, with both composer
+and Voice choosing at that level. Population modes and script switches implement
+composer control, not autonomous phrase selection. At about 14:40 the author
+adopted A-6's composition for native implementation, the cancellation rule at the
+intersection, and the spelling explicit sustain plus entrained/flow plus
+`pitch_apply_mode("rearticulate")`, with existing `rearticulate_above(cents)`.
+The Voice side of phrase-level choice begins with design; it is not completed here.
+
+**External evidence.** A-6's registered entrained acquisitions exhibited sliding,
+pending-target jump plus attack, attack without a pending target, and cost-driven
+skip. Flow had zero cost skips under those inputs, while future-onset waiting
+remained. The median run length of each event shape was one, so these did not form
+phrase-length groups. An attack without a pending target need not repeat the last
+onset pitch: the body may have glided meanwhile. Clock attacks are not filtered by
+the movement boundary. These counts describe the acquired feedback conditions,
+not musical quality or guarantees for other inputs. Cancellation and retention
+changed every registered middle-boundary comparison. The author adopted cancel:
+a newer small adoption cancels the older pending target and becomes the current
+glide target. No placeholder number or additional adoption-time candidate is added.
+
+**Implemented scope.** For explicit sustained participation on free pitch, each
+adoption is measured from the last actual onset with the existing distance rule
+and the current Log2Space. At or below a positive boundary it starts gliding without
+attack; above it an active glide stops, body pitch is held, and the latest target
+is deferred. A sounded opportunity consumes the pending target and attacks there,
+or attacks at current body pitch if none exists. Each actual attack updates the
+reference. Waiting and skipping preserve pending pitch and allow selected glides
+to continue. Same-sample adoption precedes opportunity. Zero or omission matches
+GateSnap, including zero-distance adoptions. Hold without participation still
+attacks at adoption. Default Glide, GateSnap, free Gated rejection and the warning
+outside Rearticulate retain their meanings. The older Rearticulate rejection in
+§9.3.69–72 records those implementation stages; this section supersedes it for
+explicit sustained participation.
+
+Live three-mode changes keep the Tone and controller target, clearing unrendered
+requests, pending pitch and the selected glide. Boundary changes take effect on
+the next adoption without reclassifying an ongoing choice, including a change to
+zero. Replacements inherit template controls with empty performance state. Rest
+shares §9.3.72's finite Off, actual completion and permission restoration. Adoptions
+continue through tails and rest; a small one cancels pending pitch, a large one
+replaces it, and the next sounded opportunity updates the actual reference.
+Released tails are never retuned. The obsolete rest/Rearticulate error is removed;
+rest outside explicit participation and missing finite duration remain errors
+before writes. No environment controls or diagnostic state enter the implementation.
+
+**Validation scope and limits.** V-6 records causal-order, cancellation, body
+rejection, skip, lifecycle, live boundary/mode, current-grid, rest, fresh-state and
+allocation tests, plus default études, saved main scenes, A-6 comparison, repeatability
+and Sine/Harmonic/Modal on both renderers. These are implementation and bounded
+acquisition evidence. Arbitrary-load real-time operation, author audition, musical
+quality, per-note sustain/release choice and Voice phrase-level choice remain
+outside this evidence. No new auditory principle or recommended boundary is
+claimed. Machine-local sources: `A-6/report.md`, `registration.md`, `source.patch`,
+`V-5/report.md`, and `V-6/brief.md` / `report.md`.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

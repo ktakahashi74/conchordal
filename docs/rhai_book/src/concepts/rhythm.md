@@ -189,17 +189,25 @@ wait(3.0);
 release(p);
 ```
 
-Live Glide ↔ GateSnap switching preserves the sounding Tone and emits no extra
+Live Glide ↔ GateSnap ↔ Rearticulate switching preserves the sounding Tone and emits no extra
 attack. It cancels unrendered requests and the pending attack target. On returning
 to Glide, movement follows the controller's retained target at the next control
-update. GateSnap waits for subsequent adoptions. Calling the same mode again keeps
+update. GateSnap and Rearticulate wait for subsequent adoptions. Calling the same mode again keeps
 its pending state. Replacement Voices inherit the mode, starting with no pending
 performance state. Timing presets remain initial-only.
 
-Rearticulate with sustained participation remains a script error on the final
-placement spec and before any live writes, independent of builder order. Omit the
-participation preset for pitch-triggered Hold rearticulation. Its
-`rearticulate_above(cents)` boundary does not control clock-driven attacks.
+With `pitch_apply_mode("rearticulate")`, `rearticulate_above(cents)` combines
+sliding and deferred jumps. A small adoption cancels old pending pitch and starts
+gliding; a large one stops sliding and defers the target to the next sounded
+opportunity. A sounded opportunity without a target attacks at current body pitch.
+Waiting and skipping do not stop existing glides. The boundary uses the last actual
+onset pitch, updated by every attack, and does not suppress clock attacks. Zero or
+omission matches GateSnap. Unlike Hold without participation, Rearticulate here
+attacks at a sounded opportunity rather than at adoption. Boundary changes preserve
+the selected behavior until the next adoption. Mode changes clear unrendered
+requests, pending pitch and the selected glide without changing the Tone or the
+controller's target. Builder order does not change this form; replacements inherit
+controls, not pending pitch, selected glide or last-onset memory.
 
 The implicit WhileAlive default and `while_alive()` alone do not select this form.
 `sustain()` alone, `entrained()` alone and `flow()` alone retain their previous

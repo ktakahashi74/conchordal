@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3668d86c.js";
+            window.path_to_searchindex_js = "../searchindex-5c4f3d77.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -284,7 +284,7 @@ wait(12.0);
 移ります。<code>pitch_apply_mode("gate_snap")</code>と<code>pitch_apply_mode("glide")</code>で、
 この反映方法を明示的に選べます。</p>
 <p>持続するVoiceで、新しい音高の行き先を採用するたびに発音し直したい場合は、
-<code>pitch_apply_mode("rearticulate")</code>を指定します。移動の始まりで旧いToneをreleaseし、
+参加の時計を付けず、<code>pitch_apply_mode("rearticulate")</code>を指定します。移動の始まりで旧いToneをreleaseし、
 新しいToneは頭から新しい音高でattackします。棄却した提案、同じ行き先、
 glideの途中の更新では発音し直しません。提案の間隔は行き先を選ぶ機会の間隔であって、
 一定の音符を刻む時計ではありません。発音を拍に合わせて遅らせる処理もありません。</p>
@@ -303,8 +303,9 @@ wait(12.0);
 <p>対象は音高が自由なHoldのVoiceです。自由音高のGated発音とrearticulateの組み合わせは、
 builderの呼び出し順にかかわらず、配置時の最終specでscript errorになります。
 演奏中の対象外の指定も、状態を書き換える前に拒否します。<code>sustain()</code>でHoldにするか、
-Gatedではgate_snapまたはglideを選んでください。同音高での打ち直しや、Voice自身による
-一音ごとの選択は、このmodeの機能には含まれません。</p>
+Gatedではgate_snapまたはglideを選んでください。参加の時計がないHoldには、同音高の
+発音だけを求める指定はありません。持続＋参加では機会による現在音高の打ち直しも
+できます。Voice自身が一音ごとに方策を選ぶ機能は含まれません。</p>
 <h3 id="音高の移動と発音の結びつきを選ぶ"><a class="header" href="#音高の移動と発音の結びつきを選ぶ">音高の移動と発音の結びつきを選ぶ</a></h3>
 <p>行き先を採用する時と、参加の機会で鳴らすと選ぶ時は別です。次の表で、移動を音の区切りに
 どう結びつけるかを選べます。境界は創始のVoiceに置く発音の気質で、作曲者が選ぶ量です。
@@ -320,18 +321,19 @@ Gatedではgate_snapまたはglideを選んでください。同音高での打�
 <tr><td>小さく動く時は滑る</td><td><code>sustain().pitch_apply_mode("rearticulate").rearticulate_above(50)</code></td><td>最後の発音音高から行き先までが50 centを超えた採用で打ち直す</td></tr>
 <tr><td>持続しながら参加し、音高は滑る</td><td><code>sustain().entrained().pitch_apply_mode("glide")</code></td><td>鳴らすと選んだ機会で、その時点の身体音高を打ち直す</td></tr>
 <tr><td>持続しながら参加し、発音時に跳ぶ</td><td><code>sustain().flow().pitch_apply_mode("gate_snap")</code></td><td>鳴らすと選んだ機会で、最後に保留した行き先へ跳んで打ち直す</td></tr>
+<tr><td>持続しながら参加し、移動の大きさで分ける</td><td><code>sustain().entrained().pitch_apply_mode("rearticulate").rearticulate_above(50)</code></td><td>小さい採用は滑り、大きい採用は鳴らす機会まで保留する</td></tr>
 </tbody>
 </table>
 </div>
-<p>参加の二行では、entrainedとflowをそれぞれ選べます。時計の違いは
+<p>参加の各行では、entrainedとflowをそれぞれ選べます。時計の違いは
 <a href="rhythm.html">リズム</a>の章で説明します。</p>
-<p>正の境界を指定した<code>rearticulate_above(cents)</code>は、最後に実際に発音した音高からの正味の変位を測ります。
+<p>参加の時計がない場合、正の境界を指定した<code>rearticulate_above(cents)</code>は、最後に実際に発音した音高からの正味の変位を測ります。
 経路の距離を足し合わせる量ではなく、元の音高へ戻れば相殺されます。境界以下なら同じToneで
 <code>glide(tau)</code>に従って滑り、境界を超えれば新しいToneを立ち上げます。選択は次の採用まで
 保持します。両端がLog2Spaceの正確なbin中心ならbin差をcentへ換算し、それ以外は連続した
 log2座標の差を使います。行き先の丸め直しやepsilonは加えません。同じ未出力hopに先行する
 合法な発音があれば、その音高を基準にします。取り消した要求を実発音の記憶へ残しません。</p>
-<p>省略値は0で、採用ごとに打ち直す従来の形です。負値と有限でない値は0にし、上限は置きません。
+<p>参加の時計がない場合、省略値0は採用ごとに打ち直す従来の形です。負値と有限でない値は0にし、上限は置きません。
 演奏中に境界を変えても、それだけでは発音せず、次の採用から使います。Rearticulate以外への
 指定は警告して無視します。配置前の書く順に依存しません。再生成したVoiceは境界を継ぎますが、
 親が最後に発音した音高は継ぎません。</p>
@@ -343,6 +345,15 @@ voices.rearticulate_above(100);
 wait(3.0);
 release(voices);
 </code></pre>
+<p>参加の時計を持つRearticulateでは、同じ距離の測り方を使い、打ち直しの時刻は時計に
+委ねます。正の境界以下の採用は、その時刻から滑り始め、発音せず、旧い保留を取り消します。
+境界を超える採用は進行中の滑りを止め、身体の音高を保ち、最新の行き先を一つ保留します。
+鳴らすと選んだ機会で保留を消費し、そこへ跳んで打ち直します。保留がなければ、その時点の
+身体音高で打ち直します。滑っている途中なら、前の発音と音高が違う場合もあります。
+どちらの打ち直しでも最後の実発音音高を更新します。待つ・見送るなら音と保留を保ち、
+既に始まった滑りは続きます。同じsampleでは採用を先に処理し、採用時刻の発音候補を
+追加しません。境界で時計の発音を間引きません。境界の省略と0はGateSnapと同じ形で、
+距離0の採用も保留します。演奏中の切り替えは<a href="rhythm.html">リズム</a>の章で説明します。</p>
 <h3 id="音を切って間を置く"><a class="header" href="#音を切って間を置く">音を切って間を置く</a></h3>
 <p>持続音と参加の機会を併せ持つVoiceに<code>rest()</code>を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は<code>cycles(n)</code>、または
@@ -358,7 +369,10 @@ generationに属する全Toneの終了を確認してから、間を数えます
 0にし、有限の非負値に上限は置きません。</p>
 <p>間が終わると、既存の参加の判断で鳴らす・待つ・見送るを選べます。間の終わりだけで
 発音を強制しません。GateSnapは発音中、余韻待ち、間のあいだも最新の行き先を保留し、
-次に鳴らすと選んだ機会で消費します。GlideではOff後の余韻に音高更新を渡しません。
+次に鳴らすと選んだ機会で消費します。Rearticulateも余韻待ちや間のあいだに採用を扱い、
+小さい採用は旧保留を取り消し、大きい採用は保留します。次の実発音まで、最後の発音音高を
+基準にします。Off後も身体の滑りは続きますが、離した余韻は動かしません。Glideでも
+Off後の余韻に音高更新を渡しません。
 release、死亡、removeが優先します。再生成したVoiceは設定を継ぎ、演奏の状態は
 新たに始めます。</p>
 <pre><code class="language-rhai">let notes = harmonic().sustain().entrained()
@@ -368,8 +382,8 @@ wait(3.0);
 release(voices);
 </code></pre>
 <p>ここでの0.2周期と間の2周期は使い方の例で、推奨値ではありません。<code>rest</code>は音長の
-語と同じく配置前の指定です。明示の持続＋entrained／flow、有限の音長、Glideまたは
-GateSnapとの組み合わせで使い、対象外の配置は状態を書き換える前に拒否します。
+語と同じく配置前の指定です。明示の持続＋entrained／flowと有限の音長が必要で、
+Glide、GateSnap、Rearticulateを選べます。対象外の配置は状態を書き換える前に拒否します。
 <code>rest</code>がなければ既存の規則を保ちます。この形では全ての音が有限長で終わり、Voiceが
 一音ごとに伸ばすか切るかを選ぶ機能は含まれません。</p>
 <p>研究scriptには<code>pitch_core()</code>など機構水準のcontrolもありますが、作品では

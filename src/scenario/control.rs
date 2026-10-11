@@ -22,15 +22,10 @@ pub struct VoiceControl {
 
 impl VoiceControl {
     pub(crate) fn validate_pitch_application(&self) -> Result<(), String> {
-        if self.phonation.spec.is_sustained_participation() {
-            if self.pitch.mode == PitchMode::Free
-                && self.pitch.pitch_apply_mode == PitchApplyMode::GateSnap
-            {
-                return Err(r#"sustain() with entrained() or flow() is incompatible with pitch_apply_mode("gate_snap") for free pitch; use pitch_apply_mode("glide"), or omit explicit sustain() for Gated snap-and-hold."#.into());
-            }
-            if self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate {
-                return Err(r#"sustain() with entrained() or flow() is incompatible with pitch_apply_mode("rearticulate"); use pitch_apply_mode("glide"), or omit entrained() or flow() for pitch-triggered Hold rearticulation."#.into());
-            }
+        if self.phonation.spec.is_sustained_participation()
+            && self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
+        {
+            return Err(r#"sustain() with entrained() or flow() is incompatible with pitch_apply_mode("rearticulate"); use pitch_apply_mode("glide"), or omit entrained() or flow() for pitch-triggered Hold rearticulation."#.into());
         }
         if self.pitch.mode == PitchMode::Free
             && self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate

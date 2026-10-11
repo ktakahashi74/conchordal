@@ -75,6 +75,7 @@ pub struct Voice {
     pitch_adopted: bool,
     adoption_application: PitchApplyMode,
     last_onset_pitch_log2: Option<f32>,
+    pending_participation_pitch: Option<f32>,
     control_tick: Option<Tick>,
     rearticulations: Vec<Rearticulation>,
     pulse_update_pending: bool,
@@ -411,6 +412,7 @@ impl Voice {
             pitch_adopted: false,
             adoption_application: pitch_application,
             last_onset_pitch_log2: None,
+            pending_participation_pitch: None,
             control_tick: None,
             rearticulations: Vec::new(),
             pulse_update_pending: false,
@@ -490,6 +492,8 @@ impl Voice {
         let next = select_pitch_application(&self.effective_control.pitch, None);
         if next != self.pitch_application {
             self.rearticulations.clear();
+            self.participation_pitch_steps.clear();
+            self.pending_participation_pitch = None;
             self.pitch_adopted = false;
             self.pulse_update_pending |= (next == PitchApplyMode::Rearticulate)
                 != (self.pitch_application == PitchApplyMode::Rearticulate);
@@ -676,8 +680,8 @@ impl Voice {
             self.select_adoption_application(&landscape.space, previous);
             if (self.adoption_application == PitchApplyMode::Rearticulate
                 || self.sustain_participation)
-                && self.phonation_engine.has_active_notes()
-                && self.phonation_gate_open
+                && (self.defers_participation_pitch()
+                    || (self.phonation_engine.has_active_notes() && self.phonation_gate_open))
                 && self.is_alive()
                 && !self.release_pending
                 && !self.remove_pending
@@ -694,6 +698,12 @@ impl Voice {
                 tracing::debug!(target: "pitch::adoption", id = self.id, at, pitch_log2);
             }
         }
+    }
+
+    fn defers_participation_pitch(&self) -> bool {
+        self.sustain_participation
+            && self.effective_control.pitch.mode == PitchMode::Free
+            && self.pitch_application == PitchApplyMode::GateSnap
     }
 
     fn select_adoption_application(&mut self, space: &Log2Space, previous: f32) {
@@ -909,6 +919,10 @@ impl Voice {
         if matches!(self.effective_control.pitch.mode, PitchMode::Lock) {
             self.articulation.set_gate(1.0);
             self.body.set_pitch_log2(planned.target_pitch_log2);
+            return;
+        }
+        if self.defers_participation_pitch() {
+            self.articulation.set_gate(1.0);
             return;
         }
         let application = if self.pitch_application == PitchApplyMode::Rearticulate {

@@ -2979,7 +2979,7 @@ fn sustained_participation_explicit_builders_are_order_independent() {
 #[test]
 fn sustained_participation_final_spec_rejects_explicit_incompatible_modes() {
     for preset in ["entrained()", "flow()"] {
-        for mode in ["gate_snap", "rearticulate"] {
+        for mode in ["rearticulate"] {
             for chain in [
                 format!("sustain().{preset}.pitch_apply_mode(\"{mode}\")"),
                 format!("pitch_apply_mode(\"{mode}\").{preset}.sustain()"),
@@ -3019,7 +3019,7 @@ fn sustained_participation_live_error_is_transactional() {
                 state.scenario.events.len(),
             )
         };
-        for mode in ["gate_snap", "rearticulate"] {
+        for mode in ["rearticulate"] {
             let err = engine
                 .eval_with_scope::<Dynamic>(&mut scope, &format!("p.pitch_apply_mode(\"{mode}\");"))
                 .expect_err("incompatible live mode");
@@ -3045,7 +3045,7 @@ fn sustained_participation_live_error_is_transactional() {
 
 #[test]
 fn sustained_participation_native_rejection_preserves_voice_and_respawn() {
-    for mode in [PitchApplyMode::GateSnap, PitchApplyMode::Rearticulate] {
+    for mode in [PitchApplyMode::Rearticulate] {
         let (scenario, _) = run_script_with_seed(
             "create(sine().sustain().entrained().seek_consonance().respawn_random().respawn_background_death_rate(10000.0), 1);",
             21,
@@ -3209,4 +3209,88 @@ fn boundary_script_order_sanitize_and_outside_mode_ignore() {
     }
     pitch.set_rearticulate_above_cents_clamped(f32::MAX);
     assert_eq!(pitch.rearticulate_above_cents, f32::MAX);
+}
+
+#[test]
+fn deferred_participation_respawn_inherits_initial_and_live_population_template() {
+    for live in [false, true] {
+        let mode = if live { "glide" } else { "gate_snap" };
+        let update = if live {
+            "p.pitch_apply_mode(\"gate_snap\");"
+        } else {
+            ""
+        };
+        let (scenario, _) = run_script_with_seed(
+            &format!(
+                "let p = create(sine().sustain().entrained().seek_consonance().pitch_apply_mode(\"{mode}\").respawn_random().respawn_background_death_rate(10000.0), 1); {update} flush();"
+            ),
+            21,
+        );
+        let mut community = Community::new(Timebase {
+            fs: 48_000.0,
+            hop: 257,
+        });
+        community.set_seed(scenario.seed);
+        let landscape = LandscapeFrame::default();
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            if matches!(
+                action,
+                Action::Spawn { .. }
+                    | Action::SetRespawnPolicy { .. }
+                    | Action::UpdatePopulation { .. }
+            ) {
+                community.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let founder = community.voices[0].id();
+        community.advance(257, 48_000.0, 0, 257.0 / 48_000.0, &landscape);
+        community.cleanup_dead(0, 257.0 / 48_000.0, false, &landscape);
+        assert!(community.voices.iter().any(|v| v.id() != founder));
+        for child in community.voices.iter().filter(|v| v.id() != founder) {
+            assert_eq!(
+                child.effective_control.pitch.pitch_apply_mode,
+                PitchApplyMode::GateSnap
+            );
+            assert!(child.reports_onset_pitch());
+            assert!(
+                child
+                    .effective_control
+                    .phonation
+                    .spec
+                    .is_sustained_participation()
+            );
+            assert_eq!(child.effective_control.pitch.rearticulate_above_cents, 0.0);
+        }
+    }
+}
+
+#[test]
+fn deferred_participation_script_order_and_live_gate_snap_are_valid() {
+    for preset in ["entrained()", "flow()"] {
+        for chain in [
+            format!("sustain().{preset}.pitch_apply_mode(\"gate_snap\")"),
+            format!("pitch_apply_mode(\"gate_snap\").{preset}.sustain()"),
+            format!("{preset}.pitch_apply_mode(\"gate_snap\").sustain()"),
+        ] {
+            let (scenario, _) =
+                run_script(&format!("create(sine().{chain}.seek_consonance(), 1);"));
+            let spec = scenario
+                .events
+                .iter()
+                .flat_map(|e| &e.actions)
+                .find_map(|a| match a {
+                    Action::Spawn { spec, .. } => Some(spec),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                spec.control.pitch.pitch_apply_mode,
+                PitchApplyMode::GateSnap
+            );
+            assert!(spec.control.phonation.spec.is_sustained_participation());
+        }
+        run_script(&format!(
+            "let p = create(sine().sustain().{preset}.seek_consonance(), 1); p.pitch_apply_mode(\"gate_snap\"); wait(0.1); p.pitch_apply_mode(\"glide\"); flush();"
+        ));
+    }
 }

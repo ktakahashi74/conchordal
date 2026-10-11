@@ -1,6 +1,79 @@
 use super::*;
 
 impl Voice {
+    fn emit_deferred_participation(
+        &mut self,
+        state: &CoreState,
+        consonance: f32,
+        target_amp: f32,
+        now: Tick,
+        out: &mut PhonationBatch,
+    ) {
+        for onset in &out.onsets {
+            self.articulation
+                .apply_phonation_onset(consonance, onset.strength);
+        }
+        let mut pitch = self.body.base_freq_hz().log2();
+        let mut index = 0;
+        let body = self.body_snapshot();
+        let modulator = self
+            .articulation
+            .render_modulator_spec(PhonationMode::Gated);
+        for event in &self.phonation_scratch.events {
+            // Same-sample adoption precedes the opportunity; future adoptions stay pending.
+            while index < self.rearticulations.len()
+                && self.rearticulations[index].at <= event.onset_tick
+            {
+                if state.is_alive {
+                    self.pending_participation_pitch = Some(self.rearticulations[index].pitch_log2);
+                }
+                index += 1;
+            }
+            if event.opportunity.is_some()
+                && let Some(target) = self.pending_participation_pitch.take()
+            {
+                pitch = target;
+            }
+            out.tones.push(ToneSpec {
+                opportunity: event.opportunity,
+                tone_id: event.tone_id,
+                onset: event.onset_tick,
+                hold_ticks: Some(Tick::MAX),
+                freq_hz: pitch.exp2(),
+                amp: target_amp,
+                smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
+                body: body.clone(),
+                render_modulator: modulator.clone(),
+                adsr: self.voice_adsr,
+            });
+        }
+        if state.is_alive {
+            if let Some(adoption) = self.rearticulations.get(index..).and_then(|ms| ms.last()) {
+                self.pending_participation_pitch = Some(adoption.pitch_log2);
+            }
+            self.body.set_pitch_log2(pitch);
+        } else {
+            self.pending_participation_pitch = None;
+        }
+        self.prune_tracked_render_notes(&out.cmds);
+        // Held tones and their release tails never receive pitch updates in this mode.
+        for tracked in &mut self.active_render_notes {
+            tracked.last_target_freq_hz = self.body.base_freq_hz();
+        }
+        self.emit_phonation_updates(
+            now,
+            target_amp,
+            self.body.base_freq_hz(),
+            self.effective_control.body.continuous_drive,
+            &mut out.cmds,
+        );
+        self.track_new_render_notes(&out.tones);
+        self.prune_tracked_render_notes(&out.cmds);
+        self.phonation_scratch.events.clear();
+        self.rearticulations.clear();
+        self.participation_pitch_steps.clear();
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn emit_sustained_participation(
         &mut self,
@@ -11,6 +84,7 @@ impl Voice {
         arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
         out: &mut PhonationBatch,
     ) {
+        let deferred = self.defers_participation_pitch();
         let previous_tone = self.active_render_notes.last().map(|n| n.tone_id);
         out.body_opportunity = self.phonation_engine.clock.opportunity(ctx);
         out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
@@ -34,6 +108,7 @@ impl Voice {
                     self.phonation_engine.set_adoption_candidate(
                         self.rearticulations
                             .iter()
+                            .filter(|_| !deferred)
                             .find(|m| m.at >= cursor)
                             .map(|m| m.at),
                     );
@@ -58,6 +133,7 @@ impl Voice {
                 self.phonation_engine.set_adoption_candidate(
                     self.rearticulations
                         .iter()
+                        .filter(|_| !deferred)
                         .find(|m| m.at >= step.at)
                         .map(|m| m.at),
                 );
@@ -93,6 +169,10 @@ impl Voice {
                     &mut out.onsets,
                 );
             }
+        }
+        if deferred {
+            self.emit_deferred_participation(state, consonance, target_amp, ctx.now_tick, out);
+            return;
         }
         // Resolve sound production at sample times; never apply a future target to an earlier On.
         let mut pitch = self
@@ -258,6 +338,361 @@ mod tests {
     fn emit(v: &mut Voice, tb: &Timebase, r: &NeuralRhythms, at: Tick, out: &mut PhonationBatch) {
         v.tick_phonation_into(tb, at, r, None, 0.0, 1.0, 0.8, out);
     }
+    fn deferred() -> (Voice, Timebase, NeuralRhythms, PhonationBatch) {
+        let (mut v, tb, r, out) = setup(false);
+        v.apply_patch(&ControlUpdate {
+            pitch_apply_mode: Some(PitchApplyMode::GateSnap),
+            ..Default::default()
+        })
+        .unwrap();
+        (v, tb, r, out)
+    }
+    fn adoption(v: &mut Voice, at: Tick, hz: f32) {
+        v.rearticulations.push(Rearticulation {
+            at,
+            pitch_log2: hz.log2(),
+        });
+        v.participation_pitch_steps.push(ParticipationPitchStep {
+            at,
+            before_log2: v.body.base_freq_hz().log2(),
+            target_log2: hz.log2(),
+            dt: 64.0 / 48_000.0,
+        });
+    }
+    #[test]
+    fn pending_participation_pitch_replaces_then_consumes_at_one_clock_on() {
+        let (mut v, tb, r, mut out) = deferred();
+        emit(&mut v, &tb, &r, 0, &mut out);
+        let initial = out.tones[0].freq_hz;
+        adoption(&mut v, 512, 440.0);
+        emit(&mut v, &tb, &r, 512, &mut out);
+        assert!(out.tones.is_empty());
+        assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
+        adoption(&mut v, 1024, 550.0);
+        emit(&mut v, &tb, &r, 1024, &mut out);
+        assert_eq!(
+            v.pending_participation_pitch.unwrap().to_bits(),
+            550.0f32.log2().to_bits()
+        );
+        for frame in 3..100 {
+            emit(&mut v, &tb, &r, frame * 512, &mut out);
+            if !out.tones.is_empty() {
+                assert_eq!(out.tones.len(), 1);
+                assert_eq!(out.onsets.len(), 1);
+                assert_eq!(
+                    out.cmds
+                        .iter()
+                        .filter(|c| matches!(c, ToneCmd::On { .. }))
+                        .count(),
+                    1
+                );
+                assert_eq!(
+                    out.tones[0].freq_hz.to_bits(),
+                    550.0f32.log2().exp2().to_bits()
+                );
+                assert!(v.pending_participation_pitch.is_none());
+                assert_eq!(v.active_render_notes.len(), 1);
+                return;
+            }
+            assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
+            assert!(v.pending_participation_pitch.is_some());
+        }
+        panic!("clock must produce an onset");
+    }
+    #[test]
+    fn deferred_participation_multiple_onsets_follow_only_past_adoptions() {
+        let (mut v, tb, r, mut out) = deferred();
+        emit(&mut v, &tb, &r, 0, &mut out);
+        out.clear();
+        adoption(&mut v, 562, 440.0);
+        adoption(&mut v, 712, 550.0);
+        adoption(&mut v, 912, 660.0);
+        let opportunity = crate::life::action_candidates::OnsetOpportunity {
+            issued_at: 512,
+            at: 612,
+            gate: 1,
+            intrinsic_due_at: None,
+            intrinsic_period_ticks: None,
+            planned_release_at: None,
+        };
+        v.phonation_scratch.events.push(ToneOnEvent {
+            tone_id: 7,
+            onset_tick: 612,
+            opportunity: Some(opportunity),
+        });
+        v.phonation_scratch.events.push(ToneOnEvent {
+            tone_id: 8,
+            onset_tick: 812,
+            opportunity: Some(crate::life::action_candidates::OnsetOpportunity {
+                at: 812,
+                ..opportunity
+            }),
+        });
+        let ctx = CoreTickCtx {
+            now_tick: 512,
+            frame_end: 1024,
+            fs: tb.fs,
+            rhythms: r,
+        };
+        v.emit_deferred_participation(
+            &CoreState {
+                is_alive: true,
+                onset_allowed: true,
+            },
+            0.8,
+            0.1,
+            ctx.now_tick,
+            &mut out,
+        );
+        assert_eq!(out.tones.len(), 2);
+        assert_eq!(
+            out.tones[0].freq_hz.to_bits(),
+            440.0f32.log2().exp2().to_bits()
+        );
+        assert_eq!(
+            out.tones[1].freq_hz.to_bits(),
+            550.0f32.log2().exp2().to_bits()
+        );
+        assert_eq!(
+            v.body.base_freq_hz().to_bits(),
+            out.tones[1].freq_hz.to_bits()
+        );
+        assert_eq!(
+            v.pending_participation_pitch.unwrap().to_bits(),
+            660.0f32.log2().to_bits()
+        );
+    }
+    #[test]
+    fn deferred_participation_body_rejection_keeps_pending_until_a_later_clock() {
+        let (mut v, tb, r, mut out) = deferred();
+        emit(&mut v, &tb, &r, 0, &mut out);
+        let initial = v.body.base_freq_hz();
+        adoption(&mut v, 512, 440.0);
+        out.clear();
+        let ctx = CoreTickCtx {
+            now_tick: 512,
+            frame_end: 1024,
+            fs: tb.fs,
+            rhythms: r,
+        };
+        v.emit_sustained_participation(
+            &ctx,
+            &CoreState {
+                is_alive: true,
+                onset_allowed: false,
+            },
+            0.8,
+            0.1,
+            None,
+            &mut out,
+        );
+        assert!(out.tones.is_empty() && out.onsets.is_empty());
+        assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
+        assert_eq!(
+            v.pending_participation_pitch.unwrap().to_bits(),
+            440.0f32.log2().to_bits()
+        );
+    }
+    #[test]
+    fn deferred_participation_control_holds_body_while_target_changes() {
+        let (mut v, _, r, _) = deferred();
+        v.pitch_ctl.force_set_target_pitch_log2(440.0f32.log2());
+        v.control_tick = Some(0);
+        let initial = v.body.base_freq_hz();
+        v.update_articulation_autonomous(64.0 / 48_000.0, &r);
+        assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
+        assert_eq!(
+            v.participation_pitch_steps[0].target_log2.to_bits(),
+            440.0f32.log2().to_bits()
+        );
+    }
+    #[test]
+    fn deferred_participation_future_adoption_does_not_change_initial_on_in_same_hop() {
+        let (mut v, tb, r, mut out) = deferred();
+        adoption(&mut v, 128, 440.0);
+        emit(&mut v, &tb, &r, 0, &mut out);
+        assert_eq!(out.tones.len(), 1);
+        assert_eq!(out.tones[0].onset, 0);
+        assert_eq!(
+            out.tones[0].freq_hz.to_bits(),
+            330.0f32.log2().exp2().to_bits()
+        );
+        assert_eq!(
+            v.body.base_freq_hz().to_bits(),
+            out.tones[0].freq_hz.to_bits()
+        );
+        assert_eq!(
+            v.pending_participation_pitch.unwrap().to_bits(),
+            440.0f32.log2().to_bits()
+        );
+        assert!(!out.cmds.iter().any(
+            |c| matches!(c, ToneCmd::Update { update, .. } if update.target_freq_hz.is_some())
+        ));
+    }
+    #[test]
+    fn deferred_participation_skip_preserves_pending_pitch_and_tone() {
+        use crate::core::temporal_expectation::TemporalForecast;
+        let (mut v, tb, r, mut out) = deferred();
+        emit(&mut v, &tb, &r, 0, &mut out);
+        let freq = v.body.base_freq_hz();
+        adoption(&mut v, 512, 440.0);
+        v.phonation_engine
+            .set_onset_comparison(Some(crate::config::TemporalOnsetComparisonConfig::default()));
+        v.phonation_engine.set_decision_trace(true);
+        let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
+        v.phonation_engine
+            .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
+        for frame in 1..100 {
+            emit(&mut v, &tb, &r, frame * 512, &mut out);
+            if v.phonation_engine
+                .drain_participation_decisions()
+                .any(|d| d.skipped)
+            {
+                assert!(out.onsets.is_empty());
+                assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+                assert_eq!(v.body.base_freq_hz().to_bits(), freq.to_bits());
+                assert_eq!(
+                    v.pending_participation_pitch.unwrap().to_bits(),
+                    440.0f32.log2().to_bits()
+                );
+                assert_eq!(v.active_render_notes.len(), 1);
+                return;
+            }
+        }
+        panic!("fixture must skip");
+    }
+    #[test]
+    fn deferred_participation_lifecycle_cancels_pending_and_future_adoptions() {
+        for reason in 0..3 {
+            let (mut v, tb, r, mut out) = setup(true);
+            v.apply_patch(&ControlUpdate {
+                pitch_apply_mode: Some(PitchApplyMode::GateSnap),
+                ..Default::default()
+            })
+            .unwrap();
+            emit(&mut v, &tb, &r, 0, &mut out);
+            v.pending_participation_pitch = Some(440.0f32.log2());
+            adoption(&mut v, 576, 550.0);
+            match reason {
+                0 => v.release_pending = true,
+                1 => v.remove_pending = true,
+                _ => {
+                    let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
+                        &mut v.articulation.core
+                    else {
+                        unreachable!()
+                    };
+                    core.energy = 0.0;
+                    core.state = crate::life::articulation_core::ArticulationState::Idle;
+                }
+            }
+            emit(&mut v, &tb, &r, 512, &mut out);
+            assert!(out.onsets.is_empty() && out.tones.is_empty());
+            assert!(v.pending_participation_pitch.is_none());
+            assert!(v.rearticulations.is_empty());
+            assert!(out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+        }
+    }
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn deferred_participation_emission_reuses_birth_storage() {
+        let (mut v, tb, r, mut out) = deferred();
+        emit(&mut v, &tb, &r, 0, &mut out);
+        v.phonation_engine.clock = crate::life::phonation_engine::PhonationClock::from_config(
+            &PhonationClockConfig::Participation {
+                coupling: 0.8,
+                base_rate_hz: crate::life::phonation_engine::MAX_ONSET_RATE_HZ,
+                flow_depth: 0.0,
+            },
+            21,
+        );
+        emit(&mut v, &tb, &r, 512, &mut out);
+        adoption(&mut v, 1024, 440.0);
+        adoption(&mut v, 1088, 550.0);
+        crate::runtime_profile::begin_allocations();
+        emit(&mut v, &tb, &r, 1024, &mut out);
+        let counts = crate::runtime_profile::finish_allocations().unwrap();
+        assert!(!out.onsets.is_empty());
+        assert_eq!((counts.count, counts.bytes), (0, 0));
+    }
+
+    #[test]
+    fn deferred_participation_live_switch_retains_tone_and_controller_destination() {
+        let (mut v, tb, r, mut out) = deferred();
+        assert!(v.pending_participation_pitch.is_none());
+        emit(&mut v, &tb, &r, 0, &mut out);
+        let initial = v.body.base_freq_hz();
+        let tone = v.active_render_notes[0].tone_id;
+        v.pitch_ctl.force_set_target_pitch_log2(440.0f32.log2());
+        adoption(&mut v, 576, 440.0);
+        emit(&mut v, &tb, &r, 512, &mut out);
+        assert!(v.pending_participation_pitch.is_some());
+        v.apply_patch(&ControlUpdate {
+            pitch_apply_mode: Some(PitchApplyMode::Glide),
+            pitch_glide_tau_sec: Some(0.03),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(v.pending_participation_pitch.is_none());
+        assert_eq!(v.active_render_notes[0].tone_id, tone);
+        assert_eq!(v.body.base_freq_hz(), initial);
+        emit(&mut v, &tb, &r, 1024, &mut out);
+        assert!(out.tones.is_empty() && out.onsets.is_empty());
+        v.set_control_tick(1536);
+        v.update_articulation_autonomous(64.0 / 48_000.0, &r);
+        assert!(v.body.base_freq_hz() > initial && v.body.base_freq_hz() < 440.0);
+        emit(&mut v, &tb, &r, 1536, &mut out);
+        v.apply_patch(&ControlUpdate {
+            pitch_apply_mode: Some(PitchApplyMode::GateSnap),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(v.pending_participation_pitch.is_none());
+        let held = v.body.base_freq_hz();
+        v.set_control_tick(2048);
+        v.update_articulation_autonomous(64.0 / 48_000.0, &r);
+        emit(&mut v, &tb, &r, 2048, &mut out);
+        assert_eq!(v.body.base_freq_hz(), held);
+        assert!(out.tones.is_empty() && out.onsets.is_empty());
+        assert_eq!(v.active_render_notes[0].tone_id, tone);
+    }
+
+    #[test]
+    fn deferred_participation_same_sample_adoption_precedes_opportunity() {
+        let (mut v, tb, r, mut out) = deferred();
+        emit(&mut v, &tb, &r, 0, &mut out);
+        out.clear();
+        adoption(&mut v, 576, 440.0);
+        v.phonation_scratch.events.push(ToneOnEvent {
+            tone_id: 7,
+            onset_tick: 576,
+            opportunity: Some(crate::life::action_candidates::OnsetOpportunity {
+                issued_at: 512,
+                at: 576,
+                gate: 1,
+                intrinsic_due_at: None,
+                intrinsic_period_ticks: None,
+                planned_release_at: None,
+            }),
+        });
+        v.emit_deferred_participation(
+            &CoreState {
+                is_alive: true,
+                onset_allowed: true,
+            },
+            0.8,
+            0.1,
+            512,
+            &mut out,
+        );
+        assert_eq!(out.tones.len(), 1);
+        assert_eq!(
+            out.tones[0].freq_hz.to_bits(),
+            440.0f32.log2().exp2().to_bits()
+        );
+        assert!(v.pending_participation_pitch.is_none());
+    }
+
     #[test]
     fn sustained_participation_clock_restarts_same_pitch_with_one_on_and_unbounded_hold() {
         let (mut v, tb, r, mut out) = setup(false);

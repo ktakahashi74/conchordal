@@ -219,9 +219,9 @@ Aが5,896 µs、Bが6,196 µs、A′が7,442 µs、B′が9,308 µsで、採る�
 | P-0、P-A、P-B | 2〜10秒の音高・時刻の型の生成状態の空白を棚卸し。複数個体の応答と個体内の形成は二択にせず、創始の気質として共存できる案を検討。旧曲を維持する前提は置かない。[§9.3.63](../design-notes/technote-ledger.ja.md#motif-phrase-generation-gap-20261010)。 |
 | P-A1、P-B1 | 提案だけで新しい重みを足さない条件では、型を新たに生んだと示せず陰性で終了。学んだ意図に重みを持たせる続きは未着手・未採択で、優先を下げた。[§9.3.64](../design-notes/technote-ledger.ja.md#learned-pattern-prototypes-negative-20261010)。 |
 | H-1 | 慣れと既存語彙のlegato-fastを作者が「かなり自然なメロディー」と評価。聴かせないanchor、一体の近似自己除外、遅い／速い二体も作曲の材料として評価した。一般的な系列生成の受入とはしない。慣れの既定有効化は上記H-3で完了。[§9.3.65](../design-notes/technote-ledger.ja.md#habituation-melodic-materials-20261010)。 |
-| V-1 | 外部試作で、新目標の採用一回に発音一回、移動開始でattackする規則を確認。音量と音高の動きも変わる。作者の試聴と本体統合の判断待ち。語彙の名称・APIは未採択。[§9.3.66](../design-notes/technote-ledger.ja.md#pitch-adoption-articulation-prototype-20261010)。 |
+| V-1 | 外部試作で、新目標の採用一回に発音一回、移動開始でattackする規則を確認。音量と音高の動きも変わる。報告時点では本体統合の判断待ちだったが、2026-10-11に作者が採択し、09:03頃に `pitch_apply_mode("rearticulate")` の形と名前も確定した。本体実装・検査・文書はV-2のbranchに用意した。[§9.3.66](../design-notes/technote-ledger.ja.md#pitch-rearticulate-native-decision-20261011)。 |
 
-次はT-11の報告で原因と採択済み設計内の修理範囲を確認し、V-1の打ち直す版・滑る版・採用で発音する版とseed 123を作者が聴いて、本体へ入れるか判断する。V-1の二つの発音規則は決定済みで、再選定しない。聴こえる音量と生態入力の分離は保留、学んだ意図の重みの設計は優先を下げた未決の続きである。これらを試作完了や実時間合格によって自動的に採択したとはしない。
+当時の次の手順はT-11の原因確認とV-1の作者の試聴・判断だった。その後のT-11とT-16の扱いは以下の追記に、V-1の本体採択と語彙の確定、最終形の要求は[2026-10-11の追記](#pitch-rearticulate-native-decision-20261011)に記録する。V-1の二つの発音規則は決定済みで、再選定しない。聴こえる音量と生態入力の分離は保留、学んだ意図の重みの設計は優先を下げた未決の続きである。これらを試作完了や実時間合格によって自動的に採択したとはしない。
 
 出典は機械に固有の追跡外記録 `.orchestration/units/`の各報告と、`.orchestration/records/decisions-20261007-orchestrator.md`の同日13:20以後である。次の着手で読むfileと試聴材料は[next-session](next-session.md#2-先に読むもの)にまとめる。
 
@@ -244,4 +244,15 @@ T-11はF1・F2とも設計の選択と分類し、修理せずに止めた。保
 
 T-16はT-13の最終先端`c2b8308`から`work/t16-basin-voice-rate-20261011-v1`へ実装した。scenarioの確定段階で最後の一つのbasinを全Synchronized Spawnに適用し、createとplaceを覆う。stabilityを初期値に掛けない。Participatingのentrained／flow、明示Pulse、親の時計を継がずPopulationの初期設定を読む再生成は保つ。basinはsceneの初期条件であり、waitをまたぐ複数指定も最後の値となる。演奏中の切替えは足さない。
 
-実装・検査と文書の二commitを用意した。最終sourceの全テスト1,044件、F2の18条件とF3、既存のF1の18条件が通過した。F1の18条件、07・12の保存済み検査設定、既定の12 étudeの全長で、WAVと意味のあるreportが一致した。hopの仕事と測定入力を変えないため、取得済みのT-13の実機の計測で足りる。統括はT-13の実機の取得を使い、取り直さずに08:46にmainへ統合した。workerの担当はbranchの用意までであり、統合、push、実機の計測は行わなかった。S1とその四つの規約、位相分離の停止した線、V-1の未決は採った扱いにしない。判断と出どころは[台帳§9.3.68](../design-notes/technote-ledger.ja.md#metric-basin-initial-rate-20261011)、機械に固有の報告は`.orchestration/units/T-16/report.md`に置く。旧20単位の分母を増やさない。
+実装・検査と文書の二commitを用意した。最終sourceの全テスト1,044件、F2の18条件とF3、既存のF1の18条件が通過した。F1の18条件、07・12の保存済み検査設定、既定の12 étudeの全長で、WAVと意味のあるreportが一致した。hopの仕事と測定入力を変えないため、取得済みのT-13の実機の計測で足りる。統括はT-13の実機の取得を使い、取り直さずに08:46にmainへ統合した。workerの担当はbranchの用意までであり、統合、push、実機の計測は行わなかった。S1とその四つの規約、位相分離の停止した線、V-1をこのT-16の検査で採択したとはしない。V-1の後の判断は以下の追記に記録する。判断と出どころは[台帳§9.3.68](../design-notes/technote-ledger.ja.md#metric-basin-initial-rate-20261011)、機械に固有の報告は`.orchestration/units/T-16/report.md`に置く。旧20単位の分母を増やさない。
+
+
+<a id="pitch-rearticulate-native-decision-20261011"></a>
+
+### 2026-10-11：rearticulateの採択と、最終形への要求
+
+作者はV-1を聴いたうえで本体への実装を採り、発音するかレガートかを作曲者が選べる形を求めた。同日09:03頃、`pitch_apply_mode("rearticulate")` の形と名前を確定した。語彙の確認待ちは解消した。既定の解決を保ち、Populationごとの指定とscriptによるglide↔rearticulateのlive切り替えをV-2のbranchに実装した。統括が併用規則の案Aを採り、自由音高のGatedとの併用を、最終配置specとlive指定で書き込み前にerrorにする。任意hopの有界例、初回の遅れ、切り替え、再出生、割当て0、身体と両rendererを検査し、既定の12 étudeのWAV・意味のあるreportをmainと照合した。新方策の実機の余裕は測定していない。
+
+作者の最終形の要求は、フレーズによってrearticulate、legato、同じ音高での打ち直しを混ぜ、Voiceが一音ごとに選ぶ形である。Populationごとの固定modeとscriptからの演奏中の切替えは途中の形である。A-1（T-5b）が一音ごとの選択を別に設計し、V-2では実装しない。V-2は方策判断を一か所へまとめ、採用・音高差の条件を持たない再発音の経路を用意した。一音ごとの選択と公開の同音高発音は実装していない。最終形は要求であり、実装済みとは数えない。
+
+経過と確認の範囲は[台帳§9.3.66](../design-notes/technote-ledger.ja.md#pitch-rearticulate-native-decision-20261011)、機械に固有の報告は `.orchestration/units/V-2/report.md` に記録する。発音方策の採択を拍の同期や学んだ系列生成の受入へ広げず、旧20単位の分母を増やさない。

@@ -699,7 +699,19 @@ Conductor モジュールは人間のアーティストとエコシステムの�
 **PopulationSpec の構築**: プリセット `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()` から開始し、`variant(parent)` で複製・派生する。PopulationSpec は創始 Voice の既定値と、集団全体のライフサイクル・生存可能性・リスポーン方針を併せ持つ。
 
 *   ボディ: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)`（ハビタット/プレゼンテーションのルーティング）。
-*   ピッチ: `anchor()`（ピッチを保持。`freq(hz)` はアンカーを含意）, `seek_consonance()`（協和地形を登る。適用モードは自動解決される——持続ボイスはグライド、再アタックするボイスはオンセットでスナップ——`pitch_apply_mode("gate_snap"|"glide")` で明示上書き可）, `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `tessitura_gravity(v)`, `temperature(v)`（両コア共有の探索ノブ。0 で貪欲に落ち着く——音楽的にはこれが運動の緊張のノブで、高温ではボイスが協和から外れて彷徨い、冷ますと解決する）ほか。
+*   ピッチ: `anchor()`（ピッチを保持。`freq(hz)` はアンカーを含意）, `seek_consonance()`（協和地形を登る。適用モードは自動解決される——持続ボイスはグライド、再アタックするボイスはオンセットでスナップ——`pitch_apply_mode("gate_snap"|"glide"|"rearticulate")` で明示上書き可）, `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `tessitura_gravity(v)`, `temperature(v)`（両コア共有の探索ノブ。0 で貪欲に落ち着く——音楽的にはこれが運動の緊張のノブで、高温ではボイスが協和から外れて彷徨い、冷ますと解決する）ほか。
+
+音高が自由なHoldのVoiceでは、`pitch_apply_mode("rearticulate")`を指定すると、
+新しい行き先の採用一回につき一回発音し直す。採用のsample時刻に旧いToneのreleaseを始め、
+新しいToneは頭から新しい音高でattackする。同じ行き先、棄却した提案、提案のないstepでは
+余分な発音を起こさない。`"glide"`では滑らかに移る。演奏中の両modeの切り替えは、
+鳴っているToneを保ち、切り替えだけでは発音せず、まだ出力していない再発音の要求を取り消す。
+再出生するVoiceはPopulationのmodeを継承する。固定されたVoiceには作用しない。
+自由音高のGated発音との併用は、呼び出し順にかかわらず配置時の最終specでscript errorになる。
+対象外のlive指定も状態を書き換える前に拒否する。Holdには`sustain()`を使い、
+Gatedでは`"gate_snap"`か`"glide"`を選ぶ。既定は変えない。新しいattackと旧音のrelease tailは、
+既存の合成、energyの費用、生態が音を聴く経路を通る。
+
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。
 *   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`と`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、参加方策は2 Hzの固有ペースを維持する。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。

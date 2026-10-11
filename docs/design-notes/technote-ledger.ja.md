@@ -5134,9 +5134,17 @@ anchorなしで自音を含む一体は、141移動中114が−25 cents、19が�
 
 **音高の動きも変わる。** seed 123の小移動は滑る版35/138から123/179へ増え、300〜700 centsの跳躍は30/138から9/179へ減った。滑る版はH-1の滞在列、新方策は全採用のonset列で数えた診断である。新しいattack、即時の音高変更、旧音のrelease tailが場と慣れへ返るため、三seedでlegato-fastの動きが一律に保たれたとはしない。attackだけの寄与を切り分けた因果実験でもない。一体の近似自己除外と遅い／速い二体の素材も取得したが、方策だけで必ず不揃いな音価になるとは示していない。
 
-**本体統合は作者の試聴と判断待ち。** 決定済みの二点を再判断する段階ではなく、seed 123の変化も含むこの方策を本体へ入れるかが残る。`pitch_articulated()`は独立した発音様式の語彙案であり、名称・APIは未採択、Rhaiへ未実装である。48 kHz、hop 512、96秒、三seed、harmonic・Droneの一体／二体の試作で、別身体、出生継承、任意hop、参加型の相手、DCC coupling有効、実時間の余裕は未検証である。Entrainはenergyとrelease・死亡等の有界検査までである。
+**2026-10-10のV-1報告時点の状態。** 本体統合は作者の試聴と判断待ちだった。決定済みの発音規則の二点を再選定する段階ではなかった。`pitch_articulated()`は独立した発音様式の語彙案で、名称・APIは未採択だった。この旧案は、以下の判断で置き換わった。試作は48 kHz、hop 512、96秒、三seed、harmonic・Droneの一体／二体を覆う。別身体、出生継承、任意hop、参加型の相手、DCC coupling有効、実時間の余裕は未検証である。Entrainはenergyとrelease・死亡等の有界検査までである。
 
-出典は機械に固有の追跡外記録 `.orchestration/units/V-1/registration.md`・`report.md`と、判断記録の同日20:34・21:55・22:58・23:03である。V-1はH-3で更新されたmainの検査ではなく、固定したcopyの結果である。
+<a id="pitch-rearticulate-native-decision-20261011"></a>
+
+**2026-10-11の作者と統括の判断。** 作者はV-1の試聴後に本体への実装を採り、発音するかレガートかを作曲者が選べる形を求めた。同日09:03頃に `pitch_apply_mode("rearticulate")` の形と名前を確定した。その後、統括が技術的な併用規則として案Aを採った。自由音高のGated発音との併用は、呼び出し順にかかわらず配置時の最終specでerrorにし、対象外のlive指定もVoice、保留中のpatch、再出生のtemplateを書き換える前に拒否する。errorは代わりにHoldへする`sustain()`、またはGatedでgate_snap/glideを使う形を名指しする。この併用規則の判断は統括によるもので、作者の音楽的な要求とは区別する。無視すると、後で意味を与えた際に動いているscriptの挙動が黙って変わる。時計の種類まで切り替える案はこの変更の範囲を超える。
+
+**本体の実装を用意した。** 制御から発音へsample時刻付きの要求を渡す。新しい行き先の採用で旧い持続Toneをreleaseし、新しいToneを頭から新しい音高でattackする。拍を待たない。要求とeventの容量は、設定したhopと既存の制御分割から出生・初期設定で確保する。既定の解決は変えず、Holdのlive切り替えとPopulationのtemplateからの継承を実装した。任意hopの有界例、Viableによる初回の遅れ、release・死亡、旧音の周波数の保持、live往復、error時の状態保持、Voiceの発音経路の追加割当て0を検査した。Sine・Harmonic・Modalと両rendererを描画し、既定の12 étudeでmainとのWAVと意味のあるreportの一致を確認した。新方策の実機の余裕、DCC couplingを有効にした相互作用、一般的な音楽的効果まで確かめた結果ではない。
+
+**最終形への要求。未実装。** 作者は、フレーズによってrearticulate、legato、同じ音高での打ち直しを混ぜ、Voiceが一音ごとに選ぶ形を求めた。Populationごとの固定modeとscriptからの切り替えは途中の形である。A-1（T-5b）が一音ごとの選択を別に設計する。V-2ではこの選択と公開の同音高の発音要求を実装しない。現在の判断は `select_pitch_application` 一か所にあり、実行側の `PhonationEngine::rearticulate_hold` は採用や音高差の条件を持たず発音要求を処理する。同音高の内部検査はこの拡張の境界を確認するもので、作曲者向けの新機能の検査とはしない。
+
+上記の音高と音量の変化はV-1の試作の証拠として残す。本体のseed 21・42・123のglideとrearticulate、live切り替え、二つの提案間隔、V-1との比較は、機械に固有の `.orchestration/units/V-2/report.md` に記録する。描画は聴く材料の用意であり、新たな作者の試聴の記録ではない。試作と本体のsourceを区別し、attackだけの因果寄与を確かめたとはしない。
 
 
 <a id="meter-onset-recurrence-branch-20261011"></a>

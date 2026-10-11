@@ -149,8 +149,40 @@ voices at their settled position.
 
 How movement lands is resolved from phonation: sustained movers glide,
 re-attacking movers (`pulse()`, `metric()`, `entrained()`, `flow()`) snap to
-their new pitch at each onset. Override with `pitch_apply_mode()` when a
-script needs the other behavior. Mechanism-level controls (`pitch_core()` and
+their new pitch at each onset. `pitch_apply_mode("gate_snap")` and
+`pitch_apply_mode("glide")` override that choice.
+
+For sustained movers, `pitch_apply_mode("rearticulate")` gives each newly
+adopted pitch target a fresh attack. The old Tone releases while the new Tone
+starts directly at the adopted pitch, at the sample when movement begins.
+Rejected proposals, unchanged targets and intermediate glide updates do not
+create notes. The proposal interval controls opportunities to choose a target,
+not a fixed note clock; rearticulation does not wait for a beat.
+
+```rhai
+let moving = harmonic().sustain().seek_consonance()
+    .pitch_apply_mode("rearticulate");
+let voices = place(moving, line(220.0, 440.0).count(3));
+wait(12.0);
+voices.pitch_apply_mode("glide");
+wait(12.0);
+```
+
+A live switch between glide and rearticulate preserves the sounding Tone and
+does not trigger a note by itself. Unrendered rearticulation requests are
+cancelled by that switch; the new mode handles subsequent adoptions. The mode
+also belongs to the Population template used for replacements. `glide(tau)`
+sets the sliding time constant only in glide mode. Anchored Voices are
+unaffected by rearticulate.
+
+Rearticulate requires free pitch and Hold phonation. Combining free-pitch
+Gated phonation with it is a script error, checked on the final placement spec
+regardless of builder order; an incompatible live call also fails before any
+state is changed. Use `sustain()`, or choose gate_snap or glide with Gated
+phonation. This mode does not offer same-pitch rearticulation or autonomous
+per-note selection.
+
+Mechanism-level controls (`pitch_core()` and
 the hill-climb / peak-sampler tuning in the
 [API Reference](../reference/api.md)) remain available for research scripts;
 prefer `seek_consonance()` and `glide()` in curated work.

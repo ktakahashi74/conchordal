@@ -131,9 +131,38 @@ wait(12.0);
 
 移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
 （`pulse()`、`metric()`、`entrained()`、`flow()`）は発音開始ごとに新しい音高へ
-snapします。例外が必要なら`pitch_apply_mode()`を使います。研究scriptには
-`pitch_core()`など機構水準のcontrolもありますが、作品では`seek_consonance()`と
-`glide()`を優先してください。
+移ります。`pitch_apply_mode("gate_snap")`と`pitch_apply_mode("glide")`で、
+この反映方法を明示的に選べます。
+
+持続するVoiceで、新しい音高の行き先を採用するたびに発音し直したい場合は、
+`pitch_apply_mode("rearticulate")`を指定します。移動の始まりで旧いToneをreleaseし、
+新しいToneは頭から新しい音高でattackします。棄却した提案、同じ行き先、
+glideの途中の更新では発音し直しません。提案の間隔は行き先を選ぶ機会の間隔であって、
+一定の音符を刻む時計ではありません。発音を拍に合わせて遅らせる処理もありません。
+
+```rhai
+let moving = harmonic().sustain().seek_consonance()
+    .pitch_apply_mode("rearticulate");
+let voices = place(moving, line(220.0, 440.0).count(3));
+wait(12.0);
+voices.pitch_apply_mode("glide");
+wait(12.0);
+```
+
+演奏中にglideとrearticulateを切り替えても、鳴っているToneを止めたり、
+切り替えだけで新しい発音を起こしたりしません。まだ出力していない再発音の要求を取り消し、
+次の採用から新しいmodeを使います。再出生するVoiceにもPopulationのtemplateから
+同じmodeが渡ります。`glide(tau)`はglide modeの移動の時定数です。
+`anchor()`などで固定されたVoiceにrearticulateは作用しません。
+
+対象は音高が自由なHoldのVoiceです。自由音高のGated発音とrearticulateの組み合わせは、
+builderの呼び出し順にかかわらず、配置時の最終specでscript errorになります。
+演奏中の対象外の指定も、状態を書き換える前に拒否します。`sustain()`でHoldにするか、
+Gatedではgate_snapまたはglideを選んでください。同音高での打ち直しや、Voice自身による
+一音ごとの選択は、このmodeの機能には含まれません。
+
+研究scriptには`pitch_core()`など機構水準のcontrolもありますが、作品では
+`seek_consonance()`を入口にし、発音し直すか滑らかに移るかを選んでください。
 
 ## Consonance viabilityとrespawn
 

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4741587d.js";
+            window.path_to_searchindex_js = "../searchindex-50c56f13.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -298,8 +298,34 @@ only deforms the terrain for others. Voices placed with <code>at()</code> or giv
 voices at their settled position.</p>
 <p>How movement lands is resolved from phonation: sustained movers glide,
 re-attacking movers (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap to
-their new pitch at each onset. Override with <code>pitch_apply_mode()</code> when a
-script needs the other behavior. Mechanism-level controls (<code>pitch_core()</code> and
+their new pitch at each onset. <code>pitch_apply_mode("gate_snap")</code> and
+<code>pitch_apply_mode("glide")</code> override that choice.</p>
+<p>For sustained movers, <code>pitch_apply_mode("rearticulate")</code> gives each newly
+adopted pitch target a fresh attack. The old Tone releases while the new Tone
+starts directly at the adopted pitch, at the sample when movement begins.
+Rejected proposals, unchanged targets and intermediate glide updates do not
+create notes. The proposal interval controls opportunities to choose a target,
+not a fixed note clock; rearticulation does not wait for a beat.</p>
+<pre><code class="language-rhai">let moving = harmonic().sustain().seek_consonance()
+    .pitch_apply_mode("rearticulate");
+let voices = place(moving, line(220.0, 440.0).count(3));
+wait(12.0);
+voices.pitch_apply_mode("glide");
+wait(12.0);
+</code></pre>
+<p>A live switch between glide and rearticulate preserves the sounding Tone and
+does not trigger a note by itself. Unrendered rearticulation requests are
+cancelled by that switch; the new mode handles subsequent adoptions. The mode
+also belongs to the Population template used for replacements. <code>glide(tau)</code>
+sets the sliding time constant only in glide mode. Anchored Voices are
+unaffected by rearticulate.</p>
+<p>Rearticulate requires free pitch and Hold phonation. Combining free-pitch
+Gated phonation with it is a script error, checked on the final placement spec
+regardless of builder order; an incompatible live call also fails before any
+state is changed. Use <code>sustain()</code>, or choose gate_snap or glide with Gated
+phonation. This mode does not offer same-pitch rearticulation or autonomous
+per-note selection.</p>
+<p>Mechanism-level controls (<code>pitch_core()</code> and
 the hill-climb / peak-sampler tuning in the
 <a href="../reference/api.html">API Reference</a>) remain available for research scripts;
 prefer <code>seek_consonance()</code> and <code>glide()</code> in curated work.</p>

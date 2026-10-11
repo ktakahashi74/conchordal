@@ -1014,7 +1014,7 @@ pitch_apply_mode(name)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-`"gate_snap"` or `"glide"`: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at placement from their phonation: sustained voices glide, re-attacking voices snap at onsets.
+`"gate_snap"`, `"glide"` or `"rearticulate"`: choose how adopted pitch targets are applied. Without an explicit call, moving voices resolve this at placement from their phonation: sustained voices glide, re-attacking voices snap at onsets. For a free-pitch Hold voice (`sustain()`), `"rearticulate"` releases the old Tone and attacks a new Tone at the adopted target's sample time, starting at the new pitch. An unchanged target, a rejected proposal or a step without a proposal creates no onset; this does not wait for a beat. `glide(tau)` controls sliding only in `"glide"` mode. A live Hold switch between glide and rearticulate keeps the sounding Tone and creates no onset by itself; it cancels unrendered rearticulation requests. The mode is inherited by replacement Voices. Locked voices (`anchor()`, `at()` or `freq()`) are unaffected. Free-pitch Gated phonation is incompatible with `"rearticulate"`: the final placement spec is checked independently of builder order, and an incompatible live call fails before modifying the Voice, pending patch or replacement template. Use `sustain()`, or choose `"gate_snap"` or `"glide"` for Gated phonation.
 
 #### `landscape_weight`
 

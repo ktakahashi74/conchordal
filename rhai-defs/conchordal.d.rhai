@@ -349,9 +349,9 @@ fn peak(arg0: Placement) -> Placement;
 /// [experimental] Withhold the first onset until perceived consonance is viable.
 fn phonate_when_viable(arg0: PopulationSpec) -> PopulationSpec;
 
-/// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
+/// [tuning] `"gate_snap"`, `"glide"` or `"rearticulate"`: choose how adopted pitch targets are applied.
 fn pitch_apply_mode(arg0: Population, arg1: String) -> Population;
-/// [tuning] `"gate_snap"` or `"glide"`: override how pitch decisions are applied.
+/// [tuning] `"gate_snap"`, `"glide"` or `"rearticulate"`: choose how adopted pitch targets are applied.
 fn pitch_apply_mode(arg0: PopulationSpec, arg1: String) -> PopulationSpec;
 
 /// [research] `"hill_climb"` or `"peak_sampler"`. Research control.

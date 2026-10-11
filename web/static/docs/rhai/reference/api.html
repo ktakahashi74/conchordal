@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4741587d.js";
+            window.path_to_searchindex_js = "../searchindex-50c56f13.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -704,7 +704,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">pitch_apply_mode(name)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> and <code>Population</code>. Live-patchable: updates running voices in a <code>Population</code>.</p>
-<p><code>"gate_snap"</code> or <code>"glide"</code>: override how pitch decisions are applied. Without an explicit call, moving voices resolve this at placement from their phonation: sustained voices glide, re-attacking voices snap at onsets.</p>
+<p><code>"gate_snap"</code>, <code>"glide"</code> or <code>"rearticulate"</code>: choose how adopted pitch targets are applied. Without an explicit call, moving voices resolve this at placement from their phonation: sustained voices glide, re-attacking voices snap at onsets. For a free-pitch Hold voice (<code>sustain()</code>), <code>"rearticulate"</code> releases the old Tone and attacks a new Tone at the adopted target’s sample time, starting at the new pitch. An unchanged target, a rejected proposal or a step without a proposal creates no onset; this does not wait for a beat. <code>glide(tau)</code> controls sliding only in <code>"glide"</code> mode. A live Hold switch between glide and rearticulate keeps the sounding Tone and creates no onset by itself; it cancels unrendered rearticulation requests. The mode is inherited by replacement Voices. Locked voices (<code>anchor()</code>, <code>at()</code> or <code>freq()</code>) are unaffected. Free-pitch Gated phonation is incompatible with <code>"rearticulate"</code>: the final placement spec is checked independently of builder order, and an incompatible live call fails before modifying the Voice, pending patch or replacement template. Use <code>sustain()</code>, or choose <code>"gate_snap"</code> or <code>"glide"</code> for Gated phonation.</p>
 <h4 id="landscape_weight"><a class="header" href="#landscape_weight"><code>landscape_weight</code></a></h4>
 <pre><code class="language-rhai ignore">landscape_weight(value)
 </code></pre>

@@ -2,7 +2,7 @@
 
 2026-10-11更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
-作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れた。N-7は同日にmainへ統合され、originへpush済みである。時間構造は、原典の図の数値再現を一律の門にした誤りを撤回し、T-6kで整数比の階層の設計を閉じ、T-7で本体に実装した。T-7も同日にmainへ統合し、最終検査の後、11:50にoriginへpushした。作者の試聴を受けたmetric内の位相分離のT-8〜T-10は、午後の範囲の判断で停止した。拍の同期の二つの失敗はT-11で設計の選択と分類した。F1はT-12で設計を本体の外で閉じ、T-13で実装・回帰・文書をbranchへ用意した。その後2026-10-11に作者はF1の採用方針とC＋hardの最小形を決め、T-16がT-13の上に実装を積んだ。F1は実機の四構成合格後、08:28に統括がmainの`c2b8308`へ統合した。その後08:46に、統括はT-16をmainの`000b884`へfast-forwardで統合した。慣れと既存語彙の旋律らしい線を作者が評価し、「動いた時にだけ発音する」V-1は外部試作を終えた。本体統合は作者の試聴と判断待ちである。[午後〜夜の状態](plan-current.md#temporal-melodic-outcomes-20261010)を次の作業の入口にする。20単位の終了、実装・統合・push、作者の音楽的な評価を区別する。
+作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れた。N-7は同日にmainへ統合され、originへpush済みである。時間構造は、原典の図の数値再現を一律の門にした誤りを撤回し、T-6kで整数比の階層の設計を閉じ、T-7で本体に実装した。T-7も同日にmainへ統合し、最終検査の後、11:50にoriginへpushした。作者の試聴を受けたmetric内の位相分離のT-8〜T-10は、午後の範囲の判断で停止した。拍の同期の二つの失敗はT-11で設計の選択と分類した。F1はT-12で設計を本体の外で閉じ、T-13で実装・回帰・文書をbranchへ用意した。その後2026-10-11に作者はF1の採用方針とC＋hardの最小形を決め、T-16がT-13の上に実装を積んだ。F1は実機の四構成合格後、08:28に統括がmainの`c2b8308`へ統合した。その後08:46に、統括はT-16をmainの`000b884`へfast-forwardで統合した。慣れと既存語彙の旋律らしい線を作者が評価し、「動いた時にだけ発音する」V-1は外部試作を終えた。2026-10-11に作者が本体への実装を採り、09:03頃に `pitch_apply_mode("rearticulate")` の形と名前を確定した。統括が併用規則の案Aを採り、本体実装・検査・文書をV-2のbranchに用意した。[午後〜夜の状態](plan-current.md#temporal-melodic-outcomes-20261010)を次の作業の入口にする。20単位の終了、実装・統合・push、作者の音楽的な評価を区別する。
 
 作者は同日、慣れを既定で有効にする判断も採った。[H-3の既定有効化](#habituation-default-branch-20261010)はbranchで用意した後、作者の指示を受けた統括がmainへ統合し、22:57にoriginへpushした。push後のmainとorigin/mainはともに`39e6840`だった。慣れ有効の四構成の実時間は既に合格しており、既存の科学的な対照では無効を明示する。
 
@@ -32,13 +32,13 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 1. [plan-currentの午後〜夜の結果](plan-current.md#temporal-melodic-outcomes-20261010)：止めた線と当時の状態。その後の[2026-10-11の追記](plan-current.md#meter-onset-recurrence-branch-20261011)でT-11の分類とT-13の統合を確認し、[T-16の追記](plan-current.md#metric-basin-initial-rate-20261011)でC＋hardの統合を確認する。§7の20単位とN-7・T-7・H-3の実装・統合記録は保持し、過去の状態を現在の作業指示にしない。
 2. 台帳[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)〜[§9.3.66](../design-notes/technote-ledger.ja.md#pitch-adoption-articulation-prototype-20261010)：位相分離の停止、拍の同期の失敗、動機・phraseの空白、二つの陰性試作、H-1の三素材と読みの訂正、V-1の規則と限界。慣れの既定有効化と実時間は[§9.3.60](../design-notes/technote-ledger.ja.md#habituation-default-on-20261010)、N-7とT-7の取得・受入範囲は[§9.3.58](../design-notes/technote-ledger.ja.md#realtime-acceptance-scope)、文化層と先の試聴は[§9.3.59](../design-notes/technote-ledger.ja.md#temporal-rule-calibration-outcome)。英語版も同じ結果を記す。
 3. 機械に固有の追跡外記録 `.orchestration/units/T-11/`の届いた報告とbrief、`beat-sync-check-20261010/README.md`、`participation-check-20261010/README.md`。T-11の原因分類・保存済み36条件、T-12の最終4.06秒の設計、T-13の報告・branch・全テストを読む。台帳[§9.3.67](../design-notes/technote-ledger.ja.md#meter-onset-recurrence-branch-20261011)に採用の状態を記した。T-13は08:28、T-16は08:46にmainへ統合済みである。[設計メモ§4.2](../design-notes/dcc-neurocognitive-hierarchy.md#42-beat-meter-and-groove)でtempo・まとまり・どこで鳴らすかの分担を先に確かめる。
-4. 同じローカル記録の`H-1/report.md`の追補と`V-1/registration.md`・`report.md`。作者が次に聴く三つは`articulation-check-20261010/rearticulated.wav`、`articulation-check-20261010/legato-fast.wav`、`V-1/runs/adopt-s21/audio.wav`。seed 123の変化は`H-1/addition-articulation/runs/fast-s123/audio.wav`と`V-1/runs/adopt-s123/audio.wav`で比較する。fileの共通prefixは`.orchestration/units/`である。
+4. 同じローカル記録の`H-1/report.md`の追補と`V-1/registration.md`・`report.md`。V-1の判断材料として用意した三つは`articulation-check-20261010/rearticulated.wav`、`articulation-check-20261010/legato-fast.wav`、`V-1/runs/adopt-s21/audio.wav`。seed 123の変化は`H-1/addition-articulation/runs/fast-s123/audio.wav`と`V-1/runs/adopt-s123/audio.wav`で比較する。fileの共通prefixは`.orchestration/units/`である。
 5. `.orchestration/records/decisions-20261007-orchestrator.md`の2026-10-10 13:20以後と`.orchestration/HANDOFF.md`、`.orchestration/status.md`。更新日時だけでなく、時刻付きの追記と各単位の報告を確認する。
 6. `AGENTS.md`のProgress and Validation Scope、Multi-agent Orchestration、Author Decision Requests、Git Operation Policyと、`.orchestration/units/COMMON.md`。
 
 ## 3. 現在の状態と、残るもの
 
-N-7とT-7はmainへ統合・push済みで、H-3の慣れの既定有効化も2026-10-10 22:57に統合・push済みである。D-6着手時点のmainはD-5の文書修正を含む`4da4726`、origin/mainは`39e6840`で、mainが文書1 commit先だった。HEAD・差分、各branchの状態は着手時に確認する。originとの差は`git status`で確かめる。F1は2026-10-11 08:28に四構成の実機合格後、mainの`c2b8308`へ統合済みである。C＋hardを積んだT-16も同日08:46に統括がfast-forwardでmainの`000b884`へ統合した。V-1の本体統合は作者の未決として残る。文書のcheckpointへ他のworktreeの作業を混ぜない。校正の記録は`work/t6-calibration-20261008-v1`（`ff9c856`）に残したままで、T-7の本体実装とは区別する。
+N-7とT-7はmainへ統合・push済みで、H-3の慣れの既定有効化も2026-10-10 22:57に統合・push済みである。D-6着手時点のmainはD-5の文書修正を含む`4da4726`、origin/mainは`39e6840`で、mainが文書1 commit先だった。HEAD・差分、各branchの状態は着手時に確認する。originとの差は`git status`で確かめる。F1は2026-10-11 08:28に四構成の実機合格後、mainの`c2b8308`へ統合済みである。C＋hardを積んだT-16も同日08:46に統括がfast-forwardでmainの`000b884`へ統合した。V-1の本体への実装と語彙は作者が採択済みである。V-2の併用規則は統括が案Aを採択し、branchに実装した。文書のcheckpointへ他のworktreeの作業を混ぜない。校正の記録は`work/t6-calibration-20261008-v1`（`ff9c856`）に残したままで、T-7の本体実装とは区別する。
 
 新しいrendererは楽器でも`render_prototype = true`で選べる。Sine／Harmonicで身体込みの出生8 family、代謝、代表onset footprintが使えるが、Modalは対応外である。旧rendererの再出生の最終選択は方式とfamilyの対応する組だけ身体込みで評価し、新しいrendererではnativeの参照分布がないため身体評価を使わない。
 
@@ -50,7 +50,11 @@ N-7のsourceによる夜の測定は、A′・B′とも宣言範囲で合格し
 
 動機・phraseの2〜10秒の音高・時刻の共同の生成状態は空白である。P-A1とP-B1は、既存の判断へ提案だけを渡す条件で陰性の結果を返した。学んだ意図に重みを持たせる続きは未着手・未採択で、優先を下げた。既存の語彙と慣れのlegato-fastは作者が「かなり自然なメロディー」と評価し、聴かせないanchor、一体の近似自己除外、遅い／速い二体も作曲の材料として評価した。これは一般的な系列生成の受入ではない。慣れはH-3で既定有効化済みで、scriptから切り替える語彙は無い。
 
-V-1の外部試作は、新目標の採用一回に発音一回、移動の始まりで新音高をattackする規則を確認した。決定済みの二点を再選定せず、§2のWAVとseed 123の動きの変化を聴いて、この帰還を含む方策を本体へ入れるか作者が判断する。語彙の名称・APIは未採択である。聴こえる音量と生態入力の分離は保留であり、身体ampやADSRの変更を独立した出力gainの代用にしない。これらの未決を先回りして実装へ進めない。
+V-1の外部試作は、新目標の採用一回に発音一回、移動の始まりで新音高をattackする規則を確認した。作者は2026-10-11に試聴後、本体への実装を採択した。同日09:03頃に `pitch_apply_mode("rearticulate")` の形と名前も確定した。決定済みの二点と語彙を再選定せず、V-2は既定を保ってHoldの自由音高のVoiceへ実装し、glideとのlive切り替えを検査した。統括が技術的な併用規則として案Aを採り、自由音高のGatedとの併用を最終specでerrorにする。liveの対象外の指定も状態へ書き込む前に拒否する。12 étudeのWAVと意味のあるreportはmainと一致した。新方策の聴く材料とofflineの費用の参考値はV-2の報告に置く。
+
+作者が求める最終形は、フレーズによってrearticulate、legato、同音高での打ち直しを混ぜ、Voiceが一音ごとに選ぶ形である。Populationごとの固定modeとscriptからの切替えは途中の形であり、A-1（T-5b）が一音ごとの選択を別に設計する。V-2は一音ごとの選択を実装せず、採用時の方策判断を一か所にまとめ、採用の有無に依存しない再発音経路の境界を検査した。公開の同音高の発音要求も未実装である。要求と本体実装を区別する。[台帳の2026-10-11追記](../design-notes/technote-ledger.ja.md#pitch-rearticulate-native-decision-20261011)と[計画の同日追記](plan-current.md#pitch-rearticulate-native-decision-20261011)を入口にする。
+
+聴こえる音量と生態入力の分離は保留であり、身体ampやADSRの変更を独立した出力gainの代用にしない。この未決を先回りして実装へ進めない。
 
 揺らぎの語彙も未決である。H／RとT2の聴覚前処理の共有は計画しており、作者の2026-10-09の指示は実施時期の延期であって取り下げではない。これらは[plan-current.md §7](plan-current.md#7-結果)で追跡する。
 

@@ -768,7 +768,22 @@ A PopulationSpec begins with a preset and is refined through method chaining. It
 
 **Body**: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)` (habitat/presentation routing).
 
-**Pitch**: `anchor()` (hold the voice at its pitch; implied by `freq(hz)`), `seek_consonance()` (climb the consonance terrain; the apply mode is then resolved automatically—sustained voices glide, re-attacking voices snap at onsets—unless overridden via `pitch_apply_mode("gate_snap"|"glide")`), `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `temperature(v)` (one search-stochasticity knob shared by both cores; 0 settles greedily — this *is* the movement-tension knob: a hot search keeps a voice restless and straying off consonance, cooling it resolves), `move_cost(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `sigma_cents`, `random_candidates`).
+**Pitch**: `anchor()` (hold the voice at its pitch; implied by `freq(hz)`), `seek_consonance()` (climb the consonance terrain; the apply mode is then resolved automatically—sustained voices glide, re-attacking voices snap at onsets—unless overridden via `pitch_apply_mode("gate_snap"|"glide"|"rearticulate")`), `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `neighbor_step_cents(v)`, `tessitura_gravity(v)`, `temperature(v)` (one search-stochasticity knob shared by both cores; 0 settles greedily — this *is* the movement-tension knob: a hot search keeps a voice restless and straying off consonance, cooling it resolves), `move_cost(v)`, `proposal_interval(sec)`, `global_peaks(n)`, `ratio_candidates(n)`, plus peak-sampler knobs (`window_cents`, `top_k`, `sigma_cents`, `random_candidates`).
+
+For a free-pitch Hold Voice, `pitch_apply_mode("rearticulate")` couples each
+adopted change of target to one onset. At the adoption's sample time the old
+Tone begins its release and a new Tone attacks directly at the new pitch.
+Unchanged targets, rejected proposals and steps without proposals create no
+extra onsets. `"glide"` retains legato movement; a live switch between these
+modes preserves the sounding Tone and creates no onset by itself, cancelling
+unrendered rearticulation requests. Replacement Voices inherit the Population
+mode. Anchored Voices are unaffected. Free-pitch Gated phonation with
+`"rearticulate"` is a script error on the final placement spec, independently
+of builder order; incompatible live calls fail before changing any state.
+Use `sustain()` for Hold, or `"gate_snap"` or `"glide"` with Gated phonation.
+Defaults are unchanged. Both the new attack and the old release tail follow
+the existing synthesis, energy-cost and habitat-perception paths.
+
 
 **Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
 

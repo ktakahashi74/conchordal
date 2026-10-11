@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-613e97c4.js";
+            window.path_to_searchindex_js = "searchindex-9458fd8a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e3932d17.js"></script>
@@ -990,6 +990,37 @@ voices.rearticulate_above(100);
 wait(3.0);
 release(voices);
 </code></pre>
+<h3 id="cutting-notes-and-leaving-a-rest"><a class="header" href="#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a></h3>
+<p>For sustained participation, <code>rest()</code> adds a finite end to every sounded note
+and an intentional pause after its sound has finished. Supply the note length
+with <code>cycles(n)</code> or <code>adaptive_duration()</code> and its modifiers. This length, explicit
+<code>sustain()</code>, <code>entrained()</code> or <code>flow()</code>, and <code>rest()</code> are retained independently of
+builder order. No finite length is supplied implicitly. Explicit <code>while_alive()</code>
+clears the finite length; placement then fails unless another finite length follows.</p>
+<p>The scheduled Off starts the normal release, leaving tails intact. The rest begins
+only after the renderer confirms that every Tone of that Voice’s source ID and
+generation has finished. <code>rest()</code> then prohibits new notes for one intrinsic bodily
+period; <code>rest(periods)</code> uses the composer’s chosen multiple of the period at that
+completion. A known period with <code>rest(0)</code> waits for the tails only. An unknown period
+keeps waiting, as does unfinished sound, without a fallback or timeout. Negative
+and nonfinite arguments become zero; finite nonnegative values have no upper limit.</p>
+<p>At the end of the rest, the existing participation decision can sound, wait or skip;
+the end itself does not force an attack. GateSnap retains the latest adopted target
+through sounding, release and rest, and consumes it at the next sounded opportunity.
+Glide leaves released tails at their released pitch. Release, death and removal
+take precedence. Replacements inherit controls, with fresh performance state.</p>
+<pre><code class="language-rhai">let notes = harmonic().sustain().entrained()
+    .adaptive_duration().duration_range(0.2, 0.2).rest(2);
+let voices = place(notes, at(330.0));
+wait(3.0);
+release(voices);
+</code></pre>
+<p>Here 0.2 cycles and two periods are example inputs, not recommended values.
+<code>rest</code> is initial-only, like the note-length controls. It is valid only with explicit
+sustain plus entrained/flow, a finite note length, and Glide or GateSnap; incompatible
+placements fail before state changes. Without <code>rest</code>, the existing rules remain.
+This form ends every note; choosing to sustain or release each individual note is
+not implemented by this control.</p>
 <p>Mechanism-level controls (<code>pitch_core()</code> and
 the hill-climb / peak-sampler tuning in the
 <a href="#api-reference">API Reference</a>) remain available for research scripts;
@@ -1247,8 +1278,11 @@ participation preset for pitch-triggered Hold rearticulation. Its
 <p>The implicit WhileAlive default and <code>while_alive()</code> alone do not select this form.
 <code>sustain()</code> alone, <code>entrained()</code> alone and <code>flow()</code> alone retain their previous
 behavior. With <code>metric()</code>, <code>pulse()</code> or <code>repeat()</code>, <code>sustain()</code> still uses the
-existing last-write-wins rule. A later finite duration via <code>cycles()</code> or
-<code>adaptive_duration()</code> replaces the sustained form.</p>
+existing last-write-wins rule. Without <code>rest()</code>, a later finite duration via
+<code>cycles()</code> or <code>adaptive_duration()</code> replaces the sustained form. With <code>rest()</code>,
+finite note length and sustained participation are retained independently, and
+each note releases before a pause measured from actual tail completion. See
+<a href="#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a>.</p>
 <h2 id="explicit-whenduration-tier-2"><a class="header" href="#explicit-whenduration-tier-2">Explicit when/duration (Tier 2)</a></h2>
 <p>Below the presets sit explicit controls: <code>once()</code>, <code>pulse(rate_hz)</code>,
 <code>while_alive()</code>, <code>cycles(n)</code>, and <code>adaptive_duration()</code> (with
@@ -1667,7 +1701,13 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">sustain()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Sustain phonation mode (default). Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with this combination is a script error at final placement and before live writes. Implicit WhileAlive and while_alive() alone do not enable the combination. Metric, pulse and repeat retain their last-write-wins rule.</p>
+<p>Sustain phonation mode (default). Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with this combination is a script error at final placement and before live writes. Implicit WhileAlive and while_alive() alone do not enable the combination. Metric, pulse and repeat retain their last-write-wins rule. With rest(), finite duration and sustained participation are retained independently of builder order; every sounded note releases at that duration and waits for its tails before the rest.</p>
+<h4 id="rest"><a class="header" href="#rest"><code>rest</code></a></h4>
+<pre><code class="language-rhai ignore">rest()
+rest(periods)
+</code></pre>
+<p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
+<p>Release each finite participation note, then leave a rest after all its tails finish. Requires explicit sustain() plus entrained() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits participation again but never forces an onset; costs, candidates and skip are unchanged. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Missing finite duration, other timing forms and fixed rearticulate fail at final placement before writes; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note.</p>
 <h4 id="repeat"><a class="header" href="#repeat"><code>repeat</code></a></h4>
 <pre><code class="language-rhai ignore">repeat()
 </code></pre>
@@ -1682,12 +1722,12 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">entrained()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
 <h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
 <pre><code class="language-rhai ignore">flow()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
 <h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
 <pre><code class="language-rhai ignore">entrainment(strength)
 </code></pre>
@@ -1712,7 +1752,7 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">cycles(n)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier.</p>
+<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier. With rest(), this finite duration is retained independently of sustain() and the participation preset, and each sounded note releases at its scheduled end.</p>
 <h3 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h3>
 <p>How a voice moves through the consonance field. <code>seek_consonance()</code>, <code>glide()</code>, and <code>temperature()</code> (movement tension) form the curated surface; the rest tunes the hill-climb and peak-sampler mechanisms.</p>
 <h4 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h4>
@@ -1928,12 +1968,12 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">while_alive()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Hold/sustain until release.</p>
+<p>Hold/sustain until release. Explicit while_alive() clears any finite duration retained for rest(); placement with rest() then fails unless a later finite duration is supplied.</p>
 <h4 id="adaptive_duration"><a class="header" href="#adaptive_duration"><code>adaptive_duration</code></a></h4>
 <pre><code class="language-rhai ignore">adaptive_duration()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Duration follows field support.</p>
+<p>Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.</p>
 <h4 id="pulse_lock"><a class="header" href="#pulse_lock"><code>pulse_lock</code></a></h4>
 <pre><code class="language-rhai ignore">pulse_lock(depth)
 </code></pre>
@@ -1948,7 +1988,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">duration_range(min_cycles, max_cycles)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Adaptive duration range in rhythm cycles.</p>
+<p>Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). Initial-only, like cycles() and rest().</p>
 <h4 id="duration_curve"><a class="header" href="#duration_curve"><code>duration_curve</code></a></h4>
 <pre><code class="language-rhai ignore">duration_curve(k, x0)
 </code></pre>

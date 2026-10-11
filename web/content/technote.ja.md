@@ -741,8 +741,25 @@ Glideへ戻すと、音高の判断側に残った目標へ次の制御更新か
 `while_alive()`だけではこの形を選ばない。単独のプリセットと、metric、pulse、repeatへの
 sustainの後勝ちは保ち、参加のプリセットは配置前の指定のままである。
 
+`rest()`を指定した持続＋参加では、`cycles(n)`または`adaptive_duration()`とその
+調整語による明示の有限音長を、書く順によらず独立に保持する。Voiceを生かしたまま、
+発音ごとに予定した正規のOffを出す。余韻は切らず、同じsource IDとgenerationの全Toneが
+実際に終わったとrendererが確認するまで新しい発音を禁止する。確認時から、`rest()`は
+その時点の固有周期一つ分、`rest(periods)`は作曲者が置いた倍数だけ待つ。周期が既知なら
+0は余韻の終了だけを待つ。周期が未知、または音が未完了なら、代わりの値や期限を置かず
+待ち続ける。負値と有限でない値は0にし、有限の非負値に上限は置かない。
+
+間の終わりは参加を許すだけで、発音を強制しない。既存の候補、費用、見送りを保ち、
+意図による抑止を費用の見送りとして学習させない。GateSnapは発音中、余韻待ち、間の
+あいだも最新の行き先を保留し、次に鳴らすと選んだ機会で使う。GlideはOff後の余韻に
+音高更新を渡さない。release、死亡、removeが優先する。`rest`と音長は配置前の指定で、
+再生成は設定を継ぎ、演奏の状態は新たに始める。有限の音長がない場合、明示の持続＋
+entrained／flow以外、固定のRearticulateとの併用は、配置時の書き込み前にerrorにする。
+明示の`while_alive()`は有限の指定を消す。`rest`がなければ従来の挙動を保つ。この形では
+全ての音が有限長で終わり、一音ごとに伸ばすか切るかを選ぶ機能は含まれない。
+
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
-*   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`。
+*   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`；有限音長の持続＋参加には`rest()`／`rest(periods)`。
 *   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`と`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、参加方策は2 Hzの固有ペースを維持する。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
 *   ライフサイクル/生存可能性: `endurance(sec)`, 任意の`recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, `phonate_when_viable()`（viability windowが開くまで最初のonsetを保留）。
 *   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。

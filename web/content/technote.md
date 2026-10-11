@@ -824,9 +824,32 @@ Implicit WhileAlive or `while_alive()` alone does not select sustained participa
 Single presets and sustain with metric, pulse or repeat retain their existing
 meaning. Participation presets remain initial-only.
 
+With `rest()`, explicit sustained participation also retains an explicit finite
+duration from `cycles(n)` or `adaptive_duration()` and its modifiers, independently
+of builder order. Each sounded note ends with its scheduled normal Off while the
+Voice remains alive. Tails are retained, and new attacks are prohibited until the
+renderer confirms completion of all Tones with the same source ID and generation.
+From that completion, `rest()` waits one intrinsic bodily period; `rest(periods)`
+waits the composer's multiple of the period measured then. With a known period,
+zero waits only for tail completion. Unknown periods or unfinished tails keep
+waiting without a fallback or timeout. Negative and nonfinite values sanitize to
+zero, with no upper limit on finite nonnegative values.
+
+The end of the rest permits participation but emits no forced onset. Existing
+candidates, costs and skip rules are retained, and intentional suppression is not
+learned as a cost-based skip. GateSnap retains the latest pending target through
+sounding, tails and rest until the next sounded opportunity; Glide does not update
+released tails. Lifecycle endings take precedence. `rest` and finite duration are
+initial-only controls, inherited by replacements with fresh performance state.
+Missing finite duration, timing outside explicit sustain plus entrained/flow, or
+fixed Rearticulate is a placement error before writes. Explicit `while_alive()`
+clears finite intent. Absence of `rest` retains existing behavior. Every note in
+this form has a finite end; per-note selection of sustain versus release is not
+implemented.
+
 **Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
 
-**Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`.
+**Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`; finite sustained participation with `rest()` / `rest(periods)`.
 
 **Rhythm (Section 5.4)**: `metric()` selects shared-beat attraction; `entrained()` and `flow()` select acoustic participation. `entrainment(v)` changes the influence within that intention. `microtiming(v)` offsets the synchronized target only. `temporal_basin` shapes the production meter and initializes metric bodies at its center; participation retains its 2 Hz bodily prior. Articulation controls remain separate: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, and `rhythm_reward(rho_t, "attack_phase_match")`.
 

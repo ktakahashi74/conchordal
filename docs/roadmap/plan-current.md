@@ -155,9 +155,9 @@
 - **新しいrendererの採用範囲**：楽器binaryでもopt-inで選べ、Sine／Harmonicで身体込みの出生・代謝と代表onset footprintを使える。N-7のsourceによる夜の再測定で、新しいrenderer単独と身体込みの構成はともに実時間の基準を満たした。N-7は作者の受入済みで、mainへの統合も済んでいる。残るのは既定にするかの判断、Modalへの対応、再出生の最終選択を身体込みで評価するためのnativeの参照分布である。
 - **身体込みの出生の拡張**：旧rendererで再出生の最終選択への拡張は済んだ。ただし対応は方式とfamilyの組ごとに分かれ、登録済みの基準を満たさない組は従来の評価を使う。新しいrendererの再出生の最終選択には身体評価を使わない。
 - **身体込みの代謝**：作者は2026-10-10に[動的な受入の形を改訂した](../design-notes/technote-ledger.ja.md#body-metabolism-acceptance-revision-20261010)。合否は静的照合（既存上限0.025）、更新の順番と漏れのなさ、同じseedでの再現性で判定し、動的比較は件数と最初の分岐の原因を報告する。別seed・別étudeでの発生率や生態の偏りは未検証。作者は2026-10-11、B-8の案A0を採り、更新数2を既存の工学の値として[再採択した](../design-notes/technote-ledger.ja.md#body-metabolism-update-count-20261011)。最適値、消費者由来の許容上限、動的な判断の一致の保証とはしない。
-- **rearticulateの境界（branchに実装済み）**：作者は2026-10-11、作曲者が境界を置く`rearticulate_above(cents)`、省略時0を採った。V-4で最後の実発音からの正味の変位を測る境界を実装し、検査と日英文書をそろえた。[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)を参照する。mainへの統合は統括の作業として残る。
-- **持続＋参加のgate_snap（branchに実装済み）**：作者は2026-10-11、採用した行き先を保留し、Voiceが鳴らすと決めた機会の発音で跳ぶ意味を採った。V-4で実装・検査・文書をそろえ、省略Glideを保持した。[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)を参照する。mainへの統合は統括の作業として残る。
-- **短く切る・間を空ける試作（採択済み・未実装）**：作者は2026-10-11、音の長さの気質と能動的な間を使い、間の起点を音が鳴り終わってからとする試作を採った。試作はA-5が進める。
+- **rearticulateの境界（実装済み）**：作者は2026-10-11、作曲者が境界を置く`rearticulate_above(cents)`、省略時0を採った。V-4で最後の実発音からの正味の変位を測る境界を実装し、検査と日英文書をそろえた。[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)を参照する。
+- **持続＋参加のgate_snap（実装済み）**：作者は2026-10-11、採用した行き先を保留し、Voiceが鳴らすと決めた機会の発音で跳ぶ意味を採った。V-4で実装・検査・文書をそろえ、省略Glideを保持した。[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)を参照する。
+- **音を切って間を置くrest（実装済み）**：作者は2026-10-11、候補A、全Toneの終了を起点にするG1、持続＋参加への限定、名前`rest`を採った。V-5で有限音長を独立に保持し、`rest()`は固有周期一つ、`rest(periods)`は作曲者の倍数とする形を実装した。全音を有限長で切り、一音ごとに伸ばすか切るかを選ぶ候補Bは未着手。検査・取得の範囲と設計メモのGapとの違いは[台帳§9.3.72](../design-notes/technote-ledger.ja.md#finite-notes-and-rest-20261011)に記した。
 - **揺らぎの語彙**：作曲者の語彙へ足すか。既定は無しで確定し、語彙を足す場合の尺度は未決。
 - **聴覚の前処理の共有**：H／RとT2が同じ観測の前処理を使う設計は計画している。作者は2026-10-09に「計画はしている。時期が今でないだけ」と述べた。取り下げではなく実施時期の延期であり、20単位の範囲外である。
 

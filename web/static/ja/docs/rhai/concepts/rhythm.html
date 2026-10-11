@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-21b7fa3e.js";
+            window.path_to_searchindex_js = "../searchindex-3668d86c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -321,8 +321,10 @@ release(p);
 <code>rearticulate_above(cents)</code>の境界で、時計による打ち直しを間引く処理はありません。</p>
 <p>既定のWhileAliveと、<code>while_alive()</code>だけでは、この形を選びません。<code>sustain()</code>だけ、
 <code>entrained()</code>だけ、<code>flow()</code>だけの挙動は変えません。<code>metric()</code>、<code>pulse()</code>、<code>repeat()</code>と
-<code>sustain()</code>の併用は、従来どおり後の指定が優先されます。後に<code>cycles()</code>や
-<code>adaptive_duration()</code>で有限の音長を指定すれば、持続する形を置き換えます。</p>
+<code>sustain()</code>の併用は、従来どおり後の指定が優先されます。<code>rest()</code>がない場合は、後に
+<code>cycles()</code>や<code>adaptive_duration()</code>で有限の音長を指定すると、持続する形を置き換えます。
+<code>rest()</code>があれば音長と持続＋参加を独立に保ち、音を離し、実際の余韻の終了から間を
+数えます。<a href="consonance.html#音を切って間を置く">音を切って間を置く</a>を参照してください。</p>
 <h2 id="明示的なwhendurationtier-2"><a class="header" href="#明示的なwhendurationtier-2">明示的なwhen/duration（Tier 2）</a></h2>
 <p>presetの下には<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、<code>cycles(n)</code>、
 <code>adaptive_duration()</code>があり、<code>duration_range</code>、<code>duration_curve</code>、<code>shorten_on_drop</code>で

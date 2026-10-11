@@ -7428,6 +7428,74 @@ Live mode switches follow the existing cancellation rule: keep the sounding Tone
 
 **Validation boundary.** Native source, test records, unchanged-default étude and V-2 controls, A-3(ii)/A-2c comparisons, Sine/Harmonic/Modal with both renderers, deterministic repeats and listening materials are retained in the machine-local V-4 report. They do not establish an arbitrary-load real-time result, a new author audition, whole-runtime zero allocation or musical superiority. The existing finite representative participation footprint remains an approximation. The author's final requirement for Voice choices mixing rearticulation, legato and same-pitch articulation within phrases remains a requirement; these Population controls and live switches do not implement arbitrary per-note selection or phrase learning. Sources: machine-local `A-3/report.md`, `A-3b/report.md`, `A-2c/report.md` and `V-4/brief.md` / `report.md`.
 
+<a id="finite-notes-and-rest-20261011"></a>
+
+### 9.3.72 Finite participation notes and a rest after actual sound completion
+
+**Requirement and correction, 2026-10-11.** The author asked for intentional short
+notes and intervening silence: “スタッカート自体は音楽表現としてありえる。それが意図的ならば”.
+A-4 established that existing `cycles` and field-duration controls can already
+express notes shorter than a beat. The orchestrator's earlier statement to the
+author that such lengths could not be written was incorrect. The missing control
+was an intentional interval without new notes, separate from cost-driven waiting
+or skipping, which preserves the sustained Tone.
+
+**Author rule and composer quantities.** At about 12:54 the author adopted A-4's
+candidate A: the existing finite note length is a founder articulation trait;
+its scheduled end releases the note and begins an active pause. G1 measures that
+pause from completion of every Tone of the same Voice, not from release onset.
+The scope is explicit sustain plus entrained/flow. At about 14:24 the author adopted
+the native form, named it `rest` without an alias, and made its length a composer
+quantity: `rest()` is one intrinsic period, `rest(periods)` is a chosen multiple.
+One period comes from the existing Gap design in the neurocognitive hierarchy
+§9.6, not a new scientific constant. These lengths belong to the same founder
+layer as `cycles` and `duration_range`; they are not a principle-layer model or a
+universal auditory threshold. Example numbers do not select recommended values.
+
+**A-5 external evidence.** The prototype compared prohibition of attacks with
+actual per-Voice PCM silence separately. G0, measured from release onset, allowed
+tails to fill the nominal gap. G1 waited for actual completion; in its acquired
+Harmonic and native Modal cases the following intrinsic period was exactly zero
+in the source PCM. In the seed-21 entrained scene, onset counts changed from
+111 for unrestricted sustain to 66 for short notes plus G1; native Modal changed
+from 126 to 41. These are closed-loop counts for registered inputs, not a musical
+improvement or a guarantee for other scenes. A-5 records its source, controls,
+PCM evidence and analysis corrections independently of the native acquisition.
+
+**Relation to §9.6 and implemented scope.** The design memo's Gap begins at release
+onset and is an action chosen from context. It is not redefined here. The implemented
+G1 instead begins after actual renderer Tone completion and applies a founder
+finite-duration rule to every sounded note. The normal Off leaves tails intact;
+same-source ID and generation completion is body-independent. The intrinsic period
+is read at completion. Known-period `rest(0)` waits only for tails, while unknown
+periods and unfinished tails keep waiting with no substitute or timeout. Negative
+and nonfinite periods sanitize to zero; finite nonnegative values have no upper
+cap. Expiry restores permission, not an onset. Intentional suppression is not
+cost-driven skip; candidate and cost expressions remain unchanged.
+
+Finite duration, explicit sustain/participation and rest are retained independently
+of builder order. `while_alive()` explicitly clears finite intent. Missing finite
+length, other timing forms and fixed Rearticulate are script errors before final
+placement or incompatible live mode writes. Rest and duration are initial-only,
+consistent with existing length controls. GateSnap carries the latest target
+through sounding, tails and rest, consuming it at the next sounded opportunity;
+Glide never updates released tails. Lifecycle endings cancel scheduled finite
+Offs and pending attacks. Replacements inherit controls with fresh performance
+state. No G0 switch, diagnostic environment flag or per-Voice PCM scratch is
+introduced into the runtime.
+
+**Validation and remaining scope.** V-5 records native tests for ordering, value
+sanitization, transactional errors, completion across Tones and generations,
+lifecycle and template inheritance, both renderers with Sine/Harmonic/Modal, and
+zero additional allocations on warmed rest emission and completion paths. Default
+études, V-3/V-4 controls, A-5 comparison, deterministic repetition and listening
+artifacts have separate acquisition records. These do not establish arbitrary-load
+real-time operation, whole-runtime zero allocation, author audition or musical
+effects. **Every note in this form is cut by the finite-duration rule; candidate B,
+in which the Voice selects sustain or release per note, remains unstarted.** No
+phrase-boundary inference is required or implemented. Sources are machine-local
+`A-4/report.md`, `A-5/report.md` and `V-5/brief.md` / `report.md`.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

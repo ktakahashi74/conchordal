@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-613e97c4.js";
+            window.path_to_searchindex_js = "../searchindex-9458fd8a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -356,8 +356,11 @@ participation preset for pitch-triggered Hold rearticulation. Its
 <p>The implicit WhileAlive default and <code>while_alive()</code> alone do not select this form.
 <code>sustain()</code> alone, <code>entrained()</code> alone and <code>flow()</code> alone retain their previous
 behavior. With <code>metric()</code>, <code>pulse()</code> or <code>repeat()</code>, <code>sustain()</code> still uses the
-existing last-write-wins rule. A later finite duration via <code>cycles()</code> or
-<code>adaptive_duration()</code> replaces the sustained form.</p>
+existing last-write-wins rule. Without <code>rest()</code>, a later finite duration via
+<code>cycles()</code> or <code>adaptive_duration()</code> replaces the sustained form. With <code>rest()</code>,
+finite note length and sustained participation are retained independently, and
+each note releases before a pause measured from actual tail completion. See
+<a href="consonance.html#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a>.</p>
 <h2 id="explicit-whenduration-tier-2"><a class="header" href="#explicit-whenduration-tier-2">Explicit when/duration (Tier 2)</a></h2>
 <p>Below the presets sit explicit controls: <code>once()</code>, <code>pulse(rate_hz)</code>,
 <code>while_alive()</code>, <code>cycles(n)</code>, and <code>adaptive_duration()</code> (with

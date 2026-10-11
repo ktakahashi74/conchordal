@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-613e97c4.js";
+            window.path_to_searchindex_js = "../searchindex-9458fd8a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -366,6 +366,37 @@ voices.rearticulate_above(100);
 wait(3.0);
 release(voices);
 </code></pre>
+<h3 id="cutting-notes-and-leaving-a-rest"><a class="header" href="#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a></h3>
+<p>For sustained participation, <code>rest()</code> adds a finite end to every sounded note
+and an intentional pause after its sound has finished. Supply the note length
+with <code>cycles(n)</code> or <code>adaptive_duration()</code> and its modifiers. This length, explicit
+<code>sustain()</code>, <code>entrained()</code> or <code>flow()</code>, and <code>rest()</code> are retained independently of
+builder order. No finite length is supplied implicitly. Explicit <code>while_alive()</code>
+clears the finite length; placement then fails unless another finite length follows.</p>
+<p>The scheduled Off starts the normal release, leaving tails intact. The rest begins
+only after the renderer confirms that every Tone of that Voice’s source ID and
+generation has finished. <code>rest()</code> then prohibits new notes for one intrinsic bodily
+period; <code>rest(periods)</code> uses the composer’s chosen multiple of the period at that
+completion. A known period with <code>rest(0)</code> waits for the tails only. An unknown period
+keeps waiting, as does unfinished sound, without a fallback or timeout. Negative
+and nonfinite arguments become zero; finite nonnegative values have no upper limit.</p>
+<p>At the end of the rest, the existing participation decision can sound, wait or skip;
+the end itself does not force an attack. GateSnap retains the latest adopted target
+through sounding, release and rest, and consumes it at the next sounded opportunity.
+Glide leaves released tails at their released pitch. Release, death and removal
+take precedence. Replacements inherit controls, with fresh performance state.</p>
+<pre><code class="language-rhai">let notes = harmonic().sustain().entrained()
+    .adaptive_duration().duration_range(0.2, 0.2).rest(2);
+let voices = place(notes, at(330.0));
+wait(3.0);
+release(voices);
+</code></pre>
+<p>Here 0.2 cycles and two periods are example inputs, not recommended values.
+<code>rest</code> is initial-only, like the note-length controls. It is valid only with explicit
+sustain plus entrained/flow, a finite note length, and Glide or GateSnap; incompatible
+placements fail before state changes. Without <code>rest</code>, the existing rules remain.
+This form ends every note; choosing to sustain or release each individual note is
+not implemented by this control.</p>
 <p>Mechanism-level controls (<code>pitch_core()</code> and
 the hill-climb / peak-sampler tuning in the
 <a href="../reference/api.html">API Reference</a>) remain available for research scripts;

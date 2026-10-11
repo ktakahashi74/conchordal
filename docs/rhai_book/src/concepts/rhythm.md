@@ -204,8 +204,11 @@ participation preset for pitch-triggered Hold rearticulation. Its
 The implicit WhileAlive default and `while_alive()` alone do not select this form.
 `sustain()` alone, `entrained()` alone and `flow()` alone retain their previous
 behavior. With `metric()`, `pulse()` or `repeat()`, `sustain()` still uses the
-existing last-write-wins rule. A later finite duration via `cycles()` or
-`adaptive_duration()` replaces the sustained form.
+existing last-write-wins rule. Without `rest()`, a later finite duration via
+`cycles()` or `adaptive_duration()` replaces the sustained form. With `rest()`,
+finite note length and sustained participation are retained independently, and
+each note releases before a pause measured from actual tail completion. See
+[Cutting notes and leaving a rest](consonance.md#cutting-notes-and-leaving-a-rest).
 
 ## Explicit when/duration (Tier 2)
 

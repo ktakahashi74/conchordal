@@ -169,8 +169,10 @@ release(p);
 
 既定のWhileAliveと、`while_alive()`だけでは、この形を選びません。`sustain()`だけ、
 `entrained()`だけ、`flow()`だけの挙動は変えません。`metric()`、`pulse()`、`repeat()`と
-`sustain()`の併用は、従来どおり後の指定が優先されます。後に`cycles()`や
-`adaptive_duration()`で有限の音長を指定すれば、持続する形を置き換えます。
+`sustain()`の併用は、従来どおり後の指定が優先されます。`rest()`がない場合は、後に
+`cycles()`や`adaptive_duration()`で有限の音長を指定すると、持続する形を置き換えます。
+`rest()`があれば音長と持続＋参加を独立に保ち、音を離し、実際の余韻の終了から間を
+数えます。[音を切って間を置く](consonance.md#音を切って間を置く)を参照してください。
 
 ## 明示的なwhen/duration（Tier 2）
 

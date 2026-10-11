@@ -224,6 +224,44 @@ wait(3.0);
 release(voices);
 ```
 
+### Cutting notes and leaving a rest
+
+For sustained participation, `rest()` adds a finite end to every sounded note
+and an intentional pause after its sound has finished. Supply the note length
+with `cycles(n)` or `adaptive_duration()` and its modifiers. This length, explicit
+`sustain()`, `entrained()` or `flow()`, and `rest()` are retained independently of
+builder order. No finite length is supplied implicitly. Explicit `while_alive()`
+clears the finite length; placement then fails unless another finite length follows.
+
+The scheduled Off starts the normal release, leaving tails intact. The rest begins
+only after the renderer confirms that every Tone of that Voice's source ID and
+generation has finished. `rest()` then prohibits new notes for one intrinsic bodily
+period; `rest(periods)` uses the composer's chosen multiple of the period at that
+completion. A known period with `rest(0)` waits for the tails only. An unknown period
+keeps waiting, as does unfinished sound, without a fallback or timeout. Negative
+and nonfinite arguments become zero; finite nonnegative values have no upper limit.
+
+At the end of the rest, the existing participation decision can sound, wait or skip;
+the end itself does not force an attack. GateSnap retains the latest adopted target
+through sounding, release and rest, and consumes it at the next sounded opportunity.
+Glide leaves released tails at their released pitch. Release, death and removal
+take precedence. Replacements inherit controls, with fresh performance state.
+
+```rhai
+let notes = harmonic().sustain().entrained()
+    .adaptive_duration().duration_range(0.2, 0.2).rest(2);
+let voices = place(notes, at(330.0));
+wait(3.0);
+release(voices);
+```
+
+Here 0.2 cycles and two periods are example inputs, not recommended values.
+`rest` is initial-only, like the note-length controls. It is valid only with explicit
+sustain plus entrained/flow, a finite note length, and Glide or GateSnap; incompatible
+placements fail before state changes. Without `rest`, the existing rules remain.
+This form ends every note; choosing to sustain or release each individual note is
+not implemented by this control.
+
 Mechanism-level controls (`pitch_core()` and
 the hill-climb / peak-sampler tuning in the
 [API Reference](../reference/api.md)) remain available for research scripts;

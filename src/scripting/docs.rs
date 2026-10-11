@@ -695,7 +695,17 @@ forever with a slow sway -- useful as terrain material.",
         patch: Patch::Initial,
         usage: &["sustain()"],
         summary: "Sustain phonation mode (default).",
-        details: "Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with this combination is a script error at final placement and before live writes. Implicit WhileAlive and while_alive() alone do not enable the combination. Metric, pulse and repeat retain their last-write-wins rule.",
+        details: "Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with this combination is a script error at final placement and before live writes. Implicit WhileAlive and while_alive() alone do not enable the combination. Metric, pulse and repeat retain their last-write-wins rule. With rest(), finite duration and sustained participation are retained independently of builder order; every sounded note releases at that duration and waits for its tails before the rest.",
+    },
+    FnDoc {
+        name: "rest",
+        owner: Owner::Population,
+        category: "phonation",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["rest()", "rest(periods)"],
+        summary: "Release each finite participation note, then leave a rest after all its tails finish.",
+        details: "Requires explicit sustain() plus entrained() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits participation again but never forces an onset; costs, candidates and skip are unchanged. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Missing finite duration, other timing forms and fixed rearticulate fail at final placement before writes; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note.",
     },
     FnDoc {
         name: "repeat",
@@ -736,7 +746,7 @@ beat. Respawn uses the Population template, not the parent's current clock rate.
 Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation. \
 With explicit sustain(), in either builder order, sounding re-attacks the current body \
 pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application \
-resolves to glide. Without explicit sustain(), finite gated phonation is unchanged.",
+resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.",
     },
     FnDoc {
         name: "flow",
@@ -750,7 +760,7 @@ resolves to glide. Without explicit sustain(), finite gated phonation is unchang
 Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period. \
 With explicit sustain(), in either builder order, sounding re-attacks the current body \
 pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application \
-resolves to glide. Without explicit sustain(), finite gated phonation is unchanged.",
+resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.",
     },
     FnDoc {
         name: "entrainment",
@@ -825,7 +835,7 @@ Does not place entrained/flow participants at fixed offsets.",
         patch: Patch::Initial,
         usage: &["while_alive()"],
         summary: "Hold/sustain until release.",
-        details: "",
+        details: "Explicit while_alive() clears any finite duration retained for rest(); placement with rest() then fails unless a later finite duration is supplied.",
     },
     FnDoc {
         name: "phonate_when_viable",
@@ -849,7 +859,7 @@ economy is the timeout.",
         patch: Patch::Initial,
         usage: &["cycles(n)"],
         summary: "Duration of n rhythm cycles.",
-        details: "For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier.",
+        details: "For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier. With rest(), this finite duration is retained independently of sustain() and the participation preset, and each sounded note releases at its scheduled end.",
     },
     FnDoc {
         name: "adaptive_duration",
@@ -859,7 +869,7 @@ economy is the timeout.",
         patch: Patch::Initial,
         usage: &["adaptive_duration()"],
         summary: "Duration follows field support.",
-        details: "",
+        details: "With rest(), retain this finite duration independently of sustain() and entrained()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.",
     },
     FnDoc {
         name: "pulse_lock",
@@ -889,7 +899,7 @@ economy is the timeout.",
         patch: Patch::Initial,
         usage: &["duration_range(min_cycles, max_cycles)"],
         summary: "Adaptive duration range in rhythm cycles.",
-        details: "",
+        details: "Also tunes the finite adaptive duration retained for rest(). Initial-only, like cycles() and rest().",
     },
     FnDoc {
         name: "duration_curve",

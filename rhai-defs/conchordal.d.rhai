@@ -486,6 +486,13 @@ fn respawn_random(arg0: PopulationSpec) -> PopulationSpec;
 /// Add a Placement source to the replacement candidate pool.
 fn respawn_settle(arg0: PopulationSpec, arg1: Placement) -> PopulationSpec;
 
+/// Release each finite participation note, then leave a rest after all its tails finish.
+fn rest(arg0: PopulationSpec) -> PopulationSpec;
+/// Release each finite participation note, then leave a rest after all its tails finish.
+fn rest(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
+/// Release each finite participation note, then leave a rest after all its tails finish.
+fn rest(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
+
 /// [tuning] Vitality-modulated rhythm coupling.
 fn rhythm_coupling_vitality(arg0: PopulationSpec, arg1: f64, arg2: f64) -> PopulationSpec;
 

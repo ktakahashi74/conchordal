@@ -300,7 +300,19 @@ impl Voice {
         let core =
             AnyArticulationCore::from_config(&articulation_config, fs, assigned_id, &mut rng);
 
-        let phonation_engine = PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        let mut phonation_engine =
+            PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        if let Some(periods) = effective_control.phonation.rest_periods {
+            let mut finite = effective_control.phonation.spec.clone();
+            finite.duration = effective_control
+                .phonation
+                .finite_duration
+                .clone()
+                .expect("validated finite rest duration");
+            finite.sustain_participation = false;
+            let config = crate::life::control_adapters::phonation_config_from_spec(&finite);
+            phonation_engine.enable_rest(&config.duration, periods);
+        }
         let sustain_participation = effective_control
             .phonation
             .spec

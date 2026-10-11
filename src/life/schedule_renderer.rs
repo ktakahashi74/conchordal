@@ -68,7 +68,17 @@ fn profile_lap(checkpoint: &mut Option<Instant>) -> f64 {
     })
 }
 
+pub(crate) struct RestSource {
+    pub id: u64,
+    pub generation: u32,
+    pub quiet_at: Option<Tick>,
+    last_done: Tick,
+    seen: bool,
+    used: bool,
+}
+
 pub struct ScheduleRenderer {
+    pub(crate) rest_sources: Vec<RestSource>,
     prototype: bool,
     time: Timebase,
     buf_presentation: Vec<f32>,
@@ -87,8 +97,55 @@ pub struct ScheduleRenderer {
 pub type SoundRenderer = ScheduleRenderer;
 
 impl ScheduleRenderer {
+    pub(crate) fn prepare_rest_sources(&mut self, sources: impl Iterator<Item = (u64, u32)>) {
+        for source in &mut self.rest_sources {
+            source.used = false;
+        }
+        for (id, generation) in sources {
+            if let Some(source) = self
+                .rest_sources
+                .iter_mut()
+                .find(|s| s.id == id && s.generation == generation)
+            {
+                source.used = true;
+            } else {
+                self.rest_sources.push(RestSource {
+                    id,
+                    generation,
+                    quiet_at: None,
+                    last_done: 0,
+                    seen: false,
+                    used: true,
+                });
+            }
+        }
+        self.rest_sources.retain(|s| s.used);
+    }
+
+    fn update_rest_completion(&mut self, now: Tick) {
+        for source in &mut self.rest_sources {
+            let mut live = false;
+            for (key, routed) in &self.tones {
+                if key.source_id == source.id && routed.source_generation == source.generation {
+                    source.seen = true;
+                    if routed.tone.is_done(now) {
+                        let end = routed.tone.end_tick();
+                        source.last_done =
+                            source
+                                .last_done
+                                .max(if end == Tick::MAX { now } else { end });
+                    } else {
+                        live = true;
+                    }
+                }
+            }
+            source.quiet_at = (source.seen && !live).then_some(source.last_done);
+        }
+    }
+
     pub fn new(time: Timebase) -> Self {
         Self {
+            rest_sources: Vec::new(),
             prototype: false,
             time,
             buf_presentation: vec![0.0; time.hop],
@@ -405,6 +462,7 @@ impl ScheduleRenderer {
             };
         }
 
+        self.update_rest_completion(now);
         self.tones.retain(|_, rt| {
             if !rt.tone.is_done(now) {
                 return true;
@@ -485,6 +543,7 @@ impl ScheduleRenderer {
         if !use_blocks {
             self.render_sample_major_oracle(now, end, rhythms, sources);
         }
+        self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
 
         for sound in self.self_sound.iter_mut().flatten() {
@@ -1796,5 +1855,120 @@ mod tests {
         let done_at = default_release_ticks(tb) + 2;
         renderer.render(&[], done_at, &rhythms);
         assert!(renderer.is_idle());
+    }
+
+    #[test]
+    fn rest_all_tones_generations_and_actual_pcm_on_both_renderers() {
+        let tb = Timebase { fs: 8000., hop: 64 };
+        let rhythms = NeuralRhythms::default();
+        for native in [false, true] {
+            for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
+                let mut renderer = ScheduleRenderer::new(tb).with_prototype(native);
+                renderer.prepare_rest_sources([(2, 7), (2, 8)].into_iter());
+                let batch = outcome_batch(kind);
+                let mut second = batch.clone();
+                second.source_generation = 8;
+                second.cmds[0] = ToneCmd::On {
+                    tone_id: 2,
+                    kick: OnsetKick { strength: 1. },
+                };
+                second.tones[0].tone_id = 2;
+                second.tones[0].hold_ticks = Some(Tick::MAX);
+                let mut third = batch.clone();
+                third.cmds[0] = ToneCmd::On {
+                    tone_id: 3,
+                    kick: OnsetKick { strength: 1. },
+                };
+                third.tones[0].tone_id = 3;
+                third.tones[0].hold_ticks = Some(120);
+                let mut sources = [
+                    SourcePcm {
+                        id: 2,
+                        generation: 7,
+                        habitat: vec![0.; 64],
+                    },
+                    SourcePcm {
+                        id: 2,
+                        generation: 8,
+                        habitat: vec![0.; 64],
+                    },
+                ];
+                renderer.render_with_source_pcm(
+                    &[batch, second, third],
+                    0,
+                    &rhythms,
+                    &mut sources,
+                    |_, _, _, _| {},
+                );
+                assert!(renderer.rest_sources.iter().all(|s| s.quiet_at.is_none()));
+                let mut done = None;
+                for at in (64..80000).step_by(64) {
+                    renderer.render_with_source_pcm(
+                        &[],
+                        at,
+                        &rhythms,
+                        &mut sources,
+                        |_, _, _, _| {},
+                    );
+                    assert!(renderer.rest_sources[1].quiet_at.is_none());
+                    if let Some(q) = renderer.rest_sources[0].quiet_at {
+                        let offset = q.saturating_sub(at).min(64) as usize;
+                        assert!(sources[0].habitat[offset..].iter().all(|x| *x == 0.));
+                        done = Some(at);
+                        break;
+                    }
+                }
+                let done = done.expect("finite generation completes with another held");
+                for at in ((done + 64)..(done + 4064)).step_by(64) {
+                    renderer.render_with_source_pcm(
+                        &[],
+                        at,
+                        &rhythms,
+                        &mut sources,
+                        |_, _, _, _| {},
+                    );
+                    assert!(sources[0].habitat.iter().all(|x| *x == 0.));
+                }
+                let at = done + 4064;
+                let off = PhonationBatch {
+                    source_id: 2,
+                    source_generation: 8,
+                    cmds: vec![ToneCmd::Off {
+                        tone_id: 2,
+                        off_tick: at,
+                    }],
+                    ..Default::default()
+                };
+                renderer.render(&[off], at, &rhythms);
+                for now in ((at + 64)..(at + 80000)).step_by(64) {
+                    renderer.render(&[], now, &rhythms);
+                    if renderer.rest_sources[1].quiet_at.is_some() {
+                        break;
+                    }
+                }
+                assert!(renderer.rest_sources[1].quiet_at.is_some());
+                renderer.prepare_rest_sources([(2, 9)].into_iter());
+                assert_eq!(renderer.rest_sources.len(), 1);
+                assert_eq!(renderer.rest_sources[0].generation, 9);
+                assert!(renderer.rest_sources[0].quiet_at.is_none());
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn rest_renderer_warmed_completion_and_storage_allocate_zero() {
+        let tb = Timebase { fs: 8000., hop: 64 };
+        let rhythms = NeuralRhythms::default();
+        let mut renderer = ScheduleRenderer::new(tb).with_prototype(true);
+        renderer.prepare_rest_sources([(2, 7)].into_iter());
+        renderer.render(&[outcome_batch(BodyKind::Modal)], 0, &rhythms);
+        for at in (64..16000).step_by(64) {
+            crate::runtime_profile::begin_allocations();
+            renderer.prepare_rest_sources([(2, 7)].into_iter());
+            renderer.render(&[], at, &rhythms);
+            let n = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!((n.count, n.bytes), (0, 0));
+        }
     }
 }

@@ -22,6 +22,27 @@ pub struct VoiceControl {
 
 impl VoiceControl {
     pub(crate) fn validate_pitch_application(&self) -> Result<(), String> {
+        if self.phonation.rest_periods.is_some() {
+            if !self.phonation.spec.is_sustained_participation() {
+                return Err("rest() requires sustain() with entrained() or flow()".into());
+            }
+            if !matches!(
+                self.phonation.finite_duration,
+                Some(
+                    crate::scenario::DurationSpec::Gates(_)
+                        | crate::scenario::DurationSpec::Field(_)
+                )
+            ) {
+                return Err(
+                    "rest() requires an explicit finite duration; while_alive() clears it".into(),
+                );
+            }
+            if self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate {
+                return Err(
+                    r#"rest() is incompatible with pitch_apply_mode("rearticulate")"#.into(),
+                );
+            }
+        }
         if self.phonation.spec.is_sustained_participation()
             && self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
         {
@@ -290,6 +311,8 @@ impl Default for PitchControl {
 pub struct PhonationControl {
     pub spec: crate::scenario::PhonationSpec,
     pub gate: PhonationGate,
+    pub(crate) finite_duration: Option<crate::scenario::DurationSpec>,
+    pub(crate) rest_periods: Option<f32>,
 }
 
 /// When a voice is allowed to phonate its first onset.

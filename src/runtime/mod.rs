@@ -2347,6 +2347,16 @@ fn advance_population(
         None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut state.pop,
     );
+    if state.pop.rest_enabled {
+        state.schedule_renderer.prepare_rest_sources(
+            state
+                .pop
+                .voices
+                .iter()
+                .filter(|voice| voice.phonation_engine.rest.is_some())
+                .map(|voice| (voice.id(), voice.metadata.generation)),
+        );
+    }
     if let Some(runtime) = state.pop.body_metabolism.as_mut() {
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
@@ -2794,6 +2804,19 @@ fn render_and_route_audio(
 
     let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);
     let habitat_chunk: Arc<[f32]> = Arc::from(frame.habitat);
+    if state.pop.rest_enabled {
+        for source in &state.schedule_renderer.rest_sources {
+            if let Some(at) = source.quiet_at
+                && let Some(voice) = state
+                    .pop
+                    .voices
+                    .iter_mut()
+                    .find(|v| v.id() == source.id && v.metadata.generation == source.generation)
+            {
+                voice.phonation_engine.rest_tail_finished(at, cfg.fs);
+            }
+        }
+    }
     #[cfg(test)]
     if let Some(mut probe) = state.offline_body_probe.take() {
         probe(

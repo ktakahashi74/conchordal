@@ -92,6 +92,9 @@ struct PopulationSpec {
     phonation_spec: PhonationSpec,
     phonation_gate: PhonationGate,
     field_duration_spec: FieldDurationSpec,
+    finite_duration: Option<DurationSpec>,
+    rest_periods: Option<f32>,
+    rest_sustain: bool,
     pulse_sync: Option<f32>,
     social_coupling: Option<f32>,
     entrainment: Option<f32>,
@@ -133,6 +136,9 @@ impl PopulationSpec {
             phonation_spec: PhonationSpec::default(),
             phonation_gate: PhonationGate::default(),
             field_duration_spec: FieldDurationSpec::default(),
+            finite_duration: None,
+            rest_periods: None,
+            rest_sustain: false,
             pulse_sync: None,
             social_coupling: None,
             entrainment: None,
@@ -199,6 +205,9 @@ impl PopulationSpec {
     }
 
     fn apply_field_duration_spec(&mut self) {
+        if let Some(DurationSpec::Field(field)) = &mut self.finite_duration {
+            *field = self.field_duration_spec.clone();
+        }
         if let DurationSpec::Field(field) = &mut self.phonation_spec.duration {
             *field = self.field_duration_spec.clone();
         }
@@ -273,13 +282,21 @@ impl PopulationSpec {
         let mut control = self.control.clone();
         control.phonation.spec = self.phonation_spec.clone();
         control.phonation.gate = self.phonation_gate;
+        if self.rest_periods.is_some() {
+            control.phonation.finite_duration = self.finite_duration.clone();
+            control.phonation.rest_periods = self.rest_periods;
+            if self.rest_sustain {
+                control.phonation.spec.duration = DurationSpec::WhileAlive;
+                control.phonation.spec.sustain_participation = true;
+            }
+        }
         // Resolve how seek_consonance() pitch decisions land, unless the script
         // chose explicitly: re-attacking voices snap at onsets, sustained voices
         // glide. Order-independent (resolved at placement, not at call time).
         if !self.pitch_apply_mode_user_set
-            && (self.consonance_movement || self.phonation_spec.is_sustained_participation())
+            && (self.consonance_movement || control.phonation.spec.is_sustained_participation())
         {
-            let apply = if self.phonation_spec.is_sustained_participation() {
+            let apply = if control.phonation.spec.is_sustained_participation() {
                 PitchApplyMode::Glide
             } else {
                 match self.phonation_spec.timing {
@@ -545,6 +562,7 @@ impl PopulationSpec {
     fn set_phonation(&mut self, kind: PhonationKind) {
         match kind {
             PhonationKind::Sustain => {
+                self.rest_sustain = true;
                 self.explicit_sustain = true;
                 if matches!(
                     self.phonation_spec.timing,
@@ -561,6 +579,7 @@ impl PopulationSpec {
                 }
             }
             PhonationKind::Repeat => {
+                self.rest_sustain = false;
                 self.explicit_sustain = false;
                 self.clear_rhythm_preset_controls();
                 self.phonation_spec = PhonationSpec {
@@ -586,6 +605,7 @@ impl PopulationSpec {
     /// reads as a stable pulse. No Hz argument -- the tempo region is the
     /// director's `temporal_basin`; this only sets how hard the voice locks.
     fn set_metric(&mut self) {
+        self.rest_sustain = false;
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
         self.clear_rhythm_preset_controls();
@@ -707,6 +727,7 @@ impl PopulationSpec {
     }
 
     fn set_when_once(&mut self) {
+        self.rest_sustain = false;
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
         self.clear_rhythm_preset_controls();
@@ -714,6 +735,7 @@ impl PopulationSpec {
     }
 
     fn set_when_pulse(&mut self, rate: f32) {
+        self.rest_sustain = false;
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
         let rate = rate.max(0.01);
@@ -740,6 +762,8 @@ impl PopulationSpec {
     }
 
     fn set_duration_while_alive(&mut self) {
+        self.finite_duration = None;
+        self.rest_sustain = false;
         self.explicit_sustain = false;
         self.clear_rhythm_preset_controls();
         self.phonation_spec = PhonationSpec::default();
@@ -754,15 +778,21 @@ impl PopulationSpec {
     }
 
     fn set_duration_cycles(&mut self, n: u32) {
+        self.finite_duration = Some(DurationSpec::Gates(n.max(1)));
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
         self.phonation_spec.duration = DurationSpec::Gates(n.max(1));
     }
 
     fn set_adaptive_duration(&mut self) {
+        self.finite_duration = Some(DurationSpec::Field(self.field_duration_spec.clone()));
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
         self.phonation_spec.duration = DurationSpec::Field(self.field_duration_spec.clone());
+    }
+
+    fn set_rest(&mut self, periods: f32) {
+        self.rest_periods = Some(crate::core::float::sanitize_nonnegative_finite(periods));
     }
 
     fn set_pulse_lock(&mut self, depth: f32) {

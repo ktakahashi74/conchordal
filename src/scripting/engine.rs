@@ -322,6 +322,14 @@ impl ScriptHost {
                 population_spec
             },
         );
+        engine.register_fn("rest", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_rest(1.0);
+            population_spec
+        });
+        register_population_spec_numeric_methods(
+            &mut engine,
+            &[("rest", PopulationSpec::set_rest)],
+        );
         // Tier 3: expert tuning
         register_population_spec_numeric_methods(
             &mut engine,

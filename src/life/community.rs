@@ -79,6 +79,7 @@ impl PredGateAccum {
 }
 
 pub struct Community {
+    pub(crate) rest_enabled: bool,
     pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
     birth_surrogate: std::cell::RefCell<Option<super::sound::birth_surrogate::BirthSurrogate>>,
     pub voices: Vec<Voice>,
@@ -208,6 +209,7 @@ impl Community {
         Self {
             body_metabolism: None,
             birth_surrogate: std::cell::RefCell::new(None),
+            rest_enabled: false,
             voices: Vec::new(),
             current_frame: 0,
             abort_requested: false,
@@ -343,6 +345,7 @@ impl Community {
         }
         self.track_runtime_id(id);
         voice.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES);
+        self.rest_enabled |= voice.phonation_engine.rest.is_some();
         self.voices.push(voice);
     }
 
@@ -595,6 +598,7 @@ impl Community {
             }
         }
         spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES);
+        self.rest_enabled |= spawned.phonation_engine.rest.is_some();
         self.voices.push(spawned);
         self.track_runtime_id(id);
         if self.auto_observe.is_some() {

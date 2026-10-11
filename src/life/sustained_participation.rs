@@ -209,6 +209,13 @@ impl Voice {
                     .find(|e| e.onset_tick <= step.at)
                     .map(|e| e.tone_id)
                     .or(previous_tone);
+                let tone = tone.filter(|tone_id| {
+                    self.phonation_engine.rest.is_none()
+                        || !out.cmds.iter().any(|cmd| {
+                            matches!(cmd, ToneCmd::Off { tone_id: off_id, off_tick }
+                        if off_id == tone_id && *off_tick <= step.at)
+                        })
+                });
                 if let Some(tone_id) = tone.filter(|_| !onset) {
                     out.cmds.push(ToneCmd::Update {
                         tone_id,
@@ -969,5 +976,311 @@ mod tests {
             let counts = crate::runtime_profile::finish_allocations().unwrap();
             assert_eq!((counts.count, counts.bytes), (0, 0));
         }
+    }
+    fn rest_setup(periods: f32) -> (Voice, Timebase, NeuralRhythms, PhonationBatch) {
+        let (mut v, tb, r, out) = setup(false);
+        v.phonation_engine.enable_rest(
+            &DurationConfig::Field {
+                hold_min_theta: 0.2,
+                hold_max_theta: 0.2,
+                curve_k: 2.,
+                curve_x0: 0.5,
+                drop_gain: 0.5,
+            },
+            periods,
+        );
+        (v, tb, r, out)
+    }
+    #[test]
+    fn rest_finite_release_g1_waits_then_consumes_without_forced_on() {
+        use crate::life::phonation_engine::RestPhase;
+        let (mut v, tb, r, mut out) = rest_setup(1.);
+        emit(&mut v, &tb, &r, 0, &mut out);
+        assert_eq!(out.tones.len(), 1);
+        let off = match v.phonation_engine.rest.unwrap().phase {
+            RestPhase::Continue(at) => at,
+            _ => panic!(),
+        };
+        assert_eq!(off, 4800);
+        let mut off_seen = 0;
+        for at in (512..60000).step_by(512) {
+            emit(&mut v, &tb, &r, at, &mut out);
+            assert!(out.tones.is_empty());
+            for cmd in &out.cmds {
+                if matches!(cmd, ToneCmd::Off {off_tick, ..} if *off_tick == off) {
+                    off_seen += 1;
+                }
+            }
+        }
+        assert_eq!(off_seen, 1);
+        assert!(matches!(
+            v.phonation_engine.rest.unwrap().phase,
+            RestPhase::Waiting(4800)
+        ));
+        assert!(!v.phonation_engine.has_active_notes());
+        assert_eq!(
+            v.phonation_engine.drain_participation_predictions().count(),
+            0
+        );
+        v.phonation_engine.rest_tail_finished(61000, tb.fs);
+        assert_eq!(
+            v.phonation_engine.rest.unwrap().phase,
+            RestPhase::Gap {
+                origin: 61000,
+                until: Some(85000)
+            }
+        );
+        for at in (60416..85000).step_by(512) {
+            emit(&mut v, &tb, &r, at, &mut out);
+            assert!(out.tones.is_empty());
+        }
+        v.phonation_engine.rest_resume(85000);
+        assert_eq!(v.phonation_engine.rest.unwrap().phase, RestPhase::Ready);
+        let mut found = false;
+        for at in (85504..160000).step_by(512) {
+            emit(&mut v, &tb, &r, at, &mut out);
+            if !out.tones.is_empty() {
+                assert!(out.tones[0].onset > 85000);
+                found = true;
+                break;
+            }
+        }
+        assert!(found);
+    }
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn rest_warmed_continue_gap_and_receipt_allocate_zero() {
+        let (mut v, tb, r, mut out) = rest_setup(1.);
+        for at in (0..24000).step_by(512) {
+            emit(&mut v, &tb, &r, at, &mut out);
+        }
+        for at in (24064..90000).step_by(512) {
+            crate::runtime_profile::begin_allocations();
+            if at == 24064 {
+                v.phonation_engine.rest_tail_finished(at, tb.fs);
+            }
+            emit(&mut v, &tb, &r, at, &mut out);
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!((counts.count, counts.bytes), (0, 0), "at {at}");
+        }
+    }
+
+    #[test]
+    fn rest_zero_fraction_and_unknown_period_preserve_definition() {
+        use crate::life::phonation_engine::RestPhase;
+        for (periods, until) in [(0., 6000), (0.5, 18000), (2., 54000)] {
+            let (mut v, tb, _, _) = rest_setup(periods);
+            v.phonation_engine.rest.as_mut().unwrap().phase = RestPhase::Waiting(4800);
+            v.phonation_engine.rest_tail_finished(6000, tb.fs);
+            assert_eq!(
+                v.phonation_engine.rest.unwrap().phase,
+                RestPhase::Gap {
+                    origin: 6000,
+                    until: Some(until)
+                }
+            );
+            v.phonation_engine.rest_resume(until.saturating_sub(1));
+            assert!(matches!(
+                v.phonation_engine.rest.unwrap().phase,
+                RestPhase::Gap { .. }
+            ));
+            v.phonation_engine.rest_resume(until);
+            assert_eq!(v.phonation_engine.rest.unwrap().phase, RestPhase::Ready);
+        }
+        let (mut v, tb, _, _) = rest_setup(1.);
+        v.phonation_engine.rest.as_mut().unwrap().phase = RestPhase::Waiting(4800);
+        v.phonation_engine.clock = crate::life::phonation_engine::PhonationClock::from_config(
+            &PhonationClockConfig::ThetaGate,
+            21,
+        );
+        v.phonation_engine.rest_tail_finished(6000, tb.fs);
+        v.phonation_engine.rest_resume(Tick::MAX);
+        assert_eq!(
+            v.phonation_engine.rest.unwrap().phase,
+            RestPhase::Gap {
+                origin: 6000,
+                until: None
+            }
+        );
+    }
+
+    #[test]
+    fn rest_intent_consumes_opportunities_without_cost_skip_or_prediction() {
+        let (mut v, tb, r, mut out) = rest_setup(1.);
+        v.phonation_engine
+            .set_onset_comparison(Some(crate::config::TemporalOnsetComparisonConfig::default()));
+        v.phonation_engine.set_decision_trace(true);
+        let forecast =
+            crate::core::temporal_expectation::TemporalForecast::energy_fixture(48000, 0, |_| {
+                [10., 0., 0.]
+            });
+        v.phonation_engine
+            .set_temporal_context(Some(&forecast), [1., 0., 0.]);
+        let mut suppressed = 0;
+        for at in (0..120000).step_by(512) {
+            emit(&mut v, &tb, &r, at, &mut out);
+            for d in v.phonation_engine.drain_participation_decisions() {
+                if !d.onset_allowed {
+                    suppressed += 1;
+                    assert!(!d.skipped);
+                }
+            }
+            assert_eq!(
+                v.phonation_engine.drain_participation_predictions().count(),
+                0
+            );
+        }
+        assert!(suppressed > 0);
+    }
+
+    #[test]
+    fn rest_gate_snap_keeps_latest_target_through_continue_tail_and_gap() {
+        let (mut v, tb, r, mut out) = rest_setup(1.);
+        v.apply_patch(&ControlUpdate {
+            pitch_apply_mode: Some(PitchApplyMode::GateSnap),
+            ..Default::default()
+        })
+        .unwrap();
+        adoption(&mut v, 64, 440.);
+        emit(&mut v, &tb, &r, 0, &mut out);
+        assert_eq!(out.tones.len(), 1);
+        assert_eq!(
+            out.tones[0].freq_hz.to_bits(),
+            330.0f32.log2().exp2().to_bits()
+        );
+        for at in (512..24576).step_by(512) {
+            if at == 512 {
+                adoption(&mut v, 576, 550.);
+            }
+            emit(&mut v, &tb, &r, at, &mut out);
+            assert!(out.tones.is_empty());
+            assert_eq!(
+                v.body.base_freq_hz().to_bits(),
+                330.0f32.log2().exp2().to_bits()
+            );
+        }
+        v.phonation_engine.rest_tail_finished(24576, tb.fs);
+        for at in (24576..48640).step_by(512) {
+            if at == 24576 {
+                adoption(&mut v, 24640, 660.);
+            }
+            emit(&mut v, &tb, &r, at, &mut out);
+            assert!(out.tones.is_empty());
+        }
+        assert_eq!(v.pending_participation_pitch, Some(660.0f32.log2()));
+        let mut on = None;
+        for at in (48640..180224).step_by(512) {
+            emit(&mut v, &tb, &r, at, &mut out);
+            if let Some(tone) = out.tones.first() {
+                on = Some(tone.clone());
+                break;
+            }
+        }
+        let tone = on.expect("normal participation resumes");
+        assert!(tone.onset >= 48576);
+        assert!(tone.opportunity.is_some());
+        assert_eq!(tone.freq_hz.to_bits(), 660.0f32.log2().exp2().to_bits());
+        assert!(v.pending_participation_pitch.is_none());
+    }
+
+    #[test]
+    fn rest_lifecycle_cancels_finite_off_pending_target_and_future_on() {
+        use crate::life::phonation_engine::RestPhase;
+        for reason in 0..3 {
+            let (mut v, tb, r, mut out) = setup(true);
+            v.phonation_engine
+                .enable_rest(&DurationConfig::FixedGate { length_gates: 2 }, 1.);
+            v.apply_patch(&ControlUpdate {
+                pitch_apply_mode: Some(PitchApplyMode::GateSnap),
+                ..Default::default()
+            })
+            .unwrap();
+            emit(&mut v, &tb, &r, 0, &mut out);
+            adoption(&mut v, 576, 440.);
+            match reason {
+                0 => v.release_pending = true,
+                1 => v.remove_pending = true,
+                _ => {
+                    let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
+                        &mut v.articulation.core
+                    else {
+                        panic!()
+                    };
+                    core.energy = 0.;
+                    core.state = crate::life::articulation_core::ArticulationState::Idle;
+                }
+            }
+            emit(&mut v, &tb, &r, 512, &mut out);
+            assert!(out.onsets.is_empty() && out.tones.is_empty());
+            assert_eq!(
+                out.cmds
+                    .iter()
+                    .filter(|c| matches!(c, ToneCmd::Off { .. }))
+                    .count(),
+                1
+            );
+            assert!(v.pending_participation_pitch.is_none());
+            assert_eq!(v.phonation_engine.rest.unwrap().phase, RestPhase::Finished);
+            v.phonation_engine.rest_tail_finished(6000, tb.fs);
+            for at in (1024..60000).step_by(512) {
+                emit(&mut v, &tb, &r, at, &mut out);
+                assert!(out.tones.is_empty());
+                assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+            }
+        }
+    }
+
+    #[test]
+    fn rest_fresh_birth_keeps_config_without_parent_gap_or_pending_pitch() {
+        use crate::life::phonation_engine::RestPhase;
+        let (mut parent, _, _, _) = rest_setup(0.5);
+        parent.effective_control.phonation.rest_periods = Some(0.5);
+        parent.effective_control.phonation.finite_duration =
+            Some(crate::scenario::DurationSpec::Gates(2));
+        parent.phonation_engine.rest.as_mut().unwrap().phase = RestPhase::Gap {
+            origin: 6000,
+            until: None,
+        };
+        parent.pending_participation_pitch = Some(660.0f32.log2());
+        let child = Voice::spawn_from_control(
+            parent.effective_control.clone(),
+            ArticulationCoreConfig::default(),
+            3,
+            5,
+            VoiceMetadata {
+                generation: 1,
+                parent_id: Some(parent.id()),
+                ..Default::default()
+            },
+            48000.,
+            None,
+            21,
+        );
+        assert_eq!(child.phonation_engine.rest.unwrap().periods, 0.5);
+        assert_eq!(child.phonation_engine.rest.unwrap().phase, RestPhase::Ready);
+        assert!(child.pending_participation_pitch.is_none());
+    }
+
+    #[test]
+    fn rest_glide_adoption_after_off_cannot_update_tail_or_create_on() {
+        let (mut v, tb, r, mut out) = rest_setup(1.);
+        emit(&mut v, &tb, &r, 0, &mut out);
+        let first = out.tones[0].tone_id;
+        adoption(&mut v, 576, 440.);
+        emit(&mut v, &tb, &r, 512, &mut out);
+        assert!(out.cmds.iter().any(|c|matches!(c,ToneCmd::Update { tone_id,at_tick:Some(576),update } if *tone_id==first && update.target_freq_hz.is_some())));
+        for at in (1024..4608).step_by(512) {
+            emit(&mut v, &tb, &r, at, &mut out);
+        }
+        adoption(&mut v, 4864, 550.);
+        emit(&mut v, &tb, &r, 4608, &mut out);
+        assert!(
+            out.cmds
+                .iter()
+                .any(|c| matches!(c,ToneCmd::Off {tone_id,off_tick:4800} if *tone_id==first))
+        );
+        assert!(out.tones.is_empty());
+        assert!(!out.cmds.iter().any(|c|matches!(c,ToneCmd::Update {tone_id,at_tick:Some(at),update} if *tone_id==first && *at>=4800 && update.target_freq_hz.is_some())));
+        assert!(v.rearticulations.is_empty());
     }
 }

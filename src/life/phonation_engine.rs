@@ -1219,7 +1219,22 @@ struct HoldCore {
     tone_id: Option<ToneId>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum RestPhase {
+    Ready,
+    Continue(Tick),
+    Waiting(Tick),
+    Gap { origin: Tick, until: Option<Tick> },
+    Finished,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RestState {
+    pub periods: f32,
+    pub phase: RestPhase,
+}
+
 pub struct PhonationEngine {
+    pub(crate) rest: Option<RestState>,
     pub(crate) sustain_participation: bool,
     pub clock: PhonationClock,
     pub onset_rule: OnsetRule,
@@ -1249,6 +1264,41 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
+    pub(crate) fn enable_rest(&mut self, duration: &DurationConfig, periods: f32) {
+        assert!(self.sustain_participation);
+        self.duration_rule = DurationRule::from_config(duration);
+        self.rest = Some(RestState {
+            periods,
+            phase: RestPhase::Ready,
+        });
+        self.pending_off.reserve(1);
+    }
+
+    pub(crate) fn rest_tail_finished(&mut self, at: Tick, fs: f32) {
+        let period = self.clock.intrinsic_period_sec();
+        if let Some(rest) = self.rest.as_mut()
+            && let RestPhase::Waiting(released) = rest.phase
+            && at >= released
+        {
+            let until = period.map(|p| {
+                let ticks = (p * f64::from(fs) * f64::from(rest.periods)).round() as Tick;
+                at.saturating_add(ticks)
+            });
+            rest.phase = RestPhase::Gap { origin: at, until };
+        }
+    }
+
+    pub(crate) fn rest_resume(&mut self, at: Tick) {
+        if let Some(rest) = self.rest.as_mut()
+            && let RestPhase::Gap {
+                until: Some(until), ..
+            } = rest.phase
+            && at >= until
+        {
+            rest.phase = RestPhase::Ready;
+        }
+    }
+
     pub(crate) fn observe_participation_context(
         &mut self,
         own: &crate::core::temporal_expectation::OwnSoundHistory,
@@ -1390,6 +1440,7 @@ impl PhonationEngine {
         let onset_rule = OnsetRule::from_config(&config.onset, seed);
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
+            rest: None,
             sustain_participation: config.mode == PhonationMode::Hold
                 && matches!(config.clock, PhonationClockConfig::Participation { .. }),
             clock: PhonationClock::from_config(&config.clock, seed),
@@ -1550,11 +1601,35 @@ impl PhonationEngine {
         onsets: &mut Vec<OnsetEvent>,
     ) {
         let before = onsets.len();
+        if !state.is_alive
+            && let Some(rest) = self.rest.as_mut()
+        {
+            self.pending_off.clear();
+            rest.phase = RestPhase::Finished;
+        }
         self.tick_hold(ctx, state, None, cmds, events, onsets);
         if onsets.len() > before
             && let PhonationClock::Participation(c) = &mut self.clock
         {
             c.initial_hold_on = Some(ctx.now_tick);
+        }
+        if onsets.len() > before && self.rest.is_some() {
+            let tone_id = self.hold.tone_id.unwrap();
+            let onset = OnsetContext {
+                tone_id,
+                tick: ctx.now_tick,
+                gate: 0,
+                exc_gate: 1.0,
+                exc_slope: 0.0,
+            };
+            let mut grid = std::mem::take(&mut self.scratch_grid);
+            grid.rebuild_from_candidates(&[CandidatePoint {
+                tick: ctx.now_tick,
+                gate: 0,
+            }]);
+            let period = self.clock.fixed_period_ticks(ctx.fs);
+            self.schedule_duration(onset, ctx, &mut grid, period);
+            self.scratch_grid = grid;
         }
     }
 
@@ -1575,6 +1650,12 @@ impl PhonationEngine {
                 break;
             }
             self.pending_off.pop();
+            if let Some(rest) = self.rest.as_mut()
+                && self.hold.tone_id == Some(next.tone_id)
+            {
+                self.hold.tone_id = None;
+                rest.phase = RestPhase::Waiting(next.off_tick);
+            }
             out_cmds.push(ToneCmd::Off {
                 tone_id: next.tone_id,
                 off_tick: next.off_tick,
@@ -1692,13 +1773,48 @@ impl PhonationEngine {
             let mut timing_field = std::mem::take(&mut self.scratch_field);
             let mut cursor = ctx.now_tick;
             while cursor < ctx.frame_end {
+                let (boundary, segment_ctx, effective_state) = if self.rest.is_some() {
+                    self.drain_note_offs(cursor, out_cmds);
+                    self.rest_resume(cursor);
+                    let boundary = self
+                        .rest
+                        .and_then(|rest| match rest.phase {
+                            RestPhase::Continue(off) => Some(off),
+                            RestPhase::Gap { until, .. } => until,
+                            _ => None,
+                        })
+                        .filter(|b| *b > cursor)
+                        .unwrap_or(ctx.frame_end)
+                        .min(ctx.frame_end);
+                    let mut state = *state;
+                    state.onset_allowed &=
+                        self.rest.is_some_and(|rest| rest.phase == RestPhase::Ready);
+                    (
+                        boundary,
+                        CoreTickCtx {
+                            frame_end: boundary,
+                            ..*ctx
+                        },
+                        state,
+                    )
+                } else {
+                    (ctx.frame_end, *ctx, *state)
+                };
                 let PhonationClock::Participation(clock) = &mut self.clock else {
                     unreachable!()
                 };
-                let Some(candidate) =
-                    clock.candidate(ctx, cursor, state.is_alive && state.onset_allowed, arrival)
-                else {
-                    break;
+                let Some(candidate) = clock.candidate(
+                    &segment_ctx,
+                    cursor,
+                    effective_state.is_alive && effective_state.onset_allowed,
+                    arrival,
+                ) else {
+                    if boundary == ctx.frame_end {
+                        break;
+                    }
+                    self.drain_note_offs(boundary.saturating_sub(1), out_cmds);
+                    cursor = boundary;
+                    continue;
                 };
                 timing_grid.rebuild_from_candidates(&[candidate]);
                 timing_field.rebuild_flat(&timing_grid);
@@ -1713,7 +1829,7 @@ impl PhonationEngine {
                     &[candidate],
                     &mut timing_grid,
                     &timing_field,
-                    state,
+                    &effective_state,
                     min_allowed_onset_tick,
                     out_cmds,
                     out_events,
@@ -1816,7 +1932,12 @@ impl PhonationEngine {
         let plan = self.duration_rule.on_note_on(onset);
         match plan {
             DurationPlan::HoldTheta(hold_theta) => {
-                Some(self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid, fixed_period))
+                let off =
+                    self.schedule_hold_theta(onset, hold_theta, ctx, timing_grid, fixed_period);
+                if let Some(a) = self.rest.as_mut() {
+                    a.phase = RestPhase::Continue(off);
+                }
+                Some(off)
             }
             DurationPlan::None => None,
         }
@@ -1934,7 +2055,7 @@ impl PhonationEngine {
                     exc_gate: step.exc_gate,
                     exc_slope: step.exc_slope,
                 };
-                let release = if self.sustain_participation {
+                let release = if self.sustain_participation && self.rest.is_none() {
                     None
                 } else {
                     self.schedule_duration(onset, ctx, timing_grid, fixed_period)
@@ -2394,6 +2515,7 @@ mod tests {
 
     fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
         PhonationEngine {
+            rest: None,
             sustain_participation: false,
             clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
             onset_rule,

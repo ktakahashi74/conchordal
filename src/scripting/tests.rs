@@ -3294,3 +3294,159 @@ fn deferred_participation_script_order_and_live_gate_snap_are_valid() {
         ));
     }
 }
+
+#[test]
+fn rest_builder_order_preserves_duration_and_participation() {
+    for preset in ["entrained()", "flow()"] {
+        let words = ["sustain()", preset, "adaptive_duration()", "rest()"];
+        for a in 0..4 {
+            for b in 0..4 {
+                for c in 0..4 {
+                    for d in 0..4 {
+                        if [a, b, c, d]
+                            .iter()
+                            .enumerate()
+                            .any(|(i, n)| [a, b, c, d][..i].contains(n))
+                        {
+                            continue;
+                        }
+                        let chain = [words[a], words[b], words[c], words[d]].join(".");
+                        let spec = first_spawn_spec_for_script(&format!(
+                            "create(harmonic().{chain}.duration_range(0.2,0.2),1);"
+                        ));
+                        assert!(
+                            spec.control.phonation.spec.is_sustained_participation(),
+                            "{chain}"
+                        );
+                        assert_eq!(spec.control.phonation.rest_periods, Some(1.));
+                        assert!(
+                            matches!(spec.control.phonation.finite_duration,Some(DurationSpec::Field(f)) if f.hold_min_theta==0.2 && f.hold_max_theta==0.2)
+                        );
+                        assert_eq!(spec.control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
+                    }
+                }
+            }
+        }
+        for chain in [
+            format!("cycles(2).sustain().{preset}.rest(0.5)"),
+            format!("rest(0.5).sustain().{preset}.cycles(2)"),
+        ] {
+            let spec = first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
+            assert!(spec.control.phonation.spec.is_sustained_participation());
+            assert_eq!(
+                spec.control.phonation.finite_duration,
+                Some(DurationSpec::Gates(2))
+            );
+        }
+    }
+}
+
+#[test]
+fn rest_numeric_overloads_and_sanitize_match_existing_vocabulary() {
+    for (call, value) in [
+        ("rest()", 1.),
+        ("rest(0)", 0.),
+        ("rest(0.5)", 0.5),
+        ("rest(-2)", 0.),
+        ("rest(2)", 2.),
+    ] {
+        let spec = first_spawn_spec_for_script(&format!(
+            "create(sine().sustain().entrained().cycles(1).{call},1);"
+        ));
+        assert_eq!(spec.control.phonation.rest_periods, Some(value));
+    }
+    for x in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1., f32::MAX] {
+        let mut p = PopulationSpec::preset(BodyMethod::Harmonic);
+        p.set_rest(x);
+        assert_eq!(
+            p.rest_periods,
+            Some(if x.is_finite() { x.max(0.) } else { 0. })
+        );
+    }
+}
+
+#[test]
+fn rest_invalid_placement_and_live_writes_are_transactional() {
+    for chain in [
+        "sustain().entrained().rest()",
+        "sustain().entrained().adaptive_duration().while_alive().rest()",
+        "adaptive_duration().sustain().rest()",
+        "sustain().entrained().cycles(1).rest().pitch_apply_mode(\"rearticulate\")",
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let err = engine
+            .eval::<Dynamic>(&format!("create(sine().{chain},1);"))
+            .expect_err("invalid rest");
+        assert!(err.to_string().contains("rest()"));
+        let state = ctx.lock().unwrap();
+        assert!(state.populations.is_empty());
+        assert_eq!(state.next_population_id, 1);
+    }
+    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
+    let engine = ScriptHost::create_engine(ctx.clone());
+    let mut scope = rhai::Scope::new();
+    let _ = engine.eval_with_scope::<Dynamic>(&mut scope,"let p=create(sine().sustain().entrained().cycles(1).rest().pitch_apply_mode(\"gate_snap\"),1);").unwrap();
+    let before = format!("{:?}", ctx.lock().unwrap().populations);
+    let err = engine
+        .eval_with_scope::<Dynamic>(&mut scope, "p.pitch_apply_mode(\"rearticulate\");")
+        .unwrap_err();
+    assert!(err.to_string().contains("rest()"));
+    assert_eq!(format!("{:?}", ctx.lock().unwrap().populations), before);
+    for call in ["p.rest();", "p.cycles(2);", "p.duration_range(0.2,0.3);"] {
+        assert!(engine.eval_with_scope::<Dynamic>(&mut scope, call).is_err());
+        assert_eq!(format!("{:?}", ctx.lock().unwrap().populations), before);
+    }
+}
+
+#[test]
+fn rest_respawn_inherits_template_and_starts_with_empty_performance_state() {
+    let (scenario, _) = run_script_with_seed(
+        "create(sine().sustain().entrained().cycles(2).rest(0.5).pitch_apply_mode(\"gate_snap\").respawn_random().respawn_background_death_rate(10000.0),1);",
+        21,
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48000.,
+        hop: 257,
+    });
+    community.set_seed(scenario.seed);
+    let landscape = LandscapeFrame::default();
+    for action in scenario.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape, None);
+        }
+    }
+    let parent = community.voices[0].id();
+    community.voices[0]
+        .phonation_engine
+        .rest
+        .as_mut()
+        .unwrap()
+        .phase = crate::life::phonation_engine::RestPhase::Gap {
+        origin: 0,
+        until: None,
+    };
+    community.advance(257, 48000., 0, 257. / 48000., &landscape);
+    community.cleanup_dead(0, 257. / 48000., false, &landscape);
+    let children: Vec<_> = community
+        .voices
+        .iter()
+        .filter(|v| v.id() != parent)
+        .collect();
+    assert!(!children.is_empty());
+    assert!(community.rest_enabled);
+    for child in children {
+        assert_eq!(child.effective_control.phonation.rest_periods, Some(0.5));
+        assert_eq!(
+            child.effective_control.phonation.finite_duration,
+            Some(DurationSpec::Gates(2))
+        );
+        assert_eq!(
+            child.phonation_engine.rest.unwrap().phase,
+            crate::life::phonation_engine::RestPhase::Ready
+        );
+    }
+}

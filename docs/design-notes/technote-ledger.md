@@ -7891,6 +7891,34 @@ mechanism reading, not listening evidence. Whether to change its explanation,
 recompose it or remove it remains an author decision after hearing. Its file
 and its entry in every index remain unchanged.
 
+**Murmuration audition and correction, about 21:20 on 2026-10-12.** The author
+heard samples 07, 08 and 09 through the machine-local
+`.orchestration/units/samples-review-20261012/listen.sh rhythm` (seed 21, 20 seconds
+each, saved acquisitions producing the same output as main). For 08, the author
+said "徐々に歩調をあわせてゆくようにきこえるが" (it sounds as though they gradually
+fall into step) and decided to retain its file, index entries and explanation.
+This closes the question of how to handle 08. The pending audition and unresolved
+08 item recorded above describe the earlier review, not an outstanding decision.
+
+From production-side beat confidence and the meaning of `entrained()`, the
+orchestrator had headed the report to the author "08 Murmuration は主張が成り立っていない"
+(Murmuration's claim does not hold). The caveat in its body did not justify
+inferring how it sounds from a mechanism's indicators. That conclusion was an
+error and is withdrawn. This was the third recorded misreading that day, after
+inferring a possible conflict with the two-line condition from onset-interval
+variability and treating the morning question as a request to remove it when
+assembling E-3.
+
+For the same acquisition, production-side beat confidence had three-part means
+0.18 → 0.21 → 0.18 and maximum 0.64; listener-side means were 0.18 → 0.31 → 0.25,
+with maximum 0.50 and second-half mean 0.26. Mean Kuramoto order was 0.67.
+Preserve these observations alongside the author's hearing; they do not overturn
+the audition. The temporal listener model retains an open question: whether beat
+confirmation misses the heard coordination, or the author's sense of falling
+into step reflects something other than beat confirmation, remains unexamined.
+The numbers do not identify the cause. No new unit or test is launched. Sources
+are the machine-local `D-11/brief.md` and the saved audition materials.
+
 Heartbeat's old "No external scaffold" epigraph contradicted its dedicated
 downbeat Voice. Only the second comment line now describes that Voice marking
 the pulse and the colony following the beat it hears. Samples 13–16 put builder

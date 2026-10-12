@@ -25,7 +25,7 @@ fn top_level_samples_are_unseeded_and_research_assays_are_seeded() {
             path.display()
         );
     }
-    assert_eq!(sample_count, 12, "expected the twelve top-level samples");
+    assert_eq!(sample_count, 16, "expected the sixteen top-level samples");
 
     let mut research_count = 0;
     for entry in fs::read_dir(Path::new("samples/research")).expect("read research dir") {

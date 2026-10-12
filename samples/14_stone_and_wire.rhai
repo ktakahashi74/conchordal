@@ -28,17 +28,11 @@ let wire = harmonic()
     .adsr(0.015, 0.08, 0.4, 0.12);
 
 section("stone and wire", || {
-    let low = place(
-        stone.rhythm_role("accent").proposal_interval(1.5),
-        line(165.0, 165.0).count(1)
-    );
+    let low = place(stone.rhythm_role("accent").proposal_interval(1.5), at(165.0));
     wait(8.0);
-    let high = place(
-        stone.rhythm_role("subdivision").proposal_interval(0.75),
-        line(330.0, 330.0).count(1)
-    );
+    let high = place(stone.rhythm_role("subdivision").proposal_interval(0.75), at(330.0));
     wait(8.0);
-    let crossing = place(wire, line(660.0, 660.0).count(1));
+    let crossing = place(wire, at(660.0));
     wait(48.0);
     release(crossing);
     wait(4.0);

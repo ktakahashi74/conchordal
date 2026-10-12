@@ -32,9 +32,9 @@ let breath = harmonic()
     .adsr(0.015, 0.08, 0.4, 0.12);
 
 section("folded air", || {
-    let long = place(strand, line(220.0, 220.0).count(1));
+    let long = place(strand, at(220.0));
     wait(8.0);
-    let companion = place(breath, line(330.0, 330.0).count(1));
+    let companion = place(breath, at(330.0));
     wait(16.0);
     companion.pitch_apply_mode("glide");
     wait(16.0);

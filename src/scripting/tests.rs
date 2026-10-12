@@ -889,6 +889,221 @@ fn population_spec_anchor_sets_spawn_mode() {
 }
 
 #[test]
+fn at_placement_respects_final_pitch_intent() {
+    for (chain, mode) in [
+        ("", PitchMode::Lock),
+        (".anchor()", PitchMode::Lock),
+        (".freq(110.0)", PitchMode::Lock),
+        (".seek_consonance()", PitchMode::Free),
+        (".seek_consonance().freq(110.0)", PitchMode::Lock),
+        (".freq(110.0).seek_consonance()", PitchMode::Free),
+        (".seek_consonance().anchor()", PitchMode::Lock),
+        (".anchor().seek_consonance()", PitchMode::Free),
+    ] {
+        let (scenario, _) = run_script(&format!("place(sine(){chain}, at(330.0).count(3));"));
+        let mut community = Community::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        let landscape = LandscapeFrame::default();
+        for action in scenario.events.iter().flat_map(|event| &event.actions) {
+            if let Action::Spawn {
+                ids,
+                spec,
+                strategy,
+                ..
+            } = action
+            {
+                assert_eq!(ids.len(), 3, "{chain}");
+                assert_eq!(spec.control.pitch.mode, mode, "{chain}");
+                if mode == PitchMode::Free {
+                    assert!(
+                        matches!(
+                            strategy,
+                            Some(SpawnStrategy::Linear {
+                                start_freq: 330.0,
+                                end_freq: 330.0
+                            })
+                        ),
+                        "{chain}"
+                    );
+                } else {
+                    assert!(strategy.is_none(), "{chain}");
+                    assert_eq!(spec.control.pitch.freq, 330.0, "{chain}");
+                }
+                community.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        assert_eq!(community.voices.len(), 3);
+        for voice in &community.voices {
+            assert_eq!(voice.base_control.pitch.mode, mode, "{chain}");
+            assert_eq!(voice.effective_control.pitch.mode, mode, "{chain}");
+            assert_eq!(voice.body.base_freq_hz(), 330.0, "{chain}");
+        }
+    }
+}
+
+#[test]
+fn at_seek_matches_degenerate_line_with_custom_pitch_controls() {
+    for count in [1, 3] {
+        let chain = "harmonic().freq(110.0).seek_consonance().sustain()\
+            .pitch_core(\"peak_sampler\").glide(0.12).proposal_interval(0.5)\
+            .pitch_apply_mode(\"rearticulate\").rearticulate_above(75)";
+        let (at, _) = run_script_with_seed(
+            &format!("place({chain},at(330.0).count({count})); wait(1.0);"),
+            21,
+        );
+        let (line, _) = run_script_with_seed(
+            &format!("place({chain},line(330.0,330.0).count({count})); wait(1.0);"),
+            21,
+        );
+        assert_eq!(format!("{at:?}"), format!("{line:?}"));
+    }
+}
+
+#[test]
+fn at_seek_can_adopt_a_target_from_its_initial_pitch() {
+    use crate::core::landscape::Landscape;
+    use crate::core::log2space::Log2Space;
+    use crate::core::modulation::NeuralRhythms;
+
+    let mut landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 64));
+    landscape.subjective_intensity.fill(1.0);
+    let target = landscape.space.index_of_freq(330.0).unwrap();
+    for idx in target - 1..=target + 1 {
+        landscape.consonance_field_score[idx] = 1.0;
+        landscape.consonance_field_level[idx] = 1.0;
+        landscape.consonance_field_score_eff[idx] = 1.0;
+        landscape.consonance_field_level_eff[idx] = 1.0;
+    }
+    for (chain, moves) in [(".seek_consonance()", true), ("", false)] {
+        let (scenario, _) =
+            run_script_with_seed(&format!("place(sine().sustain(){chain},at(220.0));"), 21);
+        let mut community = Community::new(Timebase {
+            fs: 48_000.0,
+            hop: 64,
+        });
+        community.set_seed(scenario.seed);
+        for action in scenario.events.iter().flat_map(|event| &event.actions) {
+            if matches!(action, Action::Spawn { .. }) {
+                community.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let voice = &mut community.voices[0];
+        assert_eq!(voice.body.base_freq_hz(), 220.0);
+        voice.set_accumulated_time_for_test(5.0);
+        voice.set_theta_phase_state_for_test(6.0, true);
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.mag = 1.0;
+        rhythms.theta.phase = 0.25;
+        let initial = voice.target_pitch_log2();
+        voice.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
+        if moves {
+            assert!(voice.target_pitch_log2() > initial);
+        } else {
+            assert_eq!(voice.target_pitch_log2(), initial);
+        }
+    }
+}
+
+#[test]
+fn at_seek_does_not_change_create_or_live_freq_lock() {
+    let (scenario, _) = run_script(
+        "let spec = sine().freq(110.0).seek_consonance();\
+         create(spec,1); let p = place(spec,at(330.0)); p.freq(440.0); flush();",
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48_000.0,
+        hop: 64,
+    });
+    let landscape = LandscapeFrame::default();
+    for action in scenario.events.iter().flat_map(|event| &event.actions) {
+        community.apply_action(action.clone(), &landscape, None);
+    }
+    assert_eq!(community.voices.len(), 2);
+    assert_eq!(
+        community.voices[0].effective_control.pitch.mode,
+        PitchMode::Free
+    );
+    assert_eq!(community.voices[0].effective_control.pitch.freq, 110.0);
+    assert_eq!(
+        community.voices[1].effective_control.pitch.mode,
+        PitchMode::Lock
+    );
+    assert_eq!(community.voices[1].effective_control.pitch.freq, 440.0);
+}
+
+#[test]
+fn at_seek_keeps_supported_tie_and_persistence_without_ignored_warnings() {
+    #[derive(Clone)]
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Capture {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let writer = Capture(captured.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .without_time()
+        .with_ansi(false)
+        .with_writer(move || writer.clone())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || {
+        for timing in ["entrained()", "flow()"] {
+            for mode in ["gate_snap", "rearticulate"] {
+                let persistence = if mode == "rearticulate" {
+                    ".rearticulate_above(75).articulation_persistence(0.75)"
+                } else {
+                    ""
+                };
+                let spec = first_spawn_spec_for_script(&format!(
+                    "place(harmonic().sustain().{timing}.seek_consonance()\
+                     .pitch_apply_mode(\"{mode}\").tie(0.5){persistence},at(330.0));"
+                ));
+                assert!(spec.control.supports_tie());
+                assert_eq!(spec.control.phonation.tie, 0.5);
+                if mode == "rearticulate" {
+                    assert!(spec.control.supports_articulation_persistence());
+                    assert_eq!(spec.control.phonation.articulation_persistence, 0.75);
+                }
+            }
+        }
+        assert!(captured.lock().unwrap().is_empty());
+        first_spawn_spec_for_script(
+            "place(harmonic().sustain().entrained().anchor()\
+             .pitch_apply_mode(\"rearticulate\").rearticulate_above(75)\
+             .articulation_persistence(0.75).tie(0.5),at(330.0));",
+        );
+        let (scenario, _) = run_script(
+            "place(harmonic().seek_consonance().respawn_random()\
+             .respawn_settle(at(440.0)),at(330.0));",
+        );
+        let settle = scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .find_map(|action| match action {
+                Action::SetRespawnPolicy {
+                    settle_strategy, ..
+                } => Some(settle_strategy),
+                _ => None,
+            })
+            .expect("respawn policy");
+        assert!(settle.is_none());
+    });
+    let messages = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+    assert!(messages.contains("tie() ignored"));
+    assert!(messages.contains("articulation_persistence() ignored"));
+    assert!(messages.contains("respawn_settle() requires"));
+}
+
+#[test]
 fn consonance_movement_sets_free_hill_climb_glide_defaults() {
     let (scenario, _warnings) = run_script(
         r#"

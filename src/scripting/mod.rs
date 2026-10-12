@@ -1665,11 +1665,18 @@ impl ScriptContext {
     fn place_population_spec(
         &mut self,
         mut population_spec: PopulationSpecHandle,
-        placement: Placement,
+        mut placement: Placement,
         position: Position,
     ) -> Result<PopulationHandle, Box<EvalAltResult>> {
         if let Some(freq_hz) = placement.freq_hz {
-            population_spec.spec.set_freq(freq_hz);
+            if population_spec.spec.consonance_movement
+                && population_spec.spec.control.pitch.mode == PitchMode::Free
+            {
+                // Explicit movers start here; their final pitch policy stays intact.
+                placement = Placement::line(freq_hz, freq_hz).with_count(placement.count);
+            } else {
+                population_spec.spec.set_freq(freq_hz);
+            }
         }
         self.create_population(
             population_spec,

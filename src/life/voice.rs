@@ -319,6 +319,11 @@ impl Voice {
             .phonation
             .spec
             .is_sustained_participation();
+        let tie = effective_control.phonation.tie;
+        #[cfg(test)]
+        let force_tie = effective_control.phonation.force_tie_attack;
+        #[cfg(not(test))]
+        let force_tie = false;
         let persistence = effective_control.phonation.articulation_persistence;
         #[cfg(test)]
         let force_base = effective_control.phonation.force_articulation_base;
@@ -327,16 +332,27 @@ impl Voice {
         // An inherited policy starts in Base even while mode or J suspends its use.
         if effective_control.pitch.mode == PitchMode::Free
             && sustain_participation
-            && ((persistence > 0.0 && persistence < 1.0) || force_base)
+            && ((persistence > 0.0 && persistence < 1.0) || force_base || tie > 0.0 || force_tie)
             && let PhonationClock::Participation(clock) = &mut phonation_engine.clock
         {
             clock.shape = Some(super::shape_policy::ShapePolicy::new(
-                if force_base { 1.0 } else { persistence },
+                if force_base || !(persistence > 0.0 && persistence < 1.0) {
+                    1.0
+                } else {
+                    persistence
+                },
                 seed,
                 fs,
             ));
-            clock.shape.as_mut().unwrap().enabled =
-                effective_control.supports_articulation_persistence();
+            clock.shape.as_mut().unwrap().retention_active =
+                force_base || (persistence > 0.0 && persistence < 1.0);
+            clock.shape.as_mut().unwrap().enabled = effective_control
+                .supports_articulation_persistence()
+                && clock.shape.as_ref().unwrap().retention_active;
+            if tie > 0.0 || force_tie {
+                clock.shape.as_mut().unwrap().tie =
+                    Some(super::shape_policy::TiePolicy::new(tie, seed));
+            }
             #[cfg(test)]
             if effective_control.phonation.observe_articulation {
                 clock.shape.as_mut().unwrap().observations =
@@ -1197,12 +1213,25 @@ impl Voice {
         if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
             && let Some(shape) = clock.shape.as_mut()
         {
-            shape.enabled = self.effective_control.supports_articulation_persistence();
-            if shape.enabled {
-                self.emit_shape_participation(
-                    &ctx, &state, consonance, target_amp, arrival, space, out,
-                );
-                return;
+            // Only tied Voices instantiate the extra opportunity guard.
+            if let Some(tie) = shape.tie.as_mut() {
+                tie.enabled = self.effective_control.supports_tie();
+                shape.enabled = self.effective_control.supports_articulation_persistence()
+                    && shape.retention_active;
+                if shape.enabled || tie.enabled {
+                    self.emit_shape_participation::<true>(
+                        &ctx, &state, consonance, target_amp, arrival, space, out,
+                    );
+                    return;
+                }
+            } else {
+                shape.enabled = self.effective_control.supports_articulation_persistence();
+                if shape.enabled {
+                    self.emit_shape_participation::<false>(
+                        &ctx, &state, consonance, target_amp, arrival, space, out,
+                    );
+                    return;
+                }
             }
         }
         if self.sustain_participation {
@@ -2004,3 +2033,7 @@ mod rearticulation_boundary_tests;
 
 #[path = "bounded_participation.rs"]
 mod bounded_participation;
+
+#[cfg(test)]
+#[path = "tie_tests.rs"]
+mod tie_tests;

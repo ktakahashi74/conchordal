@@ -9,9 +9,11 @@ pub(crate) enum Shape {
 #[derive(Debug)]
 pub(crate) struct ShapePolicy {
     pub(crate) enabled: bool,
+    pub(crate) retention_active: bool,
     pub(crate) state: Shape,
     pub(crate) veto_plan: bool,
     pub(crate) has_tone: bool,
+    pub(crate) tie: Option<TiePolicy>,
     p: f32,
     fs: f32,
     rng: SmallRng,
@@ -26,9 +28,11 @@ impl ShapePolicy {
         assert!(p > 0.0 && p <= 1.0);
         Self {
             enabled: true,
+            retention_active: true,
             state: Shape::Base,
             veto_plan: false,
             has_tone: false,
+            tie: None,
             p,
             fs,
             // Domain separation is reproducibility bookkeeping, not a musical weight.
@@ -37,6 +41,31 @@ impl ShapePolicy {
             clear_index: 0,
             #[cfg(test)]
             observations: None,
+        }
+    }
+
+    pub(crate) fn veto_onset(&mut self, at: u64) -> bool {
+        if self.enabled && self.veto_plan {
+            return true;
+        }
+        let Some(tie) = self.tie.as_mut() else {
+            return false;
+        };
+        if !tie.enabled {
+            return false;
+        }
+        // A prior Connect decision cancels pitch before this actual opportunity.
+        tie.pending_pitch &= self.clears.get(self.clear_index).is_none_or(|t| *t > at);
+        if tie.pending_pitch {
+            return false;
+        }
+        #[cfg(test)]
+        {
+            tie.trials += 1;
+        }
+        match tie.rng.as_mut() {
+            Some(rng) => rng.random::<f32>() >= 1.0 - tie.p,
+            None => tie.p == 1.0,
         }
     }
 
@@ -83,9 +112,68 @@ impl ShapePolicy {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct TiePolicy {
+    pub(crate) enabled: bool,
+    pub(crate) pending_pitch: bool,
+    p: f32,
+    rng: Option<SmallRng>,
+    #[cfg(test)]
+    pub(crate) trials: u64,
+}
+
+impl TiePolicy {
+    pub(crate) fn new(p: f32, seed: u64) -> Self {
+        Self {
+            enabled: true,
+            pending_pitch: false,
+            p,
+            // Retain the prototype's independent stream and reversed probability.
+            rng: (p > 0.0 && p < 1.0)
+                .then(|| SmallRng::seed_from_u64(seed ^ 0xA110_5245_4154_544B)),
+            #[cfg(test)]
+            trials: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tie_dedicated_stream_connect_pending_endpoints_and_repeat() {
+        let mut a = ShapePolicy::new(1., 21, 48000.);
+        let mut b = ShapePolicy::new(1., 21, 48000.);
+        a.enabled = false;
+        b.enabled = false;
+        a.tie = Some(TiePolicy::new(0.5, 21));
+        b.tie = Some(TiePolicy::new(0.5, 21));
+        for at in 0..100 {
+            a.tie.as_mut().unwrap().pending_pitch = true;
+            assert!(!a.veto_onset(at));
+            a.enabled = true;
+            a.veto_plan = true;
+            assert!(a.veto_onset(at));
+            a.enabled = false;
+            a.veto_plan = false;
+        }
+        assert_eq!(a.tie.as_ref().unwrap().trials, 0);
+        a.tie.as_mut().unwrap().pending_pitch = false;
+        let mut expected = SmallRng::seed_from_u64(21 ^ 0xA110_5245_4154_544B);
+        for at in 100..200 {
+            let value = a.veto_onset(at);
+            assert_eq!(value, b.veto_onset(at));
+            assert_eq!(value, expected.random::<f32>() >= 0.5);
+        }
+        assert_eq!(a.tie.as_ref().unwrap().trials, 100);
+        assert_eq!(a.rng.random::<u64>(), b.rng.random::<u64>());
+        for p in [0., 1.] {
+            a.tie = Some(TiePolicy::new(p, 21));
+            assert!(a.tie.as_ref().unwrap().rng.is_none());
+            assert_eq!(a.veto_onset(200), p == 1.);
+        }
+    }
 
     #[test]
     fn articulation_persistence_policy_same_proposal_and_locked_wait_do_not_consume_rng() {

@@ -20,7 +20,14 @@ struct Observation {
     connect: bool,
 }
 
-fn render_case(directory: &Path, script: &str, native: bool, fixed_base: bool, measured_sec: f32) {
+fn render_case(
+    directory: &Path,
+    script: &str,
+    native: bool,
+    fixed_base: bool,
+    measured_sec: f32,
+    tie: Option<(f32, bool)>,
+) {
     std::fs::create_dir_all(directory).unwrap();
     let script_path = directory.join("input.rhai");
     std::fs::write(&script_path, script).unwrap();
@@ -39,8 +46,13 @@ fn render_case(directory: &Path, script: &str, native: bool, fixed_base: bool, m
         .flat_map(|event| &mut event.actions)
     {
         if let crate::scenario::Action::Spawn { spec, .. } = action
-            && spec.control.supports_articulation_persistence()
+            && (spec.control.supports_articulation_persistence()
+                || (tie.is_some() && spec.control.supports_tie()))
         {
+            if let Some((p, force)) = tie {
+                spec.control.phonation.tie = p;
+                spec.control.phonation.force_tie_attack = force;
+            }
             spec.control.phonation.force_articulation_base = fixed_base;
             spec.control.phonation.observe_articulation = true;
         }
@@ -53,7 +65,9 @@ fn render_case(directory: &Path, script: &str, native: bool, fixed_base: bool, m
         let until = (start + pcm[0].len() as u64).min(end_sample);
         let mut observed = counts.lock().unwrap();
         for voice in &mut state.pop.voices {
-            if !voice.effective_control.supports_articulation_persistence() {
+            if !voice.effective_control.supports_articulation_persistence()
+                && !(tie.is_some() && voice.effective_control.supports_tie())
+            {
                 continue;
             }
             let item = observed.entry(voice.id()).or_default();
@@ -200,16 +214,16 @@ fn assert_outputs_equal(a: &Path, b: &Path) {
 #[test]
 fn articulation_persistence_fixed_base_one_full_audio_and_release_report_match() {
     let directory = output_directory("fixed-one");
-    render_case(&directory.join("direct"), ONE, false, false, 96.);
-    render_case(&directory.join("fixed"), ONE, false, true, 96.);
+    render_case(&directory.join("direct"), ONE, false, false, 96., None);
+    render_case(&directory.join("fixed"), ONE, false, true, 96., None);
     assert_outputs_equal(&directory.join("direct"), &directory.join("fixed"));
 }
 
 #[test]
 fn articulation_persistence_fixed_base_peer_full_audio_and_release_report_match() {
     let directory = output_directory("fixed-peer");
-    render_case(&directory.join("direct"), PEER, false, false, 96.);
-    render_case(&directory.join("fixed"), PEER, false, true, 96.);
+    render_case(&directory.join("direct"), PEER, false, false, 96., None);
+    render_case(&directory.join("fixed"), PEER, false, true, 96., None);
     assert_outputs_equal(&directory.join("direct"), &directory.join("fixed"));
 }
 
@@ -229,8 +243,8 @@ fn articulation_persistence_all_bodies_both_renderers_flow_repeat() {
                 .replace("wait(2.0)", "wait(0.5)");
             let a = directory.join(format!("{body}-{native}-a"));
             let b = directory.join(format!("{body}-{native}-b"));
-            render_case(&a, &script, native, false, 8.);
-            render_case(&b, &script, native, false, 8.);
+            render_case(&a, &script, native, false, 8., None);
+            render_case(&b, &script, native, false, 8., None);
             assert_outputs_equal(&a, &b);
         }
     }
@@ -272,7 +286,48 @@ fn articulation_persistence_audition_materials() {
         ),
     ];
     for (name, script, native) in cases {
-        render_case(&directory.join(name), &script, native, false, 96.);
+        render_case(&directory.join(name), &script, native, false, 96., None);
     }
     println!("articulation audition directory: {}", directory.display());
+}
+
+#[test]
+fn tie_forced_attack_and_explicit_zero_match_one_and_peer_complete_output() {
+    let directory = output_directory("tie-fixed");
+    for (label, script) in [("one", ONE), ("peer", PEER)] {
+        let base = directory.join(format!("{label}-base"));
+        let zero = directory.join(format!("{label}-zero"));
+        let forced = directory.join(format!("{label}-forced"));
+        render_case(&base, script, false, false, 96., None);
+        render_case(&zero, script, false, false, 96., Some((0., false)));
+        render_case(&forced, script, false, false, 96., Some((0., true)));
+        assert_outputs_equal(&base, &zero);
+        assert_outputs_equal(&base, &forced);
+    }
+}
+
+#[test]
+fn tie_all_bodies_renderers_flow_rest_persistence_and_repeat() {
+    let directory = output_directory("tie-bodies");
+    for native in [false, true] {
+        for body in ["sine", "harmonic", "modal"] {
+            for extra in ["", ".cycles(2).rest(1).articulation_persistence(0.75)"] {
+                let script = ONE
+                    .replace("harmonic()", &format!("{body}()"))
+                    .replace("entrained()", "flow().intrinsic_rate(2)")
+                    .replace(
+                        "rearticulate_above(50)",
+                        &format!("rearticulate_above(50){extra}"),
+                    )
+                    .replace("wait(96.0)", "wait(8.0)")
+                    .replace("wait(2.0)", "wait(0.5)");
+                let suffix = if extra.is_empty() { "base" } else { "composed" };
+                let a = directory.join(format!("{body}-{native}-{suffix}-a"));
+                let b = directory.join(format!("{body}-{native}-{suffix}-b"));
+                render_case(&a, &script, native, false, 8., Some((0.5, false)));
+                render_case(&b, &script, native, false, 8., Some((0.5, false)));
+                assert_outputs_equal(&a, &b);
+            }
+        }
+    }
 }

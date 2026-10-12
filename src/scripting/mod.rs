@@ -471,6 +471,10 @@ impl PopulationSpec {
         self.control.pitch.set_pitch_apply_mode(mode);
     }
 
+    fn set_tie(&mut self, value: f32) {
+        self.control.phonation.tie = crate::core::float::sanitize01(value);
+    }
+
     fn set_articulation_persistence(&mut self, value: f32) {
         self.control.phonation.articulation_persistence = crate::core::float::sanitize01(value);
     }
@@ -1593,6 +1597,14 @@ impl ScriptContext {
                 .control
                 .phonation
                 .articulation_persistence = 0.0;
+        }
+        if population_spec.spec.control.phonation.tie != 0.0
+            && !population_spec.spec.spawn_spec().control.supports_tie()
+        {
+            warn!(
+                "tie() ignored outside free-pitch sustain() with entrained()/flow() and gate_snap/rearticulate"
+            );
+            population_spec.spec.control.phonation.tie = 0.0;
         }
         let id = self.next_population_id;
         self.next_population_id = self.next_population_id.wrapping_add(1);

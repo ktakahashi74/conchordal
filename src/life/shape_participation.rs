@@ -50,7 +50,7 @@ impl Voice {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn emit_shape_participation(
+    pub(super) fn emit_shape_participation<const TIE: bool>(
         &mut self,
         ctx: &CoreTickCtx,
         state: &CoreState,
@@ -92,7 +92,14 @@ impl Voice {
                         ..*ctx
                     };
                     self.phonation_engine.set_adoption_candidate(None);
-                    self.phonation_engine.tick_with_arrival(
+                    if TIE
+                        && let PhonationClock::Participation(clock) =
+                            &mut self.phonation_engine.clock
+                        && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
+                    {
+                        tie.pending_pitch = self.pending_participation_pitch.is_some();
+                    }
+                    self.phonation_engine.tick_with_arrival_impl::<TIE>(
                         &segment,
                         state,
                         None,
@@ -146,16 +153,19 @@ impl Voice {
                         m_index += 1;
                         continue;
                     };
-                    shape.propose(
-                        if base == PitchApplyMode::Glide {
-                            Shape::Connect
-                        } else {
-                            Shape::Base
-                        },
-                        m.at,
-                        locked,
-                    );
-                    let glide = shape.state == Shape::Connect || base == PitchApplyMode::Glide;
+                    if !TIE || shape.enabled {
+                        shape.propose(
+                            if base == PitchApplyMode::Glide {
+                                Shape::Connect
+                            } else {
+                                Shape::Base
+                            },
+                            m.at,
+                            locked,
+                        );
+                    }
+                    let glide = ((!TIE || shape.enabled) && shape.state == Shape::Connect)
+                        || base == PitchApplyMode::Glide;
                     self.articulation_persistence_clear_before(m.at);
                     if glide {
                         self.pending_participation_pitch = None;
@@ -174,7 +184,13 @@ impl Voice {
                     ..*ctx
                 };
                 self.phonation_engine.set_adoption_candidate(None);
-                self.phonation_engine.tick_with_arrival(
+                if TIE
+                    && let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
+                    && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
+                {
+                    tie.pending_pitch = self.pending_participation_pitch.is_some();
+                }
+                self.phonation_engine.tick_with_arrival_impl::<TIE>(
                     &segment,
                     state,
                     None,
@@ -230,7 +246,13 @@ impl Voice {
                     now_tick: cursor,
                     ..*ctx
                 };
-                self.phonation_engine.tick_with_arrival(
+                if TIE
+                    && let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
+                    && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
+                {
+                    tie.pending_pitch = self.pending_participation_pitch.is_some();
+                }
+                self.phonation_engine.tick_with_arrival_impl::<TIE>(
                     &segment,
                     state,
                     None,

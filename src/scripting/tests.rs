@@ -3846,3 +3846,120 @@ fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
         }
     }
 }
+
+#[test]
+fn tie_builder_order_values_scope_and_no_live_setter() {
+    for timing in ["entrained()", "flow()"] {
+        for mode in ["gate_snap", "rearticulate"] {
+            for chain in [
+                format!("tie(0.5).sustain().{timing}.pitch_apply_mode(\"{mode}\")"),
+                format!("sustain().{timing}.pitch_apply_mode(\"{mode}\").tie(0.5)"),
+            ] {
+                for script in [
+                    format!("create(sine().{chain},1);"),
+                    format!("place(sine().{chain},line(330.0,330.0));"),
+                ] {
+                    let spec = first_spawn_spec_for_script(&script);
+                    assert_eq!(spec.control.phonation.tie, 0.5, "{script}");
+                    assert!(spec.control.supports_tie());
+                }
+            }
+        }
+    }
+    for (value, expected) in [
+        (0., 0.),
+        (1., 1.),
+        (-1., 0.),
+        (2., 1.),
+        (f32::NAN, 0.),
+        (f32::INFINITY, 1.),
+        (f32::NEG_INFINITY, 0.),
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
+        let mut engine = ScriptHost::create_engine(ctx.clone());
+        engine.register_fn("test_value", move || value as rhai::FLOAT);
+        let _ = engine.eval::<Dynamic>("create(sine().sustain().entrained().pitch_apply_mode(\"gate_snap\").tie(test_value()),1);").unwrap();
+        assert_eq!(
+            ctx.lock()
+                .unwrap()
+                .populations
+                .values()
+                .next()
+                .unwrap()
+                .spec
+                .control
+                .phonation
+                .tie,
+            expected
+        );
+    }
+    for chain in [
+        "sustain()",
+        "sustain().entrained()",
+        "pulse(2).cycles(1)",
+        "sustain().entrained().anchor().pitch_apply_mode(\"gate_snap\")",
+    ] {
+        assert_eq!(
+            first_spawn_spec_for_script(&format!("create(sine().{chain}.tie(1),1);"))
+                .control
+                .phonation
+                .tie,
+            0.0
+        );
+    }
+    assert!(run_script_err("let p=create(sine().sustain().entrained().pitch_apply_mode(\"gate_snap\").tie(1),1); p.tie(0.5);").to_string().contains("tie"));
+}
+
+#[test]
+fn tie_respawn_inherits_parameter_and_resets_private_policy() {
+    use crate::life::phonation_engine::PhonationClock;
+    use crate::life::shape_policy::Shape;
+    let (scenario, _) = run_script_with_seed(
+        "create(sine().sustain().entrained().pitch_apply_mode(\"rearticulate\").rearticulate_above(50).tie(0.5).respawn_random().respawn_background_death_rate(10000.0),1);",
+        21,
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48000.,
+        hop: 257,
+    });
+    community.set_seed(scenario.seed);
+    let landscape = LandscapeFrame::default();
+    for action in scenario.events.iter().flat_map(|event| &event.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape, None);
+        }
+    }
+    let parent = community.voices[0].id();
+    let PhonationClock::Participation(clock) = &mut community.voices[0].phonation_engine.clock
+    else {
+        panic!()
+    };
+    let shape = clock.shape.as_mut().unwrap();
+    shape.state = Shape::Connect;
+    shape.veto_plan = true;
+    shape.has_tone = true;
+    shape.tie.as_mut().unwrap().pending_pitch = true;
+    shape.tie.as_mut().unwrap().trials = 100;
+    community.advance(257, 48000., 0, 257. / 48000., &landscape);
+    community.cleanup_dead(0, 257. / 48000., false, &landscape);
+    let children: Vec<_> = community
+        .voices
+        .iter()
+        .filter(|v| v.id() != parent)
+        .collect();
+    assert!(!children.is_empty());
+    for child in children {
+        assert_eq!(child.effective_control.phonation.tie, 0.5);
+        let PhonationClock::Participation(clock) = &child.phonation_engine.clock else {
+            panic!()
+        };
+        let shape = clock.shape.as_ref().unwrap();
+        assert_eq!(shape.state, Shape::Base);
+        assert!(!shape.veto_plan && !shape.has_tone);
+        assert!(!shape.tie.as_ref().unwrap().pending_pitch);
+        assert_eq!(shape.tie.as_ref().unwrap().trials, 0);
+    }
+}

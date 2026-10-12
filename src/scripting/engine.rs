@@ -208,6 +208,7 @@ impl ScriptHost {
         register_population_spec_numeric_methods(
             &mut engine,
             &[
+                ("tie", PopulationSpec::set_tie),
                 ("glide", PopulationSpec::set_pitch_glide_tau_sec),
                 ("rearticulate_above", PopulationSpec::set_rearticulate_above),
                 (

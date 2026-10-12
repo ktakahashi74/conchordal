@@ -1777,6 +1777,34 @@ impl PhonationEngine {
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
+        self.tick_with_arrival_impl::<false>(
+            ctx,
+            state,
+            social,
+            social_coupling,
+            extra_gate_gain,
+            min_allowed_onset_tick,
+            arrival,
+            out_cmds,
+            out_events,
+            out_onsets,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn tick_with_arrival_impl<const TIE: bool>(
+        &mut self,
+        ctx: &CoreTickCtx,
+        state: &CoreState,
+        social: Option<&SocialDensityTrace>,
+        social_coupling: f32,
+        extra_gate_gain: f32,
+        min_allowed_onset_tick: Option<Tick>,
+        arrival: Option<&ArrivalContext<'_>>,
+        out_cmds: &mut Vec<ToneCmd>,
+        out_events: &mut Vec<ToneOnEvent>,
+        out_onsets: &mut Vec<OnsetEvent>,
+    ) {
         if matches!(self.mode, PhonationMode::Hold) && !self.sustain_participation {
             self.tick_hold(
                 ctx,
@@ -1850,7 +1878,7 @@ impl PhonationEngine {
                     frame_end: candidate.tick.saturating_add(1),
                     ..*ctx
                 };
-                self.process_candidates(
+                self.process_candidates::<TIE>(
                     &segment,
                     &[candidate],
                     &mut timing_grid,
@@ -1865,6 +1893,12 @@ impl PhonationEngine {
                     unreachable!()
                 };
                 clock.resolve(candidate.tick, out_onsets.len() > before);
+                if TIE
+                    && out_onsets.len() > before
+                    && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
+                {
+                    tie.pending_pitch = false;
+                }
                 cursor = candidate.tick.saturating_add(1);
             }
             self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
@@ -1895,7 +1929,7 @@ impl PhonationEngine {
                 extra_gate_gain,
             );
         }
-        self.process_candidates(
+        self.process_candidates::<TIE>(
             ctx,
             &merged,
             &mut timing_grid,
@@ -1970,7 +2004,7 @@ impl PhonationEngine {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn process_candidates(
+    fn process_candidates<const TIE: bool>(
         &mut self,
         ctx: &CoreTickCtx,
         candidates: &[CandidatePoint],
@@ -2018,8 +2052,16 @@ impl PhonationEngine {
                 && state.is_alive
                 && state.onset_allowed
                 && self.hold.tone_id.is_some()
-                && matches!(&self.clock, PhonationClock::Participation(clock)
-                    if clock.shape.as_ref().is_some_and(|s| s.enabled && s.veto_plan));
+                && match &mut self.clock {
+                    PhonationClock::Participation(clock) => clock.shape.as_mut().is_some_and(|s| {
+                        if TIE {
+                            s.veto_onset(c.tick)
+                        } else {
+                            s.enabled && s.veto_plan
+                        }
+                    }),
+                    _ => false,
+                };
             if allow_onset
                 && !intentional
                 && state.onset_allowed
@@ -3378,7 +3420,7 @@ mod tests {
                 GateBoundary { gate: 3, tick: 30 },
             ],
         };
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3704,7 +3746,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3752,7 +3794,7 @@ mod tests {
                 GateBoundary { gate: 3, tick: 30 },
             ],
         };
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3788,7 +3830,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3831,7 +3873,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -4144,7 +4186,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -4201,7 +4243,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx1,
             &candidates,
             &mut timing_grid,
@@ -4230,7 +4272,7 @@ mod tests {
         let mut cmds2 = Vec::new();
         let mut events2 = Vec::new();
         let mut onsets2 = Vec::new();
-        engine.process_candidates(
+        engine.process_candidates::<false>(
             &ctx2,
             &empty,
             &mut timing_grid,

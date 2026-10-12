@@ -21,6 +21,15 @@ pub struct VoiceControl {
 }
 
 impl VoiceControl {
+    pub(crate) fn supports_tie(&self) -> bool {
+        self.pitch.mode == PitchMode::Free
+            && matches!(
+                self.pitch.pitch_apply_mode,
+                PitchApplyMode::GateSnap | PitchApplyMode::Rearticulate
+            )
+            && self.phonation.spec.is_sustained_participation()
+    }
+
     pub(crate) fn supports_articulation_persistence(&self) -> bool {
         self.pitch.mode == PitchMode::Free
             && self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
@@ -312,6 +321,9 @@ pub struct PhonationControl {
     pub(crate) finite_duration: Option<crate::scenario::DurationSpec>,
     pub(crate) rest_periods: Option<f32>,
     pub(crate) articulation_persistence: f32,
+    pub(crate) tie: f32,
+    #[cfg(test)]
+    pub(crate) force_tie_attack: bool,
     #[cfg(test)]
     pub(crate) force_articulation_base: bool,
     #[cfg(test)]

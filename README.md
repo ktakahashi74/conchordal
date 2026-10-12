@@ -148,7 +148,8 @@ cargo run --release -- samples/12_emergence_and_resolution.rhai
 
 See [`samples/README.md`](samples/README.md) for both groups. Samples 1–12
 are API and behavior demonstrations, not musical works. Samples 13–16 are
-compositions kept in the same directory.
+first composed scenes kept in the same directory; a fuller set of
+compositions arrives with the beta.
 `samples/research/` holds comparison assays outside the path.
 
 ### Scenario scripting example

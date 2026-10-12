@@ -21,31 +21,12 @@ let strand = harmonic()
     .adsr(0.015, 0.08, 0.4, 0.12);
 
 section("three windows", || {
-    let floor = place(
-        ground,
-        line(220.0, 220.0)
-            .count(1)
-    );
-    let long = place(
-        strand
-            .proposal_interval(2.0),
-        line(330.0, 330.0)
-            .count(1)
-    );
+    let floor = place(ground, line(220.0, 220.0).count(1));
+    let long = place(strand.proposal_interval(2.0), line(330.0, 330.0).count(1));
     wait(8.0);
-    let quick = place(
-        strand
-            .proposal_interval(0.5),
-        line(495.0, 495.0)
-            .count(1)
-    );
+    let quick = place(strand.proposal_interval(0.5), line(495.0, 495.0).count(1));
     wait(16.0);
-    let middle = place(
-        strand
-            .proposal_interval(1.0),
-        line(440.0, 440.0)
-            .count(1)
-    );
+    let middle = place(strand.proposal_interval(1.0), line(440.0, 440.0).count(1));
     wait(32.0);
     release(middle);
     wait(8.0);

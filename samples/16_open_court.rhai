@@ -41,40 +41,20 @@ let air = harmonic()
 
 section("open court", || {
     let near = place(
-        crowd
-            .rhythm_role("accent")
-            .proposal_interval(1.5),
-        line(110.0, 330.0)
-            .count(3)
+        crowd.rhythm_role("accent").proposal_interval(1.5),
+        line(110.0, 330.0).count(3)
     );
     wait(8.0);
     let far = place(
-        crowd
-            .rhythm_role("subdivision")
-            .proposal_interval(0.75),
-        line(220.0, 660.0)
-            .count(3)
+        crowd.rhythm_role("subdivision").proposal_interval(0.75),
+        line(220.0, 660.0).count(3)
     );
     wait(8.0);
-    let quick = place(
-        path
-            .proposal_interval(0.5),
-        line(660.0, 660.0)
-            .count(1)
-    );
+    let quick = place(path.proposal_interval(0.5), line(660.0, 660.0).count(1));
     wait(8.0);
-    let long = place(
-        path
-            .proposal_interval(2.0),
-        line(495.0, 495.0)
-            .count(1)
-    );
+    let long = place(path.proposal_interval(2.0), line(495.0, 495.0).count(1));
     wait(8.0);
-    let drifting = place(
-        air,
-        line(880.0, 880.0)
-            .count(1)
-    );
+    let drifting = place(air, line(880.0, 880.0).count(1));
     wait(24.0);
     release(drifting);
     wait(8.0);

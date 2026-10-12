@@ -217,7 +217,7 @@ Explicit `"gate_snap"` with free pitch instead holds one adopted target until th
 Voice chooses to sound at a participation opportunity. The old Tone then releases
 and a new Tone attacks at that target. A later adoption replaces the pending target.
 Waiting and omission retain the sounding pitch and the pending target; movement
-does not glide. Without a pending target, a sounded opportunity re-attacks the same
+does not glide. With tie omitted or zero, an opportunity without a pending target re-attacks the same
 pitch. GateSnap offers no extra candidate at the adoption sample and uses the
 unchanged participation costs and skip rule. At the same sample, adoption precedes
 the opportunity; a future adoption cannot affect an earlier onset. Release, death
@@ -244,7 +244,7 @@ performance state. Timing presets remain initial-only.
 With `pitch_apply_mode("rearticulate")`, `rearticulate_above(cents)` combines
 sliding and deferred jumps. A small adoption cancels old pending pitch and starts
 gliding; a large one stops sliding and defers the target to the next sounded
-opportunity. A sounded opportunity without a target attacks at current body pitch.
+opportunity. With tie omitted or zero, an opportunity without a target attacks at current body pitch.
 Waiting and skipping do not stop existing glides. The boundary uses the last actual
 onset pitch, updated by every attack, and does not suppress clock attacks. Zero or
 omission matches GateSnap. Unlike Hold without participation, Rearticulate here
@@ -315,6 +315,51 @@ Finite Off, `rest()`, tail completion, gaps, release, death and removal take pri
 When no Tone lives, Connect allows the next legal onset, including the initial
 onset and return from a rest. The policy survives individual notes and rests; it
 does not decide whether each note should sustain or release.
+
+## Extending opportunities without a new pitch destination
+
+`tie(p)` sets the probability of extending a living Tone instead of re-attacking
+at a selected participation opportunity without a pending target. It is an
+initial composer parameter for free-pitch `sustain()` with `entrained()` or
+`flow()` and explicit `gate_snap` or `rearticulate`, including a zero boundary.
+The default `0` preserves current attacks, `1` always extends eligible Tones,
+and intermediate values mix the two per opportunity. These values are composer
+choices, not a musical optimum.
+
+A pending target still jumps and attacks. Small adoptions below a positive
+boundary already glide without pending pitch, so those gliding Tones can extend
+too: the condition is not exact pitch equality. GateSnap makes small and even
+zero-distance adoptions pending, so they still attack. Tie reduces attacks to a
+thinned sequence of existing opportunities; it neither moves the opportunities
+nor changes pitch proposals, costs or skip. It is not an overall legato amount,
+a phrase switch, or a response to heard phrase boundaries.
+
+```rhai
+let voices = place(harmonic().sustain().entrained()
+    .pitch_apply_mode("rearticulate").rearticulate_above(50).tie(0.5),
+    line(220.0, 330.0).count(2));
+wait(3.0);
+release(voices);
+```
+
+The boundary and intermediate probability in this example illustrate composition,
+not recommended settings. Extension creates no new Tone, onset metabolism or
+onset-context learning; the opportunity is consumed, without cost-skip learning
+or later replay. With `articulation_persistence`, Connect withholds first without
+sampling tie. In Base, pending targets attack; only pending-free opportunities
+sample tie. Tie does not change Base/Connect proposals or retention. Connect's
+sliding of large moves and withholding of attacks is a separate policy.
+
+Initial onsets and legal onsets after finite Off, tail completion and `rest()`
+are never blocked when no Tone lives. Release, death, removal and rest legality
+take priority. The parameter cannot change during performance. Switching to
+Glide suspends it; returning to an applicable mode resumes it. Builder order
+is independent at `place` and `create`; replacements inherit the template value
+with fresh random and performance state. Finite values clamp to `[0,1]`, positive
+infinity becomes `1`, negative infinity and NaN become `0`; unsupported final
+forms warn and ignore the value. Zero has no tie state or draws, one has no draws,
+and intermediate values use a separate individual stream at execution only.
+
 
 ## Explicit when/duration (Tier 2)
 

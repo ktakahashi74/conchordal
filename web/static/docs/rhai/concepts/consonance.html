@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-43bad780.js";
+            window.path_to_searchindex_js = "../searchindex-fce6a0e2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -377,7 +377,7 @@ adoption but uses the clock for attacks. At or below a positive boundary, moveme
 starts gliding immediately without an attack and cancels any older pending target.
 Above it, an active glide stops, body pitch is held, and the latest target waits
 for a sounded opportunity. That opportunity consumes the target and attacks there;
-without a target it re-attacks the current body pitch, which may have changed during
+with tie omitted or zero, it re-attacks the current body pitch without a target, which may have changed during
 a glide. Waiting and skipping retain sound and pending state while existing glides
 continue. Both kinds of attack update the last actual onset reference. Same-sample
 adoption precedes the opportunity. No adoption-time candidate is added, and the
@@ -388,6 +388,9 @@ for mode switching.</p>
 <code>articulation_persistence(p)</code> to retain Base/Connect across existing events.
 This changes policy inertia, not the movement boundary or a prescribed legato
 proportion. See <a href="rhythm.html#retaining-an-articulation-policy">Retaining an articulation policy</a>.</p>
+<p>For gate_snap/rearticulate participation, <code>tie(p)</code> can extend a living Tone without
+a pending target instead of re-attacking. It leaves pending-target attacks intact,
+including small GateSnap moves. See <a href="rhythm.html#extending-opportunities-without-a-new-pitch-destination">Extending opportunities</a>.</p>
 <h3 id="cutting-notes-and-leaving-a-rest"><a class="header" href="#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a></h3>
 <p>For sustained participation, <code>rest()</code> adds a finite end to every sounded note
 and an intentional pause after its sound has finished. Supply the note length

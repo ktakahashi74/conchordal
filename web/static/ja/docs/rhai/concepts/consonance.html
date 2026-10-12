@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9a4ebfee.js";
+            window.path_to_searchindex_js = "../searchindex-0e4b3cd8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -353,7 +353,7 @@ release(voices);
 委ねます。正の境界以下の採用は、その時刻から滑り始め、発音せず、旧い保留を取り消します。
 境界を超える採用は進行中の滑りを止め、身体の音高を保ち、最新の行き先を一つ保留します。
 鳴らすと選んだ機会で保留を消費し、そこへ跳んで打ち直します。保留がなければ、その時点の
-身体音高で打ち直します。滑っている途中なら、前の発音と音高が違う場合もあります。
+身体音高で打ち直します（tieの省略または0）。滑っている途中なら、前の発音と音高が違う場合もあります。
 どちらの打ち直しでも最後の実発音音高を更新します。待つ・見送るなら音と保留を保ち、
 既に始まった滑りは続きます。同じsampleでは採用を先に処理し、採用時刻の発音候補を
 追加しません。境界で時計の発音を間引きません。境界の省略と0はGateSnapと同じ形で、
@@ -361,6 +361,9 @@ release(voices);
 <p>正の境界を持つこの形では、配置前の<code>articulation_persistence(p)</code>でBase／Connectを
 既存の出来事にまたがって保てます。移動の境界やつなぐ割合を変える指定ではありません。
 <a href="rhythm.html#発音の方針を保つ">発音の方針を保つ</a>を参照してください。</p>
+<p>gate_snap／rearticulateの参加では、<code>tie(p)</code>で保留がないToneを打ち直さず伸ばす確率を
+置けます。gate_snapの小さい採用を含む、保留ありの発音は通します。
+<a href="rhythm.html#行き先がない機会では音を伸ばす">行き先がない機会では音を伸ばす</a>を参照してください。</p>
 <h3 id="音を切って間を置く"><a class="header" href="#音を切って間を置く">音を切って間を置く</a></h3>
 <p>持続音と参加の機会を併せ持つVoiceに<code>rest()</code>を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は<code>cycles(n)</code>、または

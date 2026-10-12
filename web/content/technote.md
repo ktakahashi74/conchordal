@@ -549,6 +549,24 @@ monotonically increase Connect time or reduce attacks. Its duration follows
 existing events, not seconds or beats; it is inertia without inferred cadence,
 contour, rest or phrase boundaries.
 
+### Extending a living Tone without pending pitch
+
+`tie(p)` is an initial-only probability in free-pitch sustain plus entrained/flow
+with GateSnap or Rearticulate. At a selected legal opportunity, a pending target
+still attacks; a living Tone without one extends with probability p. Omission/0
+retains existing attacks without tie state or draws; 1 extends eligible Tones
+without drawing. Intermediate values use a dedicated individual stream at execution,
+never during waiting. Small boundary-limited glides are eligible; small GateSnap
+adoptions remain pending and attack. This thins the existing opportunity sequence,
+without changing pitch, timing candidates, costs or skip. It is not an overall
+legato amount or phrase-boundary mechanism. Connect vetoes before tie; Base uses
+it only without pending pitch, leaving policy proposals and retention unchanged.
+Finite Off, tails/rest and lifecycle have priority, and no-Tone legal onsets pass.
+Templates carry the probability, not performance/RNG state. Builder order is
+independent; live Glide suspends tie and returning resumes it. There is no live
+probability setter. Inputs follow sanitize01; unsupported final forms warn and ignore.
+
+
 ## 5.4 Onset Timing: Synchronization and Participation
 
 `RhythmRelation` distinguishes synchronized timing (`metric()`) from acoustic

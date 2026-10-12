@@ -236,7 +236,7 @@ adoption but uses the clock for attacks. At or below a positive boundary, moveme
 starts gliding immediately without an attack and cancels any older pending target.
 Above it, an active glide stops, body pitch is held, and the latest target waits
 for a sounded opportunity. That opportunity consumes the target and attacks there;
-without a target it re-attacks the current body pitch, which may have changed during
+with tie omitted or zero, it re-attacks the current body pitch without a target, which may have changed during
 a glide. Waiting and skipping retain sound and pending state while existing glides
 continue. Both kinds of attack update the last actual onset reference. Same-sample
 adoption precedes the opportunity. No adoption-time candidate is added, and the
@@ -248,6 +248,10 @@ The positive-boundary sustained-participation form also accepts initial-only
 `articulation_persistence(p)` to retain Base/Connect across existing events.
 This changes policy inertia, not the movement boundary or a prescribed legato
 proportion. See [Retaining an articulation policy](rhythm.md#retaining-an-articulation-policy).
+
+For gate_snap/rearticulate participation, `tie(p)` can extend a living Tone without
+a pending target instead of re-attacking. It leaves pending-target attacks intact,
+including small GateSnap moves. See [Extending opportunities](rhythm.md#extending-opportunities-without-a-new-pitch-destination).
 
 ### Cutting notes and leaving a rest
 

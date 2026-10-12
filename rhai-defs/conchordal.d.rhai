@@ -657,6 +657,11 @@ fn tessitura_gravity(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Gravity toward the tessitura center.
 fn tessitura_gravity(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
+/// Extend a living Tone with probability p at an opportunity without pending pitch.
+fn tie(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
+/// Extend a living Tone with probability p at an opportunity without pending pitch.
+fn tie(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
+
 /// [tuning] Number of top candidates kept by the peak sampler.
 fn top_k(arg0: Population, arg1: f64) -> Population;
 /// [tuning] Number of top candidates kept by the peak sampler.

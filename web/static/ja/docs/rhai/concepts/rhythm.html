@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9a4ebfee.js";
+            window.path_to_searchindex_js = "../searchindex-0e4b3cd8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -332,7 +332,7 @@ release、死亡、removeは保留中の要求を取り消します。発行し�
 <code>"gate_snap"</code>を明示すると、採用した行き先を一つ保留し、参加の機会で鳴らすと選ぶまで
 現在の音高を保ちます。鳴らすと選んだ時に旧いToneを離し、保留した音高で新しいToneを
 立ち上げます。保留中に別の行き先を採用すれば置き換えます。待つ・見送る間は音も保留も
-保ち、滑りません。保留がなければ、現在の音高を打ち直します。</p>
+保ち、滑りません。tieを省略するか0なら、保留がない機会でも現在の音高を打ち直します。</p>
 <p>GateSnapは採用時刻の発音候補を追加せず、参加の費用と見送りの規則をそのまま使います。
 同じsampleでは採用を先に処理し、その後の機会で使います。未来の採用を先の発音に
 使いません。release、死亡、removeは保留を取り消します。</p>
@@ -405,6 +405,37 @@ templateのpだけを継ぎ、方針、乱数の途中、保留、最後の発�
 <p>有限音のOff、<code>rest()</code>、余韻終了、間、release、死亡、removeは保持より優先します。
 Toneが無ければ、Connectも合法な初回発音や休止後の復帰を塞ぎません。方針は個々の
 発音や休止をまたぎますが、一音ごとに伸ばすか切るかを選ぶ働きではありません。</p>
+<h2 id="行き先がない機会では音を伸ばす"><a class="header" href="#行き先がない機会では音を伸ばす">行き先がない機会では音を伸ばす</a></h2>
+<p>持続音を参加の機会で打ち直す形に、配置前の<code>tie(p)</code>を添えられます。pは、行き先の保留が
+ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の<code>sustain()</code>と<code>entrained()</code>／
+<code>flow()</code>に、明示のgate_snapまたはrearticulateを組み合わせる形が対象です。境界0も含みます。
+既定0は今までどおり、1は対象の機会で必ず伸ばし、中間では機会ごとに両方が混ざります。
+作曲者が置く量であり、音楽的な最適値を決めるものではありません。</p>
+<p>保留があれば、その行き先へ跳んで発音します。正の境界以下の採用は既に滑っており、
+保留を作らないので、そのToneも伸ばす対象です。厳密に同じ音高だけに限りません。
+gate_snapでは小さい採用や距離0の採用も保留するため、その機会は打ち直します。
+発音は減り、既存の機会から発音が抜けた列になります。機会の時刻、音高の提案、費用、
+見送りの式は変えません。すべての音をつなぐレガートの量や、フレーズ単位の切り替えではなく、
+聴こえた区切りとも結び付きません。</p>
+<pre><code class="language-rhai">let voices = place(harmonic().sustain().entrained()
+    .pitch_apply_mode("rearticulate").rearticulate_above(50).tie(0.5),
+    line(220.0, 330.0).count(2));
+wait(3.0);
+release(voices);
+</code></pre>
+<p>この境界と中間の確率は使い方の例で、推奨値ではありません。伸ばした機会では新しいTone、
+発音の代謝、発音由来の文脈学習を生じず、費用の見送りとしても学習しません。機会は消費し、
+後で再演しません。<code>articulation_persistence</code>を併せると、Connectの抑止を先に使い、tieの
+乱数は引きません。Baseの保留ありは発音し、保留なしだけにtieを使います。tieで伸ばしても
+Base／Connectの提案や保持は変えません。大きい移動も滑らせ、発音を控えるConnectの
+「つなぐ」方針とは別の量です。</p>
+<p>Toneが無い時の合法な初回や、有限Off・余韻終了・<code>rest()</code>の後の発音は塞ぎません。
+release、死亡、remove、休止の合法性が優先します。演奏中にpを変える指定はありません。
+modeがGlideになっている間は休止し、対象に戻れば再び働きます。<code>place</code>と<code>create</code>で
+書く順に依存せず、再生成はtemplateの値だけを継ぎ、途中の乱数や保留、最後の発音音高は
+継ぎません。有限値は0〜1へ制限し、正の無限大は1、負の無限大とNaNは0にします。
+対象外の最終指定は警告して無視します。0ではtieの状態も乱数も使わず、1では乱数を引きません。
+中間だけが個体別の専用系列を、機会の実行時に一度使います。</p>
 <h2 id="明示的なwhendurationtier-2"><a class="header" href="#明示的なwhendurationtier-2">明示的なwhen/duration（Tier 2）</a></h2>
 <p>presetの下には<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、<code>cycles(n)</code>、
 <code>adaptive_duration()</code>があり、<code>duration_range</code>、<code>duration_curve</code>、<code>shorten_on_drop</code>で

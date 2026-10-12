@@ -7711,6 +7711,81 @@ with articulation vocabulary, and dynamic loudness arcs. Sources: machine-local
 §2 and `addendum-entrainment.md`, `E-2/report.md`, and `V-9/brief.md`,
 `decision.json`, `report.md`.
 
+<a id="tie-opportunities-20261012"></a>
+
+### 9.3.76 Tying opportunities without pending pitch
+
+**Author question and decisions, 2026-10-12.** At about 06:46, after hearing the
+weakly coupled, distinct-rate sustained pair, the author asked why the slow Voice
+attacked while not moving. The orchestrator reported 7 same-pitch attacks and 12
+small moves among 50 adjacent pairs. The registered A-11 convention later counted
+19 moves below 50 cents including those 7 same-pitch pairs; 12 excludes them.
+The original description and saved results are retained with this distinction.
+At about 10:19 the author chose an external, selectable form, preserving same-pitch
+re-attacks as one compositional option rather than removing them.
+
+A-11 tested q=1/0.5/0 in the existing two-Voice scene, with q the probability of
+re-attacking a living Tone without pending pitch. The 2<=t<96 second window gave
+On counts 51/179, 41/159 and 22/153, IOI medians 1.827042/0.530615,
+1.938938/0.540458 and 3.772646/0.520448 seconds, and CV 0.068722/0.023070,
+0.339660/0.314749 and 0.515003/0.429232. Whole-run selected opportunities were
+52/183, 52/180 and 52/186. Pending attacks/unpending attacks/intentional extensions
+were respectively 31/149,21/34,0/0; 32/155,10/8,10/17; and 22/156,0/0,30/30.
+Each Voice had one initial Hold outside these opportunity counts. All six saved
+acquisitions satisfied selected=pending+unpending+intentional+other; other and
+cost skip were zero. GateSnap q=0 retained small-move attacks, with window counts
+44/179; default equal rates with J50 q=0 gave 26/150. The longest slow-Voice
+On-to-next-On hold in distinct-rate J50 q=0 was 10.318250 seconds. Q=1 matched
+the reference; the independent q=0.5 repeat matched WAV and all non-timing rows.
+These are observations of fixed inputs, not a recommended intermediate value.
+
+**Two orchestrator errors, corrected.** At about 13:20, asking whether q=0 was
+better than the current form again confused a composer parameter with a mechanism
+constant to calibrate by preference. The author responded that it was a composer
+parameter. Reading CV about 0.52/0.43 as possible conflict with two audible lines
+was also unsupported: the author answered that the third material did sound like
+two lines. CV does not distinguish timing displacement from omitted opportunities.
+The orchestrator's saved-record account was that 151 of the fast Voice's 152 gaps
+were approximately integer multiples of its 0.5-second scale; that account is not
+a new exact-grid contract. Earlier explanations in §9.3.75 and the saved A-11
+results are not silently rewritten by this correction.
+
+At about 13:25 the author adopted native inclusion as a composer parameter,
+probability 0..1, the sole name `tie(p)`, and default 0. Here p=1-q is the
+probability of extending, reversing the prototype's direction. Intermediate
+values remain free choices, with no recommended setting or preference test.
+
+**Implemented scope.** Initial free-pitch sustain plus entrained/flow with
+GateSnap or Rearticulate, including J=0. A selected legal opportunity with pending
+pitch attacks; a living Tone without pending pitch extends with probability p.
+Small boundary-limited glides count as pending-free; exact pitch equality is not
+the condition. Small GateSnap adoptions remain pending and attack. No-Tone legal
+onsets, finite Off, tail/rest legality and lifecycle take priority. Connect vetoes
+first without a tie draw; Base uses tie only without pending pitch. Extension
+changes neither policy proposals nor retention, and causes no new Tone, onset
+metabolism, onset-context learning, cost-skip learning or later replay.
+
+Final place/create resolution is order independent, follows the existing
+sanitize01/unsupported-warning conventions, and keeps the value in templates.
+Replacements start with fresh random/pending/onset state. Zero bypasses tie state
+and draws; one does not draw; intermediate values use the separate individual
+prototype stream at execution only, not waiting hops. Live Glide suspends tie and
+returning resumes it. There is no live setter, alias, new clock, threshold, weight,
+body-kind branch, harness or diagnostic trace in the instrument. The existing
+causal executor is shared through compile-time specialization, retaining the
+untied path and preallocated hop buffers.
+
+**Evidence and remaining work.** The native report separates feature-free full
+tests, dedicated allocation checks, complete-output always-attack controls,
+registered default/prototype comparisons and listening files. The author's
+hearing belongs to the saved third A-11 material; it is not a general law or a
+new arbitrary-load real-time acceptance. Initial probabilities mix opportunities,
+not phrases or heard boundaries. Phrase-specific switching, live probability
+changes, coupling to audible boundaries, and explicit per-note sustain/release
+selection remain absent. Sources: machine-local A-11 registration/report and
+saved traces, V-10 brief and native test/comparison records. No earlier acquisition
+or author's observation is overwritten.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

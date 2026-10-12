@@ -7802,9 +7802,9 @@ of those materials, not a numerical or real-time acceptance result.
 E-3 kept the drafts' form while adding articulation boundaries and intrinsic
 bodily rates, converting Three Windows' three Hold lines to sustained
 participation, then adding `tie(1)` to those lines and Folded Air's companion.
-At about 18:55 the author preferred E-2 for all four: Three Windows had less
+At about 18:40 the author preferred E-2 for all four: Three Windows had less
 movement and a reduced sense of polyphony, and the other drafts changed similarly
-to varying degrees. The E-3 revisions were not adopted. At about 19:00 the author
+to varying degrees. The E-3 revisions were not adopted. At about 18:45 the author
 chose the E-2 drafts as samples 13–16, in their original order: Three Windows,
 Stone and Wire, Folded Air, Open Court. Only the first comment line changes to
 the sample header; the epigraph and all executable bytes remain unchanged.
@@ -7891,8 +7891,8 @@ mechanism reading, not listening evidence. Whether to change its explanation,
 recompose it or remove it remains an author decision after hearing. Its file
 and its entry in every index remain unchanged.
 
-**Murmuration description and author decision, correction at about 21:20 and
-update at about 21:50 on 2026-10-12.** The orchestrator withdraws its conclusion
+**Murmuration description and author decision, correction at about 21:10 and
+update at about 21:20 on 2026-10-12.** The orchestrator withdraws its conclusion
 "08 Murmuration は主張が成り立っていない" (Murmuration's claim does not hold):
 production-side beat confidence and the meaning of `entrained()` did not justify
 asserting how it sounds. The author's impression that 08 sounded as though it
@@ -7901,7 +7901,7 @@ recorded misreading that day, after inferring a possible conflict with the
 two-line condition from onset-interval variability and treating the morning
 question as a request to remove it when assembling E-3.
 
-At about 21:50 the author confirmed that 08 remains an `entrained()` sample and
+At about 21:20 the author confirmed that 08 remains an `entrained()` sample and
 instructed: "entrainとその実装から自動的にいえることをメインで、私がさっき感じた主観はいれないで"
 (make what follows from entrain and its implementation the main description;
 leave out the subjective impression just reported). This supersedes the

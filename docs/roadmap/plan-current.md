@@ -314,7 +314,7 @@ codeと既存12本を保ち、サンプル集を16本とした。intrinsic_rate�
 [台帳§9.3.77](../design-notes/technote-ledger.ja.md#polyphonic-samples-author-selection-20261012)の追記と、
 機械に固有のS-1/brief-2.md・report.mdに、見直しの所見、判断、保存音の照合を記録した。
 
-### 2026-10-12：08 Murmurationの説明と作者の判断（21:50頃の更新）
+### 2026-10-12：08 Murmurationの説明と作者の判断（21:20頃の更新）
 
 統括の「08は主張が成り立っていない」という所見は、機構の指標から聴こえ方を
 断定した誤りとして撤回する。作者が08を徐々に歩調が合うように聴いた印象が、

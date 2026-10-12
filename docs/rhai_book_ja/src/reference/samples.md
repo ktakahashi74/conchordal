@@ -18,7 +18,7 @@ cargo run --release -- samples/01_a_single_voice.rhai
 5. **Settling** — 散らばったVoiceが、Consonance Fieldに支えられる場所へ滑らかに移る。
 6. **Bells** — 打撃されるbody。最後のbellはpartialをFieldに選ばせる。
 7. **Heartbeat** — 拍を打つ専用Voiceを使い、同期を実演する。
-8. **Murmuration** — flockが命令されずに同期へ漂う。
+8. **Murmuration** — 指揮者のいない群れ。各Voiceは自分の間合いを保ち、聴こえた再来へ周期を寄せる。共有の拍は狙わない。
 9. **Rain** — beatを持たず、Fieldに沿って落ちる時間。
 10. **Generations** — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。
 11. **Autumn Cycle** — directionを持つharmony。季節が巡り戻る。

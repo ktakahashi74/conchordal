@@ -18,7 +18,7 @@ cargo run --release -- samples/01_a_single_voice.rhai
 5. **Settling** — scattered voices glide to where the field can hold them.
 6. **Bells** — struck bodies; the last bell lets the field choose its partials.
 7. **Heartbeat** — a dedicated downbeat Voice supports an explicit synchronization demonstration.
-8. **Murmuration** — a flock drifts into step, never commanded.
+8. **Murmuration** — a flock without a conductor: each voice keeps its own pace and leans toward the recurrences it hears; no shared beat is targeted.
 9. **Rain** — time without a beat, falling along the field.
 10. **Generations** — voices live, starve, and are reborn where harmony can hold them.
 11. **Autumn Cycle** — a directed harmony; the season turns and comes home.

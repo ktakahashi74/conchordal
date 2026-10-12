@@ -1,5 +1,6 @@
 // Sample 8 — Murmuration
-// A flock drifts into step. Nothing commands it; coupling and survival do.
+// A flock without a conductor: each voice keeps its own pace, listens, and lets
+// its cadence lean toward recurrences it hears. No shared beat is targeted.
 
 let root_hz = 196.0;
 
@@ -33,15 +34,15 @@ let colony = harmonic()
 let late_colony = variant(colony)
     .amp(0.032)
     .entrained()
-    // Locks a touch tighter, so the later cohort tips the flock toward coherence.
+    // Responds more strongly to what it hears than the default (0.5).
     .entrainment(0.65)
     .cycles(2)
     .brightness(0.62)
     .avoid_neighbors(0.70);
 
 section("murmuration", || {
-    // A medium attractor: synchronization emerges from coupling and survival,
-    // never forced by a deep prior.
+    // The meter's prior: medium attractor depth, tempo band 1.6–2.0 Hz.
+    // Entrained voices do not target its beat.
     meter_stability(0.45);
     temporal_basin(1.6, 2.0);
 

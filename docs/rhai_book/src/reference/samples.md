@@ -23,7 +23,7 @@ cargo run --release -- samples/01_a_single_voice.rhai
    partials.
 7. **Heartbeat** — a dedicated downbeat Voice supports an explicit
    synchronization demonstration.
-8. **Murmuration** — a flock drifts into step, never commanded.
+8. **Murmuration** — a flock without a conductor: each voice keeps its own pace and leans toward the recurrences it hears; no shared beat is targeted.
 9. **Rain** — time without a beat, falling along the field.
 10. **Generations** — voices live, starve, and are reborn where harmony can
     hold them.

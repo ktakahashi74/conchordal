@@ -7891,33 +7891,49 @@ mechanism reading, not listening evidence. Whether to change its explanation,
 recompose it or remove it remains an author decision after hearing. Its file
 and its entry in every index remain unchanged.
 
-**Murmuration audition and correction, about 21:20 on 2026-10-12.** The author
-heard samples 07, 08 and 09 through the machine-local
-`.orchestration/units/samples-review-20261012/listen.sh rhythm` (seed 21, 20 seconds
-each, saved acquisitions producing the same output as main). For 08, the author
-said "徐々に歩調をあわせてゆくようにきこえるが" (it sounds as though they gradually
-fall into step) and decided to retain its file, index entries and explanation.
-This closes the question of how to handle 08. The pending audition and unresolved
-08 item recorded above describe the earlier review, not an outstanding decision.
+**Murmuration description and author decision, correction at about 21:20 and
+update at about 21:50 on 2026-10-12.** The orchestrator withdraws its conclusion
+"08 Murmuration は主張が成り立っていない" (Murmuration's claim does not hold):
+production-side beat confidence and the meaning of `entrained()` did not justify
+asserting how it sounds. The author's impression that 08 sounded as though it
+was gradually falling into step prompted the withdrawal. This was the third
+recorded misreading that day, after inferring a possible conflict with the
+two-line condition from onset-interval variability and treating the morning
+question as a request to remove it when assembling E-3.
 
-From production-side beat confidence and the meaning of `entrained()`, the
-orchestrator had headed the report to the author "08 Murmuration は主張が成り立っていない"
-(Murmuration's claim does not hold). The caveat in its body did not justify
-inferring how it sounds from a mechanism's indicators. That conclusion was an
-error and is withdrawn. This was the third recorded misreading that day, after
-inferring a possible conflict with the two-line condition from onset-interval
-variability and treating the morning question as a request to remove it when
-assembling E-3.
+At about 21:50 the author confirmed that 08 remains an `entrained()` sample and
+instructed: "entrainとその実装から自動的にいえることをメインで、私がさっき感じた主観はいれないで"
+(make what follows from entrain and its implementation the main description;
+leave out the subjective impression just reported). This supersedes the
+orchestrator's preceding reading that the file, index entries and explanation
+would all remain unchanged. The impression is not the basis of the sample's
+description.
+
+Each Voice uses its intrinsic bodily pace (2 Hz by default), causally hears
+habitat audio with known self sound subtracted, and projects heard recurrences.
+`entrained()` adapts its participation period toward recurrence near that scale
+and returns toward its own pace when recurrence is unavailable. Period updates
+never target a common onset phase or enter the `metric()` clock path. At each due
+time the policy compares sounding, waiting up to one period and omission, using
+costs for displacement, distance from experienced external energy shapes and
+overlap with others. `entrainment(v)` controls acoustic-context influence, with
+an `entrained()` default of 0.5.
+
+The epigraph, comment above `entrainment(0.65)`, meter-prior comments and sample-8
+entries in `samples/README.md` and both books now describe these implementation
+semantics. No code words change. `meter_stability` and `temporal_basin` are stated
+as meter priors without asserting their causal path in 08. The orchestrator
+reported that removing them changes its WAV, but the path has not been examined.
+The row in `docs/roadmap/beta-evaluation.md` that assigns 08 to evaluation of the
+emergence of synchronization is left untouched in this task.
 
 For the same acquisition, production-side beat confidence had three-part means
 0.18 → 0.21 → 0.18 and maximum 0.64; listener-side means were 0.18 → 0.31 → 0.25,
 with maximum 0.50 and second-half mean 0.26. Mean Kuramoto order was 0.67.
-Preserve these observations alongside the author's hearing; they do not overturn
-the audition. The temporal listener model retains an open question: whether beat
-confirmation misses the heard coordination, or the author's sense of falling
-into step reflects something other than beat confirmation, remains unexamined.
-The numbers do not identify the cause. No new unit or test is launched. Sources
-are the machine-local `D-11/brief.md` and the saved audition materials.
+These remain observations, not the basis of the sample description.
+The temporal listener model retains an open question: the cause of the mismatch between the author's impression and beat confidence for this acquisition is unexamined; the numbers do not identify it, and no new unit or test is launched.
+Sources are `D-11/brief.md` and `brief-2.md`, technote §5.4, the scripting registry
+and `set_entrained`, and the saved audition materials.
 
 Heartbeat's old "No external scaffold" epigraph contradicted its dedicated
 downbeat Voice. Only the second comment line now describes that Voice marking

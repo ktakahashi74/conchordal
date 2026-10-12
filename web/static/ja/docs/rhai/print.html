@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4b1e0e5c.js";
+            window.path_to_searchindex_js = "searchindex-97cf67ff.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ddfde326.js"></script>
@@ -2153,10 +2153,13 @@ global_peaks(count, min_sep_cents)
 <p>Per-voice scrambled scaffold pulse.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="サンプル"><a class="header" href="#サンプル">サンプル</a></h1>
-<p>16個の小さなサンプルを、順番に並べています。実行してscriptを読み、instrumentの主な機能を
-一つずつ確認するためのものです。音楽作品ではなく、APIと挙動のデモです。</p>
+<p>16本のサンプルを、同じ<code>samples/</code>内の二つの群として紹介します。1〜12は、機能を
+一つずつ確かめる小さな実演です。音楽作品ではなく、APIと挙動を示します。
+13〜16は、それらの機能を組み合わせて曲として書いた、やや長い場面です。
+どちらも実行し、scriptを読んで確かめられます。</p>
 <pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
 </code></pre>
+<h2 id="機能の実演112"><a class="header" href="#機能の実演112">機能の実演（1〜12）</a></h2>
 <ol>
 <li><strong>A Single Voice</strong> — 一つのVoiceが現れ、息を保ち、去る。</li>
 <li><strong>Constellation</strong> — line、peak、density、strain、gap、chanceという六つの入り方。</li>
@@ -2170,14 +2173,20 @@ global_peaks(count, min_sep_cents)
 <li><strong>Generations</strong> — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。</li>
 <li><strong>Autumn Cycle</strong> — directionを持つharmony。季節が巡り戻る。</li>
 <li><strong>Emergence and Resolution</strong> — Populationの探索が強まり、再び落ち着く。専用の拍打ちは置かず、Voice自身の発音がリズムの入力を担う。</li>
+</ol>
+<h2 id="機能を組み合わせた曲1316"><a class="header" href="#機能を組み合わせた曲1316">機能を組み合わせた曲（13〜16）</a></h2>
+<ol start="13">
 <li><strong>Three Windows</strong> — 三本の線が音高を採用するたびに発音し、それぞれの扉から去る。</li>
 <li><strong>Stone and Wire</strong> — 拍を刻む二つのVoiceの間を、独立した線が横切る。</li>
 <li><strong>Folded Air</strong> — 相手が休みを置いて戻り、区間ごとに発音の形を変える。</li>
 <li><strong>Open Court</strong> — やや密な群れが、独立した二本の道の周りへ集まる。</li>
 </ol>
-<p>サンプル1–6はConsonance terrain（placement、gravity、tension、movement、timbre）、
-7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–12は複数の
-mechanismを組み合わせます。13–16は、採用ごとに発音する線、拍を刻むVoiceと横切る線、
+<h2 id="道筋と実行"><a class="header" href="#道筋と実行">道筋と実行</a></h2>
+<p>1〜6はConsonance Field上の配置、引力、緊張、移動、音色を紹介します。
+7〜9は三つの時間の取り方を示します。<code>metric()</code>は音から確認された共有拍へ寄り、
+<code>entrained()</code>は共有拍の位相を狙わず、音を聴いて参加します。<code>flow()</code>は拍を作らない、
+かたまりの更新を担います。10は生存と世代交代の循環、11〜12は複数の機構の組み合わせです。
+13–16は、採用ごとに発音する線、拍を刻むVoiceと横切る線、
 休む相手と区間ごとの発音の切り替え、やや密な群れを示します。
 全サンプルはtest suiteでcompile-checkされ、現在のAPIとの
 不一致を検出します。最上位のサンプルは意図的に<code>seed(...)</code>を呼ばず、毎runを新しい

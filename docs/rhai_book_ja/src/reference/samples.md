@@ -1,11 +1,15 @@
 # サンプル
 
-16個の小さなサンプルを、順番に並べています。実行してscriptを読み、instrumentの主な機能を
-一つずつ確認するためのものです。音楽作品ではなく、APIと挙動のデモです。
+16本のサンプルを、同じ`samples/`内の二つの群として紹介します。1〜12は、機能を
+一つずつ確かめる小さな実演です。音楽作品ではなく、APIと挙動を示します。
+13〜16は、それらの機能を組み合わせて曲として書いた、やや長い場面です。
+どちらも実行し、scriptを読んで確かめられます。
 
 ```bash
 cargo run --release -- samples/01_a_single_voice.rhai
 ```
+
+## 機能の実演（1〜12）
 
 1. **A Single Voice** — 一つのVoiceが現れ、息を保ち、去る。
 2. **Constellation** — line、peak、density、strain、gap、chanceという六つの入り方。
@@ -19,14 +23,21 @@ cargo run --release -- samples/01_a_single_voice.rhai
 10. **Generations** — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。
 11. **Autumn Cycle** — directionを持つharmony。季節が巡り戻る。
 12. **Emergence and Resolution** — Populationの探索が強まり、再び落ち着く。専用の拍打ちは置かず、Voice自身の発音がリズムの入力を担う。
+
+## 機能を組み合わせた曲（13〜16）
+
 13. **Three Windows** — 三本の線が音高を採用するたびに発音し、それぞれの扉から去る。
 14. **Stone and Wire** — 拍を刻む二つのVoiceの間を、独立した線が横切る。
 15. **Folded Air** — 相手が休みを置いて戻り、区間ごとに発音の形を変える。
 16. **Open Court** — やや密な群れが、独立した二本の道の周りへ集まる。
 
-サンプル1–6はConsonance terrain（placement、gravity、tension、movement、timbre）、
-7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–12は複数の
-mechanismを組み合わせます。13–16は、採用ごとに発音する線、拍を刻むVoiceと横切る線、
+## 道筋と実行
+
+1〜6はConsonance Field上の配置、引力、緊張、移動、音色を紹介します。
+7〜9は三つの時間の取り方を示します。`metric()`は音から確認された共有拍へ寄り、
+`entrained()`は共有拍の位相を狙わず、音を聴いて参加します。`flow()`は拍を作らない、
+かたまりの更新を担います。10は生存と世代交代の循環、11〜12は複数の機構の組み合わせです。
+13–16は、採用ごとに発音する線、拍を刻むVoiceと横切る線、
 休む相手と区間ごとの発音の切り替え、やや密な群れを示します。
 全サンプルはtest suiteでcompile-checkされ、現在のAPIとの
 不一致を検出します。最上位のサンプルは意図的に`seed(...)`を呼ばず、毎runを新しい

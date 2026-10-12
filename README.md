@@ -136,8 +136,9 @@ cd conchordal
 cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
 
-The alpha ships with sixteen ordered samples under `samples/`. Each is a small
-demonstration of one or more instrument capabilities:
+The alpha ships with sixteen ordered samples under `samples/`, in two groups.
+Samples 1–12 introduce instrument capabilities one at a time; 13–16 are
+longer scenes composed by combining those capabilities:
 
 ```bash
 cargo run --release -- samples/01_a_single_voice.rhai
@@ -145,8 +146,9 @@ cargo run --release -- samples/07_heartbeat.rhai
 cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
 
-See [`samples/README.md`](samples/README.md) for the full path. These are API
-and behavior samples, not musical works; compositions arrive with the beta.
+See [`samples/README.md`](samples/README.md) for both groups. Samples 1–12
+are API and behavior demonstrations, not musical works. Samples 13–16 are
+compositions kept in the same directory.
 `samples/research/` holds comparison assays outside the path.
 
 ### Scenario scripting example

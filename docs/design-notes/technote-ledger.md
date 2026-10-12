@@ -7858,6 +7858,64 @@ nine Voices, has not been measured. The author's preference with other seeds has
 not been established. Sources are the machine-local E-2 brief/report and saved
 outputs, E-3 registrations/report and phase comparisons, and S-1 brief/report.
 
+**Follow-up review and decisions, about 19:20 on 2026-10-12.** The author asked
+whether the samples' overall structure and contents were appropriate, then
+adopted two recommendations. Keep both groups in `samples/`: 1–12 are capability
+demonstrations, while 13–16 are longer scenes written as compositions using those
+capabilities. The description "API and behavior samples, not musical works"
+applies only to 1–12. This corrects the mismatch with the framing used since
+2026-07-18; it does not assert the musical quality of either group. The second
+decision permits small changes that preserve sound: Heartbeat's epigraph, the
+description of the path through 7–9, and formatting of 13–16.
+
+The old rhythm-continuum wording came from the June design of coupling strength
+to one shared meter. The current registry distinguishes three intentions:
+`metric()` couples to a shared beat confirmed from sound; `entrained()` uses
+heard context to participate and avoid overlap, without targeting shared-beat
+phase; `flow()` provides non-metric clustered renewal. The indexes now describe
+those meanings without making a new synchronization claim about sample 08.
+
+The orchestrator's seed-21 review reported the following production-side beat
+confidence means across three parts of each scene:
+
+| Sample | First third | Middle third | Final third |
+| --- | --- | --- | --- |
+| 07 Heartbeat | 0.19 | 0.66 | 0.81 |
+| 12 Emergence and Resolution | 0.55 | 0.71 | 0.67 |
+| 08 Murmuration | 0.18 | 0.21 | 0.18 |
+| 09 Rain | 0.22 | 0.21 | 0.25 |
+
+Those coarse means do not support the description that 08's flock moves into
+step: its reading resembles the non-beat example 09. This is one seed and a
+mechanism reading, not listening evidence. Whether to change its explanation,
+recompose it or remove it remains an author decision after hearing. Its file
+and its entry in every index remain unchanged.
+
+Heartbeat's old "No external scaffold" epigraph contradicted its dedicated
+downbeat Voice. Only the second comment line now describes that Voice marking
+the pulse and the colony following the beat it hears. Samples 13–16 put builder
+methods on separate lines with four-space indentation. Their words, numbers,
+order and string contents remain unchanged. Seed-21 WAV and non-timing-report
+comparisons verify sound preservation for 07 and 13–16 separately.
+
+The review found no contradiction of the claims in 04, 05 and 10 from default
+habituation, retaining their on/off materials and describing 04's arc as clearer
+with habituation. It reported established beat readings in 07/12, a changed
+07 WAV when `sustain_drive` was removed, and actual test/document references to
+`samples/research/`. These are the review's scoped findings, not new musical
+rankings or real-time acceptance.
+
+The fine constants in 7–10/12, such as `endurance(8.3502)` and
+`attack_cost_fraction(0.0194)`, came from the 2026-07-10 time-domain conversion
+(`eb92d2c`). Simplifying them changes sound, so they remain untouched. Starting
+free pitch at one specified frequency still uses `line(f, f).count(1)` because
+`at(f)` locks pitch; the vocabulary gap is recorded rather than repaired.
+Short demonstrations dedicated to the new articulation vocabulary are still
+absent. The author's evaluation of 13–16 with other seeds and their real-time
+operation remain unverified. The review's materials are in the machine-local
+`samples-review-20261012/` and reused saved runs; the adopted scope and findings
+are recorded in `S-1/brief-2.md`, with preservation evidence in `S-1/report.md`.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

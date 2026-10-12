@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-422b5ac7.js";
+            window.path_to_searchindex_js = "searchindex-f7ecc4ee.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e3932d17.js"></script>
@@ -2339,11 +2339,13 @@ global_peaks(count, min_sep_cents)
 <p>Per-voice scrambled scaffold pulse.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="samples"><a class="header" href="#samples">Samples</a></h1>
-<p>This is an ordered set of sixteen small demonstrations. Run and read them to
-see the instrument’s main capabilities one at a time. They are API and
-behavior samples, not musical works.</p>
+<p>Sixteen samples in two groups, kept together in <code>samples/</code>. Samples 1–12
+introduce the instrument’s capabilities one at a time: API and behavior
+demonstrations, not musical works. Samples 13–16 are longer scenes written
+as compositions combining those capabilities. Run and read both groups.</p>
 <pre><code class="language-bash">cargo run --release -- samples/01_a_single_voice.rhai
 </code></pre>
+<h2 id="capability-demonstrations-112"><a class="header" href="#capability-demonstrations-112">Capability demonstrations (1–12)</a></h2>
 <ol>
 <li><strong>A Single Voice</strong> — one voice appears, holds its breath, and leaves.</li>
 <li><strong>Constellation</strong> — six ways to enter: a line, the peaks, the density, the
@@ -2364,14 +2366,21 @@ hold them.</li>
 <li><strong>Autumn Cycle</strong> — a directed harmony; the season turns and comes home.</li>
 <li><strong>Emergence and Resolution</strong> — a colony heats up and settles, with rhythmic
 input from its own onsets and no dedicated beat carrier.</li>
+</ol>
+<h2 id="composed-scenes-1316"><a class="header" href="#composed-scenes-1316">Composed scenes (13–16)</a></h2>
+<ol start="13">
 <li><strong>Three Windows</strong> — three lines attack on pitch adoption and leave by their own doors.</li>
 <li><strong>Stone and Wire</strong> — two metrical voices turn while an independent line crosses.</li>
 <li><strong>Folded Air</strong> — a companion rests and returns, changing articulation across sections.</li>
 <li><strong>Open Court</strong> — a denser crowd fills the court around two independent paths.</li>
 </ol>
+<h2 id="reading-and-running"><a class="header" href="#reading-and-running">Reading and running</a></h2>
 <p>Samples 1–6 walk the consonance terrain (placement, gravity, tension,
-movement, timbre); 7–9 walk the rhythm continuum one region at a time;
-10 closes the loop into life; 11–12 combine several mechanisms. Samples 13–16
+movement, timbre). Samples 7–9 introduce three timing intentions: coupling
+to a shared beat (<code>metric()</code>), participation informed by heard sound without
+targeting shared-beat phase (<code>entrained()</code>), and non-metric clustered
+renewal (<code>flow()</code>). Sample 10 closes the loop into life; 11–12 combine
+several mechanisms. Samples 13–16
 combine adoption-driven attacks, metrical voices with a crossing line, a resting
 companion with changing articulation, and a denser crowd. All samples
 are compile-checked by the test suite, so they always match the current API.

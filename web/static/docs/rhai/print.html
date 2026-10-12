@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-850ca147.js";
+            window.path_to_searchindex_js = "searchindex-43bad780.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e3932d17.js"></script>
@@ -972,6 +972,10 @@ the composer chooses them.</p>
 </div>
 <p>Entrained and flow can each be used in any participation row. See
 <a href="#sustained-sound-with-participation-opportunities">Rhythm</a> for their clocks.</p>
+<p><code>intrinsic_rate(hz)</code> sets the body’s initial scale in any participation row,
+independently of the pitch-application choice. It does not command an onset interval
+or place a shared beat. <code>proposal_interval(seconds)</code> still controls pitch proposals,
+not that bodily scale. See <a href="#setting-the-bodys-intrinsic-rate">Setting the body’s intrinsic rate</a>.</p>
 <p>Without participation, a positive <code>rearticulate_above(cents)</code> measures net displacement from the last actual onset,
 not accumulated path length. At or below the boundary, the existing Tone glides
 with <code>glide(tau)</code>; above it, a new Tone attacks. That choice lasts until the next
@@ -1022,6 +1026,10 @@ period; <code>rest(periods)</code> uses the composer’s chosen multiple of the 
 completion. A known period with <code>rest(0)</code> waits for the tails only. An unknown period
 keeps waiting, as does unfinished sound, without a fallback or timeout. Negative
 and nonfinite arguments become zero; finite nonnegative values have no upper limit.</p>
+<p><code>intrinsic_rate(hz)</code> changes this bodily period and the finite note-length grid
+together. The same <code>cycles</code> or <code>duration_range</code> and <code>rest(periods)</code> therefore produce
+different note lengths and rests in seconds at different bodily rates, independently
+of entrained cadence adaptation.</p>
 <p>At the end of the rest, the existing participation decision can sound, wait or skip;
 the end itself does not force an attack. GateSnap retains the latest adopted target
 through sounding, release and rest, and consumes it at the next sounded opportunity.
@@ -1186,7 +1194,7 @@ can still produce temporary rises afterward.</p>
 <code>flow()</code>. Configure them on a <code>PopulationSpec</code> before calling <code>place()</code> or
 <code>create()</code>. Metric timing begins at the basin center, or 2 Hz without a basin,
 then responds to the acoustically confirmed production beat. Entrained/flow
-participants begin with their own 2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
+participants begin with their own 2 Hz intrinsic prior unless <code>intrinsic_rate(hz)</code> is supplied. Entrained cadence can follow acoustic recurrence without
 changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
 scale for its irregular renewal intervals.</p>
 <p>Do not confuse <code>.entrained()</code> with <code>brain("entrain")</code>. The preset controls
@@ -1243,6 +1251,43 @@ flow retains its existing threefold hold multiplier. Modifiers are remembered an
 applied when their matching preset is selected, so <code>entrainment(0.8).metric()</code>
 and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
+<h2 id="setting-the-bodys-intrinsic-rate"><a class="header" href="#setting-the-bodys-intrinsic-rate">Setting the body’s intrinsic rate</a></h2>
+<p><code>intrinsic_rate(hz)</code> sets the founder Voices’ bodily scale for <code>entrained()</code> or
+<code>flow()</code>. Its period is <code>1/hz</code>. This is a body initial condition, not an
+onset-interval command or a common beat. Entrained timing adapts its participation
+period to heard recurrence without changing the intrinsic value. Flow uses that
+value for irregular renewal. Both still choose to sound, wait or omit events;
+different intrinsic rates do not guarantee permanently different onset rates.</p>
+<p>Set it on a PopulationSpec before <code>place()</code> or <code>create()</code>. Either order with the
+participation preset has the same meaning. It cannot be changed during performance.
+Replacements read the Population template, with fresh initial due and performance
+state rather than a parent’s adapted period, plan or articulation policy.</p>
+<p>The same bodily period sets finite note lengths (<code>cycles</code>, <code>duration_range</code>),
+<code>rest(periods)</code> and the representative hold used for overlap prediction. Changing
+the rate therefore changes note lengths and rests in seconds together. Flow keeps
+its threefold hold multiplier; ADSR release remains in seconds. Explicit sustained
+notes without a finite duration stay alive until release.</p>
+<pre><code class="language-rhai">let slow = harmonic().sustain().entrained().intrinsic_rate(0.5)
+    .seek_consonance().pitch_apply_mode("gate_snap");
+let quick = harmonic().intrinsic_rate(2.0).sustain().flow()
+    .seek_consonance().pitch_apply_mode("gate_snap");
+let a = place(slow, line(220.0, 220.0).count(1));
+let b = place(quick, line(330.0, 330.0).count(1));
+wait(6.0);
+release(a);
+release(b);
+</code></pre>
+<p>These rates are example inputs, not recommended values. A final entrained/flow
+specification accepts finite values in <code>0.01..=200</code> Hz. Values outside that range
+or nonfinite values are script errors before placement. The range protects
+execution; it is not a musically recommended range. Flow’s renewal interval has
+separate existing limits of <code>0.035..=4</code> seconds, so extreme rates do not imply
+proportionally scaled intervals. Other final timing forms, including metric,
+pulse, repeat and once, warn and ignore this modifier even if its value is invalid.
+Omission keeps the existing 2 Hz path, and metric’s basin rule is unchanged.</p>
+<p><code>rhythm_freq(hz)</code> sets the Entrain articulation core oscillator and does not set
+this participation scale. <code>proposal_interval(seconds)</code> controls pitch proposals;
+it does not command an onset or change the body’s intrinsic rate.</p>
 <h2 id="sustained-sound-with-participation-opportunities"><a class="header" href="#sustained-sound-with-participation-opportunities">Sustained sound with participation opportunities</a></h2>
 <p>Explicit <code>sustain()</code> plus <code>entrained()</code> or <code>flow()</code> keeps a Tone sounding while
 its Voice continues to consider participation opportunities. Either builder order
@@ -1781,7 +1826,7 @@ play(callback, [args])
 rest(periods)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Release each finite participation note, then leave a rest after all its tails finish. Requires explicit sustain() plus entrained() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits participation again but never forces an onset; costs, candidates and skip are unchanged. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Rearticulate processes adoptions during tails and rest: small ones cancel pending pitch and glide the body, large ones defer the latest target, using the last actual onset as reference until the next sounded opportunity. Released tails never move. Missing finite duration and other timing forms fail at final placement before writes; all three pitch application modes are available; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note.</p>
+<p>Release each finite participation note, then leave a rest after all its tails finish. Requires explicit sustain() plus entrained() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. intrinsic_rate(hz) changes this period and therefore the rest in seconds, independently of cadence adaptation. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits participation again but never forces an onset; costs, candidates and skip are unchanged. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Rearticulate processes adoptions during tails and rest: small ones cancel pending pitch and glide the body, large ones defer the latest target, using the last actual onset as reference until the next sounded opportunity. Released tails never move. Missing finite duration and other timing forms fail at final placement before writes; all three pitch application modes are available; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note.</p>
 <h4 id="repeat"><a class="header" href="#repeat"><code>repeat</code></a></h4>
 <pre><code class="language-rhai ignore">repeat()
 </code></pre>
@@ -1796,12 +1841,17 @@ rest(periods)
 <pre><code class="language-rhai ignore">entrained()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Musical acceptance of this timing policy remains under evaluation. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. The intrinsic bodily rate defaults to 2 Hz; intrinsic_rate(hz) sets its creation value. Cadence adapts without changing that intrinsic scale. Musical acceptance of this timing policy remains under evaluation. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
 <h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
 <pre><code class="language-rhai ignore">flow()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. Hold lengths also use the intrinsic period. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. intrinsic_rate(hz) sets its creation value, otherwise 2 Hz. Hold lengths also use the intrinsic period. Renewal intervals retain their existing 0.035..=4 second limits, so extreme rates do not produce proportionally scaled intervals. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch while waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<h4 id="intrinsic_rate"><a class="header" href="#intrinsic_rate"><code>intrinsic_rate</code></a></h4>
+<pre><code class="language-rhai ignore">intrinsic_rate(hz)
+</code></pre>
+<p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
+<p>Set the intrinsic bodily rate at creation for entrained()/flow(), in Hz. Sets the Population’s founder Voices’ bodily scale, not an onset-interval command or a shared beat. The intrinsic period is 1/hz and remains fixed during life; entrained() adapts its participation period to heard recurrence, while flow() retains an irregular renewal scale. Sounding, waiting and omission still use the existing policy. This same bodily period sets cycles(), duration_range(), rest(periods) and the representative hold used for overlap prediction, so note lengths and rests in seconds change together; flow retains its threefold hold multiplier. Omission preserves the existing 2 Hz path. Initial-only: put it before place() or create(), in either order with entrained()/flow(). Replacements read the Population template and start with fresh phase, due, plan and policy state; they do not inherit a parent’s adapted period. On the final entrained()/flow() specification, nonfinite values or values outside 0.01..=200 Hz are script errors before placement. These are execution protection limits, not a musically recommended range. Other final timing forms, including metric(), pulse(), repeat() and once(), warn and ignore the modifier even if its value is invalid. Flow renewal intervals separately retain their existing 0.035..=4 second limits, so extreme rates do not imply proportionally scaled onset intervals. Distinct from rhythm_freq(), the Entrain articulation core oscillator, and proposal_interval(), the pitch proposal interval.</p>
 <h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
 <pre><code class="language-rhai ignore">entrainment(strength)
 </code></pre>
@@ -1826,7 +1876,7 @@ rest(periods)
 <pre><code class="language-rhai ignore">cycles(n)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier. With rest(), this finite duration is retained independently of sustain() and the participation preset, and each sounded note releases at its scheduled end.</p>
+<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period set by intrinsic_rate(hz), or 2 Hz when omitted, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier. With rest(), this finite duration is retained independently of sustain() and the participation preset, and each sounded note releases at its scheduled end.</p>
 <h4 id="articulation_persistence"><a class="header" href="#articulation_persistence"><code>articulation_persistence</code></a></h4>
 <pre><code class="language-rhai ignore">articulation_persistence(p)
 </code></pre>
@@ -2021,7 +2071,7 @@ avoid_neighbors(strength, sigma_cents)
 <h4 id="temporal_basin"><a class="header" href="#temporal_basin"><code>temporal_basin</code></a></h4>
 <pre><code class="language-rhai ignore">temporal_basin(min_hz, max_hz)
 </code></pre>
-<p>Tempo region the emergent beat gravitates toward. The time-axis analogue of <code>consonance(min, max)</code>: it seeds the beat at the band center and confines tempo adaptation to the band. At <code>meter_stability(0)</code>, the band adds no center preference or restoring pull; with higher stability, candidate preference and confidence-weighted center restoring grow with the depth. The same sanitized center sets the intrinsic starting rate of <code>metric()</code> Voices, even at stability 0; without a basin that rate is 2 Hz. <code>entrained()</code>/<code>flow()</code> retain their 2 Hz prior and explicit <code>pulse(rate_hz)</code> retains its rate. This is one scene initial condition: the last basin declaration applies to every metric Population, regardless of its position before or after <code>place</code>, <code>create</code>, or <code>wait</code>. It is not an in-performance change. Independent Voice phases and acoustic confirmation remain required; this does not place a beat or force a measure.</p>
+<p>Tempo region the emergent beat gravitates toward. The time-axis analogue of <code>consonance(min, max)</code>: it seeds the beat at the band center and confines tempo adaptation to the band. At <code>meter_stability(0)</code>, the band adds no center preference or restoring pull; with higher stability, candidate preference and confidence-weighted center restoring grow with the depth. The same sanitized center sets the intrinsic starting rate of <code>metric()</code> Voices, even at stability 0; without a basin that rate is 2 Hz. <code>entrained()</code>/<code>flow()</code> retain their separate bodily rate, 2 Hz unless intrinsic_rate(hz) is supplied, and explicit <code>pulse(rate_hz)</code> retains its rate. This is one scene initial condition: the last basin declaration applies to every metric Population, regardless of its position before or after <code>place</code>, <code>create</code>, or <code>wait</code>. It is not an in-performance change. Independent Voice phases and acoustic confirmation remain required; this does not place a beat or force a measure.</p>
 <h2 id="experimental"><a class="header" href="#experimental">Experimental</a></h2>
 <p>Candidate core verbs under audition: composing surface by intent, but with research-grade stability until validated.</p>
 <h3 id="phonation--rhythm-1"><a class="header" href="#phonation--rhythm-1">Phonation &amp; Rhythm</a></h3>
@@ -2067,7 +2117,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">duration_range(min_cycles, max_cycles)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). Initial-only, like cycles() and rest().</p>
+<p>Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). For entrained()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().</p>
 <h4 id="duration_curve"><a class="header" href="#duration_curve"><code>duration_curve</code></a></h4>
 <pre><code class="language-rhai ignore">duration_curve(k, x0)
 </code></pre>
@@ -2082,7 +2132,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">rhythm_freq(freq_hz)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Internal theta/rhythm oscillator frequency.</p>
+<p>Internal theta/rhythm oscillator frequency. Sets the Entrain articulation core oscillator; it does not set the entrained()/flow() participation scale. Use intrinsic_rate(hz) for that bodily rate. This control’s existing meaning is unchanged.</p>
 <h4 id="rhythm_coupling_vitality"><a class="header" href="#rhythm_coupling_vitality"><code>rhythm_coupling_vitality</code></a></h4>
 <pre><code class="language-rhai ignore">rhythm_coupling_vitality(lambda_v, v_floor)
 </code></pre>
@@ -2128,7 +2178,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">proposal_interval(seconds)
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> and <code>Population</code>. Live-patchable: updates running voices in a <code>Population</code>.</p>
-<p>Proposal generation interval in seconds.</p>
+<p>Proposal generation interval in seconds. Controls opportunities to propose a pitch target, not the bodily participation rate set by intrinsic_rate(hz). A proposal or adoption is not necessarily a sounded onset.</p>
 <h4 id="tessitura_gravity"><a class="header" href="#tessitura_gravity"><code>tessitura_gravity</code></a></h4>
 <pre><code class="language-rhai ignore">tessitura_gravity(value)
 </code></pre>

@@ -202,6 +202,11 @@ the composer chooses them.
 Entrained and flow can each be used in any participation row. See
 [Rhythm](rhythm.md#sustained-sound-with-participation-opportunities) for their clocks.
 
+`intrinsic_rate(hz)` sets the body's initial scale in any participation row,
+independently of the pitch-application choice. It does not command an onset interval
+or place a shared beat. `proposal_interval(seconds)` still controls pitch proposals,
+not that bodily scale. See [Setting the body's intrinsic rate](rhythm.md#setting-the-bodys-intrinsic-rate).
+
 Without participation, a positive `rearticulate_above(cents)` measures net displacement from the last actual onset,
 not accumulated path length. At or below the boundary, the existing Tone glides
 with `glide(tau)`; above it, a new Tone attacks. That choice lasts until the next
@@ -260,6 +265,11 @@ period; `rest(periods)` uses the composer's chosen multiple of the period at tha
 completion. A known period with `rest(0)` waits for the tails only. An unknown period
 keeps waiting, as does unfinished sound, without a fallback or timeout. Negative
 and nonfinite arguments become zero; finite nonnegative values have no upper limit.
+
+`intrinsic_rate(hz)` changes this bodily period and the finite note-length grid
+together. The same `cycles` or `duration_range` and `rest(periods)` therefore produce
+different note lengths and rests in seconds at different bodily rates, independently
+of entrained cadence adaptation.
 
 At the end of the rest, the existing participation decision can sound, wait or skip;
 the end itself does not force an attack. GateSnap retains the latest adopted target

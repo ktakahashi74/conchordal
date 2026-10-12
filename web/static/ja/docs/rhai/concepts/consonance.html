@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-dc23cac0.js";
+            window.path_to_searchindex_js = "../searchindex-9a4ebfee.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -327,6 +327,10 @@ Gatedではgate_snapまたはglideを選んでください。参加の時計が�
 </div>
 <p>参加の各行では、entrainedとflowをそれぞれ選べます。時計の違いは
 <a href="rhythm.html">リズム</a>の章で説明します。</p>
+<p>参加の各行に<code>intrinsic_rate(hz)</code>を添えると、音高の適用方法とは独立に身体の初期の尺度を
+置けます。発音間隔の命令や共通拍の指定にはなりません。<code>proposal_interval(seconds)</code>は
+引き続き音高の提案の間隔です。<a href="rhythm.html#身体の固有の速さを置く">身体の固有の速さを置く</a>を
+参照してください。</p>
 <p>参加の時計がない場合、正の境界を指定した<code>rearticulate_above(cents)</code>は、最後に実際に発音した音高からの正味の変位を測ります。
 経路の距離を足し合わせる量ではなく、元の音高へ戻れば相殺されます。境界以下なら同じToneで
 <code>glide(tau)</code>に従って滑り、境界を超えれば新しいToneを立ち上げます。選択は次の採用まで
@@ -370,6 +374,9 @@ generationに属する全Toneの終了を確認してから、間を数えます
 周期が既知なら<code>rest(0)</code>は余韻の終了だけを待ちます。周期が未知の場合も、音が
 鳴り終わっていない場合も、代わりの値や期限を置かず待ちます。負値と有限でない値は
 0にし、有限の非負値に上限は置きません。</p>
+<p>音長と間には同じ身体の固有周期を使います。<code>intrinsic_rate(hz)</code>で速さを変えると、同じ
+<code>cycles</code>や<code>duration_range</code>、<code>rest(periods)</code>でも秒単位の音長と間が一緒に変わります。
+entrainedが音響の反復に合わせて更新する参加周期とは独立です。</p>
 <p>間が終わると、既存の参加の判断で鳴らす・待つ・見送るを選べます。間の終わりだけで
 発音を強制しません。GateSnapは発音中、余韻待ち、間のあいだも最新の行き先を保留し、
 次に鳴らすと選んだ機会で消費します。Rearticulateも余韻待ちや間のあいだに採用を扱い、

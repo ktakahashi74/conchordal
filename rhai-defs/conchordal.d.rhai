@@ -235,6 +235,11 @@ fn harmonic() -> PopulationSpec;
 /// Harmonic series: f, 2f, 3f, ...
 fn harmonic_modes() -> ModePattern;
 
+/// Set the intrinsic bodily rate at creation for entrained()/flow(), in Hz.
+fn intrinsic_rate(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
+/// Set the intrinsic bodily rate at creation for entrained()/flow(), in Hz.
+fn intrinsic_rate(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
+
 /// Randomize mode frequencies by up to the given cents.
 fn jitter(arg0: ModePattern, arg1: f64) -> ModePattern;
 

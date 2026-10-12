@@ -74,7 +74,7 @@ The Tier-1 presets take **no rate argument**: `metric()`, `entrained()`, and
 `flow()`. Configure them on a `PopulationSpec` before calling `place()` or
 `create()`. Metric timing begins at the basin center, or 2 Hz without a basin,
 then responds to the acoustically confirmed production beat. Entrained/flow
-participants begin with their own 2 Hz intrinsic prior. Entrained cadence can follow acoustic recurrence without
+participants begin with their own 2 Hz intrinsic prior unless `intrinsic_rate(hz)` is supplied. Entrained cadence can follow acoustic recurrence without
 changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
 scale for its irregular renewal intervals.
 
@@ -135,6 +135,51 @@ flow retains its existing threefold hold multiplier. Modifiers are remembered an
 applied when their matching preset is selected, so `entrainment(0.8).metric()`
 and `metric().entrainment(0.8)` are equivalent. The same applies to
 `duration_range(...).adaptive_duration()` and the reverse order.
+
+## Setting the body's intrinsic rate
+
+`intrinsic_rate(hz)` sets the founder Voices' bodily scale for `entrained()` or
+`flow()`. Its period is `1/hz`. This is a body initial condition, not an
+onset-interval command or a common beat. Entrained timing adapts its participation
+period to heard recurrence without changing the intrinsic value. Flow uses that
+value for irregular renewal. Both still choose to sound, wait or omit events;
+different intrinsic rates do not guarantee permanently different onset rates.
+
+Set it on a PopulationSpec before `place()` or `create()`. Either order with the
+participation preset has the same meaning. It cannot be changed during performance.
+Replacements read the Population template, with fresh initial due and performance
+state rather than a parent's adapted period, plan or articulation policy.
+
+The same bodily period sets finite note lengths (`cycles`, `duration_range`),
+`rest(periods)` and the representative hold used for overlap prediction. Changing
+the rate therefore changes note lengths and rests in seconds together. Flow keeps
+its threefold hold multiplier; ADSR release remains in seconds. Explicit sustained
+notes without a finite duration stay alive until release.
+
+```rhai
+let slow = harmonic().sustain().entrained().intrinsic_rate(0.5)
+    .seek_consonance().pitch_apply_mode("gate_snap");
+let quick = harmonic().intrinsic_rate(2.0).sustain().flow()
+    .seek_consonance().pitch_apply_mode("gate_snap");
+let a = place(slow, line(220.0, 220.0).count(1));
+let b = place(quick, line(330.0, 330.0).count(1));
+wait(6.0);
+release(a);
+release(b);
+```
+
+These rates are example inputs, not recommended values. A final entrained/flow
+specification accepts finite values in `0.01..=200` Hz. Values outside that range
+or nonfinite values are script errors before placement. The range protects
+execution; it is not a musically recommended range. Flow's renewal interval has
+separate existing limits of `0.035..=4` seconds, so extreme rates do not imply
+proportionally scaled intervals. Other final timing forms, including metric,
+pulse, repeat and once, warn and ignore this modifier even if its value is invalid.
+Omission keeps the existing 2 Hz path, and metric's basin rule is unchanged.
+
+`rhythm_freq(hz)` sets the Entrain articulation core oscillator and does not set
+this participation scale. `proposal_interval(seconds)` controls pitch proposals;
+it does not command an onset or change the body's intrinsic rate.
 
 ## Sustained sound with participation opportunities
 

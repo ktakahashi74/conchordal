@@ -55,7 +55,7 @@ basinはscene全体の初期条件です。scriptで最後に指定した値を�
 
 `metric()`、`entrained()`、`flow()`は速さの引数を取りません。`place()`や`create()`より前に
 PopulationSpecへ設定します。metricはbasinの中心、指定がなければ2 Hzから自走を始め、
-音から確認された拍へ近づきます。entrainedとflowは2 Hzの固有ペースから始まります。entrainedは周囲の反復から参加の周期を更新します。
+音から確認された拍へ近づきます。entrainedとflowは、`intrinsic_rate(hz)`を指定しなければ2 Hzの固有ペースから始まります。entrainedは周囲の反復から参加の周期を更新します。
 flowは不規則な間隔を作る基準を保ち、周囲の音に応じて待つ・見送る判断を続けます。
 実際の発音間隔は変わり得ますが、全Voiceが従う共通テンポや発音位置は指定しません。
 
@@ -105,6 +105,48 @@ wait(12.0);
 下で説明する明示の持続と参加の併用を除き、同じ軸では最後の指定が優先されます。調整値は記憶され、対応するプリセットを選んだ時に適用されるため、
 `entrainment(0.8).metric()`と`metric().entrainment(0.8)`は同等です。
 `duration_range(...).adaptive_duration()`と逆順も同様です。
+
+## 身体の固有の速さを置く
+
+`intrinsic_rate(hz)`は、`entrained()`または`flow()`で初代として生成されるVoiceの
+身体の尺度をHzで置きます。固有周期は`1/hz`です。発音の間隔を命じたり、共通の拍を
+置いたりする語ではありません。entrainedは聴こえた反復へ参加の周期を寄せますが、
+固有の値は生存中ずっと保ちます。flowはこの尺度から不規則な更新間隔を作ります。
+どちらも鳴らす・待つ・見送る判断を続けるため、身体の速さを違えても、実際の発音の
+二つの速さが永久に保たれる保証はありません。
+
+`place()`または`create()`より前にPopulationSpecへ指定します。参加のプリセットとの
+前後は問いません。演奏中の変更には使えません。再生成ではPopulationのtemplateの値を
+読み、新しい初期dueと演奏状態から始めます。親が適応した参加周期、発音予定、発音の
+方針は継ぎません。
+
+同じ固有周期を、有限音長の`cycles`と`duration_range`、`rest(periods)`、重なり予測の
+代表的な保持長にも使います。速さを変えると、音の長さと間の秒数も一緒に変わります。
+flowの音長には既存の3倍係数が残り、ADSRのreleaseは秒指定のままです。有限音長を
+指定しない持続音を、固有周期ごとに自動で切る働きはありません。
+
+```rhai
+let slow = harmonic().sustain().entrained().intrinsic_rate(0.5)
+    .seek_consonance().pitch_apply_mode("gate_snap");
+let quick = harmonic().intrinsic_rate(2.0).sustain().flow()
+    .seek_consonance().pitch_apply_mode("gate_snap");
+let a = place(slow, line(220.0, 220.0).count(1));
+let b = place(quick, line(330.0, 330.0).count(1));
+wait(6.0);
+release(a);
+release(b);
+```
+
+ここでの速さは使い方の例で、推奨値ではありません。最終の指定がentrainedまたはflowなら、
+有限の`0.01〜200 Hz`だけを受け入れます。範囲の外と有限でない値は、配置前のscript errorに
+なります。この範囲は実行を保護する値で、音楽的な推奨範囲ではありません。flowの更新間隔には
+別の既存の制限`0.035〜4秒`もあるため、極端な速さでは実際の間隔はrateに比例しません。
+最終の形がmetric、pulse、repeat、onceなど対象外なら、値が不正でも警告して無視します。
+省略時は既存の2 Hzの経路を使い、metricのbasinの規約も変えません。
+
+`rhythm_freq(hz)`はEntrainのアーティキュレーション内部の振動子を設定し、この参加の
+尺度は変えません。`proposal_interval(seconds)`は音高を提案する機会の間隔であり、
+発音を命じたり、身体の固有の速さを変えたりする語ではありません。
 
 ## 持続音を保ちながら参加する
 

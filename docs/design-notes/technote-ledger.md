@@ -7627,6 +7627,90 @@ not complete the author's final phrase-level requirement or solve the P-series
 learned timing rejection. Sources: machine-local `A-7/report.md` §8, revised
 `A-8/report.md` §3.1, `V-7/brief.md` and `report.md`.
 
+<a id="intrinsic-bodily-rate-20261012"></a>
+
+### 9.3.75 Intrinsic bodily rate at creation
+
+**Author observations and corrections (2026-10-12).** The author heard less
+polyphony in the two-Voice sustained-participation form than in the earlier
+every-adoption rearticulation, and described the current articulation as relaxed,
+like a tropical folk song. Subsequent listening identified regular onset streams
+as the condition for hearing two lines in these scenes. Reducing entrainment to
+0 or 0.05 restored that reading; metric timing removed the relaxation. These are
+the author's observations of specific materials, not general auditory laws.
+
+Three orchestrator explanations require correction. Equal bodily rates alone
+could not explain the result: the mixed slow-adoption/fast-participation scene
+still did not sound like two lines to the author. "More alternation than chance"
+used a label-randomization baseline that did not preserve individual intervals;
+P-1's time-shift control did not support that interpretation. "The routes that
+produce tension are disconnected" was too broad. P-2 confirmed implemented
+beat attraction, roles, measure emphasis and acoustic-context costs. Listener
+tension feeds pitch-search temperature, without a direct onset-time/strength
+route. No saved result is overwritten by these corrections.
+
+**P-series and A-9/A-10 evidence.** P-1 distinguished the pitch-proposal clock
+from participation timing; rhythm_freq did not change its Drone scene. P-2's
+metric comparison regularized onsets, while its DCC and temperature changes
+produced no output difference in that particular scene. The combined mixed
+scene was not accepted as two lines. P-3 kept sustained participation and reduced
+the fast Voice's IOI CV from about 0.342 to 0 at coupling 0 and 0.006183 at 0.05.
+Coupling also changes recurrence adaptation and costs, so this did not isolate
+regularity as the sole cause of the listening difference.
+
+A-9 separated the June fixed common grid from an individual's already existing
+bodily scale. The author revised the June no-per-Voice-rate policy for founder
+body initial conditions, retaining the prohibition on a common fixed grid.
+A-10 connected two existing bodily scales in an external copy: intrinsic periods
+2.128 and 0.5 seconds, derived from the earlier scene, not recommended values.
+Its isolated clocks retained intrinsic values while participation adapted,
+kept independent initial due and committed plans, and used the same period for
+note lengths, rest and overlap prediction. The default path matched the baseline.
+At coupling 0.5, distinct-rate gate_snap IOI medians were about 3.169/0.524 seconds;
+at 0.05 they were about 1.849/0.531, with CV 0.051588/0.022334. The second input
+changes both Voices and is distinct from P-3. The author heard two lines in the
+weak-coupling addition at about 06:45, and at about 10:19 adopted native inclusion,
+Hz and the name `intrinsic_rate(hz)`. The author also judged E-2's four drafts more
+musical than the previous samples; this does not establish a performance gate.
+
+**Implemented scope and value contract.** The modifier sets existing
+`base_rate_hz` once at the common place/create generation point for final
+entrained/flow specifications, independently of builder order. The intrinsic
+period is `1/hz`, retained during life; entrained's participation period alone
+adapts to heard recurrence. Flow retains its irregular renewal scale. This is
+neither an onset-interval command nor a shared-beat setter. The same bodily
+period drives `cycles`, `duration_range`, `rest(periods)` and representative
+overlap hold, so note lengths and rests in seconds change together. Flow's
+threefold hold multiplier and the second-based ADSR release remain.
+
+Omission preserves the existing 2 Hz path, independent random consumption and
+the metric basin convention. Metric, pulse, repeat, once and other unsupported
+final forms warn and ignore the modifier, including invalid values. On applicable
+forms, nonfinite values or values outside 0.01–200 Hz cause a script error before
+placement. This adopted error contract prevents silent substitution; its numbers
+come from the existing specification/clock protection, not a musical range.
+Flow separately retains its 0.035–4 second renewal limits, so extreme rates do
+not proportionally scale actual intervals. There is no live setter, inheritance
+mutation, new clock, phase assignment, density coefficient or direct meter/listener
+input. Replacements read the Population template and start fresh, without a
+parent's adapted period, due, plan or articulation policy. `rhythm_freq` retains
+its articulation-oscillator meaning; `proposal_interval` remains a pitch control.
+Prototype harnesses, sidecar measurement and meter getters are excluded.
+
+**Evidence boundaries and remaining work.** Native tests cover creation order,
+values, scope, template replacement, isolated clocks, duration/rest/prediction,
+lifecycle, all three bodies and both renderers. The unit's final report records
+feature-free full tests, allocation measurements, registered baseline/prototype
+comparisons and listening files separately. Offline agreement is not a new
+arbitrary-load real-time acceptance or a general polyphony claim. The execution
+protection range has not been musically validated throughout. Still missing are
+regular streams with strong temporal response to a partner, a contract preserving
+two actual rates, participation in beat layers, composition of synchronization
+with articulation vocabulary, and dynamic loudness arcs. Sources: machine-local
+`P-1/report.md`, `P-2/report.md`, `P-3/report.md`, `A-9/report.md`, `A-10/report.md`
+§2 and `addendum-entrainment.md`, `E-2/report.md`, and `V-9/brief.md`,
+`decision.json`, `report.md`.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

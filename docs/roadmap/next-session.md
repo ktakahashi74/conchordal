@@ -1,6 +1,6 @@
 # 次のセッションの始め方
 
-2026-10-11更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
+2026-10-12更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
 作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れた。N-7は同日にmainへ統合され、originへpush済みである。時間構造は、原典の図の数値再現を一律の門にした誤りを撤回し、T-6kで整数比の階層の設計を閉じ、T-7で本体に実装した。T-7も同日にmainへ統合し、最終検査の後、11:50にoriginへpushした。作者の試聴を受けたmetric内の位相分離のT-8〜T-10は、午後の範囲の判断で停止した。拍の同期の二つの失敗はT-11で設計の選択と分類した。F1はT-12で設計を本体の外で閉じ、T-13で実装・回帰・文書をbranchへ用意した。その後2026-10-11に作者はF1の採用方針とC＋hardの最小形を決め、T-16がT-13の上に実装を積んだ。F1は実機の四構成合格後、08:28に統括がmainの`c2b8308`へ統合した。その後08:46に、統括はT-16をmainの`000b884`へfast-forwardで統合した。慣れと既存語彙の旋律らしい線を作者が評価し、「動いた時にだけ発音する」V-1は外部試作を終えた。2026-10-11に作者が本体への実装を採り、09:03頃に `pitch_apply_mode("rearticulate")` の形と名前を確定した。統括が併用規則の案Aを採り、本体実装・検査・文書をV-2のbranchに用意した。[午後〜夜の状態](plan-current.md#temporal-melodic-outcomes-20261010)を次の作業の入口にする。20単位の終了、実装・統合・push、作者の音楽的な評価を区別する。
 
@@ -36,6 +36,12 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 5. `.orchestration/records/decisions-20261007-orchestrator.md`の2026-10-10 13:20以後と`.orchestration/HANDOFF.md`、`.orchestration/status.md`。更新日時だけでなく、時刻付きの追記と各単位の報告を確認する。
 6. `AGENTS.md`のProgress and Validation Scope、Multi-agent Orchestration、Author Decision Requests、Git Operation Policyと、`.orchestration/units/COMMON.md`。
 
+追加の入口：[台帳§9.3.75](../design-notes/technote-ledger.ja.md#intrinsic-bodily-rate-20261012)で
+身体の固有の速さの判断と範囲を読み、機械に固有の`V-9/report.md`で検査・比較・聴く材料を
+確認する。P-1〜P-3の所見、A-9／A-10の根拠は同節にまとめた。相手の時刻に反応しながら
+規則的な列を保つ形、二つの実際の速さの維持、拍の層、同期と発音語彙の合成、強弱の弧は
+新しい尺度の語だけで解決したとは扱わない。
+
 ## 3. 現在の状態と、残るもの
 
 N-7とT-7はmainへ統合・push済みで、H-3の慣れの既定有効化も2026-10-10 22:57に統合・push済みである。D-6着手時点のmainはD-5の文書修正を含む`4da4726`、origin/mainは`39e6840`で、mainが文書1 commit先だった。HEAD・差分、各branchの状態は着手時に確認する。originとの差は`git status`で確かめる。F1は2026-10-11 08:28に四構成の実機合格後、mainの`c2b8308`へ統合済みである。C＋hardを積んだT-16も同日08:46に統括がfast-forwardでmainの`000b884`へ統合した。V-1の本体への実装と語彙は作者が採択済みである。V-2の併用規則は統括が案Aを採択し、branchに実装した。文書のcheckpointへ他のworktreeの作業を混ぜない。校正の記録は`work/t6-calibration-20261008-v1`（`ff9c856`）に残したままで、T-7の本体実装とは区別する。
@@ -61,6 +67,7 @@ V-1の外部試作は、新目標の採用一回に発音一回、移動の始�
 - **音を切って間を置くrest（実装済み）**：作者は2026-10-11、候補A、全Toneの終了を起点にするG1、持続＋参加への限定、名前`rest`を採った。V-5で有限音長を独立に保持し、`rest()`は固有周期一つ、`rest(periods)`は作曲者の倍数とする形を実装した。全音を有限長で切り、一音ごとに伸ばすか切るかを選ぶ候補Bは未着手。検査・取得の範囲と設計メモのGapとの違いは[台帳§9.3.72](../design-notes/technote-ledger.ja.md#finite-notes-and-rest-20261011)に記した。
 - **持続＋参加の境界つきRearticulate（実装済み）**：作者は2026-10-11にA-6の合成、交点cancel、明示の持続＋参加＋`pitch_apply_mode("rearticulate")`を採った。小さい採用は旧保留を取り消して滑り、大きい採用は鳴らす機会まで保留する。V-6でrest、演奏中の三mode／境界変更、出生時の空状態と既定対照を検査した。フレーズ単位は作曲者とVoiceの両方という要求を保ち、この段階ではVoice側の選択は設計対象として残った。[台帳§9.3.73](../design-notes/technote-ledger.ja.md#bounded-sustained-participation-20261011)を参照する。
 - **発音方針の保持（実装済み）**：作者は2026-10-11にA-8の形を採った。V-7は`articulation_persistence(p)`を配置前の初期条件、既定0、自由音高の持続＋entrained／flow＋Rearticulate＋正の境界に実装した。templateのpだけを継ぎ、再生成はBaseから始まる。mode変更はBaseへ戻し、同modeと境界だけの変更は保持を続ける。pはつなぐ割合ではなく、Baseにも働く惰性で、秒・拍・聴こえたフレーズ境界とは結び付かない。統括の「形は一音ごとに入り交じる」という言い過ぎ、固定Baseで見つけた停止後の接続の誤りと修理、検査・取得の範囲、一音ごとの伸ばす／切る・境界推定・学んだ意図の重みという残りは[台帳§9.3.74](../design-notes/technote-ledger.ja.md#articulation-policy-persistence-20261011)に記した。
+- **創始の身体の固有の速さ（実装済み）**：作者は2026-10-12、entrained／flowの身体の初期条件に`intrinsic_rate(hz)`を置く判断を採った。共通の固定格子は戻さず、固有値を生存中保ち、参加周期だけが既存の適応で動く。音長・rest・重なり予測も同じ周期を読む。省略は従来の2 Hz、metricのbasinとpulseは対象外、再生成はtemplateから始める。有限0.01〜200 Hz以外は対象内の配置前errorとし、対象外は警告して無視する。二本の線の耳の条件、統括の三つの説明の訂正、A-9／A-10の根拠とまだ足りない表現は[台帳§9.3.75](../design-notes/technote-ledger.ja.md#intrinsic-bodily-rate-20261012)に記録する。
 
 2026-10-11 12:50頃、作者は発音の境界を作曲パラメータとし、`rearticulate_above(cents)`を採った。最後の実発音からの正味の変位で選び、省略0は従来の採用ごとの発音を保つ。正の値を既定へ置かない。統括が固定の規則として入れようとした誤り、A-3とA-3bの結果は台帳に残す。作者は持続＋参加の明示のGateSnapも、A-2cの一つの目標を機会まで保留する意味へ替える判断を採った。V-4は両方を実装し、Glideとの切り替え、取消、継承、既定の描画対照、身体と両renderer、聴く材料と日英文書をそろえた。2026-10-11にmainへ統合した。検査結果と未確認の範囲はV-4の最終報告と[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)、[計画の追記](plan-current.md#articulation-boundary-and-deferred-target-20261011)に残す。V-5は有限音長と`rest`を実装し、GateSnapの保留を発音中・余韻待ち・間のあいだ保持する。任意負荷の実時間や一音ごとの切断選択を実装済みと数えない。
 

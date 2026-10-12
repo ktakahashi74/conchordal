@@ -353,7 +353,7 @@ $\eta_\varphi=0.6$、$\eta_p=0.1$はLarge & Jones（1999）のsimulationに由�
 *   `meter_stability(v)` — $[0,1]$のアトラクタ深度。振幅と発音ごとの補正を強め、既存presenceの閾値を下げる。確信に踏み切る速さを変えるが、確信度の上限は上げない。同じ深さで、好みのtempoに寄せて拍を読む強さも決める。深いほどbasinの中心、帯域を置かなければ2 Hzに近い整数比の読みを選びやすくなる。既定は0（中立）である。
 *   `temporal_basin(min_hz, max_hz)` — 連続したtempoの事前帯域。拍を算術平均の中心から始め、候補の採用と周波数の適応を帯域内に保つ。stabilityが0なら中心への追加の好みや復元を持たず、帯域を限るだけである。高いstabilityでは、候補の好みと、確信度に依存する中心への復元が深さに比例して強まる。
 
-basinは、`metric()`のVoiceが自走を始める周期にも作用する。meterと同じ整形済みの算術中心を使い、stabilityには掛けない。指定がなければ初期値は2 Hzのままである。scriptの最後のbasinを、`place()`と`create()`で作る全てのmetricのPopulationに適用する。`wait()`の後の指定もsceneの初期条件を上書きし、演奏途中の変更にはならない。entrained／flowの2 Hzと、`pulse(rate_hz)`の明示した速さは変えない。各Voiceは別々の初期位相を持ち、音から拍を確認するまで共有拍への結合は0である。再生成はPopulationに保存した初期設定を読み、親の現在の時計の周期を継がない。
+basinは、`metric()`のVoiceが自走を始める周期にも作用する。meterと同じ整形済みの算術中心を使い、stabilityには掛けない。指定がなければ初期値は2 Hzのままである。scriptの最後のbasinを、`place()`と`create()`で作る全てのmetricのPopulationに適用する。`wait()`の後の指定もsceneの初期条件を上書きし、演奏途中の変更にはならない。entrained／flowの独立した身体の尺度（`intrinsic_rate(hz)`の指定がなければ2 Hz）と、`pulse(rate_hz)`の明示した速さは変えない。各Voiceは別々の初期位相を持ち、音から拍を確認するまで共有拍への結合は0である。再生成はPopulationに保存した初期設定を読み、親の現在の時計の周期を継がない。
 
 これらは拍を配置せず、創発する過程の初期条件と地形を与える。聴き手のtempoの適応は指定帯域内に限られる。
 
@@ -593,6 +593,19 @@ $\mathrm{coupling} \times \mathrm{arrival\_weight} \times (1-P)$であり、予�
 確率0が既知であり、重み付きの費用を加える。見送りの判定は、到来項を除いた全候補の最小費用を
 引き続き使うため、到来項は候補の選択に作用し、見送りを直接決めない。
 
+`intrinsic_rate(hz)`は、`entrained()`と`flow()`の創始の身体の速さを、`place()`または
+`create()`の前に置く。プリセットとの書く順には依存しない。固有周期は`1/hz`で、
+生存中は保つ。身体の尺度を置く語であり、発音間隔の命令や共通拍の指定ではない。
+同じ周期を参加、有限音長の`cycles`と`duration_range`、`rest(periods)`、重なり予測の
+代表保持長が読み、音の長さと間の秒数も一緒に変わる。省略時は既存の2 Hzの経路を使う。
+再生成はPopulationのtemplateを読み、親の適応周期、due、plan、発音方針を継がず始める。
+演奏中には変更できない。最終の形がentrained／flowなら有限の0.01〜200 Hzだけを受け入れ、
+範囲の外と有限でない値は配置前のscript errorにする。この範囲は実行を保護する値で、
+音楽的な推奨範囲ではない。metric、pulse、repeat、onceなど対象外の最終形では、不正な
+値でも警告して無視する。flowの更新間隔には別の既存の制限0.035〜4秒があり、極端な
+値では実際の間隔はrateに比例しない。`rhythm_freq`は内部のアーティキュレーション振動子、
+`proposal_interval`は音高提案の間隔を設定する語のままである。
+
 経験文脈の記憶は、実際の発音指令と、その後の二つの観測窓が揃った場合だけ更新する。設定された固有周期、音響に適応する参加周期、
 音の持続には別々の役割を持たせる。entrainedのVoiceは固有周期に近い反復候補を、半octave幅のGaussianに
 よる近接度と観測の重みから選ぶ。結合強度と反復の支持度に応じ、固有2周期を時定数として
@@ -792,7 +805,7 @@ entrained／flow以外は、配置時の書き込み前にerrorにする。三�
 
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`；有限音長の持続＋参加には`rest()`／`rest(periods)`。
-*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`と`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、参加方策は2 Hzの固有ペースを維持する。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
+*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`と`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、`intrinsic_rate(hz)`はentrained／flowの独立した創始の身体の尺度（省略時2 Hz）を置き、音長と間の秒数も一緒に変える。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
 *   ライフサイクル/生存可能性: `endurance(sec)`, 任意の`recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, `phonate_when_viable()`（viability windowが開くまで最初のonsetを保留）。
 *   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
 

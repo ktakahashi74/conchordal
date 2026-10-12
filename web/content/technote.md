@@ -353,7 +353,7 @@ The director can bend the terrain the pulse forms on—never schedule it—via `
 *   `meter_stability(v)` — attractor depth in $[0,1]$. Scales amplitude and event correction, and lowers the existing evidence-presence thresholds. It changes how readily the meter commits without raising the confidence ceiling. The same depth directly weights the preferred tempo: higher values favor an integer-ratio reading closer to the basin center, or 2 Hz without an explicit basin. The default is 0 (neutral).
 *   `temporal_basin(min_hz, max_hz)` — a continuous tempo-prior band. Seeds the beat at its arithmetic center and confines candidate adoption and frequency adaptation to the band. At stability 0 there is no additional center preference or restoring pull. At higher stability, candidate preference and confidence-weighted restoring grow in direct proportion to the depth.
 
-The basin has a second role: it initializes `metric()` Voices at the same sanitized arithmetic center, independently of stability. Without a basin, their intrinsic starting rate remains 2 Hz. The final basin declaration applies to every metric Population created by `place()` or `create()`, including declarations after `wait()`; it is one scene initial condition, not a timed change. Entrained/flow retain their 2 Hz prior, and explicit `pulse(rate_hz)` retains its rate. Initial Voice phases remain independent, and shared-beat coupling stays zero until sound confirms a beat. Respawn reads the Population template rather than a parent's current clock rate.
+The basin has a second role: it initializes `metric()` Voices at the same sanitized arithmetic center, independently of stability. Without a basin, their intrinsic starting rate remains 2 Hz. The final basin declaration applies to every metric Population created by `place()` or `create()`, including declarations after `wait()`; it is one scene initial condition, not a timed change. Entrained/flow retain their separate bodily scale, 2 Hz unless `intrinsic_rate(hz)` is supplied, and explicit `pulse(rate_hz)` retains its rate. Initial Voice phases remain independent, and shared-beat coupling stays zero until sound confirms a beat. Respawn reads the Population template rather than a parent's current clock rate.
 
 These operations shape an emergent process without placing a beat grid; the listener's tempo adaptation remains confined to the declared band.
 
@@ -652,6 +652,23 @@ incurs the weighted cost. Omission still uses the minimum candidate cost without
 the arrival term, so this term affects candidate selection rather than prescribing
 an omission.
 
+`intrinsic_rate(hz)` sets the founder bodily rate for `entrained()` and `flow()`
+before `place()` or `create()`, independently of builder order. The intrinsic
+period is `1/hz` and remains fixed during life. This sets a bodily scale rather
+than commanding onset intervals or placing a shared beat. The same period feeds
+participation, finite note lengths (`cycles`, `duration_range`), `rest(periods)`
+and representative overlap hold, so note lengths and rests in seconds change
+together. Omission retains the existing 2 Hz path. Replacements read the
+Population template with fresh due, plan and policy state, without inheriting
+parental cadence. There is no live setter. Final entrained/flow specifications
+require finite values in 0.01–200 Hz; invalid values are script errors before
+placement. These are execution protection limits, not a musically recommended
+range. Other final timing forms, including metric, pulse, repeat and once, warn
+and ignore the modifier even if its value is invalid. Flow's renewal intervals
+separately retain their 0.035–4 second limits, so extreme rates do not scale
+actual intervals proportionally. `rhythm_freq` remains an articulation-core
+oscillator control; `proposal_interval` remains a pitch-proposal interval.
+
 Experience memory updates only after an emitted onset and both matching acoustic windows. The intrinsic period, acoustically
 adapted participation period, and sound duration have separate roles. An entrained Voice
 selects a supported recurrence near its intrinsic scale, weighted by a Gaussian
@@ -891,7 +908,7 @@ implemented.
 
 **Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`; finite sustained participation with `rest()` / `rest(periods)`.
 
-**Rhythm (Section 5.4)**: `metric()` selects shared-beat attraction; `entrained()` and `flow()` select acoustic participation. `entrainment(v)` changes the influence within that intention. `microtiming(v)` offsets the synchronized target only. `temporal_basin` shapes the production meter and initializes metric bodies at its center; participation retains its 2 Hz bodily prior. Articulation controls remain separate: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, and `rhythm_reward(rho_t, "attack_phase_match")`.
+**Rhythm (Section 5.4)**: `metric()` selects shared-beat attraction; `entrained()` and `flow()` select acoustic participation. `entrainment(v)` changes the influence within that intention. `microtiming(v)` offsets the synchronized target only. `temporal_basin` shapes the production meter and initializes metric bodies at its center; `intrinsic_rate(hz)` sets the separate founder bodily scale of entrained/flow, otherwise 2 Hz, and changes note lengths and rests in seconds together. Articulation controls remain separate: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, and `rhythm_reward(rho_t, "attack_phase_match")`.
 
 **Lifecycle/Viability**: `endurance(sec)`, optional `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, and `phonate_when_viable()` (withhold the first onset until the viability window opens).
 

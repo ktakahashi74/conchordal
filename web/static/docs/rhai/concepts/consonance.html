@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-850ca147.js";
+            window.path_to_searchindex_js = "../searchindex-43bad780.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -348,6 +348,10 @@ the composer chooses them.</p>
 </div>
 <p>Entrained and flow can each be used in any participation row. See
 <a href="rhythm.html#sustained-sound-with-participation-opportunities">Rhythm</a> for their clocks.</p>
+<p><code>intrinsic_rate(hz)</code> sets the body’s initial scale in any participation row,
+independently of the pitch-application choice. It does not command an onset interval
+or place a shared beat. <code>proposal_interval(seconds)</code> still controls pitch proposals,
+not that bodily scale. See <a href="rhythm.html#setting-the-bodys-intrinsic-rate">Setting the body’s intrinsic rate</a>.</p>
 <p>Without participation, a positive <code>rearticulate_above(cents)</code> measures net displacement from the last actual onset,
 not accumulated path length. At or below the boundary, the existing Tone glides
 with <code>glide(tau)</code>; above it, a new Tone attacks. That choice lasts until the next
@@ -398,6 +402,10 @@ period; <code>rest(periods)</code> uses the composer’s chosen multiple of the 
 completion. A known period with <code>rest(0)</code> waits for the tails only. An unknown period
 keeps waiting, as does unfinished sound, without a fallback or timeout. Negative
 and nonfinite arguments become zero; finite nonnegative values have no upper limit.</p>
+<p><code>intrinsic_rate(hz)</code> changes this bodily period and the finite note-length grid
+together. The same <code>cycles</code> or <code>duration_range</code> and <code>rest(periods)</code> therefore produce
+different note lengths and rests in seconds at different bodily rates, independently
+of entrained cadence adaptation.</p>
 <p>At the end of the rest, the existing participation decision can sound, wait or skip;
 the end itself does not force an attack. GateSnap retains the latest adopted target
 through sounding, release and rest, and consumes it at the next sounded opportunity.

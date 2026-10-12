@@ -1052,6 +1052,60 @@ impl TemporalParticipation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn intrinsic_rate_keeps_bodily_scale_while_acoustic_recurrence_adapts_period() {
+        let fs = 48_000;
+        let mut observer =
+            crate::core::temporal_expectation::AcousticTemporalExpectation::new(fs).unwrap();
+        for hop in 0..2000 {
+            let now = hop * 480;
+            let audio: [f32; 480] = std::array::from_fn(|i| {
+                let age = ((now + i) % 28_800) as f32 / fs as f32;
+                0.5 * (std::f32::consts::TAU * 180. * age).sin() * (-age / 0.012).exp()
+            });
+            observer.process(now as u64, &audio, |_| {});
+        }
+        let forecast = observer.forecast().unwrap();
+        for rate in [(1.0 / 2.128) as f32, 2.0] {
+            let t0 = fs as f64 / f64::from(rate);
+            let mut policy = TemporalParticipation::new(fs, rate, 0.8, 0, 21, 512);
+            let other = TemporalParticipation::new(fs, rate, 0.8, 0, 22, 512);
+            assert_eq!(policy.intrinsic_period_frames, t0);
+            assert_ne!(policy.due_frame, other.due_frame);
+            assert!((0.0..t0).contains(&policy.due_frame));
+            let reference = forecast.period_reference((t0 / fs as f64) as f32).unwrap();
+            policy.update_reference(20 * fs as u64, Some(&forecast));
+            assert_eq!(policy.intrinsic_period_frames, t0);
+            assert_ne!(policy.period_frames, t0);
+            assert!((policy.period_frames - t0) * (f64::from(reference.0) * fs as f64 - t0) > 0.);
+            let tick = policy
+                .candidate(20 * fs as u64, 30 * fs as u64, true, None, None)
+                .unwrap();
+            let plan = policy.planned.map(|p| p.0);
+            policy.update_reference(20 * fs as u64 + 512, Some(&forecast));
+            assert_eq!(policy.planned.map(|p| p.0), plan);
+            policy.resolve(tick, true);
+            assert_eq!(policy.intrinsic_period_frames, t0);
+
+            let mut flow = TemporalParticipation::new(fs, rate, 0.05, 0, 21, 512);
+            flow.set_flow_depth(0.65);
+            flow.update_reference(20 * fs as u64, Some(&forecast));
+            assert_eq!(flow.period_frames, t0);
+            let mut intervals = Vec::new();
+            let mut previous = 0;
+            for _ in 0..12 {
+                let tick = flow
+                    .candidate(previous, previous + 10 * fs as u64, true, None, None)
+                    .unwrap();
+                flow.resolve(tick, true);
+                intervals.push(flow.due_frame - tick as f64);
+                previous = tick + 1;
+            }
+            assert!(intervals.windows(2).any(|w| w[0] != w[1]));
+            assert_eq!(flow.intrinsic_period_frames, t0);
+        }
+    }
     use crate::core::temporal_expectation::AcousticTemporalExpectation;
 
     #[test]

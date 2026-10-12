@@ -632,6 +632,89 @@ fn scan_moves_toward_higher_scoring_neighbor() {
 // ──── Phonation ────
 
 #[test]
+fn intrinsic_rate_remove_pending_still_drains_existing_note_offs() {
+    use crate::scenario::RhythmRelation;
+    for rate in [(1.0 / 2.128) as f32, 2.0] {
+        for method in [
+            crate::scenario::control::BodyMethod::Sine,
+            crate::scenario::control::BodyMethod::Harmonic,
+            crate::scenario::control::BodyMethod::Modal,
+        ] {
+            let mut control = VoiceControl::default();
+            control.pitch.freq = 220.0;
+            control.body.method = method;
+            control.phonation.spec = PhonationSpec {
+                sustain_participation: false,
+                timing: PhonationTiming::Coupled(crate::scenario::CoupledTimingSpec {
+                    relation: RhythmRelation::Participating,
+                    base_rate_hz: rate,
+                    coupling: 0.05,
+                    ..Default::default()
+                }),
+                duration: DurationSpec::Gates(1),
+            };
+            let cfg = VoiceSpec {
+                control,
+                articulation: ArticulationCoreConfig::default(),
+            };
+            let meta = VoiceMetadata {
+                population_id: 0,
+                member_idx: 0,
+                generation: 0,
+                parent_id: None,
+            };
+            let mut voice = cfg.spawn(1, 0, meta, 48000., 0);
+            let tb = Timebase {
+                fs: 48000.,
+                hop: 12001,
+            };
+            let rhythms = NeuralRhythms::default();
+            let mut batch = PhonationBatch::default();
+            let mut now = 0;
+            let mut ids = Vec::new();
+            for _ in 0..20 {
+                voice.tick_phonation_into(&tb, now, &rhythms, None, 0., 1., 1., &mut batch);
+                ids.extend(batch.cmds.iter().filter_map(|cmd| {
+                    if let ToneCmd::On { tone_id, .. } = cmd {
+                        Some(*tone_id)
+                    } else {
+                        None
+                    }
+                }));
+                if !ids.is_empty() {
+                    break;
+                }
+                now += tb.hop as u64;
+            }
+            assert!(!ids.is_empty(), "rate {rate}, body {method:?}");
+            voice.start_remove_fade(0.05);
+            let mut ended = Vec::new();
+            for _ in 0..40 {
+                voice.tick_phonation_into(&tb, now, &rhythms, None, 0., 1., 1., &mut batch);
+                assert!(
+                    !batch
+                        .cmds
+                        .iter()
+                        .any(|cmd| matches!(cmd, ToneCmd::On { .. }))
+                );
+                ended.extend(batch.cmds.iter().filter_map(|cmd| {
+                    if let ToneCmd::Off { tone_id, .. } = cmd {
+                        Some(*tone_id)
+                    } else {
+                        None
+                    }
+                }));
+                now += tb.hop as u64;
+            }
+            assert!(
+                ids.iter().all(|id| ended.contains(id)),
+                "rate {rate}, body {method:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn remove_pending_still_emits_note_offs() {
     let mut control = VoiceControl::default();
     control.pitch.freq = 220.0;

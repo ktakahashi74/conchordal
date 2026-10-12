@@ -270,6 +270,20 @@ impl ScriptHost {
             population_spec
         });
         engine.register_fn(
+            "intrinsic_rate",
+            |mut population_spec: PopulationSpecHandle, hz: FLOAT| {
+                population_spec.spec.intrinsic_rate = Some(hz);
+                population_spec
+            },
+        );
+        engine.register_fn(
+            "intrinsic_rate",
+            |mut population_spec: PopulationSpecHandle, hz: INT| {
+                population_spec.spec.intrinsic_rate = Some(hz as FLOAT);
+                population_spec
+            },
+        );
+        engine.register_fn(
             "rhythm_role",
             |call_ctx: NativeCallContext,
              mut population_spec: PopulationSpecHandle,

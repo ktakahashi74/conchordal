@@ -98,6 +98,7 @@ struct PopulationSpec {
     pulse_sync: Option<f32>,
     social_coupling: Option<f32>,
     entrainment: Option<f32>,
+    intrinsic_rate: Option<FLOAT>,
     rhythm_role: Option<RhythmRole>,
     microtiming: Option<f32>,
     measure_accent: f32,
@@ -142,6 +143,7 @@ impl PopulationSpec {
             pulse_sync: None,
             social_coupling: None,
             entrainment: None,
+            intrinsic_rate: None,
             rhythm_role: None,
             microtiming: None,
             measure_accent: 0.0,
@@ -1532,6 +1534,26 @@ impl ScriptContext {
                 "respawn_capacity must be >= founder count".into(),
                 position,
             )));
+        }
+        if let Some(rate) = population_spec.spec.intrinsic_rate.take() {
+            if let PhonationTiming::Coupled(timing) =
+                &mut population_spec.spec.phonation_spec.timing
+                && timing.relation == RhythmRelation::Participating
+            {
+                let max = crate::life::phonation_engine::MAX_ONSET_RATE_HZ as FLOAT;
+                if !rate.is_finite() || !(0.01..=max).contains(&rate) {
+                    return Err(Box::new(EvalAltResult::ErrorRuntime(
+                        format!(
+                            "intrinsic_rate(hz) requires a finite value within 0.01..={max} Hz; these are execution protection limits, not a musically recommended range"
+                        )
+                        .into(),
+                        position,
+                    )));
+                }
+                timing.base_rate_hz = rate as f32;
+            } else {
+                warn!("intrinsic_rate() ignored outside entrained()/flow()");
+            }
         }
         population_spec
             .spec

@@ -2139,6 +2139,188 @@ mod tests {
     use std::collections::BinaryHeap;
 
     #[test]
+    fn intrinsic_rate_scales_duration_rest_prediction_and_preserves_all_note_ends() {
+        let fs = 48_000;
+        for rate in [(1.0 / 2.128) as f32, 2.0] {
+            let t0 = 1.0 / f64::from(rate);
+            for (depth, length) in [(0., 1), (0.65, 3)] {
+                let config = PhonationConfig {
+                    mode: PhonationMode::Gated,
+                    onset: OnsetConfig::Always { strength: 1. },
+                    duration: DurationConfig::FixedGate {
+                        length_gates: length,
+                    },
+                    clock: PhonationClockConfig::Participation {
+                        coupling: 0.8,
+                        base_rate_hz: rate,
+                        flow_depth: depth,
+                    },
+                    measure_accent: 0.,
+                };
+                let mut engine = PhonationEngine::from_config(&config, 21);
+                assert_eq!(
+                    engine.clock.fixed_period_ticks(fs as f32),
+                    Some(t0 * fs as f64)
+                );
+                let mut cmds = Vec::new();
+                let mut events = Vec::new();
+                let mut onsets = Vec::new();
+                let active_until = 20 * fs as u64;
+                for now in (0..(active_until + 8 * fs as u64)).step_by(512) {
+                    let ctx = CoreTickCtx {
+                        now_tick: now,
+                        frame_end: now + 512,
+                        fs: fs as f32,
+                        rhythms: NeuralRhythms::default(),
+                    };
+                    engine.tick(
+                        &ctx,
+                        &CoreState {
+                            is_alive: now < active_until,
+                            onset_allowed: now < active_until,
+                        },
+                        None,
+                        0.,
+                        1.,
+                        None,
+                        &mut cmds,
+                        &mut events,
+                        &mut onsets,
+                    );
+                }
+                assert!(!events.is_empty());
+                let PhonationClock::Participation(clock) = &engine.clock else {
+                    panic!()
+                };
+                // Prediction is f32 and Off ticks are integers: one sample bounds both roundings.
+                assert!(
+                    (f64::from(clock.hold_theta / clock.base_rate_hz) - length as f64 * t0).abs()
+                        * fs as f64
+                        <= 1.
+                );
+                let offs: Vec<_> = cmds
+                    .iter()
+                    .filter_map(|cmd| {
+                        if let ToneCmd::Off { tone_id, off_tick } = cmd {
+                            Some((*tone_id, *off_tick))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                for event in &events {
+                    let off = offs.iter().find(|(id, _)| *id == event.tone_id).unwrap().1;
+                    assert!(
+                        ((off - event.onset_tick) as f64 - length as f64 * t0 * fs as f64).abs()
+                            <= 1.
+                    );
+                }
+                assert_eq!(events.len(), offs.len());
+                engine.sustain_participation = true;
+                engine.enable_rest(&DurationConfig::FixedGate { length_gates: 1 }, 1.);
+                engine.rest.as_mut().unwrap().phase = RestPhase::Waiting(active_until);
+                engine.rest_tail_finished(active_until + 512, fs as f32);
+                let RestPhase::Gap {
+                    origin,
+                    until: Some(until),
+                } = engine.rest.unwrap().phase
+                else {
+                    panic!()
+                };
+                assert_eq!(until - origin, (t0 * fs as f64).round() as u64);
+                engine.rest_resume(until - 1);
+                assert!(matches!(engine.rest.unwrap().phase, RestPhase::Gap { .. }));
+                engine.rest_resume(until);
+                assert_eq!(engine.rest.unwrap().phase, RestPhase::Ready);
+            }
+        }
+    }
+
+    #[test]
+    fn intrinsic_rate_adds_no_participation_allocations_after_clock_initialization() {
+        for rate in [(1.0 / 2.128) as f32, 2.0, 200.0] {
+            let config = PhonationConfig {
+                mode: PhonationMode::Gated,
+                onset: OnsetConfig::Always { strength: 1. },
+                duration: DurationConfig::FixedGate { length_gates: 1 },
+                clock: PhonationClockConfig::Participation {
+                    coupling: 0.05,
+                    base_rate_hz: rate,
+                    flow_depth: 0.,
+                },
+                measure_accent: 0.,
+            };
+            let mut engine = PhonationEngine::from_config(&config, 21);
+            let mut cmds = Vec::with_capacity(64);
+            let mut events = Vec::with_capacity(64);
+            let mut onsets = Vec::with_capacity(64);
+            // Existing grid, field and Off storage first allocate at the first onset.
+            let warmup_hops = (48000. / f64::from(rate)).ceil() as u64 / 512 + 2;
+            let mut warmed = None;
+            for hop in 0..warmup_hops {
+                cmds.clear();
+                events.clear();
+                onsets.clear();
+                let ctx = CoreTickCtx {
+                    now_tick: hop * 512,
+                    frame_end: (hop + 1) * 512,
+                    fs: 48000.,
+                    rhythms: NeuralRhythms::default(),
+                };
+                engine.tick(
+                    &ctx,
+                    &CoreState {
+                        is_alive: true,
+                        onset_allowed: true,
+                    },
+                    None,
+                    0.,
+                    1.,
+                    None,
+                    &mut cmds,
+                    &mut events,
+                    &mut onsets,
+                );
+                if !events.is_empty() {
+                    warmed = Some(hop + 1);
+                    break;
+                }
+            }
+            let warmed = warmed.expect("participation must process its first onset");
+            crate::runtime_profile::begin_allocations();
+            for hop in warmed..warmed + 1000 {
+                cmds.clear();
+                events.clear();
+                onsets.clear();
+                let ctx = CoreTickCtx {
+                    now_tick: hop * 512,
+                    frame_end: (hop + 1) * 512,
+                    fs: 48000.,
+                    rhythms: NeuralRhythms::default(),
+                };
+                engine.tick(
+                    &ctx,
+                    &CoreState {
+                        is_alive: true,
+                        onset_allowed: true,
+                    },
+                    None,
+                    0.,
+                    1.,
+                    None,
+                    &mut cmds,
+                    &mut events,
+                    &mut onsets,
+                );
+            }
+            if let Some(counts) = crate::runtime_profile::finish_allocations() {
+                assert_eq!(counts.count, 0, "rate {rate}: {counts:?}");
+                assert_eq!(counts.bytes, 0, "rate {rate}: {counts:?}");
+            }
+        }
+    }
+
+    #[test]
     fn participation_predictions_require_issued_onsets_and_keep_the_original_forecast() {
         let forecast = TemporalForecast::energy_fixture(1000, 1000, |_| [0.4, 0.2, 0.1]);
         for allowed in [false, true] {

@@ -116,6 +116,207 @@ fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
 }
 
 #[test]
+fn intrinsic_rate_resolves_at_creation_independent_of_builder_order() {
+    for body in ["sine", "harmonic", "modal"] {
+        for preset in ["entrained()", "flow()"] {
+            for chain in [
+                format!("intrinsic_rate(1.0/2.128).sustain().{preset}"),
+                format!("sustain().intrinsic_rate(1.0/2.128).{preset}"),
+                format!("sustain().{preset}.intrinsic_rate(1.0/2.128)"),
+            ] {
+                for script in [
+                    format!("create({body}().{chain},1);"),
+                    format!("place({body}().{chain},at(330.0));"),
+                ] {
+                    let spec = first_spawn_spec_for_script(&script);
+                    let PhonationTiming::Coupled(timing) = spec.control.phonation.spec.timing
+                    else {
+                        panic!("{script}")
+                    };
+                    assert_eq!(timing.relation, RhythmRelation::Participating);
+                    assert_eq!(timing.base_rate_hz, (1.0 / 2.128) as f32);
+                    assert!(spec.control.phonation.spec.is_sustained_participation());
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn intrinsic_rate_rejects_invalid_inputs_before_creating_a_population() {
+    for preset in ["entrained()", "flow()"] {
+        for placement in ["create(sine().CHAIN,1);", "place(sine().CHAIN,at(330.0));"] {
+            for rate in [
+                -1.0,
+                0.0,
+                0.005,
+                0.00999999999999,
+                200.00000000001,
+                201.0,
+                FLOAT::NAN,
+                FLOAT::INFINITY,
+                FLOAT::NEG_INFINITY,
+            ] {
+                let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
+                let mut engine = ScriptHost::create_engine(ctx.clone());
+                engine.register_fn("test_rate", move || rate);
+                let script =
+                    placement.replace("CHAIN", &format!("intrinsic_rate(test_rate()).{preset}"));
+                let error = engine.eval::<Dynamic>(&script).unwrap_err().to_string();
+                assert!(error.contains("intrinsic_rate(hz)"), "{error}");
+                assert!(error.contains("0.01..=200 Hz"), "{error}");
+                assert!(error.contains("execution protection limits"), "{error}");
+                assert!(
+                    error.contains("not a musically recommended range"),
+                    "{error}"
+                );
+                let context = ctx.lock().unwrap();
+                assert!(context.populations.is_empty());
+                assert!(context.scenario.events.is_empty());
+            }
+        }
+        for value in ["0.01", "1", "2.0", "200"] {
+            let spec = first_spawn_spec_for_script(&format!(
+                "create(sine().{preset}.intrinsic_rate({value}),1);"
+            ));
+            let PhonationTiming::Coupled(timing) = spec.control.phonation.spec.timing else {
+                panic!()
+            };
+            assert_eq!(timing.base_rate_hz, value.parse::<f32>().unwrap());
+        }
+        for value in ["0", "-1", "201"] {
+            assert!(
+                run_script_err(&format!(
+                    "create(sine().{preset}.intrinsic_rate({value}),1);"
+                ))
+                .to_string()
+                .contains("intrinsic_rate(hz)")
+            );
+        }
+    }
+}
+
+#[test]
+fn intrinsic_rate_unsupported_presets_ignore_even_invalid_values_without_a_live_setter() {
+    for chain in [
+        "once()",
+        "repeat()",
+        "pulse(1.7)",
+        "metric()",
+        "entrainment(0.5)",
+    ] {
+        let plain = first_spawn_spec_for_script(&format!(
+            "create(sine().{chain},1); temporal_basin(2.8,3.4);"
+        ));
+        for value in ["0.0", "4.0"] {
+            let ignored = first_spawn_spec_for_script(&format!(
+                "create(sine().intrinsic_rate({value}).{chain},1); temporal_basin(2.8,3.4);"
+            ));
+            assert_eq!(ignored.control.phonation.spec, plain.control.phonation.spec);
+        }
+    }
+    let error = run_script_err(
+        "let p=create(sine().entrained().intrinsic_rate(4),1); p.intrinsic_rate(2);",
+    );
+    assert!(error.to_string().contains("intrinsic_rate"));
+}
+
+#[test]
+fn intrinsic_rate_omission_matches_explicit_existing_default_and_keeps_rhythm_freq_distinct() {
+    for preset in ["entrained()", "flow()"] {
+        let plain = first_spawn_spec_for_script(&format!("create(sine().{preset},1);"));
+        let explicit =
+            first_spawn_spec_for_script(&format!("create(sine().{preset}.intrinsic_rate(2),1);"));
+        assert_eq!(format!("{plain:?}"), format!("{explicit:?}"));
+        let spec = first_spawn_spec_for_script(&format!(
+            "create(sine().{preset}.rhythm_freq(1.3).intrinsic_rate(4),1);"
+        ));
+        let PhonationTiming::Coupled(timing) = spec.control.phonation.spec.timing else {
+            panic!()
+        };
+        assert_eq!(timing.base_rate_hz, 4.0);
+        assert!(matches!(spec.articulation,
+            ArticulationCoreConfig::Entrain { rhythm_freq: Some(rate), .. } if rate == 1.3));
+    }
+}
+
+#[test]
+fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
+    use crate::life::phonation_engine::PhonationClock;
+    use crate::life::shape_policy::Shape;
+    for body in ["sine", "harmonic", "modal"] {
+        let (scenario, _) = run_script_with_seed(
+            &format!(
+                "create({body}().sustain().entrained().intrinsic_rate(1.0/2.128).pitch_apply_mode(\"rearticulate\").rearticulate_above(50).articulation_persistence(0.75).respawn_random().respawn_background_death_rate(10000.0),1);"
+            ),
+            21,
+        );
+        let mut community = Community::new(Timebase {
+            fs: 48000.,
+            hop: 257,
+        });
+        community.set_seed(scenario.seed);
+        let landscape = LandscapeFrame::default();
+        for action in scenario.events.iter().flat_map(|event| &event.actions) {
+            if matches!(
+                action,
+                Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+            ) {
+                community.apply_action(action.clone(), &landscape, None);
+            }
+        }
+        let parent = community.voices[0].id();
+        let period = community.voices[0]
+            .phonation_engine
+            .clock
+            .intrinsic_period_sec();
+        assert_eq!(period, Some(1.0 / f64::from((1.0 / 2.128) as f32)));
+        // Perturb the live parent's clock; descendants must still read the template.
+        let mut changed = community.voices[0].effective_control.phonation.spec.clone();
+        let PhonationTiming::Coupled(timing) = &mut changed.timing else {
+            panic!()
+        };
+        timing.base_rate_hz = 1.3;
+        community.voices[0]
+            .phonation_engine
+            .update_from_spec(&changed);
+        assert_ne!(
+            community.voices[0]
+                .phonation_engine
+                .clock
+                .intrinsic_period_sec(),
+            period
+        );
+        let PhonationClock::Participation(clock) = &mut community.voices[0].phonation_engine.clock
+        else {
+            panic!()
+        };
+        let shape = clock.shape.as_mut().unwrap();
+        shape.state = Shape::Connect;
+        shape.veto_plan = true;
+        shape.has_tone = true;
+        community.advance(257, 48000., 0, 257. / 48000., &landscape);
+        community.cleanup_dead(0, 257. / 48000., false, &landscape);
+        let children: Vec<_> = community
+            .voices
+            .iter()
+            .filter(|v| v.id() != parent)
+            .collect();
+        assert!(!children.is_empty());
+        for child in children {
+            assert_eq!(child.phonation_engine.clock.intrinsic_period_sec(), period);
+            let PhonationClock::Participation(clock) = &child.phonation_engine.clock else {
+                panic!()
+            };
+            assert!(clock.policy.is_none());
+            let shape = clock.shape.as_ref().unwrap();
+            assert_eq!(shape.state, Shape::Base);
+            assert!(!shape.veto_plan && !shape.has_tone);
+        }
+    }
+}
+
+#[test]
 fn cli_seed_is_used_when_script_has_no_seed_call() {
     let (scenario, _warnings) = run_script_with_seed(
         r#"

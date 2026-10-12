@@ -1,5 +1,5 @@
 // Sample 7 — Heartbeat
-// No external scaffold is imposed; the population locks into a shared pulse.
+// A downbeat Voice marks the pulse; the colony follows the beat it hears.
 
 let root_hz = 220.0;
 

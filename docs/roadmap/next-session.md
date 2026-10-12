@@ -129,3 +129,21 @@ mainの基準は`217c7e8`。実装先は`.worktrees/t13-meter-recurrence-2026101
 現在の判断は[計画の追記](plan-current.md#metric-basin-initial-rate-20261011)と[台帳§9.3.68](../design-notes/technote-ledger.ja.md#metric-basin-initial-rate-20261011)。上のT-13の採用待ち・F2未決は当時の記録である。採択済みの形はC＋hardであり、Cはmetricだけ、再生成はPopulationの初期設定、basinはsceneの最後の一値、明示Pulseは対象外とする。
 
 T-16着手時のmainは`217c7e8`、統括のF1統合後は`c2b8308`だった。T-16はそのT-13の最終先端の上の`work/t16-basin-voice-rate-20261011-v1`へ実装し、2026-10-11 08:46に統括がmainの`000b884`へfast-forwardで統合した。機械に固有の`.orchestration/units/T-16/report.md`にcommit、検査、12 étudeの照合を記す。timing lockが保持されている間はcargo・test・renderを始めない。最終sourceの全テスト1,044件と二つの18条件のassay、F3は通過した。既定の12 étudeはT-13とWAV・意味のreportが一致したため、実時間は取得済みのT-13の四構成で足りる。実機の計測は取り直していない。共有checkoutのテスト記録はT-16の最終記録へ置き換えた。branchの完了、mainへの統合、push、作者の試聴は区別する。
+
+
+<a id="polyphonic-samples-author-selection-20261012"></a>
+
+### 2026-10-12：採った四本のサンプルと残る不足
+
+作者はE-2の四本を以前のsamplesより音楽的と評し、E-3との聴き比べでも四本ともE-2を選んだ。
+Three Windowsでは「動きがすくなくなってpolyphony感がへってる」、ほかも程度の差はあるが同様、
+という答えである。E-3の境界・身体速度・参加への変換・tieの改稿は採らず、E-2の順で
+Three Windows、Stone and Wire、Folded Air、Open Courtを13〜16に置いた。先頭comment以外の
+codeと既存12本を保ち、サンプル集を16本とした。intrinsic_rate・tie・rearticulate_aboveは
+既定の挙動を変えず、作曲者が選べる語として残す。
+
+朝の正常性の問いを消す依頼と読んだ誤り、Three Windowsの複数の変更を一つに重ねて
+原因を切り分けられなかった誤りは、保存記録とともに[台帳§9.3.77](../design-notes/technote-ledger.ja.md#polyphonic-samples-author-selection-20261012)へ記した。
+発音数だけで作者の「動き」を測らず、抜けと格子からのずれを分ける。13〜16の実機の実時間、
+特に9体のOpen Courtと、別seedの作者の試聴は未確認である。同期と発音方策の同一Voice合成、
+強い時刻応答と規則的な列、独立した強弱の弧は残る。機械に固有のS-1報告に検査と保存音の照合を置く。

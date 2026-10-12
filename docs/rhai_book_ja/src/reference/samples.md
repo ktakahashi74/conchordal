@@ -1,6 +1,6 @@
 # サンプル
 
-12個の小さなサンプルを、順番に並べています。実行してscriptを読み、instrumentの主な機能を
+16個の小さなサンプルを、順番に並べています。実行してscriptを読み、instrumentの主な機能を
 一つずつ確認するためのものです。音楽作品ではなく、APIと挙動のデモです。
 
 ```bash
@@ -19,10 +19,16 @@ cargo run --release -- samples/01_a_single_voice.rhai
 10. **Generations** — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。
 11. **Autumn Cycle** — directionを持つharmony。季節が巡り戻る。
 12. **Emergence and Resolution** — Populationの探索が強まり、再び落ち着く。専用の拍打ちは置かず、Voice自身の発音がリズムの入力を担う。
+13. **Three Windows** — 三本の線が音高を採用するたびに発音し、それぞれの扉から去る。
+14. **Stone and Wire** — 拍を刻む二つのVoiceの間を、独立した線が横切る。
+15. **Folded Air** — 相手が休みを置いて戻り、区間ごとに発音の形を変える。
+16. **Open Court** — やや密な群れが、独立した二本の道の周りへ集まる。
 
 サンプル1–6はConsonance terrain（placement、gravity、tension、movement、timbre）、
 7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–12は複数の
-mechanismを組み合わせます。全サンプルはtest suiteでcompile-checkされ、現在のAPIとの
+mechanismを組み合わせます。13–16は、採用ごとに発音する線、拍を刻むVoiceと横切る線、
+休む相手と区間ごとの発音の切り替え、やや密な群れを示します。
+全サンプルはtest suiteでcompile-checkされ、現在のAPIとの
 不一致を検出します。最上位のサンプルは意図的に`seed(...)`を呼ばず、毎runを新しい
 scenario seedで始めます。
 比較を再現可能にする必要があるresearch assayだけが固定seedを使います。

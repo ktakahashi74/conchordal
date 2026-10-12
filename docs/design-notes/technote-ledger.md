@@ -7786,6 +7786,78 @@ selection remain absent. Sources: machine-local A-11 registration/report and
 saved traces, V-10 brief and native test/comparison records. No earlier acquisition
 or author's observation is overwritten.
 
+<a id="polyphonic-samples-author-selection-20261012"></a>
+
+### 9.3.77 Author selection of four polyphonic samples
+
+**Composition and hearing, 2026-10-12.** E-2 wrote four drafts using the existing
+vocabulary and conditions drawn from the author's listening: adoption-driven
+lines with different proposal intervals, metrical Voices alongside an independent
+line, a resting companion whose articulation changes between sections, and a
+denser crowd. The default coupled participation was reserved for an intentionally
+loose layer. No dedicated beat carrier was added. At about 10:19 the author judged
+all four more musical than the earlier samples; this is the author's evaluation
+of those materials, not a numerical or real-time acceptance result.
+
+E-3 kept the drafts' form while adding articulation boundaries and intrinsic
+bodily rates, converting Three Windows' three Hold lines to sustained
+participation, then adding `tie(1)` to those lines and Folded Air's companion.
+At about 18:55 the author preferred E-2 for all four: Three Windows had less
+movement and a reduced sense of polyphony, and the other drafts changed similarly
+to varying degrees. The E-3 revisions were not adopted. At about 19:00 the author
+chose the E-2 drafts as samples 13–16, in their original order: Three Windows,
+Stone and Wire, Folded Air, Open Court. Only the first comment line changes to
+the sample header; the epigraph and all executable bytes remain unchanged.
+The existing twelve samples remain unchanged, and the collection now has sixteen.
+
+**Two orchestrator errors.** First, the morning questions about staccato and
+attacks without pitch movement asked whether those behaviors were normal. The
+orchestrator read them as requests to remove the behaviors and framed E-3 as a
+repair. Second, Three Windows combined boundaries, a conversion to participation
+with intrinsic rates, and later tie in one revision sequence. That comparison
+cannot isolate which change caused the author's response. These corrections
+preserve the earlier acquisition records and the judgments in §§9.3.75–76.
+
+**What the saved records establish.** In the seed-21 window 2 <= t < 72 seconds,
+Three Windows' slow/fast/middle On counts were 35/112/31 in E-2 and 34/101/31 in
+E-3's final revision. Counts changed comparatively little; they do not measure
+the author's meaning of movement. The timing and pitch descriptions also changed:
+
+| Saved version | On counts: slow/fast/middle | Moves below 50 cents | Missing multiples: slow/fast/middle |
+| --- | --- | --- | --- |
+| E-2 | 35/112/31 | 0/1/1 | 0/0/1 |
+| E-3 phase 1 | 38/107/35 | 3/4/4 | 0/0/0 |
+| E-3 phase 2 | 34/101/31 | 0/0/0 | 2/6/3 |
+
+The moves include same-pitch pairs. Missing multiples are the registered
+sum(k−1), with k=max(1,floor(IOI/T+0.5)) and T=2/0.5/1 seconds; they are not
+internal skip or tie counts. Grid displacement is recorded separately. In the
+registered common duo/trio windows, slower-to-faster simultaneous-onset fractions
+within 50 ms changed from 100% to 12.5–27.8% (about 12–28%) in phase 1 and
+12.5–25.0% in phase 2. Reverse-direction denominators give different fractions.
+Neither those numbers nor their changes identify the cause of the heard loss of
+polyphony. They do not count continuous pitch motion or establish perceptual
+independence. Folded Air's phase-2 WAV matched phase 1 despite its added tie:
+finite Off and legal no-Tone returns were preserved. The author's selection
+applies to the four complete materials, not a causal ranking of their modifiers.
+
+**Defaults and remaining scope.** `intrinsic_rate`, `tie` and
+`rearticulate_above` remain available composer choices with their existing omitted
+behavior: bodily rate 2 Hz, tie probability 0 and boundary 0. Selecting E-2 does
+not remove those mechanisms or change the existing Folded Air boundaries and
+`articulation_persistence`. Founder bodily rates can now be specified, but are not
+added to the selected scripts; fixed actual rate ratios are not guaranteed.
+Synchronization and articulation still cannot be freely composed in one metric
+Voice. Strong temporal response with a regular onset sequence remains absent,
+as does a presentation-only loudness arc independent of the ecology. These are
+the unresolved parts of E-2's four practical difficulties.
+
+The new samples' compile checks and seed-21 offline comparisons verify the code
+and the saved sound. Real-time operation of samples 13–16, especially Open Court's
+nine Voices, has not been measured. The author's preference with other seeds has
+not been established. Sources are the machine-local E-2 brief/report and saved
+outputs, E-3 registrations/report and phase comparisons, and S-1 brief/report.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

@@ -136,7 +136,7 @@ cd conchordal
 cargo run --release -- samples/12_emergence_and_resolution.rhai
 ```
 
-The alpha ships with twelve ordered samples under `samples/`. Each is a small
+The alpha ships with sixteen ordered samples under `samples/`. Each is a small
 demonstration of one or more instrument capabilities:
 
 ```bash

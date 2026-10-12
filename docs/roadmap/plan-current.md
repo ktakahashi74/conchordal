@@ -281,3 +281,21 @@ T-16はT-13の最終先端`c2b8308`から`work/t16-basin-voice-rate-20261011-v1`
 持続＋参加の明示のGateSnapも作者がA-2cの形を採った。V-3でのerrorを替え、一つの行き先を保留し、鳴らすと選ぶ機会で消費して跳び、attackする。待つ・見送るなら音高と保留を保つ。省略Glide、Rearticulateとの併用error、既存の参加の候補・費用・skipは保つ。A-2cの9場面の「打ち直して移る」1,011件を、本体の取得件数に読み替えない。
 
 V-4はA、B、文書の3 commitをbranchに用意し、live切替、取消、時刻順、継承、初期化後のVoiceの割当て、既定étudeとV-2の描画対照、試作との比較、身体と両renderer、日英の生成文書を検査した。統合は統括の別の作業であり、新しい実時間の合否や作者の試聴は含めない。Voiceがフレーズ内で一音ごとに方策を選ぶ最終形は未実装の要求として保持し、旧20単位の分母を増やさない。[台帳§9.3.71](../design-notes/technote-ledger.ja.md#articulation-boundary-and-deferred-target-20261011)と機械に固有のV-4報告を参照する。
+
+
+<a id="polyphonic-samples-author-selection-20261012"></a>
+
+### 2026-10-12：作者が選んだE-2四本をsamples/13〜16へ
+
+作者はE-2の四本を以前のsamplesより音楽的と評し、E-3との聴き比べでも四本ともE-2を選んだ。
+Three Windowsでは「動きがすくなくなってpolyphony感がへってる」、ほかも程度の差はあるが同様、
+という答えである。E-3の境界・身体速度・参加への変換・tieの改稿は採らず、E-2の順で
+Three Windows、Stone and Wire、Folded Air、Open Courtを13〜16に置いた。先頭comment以外の
+codeと既存12本を保ち、サンプル集を16本とした。intrinsic_rate・tie・rearticulate_aboveは
+既定の挙動を変えず、作曲者が選べる語として残す。
+
+朝の正常性の問いを消す依頼と読んだ誤り、Three Windowsの複数の変更を一つに重ねて
+原因を切り分けられなかった誤りは、保存記録とともに[台帳§9.3.77](../design-notes/technote-ledger.ja.md#polyphonic-samples-author-selection-20261012)へ記した。
+発音数だけで作者の「動き」を測らず、抜けと格子からのずれを分ける。13〜16の実機の実時間、
+特に9体のOpen Courtと、別seedの作者の試聴は未確認である。同期と発音方策の同一Voice合成、
+強い時刻応答と規則的な列、独立した強弱の弧は残る。機械に固有のS-1報告に検査と保存音の照合を置く。

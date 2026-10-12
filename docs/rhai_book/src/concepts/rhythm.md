@@ -161,8 +161,8 @@ let slow = harmonic().sustain().entrained().intrinsic_rate(0.5)
     .seek_consonance().pitch_apply_mode("gate_snap");
 let quick = harmonic().intrinsic_rate(2.0).sustain().flow()
     .seek_consonance().pitch_apply_mode("gate_snap");
-let a = place(slow, line(220.0, 220.0).count(1));
-let b = place(quick, line(330.0, 330.0).count(1));
+let a = place(slow, at(220.0));
+let b = place(quick, at(330.0));
 wait(6.0);
 release(a);
 release(b);

@@ -143,9 +143,27 @@ wait(12.0);
 instead of collapsing onto the same peak.
 
 The opposite of movement is `anchor()`: an anchored voice holds its pitch and
-only deforms the terrain for others. Voices placed with `at()` or given
-`freq()` are anchored implicitly; use `anchor()` to freeze strategy-placed
-voices at their settled position.
+only deforms the terrain for others. `freq()` sets an anchored pitch; use
+`anchor()` to freeze strategy-placed voices at their settled position.
+
+`at(hz)` holds a fixed pitch unless the final PopulationSpec explicitly requests
+`seek_consonance()` and remains free. For that moving Voice, it sets only the
+initial position, just as `line(hz, hz)` does, and keeps the placement count.
+For example, `place(mover, at(220.0))` starts the mover defined above at 220 Hz
+without cancelling its movement or glide settings. It specifies initial body
+pitch, not a guaranteed first audible pitch or a promise of movement.
+
+Builder order matters when changing the pitch policy:
+
+| Final builder order | Meaning of `at(hz)` |
+| --- | --- |
+| `seek_consonance()` then `freq()` | Fixed pitch |
+| `freq()` then `seek_consonance()` | Initial position |
+| `seek_consonance()` then `anchor()` | Fixed pitch |
+| `anchor()` then `seek_consonance()` | Initial position |
+
+Without explicit movement, `at()` still fixes pitch. A live Population's
+`freq()` still locks pitch during performance.
 
 How movement lands is resolved from phonation: sustained movers glide,
 re-attacking movers (`pulse()`, `metric()`, `entrained()`, `flow()`) snap to

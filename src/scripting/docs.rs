@@ -371,8 +371,12 @@ pub const FN_DOCS: &[FnDoc] = &[
         style: Style::Free,
         patch: Patch::Na,
         usage: &["at(freq_hz)"],
-        summary: "Place at a fixed frequency in Hz.",
-        details: "",
+        summary: "Place at a fixed frequency in Hz, or start an explicitly moving voice here.",
+        details: "With explicit `seek_consonance()` intent and a final free pitch mode, `at(hz)` \
+sets only the initial position, using the same placement as `line(hz, hz)` and preserving the \
+founder count. Otherwise it locks pitch as before. A later `freq()` or `anchor()` restores \
+the lock; a later `seek_consonance()` restores movement. This specifies the initial body \
+pitch, not a guaranteed first audible pitch or a promise that movement will occur.",
     },
     FnDoc {
         name: "consonance",
@@ -970,7 +974,10 @@ economy is the timeout.",
         patch: Patch::Initial,
         usage: &["anchor()"],
         summary: "Hold the voice at its pitch: an anchored voice never moves.",
-        details: "Voices placed with `at()` or given `freq()` are anchored implicitly; use \
+        details: "`at()` anchors implicitly unless the final spec explicitly seeks consonance \
+and remains free; in that case it sets only the initial position. `freq()` still sets an \
+anchored pitch. A later `anchor()` or `freq()` overrides movement, while a later \
+`seek_consonance()` restores it. Use \
 `anchor()` to hold strategy-placed voices (`consonance()`, `dissonance()`, ...) at their settled \
 position, or to state the intent explicitly.",
     },
@@ -982,7 +989,10 @@ position, or to state the intent explicitly.",
         patch: Patch::Initial,
         usage: &["seek_consonance()"],
         summary: "Free hill-climb movement toward better field positions, with glide defaults.",
-        details: "How pitch decisions land is resolved at placement unless `pitch_apply_mode()` \
+        details: "With this explicit intent and a final free pitch mode, `at(hz)` sets only \
+the initial position. A later `freq()` or `anchor()` restores the lock; calling \
+`seek_consonance()` after either restores movement. How pitch decisions land is resolved \
+at placement unless `pitch_apply_mode()` \
 was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, \
 `entrained()`, `flow()`) snap at onsets.",
     },

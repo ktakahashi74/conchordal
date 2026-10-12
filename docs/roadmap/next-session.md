@@ -179,3 +179,15 @@ codeと既存12本を保ち、サンプル集を16本とした。intrinsic_rate�
 
 今回、beta-evaluation.mdの08を「同期の立ち上がり」の評価対象とする行は直していない。
 時間の聴き手のモデルの開いた問いとして、同じ取得で作者の印象と拍の確からしさの読みが一致しなかった原因は未確認であり、数から決めず、新しい単位・検査は起こさない。
+
+
+### 2026-10-12：atと明示の移動
+
+作者が22:57頃に採ったA-13のC1により、seek_consonanceの明示の意図とFreeが
+配置時に残るVoiceでは、at(f)は初期位置だけを指定する。既定のVoiceや、後から
+freq／anchorで固定へ戻したVoiceは従来の固定atとなる。freq→seekとanchor→seekは
+初期位置、seek→freqとseek→anchorは固定音高である。新しい配置語は無い。
+
+初期配置の語彙の穴を未処理として再開しない。V-11の保存音の照合とgroundの扱い、
+検査・未確認の範囲は[台帳§9.3.78](../design-notes/technote-ledger.ja.md#at-initial-explicit-movement-20261012)と
+機械に固有のV-11報告を読む。作者の新しい試聴や実機の実時間の受入とは分ける。

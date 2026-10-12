@@ -127,7 +127,26 @@ wait(12.0);
 
 `avoid_neighbors(strength)`は混雑を避ける反発を加え、移動するVoiceがすべて同じ山へ重なるのを防ぎます。
 移動の反対は`anchor()`です。固定されたVoiceは音高を保ち、ほかのVoiceが読むConsonance Fieldだけを
-変形します。`at()`または`freq()`で指定したVoiceは暗黙に固定されます。
+変形します。`freq()`は音高を固定し、`anchor()`は配置で選ばれた音高を保ちます。
+
+`at(hz)`も通常は音高を固定します。ただし、配置するPopulationSpecに明示の
+`seek_consonance()`の意図が残り、音高が自由のままなら、初期位置だけを指定します。
+この場合は`line(hz, hz)`と同じ配置となり、指定した人数も保ちます。たとえば、
+上の`mover`を`place(mover, at(220.0))`で置くと、移動や滑りの指定を保って220 Hzから
+始めます。指定するのは身体の初期音高で、最初に聴こえる音高や、その後の移動を保証する
+指定ではありません。
+
+音高の方策を変えるときは、書く順で最終の指定が決まります。
+
+| 最後に書いた指定の順 | `at(hz)`の意味 |
+| --- | --- |
+| `seek_consonance()` → `freq()` | 固定音高 |
+| `freq()` → `seek_consonance()` | 初期位置 |
+| `seek_consonance()` → `anchor()` | 固定音高 |
+| `anchor()` → `seek_consonance()` | 初期位置 |
+
+動く指定を明示しなければ、`at()`は音高を固定します。演奏中のPopulationの`freq()`も、
+従来どおり音高を固定します。
 
 移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
 （`pulse()`、`metric()`、`entrained()`、`flow()`）は発音開始ごとに新しい音高へ

@@ -369,7 +369,8 @@ in `src/scenario.rs`.
   build `SpawnStrategy::Field` with `FieldTarget::Consonance` / `Dissonance` /
   `Edge` / `Gap` / `Uniform` respectively (`src/scenario.rs`).
 - `line(lo, hi)` builds `SpawnStrategy::Linear`.
-- `at(freq)` places at a fixed frequency.
+- `at(freq)` fixes pitch unless the final spec retains explicit `seek_consonance()`
+  intent and Free pitch; for that mover it sets only the initial position.
 - `consonance(root)` also has a one-argument root form; `.range(min_mul, max_mul)`
   is the multiplier band around that root.
 - Modifiers: `.peak()` / `.density()` set `FieldSampling` (`src/scenario.rs`;

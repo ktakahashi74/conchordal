@@ -120,3 +120,13 @@ and may be tuned; they are the v0.4 starting point, not a frozen choice.
   piece needs it (YAGNI until then).
 - Whether `edge` should track the level midpoint (used here) or the gradient of
   the consonance field; revisit if the boundary band reads wrong on audition.
+
+## 2026-10-12: explicit movement with `at()`
+
+Placement and movement remain separate choices. `at(f)` locks pitch unless the
+final PopulationSpec retains explicit `seek_consonance()` intent and Free pitch.
+For that mover it supplies only the initial position, using the existing
+equal-endpoint Linear placement and retaining the founder count. A later freq
+or anchor restores locking; a later seek restores movement. No placement word
+was added. See [ledger §9.3.78](technote-ledger.md#at-initial-explicit-movement-20261012)
+for the author decision, builder-order table and validation scope.

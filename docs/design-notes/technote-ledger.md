@@ -7960,6 +7960,67 @@ operation remain unverified. The review's materials are in the machine-local
 `samples-review-20261012/` and reused saved runs; the adopted scope and findings
 are recorded in `S-1/brief-2.md`, with preservation evidence in `S-1/report.md`.
 
+
+<a id="at-initial-explicit-movement-20261012"></a>
+
+### 9.3.78 Initial placement with `at()` for explicitly moving Voices
+
+**Problem and decision.** Samples 13–16 used twelve equal-endpoint
+`line(f, f).count(1)` placements; eleven preserved free movement and one placed
+an explicit anchor. Combining `seek_consonance()` with `at()` silently locked
+pitch, so the initial E-2 acquisition did not realize its movement intent.
+A-13 compared documentation alone, an unlocking placement modifier, conditional
+or unconditional changes to `at()`, a separate placement word, the existing
+freq→seek/create path, and a one-argument line shorthand. Its scoped inventory
+found 125 at call sites, 45 relying only on implicit locking, and no existing
+example whose final spec combined explicit seek intent and free pitch at at.
+These are source call-site counts, not Voice counts or measured sound changes.
+
+On 2026-10-12 at approximately 22:57, the author adopted C1: honor explicit
+movement at placement without adding a new word. The unconditional change C2
+and the new-word recommendation D were not adopted.
+
+**Implemented rule.** At placement, explicit seek intent plus a final Free
+PitchMode makes `at(f)` lower to the same equal-endpoint Linear placement as
+`line(f, f)`, retaining the requested founder count and all pitch controls.
+Every other at placement still locks pitch. The resolution is in
+`place_population_spec`; no SpawnStrategy, PitchMode, random stream, hop state
+or runtime path was added.
+
+| Builder order before `place(..., at(f))` | Result |
+| --- | --- |
+| seek_consonance → freq | Fixed pitch |
+| freq → seek_consonance | Initial position, free pitch |
+| seek_consonance → anchor | Fixed pitch |
+| anchor → seek_consonance | Initial position, free pitch |
+| No explicit movement | Fixed pitch |
+
+Builder and live freq still lock pitch; anchor, create without placement, other
+placement words and the exclusion of at from respawn_settle retain their
+meanings. Initial body pitch is specified, not a guaranteed first audible
+pitch or subsequent movement.
+
+**Validation.** Five added tests cover builder order and default locking,
+founder counts, full scenario equivalence with custom pitch controls, target
+adoption from the initial pitch, create/live freq, and supported tie/persistence
+without ignored warnings. Unsupported fixed controls still warn, and
+respawn_settle still rejects at. Existing test expectations were not changed.
+The final feature-free test command and book builds are recorded in the V-11 report.
+
+All sixteen unchanged scripts match their retained WAV and ordered report
+controls with the updated renderer. The four revised scripts also match E-2,
+using the same renderer, empty config and seed 21; only hop_timing is excluded.
+Sample 13's explicit anchor remains fixed with at(220.0), and its acquired output
+is identical despite the placement strategy change. All twelve sample placements
+and the two rhythm examples in each book therefore use at. Other sample tokens,
+samples 1–12, research scripts and test scripts were retained.
+
+Other seeds, configurations and external scripts were not acquired. These
+comparisons establish preservation of the selected material, not a new audition
+or real-time acceptance. Initial position does not guarantee movement or the
+first audible pitch. Machine-local inputs, renderer pin and comparisons are
+retained under V-11; earlier diagnostic acquisitions are unchanged.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

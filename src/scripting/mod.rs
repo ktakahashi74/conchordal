@@ -116,6 +116,7 @@ struct PopulationSpec {
     rhythm_freq: Option<f32>,
     consonance_movement: bool,
     pitch_apply_mode_user_set: bool,
+    tie_user_set: bool,
     explicit_sustain: bool,
     explicit_metric: bool,
 }
@@ -162,6 +163,7 @@ impl PopulationSpec {
             rhythm_freq: None,
             consonance_movement: false,
             pitch_apply_mode_user_set: false,
+            tie_user_set: false,
             explicit_sustain: false,
             explicit_metric: false,
         }
@@ -311,6 +313,21 @@ impl PopulationSpec {
                 }
             };
             control.pitch.set_pitch_apply_mode(apply);
+        }
+        if !self.tie_user_set
+            && self.explicit_metric
+            && control.pitch.mode == PitchMode::Free
+            && control.phonation.spec.is_sustained_participation()
+            && matches!(
+                control.phonation.spec.timing,
+                PhonationTiming::Coupled(CoupledTimingSpec {
+                    relation: RhythmRelation::Synchronized,
+                    ..
+                })
+            )
+        {
+            // Keep the existing policy dormant in Glide for a later mode switch.
+            control.phonation.tie = 1.0;
         }
         VoiceSpec {
             control,
@@ -474,6 +491,7 @@ impl PopulationSpec {
     }
 
     fn set_tie(&mut self, value: f32) {
+        self.tie_user_set = true;
         self.control.phonation.tie = crate::core::float::sanitize01(value);
     }
 

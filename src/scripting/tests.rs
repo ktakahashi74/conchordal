@@ -4194,6 +4194,259 @@ fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
 }
 
 #[test]
+fn synchronized_tie_default_resolves_omission_and_explicit_values_in_final_specs() {
+    for body in ["sine", "harmonic", "modal"] {
+        for mode in ["gate_snap", "rearticulate"] {
+            let words = [
+                "sustain()",
+                "metric()",
+                &format!("pitch_apply_mode(\"{mode}\")"),
+            ];
+            for order in [
+                [0, 1, 2],
+                [0, 2, 1],
+                [1, 0, 2],
+                [1, 2, 0],
+                [2, 0, 1],
+                [2, 1, 0],
+            ] {
+                let chain = order.map(|i| words[i]).join(".");
+                for place in [false, true] {
+                    let script = |extra: &str| {
+                        let builder = format!("{body}().{chain}{extra}");
+                        if place {
+                            format!("place({builder},line(330.0,330.0));")
+                        } else {
+                            format!("create({builder},1);")
+                        }
+                    };
+                    let omitted = run_script_with_seed(&script(""), 21).0;
+                    let explicit = run_script_with_seed(&script(".tie(1)"), 21).0;
+                    assert_eq!(format!("{omitted:?}"), format!("{explicit:?}"));
+                    for value in [0., 0.5, 1.] {
+                        for builder in [
+                            format!("{body}().tie({value}).{chain}"),
+                            format!("{body}().{chain}.tie({value})"),
+                        ] {
+                            let src = if place {
+                                format!("place({builder},line(330.0,330.0));")
+                            } else {
+                                format!("create({builder},1);")
+                            };
+                            assert_eq!(
+                                first_spawn_spec_for_script(&src).control.phonation.tie,
+                                value
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for chain in [
+        "sustain().metric().cycles(1).rest()",
+        "rest().cycles(1).metric().sustain()",
+    ] {
+        let src = format!("create(sine().{chain}.pitch_apply_mode(\"gate_snap\"),1);");
+        assert_eq!(first_spawn_spec_for_script(&src).control.phonation.tie, 1.);
+    }
+    for chain in [
+        "sustain().entrained().pitch_apply_mode(\"gate_snap\")",
+        "sustain().flow().pitch_apply_mode(\"rearticulate\")",
+        "sustain().metric().anchor().pitch_apply_mode(\"gate_snap\")",
+        "sustain().metric().cycles(1)",
+        "metric().while_alive()",
+        "entrainment(0.5).sustain()",
+        "sustain().entrainment(0.5).cycles(1).rest().pitch_apply_mode(\"gate_snap\")",
+    ] {
+        let script = |extra: &str| format!("create(sine().{chain}{extra},1);");
+        let omitted = run_script_with_seed(&script(""), 21).0;
+        let explicit = run_script_with_seed(&script(".tie(0)"), 21).0;
+        assert_eq!(format!("{omitted:?}"), format!("{explicit:?}"));
+        assert_eq!(
+            first_spawn_spec_for_script(&script(""))
+                .control
+                .phonation
+                .tie,
+            0.
+        );
+    }
+}
+
+#[test]
+fn synchronized_tie_default_sound_and_live_modes_use_existing_policy() {
+    use crate::core::log2space::Log2Space;
+    use crate::core::modulation::NeuralRhythms;
+    use crate::life::voice::PhonationBatch;
+    let tb = Timebase {
+        fs: 48000.,
+        hop: 512,
+    };
+    let spawn = |mode: &str, tie: &str| {
+        let (scene, _) = run_script_with_seed(
+            &format!(
+                "create(sine().brain(\"drone\").sustain().metric().pitch_apply_mode(\"{mode}\"){tie},1);"
+            ),
+            21,
+        );
+        let mut c = Community::new(tb);
+        c.set_seed(21);
+        for action in scene.events.iter().flat_map(|e| &e.actions) {
+            if matches!(action, Action::Spawn { .. }) {
+                c.apply_action(action.clone(), &LandscapeFrame::default(), None);
+            }
+        }
+        c.voices.remove(0)
+    };
+    let space = Log2Space::new(55., 8000., 96);
+    let rhythms = NeuralRhythms::default();
+    let mut default = spawn("gate_snap", "");
+    let mut one = spawn("gate_snap", ".tie(1)");
+    let mut zero = spawn("gate_snap", ".tie(0)");
+    let mut glide = spawn("glide", "");
+    let mut glide_zero = spawn("glide", ".tie(0)");
+    let mut counts = [0; 5];
+    for i in 0..200 {
+        let mut sounded = Vec::new();
+        for (index, v) in [
+            &mut default,
+            &mut one,
+            &mut zero,
+            &mut glide,
+            &mut glide_zero,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut out = PhonationBatch::default();
+            v.prepare_phonation_batch(&mut out);
+            v.tick_phonation_into_with_arrival(
+                &tb,
+                i * 512,
+                &rhythms,
+                None,
+                0.,
+                1.,
+                0.8,
+                None,
+                Some(&space),
+                &mut out,
+            );
+            counts[index] += out.onsets.len();
+            sounded.push(format!("{:?}", out.onsets));
+        }
+        assert_eq!(sounded[0], sounded[1]);
+        assert_eq!(sounded[3], sounded[4]);
+    }
+    assert_eq!(counts[0], 1);
+    assert!(counts[2] > 1);
+    assert_eq!(counts[2], counts[3]);
+    for (segment, mode) in [
+        PitchApplyMode::GateSnap,
+        PitchApplyMode::Glide,
+        PitchApplyMode::Rearticulate,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for v in [&mut default, &mut one, &mut glide] {
+            v.apply_patch(&ControlUpdate {
+                pitch_apply_mode: Some(mode),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        for i in (200 + segment as u64 * 200)..(400 + segment as u64 * 200) {
+            let mut sounded = Vec::new();
+            for v in [&mut default, &mut one, &mut glide] {
+                let mut out = PhonationBatch::default();
+                v.prepare_phonation_batch(&mut out);
+                v.tick_phonation_into_with_arrival(
+                    &tb,
+                    i * 512,
+                    &rhythms,
+                    None,
+                    0.,
+                    1.,
+                    0.8,
+                    None,
+                    Some(&space),
+                    &mut out,
+                );
+                sounded.push(format!("{:?}", out.onsets));
+            }
+            assert_eq!(sounded[0], sounded[1]);
+            assert_eq!(sounded[0], sounded[2]);
+        }
+    }
+}
+
+#[test]
+fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
+    #[derive(Clone)]
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Capture {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let writer = Capture(captured.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .without_time()
+        .with_ansi(false)
+        .with_writer(move || writer.clone())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || {
+        for chain in [
+            "sustain().metric().pitch_apply_mode(\"gate_snap\")",
+            "sustain().metric().pitch_apply_mode(\"rearticulate\")",
+            "sustain().metric().pitch_apply_mode(\"glide\")",
+            "sustain().metric().anchor().pitch_apply_mode(\"gate_snap\")",
+        ] {
+            first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
+        }
+    });
+    assert!(captured.lock().unwrap().is_empty());
+    let (scene, _) = run_script_with_seed(
+        "create(sine().sustain().metric().pitch_apply_mode(\"gate_snap\").respawn_random().respawn_background_death_rate(10000.0),1);",
+        21,
+    );
+    let mut c = Community::new(Timebase {
+        fs: 48000.,
+        hop: 257,
+    });
+    c.set_seed(21);
+    let landscape = LandscapeFrame::default();
+    for action in scene.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            c.apply_action(action.clone(), &landscape, None);
+        }
+    }
+    let parent = c.voices[0].id();
+    c.advance(257, 48000., 0, 257. / 48000., &landscape);
+    c.cleanup_dead(0, 257. / 48000., false, &landscape);
+    let mut children = 0;
+    for child in c.voices.iter_mut().filter(|v| v.id() != parent) {
+        children += 1;
+        assert_eq!(child.effective_control.phonation.tie, 1.);
+        let shape = child.phonation_engine.clock.shape_mut().unwrap();
+        assert!(!shape.has_tone);
+        assert!(!shape.tie.as_ref().unwrap().pending_pitch);
+        assert_eq!(shape.tie.as_ref().unwrap().trials, 0);
+    }
+    assert!(children > 0);
+}
+
+#[test]
 fn tie_builder_order_values_scope_and_no_live_setter() {
     for timing in ["entrained()", "flow()"] {
         for mode in ["gate_snap", "rearticulate"] {

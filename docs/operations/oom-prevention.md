@@ -23,7 +23,7 @@ run-guarded python3 analysis.py
 run-guarded cargo test -- --nocapture
 ```
 
-`scripts/run_guarded.py` はジョブ全体を `resource-work.slice` の子 scope に置く。個別の `MemoryHigh=4G`、`MemoryMax=8G`、`MemorySwapMax=0` と、親 slice の合計16 GiB・swap禁止を実際の cgroup ファイルで確認してからコマンドを実行する。ホストの `MemAvailable` が12 GiB未満なら開始しない。Cargo のビルド並列数は2、Rust のテスト並列数は1に固定する。
+`scripts/run_guarded.py` の2026-10-13のジョブ用配置は、全 worker の合計上限40 GiBの `agent-workers.slice` と、その子で合計16 GiB・swap禁止の `agent-workers-guarded.slice` である。ジョブ全体は後者の子 scope に置く。個別の `MemoryHigh=4G`、`MemoryMax=8G`、`MemorySwapMax=0` と、直上 slice の合計16 GiB・swap禁止を実際の cgroup ファイルで確認してからコマンドを実行する。ホストの `MemAvailable` が12 GiB未満なら開始しない。Cargo のビルド並列数は2、Rust のテスト並列数は1に固定する。
 
 PID、コマンド、作業ディレクトリ、実効上限、終了コード、メモリピーク、OOM 回数は `~/.local/state/resource-guard/<run-id>/run.json` に保存する。`XDG_STATE_HOME` を指定している場合はその下に保存する。開始拒否は終了コード75または78、コマンドの失敗は元の終了コードで返す。
 

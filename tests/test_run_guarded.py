@@ -64,7 +64,7 @@ class LiveRunGuardedTests(unittest.TestCase):
             self.assertEqual(record["memory_events"]["oom_kill"], 0)
 
     def test_missing_parent_and_wrong_job_limit_refuse_before_execution(self):
-        for parent, maximum in [("app.slice", "8G"), ("resource-work.slice", "256M")]:
+        for parent, maximum in [("app.slice", "8G"), ("agent-workers-guarded.slice", "256M")]:
             with self.subTest(parent=parent, maximum=maximum), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "run.json"
                 path.write_text(json.dumps({"status": "launching"}))

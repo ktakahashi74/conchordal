@@ -11,7 +11,7 @@ import time
 import uuid
 
 GIB = 1024**3
-SLICE = "resource-work.slice"
+SLICE = "agent-workers-guarded.slice"
 
 
 def save(path, record):

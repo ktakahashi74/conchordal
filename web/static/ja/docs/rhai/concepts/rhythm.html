@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c677a8c0.js";
+            window.path_to_searchindex_js = "../searchindex-4e696340.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -362,15 +362,16 @@ release(p);
 依存しません。再生成したVoiceは設定を継ぎ、親の保留、滑りの選択、最後の発音音高は
 継ぎません。</p>
 <p>既定のWhileAliveと、<code>while_alive()</code>だけでは、この形を選びません。<code>sustain()</code>だけ、
-<code>entrained()</code>だけ、<code>flow()</code>だけの挙動は変えません。<code>metric()</code>、<code>pulse()</code>、<code>repeat()</code>と
-<code>sustain()</code>の併用は、従来どおり後の指定が優先されます。<code>rest()</code>がない場合は、後に
+<code>entrained()</code>だけ、<code>flow()</code>だけの挙動は変えません。<code>pulse()</code>、<code>repeat()</code>と
+<code>sustain()</code>の併用は、従来どおり後の指定が優先されます。明示の<code>sustain()</code>と<code>metric()</code>は、
+下の持続＋同期を選びます。<code>rest()</code>がない場合は、後に
 <code>cycles()</code>や<code>adaptive_duration()</code>で有限の音長を指定すると、持続する形を置き換えます。
 <code>rest()</code>があれば音長と持続＋参加を独立に保ち、音を離し、実際の余韻の終了から間を
 数えます。<a href="consonance.html#音を切って間を置く">音を切って間を置く</a>を参照してください。</p>
 <h2 id="発音の方針を保つ"><a class="header" href="#発音の方針を保つ">発音の方針を保つ</a></h2>
 <p>自由音高の持続＋参加に<code>articulation_persistence(p)</code>を添えると、Voiceが音高の採用や
 参加の機会をまたいで、発音の方針を保ちます。対象は、
-<code>sustain()</code>と<code>entrained()</code>／<code>flow()</code>を明示し、<code>pitch_apply_mode("rearticulate")</code>と
+<code>sustain()</code>と<code>metric()</code>／<code>entrained()</code>／<code>flow()</code>を明示し、<code>pitch_apply_mode("rearticulate")</code>と
 正の<code>rearticulate_above(cents)</code>を指定した形です。配置前の指定で、演奏中の
 Populationには呼べません。</p>
 <pre><code class="language-rhai">let p = place(
@@ -407,7 +408,7 @@ Toneが無ければ、Connectも合法な初回発音や休止後の復帰を塞
 発音や休止をまたぎますが、一音ごとに伸ばすか切るかを選ぶ働きではありません。</p>
 <h2 id="行き先がない機会では音を伸ばす"><a class="header" href="#行き先がない機会では音を伸ばす">行き先がない機会では音を伸ばす</a></h2>
 <p>持続音を参加の機会で打ち直す形に、配置前の<code>tie(p)</code>を添えられます。pは、行き先の保留が
-ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の<code>sustain()</code>と<code>entrained()</code>／
+ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の<code>sustain()</code>と<code>metric()</code>／<code>entrained()</code>／
 <code>flow()</code>に、明示のgate_snapまたはrearticulateを組み合わせる形が対象です。境界0も含みます。
 既定0は今までどおり、1は対象の機会で必ず伸ばし、中間では機会ごとに両方が混ざります。
 作曲者が置く量であり、音楽的な最適値を決めるものではありません。</p>
@@ -473,6 +474,30 @@ flowの音長には既存の3倍の係数も適用します。<code>rhythm_freq(
 <p>Gated発音では自律attackが無効になります。発行したonsetは協和度に基づく通常の回復を
 受け、<code>attack_phase_match</code>による位相一致報酬は使いません。共有リズムを読む音高探索や
 振幅変調は別の経路として残ります。専用の拍打ちは、同期の実演や比較に必須の場合だけ使います。</p>
+<h2 id="持続音を拍へ同期させる"><a class="header" href="#持続音を拍へ同期させる">持続音を拍へ同期させる</a></h2>
+<p><code>sustain()</code>と<code>metric()</code>を両方明示すると、生きたToneを保ちながら、既存の同期時計の
+整数交差を発音の機会に使います。書く順は問いません。共有の拍は音から確認された拍です。
+確認される前は、tempo basinの中心と独立した初期位相から自走します。外から拍を置く語ではありません。</p>
+<p>初回はHoldと同じ即時の発音です。その後は拍の交差ごとに機会があり、音高の採用が
+無かった拍でも、その時の身体の音高で打ち直します。Glideは発音の間も滑ります。
+GateSnapは最新の採用先を次の合法な交差まで保留します。境界0のRearticulateも同じです。
+正の境界では小さい採用が旧保留を取り消して滑り、大きい採用は保留されます。
+同じsampleの採用は、交差の発音より先に扱います。</p>
+<pre><code class="language-rhai">let wire = harmonic().brain("drone").sustain().metric().seek_consonance()
+    .pitch_apply_mode("rearticulate").tie(1);
+let voices = place(wire, at(660.0));
+wait(4.0);
+release(voices);
+wait(2.0);
+</code></pre>
+<p>保留の無い機会で伸ばしたい場合は、自由音高のGateSnap／Rearticulateに<code>tie(p)</code>を添えます。
+省略すれば、採用の無い拍でも打ち直します。<code>articulation_persistence</code>は既存のBase／Connectを
+保ちますが、同期には費用による見送りも、決めた予定を待つ状態もありません。方針の提案は
+採用と発音の交差から来ます。<code>rest()</code>は明示の有限音長、実際の余韻の終了、間を組み合わせます。
+その間も時計は進み、控えた交差を後で再演しません。</p>
+<p>役割、確認された小節の強調、microtimingの意味は同じです。固定音高も持続＋参加と同様に
+扱えますが、tieとpersistenceは自由音高だけの量です。entrainmentや役割だけを指定した
+Coupledには、持続＋同期の意味を広げません。</p>
 
                     </main>
 

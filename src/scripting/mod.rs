@@ -1603,7 +1603,7 @@ impl ScriptContext {
                 .supports_articulation_persistence()
         {
             warn!(
-                "articulation_persistence() ignored outside free-pitch sustain() with entrained()/flow(), rearticulate, and a positive rearticulate_above()"
+                "articulation_persistence() ignored outside free-pitch sustain() with metric()/entrained()/flow(), rearticulate, and a positive rearticulate_above()"
             );
             population_spec
                 .spec
@@ -1615,7 +1615,7 @@ impl ScriptContext {
             && !population_spec.spec.spawn_spec().control.supports_tie()
         {
             warn!(
-                "tie() ignored outside free-pitch sustain() with entrained()/flow() and gate_snap/rearticulate"
+                "tie() ignored outside free-pitch sustain() with metric()/entrained()/flow() and gate_snap/rearticulate"
             );
             population_spec.spec.control.phonation.tie = 0.0;
         }

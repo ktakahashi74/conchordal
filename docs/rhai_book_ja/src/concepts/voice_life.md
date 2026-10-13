@@ -135,3 +135,5 @@ adaptive duration controlを使えます。まずpresetから始め、作品が�
 作る場合があります。`section`や`play`の有効範囲も、終了時に内部で作ったPopulationをreleaseします。
 
 次章では、[VoiceとLandscape — 音と環境のフィードバック](ecological_loop.md)を説明します。
+
+明示の`sustain()`と`metric()`を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。[リズム](rhythm.md#持続音を拍へ同期させる)を参照してください。

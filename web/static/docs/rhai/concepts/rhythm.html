@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0794641a.js";
+            window.path_to_searchindex_js = "../searchindex-106108dc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -400,8 +400,9 @@ controller’s target. Builder order does not change this form; replacements inh
 controls, not pending pitch, selected glide or last-onset memory.</p>
 <p>The implicit WhileAlive default and <code>while_alive()</code> alone do not select this form.
 <code>sustain()</code> alone, <code>entrained()</code> alone and <code>flow()</code> alone retain their previous
-behavior. With <code>metric()</code>, <code>pulse()</code> or <code>repeat()</code>, <code>sustain()</code> still uses the
-existing last-write-wins rule. Without <code>rest()</code>, a later finite duration via
+behavior. With <code>pulse()</code> or <code>repeat()</code>, <code>sustain()</code> still uses the
+existing last-write-wins rule. Explicit <code>sustain()</code> plus <code>metric()</code> selects sustained
+synchronization as described below. Without <code>rest()</code>, a later finite duration via
 <code>cycles()</code> or <code>adaptive_duration()</code> replaces the sustained form. With <code>rest()</code>,
 finite note length and sustained participation are retained independently, and
 each note releases before a pause measured from actual tail completion. See
@@ -409,7 +410,7 @@ each note releases before a pause measured from actual tail completion. See
 <h2 id="retaining-an-articulation-policy"><a class="header" href="#retaining-an-articulation-policy">Retaining an articulation policy</a></h2>
 <p>Within free-pitch sustained participation, <code>articulation_persistence(p)</code> lets a Voice
 keep a private articulation policy across several pitch adoptions and participation
-opportunities. It requires <code>sustain()</code> plus <code>entrained()</code> or <code>flow()</code>,
+opportunities. It requires <code>sustain()</code> plus <code>metric()</code>, <code>entrained()</code> or <code>flow()</code>,
 <code>pitch_apply_mode("rearticulate")</code>, and a positive <code>rearticulate_above(cents)</code>.
 The value is set before placement; it is not a live Population method.</p>
 <pre><code class="language-rhai">let p = place(
@@ -453,7 +454,7 @@ does not decide whether each note should sustain or release.</p>
 <h2 id="extending-opportunities-without-a-new-pitch-destination"><a class="header" href="#extending-opportunities-without-a-new-pitch-destination">Extending opportunities without a new pitch destination</a></h2>
 <p><code>tie(p)</code> sets the probability of extending a living Tone instead of re-attacking
 at a selected participation opportunity without a pending target. It is an
-initial composer parameter for free-pitch <code>sustain()</code> with <code>entrained()</code> or
+initial composer parameter for free-pitch <code>sustain()</code> with <code>metric()</code>, <code>entrained()</code> or
 <code>flow()</code> and explicit <code>gate_snap</code> or <code>rearticulate</code>, including a zero boundary.
 The default <code>0</code> preserves current attacks, <code>1</code> always extends eligible Tones,
 and intermediate values mix the two per opportunity. These values are composer
@@ -518,6 +519,34 @@ set_scaffold_scrambled(2.0, 17);
 <p>They are useful for demos and assays. They are not the rhythm-composition
 abstraction: use them only when explicit synchronization is essential to the demo or assay.
 A dedicated beat carrier is not required for entrained/flow participation.</p>
+<h2 id="sustained-synchronization"><a class="header" href="#sustained-synchronization">Sustained synchronization</a></h2>
+<p>Explicit <code>sustain()</code> plus <code>metric()</code> keeps a live Tone and uses the existing
+coupling clock’s integer crossings as sounding opportunities. Either builder order
+has the same meaning. The shared beat is confirmed from sound; before confirmation
+the Voice free-runs with its existing basin-centered rate and independent phase.
+This combination does not place a beat from outside.</p>
+<p>The first Hold onset is immediate. Later opportunities occur on every crossing,
+including crossings without a pitch adoption: the Voice re-attacks its current
+body pitch. Glide keeps moving between attacks. GateSnap retains the latest
+adopted target for the next legal crossing. Rearticulate with boundary zero does the
+same; a positive boundary cancels pending pitch and glides small adoptions, while
+larger adoptions remain pending. Same-sample adoption precedes the crossing.</p>
+<pre><code class="language-rhai">let wire = harmonic().brain("drone").sustain().metric().seek_consonance()
+    .pitch_apply_mode("rearticulate").tie(1);
+let voices = place(wire, at(660.0));
+wait(4.0);
+release(voices);
+wait(2.0);
+</code></pre>
+<p>For free-pitch GateSnap/Rearticulate, <code>tie(p)</code> can retain a living Tone on a
+pending-free crossing. Without it, even a crossing with no adoption re-attacks.
+<code>articulation_persistence</code> retains Base/Connect as in participation, but only
+adoptions and sounding crossings offer proposals: synchronization has no cost
+skip or planned waiting. <code>rest()</code> combines explicit finite duration with tail
+completion and a gap; the clock keeps advancing and omitted crossings never replay.
+Role, measure emphasis and microtiming keep their existing meanings. Fixed pitch
+is accepted just as in sustained participation; tie and persistence remain limited
+to free pitch. Merely setting entrainment or a role does not select this combination.</p>
 
                     </main>
 

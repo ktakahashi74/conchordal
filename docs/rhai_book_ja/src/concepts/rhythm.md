@@ -219,8 +219,9 @@ release(p);
 継ぎません。
 
 既定のWhileAliveと、`while_alive()`だけでは、この形を選びません。`sustain()`だけ、
-`entrained()`だけ、`flow()`だけの挙動は変えません。`metric()`、`pulse()`、`repeat()`と
-`sustain()`の併用は、従来どおり後の指定が優先されます。`rest()`がない場合は、後に
+`entrained()`だけ、`flow()`だけの挙動は変えません。`pulse()`、`repeat()`と
+`sustain()`の併用は、従来どおり後の指定が優先されます。明示の`sustain()`と`metric()`は、
+下の持続＋同期を選びます。`rest()`がない場合は、後に
 `cycles()`や`adaptive_duration()`で有限の音長を指定すると、持続する形を置き換えます。
 `rest()`があれば音長と持続＋参加を独立に保ち、音を離し、実際の余韻の終了から間を
 数えます。[音を切って間を置く](consonance.md#音を切って間を置く)を参照してください。
@@ -229,7 +230,7 @@ release(p);
 
 自由音高の持続＋参加に`articulation_persistence(p)`を添えると、Voiceが音高の採用や
 参加の機会をまたいで、発音の方針を保ちます。対象は、
-`sustain()`と`entrained()`／`flow()`を明示し、`pitch_apply_mode("rearticulate")`と
+`sustain()`と`metric()`／`entrained()`／`flow()`を明示し、`pitch_apply_mode("rearticulate")`と
 正の`rearticulate_above(cents)`を指定した形です。配置前の指定で、演奏中の
 Populationには呼べません。
 
@@ -275,7 +276,7 @@ Toneが無ければ、Connectも合法な初回発音や休止後の復帰を塞
 ## 行き先がない機会では音を伸ばす
 
 持続音を参加の機会で打ち直す形に、配置前の`tie(p)`を添えられます。pは、行き先の保留が
-ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の`sustain()`と`entrained()`／
+ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の`sustain()`と`metric()`／`entrained()`／
 `flow()`に、明示のgate_snapまたはrearticulateを組み合わせる形が対象です。境界0も含みます。
 既定0は今までどおり、1は対象の機会で必ず伸ばし、中間では機会ごとに両方が混ざります。
 作曲者が置く量であり、音楽的な最適値を決めるものではありません。
@@ -361,3 +362,34 @@ flowの音長には既存の3倍の係数も適用します。`rhythm_freq()`は
 Gated発音では自律attackが無効になります。発行したonsetは協和度に基づく通常の回復を
 受け、`attack_phase_match`による位相一致報酬は使いません。共有リズムを読む音高探索や
 振幅変調は別の経路として残ります。専用の拍打ちは、同期の実演や比較に必須の場合だけ使います。
+
+## 持続音を拍へ同期させる
+
+`sustain()`と`metric()`を両方明示すると、生きたToneを保ちながら、既存の同期時計の
+整数交差を発音の機会に使います。書く順は問いません。共有の拍は音から確認された拍です。
+確認される前は、tempo basinの中心と独立した初期位相から自走します。外から拍を置く語ではありません。
+
+初回はHoldと同じ即時の発音です。その後は拍の交差ごとに機会があり、音高の採用が
+無かった拍でも、その時の身体の音高で打ち直します。Glideは発音の間も滑ります。
+GateSnapは最新の採用先を次の合法な交差まで保留します。境界0のRearticulateも同じです。
+正の境界では小さい採用が旧保留を取り消して滑り、大きい採用は保留されます。
+同じsampleの採用は、交差の発音より先に扱います。
+
+```rhai
+let wire = harmonic().brain("drone").sustain().metric().seek_consonance()
+    .pitch_apply_mode("rearticulate").tie(1);
+let voices = place(wire, at(660.0));
+wait(4.0);
+release(voices);
+wait(2.0);
+```
+
+保留の無い機会で伸ばしたい場合は、自由音高のGateSnap／Rearticulateに`tie(p)`を添えます。
+省略すれば、採用の無い拍でも打ち直します。`articulation_persistence`は既存のBase／Connectを
+保ちますが、同期には費用による見送りも、決めた予定を待つ状態もありません。方針の提案は
+採用と発音の交差から来ます。`rest()`は明示の有限音長、実際の余韻の終了、間を組み合わせます。
+その間も時計は進み、控えた交差を後で再演しません。
+
+役割、確認された小節の強調、microtimingの意味は同じです。固定音高も持続＋参加と同様に
+扱えますが、tieとpersistenceは自由音高だけの量です。entrainmentや役割だけを指定した
+Coupledには、持続＋同期の意味を広げません。

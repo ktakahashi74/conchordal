@@ -526,7 +526,7 @@ These timing-sensitive transitions and crowding evaluations are guarded by regre
 
 ### Retaining the Voice's articulation policy
 
-For free-pitch sustained participation with Rearticulate and a positive movement
+For free-pitch sustained coupled timing with Rearticulate and a positive movement
 boundary, `articulation_persistence(p)` adds a private Base/Connect policy. Base
 uses the existing boundary and participation rules. While a Tone lives, Connect
 slides all adopted targets and intentionally withholds sounded opportunities,
@@ -551,7 +551,7 @@ contour, rest or phrase boundaries.
 
 ### Extending a living Tone without pending pitch
 
-`tie(p)` is an initial-only probability in free-pitch sustain plus entrained/flow
+`tie(p)` is an initial-only probability in free-pitch sustain plus metric/entrained/flow
 with GateSnap or Rearticulate. At a selected legal opportunity, a pending target
 still attacks; a living Tone without one extends with probability p. Omission/0
 retains existing attacks without tie state or draws; 1 extends eligible Tones
@@ -742,6 +742,27 @@ the arbitrary origin of the accumulated beat count. An undetected measure produc
 the default amount is zero. This path schedules no new onset and sets no beats-per-measure value.
 Production `rhythm_observation` records expose the measure phase, frequency, confidence and ratio
 used by the voices; listener observations remain separate.
+
+
+### Sustained beat synchronization
+
+Explicit `sustain()` plus `metric()`, in either order, retains a live Tone and uses
+integer crossings of the existing CouplingClock as sounding opportunities. The
+first Hold onset is immediate. Later crossings re-attack current body pitch even
+without a pitch adoption; free-pitch GateSnap/Rearticulate can use `tie(p)` to
+extend a living Tone without pending pitch. GateSnap and boundary-zero
+Rearticulate defer the latest adoption to a legal crossing. Positive boundaries,
+Base/Connect persistence, finite-duration rest, role strength, confirmed measure
+emphasis and microtiming share the existing articulation rules. Synchronization
+has no participation cost skip or committed waiting plan; suppressed crossings
+advance the clock without replay or onset metabolism/learning.
+
+The shared beat is acoustically confirmed. Before confirmation coupling is zero,
+so the clock free-runs at the existing basin-centered rate with its independent
+initial phase. This combination does not place an external beat. Fixed pitch is
+supported as in sustained participation, while tie/persistence retain their
+free-pitch scope. Implicit Coupled tuning and standalone presets are unchanged.
+
 
 ## 5.5 The Breath Oscillator: Kuramoto Articulation
 

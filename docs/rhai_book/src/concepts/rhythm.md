@@ -256,8 +256,9 @@ controls, not pending pitch, selected glide or last-onset memory.
 
 The implicit WhileAlive default and `while_alive()` alone do not select this form.
 `sustain()` alone, `entrained()` alone and `flow()` alone retain their previous
-behavior. With `metric()`, `pulse()` or `repeat()`, `sustain()` still uses the
-existing last-write-wins rule. Without `rest()`, a later finite duration via
+behavior. With `pulse()` or `repeat()`, `sustain()` still uses the
+existing last-write-wins rule. Explicit `sustain()` plus `metric()` selects sustained
+synchronization as described below. Without `rest()`, a later finite duration via
 `cycles()` or `adaptive_duration()` replaces the sustained form. With `rest()`,
 finite note length and sustained participation are retained independently, and
 each note releases before a pause measured from actual tail completion. See
@@ -267,7 +268,7 @@ each note releases before a pause measured from actual tail completion. See
 
 Within free-pitch sustained participation, `articulation_persistence(p)` lets a Voice
 keep a private articulation policy across several pitch adoptions and participation
-opportunities. It requires `sustain()` plus `entrained()` or `flow()`,
+opportunities. It requires `sustain()` plus `metric()`, `entrained()` or `flow()`,
 `pitch_apply_mode("rearticulate")`, and a positive `rearticulate_above(cents)`.
 The value is set before placement; it is not a live Population method.
 
@@ -320,7 +321,7 @@ does not decide whether each note should sustain or release.
 
 `tie(p)` sets the probability of extending a living Tone instead of re-attacking
 at a selected participation opportunity without a pending target. It is an
-initial composer parameter for free-pitch `sustain()` with `entrained()` or
+initial composer parameter for free-pitch `sustain()` with `metric()`, `entrained()` or
 `flow()` and explicit `gate_snap` or `rearticulate`, including a zero boundary.
 The default `0` preserves current attacks, `1` always extends eligible Tones,
 and intermediate values mix the two per opportunity. These values are composer
@@ -402,3 +403,37 @@ set_scaffold_scrambled(2.0, 17);
 They are useful for demos and assays. They are not the rhythm-composition
 abstraction: use them only when explicit synchronization is essential to the demo or assay.
 A dedicated beat carrier is not required for entrained/flow participation.
+
+## Sustained synchronization
+
+Explicit `sustain()` plus `metric()` keeps a live Tone and uses the existing
+coupling clock's integer crossings as sounding opportunities. Either builder order
+has the same meaning. The shared beat is confirmed from sound; before confirmation
+the Voice free-runs with its existing basin-centered rate and independent phase.
+This combination does not place a beat from outside.
+
+The first Hold onset is immediate. Later opportunities occur on every crossing,
+including crossings without a pitch adoption: the Voice re-attacks its current
+body pitch. Glide keeps moving between attacks. GateSnap retains the latest
+adopted target for the next legal crossing. Rearticulate with boundary zero does the
+same; a positive boundary cancels pending pitch and glides small adoptions, while
+larger adoptions remain pending. Same-sample adoption precedes the crossing.
+
+```rhai
+let wire = harmonic().brain("drone").sustain().metric().seek_consonance()
+    .pitch_apply_mode("rearticulate").tie(1);
+let voices = place(wire, at(660.0));
+wait(4.0);
+release(voices);
+wait(2.0);
+```
+
+For free-pitch GateSnap/Rearticulate, `tie(p)` can retain a living Tone on a
+pending-free crossing. Without it, even a crossing with no adoption re-attacks.
+`articulation_persistence` retains Base/Connect as in participation, but only
+adoptions and sounding crossings offer proposals: synchronization has no cost
+skip or planned waiting. `rest()` combines explicit finite duration with tail
+completion and a gap; the clock keeps advancing and omitted crossings never replay.
+Role, measure emphasis and microtiming keep their existing meanings. Fixed pitch
+is accepted just as in sustained participation; tie and persistence remain limited
+to free pitch. Merely setting entrainment or a role does not select this combination.

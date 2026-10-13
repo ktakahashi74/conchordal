@@ -8121,6 +8121,56 @@ or real-time acceptance. Initial position does not guarantee movement or the
 first audible pitch. Machine-local inputs, renderer pin and comparisons are
 retained under V-11; earlier diagnostic acquisitions are unchanged.
 
+<a id="sustained-synchronization-20261013"></a>
+
+### 9.3.79 Sustained sound and synchronization in the same Voice
+
+E-2's second practical composition difficulty was combining synchronization and
+articulation in one Voice. Its melodic lines used sustain plus rearticulate at
+adoption, while separate metric parts followed the shared beat. Existing finite
+metric GateSnap could synchronize pitch changes, but metric plus rearticulate was
+invalid and metric followed by sustain silently returned to Once.
+
+A-12 located this gap between action-side articulation and beat synchronization,
+without identifying auditory gesture grouping or groove. Existing-path controls
+showed that setting Stone and Wire's proposal interval to the basin-center period
+changed the line from 64 to 96 onsets; finite metric GateSnap gave 97. These are
+descriptive controls, not listening judgments. The external sustained-sync copy
+changed only the crossing line's timing combination: 98 onsets comprised one
+initial Hold and 97 sounded integer crossings. All sixteen existing sample WAVs
+and 380,400 non-timing native report rows matched their references. No new clock,
+participation cost or musical constant was needed.
+
+At about 09:28 on 2026-10-13, orchestration showed the result and listening material
+and asked whether to implement the combination without attaching a recommendation
+("after listening"). The author answered "recommendation". Orchestration read
+this as following its recommendation, then explicitly recommended implementation:
+the composing difficulty is concrete, the combination can reuse existing paths,
+and existing executable samples/tests/book examples do not use it. This reading
+was communicated to the author; it is not a record of a new audition judgment.
+
+The implementation resolves explicit sustain plus metric independently of builder
+order. CouplingClock's integer crossings are the opportunities. Shared-beat
+confidence comes from sound; before confirmation the existing basin-centered
+free rate and independent phase remain. The initial Hold is immediate, and
+pending-free crossings re-attack unless eligible free-pitch GateSnap/Rearticulate
+uses tie. Boundary, latest pending target, Base/Connect retention, finite Off,
+tail-completion rest and lifecycle use the common resolver. Synchronization has
+no cost skip or committed wait. Fixed pitch follows sustained participation's
+existing handling rather than A-12's experimental error; tie/persistence remain
+free-pitch controls. Untied shape execution uses runtime Option state instead of
+V-10's const generic, preserving outcomes and the dedicated streams.
+
+Native validation covers bodies/modes, tie endpoints, causal same-sample M/O,
+multiple crossings, conservation, onset effects, rest, respawn, live mode/boundary,
+explicit builders and unchanged implicit Coupled forms. Existing samples and
+registered prior scenes are compared to saved reference WAVs and all native rows
+except hop_timing; the synchronized scene is compared to A-12. These are software
+and recorded-output checks, not new real-time acceptance or subjective improvement.
+Per-note instructions, phrase memory/boundaries, inferred gesture grouping and a
+live clock-preset switch remain absent. The local V-12 report holds the final
+acquisition/test counts and source/binary identities.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

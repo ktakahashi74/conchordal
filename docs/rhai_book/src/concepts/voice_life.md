@@ -145,3 +145,5 @@ Populations it created when the scope ends.
 
 The next chapter explains
 [Voice and Landscape — Sound–Environment Feedback](ecological_loop.md).
+
+Explicit `sustain()` plus `metric()` combines held sound and acoustic beat synchronization. See [rhythm](rhythm.md#sustained-synchronization).

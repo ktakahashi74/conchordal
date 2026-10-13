@@ -3379,7 +3379,7 @@ fn sustained_participation_explicit_builders_are_order_independent() {
         let spec = first_spawn_spec_for_script(&format!("create(sine().{chain}, 1);"));
         assert!(!spec.control.phonation.spec.is_sustained_participation());
     }
-    for preset in ["metric()", "pulse(2.0)", "repeat()"] {
+    for preset in ["pulse(2.0)", "repeat()"] {
         for (chain, hold) in [
             (format!("sustain().{preset}"), false),
             (format!("{preset}.sustain()"), true),
@@ -3389,6 +3389,137 @@ fn sustained_participation_explicit_builders_are_order_independent() {
             let config = PhonationEngine::from_spec(&spec.control.phonation.spec, 21);
             assert_eq!(config.mode == crate::scenario::PhonationMode::Hold, hold);
         }
+    }
+}
+
+#[test]
+fn synchronized_explicit_builders_and_finite_rest_are_order_independent() {
+    use crate::life::phonation_engine::PhonationEngine;
+    for chain in ["sustain().metric()", "metric().sustain()"] {
+        for pitch in [
+            "",
+            ".pitch_apply_mode(\"gate_snap\").tie(1)",
+            ".pitch_apply_mode(\"rearticulate\").rearticulate_above(50).articulation_persistence(0.5)",
+        ] {
+            let spec = first_spawn_spec_for_script(&format!("create(sine().{chain}{pitch},1);"));
+            assert!(spec.control.phonation.spec.is_sustained_participation());
+            let engine = PhonationEngine::from_spec(&spec.control.phonation.spec, 21);
+            assert_eq!(engine.mode, crate::scenario::PhonationMode::Hold);
+            assert!(!engine.uses_participation());
+        }
+    }
+    let words = ["sustain()", "metric()", "cycles(1)", "rest()"];
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                for d in 0..4 {
+                    if [a, b, c, d]
+                        .iter()
+                        .enumerate()
+                        .any(|(i, v)| [a, b, c, d][..i].contains(v))
+                    {
+                        continue;
+                    }
+                    let chain = [words[a], words[b], words[c], words[d]].join(".");
+                    let spec = first_spawn_spec_for_script(&format!(
+                        "create(sine().{chain}.pitch_apply_mode(\"rearticulate\"),1);"
+                    ));
+                    assert!(
+                        spec.control.phonation.spec.is_sustained_participation(),
+                        "{chain}"
+                    );
+                    assert_eq!(spec.control.phonation.rest_periods, Some(1.));
+                    assert_eq!(
+                        spec.control.phonation.finite_duration,
+                        Some(crate::scenario::DurationSpec::Gates(1))
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn synchronized_fixed_pitch_matches_sustained_participation_and_implicit_coupling_stays_unchanged()
+{
+    for preset in ["metric()", "entrained()", "flow()"] {
+        for chain in [
+            format!("anchor().sustain().{preset}"),
+            format!("{preset}.sustain().anchor()"),
+        ] {
+            let spec = first_spawn_spec_for_script(&format!(
+                "create(sine().{chain}.pitch_apply_mode(\"gate_snap\").tie(1),1);"
+            ));
+            assert!(spec.control.phonation.spec.is_sustained_participation());
+            assert_eq!(
+                spec.control.pitch.mode,
+                crate::scenario::control::PitchMode::Lock
+            );
+            assert_eq!(spec.control.phonation.tie, 0.);
+        }
+    }
+    for chain in [
+        "entrainment(0.5).sustain()",
+        "rhythm_role(\"beat\").sustain()",
+        "metric().while_alive()",
+        "while_alive().metric()",
+        "sustain().metric().cycles(1)",
+    ] {
+        let spec = first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
+        assert!(
+            !spec.control.phonation.spec.is_sustained_participation(),
+            "{chain}"
+        );
+    }
+}
+
+#[test]
+fn synchronized_respawn_retains_controls_and_starts_fresh_private_policy() {
+    use crate::life::shape_policy::Shape;
+    let (scene, _) = run_script_with_seed(
+        "create(sine().sustain().metric().pitch_apply_mode(\"rearticulate\").rearticulate_above(50).articulation_persistence(0.5).tie(1).respawn_random().respawn_background_death_rate(10000.0),1);",
+        21,
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48000.,
+        hop: 257,
+    });
+    community.set_seed(scene.seed);
+    let landscape = LandscapeFrame::default();
+    for action in scene.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape, None);
+        }
+    }
+    let parent = community.voices[0].id();
+    let shape = community.voices[0]
+        .phonation_engine
+        .clock
+        .shape_mut()
+        .unwrap();
+    shape.state = Shape::Connect;
+    shape.has_tone = true;
+    shape.tie.as_mut().unwrap().pending_pitch = true;
+    community.advance(257, 48000., 0, 257. / 48000., &landscape);
+    community.cleanup_dead(0, 257. / 48000., false, &landscape);
+    assert!(community.voices.iter().any(|v| v.id() != parent));
+    for child in community.voices.iter_mut().filter(|v| v.id() != parent) {
+        assert!(
+            child
+                .effective_control
+                .phonation
+                .spec
+                .is_sustained_participation()
+        );
+        assert_eq!(child.effective_control.phonation.tie, 1.);
+        assert!(!child.phonation_engine.uses_participation());
+        let shape = child.phonation_engine.clock.shape_mut().unwrap();
+        assert_eq!(shape.state, Shape::Base);
+        assert!(!shape.has_tone && !shape.veto_plan);
+        assert!(!shape.tie.as_ref().unwrap().pending_pitch);
     }
 }
 

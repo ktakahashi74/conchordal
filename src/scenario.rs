@@ -348,7 +348,7 @@ fn sanitize_positive_rate_hz(rate_hz: f32) -> f32 {
 pub struct PhonationSpec {
     pub timing: PhonationTiming,
     pub duration: DurationSpec,
-    /// Explicit sustained participation; default WhileAlive alone does not imply this mode.
+    /// Explicit sustained coupled timing; default WhileAlive alone does not imply this mode.
     pub sustain_participation: bool,
 }
 
@@ -356,13 +356,7 @@ impl PhonationSpec {
     pub(crate) fn is_sustained_participation(&self) -> bool {
         self.sustain_participation
             && matches!(self.duration, DurationSpec::WhileAlive)
-            && matches!(
-                self.timing,
-                PhonationTiming::Coupled(CoupledTimingSpec {
-                    relation: RhythmRelation::Participating,
-                    ..
-                })
-            )
+            && matches!(self.timing, PhonationTiming::Coupled(_))
     }
     pub fn social_coupling(&self) -> f32 {
         match self.timing {

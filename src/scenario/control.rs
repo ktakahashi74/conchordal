@@ -40,7 +40,9 @@ impl VoiceControl {
     pub(crate) fn validate_pitch_application(&self) -> Result<(), String> {
         if self.phonation.rest_periods.is_some() {
             if !self.phonation.spec.is_sustained_participation() {
-                return Err("rest() requires sustain() with entrained() or flow()".into());
+                return Err(
+                    "rest() requires sustain() with entrained(), flow(), or metric()".into(),
+                );
             }
             if !matches!(
                 self.phonation.finite_duration,

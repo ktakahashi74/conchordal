@@ -344,7 +344,7 @@ impl Community {
             return;
         }
         self.track_runtime_id(id);
-        voice.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES);
+        voice.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES, self.time.fs);
         self.rest_enabled |= voice.phonation_engine.rest.is_some();
         self.voices.push(voice);
     }
@@ -598,7 +598,7 @@ impl Community {
                 core.enable_plv(observe.plv_window);
             }
         }
-        spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES);
+        spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES, self.time.fs);
         self.rest_enabled |= spawned.phonation_engine.rest.is_some();
         self.voices.push(spawned);
         self.track_runtime_id(id);

@@ -95,6 +95,7 @@ impl Voice {
         let previous_tone = self.active_render_notes.last().map(|n| n.tone_id);
         out.body_opportunity = self.phonation_engine.clock.opportunity(ctx);
         out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
+        self.phonation_engine.prepare_synchronized_hop(ctx);
         self.phonation_engine.initial_participating_hold(
             ctx,
             state,
@@ -106,11 +107,7 @@ impl Voice {
         if state.is_alive {
             for step in &self.participation_pitch_steps {
                 if cursor < step.at {
-                    let segment = CoreTickCtx {
-                        now_tick: cursor,
-                        frame_end: step.at,
-                        ..*ctx
-                    };
+                    let segment = self.phonation_segment(ctx, cursor, step.at);
                     self.phonation_engine.set_adoption_candidate(
                         self.rearticulations
                             .iter()
@@ -131,11 +128,7 @@ impl Voice {
                         &mut out.onsets,
                     );
                 }
-                let segment = CoreTickCtx {
-                    now_tick: step.at,
-                    frame_end: step.at.saturating_add(1),
-                    ..*ctx
-                };
+                let segment = self.phonation_segment(ctx, step.at, step.at.saturating_add(1));
                 self.phonation_engine.set_adoption_candidate(
                     self.rearticulations
                         .iter()
@@ -158,10 +151,7 @@ impl Voice {
                 cursor = step.at.saturating_add(1);
             }
             if cursor < ctx.frame_end {
-                let segment = CoreTickCtx {
-                    now_tick: cursor,
-                    ..*ctx
-                };
+                let segment = self.phonation_segment(ctx, cursor, ctx.frame_end);
                 self.phonation_engine.tick_with_arrival(
                     &segment,
                     state,
@@ -350,7 +340,7 @@ mod tests {
             21,
         );
         v.articulation.set_autonomous_attack_enabled(false);
-        v.configure_control_hop(512, 64);
+        v.configure_control_hop(512, 64, 48_000.0);
         let mut out = PhonationBatch::default();
         v.prepare_phonation_batch(&mut out);
         (
@@ -978,7 +968,7 @@ mod tests {
         for hop in [257, 1024] {
             let (mut v, mut tb, r, mut out) = setup(false);
             tb.hop = hop;
-            v.configure_control_hop(hop, 64);
+            v.configure_control_hop(hop, 64, 48_000.0);
             v.prepare_phonation_batch(&mut out);
             emit(&mut v, &tb, &r, 0, &mut out);
             for frame in 1..4 {
@@ -1923,7 +1913,7 @@ mod tests {
             panic!()
         };
         clock.shape = Some(crate::life::shape_policy::ShapePolicy::new(p, 21, tb.fs));
-        v.configure_control_hop(tb.hop, 64);
+        v.configure_control_hop(tb.hop, 64, tb.fs);
         (v, tb, r, out)
     }
 

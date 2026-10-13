@@ -1,3 +1,5 @@
+const MAX_EXTRA_GATES: u64 = 4096;
+
 use crate::life::arrival_cost::ArrivalContext;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::cmp::{Ordering, Reverse};
@@ -185,7 +187,6 @@ impl ThetaGrid {
         target_gate_plus_1: u64,
         fixed_period: Option<f64>,
     ) {
-        const MAX_EXTRA_GATES: u64 = 4096;
         let Some(mut last) = self.boundaries.last().copied() else {
             return;
         };
@@ -467,6 +468,7 @@ const COUPLING_PULL_K: f32 = 1.0;
 /// drags those crossings into a common alignment, so independently placed
 /// voices synchronize without any externally imposed grid.
 pub struct CouplingClock {
+    pub(crate) shape: Option<crate::life::shape_policy::ShapePolicy>,
     coupling: f32,
     base_rate_hz: f32,
     flow_depth: f32,
@@ -501,6 +503,7 @@ impl CouplingClock {
         // fire on the same tick before the meter entrains them.
         let phase: f64 = rng.random_range(0.0..1.0);
         Self {
+            shape: None,
             coupling: coupling.clamp(0.0, 1.0),
             base_rate_hz,
             flow_depth,
@@ -761,6 +764,20 @@ pub enum PhonationClock {
 }
 
 impl PhonationClock {
+    pub(crate) fn shape_slot(
+        &mut self,
+    ) -> Option<&mut Option<crate::life::shape_policy::ShapePolicy>> {
+        match self {
+            Self::Participation(c) => Some(&mut c.shape),
+            Self::Coupling(c) => Some(&mut c.shape),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn shape_mut(&mut self) -> Option<&mut crate::life::shape_policy::ShapePolicy> {
+        self.shape_slot()?.as_mut()
+    }
+
     pub(crate) fn intrinsic_period_sec(&self) -> Option<f64> {
         let rate = match self {
             Self::Coupling(c) => c.intrinsic_rate_hz,
@@ -1251,6 +1268,8 @@ pub(crate) struct RestState {
 pub struct PhonationEngine {
     pub(crate) rest: Option<RestState>,
     pub(crate) sustain_participation: bool,
+    #[cfg(test)]
+    pub(crate) synchronized_counts: [usize; 4],
     pub clock: PhonationClock,
     pub onset_rule: OnsetRule,
     pub duration_rule: DurationRule,
@@ -1279,6 +1298,38 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
+    pub(crate) fn reserve_synchronized_hop(&mut self, hop: usize, fs: f32) -> usize {
+        // Phase pull is bounded by the existing half-cycle error range.
+        let count = (hop as f64 / f64::from(fs)
+            * f64::from(MAX_ONSET_RATE_HZ)
+            * f64::from(1.0 + COUPLING_PULL_K * 0.5))
+        .ceil() as usize
+            + 1;
+        self.scratch_candidates.reserve(count);
+        self.scratch_merged.reserve(count);
+        let hold = if self.rest.is_some() {
+            self.duration_rule
+                .estimate_hold(1.0, 0.0)
+                .unwrap_or(0.0)
+                .ceil()
+                .min(MAX_EXTRA_GATES as f32) as usize
+        } else {
+            0
+        };
+        self.scratch_grid.boundaries.reserve(count + hold + 2);
+        self.scratch_field.e_gate.reserve(count);
+        count
+    }
+
+    pub(crate) fn prepare_synchronized_hop(&mut self, ctx: &CoreTickCtx) {
+        if self.sustain_participation && matches!(self.clock, PhonationClock::Coupling(_)) {
+            self.scratch_candidates.clear();
+            self.clock
+                .gather_candidates(ctx, &mut self.scratch_candidates);
+            Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
+        }
+    }
+
     pub(crate) fn enable_rest(&mut self, duration: &DurationConfig, periods: f32) {
         assert!(self.sustain_participation);
         self.duration_rule = DurationRule::from_config(duration);
@@ -1456,8 +1507,14 @@ impl PhonationEngine {
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
             rest: None,
+            #[cfg(test)]
+            synchronized_counts: [0; 4],
             sustain_participation: config.mode == PhonationMode::Hold
-                && matches!(config.clock, PhonationClockConfig::Participation { .. }),
+                && matches!(
+                    config.clock,
+                    PhonationClockConfig::Participation { .. }
+                        | PhonationClockConfig::Coupling { .. }
+                ),
             clock: PhonationClock::from_config(&config.clock, seed),
             onset_rule,
             duration_rule,
@@ -1480,7 +1537,10 @@ impl PhonationEngine {
     pub(crate) fn update_from_config(&mut self, config: &PhonationConfig) {
         self.mode = config.mode;
         self.sustain_participation = config.mode == PhonationMode::Hold
-            && matches!(config.clock, PhonationClockConfig::Participation { .. });
+            && matches!(
+                config.clock,
+                PhonationClockConfig::Participation { .. } | PhonationClockConfig::Coupling { .. }
+            );
         self.measure_accent = sanitize01(config.measure_accent);
         let seed = self.initial_seed ^ 0xA5A5_5A5A_5A5A_A5A5;
         self.onset_rule.update_config(&config.onset, seed);
@@ -1777,34 +1837,6 @@ impl PhonationEngine {
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
-        self.tick_with_arrival_impl::<false>(
-            ctx,
-            state,
-            social,
-            social_coupling,
-            extra_gate_gain,
-            min_allowed_onset_tick,
-            arrival,
-            out_cmds,
-            out_events,
-            out_onsets,
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn tick_with_arrival_impl<const TIE: bool>(
-        &mut self,
-        ctx: &CoreTickCtx,
-        state: &CoreState,
-        social: Option<&SocialDensityTrace>,
-        social_coupling: f32,
-        extra_gate_gain: f32,
-        min_allowed_onset_tick: Option<Tick>,
-        arrival: Option<&ArrivalContext<'_>>,
-        out_cmds: &mut Vec<ToneCmd>,
-        out_events: &mut Vec<ToneOnEvent>,
-        out_onsets: &mut Vec<OnsetEvent>,
-    ) {
         if matches!(self.mode, PhonationMode::Hold) && !self.sustain_participation {
             self.tick_hold(
                 ctx,
@@ -1814,6 +1846,31 @@ impl PhonationEngine {
                 out_events,
                 out_onsets,
             );
+            return;
+        }
+        if self.sustain_participation && matches!(self.clock, PhonationClock::Coupling(_)) {
+            let merged = std::mem::take(&mut self.scratch_merged);
+            let start = merged.partition_point(|c| c.tick < ctx.now_tick);
+            let end = merged.partition_point(|c| c.tick < ctx.frame_end);
+            let candidates = &merged[start..end];
+            let mut grid = std::mem::take(&mut self.scratch_grid);
+            let mut field = std::mem::take(&mut self.scratch_field);
+            grid.rebuild_from_candidates(candidates);
+            field.rebuild_flat(&grid);
+            self.process_candidates(
+                ctx,
+                candidates,
+                &mut grid,
+                &field,
+                state,
+                min_allowed_onset_tick,
+                out_cmds,
+                out_events,
+                out_onsets,
+            );
+            self.scratch_merged = merged;
+            self.scratch_grid = grid;
+            self.scratch_field = field;
             return;
         }
         if self.uses_participation() {
@@ -1878,7 +1935,7 @@ impl PhonationEngine {
                     frame_end: candidate.tick.saturating_add(1),
                     ..*ctx
                 };
-                self.process_candidates::<TIE>(
+                self.process_candidates(
                     &segment,
                     &[candidate],
                     &mut timing_grid,
@@ -1893,8 +1950,7 @@ impl PhonationEngine {
                     unreachable!()
                 };
                 clock.resolve(candidate.tick, out_onsets.len() > before);
-                if TIE
-                    && out_onsets.len() > before
+                if out_onsets.len() > before
                     && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
                 {
                     tie.pending_pitch = false;
@@ -1929,7 +1985,7 @@ impl PhonationEngine {
                 extra_gate_gain,
             );
         }
-        self.process_candidates::<TIE>(
+        self.process_candidates(
             ctx,
             &merged,
             &mut timing_grid,
@@ -2004,7 +2060,7 @@ impl PhonationEngine {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn process_candidates<const TIE: bool>(
+    fn process_candidates(
         &mut self,
         ctx: &CoreTickCtx,
         candidates: &[CandidatePoint],
@@ -2021,6 +2077,31 @@ impl PhonationEngine {
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
             self.drain_note_offs(c.tick, out_cmds);
+            let synchronized =
+                self.sustain_participation && matches!(self.clock, PhonationClock::Coupling(_));
+            if synchronized {
+                self.rest_resume(c.tick);
+            }
+            let rest_allowed =
+                !synchronized || self.rest.is_none_or(|r| r.phase == RestPhase::Ready);
+            let live_tone = self.hold.tone_id.is_some();
+            if synchronized && let Some(shape) = self.clock.shape_mut() {
+                shape.has_tone = live_tone;
+                if shape.enabled {
+                    shape.propose(
+                        crate::life::shape_policy::Shape::Base,
+                        c.tick,
+                        !state.is_alive || !state.onset_allowed || !rest_allowed,
+                    );
+                    shape.veto_plan =
+                        shape.state == crate::life::shape_policy::Shape::Connect && live_tone;
+                }
+            }
+            let onset_before = out_onsets.len();
+            #[cfg(test)]
+            if synchronized {
+                self.synchronized_counts[0] += 1;
+            }
             let step = self.step_for_candidate(c, timing_field, prev_gate_exc, ctx.fs);
             let allow_onset = min_allowed_onset_tick
                 .map(|min_tick| c.tick >= min_tick)
@@ -2049,20 +2130,21 @@ impl PhonationEngine {
                 PhonationClock::Custom(_) => (None, None),
             };
             let intentional = allow_onset
+                && rest_allowed
                 && state.is_alive
                 && state.onset_allowed
                 && self.hold.tone_id.is_some()
                 && match &mut self.clock {
-                    PhonationClock::Participation(clock) => clock.shape.as_mut().is_some_and(|s| {
-                        if TIE {
-                            s.veto_onset(c.tick)
-                        } else {
-                            s.enabled && s.veto_plan
-                        }
-                    }),
+                    PhonationClock::Participation(clock) => {
+                        clock.shape.as_mut().is_some_and(|s| s.veto_onset(c.tick))
+                    }
+                    PhonationClock::Coupling(clock) if synchronized => {
+                        clock.shape.as_mut().is_some_and(|s| s.veto_onset(c.tick))
+                    }
                     _ => false,
                 };
             if allow_onset
+                && rest_allowed
                 && !intentional
                 && state.onset_allowed
                 && let Some(mut kick) = self.onset_rule.on_candidate(&input, state)
@@ -2082,6 +2164,10 @@ impl PhonationEngine {
                 }
                 if self.sustain_participation {
                     if out_events.iter().any(|e| e.onset_tick == c.tick) {
+                        #[cfg(test)]
+                        if synchronized {
+                            self.synchronized_counts[1] += 1;
+                        }
                         self.last_tick = Some(c.tick);
                         prev_gate_exc = Some(step.exc_gate);
                         continue;
@@ -2142,6 +2228,22 @@ impl PhonationEngine {
                     .as_mut()
                     .unwrap()
                     .planned_release_at = release;
+            }
+            if synchronized {
+                let sounded = out_onsets.len() > onset_before;
+                #[cfg(test)]
+                {
+                    self.synchronized_counts[if sounded {
+                        1
+                    } else if intentional {
+                        2
+                    } else {
+                        3
+                    }] += 1;
+                }
+                if sounded && let Some(tie) = self.clock.shape_mut().and_then(|s| s.tie.as_mut()) {
+                    tie.pending_pitch = false;
+                }
             }
             self.last_tick = Some(c.tick);
             prev_gate_exc = Some(step.exc_gate);
@@ -2773,6 +2875,8 @@ mod tests {
     fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
         PhonationEngine {
             rest: None,
+            #[cfg(test)]
+            synchronized_counts: [0; 4],
             sustain_participation: false,
             clock: PhonationClock::ThetaGate(ThetaGateClock::default()),
             onset_rule,
@@ -3420,7 +3524,7 @@ mod tests {
                 GateBoundary { gate: 3, tick: 30 },
             ],
         };
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3746,7 +3850,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3794,7 +3898,7 @@ mod tests {
                 GateBoundary { gate: 3, tick: 30 },
             ],
         };
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3830,7 +3934,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -3873,7 +3977,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -4186,7 +4290,7 @@ mod tests {
         let mut events = Vec::new();
         let mut onsets = Vec::new();
         let mut timing_grid = ThetaGrid::from_candidates(&candidates);
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx,
             &candidates,
             &mut timing_grid,
@@ -4243,7 +4347,7 @@ mod tests {
         let mut cmds = Vec::new();
         let mut events = Vec::new();
         let mut onsets = Vec::new();
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx1,
             &candidates,
             &mut timing_grid,
@@ -4272,7 +4376,7 @@ mod tests {
         let mut cmds2 = Vec::new();
         let mut events2 = Vec::new();
         let mut onsets2 = Vec::new();
-        engine.process_candidates::<false>(
+        engine.process_candidates(
             &ctx2,
             &empty,
             &mut timing_grid,

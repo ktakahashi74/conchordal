@@ -333,9 +333,9 @@ impl Voice {
         if effective_control.pitch.mode == PitchMode::Free
             && sustain_participation
             && ((persistence > 0.0 && persistence < 1.0) || force_base || tie > 0.0 || force_tie)
-            && let PhonationClock::Participation(clock) = &mut phonation_engine.clock
+            && let Some(shape_slot) = phonation_engine.clock.shape_slot()
         {
-            clock.shape = Some(super::shape_policy::ShapePolicy::new(
+            *shape_slot = Some(super::shape_policy::ShapePolicy::new(
                 if force_base || !(persistence > 0.0 && persistence < 1.0) {
                     1.0
                 } else {
@@ -344,18 +344,18 @@ impl Voice {
                 seed,
                 fs,
             ));
-            clock.shape.as_mut().unwrap().retention_active =
+            shape_slot.as_mut().unwrap().retention_active =
                 force_base || (persistence > 0.0 && persistence < 1.0);
-            clock.shape.as_mut().unwrap().enabled = effective_control
+            shape_slot.as_mut().unwrap().enabled = effective_control
                 .supports_articulation_persistence()
-                && clock.shape.as_ref().unwrap().retention_active;
+                && shape_slot.as_ref().unwrap().retention_active;
             if tie > 0.0 || force_tie {
-                clock.shape.as_mut().unwrap().tie =
+                shape_slot.as_mut().unwrap().tie =
                     Some(super::shape_policy::TiePolicy::new(tie, seed));
             }
             #[cfg(test)]
             if effective_control.phonation.observe_articulation {
-                clock.shape.as_mut().unwrap().observations =
+                shape_slot.as_mut().unwrap().observations =
                     Some(vec![(start_frame, super::shape_policy::Shape::Base)]);
             }
         }
@@ -477,15 +477,36 @@ impl Voice {
         }
     }
 
-    pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize) {
+    fn phonation_segment(&self, ctx: &CoreTickCtx, start: Tick, end: Tick) -> CoreTickCtx {
+        let mut segment = CoreTickCtx {
+            now_tick: start,
+            frame_end: end,
+            ..*ctx
+        };
+        if matches!(self.phonation_engine.clock, PhonationClock::Coupling(_)) {
+            let elapsed = start.saturating_sub(ctx.now_tick) as f32 / ctx.fs;
+            segment.rhythms.delta.phase = (ctx.rhythms.delta.phase
+                + std::f32::consts::TAU * ctx.rhythms.delta.freq_hz * elapsed)
+                .rem_euclid(std::f32::consts::TAU);
+            segment.rhythms.measure.phase = (ctx.rhythms.measure.phase
+                + std::f32::consts::TAU * ctx.rhythms.measure.freq_hz * elapsed)
+                .rem_euclid(std::f32::consts::TAU);
+        }
+        segment
+    }
+
+    pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize, fs: f32) {
         if (self.effective_control.pitch.mode == PitchMode::Free || self.sustain_participation)
             && matches!(self.phonation_engine.mode, PhonationMode::Hold)
         {
-            let capacity = (hop / control_step).max(1);
-            self.rearticulations.reserve(capacity);
-            if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
-                && let Some(shape) = clock.shape.as_mut()
+            let mut capacity = (hop / control_step).max(1);
+            if self.sustain_participation
+                && matches!(self.phonation_engine.clock, PhonationClock::Coupling(_))
             {
+                capacity = capacity.max(self.phonation_engine.reserve_synchronized_hop(hop, fs));
+            }
+            self.rearticulations.reserve(capacity);
+            if let Some(shape) = self.phonation_engine.clock.shape_mut() {
                 shape.reserve(capacity, hop);
             }
             if self.sustain_participation {
@@ -551,9 +572,7 @@ impl Voice {
     fn apply_pitch_control(&mut self) {
         let next = select_pitch_application(&self.effective_control.pitch, None);
         if next != self.pitch_application {
-            if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
-                && let Some(shape) = clock.shape.as_mut()
-            {
+            if let Some(shape) = self.phonation_engine.clock.shape_mut() {
                 shape.state = super::shape_policy::Shape::Base;
                 shape.veto_plan = false;
             }
@@ -1210,8 +1229,8 @@ impl Voice {
             out.body_opportunity = self.phonation_engine.clock.opportunity(&ctx);
             out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
         }
-        if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
-            && let Some(shape) = clock.shape.as_mut()
+        if self.sustain_participation
+            && let Some(shape) = self.phonation_engine.clock.shape_mut()
         {
             // Only tied Voices instantiate the extra opportunity guard.
             if let Some(tie) = shape.tie.as_mut() {
@@ -1219,7 +1238,7 @@ impl Voice {
                 shape.enabled = self.effective_control.supports_articulation_persistence()
                     && shape.retention_active;
                 if shape.enabled || tie.enabled {
-                    self.emit_shape_participation::<true>(
+                    self.emit_shape_participation(
                         &ctx, &state, consonance, target_amp, arrival, space, out,
                     );
                     return;
@@ -1227,7 +1246,7 @@ impl Voice {
             } else {
                 shape.enabled = self.effective_control.supports_articulation_persistence();
                 if shape.enabled {
-                    self.emit_shape_participation::<false>(
+                    self.emit_shape_participation(
                         &ctx, &state, consonance, target_amp, arrival, space, out,
                     );
                     return;
@@ -2037,3 +2056,7 @@ mod bounded_participation;
 #[cfg(test)]
 #[path = "tie_tests.rs"]
 mod tie_tests;
+
+#[cfg(test)]
+#[path = "synchronized_tests.rs"]
+mod synchronized_tests;

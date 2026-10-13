@@ -23,7 +23,7 @@ fn setup(hop: usize, entrain: bool) -> (Voice, Timebase, NeuralRhythms, Phonatio
         None,
         21,
     );
-    voice.configure_control_hop(hop, 64);
+    voice.configure_control_hop(hop, 64, 48_000.0);
     let mut batch = PhonationBatch::default();
     voice.prepare_phonation_batch(&mut batch);
     (

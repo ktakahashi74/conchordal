@@ -117,6 +117,7 @@ struct PopulationSpec {
     consonance_movement: bool,
     pitch_apply_mode_user_set: bool,
     explicit_sustain: bool,
+    explicit_metric: bool,
 }
 
 impl PopulationSpec {
@@ -162,6 +163,7 @@ impl PopulationSpec {
             consonance_movement: false,
             pitch_apply_mode_user_set: false,
             explicit_sustain: false,
+            explicit_metric: false,
         }
     }
 
@@ -580,7 +582,9 @@ impl PopulationSpec {
                         relation: crate::scenario::RhythmRelation::Participating,
                         ..
                     })
-                ) {
+                ) || (self.explicit_metric
+                    && matches!(self.phonation_spec.timing, PhonationTiming::Coupled(_)))
+                {
                     self.phonation_spec.duration = DurationSpec::WhileAlive;
                     self.phonation_spec.sustain_participation = true;
                 } else {
@@ -589,6 +593,7 @@ impl PopulationSpec {
                 }
             }
             PhonationKind::Repeat => {
+                self.explicit_metric = false;
                 self.rest_sustain = false;
                 self.explicit_sustain = false;
                 self.clear_rhythm_preset_controls();
@@ -615,9 +620,8 @@ impl PopulationSpec {
     /// reads as a stable pulse. No Hz argument -- the tempo region is the
     /// director's `temporal_basin`; this only sets how hard the voice locks.
     fn set_metric(&mut self) {
-        self.rest_sustain = false;
-        self.explicit_sustain = false;
-        self.phonation_spec.sustain_participation = false;
+        self.explicit_metric = true;
+        self.phonation_spec.sustain_participation = self.explicit_sustain;
         self.clear_rhythm_preset_controls();
         self.phonation_spec.timing = PhonationTiming::Coupled(
             CoupledTimingSpec {
@@ -629,11 +633,16 @@ impl PopulationSpec {
             }
             .sanitized(),
         );
-        self.ensure_gated_duration(DEFAULT_GATE_COUNT);
+        if self.explicit_sustain {
+            self.phonation_spec.duration = DurationSpec::WhileAlive;
+        } else {
+            self.ensure_gated_duration(DEFAULT_GATE_COUNT);
+        }
     }
 
     /// Acoustic participation; legacy vitality and attack reward remain for comparison.
     fn set_entrained(&mut self) {
+        self.explicit_metric = false;
         self.clear_rhythm_preset_controls();
         let spec = CoupledTimingSpec {
             relation: crate::scenario::RhythmRelation::Participating,
@@ -668,6 +677,7 @@ impl PopulationSpec {
     /// Flow preset: near-zero coupling, a free renewal process that ignores the
     /// beat and fires at clustered, non-metric IOIs.
     fn set_flow(&mut self) {
+        self.explicit_metric = false;
         self.clear_rhythm_preset_controls();
         self.phonation_spec.timing = PhonationTiming::Coupled(
             CoupledTimingSpec {
@@ -737,6 +747,7 @@ impl PopulationSpec {
     }
 
     fn set_when_once(&mut self) {
+        self.explicit_metric = false;
         self.rest_sustain = false;
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
@@ -745,6 +756,7 @@ impl PopulationSpec {
     }
 
     fn set_when_pulse(&mut self, rate: f32) {
+        self.explicit_metric = false;
         self.rest_sustain = false;
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
@@ -772,6 +784,7 @@ impl PopulationSpec {
     }
 
     fn set_duration_while_alive(&mut self) {
+        self.explicit_metric = false;
         self.finite_duration = None;
         self.rest_sustain = false;
         self.explicit_sustain = false;

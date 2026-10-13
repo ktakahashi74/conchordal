@@ -21,7 +21,7 @@ fn fixture() -> (Voice, Landscape, Timebase, NeuralRhythms, PhonationBatch) {
         21,
     );
     v.effective_control.pitch.rearticulate_above_cents = 50.0;
-    v.configure_control_hop(512, 64);
+    v.configure_control_hop(512, 64, 48_000.0);
     let mut out = PhonationBatch::default();
     v.prepare_phonation_batch(&mut out);
     (

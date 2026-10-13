@@ -4,15 +4,8 @@ use crate::life::shape_policy::Shape;
 impl Voice {
     fn articulation_persistence_clear_before(&mut self, at: Tick) {
         // Release leaves the pending pitch unchanged without the private policy.
-        debug_assert!(matches!(
-            self.phonation_engine.clock,
-            PhonationClock::Participation(_)
-        ));
-        let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock else {
-            return;
-        };
-        debug_assert!(clock.shape.is_some());
-        let Some(shape) = clock.shape.as_mut() else {
+        debug_assert!(self.phonation_engine.clock.shape_mut().is_some());
+        let Some(shape) = self.phonation_engine.clock.shape_mut() else {
             return;
         };
         if shape.clear_before(at) {
@@ -36,21 +29,14 @@ impl Voice {
         }
         self.articulation_persistence_clear_before(until);
         // Release keeps the emitted tones when the private policy is unavailable.
-        debug_assert!(matches!(
-            self.phonation_engine.clock,
-            PhonationClock::Participation(_)
-        ));
-        let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock else {
-            return;
-        };
-        debug_assert!(clock.shape.is_some());
-        if let Some(shape) = clock.shape.as_mut() {
+        debug_assert!(self.phonation_engine.clock.shape_mut().is_some());
+        if let Some(shape) = self.phonation_engine.clock.shape_mut() {
             shape.finish_segment();
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn emit_shape_participation<const TIE: bool>(
+    pub(super) fn emit_shape_participation(
         &mut self,
         ctx: &CoreTickCtx,
         state: &CoreState,
@@ -60,9 +46,15 @@ impl Voice {
         space: Option<&Log2Space>,
         out: &mut PhonationBatch,
     ) {
+        let tied = self
+            .phonation_engine
+            .clock
+            .shape_mut()
+            .is_some_and(|s| s.tie.as_ref().is_some_and(|t| t.enabled));
         let previous_tone = self.active_render_notes.last().map(|n| n.tone_id);
         out.body_opportunity = self.phonation_engine.clock.opportunity(ctx);
         out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
+        self.phonation_engine.prepare_synchronized_hop(ctx);
         self.phonation_engine.initial_participating_hold(
             ctx,
             state,
@@ -86,20 +78,18 @@ impl Voice {
             for step_index in 0..self.participation_pitch_steps.len() {
                 let step = self.participation_pitch_steps[step_index];
                 if cursor < step.at {
-                    let segment = CoreTickCtx {
-                        now_tick: cursor,
-                        frame_end: step.at,
-                        ..*ctx
-                    };
+                    let segment = self.phonation_segment(ctx, cursor, step.at);
                     self.phonation_engine.set_adoption_candidate(None);
-                    if TIE
-                        && let PhonationClock::Participation(clock) =
-                            &mut self.phonation_engine.clock
-                        && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
+                    if tied
+                        && let Some(tie) = self
+                            .phonation_engine
+                            .clock
+                            .shape_mut()
+                            .and_then(|s| s.tie.as_mut())
                     {
                         tie.pending_pitch = self.pending_participation_pitch.is_some();
                     }
-                    self.phonation_engine.tick_with_arrival_impl::<TIE>(
+                    self.phonation_engine.tick_with_arrival(
                         &segment,
                         state,
                         None,
@@ -135,25 +125,19 @@ impl Voice {
                         Some((space, reference, m.pitch_log2)),
                     );
                     // Release drops this adoption if its private policy is unavailable.
-                    debug_assert!(matches!(
-                        self.phonation_engine.clock,
-                        PhonationClock::Participation(_)
-                    ));
-                    let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
-                    else {
+                    let locked = match &self.phonation_engine.clock {
+                        PhonationClock::Participation(c) => c
+                            .policy
+                            .as_ref()
+                            .is_some_and(|p| p.articulation_persistence_planned()),
+                        _ => false,
+                    };
+                    debug_assert!(self.phonation_engine.clock.shape_mut().is_some());
+                    let Some(shape) = self.phonation_engine.clock.shape_mut() else {
                         m_index += 1;
                         continue;
                     };
-                    let locked = clock
-                        .policy
-                        .as_ref()
-                        .is_some_and(|p| p.articulation_persistence_planned());
-                    debug_assert!(clock.shape.is_some());
-                    let Some(shape) = clock.shape.as_mut() else {
-                        m_index += 1;
-                        continue;
-                    };
-                    if !TIE || shape.enabled {
+                    if !tied || shape.enabled {
                         shape.propose(
                             if base == PitchApplyMode::Glide {
                                 Shape::Connect
@@ -164,7 +148,7 @@ impl Voice {
                             locked,
                         );
                     }
-                    let glide = ((!TIE || shape.enabled) && shape.state == Shape::Connect)
+                    let glide = ((!tied || shape.enabled) && shape.state == Shape::Connect)
                         || base == PitchApplyMode::Glide;
                     self.articulation_persistence_clear_before(m.at);
                     if glide {
@@ -178,19 +162,18 @@ impl Voice {
                     }
                     m_index += 1;
                 }
-                let segment = CoreTickCtx {
-                    now_tick: step.at,
-                    frame_end: step.at.saturating_add(1),
-                    ..*ctx
-                };
+                let segment = self.phonation_segment(ctx, step.at, step.at.saturating_add(1));
                 self.phonation_engine.set_adoption_candidate(None);
-                if TIE
-                    && let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
-                    && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
+                if tied
+                    && let Some(tie) = self
+                        .phonation_engine
+                        .clock
+                        .shape_mut()
+                        .and_then(|s| s.tie.as_mut())
                 {
                     tie.pending_pitch = self.pending_participation_pitch.is_some();
                 }
-                self.phonation_engine.tick_with_arrival_impl::<TIE>(
+                self.phonation_engine.tick_with_arrival(
                     &segment,
                     state,
                     None,
@@ -242,17 +225,17 @@ impl Voice {
                 cursor = step.at.saturating_add(1);
             }
             if cursor < ctx.frame_end {
-                let segment = CoreTickCtx {
-                    now_tick: cursor,
-                    ..*ctx
-                };
-                if TIE
-                    && let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock
-                    && let Some(tie) = clock.shape.as_mut().and_then(|s| s.tie.as_mut())
+                let segment = self.phonation_segment(ctx, cursor, ctx.frame_end);
+                if tied
+                    && let Some(tie) = self
+                        .phonation_engine
+                        .clock
+                        .shape_mut()
+                        .and_then(|s| s.tie.as_mut())
                 {
                     tie.pending_pitch = self.pending_participation_pitch.is_some();
                 }
-                self.phonation_engine.tick_with_arrival_impl::<TIE>(
+                self.phonation_engine.tick_with_arrival(
                     &segment,
                     state,
                     None,

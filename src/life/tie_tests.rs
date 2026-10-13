@@ -34,7 +34,7 @@ fn setup(
         21,
     );
     v.articulation.set_autonomous_attack_enabled(false);
-    v.configure_control_hop(512, 64);
+    v.configure_control_hop(512, 64, 48_000.0);
     let mut out = PhonationBatch::default();
     v.prepare_phonation_batch(&mut out);
     (
@@ -211,7 +211,7 @@ fn tie_mode_suspension_and_hop_partition_do_not_add_trials() {
     let run = |hop: usize| {
         let (mut v, mut tb, r, mut out, space) = setup(0.5, PitchApplyMode::Rearticulate);
         tb.hop = hop;
-        v.configure_control_hop(hop, 64);
+        v.configure_control_hop(hop, 64, 48_000.0);
         let mut onsets = Vec::new();
         for at in (0..65536).step_by(hop) {
             emit(&mut v, &tb, &r, at, &mut out, &space);

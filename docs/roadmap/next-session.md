@@ -2,10 +2,13 @@
 
 次の段は「機構の完成」。作者は15:52頃に機構を先、曲を後とし、16:44にT-17の案B（L1〜L4）と、
 A-14の形を選べる創始方策として入れる方針を採った。再開は[現行計画§8](plan-current.md#mechanism-completion-scope-20261013)と
-[台帳§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)から始める。
-L2はT-18、L3はA-15で設計中。未定の設計を採択済みとして実装しない。A-14の公開の形と名前は
-作者に確認中で、既定とflowは変えない。P-4の材料は提示済み・試聴未実施で、音高移動側の課題を
-四要件へ加えるかは作者判断待ち。以下の過去の結果は取得時点の記録として読む。
+[台帳§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)と
+[§9.3.82](../design-notes/technote-ledger.ja.md#pitch-movement-requirement-and-steady-20261013)から始める。
+17:07に音高移動側のL5を追加し、分母は五要件となった。L2はT-18、L3はA-15、L5はA-16で設計する。
+L3とL5の境目と判断の先後は設計報告を待ち、未定の案を採択済みとして実装しない。
+A-14の公開語は第四のtimingのpreset `steady()`に確定し、V-14が実装進行中。既定とflowは変えない。
+P-4の基準と境界50だけの二本は17:03に試聴済み。境界の省略値0は変えていない。
+以下の過去の結果は取得時点の記録として読む。
 
 2026-10-13更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
@@ -36,9 +39,10 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 
 ## 2. 先に読むもの
 
-1. [plan-current §8「機構の完成」](plan-current.md#mechanism-completion-scope-20261013)：採択した四要件の出口、依存、分母に入れないもの、記録時点の状態。
+1. [plan-current §8「機構の完成」](plan-current.md#mechanism-completion-scope-20261013)：採択した五要件の出口、依存、分母に入れないもの、記録時点の状態。
 2. 機械に固有の`.orchestration/units/T-17/report.md` §§2〜6：本体のM01〜M17、残るK1〜K11、案Bと公開の判定の関係、統括の要約の訂正。未採択の選択肢は判断済みと読まない。
-3. 台帳[§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)（[英語版](../design-notes/technote-ledger.md#mechanism-completion-scope-20261013)）：作者の言葉、A-14の採択、E-4の保存、P-4の診断と未試聴、運用の修理。
+3. 台帳[§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)（[英語版](../design-notes/technote-ledger.md#mechanism-completion-scope-20261013)）：作者の言葉、A-14の採択、E-4の保存、P-4の診断と当時の未試聴、運用の修理。
+4. 台帳[§9.3.82](../design-notes/technote-ledger.ja.md#pitch-movement-requirement-and-steady-20261013)（[英語版](../design-notes/technote-ledger.md#pitch-movement-requirement-and-steady-20261013)）：17:03の試聴の答え、17:07のL5とsteady()の採択、設計と実装の未了。
 
 以下は過去の判断・結果を確認する際の参照先であり、済んだ単位を再開する指示ではない。
 

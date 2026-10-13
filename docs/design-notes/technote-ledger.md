@@ -8365,6 +8365,70 @@ P-4/report.md and its retained statistics, E-4/report.md, U-7/report.md,
 U-8/report.md, and .orchestration/records/decisions-20261007-orchestrator.md.
 Unit records reside in .orchestration/units/. Remaining designs are not adoptions.
 
+The later L5 addition and steady() decision are recorded in [§9.3.82](#pitch-movement-requirement-and-steady-20261013).
+
+<a id="pitch-movement-requirement-and-steady-20261013"></a>
+
+### 9.3.82 2026-10-13: adopt pitch-movement requirement L5 and the founder preset steady()
+
+At 17:03 the author listened to P-4's two materials: the morning reference and
+the version adding only rearticulate_above(50) to both lines. The author said
+that three staccato attacks apparently became two, making it slightly better.
+This response concerns those two materials and does not say that all staccato
+attacks disappeared. Section 9.3.81's unauditioned status remains a historical
+record; this response is its subsequent update.
+
+Orchestration counted the following upper-line observations from the saved
+seed-21 records, between 2 and 96 seconds. A sequence stays within 100 cents of
+its first onset pitch; the table reports sequence lengths.
+
+| Sequence length | Reference count | Boundary-50-only count |
+| --- | --- | --- |
+| 2 | 20 | 3 |
+| 3 | 4 | 0 |
+| 4 | 5 | 0 |
+| 7 | 1 | 0 |
+
+The boundary version had no sequences of length three or more. Attacks 50–100
+cents from the preceding onset increased from one to four. The boundary measures
+net displacement from the last actual onset to the destination. Small adoptions
+in the same direction can accumulate beyond that displacement boundary and
+attack a nearby pitch again. Whether this corresponds to the author's apparent
+two attacks is unconfirmed. Fifty remains a comparison input, not a recommended
+value, and the omitted rearticulate_above value remains zero.
+
+Orchestration's E-3 reading that re-attacks on small movements contributed to the
+sense of polyphony came from a version combining several changes. The present
+single-boundary comparison did not support that reading. The author's response
+does not establish a general effect on polyphony or select a new boundary value.
+
+At 17:07 the author adopted both recommendations:
+
+- **Add pitch movement as completion requirement L5.** A Voice's destination
+  adoption must distinguish adjustment within the same sound from movement to
+  another sound, and must not turn the former into a phonation event. The
+  denominator is now five requirements, L1–L5. Including pitch search broadens
+  the scope beyond temporal DCC alone. A-16 first designs this requirement;
+  no design contents or recommendation are recorded here. Its boundary with
+  L3 and which decisions must precede others await the design reports. Scope
+  adoption does not establish implementation or acceptance of this distinction.
+- **The public word for A-14's form is the fourth timing preset, steady().** It
+  sits alongside entrained(), flow() and metric(). The earlier adoption of a
+  selectable founder policy, preserving the default and excluding flow, remains
+  in force. V-14 implementation is in progress at this record's date; steady()
+  is not recorded as implemented.
+
+The [current plan §8](../roadmap/plan-current.md#mechanism-completion-scope-20261013)
+defines the requirements and dependencies. No further design, number or default
+change is adopted by this entry. It does not change production source or
+technote's implementation verdicts.
+
+Sources are machine-local .orchestration/units/D-14/brief.md, P-4's retained
+acquisitions and report, and the corresponding decisions and orchestration counts
+in .orchestration/records/decisions-20261007-orchestrator.md. Identification of the
+author's two attacks with the counted sequences remains unconfirmed. L5 design,
+implementation and acceptance, and V-14 production acceptance, remain incomplete.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

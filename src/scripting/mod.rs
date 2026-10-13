@@ -692,6 +692,14 @@ impl PopulationSpec {
         });
     }
 
+    /// Preserve private opportunities while using acoustic context for sound or skip.
+    fn set_steady(&mut self) {
+        self.set_entrained();
+        if let PhonationTiming::Coupled(timing) = &mut self.phonation_spec.timing {
+            timing.steady = true;
+        }
+    }
+
     /// Flow preset: near-zero coupling, a free renewal process that ignores the
     /// beat and fires at clustered, non-metric IOIs.
     fn set_flow(&mut self) {
@@ -1587,7 +1595,7 @@ impl ScriptContext {
                 }
                 timing.base_rate_hz = rate as f32;
             } else {
-                warn!("intrinsic_rate() ignored outside entrained()/flow()");
+                warn!("intrinsic_rate() ignored outside entrained()/steady()/flow()");
             }
         }
         population_spec
@@ -1621,7 +1629,7 @@ impl ScriptContext {
                 .supports_articulation_persistence()
         {
             warn!(
-                "articulation_persistence() ignored outside free-pitch sustain() with metric()/entrained()/flow(), rearticulate, and a positive rearticulate_above()"
+                "articulation_persistence() ignored outside free-pitch sustain() with metric()/entrained()/steady()/flow(), rearticulate, and a positive rearticulate_above()"
             );
             population_spec
                 .spec
@@ -1633,7 +1641,7 @@ impl ScriptContext {
             && !population_spec.spec.spawn_spec().control.supports_tie()
         {
             warn!(
-                "tie() ignored outside free-pitch sustain() with metric()/entrained()/flow() and gate_snap/rearticulate"
+                "tie() ignored outside free-pitch sustain() with metric()/entrained()/steady()/flow() and gate_snap/rearticulate"
             );
             population_spec.spec.control.phonation.tie = 0.0;
         }

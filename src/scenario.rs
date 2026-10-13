@@ -196,6 +196,7 @@ pub(crate) enum PhonationClockConfig {
         coupling: f32,
         base_rate_hz: f32,
         flow_depth: f32,
+        steady: bool,
     },
 }
 
@@ -283,6 +284,8 @@ pub struct CoupledTimingSpec {
     pub base_rate_hz: f32,
     /// Renewal clustering for the low-coupling (flow) limit; 0 = regular.
     pub flow_depth: f32,
+    /// Keep private opportunities fixed; acoustic context only chooses sound or skip.
+    pub steady: bool,
     /// Signed beat-phase offset in [-0.5, 0.5], used only by synchronized timing.
     pub microtiming: f32,
     /// Confidence-weighted measure emphasis, 0..1; zero leaves onset strength unchanged.
@@ -303,6 +306,7 @@ impl Default for CoupledTimingSpec {
             coupling: 0.5,
             base_rate_hz: 2.0,
             flow_depth: 0.0,
+            steady: false,
             microtiming: 0.0,
             measure_accent: 0.0,
             role: RhythmRole::Beat,
@@ -321,6 +325,9 @@ impl CoupledTimingSpec {
             coupling: self.coupling.clamp(0.0, 1.0),
             base_rate_hz: sanitize_positive_rate_hz(self.base_rate_hz),
             flow_depth: self.flow_depth.clamp(0.0, 1.0),
+            steady: self.steady
+                && self.relation == RhythmRelation::Participating
+                && self.flow_depth == 0.0,
             microtiming: if self.microtiming.is_finite() {
                 self.microtiming.clamp(-0.5, 0.5)
             } else {

@@ -332,6 +332,7 @@ mod tests {
                     coupling: 0.8,
                     base_rate_hz: 2.0,
                     flow_depth: 0.0,
+                    steady: false,
                 },
                 onset: OnsetConfig::Always { strength: 1.0 },
                 duration: DurationConfig::FixedGate { length_gates: 1 },
@@ -352,6 +353,32 @@ mod tests {
             NeuralRhythms::default(),
             out,
         )
+    }
+    fn use_steady(v: &mut Voice) {
+        let PhonationClock::Participation(old) = &mut v.phonation_engine.clock else {
+            panic!()
+        };
+        let shape = old.shape.take();
+        let mut clock = PhonationClock::from_config(
+            &PhonationClockConfig::Participation {
+                coupling: 0.8,
+                base_rate_hz: 2.0,
+                flow_depth: 0.0,
+                steady: true,
+            },
+            21,
+        );
+        let PhonationClock::Participation(new) = &mut clock else {
+            panic!()
+        };
+        new.shape = shape;
+        v.phonation_engine.clock = clock;
+        let crate::scenario::PhonationTiming::Coupled(timing) =
+            &mut v.effective_control.phonation.spec.timing
+        else {
+            panic!()
+        };
+        timing.steady = true;
     }
     fn emit(v: &mut Voice, tb: &Timebase, r: &NeuralRhythms, at: Tick, out: &mut PhonationBatch) {
         v.tick_phonation_into(tb, at, r, None, 0.0, 1.0, 0.8, out);
@@ -379,43 +406,50 @@ mod tests {
     }
     #[test]
     fn pending_participation_pitch_replaces_then_consumes_at_one_clock_on() {
-        let (mut v, tb, r, mut out) = deferred();
-        emit(&mut v, &tb, &r, 0, &mut out);
-        let initial = out.tones[0].freq_hz;
-        adoption(&mut v, 512, 440.0);
-        emit(&mut v, &tb, &r, 512, &mut out);
-        assert!(out.tones.is_empty());
-        assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
-        adoption(&mut v, 1024, 550.0);
-        emit(&mut v, &tb, &r, 1024, &mut out);
-        assert_eq!(
-            v.pending_participation_pitch.unwrap().to_bits(),
-            550.0f32.log2().to_bits()
-        );
-        for frame in 3..100 {
-            emit(&mut v, &tb, &r, frame * 512, &mut out);
-            if !out.tones.is_empty() {
-                assert_eq!(out.tones.len(), 1);
-                assert_eq!(out.onsets.len(), 1);
+        for steady in [false, true] {
+            (|| {
+                let (mut v, tb, r, mut out) = deferred();
+                if steady {
+                    use_steady(&mut v);
+                }
+                emit(&mut v, &tb, &r, 0, &mut out);
+                let initial = out.tones[0].freq_hz;
+                adoption(&mut v, 512, 440.0);
+                emit(&mut v, &tb, &r, 512, &mut out);
+                assert!(out.tones.is_empty());
+                assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
+                adoption(&mut v, 1024, 550.0);
+                emit(&mut v, &tb, &r, 1024, &mut out);
                 assert_eq!(
-                    out.cmds
-                        .iter()
-                        .filter(|c| matches!(c, ToneCmd::On { .. }))
-                        .count(),
-                    1
+                    v.pending_participation_pitch.unwrap().to_bits(),
+                    550.0f32.log2().to_bits()
                 );
-                assert_eq!(
-                    out.tones[0].freq_hz.to_bits(),
-                    550.0f32.log2().exp2().to_bits()
-                );
-                assert!(v.pending_participation_pitch.is_none());
-                assert_eq!(v.active_render_notes.len(), 1);
-                return;
-            }
-            assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
-            assert!(v.pending_participation_pitch.is_some());
+                for frame in 3..100 {
+                    emit(&mut v, &tb, &r, frame * 512, &mut out);
+                    if !out.tones.is_empty() {
+                        assert_eq!(out.tones.len(), 1);
+                        assert_eq!(out.onsets.len(), 1);
+                        assert_eq!(
+                            out.cmds
+                                .iter()
+                                .filter(|c| matches!(c, ToneCmd::On { .. }))
+                                .count(),
+                            1
+                        );
+                        assert_eq!(
+                            out.tones[0].freq_hz.to_bits(),
+                            550.0f32.log2().exp2().to_bits()
+                        );
+                        assert!(v.pending_participation_pitch.is_none());
+                        assert_eq!(v.active_render_notes.len(), 1);
+                        return;
+                    }
+                    assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
+                    assert!(v.pending_participation_pitch.is_some());
+                }
+                panic!("clock must produce an onset");
+            })();
         }
-        panic!("clock must produce an onset");
     }
     #[test]
     fn deferred_participation_multiple_onsets_follow_only_past_adoptions() {
@@ -550,35 +584,43 @@ mod tests {
     }
     #[test]
     fn deferred_participation_skip_preserves_pending_pitch_and_tone() {
-        use crate::core::temporal_expectation::TemporalForecast;
-        let (mut v, tb, r, mut out) = deferred();
-        emit(&mut v, &tb, &r, 0, &mut out);
-        let freq = v.body.base_freq_hz();
-        adoption(&mut v, 512, 440.0);
-        v.phonation_engine
-            .set_onset_comparison(Some(crate::config::TemporalOnsetComparisonConfig::default()));
-        v.phonation_engine.set_decision_trace(true);
-        let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
-        v.phonation_engine
-            .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
-        for frame in 1..100 {
-            emit(&mut v, &tb, &r, frame * 512, &mut out);
-            if v.phonation_engine
-                .drain_participation_decisions()
-                .any(|d| d.skipped)
-            {
-                assert!(out.onsets.is_empty());
-                assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
-                assert_eq!(v.body.base_freq_hz().to_bits(), freq.to_bits());
-                assert_eq!(
-                    v.pending_participation_pitch.unwrap().to_bits(),
-                    440.0f32.log2().to_bits()
-                );
-                assert_eq!(v.active_render_notes.len(), 1);
-                return;
-            }
+        for steady in [false, true] {
+            (|| {
+                use crate::core::temporal_expectation::TemporalForecast;
+                let (mut v, tb, r, mut out) = deferred();
+                if steady {
+                    use_steady(&mut v);
+                }
+                emit(&mut v, &tb, &r, 0, &mut out);
+                let freq = v.body.base_freq_hz();
+                adoption(&mut v, 512, 440.0);
+                v.phonation_engine.set_onset_comparison(Some(
+                    crate::config::TemporalOnsetComparisonConfig::default(),
+                ));
+                v.phonation_engine.set_decision_trace(true);
+                let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
+                v.phonation_engine
+                    .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
+                for frame in 1..100 {
+                    emit(&mut v, &tb, &r, frame * 512, &mut out);
+                    if v.phonation_engine
+                        .drain_participation_decisions()
+                        .any(|d| d.skipped)
+                    {
+                        assert!(out.onsets.is_empty());
+                        assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+                        assert_eq!(v.body.base_freq_hz().to_bits(), freq.to_bits());
+                        assert_eq!(
+                            v.pending_participation_pitch.unwrap().to_bits(),
+                            440.0f32.log2().to_bits()
+                        );
+                        assert_eq!(v.active_render_notes.len(), 1);
+                        return;
+                    }
+                }
+                panic!("fixture must skip");
+            })();
         }
-        panic!("fixture must skip");
     }
     #[test]
     fn deferred_participation_lifecycle_cancels_pending_and_future_adoptions() {
@@ -622,6 +664,7 @@ mod tests {
                 coupling: 0.8,
                 base_rate_hz: crate::life::phonation_engine::MAX_ONSET_RATE_HZ,
                 flow_depth: 0.0,
+                steady: false,
             },
             21,
         );
@@ -803,63 +846,78 @@ mod tests {
     }
     #[test]
     fn sustained_participation_skip_keeps_the_current_tone() {
-        use crate::core::temporal_expectation::TemporalForecast;
-        let (mut v, tb, r, mut out) = setup(false);
-        v.phonation_engine
-            .set_onset_comparison(Some(crate::config::TemporalOnsetComparisonConfig::default()));
-        v.phonation_engine.set_decision_trace(true);
-        let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
-        v.phonation_engine
-            .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
-        let mut saw_skip = false;
-        for frame in 0..100 {
-            emit(&mut v, &tb, &r, frame * 512, &mut out);
-            if v.phonation_engine
-                .drain_participation_decisions()
-                .any(|d| d.skipped)
-            {
-                saw_skip = true;
-                assert!(out.onsets.is_empty());
-                assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
-                assert!(v.phonation_engine.has_active_notes());
-                assert_eq!(v.active_render_notes.len(), 1);
-                break;
-            }
+        for steady in [false, true] {
+            (|| {
+                use crate::core::temporal_expectation::TemporalForecast;
+                let (mut v, tb, r, mut out) = setup(false);
+                if steady {
+                    use_steady(&mut v);
+                }
+                v.phonation_engine.set_onset_comparison(Some(
+                    crate::config::TemporalOnsetComparisonConfig::default(),
+                ));
+                v.phonation_engine.set_decision_trace(true);
+                let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
+                v.phonation_engine
+                    .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
+                let mut saw_skip = false;
+                for frame in 0..100 {
+                    emit(&mut v, &tb, &r, frame * 512, &mut out);
+                    if v.phonation_engine
+                        .drain_participation_decisions()
+                        .any(|d| d.skipped)
+                    {
+                        saw_skip = true;
+                        assert!(out.onsets.is_empty());
+                        assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+                        assert!(v.phonation_engine.has_active_notes());
+                        assert_eq!(v.active_render_notes.len(), 1);
+                        break;
+                    }
+                }
+                assert!(saw_skip);
+            })();
         }
-        assert!(saw_skip);
     }
     #[test]
     fn sustained_participation_energy_changes_once_per_on_and_autonomous_pulse_is_absent() {
-        let (mut v, tb, r, mut out) = setup(true);
-        let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
-            &mut v.articulation.core
-        else {
-            unreachable!()
-        };
-        core.energy = 0.8;
-        core.attack_cost_fraction = 0.1;
-        core.attack_recharge_fraction = 0.0;
-        let mut expected = 0.8f32;
-        for frame in 0..100 {
-            emit(&mut v, &tb, &r, frame * 512, &mut out);
-            for _ in &out.onsets {
-                expected -= 0.1;
-            }
-            let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
-                &v.articulation.core
-            else {
-                unreachable!()
-            };
-            assert_eq!(core.energy.to_bits(), expected.to_bits());
-            for tone in &out.tones {
-                assert!(matches!(
-                    tone.render_modulator,
-                    RenderModulatorSpec::EntrainPulse {
-                        autonomous_pulse: None,
-                        ..
+        for steady in [false, true] {
+            (|| {
+                let (mut v, tb, r, mut out) = setup(true);
+                if steady {
+                    use_steady(&mut v);
+                }
+                let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
+                    &mut v.articulation.core
+                else {
+                    unreachable!()
+                };
+                core.energy = 0.8;
+                core.attack_cost_fraction = 0.1;
+                core.attack_recharge_fraction = 0.0;
+                let mut expected = 0.8f32;
+                for frame in 0..100 {
+                    emit(&mut v, &tb, &r, frame * 512, &mut out);
+                    for _ in &out.onsets {
+                        expected -= 0.1;
                     }
-                ));
-            }
+                    let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
+                        &v.articulation.core
+                    else {
+                        unreachable!()
+                    };
+                    assert_eq!(core.energy.to_bits(), expected.to_bits());
+                    for tone in &out.tones {
+                        assert!(matches!(
+                            tone.render_modulator,
+                            RenderModulatorSpec::EntrainPulse {
+                                autonomous_pulse: None,
+                                ..
+                            }
+                        ));
+                    }
+                }
+            })();
         }
     }
     #[test]
@@ -873,6 +931,7 @@ mod tests {
                 coupling: 0.8,
                 base_rate_hz: crate::life::phonation_engine::MAX_ONSET_RATE_HZ,
                 flow_depth: 0.0,
+                steady: false,
             },
             21,
         );
@@ -1005,59 +1064,66 @@ mod tests {
     }
     #[test]
     fn rest_finite_release_g1_waits_then_consumes_without_forced_on() {
-        use crate::life::phonation_engine::RestPhase;
-        let (mut v, tb, r, mut out) = rest_setup(1.);
-        emit(&mut v, &tb, &r, 0, &mut out);
-        assert_eq!(out.tones.len(), 1);
-        let off = match v.phonation_engine.rest.unwrap().phase {
-            RestPhase::Continue(at) => at,
-            _ => panic!(),
-        };
-        assert_eq!(off, 4800);
-        let mut off_seen = 0;
-        for at in (512..60000).step_by(512) {
-            emit(&mut v, &tb, &r, at, &mut out);
-            assert!(out.tones.is_empty());
-            for cmd in &out.cmds {
-                if matches!(cmd, ToneCmd::Off {off_tick, ..} if *off_tick == off) {
-                    off_seen += 1;
+        for steady in [false, true] {
+            (|| {
+                use crate::life::phonation_engine::RestPhase;
+                let (mut v, tb, r, mut out) = rest_setup(1.);
+                if steady {
+                    use_steady(&mut v);
                 }
-            }
+                emit(&mut v, &tb, &r, 0, &mut out);
+                assert_eq!(out.tones.len(), 1);
+                let off = match v.phonation_engine.rest.unwrap().phase {
+                    RestPhase::Continue(at) => at,
+                    _ => panic!(),
+                };
+                assert_eq!(off, 4800);
+                let mut off_seen = 0;
+                for at in (512..60000).step_by(512) {
+                    emit(&mut v, &tb, &r, at, &mut out);
+                    assert!(out.tones.is_empty());
+                    for cmd in &out.cmds {
+                        if matches!(cmd, ToneCmd::Off {off_tick, ..} if *off_tick == off) {
+                            off_seen += 1;
+                        }
+                    }
+                }
+                assert_eq!(off_seen, 1);
+                assert!(matches!(
+                    v.phonation_engine.rest.unwrap().phase,
+                    RestPhase::Waiting(4800)
+                ));
+                assert!(!v.phonation_engine.has_active_notes());
+                assert_eq!(
+                    v.phonation_engine.drain_participation_predictions().count(),
+                    0
+                );
+                v.phonation_engine.rest_tail_finished(61000, tb.fs);
+                assert_eq!(
+                    v.phonation_engine.rest.unwrap().phase,
+                    RestPhase::Gap {
+                        origin: 61000,
+                        until: Some(85000)
+                    }
+                );
+                for at in (60416..85000).step_by(512) {
+                    emit(&mut v, &tb, &r, at, &mut out);
+                    assert!(out.tones.is_empty());
+                }
+                v.phonation_engine.rest_resume(85000);
+                assert_eq!(v.phonation_engine.rest.unwrap().phase, RestPhase::Ready);
+                let mut found = false;
+                for at in (85504..160000).step_by(512) {
+                    emit(&mut v, &tb, &r, at, &mut out);
+                    if !out.tones.is_empty() {
+                        assert!(out.tones[0].onset > 85000);
+                        found = true;
+                        break;
+                    }
+                }
+                assert!(found);
+            })();
         }
-        assert_eq!(off_seen, 1);
-        assert!(matches!(
-            v.phonation_engine.rest.unwrap().phase,
-            RestPhase::Waiting(4800)
-        ));
-        assert!(!v.phonation_engine.has_active_notes());
-        assert_eq!(
-            v.phonation_engine.drain_participation_predictions().count(),
-            0
-        );
-        v.phonation_engine.rest_tail_finished(61000, tb.fs);
-        assert_eq!(
-            v.phonation_engine.rest.unwrap().phase,
-            RestPhase::Gap {
-                origin: 61000,
-                until: Some(85000)
-            }
-        );
-        for at in (60416..85000).step_by(512) {
-            emit(&mut v, &tb, &r, at, &mut out);
-            assert!(out.tones.is_empty());
-        }
-        v.phonation_engine.rest_resume(85000);
-        assert_eq!(v.phonation_engine.rest.unwrap().phase, RestPhase::Ready);
-        let mut found = false;
-        for at in (85504..160000).step_by(512) {
-            emit(&mut v, &tb, &r, at, &mut out);
-            if !out.tones.is_empty() {
-                assert!(out.tones[0].onset > 85000);
-                found = true;
-                break;
-            }
-        }
-        assert!(found);
     }
     #[test]
     #[cfg(feature = "profile-alloc")]
@@ -1455,21 +1521,28 @@ mod tests {
 
     #[test]
     fn bounded_small_glides_without_attack_and_large_freezes() {
-        let (mut v, tb, r, mut out) = bounded_fixture(false);
-        bounded_emit(&mut v, &tb, &r, 0, &mut out);
-        let onset = v.last_onset_pitch_log2;
-        let initial = v.body.base_freq_hz();
-        adoption(&mut v, 512, 335.0);
-        bounded_emit(&mut v, &tb, &r, 512, &mut out);
-        assert!(out.onsets.is_empty() && out.tones.is_empty());
-        assert!(v.body.base_freq_hz() > initial && v.body.base_freq_hz() < 335.0);
-        assert_eq!(v.last_onset_pitch_log2, onset);
-        let before = v.body.base_freq_hz();
-        adoption(&mut v, 1024, 440.0);
-        bounded_emit(&mut v, &tb, &r, 1024, &mut out);
-        assert!(out.onsets.is_empty());
-        assert_eq!(v.body.base_freq_hz().to_bits(), before.to_bits());
-        assert_eq!(v.pending_participation_pitch, Some(440.0f32.log2()));
+        for steady in [false, true] {
+            (|| {
+                let (mut v, tb, r, mut out) = bounded_fixture(false);
+                if steady {
+                    use_steady(&mut v);
+                }
+                bounded_emit(&mut v, &tb, &r, 0, &mut out);
+                let onset = v.last_onset_pitch_log2;
+                let initial = v.body.base_freq_hz();
+                adoption(&mut v, 512, 335.0);
+                bounded_emit(&mut v, &tb, &r, 512, &mut out);
+                assert!(out.onsets.is_empty() && out.tones.is_empty());
+                assert!(v.body.base_freq_hz() > initial && v.body.base_freq_hz() < 335.0);
+                assert_eq!(v.last_onset_pitch_log2, onset);
+                let before = v.body.base_freq_hz();
+                adoption(&mut v, 1024, 440.0);
+                bounded_emit(&mut v, &tb, &r, 1024, &mut out);
+                assert!(out.onsets.is_empty());
+                assert_eq!(v.body.base_freq_hz().to_bits(), before.to_bits());
+                assert_eq!(v.pending_participation_pitch, Some(440.0f32.log2()));
+            })();
+        }
     }
     #[test]
     fn bounded_crossing_cancels_the_old_pending_target() {
@@ -1644,6 +1717,7 @@ mod tests {
                 coupling: 0.8,
                 base_rate_hz: crate::life::phonation_engine::MAX_ONSET_RATE_HZ,
                 flow_depth: 0.0,
+                steady: false,
             },
             21,
         );
@@ -1658,81 +1732,96 @@ mod tests {
     }
     #[test]
     fn bounded_skip_preserves_pending_pitch_and_tone() {
-        use crate::core::temporal_expectation::TemporalForecast;
-        let (mut v, tb, r, mut out) = bounded_fixture(false);
-        bounded_emit(&mut v, &tb, &r, 0, &mut out);
-        let freq = v.body.base_freq_hz();
-        adoption(&mut v, 512, 440.0);
-        v.phonation_engine
-            .set_onset_comparison(Some(crate::config::TemporalOnsetComparisonConfig::default()));
-        v.phonation_engine.set_decision_trace(true);
-        let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
-        v.phonation_engine
-            .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
-        for frame in 1..100 {
-            bounded_emit(&mut v, &tb, &r, frame * 512, &mut out);
-            if v.phonation_engine
-                .drain_participation_decisions()
-                .any(|d| d.skipped)
-            {
-                assert!(out.onsets.is_empty());
-                assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
-                assert_eq!(v.body.base_freq_hz().to_bits(), freq.to_bits());
-                assert_eq!(
-                    v.pending_participation_pitch.unwrap().to_bits(),
-                    440.0f32.log2().to_bits()
-                );
-                assert_eq!(v.active_render_notes.len(), 1);
-                return;
-            }
+        for steady in [false, true] {
+            (|| {
+                use crate::core::temporal_expectation::TemporalForecast;
+                let (mut v, tb, r, mut out) = bounded_fixture(false);
+                if steady {
+                    use_steady(&mut v);
+                }
+                bounded_emit(&mut v, &tb, &r, 0, &mut out);
+                let freq = v.body.base_freq_hz();
+                adoption(&mut v, 512, 440.0);
+                v.phonation_engine.set_onset_comparison(Some(
+                    crate::config::TemporalOnsetComparisonConfig::default(),
+                ));
+                v.phonation_engine.set_decision_trace(true);
+                let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
+                v.phonation_engine
+                    .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
+                for frame in 1..100 {
+                    bounded_emit(&mut v, &tb, &r, frame * 512, &mut out);
+                    if v.phonation_engine
+                        .drain_participation_decisions()
+                        .any(|d| d.skipped)
+                    {
+                        assert!(out.onsets.is_empty());
+                        assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+                        assert_eq!(v.body.base_freq_hz().to_bits(), freq.to_bits());
+                        assert_eq!(
+                            v.pending_participation_pitch.unwrap().to_bits(),
+                            440.0f32.log2().to_bits()
+                        );
+                        assert_eq!(v.active_render_notes.len(), 1);
+                        return;
+                    }
+                }
+                panic!("fixture must skip");
+            })();
         }
-        panic!("fixture must skip");
     }
     #[test]
     fn bounded_live_modes_cancel_unrendered_requests_without_extra_on() {
-        for source in [
-            PitchApplyMode::Glide,
-            PitchApplyMode::GateSnap,
-            PitchApplyMode::Rearticulate,
-        ] {
-            for destination in [
-                PitchApplyMode::Glide,
-                PitchApplyMode::GateSnap,
-                PitchApplyMode::Rearticulate,
-            ] {
-                let (mut v, tb, r, mut out) = bounded_fixture(false);
-                v.apply_patch(&ControlUpdate {
-                    pitch_apply_mode: Some(source),
-                    ..Default::default()
-                })
-                .unwrap();
-                bounded_emit(&mut v, &tb, &r, 0, &mut out);
-                let actual = v.last_onset_pitch_log2;
-                let tones = v.active_render_notes.len();
-                v.pitch_ctl.force_set_target_pitch_log2(440.0f32.log2());
-                adoption(&mut v, 576, 440.);
-                v.pending_participation_pitch = Some(550.0f32.log2());
-                v.participation_glide_target = Some(335.0f32.log2());
-                v.apply_patch(&ControlUpdate {
-                    pitch_apply_mode: Some(destination),
-                    ..Default::default()
-                })
-                .unwrap();
-                assert_eq!(v.active_render_notes.len(), tones);
-                assert_eq!(v.last_onset_pitch_log2, actual);
-                assert_eq!(v.target_pitch_log2(), 440.0f32.log2());
-                if source != destination {
-                    assert!(v.rearticulations.is_empty());
-                    assert!(v.participation_pitch_steps.is_empty());
-                    assert!(v.pending_participation_pitch.is_none());
-                    assert!(v.participation_glide_target.is_none());
-                    bounded_emit(&mut v, &tb, &r, 512, &mut out);
-                    assert!(out.onsets.is_empty());
-                } else {
-                    assert!(v.pending_participation_pitch.is_some());
-                    assert_eq!(v.rearticulations.len(), 1);
+        for steady in [false, true] {
+            (|| {
+                for source in [
+                    PitchApplyMode::Glide,
+                    PitchApplyMode::GateSnap,
+                    PitchApplyMode::Rearticulate,
+                ] {
+                    for destination in [
+                        PitchApplyMode::Glide,
+                        PitchApplyMode::GateSnap,
+                        PitchApplyMode::Rearticulate,
+                    ] {
+                        let (mut v, tb, r, mut out) = bounded_fixture(false);
+                        if steady {
+                            use_steady(&mut v);
+                        }
+                        v.apply_patch(&ControlUpdate {
+                            pitch_apply_mode: Some(source),
+                            ..Default::default()
+                        })
+                        .unwrap();
+                        bounded_emit(&mut v, &tb, &r, 0, &mut out);
+                        let actual = v.last_onset_pitch_log2;
+                        let tones = v.active_render_notes.len();
+                        v.pitch_ctl.force_set_target_pitch_log2(440.0f32.log2());
+                        adoption(&mut v, 576, 440.);
+                        v.pending_participation_pitch = Some(550.0f32.log2());
+                        v.participation_glide_target = Some(335.0f32.log2());
+                        v.apply_patch(&ControlUpdate {
+                            pitch_apply_mode: Some(destination),
+                            ..Default::default()
+                        })
+                        .unwrap();
+                        assert_eq!(v.active_render_notes.len(), tones);
+                        assert_eq!(v.last_onset_pitch_log2, actual);
+                        assert_eq!(v.target_pitch_log2(), 440.0f32.log2());
+                        if source != destination {
+                            assert!(v.rearticulations.is_empty());
+                            assert!(v.participation_pitch_steps.is_empty());
+                            assert!(v.pending_participation_pitch.is_none());
+                            assert!(v.participation_glide_target.is_none());
+                            bounded_emit(&mut v, &tb, &r, 512, &mut out);
+                            assert!(out.onsets.is_empty());
+                        } else {
+                            assert!(v.pending_participation_pitch.is_some());
+                            assert_eq!(v.rearticulations.len(), 1);
+                        }
+                    }
                 }
-            }
+            })();
         }
     }
     #[test]
@@ -1945,16 +2034,23 @@ mod tests {
 
     #[test]
     fn articulation_persistence_initial_on_is_never_vetoed_and_same_sample_is_one_on() {
-        let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.75);
-        let PhonationClock::Participation(c) = &mut v.phonation_engine.clock else {
-            panic!()
-        };
-        c.shape.as_mut().unwrap().state = crate::life::shape_policy::Shape::Connect;
-        adoption(&mut v, 0, 335.0);
-        bounded_emit(&mut v, &tb, &r, 0, &mut out);
-        assert_eq!(out.tones.len(), 1);
-        assert_eq!(out.tones[0].onset, 0);
-        assert_eq!(v.last_onset_pitch_log2, Some(out.tones[0].freq_hz.log2()));
+        for steady in [false, true] {
+            (|| {
+                let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.75);
+                if steady {
+                    use_steady(&mut v);
+                }
+                let PhonationClock::Participation(c) = &mut v.phonation_engine.clock else {
+                    panic!()
+                };
+                c.shape.as_mut().unwrap().state = crate::life::shape_policy::Shape::Connect;
+                adoption(&mut v, 0, 335.0);
+                bounded_emit(&mut v, &tb, &r, 0, &mut out);
+                assert_eq!(out.tones.len(), 1);
+                assert_eq!(out.tones[0].onset, 0);
+                assert_eq!(v.last_onset_pitch_log2, Some(out.tones[0].freq_hz.log2()));
+            })();
+        }
     }
 
     #[test]
@@ -2112,35 +2208,43 @@ mod tests {
     }
     #[test]
     fn articulation_persistence_cost_skip_cannot_be_forced_into_an_on() {
-        use crate::core::temporal_expectation::TemporalForecast;
-        for p in [0.5, 0.75, 0.875] {
-            let (mut v, tb, r, mut out) = articulation_persistence_fixture(p);
-            bounded_emit(&mut v, &tb, &r, 0, &mut out);
-            let actual = v.last_onset_pitch_log2;
-            let forecast = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
-            v.phonation_engine.set_onset_comparison(Some(
-                crate::config::TemporalOnsetComparisonConfig::default(),
-            ));
-            v.phonation_engine.set_decision_trace(true);
-            v.phonation_engine
-                .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
-            let mut skipped = false;
-            for at in (512..51200).step_by(512) {
-                bounded_emit(&mut v, &tb, &r, at, &mut out);
-                if v.phonation_engine
-                    .drain_participation_decisions()
-                    .any(|d| d.skipped)
-                {
-                    assert!(out.tones.is_empty());
-                    assert!(out.onsets.is_empty());
-                    assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
-                    assert_eq!(v.last_onset_pitch_log2, actual);
-                    assert_eq!(v.active_render_notes.len(), 1);
-                    skipped = true;
-                    break;
+        for steady in [false, true] {
+            (|| {
+                use crate::core::temporal_expectation::TemporalForecast;
+                for p in [0.5, 0.75, 0.875] {
+                    let (mut v, tb, r, mut out) = articulation_persistence_fixture(p);
+                    if steady {
+                        use_steady(&mut v);
+                    }
+                    bounded_emit(&mut v, &tb, &r, 0, &mut out);
+                    let actual = v.last_onset_pitch_log2;
+                    let forecast =
+                        TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
+                    v.phonation_engine.set_onset_comparison(Some(
+                        crate::config::TemporalOnsetComparisonConfig::default(),
+                    ));
+                    v.phonation_engine.set_decision_trace(true);
+                    v.phonation_engine
+                        .set_temporal_context(Some(&forecast), [1.0, 0.0, 0.0]);
+                    let mut skipped = false;
+                    for at in (512..51200).step_by(512) {
+                        bounded_emit(&mut v, &tb, &r, at, &mut out);
+                        if v.phonation_engine
+                            .drain_participation_decisions()
+                            .any(|d| d.skipped)
+                        {
+                            assert!(out.tones.is_empty());
+                            assert!(out.onsets.is_empty());
+                            assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
+                            assert_eq!(v.last_onset_pitch_log2, actual);
+                            assert_eq!(v.active_render_notes.len(), 1);
+                            skipped = true;
+                            break;
+                        }
+                    }
+                    assert!(skipped);
                 }
-            }
-            assert!(skipped);
+            })();
         }
     }
     #[cfg(feature = "profile-alloc")]

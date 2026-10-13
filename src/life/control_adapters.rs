@@ -106,6 +106,7 @@ pub(crate) fn phonation_config_from_spec(spec: &PhonationSpec) -> PhonationConfi
                         coupling: coupled.coupling,
                         base_rate_hz: coupled.base_rate_hz,
                         flow_depth: coupled.flow_depth,
+                        steady: coupled.steady,
                     }
                 }
             },

@@ -318,6 +318,7 @@ mod tests {
                             coupling: 0.8,
                             base_rate_hz: 2.0,
                             flow_depth: 0.0,
+                            steady: false,
                         },
                         ..Default::default()
                     },

@@ -116,9 +116,93 @@ fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
 }
 
 #[test]
+fn steady_is_initial_only_and_timing_presets_use_the_last_written_policy() {
+    for earlier in ["steady()", "entrained()", "flow()", "metric()"] {
+        for last in ["steady()", "entrained()", "flow()", "metric()"] {
+            let combined =
+                first_spawn_spec_for_script(&format!("create(sine().{earlier}.{last},1);"));
+            let expected = first_spawn_spec_for_script(&format!("create(sine().{last},1);"));
+            assert_eq!(
+                combined.control.phonation.spec.timing,
+                expected.control.phonation.spec.timing
+            );
+            assert_eq!(
+                combined.control.phonation.tie,
+                expected.control.phonation.tie
+            );
+        }
+    }
+    let mut expected = first_spawn_spec_for_script("create(sine().entrained(),1);")
+        .control
+        .phonation
+        .spec;
+    let PhonationTiming::Coupled(timing) = &mut expected.timing else {
+        panic!()
+    };
+    timing.steady = true;
+    assert_eq!(
+        first_spawn_spec_for_script("create(sine().steady(),1);")
+            .control
+            .phonation
+            .spec,
+        expected
+    );
+    for chain in ["steady().entrainment(0.3)", "entrainment(0.3).steady()"] {
+        let spec = first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
+        assert!(
+            matches!(spec.control.phonation.spec.timing, PhonationTiming::Coupled(t) if t.steady && t.coupling == 0.3 && t.flow_depth == 0.0)
+        );
+    }
+    assert!(
+        run_script_err("let p=create(sine().steady(),1); p.steady();")
+            .to_string()
+            .contains("steady")
+    );
+}
+
+#[test]
+fn steady_sustain_combines_pitch_shape_and_rest_controls() {
+    for pitch in ["glide", "gate_snap", "rearticulate"] {
+        for chain in ["sustain().steady()", "steady().sustain()"] {
+            let (scenario, _) = run_script(&format!(
+                "create(sine().{chain}.seek_consonance().pitch_apply_mode(\"{pitch}\").rearticulate_above(50).articulation_persistence(0.75).tie(0.5).cycles(1).rest(0.5),1);"
+            ));
+            let spec = scenario
+                .events
+                .iter()
+                .flat_map(|e| &e.actions)
+                .find_map(|a| match a {
+                    Action::Spawn { spec, .. } => Some(spec),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(spec.control.phonation.spec.is_sustained_participation());
+            assert_eq!(spec.control.phonation.rest_periods, Some(0.5));
+            assert_eq!(
+                spec.control.phonation.tie,
+                if pitch == "glide" { 0.0 } else { 0.5 }
+            );
+            assert_eq!(
+                spec.control.phonation.articulation_persistence,
+                if pitch == "rearticulate" { 0.75 } else { 0.0 }
+            );
+        }
+    }
+    assert_eq!(
+        first_spawn_spec_for_script(
+            "create(sine().steady().sustain().seek_consonance().pitch_apply_mode(\"gate_snap\"),1);"
+        )
+        .control
+        .phonation
+        .tie,
+        0.0
+    );
+}
+
+#[test]
 fn intrinsic_rate_resolves_at_creation_independent_of_builder_order() {
     for body in ["sine", "harmonic", "modal"] {
-        for preset in ["entrained()", "flow()"] {
+        for preset in ["entrained()", "steady()", "flow()"] {
             for chain in [
                 format!("intrinsic_rate(1.0/2.128).sustain().{preset}"),
                 format!("sustain().intrinsic_rate(1.0/2.128).{preset}"),
@@ -144,7 +228,7 @@ fn intrinsic_rate_resolves_at_creation_independent_of_builder_order() {
 
 #[test]
 fn intrinsic_rate_rejects_invalid_inputs_before_creating_a_population() {
-    for preset in ["entrained()", "flow()"] {
+    for preset in ["entrained()", "steady()", "flow()"] {
         for placement in ["create(sine().CHAIN,1);", "place(sine().CHAIN,at(330.0));"] {
             for rate in [
                 -1.0,
@@ -223,7 +307,7 @@ fn intrinsic_rate_unsupported_presets_ignore_even_invalid_values_without_a_live_
 
 #[test]
 fn intrinsic_rate_omission_matches_explicit_existing_default_and_keeps_rhythm_freq_distinct() {
-    for preset in ["entrained()", "flow()"] {
+    for preset in ["entrained()", "steady()", "flow()"] {
         let plain = first_spawn_spec_for_script(&format!("create(sine().{preset},1);"));
         let explicit =
             first_spawn_spec_for_script(&format!("create(sine().{preset}.intrinsic_rate(2),1);"));
@@ -245,73 +329,79 @@ fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
     use crate::life::phonation_engine::PhonationClock;
     use crate::life::shape_policy::Shape;
     for body in ["sine", "harmonic", "modal"] {
-        let (scenario, _) = run_script_with_seed(
-            &format!(
-                "create({body}().sustain().entrained().intrinsic_rate(1.0/2.128).pitch_apply_mode(\"rearticulate\").rearticulate_above(50).articulation_persistence(0.75).respawn_random().respawn_background_death_rate(10000.0),1);"
-            ),
-            21,
-        );
-        let mut community = Community::new(Timebase {
-            fs: 48000.,
-            hop: 257,
-        });
-        community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
-        for action in scenario.events.iter().flat_map(|event| &event.actions) {
-            if matches!(
-                action,
-                Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
-            ) {
-                community.apply_action(action.clone(), &landscape, None);
+        for preset in ["entrained()", "steady()"] {
+            let (scenario, _) = run_script_with_seed(
+                &format!(
+                    "create({body}().sustain().{preset}.intrinsic_rate(1.0/2.128).pitch_apply_mode(\"rearticulate\").rearticulate_above(50).articulation_persistence(0.75).respawn_random().respawn_background_death_rate(10000.0),1);"
+                ),
+                21,
+            );
+            let mut community = Community::new(Timebase {
+                fs: 48000.,
+                hop: 257,
+            });
+            community.set_seed(scenario.seed);
+            let landscape = LandscapeFrame::default();
+            for action in scenario.events.iter().flat_map(|event| &event.actions) {
+                if matches!(
+                    action,
+                    Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+                ) {
+                    community.apply_action(action.clone(), &landscape, None);
+                }
             }
-        }
-        let parent = community.voices[0].id();
-        let period = community.voices[0]
-            .phonation_engine
-            .clock
-            .intrinsic_period_sec();
-        assert_eq!(period, Some(1.0 / f64::from((1.0 / 2.128) as f32)));
-        // Perturb the live parent's clock; descendants must still read the template.
-        let mut changed = community.voices[0].effective_control.phonation.spec.clone();
-        let PhonationTiming::Coupled(timing) = &mut changed.timing else {
-            panic!()
-        };
-        timing.base_rate_hz = 1.3;
-        community.voices[0]
-            .phonation_engine
-            .update_from_spec(&changed);
-        assert_ne!(
-            community.voices[0]
+            let parent = community.voices[0].id();
+            let period = community.voices[0]
                 .phonation_engine
                 .clock
-                .intrinsic_period_sec(),
-            period
-        );
-        let PhonationClock::Participation(clock) = &mut community.voices[0].phonation_engine.clock
-        else {
-            panic!()
-        };
-        let shape = clock.shape.as_mut().unwrap();
-        shape.state = Shape::Connect;
-        shape.veto_plan = true;
-        shape.has_tone = true;
-        community.advance(257, 48000., 0, 257. / 48000., &landscape);
-        community.cleanup_dead(0, 257. / 48000., false, &landscape);
-        let children: Vec<_> = community
-            .voices
-            .iter()
-            .filter(|v| v.id() != parent)
-            .collect();
-        assert!(!children.is_empty());
-        for child in children {
-            assert_eq!(child.phonation_engine.clock.intrinsic_period_sec(), period);
-            let PhonationClock::Participation(clock) = &child.phonation_engine.clock else {
+                .intrinsic_period_sec();
+            assert_eq!(period, Some(1.0 / f64::from((1.0 / 2.128) as f32)));
+            // Perturb the live parent's clock; descendants must still read the template.
+            let mut changed = community.voices[0].effective_control.phonation.spec.clone();
+            let PhonationTiming::Coupled(timing) = &mut changed.timing else {
                 panic!()
             };
-            assert!(clock.policy.is_none());
-            let shape = clock.shape.as_ref().unwrap();
-            assert_eq!(shape.state, Shape::Base);
-            assert!(!shape.veto_plan && !shape.has_tone);
+            timing.base_rate_hz = 1.3;
+            community.voices[0]
+                .phonation_engine
+                .update_from_spec(&changed);
+            assert_ne!(
+                community.voices[0]
+                    .phonation_engine
+                    .clock
+                    .intrinsic_period_sec(),
+                period
+            );
+            let PhonationClock::Participation(clock) =
+                &mut community.voices[0].phonation_engine.clock
+            else {
+                panic!()
+            };
+            let shape = clock.shape.as_mut().unwrap();
+            shape.state = Shape::Connect;
+            shape.veto_plan = true;
+            shape.has_tone = true;
+            community.advance(257, 48000., 0, 257. / 48000., &landscape);
+            community.cleanup_dead(0, 257. / 48000., false, &landscape);
+            let children: Vec<_> = community
+                .voices
+                .iter()
+                .filter(|v| v.id() != parent)
+                .collect();
+            assert!(!children.is_empty());
+            for child in children {
+                assert_eq!(child.phonation_engine.clock.intrinsic_period_sec(), period);
+                let PhonationClock::Participation(clock) = &child.phonation_engine.clock else {
+                    panic!()
+                };
+                assert!(clock.policy.is_none());
+                assert!(
+                    matches!(child.effective_control.phonation.spec.timing, PhonationTiming::Coupled(t) if t.steady == (preset == "steady()"))
+                );
+                let shape = clock.shape.as_ref().unwrap();
+                assert_eq!(shape.state, Shape::Base);
+                assert!(!shape.veto_plan && !shape.has_tone);
+            }
         }
     }
 }
@@ -1055,7 +1145,7 @@ fn at_seek_keeps_supported_tie_and_persistence_without_ignored_warnings() {
         .with_writer(move || writer.clone())
         .finish();
     tracing::subscriber::with_default(subscriber, || {
-        for timing in ["entrained()", "flow()"] {
+        for timing in ["entrained()", "steady()", "flow()"] {
             for mode in ["gate_snap", "rearticulate"] {
                 let persistence = if mode == "rearticulate" {
                     ".rearticulate_above(75).articulation_persistence(0.75)"
@@ -3334,7 +3424,7 @@ fn rearticulate_native_invalid_patch_keeps_voice_and_respawn_template() {
 #[test]
 fn sustained_participation_explicit_builders_are_order_independent() {
     use crate::life::phonation_engine::PhonationEngine;
-    for preset in ["entrained()", "flow()"] {
+    for preset in ["entrained()", "steady()", "flow()"] {
         for pitch in ["", ".seek_consonance()"] {
             let a = first_spawn_spec_for_script(&format!(
                 "create(harmonic().sustain().{preset}{pitch}, 1);"
@@ -3525,7 +3615,7 @@ fn synchronized_respawn_retains_controls_and_starts_fresh_private_policy() {
 
 #[test]
 fn sustained_participation_rearticulate_order_live_and_respawn_are_valid() {
-    for preset in ["entrained()", "flow()"] {
+    for preset in ["entrained()", "steady()", "flow()"] {
         for chain in [
             format!("sustain().{preset}.pitch_apply_mode(\"rearticulate\").rearticulate_above(50)"),
             format!("rearticulate_above(50).pitch_apply_mode(\"rearticulate\").{preset}.sustain()"),
@@ -3740,7 +3830,7 @@ fn deferred_participation_respawn_inherits_initial_and_live_population_template(
 
 #[test]
 fn deferred_participation_script_order_and_live_gate_snap_are_valid() {
-    for preset in ["entrained()", "flow()"] {
+    for preset in ["entrained()", "steady()", "flow()"] {
         for chain in [
             format!("sustain().{preset}.pitch_apply_mode(\"gate_snap\")"),
             format!("pitch_apply_mode(\"gate_snap\").{preset}.sustain()"),
@@ -3771,7 +3861,7 @@ fn deferred_participation_script_order_and_live_gate_snap_are_valid() {
 
 #[test]
 fn rest_builder_order_preserves_duration_and_participation() {
-    for preset in ["entrained()", "flow()"] {
+    for preset in ["entrained()", "steady()", "flow()"] {
         let words = ["sustain()", preset, "adaptive_duration()", "rest()"];
         for a in 0..4 {
             for b in 0..4 {
@@ -3944,7 +4034,7 @@ fn articulation_persistence_builder_order_and_common_creation_point() {
         }
         result
     }
-    for timing in ["entrained()", "flow()"] {
+    for timing in ["entrained()", "steady()", "flow()"] {
         for chain in permutations(&[
             "sustain()",
             timing,
@@ -4254,6 +4344,9 @@ fn synchronized_tie_default_resolves_omission_and_explicit_values_in_final_specs
         "sustain().entrained().pitch_apply_mode(\"gate_snap\")",
         "sustain().flow().pitch_apply_mode(\"rearticulate\")",
         "sustain().metric().anchor().pitch_apply_mode(\"gate_snap\")",
+        "sustain().steady().pitch_apply_mode(\"gate_snap\")",
+        "sustain().steady().pitch_apply_mode(\"rearticulate\")",
+        "sustain().steady().pitch_apply_mode(\"glide\")",
         "sustain().metric().cycles(1)",
         "metric().while_alive()",
         "entrainment(0.5).sustain()",
@@ -4408,6 +4501,9 @@ fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
             "sustain().metric().pitch_apply_mode(\"rearticulate\")",
             "sustain().metric().pitch_apply_mode(\"glide\")",
             "sustain().metric().anchor().pitch_apply_mode(\"gate_snap\")",
+            "sustain().steady().pitch_apply_mode(\"gate_snap\")",
+            "sustain().steady().pitch_apply_mode(\"rearticulate\")",
+            "sustain().steady().pitch_apply_mode(\"glide\")",
         ] {
             first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
         }
@@ -4448,7 +4544,7 @@ fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
 
 #[test]
 fn tie_builder_order_values_scope_and_no_live_setter() {
-    for timing in ["entrained()", "flow()"] {
+    for timing in ["entrained()", "steady()", "flow()"] {
         for mode in ["gate_snap", "rearticulate"] {
             for chain in [
                 format!("tie(0.5).sustain().{timing}.pitch_apply_mode(\"{mode}\")"),

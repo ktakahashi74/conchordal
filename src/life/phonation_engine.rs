@@ -634,6 +634,7 @@ pub struct ParticipationClock {
     base_rate_hz: f32,
     coupling: f32,
     flow_depth: f32,
+    steady: bool,
     seed: u64,
     pub(crate) policy: Option<TemporalParticipation>,
     forecast: Option<TemporalForecast>,
@@ -677,6 +678,7 @@ impl ParticipationClock {
                 ctx.frame_end.saturating_sub(ctx.now_tick),
             );
             policy.set_flow_depth(self.flow_depth);
+            policy.set_steady(self.steady);
             policy
         });
         if let Some(at) = self.initial_hold_on.take() {
@@ -899,6 +901,7 @@ impl PhonationClock {
                 coupling,
                 base_rate_hz,
                 flow_depth,
+                steady,
             } => Self::Participation(Box::new(ParticipationClock {
                 shape: None,
                 adoption_candidate: None,
@@ -910,6 +913,7 @@ impl PhonationClock {
                 },
                 coupling: sanitize01(*coupling),
                 flow_depth: sanitize01(*flow_depth),
+                steady: *steady && *flow_depth == 0.0,
                 seed,
                 policy: None,
                 forecast: None,
@@ -1578,8 +1582,9 @@ impl PhonationEngine {
                     coupling,
                     base_rate_hz,
                     flow_depth,
+                    steady,
                 },
-            ) => {
+            ) if clock.steady == (*steady && *flow_depth == 0.0) => {
                 clock.coupling = sanitize01(*coupling);
                 clock.base_rate_hz = if base_rate_hz.is_finite() {
                     base_rate_hz.clamp(0.01, MAX_ONSET_RATE_HZ)
@@ -2298,6 +2303,7 @@ mod tests {
                         coupling: 0.8,
                         base_rate_hz: rate,
                         flow_depth: depth,
+                        steady: false,
                     },
                     measure_accent: 0.,
                 };
@@ -2382,84 +2388,87 @@ mod tests {
 
     #[test]
     fn intrinsic_rate_adds_no_participation_allocations_after_clock_initialization() {
-        for rate in [(1.0 / 2.128) as f32, 2.0, 200.0] {
-            let config = PhonationConfig {
-                mode: PhonationMode::Gated,
-                onset: OnsetConfig::Always { strength: 1. },
-                duration: DurationConfig::FixedGate { length_gates: 1 },
-                clock: PhonationClockConfig::Participation {
-                    coupling: 0.05,
-                    base_rate_hz: rate,
-                    flow_depth: 0.,
-                },
-                measure_accent: 0.,
-            };
-            let mut engine = PhonationEngine::from_config(&config, 21);
-            let mut cmds = Vec::with_capacity(64);
-            let mut events = Vec::with_capacity(64);
-            let mut onsets = Vec::with_capacity(64);
-            // Existing grid, field and Off storage first allocate at the first onset.
-            let warmup_hops = (48000. / f64::from(rate)).ceil() as u64 / 512 + 2;
-            let mut warmed = None;
-            for hop in 0..warmup_hops {
-                cmds.clear();
-                events.clear();
-                onsets.clear();
-                let ctx = CoreTickCtx {
-                    now_tick: hop * 512,
-                    frame_end: (hop + 1) * 512,
-                    fs: 48000.,
-                    rhythms: NeuralRhythms::default(),
-                };
-                engine.tick(
-                    &ctx,
-                    &CoreState {
-                        is_alive: true,
-                        onset_allowed: true,
+        for steady in [false, true] {
+            for rate in [(1.0 / 2.128) as f32, 2.0, 200.0] {
+                let config = PhonationConfig {
+                    mode: PhonationMode::Gated,
+                    onset: OnsetConfig::Always { strength: 1. },
+                    duration: DurationConfig::FixedGate { length_gates: 1 },
+                    clock: PhonationClockConfig::Participation {
+                        coupling: 0.05,
+                        base_rate_hz: rate,
+                        flow_depth: 0.,
+                        steady,
                     },
-                    None,
-                    0.,
-                    1.,
-                    None,
-                    &mut cmds,
-                    &mut events,
-                    &mut onsets,
-                );
-                if !events.is_empty() {
-                    warmed = Some(hop + 1);
-                    break;
+                    measure_accent: 0.,
+                };
+                let mut engine = PhonationEngine::from_config(&config, 21);
+                let mut cmds = Vec::with_capacity(64);
+                let mut events = Vec::with_capacity(64);
+                let mut onsets = Vec::with_capacity(64);
+                // Existing grid, field and Off storage first allocate at the first onset.
+                let warmup_hops = (48000. / f64::from(rate)).ceil() as u64 / 512 + 2;
+                let mut warmed = None;
+                for hop in 0..warmup_hops {
+                    cmds.clear();
+                    events.clear();
+                    onsets.clear();
+                    let ctx = CoreTickCtx {
+                        now_tick: hop * 512,
+                        frame_end: (hop + 1) * 512,
+                        fs: 48000.,
+                        rhythms: NeuralRhythms::default(),
+                    };
+                    engine.tick(
+                        &ctx,
+                        &CoreState {
+                            is_alive: true,
+                            onset_allowed: true,
+                        },
+                        None,
+                        0.,
+                        1.,
+                        None,
+                        &mut cmds,
+                        &mut events,
+                        &mut onsets,
+                    );
+                    if !events.is_empty() {
+                        warmed = Some(hop + 1);
+                        break;
+                    }
                 }
-            }
-            let warmed = warmed.expect("participation must process its first onset");
-            crate::runtime_profile::begin_allocations();
-            for hop in warmed..warmed + 1000 {
-                cmds.clear();
-                events.clear();
-                onsets.clear();
-                let ctx = CoreTickCtx {
-                    now_tick: hop * 512,
-                    frame_end: (hop + 1) * 512,
-                    fs: 48000.,
-                    rhythms: NeuralRhythms::default(),
-                };
-                engine.tick(
-                    &ctx,
-                    &CoreState {
-                        is_alive: true,
-                        onset_allowed: true,
-                    },
-                    None,
-                    0.,
-                    1.,
-                    None,
-                    &mut cmds,
-                    &mut events,
-                    &mut onsets,
-                );
-            }
-            if let Some(counts) = crate::runtime_profile::finish_allocations() {
-                assert_eq!(counts.count, 0, "rate {rate}: {counts:?}");
-                assert_eq!(counts.bytes, 0, "rate {rate}: {counts:?}");
+                let warmed = warmed.expect("participation must process its first onset");
+                crate::runtime_profile::begin_allocations();
+                for hop in warmed..warmed + 1000 {
+                    cmds.clear();
+                    events.clear();
+                    onsets.clear();
+                    let ctx = CoreTickCtx {
+                        now_tick: hop * 512,
+                        frame_end: (hop + 1) * 512,
+                        fs: 48000.,
+                        rhythms: NeuralRhythms::default(),
+                    };
+                    engine.tick(
+                        &ctx,
+                        &CoreState {
+                            is_alive: true,
+                            onset_allowed: true,
+                        },
+                        None,
+                        0.,
+                        1.,
+                        None,
+                        &mut cmds,
+                        &mut events,
+                        &mut onsets,
+                    );
+                }
+                if let Some(counts) = crate::runtime_profile::finish_allocations() {
+                    assert_eq!(counts.count, 0, "rate {rate}: {counts:?}");
+                    assert_eq!(counts.bytes, 0, "rate {rate}: {counts:?}");
+                }
             }
         }
     }
@@ -2477,6 +2486,7 @@ mod tests {
                     coupling: 0.8,
                     base_rate_hz: 20.0,
                     flow_depth: 0.0,
+                    steady: false,
                 },
                 21,
             );
@@ -2559,6 +2569,7 @@ mod tests {
                     coupling: 0.8,
                     base_rate_hz: 2.0,
                     flow_depth,
+                    steady: false,
                 },
                 21,
             );
@@ -2623,6 +2634,7 @@ mod tests {
                 coupling: 0.8,
                 base_rate_hz: 2.0,
                 flow_depth: 0.0,
+                steady: false,
             },
             21,
         );
@@ -2717,6 +2729,7 @@ mod tests {
                         coupling: 0.7,
                         base_rate_hz: rate,
                         flow_depth: depth,
+                        steady: false,
                     },
                     21,
                 );
@@ -2793,6 +2806,7 @@ mod tests {
                 coupling: 0.7,
                 base_rate_hz: 10.0,
                 flow_depth: 0.0,
+                steady: false,
             },
             ..PhonationConfig::default()
         };
@@ -2813,6 +2827,7 @@ mod tests {
             coupling: 0.4,
             base_rate_hz: 20.0,
             flow_depth: 0.8,
+            steady: false,
         };
         engine.update_from_config(&config);
         let PhonationClock::Participation(clock) = &engine.clock else {
@@ -2823,6 +2838,59 @@ mod tests {
         config.clock = PhonationClockConfig::ThetaGate;
         engine.update_from_config(&config);
         assert!(matches!(engine.clock, PhonationClock::ThetaGate(_)));
+    }
+
+    #[test]
+    fn steady_config_updates_preserve_progress_but_policy_switches_start_fresh() {
+        let mut config = PhonationConfig {
+            clock: PhonationClockConfig::Participation {
+                coupling: 0.5,
+                base_rate_hz: 2.0,
+                flow_depth: 0.0,
+                steady: true,
+            },
+            ..Default::default()
+        };
+        let mut engine = PhonationEngine::from_config(&config, 21);
+        let ctx = CoreTickCtx {
+            now_tick: 0,
+            frame_end: 1000,
+            fs: 1000.0,
+            rhythms: NeuralRhythms::default(),
+        };
+        engine.clock.gather_candidates(&ctx, &mut Vec::new());
+        let PhonationClock::Participation(clock) = &engine.clock else {
+            panic!()
+        };
+        let gate = clock.gate_index;
+        assert!(gate > 0);
+        config.clock = PhonationClockConfig::Participation {
+            coupling: 0.0,
+            base_rate_hz: 4.0,
+            flow_depth: 0.0,
+            steady: true,
+        };
+        engine.update_from_config(&config);
+        let PhonationClock::Participation(clock) = &engine.clock else {
+            panic!()
+        };
+        assert_eq!(clock.gate_index, gate);
+        assert_eq!(clock.policy.as_ref().unwrap().period_frames(), 250.0);
+        for (flow_depth, steady) in [(0.0, false), (0.0, true), (0.65, false)] {
+            config.clock = PhonationClockConfig::Participation {
+                coupling: 0.5,
+                base_rate_hz: 2.0,
+                flow_depth,
+                steady,
+            };
+            engine.update_from_config(&config);
+            let PhonationClock::Participation(clock) = &engine.clock else {
+                panic!()
+            };
+            assert!(clock.policy.is_none());
+            assert_eq!(clock.gate_index, 0);
+            engine.clock.gather_candidates(&ctx, &mut Vec::new());
+        }
     }
 
     fn candidate_at_gate(gate: u64) -> CandidatePoint {
@@ -2843,6 +2911,7 @@ mod tests {
                 coupling: 0.8,
                 base_rate_hz: 2.0,
                 flow_depth: 0.0,
+                steady: false,
             },
             21,
         );

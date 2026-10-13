@@ -1989,6 +1989,7 @@ mod tests {
                 coupling: 0.0,
                 base_rate_hz: 20.0,
                 flow_depth: 0.0,
+                steady: false,
                 microtiming: 0.0,
                 measure_accent: 0.0,
                 role: crate::scenario::RhythmRole::Beat,

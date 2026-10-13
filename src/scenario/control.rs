@@ -41,7 +41,8 @@ impl VoiceControl {
         if self.phonation.rest_periods.is_some() {
             if !self.phonation.spec.is_sustained_participation() {
                 return Err(
-                    "rest() requires sustain() with entrained(), flow(), or metric()".into(),
+                    "rest() requires sustain() with entrained(), steady(), flow(), or metric()"
+                        .into(),
                 );
             }
             if !matches!(

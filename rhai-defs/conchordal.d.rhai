@@ -175,9 +175,9 @@ fn endurance(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// Bodily pacing with remembered acoustic context and predicted overlap avoidance.
 fn entrained(arg0: PopulationSpec) -> PopulationSpec;
 
-/// Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric.
+/// Influence in 0-1: acoustic context for entrained/steady/flow, beat-phase attraction for metric.
 fn entrainment(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric.
+/// Influence in 0-1: acoustic context for entrained/steady/flow, beat-phase attraction for metric.
 fn entrainment(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Clustered bodily renewal with weak acoustic participation, for non-metric texture.
@@ -235,9 +235,9 @@ fn harmonic() -> PopulationSpec;
 /// Harmonic series: f, 2f, 3f, ...
 fn harmonic_modes() -> ModePattern;
 
-/// Set the intrinsic bodily rate at creation for entrained()/flow(), in Hz.
+/// Set the intrinsic bodily rate at creation for entrained()/steady()/flow(), in Hz.
 fn intrinsic_rate(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// Set the intrinsic bodily rate at creation for entrained()/flow(), in Hz.
+/// Set the intrinsic bodily rate at creation for entrained()/steady()/flow(), in Hz.
 fn intrinsic_rate(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Randomize mode frequencies by up to the given cents.
@@ -582,9 +582,9 @@ fn sigma_cents(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// PopulationSpec whose founder voices use a pure sine body.
 fn sine() -> PopulationSpec;
 
-/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
+/// [tuning] Social coupling for participation or `pulse()`, in 0-1.
 fn social(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// [tuning] Social coupling for `entrained()` or `pulse()`, in 0-1.
+/// [tuning] Social coupling for participation or `pulse()`, in 0-1.
 fn social(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Minimum ERB distance between placed voices; valid on field placements.
@@ -606,6 +606,9 @@ fn spread(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
 /// Harmonic-body preset with brightness 0.65.
 fn square() -> PopulationSpec;
+
+/// Keep private bodily opportunities; acoustic context chooses only sound or skip.
+fn steady(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Stiffness-adjusted harmonics.
 fn stiff_string_modes(arg0: f64) -> ModePattern;

@@ -271,6 +271,7 @@ pub(crate) struct ParticipationContextUpdate {
 mod acoustic_assay;
 
 pub(crate) struct TemporalParticipation {
+    steady: bool,
     fs: f64,
     intrinsic_period_frames: f64,
     period_frames: f64,
@@ -315,6 +316,7 @@ impl TemporalParticipation {
         let period = fs as f64 / base_rate_hz as f64;
         let mut rng = SmallRng::seed_from_u64(seed);
         Self {
+            steady: false,
             fs: fs as f64,
             intrinsic_period_frames: period,
             period_frames: period,
@@ -405,7 +407,7 @@ impl TemporalParticipation {
 
     /// Periodic participation follows recurrence; renewal keeps its intrinsic scale.
     pub(crate) fn update_reference(&mut self, now: u64, forecast: Option<&TemporalForecast>) {
-        if self.coupling == 0.0 || self.flow_depth > 0.0 || self.planned.is_some() {
+        if self.steady || self.coupling == 0.0 || self.flow_depth > 0.0 || self.planned.is_some() {
             return;
         }
         let forecast = forecast.filter(|f| f.contrast_at(now as f64).is_some());
@@ -610,20 +612,32 @@ impl TemporalParticipation {
                     + (self.fs / crate::life::phonation_engine::MAX_ONSET_RATE_HZ as f64).ceil())
                 .max(now as f64)
             });
-            let candidate_at: [Option<f64>; 23] = std::array::from_fn(|index| {
-                let offset = index as i32 - 2;
-                let shift = if offset < 0 {
-                    offset as f64 * width / 2.0
-                } else {
-                    offset as f64 * self.period_frames / 20.0
-                };
-                let at = if offset == 0 {
-                    self.due_frame.max(earliest)
-                } else {
-                    self.due_frame + shift
-                };
-                if at < earliest { None } else { Some(at) }
-            });
+            // Legality advances by whole bodily cycles rather than moving the private phase.
+            if self.steady && self.due_frame < earliest {
+                let missed = ((earliest - self.due_frame) / self.period_frames).ceil();
+                self.due_frame += missed * self.period_frames;
+                continue;
+            }
+            let candidate_at: [Option<f64>; 23] = if self.steady {
+                let mut candidates = [None; 23];
+                candidates[2] = Some(self.due_frame);
+                candidates
+            } else {
+                std::array::from_fn(|index| {
+                    let offset = index as i32 - 2;
+                    let shift = if offset < 0 {
+                        offset as f64 * width / 2.0
+                    } else {
+                        offset as f64 * self.period_frames / 20.0
+                    };
+                    let at = if offset == 0 {
+                        self.due_frame.max(earliest)
+                    } else {
+                        self.due_frame + shift
+                    };
+                    if at < earliest { None } else { Some(at) }
+                })
+            };
             let arrival_enabled = self.onset_comparison.is_some_and(|config| config.arrival);
             let arrival_set = if arrival_enabled {
                 arrival.map(|context| {
@@ -701,11 +715,15 @@ impl TemporalParticipation {
                 }
             });
             // Fix candidate clocks before selecting a common group set.
-            let extra = adoption.take().map(|at| at as f64).filter(|at| {
-                *at >= earliest
-                    && *at >= self.due_frame - width
-                    && *at <= self.due_frame + self.period_frames
-            });
+            let extra = adoption
+                .take()
+                .filter(|_| !self.steady)
+                .map(|at| at as f64)
+                .filter(|at| {
+                    *at >= earliest
+                        && *at >= self.due_frame - width
+                        && *at <= self.due_frame + self.period_frames
+                });
             for (index, at) in candidate_at
                 .into_iter()
                 .enumerate()
@@ -931,6 +949,14 @@ impl TemporalParticipation {
         }
     }
 
+    pub(crate) fn set_steady(&mut self, enabled: bool) {
+        self.steady = enabled && self.flow_depth == 0.0;
+        if self.steady {
+            self.period_frames = self.intrinsic_period_frames;
+            self.last_reference_frame = None;
+        }
+    }
+
     pub(crate) fn update_parameters(&mut self, base_rate_hz: f32, coupling: f32, flow_depth: f32) {
         let intrinsic = self.fs / base_rate_hz as f64;
         if intrinsic != self.intrinsic_period_frames || coupling == 0.0 {
@@ -1054,6 +1080,145 @@ mod tests {
     use super::*;
 
     #[test]
+    fn steady_preserves_private_grid_with_one_candidate_and_no_adoption_offer() {
+        for fs in [48_000, 48_001] {
+            for rate in [(1.0 / 2.128) as f32, 2.0, 200.0] {
+                let mut policy = TemporalParticipation::new(fs, rate, 0.8, 0, 21, 512);
+                policy.set_steady(true);
+                policy.set_onset_comparison(Some(Default::default()));
+                policy.set_decision_trace(true);
+                let origin = policy.due_frame;
+                let period = f64::from(fs) / f64::from(rate);
+                let mut now = 0;
+                let mut grid_cycle = 0;
+                for cycle in 0..64 {
+                    policy.update_reference(now, None);
+                    let due = policy.due_frame;
+                    let earliest = policy.last_onset.map_or(now, |last| {
+                        now.max(last + (f64::from(fs) / 200.0).ceil() as u64)
+                    });
+                    while origin + f64::from(grid_cycle) * period < earliest as f64 {
+                        grid_cycle += 1;
+                    }
+                    let tick = policy
+                        .candidate_with_adoption(
+                            now,
+                            now + 10 * u64::from(fs),
+                            true,
+                            None,
+                            None,
+                            Some(due.round() as u64 + 1),
+                        )
+                        .unwrap();
+                    assert_eq!(
+                        tick,
+                        (origin + f64::from(grid_cycle) * period).round() as u64
+                    );
+                    let decision = policy.drain_decisions().next().unwrap();
+                    assert_eq!(decision.candidates.iter().flatten().count(), 1);
+                    assert_eq!(decision.selected_offset, 0);
+                    assert!(decision.selected_at >= due);
+                    let last = policy.last_onset;
+                    let contexts = policy.pending_contexts.len();
+                    let sounded = cycle % 2 == 0;
+                    policy.resolve(tick, sounded);
+                    if sounded {
+                        assert_eq!(policy.last_onset, Some(tick));
+                    } else {
+                        assert_eq!(policy.last_onset, last);
+                        assert_eq!(policy.pending_contexts.len(), contexts);
+                    }
+                    assert_eq!(policy.period_frames, period);
+                    assert!(policy.memory.is_none());
+                    now = tick + 1;
+                    grid_cycle += 1;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn steady_accounts_for_cost_skips_and_legality_without_arrival_changing_sound() {
+        use crate::config::TemporalOnsetComparisonConfig;
+        let snapshot = crate::life::arrival_cost::tests::fixture();
+        let arrival = ArrivalContext {
+            snapshot: &snapshot,
+            self_group: None,
+            self_group_state: "binding_absent",
+            binding: None,
+            habitat_routed: true,
+            body_record: None,
+            owner: (0, 0, None),
+        };
+        let occupied = TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
+        for coupling in [0.0, 0.8] {
+            let mut reference = None;
+            for arrival_weight in [None, Some(0.0), Some(4.0)] {
+                let mut policy = TemporalParticipation::new(48_000, 2.0, coupling, 0, 21, 512);
+                policy.set_steady(true);
+                policy.due_frame = 24_000.0;
+                policy.set_overlap(0.8, [1.0, 0.0, 0.0]);
+                policy.set_onset_comparison(Some(TemporalOnsetComparisonConfig {
+                    arrival: true,
+                    arrival_weight,
+                    ..Default::default()
+                }));
+                policy.set_decision_trace(true);
+                let mut sounded = 0;
+                let mut skipped = 0;
+                let mut suppressed = 0;
+                let mut ticks = Vec::new();
+                for cycle in 1..=5 {
+                    let now = cycle * 24_000;
+                    let allowed = cycle != 4;
+                    if let Some(tick) =
+                        policy.candidate(now, now + 1, allowed, Some(&occupied), Some(&arrival))
+                    {
+                        assert_eq!(tick, now);
+                        policy.resolve(tick, allowed);
+                        if allowed {
+                            sounded += 1;
+                            ticks.push(tick);
+                        } else {
+                            suppressed += 1;
+                        }
+                    }
+                    for decision in policy.drain_decisions() {
+                        assert_eq!(decision.candidates.iter().flatten().count(), 1);
+                        assert_eq!(decision.selected_offset, 0);
+                        skipped += usize::from(decision.skipped);
+                    }
+                }
+                assert_eq!(5, sounded + skipped + suppressed);
+                assert_eq!(policy.pending_contexts.len(), sounded);
+                assert_eq!(policy.due_frame, 144_000.0);
+                if coupling == 0.0 {
+                    assert_eq!(skipped, 0);
+                } else {
+                    assert!(skipped > 0);
+                }
+                let outcome = (ticks, sounded, skipped, suppressed);
+                if let Some(reference) = &reference {
+                    assert_eq!(&outcome, reference);
+                }
+                reference = Some(outcome);
+            }
+        }
+
+        // Even an expired reservation and the maximum-rate guard advance whole cycles.
+        let mut policy = TemporalParticipation::new(48_001, 200.0, 0.0, 0, 21, 512);
+        policy.set_steady(true);
+        policy.due_frame = 0.0;
+        policy.last_onset = Some(0);
+        let period = policy.period_frames;
+        let tick = policy.candidate(0, 1000, true, None, None).unwrap();
+        assert_eq!(tick, (2.0 * period).round() as u64);
+        let next = policy.candidate(1000, 2000, true, None, None).unwrap();
+        assert_eq!(next, (5.0 * period).round() as u64);
+        assert!(policy.memory.is_none() && policy.pending_contexts.is_empty());
+    }
+
+    #[test]
     fn intrinsic_rate_keeps_bodily_scale_while_acoustic_recurrence_adapts_period() {
         let fs = 48_000;
         let mut observer =
@@ -1087,6 +1252,13 @@ mod tests {
             assert_eq!(policy.planned.map(|p| p.0), plan);
             policy.resolve(tick, true);
             assert_eq!(policy.intrinsic_period_frames, t0);
+
+            let mut steady = TemporalParticipation::new(fs, rate, 0.8, 0, 21, 512);
+            steady.set_steady(true);
+            let due = steady.due_frame;
+            steady.update_reference(20 * fs as u64, Some(&forecast));
+            assert_eq!(steady.period_frames, t0);
+            assert_eq!(steady.due_frame, due);
 
             let mut flow = TemporalParticipation::new(fs, rate, 0.05, 0, 21, 512);
             flow.set_flow_depth(0.65);
@@ -2287,48 +2459,54 @@ mod tests {
             observer.process(now as u64, &audio, |_| {});
         }
         let forecast = observer.forecast().unwrap();
-        let mut voice = TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000 as u64);
-        let tick = voice
-            .candidate(480_000, 486_000, true, Some(&forecast), None)
-            .unwrap();
-        assert!(
-            voice
-                .planned
-                .unwrap()
-                .1
-                .unwrap()
-                .pred_external_band_energy
-                .iter()
-                .flatten()
-                .map(|v| v * v)
-                .sum::<f32>()
-                > 0.0
-        );
-        assert!(voice.memory.is_none());
-        assert!(voice.last_onset.is_none());
-        voice.resolve(tick, false);
-        assert!(voice.memory.is_none());
-        assert!(voice.last_onset.is_none());
-        let rejected_tick = tick;
-        let mut voice = TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000 as u64);
-        let tick = voice
-            .candidate(480_000, 486_000, true, Some(&forecast), None)
-            .unwrap();
-        assert_eq!(tick, rejected_tick);
-        voice.resolve(tick, true);
-        assert!(
-            voice.memory.is_none(),
-            "execution has not supplied acoustic results yet"
-        );
-        assert_eq!(voice.pending_contexts.len(), 1);
-        let pending = voice.pending_contexts.clone();
-        assert_eq!(voice.last_onset, Some(tick));
-        let due = voice.due_frame;
-        voice.update_parameters(8.0, 0.4, 0.8);
-        assert!(voice.memory.is_none());
-        assert_eq!(voice.pending_contexts, pending);
-        assert_eq!(voice.last_onset, Some(tick));
-        assert_eq!(voice.due_frame, due);
+        for steady in [false, true] {
+            let mut voice =
+                TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000 as u64);
+            voice.set_steady(steady);
+            let tick = voice
+                .candidate(480_000, 486_000, true, Some(&forecast), None)
+                .unwrap();
+            assert!(
+                voice
+                    .planned
+                    .unwrap()
+                    .1
+                    .unwrap()
+                    .pred_external_band_energy
+                    .iter()
+                    .flatten()
+                    .map(|v| v * v)
+                    .sum::<f32>()
+                    > 0.0
+            );
+            assert!(voice.memory.is_none());
+            assert!(voice.last_onset.is_none());
+            voice.resolve(tick, false);
+            assert!(voice.memory.is_none());
+            assert!(voice.last_onset.is_none());
+            let rejected_tick = tick;
+            let mut voice =
+                TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000 as u64);
+            voice.set_steady(steady);
+            let tick = voice
+                .candidate(480_000, 486_000, true, Some(&forecast), None)
+                .unwrap();
+            assert_eq!(tick, rejected_tick);
+            voice.resolve(tick, true);
+            assert!(
+                voice.memory.is_none(),
+                "execution has not supplied acoustic results yet"
+            );
+            assert_eq!(voice.pending_contexts.len(), 1);
+            let pending = voice.pending_contexts.clone();
+            assert_eq!(voice.last_onset, Some(tick));
+            let due = voice.due_frame;
+            voice.update_parameters(8.0, 0.4, 0.8);
+            assert!(voice.memory.is_none());
+            assert_eq!(voice.pending_contexts, pending);
+            assert_eq!(voice.last_onset, Some(tick));
+            assert_eq!(voice.due_frame, due);
+        }
     }
 
     #[test]

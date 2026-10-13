@@ -255,15 +255,17 @@ impl ScriptHost {
             population_spec.spec.set_phonation(PhonationKind::Repeat);
             population_spec
         });
-        // Tier-1 rhythm presets over the coupling continuum. No Hz argument: the
-        // tempo region is the director's `temporal_basin`; a preset only sets how
-        // the voice relates to the shared emergent beat (free .. locked).
+        // Timing presets separate shared-beat synchronization from private participation.
         engine.register_fn("metric", |mut population_spec: PopulationSpecHandle| {
             population_spec.spec.set_metric();
             population_spec
         });
         engine.register_fn("entrained", |mut population_spec: PopulationSpecHandle| {
             population_spec.spec.set_entrained();
+            population_spec
+        });
+        engine.register_fn("steady", |mut population_spec: PopulationSpecHandle| {
+            population_spec.spec.set_steady();
             population_spec
         });
         engine.register_fn("flow", |mut population_spec: PopulationSpecHandle| {

@@ -8429,6 +8429,8 @@ in .orchestration/records/decisions-20261007-orchestrator.md. Identification of 
 author's two attacks with the counted sequences remains unconfirmed. L5 design,
 implementation and acceptance, and V-14 production acceptance, remain incomplete.
 
+The 19:08 closure of L5 and denominator change are recorded in [§9.3.85](#pitch-movement-closed-with-existing-controls-20261013).
+
 <a id="l2-expectation-adoption-and-design-results-20261013"></a>
 
 ### 9.3.83 2026-10-13: adopt L2's expectation target and record the L2, L3 and L5 designs
@@ -8552,6 +8554,8 @@ and author decisions, A-16/report.md §§2–6, A-15/report.md's action inventor
 candidates A/B, and the corresponding author decision and prototype instructions
 in .orchestration/records/decisions-20261007-orchestrator.md.
 
+The 19:08 closure of L5 and change to L3 prerequisites are recorded in [§9.3.85](#pitch-movement-closed-with-existing-controls-20261013).
+
 <a id="steady-private-opportunities-20261013"></a>
 
 ### 9.3.84 2026-10-13: steady() preserves private opportunities and selects sound or skip
@@ -8623,6 +8627,127 @@ been acquired. These records do not close L2, phrase production in L3 or pitch
 movement in L5. Sources: V-14 brief, A-14 ADR-1/ADR-2 and retained grid acquisition,
 T-17 K1/L1, P-4 §5 and corrected seed acquisitions, and V-13's registered 56 cases.
 
+
+<a id="pitch-movement-closed-with-existing-controls-20261013"></a>
+
+### 9.3.85 2026-10-13: close L5 with existing controls and restore the L1–L4 denominator
+
+#### The author's responses
+
+At 18:58, after listening to reference → boundary 50 → boundary 100 → option C,
+the author said C was too sluggish and unsatisfactory. For question 1, the author
+heard staccato-like repeated pitches but suggested that two voices might simply
+be close together. “1” answered the question about boundary 100, not the first
+reference clip.
+
+At 19:03 the author said avoiding the other voice was similarly sluggish and
+questioned the need to avoid it. The author attributed the discomfort to identical
+timbres and said that voices wishing to sound close together were not inherently
+a problem. The timbre explanation is the author's reading, not a result from a
+timbre-changing control.
+
+#### Adopted at 19:08
+
+The author answered “the recommendation,” adopting **closure of L5 through
+existing controls and restoration of the four-requirement denominator, L1–L4**.
+No new adoption-side sound unit or option-C mechanism is to be built, and making
+voices avoid each other is not the chosen direction.
+
+- A single voice's nearby re-attacks are handled by phonation-side
+  `rearticulate_above(cents)`. Where a destination becomes a different attacked
+  sound is a composer quantity.
+- Two voices landing on the same pitch are Voice choices and are not inherently
+  treated as a problem.
+- Omitted `rearticulate_above` remains zero; omitted `avoid_neighbors` remains
+  disabled. Fifty, 100 and 0.6 are comparison inputs, not recommendations or new
+  defaults.
+
+This is a scope decision to use existing controls, not implementation or acceptance
+of a new adoption-side mechanism. A-16's diagnosis and options A–D, A-17's prototype
+and orchestration's controls are retained for any later reopening. L3 prototype
+A-18 no longer depends on an L5 event contract. It proceeds with production's
+existing adoption, treating small adoptions on the phonation side through policy
+and boundary, as recommended by A-15. This does not adopt or implement L3's design.
+
+#### A-17: external option-C prototype
+
+The rules operated, but many proposals remained unidentified, predominantly
+because field peaks split or merged. Keeping the previous target on unidentified
+proposals produced long lower-line intervals with zero target changes. Proposals
+and numerical selection continued; their results were held as unidentified.
+
+| Seed | Lower: unidentified/proposals | Upper: unidentified/proposals | Lower On, reference → C | Upper On, reference → C | Lower: longest unidentified interval with zero target changes (s) |
+| --- | --- | --- | --- | --- | --- |
+| 21 | 34/42 | 98/188 | 44→4 | 188→68 | 20.8 |
+| 42 | 37/44 | 87/188 | 45→4 | 188→76 | 42.0 |
+| 123 | 32/44 | 112/188 | 45→5 | 188→48 | 16.9 |
+
+The main sample-time window is 2 seconds inclusive to 96 seconds exclusive; On
+counts refer to that window. Holding a target does not stop the remaining body
+motion or radiation of a glide already in progress. Orchestration treated this as
+the second unsuccessful attempt to obtain sound units from field geometry, after
+A-3b's same-hill rule on October 11. These retained prototype results do not prove
+that every possible field-identity algorithm fails.
+
+#### Controls using only existing vocabulary
+
+Orchestration rendered the morning form at seed 21 with
+`units/V-13/renderer-final`. The boundary-100 version added only
+`rearticulate_above(100)` to both lines. The avoidance version additionally placed
+`avoid_neighbors(0.6)` and `crowding_target(true, true)` on both lines. The retained
+main window is 2 seconds inclusive to 96 seconds exclusive. Movement counts use
+raw pitch differences between each voice's adjacent On events.
+
+| Condition | Lower On | Upper On | Lower movements ≥100 cents | Upper movements ≥100 cents |
+| --- | --- | --- | --- | --- |
+| Reference | 44 | 188 | 29 | 137 |
+| Boundary 100 only | 26 | 153 | 25 | 152 |
+
+The boundary-100 version had zero attacks less than 100 cents from the preceding
+On of the same voice. Across voices, 16 attacks occurred within 100 cents of the
+other voice's most recent onset pitch, counted as its held pitch; 15 were within
+50 cents. A separate first-20-second window contained five such cases. Five
+chronologically adjacent attacks in the main window were less than 100 cents apart
+and at most one second apart; all crossed voices. Single-voice re-attacks and
+nearby cross-voice attacks are different counts.
+
+| Control from boundary 100 | Boundary 100 only | Avoid the other voice |
+| --- | --- | --- |
+| Attacks within 100 cents of the other held pitch | 16 | 0 |
+| Lower On | 26 | 15 |
+| Upper On | 153 | 100 |
+| Lower: longest interval between movements ≥100 cents (s) | 9.0 | 18.1 |
+| Upper: longest interval between movements ≥100 cents (s) | 2.5 | 5.5 |
+
+These numbers describe the retained conditions; they neither identify the exact
+passage the author heard nor prove a listening effect. Fewer attacks and longer
+movement intervals in the avoidance version do not establish adoption of avoidance.
+
+#### Orchestration's error
+
+In response to the 16:08 comment, orchestration recommended adding a new mechanism
+as completion requirement L5 at 17:04, before comparing other values of the existing
+composer controls. It had not first separated nearby re-attacks within one voice
+from near-unison across voices in the retained records, or examined the auditioned
+configuration. The lower line lacked an explicit proposal-interval setting, both
+voices used the same timbre, and no inter-voice distance was specified. The lower
+line still had a proposal clock; this was not an absence of proposals. Recommending
+the new mechanism before these checks was an orchestration error.
+
+#### Later decisions and unconfirmed work
+
+Changing the omitted boundary value or separating line timbres at the composition
+stage can wait; neither is adopted. Lines in samples 13–16 all use
+`harmonic().brightness(0.35)`. No sample was changed and no timbre-changing control
+was rendered. Effects on other bodies or scenes, listening with different timbres,
+and device real-time operation remain unconfirmed. This entry establishes neither
+completion of all L1–L4 requirements nor new technote implementation verdicts.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are machine-local .orchestration/units/D-16/brief.md, A-17/report.md §§3–4,
+retained inputs and reports under L5-boundary-check-20261013/, orchestration's
+saved counts and author responses in .agent-shell/transcripts/2026-10-12-12-44-51.md,
+and the corresponding orchestration decision record.
 
 ## 9.4 Alignment and Extension Sequence
 

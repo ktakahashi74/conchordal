@@ -172,15 +172,15 @@ fn endurance(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Nominal survival time at zero field fit, excluding the release tail.
 fn endurance(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Bodily pacing with remembered acoustic context and predicted overlap avoidance.
+/// Adaptive acoustic participation with a lifetime-fixed bodily scale.
 fn entrained(arg0: PopulationSpec) -> PopulationSpec;
 
-/// Influence in 0-1: acoustic context for entrained/steady/flow, beat-phase attraction for metric.
+/// Preset-specific acoustic timing influence or beat-rate and phase attraction.
 fn entrainment(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
-/// Influence in 0-1: acoustic context for entrained/steady/flow, beat-phase attraction for metric.
+/// Preset-specific acoustic timing influence or beat-rate and phase attraction.
 fn entrainment(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Clustered bodily renewal with weak acoustic participation, for non-metric texture.
+/// Irregular bodily renewal with acoustic timing choices.
 fn flow(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Emit pending live patches without advancing time.
@@ -292,7 +292,7 @@ fn meter_stability(arg0: f64);
 /// Attractor depth in 0-1: how readily a pulse forms.
 fn meter_stability(arg0: i64);
 
-/// High coupling to the shared emergent meter: deep attractor, stable pulse.
+/// Confidence-weighted rate and phase attraction to the acoustically confirmed beat.
 fn metric(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Signed beat-phase offset for metric timing, in -0.5..0.5.
@@ -607,7 +607,7 @@ fn spread(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// Harmonic-body preset with brightness 0.65.
 fn square() -> PopulationSpec;
 
-/// Keep private bodily opportunities; acoustic context chooses only sound or skip.
+/// Fixed private due times; acoustic context selects sound or skip.
 fn steady(arg0: PopulationSpec) -> PopulationSpec;
 
 /// Stiffness-adjusted harmonics.
@@ -634,13 +634,13 @@ fn temperature(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 fn temperature(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Tempo region the emergent beat gravitates toward.
+/// Set the beat's tempo band and metric Voices' initial rate.
 fn temporal_basin(arg0: f64, arg1: f64);
-/// Tempo region the emergent beat gravitates toward.
+/// Set the beat's tempo band and metric Voices' initial rate.
 fn temporal_basin(arg0: f64, arg1: i64);
-/// Tempo region the emergent beat gravitates toward.
+/// Set the beat's tempo band and metric Voices' initial rate.
 fn temporal_basin(arg0: i64, arg1: f64);
-/// Tempo region the emergent beat gravitates toward.
+/// Set the beat's tempo band and metric Voices' initial rate.
 fn temporal_basin(arg0: i64, arg1: i64);
 
 /// Select off or observe for new temporal cognition before playback.

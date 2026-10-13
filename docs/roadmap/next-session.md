@@ -8,12 +8,12 @@ A-14の形を選べる創始方策として入れる方針を採った。再開�
 現在の完成の分母はL1・L2・L4。Voice側のL3の最終形は未達で、曲の段の後へ回す。
 A-18の引き金のままの候補Aは採らず、設計とcopyを保存する。L5の案Cは作らず、声同士を避けさせない。
 17:42のL2の対象とii-Bの採択は保持する。T-20・T-21で登録基準を閉じず、系統を停止して設計問題を作者へ返した。L2の道は作者の判断待ち。
-V-14のsteady()本体化に続き、D-18（3b4e64b）とD-19（defb006）で四preset・entrainment(x)の契約とregistry記述・生成物を合わせた。L1の契約文書は済み、受入はL4の実機の後。挙動・既定値とtechnote §9.1の状態は変えていない。
+V-14のsteady()本体化に続き、D-18（3b4e64b）とD-19（defb006）で四preset・entrainment(x)の契約とregistry記述・生成物を合わせた。L1の契約文書は済み、R-3の現行sourceの16演奏も合格したが、L2の道と最終構成は未定でL1・L4は未受入。挙動・既定値とtechnote §9.1の状態は変えていない。
 P-4の基準と境界50だけの二本は17:03に試聴済み。境界の省略値0は変えていない。
-現在の範囲と再開点は[台帳§9.3.88](../design-notes/technote-ledger.ja.md#l2-support-waves-stopped-author-decision-20261013)と
-[L2系統停止後の再開点](#l2-support-waves-stopped-author-decision-20261013)を読む。以下の過去の結果は取得時点の記録として読む。
+現在の範囲と再開点は[台帳§9.3.89](../design-notes/technote-ledger.ja.md#r3-current-source-device-results-20261014)と
+[R-3計測・push後の再開点](#r3-current-source-device-results-20261014)を読む。以下の過去の結果は取得時点の記録として読む。
 
-2026-10-13更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
+2026-10-14更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
 作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れた。N-7は同日にmainへ統合され、originへpush済みである。時間構造は、原典の図の数値再現を一律の門にした誤りを撤回し、T-6kで整数比の階層の設計を閉じ、T-7で本体に実装した。T-7も同日にmainへ統合し、最終検査の後、11:50にoriginへpushした。作者の試聴を受けたmetric内の位相分離のT-8〜T-10は、午後の範囲の判断で停止した。拍の同期の二つの失敗はT-11で設計の選択と分類した。F1はT-12で設計を本体の外で閉じ、T-13で実装・回帰・文書をbranchへ用意した。その後2026-10-11に作者はF1の採用方針とC＋hardの最小形を決め、T-16がT-13の上に実装を積んだ。F1は実機の四構成合格後、08:28に統括がmainの`c2b8308`へ統合した。その後08:46に、統括はT-16をmainの`000b884`へfast-forwardで統合した。慣れと既存語彙の旋律らしい線を作者が評価し、「動いた時にだけ発音する」V-1は外部試作を終えた。2026-10-11に作者が本体への実装を採り、09:03頃に `pitch_apply_mode("rearticulate")` の形と名前を確定した。統括が併用規則の案Aを採り、本体実装・検査・文書をV-2のbranchに用意した。[午後〜夜の状態](plan-current.md#temporal-melodic-outcomes-20261010)を次の作業の入口にする。20単位の終了、実装・統合・push、作者の音楽的な評価を区別する。
 
@@ -51,11 +51,41 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 6. 台帳[§9.3.85](../design-notes/technote-ledger.ja.md#pitch-movement-closed-with-existing-controls-20261013)（[英語版](../design-notes/technote-ledger.md#pitch-movement-closed-with-existing-controls-20261013)）：L5の終了、当時の四要件への復帰、試作と対照、作者判断と統括の訂正。
 7. 台帳[§9.3.86](../design-notes/technote-ledger.ja.md#l3-tools-closed-final-form-deferred-20261013)（[英語版](../design-notes/technote-ledger.md#l3-tools-closed-final-form-deferred-20261013)）：L3の道具としての終了、最終形の未達・延期、L1・L2・L4への範囲変更、A-18の結果と作者判断。
 8. 台帳[§9.3.87](../design-notes/technote-ledger.ja.md#l1-contracts-l2-prototype-l4-preparation-20261013)（[英語版](../design-notes/technote-ledger.md#l1-contracts-l2-prototype-l4-preparation-20261013)）：L1文書完了、T-19の限定結果と未達、当時のT-20進行中、R-3の束の準備と未計測。
-9. 台帳[§9.3.88](../design-notes/technote-ledger.ja.md#l2-support-waves-stopped-author-decision-20261013)（[英語版](../design-notes/technote-ledger.md#l2-support-waves-stopped-author-decision-20261013)）：T-20・T-21の結果、二つのwaveでの停止、L2の道の作者判断待ちとR-3未計測。
+9. 台帳[§9.3.88](../design-notes/technote-ledger.ja.md#l2-support-waves-stopped-author-decision-20261013)（[英語版](../design-notes/technote-ledger.md#l2-support-waves-stopped-author-decision-20261013)）：T-20・T-21の結果、二つのwaveでの停止、L2の道の作者判断待ちと当時のR-3未計測。
+10. 台帳[§9.3.89](../design-notes/technote-ledger.ja.md#r3-current-source-device-results-20261014)（[英語版](../design-notes/technote-ledger.md#r3-current-source-device-results-20261014)）：作者の計測開始・push指示、pushとCI・deploy、R-3の16演奏の合格、L2の道とL1・L4の受入の未決。
+
+<a id="r3-current-source-device-results-20261014"></a>
+
+## 2026-10-14：R-3の実機計測とpushの後の再開点
+
+作者の07:30頃の「はじめてよい push」は、R-3の計測開始とpushの指示で、L2の道の選択ではない。
+07:31に`d5107f4..12f759f`の六commitをpushし、このpush後のmainとorigin/mainは`12f759f`だった。
+CIとsiteのdeployも成功した。R-3は07:33:21〜08:00:49に取得し、08:00:52に終了した。
+
+seed 21のCourtyard Weave／Three Lanterns／The Unstruck Wire／steady()の二体を、
+R-2と同じ四構成A・B・A′・B′で測り、16演奏全てが合格。全演奏で出力不足0、callback error 0、exit 0。
+入力はE-4とA-14／V-14の場面で、samples/のfileではない。main `defb006`のrelease binaryは
+`12f759f`までsrc・Cargo.*が不変のため、計測時のmainと同じ実装である。
+四窓の外乱下でも登録規則どおり合格は成立し、取り直していない。既存16本はR-2の結果を再利用する。
+これはL2を本体に入れない現行sourceの計算・出力の確認で、聴こえ方の判定ではない。
+
+**作者に残る再開判断はL2の道だけ。** 延期／閉ループの試作／単一音源の周期素材への限定／
+別原理からの支持・確認の設計は全て未採択。R-3開始やpushの許可待ちには戻さない。
+L2の道と最終構成が未定なので、L1・L4は閉じておらず、受入済みと扱わない。
+延期を選べばこの計測をL1・L4の実機確認に使い、本体化する道ならそのsourceと構成で取り直す。
+分母はL1・L2・L4。L3の最終形の未達・延期、L5の既存語での終了、旧T-6 P／Nの未達は保つ。
+公開technote §9.1は変更せず、L2の道が決まりL1・L4を閉じた後の別単位で扱う。
+
+[台帳§9.3.89](../design-notes/technote-ledger.ja.md#r3-current-source-device-results-20261014)
+（[英語版](../design-notes/technote-ledger.md#r3-current-source-device-results-20261014)）と、機械に固有のR-3/README.md末尾二節、
+realtime/orchestrator-run-quiet.log、四つのperformances.csv、統括の2026-10-14 07:30・08:02の記録を読む。
+計画の正本は[§8](plan-current.md#mechanism-completion-scope-20261013)。新しい単位はL2の道の判断後に定める。
 
 <a id="l2-support-waves-stopped-author-decision-20261013"></a>
 
-## 2026-10-13 23:01：L2系統停止後の再開点
+## 2026-10-13 23:01時点：L2系統停止後の再開記録
+
+以下は当時の記録。R-3の開始指示と計測は翌日に済み、現在は上の2026-10-14の再開点を使う。
 
 完成の分母はL1・L2・L4。L2の系統はT-20・T-21の二つのwaveで登録基準を閉じず、統括が止めた。
 次の単位は起こしていない。L2は作者の判断待ちで、延期／閉ループの試作／単一音源の周期素材へ限定／
@@ -78,7 +108,7 @@ L5の既存語での終了、旧T-6 P／Nの未達を保つ。
 
 ## 2026-10-13：L1文書完了、L2の限定試作、L4準備の再開記録（当時）
 
-以下は当時の記録。L2とR-3の再開は上の23:01の再開点を使う。
+以下は当時の記録。L2とR-3の再開は上の2026-10-14の再開点を使う。
 
 分母はL1・L2・L4。L1の四presetとentrainment(x)の契約はD-18／D-19で文書化済み。
 受入はL4の実機の後で、technote §9.1の状態は変えていない。L3の最終形の未達・延期と、L5の既存語での
@@ -101,7 +131,7 @@ R-3/README.mdを読む。無音のFinish、CIの成功、試作単位の終了�
 
 ## 2026-10-13 19:34時点：L3を道具として閉じた後の再開記録
 
-以下は当時の記録。L1・L2・L4の進行は上の23:01の再開点を使う。
+以下は当時の記録。L1・L2・L4の進行は上の2026-10-14の再開点を使う。
 
 完成の分母はL1・L2・L4。L3は道具として閉じ、Voiceがフレーズに応じて発音の形を選ぶ最終形は
 未達と明記して曲の段の後へ回す。閾値なしの場の増減の転換という引き金の候補Aは採らない。
@@ -122,7 +152,7 @@ A-18の作用と微小差で頻発した転換、統括の読み、未確認を�
 
 ## 2026-10-13 19:08時点：L5終了後の再開記録
 
-以下は当時の記録。L3の扱いと現在の分母、L1・L2・L4の進行は上の23:01の再開点を使う。
+以下は当時の記録。L3の扱いと現在の分母、L1・L2・L4の進行は上の2026-10-14の再開点を使う。
 
 完成の分母はL1〜L4の四要件。L5は既存の語で閉じ、新しい採用側の音の単位・案Cは作らない。
 単声の近い打ち直しは`rearticulate_above(cents)`という作曲者の量で扱い、声をまたぐ同音は
@@ -143,7 +173,7 @@ L3のA-18はL5の出来事の契約を待たず、現本体の採用を使う。
 
 ## 2026-10-13 17:42時点：L2の採択と三つの設計の再開記録
 
-以下は当時の記録。L5の扱いとL3の前提、現在の分母は上の23:01の再開点を使う。
+以下は当時の記録。L5の扱いとL3の前提、現在の分母は上の2026-10-14の再開点を使う。
 
 17:42、作者はL2の対象を反復する拍・分割・小節の位置と支持、T2の入力の役割をii-Bとした。
 再来はT2の出来事、位相・強度は既存の速い音響入力から読む。受入は実際の周期と整数の関係で

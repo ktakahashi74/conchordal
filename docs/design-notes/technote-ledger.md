@@ -9116,6 +9116,95 @@ continued results, T-21/report.md §§5–7, the 21:31 and 23:01 entries and sav
 counts in .orchestration/records/decisions-20261007-orchestrator.md, AGENTS.md's
 Multi-agent Orchestration rule, and R-3/README.md.
 
+<a id="r3-current-source-device-results-20261014"></a>
+
+### 9.3.89 2026-10-14: R-3 device results and push; the L2 path remains undecided
+
+#### Decided: start measurement and push
+
+At about 07:30, the author instructed “はじめてよい push”: permission to start
+R-3 device measurements and to push. The L2 paths returned to the author in
+[§9.3.88](#l2-support-waves-stopped-author-decision-20261013) remain unselected.
+This instruction does not adopt deferral or change the completion denominator.
+
+At 07:31, the orchestrator pushed six commits, D-16 through D-21, in
+`d5107f4..12f759f`. After that push, main and origin/main were both `12f759f`.
+CI and site deployment for that revision succeeded. These are records of the
+push, checks and deployment, not acceptance of L2 or closure of L1 and L4.
+
+#### Progress: all 16 performances across four configurations and four scenes passed
+
+The runner started at 07:31:28. The four acquisition windows fell between
+07:33:21 and 08:00:49, and the runner ended with `ALL DONE` at 08:00:52.
+The instrument used the release binary built from main `defb006`.
+The diff in `src/`, `Cargo.toml` and `Cargo.lock` from `defb006` to `12f759f`
+is zero lines, so it implements the same source as measurement-time main
+`12f759f`. Tools and configurations were unchanged from R-2; no measurement
+rule was added.
+
+Inputs were copies of the E-4 drafts and A-14/V-14 inputs, all with seed 21,
+not files in `samples/`.
+
+| Scene | Executed form | Hops in each configuration |
+| --- | --- | ---: |
+| 17 Courtyard Weave | Nine bodies; two sustained, synchronized paths; `tie` omitted | 7,689 |
+| 18 Three Lanterns | Three sustained, synchronized lines | 6,939 |
+| 19 The Unstruck Wire | A line crossing above two beat voices; explicit `tie(1)` | 7,314 |
+| 20 steady pair | Two bodies; the upper line uses `steady()` | 9,189 |
+
+All 16 performances, four configurations × four scenes, passed. Every
+performance ended with cumulative output deficit zero, callback errors zero
+and exit zero. The existing absolute criteria are zero cumulative output
+deficit and whole-hop p99 no greater than the actual device's hop duration.
+The µs values below are saved values rounded to integer microseconds; the
+device hop budget is approximately 10,667 µs. The largest per-performance
+p99 occurred in scene 17 for every configuration. The largest individual
+hop overall was approximately 7,569 µs, in B′ scene 17. That maximum is
+supplementary information, not an additional acceptance criterion.
+
+| Configuration | Settings | Acquisition window (2026-10-14) | Largest per-performance whole-hop p99 (approximately µs) |
+| --- | --- | --- | ---: |
+| A | Defaults, habituation enabled | 07:33:21–07:38:55 | 1,394 |
+| B | A + `birth_surrogate` + enabled `[body_metabolism]` | 07:43:54–07:49:27 | 4,479 |
+| A′ | A + `render_prototype` | 07:49:40–07:55:13 | 1,348 |
+| B′ | B + `render_prototype` | 07:55:16–08:00:49 | 4,747 |
+
+All four windows contain disturbance records from other projects' load.
+Under the registered rule, passes remain valid despite those disturbances;
+no acquisition was repeated. Results for the existing 16 inputs are reused
+from R-2 within the range whose rendering is unchanged. No new load target
+or headroom fraction was added to the exit criteria.
+
+For this source and these four configurations without production L2,
+sustained synchronization with omitted `tie` or explicit `tie(1)`, and
+`steady()`, met the device computation and output criteria. This is not a
+judgment about how they sound.
+
+#### Unconfirmed: the final configuration and acceptance of L1 and L4
+
+**The L2 path awaits author selection; L1 and L4 are not closed.** The
+completion denominator remains L1, L2 and L4. L4's exit applies to the final
+source, and the final configuration cannot be settled before the L2 path.
+If the author selects L2 deferral, these measurements can serve directly as
+the L1/L4 device confirmation. If the author selects a path that incorporates
+L2 into production, measurements must be repeated on that source and
+configuration. Neither path has been selected. Authorization to start
+measurement and push has been fulfilled; the remaining author decision at
+restart is the L2 path.
+
+Other bodies, seeds, scenes, unbounded loads and listening have not been
+checked by this acquisition. Old T-6 P/N and production L2 wiring/device
+criteria remain unmet; the Voice-side final form of L3 remains unmet and
+deferred. Public technote §9.1 verdicts are unchanged. Their update belongs
+to a separate unit after the L2 path is selected and L1/L4 are closed.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are the last two sections of machine-local
+.orchestration/units/R-3/README.md, R-3/realtime/orchestrator-run-quiet.log,
+device-{A,B,A-prime,B-prime}-forms-v1-analysis-r2/performances.csv in that
+directory, and the 2026-10-14 07:30 and 08:02 entries in
+.orchestration/records/decisions-20261007-orchestrator.md.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

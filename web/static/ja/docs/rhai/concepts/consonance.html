@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-05f1018e.js";
+            window.path_to_searchindex_js = "../searchindex-c677a8c0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -278,7 +278,29 @@ wait(12.0);
 </code></pre>
 <p><code>avoid_neighbors(strength)</code>は混雑を避ける反発を加え、移動するVoiceがすべて同じ山へ重なるのを防ぎます。
 移動の反対は<code>anchor()</code>です。固定されたVoiceは音高を保ち、ほかのVoiceが読むConsonance Fieldだけを
-変形します。<code>at()</code>または<code>freq()</code>で指定したVoiceは暗黙に固定されます。</p>
+変形します。<code>freq()</code>は音高を固定し、<code>anchor()</code>は配置で選ばれた音高を保ちます。</p>
+<p><code>at(hz)</code>も通常は音高を固定します。ただし、配置するPopulationSpecに明示の
+<code>seek_consonance()</code>の意図が残り、音高が自由のままなら、初期位置だけを指定します。
+この場合は<code>line(hz, hz)</code>と同じ配置となり、指定した人数も保ちます。たとえば、
+上の<code>mover</code>を<code>place(mover, at(220.0))</code>で置くと、移動や滑りの指定を保って220 Hzから
+始めます。指定するのは身体の初期音高で、最初に聴こえる音高や、その後の移動を保証する
+指定ではありません。</p>
+<p>音高の方策を変えるときは、書く順で最終の指定が決まります。</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>最後に書いた指定の順</th><th><code>at(hz)</code>の意味</th></tr>
+</thead>
+<tbody>
+<tr><td><code>seek_consonance()</code> → <code>freq()</code></td><td>固定音高</td></tr>
+<tr><td><code>freq()</code> → <code>seek_consonance()</code></td><td>初期位置</td></tr>
+<tr><td><code>seek_consonance()</code> → <code>anchor()</code></td><td>固定音高</td></tr>
+<tr><td><code>anchor()</code> → <code>seek_consonance()</code></td><td>初期位置</td></tr>
+</tbody>
+</table>
+</div>
+<p>動く指定を明示しなければ、<code>at()</code>は音高を固定します。演奏中のPopulationの<code>freq()</code>も、
+従来どおり音高を固定します。</p>
 <p>移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
 （<code>pulse()</code>、<code>metric()</code>、<code>entrained()</code>、<code>flow()</code>）は発音開始ごとに新しい音高へ
 移ります。<code>pitch_apply_mode("gate_snap")</code>と<code>pitch_apply_mode("glide")</code>で、

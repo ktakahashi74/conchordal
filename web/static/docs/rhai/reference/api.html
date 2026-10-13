@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4d915fd.js";
+            window.path_to_searchindex_js = "../searchindex-0794641a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -246,7 +246,7 @@
 <h4 id="at"><a class="header" href="#at"><code>at</code></a></h4>
 <pre><code class="language-rhai ignore">at(freq_hz) -&gt; Placement
 </code></pre>
-<p>Place at a fixed frequency in Hz.</p>
+<p>Place at a fixed frequency in Hz, or start an explicitly moving voice here. With explicit <code>seek_consonance()</code> intent and a final free pitch mode, <code>at(hz)</code> sets only the initial position, using the same placement as <code>line(hz, hz)</code> and preserving the founder count. Otherwise it locks pitch as before. A later <code>freq()</code> or <code>anchor()</code> restores the lock; a later <code>seek_consonance()</code> restores movement. This specifies the initial body pitch, not a guaranteed first audible pitch or a promise that movement will occur.</p>
 <h4 id="consonance"><a class="header" href="#consonance"><code>consonance</code></a></h4>
 <pre><code class="language-rhai ignore">consonance(root_hz) -&gt; Placement
 consonance(min_hz, max_hz) -&gt; Placement
@@ -465,12 +465,12 @@ rest(periods)
 <pre><code class="language-rhai ignore">anchor()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Hold the voice at its pitch: an anchored voice never moves. Voices placed with <code>at()</code> or given <code>freq()</code> are anchored implicitly; use <code>anchor()</code> to hold strategy-placed voices (<code>consonance()</code>, <code>dissonance()</code>, …) at their settled position, or to state the intent explicitly.</p>
+<p>Hold the voice at its pitch: an anchored voice never moves. <code>at()</code> anchors implicitly unless the final spec explicitly seeks consonance and remains free; in that case it sets only the initial position. <code>freq()</code> still sets an anchored pitch. A later <code>anchor()</code> or <code>freq()</code> overrides movement, while a later <code>seek_consonance()</code> restores it. Use <code>anchor()</code> to hold strategy-placed voices (<code>consonance()</code>, <code>dissonance()</code>, …) at their settled position, or to state the intent explicitly.</p>
 <h4 id="seek_consonance"><a class="header" href="#seek_consonance"><code>seek_consonance</code></a></h4>
 <pre><code class="language-rhai ignore">seek_consonance()
 </code></pre>
 <p>Applies to: <code>PopulationSpec</code> only. Initial-only: configure the <code>PopulationSpec</code> before <code>place()</code>.</p>
-<p>Free hill-climb movement toward better field positions, with glide defaults. How pitch decisions land is resolved at placement unless <code>pitch_apply_mode()</code> was called: sustained voices glide, re-attacking voices (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap at onsets.</p>
+<p>Free hill-climb movement toward better field positions, with glide defaults. With this explicit intent and a final free pitch mode, <code>at(hz)</code> sets only the initial position. A later <code>freq()</code> or <code>anchor()</code> restores the lock; calling <code>seek_consonance()</code> after either restores movement. How pitch decisions land is resolved at placement unless <code>pitch_apply_mode()</code> was called: sustained voices glide, re-attacking voices (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap at onsets.</p>
 <h4 id="glide"><a class="header" href="#glide"><code>glide</code></a></h4>
 <pre><code class="language-rhai ignore">glide(tau_sec)
 </code></pre>

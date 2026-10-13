@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4d915fd.js";
+            window.path_to_searchindex_js = "../searchindex-0794641a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -319,8 +319,8 @@ notes without a finite duration stay alive until release.</p>
     .seek_consonance().pitch_apply_mode("gate_snap");
 let quick = harmonic().intrinsic_rate(2.0).sustain().flow()
     .seek_consonance().pitch_apply_mode("gate_snap");
-let a = place(slow, line(220.0, 220.0).count(1));
-let b = place(quick, line(330.0, 330.0).count(1));
+let a = place(slow, at(220.0));
+let b = place(quick, at(330.0));
 wait(6.0);
 release(a);
 release(b);

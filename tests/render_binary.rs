@@ -3,6 +3,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[path = "support/test_output_directory.rs"]
+mod test_output_directory;
+use test_output_directory::TestOutputDirectory;
+
 fn unique_temp_path(ext: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1050,7 +1054,9 @@ wait(2.1);
 
 #[test]
 fn footprint_only_renders_repeat_exactly_without_observe_or_body_analysis() {
-    let config = unique_temp_path("toml");
+    let directory = unique_temp_path("dir");
+    let _output = TestOutputDirectory::new(directory.clone());
+    let config = directory.join("config.toml");
     fs::write(
         &config,
         r#"
@@ -1068,7 +1074,9 @@ footprint = "body"
 "#,
     )
     .unwrap();
-    let scenario = write_inline_scenario(
+    let scenario = directory.join("scenario.rhai");
+    fs::write(
+        &scenario,
         r#"
 seed(20260923);
 let voice = modal().amp(0.03).flow().cycles(3).adsr(0.03, 0.3, 0.5, 0.7)
@@ -1078,11 +1086,12 @@ wait(4.0);
 release(group);
 wait(1.0);
 "#,
-    );
+    )
+    .unwrap();
     let mut runs = Vec::new();
-    for _ in 0..2 {
-        let wav = unique_wav_path();
-        let report = unique_temp_path("jsonl");
+    for index in 0..2 {
+        let wav = directory.join(format!("body-{index}.wav"));
+        let report = directory.join(format!("body-{index}.jsonl"));
         let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
             .env("RUST_LOG", "warn")
             .arg(&scenario)
@@ -1162,8 +1171,8 @@ wait(1.0);
         .unwrap()
         .replace("footprint = \"body\"", "footprint = \"proxy\"");
     fs::write(&config, proxy_config).unwrap();
-    let proxy_wav = unique_wav_path();
-    let proxy_report = unique_temp_path("jsonl");
+    let proxy_wav = directory.join("proxy.wav");
+    let proxy_report = directory.join("proxy.jsonl");
     let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
         .env("RUST_LOG", "warn")
         .arg(&scenario)

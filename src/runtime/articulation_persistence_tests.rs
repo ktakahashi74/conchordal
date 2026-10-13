@@ -8,6 +8,10 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+#[path = "../../tests/support/test_output_directory.rs"]
+mod test_output_directory;
+use test_output_directory::TestOutputDirectory;
+
 const ONE: &str = include_str!("../../tests/fixtures/articulation_persistence/one.rhai");
 const PEER: &str = include_str!("../../tests/fixtures/articulation_persistence/peer.rhai");
 const CONFIG: &str = include_str!("../../tests/fixtures/articulation_persistence/scene.toml");
@@ -214,6 +218,7 @@ fn assert_outputs_equal(a: &Path, b: &Path) {
 #[test]
 fn articulation_persistence_fixed_base_one_full_audio_and_release_report_match() {
     let directory = output_directory("fixed-one");
+    let _output = TestOutputDirectory::new(directory.clone());
     render_case(&directory.join("direct"), ONE, false, false, 96., None);
     render_case(&directory.join("fixed"), ONE, false, true, 96., None);
     assert_outputs_equal(&directory.join("direct"), &directory.join("fixed"));
@@ -222,6 +227,7 @@ fn articulation_persistence_fixed_base_one_full_audio_and_release_report_match()
 #[test]
 fn articulation_persistence_fixed_base_peer_full_audio_and_release_report_match() {
     let directory = output_directory("fixed-peer");
+    let _output = TestOutputDirectory::new(directory.clone());
     render_case(&directory.join("direct"), PEER, false, false, 96., None);
     render_case(&directory.join("fixed"), PEER, false, true, 96., None);
     assert_outputs_equal(&directory.join("direct"), &directory.join("fixed"));
@@ -230,6 +236,7 @@ fn articulation_persistence_fixed_base_peer_full_audio_and_release_report_match(
 #[test]
 fn articulation_persistence_all_bodies_both_renderers_flow_repeat() {
     let directory = output_directory("bodies");
+    let _output = TestOutputDirectory::new(directory.clone());
     for native in [false, true] {
         for body in ["sine", "harmonic", "modal"] {
             let script = ONE
@@ -294,6 +301,7 @@ fn articulation_persistence_audition_materials() {
 #[test]
 fn tie_forced_attack_and_explicit_zero_match_one_and_peer_complete_output() {
     let directory = output_directory("tie-fixed");
+    let _output = TestOutputDirectory::new(directory.clone());
     for (label, script) in [("one", ONE), ("peer", PEER)] {
         let base = directory.join(format!("{label}-base"));
         let zero = directory.join(format!("{label}-zero"));
@@ -309,6 +317,7 @@ fn tie_forced_attack_and_explicit_zero_match_one_and_peer_complete_output() {
 #[test]
 fn tie_all_bodies_renderers_flow_rest_persistence_and_repeat() {
     let directory = output_directory("tie-bodies");
+    let _output = TestOutputDirectory::new(directory.clone());
     for native in [false, true] {
         for body in ["sine", "harmonic", "modal"] {
             for extra in ["", ".cycles(2).rest(1).articulation_persistence(0.75)"] {

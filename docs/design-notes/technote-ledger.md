@@ -8556,6 +8556,8 @@ in .orchestration/records/decisions-20261007-orchestrator.md.
 
 The 19:08 closure of L5 and change to L3 prerequisites are recorded in [§9.3.85](#pitch-movement-closed-with-existing-controls-20261013).
 
+L3 tool closure and its unmet, deferred final form at 19:34 are recorded in [§9.3.86](#l3-tools-closed-final-form-deferred-20261013).
+
 <a id="steady-private-opportunities-20261013"></a>
 
 ### 9.3.84 2026-10-13: steady() preserves private opportunities and selects sound or skip
@@ -8748,6 +8750,119 @@ Sources are machine-local .orchestration/units/D-16/brief.md, A-17/report.md §�
 retained inputs and reports under L5-boundary-check-20261013/, orchestration's
 saved counts and author responses in .agent-shell/transcripts/2026-10-12-12-44-51.md,
 and the corresponding orchestration decision record.
+
+The 19:34 L3 decision and L1, L2, L4 denominator are recorded in [§9.3.86](#l3-tools-closed-final-form-deferred-20261013).
+
+<a id="l3-tools-closed-final-form-deferred-20261013"></a>
+
+### 9.3.86 2026-10-13: close L3 as tools; its Voice-side final form remains unmet and deferred until after composition
+
+#### The author's response
+
+At 19:33 the author listened to A-18's five clips and said that 4 and 5 were
+unsettled, while 1 was currently the most musical. The order was 1, The Unstruck
+Wire reference (sustain plus metric, attacking only on beats with an adoption);
+2, always connect the line; 3, always strike the line; 4, R-a; and 5, R-b.
+Clips 4 and 5 switched policies on reversals of the field's direction of change.
+The response did not address 2 or 3. It does not judge fixed Connect or Strike,
+or establish preferences for other bodies or scenes.
+
+#### Adopted at 19:34
+
+The author answered “the recommendation,” adopting **closure of L3 as tools**.
+The final form requested on October 11—a Voice choosing phonation shape in response
+to phrases—remains explicitly **unmet** and is deferred until after the composition
+stage. The mechanism-completion denominator is now **three requirements: L1, L2
+and L4**. Removing a requirement from this scope does not establish completion or
+acceptance of its final form.
+
+Production already provides composer tools: section changes to `pitch_apply_mode`,
+`rearticulate_above`, `tie`, `rest`, `articulation_persistence`, sustain plus
+participation/synchronization, and `steady()`. L3's tool scope closes at that point.
+Candidate A is not adopted with its present threshold-free field-reversal trigger.
+A-15's design and A-18's copy, including policy ownership and early-Off/Gap wiring,
+are retained as a reopening point. Candidate B's outcome-comparison components,
+units and values remain undefined; no executable design or prototype was produced.
+B has not been selected as the next mechanism.
+
+#### A-18: external candidate-A prototype
+
+The target was The Unstruck Wire's crossing line, Voice ID 3, seed 21, in the
+48-second window from 16 seconds inclusive to 64 seconds exclusive. The low and
+high stones were outside the added policy. The rules operated: policies selected
+On, Update or continuation across multiple adoptions and opportunities, and Gap
+requests reached normal Off and existing G1. With switching disabled, full WAV
+bytes and non-timing reports matched the retained E-4 reference and samples 13
+and 14.
+
+| Condition | Target-line On |
+| --- | --- |
+| Reference | 64 |
+| Fixed Connect | 1 |
+| Fixed Strike | 98, including 34 same-pitch attacks without a pending destination |
+| R-a: Connect on a turn toward increase, Strike on a turn toward decrease | 70 |
+| R-b: reverse R-a | 28 |
+
+| Condition | Direction reversals | Actual policy changes | Median Connect interval (s) | Median Strike interval (s) |
+| --- | --- | --- | --- | --- |
+| R-a | 1,045 | 55 | 0.50 | 0.66 |
+| R-b | 1,057 | 45 | 1.01 | 0.49 |
+
+The 34 same-pitch attacks had actual `freq_hz` equal to the preceding On in
+the normal onset report. No threshold, smoothing or minimum hold was added.
+Effective-field differences around
+6e-8–4e-7 could reverse the direction. Fixed policies and R-c included differences
+around 6e-8; R-a and R-b's minimum observed differences were around 3.6e-7 and
+3.9e-7. These are saved observations, not a selected epsilon. Reversals, requests
+and changes confirmed by execution results were counted separately.
+
+R-c belonged to a separate comparison adding existing `cycles(1).rest()` to the
+line, rather than modifying the original reference. It had 49 successful early
+cuts and Gap requests, and 381 Gap rejections. Successful requests reached G1
+through actual Tone tail completion after normal Off, preserving finite-Off/rest
+priority. Individual rejection causes and contributions of self sound, other
+voices or habituation to each reversal were not separated. R-a, R-b and R-c
+reaction tables were orchestration-specified controls, not musical recommendations.
+On counts and policy intervals were not identified as perceptual phrases or
+listening effects.
+
+#### Orchestration's reading and the day's comparisons
+
+Orchestration read the issue as requiring a principle for what a Voice listens
+to when switching by phrase, while perceptual phrase models remain in research
+scope. Instantaneous field differences can trigger on minute fluctuations. A-7's
+October 11 inventory concluded that the missing element was policy-holding state,
+not slow input in general; `articulation_persistence` now supplies holding state
+in production. This is orchestration's reading, not adoption of a new phrase
+principle or trigger. Composition should expose concrete limits of the composer
+tools before reopening the deferred final form.
+
+In the auditioned comparisons, the author found L5 option C too sluggish,
+inter-voice avoidance similarly sluggish, and L3 candidate A's R-a/R-b unsettled;
+none surpassed the existing forms. The present listening reference is a line
+attacking on adoptions, on its private grid or on beats. This applies to those
+materials, not to other bodies, scenes or compositions.
+
+#### Current denominator and unconfirmed work
+
+L1 includes production `steady()`; documenting existing `entrained()` and `flow()`
+contracts remains. L2's expectation target and ii-B input role are adopted and
+being prototyped in T-19; this entry records no results. L4 covers integration and
+device operation after the adopted final usage is determined. L3 closes as tools,
+with its unmet Voice-side final form deferred until after composition; L5 closes
+with existing controls. Both are outside the completion denominator. The present
+completion does not change technote's “Adaptation and expectation” row.
+
+New-policy effects on other bodies, clocks or seeds, author judgments of fixed
+Connect/Strike or R-c, candidate B's design and prototype, Voice phrase-dependent
+selection, and device operation remain unconfirmed or incomplete. This document
+entry changes neither production nor technote implementation verdicts.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are machine-local .orchestration/units/D-17/brief.md, A-18/report.md §§1
+and 4–7 and its listening list, A-7/report.md, the author's 19:33 and 19:34 responses
+in .agent-shell/transcripts/2026-10-12-12-44-51.md, and the corresponding
+orchestration decision record.
 
 ## 9.4 Alignment and Extension Sequence
 

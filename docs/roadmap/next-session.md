@@ -4,14 +4,14 @@
 A-14の形を選べる創始方策として入れる方針を採った。再開は[現行計画§8](plan-current.md#mechanism-completion-scope-20261013)と
 [台帳§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)と
 [§9.3.82](../design-notes/technote-ledger.ja.md#pitch-movement-requirement-and-steady-20261013)から始める。
-17:07にL5を追加して五要件とした後、19:08に既存の語で閉じ、分母をL1〜L4の四要件へ戻した。
-案Cは作らず、声同士を避けさせない。L3のA-18は現本体の採用を使い、L5の出来事の契約を前提にしない。
-L3の候補Aは統括が外部試作へ進めた設計の推奨で、作者の採択は未。17:42のL2の対象とii-Bの採択は保持し、
-T-19の試作を扱う。
+17:07にL5を加えた後、19:08に既存の語で閉じ、19:34にL3を道具として閉じた。
+現在の完成の分母はL1・L2・L4。Voice側のL3の最終形は未達で、曲の段の後へ回す。
+A-18の引き金のままの候補Aは採らず、設計とcopyを保存する。L5の案Cは作らず、声同士を避けさせない。
+17:42のL2の対象とii-Bの採択は保持し、T-19の試作を扱う。
 V-14のbranchは、第四のtimingのpreset `steady()`の本体実装と、V-13の56件およびA-14/P-4の三seedとのWAV・非計時reportの一致を備える。[台帳§9.3.84](../design-notes/technote-ledger.ja.md#steady-private-opportunities-20261013)と機械に固有のV-14の報告・pinから確認する。既定と既存presetは変えず、既存entrained／flowの契約とL1全体の受入は残る。steadyへの到来の作用は未採択で、採った構成の実機はL4で扱う。統合とpushの状態は作業時のgitから別に確認する。
 P-4の基準と境界50だけの二本は17:03に試聴済み。境界の省略値0は変えていない。
-現在の範囲と再開点は[台帳§9.3.85](../design-notes/technote-ledger.ja.md#pitch-movement-closed-with-existing-controls-20261013)と
-[19:08の再開点](#pitch-movement-closed-with-existing-controls-20261013)を読む。以下の過去の結果は取得時点の記録として読む。
+現在の範囲と再開点は[台帳§9.3.86](../design-notes/technote-ledger.ja.md#l3-tools-closed-final-form-deferred-20261013)と
+[19:34の再開点](#l3-tools-closed-final-form-deferred-20261013)を読む。以下の過去の結果は取得時点の記録として読む。
 
 2026-10-13更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
@@ -42,17 +42,39 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 
 ## 2. 先に読むもの
 
-1. [plan-current §8「機構の完成」](plan-current.md#mechanism-completion-scope-20261013)：現行の四要件の出口、L5の終了記録、依存、分母に入れないもの、記録時点の状態。
+1. [plan-current §8「機構の完成」](plan-current.md#mechanism-completion-scope-20261013)：現行のL1・L2・L4の出口、L3・L5の終了と延期、依存、分母に入れないもの、記録時点の状態。
 2. 機械に固有の`.orchestration/units/T-17/report.md` §§2〜6：本体のM01〜M17、残るK1〜K11、案Bと公開の判定の関係、統括の要約の訂正。未採択の選択肢は判断済みと読まない。
 3. 台帳[§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)（[英語版](../design-notes/technote-ledger.md#mechanism-completion-scope-20261013)）：作者の言葉、A-14の採択、E-4の保存、P-4の診断と当時の未試聴、運用の修理。
 4. 台帳[§9.3.82](../design-notes/technote-ledger.ja.md#pitch-movement-requirement-and-steady-20261013)（[英語版](../design-notes/technote-ledger.md#pitch-movement-requirement-and-steady-20261013)）：17:03の試聴の答え、17:07のL5とsteady()の採択、設計と実装の未了。
 
 5. 台帳[§9.3.83](../design-notes/technote-ledger.ja.md#l2-expectation-adoption-and-design-results-20261013)（[英語版](../design-notes/technote-ledger.md#l2-expectation-adoption-and-design-results-20261013)）：17:42のL2の対象・ii-Bの採択、T-18・A-16・A-15の設計結果、統括の試作への判断。当時のL5→L3の接続順は19:08に解除した。
-6. 台帳[§9.3.85](../design-notes/technote-ledger.ja.md#pitch-movement-closed-with-existing-controls-20261013)（[英語版](../design-notes/technote-ledger.md#pitch-movement-closed-with-existing-controls-20261013)）：L5の終了、四要件への復帰、試作と対照、作者判断と統括の訂正。
+6. 台帳[§9.3.85](../design-notes/technote-ledger.ja.md#pitch-movement-closed-with-existing-controls-20261013)（[英語版](../design-notes/technote-ledger.md#pitch-movement-closed-with-existing-controls-20261013)）：L5の終了、当時の四要件への復帰、試作と対照、作者判断と統括の訂正。
+7. 台帳[§9.3.86](../design-notes/technote-ledger.ja.md#l3-tools-closed-final-form-deferred-20261013)（[英語版](../design-notes/technote-ledger.md#l3-tools-closed-final-form-deferred-20261013)）：L3の道具としての終了、最終形の未達・延期、L1・L2・L4への範囲変更、A-18の結果と作者判断。
+
+<a id="l3-tools-closed-final-form-deferred-20261013"></a>
+
+## 2026-10-13 19:34：L3を道具として閉じた後の再開点
+
+完成の分母はL1・L2・L4。L3は道具として閉じ、Voiceがフレーズに応じて発音の形を選ぶ最終形は
+未達と明記して曲の段の後へ回す。閾値なしの場の増減の転換という引き金の候補Aは採らない。
+A-15の設計とA-18のcopyは保存する。Bの帰結比較は未定義で、実行できる設計・試作にはしていない。
+作曲者側の区間切り替え、境界、tie、rest、保持、持続＋参加／同期、steady()は既存の道具として使える。
+曲の段で道具の不足が具体的に出てから、延期した最終形へ戻る。完了や受入として読み替えない。
+
+L1は既存entrained()・flow()の契約明記、L2は採った対象・ii-BによるT-19の試作、L4は採った
+最終使用形の統合と実機が残る。T-19の新しい結果は本記録に入れていない。旧T-6のP／Nの未達は保持。
+L5は既存の語で閉じた状態を保ち、A-17へ接続しない。「順応と期待」の行は今回の完成では変更しない。
+
+[台帳§9.3.86](../design-notes/technote-ledger.ja.md#l3-tools-closed-final-form-deferred-20261013)
+（[英語版](../design-notes/technote-ledger.md#l3-tools-closed-final-form-deferred-20261013)）で、作者の19:33・19:34の答え、
+A-18の作用と微小差で頻発した転換、統括の読み、未確認を確認する。固定つなぐ・固定打つへの
+作者の言及はない。別の身体・時計・seedへ聴感や受入を広げず、新しい引き金の設計を先に起こさない。
 
 <a id="pitch-movement-closed-with-existing-controls-20261013"></a>
 
-## 2026-10-13 19:08：L5終了後の再開点
+## 2026-10-13 19:08時点：L5終了後の再開記録
+
+以下は当時の記録。L3の扱いと現在の分母は上の19:34の再開点を使う。
 
 完成の分母はL1〜L4の四要件。L5は既存の語で閉じ、新しい採用側の音の単位・案Cは作らない。
 単声の近い打ち直しは`rearticulate_above(cents)`という作曲者の量で扱い、声をまたぐ同音は
@@ -73,7 +95,7 @@ L3のA-18はL5の出来事の契約を待たず、現本体の採用を使う。
 
 ## 2026-10-13 17:42時点：L2の採択と三つの設計の再開記録
 
-以下は当時の記録。L5の扱いとL3の前提、現在の分母は上の19:08の再開点を使う。
+以下は当時の記録。L5の扱いとL3の前提、現在の分母は上の19:34の再開点を使う。
 
 17:42、作者はL2の対象を反復する拍・分割・小節の位置と支持、T2の入力の役割をii-Bとした。
 再来はT2の出来事、位相・強度は既存の速い音響入力から読む。受入は実際の周期と整数の関係で

@@ -4,11 +4,13 @@
 A-14の形を選べる創始方策として入れる方針を採った。再開は[現行計画§8](plan-current.md#mechanism-completion-scope-20261013)と
 [台帳§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)と
 [§9.3.82](../design-notes/technote-ledger.ja.md#pitch-movement-requirement-and-steady-20261013)から始める。
-17:07に音高移動側のL5を追加し、分母は五要件となった。L2はT-18、L3はA-15、L5はA-16で設計する。
-L3とL5の境目と判断の先後は設計報告を待ち、未定の案を採択済みとして実装しない。
+17:07に音高移動側のL5を追加し、分母は五要件となった。17:42にL2の期待の対象とii-Bを採択し、
+T-19で試作中。L3の候補AとL5の案Cは設計の推奨で、統括がA-18とA-17の外部試作へ進めた。
+作者の設計採択ではない。L5の出来事の契約→L3の消費者の順で接続し、両試作は繋がず別々に音にする。
 A-14の公開語は第四のtimingのpreset `steady()`に確定し、V-14が実装進行中。既定とflowは変えない。
 P-4の基準と境界50だけの二本は17:03に試聴済み。境界の省略値0は変えていない。
-以下の過去の結果は取得時点の記録として読む。
+新しい採択と設計結果は[台帳§9.3.83](../design-notes/technote-ledger.ja.md#l2-expectation-adoption-and-design-results-20261013)と
+[再開点](#l2-expectation-adoption-and-design-results-20261013)を読む。以下の過去の結果は取得時点の記録として読む。
 
 2026-10-13更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
@@ -43,6 +45,29 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 2. 機械に固有の`.orchestration/units/T-17/report.md` §§2〜6：本体のM01〜M17、残るK1〜K11、案Bと公開の判定の関係、統括の要約の訂正。未採択の選択肢は判断済みと読まない。
 3. 台帳[§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)（[英語版](../design-notes/technote-ledger.md#mechanism-completion-scope-20261013)）：作者の言葉、A-14の採択、E-4の保存、P-4の診断と当時の未試聴、運用の修理。
 4. 台帳[§9.3.82](../design-notes/technote-ledger.ja.md#pitch-movement-requirement-and-steady-20261013)（[英語版](../design-notes/technote-ledger.md#pitch-movement-requirement-and-steady-20261013)）：17:03の試聴の答え、17:07のL5とsteady()の採択、設計と実装の未了。
+
+5. 台帳[§9.3.83](../design-notes/technote-ledger.ja.md#l2-expectation-adoption-and-design-results-20261013)（[英語版](../design-notes/technote-ledger.md#l2-expectation-adoption-and-design-results-20261013)）：17:42のL2の対象・ii-Bの採択、T-18・A-16・A-15の設計結果、統括の試作への判断、L5→L3の接続順。
+
+<a id="l2-expectation-adoption-and-design-results-20261013"></a>
+
+## 2026-10-13：L2の採択と三つの設計からの再開
+
+17:42、作者はL2の対象を反復する拍・分割・小節の位置と支持、T2の入力の役割をii-Bとした。
+再来はT2の出来事、位相・強度は既存の速い音響入力から読む。受入は実際の周期と整数の関係で
+合い、`metric()`の発音に効くこと。非周期では支持された仮説であり、真の周期と断定しない。
+旧T-6のP／Nは未達として保持する。検出の四つの具体値、`steady()`への期待の作用、
+間隔側iii、既定変更を採択済みとしない。T-19は本体外の試作で、結果の受領を待つ。
+
+L3はA-15の候補A（保持する行為方針と実効場の増減の転換、作曲者の反応表）、L5はA-16の
+案C（既存採用を留まる／調整／移動へ分類）が設計の推奨として返った。統括はA-18／A-17の
+本体外の試作へ進めたが、作者の設計採択ではない。新しい連続量0を規則の採択と同一視しない。
+二つの試作は繋がず別々に音にする。接続する際はL5の出来事の契約→L3の消費者の順とする。
+試作の結果と作者の判断を確認してから本体化を扱い、未採択の案・数値・既定を先取りしない。
+
+設計結果と保存数値の定義は[台帳§9.3.83](../design-notes/technote-ledger.ja.md#l2-expectation-adoption-and-design-results-20261013)
+（[英語版](../design-notes/technote-ledger.md#l2-expectation-adoption-and-design-results-20261013)）。
+機械に固有の`T-18/report.md`、`A-16/report.md`、`A-15/report.md`も読み、診断・設計・
+作者採択・統括の試作指示を区別する。完成の分母は五要件のまま。
 
 以下は過去の判断・結果を確認する際の参照先であり、済んだ単位を再開する指示ではない。
 

@@ -8429,6 +8429,129 @@ in .orchestration/records/decisions-20261007-orchestrator.md. Identification of 
 author's two attacks with the counted sequences remains unconfirmed. L5 design,
 implementation and acceptance, and V-14 production acceptance, remain incomplete.
 
+<a id="l2-expectation-adoption-and-design-results-20261013"></a>
+
+### 9.3.83 2026-10-13: adopt L2's expectation target and record the L2, L3 and L5 designs
+
+#### The author's response and adopted decisions
+
+At 17:42 the author answered “the recommendations” to T-18 decisions 1 and 2,
+adopting two items:
+
+- **L2 expects recurring beat, subdivision and measure positions and their
+  support (candidate ii).** Acceptance requires agreement with the actual period
+  and integer relations, and an effect on `metric()` phonation. On nonperiodic
+  input, these are supported hypotheses, not assertions of a true period.
+- **T2 has input role ii-B.** T2 events supply recurrence evidence; the existing
+  fast acoustic input supplies phase and intensity. This uses one existing meter,
+  without a permanent second estimator for the next single accent.
+
+The old T-6 P criterion (predicting the next single physical accent) and N criterion
+(not confirming on nonperiodic input) remain unmet. Adopting a different target does
+not turn those results into passes. Applying expectations to `steady()` and adding
+the interval-side candidate iii were not adopted. The completion denominator
+remains five requirements, L1–L5.
+
+#### T-18: expectation target and input design
+
+Even with the period fixed to the correct value, the current stepped formula
+selected the wrong next cycle in 20 of 465 retained witnesses for each of IDs
+31751 and 31754. Across the eight retained materials, detector event ends lagged
+physical On times by 819–27,238 samples, with no constant delay. These describe
+saved timestamps, not a fixed correction or a new causal attribution of each event
+to that On.
+
+| Candidate | Target and remaining work |
+| --- | --- |
+| i | Repair the distribution of the next single physical accent. This needs a detection-delay observation model and period confirmation; the total degrees of freedom remain undetermined |
+| ii | Use one existing meter for beat, subdivision and measure positions and support. ii-A replaces the whole onset update with T2; adopted ii-B separates recurrence from fast phase and intensity input |
+| iii | Add a separate detected-accent interval and elapsed-time consumer alongside ii-B's beat consumer. Not adopted here |
+
+With equal event treatment, ii-B leaves four continuous detector quantities to
+select: three component ratios and one threshold. The event-weight saturation
+scale leaves this consumer; no new coupling gain, phase offset or threshold is
+added. The four values remain unselected. A meter can form hypotheses and positive
+confidence from chance recurrence on nonperiodic input, so positive confidence
+cannot substitute for passing old N. Dropping detector events is not evidence of
+successful nonperiodic discrimination either.
+
+#### A-16: L5 diagnosis and design
+
+For the morning form at seed 21, the control-sample window is 2 seconds inclusive
+to 96 seconds exclusive. A small adoption has raw distance below 50 cents from
+the previous target to the adopted destination. Fifty is a saved comparison
+boundary, not a design threshold. This is not distance between adjacent actual
+On events, and the count includes the first adoption entering the window.
+
+| Voice | Small adoptions | Same raw-field basin, maximum position changed | Same raw-field basin, maximum position unchanged | Nearby distinct raw maxima |
+| --- | --- | --- | --- | --- |
+| Lower | 14 | 13 | 1 | 0 |
+| Upper | 49 | 33 | 2 | 14 |
+
+All morning-form proposals were greedy. Raw-field classification neither proves
+perceptual sound identity nor describes the final scorer alone. The diagnosis
+distinguishes following a moving maximum within a basin from adopting a nearby
+different maximum. Disabling only habituation in a closed-loop control reduced
+lower-line large adoptions from 30 to 9 and increased their longest interval from
+8.624 to 34.880 seconds. The upper line moved in the opposite direction, with
+large adoptions increasing from 139 to 166. Small adoptions changed from 14 to 35
+below and from 49 to 22 above; disabling habituation does not solve both lines.
+`sigma_cents=3` is harmonicity's Gaussian smoothing width, not a sound-identity
+boundary. The grid here is 12.5 cents; the sensory calculation's width must not be
+repurposed as an identity rule.
+
+| Option | Design and limitation |
+| --- | --- |
+| A | A fixed-anchor region using the existing kernel width. A Gaussian width does not derive a finite identity boundary, and tracking one peak can leave that region |
+| B | Replace bin candidates with local maxima and track peaks. Candidate cleanup alone does not eliminate greedy peak following, and also changes search |
+| C (design recommendation) | Keep existing candidates, scoring and adoption, then classify the destination as stay, adjust or move. Identify local maxima and temporal correspondence in the effective field after self exclusion, without private costs or adaptation in peak IDs. Adds zero continuous quantities |
+| D | Existing phonation-side `rearticulate_above`. Distance from the last actual On can accumulate across small same-direction adoptions and attack again; it creates no adoption-side identity |
+
+#### A-15: L3 design
+
+The action-by-decision-owner inventory found scaffolding for attacking while
+moving, gliding while moving, attacking at the same pitch and extending a sound.
+The missing cells are a Voice choosing to cut a sound or create a gap. Finite
+duration and rest constrain every sound; they are not that Voice selection.
+
+Recommended candidate A holds a Voice's baseline/connect/strike policy across
+multiple sounds, with separate one-shot Release/Gap requests and completion
+waiting. It reads the effective field at the actual body-pitch coordinate captured
+at policy start and reacts to reversals between increasing and decreasing field
+values. The composer supplies an event-to-action reaction table, with no response
+by default. It adds zero numerical parameters: no policy duration, probability or
+field threshold. Selection and execution results remain distinct, preserving the
+priority of finite Off, rest and cancellation. Candidate B maintains or retracts
+policies by comparing outcomes, but the compared components, units and values
+remain undefined.
+
+#### Orchestration decisions and unconfirmed work
+
+Orchestration advanced L5 option C to A-17 and L3 candidate A to A-18 as prototypes
+outside production, to provide material the author can audition and decide on.
+**Neither is an author-adopted design.** This does not decide production inclusion,
+default changes, a public reaction table or treatment of existing p and tie.
+L2's ii-B is being prototyped in T-19; this entry records no prototype results.
+
+Connection order is **L5 event contract → L3 consumer connection**. The two designs
+and prototypes can progress in parallel, but A-17 and A-18 remain unconnected and
+produce separate audio. Destination adjustment/movement is distinct from an L3
+action intentionally attacking the same pitch.
+
+ii-B detector selection, input/support and unknown-contract checks, causal effects
+on `metric()`, production acceptance and device operation remain incomplete.
+C's temporal peak correspondence, unidentified cases and possible stalling, A's
+frequent switching and self-feedback bias, and each prototype's effects, audition
+and production decisions remain unconfirmed. Zero new continuous quantities does
+not mean that discrete rules have been adopted. This entry changes neither src
+nor technote's implementation verdicts.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are machine-local .orchestration/units/D-15/brief.md, T-18/report.md §§3–4
+and author decisions, A-16/report.md §§2–6, A-15/report.md's action inventory and
+candidates A/B, and the corresponding author decision and prototype instructions
+in .orchestration/records/decisions-20261007-orchestrator.md.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

@@ -1,6 +1,13 @@
 # 次のセッションの始め方
 
-2026-10-12更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
+次の段は「機構の完成」。作者は15:52頃に機構を先、曲を後とし、16:44にT-17の案B（L1〜L4）と、
+A-14の形を選べる創始方策として入れる方針を採った。再開は[現行計画§8](plan-current.md#mechanism-completion-scope-20261013)と
+[台帳§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)から始める。
+L2はT-18、L3はA-15で設計中。未定の設計を採択済みとして実装しない。A-14の公開の形と名前は
+作者に確認中で、既定とflowは変えない。P-4の材料は提示済み・試聴未実施で、音高移動側の課題を
+四要件へ加えるかは作者判断待ち。以下の過去の結果は取得時点の記録として読む。
+
+2026-10-13更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
 作者は2026-10-10に動的代謝の受入を改訂してN-7を受け入れた。N-7は同日にmainへ統合され、originへpush済みである。時間構造は、原典の図の数値再現を一律の門にした誤りを撤回し、T-6kで整数比の階層の設計を閉じ、T-7で本体に実装した。T-7も同日にmainへ統合し、最終検査の後、11:50にoriginへpushした。作者の試聴を受けたmetric内の位相分離のT-8〜T-10は、午後の範囲の判断で停止した。拍の同期の二つの失敗はT-11で設計の選択と分類した。F1はT-12で設計を本体の外で閉じ、T-13で実装・回帰・文書をbranchへ用意した。その後2026-10-11に作者はF1の採用方針とC＋hardの最小形を決め、T-16がT-13の上に実装を積んだ。F1は実機の四構成合格後、08:28に統括がmainの`c2b8308`へ統合した。その後08:46に、統括はT-16をmainの`000b884`へfast-forwardで統合した。慣れと既存語彙の旋律らしい線を作者が評価し、「動いた時にだけ発音する」V-1は外部試作を終えた。2026-10-11に作者が本体への実装を採り、09:03頃に `pitch_apply_mode("rearticulate")` の形と名前を確定した。統括が併用規則の案Aを採り、本体実装・検査・文書をV-2のbranchに用意した。[午後〜夜の状態](plan-current.md#temporal-melodic-outcomes-20261010)を次の作業の入口にする。20単位の終了、実装・統合・push、作者の音楽的な評価を区別する。
 
@@ -28,6 +35,12 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 - workerの結果は、briefで指定したfileに書かせる。統括はそのfileを読む。完了の検知は `conchordal-worker-status` の「実行中か」と、結果fileの有無で行う。
 
 ## 2. 先に読むもの
+
+1. [plan-current §8「機構の完成」](plan-current.md#mechanism-completion-scope-20261013)：採択した四要件の出口、依存、分母に入れないもの、記録時点の状態。
+2. 機械に固有の`.orchestration/units/T-17/report.md` §§2〜6：本体のM01〜M17、残るK1〜K11、案Bと公開の判定の関係、統括の要約の訂正。未採択の選択肢は判断済みと読まない。
+3. 台帳[§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)（[英語版](../design-notes/technote-ledger.md#mechanism-completion-scope-20261013)）：作者の言葉、A-14の採択、E-4の保存、P-4の診断と未試聴、運用の修理。
+
+以下は過去の判断・結果を確認する際の参照先であり、済んだ単位を再開する指示ではない。
 
 1. [plan-currentの午後〜夜の結果](plan-current.md#temporal-melodic-outcomes-20261010)：止めた線と当時の状態。その後の[2026-10-11の追記](plan-current.md#meter-onset-recurrence-branch-20261011)でT-11の分類とT-13の統合を確認し、[T-16の追記](plan-current.md#metric-basin-initial-rate-20261011)でC＋hardの統合を確認する。§7の20単位とN-7・T-7・H-3の実装・統合記録は保持し、過去の状態を現在の作業指示にしない。
 2. 台帳[§9.3.61](../design-notes/technote-ledger.ja.md#metric-phase-separation-stopped-20261010)〜[§9.3.66](../design-notes/technote-ledger.ja.md#pitch-adoption-articulation-prototype-20261010)：位相分離の停止、拍の同期の失敗、動機・phraseの空白、二つの陰性試作、H-1の三素材と読みの訂正、V-1の規則と限界。慣れの既定有効化と実時間は[§9.3.60](../design-notes/technote-ledger.ja.md#habituation-default-on-20261010)、N-7とT-7の取得・受入範囲は[§9.3.58](../design-notes/technote-ledger.ja.md#realtime-acceptance-scope)、文化層と先の試聴は[§9.3.59](../design-notes/technote-ledger.ja.md#temporal-rule-calibration-outcome)。英語版も同じ結果を記す。

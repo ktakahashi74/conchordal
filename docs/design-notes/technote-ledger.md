@@ -8224,6 +8224,147 @@ new audition, the upper sound's identity/level, other seeds and full live load
 remain unconfirmed. Per-note choices, phrase memory/boundaries and inferred
 gesture grouping remain outside this implementation.
 
+<a id="mechanism-completion-scope-20261013"></a>
+
+### 9.3.81 2026-10-13: complete the mechanisms next, with L1–L4 as the denominator
+
+#### Author responses and their materials
+
+At about 15:14 the author compared E-4's adoption-beat-only drafts with their
+references and preferred item 1 to item 2 for their aligned pulse, while rating
+items 3 and 4 similarly. Item 1 was Three Windows (sample 13), item 2 Three
+Lanterns, item 3 Open Court (sample 16), and item 4 Courtyard Weave. E-4's drafts
+are retained with their acquisitions and are not added to samples/.
+
+During 15:3x the author asked whether temporal DCC was complete. The answer was
+no: twenty units reaching their exits did not define a denominator for mechanism
+completion. At 15:41 orchestration presented three next stages: works first,
+mechanisms first, or stabilization and publication, recommending works first.
+At about 15:52 the author chose mechanisms first and compositions afterwards.
+
+At 16:05 the author heard two lines in A-14's fourth item but preferred the
+reference musically. At 16:08 the author described little lower-line movement
+and few harmonic transitions, possibly depending on the random draw, and found
+short repeated, staccato-like sounds in all four materials musically detrimental.
+These are responses to those materials, not general auditory or mechanism acceptance.
+At 16:44, “2:b 3:a” adopted T-17's scope B and native inclusion of A-14's form
+as a selectable founder participation policy. Its public syntax and name are
+still being confirmed with the author; no provisional name is assigned.
+
+#### Adopted scope and mechanism inventory
+
+The completion claim is: adopted production mechanisms, within declared inputs,
+bodies and workloads, satisfy their stated local generative effects and state
+contracts. The denominator consists of four requirements: L1 participation's
+temporal relations; L2 T2 expectations affecting phonation; L3 a Voice choosing
+articulation across multiple sounds; and L4 integration and real-device operation
+of the adopted configuration. Their exits and dependencies are defined in the
+[new current-plan section](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Workers, evidence files, reviews and test counts do not increase that denominator.
+Compositions and beta follow this stage.
+
+T-17's M01–M17 inventory covers continuous sound and two-bus observation,
+short-term recurrence/energy prediction and own-sound removal, bodily clocks and
+participation, pitch/phonation coupling, finite notes/rest, policy retention/tie,
+beat/subdivision/measure, opt-in T2 preprocessing and arrival costs, representative
+onset footprints, the boundaries of ordered memory/phrase/section implementation,
+listener-driven search pressure, habituation and adaptation. Listing a mechanism
+does not establish its production implementation or acceptance. K1, K2, K5 and
+K10 are the central remaining problems corresponding to L1–L4.
+
+Existing decisions in T-17 §5 remain in force. The denominator excludes K4
+(sample 08's auditory/meter discrepancy), K6 (research gesture, search and recall),
+K7 (T1's non-identification under the retained inputs), K8 (deferred front-end
+unification), K9 (renderer default promotion and Modal prediction), and K11
+(independent loudness and fluctuation vocabulary). Scope C's return of perceptual
+phrase/closure and cognitive section research was not adopted, nor was scope A's
+deferral of T2 and the Voice's final requirement. There is no adoption of enabling
+every opt-in mechanism, guaranteeing every script/load, or restoring the old
+function-by-four-tests completion matrix.
+
+A-14 is adopted as an additional non-flow founder policy, preserving the existing
+default. It keeps the individual's schedule while costs affect sounding versus
+omission. It does not promise time-following or active replies and does not change
+flow. Native initial input, templates, replacement state, opportunity conservation,
+state composition and acceptance are work for a separate implementation unit.
+At this record's date T-18 is designing L2 and A-15 is designing L3. Their algorithms,
+states, public words, numerical choices and recommendations have not been adopted.
+
+#### Orchestration readings and corrections
+
+The works-first recommendation was not selected. The statement that repetition
+and variation were outside production was too broad. Research transformation
+correspondence and episode recall differ from production short-term recurrence,
+the participation policy's 2×3 post-execution memory, recurrence of patterns, and
+habituation/adaptation. Authored timeline sections also exist. The Voice's
+multi-sound production choice remains a separate unmet requirement; it does not
+re-adopt perceptual phrase/closure research (T-17 §6).
+
+E-4's saved reference lines propose on a common grid measured in seconds. In the
+sustained synchronized form, proposal and beat clocks differ, adopted destinations
+wait for the next beat, and the slow line alternates between four- and three-beat
+intervals. This is orchestration's reading, not identification of the cause of
+the author's pulse judgment. It neither adopts replacing that proposal grid
+with synchronization nor revises the omitted-tie decision.
+
+After the 2026-10-11 question about repeated pitches, orchestration had not
+presented rearticulate_above as the sole change from the reference. E-3 combined
+boundaries, tie, participation and other changes. P-4 supplies that missing
+comparison and a diagnosis; it is not a production repair.
+
+#### P-4 observations and unconfirmed scope
+
+Pitch adoption has no distinction between a different sound and movement within
+the same sound. At seed 21, changing only the morning reference's temperature to
+zero preserved every WAV byte and all 56,962 report rows except hop_timing.
+Temperature-based fallback is not necessary for this output, but that comparison
+does not identify each original adoption branch. Moving terrain peaks, candidate
+origins and stochastic selection cannot be separated without the adoption-time
+scorer, candidates and branch records.
+
+Adding only rearticulate_above(50) to both lines changed main-window onset counts
+from 44 to 33 below and 188 to 153 above. Adjacent onset movements strictly below
+50 cents changed from 14 to zero below and 49 to zero above. This is a closed-loop
+acquisition using net displacement from the last actual onset, not post-processing
+of the saved onset sequence. Fifty is a comparison input, not a recommendation
+or a new default. The window is 2–96 seconds; ratios use adjacent onsets within it.
+
+For lower-line movements of at least 50 cents, seeds 21/42/123 produced
+29/36/35 events in the morning reference and 23/28/34 in the new form. Maximum
+intervals between such arrivals were 8.624/6.315/6.385 seconds versus
+17.061/10.691/12.680. The new form nevertheless used more distinct onset pitch
+bins. These observations do not measure musical quality or harmonic transitions
+directly. In the new form only 24 of 30 small upper-line movements occurred
+within 0.75 seconds; orchestration's earlier all-short-interval description
+is corrected.
+
+P-4's materials have been presented to the author but have not yet been auditioned
+at this record's date. Whether to add the pitch-movement issue to L1–L4 awaits
+the author and does not enlarge the denominator now. A-14 native implementation,
+the new L1–L3 designs and L4 acceptance of new usage forms remain incomplete.
+Unchanged R-2 scope can be reused without claiming all opt-in combinations passed.
+
+L1/L4 may update the declared range of the temporal-terrain row in technote §9.1;
+L2/L4 may update the auditory-grounding row. L3 may add Voice-side production
+effects to adaptation and expectation without making that whole row implemented.
+Real biosignals and perceptual research remain open, so completing the adopted
+scope does not remove every PARTIAL entry. This documentation does not change
+technote's implementation verdicts.
+
+#### Operational repairs and sources
+
+U-7 (4a4827b) cleans successful test output and retains necessary failure evidence
+with a bound. U-8 (13889bd) aligns owned jobs with agent-workers-guarded.slice,
+preserving limits and behavior. Orchestration records approximately 21.8 GiB of
+test output removed from /tmp. Tests use disk-backed TMPDIR and remove their own
+successful output; see the [operations note](../operations/oom-prevention.md).
+This does not reinstall terminal-wide or Emacs-wide limits.
+
+Sources are machine-local D-13/brief.md, T-17/report.md §§2–6, A-14/report.md,
+P-4/report.md and its retained statistics, E-4/report.md, U-7/report.md,
+U-8/report.md, and .orchestration/records/decisions-20261007-orchestrator.md.
+Unit records reside in .orchestration/units/. Remaining designs are not adoptions.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

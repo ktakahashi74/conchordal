@@ -493,6 +493,8 @@ specific comparison rather than the choice of every layer's mathematics.
 
 ## 7. Current implementation boundary
 
+For the production inventory as of 2026-10-13, see [ledger §9.3.81](technote-ledger.md#mechanism-completion-scope-20261013) and the [new current-plan section](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+
 | Function | Current production/research contribution | Still required by this design |
 |---|---|---|
 | Continuous evidence | Production Log2 spectral and band-energy histories; gap handling and own-sound separation on relevant paths; research waveform-state models | Evidence sufficient for persistent auditory relations in overlapping/continuous sound |

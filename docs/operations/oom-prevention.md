@@ -10,6 +10,8 @@ systemd-oomd のログは、ユーザー全体のメモリ圧力が82.03%と80.4
 
 今後の制限対象は、所有が明確な計算ジョブだけとする。端末や Emacs 全体には適用しない。再設計では systemd-oomd の監視対象と memory pressure を検証に含める。事故前に終了した Python の用途は依然として特定できていない。
 
+2026-10-13：`/tmp`はtmpfsであり、検査の出力を残すとRAMとswapを消費する。Cargoのtest・buildと描画jobは、disk上の`TMPDIR=/home/shafi/.cache/conchordal-test-tmp`へ一時出力を置く。通った検査は、そのjobが作った自分の出力を消す。失敗時は調査に必要な証拠だけを既存の有界な保持規則で残し、使用中や別jobの出力、手動の取得物は消さない。
+
 ## 以下は撤回した導入の履歴
 
 2026-10-01 20:38:30 JST、メモリ制限のない Ptyxis 端末の Python が約22.3 GiBの匿名メモリを消費し、ホスト全体の OOM で終了した。Python の処理内容は記録から特定できていない。同時刻の F2 Source5 計測は別の8 GiB・swap禁止の scope 内で継続していた。

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e696340.js";
+            window.path_to_searchindex_js = "../searchindex-c36e0d70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -410,8 +410,10 @@ Toneが無ければ、Connectも合法な初回発音や休止後の復帰を塞
 <p>持続音を参加の機会で打ち直す形に、配置前の<code>tie(p)</code>を添えられます。pは、行き先の保留が
 ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の<code>sustain()</code>と<code>metric()</code>／<code>entrained()</code>／
 <code>flow()</code>に、明示のgate_snapまたはrearticulateを組み合わせる形が対象です。境界0も含みます。
-既定0は今までどおり、1は対象の機会で必ず伸ばし、中間では機会ごとに両方が混ざります。
-作曲者が置く量であり、音楽的な最適値を決めるものではありません。</p>
+省略時は、持続＋同期では1、持続＋entrained／flowの参加では0になります。参加のVoiceは
+費用によって機会を見送れます。明示の<code>tie(0)</code>は保留の無い機会でも打ち直し、<code>tie(1)</code>は
+対象のToneを必ず伸ばします。中間では機会ごとに両方が混ざります。固定音高とGlideは
+tieの対象外で、metricの交差ごとに打ち直します。音楽的な最適値を決めたものではありません。</p>
 <p>保留があれば、その行き先へ跳んで発音します。正の境界以下の採用は既に滑っており、
 保留を作らないので、そのToneも伸ばす対象です。厳密に同じ音高だけに限りません。
 gate_snapでは小さい採用や距離0の採用も保留するため、その機会は打ち直します。
@@ -478,20 +480,24 @@ flowの音長には既存の3倍の係数も適用します。<code>rhythm_freq(
 <p><code>sustain()</code>と<code>metric()</code>を両方明示すると、生きたToneを保ちながら、既存の同期時計の
 整数交差を発音の機会に使います。書く順は問いません。共有の拍は音から確認された拍です。
 確認される前は、tempo basinの中心と独立した初期位相から自走します。外から拍を置く語ではありません。</p>
-<p>初回はHoldと同じ即時の発音です。その後は拍の交差ごとに機会があり、音高の採用が
-無かった拍でも、その時の身体の音高で打ち直します。Glideは発音の間も滑ります。
+<p>初回はHoldと同じ即時の発音です。その後は拍の交差ごとに機会があります。自由音高の
+GateSnap／Rearticulateでは、既定は行き先の採用を保留した拍で発音し、ほかの拍では
+生きたToneを伸ばします。<code>tie(1)</code>と同じです。毎拍打つには<code>tie(0)</code>と書きます。
+固定音高とGlideは、交差ごとにその時の身体音高で打ち直します。Glideは発音の間も滑ります。
 GateSnapは最新の採用先を次の合法な交差まで保留します。境界0のRearticulateも同じです。
 正の境界では小さい採用が旧保留を取り消して滑り、大きい採用は保留されます。
 同じsampleの採用は、交差の発音より先に扱います。</p>
 <pre><code class="language-rhai">let wire = harmonic().brain("drone").sustain().metric().seek_consonance()
-    .pitch_apply_mode("rearticulate").tie(1);
+    .pitch_apply_mode("rearticulate");
 let voices = place(wire, at(660.0));
 wait(4.0);
 release(voices);
 wait(2.0);
 </code></pre>
-<p>保留の無い機会で伸ばしたい場合は、自由音高のGateSnap／Rearticulateに<code>tie(p)</code>を添えます。
-省略すれば、採用の無い拍でも打ち直します。<code>articulation_persistence</code>は既存のBase／Connectを
+<p>自由音高のGateSnap／Rearticulateに<code>tie(p)</code>を明示すれば、その値を使います。省略値は
+配置前に解決し、演奏中のmode切替で対象に入っている間も同じ規則が働きます。
+持続＋entrained／flowの参加は省略時0のままで、費用による見送りがあります。
+tieの演奏中のsetterは追加しません。<code>articulation_persistence</code>は既存のBase／Connectを
 保ちますが、同期には費用による見送りも、決めた予定を待つ状態もありません。方針の提案は
 採用と発音の交差から来ます。<code>rest()</code>は明示の有限音長、実際の余韻の終了、間を組み合わせます。
 その間も時計は進み、控えた交差を後で再演しません。</p>

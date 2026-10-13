@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-106108dc.js";
+            window.path_to_searchindex_js = "../searchindex-5d1a6259.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -412,6 +412,11 @@ proportion. See <a href="rhythm.html#retaining-an-articulation-policy">Retaining
 <p>For gate_snap/rearticulate participation, <code>tie(p)</code> can extend a living Tone without
 a pending target instead of re-attacking. It leaves pending-target attacks intact,
 including small GateSnap moves. See <a href="rhythm.html#extending-opportunities-without-a-new-pitch-destination">Extending opportunities</a>.</p>
+<p>Sustained synchronization uses the same pending-target rules with a different
+omission default: free-pitch GateSnap/Rearticulate extends pending-free beats
+like <code>tie(1)</code>. Write <code>tie(0)</code> to attack every legal beat. Fixed pitch and Glide
+remain unchanged; entrained/flow participation keeps omitted tie at zero. See
+<a href="rhythm.html#sustained-synchronization">Sustained synchronization</a>.</p>
 <h3 id="cutting-notes-and-leaving-a-rest"><a class="header" href="#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a></h3>
 <p>For sustained participation, <code>rest()</code> adds a finite end to every sounded note
 and an intentional pause after its sound has finished. Supply the note length

@@ -8172,6 +8172,58 @@ Per-note instructions, phrase memory/boundaries, inferred gesture grouping and a
 live clock-preset switch remain absent. The local V-12 report holds the final
 acquisition/test counts and source/binary identities.
 
+The later omission default is recorded in [§9.3.80](#synchronized-tie-default-20261013).
+
+<a id="synchronized-tie-default-20261013"></a>
+
+### 9.3.80 Omitted tie in sustained synchronization extends pending-free beats
+
+On 2026-10-13 the author listened to E-4's drafts. At 14:30 the author said that
+attacking every beat can sound unnatural, and at 14:31 asked why every beat had
+been chosen. At 14:34 the author described item 6, The Unstruck Wire with tie(1),
+as relatively natural apart from a weak upper sound. Which part that upper sound
+meant is unconfirmed; this change does not alter amplitude or dynamics. At 14:36
+the author adopted the recommended choice: omitted tie extends pending-free beats
+in sustained synchronization, and tie(0) explicitly requests every-beat attacks.
+These are the author's statements about those materials, not a general auditory
+conclusion or a new audition of the implementation.
+
+Orchestration explained two omissions in its earlier decisions. Nobody selected
+every-beat attacks as a musical intention: metric offered each crossing and the
+sustained resolver re-attacked without tie. Omission at zero had been selected
+for participation, whose cost policy can skip; synchronization has no such skip.
+In A-12 and V-12 orchestration did not present the pending-free default as an
+author decision. For E-4 it explicitly requested every-beat attacks and said not
+to use tie or boundaries as defaults. It read E-3's complaint about less movement
+and reduced polyphony as "do not reduce attacks", confusing attack count with
+movement. The author's baseline was an attack when pitch moves; every-beat
+attacks added repeated pitches on beats without movement. E-4's descriptive
+readout put slow-line same-pitch re-attacks at 51–76%, from 0% in the references.
+Those counts do not determine naturalness or polyphony.
+
+The adopted omission is tie(1) for free-pitch explicit sustain plus metric while
+GateSnap/Rearticulate applies. Explicit probabilities, including zero and
+intermediate values, retain their meanings. Participation keeps omission at zero;
+fixed pitch and Glide still attack crossings. An initial-only builder flag
+distinguishes omission from explicit zero. Placement resolves the final spec once,
+and the existing template probability and dormant policy support live mode
+suspension/resumption and fresh replacement state. No new runtime state, clock,
+cost, numeric control or public word is added, and the hop implementation is unchanged.
+The default follows the words' held-sound/destination semantics and the author's
+response to item 6, not an optimized numerical parameter.
+
+Validation covers scenario equality and sounding behavior, explicit endpoints
+and intermediate values, unaffected participation/fixed/Glide forms, builder
+orders, place/create, respawn, live mode changes and absence of omission warnings.
+Forty-one V-12 cases are compared unchanged. For A-12's synchronized scene and
+four E-4 drafts at seed 21, new omission maps to old explicit tie(1), new tie(0)
+to old omission, and new tie(1) to old tie(1), using full WAVs and all native rows
+except hop_timing. The local V-13 report records final counts and identities.
+No new listening material or real-time measurement is acquired. The author's
+new audition, the upper sound's identity/level, other seeds and full live load
+remain unconfirmed. Per-note choices, phrase memory/boundaries and inferred
+gesture grouping remain outside this implementation.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

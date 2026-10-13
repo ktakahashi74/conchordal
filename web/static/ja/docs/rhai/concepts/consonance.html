@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e696340.js";
+            window.path_to_searchindex_js = "../searchindex-c36e0d70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -386,6 +386,10 @@ release(voices);
 <p>gate_snap／rearticulateの参加では、<code>tie(p)</code>で保留がないToneを打ち直さず伸ばす確率を
 置けます。gate_snapの小さい採用を含む、保留ありの発音は通します。
 <a href="rhythm.html#行き先がない機会では音を伸ばす">行き先がない機会では音を伸ばす</a>を参照してください。</p>
+<p>持続＋同期も同じ保留の規則を使いますが、自由音高のGateSnap／Rearticulateでは、
+省略時は<code>tie(1)</code>と同じく保留の無い拍で伸ばします。毎拍打つには<code>tie(0)</code>と書きます。
+固定音高とGlideは従来どおり、entrained／flowの参加は省略時0のままです。
+<a href="rhythm.html#持続音を拍へ同期させる">持続音を拍へ同期させる</a>を参照してください。</p>
 <h3 id="音を切って間を置く"><a class="header" href="#音を切って間を置く">音を切って間を置く</a></h3>
 <p>持続音と参加の機会を併せ持つVoiceに<code>rest()</code>を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は<code>cycles(n)</code>、または

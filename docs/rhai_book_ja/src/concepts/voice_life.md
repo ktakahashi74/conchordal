@@ -136,4 +136,4 @@ adaptive duration controlを使えます。まずpresetから始め、作品が�
 
 次章では、[VoiceとLandscape — 音と環境のフィードバック](ecological_loop.md)を説明します。
 
-明示の`sustain()`と`metric()`を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。[リズム](rhythm.md#持続音を拍へ同期させる)を参照してください。
+明示の`sustain()`と`metric()`を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。自由音高のGateSnap／Rearticulateは、既定では採用先を保留した拍で発音し、ほかの拍では伸ばします。毎拍打つには`tie(0)`。固定音高とGlideは拍ごとに打ち、持続＋entrained／flowの省略値は0のままです。[リズム](rhythm.md#持続音を拍へ同期させる)を参照してください。

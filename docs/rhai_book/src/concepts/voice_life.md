@@ -146,4 +146,4 @@ Populations it created when the scope ends.
 The next chapter explains
 [Voice and Landscape — Sound–Environment Feedback](ecological_loop.md).
 
-Explicit `sustain()` plus `metric()` combines held sound and acoustic beat synchronization. See [rhythm](rhythm.md#sustained-synchronization).
+Explicit `sustain()` plus `metric()` combines held sound and acoustic beat synchronization. With free-pitch GateSnap/Rearticulate, omitted tie attacks at a beat with a pending adopted destination and extends other beats; write `tie(0)` for every beat. Fixed pitch and Glide still attack each crossing, and sustained entrained/flow keeps omitted tie at zero. See [rhythm](rhythm.md#sustained-synchronization).

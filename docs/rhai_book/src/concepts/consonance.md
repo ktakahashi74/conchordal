@@ -271,6 +271,12 @@ For gate_snap/rearticulate participation, `tie(p)` can extend a living Tone with
 a pending target instead of re-attacking. It leaves pending-target attacks intact,
 including small GateSnap moves. See [Extending opportunities](rhythm.md#extending-opportunities-without-a-new-pitch-destination).
 
+Sustained synchronization uses the same pending-target rules with a different
+omission default: free-pitch GateSnap/Rearticulate extends pending-free beats
+like `tie(1)`. Write `tie(0)` to attack every legal beat. Fixed pitch and Glide
+remain unchanged; entrained/flow participation keeps omitted tie at zero. See
+[Sustained synchronization](rhythm.md#sustained-synchronization).
+
 ### Cutting notes and leaving a rest
 
 For sustained participation, `rest()` adds a finite end to every sounded note

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-106108dc.js";
+            window.path_to_searchindex_js = "../searchindex-5d1a6259.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -456,9 +456,12 @@ does not decide whether each note should sustain or release.</p>
 at a selected participation opportunity without a pending target. It is an
 initial composer parameter for free-pitch <code>sustain()</code> with <code>metric()</code>, <code>entrained()</code> or
 <code>flow()</code> and explicit <code>gate_snap</code> or <code>rearticulate</code>, including a zero boundary.
-The default <code>0</code> preserves current attacks, <code>1</code> always extends eligible Tones,
-and intermediate values mix the two per opportunity. These values are composer
-choices, not a musical optimum.</p>
+Omitted tie resolves to <code>1</code> for sustained synchronization and to <code>0</code> for sustained
+entrained/flow participation, where the Voice can skip opportunities by cost.
+Explicit <code>tie(0)</code> preserves pending-free attacks, <code>tie(1)</code> always extends eligible
+Tones, and intermediate values mix the two per opportunity. Fixed pitch and Glide
+remain outside tie and re-attack each metric crossing. These choices do not claim
+a musical optimum.</p>
 <p>A pending target still jumps and attacks. Small adoptions below a positive
 boundary already glide without pending pitch, so those gliding Tones can extend
 too: the condition is not exact pitch equality. GateSnap makes small and even
@@ -525,21 +528,26 @@ coupling clock’s integer crossings as sounding opportunities. Either builder o
 has the same meaning. The shared beat is confirmed from sound; before confirmation
 the Voice free-runs with its existing basin-centered rate and independent phase.
 This combination does not place a beat from outside.</p>
-<p>The first Hold onset is immediate. Later opportunities occur on every crossing,
-including crossings without a pitch adoption: the Voice re-attacks its current
-body pitch. Glide keeps moving between attacks. GateSnap retains the latest
-adopted target for the next legal crossing. Rearticulate with boundary zero does the
+<p>The first Hold onset is immediate. Later opportunities occur on every crossing.
+With free-pitch GateSnap/Rearticulate, the default attacks at a beat with a pending
+adopted destination and extends the living Tone on other beats, just like <code>tie(1)</code>.
+Write <code>tie(0)</code> to re-attack on every legal beat. Fixed pitch and Glide still
+re-attack current body pitch at each crossing; Glide moves between attacks.
+GateSnap retains the latest adopted target for the next legal crossing. Rearticulate with boundary zero does the
 same; a positive boundary cancels pending pitch and glides small adoptions, while
 larger adoptions remain pending. Same-sample adoption precedes the crossing.</p>
 <pre><code class="language-rhai">let wire = harmonic().brain("drone").sustain().metric().seek_consonance()
-    .pitch_apply_mode("rearticulate").tie(1);
+    .pitch_apply_mode("rearticulate");
 let voices = place(wire, at(660.0));
 wait(4.0);
 release(voices);
 wait(2.0);
 </code></pre>
-<p>For free-pitch GateSnap/Rearticulate, <code>tie(p)</code> can retain a living Tone on a
-pending-free crossing. Without it, even a crossing with no adoption re-attacks.
+<p>For free-pitch GateSnap/Rearticulate, an explicit <code>tie(p)</code> uses its written
+probability on pending-free crossings. The omitted probability is resolved before
+placement and also applies while live mode switching enters the eligible range.
+Sustained entrained/flow retains omission at zero; its cost policy can skip
+opportunities. No live tie setter is added.
 <code>articulation_persistence</code> retains Base/Connect as in participation, but only
 adoptions and sounding crossings offer proposals: synchronization has no cost
 skip or planned waiting. <code>rest()</code> combines explicit finite duration with tail

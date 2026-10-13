@@ -553,8 +553,10 @@ contour, rest or phrase boundaries.
 
 `tie(p)` is an initial-only probability in free-pitch sustain plus metric/entrained/flow
 with GateSnap or Rearticulate. At a selected legal opportunity, a pending target
-still attacks; a living Tone without one extends with probability p. Omission/0
-retains existing attacks without tie state or draws; 1 extends eligible Tones
+still attacks; a living Tone without one extends with probability p. Omission
+resolves to 1 for sustained metric and 0 for sustained entrained/flow, where costs
+can omit opportunities. Explicit 0 retains attacks without tie state or draws;
+1 extends eligible Tones
 without drawing. Intermediate values use a dedicated individual stream at execution,
 never during waiting. Small boundary-limited glides are eligible; small GateSnap
 adoptions remain pending and attack. This thins the existing opportunity sequence,
@@ -748,9 +750,13 @@ used by the voices; listener observations remain separate.
 
 Explicit `sustain()` plus `metric()`, in either order, retains a live Tone and uses
 integer crossings of the existing CouplingClock as sounding opportunities. The
-first Hold onset is immediate. Later crossings re-attack current body pitch even
-without a pitch adoption; free-pitch GateSnap/Rearticulate can use `tie(p)` to
-extend a living Tone without pending pitch. GateSnap and boundary-zero
+first Hold onset is immediate. Free-pitch GateSnap/Rearticulate defaults to
+attacking a beat with a pending adopted destination and extending other beats,
+equivalent to `tie(1)`. Explicit `tie(0)` re-attacks every legal crossing; other
+explicit probabilities keep their meaning. Fixed pitch and Glide still attack
+each crossing. Sustained entrained/flow keeps omitted tie at 0, with cost-based
+omission. The resolved default also applies while a live mode switch enters
+the eligible range; tie remains initial-only. GateSnap and boundary-zero
 Rearticulate defer the latest adoption to a legal crossing. Positive boundaries,
 Base/Connect persistence, finite-duration rest, role strength, confirmed measure
 emphasis and microtiming share the existing articulation rules. Synchronization

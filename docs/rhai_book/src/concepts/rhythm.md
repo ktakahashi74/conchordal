@@ -323,9 +323,12 @@ does not decide whether each note should sustain or release.
 at a selected participation opportunity without a pending target. It is an
 initial composer parameter for free-pitch `sustain()` with `metric()`, `entrained()` or
 `flow()` and explicit `gate_snap` or `rearticulate`, including a zero boundary.
-The default `0` preserves current attacks, `1` always extends eligible Tones,
-and intermediate values mix the two per opportunity. These values are composer
-choices, not a musical optimum.
+Omitted tie resolves to `1` for sustained synchronization and to `0` for sustained
+entrained/flow participation, where the Voice can skip opportunities by cost.
+Explicit `tie(0)` preserves pending-free attacks, `tie(1)` always extends eligible
+Tones, and intermediate values mix the two per opportunity. Fixed pitch and Glide
+remain outside tie and re-attack each metric crossing. These choices do not claim
+a musical optimum.
 
 A pending target still jumps and attacks. Small adoptions below a positive
 boundary already glide without pending pitch, so those gliding Tones can extend
@@ -412,24 +415,29 @@ has the same meaning. The shared beat is confirmed from sound; before confirmati
 the Voice free-runs with its existing basin-centered rate and independent phase.
 This combination does not place a beat from outside.
 
-The first Hold onset is immediate. Later opportunities occur on every crossing,
-including crossings without a pitch adoption: the Voice re-attacks its current
-body pitch. Glide keeps moving between attacks. GateSnap retains the latest
-adopted target for the next legal crossing. Rearticulate with boundary zero does the
+The first Hold onset is immediate. Later opportunities occur on every crossing.
+With free-pitch GateSnap/Rearticulate, the default attacks at a beat with a pending
+adopted destination and extends the living Tone on other beats, just like `tie(1)`.
+Write `tie(0)` to re-attack on every legal beat. Fixed pitch and Glide still
+re-attack current body pitch at each crossing; Glide moves between attacks.
+GateSnap retains the latest adopted target for the next legal crossing. Rearticulate with boundary zero does the
 same; a positive boundary cancels pending pitch and glides small adoptions, while
 larger adoptions remain pending. Same-sample adoption precedes the crossing.
 
 ```rhai
 let wire = harmonic().brain("drone").sustain().metric().seek_consonance()
-    .pitch_apply_mode("rearticulate").tie(1);
+    .pitch_apply_mode("rearticulate");
 let voices = place(wire, at(660.0));
 wait(4.0);
 release(voices);
 wait(2.0);
 ```
 
-For free-pitch GateSnap/Rearticulate, `tie(p)` can retain a living Tone on a
-pending-free crossing. Without it, even a crossing with no adoption re-attacks.
+For free-pitch GateSnap/Rearticulate, an explicit `tie(p)` uses its written
+probability on pending-free crossings. The omitted probability is resolved before
+placement and also applies while live mode switching enters the eligible range.
+Sustained entrained/flow retains omission at zero; its cost policy can skip
+opportunities. No live tie setter is added.
 `articulation_persistence` retains Base/Connect as in participation, but only
 adoptions and sounding crossings offer proposals: synchronization has no cost
 skip or planned waiting. `rest()` combines explicit finite duration with tail

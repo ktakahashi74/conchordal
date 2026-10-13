@@ -4762,6 +4762,41 @@ Voice 20の世代差は親の分岐の直接の下流である。Voice 26の親�
 
 これは統括による統合・最終検査・pushの追記であり、先のworkerによる文書更新がそれらを実行したという意味ではない。出典は`.orchestration/records/decisions-20261007-orchestrator.md`の2026-10-10 10:05・10:54・11:49・11:51の記録、`.orchestration/HANDOFF.md`のT-7の統合・最終テスト・pushの追記、同日の最終`test_report.txt`・`test_status.txt`である。
 
+<a id="r2-realtime-20261012"></a>
+
+#### 2026-10-12：依存・toolchain更新後の16本を実機で再測定（R-2、U-6）
+
+**測った版と範囲。** 統括がblanche、ALSA 48 kHz 2ch、hop 512、release、GUIなしで四構成を取得した。instrumentのsourceは`2b342bd`、rustcは1.99.0、`Cargo.lock`は`alsa` 0.11を含む更新後の版である。binaryのSHA-256は`b295945cf0e22238d182b4eaf168e477fb72e4935ec956790b40a5e660593e2d`で、`.orchestration/units/R-2/realtime/A/preparation.json`に保存されている。四構成のconfigはT-13のbundleとbyte一致する。01〜12は登録済みのseed 1を保ち、曲として加えた13〜16は作者が聴いたseed 21を使った。Aは既定の旧renderer、Bは旧renderer＋身体込みの出生・代謝、A′は新renderer、B′は新renderer＋身体込みである。身体込みの評価は既定では無効のままである。
+
+初回は、各構成を01〜12と13〜16に分けた八つの窓を22:50:55〜23:48:43に取得した。基準は終端の累積出力不足0と、hop全体のp99が実deviceのhop時間以下であることを保つ。予算は512 frame／48 kHzから換算した10,666.666… µs、表示は10,667 µsである。個々のhopの最大を別の門にしない。以下の数値は各窓の`performances.csv`から取り直し、`analysis.json`と照合した。表示は整数µsへ丸めた。
+
+| 構成 | 初回の判定 | 演奏別p99の最大（曲） | 取得前の取り直し規則による最終の判定 | 13〜16のp99の最大 |
+|---|---|---:|---|---:|
+| A | 16／16合格 | 4,795 µs（09） | 16／16合格 | 1,497 µs（16） |
+| B | 16／16合格 | 10,654 µs（02） | 16／16合格 | 5,066 µs（16） |
+| A′ | 16／16合格 | 8,449 µs（09） | 16／16合格 | 1,238 µs（16） |
+| B′ | 15／16合格、09不合格 | 11,314 µs（09） | 16／16合格、最大10,509 µs（12） | 5,049 µs（16） |
+
+全ての窓に、別projectのsimulationとtest runnerによる外乱の記録がある。統括は取得前に、合格はそのまま採り、外乱のある窓の不合格は外乱ありと報告して一度だけ取り直す規則を固定した。この規則に従い、B′の01〜12を`device-B-prime-base-v2`で23:53:44〜23:58:05に取り直した。12本とも合格し、09のp99は10,223 µsだった。この窓と既に合格した13〜16の四本を合わせ、表の最終のB′を判定した。初回のB′／09の不合格は履歴として残す。取り直しの窓にも外乱があった。初回の不合格と12本の取り直しを含む全76演奏がexit 0で、累積出力不足とcallback errorはともに0である。
+
+**音を出さない同時期の対照。** 23:49〜23:53に、統括が更新前のT-13 binary（`c2b8308`、rustc 1.95.0、前の依存）と更新後のR-2 binaryを、`--play false`で交互に三回ずつ実行した。下表は18個の`jobs/silent-ab/*.profile.json`の全hopから計算時間のp99を取り直し、profileのsummaryと照合した範囲である。deviceのcallbackを使わない診断であり、実時間の受入とは分ける。
+
+| 構成・曲 | 更新前、三回 | 更新後、三回 |
+|---|---:|---:|
+| B′／09 | 10,770〜10,893 µs | 10,306〜10,816 µs |
+| B／02 | 7,298〜8,705 µs | 6,655〜8,036 µs |
+| A／09 | 6,633〜6,961 µs | 6,131〜7,450 µs |
+
+この対照では更新後は同じか、わずかに速かった。統括は、今夜のB・B′の実機のp99が高い原因をtoolchain・依存・sourceの更新ではなく、機械の状態と外の負荷と読んだ。2026-10-11朝の静かなT-13の窓は、保存CSVから取り直すとBの最大5,879 µs、B′は9,063 µsだった。この読みは今回の取得と対照についてのもので、更新の三要素を個別に切り分けた実験ではない。更新後の版を静かな窓で実機測定した値は無い。
+
+**道具と限界。** 登録済みの`analyze_r1.py`は12本ちょうどを前提にする。R-2の`realtime/analyze_r2.py`は、その演奏別の判定関数を変えずに呼び、集計だけを各窓で選んだ本数へ合わせた。取得logに残る初期の12本用の集計errorを判定に使わず、保存されたR-2の解析を使った。開始条件には1分load averageが8未満を加えた。由来は、過去に合格した窓の開始時の最大7.83で、取得の条件であり、音楽や計時の新しい許容差ではない。合格の範囲は、この16本・設定・機械と記録した夜の負荷である。身体込みのB・B′のp99の余裕は13 µs・158 µsしかない。別seed、別の機械、GUIあり、任意の外部負荷は未計測である。
+
+**前提となるU-6の更新。** `Cargo.lock`だけの依存更新は`6b4b7af`に記録され、14:56の`rustup update`でstableは1.95.0から1.99.0になった。保存された更新前後の描画は32／32件と37／37件がexit 0で、WAV全byteと`hop_timing`を除くreportが一致した。reportの行数はそれぞれ1,354,155と1,658,591である。二組の検査ではfmt、Clippy、featureなしの正規の全テスト（それぞれ1,146・1,156 passed、両方とも失敗0・37 ignored）、all-targets、CIの割当て検査（lib 3件・binary 5件）、releaseの発音検査65件が通過した。検査driverには旧`cargo run --example gen_schemas`も残っており、targetが存在しないためexit 101だった。この呼出しは、通過した現行の検査と区別する。
+
+15:07〜15:29の二回目の描画のlogにはofflineのslow-hop警告が1,018件あり、一回目は0だった。統括は別projectの負荷とload average 45を記録した。同じsourceの更新前のV-10の取得にも、この警告は無かった。offlineの警告を実機の合否や更新による遅さの証拠とは読まない。負荷の下でもWAVとreportは一致している。
+
+出典は`.orchestration/units/R-2/realtime/orchestrator-run-quiet.log`、`device-*-analysis-r2/`の`performances.csv`と`analysis.json`、`device-*.disturbance.log`、preparationと`analyze_r2.py`、R-2の`jobs/silent-ab/`のprofile、T-13の`realtime/device-{B,B-prime}-v1-analysis/performances.csv`、U-6の`runs-updated/summary.json`・`runs-updated-44ece60/summary.json`・描画logと`jobs/check-*/`のlogである。更新、実機取得と判定は統括が行い、D-12は保存物からの再集計と文書化だけを行った。
+
 <a id="temporal-rule-calibration-outcome"></a>
 
 ### 9.3.59 時間構造：決まりと信号検査で決めたものと、決まらなかったもの（M-3、T-6）

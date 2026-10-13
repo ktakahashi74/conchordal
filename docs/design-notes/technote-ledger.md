@@ -6564,6 +6564,106 @@ and 11:51, the T-7 integration/final-test/push additions in
 `.orchestration/HANDOFF.md`, and that day's final `test_report.txt` and
 `test_status.txt`.
 
+<a id="r2-realtime-20261012"></a>
+
+#### 2026-10-12: sixteen samples remeasured after dependency and toolchain updates (R-2, U-6)
+
+**Measured version and scope.** The orchestrator acquired four configurations on
+blanche with ALSA at 48 kHz, two channels, hop 512, release and no GUI. The
+instrument was built from `2b342bd` with rustc 1.99.0 and the updated `Cargo.lock`
+(including `alsa` 0.11). Its SHA-256 is
+`b295945cf0e22238d182b4eaf168e477fb72e4935ec956790b40a5e660593e2d`,
+recorded in `.orchestration/units/R-2/realtime/A/preparation.json`. All four
+configuration files match T-13's bundle byte for byte. Samples 01–12 retain their
+registered seed 1; composed scenes 13–16 use seed 21, the author's audition seed.
+A is the default legacy renderer, B also enables body-aware birth and metabolism,
+A′ uses the new renderer, and B′ combines the new renderer with body-aware
+evaluation. Body-aware evaluation remains disabled by default.
+
+The first eight windows, splitting 01–12 and 13–16 for each configuration, ran
+from 22:50:55 to 23:48:43. Acceptance retains zero terminal cumulative underrun
+and whole-hop p99 no greater than the device hop duration: 512 / 48,000 seconds,
+or 10,666.666… µs, displayed as 10,667 µs. Maximum individual hop time is not a
+separate gate. Values below were re-extracted from each window's
+`performances.csv` and checked against its `analysis.json`; displayed times are
+rounded to integer microseconds.
+
+| Configuration | First acquisition | Largest per-performance p99 (sample) | Accepted result after the registered reacquisition rule | Largest p99 among 13–16 |
+|---|---|---:|---|---:|
+| A | 16/16 pass | 4,795 µs (09) | 16/16 pass | 1,497 µs (16) |
+| B | 16/16 pass | 10,654 µs (02) | 16/16 pass | 5,066 µs (16) |
+| A′ | 16/16 pass | 8,449 µs (09) | 16/16 pass | 1,238 µs (16) |
+| B′ | 15/16 pass; 09 fails | 11,314 µs (09) | 16/16 pass; maximum 10,509 µs (12) | 5,049 µs (16) |
+
+All windows contain disturbance records from another project's simulation and
+test runners. Before acquisition, the orchestrator fixed the rule: retain passes;
+report a failure in a disturbed window as such and reacquire that window once.
+Under that rule B′/01–12 was reacquired from 23:53:44 to 23:58:05 in
+`device-B-prime-base-v2`. All twelve passed; 09's p99 was 10,223 µs. Combining
+this window with the unchanged four new-scene performances yields the accepted
+B′ result above. The first B′/09 failure remains in the retained history; the
+reacquisition was also disturbed. All 76 device performances, including the
+failed first performance and the twelve repeats, exited zero with cumulative
+underrun and callback errors both zero.
+
+**Contemporaneous control without playback.** From 23:49 to 23:53, the
+orchestrator alternated the saved T-13 binary (`c2b8308`, rustc 1.95.0, previous
+dependencies) and R-2's updated binary three times each with `--play false`.
+The following ranges are whole-hop calculation-time p99, recomputed from every
+hop in the eighteen saved `jobs/silent-ab/*.profile.json` files and checked
+against their summaries. They are a diagnostic without a device callback,
+separate from real-time acceptance.
+
+| Configuration/sample | Before update, three runs | After update, three runs |
+|---|---:|---:|
+| B′ / 09 | 10,770–10,893 µs | 10,306–10,816 µs |
+| B / 02 | 7,298–8,705 µs | 6,655–8,036 µs |
+| A / 09 | 6,633–6,961 µs | 6,131–7,450 µs |
+
+The updated binary was comparable or slightly faster in these controls. The
+orchestrator attributes the night's higher B/B′ device p99 to machine state and
+external load, rather than the combined toolchain, dependency and source
+changes. The quiet T-13 windows on 2026-10-11 had maxima of 5,879 µs for B and
+9,063 µs for B′, re-extracted from their saved CSVs. This interpretation concerns
+the observed acquisition and controls; the changes were not isolated individually.
+No quiet-window device measurement of the updated version was acquired.
+
+**Tools and limits.** The registered `analyze_r1.py` requires exactly twelve
+samples. R-2's `realtime/analyze_r2.py` calls its unchanged per-performance
+judgment function and changes only aggregation to the selected window's sample
+count. The initial twelve-sample aggregation errors in the acquisition log do
+not provide the judgments above; the retained R-2 analyses do. A starting
+one-minute load average below 8 was added, derived from 7.83, the largest start
+value in previously passing windows. This is an acquisition condition, not a
+new musical or timing tolerance. The accepted results apply to these sixteen
+samples, settings and machine under the recorded nighttime load. B and B′ have
+only 13 µs and 158 µs of p99 headroom. Other seeds, machines, GUI use and arbitrary
+external loads remain unmeasured.
+
+**U-6 prerequisite update.** The lockfile-only dependency update is recorded at
+`6b4b7af`; `rustup update` changed stable from 1.95.0 to 1.99.0 at 14:56. The
+saved comparisons contain 32/32 and 37/37 successful renders, with exact
+whole-WAV and non-`hop_timing` report equality (1,354,155 and 1,658,591 report
+rows). The two check sets passed fmt, Clippy, normal feature-free full tests
+(1,146 and 1,156 passed, respectively; zero failures and 37 ignored in each),
+all-target checks, the CI allocation checks (3 library and 5 binary tests),
+and the 65 release phonation tests. The check driver also attempted the obsolete
+`cargo run --example gen_schemas`; that command exited 101 because the target
+does not exist, separately from those successful checks. During the second
+comparison, 15:07–15:29, its render logs contain 1,018 offline slow-hop warnings;
+the first comparison contains zero. The orchestrator recorded external load
+(load average 45), and the unchanged V-10 pre-update acquisition had no such
+warnings. Offline warnings do not establish device pass/fail or a slowdown caused
+by the update; WAV and report output remained identical.
+
+Sources are `.orchestration/units/R-2/realtime/orchestrator-run-quiet.log`,
+`device-*-analysis-r2/{performances.csv,analysis.json}`, `device-*.disturbance.log`,
+the preparations and `analyze_r2.py`, R-2's `jobs/silent-ab/` profiles, T-13's
+`realtime/device-{B,B-prime}-v1-analysis/performances.csv`, and U-6's
+`runs-updated/summary.json`, `runs-updated-44ece60/summary.json`, render logs and
+`jobs/check-*/` logs. The orchestrator performed the updates, acquisitions and
+judgments; D-12 re-extracts and documents the retained results.
+
 <a id="temporal-rule-calibration-outcome"></a>
 
 ### 9.3.59 Temporal structure: what rules and signal checks settled, and what they did not (M-3, T-6)

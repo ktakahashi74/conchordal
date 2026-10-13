@@ -70,7 +70,7 @@ PopulationSpecは、複数の独立した問いに答えます。分けて考え
 |---|---|---|
 | 何が鳴るか | `sine`, `harmonic`, `modal`, `brightness`, `modes` | 初代のVoiceの発音体と周波数成分。 |
 | どんな生を送るか | `brain(name)`: `entrain`, `seq`, `drone` | articulationが生態系に参加するか、書かれた生を進むか、Landscapeのanchorとして持続するか。 |
-| いつ鳴るか | `sustain`, `repeat`, `metric`, `entrained`, `flow` | phonationとonset timing。 |
+| いつ鳴るか | `sustain`, `repeat`, `metric`, `entrained`, `steady`, `flow` | phonationとonset timing。 |
 | 音高はどこへ行くか | Placement、`anchor`, `seek_consonance`, `temperature` | 初代のVoiceが入る位置と、その後の移動。 |
 | Populationはどう持続するか | `endurance`, `recovery`, viability, respawn | Voiceのエネルギー、死、Populationの世代交代。 |
 
@@ -119,8 +119,9 @@ Phonationは、onsetがいつ起きるか、そのonsetがどれだけ開いた�
 
 - `sustain()`はVoiceが生きている間、音を保持します。
 - `repeat()`は初期値が設定された反復発音を選びます。
-- `metric()`、`entrained()`、`flow()`は共有meterとの結合連続体上の領域を選び、
-  re-attackを含意します。
+- `metric()`は共有拍への同期、`entrained()`・`steady()`・`flow()`は音響参加を選びます。
+  steadyは自分の予定時刻を保ち、聴いた文脈で鳴らすか見送るかだけを選びます。
+  発音の機会で打ち直すほか、明示の持続と併せてToneを保てます。[リズム](rhythm.md)を参照してください。
 - `cycles(n)`はdurationをrhythmic cycle数で表します。
 
 presetで意図を表せない場合は、低水準の`once()`、`pulse(rate_hz)`、`while_alive()`、
@@ -136,4 +137,4 @@ adaptive duration controlを使えます。まずpresetから始め、作品が�
 
 次章では、[VoiceとLandscape — 音と環境のフィードバック](ecological_loop.md)を説明します。
 
-明示の`sustain()`と`metric()`を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。自由音高のGateSnap／Rearticulateは、既定では採用先を保留した拍で発音し、ほかの拍では伸ばします。毎拍打つには`tie(0)`。固定音高とGlideは拍ごとに打ち、持続＋entrained／flowの省略値は0のままです。[リズム](rhythm.md#持続音を拍へ同期させる)を参照してください。
+明示の`sustain()`と`metric()`を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。自由音高のGateSnap／Rearticulateは、既定では採用先を保留した拍で発音し、ほかの拍では伸ばします。毎拍打つには`tie(0)`。固定音高とGlideは拍ごとに打ち、持続＋entrained／steady／flowの省略値は0のままです。[リズム](rhythm.md#持続音を拍へ同期させる)を参照してください。

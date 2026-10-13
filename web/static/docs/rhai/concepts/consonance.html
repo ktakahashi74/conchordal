@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5d1a6259.js";
+            window.path_to_searchindex_js = "../searchindex-0f87c3e9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -318,7 +318,7 @@ pitch, not a guaranteed first audible pitch or a promise of movement.</p>
 <p>Without explicit movement, <code>at()</code> still fixes pitch. A live Population’s
 <code>freq()</code> still locks pitch during performance.</p>
 <p>How movement lands is resolved from phonation: sustained movers glide,
-re-attacking movers (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap to
+re-attacking movers (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>steady()</code>, <code>flow()</code>) snap to
 their new pitch at each onset. <code>pitch_apply_mode("gate_snap")</code> and
 <code>pitch_apply_mode("glide")</code> override that choice.</p>
 <p>For sustained movers without a participation clock, <code>pitch_apply_mode("rearticulate")</code> gives each newly
@@ -367,7 +367,8 @@ the composer chooses them.</p>
 </tbody>
 </table>
 </div>
-<p>Entrained and flow can each be used in any participation row. See
+<p>Entrained, steady and flow can each be used in any participation row. Steady keeps
+only due-time opportunities, including with Glide. See
 <a href="rhythm.html#sustained-sound-with-participation-opportunities">Rhythm</a> for their clocks.</p>
 <p><code>intrinsic_rate(hz)</code> sets the body’s initial scale in any participation row,
 independently of the pitch-application choice. It does not command an onset interval
@@ -415,13 +416,13 @@ including small GateSnap moves. See <a href="rhythm.html#extending-opportunities
 <p>Sustained synchronization uses the same pending-target rules with a different
 omission default: free-pitch GateSnap/Rearticulate extends pending-free beats
 like <code>tie(1)</code>. Write <code>tie(0)</code> to attack every legal beat. Fixed pitch and Glide
-remain unchanged; entrained/flow participation keeps omitted tie at zero. See
+remain unchanged; entrained/steady/flow participation keeps omitted tie at zero. See
 <a href="rhythm.html#sustained-synchronization">Sustained synchronization</a>.</p>
 <h3 id="cutting-notes-and-leaving-a-rest"><a class="header" href="#cutting-notes-and-leaving-a-rest">Cutting notes and leaving a rest</a></h3>
 <p>For sustained participation, <code>rest()</code> adds a finite end to every sounded note
 and an intentional pause after its sound has finished. Supply the note length
 with <code>cycles(n)</code> or <code>adaptive_duration()</code> and its modifiers. This length, explicit
-<code>sustain()</code>, <code>entrained()</code> or <code>flow()</code>, and <code>rest()</code> are retained independently of
+<code>sustain()</code>, <code>entrained()</code>, <code>steady()</code> or <code>flow()</code>, and <code>rest()</code> are retained independently of
 builder order. No finite length is supplied implicitly. Explicit <code>while_alive()</code>
 clears the finite length; placement then fails unless another finite length follows.</p>
 <p>The scheduled Off starts the normal release, leaving tails intact. The rest begins
@@ -451,7 +452,7 @@ release(voices);
 </code></pre>
 <p>Here 0.2 cycles and two periods are example inputs, not recommended values.
 <code>rest</code> is initial-only, like the note-length controls. It is valid only with explicit
-sustain plus entrained/flow and a finite note length; Glide, GateSnap and
+sustain plus entrained/steady/flow and a finite note length; Glide, GateSnap and
 Rearticulate are all available. Incompatible
 placements fail before state changes. Without <code>rest</code>, the existing rules remain.
 This form ends every note; choosing to sustain or release each individual note is

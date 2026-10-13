@@ -7,7 +7,7 @@ A-14の形を選べる創始方策として入れる方針を採った。再開�
 17:07に音高移動側のL5を追加し、分母は五要件となった。17:42にL2の期待の対象とii-Bを採択し、
 T-19で試作中。L3の候補AとL5の案Cは設計の推奨で、統括がA-18とA-17の外部試作へ進めた。
 作者の設計採択ではない。L5の出来事の契約→L3の消費者の順で接続し、両試作は繋がず別々に音にする。
-A-14の公開語は第四のtimingのpreset `steady()`に確定し、V-14が実装進行中。既定とflowは変えない。
+V-14のbranchは、第四のtimingのpreset `steady()`の本体実装と、V-13の56件およびA-14/P-4の三seedとのWAV・非計時reportの一致を備える。[台帳§9.3.84](../design-notes/technote-ledger.ja.md#steady-private-opportunities-20261013)と機械に固有のV-14の報告・pinから確認する。既定と既存presetは変えず、既存entrained／flowの契約とL1全体の受入は残る。steadyへの到来の作用は未採択で、採った構成の実機はL4で扱う。統合とpushの状態は作業時のgitから別に確認する。
 P-4の基準と境界50だけの二本は17:03に試聴済み。境界の省略値0は変えていない。
 新しい採択と設計結果は[台帳§9.3.83](../design-notes/technote-ledger.ja.md#l2-expectation-adoption-and-design-results-20261013)と
 [再開点](#l2-expectation-adoption-and-design-results-20261013)を読む。以下の過去の結果は取得時点の記録として読む。

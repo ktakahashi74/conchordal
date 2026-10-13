@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5d1a6259.js";
+            window.path_to_searchindex_js = "../searchindex-0f87c3e9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -239,7 +239,7 @@ prevents one musical decision from being mistaken for another.</p>
 <tbody>
 <tr><td>What sounds?</td><td><code>sine</code>, <code>harmonic</code>, <code>modal</code>, <code>brightness</code>, <code>modes</code></td><td>The founder Voice body and spectrum.</td></tr>
 <tr><td>What kind of life?</td><td><code>brain(name)</code>: <code>entrain</code>, <code>seq</code>, <code>drone</code></td><td>Whether articulation participates in ecology, follows an authored life, or persists as terrain.</td></tr>
-<tr><td>When does it sound?</td><td><code>sustain</code>, <code>repeat</code>, <code>metric</code>, <code>entrained</code>, <code>flow</code></td><td>Phonation and onset timing.</td></tr>
+<tr><td>When does it sound?</td><td><code>sustain</code>, <code>repeat</code>, <code>metric</code>, <code>entrained</code>, <code>steady</code>, <code>flow</code></td><td>Phonation and onset timing.</td></tr>
 <tr><td>Where does pitch go?</td><td>Placement, <code>anchor</code>, <code>seek_consonance</code>, <code>temperature</code></td><td>Founder entry position and later movement.</td></tr>
 <tr><td>How does the population persist?</td><td><code>endurance</code>, <code>recovery</code>, viability, respawn</td><td>Voice energy, death, and Population turnover.</td></tr>
 </tbody>
@@ -284,8 +284,10 @@ remains open.</p>
 <ul>
 <li><code>sustain()</code> holds while the Voice is alive.</li>
 <li><code>repeat()</code> selects repeated phonation with defaults.</li>
-<li><code>metric()</code>, <code>entrained()</code>, and <code>flow()</code> select regions of the shared-meter
-coupling continuum and imply re-attacking behavior.</li>
+<li><code>metric()</code> selects shared-beat synchronization; <code>entrained()</code>, <code>steady()</code> and
+<code>flow()</code> select acoustic participation. Steady keeps its own due time and uses
+heard context only for sound or skip. These timing presets can re-attack; explicit
+sustain composes a living Tone with their opportunities. See <a href="rhythm.html">Rhythm</a>.</li>
 <li><code>cycles(n)</code> expresses duration in rhythmic cycles.</li>
 </ul>
 <p>The lower-level <code>once()</code>, <code>pulse(rate_hz)</code>, <code>while_alive()</code>, and adaptive
@@ -301,7 +303,7 @@ respawn policy may replace it. A <code>section</code> or <code>play</code> scope
 Populations it created when the scope ends.</p>
 <p>The next chapter explains
 <a href="ecological_loop.html">Voice and Landscape — Sound–Environment Feedback</a>.</p>
-<p>Explicit <code>sustain()</code> plus <code>metric()</code> combines held sound and acoustic beat synchronization. With free-pitch GateSnap/Rearticulate, omitted tie attacks at a beat with a pending adopted destination and extends other beats; write <code>tie(0)</code> for every beat. Fixed pitch and Glide still attack each crossing, and sustained entrained/flow keeps omitted tie at zero. See <a href="rhythm.html#sustained-synchronization">rhythm</a>.</p>
+<p>Explicit <code>sustain()</code> plus <code>metric()</code> combines held sound and acoustic beat synchronization. With free-pitch GateSnap/Rearticulate, omitted tie attacks at a beat with a pending adopted destination and extends other beats; write <code>tie(0)</code> for every beat. Fixed pitch and Glide still attack each crossing, and sustained entrained/steady/flow keeps omitted tie at zero. See <a href="rhythm.html#sustained-synchronization">rhythm</a>.</p>
 
                     </main>
 

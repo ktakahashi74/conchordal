@@ -353,7 +353,7 @@ $\eta_\varphi=0.6$、$\eta_p=0.1$はLarge & Jones（1999）のsimulationに由�
 *   `meter_stability(v)` — $[0,1]$のアトラクタ深度。振幅と発音ごとの補正を強め、既存presenceの閾値を下げる。確信に踏み切る速さを変えるが、確信度の上限は上げない。同じ深さで、好みのtempoに寄せて拍を読む強さも決める。深いほどbasinの中心、帯域を置かなければ2 Hzに近い整数比の読みを選びやすくなる。既定は0（中立）である。
 *   `temporal_basin(min_hz, max_hz)` — 連続したtempoの事前帯域。拍を算術平均の中心から始め、候補の採用と周波数の適応を帯域内に保つ。stabilityが0なら中心への追加の好みや復元を持たず、帯域を限るだけである。高いstabilityでは、候補の好みと、確信度に依存する中心への復元が深さに比例して強まる。
 
-basinは、`metric()`のVoiceが自走を始める周期にも作用する。meterと同じ整形済みの算術中心を使い、stabilityには掛けない。指定がなければ初期値は2 Hzのままである。scriptの最後のbasinを、`place()`と`create()`で作る全てのmetricのPopulationに適用する。`wait()`の後の指定もsceneの初期条件を上書きし、演奏途中の変更にはならない。entrained／flowの独立した身体の尺度（`intrinsic_rate(hz)`の指定がなければ2 Hz）と、`pulse(rate_hz)`の明示した速さは変えない。各Voiceは別々の初期位相を持ち、音から拍を確認するまで共有拍への結合は0である。再生成はPopulationに保存した初期設定を読み、親の現在の時計の周期を継がない。
+basinは、`metric()`のVoiceが自走を始める周期にも作用する。meterと同じ整形済みの算術中心を使い、stabilityには掛けない。指定がなければ初期値は2 Hzのままである。scriptの最後のbasinを、`place()`と`create()`で作る全てのmetricのPopulationに適用する。`wait()`の後の指定もsceneの初期条件を上書きし、演奏途中の変更にはならない。entrained／steady／flowの独立した身体の尺度（`intrinsic_rate(hz)`の指定がなければ2 Hz）と、`pulse(rate_hz)`の明示した速さは変えない。各Voiceは別々の初期位相を持ち、音から拍を確認するまで共有拍への結合は0である。再生成はPopulationに保存した初期設定を読み、親の現在の時計の周期を継がない。
 
 これらは拍を配置せず、創発する過程の初期条件と地形を与える。聴き手のtempoの適応は指定帯域内に限られる。
 
@@ -514,9 +514,9 @@ mode変更はBaseへ戻す。同じmodeと境界だけの変更は保持を続�
 
 ### 行き先がない機会でToneを伸ばす
 
-`tie(p)`は、自由音高の持続＋metric／entrained／flow＋GateSnapまたはRearticulateに置く、
+`tie(p)`は、自由音高の持続＋metric／entrained／steady／flow＋GateSnapまたはRearticulateに置く、
 配置前の伸ばす確率である。選ばれた合法な機会で保留ありは発音し、生きたToneの保留なしを
-確率pで伸ばす。省略値は持続＋metricでは1、費用で見送れるentrained／flowでは0。
+確率pで伸ばす。省略値は持続＋metricでは1、費用で見送れるentrained／steady／flowでは0。
 明示の0はtieの状態・乱数を通らず従来の発音、1は無抽選で対象を伸ばす。
 中間は個体別の専用系列を実行時に一度使い、予定を待つ間は引かない。境界以下の滑りも
 対象で、GateSnapの小さい採用は保留として発音する。発音は既存の機会から抜けた列になり、
@@ -531,7 +531,7 @@ Connectの抑止を先に使い、Baseの保留なしだけにtieを使う。方
 ## 5.4 オンセットタイミング：同期と参加
 
 `RhythmRelation`は、共有拍への同期（`metric()`）と、音を参照する参加
-（`entrained()`・`flow()`）を分ける。どちらもPhonationEngineの同じ発音指令経路を使う。
+（`entrained()`・`steady()`・`flow()`）を分ける。どちらもPhonationEngineの同じ発音指令経路を使う。
 
 参加方策は、habitat音声から因果的に作る予測と、自身の発音予定を分ける。
 予測器は観測済みの反復を約4秒先まで20 ms間隔で射影し、6秒の時定数で平均的な状態へ
@@ -609,13 +609,24 @@ $\mathrm{coupling} \times \mathrm{arrival\_weight} \times (1-P)$であり、予�
 確率0が既知であり、重み付きの費用を加える。見送りの判定は、到来項を除いた全候補の最小費用を
 引き続き使うため、到来項は候補の選択に作用し、見送りを直接決めない。
 
-`intrinsic_rate(hz)`は、`entrained()`と`flow()`の創始の身体の速さを、`place()`または
+`steady()`はflowとは別の非flowの参加プリセットである。固有の身体の速さで周期を
+固定し、候補をVoice自身のdue一つに限る。聴いた外の音と実発音後の文脈記憶は、
+鳴らすか見送るかにだけ効く。時刻を相手に寄せず、共有の拍を目指さない。費用と重みは
+同じで、見送りや合法性で抑止された機会は固有周期の整数倍で進める。結合の省略値は
+entrainedと同じ0.5、速さは2 Hzである。見送りの比較は到来費用を除くため、この一候補の
+方策では到来費用が発音の有無を変えない。明示の持続との併用では見送ってもToneを保ち、
+初回のHold発音は即時のままである。音高の三mode、境界、tie（省略0）、方針保持、有限音長と
+restは既存の発音経路を使い、Glideでも採用時刻の候補を足さない。timingのプリセットは
+配置前の同じ軸で後の指定が優先される。再生成ではtemplateの方策と速さを継ぎ、
+演奏状態は新しく始める。名前から発音数や音高の結果は保証されない。
+
+`intrinsic_rate(hz)`は、`entrained()`・`steady()`・`flow()`の創始の身体の速さを、`place()`または
 `create()`の前に置く。プリセットとの書く順には依存しない。固有周期は`1/hz`で、
 生存中は保つ。身体の尺度を置く語であり、発音間隔の命令や共通拍の指定ではない。
 同じ周期を参加、有限音長の`cycles`と`duration_range`、`rest(periods)`、重なり予測の
 代表保持長が読み、音の長さと間の秒数も一緒に変わる。省略時は既存の2 Hzの経路を使う。
 再生成はPopulationのtemplateを読み、親の適応周期、due、plan、発音方針を継がず始める。
-演奏中には変更できない。最終の形がentrained／flowなら有限の0.01〜200 Hzだけを受け入れ、
+演奏中には変更できない。最終の形がentrained／steady／flowなら有限の0.01〜200 Hzだけを受け入れ、
 範囲の外と有限でない値は配置前のscript errorにする。この範囲は実行を保護する値で、
 音楽的な推奨範囲ではない。metric、pulse、repeat、onceなど対象外の最終形では、不正な
 値でも警告して無視する。flowの更新間隔には別の既存の制限0.035〜4秒があり、極端な
@@ -675,7 +686,7 @@ measureが未検出なら変調せず、amountの既定値もゼロとする。�
 CouplingClockの整数交差を発音の機会に使う。初回はHoldと同じ即時のOn。その後は
 自由音高のGateSnap／Rearticulateでは、既定は行き先の採用を保留した拍で打ち、
 ほかの拍ではToneを伸ばす（`tie(1)`と同じ）。毎拍打つには`tie(0)`を明示する。
-ほかの明示確率はそのまま。固定音高とGlideは交差ごとに打つ。持続＋entrained／flowは
+ほかの明示確率はそのまま。固定音高とGlideは交差ごとに打つ。持続＋entrained／steady／flowは
 費用で見送るため省略値0を保つ。解決した省略値は演奏中のmode切替で対象に入っている
 間も使い、tie自体は初期設定だけの量とする。GateSnapと境界0のRearticulateは
 最新の採用先を次の合法な交差まで保留する。正の境界、Base／Connectの保持、有限音長とrest、
@@ -788,11 +799,11 @@ Glideは滑らかな移動を保つ。modeの切り替えでは鳴っているTo
 演奏中の書き込み前にerrorにする。新しい発音と旧音のrelease tailは、既存の合成、energy、
 生態が音を聴く経路を通る。
 
-`sustain()`と`entrained()`または`flow()`を両方明示すると、書く順によらず、持続音と参加の
+`sustain()`と`entrained()`・`steady()`・`flow()`のいずれかを明示すると、書く順によらず、持続音と参加の
 機会を併せ持つ。待つ・見送るならToneを保つ。省略時のmodeはGlideで、鳴らすと選んだ
-機会に、そのsampleの身体音高で打ち直す。採用時の一候補は、元の費用、同点時の順序、
+機会に、そのsampleの身体音高で打ち直す。entrainedとflowの採用時の一候補は、元の費用、同点時の順序、
 決定済みの予定を変えずに比較する。採られなかった移動は滑り、採用と時計の発音が同じ
-sampleなら一回にまとめる。
+sampleなら一回にまとめる。steadyは採用時の候補を足さず、dueの機会だけを残す。
 
 自由音高でGateSnapを明示すると、採用した行き先を一つ保留する。次の採用で置き換え、
 参加の機会で鳴らすと選んだ時だけ消費し、旧音を離して新しい音高へ跳んで立ち上げる。
@@ -835,13 +846,13 @@ sustainの後勝ちは保つ。明示のsustain＋metricは持続＋同期を選
 旧保留を取り消し、大きい採用は保留する。次の実発音まで最後の発音音高を基準にし、
 身体の滑りは離した余韻へ反映しない。release、死亡、removeが優先する。`rest`と音長は配置前の指定で、
 再生成は設定を継ぎ、演奏の状態は新たに始める。有限の音長がない場合、明示の持続＋
-entrained／flow以外は、配置時の書き込み前にerrorにする。三つの音高適用modeを選べる。
+entrained／steady／flow以外は、配置時の書き込み前にerrorにする。三つの音高適用modeを選べる。
 明示の`while_alive()`は有限の指定を消す。`rest`がなければ従来の挙動を保つ。この形では
 全ての音が有限長で終わり、一音ごとに伸ばすか切るかを選ぶ機能は含まれない。
 
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`；有限音長の持続＋参加には`rest()`／`rest(periods)`。
-*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`と`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、`intrinsic_rate(hz)`はentrained／flowの独立した創始の身体の尺度（省略時2 Hz）を置き、音長と間の秒数も一緒に変える。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
+*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`・`steady()`・`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、`intrinsic_rate(hz)`はentrained／steady／flowの独立した創始の身体の尺度（省略時2 Hz）を置き、音長と間の秒数も一緒に変える。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
 *   ライフサイクル/生存可能性: `endurance(sec)`, 任意の`recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, `phonate_when_viable()`（viability windowが開くまで最初のonsetを保留）。
 *   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
 
@@ -914,7 +925,7 @@ Conchordal は生体模倣的計算音響のプルーフオブコンセプトを
 
 `Log2Space` 座標系と「シブリング投影」アルゴリズムに支えられた技術アーキテクチャは、この新しいパラダイムに堅牢な数学的基盤を提供する。Rust の採用により、これらの複雑な生物学的シミュレーションがリアルタイムで実行可能となり、ALife研究と演奏的楽器の間の溝を橋渡しする。
 
-v0.4.0は論文の知見を楽器そのものに統合し、アーキテクチャに時間軸を加えた。固定のリズムフィルタバンクは、発音の再来の確認によるテンポ適応と、位相・型の再来から得る確信度を備えた強制リミットサイクル振動子——創発メーター——に置き換わった。Voiceのタイミングは、同期する`metric`と、音響への参加である`entrained`・`flow`の意図として表す（5.4節）。そして作曲家による時間の制御は、パルスをスケジュールすることなくその形成場所だけを形づくる地形事前分布（`meter_stability`、`temporal_basin`）へと還元された。デュアルバス設計は、ハビタット（エコシステムが感じるもの）とプレゼンテーション（聴衆が聴くもの）を分離する。Landscapeの慣れは既定で有効である。`ListenerTwin`の模擬feedback pathはpitch探索のtemperatureを上げられるが、その結合強度は引き続き既定で0である。
+v0.4.0は論文の知見を楽器そのものに統合し、アーキテクチャに時間軸を加えた。固定のリズムフィルタバンクは、発音の再来の確認によるテンポ適応と、位相・型の再来から得る確信度を備えた強制リミットサイクル振動子——創発メーター——に置き換わった。Voiceのタイミングは、同期する`metric`と、音響への参加である`entrained`・`steady`・`flow`の意図として表す（5.4節）。そして作曲家による時間の制御は、パルスをスケジュールすることなくその形成場所だけを形づくる地形事前分布（`meter_stability`、`temporal_basin`）へと還元された。デュアルバス設計は、ハビタット（エコシステムが感じるもの）とプレゼンテーション（聴衆が聴くもの）を分離する。Landscapeの慣れは既定で有効である。`ListenerTwin`の模擬feedback pathはpitch探索のtemperatureを上げられるが、その結合強度は引き続き既定で0である。
 
 第9章は、Manifesto の公約について果たされたものと未解決のものを縮約した台帳として示し、本書を閉じる。各行の背後の設計判断と、実装が逆に教えたものは、本ノートではなくリポジトリの設計台帳に置く。
 
@@ -928,7 +939,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | :--- | :--- | :--- | :--- |
 | 記号媒介なしの生成 | `Log2Space`+ランドスケープ。音名・音階・拍子記号はエンジンのどこにも存在しない | §2–4 | 実装済み |
 | 周波数軸の地形（蝸牛/脳幹モデル） | 粗さ・調波性・協和性カーネル | §3 | 実装済み |
-| 時間軸の地形（神経振動） | 創発メーター：強制リミットサイクル、発音の再来の確認によるテンポ適応、位相と型の再来による確信度。`metric` は明示的な同期を保ち、`entrained`・`flow` は有界な音響観測と身体の参加方策を使う | §4, §5.4 | 部分。全条件での時間関係の持続は未解決。小節アクセントの結合は任意 |
+| 時間軸の地形（神経振動） | 創発メーター：強制リミットサイクル、発音の再来の確認によるテンポ適応、位相と型の再来による確信度。`metric` は明示的な同期を保ち、`entrained`・`steady`・`flow` は有界な音響観測と身体の参加方策を使う。steadyはdueを固定し、鳴らすか見送るかを選ぶ | §4, §5.4 | 部分。全条件での時間関係の持続は未解決。小節アクセントの結合は任意 |
 | 地形の可変性（文化・個人・未知の原理） | 協和性カーネル係数、`set_roughness_aversion`、既定で有効な慣れによる浸食 | §3.4–3.5, §6.3.6 | 部分。文化的音律体系は未取込 |
 | 順応と期待 | Voice ごとの `AdaptationContext`、ecology/listener の `HabituationField`、habitat 側の参加へ渡す短期の反復予測とエネルギー予測 | §3.5, §5 | 部分。関係の記憶、phrase/scene の期待、行動価値学習は未解決 |
 | 音響生命：知覚・代謝・自律 | Voice：アーティキュレーション生命コア、正規化エネルギー、時間領域の endurance/recovery、生存可能性 | §5 | 実装済み |
@@ -975,8 +986,9 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `tau_ms` | `LandscapeParams` | ミリ秒 | peak抽出後のleaky normalization時定数（`[analysis].tau_ms`）。 |
 | `stability` | `MeterShaping` | 0.0-1.0 | ビートアトラクタ深度（`meter_stability`）：強制力とテンポ学習をスケール。 |
 | `basin_hz` | `MeterShaping` | Hz ペア | sceneのテンポ領域（`temporal_basin`）：拍の周波数学習の初期値と帯域制限。中心はstabilityに依らずmetricの身体の初期周期にも使う。 |
-| `coupling` | `CoupledTimingSpec` | 0.0-1.0 | 共有ビートへのボイスごとのロック強度（`entrainment`）。 |
+| `coupling` | `CoupledTimingSpec` | 0.0-1.0 | 参加では音響文脈の影響、同期では共有拍への引力（`entrainment`）。 |
 | `flow_depth` | `CoupledTimingSpec` | 0.0-1.0 | 自由走行オンセットの更新クラスタリング（0 = 規則的）。 |
+| `steady` | `CoupledTimingSpec` | boolean | 固有周期を固定し、候補をdue一つに限る非flowの参加。 |
 | `microtiming` | `CoupledTimingSpec` | cycles | ロック目標への符号付きビート位相オフセット。 |
 | `temperature` | `PitchHillClimbPitchCore` / `PitchPeakSamplerCore` | Float ≥ 0 | 両ピッチコア共有の探索ノブ。0 で貪欲に落ち着き、値を上げるほど探索的。音楽的には運動の緊張のノブ（高温＝協和から外れて彷徨う、0＝落ち着く）。 |
 | `crowding_strength` | `PitchHillClimbPitchCore` | Float | クラウディングペナルティの強度（デフォルト 0.0）。 |

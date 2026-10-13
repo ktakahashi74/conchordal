@@ -8552,6 +8552,78 @@ and author decisions, A-16/report.md §§2–6, A-15/report.md's action inventor
 candidates A/B, and the corresponding author decision and prototype instructions
 in .orchestration/records/decisions-20261007-orchestrator.md.
 
+<a id="steady-private-opportunities-20261013"></a>
+
+### 9.3.84 2026-10-13: steady() preserves private opportunities and selects sound or skip
+
+P-1–P-3 and A-14 identified that one participation coupling influenced both
+reaction in onset time and irregularity. A-14 separated a selectable non-flow
+policy: keep the intrinsic period and compare only the Voice's own due time.
+Heard external acoustic context and post-onset memory affect whether to sound or
+skip, without moving the opportunity toward another Voice or a shared beat.
+
+The author's three decisions recorded in V-14's brief are retained verbatim:
+
+- At 16:05, about A-14's fourth material, the new form at coupling 0.5:
+  「二本の線にはきこえる。 音楽的には基準のほうがよくきこえるが。」
+  Hearing two lines and preferring the reference musically are separate findings.
+- At 16:44: 「2:b 3:a」. The author adopted T-17 option B, then L1–L4,
+  and native implementation of A-14 as a selectable founder policy. The later
+  L5 scope addition remains recorded in §9.3.82.
+- At 17:07: 「推奨」. The public word is the fourth timing preset,
+  `steady()`, alongside entrained, flow and metric.
+
+The native implementation replaces the prototype's A14_GRID environment switch
+with a spec field. Defaults and the existing presets remain unchanged. Steady
+uses entrained's acoustic-cost meaning and omitted coupling, 0.5; intrinsic_rate
+sets the pace, with the existing 2 Hz omission. Costs, weights and clocks are not
+added. The last timing preset wins on its axis, while duration retains its own
+existing composition. Flow remains a separate irregular renewal policy.
+
+Only due is a candidate, including with Glide. Skipped, missed and illegal
+opportunities advance by whole intrinsic periods; emitted onsets occupy the
+private grid subject to sample rounding and execution constraints. Explicit
+sustain keeps the living Tone on a skip and retains the immediate initial Hold
+onset. GateSnap, Glide, Rearticulate and its boundary, tie (omitted zero),
+articulation_persistence, finite duration with rest, live pitch-mode changes and
+lifecycle priorities use the existing articulation path. Respawn inherits the
+template's policy and rate, with fresh phase, due, plan, shape and performance
+state. The name guarantees neither an attack count nor a pitch result.
+
+Arrival cost cannot change sound versus skip under the current one-candidate
+rule because the skip comparison excludes it. V-14 does not change that formula;
+its role remains an L2 design question. The adopted L2 target in §9.3.83
+concerns metric; an effect on steady remains unadopted.
+
+V-14 added tests for fixed period and private-grid legality, the sole candidate,
+arrival-independent omission, actual-onset learning, zero coupling, rate,
+replacement state, preset order and sustained articulation composition. Existing
+checks also cover retained sound, onset metabolism once per actual attack,
+boundary, tie, persistence, rest and live mode changes. The warmed allocation
+assay measured zero additional allocations across both policies at the tested
+rates. All 56 registered V-13 inputs retain byte-identical WAV and complete
+reports excluding hop_timing. The native steady inputs also match A-14's grid
+seed 21 and P-4's corrected script-seed 42 and 123 acquisitions in those same
+outputs. Accordingly no replacement audition materials were created. Input,
+binary, source and resource records are retained in the machine-local
+`.orchestration/units/V-14/` report and pin; the real-device measurement belongs
+to L4 and was not repeated here.
+
+P-4 describes fewer lower-line movements of at least 50 cents on the new-form
+side for all three seeds in this scene: reference 29/36/35, new form 23/28/34.
+The cause was not established. This is a description of those paired materials,
+not a general pitch-movement law or a causal claim about the fixed opportunity
+policy. The author's musical preference for the reference is not overwritten.
+
+Native implementation and equivalence of the adopted steady form close that
+part of L1. The declared contracts for existing entrained and flow remain open,
+as do L1's broader acceptance and L4 integration. New real-device operation,
+generalization to other bodies and scenes, and a new author audition have not
+been acquired. These records do not close L2, phrase production in L3 or pitch
+movement in L5. Sources: V-14 brief, A-14 ADR-1/ADR-2 and retained grid acquisition,
+T-17 K1/L1, P-4 §5 and corrected seed acquisitions, and V-13's registered 56 cases.
+
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

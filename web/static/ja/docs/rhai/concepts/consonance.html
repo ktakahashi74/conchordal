@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c36e0d70.js";
+            window.path_to_searchindex_js = "../searchindex-60ac650d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -302,7 +302,7 @@ wait(12.0);
 <p>動く指定を明示しなければ、<code>at()</code>は音高を固定します。演奏中のPopulationの<code>freq()</code>も、
 従来どおり音高を固定します。</p>
 <p>移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
-（<code>pulse()</code>、<code>metric()</code>、<code>entrained()</code>、<code>flow()</code>）は発音開始ごとに新しい音高へ
+（<code>pulse()</code>、<code>metric()</code>、<code>entrained()</code>、<code>steady()</code>、<code>flow()</code>）は発音開始ごとに新しい音高へ
 移ります。<code>pitch_apply_mode("gate_snap")</code>と<code>pitch_apply_mode("glide")</code>で、
 この反映方法を明示的に選べます。</p>
 <p>持続するVoiceで、新しい音高の行き先を採用するたびに発音し直したい場合は、
@@ -347,7 +347,8 @@ Gatedではgate_snapまたはglideを選んでください。参加の時計が�
 </tbody>
 </table>
 </div>
-<p>参加の各行では、entrainedとflowをそれぞれ選べます。時計の違いは
+<p>参加の各行では、entrained・steady・flowをそれぞれ選べます。steadyはGlideでも
+dueの機会だけを残します。時計の違いは
 <a href="rhythm.html">リズム</a>の章で説明します。</p>
 <p>参加の各行に<code>intrinsic_rate(hz)</code>を添えると、音高の適用方法とは独立に身体の初期の尺度を
 置けます。発音間隔の命令や共通拍の指定にはなりません。<code>proposal_interval(seconds)</code>は
@@ -388,13 +389,13 @@ release(voices);
 <a href="rhythm.html#行き先がない機会では音を伸ばす">行き先がない機会では音を伸ばす</a>を参照してください。</p>
 <p>持続＋同期も同じ保留の規則を使いますが、自由音高のGateSnap／Rearticulateでは、
 省略時は<code>tie(1)</code>と同じく保留の無い拍で伸ばします。毎拍打つには<code>tie(0)</code>と書きます。
-固定音高とGlideは従来どおり、entrained／flowの参加は省略時0のままです。
+固定音高とGlideは従来どおり、entrained／steady／flowの参加は省略時0のままです。
 <a href="rhythm.html#持続音を拍へ同期させる">持続音を拍へ同期させる</a>を参照してください。</p>
 <h3 id="音を切って間を置く"><a class="header" href="#音を切って間を置く">音を切って間を置く</a></h3>
 <p>持続音と参加の機会を併せ持つVoiceに<code>rest()</code>を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は<code>cycles(n)</code>、または
 <code>adaptive_duration()</code>とその調整語で指定します。音長、明示の<code>sustain()</code>、
-<code>entrained()</code>または<code>flow()</code>、<code>rest()</code>は、書く順によらず独立に保持します。
+<code>entrained()</code>・<code>steady()</code>・<code>flow()</code>、<code>rest()</code>は、書く順によらず独立に保持します。
 有限の音長を暗黙に補う処理はありません。明示の<code>while_alive()</code>は有限の指定を消し、
 その後に有限の音長を指定し直さなければ配置時にerrorになります。</p>
 <p>予定したOffで通常のreleaseを始め、余韻は切りません。rendererが同じsource IDと
@@ -421,7 +422,7 @@ wait(3.0);
 release(voices);
 </code></pre>
 <p>ここでの0.2周期と間の2周期は使い方の例で、推奨値ではありません。<code>rest</code>は音長の
-語と同じく配置前の指定です。明示の持続＋entrained／flowと有限の音長が必要で、
+語と同じく配置前の指定です。明示の持続＋entrained／steady／flowと有限の音長が必要で、
 Glide、GateSnap、Rearticulateを選べます。対象外の配置は状態を書き換える前に拒否します。
 <code>rest</code>がなければ既存の規則を保ちます。この形では全ての音が有限長で終わり、Voiceが
 一音ごとに伸ばすか切るかを選ぶ機能は含まれません。</p>

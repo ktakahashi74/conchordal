@@ -149,7 +149,7 @@ wait(12.0);
 従来どおり音高を固定します。
 
 移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
-（`pulse()`、`metric()`、`entrained()`、`flow()`）は発音開始ごとに新しい音高へ
+（`pulse()`、`metric()`、`entrained()`、`steady()`、`flow()`）は発音開始ごとに新しい音高へ
 移ります。`pitch_apply_mode("gate_snap")`と`pitch_apply_mode("glide")`で、
 この反映方法を明示的に選べます。
 
@@ -196,7 +196,8 @@ Gatedではgate_snapまたはglideを選んでください。参加の時計が�
 | 持続しながら参加し、発音時に跳ぶ | `sustain().flow().pitch_apply_mode("gate_snap")` | 鳴らすと選んだ機会で、最後に保留した行き先へ跳んで打ち直す |
 | 持続しながら参加し、移動の大きさで分ける | `sustain().entrained().pitch_apply_mode("rearticulate").rearticulate_above(50)` | 小さい採用は滑り、大きい採用は鳴らす機会まで保留する |
 
-参加の各行では、entrainedとflowをそれぞれ選べます。時計の違いは
+参加の各行では、entrained・steady・flowをそれぞれ選べます。steadyはGlideでも
+dueの機会だけを残します。時計の違いは
 [リズム](rhythm.md)の章で説明します。
 
 参加の各行に`intrinsic_rate(hz)`を添えると、音高の適用方法とは独立に身体の初期の尺度を
@@ -246,7 +247,7 @@ gate_snap／rearticulateの参加では、`tie(p)`で保留がないToneを打�
 
 持続＋同期も同じ保留の規則を使いますが、自由音高のGateSnap／Rearticulateでは、
 省略時は`tie(1)`と同じく保留の無い拍で伸ばします。毎拍打つには`tie(0)`と書きます。
-固定音高とGlideは従来どおり、entrained／flowの参加は省略時0のままです。
+固定音高とGlideは従来どおり、entrained／steady／flowの参加は省略時0のままです。
 [持続音を拍へ同期させる](rhythm.md#持続音を拍へ同期させる)を参照してください。
 
 ### 音を切って間を置く
@@ -254,7 +255,7 @@ gate_snap／rearticulateの参加では、`tie(p)`で保留がないToneを打�
 持続音と参加の機会を併せ持つVoiceに`rest()`を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は`cycles(n)`、または
 `adaptive_duration()`とその調整語で指定します。音長、明示の`sustain()`、
-`entrained()`または`flow()`、`rest()`は、書く順によらず独立に保持します。
+`entrained()`・`steady()`・`flow()`、`rest()`は、書く順によらず独立に保持します。
 有限の音長を暗黙に補う処理はありません。明示の`while_alive()`は有限の指定を消し、
 その後に有限の音長を指定し直さなければ配置時にerrorになります。
 
@@ -287,7 +288,7 @@ release(voices);
 ```
 
 ここでの0.2周期と間の2周期は使い方の例で、推奨値ではありません。`rest`は音長の
-語と同じく配置前の指定です。明示の持続＋entrained／flowと有限の音長が必要で、
+語と同じく配置前の指定です。明示の持続＋entrained／steady／flowと有限の音長が必要で、
 Glide、GateSnap、Rearticulateを選べます。対象外の配置は状態を書き換える前に拒否します。
 `rest`がなければ既存の規則を保ちます。この形では全ての音が有限長で終わり、Voiceが
 一音ごとに伸ばすか切るかを選ぶ機能は含まれません。

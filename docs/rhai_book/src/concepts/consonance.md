@@ -166,7 +166,7 @@ Without explicit movement, `at()` still fixes pitch. A live Population's
 `freq()` still locks pitch during performance.
 
 How movement lands is resolved from phonation: sustained movers glide,
-re-attacking movers (`pulse()`, `metric()`, `entrained()`, `flow()`) snap to
+re-attacking movers (`pulse()`, `metric()`, `entrained()`, `steady()`, `flow()`) snap to
 their new pitch at each onset. `pitch_apply_mode("gate_snap")` and
 `pitch_apply_mode("glide")` override that choice.
 
@@ -217,7 +217,8 @@ the composer chooses them.
 | Sustained participation with jumps | `sustain().flow().pitch_apply_mode("gate_snap")` | A sounded opportunity consumes the latest pending target |
 | Sustained participation with a movement boundary | `sustain().entrained().pitch_apply_mode("rearticulate").rearticulate_above(50)` | Small adoptions slide; large ones wait for a sounded opportunity |
 
-Entrained and flow can each be used in any participation row. See
+Entrained, steady and flow can each be used in any participation row. Steady keeps
+only due-time opportunities, including with Glide. See
 [Rhythm](rhythm.md#sustained-sound-with-participation-opportunities) for their clocks.
 
 `intrinsic_rate(hz)` sets the body's initial scale in any participation row,
@@ -274,7 +275,7 @@ including small GateSnap moves. See [Extending opportunities](rhythm.md#extendin
 Sustained synchronization uses the same pending-target rules with a different
 omission default: free-pitch GateSnap/Rearticulate extends pending-free beats
 like `tie(1)`. Write `tie(0)` to attack every legal beat. Fixed pitch and Glide
-remain unchanged; entrained/flow participation keeps omitted tie at zero. See
+remain unchanged; entrained/steady/flow participation keeps omitted tie at zero. See
 [Sustained synchronization](rhythm.md#sustained-synchronization).
 
 ### Cutting notes and leaving a rest
@@ -282,7 +283,7 @@ remain unchanged; entrained/flow participation keeps omitted tie at zero. See
 For sustained participation, `rest()` adds a finite end to every sounded note
 and an intentional pause after its sound has finished. Supply the note length
 with `cycles(n)` or `adaptive_duration()` and its modifiers. This length, explicit
-`sustain()`, `entrained()` or `flow()`, and `rest()` are retained independently of
+`sustain()`, `entrained()`, `steady()` or `flow()`, and `rest()` are retained independently of
 builder order. No finite length is supplied implicitly. Explicit `while_alive()`
 clears the finite length; placement then fails unless another finite length follows.
 
@@ -318,7 +319,7 @@ release(voices);
 
 Here 0.2 cycles and two periods are example inputs, not recommended values.
 `rest` is initial-only, like the note-length controls. It is valid only with explicit
-sustain plus entrained/flow and a finite note length; Glide, GateSnap and
+sustain plus entrained/steady/flow and a finite note length; Glide, GateSnap and
 Rearticulate are all available. Incompatible
 placements fail before state changes. Without `rest`, the existing rules remain.
 This form ends every note; choosing to sustain or release each individual note is

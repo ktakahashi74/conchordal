@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5d1a6259.js";
+            window.path_to_searchindex_js = "../searchindex-0f87c3e9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-e3932d17.js"></script>
@@ -177,12 +177,14 @@
                         <h1 id="rhythm-evidence-and-participation"><a class="header" href="#rhythm-evidence-and-participation">Rhythm: Evidence and Participation</a></h1>
 <p>A beat is a recurrent temporal reference inferred from sound. Sharing that
 reference does not require every Voice to attack at the same phase.</p>
-<p>The three presets express different timing intentions:</p>
+<p>The four presets express different timing intentions:</p>
 <ul>
 <li><strong>metric</strong>: explicit attraction to the shared production beat. Strong coupling
 favors synchronized onsets.</li>
 <li><strong>entrained</strong>: a bodily pace adjusted by remembered acoustic context and a
 prediction of energetic overlap with surrounding sound.</li>
+<li><strong>steady</strong>: fixed private due times; heard context chooses sound or skip,
+without following another Voice’s time or a shared beat.</li>
 <li><strong>flow</strong>: weak acoustic participation with clustered renewal intervals around
 an intrinsic scale that does not follow recurrence.</li>
 </ul>
@@ -201,10 +203,39 @@ Flow keeps its intrinsic renewal scale while still waiting or omitting events in
 response to surrounding sound; its executed intervals therefore remain variable.
 This three-band energy proxy is an engineering approximation, with musical
 acceptance still under evaluation.</p>
+<h2 id="keeping-private-opportunities-steady"><a class="header" href="#keeping-private-opportunities-steady">Keeping private opportunities: <code>steady()</code></a></h2>
+<p><code>steady()</code> keeps the Voice’s own pace fixed. Heard acoustic context selects only
+whether to sound or skip at its scheduled due time; it never moves that time
+toward another Voice or a shared beat. The only candidate is due itself. Period
+adaptation is disabled, and a missed or illegal opportunity advances by whole
+intrinsic periods. Sounded onsets therefore occupy the private grid, subject to
+sample rounding, with omissions and execution constraints able to remove events.
+The initial sustained Hold onset remains immediate, before that grid’s later
+opportunities. The name promises neither an attack count nor a pitch outcome.</p>
+<p>This is a separate non-flow preset. <code>entrainment(x)</code> has the same acoustic-cost
+meaning and omitted value, 0.5, as <code>entrained()</code>. <code>intrinsic_rate(hz)</code> sets the
+pace, with the existing 2 Hz omission. Costs and weights are unchanged. Arrival
+cost currently cannot change sound versus skip: there is only one candidate,
+and the skip comparison excludes arrival cost. That connection remains an L2
+design question.</p>
+<pre><code class="language-rhai">let voices = place(harmonic().steady().sustain().intrinsic_rate(2.0)
+    .seek_consonance().pitch_apply_mode("gate_snap"), line(220.0, 330.0).count(2));
+wait(6.0);
+release(voices);
+</code></pre>
+<p>The last timing preset wins, so <code>flow().steady()</code> selects steady and
+<code>steady().flow()</code> selects flow; duration still follows its separate existing
+rules. Timing presets are initial-only. Either order with explicit <code>sustain()</code>
+keeps a Tone through skipped opportunities. Glide, GateSnap, Rearticulate, its
+movement boundary, <code>tie</code> (omitted zero), <code>articulation_persistence</code> and finite
+duration with <code>rest</code> retain their existing composition and priority. Even Glide
+adds no adoption-time candidate in this preset. Live pitch-mode changes retain
+the Tone without adding an onset. Replacements inherit the template’s policy
+and rate, with fresh phase, due, plan and performance state.</p>
 <h2 id="director-level-terrain"><a class="header" href="#director-level-terrain">Director-level terrain</a></h2>
 <p>The director shapes the rhythmic terrain, symmetric to the consonance-field
 operations. These operations shape the production meter used by metric timing. They do not
-set the bodily rate or recurrence candidates of entrained/flow participants:</p>
+set the bodily rate or recurrence candidates of entrained/steady/flow participants:</p>
 <ul>
 <li><code>meter_stability(value)</code> — attractor depth in <code>[0,1]</code>, default <code>0</code> (neutral):
 how readily a pulse forms and how strongly its reading favors a preferred
@@ -230,7 +261,7 @@ Metric Voices start with independent phases. Until sound corroborates a beat,
 confidence and shared-beat attraction remain zero. After confirmation, the
 existing coupling follows the heard beat. Respawn starts from the Population’s
 resolved template; it does not inherit the parent’s current clock rate.
-Entrained/flow bodily priors and explicit <code>pulse(rate_hz)</code> are unaffected.</p>
+Entrained/steady/flow bodily priors and explicit <code>pulse(rate_hz)</code> are unaffected.</p>
 <p>From a cold start, a regular 4 Hz input in the default band is read as a 4 Hz
 beat at stability <code>0</code>, and as duple subdivision of a 2 Hz beat at stability <code>1</code>.
 Depth also retains its effects on forcing and evidence presence; it is not an
@@ -238,10 +269,10 @@ independent control of tempo weighting. Confidence remains zero until the first
 interval hypothesis is corroborated. Chance corroboration in irregular input
 can still produce temporary rises afterward.</p>
 <h2 id="per-voice-presets-and-modifiers"><a class="header" href="#per-voice-presets-and-modifiers">Per-voice presets and modifiers</a></h2>
-<p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, and
+<p>The Tier-1 presets take <strong>no rate argument</strong>: <code>metric()</code>, <code>entrained()</code>, <code>steady()</code>, and
 <code>flow()</code>. Configure them on a <code>PopulationSpec</code> before calling <code>place()</code> or
 <code>create()</code>. Metric timing begins at the basin center, or 2 Hz without a basin,
-then responds to the acoustically confirmed production beat. Entrained/flow
+then responds to the acoustically confirmed production beat. Entrained/steady/flow
 participants begin with their own 2 Hz intrinsic prior unless <code>intrinsic_rate(hz)</code> is supplied. Entrained cadence can follow acoustic recurrence without
 changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
 scale for its irregular renewal intervals.</p>
@@ -252,13 +283,13 @@ They are independent and may be used together. See
 <p>Per-voice modifiers refine these intentions:</p>
 <ul>
 <li><code>entrainment(strength)</code> — influence in <code>[0,1]</code>: acoustic context for
-entrained/flow, beat-phase attraction for metric. Zero keeps intrinsic pacing.</li>
+entrained/steady/flow, beat-phase attraction for metric. Zero keeps intrinsic pacing.</li>
 <li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — the voice’s
 metrical job. <code>accent</code> emits a stronger onset that drives the shared meter
 harder, so a recurring downbeat can seed an emergent measure.</li>
 <li><code>microtiming(amount)</code> — a signed metric beat-phase offset in <code>[-0.5, 0.5]</code>.
 A value of <code>0.5</code> targets the half-beat. It does not assign fixed positions to
-entrained/flow participants.</li>
+entrained/steady/flow participants.</li>
 <li><code>measure_accent(amount)</code> — weak onset emphasis following the detected measure,
 in <code>[0,1]</code> (default <code>0</code>). The onset strength multiplier is
 <code>1 + 0.35 * amount * confidence * cos(phase)</code>. The phase origin follows observed
@@ -294,17 +325,17 @@ wait(12.0);
 </code></pre>
 <p>Except for explicit sustain plus participation described below, calls on the same axis are last-write-wins: the last timing mode and the last
 duration mode determine the final behavior. <code>cycles(n)</code> counts the intrinsic
-bodily period for entrained/flow and the effective beat period for metric timing;
+bodily period for entrained/steady/flow and the effective beat period for metric timing;
 flow retains its existing threefold hold multiplier. Modifiers are remembered and
 applied when their matching preset is selected, so <code>entrainment(0.8).metric()</code>
 and <code>metric().entrainment(0.8)</code> are equivalent. The same applies to
 <code>duration_range(...).adaptive_duration()</code> and the reverse order.</p>
 <h2 id="setting-the-bodys-intrinsic-rate"><a class="header" href="#setting-the-bodys-intrinsic-rate">Setting the body’s intrinsic rate</a></h2>
-<p><code>intrinsic_rate(hz)</code> sets the founder Voices’ bodily scale for <code>entrained()</code> or
+<p><code>intrinsic_rate(hz)</code> sets the founder Voices’ bodily scale for <code>entrained()</code>, <code>steady()</code> or
 <code>flow()</code>. Its period is <code>1/hz</code>. This is a body initial condition, not an
 onset-interval command or a common beat. Entrained timing adapts its participation
-period to heard recurrence without changing the intrinsic value. Flow uses that
-value for irregular renewal. Both still choose to sound, wait or omit events;
+period to heard recurrence without changing the intrinsic value. Steady keeps fixed opportunities; flow uses that
+value for irregular renewal. All can omit events, and entrained/flow can wait;
 different intrinsic rates do not guarantee permanently different onset rates.</p>
 <p>Set it on a PopulationSpec before <code>place()</code> or <code>create()</code>. Either order with the
 participation preset has the same meaning. It cannot be changed during performance.
@@ -325,7 +356,7 @@ wait(6.0);
 release(a);
 release(b);
 </code></pre>
-<p>These rates are example inputs, not recommended values. A final entrained/flow
+<p>These rates are example inputs, not recommended values. A final entrained/steady/flow
 specification accepts finite values in <code>0.01..=200</code> Hz. Values outside that range
 or nonfinite values are script errors before placement. The range protects
 execution; it is not a musically recommended range. Flow’s renewal interval has
@@ -337,7 +368,7 @@ Omission keeps the existing 2 Hz path, and metric’s basin rule is unchanged.</
 this participation scale. <code>proposal_interval(seconds)</code> controls pitch proposals;
 it does not command an onset or change the body’s intrinsic rate.</p>
 <h2 id="sustained-sound-with-participation-opportunities"><a class="header" href="#sustained-sound-with-participation-opportunities">Sustained sound with participation opportunities</a></h2>
-<p>Explicit <code>sustain()</code> plus <code>entrained()</code> or <code>flow()</code> keeps a Tone sounding while
+<p>Explicit <code>sustain()</code> plus <code>entrained()</code>, <code>steady()</code> or <code>flow()</code> keeps a Tone sounding while
 its Voice continues to consider participation opportunities. Either builder order
 has the same meaning: <code>sustain().entrained()</code> and <code>entrained().sustain()</code> are equivalent.
 At an opportunity, choosing to sound releases the old Tone and attacks a new Tone
@@ -410,7 +441,7 @@ each note releases before a pause measured from actual tail completion. See
 <h2 id="retaining-an-articulation-policy"><a class="header" href="#retaining-an-articulation-policy">Retaining an articulation policy</a></h2>
 <p>Within free-pitch sustained participation, <code>articulation_persistence(p)</code> lets a Voice
 keep a private articulation policy across several pitch adoptions and participation
-opportunities. It requires <code>sustain()</code> plus <code>metric()</code>, <code>entrained()</code> or <code>flow()</code>,
+opportunities. It requires <code>sustain()</code> plus <code>metric()</code>, <code>entrained()</code>, <code>steady()</code> or <code>flow()</code>,
 <code>pitch_apply_mode("rearticulate")</code>, and a positive <code>rearticulate_above(cents)</code>.
 The value is set before placement; it is not a live Population method.</p>
 <pre><code class="language-rhai">let p = place(
@@ -454,10 +485,10 @@ does not decide whether each note should sustain or release.</p>
 <h2 id="extending-opportunities-without-a-new-pitch-destination"><a class="header" href="#extending-opportunities-without-a-new-pitch-destination">Extending opportunities without a new pitch destination</a></h2>
 <p><code>tie(p)</code> sets the probability of extending a living Tone instead of re-attacking
 at a selected participation opportunity without a pending target. It is an
-initial composer parameter for free-pitch <code>sustain()</code> with <code>metric()</code>, <code>entrained()</code> or
+initial composer parameter for free-pitch <code>sustain()</code> with <code>metric()</code>, <code>entrained()</code>, <code>steady()</code> or
 <code>flow()</code> and explicit <code>gate_snap</code> or <code>rearticulate</code>, including a zero boundary.
 Omitted tie resolves to <code>1</code> for sustained synchronization and to <code>0</code> for sustained
-entrained/flow participation, where the Voice can skip opportunities by cost.
+entrained/steady/flow participation, where the Voice can skip opportunities by cost.
 Explicit <code>tie(0)</code> preserves pending-free attacks, <code>tie(1)</code> always extends eligible
 Tones, and intermediate values mix the two per opportunity. Fixed pitch and Glide
 remain outside tie and re-attack each metric crossing. These choices do not claim
@@ -521,7 +552,7 @@ set_scaffold_scrambled(2.0, 17);
 </code></pre>
 <p>They are useful for demos and assays. They are not the rhythm-composition
 abstraction: use them only when explicit synchronization is essential to the demo or assay.
-A dedicated beat carrier is not required for entrained/flow participation.</p>
+A dedicated beat carrier is not required for entrained/steady/flow participation.</p>
 <h2 id="sustained-synchronization"><a class="header" href="#sustained-synchronization">Sustained synchronization</a></h2>
 <p>Explicit <code>sustain()</code> plus <code>metric()</code> keeps a live Tone and uses the existing
 coupling clock’s integer crossings as sounding opportunities. Either builder order
@@ -546,7 +577,7 @@ wait(2.0);
 <p>For free-pitch GateSnap/Rearticulate, an explicit <code>tie(p)</code> uses its written
 probability on pending-free crossings. The omitted probability is resolved before
 placement and also applies while live mode switching enters the eligible range.
-Sustained entrained/flow retains omission at zero; its cost policy can skip
+Sustained entrained/steady/flow retains omission at zero; its cost policy can skip
 opportunities. No live tie setter is added.
 <code>articulation_persistence</code> retains Base/Connect as in participation, but only
 adoptions and sounding crossings offer proposals: synchronization has no cost

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c36e0d70.js";
+            window.path_to_searchindex_js = "../searchindex-60ac650d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -235,7 +235,7 @@ release(population);
 <tbody>
 <tr><td>何が鳴るか</td><td><code>sine</code>, <code>harmonic</code>, <code>modal</code>, <code>brightness</code>, <code>modes</code></td><td>初代のVoiceの発音体と周波数成分。</td></tr>
 <tr><td>どんな生を送るか</td><td><code>brain(name)</code>: <code>entrain</code>, <code>seq</code>, <code>drone</code></td><td>articulationが生態系に参加するか、書かれた生を進むか、Landscapeのanchorとして持続するか。</td></tr>
-<tr><td>いつ鳴るか</td><td><code>sustain</code>, <code>repeat</code>, <code>metric</code>, <code>entrained</code>, <code>flow</code></td><td>phonationとonset timing。</td></tr>
+<tr><td>いつ鳴るか</td><td><code>sustain</code>, <code>repeat</code>, <code>metric</code>, <code>entrained</code>, <code>steady</code>, <code>flow</code></td><td>phonationとonset timing。</td></tr>
 <tr><td>音高はどこへ行くか</td><td>Placement、<code>anchor</code>, <code>seek_consonance</code>, <code>temperature</code></td><td>初代のVoiceが入る位置と、その後の移動。</td></tr>
 <tr><td>Populationはどう持続するか</td><td><code>endurance</code>, <code>recovery</code>, viability, respawn</td><td>Voiceのエネルギー、死、Populationの世代交代。</td></tr>
 </tbody>
@@ -279,8 +279,9 @@ wait(8.0);
 <ul>
 <li><code>sustain()</code>はVoiceが生きている間、音を保持します。</li>
 <li><code>repeat()</code>は初期値が設定された反復発音を選びます。</li>
-<li><code>metric()</code>、<code>entrained()</code>、<code>flow()</code>は共有meterとの結合連続体上の領域を選び、
-re-attackを含意します。</li>
+<li><code>metric()</code>は共有拍への同期、<code>entrained()</code>・<code>steady()</code>・<code>flow()</code>は音響参加を選びます。
+steadyは自分の予定時刻を保ち、聴いた文脈で鳴らすか見送るかだけを選びます。
+発音の機会で打ち直すほか、明示の持続と併せてToneを保てます。<a href="rhythm.html">リズム</a>を参照してください。</li>
 <li><code>cycles(n)</code>はdurationをrhythmic cycle数で表します。</li>
 </ul>
 <p>presetで意図を表せない場合は、低水準の<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、
@@ -292,7 +293,7 @@ adaptive duration controlを使えます。まずpresetから始め、作品が�
 結果です。一つのVoiceがenergyを使い果たした後、Populationの再生成方針が代わりのVoiceを
 作る場合があります。<code>section</code>や<code>play</code>の有効範囲も、終了時に内部で作ったPopulationをreleaseします。</p>
 <p>次章では、<a href="ecological_loop.html">VoiceとLandscape — 音と環境のフィードバック</a>を説明します。</p>
-<p>明示の<code>sustain()</code>と<code>metric()</code>を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。自由音高のGateSnap／Rearticulateは、既定では採用先を保留した拍で発音し、ほかの拍では伸ばします。毎拍打つには<code>tie(0)</code>。固定音高とGlideは拍ごとに打ち、持続＋entrained／flowの省略値は0のままです。<a href="rhythm.html#持続音を拍へ同期させる">リズム</a>を参照してください。</p>
+<p>明示の<code>sustain()</code>と<code>metric()</code>を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。自由音高のGateSnap／Rearticulateは、既定では採用先を保留した拍で発音し、ほかの拍では伸ばします。毎拍打つには<code>tie(0)</code>。固定音高とGlideは拍ごとに打ち、持続＋entrained／steady／flowの省略値は0のままです。<a href="rhythm.html#持続音を拍へ同期させる">リズム</a>を参照してください。</p>
 
                     </main>
 

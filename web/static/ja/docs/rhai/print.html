@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c36e0d70.js";
+            window.path_to_searchindex_js = "searchindex-60ac650d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ddfde326.js"></script>
@@ -541,7 +541,7 @@ release(population);
 <tbody>
 <tr><td>何が鳴るか</td><td><code>sine</code>, <code>harmonic</code>, <code>modal</code>, <code>brightness</code>, <code>modes</code></td><td>初代のVoiceの発音体と周波数成分。</td></tr>
 <tr><td>どんな生を送るか</td><td><code>brain(name)</code>: <code>entrain</code>, <code>seq</code>, <code>drone</code></td><td>articulationが生態系に参加するか、書かれた生を進むか、Landscapeのanchorとして持続するか。</td></tr>
-<tr><td>いつ鳴るか</td><td><code>sustain</code>, <code>repeat</code>, <code>metric</code>, <code>entrained</code>, <code>flow</code></td><td>phonationとonset timing。</td></tr>
+<tr><td>いつ鳴るか</td><td><code>sustain</code>, <code>repeat</code>, <code>metric</code>, <code>entrained</code>, <code>steady</code>, <code>flow</code></td><td>phonationとonset timing。</td></tr>
 <tr><td>音高はどこへ行くか</td><td>Placement、<code>anchor</code>, <code>seek_consonance</code>, <code>temperature</code></td><td>初代のVoiceが入る位置と、その後の移動。</td></tr>
 <tr><td>Populationはどう持続するか</td><td><code>endurance</code>, <code>recovery</code>, viability, respawn</td><td>Voiceのエネルギー、死、Populationの世代交代。</td></tr>
 </tbody>
@@ -585,8 +585,9 @@ wait(8.0);
 <ul>
 <li><code>sustain()</code>はVoiceが生きている間、音を保持します。</li>
 <li><code>repeat()</code>は初期値が設定された反復発音を選びます。</li>
-<li><code>metric()</code>、<code>entrained()</code>、<code>flow()</code>は共有meterとの結合連続体上の領域を選び、
-re-attackを含意します。</li>
+<li><code>metric()</code>は共有拍への同期、<code>entrained()</code>・<code>steady()</code>・<code>flow()</code>は音響参加を選びます。
+steadyは自分の予定時刻を保ち、聴いた文脈で鳴らすか見送るかだけを選びます。
+発音の機会で打ち直すほか、明示の持続と併せてToneを保てます。<a href="#リズム時間の知覚と個体の参加">リズム</a>を参照してください。</li>
 <li><code>cycles(n)</code>はdurationをrhythmic cycle数で表します。</li>
 </ul>
 <p>presetで意図を表せない場合は、低水準の<code>once()</code>、<code>pulse(rate_hz)</code>、<code>while_alive()</code>、
@@ -598,7 +599,7 @@ adaptive duration controlを使えます。まずpresetから始め、作品が�
 結果です。一つのVoiceがenergyを使い果たした後、Populationの再生成方針が代わりのVoiceを
 作る場合があります。<code>section</code>や<code>play</code>の有効範囲も、終了時に内部で作ったPopulationをreleaseします。</p>
 <p>次章では、<a href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a>を説明します。</p>
-<p>明示の<code>sustain()</code>と<code>metric()</code>を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。自由音高のGateSnap／Rearticulateは、既定では採用先を保留した拍で発音し、ほかの拍では伸ばします。毎拍打つには<code>tie(0)</code>。固定音高とGlideは拍ごとに打ち、持続＋entrained／flowの省略値は0のままです。<a href="#持続音を拍へ同期させる">リズム</a>を参照してください。</p>
+<p>明示の<code>sustain()</code>と<code>metric()</code>を併用すると、持続音と音から確認した拍への同期を同じVoiceで扱えます。自由音高のGateSnap／Rearticulateは、既定では採用先を保留した拍で発音し、ほかの拍では伸ばします。毎拍打つには<code>tie(0)</code>。固定音高とGlideは拍ごとに打ち、持続＋entrained／steady／flowの省略値は0のままです。<a href="#持続音を拍へ同期させる">リズム</a>を参照してください。</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="voiceとlandscape--音と環境のフィードバック"><a class="header" href="#voiceとlandscape--音と環境のフィードバック">VoiceとLandscape — 音と環境のフィードバック</a></h1>
 <p>habitat busへ送られたVoiceはLandscapeを変え、変化したLandscapeはplacement、movement、
@@ -853,7 +854,7 @@ wait(12.0);
 <p>動く指定を明示しなければ、<code>at()</code>は音高を固定します。演奏中のPopulationの<code>freq()</code>も、
 従来どおり音高を固定します。</p>
 <p>移動の反映方法は発音様式から決まります。持続するVoiceは滑らかに移り、再発音するVoice
-（<code>pulse()</code>、<code>metric()</code>、<code>entrained()</code>、<code>flow()</code>）は発音開始ごとに新しい音高へ
+（<code>pulse()</code>、<code>metric()</code>、<code>entrained()</code>、<code>steady()</code>、<code>flow()</code>）は発音開始ごとに新しい音高へ
 移ります。<code>pitch_apply_mode("gate_snap")</code>と<code>pitch_apply_mode("glide")</code>で、
 この反映方法を明示的に選べます。</p>
 <p>持続するVoiceで、新しい音高の行き先を採用するたびに発音し直したい場合は、
@@ -898,7 +899,8 @@ Gatedではgate_snapまたはglideを選んでください。参加の時計が�
 </tbody>
 </table>
 </div>
-<p>参加の各行では、entrainedとflowをそれぞれ選べます。時計の違いは
+<p>参加の各行では、entrained・steady・flowをそれぞれ選べます。steadyはGlideでも
+dueの機会だけを残します。時計の違いは
 <a href="#リズム時間の知覚と個体の参加">リズム</a>の章で説明します。</p>
 <p>参加の各行に<code>intrinsic_rate(hz)</code>を添えると、音高の適用方法とは独立に身体の初期の尺度を
 置けます。発音間隔の命令や共通拍の指定にはなりません。<code>proposal_interval(seconds)</code>は
@@ -939,13 +941,13 @@ release(voices);
 <a href="#行き先がない機会では音を伸ばす">行き先がない機会では音を伸ばす</a>を参照してください。</p>
 <p>持続＋同期も同じ保留の規則を使いますが、自由音高のGateSnap／Rearticulateでは、
 省略時は<code>tie(1)</code>と同じく保留の無い拍で伸ばします。毎拍打つには<code>tie(0)</code>と書きます。
-固定音高とGlideは従来どおり、entrained／flowの参加は省略時0のままです。
+固定音高とGlideは従来どおり、entrained／steady／flowの参加は省略時0のままです。
 <a href="#持続音を拍へ同期させる">持続音を拍へ同期させる</a>を参照してください。</p>
 <h3 id="音を切って間を置く"><a class="header" href="#音を切って間を置く">音を切って間を置く</a></h3>
 <p>持続音と参加の機会を併せ持つVoiceに<code>rest()</code>を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は<code>cycles(n)</code>、または
 <code>adaptive_duration()</code>とその調整語で指定します。音長、明示の<code>sustain()</code>、
-<code>entrained()</code>または<code>flow()</code>、<code>rest()</code>は、書く順によらず独立に保持します。
+<code>entrained()</code>・<code>steady()</code>・<code>flow()</code>、<code>rest()</code>は、書く順によらず独立に保持します。
 有限の音長を暗黙に補う処理はありません。明示の<code>while_alive()</code>は有限の指定を消し、
 その後に有限の音長を指定し直さなければ配置時にerrorになります。</p>
 <p>予定したOffで通常のreleaseを始め、余韻は切りません。rendererが同じsource IDと
@@ -972,7 +974,7 @@ wait(3.0);
 release(voices);
 </code></pre>
 <p>ここでの0.2周期と間の2周期は使い方の例で、推奨値ではありません。<code>rest</code>は音長の
-語と同じく配置前の指定です。明示の持続＋entrained／flowと有限の音長が必要で、
+語と同じく配置前の指定です。明示の持続＋entrained／steady／flowと有限の音長が必要で、
 Glide、GateSnap、Rearticulateを選べます。対象外の配置は状態を書き換える前に拒否します。
 <code>rest</code>がなければ既存の規則を保ちます。この形では全ての音が有限長で終わり、Voiceが
 一音ごとに伸ばすか切るかを選ぶ機能は含まれません。</p>
@@ -1040,10 +1042,11 @@ wait(8.0);
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="リズム時間の知覚と個体の参加"><a class="header" href="#リズム時間の知覚と個体の参加">リズム：時間の知覚と個体の参加</a></h1>
 <p>拍は、音から推定する反復的な時間の基準です。同じ音を参照するVoiceが、同じ拍位置で
-発音する必要はありません。三つのプリセットは、異なる参加の仕方を選びます。</p>
+発音する必要はありません。四つのプリセットは、異なる参加の仕方を選びます。</p>
 <ul>
 <li><strong>metric</strong> — 共有された拍への同期を意図します。結合を強めるほど発音位置が拍へ近づきます。</li>
 <li><strong>entrained</strong> — 自身のペースを持ち、参加時に記憶した周囲の音の特徴と、音が重なる予測から発音時刻を調整します。</li>
+<li><strong>steady</strong> — 自分の予定時刻を保ち、聴いた文脈で鳴らすか見送るかだけを選びます。時刻を相手へ寄せず、共有の拍を目指しません。</li>
 <li><strong>flow</strong> — 不規則な発音間隔の基準を保ち、弱い結合で周囲の音に応答します。基準の速さを反復周期へ寄せません。</li>
 </ul>
 <p>entrainedとflowは、過去のhabitat音声から得た短い未来の予期を使います。Voice自身が
@@ -1054,9 +1057,33 @@ ADSRのreleaseを含む範囲で評価します。見送りを続けるほどコ
 関係を記憶します。証拠が乏しいときは
 身体のペースを保ち、共通位相へ置き換えません。重なりの評価は三つの帯域のエネルギーを
 使う工学的な近似であり、音楽的な受入は検証中です。</p>
+<h2 id="自分の発音予定を保つsteady"><a class="header" href="#自分の発音予定を保つsteady">自分の発音予定を保つ：<code>steady()</code></a></h2>
+<p><code>steady()</code>はVoice自身の歩調を動かしません。聴いた音の文脈は、予定した時刻dueで
+鳴らすか見送るかにだけ効きます。時刻を相手に寄せず、共有の拍を目指しません。
+候補はdue一つだけで、周期を音から適応させる更新を止めます。過ぎた機会や合法でない
+機会も、固有周期の整数倍で先へ進めます。実際の発音はsampleへの丸めを伴う自分の
+格子上に残り、見送りや実行上の制約で発音が抜ける場合があります。持続音の初回の
+Hold発音は、後続の格子とは別に従来どおり即時です。名前から発音数や音高の結果は保証されません。</p>
+<p>flowとは別の、非flowのプリセットです。<code>entrainment(x)</code>はentrainedと同じ音響費用への
+影響で、省略値も0.5です。歩調は<code>intrinsic_rate(hz)</code>で置き、省略値は従来の2 Hzです。
+費用の項や重みは変えません。いまの到来費用は鳴らすか見送るかを変えません。候補が
+一つで、見送りの比較から到来費用を除くためです。この接続はL2の設計に残ります。</p>
+<pre><code class="language-rhai">let voices = place(harmonic().steady().sustain().intrinsic_rate(2.0)
+    .seek_consonance().pitch_apply_mode("gate_snap"), line(220.0, 330.0).count(2));
+wait(6.0);
+release(voices);
+</code></pre>
+<p>timingのプリセットは後の指定が優先されます。<code>flow().steady()</code>はsteady、
+<code>steady().flow()</code>はflowを選びます。音長は別軸の既存規則に従います。配置前の指定であり、
+演奏中に呼ぶ語ではありません。明示の<code>sustain()</code>との順は問わず、見送った機会では
+現在のToneを保ちます。Glide、GateSnap、Rearticulateとその境界、<code>tie</code>（省略時0）、
+<code>articulation_persistence</code>、有限音長と<code>rest</code>の併用と優先順は既存のままです。
+Glideでも音高を採用した時刻の発音候補を足しません。音高の適用方法を演奏中に替えても
+Toneを保ち、その変更だけでは発音しません。再生成では保存した方策と速さを継ぎ、
+初期位相、due、予定、演奏状態は新しく始めます。</p>
 <h2 id="director水準の地形"><a class="header" href="#director水準の地形">Director水準の地形</a></h2>
 <p>演出者は次の操作で、metricが参照する生成側の拍の地形を調整します。
-entrainedとflowの身体の速さや、反復予測の周期候補を直接指定する操作ではありません。</p>
+entrained・steady・flowの身体の速さや、反復予測の周期候補を直接指定する操作ではありません。</p>
 <ul>
 <li><code>meter_stability(value)</code> — 拍を引き込む深さ（attractor depth）を<code>[0,1]</code>で指定します。
 既定値は<code>0</code>で、中立の状態です。拍が形成されやすい度合いに加え、好みのテンポに
@@ -1078,7 +1105,7 @@ basinを置かなければ、metricの初期値は従来どおり2 Hzです。</
 <p>身体が最初に刻む周期と、音から確認された拍は区別します。metricの各Voiceは別々の
 初期位相を持ちます。音から拍を確認するまでは確信度と共有拍への結合は0で、確認後に
 聴こえた拍へ近づきます。再生成したVoiceはPopulationに保存した初期設定から始まり、
-親が演奏中に得た周期を継ぎません。entrainedとflowの固有ペース、<code>pulse(rate_hz)</code>で
+親が演奏中に得た周期を継ぎません。entrained・steady・flowの固有ペース、<code>pulse(rate_hz)</code>で
 明示した速さは、この初期化の対象外です。</p>
 <p>既定の帯域で4 Hzの等間隔の入力を最初から観測する対照では、stabilityが<code>0</code>なら
 4 Hzの拍、<code>1</code>なら2 Hzの拍の二分割として読みます。深さは駆動の強さと証拠を読む
@@ -1086,19 +1113,19 @@ basinを置かなければ、metricの初期値は従来どおり2 Hzです。</
 間隔の仮説を初めて確認するまでは確信度を0に保ちます。ただし、確認後の不規則な
 入力が偶然まとまり、一時的に確信度が上がる場合は残ります。</p>
 <h2 id="voiceごとのプリセットと調整"><a class="header" href="#voiceごとのプリセットと調整">Voiceごとのプリセットと調整</a></h2>
-<p><code>metric()</code>、<code>entrained()</code>、<code>flow()</code>は速さの引数を取りません。<code>place()</code>や<code>create()</code>より前に
+<p><code>metric()</code>、<code>entrained()</code>、<code>steady()</code>、<code>flow()</code>は速さの引数を取りません。<code>place()</code>や<code>create()</code>より前に
 PopulationSpecへ設定します。metricはbasinの中心、指定がなければ2 Hzから自走を始め、
-音から確認された拍へ近づきます。entrainedとflowは、<code>intrinsic_rate(hz)</code>を指定しなければ2 Hzの固有ペースから始まります。entrainedは周囲の反復から参加の周期を更新します。
+音から確認された拍へ近づきます。entrained・steady・flowは、<code>intrinsic_rate(hz)</code>を指定しなければ2 Hzの固有ペースから始まります。entrainedは周囲の反復から参加の周期を更新します。
 flowは不規則な間隔を作る基準を保ち、周囲の音に応じて待つ・見送る判断を続けます。
 実際の発音間隔は変わり得ますが、全Voiceが従う共通テンポや発音位置は指定しません。</p>
 <p><code>.entrained()</code>と<code>brain("entrain")</code>を混同しないでください。前者はonset timing、後者は
 Voiceの発音上の生と代謝を選びます。独立しており併用できます。</p>
 <p>Voiceごとの設定で、参加の仕方を調整できます。</p>
 <ul>
-<li><code>entrainment(strength)</code> — <code>[0,1]</code>の影響の強さ。entrainedとflowでは音から得た文脈、metricでは拍位相への引力に作用します。<code>0</code>なら固有のペースを保ちます。</li>
+<li><code>entrainment(strength)</code> — <code>[0,1]</code>の影響の強さ。entrained・steady・flowでは音から得た文脈、metricでは拍位相への引力に作用します。<code>0</code>なら固有のペースを保ちます。</li>
 <li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — metrical role。
 <code>accent</code>は共有meterを強く駆動するonsetを出し、反復downbeatからmeasureを創発できる。</li>
-<li><code>microtiming(amount)</code> — metricの目標位置を拍位相でずらします。範囲は<code>[-0.5, 0.5]</code>、<code>0.5</code>は半拍です。entrainedとflowへ固定された発音位置を割り当てる設定ではありません。</li>
+<li><code>microtiming(amount)</code> — metricの目標位置を拍位相でずらします。範囲は<code>[-0.5, 0.5]</code>、<code>0.5</code>は半拍です。entrained・steady・flowへ固定された発音位置を割り当てる設定ではありません。</li>
 <li><code>measure_accent(amount)</code> — 検出したmeasureに沿って、発音ごとの強弱を弱く変える設定です。
 範囲は<code>[0,1]</code>、既定値は<code>0</code>。強度の倍率は<code>1 + 0.35 * amount * confidence * cos(phase)</code>です。
 位相の原点は観測した強拍に合わせ、measureが未検出なら強度を変えません。
@@ -1135,11 +1162,11 @@ wait(12.0);
 <code>entrainment(0.8).metric()</code>と<code>metric().entrainment(0.8)</code>は同等です。
 <code>duration_range(...).adaptive_duration()</code>と逆順も同様です。</p>
 <h2 id="身体の固有の速さを置く"><a class="header" href="#身体の固有の速さを置く">身体の固有の速さを置く</a></h2>
-<p><code>intrinsic_rate(hz)</code>は、<code>entrained()</code>または<code>flow()</code>で初代として生成されるVoiceの
+<p><code>intrinsic_rate(hz)</code>は、<code>entrained()</code>・<code>steady()</code>・<code>flow()</code>で初代として生成されるVoiceの
 身体の尺度をHzで置きます。固有周期は<code>1/hz</code>です。発音の間隔を命じたり、共通の拍を
 置いたりする語ではありません。entrainedは聴こえた反復へ参加の周期を寄せますが、
-固有の値は生存中ずっと保ちます。flowはこの尺度から不規則な更新間隔を作ります。
-どちらも鳴らす・待つ・見送る判断を続けるため、身体の速さを違えても、実際の発音の
+固有の値は生存中ずっと保ちます。steadyは発音予定の周期も動かしません。flowはこの尺度から不規則な更新間隔を作ります。
+どの形も機会を見送れ、entrainedとflowは待つ判断もするため、身体の速さを違えても、実際の発音の
 二つの速さが永久に保たれる保証はありません。</p>
 <p><code>place()</code>または<code>create()</code>より前にPopulationSpecへ指定します。参加のプリセットとの
 前後は問いません。演奏中の変更には使えません。再生成ではPopulationのtemplateの値を
@@ -1159,7 +1186,7 @@ wait(6.0);
 release(a);
 release(b);
 </code></pre>
-<p>ここでの速さは使い方の例で、推奨値ではありません。最終の指定がentrainedまたはflowなら、
+<p>ここでの速さは使い方の例で、推奨値ではありません。最終の指定がentrained・steady・flowなら、
 有限の<code>0.01〜200 Hz</code>だけを受け入れます。範囲の外と有限でない値は、配置前のscript errorに
 なります。この範囲は実行を保護する値で、音楽的な推奨範囲ではありません。flowの更新間隔には
 別の既存の制限<code>0.035〜4秒</code>もあるため、極端な速さでは実際の間隔はrateに比例しません。
@@ -1169,8 +1196,8 @@ release(b);
 尺度は変えません。<code>proposal_interval(seconds)</code>は音高を提案する機会の間隔であり、
 発音を命じたり、身体の固有の速さを変えたりする語ではありません。</p>
 <h2 id="持続音を保ちながら参加する"><a class="header" href="#持続音を保ちながら参加する">持続音を保ちながら参加する</a></h2>
-<p><code>sustain()</code>と<code>entrained()</code>または<code>flow()</code>を両方明示すると、Voiceは音を保ちながら、
-参加の機会ごとに鳴らす・待つ・見送るを判断します。書く順には依存しません。
+<p><code>sustain()</code>と<code>entrained()</code>・<code>steady()</code>・<code>flow()</code>のいずれかを明示すると、Voiceは音を保ちながら、
+参加の機会ごとに鳴らすか見送るかを判断します。entrainedとflowは時刻を待つ判断もします。書く順には依存しません。
 <code>sustain().entrained()</code>と<code>entrained().sustain()</code>は同じ形です。
 鳴らすと選んだ時は、旧いToneを離し、そのsampleの身体の音高で新しいToneを立ち上げます。
 待つ・見送ると選んだ時は、鳴っているToneを保ちます。見送りを無音の間隙には変えません。
@@ -1182,7 +1209,7 @@ release(b);
 wait(3.0);
 release(p);
 </code></pre>
-<p>既定の<code>"glide"</code>では、新しい音高目標を採用した時に、そのsampleでの発音も、まだ決めていない合法な参加の機会へ
+<p>entrainedとflowの既定の<code>"glide"</code>では、新しい音高目標を採用した時に、そのsampleでの発音も、まだ決めていない合法な参加の機会へ
 候補として渡します。既存の時刻、音響の文脈、重なりの費用で比較し、同じ費用なら既存の
 候補を残します。既に決めた発音の予定は動かしません。採用時の発音が選ばれなければ、
 音高は滑らかに移ります。採用と時計の発音が同じsampleに重なった時は、一回だけ発音します。
@@ -1235,7 +1262,7 @@ release(p);
 <h2 id="発音の方針を保つ"><a class="header" href="#発音の方針を保つ">発音の方針を保つ</a></h2>
 <p>自由音高の持続＋参加に<code>articulation_persistence(p)</code>を添えると、Voiceが音高の採用や
 参加の機会をまたいで、発音の方針を保ちます。対象は、
-<code>sustain()</code>と<code>metric()</code>／<code>entrained()</code>／<code>flow()</code>を明示し、<code>pitch_apply_mode("rearticulate")</code>と
+<code>sustain()</code>と<code>metric()</code>／<code>entrained()</code>／<code>steady()</code>／<code>flow()</code>を明示し、<code>pitch_apply_mode("rearticulate")</code>と
 正の<code>rearticulate_above(cents)</code>を指定した形です。配置前の指定で、演奏中の
 Populationには呼べません。</p>
 <pre><code class="language-rhai">let p = place(
@@ -1272,9 +1299,9 @@ Toneが無ければ、Connectも合法な初回発音や休止後の復帰を塞
 発音や休止をまたぎますが、一音ごとに伸ばすか切るかを選ぶ働きではありません。</p>
 <h2 id="行き先がない機会では音を伸ばす"><a class="header" href="#行き先がない機会では音を伸ばす">行き先がない機会では音を伸ばす</a></h2>
 <p>持続音を参加の機会で打ち直す形に、配置前の<code>tie(p)</code>を添えられます。pは、行き先の保留が
-ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の<code>sustain()</code>と<code>metric()</code>／<code>entrained()</code>／
+ない時、いまのToneを打ち直さずに伸ばす確率です。自由音高の<code>sustain()</code>と<code>metric()</code>／<code>entrained()</code>／<code>steady()</code>／
 <code>flow()</code>に、明示のgate_snapまたはrearticulateを組み合わせる形が対象です。境界0も含みます。
-省略時は、持続＋同期では1、持続＋entrained／flowの参加では0になります。参加のVoiceは
+省略時は、持続＋同期では1、持続＋entrained／steady／flowの参加では0になります。参加のVoiceは
 費用によって機会を見送れます。明示の<code>tie(0)</code>は保留の無い機会でも打ち直し、<code>tie(1)</code>は
 対象のToneを必ず伸ばします。中間では機会ごとに両方が混ざります。固定音高とGlideは
 tieの対象外で、metricの交差ごとに打ち直します。音楽的な最適値を決めたものではありません。</p>
@@ -1328,10 +1355,10 @@ wait(8.0);
 set_scaffold_shared(2.0);
 set_scaffold_scrambled(2.0, 17);
 </code></pre>
-<p>同期が比較や実演に不可欠な場合だけ使います。entrainedとflowの参加を成立させる補助として
+<p>同期が比較や実演に不可欠な場合だけ使います。entrained・steady・flowの参加を成立させる補助として
 専用の拍打ちを追加しません。</p>
 <h2 id="身体の周期と既存の代謝制御"><a class="header" href="#身体の周期と既存の代謝制御">身体の周期と既存の代謝制御</a></h2>
-<p><code>cycles(n)</code>は、entrainedとflowでは設定された固有周期、metricでは実効的な拍周期を使います。
+<p><code>cycles(n)</code>は、entrained・steady・flowでは設定された固有周期、metricでは実効的な拍周期を使います。
 entrainedの参加周期は音響の反復へ追従しますが、保持時間とその重なり予測の音長は固有周期から求めます。
 したがって、周囲のペースが変わっても一音の保持を自動的に引き延ばしません。
 周期への追従では自分の周期内の位置を保ち、共有の発音位相を指定しません。
@@ -1360,7 +1387,7 @@ wait(2.0);
 </code></pre>
 <p>自由音高のGateSnap／Rearticulateに<code>tie(p)</code>を明示すれば、その値を使います。省略値は
 配置前に解決し、演奏中のmode切替で対象に入っている間も同じ規則が働きます。
-持続＋entrained／flowの参加は省略時0のままで、費用による見送りがあります。
+持続＋entrained／steady／flowの参加は省略時0のままで、費用による見送りがあります。
 tieの演奏中のsetterは追加しません。<code>articulation_persistence</code>は既存のBase／Connectを
 保ちますが、同期には費用による見送りも、決めた予定を待つ状態もありません。方針の提案は
 採用と発音の交差から来ます。<code>rest()</code>は明示の有限音長、実際の余韻の終了、間を組み合わせます。
@@ -1727,18 +1754,18 @@ play(callback, [args])
 <pre><code class="language-rhai ignore">brain(name)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm timing presets (<code>metric</code>/<code>entrained</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
+<p>Articulation life: <code>"entrain"</code> (default), <code>"seq"</code>, or <code>"drone"</code>. Selects how the voice lives while sounding; orthogonal to the rhythm timing presets (<code>metric</code>/<code>entrained</code>/<code>steady</code>/<code>flow</code>). <code>entrain</code> is a living articulation whose vitality responds to consonance and rhythm fit, subject to the metabolism economy. <code>seq</code> holds for a fixed lifetime, ignoring the field and metabolism. <code>drone</code> is undying, sustaining forever with a slow sway – useful as terrain material.</p>
 <h4 id="sustain"><a class="header" href="#sustain"><code>sustain</code></a></h4>
 <pre><code class="language-rhai ignore">sustain()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Sustain phonation mode (default). Explicit sustain() plus entrained() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; an adoption can offer one legal candidate with unchanged costs, otherwise it glides. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with a positive rearticulate_above boundary glides small adoptions, cancelling older pending pitch, and defers large ones to a sounded opportunity. Zero or omission matches gate_snap; clock attacks are not filtered by the boundary. Implicit WhileAlive and while_alive() alone do not enable the combination. Pulse and repeat retain their last-write-wins rule. Explicit sustain() plus metric(), in either order, keeps a live Tone and uses the existing coupling-clock integer crossings as opportunities. For free-pitch gate_snap/rearticulate, omitted tie means tie(1): beats with a pending adopted target attack, while other beats extend the living Tone. Explicit tie(0) re-attacks every legal crossing; explicit intermediate values are unchanged. Fixed pitch and glide still re-attack at each crossing. Omitted tie for sustained entrained/flow remains zero, where participation can skip opportunities by cost. No adoption-time opportunity or participation cost policy is added. The shared beat is confirmed from sound; before confirmation the clock free-runs from its existing basin-centered rate and independent phase. It does not place an external beat. Fixed pitch is supported as in sustained participation; tie and persistence remain free-pitch controls. With rest(), finite duration and sustained participation are retained independently of builder order; every sounded note releases at that duration and waits for its tails before the rest. tie(p) can extend a living Tone at pending-free gate_snap/rearticulate opportunities; it leaves pending-target attacks intact.</p>
+<p>Sustain phonation mode (default). Explicit sustain() plus entrained(), steady() or flow(), in either order, retains a Tone while the Voice considers participation. With glide (the omitted mode), clock attacks use current body pitch; entrained/flow can offer one legal adoption-time candidate with unchanged costs, otherwise it glides. Steady evaluates only its own due time and never adds an adoption-time candidate. Explicit gate_snap on free pitch holds the latest adopted target until a sounded clock opportunity, then jumps and attacks; wait/skip retains pitch and pending target, and no adoption-time candidate is offered. Rearticulate with a positive rearticulate_above boundary glides small adoptions, cancelling older pending pitch, and defers large ones to a sounded opportunity. Zero or omission matches gate_snap; clock attacks are not filtered by the boundary. Implicit WhileAlive and while_alive() alone do not enable the combination. Pulse and repeat retain their last-write-wins rule. Explicit sustain() plus metric(), in either order, keeps a live Tone and uses the existing coupling-clock integer crossings as opportunities. For free-pitch gate_snap/rearticulate, omitted tie means tie(1): beats with a pending adopted target attack, while other beats extend the living Tone. Explicit tie(0) re-attacks every legal crossing; explicit intermediate values are unchanged. Fixed pitch and glide still re-attack at each crossing. Omitted tie for sustained entrained/steady/flow remains zero, where participation can skip opportunities by cost. No adoption-time opportunity or participation cost policy is added. The shared beat is confirmed from sound; before confirmation the clock free-runs from its existing basin-centered rate and independent phase. It does not place an external beat. Fixed pitch is supported as in sustained participation; tie and persistence remain free-pitch controls. With rest(), finite duration and sustained participation are retained independently of builder order; every sounded note releases at that duration and waits for its tails before the rest. tie(p) can extend a living Tone at pending-free gate_snap/rearticulate opportunities; it leaves pending-target attacks intact.</p>
 <h4 id="rest"><a class="header" href="#rest"><code>rest</code></a></h4>
 <pre><code class="language-rhai ignore">rest()
 rest(periods)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Release each finite participation note, then leave a rest after all its tails finish. Requires explicit sustain() plus metric(), entrained() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. For entrained/flow, intrinsic_rate(hz) changes this period and therefore the rest in seconds, independently of cadence adaptation; metric retains its existing basin-centered intrinsic rate and ignores intrinsic_rate. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits sounding again but never forces an onset. Participation costs/candidates/skip are unchanged; metric keeps advancing its crossings during the gap and never replays suppressed ones. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Rearticulate processes adoptions during tails and rest: small ones cancel pending pitch and glide the body, large ones defer the latest target, using the last actual onset as reference until the next sounded opportunity. Released tails never move. Missing finite duration and other timing forms fail at final placement before writes; all three pitch application modes are available; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note. tie(p) cannot block a legal onset without a Tone after the gap, and never delays finite Off or tail completion.</p>
+<p>Release each finite participation note, then leave a rest after all its tails finish. Requires explicit sustain() plus metric(), entrained(), steady() or flow(), and an explicit finite duration from cycles() or adaptive_duration(). These choices are retained independently of builder order. The normal Off releases the note without cutting its tails. After every Tone of the same source ID and generation has actually finished, wait periods times the intrinsic bodily period measured at that completion; rest() uses one period. For entrained/steady/flow, intrinsic_rate(hz) changes this period and therefore the rest in seconds, independently of cadence adaptation; metric retains its existing basin-centered intrinsic rate and ignores intrinsic_rate. With a known period, rest(0) waits only for tail completion. Unknown periods and unfinished tails keep waiting, without a fallback or timeout. Finite nonnegative periods have no upper cap; negative or nonfinite values sanitize to zero. Expiry permits sounding again but never forces an onset. Participation costs/candidates/skip are unchanged; metric keeps advancing its crossings during the gap and never replays suppressed ones. GateSnap retains the latest adopted target through sounding, tails and rest, consuming it at the next sounded opportunity. Glide does not update released tails. Rearticulate processes adoptions during tails and rest: small ones cancel pending pitch and glide the body, large ones defer the latest target, using the last actual onset as reference until the next sounded opportunity. Released tails never move. Missing finite duration and other timing forms fail at final placement before writes; all three pitch application modes are available; explicit while_alive() clears finite intent. Initial-only, like cycles() and duration_range(). Replacement Voices inherit controls, starting with fresh performance state. Without rest(), existing behavior is unchanged. Every note in this form has a finite end; it does not select sustain versus release per note. tie(p) cannot block a legal onset without a Tone after the gap, and never delays finite Off or tail completion.</p>
 <h4 id="repeat"><a class="header" href="#repeat"><code>repeat</code></a></h4>
 <pre><code class="language-rhai ignore">repeat()
 </code></pre>
@@ -1748,27 +1775,32 @@ rest(periods)
 <pre><code class="language-rhai ignore">metric()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>High coupling to the shared emergent meter: deep attractor, stable pulse. Takes no rate argument. With <code>temporal_basin</code>, its intrinsic starting rate is the sanitized band center; without a basin it is 2 Hz. This initial rate is independent of <code>meter_stability</code>. Every metric Population created by <code>place</code> or <code>create</code> reads the scene’s final basin, including calls after <code>wait</code>; repeated basin declarations use the last value, not timed changes. Initial phases remain independent. Attraction follows positive confidence in a beat confirmed from sound; the starting rate is not a confirmed beat. Respawn uses the Population template, not the parent’s current clock rate. <code>entrained</code>, <code>flow</code>, and explicit <code>pulse(rate_hz)</code> are outside this initialization rule. Explicit sustain() plus metric(), in either builder order, retains a Tone and uses every coupling-clock integer crossing as a sounding opportunity. For free-pitch gate_snap/rearticulate, omitted tie means tie(1): beats with a pending adopted target attack, while other beats extend the living Tone. Explicit tie(0) re-attacks every legal crossing; explicit intermediate values are unchanged. Fixed pitch and glide still re-attack at each crossing. Omitted tie for sustained entrained/flow remains zero, where participation can skip opportunities by cost. Glide, deferred pitch, movement boundary, persistence and finite-duration rest share the sustained articulation resolver. Synchronization has no participation cost skip or planned waiting. Before acoustic beat confirmation it free-runs; this preset does not place a beat from outside.</p>
+<p>High coupling to the shared emergent meter: deep attractor, stable pulse. Takes no rate argument. With <code>temporal_basin</code>, its intrinsic starting rate is the sanitized band center; without a basin it is 2 Hz. This initial rate is independent of <code>meter_stability</code>. Every metric Population created by <code>place</code> or <code>create</code> reads the scene’s final basin, including calls after <code>wait</code>; repeated basin declarations use the last value, not timed changes. Initial phases remain independent. Attraction follows positive confidence in a beat confirmed from sound; the starting rate is not a confirmed beat. Respawn uses the Population template, not the parent’s current clock rate. <code>entrained</code>, <code>steady</code>, <code>flow</code>, and explicit <code>pulse(rate_hz)</code> are outside this initialization rule. Explicit sustain() plus metric(), in either builder order, retains a Tone and uses every coupling-clock integer crossing as a sounding opportunity. For free-pitch gate_snap/rearticulate, omitted tie means tie(1): beats with a pending adopted target attack, while other beats extend the living Tone. Explicit tie(0) re-attacks every legal crossing; explicit intermediate values are unchanged. Fixed pitch and glide still re-attack at each crossing. Omitted tie for sustained entrained/steady/flow remains zero, where participation can skip opportunities by cost. Glide, deferred pitch, movement boundary, persistence and finite-duration rest share the sustained articulation resolver. Synchronization has no participation cost skip or planned waiting. Before acoustic beat confirmation it free-runs; this preset does not place a beat from outside.</p>
 <h4 id="entrained"><a class="header" href="#entrained"><code>entrained</code></a></h4>
 <pre><code class="language-rhai ignore">entrained()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. The intrinsic bodily rate defaults to 2 Hz; intrinsic_rate(hz) sets its creation value. Cadence adapts without changing that intrinsic scale. Musical acceptance of this timing policy remains under evaluation. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch by default; explicit gate_snap/rearticulate may use tie(p) to extend a living Tone without pending pitch. Waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<p>Bodily pacing with remembered acoustic context and predicted overlap avoidance. Uses past habitat audio and its own rendered sound; it does not target a shared beat phase. Relations are learned from emitted onsets. Unlike steady(), this preset can adapt its participation period and compare alternative onset times. The intrinsic bodily rate defaults to 2 Hz; intrinsic_rate(hz) sets its creation value. Cadence adapts without changing that intrinsic scale. Musical acceptance of this timing policy remains under evaluation. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch by default; explicit gate_snap/rearticulate may use tie(p) to extend a living Tone without pending pitch. Waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<h4 id="steady"><a class="header" href="#steady"><code>steady</code></a></h4>
+<pre><code class="language-rhai ignore">steady()
+</code></pre>
+<p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
+<p>Keep private bodily opportunities; acoustic context chooses only sound or skip. A separate non-flow participation preset. It keeps its intrinsic period fixed and evaluates only its own due time, without adapting or moving that time toward another Voice or a shared beat. Heard acoustic context and executed-onset memory affect only whether an opportunity sounds or is skipped; pitch and the number of onsets are not guaranteed. The omitted coupling is 0.5, as for entrained(); entrainment(strength) keeps the same acoustic-context meaning. intrinsic_rate(hz) sets the creation pace, otherwise 2 Hz. No cost term or weight is changed. The current arrival cost is excluded from the skip test, so with one candidate it cannot change sound versus skip. Timing presets follow the existing last-preset-wins rule. With sustain(), in either builder order, the first On remains immediate and a skipped opportunity keeps the ongoing Tone. GateSnap, Glide, Rearticulate, rearticulate_above, tie (omitted 0), articulation_persistence, finite duration and rest retain the participation contracts. Replacement Voices inherit the Population template’s policy and start with fresh phase, due, plans and memory.</p>
 <h4 id="flow"><a class="header" href="#flow"><code>flow</code></a></h4>
 <pre><code class="language-rhai ignore">flow()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. Unlike entrained(), it does not adapt that scale to an observed recurrence. intrinsic_rate(hz) sets its creation value, otherwise 2 Hz. Hold lengths also use the intrinsic period. Renewal intervals retain their existing 0.035..=4 second limits, so extreme rates do not produce proportionally scaled intervals. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch by default; explicit gate_snap/rearticulate may use tie(p) to extend a living Tone without pending pitch. Waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
+<p>Clustered bodily renewal with weak acoustic participation, for non-metric texture. Keeps its intrinsic renewal scale while using acoustic context to wait or omit events. This is a separate irregular preset, not steady() with renewal added. Unlike entrained(), it does not adapt that scale to an observed recurrence. intrinsic_rate(hz) sets its creation value, otherwise 2 Hz. Hold lengths also use the intrinsic period. Renewal intervals retain their existing 0.035..=4 second limits, so extreme rates do not produce proportionally scaled intervals. With explicit sustain(), in either builder order, sounding re-attacks the current body pitch by default; explicit gate_snap/rearticulate may use tie(p) to extend a living Tone without pending pitch. Waiting or skipping retains the ongoing Tone. Omitted pitch application resolves to glide. With rest(), an explicit finite duration ends each note before the tail-completion rest. Without explicit sustain(), finite gated phonation is unchanged.</p>
 <h4 id="intrinsic_rate"><a class="header" href="#intrinsic_rate"><code>intrinsic_rate</code></a></h4>
 <pre><code class="language-rhai ignore">intrinsic_rate(hz)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Set the intrinsic bodily rate at creation for entrained()/flow(), in Hz. Sets the Population’s founder Voices’ bodily scale, not an onset-interval command or a shared beat. The intrinsic period is 1/hz and remains fixed during life; entrained() adapts its participation period to heard recurrence, while flow() retains an irregular renewal scale. Sounding, waiting and omission still use the existing policy. This same bodily period sets cycles(), duration_range(), rest(periods) and the representative hold used for overlap prediction, so note lengths and rests in seconds change together; flow retains its threefold hold multiplier. Omission preserves the existing 2 Hz path. Initial-only: put it before place() or create(), in either order with entrained()/flow(). Replacements read the Population template and start with fresh phase, due, plan and policy state; they do not inherit a parent’s adapted period. On the final entrained()/flow() specification, nonfinite values or values outside 0.01..=200 Hz are script errors before placement. These are execution protection limits, not a musically recommended range. Other final timing forms, including metric(), pulse(), repeat() and once(), warn and ignore the modifier even if its value is invalid. Flow renewal intervals separately retain their existing 0.035..=4 second limits, so extreme rates do not imply proportionally scaled onset intervals. Distinct from rhythm_freq(), the Entrain articulation core oscillator, and proposal_interval(), the pitch proposal interval.</p>
+<p>Set the intrinsic bodily rate at creation for entrained()/steady()/flow(), in Hz. Sets the Population’s founder Voices’ bodily scale, not an onset-interval command or a shared beat. The intrinsic period is 1/hz and remains fixed during life; entrained() adapts its participation period to heard recurrence, steady() keeps fixed private opportunities, and flow() retains an irregular renewal scale. Sounding, waiting and omission still use the existing policy. This same bodily period sets cycles(), duration_range(), rest(periods) and the representative hold used for overlap prediction, so note lengths and rests in seconds change together; flow retains its threefold hold multiplier. Omission preserves the existing 2 Hz path. Initial-only: put it before place() or create(), in either order with entrained()/steady()/flow(). Replacements read the Population template and start with fresh phase, due, plan and policy state; they do not inherit a parent’s adapted period. On the final entrained()/steady()/flow() specification, nonfinite values or values outside 0.01..=200 Hz are script errors before placement. These are execution protection limits, not a musically recommended range. Other final timing forms, including metric(), pulse(), repeat() and once(), warn and ignore the modifier even if its value is invalid. Flow renewal intervals separately retain their existing 0.035..=4 second limits, so extreme rates do not imply proportionally scaled onset intervals. Distinct from rhythm_freq(), the Entrain articulation core oscillator, and proposal_interval(), the pitch proposal interval.</p>
 <h4 id="entrainment"><a class="header" href="#entrainment"><code>entrainment</code></a></h4>
 <pre><code class="language-rhai ignore">entrainment(strength)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric. Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent.</p>
+<p>Influence in 0-1: acoustic context for entrained/steady/flow, beat-phase attraction for metric. Order-independent with presets: <code>entrainment(0.8).metric()</code> and <code>metric().entrainment(0.8)</code> are equivalent. For steady(), this controls sound-or-skip costs without adapting the period or moving the due time; its omitted value is the same 0.5 as entrained().</p>
 <h4 id="rhythm_role"><a class="header" href="#rhythm_role"><code>rhythm_role</code></a></h4>
 <pre><code class="language-rhai ignore">rhythm_role(name)
 </code></pre>
@@ -1778,27 +1810,27 @@ rest(periods)
 <pre><code class="language-rhai ignore">measure_accent(amount)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Weak onset emphasis following the emergent measure, amount 0-1 (default 0). Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/flow presets.</p>
+<p>Weak onset emphasis following the emergent measure, amount 0-1 (default 0). Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/steady/flow presets.</p>
 <h4 id="microtiming"><a class="header" href="#microtiming"><code>microtiming</code></a></h4>
 <pre><code class="language-rhai ignore">microtiming(amount)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Signed beat-phase offset for metric timing, in -0.5..0.5. A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/flow participants at fixed offsets.</p>
+<p>Signed beat-phase offset for metric timing, in -0.5..0.5. A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/steady/flow participants at fixed offsets.</p>
 <h4 id="cycles"><a class="header" href="#cycles"><code>cycles</code></a></h4>
 <pre><code class="language-rhai ignore">cycles(n)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Duration of n rhythm cycles. For entrained/flow, duration uses the intrinsic bodily period set by intrinsic_rate(hz), or 2 Hz when omitted, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier. With rest(), this finite duration is retained independently of sustain() and the participation preset, and each sounded note releases at its scheduled end.</p>
+<p>Duration of n rhythm cycles. For entrained/steady/flow, duration uses the intrinsic bodily period set by intrinsic_rate(hz), or 2 Hz when omitted, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier. With rest(), this finite duration is retained independently of sustain() and the participation preset, and each sounded note releases at its scheduled end.</p>
 <h4 id="tie"><a class="header" href="#tie"><code>tie</code></a></h4>
 <pre><code class="language-rhai ignore">tie(p)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Extend a living Tone with probability p at an opportunity without pending pitch. The sustained metric combination uses shared-beat crossings, including crossings without adoptions; before acoustic confirmation it free-runs. Unlike participation, synchronization has no cost skip or committed plan. Initial-only composer parameter for free-pitch sustain() plus metric()/entrained()/flow() with gate_snap or rearticulate, including a zero boundary. At execution of a selected legal opportunity, pending pitch attacks as before; without pending pitch, a living Tone extends with probability p and re-attacks current body pitch with 1-p. No living Tone means a legal initial or post-rest onset is never withheld. Omission resolves before placement to one for free-pitch sustained metric and zero for sustained entrained/flow, independent of builder order at place/create. Explicit zero bypasses tie state and random draws; one always extends eligible Tones without drawing. Fixed pitch and glide still re-attack at each metric crossing. The omitted metric probability is retained while glide suspends its use, so entering gate_snap/rearticulate live applies the same default without a new setter. Intermediate values use a dedicated individual random stream, once per eligible executed opportunity, not waiting hops; existing pitch, participation, body and articulation_persistence streams are untouched. Extension creates no new Tone, onset metabolism or onset-context learning, and consumes the opportunity without cost-skip learning or later replay. Small boundary-limited glides are eligible too: pending-free does not mean exactly equal pitch. GateSnap retains small and zero-distance adoptions as pending, so those still attack. This is not an overall legato amount: attacks become a thinned opportunity sequence; choices are per opportunity, not phrases or heard boundaries. With articulation_persistence, Connect vetoes first without a tie draw, while Base applies tie only without pending pitch; extension does not change the policy or its proposals. Finite Off, rest, tails/gaps, release, death and removal take priority. Live glide suspends tie; returning to an applicable mode resumes it, without an attack from switching alone. Finite inputs clamp to 0..1; positive infinity becomes one, negative infinity and NaN become zero. Unsupported explicit tie settings warn and ignore the modifier; omission emits no ignored-tie warning. Resolution is independent of builder order at place/create. Replacements inherit the template probability, not the parent’s RNG position, pending target or actual-onset memory. There is no live tie setter or alias. Example intermediate values illustrate composition, not recommended settings.</p>
+<p>Extend a living Tone with probability p at an opportunity without pending pitch. The sustained metric combination uses shared-beat crossings, including crossings without adoptions; before acoustic confirmation it free-runs. Unlike participation, synchronization has no cost skip or committed plan. Initial-only composer parameter for free-pitch sustain() plus metric()/entrained()/steady()/flow() with gate_snap or rearticulate, including a zero boundary. At execution of a selected legal opportunity, pending pitch attacks as before; without pending pitch, a living Tone extends with probability p and re-attacks current body pitch with 1-p. No living Tone means a legal initial or post-rest onset is never withheld. Omission resolves before placement to one for free-pitch sustained metric and zero for sustained entrained/steady/flow, independent of builder order at place/create. Explicit zero bypasses tie state and random draws; one always extends eligible Tones without drawing. Fixed pitch and glide still re-attack at each metric crossing. The omitted metric probability is retained while glide suspends its use, so entering gate_snap/rearticulate live applies the same default without a new setter. Intermediate values use a dedicated individual random stream, once per eligible executed opportunity, not waiting hops; existing pitch, participation, body and articulation_persistence streams are untouched. Extension creates no new Tone, onset metabolism or onset-context learning, and consumes the opportunity without cost-skip learning or later replay. Small boundary-limited glides are eligible too: pending-free does not mean exactly equal pitch. GateSnap retains small and zero-distance adoptions as pending, so those still attack. This is not an overall legato amount: attacks become a thinned opportunity sequence; choices are per opportunity, not phrases or heard boundaries. With articulation_persistence, Connect vetoes first without a tie draw, while Base applies tie only without pending pitch; extension does not change the policy or its proposals. Finite Off, rest, tails/gaps, release, death and removal take priority. Live glide suspends tie; returning to an applicable mode resumes it, without an attack from switching alone. Finite inputs clamp to 0..1; positive infinity becomes one, negative infinity and NaN become zero. Unsupported explicit tie settings warn and ignore the modifier; omission emits no ignored-tie warning. Resolution is independent of builder order at place/create. Replacements inherit the template probability, not the parent’s RNG position, pending target or actual-onset memory. There is no live tie setter or alias. Example intermediate values illustrate composition, not recommended settings.</p>
 <h4 id="articulation_persistence"><a class="header" href="#articulation_persistence"><code>articulation_persistence</code></a></h4>
 <pre><code class="language-rhai ignore">articulation_persistence(p)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Retain a Voice’s private articulation policy across pitch adoptions and sustained clock opportunities. The sustained metric combination uses shared-beat crossings, including crossings without adoptions; before acoustic confirmation it free-runs. Unlike participation, synchronization has no cost skip or committed plan. Initial-only, for free-pitch sustain() plus metric()/entrained()/flow(), rearticulate and a positive rearticulate_above boundary. The private policy starts in Base (the existing boundary and participation behavior); Connect glides all adoptions while a Tone lives and intentionally withholds sounded opportunities to extend it. Small adoptions and participation cost skips propose Connect; large adoptions and newly selected sounded opportunities propose Base. For 0 &lt; p &lt; 1, only an opposing proposal draws from a dedicated individual random stream: retain with probability p, switch with 1-p. A planned opportunity freezes its decision until execution; waiting hops do not draw again. Entering Connect cancels pending pitch but retains the last actual onset; cancelled adoptions never replay. Intentional withholding is distinct from cost skip and creates no Tone, onset metabolism or onset-context learning. Rest, finite Off, tails/gaps and lifecycle constraints take priority; Connect cannot block a legal onset when no Tone lives. Zero (the default) and one bypass the private state and RNG and retain the existing path. Finite values clamp to 0..1, positive infinity becomes one, negative infinity and NaN become zero. Unsupported final specs warn and ignore the value, independent of builder order. Replacements inherit the template parameter, not policy, RNG, pending decisions or last-onset memory, and start in Base. Live mode changes reset Base; the same mode and boundary-only changes retain the policy. A zero boundary suspends the private path. This is policy inertia, not a legato proportion: increasing p need not monotonically increase Connect time or reduce attacks. Retention is measured in existing events, not seconds or beats, and is not tied to heard cadence, contour, rests or phrase boundaries. Example values are comparisons, not recommendations. With tie(p), Connect vetoes first without a tie trial; Base uses tie only without pending pitch. Tie never changes policy proposals or retention.</p>
+<p>Retain a Voice’s private articulation policy across pitch adoptions and sustained clock opportunities. The sustained metric combination uses shared-beat crossings, including crossings without adoptions; before acoustic confirmation it free-runs. Unlike participation, synchronization has no cost skip or committed plan. Initial-only, for free-pitch sustain() plus metric()/entrained()/steady()/flow(), rearticulate and a positive rearticulate_above boundary. The private policy starts in Base (the existing boundary and participation behavior); Connect glides all adoptions while a Tone lives and intentionally withholds sounded opportunities to extend it. Small adoptions and participation cost skips propose Connect; large adoptions and newly selected sounded opportunities propose Base. For 0 &lt; p &lt; 1, only an opposing proposal draws from a dedicated individual random stream: retain with probability p, switch with 1-p. A planned opportunity freezes its decision until execution; waiting hops do not draw again. Entering Connect cancels pending pitch but retains the last actual onset; cancelled adoptions never replay. Intentional withholding is distinct from cost skip and creates no Tone, onset metabolism or onset-context learning. Rest, finite Off, tails/gaps and lifecycle constraints take priority; Connect cannot block a legal onset when no Tone lives. Zero (the default) and one bypass the private state and RNG and retain the existing path. Finite values clamp to 0..1, positive infinity becomes one, negative infinity and NaN become zero. Unsupported final specs warn and ignore the value, independent of builder order. Replacements inherit the template parameter, not policy, RNG, pending decisions or last-onset memory, and start in Base. Live mode changes reset Base; the same mode and boundary-only changes retain the policy. A zero boundary suspends the private path. This is policy inertia, not a legato proportion: increasing p need not monotonically increase Connect time or reduce attacks. Retention is measured in existing events, not seconds or beats, and is not tied to heard cadence, contour, rests or phrase boundaries. Example values are comparisons, not recommendations. With tie(p), Connect vetoes first without a tie trial; Base uses tie only without pending pitch. Tie never changes policy proposals or retention.</p>
 <h3 id="pitch-movement"><a class="header" href="#pitch-movement">Pitch Movement</a></h3>
 <p>VoiceがConsonance Field内をどう移動するかを決める。<code>seek_consonance()</code>、<code>glide()</code>、<code>temperature()</code>が基本の作曲用APIで、残りは山登り探索とpeak samplerを調整する。</p>
 <h4 id="anchor"><a class="header" href="#anchor"><code>anchor</code></a></h4>
@@ -1810,7 +1842,7 @@ rest(periods)
 <pre><code class="language-rhai ignore">seek_consonance()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Free hill-climb movement toward better field positions, with glide defaults. With this explicit intent and a final free pitch mode, <code>at(hz)</code> sets only the initial position. A later <code>freq()</code> or <code>anchor()</code> restores the lock; calling <code>seek_consonance()</code> after either restores movement. How pitch decisions land is resolved at placement unless <code>pitch_apply_mode()</code> was called: sustained voices glide, re-attacking voices (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>flow()</code>) snap at onsets.</p>
+<p>Free hill-climb movement toward better field positions, with glide defaults. With this explicit intent and a final free pitch mode, <code>at(hz)</code> sets only the initial position. A later <code>freq()</code> or <code>anchor()</code> restores the lock; calling <code>seek_consonance()</code> after either restores movement. How pitch decisions land is resolved at placement unless <code>pitch_apply_mode()</code> was called: sustained voices glide, re-attacking voices (<code>pulse()</code>, <code>metric()</code>, <code>entrained()</code>, <code>steady()</code>, <code>flow()</code>) snap at onsets.</p>
 <h4 id="glide"><a class="header" href="#glide"><code>glide</code></a></h4>
 <pre><code class="language-rhai ignore">glide(tau_sec)
 </code></pre>
@@ -1820,7 +1852,7 @@ rest(periods)
 <pre><code class="language-rhai ignore">rearticulate_above(cents)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
-<p>Choose sliding or rearticulation by distance from the last sounded onset pitch. For free-pitch Hold without coupled opportunities, a positive boundary measures net displacement from the last actual ToneSpec onset to the adopted target: strictly above attacks, at or below glides with glide(tau). Selection persists until the next adoption. Earlier legal onsets in the same output hop provide the reference; cancelled requests do not replace the last actual onset. Exact Log2Space centers use bin-distance in cents, otherwise continuous log2 distance is used without rounding or epsilon. Without sustained coupled timing, zero retains every-adoption rearticulation. With explicit sustain plus metric/entrained/flow, a small adoption cancels older pending pitch and glides immediately; a large adoption stops the glide, holds body pitch and defers one latest target to the next sounded opportunity. At a sounded opportunity without pending pitch, explicit tie(0) attacks at current body pitch; omission extends in free-pitch sustained metric and retains attacks in entrained/flow. Other tie(p) values may extend its living Tone; either attack updates the reference. Waiting/skipping retain sound and pending pitch while existing glides continue. Zero or omission matches GateSnap, including zero-distance adoptions. The boundary does not suppress clock attacks and adds no adoption-time candidate. Negative or nonfinite values become zero; no upper limit is imposed. A live boundary change emits no attack and applies at the next adoption. Outside rearticulate, a call warns and is ignored. Builder order is independent at placement; replacement Voices inherit the boundary but not the onset-pitch memory. The composer chooses the boundary; 50 or 100 cents are examples, not recommendations. Initial-only articulation_persistence(p) can retain a private Base/Connect policy within the positive-boundary sustained-participation form; the boundary alone never suppresses clock attacks.</p>
+<p>Choose sliding or rearticulation by distance from the last sounded onset pitch. For free-pitch Hold without coupled opportunities, a positive boundary measures net displacement from the last actual ToneSpec onset to the adopted target: strictly above attacks, at or below glides with glide(tau). Selection persists until the next adoption. Earlier legal onsets in the same output hop provide the reference; cancelled requests do not replace the last actual onset. Exact Log2Space centers use bin-distance in cents, otherwise continuous log2 distance is used without rounding or epsilon. Without sustained coupled timing, zero retains every-adoption rearticulation. With explicit sustain plus metric/entrained/steady/flow, a small adoption cancels older pending pitch and glides immediately; a large adoption stops the glide, holds body pitch and defers one latest target to the next sounded opportunity. At a sounded opportunity without pending pitch, explicit tie(0) attacks at current body pitch; omission extends in free-pitch sustained metric and retains attacks in entrained/steady/flow. Other tie(p) values may extend its living Tone; either attack updates the reference. Waiting/skipping retain sound and pending pitch while existing glides continue. Zero or omission matches GateSnap, including zero-distance adoptions. The boundary does not suppress clock attacks and adds no adoption-time candidate. Negative or nonfinite values become zero; no upper limit is imposed. A live boundary change emits no attack and applies at the next adoption. Outside rearticulate, a call warns and is ignored. Builder order is independent at placement; replacement Voices inherit the boundary but not the onset-pitch memory. The composer chooses the boundary; 50 or 100 cents are examples, not recommendations. Initial-only articulation_persistence(p) can retain a private Base/Connect policy within the positive-boundary sustained-participation form; the boundary alone never suppresses clock attacks.</p>
 <h4 id="temperature"><a class="header" href="#temperature"><code>temperature</code></a></h4>
 <pre><code class="language-rhai ignore">temperature(value)
 </code></pre>
@@ -2019,7 +2051,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">adaptive_duration()
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.</p>
+<p>Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.</p>
 <h4 id="pulse_lock"><a class="header" href="#pulse_lock"><code>pulse_lock</code></a></h4>
 <pre><code class="language-rhai ignore">pulse_lock(depth)
 </code></pre>
@@ -2029,12 +2061,12 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">social(coupling)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Social coupling for <code>entrained()</code> or <code>pulse()</code>, in 0-1.</p>
+<p>Social coupling for participation or <code>pulse()</code>, in 0-1.</p>
 <h4 id="duration_range"><a class="header" href="#duration_range"><code>duration_range</code></a></h4>
 <pre><code class="language-rhai ignore">duration_range(min_cycles, max_cycles)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). For entrained()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().</p>
+<p>Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().</p>
 <h4 id="duration_curve"><a class="header" href="#duration_curve"><code>duration_curve</code></a></h4>
 <pre><code class="language-rhai ignore">duration_curve(k, x0)
 </code></pre>
@@ -2049,7 +2081,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">rhythm_freq(freq_hz)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>のみ。 初期設定専用：<code>place()</code>より前に<code>PopulationSpec</code>へ設定する。</p>
-<p>Internal theta/rhythm oscillator frequency. Sets the Entrain articulation core oscillator; it does not set the entrained()/flow() participation scale. Use intrinsic_rate(hz) for that bodily rate. This control’s existing meaning is unchanged.</p>
+<p>Internal theta/rhythm oscillator frequency. Sets the Entrain articulation core oscillator; it does not set the entrained()/steady()/flow() participation scale. Use intrinsic_rate(hz) for that bodily rate. This control’s existing meaning is unchanged.</p>
 <h4 id="rhythm_coupling_vitality"><a class="header" href="#rhythm_coupling_vitality"><code>rhythm_coupling_vitality</code></a></h4>
 <pre><code class="language-rhai ignore">rhythm_coupling_vitality(lambda_v, v_floor)
 </code></pre>
@@ -2070,7 +2102,7 @@ avoid_neighbors(strength, sigma_cents)
 <pre><code class="language-rhai ignore">pitch_apply_mode(name)
 </code></pre>
 <p>適用対象：<code>PopulationSpec</code>と<code>Population</code>。 実行中に更新可能：<code>Population</code>内で鳴っているVoiceを更新する。</p>
-<p><code>"gate_snap"</code>, <code>"glide"</code> or <code>"rearticulate"</code>: choose how adopted pitch targets are applied. The sustained metric combination uses shared-beat crossings, including crossings without adoptions; before acoustic confirmation it free-runs. Unlike participation, synchronization has no cost skip or committed plan. Choose gate_snap, glide or rearticulate. Without an explicit call, moving sustained voices resolve to glide and Gated voices to gate_snap. Free-pitch Hold without coupled opportunities rearticulate couples each changed adopted target to an attack at its sample, releasing the old Tone; a positive rearticulate_above(cents) instead glides at or below the distance boundary from the last actual onset. Rejected or unchanged targets and proposal-free updates cause no attack. Glide(tau) controls sliding, including below that boundary. With explicit sustain() plus metric()/entrained()/flow(), the omitted mode is glide: clock attacks use current body pitch and unselected movement glides. Explicit gate_snap on free pitch holds one latest adopted target for the next sounded opportunity, jumps there and attacks; wait/skip retains pitch and pending state, and no extra adoption-time candidate is offered. Without a pending target the clock re-attacks the current pitch unless tie(p) extends the living Tone. With explicit sustained participation, rearticulate measures each adopted target from the last actual onset using the current Log2Space: at or below a positive boundary it cancels old pending pitch and glides immediately; above it, it stops the glide and holds one latest target for the next sounded opportunity. Without pending pitch, omitted tie extends the living Tone in sustained metric; sustained entrained/flow keeps omission at zero. Explicit tie(0) re-attacks current body pitch, while other explicit values retain their probability. Fixed pitch and glide still re-attack each metric crossing, and the omission default applies whenever a live mode switch enters the eligible range. Every actual attack updates onset memory. Same-sample adoption precedes opportunity; no adoption-time candidate is added. Zero or omission matches gate_snap. Hold without coupled opportunities attacks at adoption; sustained participation attacks only at sounded opportunities. Rest retains this adoption policy through tails and gaps without retuning released tails. Live three-mode changes preserve the Tone, emit no attack and cancel unrendered requests, pending attacks and selected glides. Boundary changes preserve the selected behavior until the next adoption. Returning to glide follows the controller’s retained target at the next control update; gate_snap and rearticulate wait for later adoptions. Repeating the same mode retains pending state. Replacement Voices inherit controls, not performance state. Initial-only articulation_persistence(p) adds initial-only policy retention within positive-boundary sustained participation; actual live mode changes reset it to Base, while the same mode and boundary-only updates retain it. Anchored Voices remain locked. Free-pitch Gated rearticulate remains a script error at final placement and before live writes, independent of builder order; use Hold with sustain(), including explicit sustain plus metric/entrained/flow, or choose glide/gate_snap for Gated phonation.</p>
+<p><code>"gate_snap"</code>, <code>"glide"</code> or <code>"rearticulate"</code>: choose how adopted pitch targets are applied. The sustained metric combination uses shared-beat crossings, including crossings without adoptions; before acoustic confirmation it free-runs. Unlike participation, synchronization has no cost skip or committed plan. Choose gate_snap, glide or rearticulate. Without an explicit call, moving sustained voices resolve to glide and Gated voices to gate_snap. Free-pitch Hold without coupled opportunities rearticulate couples each changed adopted target to an attack at its sample, releasing the old Tone; a positive rearticulate_above(cents) instead glides at or below the distance boundary from the last actual onset. Rejected or unchanged targets and proposal-free updates cause no attack. Glide(tau) controls sliding, including below that boundary. With explicit sustain() plus metric()/entrained()/steady()/flow(), the omitted mode is glide: clock attacks use current body pitch and unselected movement glides. Explicit gate_snap on free pitch holds one latest adopted target for the next sounded opportunity, jumps there and attacks; wait/skip retains pitch and pending state, and no extra adoption-time candidate is offered. Without a pending target the clock re-attacks the current pitch unless tie(p) extends the living Tone. With explicit sustained participation, rearticulate measures each adopted target from the last actual onset using the current Log2Space: at or below a positive boundary it cancels old pending pitch and glides immediately; above it, it stops the glide and holds one latest target for the next sounded opportunity. Without pending pitch, omitted tie extends the living Tone in sustained metric; sustained entrained/steady/flow keeps omission at zero. Explicit tie(0) re-attacks current body pitch, while other explicit values retain their probability. Fixed pitch and glide still re-attack each metric crossing, and the omission default applies whenever a live mode switch enters the eligible range. Every actual attack updates onset memory. Same-sample adoption precedes opportunity; no adoption-time candidate is added. Zero or omission matches gate_snap. Hold without coupled opportunities attacks at adoption; sustained participation attacks only at sounded opportunities. Rest retains this adoption policy through tails and gaps without retuning released tails. Live three-mode changes preserve the Tone, emit no attack and cancel unrendered requests, pending attacks and selected glides. Boundary changes preserve the selected behavior until the next adoption. Returning to glide follows the controller’s retained target at the next control update; gate_snap and rearticulate wait for later adoptions. Repeating the same mode retains pending state. Replacement Voices inherit controls, not performance state. Initial-only articulation_persistence(p) adds initial-only policy retention within positive-boundary sustained participation; actual live mode changes reset it to Base, while the same mode and boundary-only updates retain it. Anchored Voices remain locked. Free-pitch Gated rearticulate remains a script error at final placement and before live writes, independent of builder order; use Hold with sustain(), including explicit sustain plus metric/entrained/steady/flow, or choose glide/gate_snap for Gated phonation.</p>
 <h4 id="landscape_weight"><a class="header" href="#landscape_weight"><code>landscape_weight</code></a></h4>
 <pre><code class="language-rhai ignore">landscape_weight(value)
 </code></pre>

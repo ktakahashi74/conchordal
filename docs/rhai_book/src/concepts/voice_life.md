@@ -75,7 +75,7 @@ prevents one musical decision from being mistaken for another.
 |---|---|---|
 | What sounds? | `sine`, `harmonic`, `modal`, `brightness`, `modes` | The founder Voice body and spectrum. |
 | What kind of life? | `brain(name)`: `entrain`, `seq`, `drone` | Whether articulation participates in ecology, follows an authored life, or persists as terrain. |
-| When does it sound? | `sustain`, `repeat`, `metric`, `entrained`, `flow` | Phonation and onset timing. |
+| When does it sound? | `sustain`, `repeat`, `metric`, `entrained`, `steady`, `flow` | Phonation and onset timing. |
 | Where does pitch go? | Placement, `anchor`, `seek_consonance`, `temperature` | Founder entry position and later movement. |
 | How does the population persist? | `endurance`, `recovery`, viability, respawn | Voice energy, death, and Population turnover. |
 
@@ -125,8 +125,10 @@ remains open.
 
 - `sustain()` holds while the Voice is alive.
 - `repeat()` selects repeated phonation with defaults.
-- `metric()`, `entrained()`, and `flow()` select regions of the shared-meter
-  coupling continuum and imply re-attacking behavior.
+- `metric()` selects shared-beat synchronization; `entrained()`, `steady()` and
+  `flow()` select acoustic participation. Steady keeps its own due time and uses
+  heard context only for sound or skip. These timing presets can re-attack; explicit
+  sustain composes a living Tone with their opportunities. See [Rhythm](rhythm.md).
 - `cycles(n)` expresses duration in rhythmic cycles.
 
 The lower-level `once()`, `pulse(rate_hz)`, `while_alive()`, and adaptive
@@ -146,4 +148,4 @@ Populations it created when the scope ends.
 The next chapter explains
 [Voice and Landscape — Sound–Environment Feedback](ecological_loop.md).
 
-Explicit `sustain()` plus `metric()` combines held sound and acoustic beat synchronization. With free-pitch GateSnap/Rearticulate, omitted tie attacks at a beat with a pending adopted destination and extends other beats; write `tie(0)` for every beat. Fixed pitch and Glide still attack each crossing, and sustained entrained/flow keeps omitted tie at zero. See [rhythm](rhythm.md#sustained-synchronization).
+Explicit `sustain()` plus `metric()` combines held sound and acoustic beat synchronization. With free-pitch GateSnap/Rearticulate, omitted tie attacks at a beat with a pending adopted destination and extends other beats; write `tie(0)` for every beat. Fixed pitch and Glide still attack each crossing, and sustained entrained/steady/flow keeps omitted tie at zero. See [rhythm](rhythm.md#sustained-synchronization).

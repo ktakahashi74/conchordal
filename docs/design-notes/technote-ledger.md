@@ -8992,6 +8992,130 @@ Sources are machine-local .orchestration/units/D-20/brief.md, D-18/report.md,
 D-19/report.md, T-19/report.md stage 2 §§3–7, R-3/README.md, the corresponding
 orchestration progress record and saved CI record.
 
+<a id="l2-support-waves-stopped-author-decision-20261013"></a>
+
+### 9.3.88 2026-10-13: T-20 and T-21 results; stop the L2 stream and return the design problem
+
+#### Decisions: no new author adoption
+
+The author's progress instruction was to proceed around 19:37. No new path, value
+or production inclusion has been adopted. The denominator remains L1, L2 and L4.
+L1 contract documentation is complete; L3 closes as tools with its unmet final
+form deferred; L5 remains closed through existing controls. **L2's path awaits
+the author's decision.**
+
+#### T-20: four-material feasibility and the empty 07 denominator
+
+The continued results returned at 21:30 found common success for the four
+single-source Sine materials, 110/220/330/440, under the `metric()` beat consumer,
+1:1 relation and existing window. Across eleven existing component-ratio
+directions and all data-breakpoint intervals, 69 intervals succeeded jointly.
+No values were adopted.
+
+The only new multi-Voice acquisition was offline `07_heartbeat`, seed 21.
+Splitting those 69 successful intervals at 07 breakpoints produced 223 intervals
+and 160 distinct event streams; ii-B never seeded in any of them. There were zero
+both-seeded comparison cuts and 2,377 cuts seeded only in the current meter.
+Coverage for all eligible groups coincided in 298 of 2,589 cuts. The all-groups-known
+contract cleared Recurrence history and pending state whenever input was unknown,
+exposing a support/confirmation design problem.
+
+C2's universal condition on both-seeded cuts is formally true on an empty set,
+but there were zero actual period/position comparisons. This was retained as an
+empty denominator, not zero measured error or confirmed agreement.
+
+#### T-21: two support contracts tested on retained inputs
+
+T-21 returned at 22:59. It tested two candidates without new acquisition, audio,
+free numerical parameters or production changes:
+
+- **a: whole bus.** Supply the shared meter with the whole-bus T2 event stream,
+  without groups.
+- **b: partial positive evidence.** Deliver known-group events as positive
+  evidence even when other groups are unknown; do not count unknown as absence.
+  Use the common set of origins observable for every lag as the ranking denominator.
+
+Both seeded on 07, resolving T-20's zero comparison-cut count. Neither achieved
+agreement at every cut with the current meter in any interval obtained by splitting
+T-20's 69 successes at each candidate's own breakpoints. C1 is common period/beat
+position success on the four materials; C2 compares both-seeded 07 cuts with the
+current meter under the existing window.
+
+| Candidate | Split intervals | Joint four-material C1 success | Nonempty C2 comparisons | C2 agreement at every cut | Joint C1 and C2 success |
+| --- | --- | --- | --- | --- | --- |
+| a | 328 | 0 | 328 | 0 | 0 |
+| b | 223 | 196 | 223 | 0 | 0 |
+
+This finite survey covers four component-ratio directions within T-20's 69
+successful intervals. It is not an impossibility proof over continuous ratios and
+thresholds.
+
+Representative b-P1, with component ratios `[0,1,0,0]`, is not adopted. Of 2,274
+both-seeded cuts, 2,186 agreed; 103 were seeded only in the current meter and zero
+only in the candidate. The candidate seeded at about 3.37 s, the current meter at
+about 2.27 s. Maximum position and period differences were about 168.9 and 83.7 ms.
+Seconds and milliseconds here are rounded from the retained values.
+
+Orchestration counted five disagreement blocks from the saved replay. Its rounded
+time bounds were 3.64–3.70, 4.16–4.42, 8.50–9.01, 9.48–9.51 and 10.01–10.03 s,
+with block durations roughly 0.03–0.5 s. Later cuts stayed within the window until
+the end, about 27.6 s. Another representative, b-P8, also disagreed around
+21.7–22.8 s, so disagreements are not established as initial-only. No surveyed
+retained scene or interval had candidate-only seeded cuts.
+
+At a-P1 and b-P1, the causal chain could be traced from T2 confirmation through
+seeding at a subsequent fast onset, positive support, `metric()` candidate
+differences and actual On differences. Relative to suppressing only T2 evidence,
+same-gate On differences were approximately 41.9 ms for a and 29.8 ms for b,
+rounded from the retained values. These are executed native PhonationEngine On
+commands/times, not PCM or listening measurements. **The causal chain and
+agreement at every cut are separate; this is not L2 acceptance.**
+
+#### Limits of the comparison
+
+The acquired 07 Voices generated their onsets using the current meter; even the
+downbeat Voice uses `metric()`. The current meter helped produce the sound, while
+the candidate reads that same saved sound afterward. This is not a closed-loop
+comparison and does not determine which beat is correct. C2's all-cut agreement
+was an orchestration-defined T-20 comparison, not the author's adopted L2 exit
+requiring agreement with the actual period and integer relations. Causal
+differences establish neither better beat estimates nor musical benefit. Listening
+effects remain unconfirmed.
+
+#### Stop after two waves; author decision pending
+
+T-20 and T-21 did not close the registered criterion in two waves. At 23:01,
+orchestration followed the AGENTS.md rule, stopped the L2 stream and returned the
+support, confirmation and shared-beat-coordinate design problem to the author.
+No next unit was launched. Four paths were returned, **all unadopted**:
+
+- Defer L2.
+- Recheck with a closed-loop prototype.
+- Limit scope to single-source periodic materials.
+- Redesign support and confirmation from another principle.
+
+Stopping does not adopt deferral or production inclusion, and L2 remains in the
+completion denominator. Old T-6 P/N remain unmet; production queue/thread wiring
+and device operation remain incomplete.
+
+The R-3 bundle is unchanged and measurements have not been executed. They produce
+sound and must be announced to the author before running; the author's go-ahead
+is pending. Whether to add an L2 configuration awaits the choice of L2 path.
+
+#### Unconfirmed work and sources
+
+Author selection among the four paths, closed-loop effects, correct-beat
+identification, other bodies, tempos, seeds or scenes, the full continuous
+parameter domain, listening, production inclusion and device operation remain
+unconfirmed or undecided. No implementation was added and technote verdicts
+remain unchanged.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are machine-local .orchestration/units/D-21/brief.md, T-20/report.md's
+continued results, T-21/report.md §§5–7, the 21:31 and 23:01 entries and saved-replay
+counts in .orchestration/records/decisions-20261007-orchestrator.md, AGENTS.md's
+Multi-agent Orchestration rule, and R-3/README.md.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

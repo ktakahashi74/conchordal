@@ -8864,6 +8864,134 @@ and 4–7 and its listening list, A-7/report.md, the author's 19:33 and 19:34 re
 in .agent-shell/transcripts/2026-10-12-12-44-51.md, and the corresponding
 orchestration decision record.
 
+<a id="l1-contracts-l2-prototype-l4-preparation-20261013"></a>
+
+### 9.3.87 2026-10-13: L1 contract documentation, the limited L2 prototype and L4 preparation
+
+#### No new adoption
+
+Following the author's instruction to proceed around 19:37, orchestration advanced
+work within existing decisions. No new values, material scope, production inclusion
+or default enablement were adopted. The completion denominator remains L1, L2 and
+L4. L3's unmet Voice-side final form remains deferred until after composition;
+L5 remains closed through existing controls.
+
+#### L1: contract documentation is complete
+
+D-18 (`3b4e64b`) documented what `entrained()`, `flow()`, `steady()` and `metric()`
+preserve, permit to change and do not guarantee in both books' `concepts/rhythm.md`
+and technote §5.4. It also documented each mode's `entrainment(x)` meaning and
+omitted value. D-19 (`defb006`) aligned six `src/scripting/docs.rs` entries—the
+four presets, `entrainment` and `temporal_basin`—with those contracts and regenerated
+Rhai definitions, both API pages and the book site. Behavior and defaults did not
+change. D-19's regular feature-free full tests recorded 1,177 passed, zero failed
+and 37 ignored.
+
+Production `steady()` and L1's contract documentation are complete, but **L1
+acceptance follows L4 device testing**. Documentation completion is not acceptance
+of the whole mechanism. Technote §9.1 status was not changed.
+
+#### L2: T-19 succeeded in one limited comparison
+
+T-19 implemented ii-B outside production: T2 events provide recurrence evidence
+to one existing meter, while existing fast acoustic input supplies phase and
+intensity. The first consumer was `metric()` beat, with a fixed 1:1 relation to
+the material's period. The Sine-440 material had a 0.5-second period and used
+previously selected material-specific detector values; no common-value search or
+adoption was performed.
+
+Within the existing 60 ms window, phase and frequency were frozen at each cut,
+and the projected next beat position and period were compared with the nearest
+coordinate on the same 1:1 recurrence grid defined by actual On events.
+
+| Path | Comparison denominator | Period matches | Frozen next-beat-position matches |
+| --- | --- | --- | --- |
+| Current meter | 407 cuts | 407 | 407 |
+| ii-B | 339 source-known, seeded cuts with confidence > 0 | 339 | 339 |
+
+The 21 ii-B coasting cuts with unknown source were not added as successes. Different
+denominators reflect first-confirmation/support timing and unknown input, not a
+comparison of superiority at common cuts. Extending the recurrence grid past the
+last actual On does not establish that future On events occurred.
+
+The control suppressing only T2 evidence on otherwise identical wiring established
+the following causal chain. Times use 48 kHz audio-sample coordinates.
+
+| Step | First difference or effect |
+| --- | --- |
+| New T2 confirmation | 1.216 s |
+| Seed at a subsequent fast onset | 1.685 s; confidence at the seed itself is zero |
+| Positive beat support | 2.688 s |
+| `metric()` candidate | Candidates diverged from the same initial state and non-T2 inputs |
+| Actual On | 404 samples, about 8.4 ms apart; waveforms also diverged at that boundary |
+
+This establishes **T2 evidence reaching phonation in one limited comparison**,
+not full-ecology closed-loop acceptance or musical superiority of ii-B. Packets
+and queues used synchronous replay in a separate binary; production-worker
+communication was not exercised. Flow also produced supported hypotheses, not
+discovery of a true period. In that flow acquisition, positive confidence came
+from fast phase support; recurrence echo support did not become positive. Old
+T-6 P/N remain unmet.
+
+Global events delivered to the shared meter had a maximum of one per hop. The
+observed retained-history maximum was nine, not a selected product limit. After
+initialization, fast processing and queue pop plus ingest added zero allocations.
+This count excludes constructors, JSON, phonation, Tone and rendering; it does not
+establish zero allocations across all paths.
+
+**L2 acceptance remains incomplete.** Common values for the four detector
+quantities—three component ratios and one threshold—other bodies, tempos and
+multiple Voices, production queue/thread/config wiring, and device operation
+remain open. ii-B acceptance with subdivision or measure consumers, direct
+`steady()` connection and the interval side are outside this comparison.
+
+#### T-20: in progress
+
+T-20 is deriving the four quantities from adopted consumer criteria and retained
+materials; no results are recorded here. Because retained multi-Voice scenes lack
+habitat PCM, orchestration instructed a feasibility check on four single-source
+materials first, followed, only if feasible, by one offline `07_heartbeat`
+acquisition. Presentation WAV must not substitute for habitat PCM. Value adoption
+and declaration of the material scope remain author decisions.
+
+#### L4: R-3 bundle prepared; measurements not executed
+
+R-3's 20:40 preparation record describes a four-scene bundle built using the
+instrument's release binary from main `defb006`. Inputs come from E-4 drafts and
+the A-14/V-14 pair scene, exercising sustain plus metric with omitted tie and
+`steady()`. Finish times came from silent `--play false` executions.
+
+| Scene | Finish (s) |
+| --- | --- |
+| Courtyard Weave | 82.0 |
+| Three Lanterns | 74.0 |
+| The Unstruck Wire | 78.0 |
+| steady() pair | 98.0 |
+
+**Device measurements have not been executed.** They produce sound and must be
+announced to the author before running. Tools and the four A/B/A′/B′ configurations
+match R-2. The existing sixteen cases reuse the unchanged rendering scope and will
+not be reacquired. Production L2 inclusion would add its configuration and require
+updating the bundle from an instrument build at the final commit. Existing absolute
+criteria remain: zero output deficit and whole-hop p99 no longer than the actual
+device hop duration. No new load target or headroom fraction is added. Finish
+verification is not a real-time pass.
+
+CI for the 2026-10-13 19:10 push (`d5107f4`) passed on all three OSes, including U-7's test-output cleanup on Windows and macOS.
+
+#### Unconfirmed work and sources
+
+T-19's limited result is not L2 acceptance; no T-20 feasible-region, representative
+point or acquisition results are recorded. Value/material adoption, production
+inclusion and default enablement, final-usage device operation, and L1/L2/L4
+acceptance remain incomplete. No new audition, listening conclusion or technote
+implementation verdict is added.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are machine-local .orchestration/units/D-20/brief.md, D-18/report.md,
+D-19/report.md, T-19/report.md stage 2 §§3–7, R-3/README.md, the corresponding
+orchestration progress record and saved CI record.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

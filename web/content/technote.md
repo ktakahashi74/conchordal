@@ -575,6 +575,23 @@ probability setter. Inputs follow sanitize01; unsupported final forms warn and i
 participation (`entrained()`, `steady()` and `flow()`). Both issue sound through the same
 PhonationEngine command path.
 
+The presets keep distinct timing relationships. An opportunity is not an attack:
+phonation legality, lifecycle, rest and articulation can withhold onsets or extend
+a living Tone.
+
+| Preset | Keeps | May change | Does not guarantee | `entrainment(x)` |
+| --- | --- | --- | --- | --- |
+| `entrained()` | Lifetime-fixed intrinsic bodily rate | Participation period follows supported recurrence weighted by proximity to that scale; costs select near-due timing, waiting up to one participation period, or skipping | Equal onset intervals, persistent differences between Voices' onset rates, or shared beat phase | Acoustic influence on adaptation and timing costs; omitted `0.5` |
+| `flow()` | Intrinsic scale for bounded renewal, without recurrence adaptation | Irregular renewal intervals, acoustic timing choices, waiting and skipping | A regular sequence, a beat, or a mean onset interval equal to the intrinsic period | Acoustic timing costs, not renewal-scale adaptation; omitted `0.05` |
+| `steady()` | Intrinsic period and later private due-time grid, subject to sample rounding | Sound or skip at due; execution constraints can remove onsets | An attack count, a pitch outcome, or following another Voice's time | Sound-or-skip costs only; omitted `0.5` |
+| `metric()` | Confidence-weighted attraction to the confirmed production beat and configured phase offset; independent phase before confirmation | Effective rate and phase; the clock free-runs before confirmation | Beat confirmation itself, exact phase coincidence, or independent noninteger tempo relations | Beat-rate and phase attraction; omitted `0.95` |
+
+Setting `entrainment(0)` removes these acoustic timing influences; flow remains
+irregular. The meter supplies one beat and integer-ratio layers. Steady advances missed or illegal
+opportunities by whole intrinsic periods. Its initial sustained Hold onset is
+immediate, outside the later grid. These are initial-only presets; the last timing
+preset wins, with duration resolved separately.
+
 Participation separates causal habitat observation from the body's due time.
 The observer projects fully observed recurrence cycles onto a roughly four-second
 horizon at 20 ms spacing. Recurrence contrast fades toward the adaptive baseline
@@ -583,8 +600,7 @@ Future queries never enter the observation history. Known self habitat PCM is su
 from the observed mixture before energy analysis. The external history is projected
 using both the previous shared recurrence projection and a local history predictor. Matching actual outcomes fit their bounded mixture for subsequent participation requests.
 
-The entrained/flow action policy compares sounding near the due time, waiting up to one participation
-period, and omitting this event. Candidate cost combines squared displacement in
+For entrained/flow, candidate cost combines squared displacement in
 participation periods, distance from experienced external energy shapes, and a
 three-band overlap integral. Context memory retains three-band external energy in
 two post-onset windows (2×3); candidate forecasts use the same windows. The default
@@ -672,20 +688,12 @@ incurs the weighted cost. Omission still uses the minimum candidate cost without
 the arrival term, so this term affects candidate selection rather than prescribing
 an omission.
 
-`steady()` is a separate non-flow participation preset. It fixes the period at
-the intrinsic bodily rate and offers only the Voice's own due time. Heard
-external acoustic context and actual-onset memory affect sound versus skip,
-without moving that time toward another Voice or a shared beat. Costs and weights
-are unchanged; skipped or illegal opportunities advance by whole intrinsic periods.
-The omitted coupling is 0.5 as for entrained, and the omitted rate is 2 Hz.
-Arrival cost cannot change sound versus skip in this one-candidate policy because
-the skip comparison excludes it. Explicit sustain retains the current Tone on
-skips, with its initial Hold onset still immediate. All three pitch modes,
+Steady uses unchanged costs and weights. Arrival cost cannot change sound versus
+skip in its one-candidate policy because the skip comparison excludes it.
+Explicit sustain retains the current Tone on skips. All three pitch modes,
 movement boundary, tie (omitted zero), persistence and finite-duration rest use
 the existing articulation path; no adoption-time candidate is added, even in Glide.
-Timing presets remain initial-only and last-write-wins on their own axis. Respawn
-inherits policy and rate from the template with fresh performance state.
-The name guarantees neither an attack count nor a pitch result.
+Respawn inherits policy and rate from the template with fresh performance state.
 
 `intrinsic_rate(hz)` sets the founder bodily rate for `entrained()`, `steady()` and `flow()`
 before `place()` or `create()`, independently of builder order. The intrinsic
@@ -712,12 +720,12 @@ adaptation rate, with two intrinsic periods setting the time constant. Unavailab
 references relax the cadence toward the intrinsic pace. These support values and
 constants are engineering choices, not validated human beat confidence.
 
-Cadence updates preserve the remaining fraction of the Voice's own cycle and
-never target a shared onset phase. Each observation is used once; future evidence
+Cadence updates preserve the remaining fraction of a future, uncommitted cycle
+and never target a shared onset phase. Each observation is used once; future evidence
 and changes to already selected actions are rejected. Chosen waits do not train
 the cadence. Flow keeps the intrinsic scale for clustered renewal instead of
 adapting it to recurrence. Acoustic context still affects waiting and omission,
-so executed intervals can change. Switching to flow preserves a committed
+so executed intervals can change. An internal switch to flow preserves a committed
 candidate and restores the intrinsic scale for subsequent intervals. It also
 clears the cadence-observation timestamp, so returning to entrained timing does
 not count time spent in flow as elapsed adaptation time.
@@ -736,7 +744,7 @@ and action-value learning are not implemented.
 Observed external RMS history, indexed by past age and known coverage, is also frozen
 with the decision-time evidence. The context-distance term compares external energy in the two experienced windows.
 
-For explicit synchronization, onset timing is generated by the `CouplingClock` (`life/phonation_engine.rs`): a per-voice phase oscillator that emits an onset at every integer crossing of its phase. Its effective rate blends an intrinsic renewal rate with the shared beat:
+For explicit synchronization, onset timing is generated by the `CouplingClock` (`life/phonation_engine.rs`): a per-Voice phase oscillator that offers an onset opportunity at each integer crossing of its phase. Its effective rate blends an intrinsic renewal rate with the shared beat:
 
 $$ f_{eff} = (1 - \ell)\, f_{int} + \ell\, f_{beat}, \qquad \ell = \kappa \cdot c $$
 

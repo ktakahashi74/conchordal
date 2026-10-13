@@ -3,50 +3,49 @@
 A beat is a recurrent temporal reference inferred from sound. Sharing that
 reference does not require every Voice to attack at the same phase.
 
-The four presets express different timing intentions:
+## Timing contracts
 
-- **metric**: explicit attraction to the shared production beat. Strong coupling
-  favors synchronized onsets.
-- **entrained**: a bodily pace adjusted by remembered acoustic context and a
-  prediction of energetic overlap with surrounding sound.
-- **steady**: fixed private due times; heard context chooses sound or skip,
-  without following another Voice's time or a shared beat.
-- **flow**: weak acoustic participation with clustered renewal intervals around
-  an intrinsic scale that does not follow recurrence.
+A preset defines the relationship its timing policy keeps. An opportunity is
+distinct from an attack: lifecycle, phonation gates, finite duration, rest and
+articulation can prevent an onset or extend a living Tone.
+
+| Preset | Keeps | May change | Does not guarantee | Meaning of `entrainment(x)` |
+| --- | --- | --- | --- | --- |
+| `entrained()` | The intrinsic bodily rate, fixed during a Voice's lifetime | The participation period follows supported recurrence weighted by proximity to the bodily scale. Costs select a time near due, a wait up to one participation period, or a skip | Equal onset intervals, permanently different onset rates between Voices, or alignment with a shared beat phase | Influence of acoustic context on period adaptation and timing costs; omitted value `0.5` |
+| `flow()` | The intrinsic scale of bounded, irregular renewal draws; no period adaptation to heard recurrence | Renewal intervals vary; acoustic costs can select a different time, wait, or skip | A regular onset sequence, a beat, or an exact mean interval equal to the intrinsic period | Influence of acoustic context on timing costs, not renewal-scale adaptation; omitted value `0.05` |
+| `steady()` | The intrinsic period and later private due-time grid, with sample rounding | Context selects sound or skip at due; execution constraints can remove onsets | An attack count, a pitch outcome, or following another Voice's time | Influence of acoustic context on sound-or-skip costs; omitted value `0.5`. It does not move due or adapt the period |
+| `metric()` | Attraction to the acoustically confirmed production beat, with the configured beat-phase offset; independent initial phase before confirmation | Effective rate and phase follow the beat and its confidence. Before confirmation the clock free-runs; execution and articulation can withhold attacks | That a beat will be confirmed, exact phase coincidence, or independent noninteger tempo relations | Confidence-weighted attraction of rate and phase to the beat; omitted value `0.95` |
+
+`entrained()`, `steady()` and `flow()` use local acoustic participation, while
+`metric()` uses beat synchronization. Setting `entrainment(0)` removes these
+acoustic timing influences; flow still draws irregular renewal intervals.
+The production meter has one beat reference and integer-ratio subdivision and
+measure layers; it does not implement a network of independent noninteger tempi.
+
+Entrained period updates preserve the remaining fraction of a future,
+uncommitted cycle. New acoustic context does not move a committed onset time.
 
 For entrained and flow timing, a causal observer reads past habitat audio. Each
 Voice also retains the sound it rendered, so the energy attributed to itself can
 be excluded from a predicted competitor. The Voice compares sounding near its due
 time, waiting up to a participation cycle, and omitting the current event. Overlap is
 integrated across an estimate of the planned hold and ADSR release. Successive
-omissions become more costly, so overlap alone cannot prescribe permanent silence.
-Temporal memory changes only after an onset is emitted. For entrained timing, the cadence
-can follow a supported recurrence near the Voice's intrinsic scale, while preserving
-its own cycle position. The observer does not prescribe a common onset phase.
+voluntary omissions become more costly; an emitted onset resets that count.
+Only an emitted onset creates a pending context-memory update, which is applied
+when its matching actual audio is available. Waiting, skipping and an unexecuted
+plan do not count as an onset.
 Hold lengths remain tied to the intrinsic period, so cadence adaptation does not
 stretch each sound. The overlap preview uses the same hold duration.
-Flow keeps its intrinsic renewal scale while still waiting or omitting events in
-response to surrounding sound; its executed intervals therefore remain variable.
-This three-band energy proxy is an engineering approximation, with musical
-acceptance still under evaluation.
+The three-band energy proxy is an engineering approximation, not a model of
+auditory masking or consonant fusion.
 
 ## Keeping private opportunities: `steady()`
 
-`steady()` keeps the Voice's own pace fixed. Heard acoustic context selects only
-whether to sound or skip at its scheduled due time; it never moves that time
-toward another Voice or a shared beat. The only candidate is due itself. Period
-adaptation is disabled, and a missed or illegal opportunity advances by whole
-intrinsic periods. Sounded onsets therefore occupy the private grid, subject to
-sample rounding, with omissions and execution constraints able to remove events.
-The initial sustained Hold onset remains immediate, before that grid's later
-opportunities. The name promises neither an attack count nor a pitch outcome.
-
-This is a separate non-flow preset. `entrainment(x)` has the same acoustic-cost
-meaning and omitted value, 0.5, as `entrained()`. `intrinsic_rate(hz)` sets the
-pace, with the existing 2 Hz omission. Costs and weights are unchanged. Arrival
+Missed or illegal steady opportunities advance by whole intrinsic periods rather
+than shifting the grid. The initial sustained Hold onset remains immediate,
+before that grid's later opportunities. Costs and weights are unchanged. Arrival
 cost currently cannot change sound versus skip: there is only one candidate,
-and the skip comparison excludes arrival cost. That connection remains an L2
-design question.
+and the skip comparison excludes arrival cost.
 
 ```rhai
 let voices = place(harmonic().steady().sustain().intrinsic_rate(2.0)
@@ -109,11 +108,8 @@ can still produce temporary rises afterward.
 
 The Tier-1 presets take **no rate argument**: `metric()`, `entrained()`, `steady()`, and
 `flow()`. Configure them on a `PopulationSpec` before calling `place()` or
-`create()`. Metric timing begins at the basin center, or 2 Hz without a basin,
-then responds to the acoustically confirmed production beat. Entrained/steady/flow
-participants begin with their own 2 Hz intrinsic prior unless `intrinsic_rate(hz)` is supplied. Entrained cadence can follow acoustic recurrence without
-changing that prior or assigning a shared onset phase. Flow keeps that intrinsic
-scale for its irregular renewal intervals.
+`create()`. Their timing relationships and coupling defaults are listed above;
+`intrinsic_rate(hz)` sets the bodily scale of participating presets.
 
 Do not confuse `.entrained()` with `brain("entrain")`. The preset controls
 onset timing; the brain selects the voice's articulation life and metabolism.
@@ -122,8 +118,9 @@ They are independent and may be used together. See
 
 Per-voice modifiers refine these intentions:
 
-- `entrainment(strength)` — influence in `[0,1]`: acoustic context for
-  entrained/steady/flow, beat-phase attraction for metric. Zero keeps intrinsic pacing.
+- `entrainment(strength)` — influence in `[0,1]`, with the per-preset meanings
+  and omission values in the contract table. Within a selected preset, it changes
+  that influence rather than selecting another preset.
 - `rhythm_role("beat"|"subdivision"|"accent"|"texture")` — the voice's
   metrical job. `accent` emits a stronger onset that drives the shared meter
   harder, so a recurring downbeat can seed an emergent measure.

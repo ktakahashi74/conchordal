@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-60ac650d.js";
+            window.path_to_searchindex_js = "searchindex-daa68d55.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ddfde326.js"></script>
@@ -1042,32 +1042,44 @@ wait(8.0);
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="リズム時間の知覚と個体の参加"><a class="header" href="#リズム時間の知覚と個体の参加">リズム：時間の知覚と個体の参加</a></h1>
 <p>拍は、音から推定する反復的な時間の基準です。同じ音を参照するVoiceが、同じ拍位置で
-発音する必要はありません。四つのプリセットは、異なる参加の仕方を選びます。</p>
-<ul>
-<li><strong>metric</strong> — 共有された拍への同期を意図します。結合を強めるほど発音位置が拍へ近づきます。</li>
-<li><strong>entrained</strong> — 自身のペースを持ち、参加時に記憶した周囲の音の特徴と、音が重なる予測から発音時刻を調整します。</li>
-<li><strong>steady</strong> — 自分の予定時刻を保ち、聴いた文脈で鳴らすか見送るかだけを選びます。時刻を相手へ寄せず、共有の拍を目指しません。</li>
-<li><strong>flow</strong> — 不規則な発音間隔の基準を保ち、弱い結合で周囲の音に応答します。基準の速さを反復周期へ寄せません。</li>
-</ul>
+発音する必要はありません。</p>
+<h2 id="プリセットが保つ時間関係"><a class="header" href="#プリセットが保つ時間関係">プリセットが保つ時間関係</a></h2>
+<p>プリセットは、時刻を決める方策が保つ関係を選びます。発音の機会と実際の打ち直しは
+別です。生存過程、発音ゲート、有限音長、休止、発音の方針によって、発音を控えたり
+生きたToneを伸ばしたりする場合があります。</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>プリセット</th><th>保つもの</th><th>変わってよいもの</th><th>保証しないもの</th><th><code>entrainment(x)</code>の意味</th></tr>
+</thead>
+<tbody>
+<tr><td><code>entrained()</code></td><td>Voiceの生存中に固定された身体の固有の速さ</td><td>身体の尺度への近さで重み付けし、支持された反復へ参加周期を寄せます。費用によって予定近傍の発音、参加の一周期までの待ち、見送りを選びます</td><td>等間隔の発音列、Voice間で違う発音の速さを保ち続けること、共有拍との位相一致</td><td>周期の適応と発音時刻の費用に対する音響文脈の影響。省略値<code>0.5</code></td></tr>
+<tr><td><code>flow()</code></td><td>不規則な間隔を抽選する身体の固有の尺度。反復周期への適応はしません</td><td>上下限のある間隔を更新し、音響費用に応じて時刻の変更、待ち、見送りを選びます</td><td>規則的な発音列、拍、固有周期と実発音の平均間隔の厳密な一致</td><td>発音時刻の音響費用への影響。抽選の尺度を反復へ適応させる量ではありません。省略値<code>0.05</code></td></tr>
+<tr><td><code>steady()</code></td><td>固有周期と、その後の自分の発音予定の格子。時刻はsampleへ丸めます</td><td>文脈は予定時刻で鳴らすか見送るかを選び、実行上の制約でも発音が抜けます</td><td>発音数、音高の結果、相手の時刻への追従</td><td>鳴らすか見送るかの音響費用への影響。周期と予定時刻は動かしません。省略値<code>0.5</code></td></tr>
+<tr><td><code>metric()</code></td><td>音から確認された生成側の拍への引力と、指定した拍位相のずれ。確認前は独立した初期位相から始めます</td><td>拍とその確信度に応じて実効的な速さと位相が変わります。確認前は自走し、実行上の制約や発音方針でも打ち直しを控えます</td><td>拍そのものの確認、厳密な位相一致、独立した非整数比のテンポ関係</td><td>拍の確信度に応じた速さと位相への引力。省略値<code>0.95</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>entrained・steady・flowは音を参照する局所的な参加、metricは拍への同期です。
+<code>entrainment(0)</code>なら、表に示した音響文脈による時刻への作用をなくします。
+flowの不規則な間隔の抽選は残ります。生成側のmeterが持つのは一つの拍と整数比の
+分割・小節であり、独立した非整数比のテンポを結ぶネットワークはありません。</p>
+<p>entrainedの参加周期を更新するときは、まだ確定していない将来の予定までの残り時間を、
+新旧周期の比で写します。確定した予定を新しい音響文脈で動かしません。</p>
 <p>entrainedとflowは、過去のhabitat音声から得た短い未来の予期を使います。Voice自身が
 合成した音も記録し、自分の反復を競合相手として扱わないようにします。発音予定の近傍で
 鳴る、参加の1周期まで待つ、今回は見送る、を比較します。重なりは予定する保持時間と
-ADSRのreleaseを含む範囲で評価します。見送りを続けるほどコストが増すため、重なりだけを
-理由に永続的な沈黙へ落ち着くことはありません。実際に発音を指令したときだけ周囲との
-関係を記憶します。証拠が乏しいときは
-身体のペースを保ち、共通位相へ置き換えません。重なりの評価は三つの帯域のエネルギーを
-使う工学的な近似であり、音楽的な受入は検証中です。</p>
+ADSRのreleaseを含む範囲で評価します。自分で見送った回数が増すほど次の見送りの
+費用は増え、実際の発音指令で回数をリセットします。発音したときだけ周囲との関係の
+記憶更新を予約し、対応する実音の観測が届いてから更新します。待ち、見送り、未実行の
+予定を発音した経験にはしません。保持時間と重なり予測の音長は固有周期から求めるので、
+参加周期の適応によって各音を引き延ばしません。三つの帯域のエネルギーを使う評価は
+工学的な近似であり、聴覚上のマスキングや協和・融合のモデルではありません。</p>
 <h2 id="自分の発音予定を保つsteady"><a class="header" href="#自分の発音予定を保つsteady">自分の発音予定を保つ：<code>steady()</code></a></h2>
-<p><code>steady()</code>はVoice自身の歩調を動かしません。聴いた音の文脈は、予定した時刻dueで
-鳴らすか見送るかにだけ効きます。時刻を相手に寄せず、共有の拍を目指しません。
-候補はdue一つだけで、周期を音から適応させる更新を止めます。過ぎた機会や合法でない
-機会も、固有周期の整数倍で先へ進めます。実際の発音はsampleへの丸めを伴う自分の
-格子上に残り、見送りや実行上の制約で発音が抜ける場合があります。持続音の初回の
-Hold発音は、後続の格子とは別に従来どおり即時です。名前から発音数や音高の結果は保証されません。</p>
-<p>flowとは別の、非flowのプリセットです。<code>entrainment(x)</code>はentrainedと同じ音響費用への
-影響で、省略値も0.5です。歩調は<code>intrinsic_rate(hz)</code>で置き、省略値は従来の2 Hzです。
+<p>steadyで過ぎた機会や合法でない機会を進めるときも、固有周期の整数倍で進め、格子を
+ずらしません。持続音の初回のHold発音は、後続の格子とは別に従来どおり即時です。
 費用の項や重みは変えません。いまの到来費用は鳴らすか見送るかを変えません。候補が
-一つで、見送りの比較から到来費用を除くためです。この接続はL2の設計に残ります。</p>
+予定時刻一つで、見送りの比較から到来費用を除くためです。</p>
 <pre><code class="language-rhai">let voices = place(harmonic().steady().sustain().intrinsic_rate(2.0)
     .seek_consonance().pitch_apply_mode("gate_snap"), line(220.0, 330.0).count(2));
 wait(6.0);
@@ -1114,15 +1126,13 @@ basinを置かなければ、metricの初期値は従来どおり2 Hzです。</
 入力が偶然まとまり、一時的に確信度が上がる場合は残ります。</p>
 <h2 id="voiceごとのプリセットと調整"><a class="header" href="#voiceごとのプリセットと調整">Voiceごとのプリセットと調整</a></h2>
 <p><code>metric()</code>、<code>entrained()</code>、<code>steady()</code>、<code>flow()</code>は速さの引数を取りません。<code>place()</code>や<code>create()</code>より前に
-PopulationSpecへ設定します。metricはbasinの中心、指定がなければ2 Hzから自走を始め、
-音から確認された拍へ近づきます。entrained・steady・flowは、<code>intrinsic_rate(hz)</code>を指定しなければ2 Hzの固有ペースから始まります。entrainedは周囲の反復から参加の周期を更新します。
-flowは不規則な間隔を作る基準を保ち、周囲の音に応じて待つ・見送る判断を続けます。
-実際の発音間隔は変わり得ますが、全Voiceが従う共通テンポや発音位置は指定しません。</p>
+PopulationSpecへ設定します。時間関係と結合の省略値は上の表のとおりです。
+参加の身体の尺度は<code>intrinsic_rate(hz)</code>で指定できます。</p>
 <p><code>.entrained()</code>と<code>brain("entrain")</code>を混同しないでください。前者はonset timing、後者は
 Voiceの発音上の生と代謝を選びます。独立しており併用できます。</p>
 <p>Voiceごとの設定で、参加の仕方を調整できます。</p>
 <ul>
-<li><code>entrainment(strength)</code> — <code>[0,1]</code>の影響の強さ。entrained・steady・flowでは音から得た文脈、metricでは拍位相への引力に作用します。<code>0</code>なら固有のペースを保ちます。</li>
+<li><code>entrainment(strength)</code> — <code>[0,1]</code>の影響の強さです。方式ごとの意味と省略値は上の表を参照してください。選んだプリセットの中で作用の強さを変えます。</li>
 <li><code>rhythm_role("beat"|"subdivision"|"accent"|"texture")</code> — metrical role。
 <code>accent</code>は共有meterを強く駆動するonsetを出し、反復downbeatからmeasureを創発できる。</li>
 <li><code>microtiming(amount)</code> — metricの目標位置を拍位相でずらします。範囲は<code>[-0.5, 0.5]</code>、<code>0.5</code>は半拍です。entrained・steady・flowへ固定された発音位置を割り当てる設定ではありません。</li>

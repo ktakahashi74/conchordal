@@ -8,9 +8,9 @@ use std::process::Command;
 mod test_output_directory;
 use test_output_directory::TestOutputDirectory;
 
-fn directory() -> (PathBuf, TestOutputDirectory) {
+fn directory(label: &str) -> (PathBuf, TestOutputDirectory) {
     let path = std::env::temp_dir().join(format!(
-        "conchordal-l2-it-{}-{}",
+        "conchordal-l2-it-{label}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -65,7 +65,7 @@ fn render(
 #[test]
 fn continuous_config_combinations_preserve_group_dependencies() {
     use conchordal::config::AppConfig;
-    let (dir, _guard) = directory();
+    let (dir, _guard) = directory("config");
     let template = dir.join("config.toml");
     let generated = AppConfig::load_or_default(template.to_str().unwrap()).unwrap();
     assert!(!generated.temporal_meter_t2);
@@ -99,7 +99,7 @@ fn continuous_config_combinations_preserve_group_dependencies() {
 }
 #[test]
 fn continuous_offline_render_is_deterministic_before_synthesis() {
-    let (dir, _guard) = directory();
+    let (dir, _guard) = directory("determinism");
     let script = dir.join("input.rhai");
     fs::write(&script, include_str!("fixtures/temporal_meter_t2.rhai")).unwrap();
     let a = render(&dir, &script, "temporal_meter_t2=true\n", "a");
@@ -121,7 +121,7 @@ fn continuous_offline_render_is_deterministic_before_synthesis() {
 }
 #[test]
 fn continuous_omission_and_false_preserve_audio_and_non_timing_report() {
-    let (dir, _guard) = directory();
+    let (dir, _guard) = directory("omission");
     let script = dir.join("input.rhai");
     fs::write(&script, include_str!("fixtures/temporal_meter_t2.rhai")).unwrap();
     let a = render(&dir, &script, "", "omitted");

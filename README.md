@@ -207,6 +207,17 @@ Common operations:
 * Start on a performance cue: `--wait-user-start`
 * Exit when the scenario ends: `--wait-user-exit=false`
 
+The production meter can use raw habitat T2 recurrence with the top-level TOML
+key `temporal_meter_t2 = true` (default `false`). Place it before TOML sections.
+The generated, machine-local `config.toml` template includes
+`# temporal_meter_t2 = false`. Setting the key to true selects the continuous
+recurrence input of the existing meter; the presentation-side ListenerTwin meter
+keeps its event input. It needs no group-event or Periodic arrival configuration.
+`[temporal_t2]` remains the separate, explicitly configured group accent path.
+Continuous confirmation is a bounded engineering score, not a probability that
+beat phase is correct. Offline rendering consumes each raw source hop at a fixed
+cut; playback consumes available packets without waiting for T2.
+
 For example, run headless while recording a report:
 
 ```bash

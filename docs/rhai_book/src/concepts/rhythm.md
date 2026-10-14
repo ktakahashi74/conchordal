@@ -39,6 +39,23 @@ stretch each sound. The overlap preview uses the same hold duration.
 The three-band energy proxy is an engineering approximation, not a model of
 auditory masking or consonant fusion.
 
+## Optional raw T2 production recurrence
+
+The top-level TOML key `temporal_meter_t2 = true` selects continuous raw habitat
+T2 recurrence for the existing production beat. It defaults to false, preserving
+the event-based meter. This is separate from the group accent/arrival settings
+under `[temporal_t2]`; raw recurrence needs none of their weights or period keys.
+T2 proposes recurrence and confirms frozen future component predictions. Actual
+habitat flux and executed onsets still supply phase and intensity. Initial seed
+confidence is zero. Missing observations retain the coordinate without inventing
+negative evidence; filter restarts break unsupported comparisons. Offline render
+uses fixed source/receive cuts, while playback consumes available packets.
+
+`metric()` reads the same confidence-weighted beat interface. Confidence combines
+fast phase coherence with recurrence support; it does not guarantee correct phase.
+The ListenerTwin's presentation meter and the private timing contracts of
+`steady()`, `entrained()` and `flow()` retain their existing mechanisms.
+
 ## Keeping private opportunities: `steady()`
 
 Missed or illegal steady opportunities advance by whole intrinsic periods rather

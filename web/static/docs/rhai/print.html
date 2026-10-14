@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d4bfd8c3.js";
+            window.path_to_searchindex_js = "searchindex-a597fbf9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e3932d17.js"></script>
@@ -1199,6 +1199,20 @@ Hold lengths remain tied to the intrinsic period, so cadence adaptation does not
 stretch each sound. The overlap preview uses the same hold duration.
 The three-band energy proxy is an engineering approximation, not a model of
 auditory masking or consonant fusion.</p>
+<h2 id="optional-raw-t2-production-recurrence"><a class="header" href="#optional-raw-t2-production-recurrence">Optional raw T2 production recurrence</a></h2>
+<p>The top-level TOML key <code>temporal_meter_t2 = true</code> selects continuous raw habitat
+T2 recurrence for the existing production beat. It defaults to false, preserving
+the event-based meter. This is separate from the group accent/arrival settings
+under <code>[temporal_t2]</code>; raw recurrence needs none of their weights or period keys.
+T2 proposes recurrence and confirms frozen future component predictions. Actual
+habitat flux and executed onsets still supply phase and intensity. Initial seed
+confidence is zero. Missing observations retain the coordinate without inventing
+negative evidence; filter restarts break unsupported comparisons. Offline render
+uses fixed source/receive cuts, while playback consumes available packets.</p>
+<p><code>metric()</code> reads the same confidence-weighted beat interface. Confidence combines
+fast phase coherence with recurrence support; it does not guarantee correct phase.
+The ListenerTwin’s presentation meter and the private timing contracts of
+<code>steady()</code>, <code>entrained()</code> and <code>flow()</code> retain their existing mechanisms.</p>
 <h2 id="keeping-private-opportunities-steady"><a class="header" href="#keeping-private-opportunities-steady">Keeping private opportunities: <code>steady()</code></a></h2>
 <p>Missed or illegal steady opportunities advance by whole intrinsic periods rather
 than shifting the grid. The initial sustained Hold onset remains immediate,

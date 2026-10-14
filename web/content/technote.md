@@ -308,6 +308,8 @@ Conchordal uses this structure in an engineering mechanism. It eschews the conce
 
 ## 4.1 The Meter Core: An Adaptive Integer-Ratio Hierarchy
 
+The default **Events** input and the presentation-side ListenerTwin meter use acoustic onset recurrence. An opt-in **Continuous** input for the existing production meter is selected by the top-level `temporal_meter_t2 = true` (default false). It reads raw habitat T2 directly and shares the beat, fast onset detector, PLV, integer layers, shaping and output state with the Events mechanism. It does not add a second production meter.
+
 `MeterNetwork` (`core/meter.rs`) combines a self-sustaining beat oscillator with acoustic recurrence corroboration. Its amplitude retains the forced Hopf equation, while phase advances freely between detected onsets:
 
 $$ \dot r = \alpha r + \beta r^3 + F_a\,g\,s(t)\cos\varphi, \qquad \dot\varphi=\omega $$
@@ -329,13 +331,23 @@ Subdivision phases are $2\varphi,3\varphi,4\varphi$; measure phases divide the u
 
 **Perception vs production.** The runtime uses this same mechanism in two instances. The production meter listens to the habitat bus and guides Voice behavior. The `ListenerTwin` meter listens to presentation audio and supplies beat confidence to the UI and report. DCC pressure uses presentation-derived consonance tension, rather than beat confidence directly.
 
+### Continuous habitat recurrence
+
+Continuous input retains the native 30×4 signed hop means without group attribution or component weights. It forms positive rises only from two consecutive, known hops with the same filter reset origin. Within the existing 4.06-second history, native-hop lags compare component-wise minimum and maximum masses; their intersection/union ratio proposes recurrence. A flat profile does not induce a beat. Interior strict peaks may use the fixed local quadratic vertex, reevaluated against the actual linearly interpolated overlap. The accepted lag wins a tie, followed by the shorter grid lag. The existing integer aliases and cultural prior choose the tactus.
+
+T2 proposes recurrence; actual habitat flux and executed onset reinforcement supply phase and intensity. A proposal received at a hop end can be adopted only at a subsequent fast onset. Initial adoption clears old confirmation evidence and contributes no confidence. Once adopted, each issued future source-hop component prediction freezes its lag, source support and target. Only coordinates known in both prediction and later observation contribute, once, to predicted, observed and matching masses. Late evidence retains its source age. Known silence can disagree with a positive prediction; missing evidence contributes no disagreement.
+
+Raw frames are computed once in the analysis thread and sent through a bounded, preallocated queue, independently of the group arrival adapter. Playback does not wait on this queue; overflow records a missing interval. Offline rendering waits for the current source-hop result at the fixed end cut, after fast advancement and before state publication and the next forecast. Physical source time, availability and receipt remain distinct. A source gap restarts the recursive filters and breaks unsupported differences/interpolation, while the accepted meter coordinate and bounded history persist. Configuration, bus, sample-rate, hop or feature-unit changes require an explicit coordinate reset. Filter origin and the group's existing continuity epoch are not the raw configuration epoch.
+
 ## 4.2 Beat Confidence: Phase and Pattern Recurrence
 
-Until an interval hypothesis has first been corroborated, the meter accumulates no beat, subdivision or measure evidence: all three confidences and the subdivision/measure ratios are zero (unknown). The oscillator and onset-event corrections continue during this interval. After corroboration, subsequent detected onsets contribute unit phasors at their predicted phases before correction. Their leaky resultant length divided by their leaky count is the phase-locking value (PLV). A single-position history retains $\mathrm{PLV}\times\mathrm{presence}$. Evidence decays with a 2.5-second time constant; measure accents use 6 seconds. Stability lowers the presence thresholds but preserves the confidence ceiling of 1. The initial adoption contributes no phasor. Subdivision evidence combines its harmonic coherence with $\tfrac12(1-\mathrm{beat\ PLV})$, keeping a beat-only input from certifying its harmonics as subdivisions.
+The following event-count confirmation describes Events input. Until an interval hypothesis has first been corroborated, the meter accumulates no beat, subdivision or measure evidence: all three confidences and the subdivision/measure ratios are zero (unknown). The oscillator and onset-event corrections continue during this interval. After corroboration, subsequent detected onsets contribute unit phasors at their predicted phases before correction. Their leaky resultant length divided by their leaky count is the phase-locking value (PLV). A single-position history retains $\mathrm{PLV}\times\mathrm{presence}$. Evidence decays with a 2.5-second time constant; measure accents use 6 seconds. Stability lowers the presence thresholds but preserves the confidence ceiling of 1. The initial adoption contributes no phasor. Subdivision evidence combines its harmonic coherence with $\tfrac12(1-\mathrm{beat\ PLV})$, keeping a beat-only input from certifying its harmonics as subdivisions.
 
 After first adoption, each subsequent onset issues a prediction at its then-current basic lag $t_i+p$. Issued targets are not rewritten when tempo changes. Future onsets and targets match one-to-one within $w(p)$, with triangular timing weight. After their windows close, leaky predicted, observed and matching masses give $J=M/(N_p+N_o-M)$. These are fresh post-confirmation masses; the confirming onset supplies neither a prediction nor confidence evidence. If a retained adjacent interval is shorter than $p-w(p)$, the history contains multiple positions and beat confidence reads $\max(\mathrm{PLV},J S_r)\times\mathrm{presence}$. This supports recurrence of a pattern without requiring every event to occupy the same phase. Subdivision and measure evidence keep their existing phase and accent rules.
 
 Confidence describes phase coherence or confirmed pattern recurrence with accumulated evidence. After initial corroboration, a chance cluster in irregular input can still produce a temporary rise; confidence alone does not certify a unique tempo. In silence the oscillator continues while evidence and presence decay. Phase zero remains the predicted onset and is not shifted again by subtracting the mean onset-phasor angle.
+
+For Continuous input, the future component comparisons accumulate matching $M$, predicted $Q$ and observed $O$ with the existing persistence decay. Where $Q+O-M>0$, the recurrence support is $S_R=\rho M/(Q+O-M)$, with the existing integer-alias profile $\rho=\min(r,1/r)$. Beat confidence is $\operatorname{clamp}_{[0,1]}(\max(\mathrm{PLV}_{fast},S_R)\,\mathrm{presence}_{fast})$; undefined support is omitted rather than treated as a negative observation. Initial seed confidence remains zero. The continuous branch uses defined subsequent support rather than the event `multi` qualification. The score does not condition recurrence mass on beat phase and does not certify a correct phase or a posterior probability. Missing fast input advances time without updating the onset baseline or variance; the oscillator and existing evidence decay continue.
 
 ## 4.3 From Meter to Modulation: NeuralRhythms
 
@@ -652,8 +664,10 @@ The same accent goes to the period estimator and next-arrival model, with credit
 retained by its owner and a reset when that owner changes. Missing PCM, unknown
 ownership or broken support suppress an event; supported zero remains known zero.
 
-T2 is disabled by default, and its producer runs only when `[temporal_t2]` is
-present. Enabling it requires the acoustic-group and period configurations and
+T2 is disabled by default. Its producer runs for raw production recurrence when
+`temporal_meter_t2 = true`, or for group events when `[temporal_t2]` is present.
+The raw meter input requires none of the group event parameters. Enabling the
+group event path requires the acoustic-group and period configurations and
 every T2 setting explicitly: `component_weights`, `gain`, `threshold`,
 `weight_gain`, `window = "hop_mean"`, `combination = "positive_component_rise"`,
 `attribution = "first_hop_mass_fraction"`, and `unknown = "suppress"`.
@@ -1082,7 +1096,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5, §7 | Implemented. Dedicated beat carriers appear only in explicit synchronization demonstrations (sample 07) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition |
-| Temporal structure grounded in auditory cognition | Optional T2 preprocessing with reference-matched auditory components, author-defined group attribution and direct accents, and Periodic next-arrival costs; disabled by default | §5.4 | Partial. Accent and arrival mechanisms are implemented, with owner credit, causal support and explicit unknowns. T2's numerical free parameters have no defaults; an omitted arrival weight uses 1 |
+| Temporal structure grounded in auditory cognition | Optional reference-matched T2 components feeding continuous production recurrence or separately configured group accents and Periodic arrival costs; disabled by default | §5.4 | Partial. Accent and arrival mechanisms are implemented, with owner credit, causal support and explicit unknowns. T2's numerical free parameters have no defaults; an omitted arrival weight uses 1 |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented, off by default; the physical biosignal loop is open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
 | Excitation and body radiation | Optional excitation renderer in the instrument and offline binary: immediate Sine/Harmonic response and Modal free decay, with separate Off and disposal | §5.1, §6.1 | Implemented as an opt-in; the default remains the legacy renderer |

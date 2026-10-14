@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a1ac1dad.js";
+            window.path_to_searchindex_js = "../searchindex-754cf46d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ddfde326.js"></script>
@@ -209,6 +209,19 @@ ADSRのreleaseを含む範囲で評価します。自分で見送った回数が
 予定を発音した経験にはしません。保持時間と重なり予測の音長は固有周期から求めるので、
 参加周期の適応によって各音を引き延ばしません。三つの帯域のエネルギーを使う評価は
 工学的な近似であり、聴覚上のマスキングや協和・融合のモデルではありません。</p>
+<h2 id="生成側の拍にraw-t2を使う"><a class="header" href="#生成側の拍にraw-t2を使う">生成側の拍にraw T2を使う</a></h2>
+<p>TOMLのtop-levelで<code>temporal_meter_t2 = true</code>を指定すると、既存の生成側の拍が
+habitatのraw T2の連続再来を読みます。既定はfalseで、従来のevent入力を保ちます。
+群のアクセントや到来を指定する<code>[temporal_t2]</code>とは別で、そちらの成分の重みや
+periodの設定は必要ありません。</p>
+<p>T2は再来を提案し、固定した未来の成分予測を後の観測で確認します。
+位相と強度は実habitatのfluxと実行したonsetから読み、最初のseedの確信度は0です。
+欠測を負例にせず座標を保ち、filterを再起動した境界では支持のない比較を作りません。
+offline描画ではsourceと受信のcutを固定し、実時間では届いたpacketを使います。</p>
+<p>metricは従来と同じ、拍の確信度に応じた引力を使います。確信度は速い位相の整合と
+再来の支持を組み合わせたscoreで、位相の正しさの保証ではありません。
+ListenerTwinのpresentation側meter、steady・entrained・flowの私有の時刻の規則は
+それぞれの既存の機構を保ちます。</p>
 <h2 id="自分の発音予定を保つsteady"><a class="header" href="#自分の発音予定を保つsteady">自分の発音予定を保つ：<code>steady()</code></a></h2>
 <p>steadyで過ぎた機会や合法でない機会を進めるときも、固有周期の整数倍で進め、格子を
 ずらしません。持続音の初回のHold発音は、後続の格子とは別に従来どおり即時です。

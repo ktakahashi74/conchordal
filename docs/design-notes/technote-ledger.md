@@ -9355,6 +9355,169 @@ Sources are machine-local .orchestration/units/T-22/report.md §§1, 3–7,
 T-23/report.md §§1–9, T-24/brief.md, and the 2026-10-14 09:34, 10:05 and
 10:41 entries in .orchestration/records/decisions-20261007-orchestrator.md.
 
+<a id="l2-opt-in-integration-ci-r4-results-20261014"></a>
+
+### 9.3.91 2026-10-14: Opt-in L2 adoption and integration, CI repairs and R-4 device results
+
+#### Decided: adopt L2 calculation (c) as an opt-in
+
+At 10:53 the author instructed “延期せず、進められるところまで全て進めて”
+(proceed as far as possible without deferral), and at 18:27 “入れる 始めてよい”
+(incorporate it; you may start). Times come from the transcript. The first
+instruction advanced the prototype, design and branch implementation; the
+second authorized production integration and R-4 measurements. The author
+also instructed “push” at 18:38, 19:17 and 19:38. The V-17 push authorized
+at 19:38 occurred at 19:57 after verification and integration.
+
+From the desk proposal in [§9.3.90](#l2-principle-derivation-continuous-prototype-20261014),
+T-24's private prototype/evaluation, T-25's wiring design and V-15's branch
+implementation led to integration of `e87ceee..9d72986` into main at 18:27.
+**The author adopted L2 calculation (c) as an opt-in controlled by the
+default-disabled top-level `temporal_meter_t2`.** One meter and the ii-B
+division of roles were preserved; four details were explicitly revised.
+
+| Previous detail | Adopted revision |
+| --- | --- |
+| Equal-weight T2 events and three-point confirmation | Retain positive hop differences of whole-habitat native T2 components as continuous quantities and read recurrence lag from delayed overlap |
+| Shared-event/union | Compare an issued future-component forecast once with later observations to obtain native-mass support |
+| Event `multi` | Use subsequent confirmation-known as the qualification for continuous-input support |
+| Gap epoch | Separate configuration/feature-unit epoch from filter-reset origin; ordinary gaps do not restart shared relations |
+
+Phase and intensity remain driven by existing fast input; `metric()` is the
+articulation consumer. The group arrival adapter retains its separate path.
+This adopts a calculation profile and those detailed revisions. It does
+not declare overall mechanism completion or musical selection by audition.
+
+#### Progress: implementation, checks, CI and device operation
+
+V-15 supplied implementation/tests `7f545b6` and documentation `9d72986`.
+Canonical full tests recorded 1,196 passed, zero failed and 37 ignored.
+Sixteen default/explicit-false renders matched the previous WAV bits and
+non-timing reports. One beat state uses mutually exclusive Events or
+Continuous recurrence input. Analysis-worker raw T2 branches to a dedicated
+bounded queue. Offline processing waits at a fixed source cut for raw
+completion; real-time processing reads without waiting on that queue.
+Focused checks found zero allocations on the new path after construction,
+not zero allocations throughout the runtime.
+
+CI failed twice and recovered with the following repairs. The failures remain
+part of the record.
+
+| Push and result | Repair and final confirmation |
+| --- | --- |
+| 18:38 push: V-15's float-bit digest test failed on Ubuntu; macOS and Windows were cancelled | V-16 `f4a9342` removed the one platform-dependent constant-digest test. Same-machine default-render identity evidence was retained |
+| 19:17 push: temporary directory names collided on macOS; Ubuntu and Windows were cancelled | V-17 `2152a6c` added `config`, `determinism` and `omission` labels to the three test directories, separating tests even with microsecond clock resolution |
+| 19:57 push: `2152a6c` | At 20:18 CI was confirmed successful on Ubuntu, macOS and Windows |
+
+V-16 and V-17 each recorded canonical full tests with 1,195 passed, zero
+failed and 37 ignored. The reduction by one comes from removing the digest
+test. The orchestrator recorded its missed pre-integration review of new
+tests' platform-dependent floating-point behavior and clock resolution.
+After this push main and origin/main were `2152a6c`. Both repairs affect
+tests only; they do not change R-4's instrument implementation.
+
+R-4 used the `9d72986` release instrument and the same four R-3 configurations
+with only `temporal_meter_t2 = true` added. Four configurations × scenes
+17–20, seed 21, yielded 16 final passing performances. Every performance
+ended with cumulative output deficit zero, callback errors zero and exit
+zero. Existing criteria remain zero output deficit and whole-hop p99 no
+greater than the actual device hop duration. No new load target or headroom
+fraction was added.
+
+Microsecond values below are rounded to integers; differences are calculated
+from saved values and rounded to three decimal places in milliseconds.
+The device budget is approximately 10,667 µs. R-3 and R-4 use separate
+acquisition windows; these differences compare the largest per-performance p99.
+
+| Configuration | Passing window (2026-10-14) | R-4 largest p99 (approximately µs) | R-3, L2 disabled (approximately µs) | Difference of maxima (approximately ms) |
+| --- | --- | ---: | ---: | ---: |
+| A | 20:47:33–20:53:06, v1 | 1,999 | 1,394 | 0.606 |
+| B | 21:29:19–21:34:53, repeated v2 | 4,984 | 4,479 | 0.505 |
+| A′ | 21:17:28–21:23:01, v1 | 1,864 | 1,348 | 0.516 |
+| B′ | 21:23:05–21:28:38, v1 | 4,993 | 4,747 | 0.246 |
+
+The first B window, v1 at 21:07:43–21:10:15, was disturbed. Scene 17 failed
+with p99 approximately 12,421 µs; scene 18 was unjudged after BufferUnderrun
+and one callback error; scenes 19/20 were not acquired. The runner stopped
+without retrying that window. Under the registered disturbance rule B was
+acquired once more as v2, ending at 21:34:56. All windows contain disturbance
+records; passing results remain valid. The original failures are not
+reclassified as passes. Pre-acquisition quiet-window timeouts and a supervisor
+process-matching repair remain in the R-4 operational record.
+
+The orchestrator checked profiles for the selected 16 performances and the
+two executed failed-window cases: an L2 summary on every hop, T2 receipts
+corresponding to hop counts, zero drops, zero unknowns, at most one-hop receipt
+delay and a seed. The last frame can be received after the final hop. L2 was
+operating on the device; this is not a load measurement of an inactive path.
+
+#### Known limits and the remaining design problem
+
+T-24's expectations frozen immediately before intervention placed the omitted
+On and four positions through EOF within the existing window for both single
+and mixed inputs. The current meter missed that window for the mixture.
+All-cut period/next-position agreement was 463/463 for single-source (c),
+538/553 for mixed (c), and 151/509 for the current meter on the mixture.
+Fifteen normal-mixture cuts and 47/454 cuts of the separate old saved Sine 440
+input missed the position window. Each arm's denominator is source-known,
+seeded, C>0 cuts; unknown or unseeded cuts are not successes. Online updates
+from continuation sound are distinct from pre-intervention frozen expectations.
+
+The T-24 worker did not recommend production inclusion because its all-cut
+condition was unmet. The orchestrator re-examined that condition as its own
+operational criterion, not the principle's omission/continuation evaluation.
+The worker's unmet verdict and saved numbers remain. The later author decision
+adopted the profile with known limits as an opt-in; it did not rewrite those
+results.
+
+T-26 diagnosed PLV as the branch determining C in all 62 counterexamples.
+In the mixture, an additional source changed the fast-onset sequence and
+the existing phase correction pulled beat phase. For old Sine, phase was
+converging after a different initial tempo. Both use the fast phase-update
+path shared with the current meter. High PLV indicates concentration, not
+correct phase origin. T-26's product readout removed none of the 62 misses
+and worsened old-Sine actual-On agreement from 8/13 to 5/13. T-27's onset
+qualification also retained the old counterexamples, worsening normal-mixture
+position agreement from 538/553 to 136/553, old Sine from 407/454 to 0/454,
+and the frozen mixture expectation beyond the window. Neither repair was adopted.
+
+After two waves failed to close the phase issue, the orchestrator stopped
+this small stream at 14:25. The remaining design problem is which relative
+position fast observations explain conditional on T2 recurrence, and how
+relative position and source uncertainty update when tempo coordinates
+change. This does not send the work back to threshold tuning or prove that
+every attribution algorithm is impossible. The adopted max readout is an
+engineering score, not a calibrated probability or a phase guarantee for
+all conditions.
+
+#### Unconfirmed work and the L1/L2/L4 states
+
+The orchestrator reads the declared adopted scope as having the L1 timing
+contracts, L2 principle tasks/registered causal difference/known-unknown
+contracts, and L4 device and CI conditions for the final L2-enabled
+implementation in place. This is **the orchestrator's reading**.
+**Overall mechanism completion is not declared.** The author decides whether
+to close that stage and proceed to composition. The L2 design problem above remains.
+
+Device evidence for the default L2-disabled path remains pre-V-15 R-3
+(`defb006`); the post-V-15 source's default path has not been measured on
+the device. From default-render bit identity and the heavier L2-enabled
+path staying within budget, the orchestrator reads a default-path repeat as
+unnecessary, but is checking this with the author. Render identity is not
+reclassified as a device acquisition on the new source. Listening, other
+bodies, tempos or scenes, scientific/musical success in a closed-loop ecology
+and unbounded load remain unconfirmed here. Old T-6 P/N, the unmet/deferred
+Voice-side L3 final form and L5's closure using existing controls remain.
+Only implemented descriptions in the public technote table are aligned;
+its status labels are unchanged.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are machine-local .orchestration/units/T-24/report.md,
+T-25/report.md, T-26/report.md, T-27/report.md, V-15/report.md,
+V-16/report.md, V-17/report.md, the final section of R-4/README.md,
+saved CSVs/runner log, and the 2026-10-14 10:53–21:35 entries in
+.orchestration/records/decisions-20261007-orchestrator.md.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

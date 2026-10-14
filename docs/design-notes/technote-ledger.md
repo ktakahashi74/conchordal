@@ -9492,6 +9492,8 @@ all conditions.
 
 #### Unconfirmed work and the L1/L2/L4 states
 
+The pending author decisions below describe 21:35. The [21:41 addendum](#mechanism-completion-author-closure-20261014) records author closure.
+
 The orchestrator reads the declared adopted scope as having the L1 timing
 contracts, L2 principle tasks/registered causal difference/known-unknown
 contracts, and L4 device and CI conditions for the final L2-enabled
@@ -9516,6 +9518,31 @@ Sources are machine-local .orchestration/units/T-24/report.md,
 T-25/report.md, T-26/report.md, T-27/report.md, V-15/report.md,
 V-16/report.md, V-17/report.md, the final section of R-4/README.md,
 saved CSVs/runner log, and the 2026-10-14 10:53–21:35 entries in
+.orchestration/records/decisions-20261007-orchestrator.md.
+
+<a id="mechanism-completion-author-closure-20261014"></a>
+
+#### 21:41: author closure of the mechanism stage; proceed to composition
+
+At 21:41 on 2026-10-14 (transcript time), the author answered “推奨 push”
+(recommendations; push). The author adopted all three recommendations:
+**close the mechanism-completion stage, L1/L2/L4, and proceed to composition**;
+do not repeat device measurements for the default L2-disabled path; and push.
+The orchestrator will push after integrating D-24.
+
+The no-repeat rationale is the orchestrator's reading: default rendering is
+bit-identical, the L2-enabled path does more work, and the selected R-4
+performances' largest p99 is below half the device budget. This does not mean
+the post-V-15 default path has been measured on the device.
+Temporary phase pulls from fast onsets and the relative-position/source-
+uncertainty update problem remain as L2 limits. The two-wave T-26/T-27 stop,
+the unmet/deferred Voice-side L3 final form, L5 closure and old T-6 P/N remain.
+This is author closure within the declared mechanism scope, not a guarantee
+for all conditions or listening. Public technote status labels are unchanged.
+The next restart point is composition.
+
+Sources are the 21:42 addendum in machine-local
+.orchestration/units/D-24/brief.md and the 2026-10-14 21:41 entry in
 .orchestration/records/decisions-20261007-orchestrator.md.
 
 ## 9.4 Alignment and Extension Sequence

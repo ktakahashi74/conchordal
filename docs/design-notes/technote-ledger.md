@@ -9205,6 +9205,156 @@ device-{A,B,A-prime,B-prime}-forms-v1-analysis-r2/performances.csv in that
 directory, and the 2026-10-14 07:30 and 08:02 entries in
 .orchestration/records/decisions-20261007-orchestrator.md.
 
+<a id="l2-principle-derivation-continuous-prototype-20261014"></a>
+
+### 9.3.90 2026-10-14: Deriving L2 contracts, a continuous-input calculation and a prototype
+
+#### Decided: no new author adoption
+
+At 09:15 the author asked “なにをきめればいい” (what needs deciding), and at
+09:34 “原理からみちびけないの？” (can it be derived from principles?). Times
+come from the transcript. The orchestrator had presented the L2 decision as
+deferral versus continuation. These questions do not select a path. Neither
+deferral nor calculation (c) below has been adopted by the author. The adopted
+single meter and ii-B division of roles remain; the completion denominator
+remains L1, L2 and L4.
+
+H below denotes the [principle document](dcc-neurocognitive-hierarchy.md).
+Section and line references identify the version read by T-22/T-23. That
+document has not been changed.
+
+#### The orchestrator's correction
+
+C2 in the T-20/T-21 briefs, agreement with the current meter at every cut of
+07, and treating four detector quantities as values for the author to choose
+from a feasible region were not derived from H §2:148–179, §4.2:337–354 or
+§6:477–492. The orchestrator recorded the error of imposing these criteria
+and parameter roles without checking the principles, and withdrew the
+deferral recommendation at 09:37. The two-wave stop and numerical results
+in [§9.3.88](#l2-support-waves-stopped-author-decision-20261013) remain as
+records of their time.
+
+T-22 corrected the interpretation of earlier units:
+
+- Cutting history on every unknown interval does not follow the missing-input contract. T-21 b's preservation under partial missingness follows the principle, but its reset on all-groups-unknown or delivery drop still conflicts with it. Ordinary gaps are not configuration restarts (H §9.1:699–708).
+- C2 is the orchestrator's comparison criterion, neither principle-layer acceptance nor the author's exit criterion. Measured disagreement is retained; it alone does not justify stopping selection of a mechanism consistent with the principles.
+- Component ratios α and threshold t map sensory observations into events. Lack of uniquely specified published values does not make them composer parameters to select by audition. Continuous input can eliminate these four detector quantities without eliminating the need to identify an observation calculation.
+- T-21 a's whole-bus failure is a finite result from reusing an α/t range successful on group-conditioned components for a bus view with different scales and cancellation. It neither refutes whole-bus observation nor proves that changing t alone would succeed.
+
+#### Derived: the T-22 skeleton
+
+T-22, returned at 10:02, was a desk analysis. From the principles and adopted
+records it derived a skeleton: retain continuous auditory evidence, support
+and uncertainty for the whole habitat; causally update one belief about
+recurrence and relative position; propagate time and state without adding
+observations during missing input; avoid counting the same sound as
+independent observations; issue future beat positions and support for
+`metric()` to read under its bodily and coupling conditions. Complete group
+assignment, threshold events, three-point confirmation and all-cut agreement
+with the current meter are not prerequisites.
+
+H §2:148–179 supplies the evidence, causal-update, missingness and reuse
+contracts; §4.2:337–346 supplies recurrence/position and omission/continuation
+comparisons. §9.1:699–708 distinguishes ordinary gaps from configuration
+resets, and :968–972 specifies whole-habitat observation. This derives
+semantic contracts, not a unique neural update law. Observed silence and
+missing input, issued forecasts and later revisions, metric candidates and
+actual On remain distinct. Since 07 generates sound under the current meter,
+it cannot replace an independent periodic source in these tasks.
+
+#### Not uniquely derived; the engineering rule specified by T-23
+
+T-22 did not uniquely derive the observation calculation mapping continuous
+modulation output to recurrence support, concrete recurrence/tempo/phase
+updates, or the scale for passing uncalibrated support to consumers.
+Scheirer 1998, Klapuri et al. 2006 and Large et al. 2015 provide computational
+model sources. T-22 confirmed abstracts, parts of the text and bibliographic
+information, not all equations, coefficients or their mapping from current
+T2 input. New human data are not required. At 10:05 the orchestrator assigned
+T-23 to specify a calculation preserving the single meter and ii-B. This
+was not a new author adoption.
+
+T-23, returned at 10:39, specified calculation (c) and an evaluation design
+on paper. It retains positive hop differences of the whole habitat's native
+T2 components, 30 channels × four components, as continuous quantities.
+Delayed overlap of the same components, intersection/union through sums of
+min/max, proposes one lag within the existing lag range on the native hop
+grid. A subsequent fast onset passes it through existing aliases and
+cultural priors. An issued forecast of one future hop's components is
+compared once with later observations to obtain confirmation support.
+Phase, intensity and articulation consumers use their existing paths.
+The group-conditioned arrival adapter is retained; its group coverage does
+not qualify shared-meter observations.
+
+In this proposal the three α ratios and threshold t disappear from L2.
+No new sensory threshold, deadline, refractory period, weight or learning
+rate is added. Existing history, persistence, windows and aliases are reused
+with their provenance. This is an engineering rule consistent with the
+principles and with explicit targets and scales, not an unchanged published
+model. T-23's confirmation from Scheirer 1998 p.592, Fig.5 and §B is limited
+to envelope differences and half-wave rectification driving resonance
+without hard-onset conversion. The min/max formulas are not attributed to
+that paper. Positive differences, native units, overlap, the hop grid and
+interpolation are design choices, not theorems from the principles.
+Zero allocations, finite state and work bounds are specifications, not
+measured real-time passes.
+
+The evaluation specification has two input families × three interventions
+× three arms. It is not an execution result.
+
+| Item | Specified scope |
+| --- | --- |
+| Input families | One periodic source with saved actual On/Off schedules; that source plus an independent flow source on the same bus |
+| Interventions | Normal, one omitted On, continuation; start at the first scheduled On after the existing recurrence-history duration has elapsed from the first actual On, without selecting it from results |
+| Arms | Current meter, (c), and the same (c) wiring with only T2 lag proposals and confirmation support suppressed |
+
+Sound omission is distinct from packet missingness. Read positions and
+support issued before intervention, subsequent revisions, and the causal
+chain T2 → lag → seed → confirmation → candidate → actual On. Empty
+denominators do not pass; identical predictions are nondiscriminating.
+The T2-suppressed arm still contains the existing oscillator; it is not an
+implementation of an arrival-based alternative or a completed neural
+identification comparison.
+
+T-23 §9.2 names details to revise explicitly if (c) is adopted for production:
+
+| Detail | Conditional revision for (c) |
+| --- | --- |
+| “T2 events” in [§9.3.83](#l2-expectation-adoption-and-design-results-20261013), equal-weight events and three-point confirmation | Replace with continuous-mass recurrence proposals and confirmation; preserve the single meter and ii-B roles |
+| Shared-event/union in [§9.3.59](#temporal-rule-calibration-outcome) | Extend confirmation units from event counts to native mass |
+| `multi` branch in `meter.rs:641–645` | Use confirmation support in continuous mode when subsequent confirmation is defined |
+| Gap epoch in `observation.rs:571–580` | Separate configuration/feature-unit epoch from filter-reset origin; do not restart shared relations for ordinary gaps |
+
+These are conditional revision targets, not completed changes. **The author
+has not adopted (c).**
+
+#### Unconfirmed work and T-24 in progress
+
+T-22/T-23 are desk units. They did not implement (c), execute its numerical
+calculations or acquire results. No success, L2 acceptance, device operation,
+listening or identification of a human's true beat has been established.
+Old T-6 P/N, T-19's limited results and the finite T-20/T-21 results remain.
+
+At 10:41 the orchestrator assigned T-24, an external prototype and evaluation.
+This is an orchestrator decision, not author adoption. Work is in progress
+through private-copy implementation, a saved-input bridge check, two-family
+fixtures, and three-arm evaluation, in that order. It produces no device
+sound or audition material. Contradictory formulas or an empty bridge
+denominator stop the work; formulas, intervention timing and input length
+are not changed to obtain success. No T-24 results are recorded here.
+After those results, the author decides whether to incorporate (c) into
+production, including the named detailed revisions.
+
+L1 and L4 are not closed. [R-3's 16 passing performances](#r3-current-source-device-results-20261014)
+used source without production L2; an L2 incorporation path requires device
+measurements on that source. The principle document and public technote
+remain unchanged.
+
+The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+Sources are machine-local .orchestration/units/T-22/report.md §§1, 3–7,
+T-23/report.md §§1–9, T-24/brief.md, and the 2026-10-14 09:34, 10:05 and
+10:41 entries in .orchestration/records/decisions-20261007-orchestrator.md.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

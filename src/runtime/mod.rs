@@ -723,11 +723,15 @@ fn spawn_analysis_worker(
     analysis_result_tx: Sender<analysis_worker::AnalysisResult>,
     analysis_update_rx: Receiver<LandscapeUpdate>,
     delivery: analysis_worker::AnalysisDelivery,
-    temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
+    temporal_inputs: (
+        Option<crate::temporal_cognition::observation::Tap>,
+        Option<crate::temporal_cognition::t2::runtime_input::Output>,
+    ),
 ) -> thread::JoinHandle<()> {
     thread::Builder::new()
         .name(name.into())
         .spawn(move || {
+            let (temporal_tap, raw_output) = temporal_inputs;
             analysis_worker::run(
                 analysis_stream,
                 audio_to_analysis_rx,
@@ -735,6 +739,7 @@ fn spawn_analysis_worker(
                 analysis_update_rx,
                 delivery,
                 temporal_tap,
+                raw_output,
             )
         })
         .expect("spawn analysis worker")
@@ -915,6 +920,8 @@ fn load_scenario_or_exit(
 struct WiringOptions {
     #[cfg(test)]
     offline_body_probe: Option<OfflineBodyProbe>,
+    #[cfg(test)]
+    raw_t2_delay: Duration,
     ui_channel_capacity: usize,
     /// Enables listener analysis even without DCC coupling (GUI display / report).
     listener_forced: bool,
@@ -956,6 +963,8 @@ fn wire_runtime(
     let WiringOptions {
         #[cfg(test)]
         offline_body_probe,
+        #[cfg(test)]
+        raw_t2_delay,
         ui_channel_capacity,
         listener_forced,
         wait_user_exit,
@@ -972,6 +981,13 @@ fn wire_runtime(
         audio_counters,
     } = opts;
 
+    if config.temporal_meter_t2 || config.temporal_t2.is_some() {
+        crate::temporal_cognition::t2::Producer::new(runtime_sample_rate).map_err(str::to_owned)?;
+    }
+    if config.temporal_meter_t2 {
+        MeterNetwork::continuous_geometry(runtime_sample_rate, config.analysis.hop_size as u64)
+            .map_err(str::to_owned)?;
+    }
     let core = build_analysis_runtime_core(config, runtime_sample_rate);
     let fs = core.fs;
     let hop = core.hop;
@@ -979,16 +995,30 @@ fn wire_runtime(
     let lparams_runtime = core.lparams.clone();
 
     let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
-    let (report_error_tx, report_error_rx) = if reporter.is_some() || profile.is_some() {
-        let (tx, rx) = bounded(1);
-        (Some(tx), Some(rx))
-    } else {
-        (None, None)
-    };
+    let (report_error_tx, report_error_rx) =
+        if reporter.is_some() || profile.is_some() || config.temporal_meter_t2 {
+            let (tx, rx) = bounded(1);
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
     let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
     let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
     let (analysis_result_tx, analysis_result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
 
+    let (raw_output, t2_inbox) = if config.temporal_meter_t2 {
+        let (output, inbox) =
+            crate::temporal_cognition::t2::runtime_input::channel(runtime_sample_rate, hop as u64);
+        #[cfg(test)]
+        let output = {
+            let mut output = output;
+            output.delay = raw_t2_delay;
+            output
+        };
+        (Some(output), Some(inbox))
+    } else {
+        (None, None)
+    };
     // NSGT-RT based audio analysis thread.
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
     let arrival_enabled = config.temporal_onset_comparison.is_some_and(|c| c.arrival);
@@ -1046,7 +1076,7 @@ fn wire_runtime(
         analysis_result_tx,
         analysis_update_rx,
         analysis_worker::AnalysisDelivery::Latest,
-        taps[0].take(),
+        (taps[0].take(), raw_output),
     );
 
     let dcc_coupler = DccCoupler::new(config.dcc);
@@ -1069,7 +1099,7 @@ fn wire_runtime(
             result_tx,
             update_rx,
             analysis_worker::AnalysisDelivery::Ordered,
-            taps[1].take(),
+            (taps[1].take(), None),
         );
         (
             Some(presentation_tx),
@@ -1127,6 +1157,7 @@ fn wire_runtime(
 
     let cfg = WorkerConfig {
         render_prototype: config.render_prototype,
+        temporal_meter_t2: config.temporal_meter_t2,
         onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
         wait_user_exit,
@@ -1145,6 +1176,7 @@ fn wire_runtime(
         deterministic_footprints,
     };
     let channels = WorkerChannels {
+        t2_inbox,
         temporal_snapshots,
         ui_tx: ui_frame_tx,
         report_error_tx,
@@ -1324,6 +1356,8 @@ pub(crate) fn init_runtime(
         WiringOptions {
             #[cfg(test)]
             offline_body_probe: None,
+            #[cfg(test)]
+            raw_t2_delay: Duration::ZERO,
             ui_channel_capacity,
             listener_forced: !args.nogui || args.report.is_some(),
             wait_user_exit: config.playback.wait_user_exit,
@@ -1468,6 +1502,8 @@ pub fn run_render(
         WiringOptions {
             #[cfg(test)]
             offline_body_probe: None,
+            #[cfg(test)]
+            raw_t2_delay: Duration::ZERO,
             ui_channel_capacity: 1,
             listener_forced: reporter.is_some(),
             wait_user_exit: false,
@@ -1515,6 +1551,7 @@ fn join_thread(name: &str, handle: thread::JoinHandle<()>) -> Result<(), String>
 /// Immutable per-run settings and shared control flags for the worker thread.
 struct WorkerConfig {
     render_prototype: bool,
+    temporal_meter_t2: bool,
     onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     scenario_name: String,
     wait_user_exit: bool,
@@ -1537,6 +1574,7 @@ struct WorkerConfig {
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
 struct WorkerChannels {
+    t2_inbox: Option<crate::temporal_cognition::t2::runtime_input::Inbox>,
     temporal_snapshots:
         [Option<Arc<std::sync::Mutex<crate::temporal_cognition::observation::Snapshot>>>; 2],
     ui_tx: Sender<UiFrame>,
@@ -1585,6 +1623,7 @@ struct WorkerState {
     // perception meter inside ListenerTwin. See "Perception vs Production".
     // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
     prod_meter: MeterNetwork,
+    t2_sample: Option<crate::life::report::TemporalMeterSample>,
     temporal_expectation: Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
     participation_predictions: Vec<(u64, ParticipationPrediction)>,
     /// Traced decisions wait here so their encoding is charged to the report phase.
@@ -1621,7 +1660,11 @@ impl WorkerState {
             fs: cfg.fs,
             hop: cfg.hop,
         };
-        let mut prod_meter = MeterNetwork::new();
+        let mut prod_meter = if cfg.temporal_meter_t2 {
+            MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64)
+        } else {
+            MeterNetwork::new()
+        };
         prod_meter.set_shaping(cfg.meter_shaping);
         let mut generator_model =
             crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
@@ -1673,6 +1716,7 @@ impl WorkerState {
             latest_listener_fast_state: None,
             latest_listener_state: None,
             prod_meter,
+            t2_sample: None,
             temporal_expectation:
                 crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32),
             participation_predictions: Vec::new(),
@@ -1759,14 +1803,35 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                 });
             }
 
-            if channels.temporal_snapshots.iter().any(Option::is_some)
+            if (channels.temporal_snapshots.iter().any(Option::is_some)
+                || channels.t2_inbox.is_some())
                 && channels.audio_to_analysis_tx.is_some()
             {
                 // Close input and drain publishers before reading their final observer state.
                 // This runs after generation has stopped, never in a live hop or callback.
                 channels.audio_to_analysis_tx.take();
                 channels.presentation_to_listener_tx.take();
-                for _ in &channels.analysis_result_rx {}
+                if let Some(inbox) = channels.t2_inbox.as_mut() {
+                    loop {
+                        for _ in inbox.rx.try_iter() {}
+                        match channels.analysis_result_rx.try_recv() {
+                            Ok(_) => {}
+                            Err(crossbeam_channel::TryRecvError::Disconnected) => break,
+                            Err(crossbeam_channel::TryRecvError::Empty) => {
+                                thread::sleep(Duration::from_micros(200))
+                            }
+                        }
+                    }
+                    inbox.finish();
+                    if let Some(sample) = state.t2_sample.as_mut() {
+                        sample.input = inbox.diagnostics;
+                        report_try(&mut state.reporter, "final T2 meter", |writer| {
+                            writer.write_temporal_meter(sample)
+                        });
+                    }
+                } else {
+                    for _ in &channels.analysis_result_rx {}
+                }
                 if let Some(rx) = &channels.listener_result_rx {
                     for _ in rx {}
                 }
@@ -2013,7 +2078,17 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     let post_render_start = state.profile.as_ref().map(|_| Instant::now());
     let channel_peak = [max_abs, max_abs];
 
-    drive_production_meter(state, cfg, habitat_chunk.as_ref());
+    if cfg.temporal_meter_t2
+        && let Err(err) = channels
+            .audio_to_analysis_tx
+            .as_ref()
+            .expect("analysis input open during generation")
+            .send((state.frame_idx, Arc::clone(&habitat_chunk)))
+    {
+        warn!("analysis worker disconnected: {err}");
+        cfg.exiting.store(true, Ordering::SeqCst);
+    }
+    drive_production_meter(state, cfg, channels, habitat_chunk.as_ref());
     state.latest_listener_fast_state = Some(state.listener_twin.observe_presentation_audio(
         now_sec,
         state.frame_idx,
@@ -2047,11 +2122,12 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     );
 
     // Feed every habitat hop to NSGT-RT. Dropping hops breaks time continuity.
-    if let Err(err) = channels
-        .audio_to_analysis_tx
-        .as_ref()
-        .expect("analysis input open during generation")
-        .send((state.frame_idx, Arc::clone(&habitat_chunk)))
+    if !cfg.temporal_meter_t2
+        && let Err(err) = channels
+            .audio_to_analysis_tx
+            .as_ref()
+            .expect("analysis input open during generation")
+            .send((state.frame_idx, Arc::clone(&habitat_chunk)))
     {
         warn!("analysis worker disconnected: {err}");
         cfg.exiting.store(true, Ordering::SeqCst);
@@ -2180,6 +2256,7 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
             rendered_tone_count: state.schedule_renderer.active_tone_count(),
             post_render_us,
             worker_allocations,
+            t2_meter: state.t2_sample,
             underrun_frames_total: cfg
                 .underrun_frames
                 .as_ref()
@@ -2931,7 +3008,12 @@ fn participation_outcome(
 }
 
 /// Drive the production meter from habitat flux and weak onset reinforcement.
-fn drive_production_meter(state: &mut WorkerState, cfg: &WorkerConfig, habitat_chunk: &[f32]) {
+fn drive_production_meter(
+    state: &mut WorkerState,
+    cfg: &WorkerConfig,
+    channels: &mut WorkerChannels,
+    habitat_chunk: &[f32],
+) {
     if state.finished {
         return;
     }
@@ -2956,7 +3038,10 @@ fn drive_production_meter(state: &mut WorkerState, cfg: &WorkerConfig, habitat_c
                 });
         });
     }
-    state.dorsal.process(habitat_chunk);
+    let fast_known = !cfg.temporal_meter_t2 || habitat_chunk.iter().all(|v| v.is_finite());
+    if fast_known {
+        state.dorsal.process(habitat_chunk);
+    }
     let flux_drive = (state.dorsal.last_metrics().flux.max(0.0) * 500.0)
         .tanh()
         .clamp(0.0, 1.0);
@@ -2968,9 +3053,75 @@ fn drive_production_meter(state: &mut WorkerState, cfg: &WorkerConfig, habitat_c
         * ONSET_DRIVE_GAIN)
         .clamp(0.0, 1.0);
     let drive = flux_drive.max(onset_drive);
-    let meter_state = state
-        .prod_meter
-        .process(cfg.hop_duration.as_secs_f32(), drive);
+    let meter_state = if let Some(inbox) = channels.t2_inbox.as_mut() {
+        let start = state.timebase.frame_start_tick(state.frame_idx);
+        let end = state.timebase.frame_end_tick(state.frame_idx);
+        state.prod_meter.continuous_fast(
+            start,
+            end,
+            cfg.hop_duration.as_secs_f32(),
+            fast_known.then_some(drive),
+        );
+        let mut remaining = inbox.rx.len();
+        let mut failure = None;
+        loop {
+            if !cfg.deterministic_analysis && remaining == 0 {
+                break;
+            }
+            match inbox.rx.try_recv() {
+                Ok(delivery) => {
+                    let packet = inbox.received(delivery, end);
+                    if let Err(reason) = state.prod_meter.continuous_ingest(packet) {
+                        failure = Some(reason);
+                        break;
+                    }
+                    remaining = remaining.saturating_sub(1);
+                    if cfg.deterministic_analysis && packet.end == end {
+                        break;
+                    }
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => {
+                    if !cfg.deterministic_analysis || cfg.exiting.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    thread::sleep(Duration::from_micros(200));
+                }
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    failure = Some("raw T2 producer disconnected");
+                    break;
+                }
+            }
+        }
+        if let Some(reason) = failure {
+            cfg.exiting.store(true, Ordering::SeqCst);
+            if let Some(tx) = &channels.report_error_tx {
+                let _ = tx.try_send(reason.to_owned());
+            }
+        }
+        let result = state.prod_meter.continuous_finish();
+        if state.reporter.is_some() || state.profile.is_some() {
+            let sample = crate::life::report::TemporalMeterSample {
+                sample_rate: cfg.fs as u32,
+                hop: cfg.hop as u64,
+                use_cut: end,
+                input: inbox.diagnostics,
+                recurrence: state
+                    .prod_meter
+                    .continuous_diagnostics()
+                    .expect("continuous mode"),
+                state: result,
+            };
+            report_try(&mut state.reporter, "T2 meter", |writer| {
+                writer.write_temporal_meter(&sample)
+            });
+            state.t2_sample = Some(sample);
+        }
+        result
+    } else {
+        state
+            .prod_meter
+            .process(cfg.hop_duration.as_secs_f32(), drive)
+    };
     state.current_landscape.rhythm = NeuralRhythms::from_meter_state(&meter_state);
 }
 
@@ -3357,6 +3508,8 @@ wait(0.08);
                 Arc::new(AtomicBool::new(false)),
                 WiringOptions {
                     offline_body_probe: Some(probe),
+                    #[cfg(test)]
+                    raw_t2_delay: Duration::ZERO,
                     ui_channel_capacity: 1,
                     listener_forced: false,
                     wait_user_exit: false,
@@ -3459,6 +3612,8 @@ wait(0.08);
                         Arc::clone(&stop),
                         WiringOptions {
                             offline_body_probe: Some(probe),
+                            #[cfg(test)]
+                            raw_t2_delay: Duration::ZERO,
                             ui_channel_capacity: 16,
                             listener_forced: wait_user_exit,
                             wait_user_exit,
@@ -3560,6 +3715,7 @@ wait(0.08);
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
             render_prototype: false,
+            temporal_meter_t2: false,
             onset_comparison: None,
             scenario_name: "clock regression".into(),
             wait_user_exit: false,
@@ -3914,6 +4070,8 @@ wait(0.08);
                         WiringOptions {
                             #[cfg(test)]
                             offline_body_probe: None,
+                            #[cfg(test)]
+                            raw_t2_delay: Duration::ZERO,
                             ui_channel_capacity: 1,
                             listener_forced: true,
                             wait_user_exit: false,
@@ -4013,6 +4171,8 @@ wait(0.08);
                     WiringOptions {
                         #[cfg(test)]
                         offline_body_probe: None,
+                        #[cfg(test)]
+                        raw_t2_delay: Duration::ZERO,
                         ui_channel_capacity: 1,
                         listener_forced: true,
                         wait_user_exit: false,
@@ -4159,3 +4319,7 @@ mod meter_recurrence_tests;
 
 #[cfg(test)]
 mod articulation_persistence_tests;
+
+#[cfg(test)]
+#[path = "temporal_meter_tests.rs"]
+mod temporal_meter_tests;

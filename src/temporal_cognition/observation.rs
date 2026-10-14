@@ -126,7 +126,7 @@ pub(crate) struct Tap {
     source_missing_samples: u64,
     dropped_frames: u64,
     deterministic: bool,
-    t2_producer: Option<super::t2::Producer>,
+    pub(crate) t2_enabled: bool,
 }
 
 impl Tap {
@@ -161,9 +161,7 @@ impl Tap {
         let state = Box::new(initial);
         let space = Arc::new(space);
         let worker_space = Arc::clone(&space);
-        let t2_producer = options
-            .t2
-            .map(|_| super::t2::Producer::new(sample_rate).expect("validated T2 sample rate"));
+        let t2_enabled = options.t2.is_some();
         let handle = std::thread::Builder::new()
             .name(format!("temporal-observation-{bus}"))
             .spawn(move || {
@@ -525,7 +523,7 @@ impl Tap {
             source_missing_samples: 0,
             dropped_frames: 0,
             deterministic: options.deterministic,
-            t2_producer,
+            t2_enabled,
         }
     }
 
@@ -534,19 +532,14 @@ impl Tap {
         self.observe_input(frame_id, power_scan, mono_energy, None);
     }
 
-    pub fn observe_pcm(
+    pub fn observe_frame(
         &mut self,
         frame_id: u64,
         power_scan: &[f32],
         mono_energy: f64,
-        pcm: &[f32],
+        t2: Option<super::t2::Frame>,
     ) {
-        assert_eq!(
-            pcm.len() as u64,
-            self.hop,
-            "T2 observes complete analysis hops"
-        );
-        self.observe_input(frame_id, power_scan, mono_energy, Some(pcm));
+        self.observe_input(frame_id, power_scan, mono_energy, t2);
     }
 
     fn observe_input(
@@ -554,7 +547,7 @@ impl Tap {
         frame_id: u64,
         power_scan: &[f32],
         mono_energy: f64,
-        pcm: Option<&[f32]>,
+        t2: Option<super::t2::Frame>,
     ) {
         self.space
             .assert_scan_len_named(power_scan, "temporal_tap_power_scan");
@@ -575,25 +568,9 @@ impl Tap {
                 .checked_add(1)
                 .expect("observation epoch overflow");
             self.epoch_start = start;
-            if let Some(producer) = &mut self.t2_producer {
-                producer.reset(start);
-            }
         }
         self.next_frame = frame_id.checked_add(1).expect("observation frame overflow");
-        let t2 = if let Some(producer) = self.t2_producer.as_mut() {
-            if let Some(pcm) = pcm {
-                Some(Box::new(
-                    producer
-                        .process(start, pcm)
-                        .expect("ordered finite analysis PCM for T2"),
-                ))
-            } else {
-                producer.reset(end);
-                None
-            }
-        } else {
-            None
-        };
+        let t2 = t2.map(Box::new);
         let event = Event::Frame(Observation {
             version: OBSERVATION_VERSION,
             bus: self.bus,
@@ -683,17 +660,29 @@ mod tests {
                     ..Options::default()
                 },
             );
-            assert_eq!(tap.t2_producer.is_some(), enabled);
+            let mut raw = enabled
+                .then(|| super::super::t2::runtime_input::Input::new(48000, 512, None).unwrap());
+            assert_eq!(raw.is_some(), enabled);
             let output = Arc::clone(&tap.snapshot);
             for frame in 0..4 {
-                tap.observe_pcm(frame, &power, 1e-6, &pcm);
+                tap.observe_frame(
+                    frame,
+                    &power,
+                    1e-6,
+                    raw.as_mut().and_then(|s| s.observe(frame, &pcm)),
+                );
             }
             let snapshot = *output.lock().unwrap();
             assert_eq!(snapshot.t2.is_some(), enabled);
             if enabled {
                 assert_eq!(snapshot.t2.unwrap().epoch_start, 0);
             }
-            tap.observe_pcm(8, &power, 1e-6, &pcm);
+            tap.observe_frame(
+                8,
+                &power,
+                1e-6,
+                raw.as_mut().and_then(|s| s.observe(8, &pcm)),
+            );
             let snapshot = *output.lock().unwrap();
             assert_eq!(snapshot.source_epoch, 1);
             if enabled {
@@ -702,7 +691,12 @@ mod tests {
                 assert_eq!((t2.start, t2.end), (4096, 4608));
                 tap.observe(9, &power, 1e-6);
                 assert!(output.lock().unwrap().t2.is_none());
-                tap.observe_pcm(10, &power, 1e-6, &pcm);
+                tap.observe_frame(
+                    10,
+                    &power,
+                    1e-6,
+                    raw.as_mut().and_then(|s| s.observe(10, &pcm)),
+                );
                 assert_eq!(output.lock().unwrap().t2.unwrap().epoch_start, 5120);
             }
         }

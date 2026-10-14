@@ -132,6 +132,7 @@ fn render_case(
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
             offline_body_probe: Some(probe),
+            raw_t2_delay: std::time::Duration::ZERO,
             ui_channel_capacity: 1,
             listener_forced: true,
             wait_user_exit: false,

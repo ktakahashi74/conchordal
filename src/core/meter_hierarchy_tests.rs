@@ -339,7 +339,7 @@ fn uniform_streams_keep_the_registered_native_frequency_and_confidence() {
         (4.0, 1.0, 2.0000007, 0.05000431),
     ] {
         let net = periodic(hz, stability, false);
-        assert!(net.recurrence.uniform);
+        assert!(net.recurrence.events().unwrap().uniform);
         assert_eq!(net.last.beat.freq_hz, expected_hz);
         assert_eq!(net.last.beat.confidence, expected_confidence);
     }

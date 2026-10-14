@@ -85,6 +85,16 @@ pub(crate) struct ListenerStateSample {
     pub(crate) measure_confidence: f32,
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+pub(crate) struct TemporalMeterSample {
+    pub sample_rate: u32,
+    pub hop: u64,
+    pub use_cut: u64,
+    pub input: crate::temporal_cognition::t2::runtime_input::Diagnostics,
+    pub recurrence: crate::core::meter::ContinuousDiagnostics,
+    pub state: crate::core::meter::MeterState,
+}
+
 /// Wall-clock telemetry only; never used by the synthesis or ecology controls.
 #[derive(Debug, Serialize)]
 pub(crate) struct HopTimingSample {
@@ -152,6 +162,7 @@ pub(crate) struct ParticipationOutcomeSample {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
+    TemporalMeter(&'a TemporalMeterSample),
     BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
     BodyDescriptor {
         #[serde(flatten)]
@@ -402,6 +413,12 @@ impl JsonlReporter {
         })
     }
 
+    pub(crate) fn write_temporal_meter(
+        &mut self,
+        sample: &TemporalMeterSample,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::TemporalMeter(sample))
+    }
     pub(crate) fn write_hop_timing(&mut self, sample: &HopTimingSample) -> Result<(), String> {
         self.write_record(&ReportRecord::HopTiming(sample))
     }

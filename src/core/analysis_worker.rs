@@ -24,10 +24,20 @@ pub(crate) fn run(
     update_rx: Receiver<LandscapeUpdate>,
     delivery: AnalysisDelivery,
     mut temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
+    raw_output: Option<crate::temporal_cognition::t2::runtime_input::Output>,
 ) {
     let mut next_frame_id = 0;
     let mut warmup_samples = 0;
     let hop_samples = stream.hop_samples();
+    let mut raw = (raw_output.is_some() || temporal_tap.as_ref().is_some_and(|t| t.t2_enabled))
+        .then(|| {
+            crate::temporal_cognition::t2::runtime_input::Input::new(
+                stream.sample_rate() as u32,
+                hop_samples as u64,
+                raw_output,
+            )
+            .expect("validated raw T2 geometry")
+        });
     let mut spectral_history = crate::core::spectral_history::SpectralHistory::new(
         stream.last().space.clone(),
         stream.sample_rate() as f64,
@@ -61,11 +71,14 @@ pub(crate) fn run(
                 }
             }
             next_frame_id = frame_id.wrapping_add(1);
+            let t2 = raw
+                .as_mut()
+                .and_then(|input| input.observe(frame_id, hop.as_ref()));
             let frame = stream.process(hop.as_ref());
             if let Some(tap) = temporal_tap.as_mut() {
                 let mono_energy =
                     hop.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / hop.len() as f64;
-                tap.observe_pcm(frame_id, &frame.nsgt_power, mono_energy, hop.as_ref());
+                tap.observe_frame(frame_id, &frame.nsgt_power, mono_energy, t2);
             }
             spectral_history.observe(
                 frame_id * hop_samples as u64,
@@ -90,6 +103,7 @@ pub(crate) fn run(
         }
     }
     // Publish the final observer state before disconnecting the analysis result channel.
+    drop(raw);
     drop(temporal_tap);
 }
 
@@ -180,6 +194,7 @@ mod tests {
                     update_rx,
                     AnalysisDelivery::Ordered,
                     None,
+                    None,
                 );
             });
             for (index, reference) in expected.iter().enumerate() {
@@ -243,6 +258,7 @@ mod tests {
             update_rx,
             AnalysisDelivery::Latest,
             Some(tap),
+            None,
         );
         let observation = *observed.lock().unwrap();
         assert_eq!(
@@ -296,6 +312,7 @@ mod tests {
                 update_rx,
                 AnalysisDelivery::Ordered,
                 None,
+                None,
             );
             done_tx.send(()).unwrap();
         });
@@ -345,7 +362,7 @@ mod tests {
                 hop_tx.send((frame_id, Arc::clone(&silence))).unwrap();
             }
             drop(hop_tx);
-            run(stream, hop_rx, result_tx, update_rx, delivery, None);
+            run(stream, hop_rx, result_tx, update_rx, delivery, None, None);
 
             if matches!(delivery, AnalysisDelivery::Ordered) {
                 let (frame_id, frame) = result_rx.recv().unwrap();
@@ -399,6 +416,7 @@ mod tests {
                 result_tx,
                 update_rx,
                 AnalysisDelivery::Latest,
+                None,
                 None,
             )
         });

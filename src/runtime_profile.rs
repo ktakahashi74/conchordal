@@ -31,6 +31,8 @@ pub(crate) struct HopProfile {
     pub(crate) rendered_tone_count: usize,
     pub(crate) post_render_us: f64,
     pub(crate) worker_allocations: Option<AllocationCounts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) t2_meter: Option<crate::life::report::TemporalMeterSample>,
     pub(crate) underrun_frames_total: Option<u64>,
 }
 
@@ -337,6 +339,7 @@ mod tests {
                 rendered_tone_count: 0,
                 post_render_us: 0.0,
                 worker_allocations: None,
+                t2_meter: None,
                 underrun_frames_total: None,
             });
         }
@@ -398,6 +401,7 @@ mod tests {
                 rendered_tone_count: 0,
                 post_render_us: 0.0,
                 worker_allocations: None,
+                t2_meter: None,
                 underrun_frames_total: Some(16),
             });
         }

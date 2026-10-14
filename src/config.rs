@@ -280,6 +280,9 @@ pub struct AppConfig {
     /// Opt-in excitation renderer; omission preserves the legacy path.
     #[serde(default)]
     pub render_prototype: bool,
+    /// Raw habitat T2 recurrence for the production meter; independent of group events.
+    #[serde(default)]
+    pub temporal_meter_t2: bool,
     #[serde(default)]
     pub audio: AudioConfig,
     #[serde(default)]
@@ -575,6 +578,15 @@ impl AppConfig {
             }
         }
         crate::temporal_cognition::body_model::validate(self)?;
+        if self.temporal_meter_t2 {
+            crate::temporal_cognition::t2::Producer::new(self.audio.sample_rate)
+                .map_err(anyhow::Error::msg)?;
+            crate::core::meter::MeterNetwork::continuous_geometry(
+                self.audio.sample_rate,
+                self.analysis.hop_size as u64,
+            )
+            .map_err(anyhow::Error::msg)?;
+        }
         if let Some(t2) = self.temporal_t2 {
             crate::temporal_cognition::t2::validate_config(t2).map_err(anyhow::Error::msg)?;
             crate::temporal_cognition::t2::Producer::new(self.audio.sample_rate)
@@ -986,6 +998,7 @@ mod tests {
             birth_surrogate: false,
             body_metabolism: None,
             render_prototype: false,
+            temporal_meter_t2: false,
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_period: None,

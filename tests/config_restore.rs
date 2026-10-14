@@ -146,6 +146,7 @@ fn config_load_custom_values() {
         birth_surrogate: false,
         body_metabolism: None,
         render_prototype: false,
+        temporal_meter_t2: false,
         temporal_ridge: None,
         temporal_acoustic: None,
         temporal_period: None,

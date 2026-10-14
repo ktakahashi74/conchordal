@@ -15,6 +15,10 @@ pub(crate) struct OnsetDetector {
 }
 
 impl OnsetDetector {
+    pub(crate) fn advance_missing(&mut self, dt: f32) {
+        self.refractory_left = (self.refractory_left - dt).max(0.0);
+    }
+
     pub(crate) fn process(&mut self, dt: f32, drive: f32) -> Onset {
         let a = (-dt / 1.0).exp();
         self.baseline = a * self.baseline + (1.0 - a) * drive;
@@ -32,5 +36,27 @@ impl OnsetDetector {
         }
         self.previous_drive = drive;
         onset
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn missing_fast_time_does_not_update_baseline_variance_or_previous_drive() {
+        let mut detector = OnsetDetector::default();
+        detector.process(0.01, 1.0);
+        let before = detector.clone();
+        detector.advance_missing(0.01);
+        assert_eq!(detector.baseline.to_bits(), before.baseline.to_bits());
+        assert_eq!(detector.variance.to_bits(), before.variance.to_bits());
+        assert_eq!(
+            detector.previous_drive.to_bits(),
+            before.previous_drive.to_bits()
+        );
+        assert_eq!(
+            detector.refractory_left,
+            (before.refractory_left - 0.01).max(0.0)
+        );
     }
 }

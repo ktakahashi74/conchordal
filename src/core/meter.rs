@@ -16,6 +16,24 @@ use std::f32::consts::TAU;
 use crate::core::onset::OnsetDetector;
 use crate::core::phase::wrap_pm_pi;
 
+#[path = "meter/continuous_recurrence.rs"]
+mod continuous;
+pub(crate) use continuous::{Diagnostics as ContinuousDiagnostics, Packet as TemporalPacket};
+
+#[derive(Debug)]
+enum RecurrenceInput {
+    Events(Recurrence),
+    Continuous(Box<continuous::State>),
+}
+impl RecurrenceInput {
+    fn events(&self) -> Option<&Recurrence> {
+        match self {
+            Self::Events(s) => Some(s),
+            Self::Continuous(_) => None,
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "meter_assay.rs"]
 mod audio_assay;
@@ -66,7 +84,7 @@ const MEASURE_TAU: f32 = 6.0;
 const STRENGTH_BL_RATE: f32 = 0.1;
 
 /// One metrical level's reported state.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct MeterBand {
     /// Wrapped oscillator phase in [-pi, pi].
     pub phase: f32,
@@ -80,7 +98,7 @@ pub struct MeterBand {
 }
 
 /// Listener-side meter state.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct MeterState {
     /// Tactus (delta-rate beat).
     pub beat: MeterBand,
@@ -111,7 +129,7 @@ pub struct MeterShaping {
     pub basin_hz: Option<(f32, f32)>,
 }
 
-const RECURRENCE_HISTORY_SECONDS: f64 = 2.0 / F_BEAT_MIN as f64 + 0.06;
+pub(crate) const RECURRENCE_HISTORY_SECONDS: f64 = 2.0 / F_BEAT_MIN as f64 + 0.06;
 
 #[derive(Debug)]
 struct Echo {
@@ -319,7 +337,7 @@ impl Recurrence {
 /// detection). One instance per listener.
 #[derive(Debug)]
 pub struct MeterNetwork {
-    recurrence: Recurrence,
+    recurrence: RecurrenceInput,
     // Beat oscillator state.
     beat_phi: f32,
     beat_omega: f32,
@@ -355,8 +373,13 @@ pub struct MeterNetwork {
 
 impl Default for MeterNetwork {
     fn default() -> Self {
+        Self::with_input(RecurrenceInput::Events(Recurrence::new()))
+    }
+}
+impl MeterNetwork {
+    fn with_input(recurrence: RecurrenceInput) -> Self {
         Self {
-            recurrence: Recurrence::new(),
+            recurrence,
             beat_phi: 0.0,
             beat_omega: TAU * F_BEAT_INIT,
             beat_r: 0.1,
@@ -402,13 +425,49 @@ impl MeterNetwork {
     /// Advance the network by `dt` seconds under acoustic onset `drive` in
     /// [0, 1] (rectified spectral flux). Returns the updated meter state.
     pub fn process(&mut self, dt: f32, drive: f32) -> MeterState {
+        self.process_evidence(dt, Some(drive))
+    }
+    fn continuous(&self) -> Option<&continuous::State> {
+        match &self.recurrence {
+            RecurrenceInput::Continuous(s) => Some(s),
+            _ => None,
+        }
+    }
+    fn continuous_mut(&mut self) -> Option<&mut continuous::State> {
+        match &mut self.recurrence {
+            RecurrenceInput::Continuous(s) => Some(s),
+            _ => None,
+        }
+    }
+    fn process_evidence(&mut self, dt: f32, drive: Option<f32>) -> MeterState {
         // Composer enculturation: attractor depth is also the tempo-prior weight.
         let preference_weight = self.shaping.stability.clamp(0.0, 1.0);
         let dt = dt.max(MIN_STEP_SEC);
-        let drive = drive.clamp(0.0, 1.0);
-        let onset = self.onset_detector.process(dt, drive);
-        let confirmed_period = self.recurrence.observe(dt, onset.fired, onset.frac);
-        let confirmed_period = if self.recurrence.uniform {
+        let drive_known = drive.is_some();
+        let drive = drive.unwrap_or(0.0).clamp(0.0, 1.0);
+        let onset = if drive_known {
+            self.onset_detector.process(dt, drive)
+        } else {
+            self.onset_detector.advance_missing(dt);
+            crate::core::onset::Onset::default()
+        };
+        let confirmed_period = match &mut self.recurrence {
+            RecurrenceInput::Continuous(state) => {
+                let onset_tick = state.fast_start as f64
+                    + dt as f64 * onset.frac as f64 * state.sample_rate() as f64;
+                state
+                    .pending
+                    .filter(|p| {
+                        !state.suppressed
+                            && onset.fired
+                            && onset_tick > p.received as f64
+                            && onset_tick > p.use_cut as f64
+                    })
+                    .map(|p| p.lag_sec as f32)
+            }
+            RecurrenceInput::Events(state) => state.observe(dt, onset.fired, onset.frac),
+        };
+        let confirmed_period = if self.recurrence.events().is_some_and(|s| s.uniform) {
             self.onset_age
                 .zip(self.pending_period)
                 .and_then(|(age, period)| {
@@ -515,7 +574,10 @@ impl MeterNetwork {
             }
             if let (Some(period), Some(frequency)) = (confirmed_period, proposal) {
                 let ratio = frequency * period;
-                self.recurrence.accept(period, ratio.min(1.0 / ratio));
+                match &mut self.recurrence {
+                    RecurrenceInput::Continuous(state) => state.accept(ratio.min(1.0 / ratio)),
+                    RecurrenceInput::Events(state) => state.accept(period, ratio.min(1.0 / ratio)),
+                }
             }
             if !self.seeded
                 && let Some(frequency) = proposal
@@ -524,7 +586,10 @@ impl MeterNetwork {
                 self.beat_phi = wrap_pm_pi(self.beat_omega * dt * (1.0 - onset.frac));
                 self.beat_cycles = self.beat_omega * dt * (1.0 - onset.frac) / TAU;
                 // A new coordinate discards old evidence; this onset cannot certify itself.
-                self.recurrence.reset_evidence();
+                match &mut self.recurrence {
+                    RecurrenceInput::Continuous(state) => state.seed(),
+                    RecurrenceInput::Events(state) => state.reset_evidence(),
+                }
                 self.plv_count = 0.0;
                 self.beat_re = 0.0;
                 self.beat_im = 0.0;
@@ -614,8 +679,12 @@ impl MeterNetwork {
             }
         }
 
-        if onset.fired && self.seeded && !seeded_now {
-            self.recurrence.issue(onset.frac, dt);
+        if let RecurrenceInput::Events(state) = &mut self.recurrence
+            && onset.fired
+            && self.seeded
+            && !seeded_now
+        {
+            state.issue(onset.frac, dt);
         }
         let att_a = (-dt / 0.3).exp();
         self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
@@ -638,12 +707,17 @@ impl MeterNetwork {
         let presence = smoothstep(1.0 - 0.5 * stab, 4.0 - 2.0 * stab, self.plv_count);
 
         let beat_plv = (self.beat_re * self.beat_re + self.beat_im * self.beat_im).sqrt() / count;
-        let support = if self.recurrence.multi {
-            beat_plv.max(self.recurrence.support())
-        } else {
-            beat_plv
+        let beat_conf = match &self.recurrence {
+            RecurrenceInput::Continuous(state) => state.confidence(beat_plv, presence),
+            RecurrenceInput::Events(state) => {
+                let support = if state.multi {
+                    beat_plv.max(state.support())
+                } else {
+                    beat_plv
+                };
+                (support * presence).clamp(0.0, 1.0)
+            }
         };
-        let beat_conf = (support * presence).clamp(0.0, 1.0);
         let beat_freq = self.beat_omega / TAU;
 
         let beat = MeterBand {
@@ -1222,5 +1296,49 @@ mod tests {
             "a basin alone must not fabricate a measure, got ratio {}",
             s.measure_ratio
         );
+    }
+}
+
+#[cfg(test)]
+mod v15_trace {
+    use super::*;
+    #[test]
+    fn legacy_native_bit_trace() {
+        let mut digest = 0xcbf29ce484222325_u64;
+        for shaping in [
+            MeterShaping::default(),
+            MeterShaping {
+                stability: 0.75,
+                basin_hz: Some((1.0, 3.0)),
+            },
+        ] {
+            let mut m = MeterNetwork::new();
+            m.set_shaping(shaping);
+            for j in 0..1200 {
+                let drive = if j % 47 == 0 {
+                    1.0
+                } else if j % 31 == 0 {
+                    0.4
+                } else {
+                    0.0
+                };
+                let s = m.process(512.0 / 48000.0, drive);
+                for b in [s.beat, s.subdivision, s.measure] {
+                    for x in [b.phase, b.freq_hz, b.amplitude, b.confidence] {
+                        digest = (digest ^ u64::from(x.to_bits())).wrapping_mul(0x100000001b3);
+                    }
+                }
+                for v in [
+                    u64::from(s.attention_level.to_bits()),
+                    u64::from(s.subdivision_ratio),
+                    u64::from(s.measure_ratio),
+                ] {
+                    digest = (digest ^ v).wrapping_mul(0x100000001b3);
+                }
+            }
+        }
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        assert_eq!(digest, 0xd160965c90fd0b1d, "e87ceee native meter bits");
+        println!("V15_BASELINE_BITS={digest:016x}");
     }
 }

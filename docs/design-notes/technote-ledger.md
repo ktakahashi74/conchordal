@@ -9545,6 +9545,42 @@ Sources are the 21:42 addendum in machine-local
 .orchestration/units/D-24/brief.md and the 2026-10-14 21:41 entry in
 .orchestration/records/decisions-20261007-orchestrator.md.
 
+<a id="sample-rounded-constants-generations-endurance-20261014"></a>
+
+### 9.3.92 2026-10-14: Author adoption of rounded sample constants and Generations endurance
+
+At 22:32 (transcript time), the author answered “よくなっている” (“better”)
+after the S-2 comparison and adopted the two-significant-figure constants for
+08 Murmuration, 10 Generations and 12 Emergence and Resolution. These constants
+originated in the 2026-07-10 time-domain conversion (`eb92d2c`). The earlier
+[§9.3.77](#polyphonic-samples-author-selection-20261012) paragraph leaving fine
+constants untouched remains the record of that decision; this later audition
+authorizes changing these three samples.
+
+| Setting | 08: original → adopted | 10: original → S-2 → adopted | 12: original → adopted |
+|---|---|---|---|
+| `endurance` | 8.3502 → 8.4 | 1.7778 → 1.8 → 9.0 | 6.8075 → 6.8 |
+| `recovery` | 3.10 → 3.1 | 1.4118 → 1.4 | 2.4167 → 2.4 |
+| `attack_cost_fraction` | 0.0194 → 0.019 | 0.0417 → 0.042 | 0.0224 → 0.022 |
+| `attack_recharge_fraction` | 0.8065 → 0.81 | 1.0417 → 1.0 | 0.8621 → 0.86 |
+
+The author also said Generations' gaps between sounds might be too long. In the
+saved seed-21 S-2 run, energy depleted after about 2.5 seconds and about six
+seconds late in each generation were almost quiet (−46 dBFS). S-3 changed only
+`endurance(1.8)` to `endurance(9.0)`: the disappearing-sound intervals were absent
+and the main generation turnover clustered at 21–23 seconds, closer to the
+script's annotation about wandering Voices starving in the heated interval.
+At 22:56, the author answered “意図したとおりになったようだ” (“seems as intended”)
+and adopted that version. These are scoped saved observations and author
+judgments; 9.0 is this sample's chosen value, not a general recommendation.
+
+S-4 copies 08/12 from S-2 drafts and 10 from S-3's endurance-9 draft byte for
+byte. The twelve rounding replacements and the further endurance replacement
+affect twelve distinct final numeric tokens; other code, comments and whitespace
+are unchanged. Sources: machine-local `.orchestration/units/S-2/rounding.json`,
+`rounding.patch` and saved runs, `.orchestration/units/S-3/` drafts and saved runs,
+and the 2026-10-14 22:32/22:56 author replies recorded by the orchestrator.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

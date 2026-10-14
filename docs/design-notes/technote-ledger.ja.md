@@ -6852,6 +6852,36 @@ T-26／T-27の二waveの停止、L3のVoice側の最終形の未達・延期、L
 出典は機械に固有の`.orchestration/units/D-24/brief.md`の21:42追記と、
 `.orchestration/records/decisions-20261007-orchestrator.md`の2026-10-14 21:41の行。
 
+<a id="sample-rounded-constants-generations-endurance-20261014"></a>
+
+### 9.3.92 2026-10-14：作者の試聴によるsampleの定数丸めとGenerationsのenduranceの採択
+
+作者は22:32（transcriptの時刻）、S-2の聴き比べに「よくなっている」と答え、
+08 Murmuration・10 Generations・12 Emergence and Resolutionの定数を有効数字2桁に丸めた版を採った。
+定数は2026-07-10の時間領域への換算（`eb92d2c`）から来たもの。
+[§9.3.77](#polyphonic-samples-author-selection-20261012)の細かい定数を触らないという段落は
+当時の判断の記録として残し、その後の作者の試聴で、この三本の変更を採ったと記録する。
+
+| 設定 | 08：元 → 採った値 | 10：元 → S-2 → 採った値 | 12：元 → 採った値 |
+|---|---|---|---|
+| `endurance` | 8.3502 → 8.4 | 1.7778 → 1.8 → 9.0 | 6.8075 → 6.8 |
+| `recovery` | 3.10 → 3.1 | 1.4118 → 1.4 | 2.4167 → 2.4 |
+| `attack_cost_fraction` | 0.0194 → 0.019 | 0.0417 → 0.042 | 0.0224 → 0.022 |
+| `attack_recharge_fraction` | 0.8065 → 0.81 | 1.0417 → 1.0 | 0.8621 → 0.86 |
+
+作者は同時にGenerationsについて「音と音のあいだがあきすぎてるかも」と述べた。
+保存したS-2のseed 21では約2.5秒でエネルギーが尽き、各世代の後半の約6秒がほぼ無音（−46 dBFS）だった。
+S-3は`endurance(1.8)`だけを`endurance(9.0)`へ変えた対照で、音の消える区間が無く、
+世代交代の主なまとまりは21〜23秒になった。熱くなった区間で迷い出たVoiceが飢えるという注釈に近い。
+作者は22:56に「意図したとおりになったようだ」と答え、この版を採った。
+保存した条件での観測と作者の判断であり、9.0はこのsampleで選んだ値で、一般の推奨ではない。
+
+S-4は08・12をS-2のdrafts、10をS-3のendurance 9のdraftとbyte一致にする。
+丸めの12置換と、その一つへのenduranceの追加置換で、最終差分は異なる12個の数値token。
+ほかのcode・comment・空白・改行は変えない。出典は機械に固有の
+`.orchestration/units/S-2/rounding.json`・`rounding.patch`と保存run、
+`.orchestration/units/S-3/`のdraftと保存run、統括記録にある2026-10-14 22:32・22:56の作者の答え。
+
 ## 9.4 整合と拡張の順序
 
 2026-10-07以後の範囲・受入は[§9.3.57](#two-tier-rule)、作業の依存と順序は[現行計画](../roadmap/plan-current.md)を正とする。以下は2026-09-20までの範囲と、その後に保存した数値準備・実装の履歴であり、現在の作業順や完了条件ではない。

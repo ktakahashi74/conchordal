@@ -1,6 +1,8 @@
 # 次のセッションの始め方
 
-次の段は曲。2026-10-14 21:41、作者は機構の完成（L1・L2・L4）として閉じた。
+再開は曲の段のc：7〜10・12の聴き直しの残りと`rearticulate_above`の既定。
+S-2・S-3の試聴と値の採択は済み、S-4で08・10・12へ反映した。
+2026-10-14 21:41、作者は機構の完成（L1・L2・L4）として閉じた。
 作者は2026-10-13 15:52頃に機構を先、曲を後とし、16:44にT-17の案B（L1〜L4）と、
 A-14の形を選べる創始方策として入れる方針を採った。再開は[現行計画§8](plan-current.md#mechanism-completion-scope-20261013)と
 [台帳§9.3.81](../design-notes/technote-ledger.ja.md#mechanism-completion-scope-20261013)と
@@ -11,8 +13,10 @@ A-18の引き金のままの候補Aは採らず、設計とcopyを保存する�
 17:42のL2の対象とii-Bを保ち、18:27に作者は(c)と四詳細の改定をopt-inとして採った。V-15が本体化し、V-16／V-17でCI二度の失敗を修正、R-4のL2有効16演奏も合格した。速い位相更新の設計問題とT-26／T-27の二waveの停止は残す。
 D-18／D-19でL1の契約文書を揃え、実装・CI・R-4の記録を受け、2026-10-14 21:41に作者がL1・L2・L4を閉じた。既定経路の実機の取り直しは不要、次は曲の段。新sourceのL2無効経路は実機未取得という事実と、technoteの状態札は保つ。
 P-4の基準と境界50だけの二本は17:03に試聴済み。境界の省略値0は変えていない。
-現在の範囲と再開点は[台帳§9.3.91の作者判断](../design-notes/technote-ledger.ja.md#mechanism-completion-author-closure-20261014)と
-[機構の完成を閉じた後の再開点](#mechanism-completion-author-closure-20261014)を読む。以下の過去の結果は取得時点の記録として読む。
+現在の範囲は[台帳§9.3.91の作者判断](../design-notes/technote-ledger.ja.md#mechanism-completion-author-closure-20261014)、
+再開点は[曲の段のcの進み](#sample-rounded-constants-generations-endurance-20261014)と
+[台帳§9.3.92](../design-notes/technote-ledger.ja.md#sample-rounded-constants-generations-endurance-20261014)を読む。
+以下の過去の結果は取得時点の記録として読む。
 
 2026-10-14更新。現行計画の20単位は2026-10-08にすべて出口に達した。結果とその後の追加作業は[plan-current.md §7](plan-current.md#7-結果)に記録した。T-4は不成立、T-6は到来の重み1の採用と、検出の数値を選定できない問題の名指しによって閉じた。N-7の夜の再測定で昼のB′不合格を解消し、その後、T-7の最終sourceによるA・B・A′・B′の四構成の実機再測定も合格した。過去の不合格は履歴として保持している。
 
@@ -56,6 +60,25 @@ agent-emacsclient --eval '(conchordal-worker-status)'
 10. 台帳[§9.3.89](../design-notes/technote-ledger.ja.md#r3-current-source-device-results-20261014)（[英語版](../design-notes/technote-ledger.md#r3-current-source-device-results-20261014)）：作者の計測開始・push指示、pushとCI・deploy、R-3の16演奏の合格、当時のL2の道とL1・L4の受入の未決。
 11. 台帳[§9.3.90](../design-notes/technote-ledger.ja.md#l2-principle-derivation-continuous-prototype-20261014)（[英語版](../design-notes/technote-ledger.md#l2-principle-derivation-continuous-prototype-20261014)）：作者の問い、統括の訂正、T-22の導出と残り、T-23の当時未採択の案(c)と机上評価、当時のT-24進行中。
 12. 台帳[§9.3.91](../design-notes/technote-ledger.ja.md#l2-opt-in-integration-ci-r4-results-20261014)（[英語版](../design-notes/technote-ledger.md#l2-opt-in-integration-ci-r4-results-20261014)）：作者の指示とL2 opt-in採択、評価と残る設計問題、CI二度の失敗と修正、R-4、21:41の作者による終了・再取得不要・pushの判断。
+
+<a id="sample-rounded-constants-generations-endurance-20261014"></a>
+
+## 2026-10-14：曲の段のcの進み、S-2・S-3の反映後の再開点
+
+作者は22:20に「c -> b」と指示した。c（小さな残り：S-2、7〜10・12の聴き直し、
+`rearticulate_above`の既定）を先にし、その後b（統括が下書きを作り、作者が聴いて選ぶ）へ進む。
+S-2の丸め版08・10・12は22:32の「よくなっている」で採択済み。
+Generationsの`endurance(1.8)`だけを`9.0`へ変えたS-3も22:56の
+「意図したとおりになったようだ」で採択済み。S-4でsamplesへ指定draftのbytesを反映した。
+S-2・S-3の試聴を未実行に戻さない。値と判断は[台帳§9.3.92](../design-notes/technote-ledger.ja.md#sample-rounded-constants-generations-endurance-20261014)
+（[英語版](../design-notes/technote-ledger.md#sample-rounded-constants-generations-endurance-20261014)）を読む。
+
+**次は7〜10・12の聴き直しの残りと`rearticulate_above`の既定。** 試聴の依頼は一つずつ出す。
+境界の省略値0はまだ変えていない。新しい既定値をこの記録で決めない。
+機構の完成は21:41に閉じ、D-24は22:06にmainへ取り込み、push済み（`247e31d`）。
+このsample変更のpush・mainへの取り込みは別の操作であり、S-4では行わない。
+機械に固有のS-2/report.md、S-3の保存物とlisten.sh、S-4/brief.md、統括記録の
+2026-10-14 22:20・22:32・22:56の作者の指示と答えを読む。
 
 <a id="mechanism-completion-author-closure-20261014"></a>
 

@@ -27,10 +27,10 @@ let colony_body = harmonic()
     .avoid_neighbors(0.70);
 
 let colony_life = variant(colony_body)
-    .endurance(1.7778)
-    .recovery(1.4118)
-    .attack_cost_fraction(0.0417)
-    .attack_recharge_fraction(1.0417)
+    .endurance(9.0)
+    .recovery(1.4)
+    .attack_cost_fraction(0.042)
+    .attack_recharge_fraction(1.0)
     .consonance_viability(0.34, 0.84)
     .dissonance_penalty(0.80);
 

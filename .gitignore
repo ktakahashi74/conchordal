@@ -1,7 +1,6 @@
 /target
 /.orchestration/
 /debug
-/web/public
 
 *~
 \#*\#
@@ -17,7 +16,6 @@ log?
 .aider*
 nohup.out
 config.toml
-!web/config.toml
 .chat_url
 .driver_prompt.md
 context.xml

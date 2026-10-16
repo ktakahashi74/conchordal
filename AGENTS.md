@@ -45,7 +45,7 @@
   - `config.rs` / `dcc_coupler.rs`: TOML config, DCC coupling.
   - `bin/`: `render.rs` (conchordal-render) and `gen_rhai_defs.rs`.
 - Entrypoints: `src/main.rs` (binary) and `src/app.rs` (GUI/Thread wiring).
-- `web/` (Zola site sources) lives at the repository root, not under `src/`.
+- `web/` (Astro site sources; build with `npm ci && npm run build` in `web/`) lives at the repository root, not under `src/`.
 - Samples: execution-test scripts live under `tests/scripts/`. Compile-only samples stay under `samples/`.
 
 ## Build, Test, and Development Commands

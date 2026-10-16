@@ -21,4 +21,4 @@ Conchordalの全体像:
 - 提示音のみを観測するリスナー側モデル(`ListenerTwin`)と、任意の弱いDCC結合。
 - 階層化されたRhaiスクリプティング面(Core / Experimental / Tuning / Research)と、ドリフトしない生成APIリファレンス。
 
-基盤モデルの詳細は[テクニカルノート](/technote/)を参照。
+基盤モデルの詳細は[テクニカルノート](/ja/technote/)を参照。

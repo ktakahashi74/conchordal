@@ -1,0 +1,6 @@
+---
+import { getEntry } from 'astro:content';
+import HomePage from '../../components/HomePage.astro';
+const entry = await getEntry('pages', '_index.ja');
+---
+<HomePage entry={entry!} />

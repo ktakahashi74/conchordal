@@ -1,0 +1,13 @@
+---
+import { site } from '../data/site';
+import { ui, type Locale } from '../i18n/ui';
+interface Props { locale: Locale; top?: boolean }
+const { locale, top = false } = Astro.props;
+const year = new Date().getFullYear();
+const strings = ui[locale];
+---
+{top ? (
+  <footer class="footer bg-black small text-center text-white-50"><div class="container px-4 px-lg-5">Copyright &copy; {site.author} {year}</div></footer>
+) : (
+  <footer class="footer"><div class="footer-container"><p>&copy; {year} {site.author}. {strings.sourceBefore}<a href={site.social[0].url} target="_blank" rel="noopener">GitHub</a>{strings.sourceAfter}</p></div></footer>
+)}

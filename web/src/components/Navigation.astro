@@ -1,0 +1,79 @@
+---
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { site } from '../data/site';
+import { ui, type Locale } from '../i18n/ui';
+import LanguageSwitch from './LanguageSwitch.astro';
+import Icon from './Icon.astro';
+interface Props { locale: Locale; slug: string; top?: boolean }
+const { locale, slug, top = false } = Astro.props;
+const strings = ui[locale];
+const home = getRelativeLocaleUrl(locale);
+---
+{top ? (
+  <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
+    <div class="container px-4 px-lg-5">
+      <a class="navbar-brand" href={`${home}#page-top`}>{site.title}</a>
+      <div class="header-language"><LanguageSwitch locale={locale} slug={slug} top /></div>
+      <button class="navbar-toggler navbar-toggler-right" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+        {strings.menu} <Icon name="bars" />
+      </button>
+      <div class="collapse navbar-collapse" id="navbarResponsive">
+        <ul class="navbar-nav ms-auto">
+          {site.navigation.map(item => <li class="nav-item"><a class="nav-link" href={item.slug ? getRelativeLocaleUrl(locale, item.slug) : `${home}#page-top`}>{strings.navigation[item.key]}</a></li>)}
+          {site.social.map(item => <li class="nav-item"><a class="nav-link" href={item.url} target="_blank" rel="noopener" aria-label={item.label}><Icon name={item.icon} />{item.key === 'github' && ' GitHub'}</a></li>)}
+        </ul>
+      </div>
+    </div>
+  </nav>
+) : (
+  <header class="header">
+    <nav class="nav">
+      <div class="nav-container">
+        <a href={home} class="nav-brand">{site.title}</a>
+        <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false">{strings.menu}</button>
+        <div class="nav-menu" id="site-nav">
+          {site.navigation.map(item => <a href={getRelativeLocaleUrl(locale, item.slug)} class="nav-link">{strings.navigation[item.key]}</a>)}
+          {site.social.map(item => <a href={item.url} class="nav-link" target="_blank" rel="noopener" aria-label={item.label}>
+            <Icon name={item.icon} />{item.key === 'github' && ' GitHub'}
+          </a>)}
+        </div>
+        <div class="inner-language"><LanguageSwitch locale={locale} slug={slug} /></div>
+      </div>
+    </nav>
+  </header>
+)}
+<style>
+  .header-language {
+    order: 3;
+    flex-shrink: 0;
+  }
+  .header-language :global(.nav-link) {
+    padding: 2rem 1.5rem;
+  }
+  .nav-menu {
+    margin-left: auto;
+  }
+  .inner-language {
+    margin-left: 1.5rem;
+  }
+  @media (max-width: 991.98px) {
+    .header-language { order: 1; margin-left: auto; }
+    .header-language :global(.nav-link) { padding: 0.5rem; }
+    .navbar-toggler { order: 2; margin-left: 0.75rem; }
+    .navbar-collapse { order: 3; }
+  }
+  @media (max-width: 768px) {
+    .nav-toggle { order: 1; }
+    .inner-language { order: 2; margin-left: 0; }
+    .nav-menu { order: 3; margin-left: 0; }
+  }
+</style>
+<script>
+  const toggle = document.querySelector<HTMLButtonElement>('.nav-toggle');
+  const menu = document.querySelector<HTMLElement>('#site-nav');
+  if (toggle && menu) {
+    toggle.addEventListener('click', () => {
+      toggle.setAttribute('aria-expanded', String(menu.classList.toggle('is-open')));
+    });
+  }
+</script>

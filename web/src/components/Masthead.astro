@@ -1,0 +1,20 @@
+---
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { site } from '../data/site';
+import { ui, type Locale } from '../i18n/ui';
+interface Props { locale: Locale; lede?: string }
+const { locale, lede } = Astro.props;
+---
+<header class="masthead">
+  <div class="container px-4 px-lg-5 d-flex h-100 align-items-center justify-content-center">
+    <div class="d-flex justify-content-center">
+      <div class="text-center">
+        <h1 class="mx-auto my-0 text-uppercase">{site.title}</h1>
+        <h2 class="text-white-50 mx-auto mt-2 mb-4">{site.tagline}</h2>
+        <div class="text-white-50 mx-auto mb-5 masthead-content"><slot /><a class="quick-start" href={`${getRelativeLocaleUrl(locale, 'docs/rhai/tutorial/quick_start').replace(/\/$/, '')}.html`}>{ui[locale].quickStart}</a></div>
+        <div class="masthead-media"><img src={site.image} alt={ui[locale].screenshotAlt} class="masthead-image" /></div>
+        {lede && <p class="text-white-50 mx-auto mt-4 masthead-lede">{lede}</p>}
+      </div>
+    </div>
+  </div>
+</header>

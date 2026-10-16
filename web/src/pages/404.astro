@@ -1,0 +1,17 @@
+---
+import TopLayout from '../layouts/TopLayout.astro';
+---
+<TopLayout locale="en" notFound>
+  <section class="not-found">
+    <p class="error-code">404</p>
+    <h1>Page not found</h1>
+    <p>The page you are looking for could not be found.</p>
+    <p lang="ja">お探しのページが見つかりません。</p>
+    <div class="recovery-links"><a href="/">Home</a><a href="/docs/">Docs</a></div>
+  </section>
+</TopLayout>
+<style>
+  .not-found { max-width: 48rem; min-height: 75vh; margin: 0 auto; padding: 10rem 1.5rem 4rem; text-align: center; color: #e4e4e7; }
+  .error-code, .recovery-links a { color: #3b82f6; }
+  .recovery-links { display: flex; justify-content: center; gap: 2rem; }
+</style>

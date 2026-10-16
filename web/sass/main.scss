@@ -681,3 +681,104 @@ a {
     color: $border-light;
     font-size: 0.8em;
 }
+
+// Keep long documents inside the reading column; only their wide data scrolls.
+.page-content {
+    position: relative;
+    min-width: 0;
+    overflow-wrap: anywhere;
+
+    [id] { scroll-margin-top: 8rem; }
+}
+
+.katex-display, .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.katex-display {
+    padding-block: 0.25rem;
+
+    > .katex {
+        width: max-content;
+        min-width: 100%;
+    }
+}
+
+// Anchor clipped MathML locally; its static inline position can widen the page.
+.page-content .katex { position: relative; }
+.page-content .katex-mathml { left: 0; top: 0; }
+
+.table-scroll {
+    margin-block: 1.5rem;
+
+    table { min-width: 100%; overflow-wrap: normal; }
+}
+
+.page-provenance {
+    color: $text-muted;
+    overflow-wrap: anywhere;
+
+    summary { cursor: pointer; }
+}
+
+.toc-container {
+    margin-bottom: 2rem;
+    scroll-margin-top: 8rem;
+
+    .toc-disclosure {
+        background: $bg-tertiary;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid $border-color;
+    }
+    summary {
+        color: $text-primary;
+        font-size: 1.25rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    nav { margin-top: 1rem; }
+    ul { padding-left: 1.5rem; margin-bottom: 0; }
+    li { margin-bottom: 0.5rem; }
+    a { color: $text-muted; }
+    ul ul {
+        margin-block: 0.25rem;
+        li { margin-bottom: 0.25rem; }
+        a { color: #81818a; font-size: 0.95em; }
+    }
+}
+
+.toc-return {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 110;
+    padding: 0.5rem 1rem;
+    color: $text-primary;
+    background: $bg-tertiary;
+    border: 1px solid $border-light;
+    border-radius: 6px;
+
+    &:hover { color: $text-primary; border-color: $accent-primary; }
+}
+
+// 800px column + two 256px side slots, each with a 32px gap and 16px edge.
+@media (min-width: 1408px) {
+    .toc-container {
+        position: absolute;
+        right: calc(100% + 2rem);
+        top: 0;
+        bottom: 0;
+        width: 16rem;
+        margin-bottom: 0;
+
+        .toc-disclosure {
+            position: sticky;
+            top: 6rem;
+            max-height: calc(100dvh - 8rem);
+            overflow-y: auto;
+        }
+    }
+}

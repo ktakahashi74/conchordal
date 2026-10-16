@@ -1,0 +1,46 @@
+---
+import type { MarkdownHeading } from 'astro';
+import { ui, type Locale } from '../i18n/ui';
+interface Props { headings: MarkdownHeading[]; path: string; locale: Locale }
+interface TocItem extends MarkdownHeading { children: TocItem[] }
+const { headings, path, locale } = Astro.props;
+const roots: TocItem[] = [], stack: TocItem[] = [];
+for (const heading of headings) {
+  const item: TocItem = { ...heading, children: [] };
+  while (stack.length && stack[stack.length - 1].depth >= item.depth) stack.pop();
+  (stack[stack.length - 1]?.children ?? roots).push(item);
+  stack.push(item);
+}
+---
+{roots.length > 0 && <>
+  <aside class="toc-container" id="contents">
+    <details class="toc-disclosure">
+      <summary>{ui[locale].toc}</summary>
+      <nav aria-label={ui[locale].toc}>
+        <ul>
+          {roots.map(h1 => <li>
+            <a href={`${path}#${h1.slug}`}>{h1.text}</a>
+            {h1.children.length > 0 && <ul>{h1.children.map(h2 => <li><a href={`${path}#${h2.slug}`}>{h2.text}</a></li>)}</ul>}
+          </li>)}
+        </ul>
+      </nav>
+    </details>
+  </aside>
+  <a class="toc-return" href="#contents">{ui[locale].backToContents}</a>
+</>}
+<script>
+  const contents = document.querySelector<HTMLDetailsElement>('.toc-disclosure');
+  const desktop = window.matchMedia('(min-width: 769px)');
+  if (contents) {
+    const resize = () => { contents.open = desktop.matches; };
+    resize();
+    desktop.addEventListener('change', resize);
+    document.querySelector('.toc-return')?.addEventListener('click', event => {
+      event.preventDefault();
+      contents.open = true;
+      contents.querySelector('summary')?.focus({ preventScroll: true });
+      document.querySelector('#contents')?.scrollIntoView({ block: 'start' });
+      if (location.hash !== '#contents') history.pushState(null, '', '#contents');
+    });
+  }
+</script>

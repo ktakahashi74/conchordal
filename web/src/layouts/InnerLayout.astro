@@ -1,0 +1,36 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import type { MarkdownHeading } from 'astro';
+import BaseLayout from './BaseLayout.astro';
+import Navigation from '../components/Navigation.astro';
+import Footer from '../components/Footer.astro';
+import PageMetadata from '../components/PageMetadata.astro';
+import TableOfContents from '../components/TableOfContents.astro';
+import KaTeX from '../components/KaTeX.astro';
+import { pageInfo } from '../lib/pages';
+import { ui } from '../i18n/ui';
+import '../../sass/main.scss';
+interface Props { entry: CollectionEntry<'pages'>; headings: MarkdownHeading[] }
+const { entry, headings } = Astro.props;
+const { locale, slug, path } = pageInfo(entry);
+const { data } = entry;
+const section = entry.id.includes('_index');
+---
+<BaseLayout locale={locale} slug={slug} title={data.title} description={data.description}>
+  <Navigation locale={locale} slug={slug} />
+  <main class="main" id="main-content" tabindex="-1">
+    <article class="page"><div class="container">
+      <header class="page-header">
+        <h1 class="page-title">{data.title}</h1>
+        {section && data.description ? <p class="page-subtitle">{data.description}</p> : <PageMetadata data={data} technote={slug === 'technote'} locale={locale} />}
+      </header>
+      <div class="page-content">
+        {!section && <TableOfContents headings={headings} path={path} locale={locale} />}
+        <slot />
+      </div>
+      {data.extra.github_edit_url && <footer class="page-footer"><a href={String(data.extra.github_edit_url)} class="edit-link" target="_blank" rel="noopener">{ui[locale].edit}</a></footer>}
+    </div></article>
+  </main>
+  <Footer locale={locale} />
+  {!section && <KaTeX slot="scripts" locale={locale} />}
+</BaseLayout>

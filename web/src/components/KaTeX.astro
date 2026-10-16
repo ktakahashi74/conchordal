@@ -1,0 +1,44 @@
+---
+import { ui, type Locale } from '../i18n/ui';
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const { mathRegion, tableRegion } = ui[locale];
+---
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous" />
+<script is:inline defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
+<script is:inline defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+<script is:inline define:vars={{ mathRegion, tableRegion }}>
+  document.addEventListener('DOMContentLoaded', function () {
+    renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+      ],
+      throwOnError: false,
+    });
+    document.querySelectorAll('.page-content table').forEach(function (table) {
+      const region = document.createElement('div');
+      region.className = 'table-scroll';
+      table.before(region);
+      region.append(table);
+    });
+    const regions = document.querySelectorAll('.katex-display, .table-scroll');
+    function updateScrollRegions() {
+      regions.forEach(function (region, index) {
+        const overflow = region.scrollWidth > region.clientWidth;
+        if (overflow) {
+          region.setAttribute('tabindex', '0');
+          region.setAttribute('role', 'region');
+          region.setAttribute('aria-label', (region.classList.contains('table-scroll') ? tableRegion : mathRegion) + ' ' + (index + 1));
+        } else {
+          region.removeAttribute('tabindex');
+          region.removeAttribute('role');
+          region.removeAttribute('aria-label');
+        }
+      });
+    }
+    const content = document.querySelector('.page-content');
+    if (content) new ResizeObserver(updateScrollRegions).observe(content);
+    updateScrollRegions();
+  });
+</script>

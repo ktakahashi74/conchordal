@@ -1,0 +1,10 @@
+---
+import { render, type CollectionEntry } from 'astro:content';
+import TopLayout from '../layouts/TopLayout.astro';
+import { pageInfo } from '../lib/pages';
+interface Props { entry: CollectionEntry<'pages'> }
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const { locale } = pageInfo(entry);
+---
+<TopLayout locale={locale} lede={entry.data.extra.lede ? String(entry.data.extra.lede) : undefined}><Content /></TopLayout>

@@ -1,0 +1,56 @@
+---
+import { getAbsoluteLocaleUrl } from 'astro:i18n';
+import { site } from '../data/site';
+import { ui, type Locale } from '../i18n/ui';
+import '../styles/accessibility.css';
+interface Props { locale: Locale; slug: string; title?: string; description?: string; top?: boolean; notFound?: boolean }
+const { locale, slug, title, description, top = false, notFound = false } = Astro.props;
+const strings = ui[locale];
+const pageTitle = top ? `${site.title} · ${site.tagline}` : `${title} | ${site.title}`;
+const canonical = new URL(notFound ? '/' : Astro.url.pathname, Astro.site);
+const english = getAbsoluteLocaleUrl('en', slug);
+const japanese = getAbsoluteLocaleUrl('ja', slug);
+const image = new URL(site.image, Astro.site);
+const structuredData = [
+  { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: site.title, description: strings.description, url: Astro.site!.origin,
+    applicationCategory: 'MultimediaApplication', operatingSystem: 'Cross-platform',
+    author: { '@type': 'Person', name: site.contact.name, email: site.contact.email },
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    license: ['https://opensource.org/licenses/MIT', 'https://opensource.org/licenses/Apache-2.0'] },
+  { '@context': 'https://schema.org', '@type': 'WebSite', name: site.title, url: Astro.site!.origin, inLanguage: ['en', 'ja'] },
+];
+---
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content={top ? 'width=device-width, initial-scale=1, shrink-to-fit=no' : 'width=device-width, initial-scale=1.0'} />
+    <title>{pageTitle}</title>
+    <meta name="description" content={top ? site.tagline : description ?? strings.description} />
+    {top && <meta name="author" content={site.author} />}
+    <meta name="keywords" content={strings.keywords} />
+    <meta name="author" content={site.authorName} />
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" type="image/x-icon" href={top ? '/assets/favicon.ico' : '/favicon.ico'} />
+    <meta property="og:title" content={top ? site.title : pageTitle} />
+    <meta property="og:description" content={description ?? strings.description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={image} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={site.title} />
+    <meta name="twitter:description" content={strings.description} />
+    <meta name="twitter:image" content={image} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang="en" href={english} />
+    <link rel="alternate" hreflang="ja" href={japanese} />
+    <link rel="alternate" hreflang="x-default" href={english} />
+    {top && structuredData.map(value => <script type="application/ld+json" set:html={JSON.stringify(value)} />)}
+    <slot name="styles" />
+  </head>
+  <body id={top ? 'page-top' : undefined}>
+    <a class="skip-link" href="#main-content">{strings.skip}</a>
+    <slot />
+    <slot name="scripts" />
+  </body>
+</html>

@@ -1,0 +1,10 @@
+---
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { ui, type Locale } from '../i18n/ui';
+interface Props { locale: Locale; slug: string; top?: boolean }
+const { locale, slug, top = false } = Astro.props;
+const href = getRelativeLocaleUrl(locale === 'en' ? 'ja' : 'en', slug);
+---
+{top ? <a class="nav-link" href={href}>{ui[locale].language}</a> : (
+  <div class="lang-switcher"><a class="lang-link" href={href}>{ui[locale].language}</a></div>
+)}

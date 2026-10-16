@@ -1,0 +1,8 @@
+---
+import { site } from '../data/site';
+---
+<section class="roadmap-section">
+  <div class="container px-4 px-lg-5"><div class="roadmap">
+    {site.roadmap.map(item => <div class:list={['roadmap-item', 'state' in item && item.state]}><span class="roadmap-date">{item.date}</span><span class="roadmap-text">{item.text}{'link' in item && <a href={item.link.url}>{item.link.text}</a>}</span></div>)}
+  </div></div>
+</section>

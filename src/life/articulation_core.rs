@@ -204,13 +204,12 @@ struct KuramotoTelemetry {
 #[derive(Debug, Clone)]
 pub struct KuramotoCore {
     pub energy: f32,
+    pub(crate) metabolism: MetabolismPolicy,
+    thresholds: KuramotoThresholds,
     pub endurance_sec: Option<f32>,
     pub recovery_sec: Option<f32>,
     pub vitality_exponent: f32,
     pub vitality_level: f32,
-    pub basal_cost: f32,
-    pub attack_cost_fraction: f32,
-    pub attack_recharge_fraction: f32,
     pub sensitivity: Sensitivity,
     pub rhythm_coupling: RhythmCouplingMode,
     pub rhythm_reward: Option<MetabolismRhythmReward>,
@@ -229,18 +228,18 @@ pub struct KuramotoCore {
     pub beta_gain: f32,
     pub k_omega: f32,
     pub bootstrap_timer: f32,
-    pub env_open_threshold: f32,
-    pub env_level_min: f32,
-    pub mag_threshold: f32,
-    pub alpha_threshold: f32,
-    pub beta_threshold: f32,
     pub autonomous_attack: bool,
-    pub continuous_recharge_per_sec: f32,
-    pub continuous_recharge_score_low: Option<f32>,
-    pub continuous_recharge_score_high: Option<f32>,
-    pub dissonance_penalty: f32,
     metrics: KuramotoMetrics,
     telemetry: KuramotoTelemetry,
+}
+
+#[derive(Debug, Clone)]
+struct KuramotoThresholds {
+    env_open_threshold: f32,
+    env_level_min: f32,
+    mag_threshold: f32,
+    alpha_threshold: f32,
+    beta_threshold: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -395,29 +394,16 @@ impl KuramotoCore {
     }
 
     #[inline]
-    fn metabolism_policy(&self) -> MetabolismPolicy {
-        MetabolismPolicy {
-            basal_cost_per_sec: self.basal_cost,
-            action_cost_per_attack: self.attack_cost_fraction,
-            recharge_per_attack: self.attack_recharge_fraction,
-            continuous_recharge_per_sec: self.continuous_recharge_per_sec,
-            continuous_recharge_score_low: self.continuous_recharge_score_low,
-            continuous_recharge_score_high: self.continuous_recharge_score_high,
-            dissonance_penalty: self.dissonance_penalty,
-        }
-    }
-
-    #[inline]
     fn compute_gate_status(&self, rhythms: &NeuralRhythms, theta: &ThetaView) -> GateStatus {
         GateStatus {
-            env_open_ok: rhythms.env_open > self.env_open_threshold,
-            env_level_ok: rhythms.env_level > self.env_level_min,
-            mag_ok: theta.mag > self.mag_threshold,
-            alpha_ok: theta.alpha > self.alpha_threshold,
-            beta_ok: theta.beta < self.beta_threshold,
-            env_level_ok_boot: rhythms.env_level > (self.env_level_min * 0.5),
-            mag_ok_boot: theta.mag > (self.mag_threshold * 0.5),
-            alpha_ok_boot: theta.alpha > (self.alpha_threshold * 0.5),
+            env_open_ok: rhythms.env_open > self.thresholds.env_open_threshold,
+            env_level_ok: rhythms.env_level > self.thresholds.env_level_min,
+            mag_ok: theta.mag > self.thresholds.mag_threshold,
+            alpha_ok: theta.alpha > self.thresholds.alpha_threshold,
+            beta_ok: theta.beta < self.thresholds.beta_threshold,
+            env_level_ok_boot: rhythms.env_level > (self.thresholds.env_level_min * 0.5),
+            mag_ok_boot: theta.mag > (self.thresholds.mag_threshold * 0.5),
+            alpha_ok_boot: theta.alpha > (self.thresholds.alpha_threshold * 0.5),
         }
     }
 
@@ -539,7 +525,7 @@ impl KuramotoCore {
         }
         self.begin_attack();
         let delta = self
-            .metabolism_policy()
+            .metabolism
             .attack_delta_with_recharge_multiplier(consonance, 1.0);
         self.apply_energy_delta(delta * strength);
     }
@@ -582,7 +568,7 @@ impl ArticulationCore for KuramotoCore {
         dt: f32,
         global_coupling: f32,
     ) -> ArticulationSignal {
-        let policy = self.metabolism_policy();
+        let policy = self.metabolism;
         self.apply_energy_delta(policy.basal_delta(dt, consonance_level));
         self.apply_energy_delta(policy.continuous_recharge_delta(
             dt,
@@ -789,13 +775,6 @@ impl AnyArticulationCore {
             } => {
                 let derived = envelope_from_lifecycle(lifecycle);
                 let energy = 1.0;
-                let basal_cost = derived.policy.basal_cost_per_sec;
-                let attack_recharge_fraction = derived.policy.recharge_per_attack;
-                let attack_cost_fraction = derived.policy.action_cost_per_attack;
-                let continuous_recharge_per_sec = derived.policy.continuous_recharge_per_sec;
-                let continuous_recharge_score_low = derived.policy.continuous_recharge_score_low;
-                let continuous_recharge_score_high = derived.policy.continuous_recharge_score_high;
-                let dissonance_penalty = derived.policy.dissonance_penalty;
                 let attack_step = derived.attack_step;
                 let decay_rate = derived.decay_rate;
                 let sustain_level = derived.sustain_level;
@@ -814,14 +793,19 @@ impl AnyArticulationCore {
                 let init_freq = rhythm_freq.unwrap_or_else(|| rng.random_range(5.0..7.0));
                 // Phase/offset seed diversity; theta lock uses base_k ~ omega_target in process.
                 AnyArticulationCore::Entrain(KuramotoCore {
+                    metabolism: derived.policy,
+                    thresholds: KuramotoThresholds {
+                        env_open_threshold: 0.55,
+                        env_level_min: 0.02,
+                        mag_threshold: 0.04,
+                        alpha_threshold: 0.2,
+                        beta_threshold: 0.9,
+                    },
                     energy,
                     endurance_sec: lifecycle.endurance_sec(),
                     recovery_sec: lifecycle.recovery_sec(),
                     vitality_exponent,
                     vitality_level,
-                    basal_cost,
-                    attack_cost_fraction,
-                    attack_recharge_fraction,
                     sensitivity,
                     rhythm_coupling,
                     rhythm_reward,
@@ -840,16 +824,7 @@ impl AnyArticulationCore {
                     beta_gain: 1.0,  // beta -> noise gain
                     k_omega: 3.0,    // omega pull toward theta
                     bootstrap_timer: 1.5,
-                    env_open_threshold: 0.55,
-                    env_level_min: 0.02,
-                    mag_threshold: 0.04,
-                    alpha_threshold: 0.2,
-                    beta_threshold: 0.9,
                     autonomous_attack: true,
-                    continuous_recharge_per_sec,
-                    continuous_recharge_score_low,
-                    continuous_recharge_score_high,
-                    dissonance_penalty,
                     metrics: KuramotoMetrics::default(),
                     telemetry: KuramotoTelemetry::default(),
                 })
@@ -892,9 +867,9 @@ impl AnyArticulationCore {
                         rate_hz: core.rhythm_freq.max(0.01),
                         phase_0_1: (core.rhythm_phase / TAU).rem_euclid(1.0),
                         retrigger: core.retrigger,
-                        env_open_threshold: core.env_open_threshold,
-                        mag_threshold: core.mag_threshold,
-                        alpha_threshold: core.alpha_threshold,
+                        env_open_threshold: core.thresholds.env_open_threshold,
+                        mag_threshold: core.thresholds.mag_threshold,
+                        alpha_threshold: core.thresholds.alpha_threshold,
                     });
                 RenderModulatorSpec::EntrainPulse {
                     attack_step: core.attack_step,
@@ -925,7 +900,9 @@ impl AnyArticulationCore {
     /// same way, so the phonation gate opens immediately for them.
     fn consonance_viability_low(&self) -> f32 {
         match self {
-            AnyArticulationCore::Entrain(core) => core.continuous_recharge_score_low.unwrap_or(0.0),
+            AnyArticulationCore::Entrain(core) => {
+                core.metabolism.continuous_recharge_score_low.unwrap_or(0.0)
+            }
             AnyArticulationCore::Seq(_) | AnyArticulationCore::Drone(_) => 0.0,
         }
     }
@@ -1005,14 +982,27 @@ mod tests {
         let vitality_exponent = 0.5;
         let vitality_level = normalized_vitality(energy, vitality_exponent);
         KuramotoCore {
+            metabolism: MetabolismPolicy {
+                basal_cost_per_sec: 0.0,
+                action_cost_per_attack: 0.0,
+                recharge_per_attack: 0.0,
+                continuous_recharge_per_sec: 0.0,
+                continuous_recharge_score_low: None,
+                continuous_recharge_score_high: None,
+                dissonance_penalty: 0.0,
+            },
+            thresholds: KuramotoThresholds {
+                env_open_threshold: 0.0,
+                env_level_min: 0.0,
+                mag_threshold: 0.0,
+                alpha_threshold: 0.0,
+                beta_threshold: 1.0,
+            },
             energy,
             endurance_sec: None,
             recovery_sec: None,
             vitality_exponent,
             vitality_level,
-            basal_cost: 0.0,
-            attack_cost_fraction: 0.0,
-            attack_recharge_fraction: 0.0,
             sensitivity: Sensitivity::default(),
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
             rhythm_reward: None,
@@ -1031,16 +1021,7 @@ mod tests {
             beta_gain: 0.0,
             k_omega: 0.0,
             bootstrap_timer: 0.0,
-            env_open_threshold: 0.0,
-            env_level_min: 0.0,
-            mag_threshold: 0.0,
-            alpha_threshold: 0.0,
-            beta_threshold: 1.0,
             autonomous_attack: true,
-            continuous_recharge_per_sec: 0.0,
-            continuous_recharge_score_low: None,
-            continuous_recharge_score_high: None,
-            dissonance_penalty: 0.0,
             metrics: KuramotoMetrics::default(),
             telemetry: KuramotoTelemetry::default(),
         }
@@ -1346,16 +1327,16 @@ mod tests {
             core.retrigger = true;
             core.rhythm_phase = 2.0 * PI + 0.1;
             core.phase_offset = 0.0;
-            core.basal_cost = 0.0;
-            core.attack_cost_fraction = 0.2;
-            core.attack_recharge_fraction = 0.5;
+            core.metabolism.basal_cost_per_sec = 0.0;
+            core.metabolism.action_cost_per_attack = 0.2;
+            core.metabolism.recharge_per_attack = 0.5;
             core.rhythm_coupling = RhythmCouplingMode::TemporalOnly;
             core.bootstrap_timer = 0.0;
-            core.env_open_threshold = 0.0;
-            core.env_level_min = 0.0;
-            core.mag_threshold = 0.0;
-            core.alpha_threshold = 0.0;
-            core.beta_threshold = 1.0;
+            core.thresholds.env_open_threshold = 0.0;
+            core.thresholds.env_level_min = 0.0;
+            core.thresholds.mag_threshold = 0.0;
+            core.thresholds.alpha_threshold = 0.0;
+            core.thresholds.beta_threshold = 1.0;
         }
         rewarded.rhythm_reward = Some(MetabolismRhythmReward {
             rho_t: 1.0,
@@ -1391,8 +1372,8 @@ mod tests {
         core.state = ArticulationState::Idle;
         core.env_level = 0.4;
         core.metrics.total_attacks = 0;
-        core.attack_cost_fraction = 0.2;
-        core.attack_recharge_fraction = 0.3;
+        core.metabolism.action_cost_per_attack = 0.2;
+        core.metabolism.recharge_per_attack = 0.3;
 
         core.apply_phonation_onset(0.8, 1.0);
 
@@ -1405,9 +1386,9 @@ mod tests {
     #[test]
     fn render_modulator_spec_entrain_hold_has_autonomous_pulse() {
         let mut inner = test_core(0.6);
-        inner.env_open_threshold = 0.3;
-        inner.mag_threshold = 0.4;
-        inner.alpha_threshold = 0.5;
+        inner.thresholds.env_open_threshold = 0.3;
+        inner.thresholds.mag_threshold = 0.4;
+        inner.thresholds.alpha_threshold = 0.5;
         inner.sustain_level = 0.5;
         let core = AnyArticulationCore::Entrain(inner);
         let spec = core.render_modulator_spec(PhonationMode::Hold);
@@ -1515,7 +1496,7 @@ mod tests {
     #[test]
     fn energy_depletion_enters_decay_without_instant_silence() {
         let mut core = test_core(0.01);
-        core.basal_cost = 2.0;
+        core.metabolism.basal_cost_per_sec = 2.0;
         core.retrigger = true;
         core.env_level = 1.0;
         core.state = ArticulationState::Decay;
@@ -1535,7 +1516,7 @@ mod tests {
     #[test]
     fn attack_depletion_enters_decay_without_instant_silence() {
         let mut core = test_core(0.01);
-        core.basal_cost = 2.0;
+        core.metabolism.basal_cost_per_sec = 2.0;
         core.retrigger = true;
         core.env_level = 0.4;
         core.state = ArticulationState::Attack;

@@ -9,10 +9,7 @@ impl Voice {
         now: Tick,
         out: &mut PhonationBatch,
     ) {
-        for onset in &out.onsets {
-            self.articulation
-                .apply_phonation_onset(consonance, onset.strength);
-        }
+        self.apply_phonation_onsets(consonance, out);
         let mut pitch = self.body.base_freq_hz().log2();
         let mut index = 0;
         let body = self.body_snapshot();
@@ -21,57 +18,45 @@ impl Voice {
             .render_modulator_spec(PhonationMode::Gated);
         for event in &self.phonation_scratch.events {
             // Same-sample adoption precedes the opportunity; future adoptions stay pending.
-            while index < self.rearticulations.len()
-                && self.rearticulations[index].at <= event.onset_tick
+            while index < self.participation_pitch.rearticulations.len()
+                && self.participation_pitch.rearticulations[index].at <= event.onset_tick
             {
                 if state.is_alive {
-                    self.pending_participation_pitch = Some(self.rearticulations[index].pitch_log2);
+                    self.participation_pitch.pending =
+                        Some(self.participation_pitch.rearticulations[index].pitch_log2);
                 }
                 index += 1;
             }
-            if event.opportunity.is_some()
-                && let Some(target) = self.pending_participation_pitch.take()
+            if event.participation_onset
+                && let Some(target) = self.participation_pitch.pending.take()
             {
                 pitch = target;
             }
-            out.tones.push(ToneSpec {
-                opportunity: event.opportunity,
-                tone_id: event.tone_id,
-                onset: event.onset_tick,
-                hold_ticks: Some(Tick::MAX),
-                freq_hz: pitch.exp2(),
-                amp: target_amp,
-                smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
-                body: body.clone(),
-                render_modulator: modulator.clone(),
-                adsr: self.voice_adsr,
-            });
+            out.tones.push(ToneSpec::from_event(
+                *event,
+                pitch.exp2(),
+                target_amp,
+                Some(Tick::MAX),
+                body.clone(),
+                modulator.clone(),
+                self.voice_adsr,
+            ));
         }
         if state.is_alive {
-            if let Some(adoption) = self.rearticulations.get(index..).and_then(|ms| ms.last()) {
-                self.pending_participation_pitch = Some(adoption.pitch_log2);
+            if let Some(adoption) = self
+                .participation_pitch
+                .rearticulations
+                .get(index..)
+                .and_then(|ms| ms.last())
+            {
+                self.participation_pitch.pending = Some(adoption.pitch_log2);
             }
             self.body.set_pitch_log2(pitch);
         } else {
-            self.pending_participation_pitch = None;
+            self.participation_pitch.pending = None;
         }
-        self.prune_tracked_render_notes(&out.cmds);
-        // Held tones and their release tails never receive pitch updates in this mode.
-        for tracked in &mut self.active_render_notes {
-            tracked.last_target_freq_hz = self.body.base_freq_hz();
-        }
-        self.emit_phonation_updates(
-            now,
-            target_amp,
-            self.body.base_freq_hz(),
-            self.effective_control.body.continuous_drive,
-            &mut out.cmds,
-        );
-        self.track_new_render_notes(&out.tones);
-        self.prune_tracked_render_notes(&out.cmds);
-        self.phonation_scratch.events.clear();
-        self.rearticulations.clear();
-        self.participation_pitch_steps.clear();
+        self.update_surviving_render_notes(now, target_amp, out);
+        self.finish_participation_batch(out);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -87,89 +72,50 @@ impl Voice {
     ) {
         let deferred = self.defers_participation_pitch();
         // Release drops out-of-hop control samples before either sound-production path.
-        self.participation_pitch_steps.retain(|step| {
+        self.participation_pitch.steps.retain(|step| {
             let in_hop = step.at >= ctx.now_tick && step.at < ctx.frame_end;
             debug_assert!(in_hop);
             in_hop
         });
         let previous_tone = self.active_render_notes.last().map(|n| n.tone_id);
-        out.body_opportunity = self.phonation_engine.clock.opportunity(ctx);
-        out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
-        self.phonation_engine.prepare_synchronized_hop(ctx);
-        self.phonation_engine.initial_participating_hold(
-            ctx,
-            state,
-            &mut out.cmds,
-            &mut self.phonation_scratch.events,
-            &mut out.onsets,
-        );
+        self.prepare_participation_hop(ctx, state, out);
         let mut cursor = ctx.now_tick;
         if state.is_alive {
-            for step in &self.participation_pitch_steps {
+            for step_index in 0..self.participation_pitch.steps.len() {
+                let step = self.participation_pitch.steps[step_index];
                 if cursor < step.at {
                     let segment = self.phonation_segment(ctx, cursor, step.at);
                     self.phonation_engine.set_adoption_candidate(
-                        self.rearticulations
+                        self.participation_pitch
+                            .rearticulations
                             .iter()
                             .filter(|_| !deferred)
                             .find(|m| m.at >= cursor)
                             .map(|m| m.at),
                     );
-                    self.phonation_engine.tick_with_arrival(
-                        &segment,
-                        state,
-                        None,
-                        0.0,
-                        1.0,
-                        None,
-                        arrival,
-                        &mut out.cmds,
-                        &mut self.phonation_scratch.events,
-                        &mut out.onsets,
-                    );
+                    self.tick_participation_segment(&segment, state, arrival, out);
                 }
                 let segment = self.phonation_segment(ctx, step.at, step.at.saturating_add(1));
                 self.phonation_engine.set_adoption_candidate(
-                    self.rearticulations
+                    self.participation_pitch
+                        .rearticulations
                         .iter()
                         .filter(|_| !deferred)
                         .find(|m| m.at >= step.at)
                         .map(|m| m.at),
                 );
-                self.phonation_engine.tick_with_arrival(
-                    &segment,
-                    state,
-                    None,
-                    0.0,
-                    1.0,
-                    None,
-                    arrival,
-                    &mut out.cmds,
-                    &mut self.phonation_scratch.events,
-                    &mut out.onsets,
-                );
+                self.tick_participation_segment(&segment, state, arrival, out);
                 cursor = step.at.saturating_add(1);
             }
             if cursor < ctx.frame_end {
                 let segment = self.phonation_segment(ctx, cursor, ctx.frame_end);
-                self.phonation_engine.tick_with_arrival(
-                    &segment,
-                    state,
-                    None,
-                    0.0,
-                    1.0,
-                    None,
-                    arrival,
-                    &mut out.cmds,
-                    &mut self.phonation_scratch.events,
-                    &mut out.onsets,
-                );
+                self.tick_participation_segment(&segment, state, arrival, out);
             }
         }
         if deferred
-            && self.pitch_application == PitchApplyMode::Rearticulate
+            && self.participation_pitch.application == PitchApplyMode::Rearticulate
             && (self.effective_control.pitch.rearticulate_above_cents > 0.0
-                || self.participation_glide_target.is_some())
+                || self.participation_pitch.glide_target.is_some())
         {
             self.emit_bounded_participation(
                 state,
@@ -187,27 +133,27 @@ impl Voice {
         }
         // Resolve sound production at sample times; never apply a future target to an earlier On.
         let mut pitch = self
-            .participation_pitch_steps
+            .participation_pitch
+            .steps
             .first()
             .map_or(self.body.base_freq_hz().log2(), |s| s.before_log2);
         let initial_pitch = pitch;
         let tau = self.effective_control.pitch.pitch_glide_tau_sec.max(0.0);
-        for step in &mut self.participation_pitch_steps {
+        for step in &mut self.participation_pitch.steps {
             let onset = self
                 .phonation_scratch
                 .events
                 .iter()
                 .any(|e| e.onset_tick == step.at);
-            let adoption = self.rearticulations.iter().find(|m| m.at == step.at);
+            let adoption = self
+                .participation_pitch
+                .rearticulations
+                .iter()
+                .find(|m| m.at == step.at);
             if onset && adoption.is_some() {
                 pitch = step.target_log2;
             } else {
-                let alpha = if tau <= 1e-6 {
-                    1.0
-                } else {
-                    1.0 - (-step.dt.max(0.0) / tau).exp()
-                };
-                pitch += (step.target_log2 - pitch) * alpha.clamp(0.0, 1.0);
+                pitch = Self::glide_pitch(pitch, step.target_log2, step.dt, tau);
             }
             step.before_log2 = pitch;
             // Updates follow only the tone that survives at this sample. Released tails keep pitch.
@@ -220,13 +166,12 @@ impl Voice {
                     .find(|e| e.onset_tick <= step.at)
                     .map(|e| e.tone_id)
                     .or(previous_tone);
-                let tone = tone.filter(|tone_id| {
-                    self.phonation_engine.rest.is_none()
-                        || !out.cmds.iter().any(|cmd| {
-                            matches!(cmd, ToneCmd::Off { tone_id: off_id, off_tick }
-                        if off_id == tone_id && *off_tick <= step.at)
-                        })
-                });
+                let tone = Self::surviving_tone(
+                    tone,
+                    self.phonation_engine.rest.is_some(),
+                    &out.cmds,
+                    step.at,
+                );
                 if let Some(tone_id) = tone.filter(|_| !onset) {
                     out.cmds.push(ToneCmd::Update {
                         tone_id,
@@ -242,50 +187,31 @@ impl Voice {
         if state.is_alive {
             self.body.set_pitch_log2(pitch);
         }
-        for onset in &out.onsets {
-            self.articulation
-                .apply_phonation_onset(consonance, onset.strength);
-        }
-        self.prune_tracked_render_notes(&out.cmds);
-        // Frequency updates above already carry their causal sample. Ordinary amp/drive changes stay here.
-        for tracked in &mut self.active_render_notes {
-            tracked.last_target_freq_hz = self.body.base_freq_hz();
-        }
-        self.emit_phonation_updates(
-            ctx.now_tick,
-            target_amp,
-            self.body.base_freq_hz(),
-            self.effective_control.body.continuous_drive,
-            &mut out.cmds,
-        );
+        self.apply_phonation_onsets(consonance, out);
+        self.update_surviving_render_notes(ctx.now_tick, target_amp, out);
         let body = self.body_snapshot();
         let modulator = self
             .articulation
             .render_modulator_spec(PhonationMode::Gated);
         for event in self.phonation_scratch.events.drain(..) {
             let pitch = self
-                .participation_pitch_steps
+                .participation_pitch
+                .steps
                 .iter()
                 .rev()
                 .find(|s| s.at <= event.onset_tick)
                 .map_or(initial_pitch, |s| s.before_log2);
-            out.tones.push(ToneSpec {
-                opportunity: event.opportunity,
-                tone_id: event.tone_id,
-                onset: event.onset_tick,
-                hold_ticks: Some(Tick::MAX),
-                freq_hz: pitch.exp2(),
-                amp: target_amp,
-                smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
-                body: body.clone(),
-                render_modulator: modulator.clone(),
-                adsr: self.voice_adsr,
-            });
+            out.tones.push(ToneSpec::from_event(
+                event,
+                pitch.exp2(),
+                target_amp,
+                Some(Tick::MAX),
+                body.clone(),
+                modulator.clone(),
+                self.voice_adsr,
+            ));
         }
-        self.track_new_render_notes(&out.tones);
-        self.prune_tracked_render_notes(&out.cmds);
-        self.rearticulations.clear();
-        self.participation_pitch_steps.clear();
+        self.finish_participation_batch(out);
     }
 }
 
@@ -393,11 +319,11 @@ mod tests {
         (v, tb, r, out)
     }
     fn adoption(v: &mut Voice, at: Tick, hz: f32) {
-        v.rearticulations.push(Rearticulation {
+        v.participation_pitch.rearticulations.push(Rearticulation {
             at,
             pitch_log2: hz.log2(),
         });
-        v.participation_pitch_steps.push(ParticipationPitchStep {
+        v.participation_pitch.steps.push(ParticipationPitchStep {
             at,
             before_log2: v.body.base_freq_hz().log2(),
             target_log2: hz.log2(),
@@ -421,7 +347,7 @@ mod tests {
                 adoption(&mut v, 1024, 550.0);
                 emit(&mut v, &tb, &r, 1024, &mut out);
                 assert_eq!(
-                    v.pending_participation_pitch.unwrap().to_bits(),
+                    v.participation_pitch.pending.unwrap().to_bits(),
                     550.0f32.log2().to_bits()
                 );
                 for frame in 3..100 {
@@ -440,12 +366,12 @@ mod tests {
                             out.tones[0].freq_hz.to_bits(),
                             550.0f32.log2().exp2().to_bits()
                         );
-                        assert!(v.pending_participation_pitch.is_none());
+                        assert!(v.participation_pitch.pending.is_none());
                         assert_eq!(v.active_render_notes.len(), 1);
                         return;
                     }
                     assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
-                    assert!(v.pending_participation_pitch.is_some());
+                    assert!(v.participation_pitch.pending.is_some());
                 }
                 panic!("clock must produce an onset");
             })();
@@ -459,26 +385,15 @@ mod tests {
         adoption(&mut v, 562, 440.0);
         adoption(&mut v, 712, 550.0);
         adoption(&mut v, 912, 660.0);
-        let opportunity = crate::life::action_candidates::OnsetOpportunity {
-            issued_at: 512,
-            at: 612,
-            gate: 1,
-            intrinsic_due_at: None,
-            intrinsic_period_ticks: None,
-            planned_release_at: None,
-        };
         v.phonation_scratch.events.push(ToneOnEvent {
             tone_id: 7,
             onset_tick: 612,
-            opportunity: Some(opportunity),
+            participation_onset: true,
         });
         v.phonation_scratch.events.push(ToneOnEvent {
             tone_id: 8,
             onset_tick: 812,
-            opportunity: Some(crate::life::action_candidates::OnsetOpportunity {
-                at: 812,
-                ..opportunity
-            }),
+            participation_onset: true,
         });
         let ctx = CoreTickCtx {
             now_tick: 512,
@@ -510,7 +425,7 @@ mod tests {
             out.tones[1].freq_hz.to_bits()
         );
         assert_eq!(
-            v.pending_participation_pitch.unwrap().to_bits(),
+            v.participation_pitch.pending.unwrap().to_bits(),
             660.0f32.log2().to_bits()
         );
     }
@@ -542,7 +457,7 @@ mod tests {
         assert!(out.tones.is_empty() && out.onsets.is_empty());
         assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
         assert_eq!(
-            v.pending_participation_pitch.unwrap().to_bits(),
+            v.participation_pitch.pending.unwrap().to_bits(),
             440.0f32.log2().to_bits()
         );
     }
@@ -555,7 +470,7 @@ mod tests {
         v.update_articulation_autonomous(64.0 / 48_000.0, &r);
         assert_eq!(v.body.base_freq_hz().to_bits(), initial.to_bits());
         assert_eq!(
-            v.participation_pitch_steps[0].target_log2.to_bits(),
+            v.participation_pitch.steps[0].target_log2.to_bits(),
             440.0f32.log2().to_bits()
         );
     }
@@ -575,7 +490,7 @@ mod tests {
             out.tones[0].freq_hz.to_bits()
         );
         assert_eq!(
-            v.pending_participation_pitch.unwrap().to_bits(),
+            v.participation_pitch.pending.unwrap().to_bits(),
             440.0f32.log2().to_bits()
         );
         assert!(!out.cmds.iter().any(
@@ -611,7 +526,7 @@ mod tests {
                         assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
                         assert_eq!(v.body.base_freq_hz().to_bits(), freq.to_bits());
                         assert_eq!(
-                            v.pending_participation_pitch.unwrap().to_bits(),
+                            v.participation_pitch.pending.unwrap().to_bits(),
                             440.0f32.log2().to_bits()
                         );
                         assert_eq!(v.active_render_notes.len(), 1);
@@ -632,11 +547,11 @@ mod tests {
             })
             .unwrap();
             emit(&mut v, &tb, &r, 0, &mut out);
-            v.pending_participation_pitch = Some(440.0f32.log2());
+            v.participation_pitch.pending = Some(440.0f32.log2());
             adoption(&mut v, 576, 550.0);
             match reason {
-                0 => v.release_pending = true,
-                1 => v.remove_pending = true,
+                0 => v.release.pending = true,
+                1 => v.release.remove_pending = true,
                 _ => {
                     let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
                         &mut v.articulation.core
@@ -649,8 +564,8 @@ mod tests {
             }
             emit(&mut v, &tb, &r, 512, &mut out);
             assert!(out.onsets.is_empty() && out.tones.is_empty());
-            assert!(v.pending_participation_pitch.is_none());
-            assert!(v.rearticulations.is_empty());
+            assert!(v.participation_pitch.pending.is_none());
+            assert!(v.participation_pitch.rearticulations.is_empty());
             assert!(out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
         }
     }
@@ -681,21 +596,21 @@ mod tests {
     #[test]
     fn deferred_participation_live_switch_retains_tone_and_controller_destination() {
         let (mut v, tb, r, mut out) = deferred();
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
         emit(&mut v, &tb, &r, 0, &mut out);
         let initial = v.body.base_freq_hz();
         let tone = v.active_render_notes[0].tone_id;
         v.pitch_ctl.force_set_target_pitch_log2(440.0f32.log2());
         adoption(&mut v, 576, 440.0);
         emit(&mut v, &tb, &r, 512, &mut out);
-        assert!(v.pending_participation_pitch.is_some());
+        assert!(v.participation_pitch.pending.is_some());
         v.apply_patch(&ControlUpdate {
             pitch_apply_mode: Some(PitchApplyMode::Glide),
             pitch_glide_tau_sec: Some(0.03),
             ..Default::default()
         })
         .unwrap();
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
         assert_eq!(v.active_render_notes[0].tone_id, tone);
         assert_eq!(v.body.base_freq_hz(), initial);
         emit(&mut v, &tb, &r, 1024, &mut out);
@@ -709,7 +624,7 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
         let held = v.body.base_freq_hz();
         v.set_control_tick(2048);
         v.update_articulation_autonomous(64.0 / 48_000.0, &r);
@@ -728,14 +643,7 @@ mod tests {
         v.phonation_scratch.events.push(ToneOnEvent {
             tone_id: 7,
             onset_tick: 576,
-            opportunity: Some(crate::life::action_candidates::OnsetOpportunity {
-                issued_at: 512,
-                at: 576,
-                gate: 1,
-                intrinsic_due_at: None,
-                intrinsic_period_ticks: None,
-                planned_release_at: None,
-            }),
+            participation_onset: true,
         });
         v.emit_deferred_participation(
             &CoreState {
@@ -752,7 +660,7 @@ mod tests {
             out.tones[0].freq_hz.to_bits(),
             440.0f32.log2().exp2().to_bits()
         );
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
     }
 
     #[test]
@@ -787,11 +695,11 @@ mod tests {
         let at = at.unwrap();
         let start = at / 512 * 512;
         // Reach the identical future clock sample with an adoption in that control slot.
-        v.rearticulations.push(Rearticulation {
+        v.participation_pitch.rearticulations.push(Rearticulation {
             at,
             pitch_log2: 440.0f32.log2(),
         });
-        v.participation_pitch_steps.push(ParticipationPitchStep {
+        v.participation_pitch.steps.push(ParticipationPitchStep {
             at,
             before_log2: 330.0f32.log2(),
             target_log2: 440.0f32.log2(),
@@ -814,19 +722,19 @@ mod tests {
         for reason in 0..3 {
             let (mut v, tb, r, mut out) = setup(true);
             emit(&mut v, &tb, &r, 0, &mut out);
-            v.rearticulations.push(Rearticulation {
+            v.participation_pitch.rearticulations.push(Rearticulation {
                 at: 576,
                 pitch_log2: 440.0f32.log2(),
             });
-            v.participation_pitch_steps.push(ParticipationPitchStep {
+            v.participation_pitch.steps.push(ParticipationPitchStep {
                 at: 576,
                 before_log2: 330.0f32.log2(),
                 target_log2: 440.0f32.log2(),
                 dt: 64.0 / 48_000.0,
             });
             match reason {
-                0 => v.release_pending = true,
-                1 => v.remove_pending = true,
+                0 => v.release.pending = true,
+                1 => v.release.remove_pending = true,
                 _ => {
                     let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
                         &mut v.articulation.core
@@ -841,7 +749,7 @@ mod tests {
             assert!(out.onsets.is_empty());
             assert!(out.tones.is_empty());
             assert!(out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
-            assert!(v.rearticulations.is_empty());
+            assert!(v.participation_pitch.rearticulations.is_empty());
         }
     }
     #[test]
@@ -893,8 +801,8 @@ mod tests {
                     unreachable!()
                 };
                 core.energy = 0.8;
-                core.attack_cost_fraction = 0.1;
-                core.attack_recharge_fraction = 0.0;
+                core.metabolism.action_cost_per_attack = 0.1;
+                core.metabolism.recharge_per_attack = 0.0;
                 let mut expected = 0.8f32;
                 for frame in 0..100 {
                     emit(&mut v, &tb, &r, frame * 512, &mut out);
@@ -938,14 +846,14 @@ mod tests {
         emit(&mut v, &tb, &r, 512, &mut out);
         assert!(!out.onsets.is_empty());
         for i in 0..(tb.hop / 64) as u64 {
-            v.participation_pitch_steps.push(ParticipationPitchStep {
+            v.participation_pitch.steps.push(ParticipationPitchStep {
                 at: 1024 + i * 64,
                 before_log2: 330.0f32.log2(),
                 target_log2: 350.0f32.log2(),
                 dt: 64.0 / 48_000.0,
             });
         }
-        v.rearticulations.push(Rearticulation {
+        v.participation_pitch.rearticulations.push(Rearticulation {
             at: 1024,
             pitch_log2: 350.0f32.log2(),
         });
@@ -967,11 +875,11 @@ mod tests {
             })
             .unwrap();
         let later = at + 1;
-        v.rearticulations.push(Rearticulation {
+        v.participation_pitch.rearticulations.push(Rearticulation {
             at: later,
             pitch_log2: 440.0f32.log2(),
         });
-        v.participation_pitch_steps.push(ParticipationPitchStep {
+        v.participation_pitch.steps.push(ParticipationPitchStep {
             at: later,
             before_log2: 330.0f32.log2(),
             target_log2: 440.0f32.log2(),
@@ -989,7 +897,7 @@ mod tests {
         let (mut v, tb, r, mut out) = setup(false);
         emit(&mut v, &tb, &r, 0, &mut out);
         let tone = out.tones[0].tone_id;
-        v.rearticulations.push(Rearticulation {
+        v.participation_pitch.rearticulations.push(Rearticulation {
             at: 576,
             pitch_log2: 350.0f32.log2(),
         });
@@ -998,11 +906,11 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        assert_eq!(v.rearticulations.len(), 1);
+        assert_eq!(v.participation_pitch.rearticulations.len(), 1);
         assert_eq!(v.active_render_notes[0].tone_id, tone);
         assert!(v.phonation_engine.sustain_participation);
         emit(&mut v, &tb, &r, 512, &mut out);
-        assert!(v.rearticulations.is_empty());
+        assert!(v.participation_pitch.rearticulations.is_empty());
         assert!(out.tones.is_empty());
         v.base_control.pitch.mode = PitchMode::Lock;
         v.effective_control.pitch.mode = PitchMode::Lock;
@@ -1035,7 +943,7 @@ mod tests {
             }
             let start = 4 * hop as u64;
             for i in 0..(hop / 64).max(1) {
-                v.participation_pitch_steps.push(ParticipationPitchStep {
+                v.participation_pitch.steps.push(ParticipationPitchStep {
                     at: start + (i * 64) as u64,
                     before_log2: v.body.base_freq_hz().log2(),
                     target_log2: 350.0f32.log2(),
@@ -1245,7 +1153,7 @@ mod tests {
             emit(&mut v, &tb, &r, at, &mut out);
             assert!(out.tones.is_empty());
         }
-        assert_eq!(v.pending_participation_pitch, Some(660.0f32.log2()));
+        assert_eq!(v.participation_pitch.pending, Some(660.0f32.log2()));
         let mut on = None;
         for at in (48640..180224).step_by(512) {
             emit(&mut v, &tb, &r, at, &mut out);
@@ -1256,9 +1164,9 @@ mod tests {
         }
         let tone = on.expect("normal participation resumes");
         assert!(tone.onset >= 48576);
-        assert!(tone.opportunity.is_some());
+        assert!(tone.participation_onset);
         assert_eq!(tone.freq_hz.to_bits(), 660.0f32.log2().exp2().to_bits());
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
     }
 
     #[test]
@@ -1276,8 +1184,8 @@ mod tests {
             emit(&mut v, &tb, &r, 0, &mut out);
             adoption(&mut v, 576, 440.);
             match reason {
-                0 => v.release_pending = true,
-                1 => v.remove_pending = true,
+                0 => v.release.pending = true,
+                1 => v.release.remove_pending = true,
                 _ => {
                     let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
                         &mut v.articulation.core
@@ -1297,7 +1205,7 @@ mod tests {
                     .count(),
                 1
             );
-            assert!(v.pending_participation_pitch.is_none());
+            assert!(v.participation_pitch.pending.is_none());
             assert_eq!(v.phonation_engine.rest.unwrap().phase, RestPhase::Finished);
             v.phonation_engine.rest_tail_finished(6000, tb.fs);
             for at in (1024..60000).step_by(512) {
@@ -1319,7 +1227,7 @@ mod tests {
             origin: 6000,
             until: None,
         };
-        parent.pending_participation_pitch = Some(660.0f32.log2());
+        parent.participation_pitch.pending = Some(660.0f32.log2());
         let child = Voice::spawn_from_control(
             parent.effective_control.clone(),
             ArticulationCoreConfig::default(),
@@ -1336,7 +1244,7 @@ mod tests {
         );
         assert_eq!(child.phonation_engine.rest.unwrap().periods, 0.5);
         assert_eq!(child.phonation_engine.rest.unwrap().phase, RestPhase::Ready);
-        assert!(child.pending_participation_pitch.is_none());
+        assert!(child.participation_pitch.pending.is_none());
     }
 
     #[test]
@@ -1359,7 +1267,7 @@ mod tests {
         );
         assert!(out.tones.is_empty());
         assert!(!out.cmds.iter().any(|c|matches!(c,ToneCmd::Update {tone_id,at_tick:Some(at),update} if *tone_id==first && *at>=4800 && update.target_freq_hz.is_some())));
-        assert!(v.rearticulations.is_empty());
+        assert!(v.participation_pitch.rearticulations.is_empty());
     }
     fn bounded_space() -> &'static Log2Space {
         static SPACE: std::sync::LazyLock<Log2Space> =
@@ -1390,14 +1298,7 @@ mod tests {
         ToneOnEvent {
             tone_id: id,
             onset_tick: at,
-            opportunity: Some(crate::life::action_candidates::OnsetOpportunity {
-                issued_at: at,
-                at,
-                gate: 1,
-                intrinsic_due_at: None,
-                intrinsic_period_ticks: None,
-                planned_release_at: None,
-            }),
+            participation_onset: true,
         }
     }
     fn bounded_fixture(entrain: bool) -> (Voice, Timebase, NeuralRhythms, PhonationBatch) {
@@ -1420,12 +1321,12 @@ mod tests {
             bounded_emit(&mut v, &tb, &r, 0, &mut out);
             let pitch = v.body.base_freq_hz();
             let pending = Some(440.0f32.log2());
-            v.pending_participation_pitch = pending;
+            v.participation_pitch.pending = pending;
             out.clear();
             if missing_grid {
                 adoption(&mut v, 512, 550.0);
             } else {
-                v.rearticulations.push(Rearticulation {
+                v.participation_pitch.rearticulations.push(Rearticulation {
                     at: 1024,
                     pitch_log2: 550.0f32.log2(),
                 });
@@ -1442,9 +1343,12 @@ mod tests {
                 &mut out,
             );
             assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
-            assert_eq!(v.pending_participation_pitch, pending);
+            assert_eq!(v.participation_pitch.pending, pending);
             assert!(out.tones.is_empty() && out.onsets.is_empty());
-            assert!(v.rearticulations.is_empty() && v.participation_pitch_steps.is_empty());
+            assert!(
+                v.participation_pitch.rearticulations.is_empty()
+                    && v.participation_pitch.steps.is_empty()
+            );
         }
     }
 
@@ -1452,14 +1356,14 @@ mod tests {
     #[cfg(not(debug_assertions))]
     fn hop_fallback_skips_untimed_control_and_grows_undersized_buffer() {
         let (mut v, _, r, _) = bounded_fixture(false);
-        v.participation_pitch_steps = Vec::new();
+        v.participation_pitch.steps = Vec::new();
         v.control_tick = None;
         v.update_articulation_autonomous(64.0 / 48000.0, &r);
-        assert!(v.participation_pitch_steps.is_empty());
+        assert!(v.participation_pitch.steps.is_empty());
         v.set_control_tick(512);
         v.update_articulation_autonomous(64.0 / 48000.0, &r);
-        assert_eq!(v.participation_pitch_steps.len(), 1);
-        assert_eq!(v.participation_pitch_steps[0].at, 512);
+        assert_eq!(v.participation_pitch.steps.len(), 1);
+        assert_eq!(v.participation_pitch.steps[0].at, 512);
         assert!(v.body.base_freq_hz().is_finite());
     }
 
@@ -1477,9 +1381,9 @@ mod tests {
             bounded_emit(&mut v, &tb, &r, 512, &mut out);
             assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
             assert!(out.tones.is_empty() && out.onsets.is_empty());
-            assert!(v.rearticulations.is_empty());
+            assert!(v.participation_pitch.rearticulations.is_empty());
             if participating {
-                assert!(v.participation_pitch_steps.is_empty());
+                assert!(v.participation_pitch.steps.is_empty());
             }
             bounded_emit(&mut v, &tb, &r, 1024, &mut out);
             assert!(out.tones.is_empty(), "discarded requests must not replay");
@@ -1496,7 +1400,7 @@ mod tests {
         emit(&mut v, &tb, &r, 512, &mut out);
         assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
         assert!(out.tones.is_empty());
-        v.pending_participation_pitch = Some(440.0f32.log2());
+        v.participation_pitch.pending = Some(440.0f32.log2());
         v.phonation_engine.mode = PhonationMode::Gated;
         v.phonation_engine.rearticulate_hold(
             &CoreTickCtx {
@@ -1513,7 +1417,7 @@ mod tests {
             &mut v.phonation_scratch.events,
             &mut out.onsets,
         );
-        assert_eq!(v.pending_participation_pitch, Some(440.0f32.log2()));
+        assert_eq!(v.participation_pitch.pending, Some(440.0f32.log2()));
         assert_eq!(v.body.base_freq_hz().to_bits(), pitch.to_bits());
         assert!(out.tones.is_empty() && out.onsets.is_empty());
         assert!(v.phonation_engine.has_active_notes());
@@ -1528,19 +1432,19 @@ mod tests {
                     use_steady(&mut v);
                 }
                 bounded_emit(&mut v, &tb, &r, 0, &mut out);
-                let onset = v.last_onset_pitch_log2;
+                let onset = v.participation_pitch.last_onset_log2;
                 let initial = v.body.base_freq_hz();
                 adoption(&mut v, 512, 335.0);
                 bounded_emit(&mut v, &tb, &r, 512, &mut out);
                 assert!(out.onsets.is_empty() && out.tones.is_empty());
                 assert!(v.body.base_freq_hz() > initial && v.body.base_freq_hz() < 335.0);
-                assert_eq!(v.last_onset_pitch_log2, onset);
+                assert_eq!(v.participation_pitch.last_onset_log2, onset);
                 let before = v.body.base_freq_hz();
                 adoption(&mut v, 1024, 440.0);
                 bounded_emit(&mut v, &tb, &r, 1024, &mut out);
                 assert!(out.onsets.is_empty());
                 assert_eq!(v.body.base_freq_hz().to_bits(), before.to_bits());
-                assert_eq!(v.pending_participation_pitch, Some(440.0f32.log2()));
+                assert_eq!(v.participation_pitch.pending, Some(440.0f32.log2()));
             })();
         }
     }
@@ -1552,7 +1456,7 @@ mod tests {
         bounded_emit(&mut v, &tb, &r, 512, &mut out);
         adoption(&mut v, 1024, 335.0);
         bounded_emit(&mut v, &tb, &r, 1024, &mut out);
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
         out.clear();
         v.phonation_scratch.events.push(bounded_on(70, 1536));
         v.emit_bounded_participation(
@@ -1568,7 +1472,7 @@ mod tests {
         );
         assert_eq!(out.tones.len(), 1);
         assert!(out.tones[0].freq_hz < 335.0);
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
     }
     #[test]
     fn bounded_actual_earlier_on_changes_reference_for_later_m() {
@@ -1578,19 +1482,11 @@ mod tests {
         adoption(&mut v, 562, 440.0);
         adoption(&mut v, 712, 450.0);
         adoption(&mut v, 912, 660.0);
-        let op = crate::life::action_candidates::OnsetOpportunity {
-            issued_at: 512,
-            at: 612,
-            gate: 1,
-            intrinsic_due_at: None,
-            intrinsic_period_ticks: None,
-            planned_release_at: None,
-        };
         for (id, at) in [(7, 612), (8, 812)] {
             v.phonation_scratch.events.push(ToneOnEvent {
                 tone_id: id,
                 onset_tick: at,
-                opportunity: Some(crate::life::action_candidates::OnsetOpportunity { at, ..op }),
+                participation_onset: true,
             });
         }
         v.emit_bounded_participation(
@@ -1610,8 +1506,8 @@ mod tests {
             440.0f32.log2().exp2().to_bits()
         );
         assert!(out.tones[1].freq_hz > 440.0 && out.tones[1].freq_hz < 450.0);
-        assert_eq!(v.pending_participation_pitch, Some(660.0f32.log2()));
-        assert!(v.participation_glide_target.is_none());
+        assert_eq!(v.participation_pitch.pending, Some(660.0f32.log2()));
+        assert!(v.participation_pitch.glide_target.is_none());
     }
     #[test]
     fn bounded_same_sample_m_precedes_exactly_one_opportunity() {
@@ -1622,14 +1518,7 @@ mod tests {
         v.phonation_scratch.events.push(ToneOnEvent {
             tone_id: 7,
             onset_tick: 576,
-            opportunity: Some(crate::life::action_candidates::OnsetOpportunity {
-                issued_at: 512,
-                at: 576,
-                gate: 1,
-                intrinsic_due_at: None,
-                intrinsic_period_ticks: None,
-                planned_release_at: None,
-            }),
+            participation_onset: true,
         });
         v.emit_bounded_participation(
             &CoreState {
@@ -1647,13 +1536,13 @@ mod tests {
             out.tones[0].freq_hz.to_bits(),
             440.0f32.log2().exp2().to_bits()
         );
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
     }
     #[test]
     fn bounded_body_rejection_keeps_pending_and_actual_reference() {
         let (mut v, tb, r, mut out) = bounded_fixture(false);
         bounded_emit(&mut v, &tb, &r, 0, &mut out);
-        let actual = v.last_onset_pitch_log2;
+        let actual = v.participation_pitch.last_onset_log2;
         adoption(&mut v, 512, 440.0);
         out.clear();
         let ctx = CoreTickCtx {
@@ -1675,21 +1564,21 @@ mod tests {
             &mut out,
         );
         assert!(out.onsets.is_empty());
-        assert_eq!(v.last_onset_pitch_log2, actual);
-        assert_eq!(v.pending_participation_pitch, Some(440.0f32.log2()));
+        assert_eq!(v.participation_pitch.last_onset_log2, actual);
+        assert_eq!(v.participation_pitch.pending, Some(440.0f32.log2()));
     }
     #[test]
     fn bounded_lifecycle_cancels_and_does_not_change_actual_reference() {
         for reason in 0..3 {
             let (mut v, tb, r, mut out) = bounded_fixture(true);
             bounded_emit(&mut v, &tb, &r, 0, &mut out);
-            let actual = v.last_onset_pitch_log2;
+            let actual = v.participation_pitch.last_onset_log2;
             adoption(&mut v, 512, 440.0);
             bounded_emit(&mut v, &tb, &r, 512, &mut out);
             adoption(&mut v, 1088, 550.0);
             match reason {
-                0 => v.release_pending = true,
-                1 => v.remove_pending = true,
+                0 => v.release.pending = true,
+                1 => v.release.remove_pending = true,
                 _ => {
                     let crate::life::articulation_core::AnyArticulationCore::Entrain(core) =
                         &mut v.articulation.core
@@ -1702,9 +1591,12 @@ mod tests {
             }
             bounded_emit(&mut v, &tb, &r, 1024, &mut out);
             assert!(out.onsets.is_empty() && out.tones.is_empty());
-            assert!(v.pending_participation_pitch.is_none());
-            assert!(v.rearticulations.is_empty() && v.participation_glide_target.is_none());
-            assert_eq!(v.last_onset_pitch_log2, actual);
+            assert!(v.participation_pitch.pending.is_none());
+            assert!(
+                v.participation_pitch.rearticulations.is_empty()
+                    && v.participation_pitch.glide_target.is_none()
+            );
+            assert_eq!(v.participation_pitch.last_onset_log2, actual);
         }
     }
     #[test]
@@ -1759,7 +1651,7 @@ mod tests {
                         assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
                         assert_eq!(v.body.base_freq_hz().to_bits(), freq.to_bits());
                         assert_eq!(
-                            v.pending_participation_pitch.unwrap().to_bits(),
+                            v.participation_pitch.pending.unwrap().to_bits(),
                             440.0f32.log2().to_bits()
                         );
                         assert_eq!(v.active_render_notes.len(), 1);
@@ -1794,30 +1686,30 @@ mod tests {
                         })
                         .unwrap();
                         bounded_emit(&mut v, &tb, &r, 0, &mut out);
-                        let actual = v.last_onset_pitch_log2;
+                        let actual = v.participation_pitch.last_onset_log2;
                         let tones = v.active_render_notes.len();
                         v.pitch_ctl.force_set_target_pitch_log2(440.0f32.log2());
                         adoption(&mut v, 576, 440.);
-                        v.pending_participation_pitch = Some(550.0f32.log2());
-                        v.participation_glide_target = Some(335.0f32.log2());
+                        v.participation_pitch.pending = Some(550.0f32.log2());
+                        v.participation_pitch.glide_target = Some(335.0f32.log2());
                         v.apply_patch(&ControlUpdate {
                             pitch_apply_mode: Some(destination),
                             ..Default::default()
                         })
                         .unwrap();
                         assert_eq!(v.active_render_notes.len(), tones);
-                        assert_eq!(v.last_onset_pitch_log2, actual);
+                        assert_eq!(v.participation_pitch.last_onset_log2, actual);
                         assert_eq!(v.target_pitch_log2(), 440.0f32.log2());
                         if source != destination {
-                            assert!(v.rearticulations.is_empty());
-                            assert!(v.participation_pitch_steps.is_empty());
-                            assert!(v.pending_participation_pitch.is_none());
-                            assert!(v.participation_glide_target.is_none());
+                            assert!(v.participation_pitch.rearticulations.is_empty());
+                            assert!(v.participation_pitch.steps.is_empty());
+                            assert!(v.participation_pitch.pending.is_none());
+                            assert!(v.participation_pitch.glide_target.is_none());
                             bounded_emit(&mut v, &tb, &r, 512, &mut out);
                             assert!(out.onsets.is_empty());
                         } else {
-                            assert!(v.pending_participation_pitch.is_some());
-                            assert_eq!(v.rearticulations.len(), 1);
+                            assert!(v.participation_pitch.pending.is_some());
+                            assert_eq!(v.participation_pitch.rearticulations.len(), 1);
                         }
                     }
                 }
@@ -1836,7 +1728,7 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
-        v.participation_pitch_steps.push(ParticipationPitchStep {
+        v.participation_pitch.steps.push(ParticipationPitchStep {
             at: 1024,
             before_log2: before.log2(),
             target_log2: 335.0f32.log2(),
@@ -1847,8 +1739,8 @@ mod tests {
         assert!(out.onsets.is_empty());
         adoption(&mut v, 1536, 334.);
         bounded_emit(&mut v, &tb, &r, 1536, &mut out);
-        assert!(v.participation_glide_target.is_none());
-        assert_eq!(v.pending_participation_pitch, Some(334.0f32.log2()));
+        assert!(v.participation_pitch.glide_target.is_none());
+        assert_eq!(v.participation_pitch.pending, Some(334.0f32.log2()));
         let held = v.body.base_freq_hz();
         v.apply_patch(&ControlUpdate {
             rearticulate_above_cents: Some(100.),
@@ -1857,7 +1749,7 @@ mod tests {
         .unwrap();
         bounded_emit(&mut v, &tb, &r, 2048, &mut out);
         assert_eq!(v.body.base_freq_hz().to_bits(), held.to_bits());
-        assert_eq!(v.pending_participation_pitch, Some(334.0f32.log2()));
+        assert_eq!(v.participation_pitch.pending, Some(334.0f32.log2()));
     }
     #[test]
     fn bounded_zero_matches_gate_snap_including_zero_distance_adoptions() {
@@ -1885,7 +1777,7 @@ mod tests {
                 a.body.base_freq_hz().to_bits(),
                 b.body.base_freq_hz().to_bits()
             );
-            assert_eq!(a.pending_participation_pitch, b.pending_participation_pitch);
+            assert_eq!(a.participation_pitch.pending, b.participation_pitch.pending);
         }
     }
     #[test]
@@ -1894,13 +1786,13 @@ mod tests {
         let reference = grid.centers_log2[100];
         let target = grid.centers_log2[102];
         let (mut v, _, _, mut out) = bounded_fixture(false);
-        assert!(v.last_onset_pitch_log2.is_none());
-        assert!(v.pending_participation_pitch.is_none());
-        assert!(v.participation_glide_target.is_none());
-        v.last_onset_pitch_log2 = Some(reference);
+        assert!(v.participation_pitch.last_onset_log2.is_none());
+        assert!(v.participation_pitch.pending.is_none());
+        assert!(v.participation_pitch.glide_target.is_none());
+        v.participation_pitch.last_onset_log2 = Some(reference);
         v.body.set_pitch_log2(reference);
         adoption(&mut v, 576, target.exp2());
-        v.rearticulations[0].pitch_log2 = target;
+        v.participation_pitch.rearticulations[0].pitch_log2 = target;
         v.emit_bounded_participation(
             &CoreState {
                 is_alive: true,
@@ -1912,12 +1804,15 @@ mod tests {
             Some(&grid),
             &mut out,
         );
-        assert_eq!(v.adoption_application, PitchApplyMode::Glide);
-        assert!(v.pending_participation_pitch.is_none());
+        assert_eq!(
+            v.participation_pitch.adoption_application,
+            PitchApplyMode::Glide
+        );
+        assert!(v.participation_pitch.pending.is_none());
         let other = Log2Space::new(55., 8000., 96);
-        v.last_onset_pitch_log2 = Some(other.centers_log2[100]);
+        v.participation_pitch.last_onset_log2 = Some(other.centers_log2[100]);
         adoption(&mut v, 1088, other.centers_log2[105].exp2());
-        v.rearticulations[0].pitch_log2 = other.centers_log2[105];
+        v.participation_pitch.rearticulations[0].pitch_log2 = other.centers_log2[105];
         v.emit_bounded_participation(
             &CoreState {
                 is_alive: true,
@@ -1929,8 +1824,11 @@ mod tests {
             Some(&other),
             &mut out,
         );
-        assert_eq!(v.adoption_application, PitchApplyMode::Rearticulate);
-        assert!(v.pending_participation_pitch.is_some());
+        assert_eq!(
+            v.participation_pitch.adoption_application,
+            PitchApplyMode::Rearticulate
+        );
+        assert!(v.participation_pitch.pending.is_some());
     }
     #[test]
     fn bounded_rest_preserves_actual_reference_and_resumes_with_latest_pending() {
@@ -1943,7 +1841,7 @@ mod tests {
         })
         .unwrap();
         bounded_emit(&mut v, &tb, &r, 0, &mut out);
-        let actual = v.last_onset_pitch_log2;
+        let actual = v.participation_pitch.last_onset_log2;
         let mut off_seen = false;
         for at in (512..24576).step_by(512) {
             if at == 512 {
@@ -1957,12 +1855,12 @@ mod tests {
             assert!(out.tones.is_empty());
         }
         assert!(off_seen);
-        assert_eq!(v.last_onset_pitch_log2, actual);
+        assert_eq!(v.participation_pitch.last_onset_log2, actual);
         v.phonation_engine.rest_tail_finished(24576, tb.fs);
         adoption(&mut v, 24640, 335.);
         bounded_emit(&mut v, &tb, &r, 24576, &mut out);
         assert!(out.tones.is_empty());
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
         assert!(out.cmds.iter().all(|c| !matches!(
             c,
             ToneCmd::Update {
@@ -1973,23 +1871,26 @@ mod tests {
                 ..
             }
         )));
-        assert_eq!(v.last_onset_pitch_log2, actual);
+        assert_eq!(v.participation_pitch.last_onset_log2, actual);
         adoption(&mut v, 25152, 660.);
         bounded_emit(&mut v, &tb, &r, 25088, &mut out);
-        assert_eq!(v.pending_participation_pitch, Some(660.0f32.log2()));
+        assert_eq!(v.participation_pitch.pending, Some(660.0f32.log2()));
         let mut found = false;
         for at in (25600..180224).step_by(512) {
             bounded_emit(&mut v, &tb, &r, at, &mut out);
             if let Some(tone) = out.tones.first() {
                 assert!(tone.onset >= 48576);
-                assert!(tone.opportunity.is_some());
+                assert!(tone.participation_onset);
                 assert_eq!(tone.freq_hz.to_bits(), 660.0f32.log2().exp2().to_bits());
-                assert_eq!(v.last_onset_pitch_log2, Some(tone.freq_hz.log2()));
-                assert!(v.pending_participation_pitch.is_none());
+                assert_eq!(
+                    v.participation_pitch.last_onset_log2,
+                    Some(tone.freq_hz.log2())
+                );
+                assert!(v.participation_pitch.pending.is_none());
                 found = true;
                 break;
             }
-            assert_eq!(v.last_onset_pitch_log2, actual);
+            assert_eq!(v.participation_pitch.last_onset_log2, actual);
         }
         assert!(found);
     }
@@ -2010,7 +1911,7 @@ mod tests {
     fn articulation_persistence_connect_has_multiple_moves_and_suppresses_without_replaying() {
         let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.875);
         bounded_emit(&mut v, &tb, &r, 0, &mut out);
-        let first = v.last_onset_pitch_log2;
+        let first = v.participation_pitch.last_onset_log2;
         let mut ons = 0;
         let mut connected = 0;
         for at in (512..144000).step_by(512) {
@@ -2022,7 +1923,7 @@ mod tests {
             };
             if c.shape.as_ref().unwrap().state == crate::life::shape_policy::Shape::Connect {
                 connected += 1;
-                assert!(v.pending_participation_pitch.is_none());
+                assert!(v.participation_pitch.pending.is_none());
             }
             assert!(out.tones.len() <= 1);
         }
@@ -2048,7 +1949,10 @@ mod tests {
                 bounded_emit(&mut v, &tb, &r, 0, &mut out);
                 assert_eq!(out.tones.len(), 1);
                 assert_eq!(out.tones[0].onset, 0);
-                assert_eq!(v.last_onset_pitch_log2, Some(out.tones[0].freq_hz.log2()));
+                assert_eq!(
+                    v.participation_pitch.last_onset_log2,
+                    Some(out.tones[0].freq_hz.log2())
+                );
             })();
         }
     }
@@ -2058,20 +1962,20 @@ mod tests {
         for which in 0..3 {
             let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.5);
             bounded_emit(&mut v, &tb, &r, 0, &mut out);
-            let reference = v.last_onset_pitch_log2;
+            let reference = v.participation_pitch.last_onset_log2;
             adoption(&mut v, 512, 440.0);
             match which {
-                0 => v.release_pending = true,
-                1 => v.remove_pending = true,
+                0 => v.release.pending = true,
+                1 => v.release.remove_pending = true,
                 _ => {
                     v.last_signal.is_active = false;
-                    v.release_gain = 0.0;
+                    v.release.gain = 0.0;
                 }
             }
             bounded_emit(&mut v, &tb, &r, 512, &mut out);
             assert!(out.tones.is_empty());
-            assert!(v.pending_participation_pitch.is_none());
-            assert_eq!(v.last_onset_pitch_log2, reference);
+            assert!(v.participation_pitch.pending.is_none());
+            assert_eq!(v.participation_pitch.last_onset_log2, reference);
         }
     }
 
@@ -2172,6 +2076,7 @@ mod tests {
         assert!(ons > 0);
     }
 
+    #[cfg(feature = "profile-alloc")]
     #[test]
     fn articulation_persistence_shape_hop_path_has_no_added_allocations() {
         let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.5);
@@ -2179,7 +2084,7 @@ mod tests {
         let mut warmed = None;
         for at in (512..98304).step_by(512) {
             bounded_emit(&mut v, &tb, &r, at, &mut out);
-            if out.tones.iter().any(|tone| tone.opportunity.is_some()) {
+            if out.tones.iter().any(|tone| tone.participation_onset) {
                 warmed = Some(at + 512);
                 break;
             }
@@ -2202,9 +2107,8 @@ mod tests {
                 &mut out,
             );
         }
-        if let Some(counts) = crate::runtime_profile::finish_allocations() {
-            assert_eq!((counts.count, counts.bytes), (0, 0));
-        }
+        let counts = crate::runtime_profile::finish_allocations().expect("profile-alloc");
+        assert_eq!((counts.count, counts.bytes), (0, 0));
     }
     #[test]
     fn articulation_persistence_cost_skip_cannot_be_forced_into_an_on() {
@@ -2217,7 +2121,7 @@ mod tests {
                         use_steady(&mut v);
                     }
                     bounded_emit(&mut v, &tb, &r, 0, &mut out);
-                    let actual = v.last_onset_pitch_log2;
+                    let actual = v.participation_pitch.last_onset_log2;
                     let forecast =
                         TemporalForecast::energy_fixture(48_000, 0, |_| [10.0, 0.0, 0.0]);
                     v.phonation_engine.set_onset_comparison(Some(
@@ -2236,7 +2140,7 @@ mod tests {
                             assert!(out.tones.is_empty());
                             assert!(out.onsets.is_empty());
                             assert!(!out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
-                            assert_eq!(v.last_onset_pitch_log2, actual);
+                            assert_eq!(v.participation_pitch.last_onset_log2, actual);
                             assert_eq!(v.active_render_notes.len(), 1);
                             skipped = true;
                             break;
@@ -2308,9 +2212,9 @@ mod tests {
             );
         }
         base.last_signal.is_active = false;
-        base.release_gain = 0.0;
+        base.release.gain = 0.0;
         shape.last_signal.is_active = false;
-        shape.release_gain = 0.0;
+        shape.release.gain = 0.0;
         for at in (32768..35840).step_by(512) {
             bounded_emit(&mut base, &tb, &r, at, &mut a);
             bounded_emit(&mut shape, &tb, &r, at, &mut b);

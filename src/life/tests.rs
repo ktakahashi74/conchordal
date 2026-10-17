@@ -116,7 +116,7 @@ fn population_spawn_and_release_removes_voice() {
     let dt = 0.1;
     let samples_per_hop = (fs * dt) as usize;
     let landscape_rt = make_landscape();
-    pop.advance(samples_per_hop, fs, 0, dt, &landscape_rt);
+    pop.advance(samples_per_hop, 0, dt, &landscape_rt);
     pop.cleanup_dead(0, dt, false, &landscape);
     assert!(pop.voices.is_empty());
 }
@@ -232,7 +232,7 @@ fn voice_lifecycle_decay_death() {
     let landscape_rt = make_landscape();
 
     for i in 0..100 {
-        pop.advance(samples_per_hop, fs, i, dt, &landscape_rt);
+        pop.advance(samples_per_hop, i, dt, &landscape_rt);
         pop.cleanup_dead(i, dt, false, &landscape);
     }
 
@@ -264,7 +264,7 @@ fn lock_mode_advances_release_gain() {
     let dt = 0.01;
     let samples_per_hop = (fs * dt) as usize;
     let landscape = make_landscape();
-    pop.advance(samples_per_hop, fs, 0, dt, &landscape);
+    pop.advance(samples_per_hop, 0, dt, &landscape);
 
     let gain_after = pop.voices[0].release_gain();
     assert!(gain_after < gain_before);
@@ -296,7 +296,7 @@ fn lock_mode_keeps_pitch_and_target() {
     let samples_per_hop = (fs * dt) as usize;
     let landscape = make_landscape();
     for i in 0..50 {
-        pop.advance(samples_per_hop, fs, i, dt, &landscape);
+        pop.advance(samples_per_hop, i, dt, &landscape);
     }
 
     let voice = pop.voices.first().expect("agent exists");
@@ -342,7 +342,7 @@ fn lock_mode_preserves_placements_outside_analysis_range() {
             let dt = 0.01;
             let samples_per_hop = (fs * dt) as usize;
             for frame in 0..50 {
-                pop.advance(samples_per_hop, fs, frame, dt, &landscape);
+                pop.advance(samples_per_hop, frame, dt, &landscape);
                 let voice = &pop.voices[0];
                 let freq = voice.body.base_freq_hz();
                 assert!((lo..=hi).contains(&freq), "{target:?}: {freq} Hz");
@@ -1043,7 +1043,7 @@ fn tracked_note_is_removed_after_note_off_for_future_hops() {
 
     let mut batch = PhonationBatch::default();
     voice.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 1.0, &mut batch);
-    voice.remove_pending = true;
+    voice.release.remove_pending = true;
     let mut off_batch = PhonationBatch::default();
     voice.tick_phonation_into(
         &tb,
@@ -1212,44 +1212,4 @@ fn articulation_snapshot_kuramoto_decay_signature() {
     assert!(early_active, "expected early attack during decay lifecycle");
     println!("articulation decay signature: {signature:016x}");
     assert_eq!(signature, 0xc1e9_43c6_d8f8_6b6d);
-}
-
-#[test]
-fn voice_freezes_clock_inputs_before_renewal_and_keeps_silent_opportunities() {
-    use crate::life::phonation_engine::CoreTickCtx;
-    use crate::scenario::{PhonationClockConfig, PhonationMode};
-    let mut voice = spawn_voice(440.0, 17);
-    voice.phonation_engine.mode = PhonationMode::Gated;
-    voice.phonation_engine.clock = PhonationClock::from_config(
-        &PhonationClockConfig::Coupling {
-            coupling: 0.0,
-            base_rate_hz: 20.0,
-            flow_depth: 0.8,
-            microtiming: 0.0,
-        },
-        13,
-    );
-    let tb = test_timebase();
-    let rhythms = NeuralRhythms::default();
-    let mut batch = PhonationBatch::default();
-    let mut renewals = 0;
-    for now in (0..128_000).step_by(tb.hop) {
-        let ctx = CoreTickCtx {
-            now_tick: now,
-            frame_end: now + tb.hop as u64,
-            fs: tb.fs,
-            rhythms,
-        };
-        let frozen = voice.phonation_engine.clock.opportunity(&ctx);
-        let period = voice.phonation_engine.clock.intrinsic_period_sec();
-        voice.tick_phonation_into(&tb, now, &rhythms, None, 0.0, 1.0, 0.5, &mut batch);
-        assert_eq!(batch.body_opportunity, frozen);
-        assert_eq!(batch.intrinsic_period_sec, period);
-        renewals += usize::from(period != voice.phonation_engine.clock.intrinsic_period_sec());
-    }
-    assert!(renewals > 10);
-    voice.phonation_engine.mode = PhonationMode::Hold;
-    voice.tick_phonation_into(&tb, 128_000, &rhythms, None, 0.0, 1.0, 0.5, &mut batch);
-    assert_eq!(batch.body_opportunity, None);
-    assert_eq!(batch.intrinsic_period_sec, None);
 }

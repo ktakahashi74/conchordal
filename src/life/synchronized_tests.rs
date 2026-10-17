@@ -69,11 +69,11 @@ fn emit(
 }
 
 fn adoption(v: &mut Voice, at: Tick, hz: f32) {
-    v.rearticulations.push(Rearticulation {
+    v.participation_pitch.rearticulations.push(Rearticulation {
         at,
         pitch_log2: hz.log2(),
     });
-    v.participation_pitch_steps.push(ParticipationPitchStep {
+    v.participation_pitch.steps.push(ParticipationPitchStep {
         at,
         before_log2: v.body.base_freq_hz().log2(),
         target_log2: hz.log2(),
@@ -125,16 +125,16 @@ fn synchronized_bodies_modes_tie_same_sample_lifecycle_and_finite_rest() {
                                 .iter()
                                 .any(|t| t.onset == due && (t.freq_hz - 440.).abs() < 0.001)
                         );
-                        assert!(v.pending_participation_pitch.is_none());
+                        assert!(v.participation_pitch.pending.is_none());
                         break;
                     }
                     emit(&mut v, &tb, &r, now, &mut out, &space);
                     now += 512;
                 }
-                v.release_pending = true;
+                v.release.pending = true;
                 emit(&mut v, &tb, &r, now + 1000 * 512, &mut out, &space);
                 assert!(out.onsets.is_empty());
-                assert!(v.pending_participation_pitch.is_none());
+                assert!(v.participation_pitch.pending.is_none());
                 cases += 1;
             }
         }
@@ -186,7 +186,7 @@ fn synchronized_bodies_modes_tie_same_sample_lifecycle_and_finite_rest() {
     emit(&mut v, &tb, &r, 0, &mut out, &space);
     adoption(&mut v, 512, 331.);
     emit(&mut v, &tb, &r, 512, &mut out, &space);
-    assert!(v.pending_participation_pitch.is_none());
+    assert!(v.participation_pitch.pending.is_none());
     for i in 2..200 {
         emit(&mut v, &tb, &r, i * 512, &mut out, &space);
     }
@@ -255,7 +255,7 @@ fn synchronized_unconfirmed_clock_keeps_existing_rate_phase_and_crossings() {
         let actual: Vec<_> = out
             .tones
             .iter()
-            .filter(|t| t.opportunity.is_some())
+            .filter(|t| t.participation_onset)
             .map(|t| t.onset)
             .collect();
         assert_eq!(
@@ -284,7 +284,7 @@ fn synchronized_mode_and_boundary_changes_keep_clock_and_cancel_pending_pitch() 
         ..Default::default()
     })
     .unwrap();
-    assert!(v.pending_participation_pitch.is_none());
+    assert!(v.participation_pitch.pending.is_none());
     assert_eq!(v.phonation_engine.clock.opportunity(&ctx).unwrap().at, due);
     emit(&mut v, &tb, &r, 1024, &mut out, &space);
     assert!(out.onsets.is_empty());
@@ -314,8 +314,8 @@ fn synchronized_onset_metabolism_and_attack_learning_happen_once_per_actual_on()
         panic!()
     };
     core.energy = 0.8;
-    core.attack_cost_fraction = 0.1;
-    core.attack_recharge_fraction = 0.;
+    core.metabolism.action_cost_per_attack = 0.1;
+    core.metabolism.recharge_per_attack = 0.;
     let mut expected = 0.8f32;
     let mut total = 0;
     for i in 0..100 {

@@ -194,8 +194,8 @@ class ReportTests(unittest.TestCase):
                        energy_prediction_model="local_history_mix",
                        onset_frame=12, forecast_observed_frame=10, observed_through_frame=110,
                        target_start_frames=[20, 100], target_end_frames=[30, 110], status="observed",
-                       pred_external_band_energy=[[0.1]*3]*2, observed_external_band_energy=[[0.2]*3]*2,
-                       memory_external_band_energy=[[0.2]*3]*2,
+                       pred_external_band_energy=[[0.1]*3]*2, perc_external_band_energy=[[0.2]*3]*2,
+                       perc_memory_external_band_energy=[[0.2]*3]*2,
                        decision_external_history=dict(ages_sec=[.125, .25, .5, 1, 2, 4, 8, 16], post_order=12,
                                                       known_band_rms_by_age=[[.1]*3]*8,
                                                       known_coverage_by_age=[.5]*8))
@@ -207,10 +207,10 @@ class ReportTests(unittest.TestCase):
         for index, changes in ((1, dict(observed_start_frame=21)), (1, dict(status="input_gap")),
                                (1, dict(pred_continuation_habitat_band_energy=[True, 0, 0])),
                                (1, dict(issued_frame=13)), (1, dict(sample_rate=0)),
-                               (2, dict(observed_through_frame=109)), (2, dict(memory_external_band_energy=None)),
+                               (2, dict(observed_through_frame=109)), (2, dict(perc_memory_external_band_energy=None)),
                                (2, dict(energy_prediction_model="unknown")),
                                (2, dict(target_end_frames=[30, 111])), (2, dict(target_start_frames=[20.0, 100])),
-                               (2, dict(observed_external_band_energy=[[0.0]*2]*2)),
+                               (2, dict(perc_external_band_energy=[[0.0]*2]*2)),
                                (2, dict(pred_external_band_energy=[[-0.1]*3]*2))):
             broken = copy.deepcopy(records)
             broken[index].update(changes)
@@ -219,8 +219,8 @@ class ReportTests(unittest.TestCase):
         missing = copy.deepcopy(records)
         missing[1].update(status="end_of_input", observed_start_frame=None,
                           observed_end_frame=None, observed_habitat_band_energy=None)
-        missing[2].update(status="outside_observed_history", observed_external_band_energy=None,
-                          memory_external_band_energy=None)
+        missing[2].update(status="outside_observed_history", perc_external_band_energy=None,
+                          perc_memory_external_band_energy=None)
         self.parse(missing)
         for changes in (dict(ages_sec=[1, .5]), dict(post_order=True),
                         dict(known_band_rms_by_age=[[0]*3]*7), dict(known_coverage_by_age=[1.1]*8),

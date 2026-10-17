@@ -101,6 +101,15 @@ pub struct PitchHillClimbPitchCore {
     /// `None` falls back to the generic assumed harmonic series.
     body_ratios: Option<Arc<[f32]>>,
     exact_loo: Option<Box<ExactLooScratch>>,
+    scratch: std::cell::RefCell<ProposalScratch>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ProposalScratch {
+    candidates: Vec<f32>,
+    peaks: Vec<(f32, f32)>,
+    scored: Vec<(f32, f32)>,
+    ratios: Vec<f32>,
 }
 
 impl PitchHillClimbPitchCore {
@@ -131,6 +140,7 @@ impl PitchHillClimbPitchCore {
             ratio_candidate_count: DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT,
             body_ratios: None,
             exact_loo: None,
+            scratch: Default::default(),
         }
     }
 
@@ -268,25 +278,41 @@ impl PitchHillClimbPitchCore {
         let adaptive_window_cents =
             (self.neighbor_step_log2.abs() * 1200.0 * 4.0).max(DEFAULT_LOCAL_WINDOW_CENTS);
         let window_bins = window_bins_from_cents(landscape, adaptive_window_cents);
-        let mut candidates = seed_step_candidates(current_target_log2, self.neighbor_step_log2);
-        candidates.extend(top_local_peaks(
+        let mut scratch = self.scratch.borrow_mut();
+        let ProposalScratch {
+            candidates,
+            peaks,
+            scored,
+            ratios,
+        } = &mut *scratch;
+        candidates.clear();
+        candidates.extend(seed_step_candidates(
+            current_target_log2,
+            self.neighbor_step_log2,
+        ));
+        top_local_peaks(
             landscape,
             current_target_log2,
             window_bins,
             DEFAULT_LOCAL_TOP_K,
             &mut scorer,
-        ));
+            peaks,
+            candidates,
+        );
         if self.global_peak_count > 0 {
-            candidates.extend(top_global_peaks(
+            top_global_peaks(
                 landscape,
                 self.global_peak_count,
                 self.global_peak_min_sep_log2,
                 &mut scorer,
-            ));
+                peaks,
+                candidates,
+            );
         }
         if self.use_ratio_candidates && self.ratio_candidate_count > 0 {
             push_runtime_ratio_candidates(
-                &mut candidates,
+                candidates,
+                ratios,
                 current_target_log2,
                 current_pitch_log2,
                 neighbor_pitch_log2,
@@ -296,7 +322,7 @@ impl PitchHillClimbPitchCore {
             );
         }
         push_gaussian_candidates(
-            &mut candidates,
+            candidates,
             current_target_log2,
             fmin,
             fmax,
@@ -305,9 +331,15 @@ impl PitchHillClimbPitchCore {
             rng,
         );
         candidates.retain(|x| x.is_finite());
-        candidates = dedupe_log2_by_cents(candidates, 1.0);
-
-        let scored = score_candidates_with(candidates, fmin, fmax, &mut scorer);
+        dedupe_log2_by_cents(candidates, 1.0);
+        scored.clear();
+        for &candidate in candidates.iter() {
+            let pitch = candidate.clamp(fmin, fmax);
+            let score = scorer(pitch);
+            if score.is_finite() {
+                scored.push((pitch, score));
+            }
+        }
         if scored.is_empty() {
             return TargetProposal {
                 target_pitch_log2: current_target_log2,
@@ -318,7 +350,7 @@ impl PitchHillClimbPitchCore {
         let mut best_pitch = current_target_log2;
         let mut best_score = f32::MIN;
         let mut best_distance = f32::INFINITY;
-        for &(pitch, score) in &scored {
+        for &(pitch, score) in scored.iter() {
             let distance = (pitch - current_target_log2).abs();
             let better_score = score > best_score + 1e-6;
             let same_score = (score - best_score).abs() <= 1e-6;
@@ -341,14 +373,10 @@ impl PitchHillClimbPitchCore {
         } else if self.temperature > 0.0 {
             // Metropolis step: pick a random movable candidate and accept it if it
             // improves, or with Boltzmann probability if it is downhill.
-            let mut movable: Vec<(f32, f32)> = scored
-                .iter()
-                .copied()
-                .filter(|(pitch, _)| (*pitch - current_target_log2).abs() > 1e-9)
-                .collect();
-            if !movable.is_empty() {
-                let pick = rng.random_range(0..movable.len());
-                let (candidate_pitch, candidate_score) = movable.swap_remove(pick);
+            scored.retain(|(pitch, _)| (*pitch - current_target_log2).abs() > 1e-9);
+            if !scored.is_empty() {
+                let pick = rng.random_range(0..scored.len());
+                let (candidate_pitch, candidate_score) = scored[pick];
                 let delta = candidate_score - current_adjusted;
                 if delta >= 0.0 || rng.random_range(0.0..1.0) < (delta / self.temperature).exp() {
                     target_pitch_log2 = candidate_pitch;
@@ -661,14 +689,17 @@ impl PitchCore for PitchPeakSamplerCore {
             )
         };
 
-        let mut candidates = seed_step_candidates(current_target_log2, self.neighbor_step_log2);
-        candidates.extend(top_local_peaks(
+        let mut candidates =
+            seed_step_candidates(current_target_log2, self.neighbor_step_log2).to_vec();
+        top_local_peaks(
             landscape,
             current_target_log2,
             window_bins,
             self.top_k,
             &mut scorer,
-        ));
+            &mut Vec::new(),
+            &mut candidates,
+        );
         push_gaussian_candidates(
             &mut candidates,
             current_target_log2,
@@ -1128,39 +1159,37 @@ fn exact_loo_consonance_score_scan(
     Some(out)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn top_local_peaks(
     landscape: &Landscape,
     current_target_log2: f32,
     window_bins: usize,
     top_k: usize,
     scorer: &mut impl FnMut(f32) -> f32,
-) -> Vec<f32> {
+    scored: &mut Vec<(f32, f32)>,
+    out: &mut Vec<f32>,
+) {
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let n_bins = landscape.space.n_bins();
     if n_bins == 0 {
-        return Vec::new();
+        return;
     }
     let clamped_target = current_target_log2.clamp(fmin, fmax);
     let idx0 = landscape.space.index_of_log2(clamped_target).unwrap_or(0);
     let start = idx0.saturating_sub(window_bins);
     let end = idx0.saturating_add(window_bins).min(n_bins - 1);
-
-    let mut scored = Vec::with_capacity(end.saturating_sub(start) + 1);
+    scored.clear();
     for idx in start..=end {
-        let pitch_log2 = landscape.space.centers_log2[idx];
-        let score = scorer(pitch_log2);
+        let pitch = landscape.space.centers_log2[idx];
+        let score = scorer(pitch);
         if score.is_finite() {
-            scored.push((score, pitch_log2));
+            scored.push((score, pitch));
         }
     }
-    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-
+    // Equal scores retain the ascending bin order of the former stable sort.
+    scored.sort_unstable_by(|a, b| b.0.total_cmp(&a.0).then(a.1.total_cmp(&b.1)));
     let limit = top_k.max(1).min(scored.len());
-    scored
-        .into_iter()
-        .take(limit)
-        .map(|(_, pitch)| pitch)
-        .collect()
+    out.extend(scored.iter().take(limit).map(|&(_, pitch)| pitch));
 }
 
 fn top_global_peaks(
@@ -1168,39 +1197,41 @@ fn top_global_peaks(
     top_k: usize,
     min_sep_log2: f32,
     scorer: &mut impl FnMut(f32) -> f32,
-) -> Vec<f32> {
+    scored: &mut Vec<(f32, f32)>,
+    out: &mut Vec<f32>,
+) {
     let n_bins = landscape.space.n_bins();
     if n_bins == 0 || top_k == 0 {
-        return Vec::new();
+        return;
     }
-    let mut scored = Vec::with_capacity(n_bins);
-    for &pitch_log2 in &landscape.space.centers_log2 {
-        let score = scorer(pitch_log2);
+    scored.clear();
+    for &pitch in &landscape.space.centers_log2 {
+        let score = scorer(pitch);
         if score.is_finite() {
-            scored.push((score, pitch_log2));
+            scored.push((score, pitch));
         }
     }
-    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-    let mut out: Vec<f32> = Vec::with_capacity(top_k.min(scored.len()));
-    for (_, pitch_log2) in scored {
+    scored.sort_unstable_by(|a, b| b.0.total_cmp(&a.0).then(a.1.total_cmp(&b.1)));
+    let start = out.len();
+    for &(_, pitch) in scored.iter() {
         if min_sep_log2 > 0.0
-            && out
+            && out[start..]
                 .iter()
-                .any(|selected| (pitch_log2 - *selected).abs() < min_sep_log2)
+                .any(|p| (pitch - *p).abs() < min_sep_log2)
         {
             continue;
         }
-        out.push(pitch_log2);
-        if out.len() >= top_k {
+        out.push(pitch);
+        if out.len() - start >= top_k {
             break;
         }
     }
-    out
 }
 
 #[allow(clippy::too_many_arguments)]
 fn push_runtime_ratio_candidates(
     candidates: &mut Vec<f32>,
+    generated: &mut Vec<f32>,
     current_target_log2: f32,
     current_pitch_log2: f32,
     neighbor_pitch_log2: &[f32],
@@ -1211,7 +1242,7 @@ fn push_runtime_ratio_candidates(
     if max_count == 0 {
         return;
     }
-    let mut anchors = vec![current_target_log2, current_pitch_log2];
+    let mut anchors = [current_target_log2, current_pitch_log2, f32::NAN];
     let mut sum = 0.0f32;
     let mut count = 0usize;
     for &neighbor in neighbor_pitch_log2 {
@@ -1221,10 +1252,10 @@ fn push_runtime_ratio_candidates(
         }
     }
     if count > 0 {
-        anchors.push(sum / count as f32);
+        anchors[2] = sum / count as f32;
     }
 
-    let mut generated = Vec::with_capacity(anchors.len() * HARMONIC_RATIOS.len() * 2);
+    generated.clear();
     for anchor in anchors {
         if !anchor.is_finite() {
             continue;
@@ -1240,17 +1271,18 @@ fn push_runtime_ratio_candidates(
         }
     }
     generated.retain(|x| x.is_finite());
-    generated = dedupe_log2_by_cents(generated, 2.0);
-    generated.sort_by(|a, b| {
+    dedupe_log2_by_cents(generated, 2.0);
+    generated.sort_unstable_by(|a, b| {
         (a - current_target_log2)
             .abs()
             .total_cmp(&(b - current_target_log2).abs())
+            .then(a.total_cmp(b))
     });
-    candidates.extend(generated.into_iter().take(max_count));
+    candidates.extend(generated.iter().copied().take(max_count));
 }
 
-fn seed_step_candidates(current_target_log2: f32, neighbor_step_log2: f32) -> Vec<f32> {
-    vec![
+fn seed_step_candidates(current_target_log2: f32, neighbor_step_log2: f32) -> [f32; 3] {
+    [
         current_target_log2,
         current_target_log2 + neighbor_step_log2,
         current_target_log2 - neighbor_step_log2,
@@ -1354,25 +1386,11 @@ fn sample_softmax_candidate<R: Rng + ?Sized>(
     best
 }
 
-fn dedupe_log2_by_cents(mut values_log2: Vec<f32>, dedupe_cents: f32) -> Vec<f32> {
-    if values_log2.is_empty() {
-        return values_log2;
-    }
+fn dedupe_log2_by_cents(values_log2: &mut Vec<f32>, dedupe_cents: f32) {
     let min_log2 = cents_to_log2(dedupe_cents.max(0.0));
     values_log2.retain(|x| x.is_finite());
-    values_log2.sort_by(|a, b| a.total_cmp(b));
-    let mut out = Vec::with_capacity(values_log2.len());
-    let mut last: Option<f32> = None;
-    for value in values_log2 {
-        if let Some(prev) = last
-            && (value - prev).abs() < min_log2
-        {
-            continue;
-        }
-        last = Some(value);
-        out.push(value);
-    }
-    out
+    values_log2.sort_unstable_by(|a, b| a.total_cmp(b));
+    values_log2.dedup_by(|value, previous| (*value - *previous).abs() < min_log2);
 }
 
 #[derive(Debug, Clone)]
@@ -1735,6 +1753,26 @@ mod tests {
 
     fn test_adaptation(n_bins: usize) -> AdaptationContext {
         AdaptationContext::from_config(&AdaptationConfig::default(), n_bins)
+    }
+
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+    fn hill_climb_proposals_reuse_candidate_storage() {
+        use rand::{SeedableRng, rngs::SmallRng};
+        let landscape = Landscape::new(Log2Space::new(55.0, 1760.0, 96));
+        let mut core = PitchHillClimbPitchCore::new(60.0, 330.0f32.log2(), 0.0);
+        core.set_global_peaks(10, 20.0);
+        core.set_ratio_candidates(true, 20);
+        core.set_temperature(0.5);
+        let mut rng = SmallRng::seed_from_u64(21);
+        let pitch = 330.0f32.log2();
+        core.propose_with_scorer(pitch, pitch, &landscape, &[pitch], &mut rng, |_| 0.0);
+        crate::runtime_profile::begin_allocations();
+        for _ in 0..100 {
+            core.propose_with_scorer(pitch, pitch, &landscape, &[pitch], &mut rng, |_| 0.0);
+        }
+        let counts = crate::runtime_profile::finish_allocations().unwrap();
+        assert_eq!((counts.count, counts.bytes), (0, 0));
     }
 
     #[test]

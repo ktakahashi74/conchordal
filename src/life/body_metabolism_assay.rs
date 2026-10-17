@@ -117,7 +117,7 @@ fn batch(id: u64, recipe: &Recipe) -> PhonationBatch {
             kick: OnsetKick { strength: 1. },
         }],
         tones: vec![ToneSpec {
-            opportunity: None,
+            participation_onset: false,
             tone_id: 1,
             onset: 0,
             hold_ticks: Some(recipe.hold),

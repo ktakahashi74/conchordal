@@ -343,7 +343,7 @@ mod tests {
         let released: Vec<u64> = pop
             .voices
             .iter()
-            .filter(|v| v.remove_pending)
+            .filter(|v| v.release.remove_pending)
             .map(|v| v.id())
             .collect();
         assert_eq!(released.len(), 2);

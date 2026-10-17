@@ -9,7 +9,7 @@ impl Voice {
             return;
         };
         if shape.clear_before(at) {
-            self.pending_participation_pitch = None;
+            self.participation_pitch.pending = None;
         }
     }
 
@@ -52,16 +52,7 @@ impl Voice {
             .shape_mut()
             .is_some_and(|s| s.tie.as_ref().is_some_and(|t| t.enabled));
         let previous_tone = self.active_render_notes.last().map(|n| n.tone_id);
-        out.body_opportunity = self.phonation_engine.clock.opportunity(ctx);
-        out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
-        self.phonation_engine.prepare_synchronized_hop(ctx);
-        self.phonation_engine.initial_participating_hold(
-            ctx,
-            state,
-            &mut out.cmds,
-            &mut self.phonation_scratch.events,
-            &mut out.onsets,
-        );
+        self.prepare_participation_hop(ctx, state, out);
         let mut pitch = self.body.base_freq_hz().log2();
         let mut on_index = 0;
         self.articulation_persistence_drain_ons(
@@ -75,8 +66,8 @@ impl Voice {
         let mut cursor = ctx.now_tick;
         let tau = self.effective_control.pitch.pitch_glide_tau_sec.max(0.0);
         if state.is_alive {
-            for step_index in 0..self.participation_pitch_steps.len() {
-                let step = self.participation_pitch_steps[step_index];
+            for step_index in 0..self.participation_pitch.steps.len() {
+                let step = self.participation_pitch.steps[step_index];
                 if cursor < step.at {
                     let segment = self.phonation_segment(ctx, cursor, step.at);
                     self.phonation_engine.set_adoption_candidate(None);
@@ -87,20 +78,9 @@ impl Voice {
                             .shape_mut()
                             .and_then(|s| s.tie.as_mut())
                     {
-                        tie.pending_pitch = self.pending_participation_pitch.is_some();
+                        tie.pending_pitch = self.participation_pitch.pending.is_some();
                     }
-                    self.phonation_engine.tick_with_arrival(
-                        &segment,
-                        state,
-                        None,
-                        0.0,
-                        1.0,
-                        None,
-                        arrival,
-                        &mut out.cmds,
-                        &mut self.phonation_scratch.events,
-                        &mut out.onsets,
-                    );
+                    self.tick_participation_segment(&segment, state, arrival, out);
                     self.articulation_persistence_drain_ons(
                         &mut on_index,
                         &mut pitch,
@@ -109,17 +89,17 @@ impl Voice {
                         out,
                     );
                 }
-                while m_index < self.rearticulations.len()
-                    && self.rearticulations[m_index].at <= step.at
+                while m_index < self.participation_pitch.rearticulations.len()
+                    && self.participation_pitch.rearticulations[m_index].at <= step.at
                 {
-                    let m = self.rearticulations[m_index];
+                    let m = self.participation_pitch.rearticulations[m_index];
                     debug_assert!(space.is_some(), "adoption needs the current grid");
                     // Release drops an adoption without a grid and keeps the processed pitch.
                     let Some(space) = space else {
                         m_index += 1;
                         continue;
                     };
-                    let reference = self.last_onset_pitch_log2.unwrap_or(pitch);
+                    let reference = self.participation_pitch.last_onset_log2.unwrap_or(pitch);
                     let base = select_pitch_application(
                         &self.effective_control.pitch,
                         Some((space, reference, m.pitch_log2)),
@@ -152,13 +132,13 @@ impl Voice {
                         || base == PitchApplyMode::Glide;
                     self.articulation_persistence_clear_before(m.at);
                     if glide {
-                        self.pending_participation_pitch = None;
-                        self.participation_glide_target = Some(m.pitch_log2);
-                        self.adoption_application = PitchApplyMode::Glide;
+                        self.participation_pitch.pending = None;
+                        self.participation_pitch.glide_target = Some(m.pitch_log2);
+                        self.participation_pitch.adoption_application = PitchApplyMode::Glide;
                     } else {
-                        self.pending_participation_pitch = Some(m.pitch_log2);
-                        self.participation_glide_target = None;
-                        self.adoption_application = base;
+                        self.participation_pitch.pending = Some(m.pitch_log2);
+                        self.participation_pitch.glide_target = None;
+                        self.participation_pitch.adoption_application = base;
                     }
                     m_index += 1;
                 }
@@ -171,28 +151,12 @@ impl Voice {
                         .shape_mut()
                         .and_then(|s| s.tie.as_mut())
                 {
-                    tie.pending_pitch = self.pending_participation_pitch.is_some();
+                    tie.pending_pitch = self.participation_pitch.pending.is_some();
                 }
-                self.phonation_engine.tick_with_arrival(
-                    &segment,
-                    state,
-                    None,
-                    0.0,
-                    1.0,
-                    None,
-                    arrival,
-                    &mut out.cmds,
-                    &mut self.phonation_scratch.events,
-                    &mut out.onsets,
-                );
+                self.tick_participation_segment(&segment, state, arrival, out);
                 // M and glide precede a sounded opportunity at exactly the same sample.
-                if let Some(target) = self.participation_glide_target {
-                    let alpha = if tau <= 1e-6 {
-                        1.0
-                    } else {
-                        1.0 - (-step.dt.max(0.0) / tau).exp()
-                    };
-                    pitch += (target - pitch) * alpha.clamp(0.0, 1.0);
+                if let Some(target) = self.participation_pitch.glide_target {
+                    pitch = Self::glide_pitch(pitch, target, step.dt, tau);
                     let same_on = self
                         .phonation_scratch
                         .events
@@ -202,8 +166,12 @@ impl Voice {
                         .checked_sub(1)
                         .map(|i| self.phonation_scratch.events[i].tone_id)
                         .or(previous_tone);
-                    let tone = tone.filter(|tone_id| self.phonation_engine.rest.is_none()
-                        || !out.cmds.iter().any(|cmd| matches!(cmd, ToneCmd::Off { tone_id: id, off_tick } if id == tone_id && *off_tick <= step.at)));
+                    let tone = Self::surviving_tone(
+                        tone,
+                        self.phonation_engine.rest.is_some(),
+                        &out.cmds,
+                        step.at,
+                    );
                     if !same_on && let Some(tone_id) = tone {
                         out.cmds.push(ToneCmd::Update {
                             tone_id,
@@ -233,20 +201,9 @@ impl Voice {
                         .shape_mut()
                         .and_then(|s| s.tie.as_mut())
                 {
-                    tie.pending_pitch = self.pending_participation_pitch.is_some();
+                    tie.pending_pitch = self.participation_pitch.pending.is_some();
                 }
-                self.phonation_engine.tick_with_arrival(
-                    &segment,
-                    state,
-                    None,
-                    0.0,
-                    1.0,
-                    None,
-                    arrival,
-                    &mut out.cmds,
-                    &mut self.phonation_scratch.events,
-                    &mut out.onsets,
-                );
+                self.tick_participation_segment(&segment, state, arrival, out);
                 self.articulation_persistence_drain_ons(
                     &mut on_index,
                     &mut pitch,
@@ -256,32 +213,15 @@ impl Voice {
                 );
             }
             // Release keeps the processed pitch; the hop cleanup drops unmatched adoptions.
-            debug_assert_eq!(m_index, self.rearticulations.len());
+            debug_assert_eq!(m_index, self.participation_pitch.rearticulations.len());
             self.body.set_pitch_log2(pitch);
         } else {
-            self.pending_participation_pitch = None;
-            self.participation_glide_target = None;
+            self.participation_pitch.pending = None;
+            self.participation_pitch.glide_target = None;
         }
-        for onset in &out.onsets {
-            self.articulation
-                .apply_phonation_onset(consonance, onset.strength);
-        }
-        self.prune_tracked_render_notes(&out.cmds);
-        for tracked in &mut self.active_render_notes {
-            tracked.last_target_freq_hz = self.body.base_freq_hz();
-        }
-        self.emit_phonation_updates(
-            ctx.now_tick,
-            target_amp,
-            self.body.base_freq_hz(),
-            self.effective_control.body.continuous_drive,
-            &mut out.cmds,
-        );
-        self.track_new_render_notes(&out.tones);
-        self.prune_tracked_render_notes(&out.cmds);
-        self.phonation_scratch.events.clear();
-        self.rearticulations.clear();
-        self.participation_pitch_steps.clear();
+        self.apply_phonation_onsets(consonance, out);
+        self.update_surviving_render_notes(ctx.now_tick, target_amp, out);
+        self.finish_participation_batch(out);
     }
 }
 
@@ -305,7 +245,7 @@ mod tests {
             21,
         );
         let pending = Some(440.0f32.log2());
-        v.pending_participation_pitch = pending;
+        v.participation_pitch.pending = pending;
         let pitch = v.body.base_freq_hz().log2();
         let mut processed_pitch = pitch;
         let mut index = 0;
@@ -336,7 +276,7 @@ mod tests {
                 512,
                 &mut out,
             );
-            assert_eq!(v.pending_participation_pitch, pending);
+            assert_eq!(v.participation_pitch.pending, pending);
             assert_eq!(processed_pitch.to_bits(), pitch.to_bits());
             assert!(out.tones.is_empty() && out.onsets.is_empty() && out.cmds.is_empty());
         }

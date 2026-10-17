@@ -238,6 +238,7 @@ mod tests {
         assert_eq!(a.rng.random::<u64>(), b.rng.random::<u64>());
     }
 
+    #[cfg(feature = "profile-alloc")]
     #[test]
     fn articulation_persistence_policy_after_birth_has_no_allocations() {
         let mut p = ShapePolicy::new(0.875, 21, 48000.0);
@@ -256,9 +257,8 @@ mod tests {
             p.clear_before(at);
             p.finish_segment();
         }
-        if let Some(counts) = crate::runtime_profile::finish_allocations() {
-            assert_eq!(counts.count, 0);
-            assert_eq!(counts.bytes, 0);
-        }
+        let counts = crate::runtime_profile::finish_allocations().expect("profile-alloc");
+        assert_eq!(counts.count, 0);
+        assert_eq!(counts.bytes, 0);
     }
 }

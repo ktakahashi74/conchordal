@@ -62,25 +62,14 @@ pub struct Voice {
     pub(crate) social_coupling: f32,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
-    pub(crate) release_gain: f32,
-    pub(crate) release_sec: f32,
-    pub(crate) release_pending: bool,
-    pub(crate) remove_pending: bool,
     pub(crate) selection_approx_loo: bool,
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
     amp_update_pending: bool,
     sustain_participation: bool,
-    participation_pitch_steps: Vec<ParticipationPitchStep>,
-    pitch_application: PitchApplyMode,
-    pitch_adopted: bool,
-    adoption_application: PitchApplyMode,
-    last_onset_pitch_log2: Option<f32>,
-    pending_participation_pitch: Option<f32>,
-    participation_glide_target: Option<f32>,
+    participation_pitch: ParticipationPitchState,
+    pub(crate) release: ReleaseState,
     control_tick: Option<Tick>,
-    rearticulations: Vec<Rearticulation>,
-    pulse_update_pending: bool,
     pub(crate) life_accumulator: Option<super::telemetry::LifeAccumulator>,
     voice_adsr: Option<super::sound::ToneAdsr>,
     /// One-way latch for `phonate_when_viable()`: starts open for
@@ -90,11 +79,32 @@ pub struct Voice {
     phonation_gate_open: bool,
 }
 
+#[derive(Debug)]
+struct ParticipationPitchState {
+    steps: Vec<ParticipationPitchStep>,
+    application: PitchApplyMode,
+    adopted: bool,
+    adoption_application: PitchApplyMode,
+    last_onset_log2: Option<f32>,
+    pending: Option<f32>,
+    glide_target: Option<f32>,
+    rearticulations: Vec<Rearticulation>,
+    pulse_update_pending: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct ReleaseState {
+    pub(crate) gain: f32,
+    pub(crate) sec: f32,
+    pub(crate) pending: bool,
+    pub(crate) remove_pending: bool,
+}
+
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct ToneSpec {
-    /// Diagnostic receipt paired with this recipe; it does not authorize another onset.
-    pub opportunity: Option<super::action_candidates::OnsetOpportunity>,
+    /// Whether this onset came from a clock candidate.
+    pub participation_onset: bool,
     pub tone_id: ToneId,
     pub onset: Tick,
     pub hold_ticks: Option<Tick>,
@@ -104,6 +114,31 @@ pub struct ToneSpec {
     pub body: BodySnapshot,
     pub render_modulator: RenderModulatorSpec,
     pub adsr: Option<super::sound::ToneAdsr>,
+}
+
+impl ToneSpec {
+    fn from_event(
+        event: ToneOnEvent,
+        freq_hz: f32,
+        amp: f32,
+        hold_ticks: Option<Tick>,
+        body: BodySnapshot,
+        render_modulator: RenderModulatorSpec,
+        adsr: Option<super::sound::ToneAdsr>,
+    ) -> Self {
+        Self {
+            participation_onset: event.participation_onset,
+            tone_id: event.tone_id,
+            onset: event.onset_tick,
+            hold_ticks,
+            freq_hz,
+            amp,
+            smoothing_tau_sec: Voice::PHONATION_UPDATE_SMOOTH_TAU_SEC,
+            body,
+            render_modulator,
+            adsr,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -166,8 +201,6 @@ struct TrackedRenderNote {
 #[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct PhonationBatch {
     pub body_policy: Option<super::action_candidates::PolicySnapshot>,
-    pub body_opportunity: Option<super::action_candidates::Opportunity>,
-    pub intrinsic_period_sec: Option<f64>,
     pub source_id: u64,
     pub source_generation: u32,
     pub routing: crate::scenario::control::Routing,
@@ -179,8 +212,6 @@ pub struct PhonationBatch {
 impl PhonationBatch {
     pub(crate) fn clear(&mut self) {
         self.body_policy = None;
-        self.body_opportunity = None;
-        self.intrinsic_period_sec = None;
         self.cmds.clear();
         self.tones.clear();
         self.onsets.clear();
@@ -215,8 +246,6 @@ impl BodyRuntime {
 struct Dirty {
     body: bool,
     pitch: bool,
-    phonation: bool,
-    adaptation: bool,
 }
 
 impl Dirty {
@@ -252,12 +281,7 @@ impl Dirty {
             || update.pitch_apply_mode.is_some()
             || update.pitch_glide_tau_sec.is_some()
             || update.rearticulate_above_cents.is_some();
-        Self {
-            body,
-            pitch,
-            phonation: false,
-            adaptation: false,
-        }
+        Self { body, pitch }
     }
 }
 
@@ -265,6 +289,107 @@ impl Voice {
     pub(crate) const AMP_EPS: f32 = 1e-6;
     const PHONATION_AMP_UPDATE_EPS: f32 = 0.01;
     const PHONATION_UPDATE_SMOOTH_TAU_SEC: f32 = 0.02;
+
+    fn autonomous_attack_enabled(
+        mode: PhonationMode,
+        application: PitchApplyMode,
+        participating: bool,
+    ) -> bool {
+        matches!(mode, PhonationMode::Hold)
+            && application != PitchApplyMode::Rearticulate
+            && !participating
+    }
+
+    fn glide_pitch(pitch: f32, target: f32, dt: f32, tau: f32) -> f32 {
+        let alpha = if tau <= 1e-6 {
+            1.0
+        } else {
+            1.0 - (-dt.max(0.0) / tau).exp()
+        };
+        pitch + (target - pitch) * alpha.clamp(0.0, 1.0)
+    }
+
+    fn surviving_tone(
+        tone: Option<ToneId>,
+        resting: bool,
+        cmds: &[ToneCmd],
+        at: Tick,
+    ) -> Option<ToneId> {
+        tone.filter(|tone_id| !resting || !cmds.iter().any(|cmd| {
+            matches!(cmd, ToneCmd::Off { tone_id: off_id, off_tick } if off_id == tone_id && *off_tick <= at)
+        }))
+    }
+
+    fn prepare_participation_hop(
+        &mut self,
+        ctx: &CoreTickCtx,
+        state: &CoreState,
+        out: &mut PhonationBatch,
+    ) {
+        self.phonation_engine.prepare_synchronized_hop(ctx);
+        self.phonation_engine.initial_participating_hold(
+            ctx,
+            state,
+            &mut out.cmds,
+            &mut self.phonation_scratch.events,
+            &mut out.onsets,
+        );
+    }
+
+    fn tick_participation_segment(
+        &mut self,
+        ctx: &CoreTickCtx,
+        state: &CoreState,
+        arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
+        out: &mut PhonationBatch,
+    ) {
+        self.phonation_engine.tick_with_arrival(
+            ctx,
+            state,
+            None,
+            0.0,
+            1.0,
+            None,
+            arrival,
+            &mut out.cmds,
+            &mut self.phonation_scratch.events,
+            &mut out.onsets,
+        );
+    }
+
+    fn apply_phonation_onsets(&mut self, consonance: f32, out: &PhonationBatch) {
+        for onset in &out.onsets {
+            self.articulation
+                .apply_phonation_onset(consonance, onset.strength);
+        }
+    }
+
+    fn update_surviving_render_notes(
+        &mut self,
+        now: Tick,
+        target_amp: f32,
+        out: &mut PhonationBatch,
+    ) {
+        self.prune_tracked_render_notes(&out.cmds);
+        for tracked in &mut self.active_render_notes {
+            tracked.last_target_freq_hz = self.body.base_freq_hz();
+        }
+        self.emit_phonation_updates(
+            now,
+            target_amp,
+            self.body.base_freq_hz(),
+            self.effective_control.body.continuous_drive,
+            &mut out.cmds,
+        );
+    }
+
+    fn finish_participation_batch(&mut self, out: &PhonationBatch) {
+        self.track_new_render_notes(&out.tones);
+        self.prune_tracked_render_notes(&out.cmds);
+        self.phonation_scratch.events.clear();
+        self.participation_pitch.rearticulations.clear();
+        self.participation_pitch.steps.clear();
+    }
 
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_from_control(
@@ -434,8 +559,24 @@ impl Voice {
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
         Voice {
+            participation_pitch: ParticipationPitchState {
+                steps: Vec::new(),
+                application: pitch_application,
+                adopted: false,
+                adoption_application: pitch_application,
+                last_onset_log2: None,
+                pending: None,
+                glide_target: None,
+                rearticulations: Vec::new(),
+                pulse_update_pending: false,
+            },
+            release: ReleaseState {
+                gain: 1.0,
+                sec: 0.03,
+                pending: false,
+                remove_pending: false,
+            },
             sustain_participation,
-            participation_pitch_steps: Vec::new(),
             id: assigned_id,
             metadata,
             fixed_body_method: effective_control.body.method,
@@ -445,32 +586,22 @@ impl Voice {
             articulation: ArticulationWrapper::new(
                 core,
                 breath_gain,
-                matches!(phonation_engine.mode, PhonationMode::Hold)
-                    && pitch_application != PitchApplyMode::Rearticulate
-                    && !sustain_participation,
+                Self::autonomous_attack_enabled(
+                    phonation_engine.mode,
+                    pitch_application,
+                    sustain_participation,
+                ),
             ),
             pitch_ctl,
             phonation_engine,
             social_coupling,
             body,
             last_signal: Default::default(),
-            release_gain: 1.0,
-            release_sec: 0.03,
-            release_pending: false,
-            remove_pending: false,
             selection_approx_loo,
             phonation_scratch: Default::default(),
             active_render_notes: Vec::new(),
             amp_update_pending: false,
-            pitch_application,
-            pitch_adopted: false,
-            adoption_application: pitch_application,
-            last_onset_pitch_log2: None,
-            pending_participation_pitch: None,
-            participation_glide_target: None,
             control_tick: None,
-            rearticulations: Vec::new(),
-            pulse_update_pending: false,
             life_accumulator: None,
             voice_adsr,
             phonation_gate_open,
@@ -505,12 +636,12 @@ impl Voice {
             {
                 capacity = capacity.max(self.phonation_engine.reserve_synchronized_hop(hop, fs));
             }
-            self.rearticulations.reserve(capacity);
+            self.participation_pitch.rearticulations.reserve(capacity);
             if let Some(shape) = self.phonation_engine.clock.shape_mut() {
                 shape.reserve(capacity, hop);
             }
             if self.sustain_participation {
-                self.participation_pitch_steps.reserve(capacity);
+                self.participation_pitch.steps.reserve(capacity);
             }
             self.phonation_scratch.events.reserve(capacity + 1);
             self.active_render_notes.reserve(capacity + 1);
@@ -518,7 +649,7 @@ impl Voice {
     }
 
     pub(crate) fn prepare_phonation_batch(&self, out: &mut PhonationBatch) {
-        let capacity = self.rearticulations.capacity();
+        let capacity = self.participation_pitch.rearticulations.capacity();
         if capacity > 0 {
             // Batch storage is initialized alongside its Voice, then reused.
             out.cmds
@@ -535,7 +666,8 @@ impl Voice {
     }
 
     pub(crate) fn reports_onset_pitch(&self) -> bool {
-        self.pitch_application == PitchApplyMode::Rearticulate || self.sustain_participation
+        self.participation_pitch.application == PitchApplyMode::Rearticulate
+            || self.sustain_participation
     }
 
     fn apply_body_runtime(&mut self) {
@@ -551,64 +683,31 @@ impl Voice {
         );
     }
 
-    fn apply_adaptation_control(&mut self) {
-        let config = adaptation_config_from_control(&self.effective_control.adaptation);
-        let adaptation = self.pitch_ctl.adaptation_mut();
-        adaptation.tau_fast = config.tau_fast.unwrap_or(0.5).max(1e-3);
-        adaptation.tau_slow = config
-            .tau_slow
-            .unwrap_or(20.0)
-            .max(adaptation.tau_fast + 1e-3);
-        adaptation.w_boredom = config.w_boredom.unwrap_or(1.0).max(0.0);
-        adaptation.w_familiarity = config.w_familiarity.unwrap_or(0.2).max(0.0);
-        adaptation.rho_self = config.rho_self.unwrap_or(0.15).clamp(0.0, 1.0);
-        adaptation.boredom_gamma = config.boredom_gamma.unwrap_or(0.5).clamp(0.1, 1.0);
-        adaptation.self_smoothing_radius = config.self_smoothing_radius.unwrap_or(1);
-        adaptation.silence_mass_epsilon = config.silence_mass_epsilon.unwrap_or(1e-6).max(0.0);
-        self.pitch_ctl
-            .set_adaptation_enabled(self.effective_control.adaptation.enabled);
-    }
-
     fn apply_pitch_control(&mut self) {
         let next = select_pitch_application(&self.effective_control.pitch, None);
-        if next != self.pitch_application {
+        if next != self.participation_pitch.application {
             if let Some(shape) = self.phonation_engine.clock.shape_mut() {
                 shape.state = super::shape_policy::Shape::Base;
                 shape.veto_plan = false;
             }
-            self.rearticulations.clear();
-            self.participation_pitch_steps.clear();
-            self.pending_participation_pitch = None;
-            self.participation_glide_target = None;
-            self.pitch_adopted = false;
-            self.pulse_update_pending |= (next == PitchApplyMode::Rearticulate)
-                != (self.pitch_application == PitchApplyMode::Rearticulate);
-            self.pitch_application = next;
-            self.adoption_application = next;
-            self.articulation.set_autonomous_attack_enabled(
-                matches!(self.phonation_engine.mode, PhonationMode::Hold)
-                    && next != PitchApplyMode::Rearticulate
-                    && !self.sustain_participation,
-            );
+            self.participation_pitch.rearticulations.clear();
+            self.participation_pitch.steps.clear();
+            self.participation_pitch.pending = None;
+            self.participation_pitch.glide_target = None;
+            self.participation_pitch.adopted = false;
+            self.participation_pitch.pulse_update_pending |= (next == PitchApplyMode::Rearticulate)
+                != (self.participation_pitch.application == PitchApplyMode::Rearticulate);
+            self.participation_pitch.application = next;
+            self.participation_pitch.adoption_application = next;
+            self.articulation
+                .set_autonomous_attack_enabled(Self::autonomous_attack_enabled(
+                    self.phonation_engine.mode,
+                    next,
+                    self.sustain_participation,
+                ));
         }
         let pitch = &self.effective_control.pitch;
         self.pitch_ctl.apply_control(pitch);
-    }
-
-    fn apply_phonation_control(&mut self) {
-        self.phonation_engine
-            .update_from_spec(&self.effective_control.phonation.spec);
-        self.sustain_participation = self
-            .effective_control
-            .phonation
-            .spec
-            .is_sustained_participation();
-        self.articulation.set_autonomous_attack_enabled(
-            matches!(self.phonation_engine.mode, PhonationMode::Hold)
-                && self.pitch_application != PitchApplyMode::Rearticulate
-                && !self.sustain_participation,
-        );
-        self.social_coupling = self.effective_control.phonation.spec.social_coupling();
     }
 
     fn apply_effective_control(&mut self, control: VoiceControl, dirty: Dirty) {
@@ -616,14 +715,8 @@ impl Voice {
         if dirty.body {
             self.apply_body_runtime();
         }
-        if dirty.adaptation {
-            self.apply_adaptation_control();
-        }
         if dirty.pitch {
             self.apply_pitch_control();
-        }
-        if dirty.phonation {
-            self.apply_phonation_control();
         }
     }
 
@@ -640,10 +733,10 @@ impl Voice {
     }
 
     pub fn should_retain(&self) -> bool {
-        if self.remove_pending && self.release_gain <= 0.0 {
+        if self.release.remove_pending && self.release.gain <= 0.0 {
             return !self.active_render_notes.is_empty();
         }
-        if self.remove_pending {
+        if self.release.remove_pending {
             return self.is_alive() || !self.active_render_notes.is_empty();
         }
         self.is_alive() || self.phonation_engine.has_active_notes()
@@ -672,7 +765,7 @@ impl Voice {
     }
 
     pub fn release_gain(&self) -> f32 {
-        self.release_gain
+        self.release.gain
     }
 
     pub fn apply_patch(&mut self, patch: &ControlUpdate) -> Result<(), String> {
@@ -751,7 +844,7 @@ impl Voice {
     ) {
         let current_freq = self.body.base_freq_hz();
         let previous = self.target_pitch_log2();
-        self.pitch_adopted = self.pitch_ctl.update_pitch_target(
+        self.participation_pitch.adopted = self.pitch_ctl.update_pitch_target(
             current_freq,
             rhythms,
             dt_sec,
@@ -761,20 +854,22 @@ impl Voice {
             neighbor_salience,
             listener_pressure.temperature_bonus,
         );
-        if self.pitch_adopted {
-            self.pitch_application = select_pitch_application(&self.effective_control.pitch, None);
+        if self.participation_pitch.adopted {
+            self.participation_pitch.application =
+                select_pitch_application(&self.effective_control.pitch, None);
             self.select_adoption_application(&landscape.space, previous);
-            if (self.adoption_application == PitchApplyMode::Rearticulate
+            if (self.participation_pitch.adoption_application == PitchApplyMode::Rearticulate
                 || self.sustain_participation)
                 && (self.defers_participation_pitch()
                     || (self.phonation_engine.has_active_notes() && self.phonation_gate_open))
                 && self.is_alive()
-                && !self.release_pending
-                && !self.remove_pending
+                && !self.release.pending
+                && !self.release.remove_pending
             {
                 // Release grows the buffer if the birth capacity is insufficient.
                 debug_assert!(
-                    self.rearticulations.len() < self.rearticulations.capacity(),
+                    self.participation_pitch.rearticulations.len()
+                        < self.participation_pitch.rearticulations.capacity(),
                     "control hop capacity must be configured at birth"
                 );
                 debug_assert!(
@@ -784,7 +879,9 @@ impl Voice {
                 // Release drops an untimed adoption instead of inventing its sample.
                 if let Some(at) = self.control_tick {
                     let pitch_log2 = self.target_pitch_log2();
-                    self.rearticulations.push(Rearticulation { at, pitch_log2 });
+                    self.participation_pitch
+                        .rearticulations
+                        .push(Rearticulation { at, pitch_log2 });
                     tracing::debug!(target: "pitch::adoption", id = self.id, at, pitch_log2);
                 }
             }
@@ -795,7 +892,7 @@ impl Voice {
         self.sustain_participation
             && self.effective_control.pitch.mode == PitchMode::Free
             && matches!(
-                self.pitch_application,
+                self.participation_pitch.application,
                 PitchApplyMode::GateSnap | PitchApplyMode::Rearticulate
             )
     }
@@ -803,12 +900,13 @@ impl Voice {
     fn select_adoption_application(&mut self, space: &Log2Space, previous: f32) {
         // Earlier legal requests in this output hop precede the last materialized onset.
         let reference = self
+            .participation_pitch
             .rearticulations
             .last()
             .map(|r| r.pitch_log2.exp2().log2())
-            .or(self.last_onset_pitch_log2)
+            .or(self.participation_pitch.last_onset_log2)
             .unwrap_or(previous);
-        self.adoption_application = select_pitch_application(
+        self.participation_pitch.adoption_application = select_pitch_application(
             &self.effective_control.pitch,
             Some((space, reference, self.target_pitch_log2())),
         );
@@ -986,20 +1084,20 @@ impl Voice {
 
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
         let configured = select_pitch_application(&self.effective_control.pitch, None);
-        if configured != self.pitch_application {
-            self.adoption_application = configured;
-            self.pitch_application = configured;
+        if configured != self.participation_pitch.application {
+            self.participation_pitch.adoption_application = configured;
+            self.participation_pitch.application = configured;
         }
         let current_freq = self.body.base_freq_hz().max(1.0);
         if self.sustain_participation {
             // Release grows the buffer if the birth capacity is insufficient.
             debug_assert!(
-                self.participation_pitch_steps.len() < self.participation_pitch_steps.capacity()
+                self.participation_pitch.steps.len() < self.participation_pitch.steps.capacity()
             );
             debug_assert!(self.control_tick.is_some(), "control sample");
             // Release skips an untimed control sample and continues the control update.
             if let Some(at) = self.control_tick {
-                self.participation_pitch_steps.push(ParticipationPitchStep {
+                self.participation_pitch.steps.push(ParticipationPitchStep {
                     at,
                     before_log2: current_freq.log2(),
                     target_log2: self.target_pitch_log2(),
@@ -1024,10 +1122,10 @@ impl Voice {
             self.articulation.set_gate(1.0);
             return;
         }
-        let application = if self.pitch_application == PitchApplyMode::Rearticulate {
-            self.adoption_application
+        let application = if self.participation_pitch.application == PitchApplyMode::Rearticulate {
+            self.participation_pitch.adoption_application
         } else {
-            self.pitch_application
+            self.participation_pitch.application
         };
         match application {
             PitchApplyMode::GateSnap => {
@@ -1037,7 +1135,7 @@ impl Voice {
             }
             PitchApplyMode::Rearticulate => {
                 self.articulation.set_gate(1.0);
-                if self.pitch_adopted {
+                if self.participation_pitch.adopted {
                     self.body.set_pitch_log2(planned.target_pitch_log2);
                 }
             }
@@ -1047,9 +1145,12 @@ impl Voice {
                 if tau <= 1e-6 {
                     self.body.set_pitch_log2(planned.target_pitch_log2);
                 } else {
-                    let alpha = 1.0 - (-dt_sec.max(0.0) / tau).exp();
-                    let next_pitch_log2 = current_pitch_log2
-                        + (planned.target_pitch_log2 - current_pitch_log2) * alpha.clamp(0.0, 1.0);
+                    let next_pitch_log2 = Self::glide_pitch(
+                        current_pitch_log2,
+                        planned.target_pitch_log2,
+                        dt_sec,
+                        tau,
+                    );
                     self.body.set_pitch_log2(next_pitch_log2);
                 }
             }
@@ -1106,9 +1207,9 @@ impl Voice {
         if let Some(ref mut acc) = self.life_accumulator {
             acc.accumulate_tick(consonance_level, energy_depleted, dt_sec);
         }
-        if self.release_pending {
-            let step = dt_sec / self.release_sec.max(1e-6);
-            self.release_gain = (self.release_gain - step).max(0.0);
+        if self.release.pending {
+            let step = dt_sec / self.release.sec.max(1e-6);
+            self.release.gain = (self.release.gain - step).max(0.0);
         }
         signal.amplitude *= self.compute_output_gain();
         signal.is_active = signal.is_active && signal.amplitude > 0.0;
@@ -1117,13 +1218,13 @@ impl Voice {
     }
 
     pub fn start_remove_fade(&mut self, fade_sec: f32) {
-        if self.remove_pending {
+        if self.release.remove_pending {
             return;
         }
-        self.remove_pending = true;
-        self.release_pending = true;
-        self.release_sec = fade_sec.max(1e-4);
-        self.release_gain = self.release_gain.clamp(0.0, 1.0);
+        self.release.remove_pending = true;
+        self.release.pending = true;
+        self.release.sec = fade_sec.max(1e-4);
+        self.release.gain = self.release.gain.clamp(0.0, 1.0);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1215,8 +1316,8 @@ impl Voice {
         let onset_allowed = target_amp > Self::AMP_EPS && self.phonation_gate_open;
         let state = CoreState {
             is_alive: self.is_alive()
-                && !self.remove_pending
-                && !(self.reports_onset_pitch() && self.release_pending),
+                && !self.release.remove_pending
+                && !(self.reports_onset_pitch() && self.release.pending),
             onset_allowed,
         };
         out.body_policy = Some(super::action_candidates::PolicySnapshot {
@@ -1224,11 +1325,10 @@ impl Voice {
             is_alive: state.is_alive,
             gate_allows_onset: state.onset_allowed,
         });
-        self.phonation_engine.set_sound_adsr(self.voice_adsr);
-        if !matches!(self.phonation_engine.mode, PhonationMode::Hold) {
-            out.body_opportunity = self.phonation_engine.clock.opportunity(&ctx);
-            out.intrinsic_period_sec = self.phonation_engine.clock.intrinsic_period_sec();
+        if let PhonationClock::Participation(clock) = &mut self.phonation_engine.clock {
+            clock.hop_frames = hop_tick;
         }
+        self.phonation_engine.set_sound_adsr(self.voice_adsr);
         if self.sustain_participation
             && let Some(shape) = self.phonation_engine.clock.shape_mut()
         {
@@ -1272,7 +1372,7 @@ impl Voice {
             &mut out.onsets,
         );
         if self.reports_onset_pitch() {
-            for request in &self.rearticulations {
+            for request in &self.participation_pitch.rearticulations {
                 let in_hop = request.at >= now && request.at < frame_end;
                 debug_assert!(
                     in_hop,
@@ -1299,25 +1399,25 @@ impl Voice {
         }
         let phonation_mode = self.phonation_engine.mode;
         let had_tone_on = out.cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. }));
-        if self.remove_pending {
+        if self.release.remove_pending {
             self.emit_release_note_offs(now, &mut out.cmds);
             Self::discard_pending_render_tone_ons(&mut out.cmds);
             self.phonation_scratch.events.clear();
             out.onsets.clear();
             self.prune_tracked_render_notes(&out.cmds);
-            self.rearticulations.clear();
+            self.participation_pitch.rearticulations.clear();
             return;
         }
         if matches!(phonation_mode, PhonationMode::Gated) || self.reports_onset_pitch() {
-            for onset in &out.onsets {
-                self.articulation
-                    .apply_phonation_onset(consonance, onset.strength);
-            }
+            self.apply_phonation_onsets(consonance, out);
             // Snap-and-hold: a GateSnap voice adopts the current consonance
             // target at the note onset, then holds that pitch for the note (no
             // mid-note glide). Successive notes step toward consonance discretely.
             if !out.onsets.is_empty()
-                && matches!(self.pitch_application, PitchApplyMode::GateSnap)
+                && matches!(
+                    self.participation_pitch.application,
+                    PitchApplyMode::GateSnap
+                )
                 && !matches!(self.effective_control.pitch.mode, PitchMode::Lock)
             {
                 self.body.set_pitch_log2(self.target_pitch_log2());
@@ -1331,7 +1431,7 @@ impl Voice {
             if had_tone_on {
                 Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
-            self.rearticulations.clear();
+            self.participation_pitch.rearticulations.clear();
             return;
         }
         if !freq_hz.is_finite() || freq_hz <= 0.0 {
@@ -1340,7 +1440,7 @@ impl Voice {
                 Self::discard_pending_render_tone_ons(&mut out.cmds);
             }
             self.phonation_scratch.events.clear();
-            self.rearticulations.clear();
+            self.participation_pitch.rearticulations.clear();
             return;
         }
         // `onset_allowed` already prevented the engine from emitting any onset
@@ -1358,31 +1458,27 @@ impl Voice {
                     phonation_mode
                 });
         let body = self.body_snapshot();
-        let smoothing_tau_sec = Self::PHONATION_UPDATE_SMOOTH_TAU_SEC;
         let hold_ticks = if matches!(phonation_mode, PhonationMode::Hold) {
             Some(Tick::MAX)
         } else {
             None
         };
         for event in self.phonation_scratch.events.drain(..) {
-            out.tones.push(ToneSpec {
-                opportunity: event.opportunity,
-                tone_id: event.tone_id,
-                onset: event.onset_tick,
-                hold_ticks,
-                freq_hz: self
+            out.tones.push(ToneSpec::from_event(
+                event,
+                self.participation_pitch
                     .rearticulations
                     .iter()
                     .find(|request| request.at == event.onset_tick)
                     .map_or(freq_hz, |request| request.pitch_log2.exp2()),
-                amp: target_amp,
-                smoothing_tau_sec,
-                body: body.clone(),
-                render_modulator: render_modulator.clone(),
-                adsr: self.voice_adsr,
-            });
+                target_amp,
+                hold_ticks,
+                body.clone(),
+                render_modulator.clone(),
+                self.voice_adsr,
+            ));
         }
-        self.rearticulations.clear();
+        self.participation_pitch.rearticulations.clear();
         self.track_new_render_notes(&out.tones);
         // An onset and its note-off can share a hop. Track first, then remove
         // every note already scheduled to end, including the newly added ones.
@@ -1420,7 +1516,7 @@ impl Voice {
         continuous_drive: f32,
         out_cmds: &mut Vec<ToneCmd>,
     ) {
-        let autonomous_pulse = if self.pulse_update_pending {
+        let autonomous_pulse = if self.participation_pitch.pulse_update_pending {
             Some(
                 match self
                     .articulation
@@ -1474,7 +1570,7 @@ impl Voice {
             }
         }
         self.amp_update_pending = false;
-        self.pulse_update_pending = false;
+        self.participation_pitch.pulse_update_pending = false;
     }
 
     fn prune_tracked_render_notes(&mut self, cmds: &[ToneCmd]) {
@@ -1487,7 +1583,7 @@ impl Voice {
 
     fn track_new_render_notes(&mut self, tones: &[ToneSpec]) {
         if let Some(tone) = tones.last() {
-            self.last_onset_pitch_log2 = Some(tone.freq_hz.log2());
+            self.participation_pitch.last_onset_log2 = Some(tone.freq_hz.log2());
         }
         self.active_render_notes
             .extend(tones.iter().map(|tone| TrackedRenderNote {
@@ -1522,7 +1618,7 @@ impl Voice {
 
     pub(crate) fn compute_output_gain(&self) -> f32 {
         let gate = self.articulation.gate().clamp(0.0, 1.0);
-        let release = self.release_gain.clamp(0.0, 1.0);
+        let release = self.release.gain.clamp(0.0, 1.0);
         let mut gain = gate * release;
         if !gain.is_finite() {
             gain = 0.0;
@@ -1604,10 +1700,10 @@ impl Voice {
     }
 
     pub fn is_alive(&self) -> bool {
-        if self.remove_pending && self.release_gain <= 0.0 {
+        if self.release.remove_pending && self.release.gain <= 0.0 {
             return false;
         }
-        self.articulation.is_alive() && self.release_gain > 0.0
+        self.articulation.is_alive() && self.release.gain > 0.0
     }
 }
 
@@ -1759,8 +1855,8 @@ mod tests {
     #[test]
     fn remove_pending_voice_waits_to_flush_tracked_notes() {
         let mut voice = test_voice();
-        voice.remove_pending = true;
-        voice.release_gain = 0.0;
+        voice.release.remove_pending = true;
+        voice.release.gain = 0.0;
         voice.active_render_notes = vec![TrackedRenderNote {
             tone_id: 10,
             last_target_amp: 0.5,

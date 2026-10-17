@@ -19,6 +19,7 @@ impl SocialDensityTrace {
         self.bins.get(idx).copied().unwrap_or(0.0)
     }
 
+    #[cfg(test)]
     pub fn from_onsets(
         start_tick: Tick,
         end_tick: Tick,
@@ -27,40 +28,63 @@ impl SocialDensityTrace {
         population_size: usize,
         onsets: &[(Tick, f32)],
     ) -> Self {
+        let mut trace = Self::default();
+        trace.update(
+            start_tick,
+            end_tick,
+            bin_ticks,
+            smooth,
+            population_size,
+            onsets.iter().copied(),
+        );
+        trace
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        start_tick: Tick,
+        end_tick: Tick,
+        bin_ticks: u32,
+        smooth: f32,
+        population_size: usize,
+        onsets: impl IntoIterator<Item = (Tick, f32)>,
+    ) {
         if bin_ticks == 0 || end_tick <= start_tick {
-            return Self::default();
+            self.start_tick = 0;
+            self.bin_ticks = 0;
+            self.bins.clear();
+            return;
         }
         let span = end_tick - start_tick;
         let n_bins = span.div_ceil(bin_ticks as Tick) as usize;
-        let mut bins = vec![0.0; n_bins];
+        self.bins.clear();
+        self.bins.resize(n_bins, 0.0);
+        let bins = &mut self.bins;
         for (tick, strength) in onsets {
-            if *tick < start_tick || *tick >= end_tick {
+            if tick < start_tick || tick >= end_tick {
                 continue;
             }
-            let idx = ((*tick - start_tick) / bin_ticks as Tick) as usize;
+            let idx = ((tick - start_tick) / bin_ticks as Tick) as usize;
             if let Some(slot) = bins.get_mut(idx) {
                 *slot += strength.max(0.0);
             }
         }
         if population_size > 0 {
             let norm = population_size as f32;
-            for v in &mut bins {
+            for v in bins.iter_mut() {
                 *v /= norm;
             }
         }
         let smooth = smooth.clamp(0.0, 1.0);
         if smooth > 0.0 {
             let mut prev = bins.first().copied().unwrap_or(0.0);
-            for v in &mut bins {
+            for v in bins.iter_mut() {
                 *v = smooth * prev + (1.0 - smooth) * *v;
                 prev = *v;
             }
         }
-        Self {
-            start_tick,
-            bin_ticks,
-            bins,
-        }
+        self.start_tick = start_tick;
+        self.bin_ticks = bin_ticks;
     }
 }
 

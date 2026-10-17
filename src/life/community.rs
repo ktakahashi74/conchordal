@@ -217,7 +217,7 @@ impl Community {
             shutdown_gain: 1.0,
             pending_update: None,
             time,
-            seed: rand::random::<u64>(),
+            seed: 0,
             spawn_counter: 0,
             social_trace: None,
             populations: BTreeMap::new(),
@@ -528,14 +528,16 @@ impl Community {
             social_trace_enabled_from_couplings(self.voices.iter().map(|a| a.social_coupling));
         if social_enabled {
             let (bin_ticks, smooth) = social_trace_params(hop_tick);
-            self.social_trace = Some(build_social_trace_from_batches(
+            build_social_trace_from_batches(
+                self.social_trace
+                    .get_or_insert_with(SocialDensityTrace::default),
                 active_batches,
                 frame_end,
                 hop_tick,
                 bin_ticks,
                 smooth,
                 self.voices.len(),
-            ));
+            );
         } else {
             self.social_trace = None;
         }
@@ -646,7 +648,6 @@ impl Community {
     pub fn advance(
         &mut self,
         samples_len: usize,
-        _fs: f32,
         current_frame: u64,
         dt_sec: f32,
         landscape: &Landscape,
@@ -940,10 +941,10 @@ impl Community {
         if self.voices.is_empty() {
             return;
         }
-        let mut order: Vec<usize> = (0..self.voices.len()).collect();
-        let start = order_offset % order.len();
-        order.rotate_left(start);
-        for voice_idx in order {
+        let count = self.voices.len();
+        let start = order_offset % count;
+        for offset in 0..count {
+            let voice_idx = (start + offset) % count;
             let (vid, actor_population_id, alive) = {
                 let v = &self.voices[voice_idx];
                 (v.id(), v.metadata.population_id, v.is_alive())
@@ -1016,7 +1017,7 @@ impl Community {
         let mut rng = SmallRng::seed_from_u64(self.background_turnover_seed(substep_idx));
         let mut dying_ids = Vec::new();
         for voice in &self.voices {
-            if !voice.is_alive() || voice.remove_pending {
+            if !voice.is_alive() || voice.release.remove_pending {
                 continue;
             }
             let Some(population) = self.populations.get(&voice.metadata.population_id) else {
@@ -1119,7 +1120,7 @@ mod tests {
 
     fn make_dummy_tone_spec() -> crate::life::voice::ToneSpec {
         crate::life::voice::ToneSpec {
-            opportunity: None,
+            participation_onset: false,
             tone_id: 1,
             onset: 0,
             hold_ticks: None,
@@ -1277,14 +1278,14 @@ mod tests {
     ) {
         let fs = 48_000.0;
         let samples_per_hop = (fs * dt_sec) as usize;
-        pop.advance(samples_per_hop, fs, frame, dt_sec, landscape);
+        pop.advance(samples_per_hop, frame, dt_sec, landscape);
         pop.cleanup_dead(frame, dt_sec, false, landscape);
     }
 
     pub(super) fn force_dead(pop: &mut Community, id: u64) {
         if let Some(dying) = pop.voices.iter_mut().find(|v| v.id() == id) {
-            dying.release_gain = 0.0;
-            dying.release_pending = true;
+            dying.release.gain = 0.0;
+            dying.release.pending = true;
         }
     }
 
@@ -1323,7 +1324,7 @@ mod tests {
         if order_reversed {
             pop.voices.reverse();
         }
-        pop.advance(64, 48_000.0, 0, 1.0, &landscape);
+        pop.advance(64, 0, 1.0, &landscape);
         let mut out: Vec<(u64, f32)> = pop
             .voices
             .iter()
@@ -1386,7 +1387,7 @@ mod tests {
             voice.set_theta_phase_state_for_test(0.9, true);
             voice.set_accumulated_time_for_test(voice.integration_window());
         }
-        pop.advance(64, 48_000.0, 0, 1.0, &landscape);
+        pop.advance(64, 0, 1.0, &landscape);
 
         let mover = pop.voices.iter().find(|v| v.id() == 700).expect("mover");
         (mover.target_pitch_log2() - 330.0f32.log2()).abs()
@@ -1410,19 +1411,19 @@ mod tests {
         );
 
         let voice = pop.voices.first_mut().expect("spawned voice");
-        voice.release_gain = 0.37;
-        voice.release_pending = true;
+        voice.release.gain = 0.37;
+        voice.release.pending = true;
         voice.set_accumulated_time_for_test(voice.integration_window());
         let base_before = voice.body.base_freq_hz();
-        let release_gain_before = voice.release_gain;
-        let release_pending_before = voice.release_pending;
+        let release_gain_before = voice.release.gain;
+        let release_pending_before = voice.release.pending;
         let rhythms = landscape.rhythm;
 
         voice.decide_pitch_target(0.05, &rhythms, &landscape, &[], &[]);
 
         assert_eq!(voice.body.base_freq_hz(), base_before);
-        assert_eq!(voice.release_gain, release_gain_before);
-        assert_eq!(voice.release_pending, release_pending_before);
+        assert_eq!(voice.release.gain, release_gain_before);
+        assert_eq!(voice.release.pending, release_pending_before);
     }
 
     #[test]
@@ -1519,8 +1520,6 @@ mod tests {
 
         let mut batches = vec![PhonationBatch {
             body_policy: None,
-            body_opportunity: None,
-            intrinsic_period_sec: None,
             source_id: 99,
             source_generation: 0,
             routing: crate::scenario::control::Routing::default(),
@@ -1690,3 +1689,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "profile-alloc"))]
+mod allocation_tests;

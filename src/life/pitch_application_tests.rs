@@ -47,12 +47,12 @@ fn rearticulate_one_on_per_request_preserves_sample_pitch_and_old_tail() {
         let first = batch.tones[0].tone_id;
         let steps = (hop / 64).max(1);
         for i in 0..steps {
-            v.rearticulations.push(Rearticulation {
+            v.participation_pitch.rearticulations.push(Rearticulation {
                 at: (hop + i * hop / steps) as Tick,
                 pitch_log2: (350.0 + i as f32 * 10.0).log2(),
             });
         }
-        let expected = v.rearticulations.clone();
+        let expected = v.participation_pitch.rearticulations.clone();
         v.body.set_pitch_log2(expected.last().unwrap().pitch_log2);
         emit(&mut v, &tb, &rhythms, hop as Tick, &mut batch);
         assert_eq!(batch.onsets.len(), steps);
@@ -68,7 +68,7 @@ fn rearticulate_one_on_per_request_preserves_sample_pitch_and_old_tail() {
         assert!(!batch.cmds.iter().any(|c| matches!(c,
             ToneCmd::Update { tone_id, .. } if *tone_id == first)));
         assert_eq!(v.active_render_notes.len(), 1);
-        assert!(v.rearticulations.is_empty());
+        assert!(v.participation_pitch.rearticulations.is_empty());
         emit(&mut v, &tb, &rhythms, 2 * hop as Tick, &mut batch);
         assert!(batch.onsets.is_empty());
     }
@@ -90,18 +90,23 @@ fn rearticulate_controller_uses_formal_community_sample_clock_for_any_hop() {
         emit(&mut v, &tb, &rhythms, 0, &mut batch);
         let mut community = Community::new(tb);
         community.add_voice(v);
-        community.advance(hop, tb.fs, 0, hop as f32 / tb.fs, &landscape);
+        community.advance(hop, 0, hop as f32 / tb.fs, &landscape);
         let v = &mut community.voices[0];
         let steps = (hop / 64).max(1);
-        let count = v.rearticulations.len();
+        let count = v.participation_pitch.rearticulations.len();
         assert!(count > 0 && count <= steps);
         let grid: Vec<_> = (0..steps)
             .map(|i| (hop + i * hop / steps) as Tick)
             .collect();
-        for request in &v.rearticulations {
+        for request in &v.participation_pitch.rearticulations {
             assert!(grid.contains(&request.at));
         }
-        assert!(v.rearticulations.windows(2).all(|w| w[0].at < w[1].at));
+        assert!(
+            v.participation_pitch
+                .rearticulations
+                .windows(2)
+                .all(|w| w[0].at < w[1].at)
+        );
         emit(v, &tb, &rhythms, hop as Tick, &mut batch);
         assert_eq!(batch.tones.len(), count);
     }
@@ -118,14 +123,14 @@ fn rearticulate_no_proposal_rejected_same_target_and_lock_produce_no_on() {
     emit(&mut v, &tb, &rhythms, 0, &mut batch);
     v.set_control_tick(512);
     v.update_pitch_target(&rhythms, 0.01, &landscape, &[], &[]);
-    assert!(!v.pitch_adopted);
+    assert!(!v.participation_pitch.adopted);
     v.set_accumulated_time_for_test(0.5);
     v.update_pitch_target(&rhythms, 0.001, &landscape, &[], &[]);
-    assert!(!v.pitch_adopted);
+    assert!(!v.participation_pitch.adopted);
     v.effective_control.pitch.range_oct = 0.0;
     v.set_accumulated_time_for_test(0.5);
     v.update_pitch_target(&rhythms, 0.001, &landscape, &[], &[]);
-    assert!(v.rearticulations.is_empty());
+    assert!(v.participation_pitch.rearticulations.is_empty());
     v.apply_patch(&ControlUpdate {
         freq: Some(440.0),
         ..Default::default()
@@ -133,7 +138,7 @@ fn rearticulate_no_proposal_rejected_same_target_and_lock_produce_no_on() {
     .unwrap();
     v.set_accumulated_time_for_test(0.5);
     v.update_pitch_target(&rhythms, 0.001, &landscape, &[], &[]);
-    assert!(v.rearticulations.is_empty());
+    assert!(v.participation_pitch.rearticulations.is_empty());
     emit(&mut v, &tb, &rhythms, 512, &mut batch);
     assert!(batch.onsets.is_empty());
 }
@@ -143,13 +148,13 @@ fn rearticulate_release_remove_and_death_cancel_requests() {
     for state in 0..3 {
         let (mut v, tb, rhythms, mut batch) = setup(512, true);
         emit(&mut v, &tb, &rhythms, 0, &mut batch);
-        v.rearticulations.push(Rearticulation {
+        v.participation_pitch.rearticulations.push(Rearticulation {
             at: 576,
             pitch_log2: 440.0_f32.log2(),
         });
         match state {
-            0 => v.release_pending = true,
-            1 => v.remove_pending = true,
+            0 => v.release.pending = true,
+            1 => v.release.remove_pending = true,
             _ => {
                 let AnyArticulationCore::Entrain(core) = &mut v.articulation.core else {
                     unreachable!()
@@ -162,7 +167,7 @@ fn rearticulate_release_remove_and_death_cancel_requests() {
         assert!(batch.onsets.is_empty());
         assert!(batch.tones.is_empty());
         assert!(batch.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. })));
-        assert!(v.rearticulations.is_empty());
+        assert!(v.participation_pitch.rearticulations.is_empty());
     }
 }
 
@@ -173,8 +178,8 @@ fn rearticulate_entrain_cost_once_per_on_and_no_autonomous_pulse() {
         unreachable!()
     };
     core.energy = 0.8;
-    core.attack_cost_fraction = 0.1;
-    core.attack_recharge_fraction = 0.0;
+    core.metabolism.action_cost_per_attack = 0.1;
+    core.metabolism.recharge_per_attack = 0.0;
     emit(&mut v, &tb, &rhythms, 0, &mut batch);
     let AnyArticulationCore::Entrain(core) = &v.articulation.core else {
         unreachable!()
@@ -188,7 +193,7 @@ fn rearticulate_entrain_cost_once_per_on_and_no_autonomous_pulse() {
             ..
         }
     ));
-    v.rearticulations.push(Rearticulation {
+    v.participation_pitch.rearticulations.push(Rearticulation {
         at: 576,
         pitch_log2: 440.0_f32.log2(),
     });
@@ -207,7 +212,7 @@ fn rearticulate_delayed_viable_initial_on_uses_latest_pitch_once() {
     let AnyArticulationCore::Entrain(core) = &mut v.articulation.core else {
         unreachable!()
     };
-    core.continuous_recharge_score_low = Some(0.6);
+    core.metabolism.continuous_recharge_score_low = Some(0.6);
     v.tick_phonation_into(&tb, 0, &rhythms, None, 0.0, 1.0, 0.1, &mut batch);
     assert!(batch.onsets.is_empty());
     assert!(!v.phonation_engine.has_active_notes());
@@ -239,7 +244,7 @@ fn rearticulate_live_round_trip_preserves_tone_and_cancels_unemitted_requests() 
     .into_iter()
     .enumerate()
     {
-        v.rearticulations.push(Rearticulation {
+        v.participation_pitch.rearticulations.push(Rearticulation {
             at: (512 + i * 512) as Tick,
             pitch_log2: 440.0_f32.log2(),
         });
@@ -248,7 +253,7 @@ fn rearticulate_live_round_trip_preserves_tone_and_cancels_unemitted_requests() 
             ..Default::default()
         })
         .unwrap();
-        assert!(v.rearticulations.is_empty());
+        assert!(v.participation_pitch.rearticulations.is_empty());
         assert_eq!(v.body.base_freq_hz().to_bits(), freq_bits);
         emit(&mut v, &tb, &rhythms, (512 + i * 512) as Tick, &mut batch);
         assert!(batch.onsets.is_empty());
@@ -271,7 +276,7 @@ fn rearticulate_executor_accepts_same_pitch_without_an_adoption_condition() {
     emit(&mut v, &tb, &rhythms, 0, &mut batch);
     let first = batch.tones[0].tone_id;
     // This tests the executor seam; no public policy schedules a same-pitch request.
-    v.rearticulations.push(Rearticulation {
+    v.participation_pitch.rearticulations.push(Rearticulation {
         at: 576,
         pitch_log2: v.body.base_freq_hz().log2(),
     });
@@ -279,7 +284,7 @@ fn rearticulate_executor_accepts_same_pitch_without_an_adoption_condition() {
     assert_eq!(batch.onsets.len(), 1);
     assert_ne!(batch.tones[0].tone_id, first);
     assert!((batch.tones[0].freq_hz - 330.0).abs() < 0.001);
-    assert!(!v.pitch_adopted);
+    assert!(!v.participation_pitch.adopted);
 }
 
 #[test]
@@ -290,7 +295,7 @@ fn rearticulate_emission_and_live_pulse_update_allocate_zero_after_birth() {
         emit(&mut v, &tb, &rhythms, 0, &mut batch);
         let steps = (hop / 64).max(1);
         for i in 0..steps {
-            v.rearticulations.push(Rearticulation {
+            v.participation_pitch.rearticulations.push(Rearticulation {
                 at: (hop + i * hop / steps) as Tick,
                 pitch_log2: (350.0 + i as f32).log2(),
             });

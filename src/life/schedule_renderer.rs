@@ -26,7 +26,6 @@ struct RoutedTone {
     self_slot: Option<usize>,
     source_generation: u32,
     body_slot: Option<(usize, u32)>,
-    scheduled_release: Option<super::tone_energy::ScheduledRelease>,
     source_pcm_slot: Option<usize>,
 }
 
@@ -192,7 +191,6 @@ impl ScheduleRenderer {
                         self_slot: None,
                         source_generation: routed.source_generation,
                         body_slot: None,
-                        scheduled_release: routed.scheduled_release,
                         source_pcm_slot: None,
                     },
                 )
@@ -680,30 +678,6 @@ impl ScheduleRenderer {
                             tone.note_on(spec.onset);
                             tone.schedule_planned_kick(kick);
                             tone.arm_onset_trigger(kick.strength.max(0.0));
-                            let mut scheduled_release = None;
-                            let opportunity = spec.opportunity.filter(|receipt| {
-                                receipt.issued_at == now
-                                    && receipt.at == spec.onset
-                                    && receipt.at >= now
-                                    && batch.body_policy.is_some_and(|policy| {
-                                        policy.at == now
-                                            && policy.is_alive
-                                            && policy.gate_allows_onset
-                                    })
-                            });
-
-                            if let Some(receipt) = opportunity
-                                && let Some(off) =
-                                    receipt.planned_release_at.filter(|off| *off >= spec.onset)
-                            {
-                                // Off changes attack clipping when its batch is applied.
-                                // Freeze that hop switch without changing the live Tone.
-                                scheduled_release = Some(super::tone_energy::ScheduledRelease {
-                                    apply_at_sample: now
-                                        + (off - now) / self.time.hop as u64 * self.time.hop as u64,
-                                    off_sample: off,
-                                });
-                            }
                             debug!(
                                 target: "phonation::tone_on",
                                 source_id = batch.source_id,
@@ -716,7 +690,6 @@ impl ScheduleRenderer {
                                 key,
                                 RoutedTone {
                                     tone,
-                                    scheduled_release,
                                     source_pcm_slot: None,
                                     routing: batch.routing,
                                     self_slot: self.self_sound.iter().position(|sound| {
@@ -1229,7 +1202,6 @@ mod tests {
                     self_slot: None,
                     source_generation: 7,
                     body_slot: None,
-                    scheduled_release: None,
                     source_pcm_slot: None,
                 },
             );
@@ -1251,8 +1223,6 @@ mod tests {
     fn outcome_batch(kind: BodyKind) -> PhonationBatch {
         PhonationBatch {
             body_policy: None,
-            body_opportunity: None,
-            intrinsic_period_sec: None,
             source_id: 2,
             source_generation: 7,
             routing: Routing::default(),
@@ -1261,7 +1231,7 @@ mod tests {
                 kick: OnsetKick { strength: 1. },
             }],
             tones: vec![ToneSpec {
-                opportunity: None,
+                participation_onset: false,
                 tone_id: 1,
                 onset: 13,
                 hold_ticks: Some(80),
@@ -1368,8 +1338,6 @@ mod tests {
             for onset in [0, 64] {
                 let actor = PhonationBatch {
                     body_policy: None,
-                    body_opportunity: None,
-                    intrinsic_period_sec: None,
                     source_id: 2,
                     source_generation: 0,
                     routing: Routing {
@@ -1393,7 +1361,7 @@ mod tests {
                         },
                     ],
                     tones: vec![ToneSpec {
-                        opportunity: None,
+                        participation_onset: false,
                         tone_id: 1,
                         onset,
                         hold_ticks: Some(256),
@@ -1488,8 +1456,6 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             body_policy: None,
-            body_opportunity: None,
-            intrinsic_period_sec: None,
             source_id: 2,
             source_generation: 0,
             routing: crate::scenario::control::Routing::default(),
@@ -1510,7 +1476,7 @@ mod tests {
                 },
             ],
             tones: vec![ToneSpec {
-                opportunity: None,
+                participation_onset: false,
                 tone_id,
                 onset: 0,
                 hold_ticks: Some(8),
@@ -1642,8 +1608,6 @@ mod tests {
             let mut control = ScheduleRenderer::new(tb);
             let batch = PhonationBatch {
                 body_policy: None,
-                body_opportunity: None,
-                intrinsic_period_sec: None,
                 source_id: 2,
                 source_generation: 0,
                 routing: crate::scenario::control::Routing {
@@ -1655,7 +1619,7 @@ mod tests {
                     kick: OnsetKick { strength: 1.0 },
                 }],
                 tones: vec![ToneSpec {
-                    opportunity: None,
+                    participation_onset: false,
                     tone_id: 1,
                     onset: 0,
                     hold_ticks: Some(48_000),
@@ -1720,8 +1684,6 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             body_policy: None,
-            body_opportunity: None,
-            intrinsic_period_sec: None,
             source_id: 2,
             source_generation: 0,
             routing: crate::scenario::control::Routing::default(),
@@ -1752,7 +1714,7 @@ mod tests {
                 },
             ],
             tones: vec![ToneSpec {
-                opportunity: None,
+                participation_onset: false,
                 tone_id,
                 onset: 0,
                 hold_ticks: Some(8),
@@ -1792,8 +1754,6 @@ mod tests {
         let tone_id = 1;
         let batch = PhonationBatch {
             body_policy: None,
-            body_opportunity: None,
-            intrinsic_period_sec: None,
             source_id: 1,
             source_generation: 0,
             routing: crate::scenario::control::Routing::default(),
@@ -1802,7 +1762,7 @@ mod tests {
                 kick: OnsetKick { strength: 1.0 },
             }],
             tones: vec![ToneSpec {
-                opportunity: None,
+                participation_onset: false,
                 tone_id,
                 onset: 0,
                 hold_ticks: Some(Tick::MAX),

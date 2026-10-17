@@ -603,6 +603,18 @@ impl Community {
             return;
         }
 
+        let mut new_death = false;
+        for voice in &self.voices {
+            if voice.is_alive() {
+                self.death_observed.remove(&voice.id());
+            } else if !self.death_observed.contains(&voice.id()) {
+                new_death = true;
+            }
+        }
+        if !new_death {
+            return;
+        }
+
         let mut statuses = Vec::with_capacity(self.voices.len());
         let mut alive_by_population: BTreeMap<u64, Vec<ParentCandidate>> = BTreeMap::new();
         for voice in &self.voices {
@@ -995,7 +1007,7 @@ mod tests {
             .iter()
             .find(|v| v.id() == respawned_id)
             .expect("respawned member");
-        assert!(respawned.remove_pending);
+        assert!(respawned.release.remove_pending);
     }
 
     #[test]
@@ -1201,8 +1213,8 @@ mod tests {
             .expect("parent exists");
 
         if let Some(dying) = pop.voices.iter_mut().find(|v| v.id() == 100) {
-            dying.release_gain = 0.0;
-            dying.release_pending = true;
+            dying.release.gain = 0.0;
+            dying.release.pending = true;
         }
         pop.cleanup_dead(0, 0.01, false, &landscape);
 

@@ -68,8 +68,8 @@ SCHEMAS = {
     "participation_context": dict.fromkeys(
         "voice_id sample_rate onset_frame forecast_observed_frame observed_through_frame".split(), "i")
         | {"status": "s", "target_start_frames": "frame_pair", "target_end_frames": "frame_pair",
-           "pred_external_band_energy": "context", "observed_external_band_energy": "?context",
-           "memory_external_band_energy": "?context", "decision_external_history": "?history",
+           "pred_external_band_energy": "context", "perc_external_band_energy": "?context",
+           "perc_memory_external_band_energy": "?context", "decision_external_history": "?history",
            "energy_prediction_model": "s"},
     "dcc_pressure": dict.fromkeys("time_sec tension_pressure temperature_bonus".split(), "n"),
     "local_prediction_error": dict.fromkeys(
@@ -287,8 +287,8 @@ def parse_report(path, seed, warmup_sec):
                             or not record["forecast_observed_frame"] <= record["onset_frame"] <= starts[0] <= starts[1]
                             or not starts[0] < ends[0] <= ends[1] <= record["observed_through_frame"]
                             or ends[0] - starts[0] != ends[1] - starts[1]
-                            or (record["observed_external_band_energy"] is not None) != observed
-                            or (observed and record["memory_external_band_energy"] is None)):
+                            or (record["perc_external_band_energy"] is not None) != observed
+                            or (observed and record["perc_memory_external_band_energy"] is None)):
                         raise ValueError("participation context: inconsistent observation windows")
                 if number == 1 and kind != "meta":
                     raise ValueError("first record must be meta")

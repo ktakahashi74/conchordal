@@ -31,27 +31,27 @@ pub(super) fn mix_pred_gate_gain(sync: f32, gain_raw: f32) -> f32 {
 }
 
 pub(super) fn build_social_trace_from_batches(
+    trace: &mut SocialDensityTrace,
     phonation_batches: &[PhonationBatch],
     frame_end: Tick,
     hop_tick: Tick,
     bin_ticks: u32,
     smooth: f32,
     population_size: usize,
-) -> SocialDensityTrace {
-    let mut onset_ticks = Vec::new();
-    for batch in phonation_batches {
-        for onset in &batch.onsets {
-            onset_ticks.push((onset.onset_tick.saturating_add(hop_tick), onset.strength));
-        }
-    }
-    SocialDensityTrace::from_onsets(
+) {
+    trace.update(
         frame_end,
         frame_end.saturating_add(hop_tick),
         bin_ticks,
         smooth,
         population_size,
-        &onset_ticks,
-    )
+        phonation_batches.iter().flat_map(|batch| {
+            batch
+                .onsets
+                .iter()
+                .map(|onset| (onset.onset_tick.saturating_add(hop_tick), onset.strength))
+        }),
+    );
 }
 
 pub(super) fn social_trace_params(hop_tick: Tick) -> (u32, f32) {
@@ -122,8 +122,6 @@ mod tests {
     fn social_trace_is_delayed_by_one_hop() {
         let batch = PhonationBatch {
             body_policy: None,
-            body_opportunity: None,
-            intrinsic_period_sec: None,
             source_id: 1,
             source_generation: 0,
             routing: crate::scenario::control::Routing::default(),
@@ -135,7 +133,8 @@ mod tests {
                 strength: 1.0,
             }],
         };
-        let trace = build_social_trace_from_batches(&[batch], 100, 10, 5, 0.0, 1);
+        let mut trace = SocialDensityTrace::default();
+        build_social_trace_from_batches(&mut trace, &[batch], 100, 10, 5, 0.0, 1);
         assert_eq!(trace.start_tick, 100);
         assert_eq!(trace.density_at(95), 0.0);
         assert_eq!(trace.density_at(100), 1.0);

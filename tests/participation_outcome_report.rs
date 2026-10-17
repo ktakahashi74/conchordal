@@ -121,9 +121,7 @@ fn participation_outcomes_join_actions_to_habitat_audio_without_changing_the_sou
             assert!(frame("onset_frame") <= start && start < end);
             assert!(end <= frame("observed_through_frame"));
             for (band, energy) in bands.iter_mut().enumerate() {
-                *energy = row["observed_external_band_energy"][i][band]
-                    .as_f64()
-                    .unwrap();
+                *energy = row["perc_external_band_energy"][i][band].as_f64().unwrap();
                 assert!(energy.is_finite() && *energy >= 0.0);
             }
         }
@@ -138,7 +136,9 @@ fn participation_outcomes_join_actions_to_habitat_audio_without_changing_the_sou
         });
         for (i, bands) in expected.iter().enumerate() {
             for (b, energy) in bands.iter().enumerate() {
-                let memory = row["memory_external_band_energy"][i][b].as_f64().unwrap();
+                let memory = row["perc_memory_external_band_energy"][i][b]
+                    .as_f64()
+                    .unwrap();
                 assert!((memory - energy).abs() < 1e-6 * energy.abs().max(1e-5));
             }
         }

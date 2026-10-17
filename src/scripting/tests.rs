@@ -326,6 +326,21 @@ fn intrinsic_rate_omission_matches_explicit_existing_default_and_keeps_rhythm_fr
 
 #[test]
 fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
+    fn rebuild_engine(
+        voice: &mut crate::life::voice::Voice,
+        spec: &crate::scenario::PhonationSpec,
+    ) {
+        let shape = voice
+            .phonation_engine
+            .clock
+            .shape_slot()
+            .and_then(Option::take);
+        voice.phonation_engine =
+            crate::life::phonation_engine::PhonationEngine::from_spec(spec, 21);
+        if let Some(slot) = voice.phonation_engine.clock.shape_slot() {
+            *slot = shape;
+        }
+    }
     use crate::life::phonation_engine::PhonationClock;
     use crate::life::shape_policy::Shape;
     for body in ["sine", "harmonic", "modal"] {
@@ -362,9 +377,7 @@ fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
                 panic!()
             };
             timing.base_rate_hz = 1.3;
-            community.voices[0]
-                .phonation_engine
-                .update_from_spec(&changed);
+            rebuild_engine(&mut community.voices[0], &changed);
             assert_ne!(
                 community.voices[0]
                     .phonation_engine
@@ -381,7 +394,7 @@ fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
             shape.state = Shape::Connect;
             shape.veto_plan = true;
             shape.has_tone = true;
-            community.advance(257, 48000., 0, 257. / 48000., &landscape);
+            community.advance(257, 0, 257. / 48000., &landscape);
             community.cleanup_dead(0, 257. / 48000., false, &landscape);
             let children: Vec<_> = community
                 .voices
@@ -2495,10 +2508,10 @@ fn lifecycle_seconds_resolve_to_normalized_runtime_rates() {
     };
     assert_eq!(core.endurance_sec, Some(8.0));
     assert_eq!(core.recovery_sec, Some(4.0));
-    assert!((core.basal_cost - 1.0 / 32.0).abs() < 1e-6);
-    assert!((core.continuous_recharge_per_sec - 0.25).abs() < 1e-6);
-    assert!((core.attack_cost_fraction - 0.05).abs() < 1e-6);
-    assert!((core.attack_recharge_fraction - 0.20).abs() < 1e-6);
+    assert!((core.metabolism.basal_cost_per_sec - 1.0 / 32.0).abs() < 1e-6);
+    assert!((core.metabolism.continuous_recharge_per_sec - 0.25).abs() < 1e-6);
+    assert!((core.metabolism.action_cost_per_attack - 0.05).abs() < 1e-6);
+    assert!((core.metabolism.recharge_per_attack - 0.20).abs() < 1e-6);
 }
 
 #[test]
@@ -2962,9 +2975,8 @@ fn metric_respawn_starts_from_the_resolved_population_template() {
         panic!("expected metric timing");
     };
     timing.base_rate_hz = 1.3;
-    population.voices[0]
-        .phonation_engine
-        .update_from_spec(&changed);
+    population.voices[0].phonation_engine =
+        crate::life::phonation_engine::PhonationEngine::from_spec(&changed, 21);
     assert_ne!(
         population.voices[0]
             .phonation_engine
@@ -2972,7 +2984,7 @@ fn metric_respawn_starts_from_the_resolved_population_template() {
             .intrinsic_period_sec(),
         period
     );
-    population.advance(64, 48_000.0, 0, 64.0 / 48_000.0, &landscape);
+    population.advance(64, 0, 64.0 / 48_000.0, &landscape);
     population.cleanup_dead(0, 64.0 / 48_000.0, false, &landscape);
     assert_eq!(population.voices.len(), 1);
     assert_ne!(population.voices[0].id(), founder);
@@ -3349,7 +3361,7 @@ fn rearticulate_respawn_inherits_initial_and_live_population_template() {
             }
         }
         let founder = community.voices[0].id();
-        community.advance(257, 48_000.0, 0, 257.0 / 48_000.0, &landscape);
+        community.advance(257, 0, 257.0 / 48_000.0, &landscape);
         community.cleanup_dead(0, 257.0 / 48_000.0, false, &landscape);
         assert!(community.voices.iter().any(|v| v.id() != founder));
         for child in community.voices.iter().filter(|v| v.id() != founder) {
@@ -3409,7 +3421,7 @@ fn rearticulate_native_invalid_patch_keeps_voice_and_respawn_template() {
         community.voices[0].effective_control.pitch.pitch_apply_mode,
         PitchApplyMode::GateSnap
     );
-    community.advance(64, 48_000.0, 0, 64.0 / 48_000.0, &landscape);
+    community.advance(64, 0, 64.0 / 48_000.0, &landscape);
     community.cleanup_dead(0, 64.0 / 48_000.0, false, &landscape);
     assert!(community.voices.iter().any(|v| v.id() != founder));
     for child in community.voices.iter().filter(|v| v.id() != founder) {
@@ -3592,7 +3604,7 @@ fn synchronized_respawn_retains_controls_and_starts_fresh_private_policy() {
     shape.state = Shape::Connect;
     shape.has_tone = true;
     shape.tie.as_mut().unwrap().pending_pitch = true;
-    community.advance(257, 48000., 0, 257. / 48000., &landscape);
+    community.advance(257, 0, 257. / 48000., &landscape);
     community.cleanup_dead(0, 257. / 48000., false, &landscape);
     assert!(community.voices.iter().any(|v| v.id() != parent));
     for child in community.voices.iter_mut().filter(|v| v.id() != parent) {
@@ -3651,7 +3663,7 @@ fn sustained_participation_rearticulate_order_live_and_respawn_are_valid() {
             }
         }
         let founder = community.voices[0].id();
-        community.advance(257, 48000., 0, 257. / 48000., &landscape);
+        community.advance(257, 0, 257. / 48000., &landscape);
         community.cleanup_dead(0, 257. / 48000., false, &landscape);
         let children: Vec<_> = community
             .voices
@@ -3708,7 +3720,7 @@ fn boundary_respawn_inherits_initial_and_live_population_template() {
             }
         }
         let founder = community.voices[0].id();
-        community.advance(257, 48_000.0, 0, 257.0 / 48_000.0, &landscape);
+        community.advance(257, 0, 257.0 / 48_000.0, &landscape);
         community.cleanup_dead(0, 257.0 / 48_000.0, false, &landscape);
         assert!(community.voices.iter().any(|v| v.id() != founder));
         for child in community.voices.iter().filter(|v| v.id() != founder) {
@@ -3806,7 +3818,7 @@ fn deferred_participation_respawn_inherits_initial_and_live_population_template(
             }
         }
         let founder = community.voices[0].id();
-        community.advance(257, 48_000.0, 0, 257.0 / 48_000.0, &landscape);
+        community.advance(257, 0, 257.0 / 48_000.0, &landscape);
         community.cleanup_dead(0, 257.0 / 48_000.0, false, &landscape);
         assert!(community.voices.iter().any(|v| v.id() != founder));
         for child in community.voices.iter().filter(|v| v.id() != founder) {
@@ -3992,7 +4004,7 @@ fn rest_respawn_inherits_template_and_starts_with_empty_performance_state() {
         origin: 0,
         until: None,
     };
-    community.advance(257, 48000., 0, 257. / 48000., &landscape);
+    community.advance(257, 0, 257. / 48000., &landscape);
     community.cleanup_dead(0, 257. / 48000., false, &landscape);
     let children: Vec<_> = community
         .voices
@@ -4148,7 +4160,7 @@ fn articulation_persistence_respawn_inherits_parameter_and_resets_private_policy
     shape.state = Shape::Connect;
     shape.veto_plan = true;
     shape.has_tone = true;
-    community.advance(257, 48000., 0, 257. / 48000., &landscape);
+    community.advance(257, 0, 257. / 48000., &landscape);
     community.cleanup_dead(0, 257. / 48000., false, &landscape);
     let children: Vec<_> = community
         .voices
@@ -4234,7 +4246,7 @@ fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
             panic!()
         };
         clock.shape.as_mut().unwrap().state = Shape::Connect;
-        community.advance(257, 48000., 0, 257. / 48000., &landscape);
+        community.advance(257, 0, 257. / 48000., &landscape);
         community.cleanup_dead(0, 257. / 48000., false, &landscape);
         assert!(community.voices.iter().any(|v| v.id() != parent));
         for child in community.voices.iter_mut().filter(|v| v.id() != parent) {
@@ -4527,7 +4539,7 @@ fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
         }
     }
     let parent = c.voices[0].id();
-    c.advance(257, 48000., 0, 257. / 48000., &landscape);
+    c.advance(257, 0, 257. / 48000., &landscape);
     c.cleanup_dead(0, 257. / 48000., false, &landscape);
     let mut children = 0;
     for child in c.voices.iter_mut().filter(|v| v.id() != parent) {
@@ -4637,7 +4649,7 @@ fn tie_respawn_inherits_parameter_and_resets_private_policy() {
     shape.has_tone = true;
     shape.tie.as_mut().unwrap().pending_pitch = true;
     shape.tie.as_mut().unwrap().trials = 100;
-    community.advance(257, 48000., 0, 257. / 48000., &landscape);
+    community.advance(257, 0, 257. / 48000., &landscape);
     community.cleanup_dead(0, 257. / 48000., false, &landscape);
     let children: Vec<_> = community
         .voices

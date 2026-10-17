@@ -262,13 +262,24 @@ pub(crate) struct ParticipationContextUpdate {
     pub(crate) prediction: ParticipationContextPrediction,
     pub(crate) observed_through_frame: u64,
     pub(crate) status: &'static str,
-    pub(crate) observed_external_band_energy: Option<[[f32; 3]; 2]>,
-    pub(crate) memory_external_band_energy: Option<[[f32; 3]; 2]>,
+    pub(crate) perc_external_band_energy: Option<[[f32; 3]; 2]>,
+    pub(crate) perc_memory_external_band_energy: Option<[[f32; 3]; 2]>,
 }
 
 #[cfg(test)]
 #[path = "temporal_participation_assay.rs"]
 mod acoustic_assay;
+
+struct DecisionFootprint {
+    points: [(f64, f32); 64],
+    footprint_bins: u8,
+    footprint_source: &'static str,
+    footprint_truncated: bool,
+    span_frames: u64,
+    footprint_d_samples: f64,
+    own_total: f32,
+    overlap_norm: f32,
+}
 
 pub(crate) struct TemporalParticipation {
     steady: bool,
@@ -349,6 +360,7 @@ impl TemporalParticipation {
             && self.due_frame - (end as f64) < (0.2 * self.period_frames).min(0.06 * self.fs)
     }
 
+    #[cfg(test)]
     pub(crate) fn opportunity(&self, now: u64) -> Option<super::action_candidates::Opportunity> {
         use super::action_candidates::{Opportunity, OpportunityBasis};
         let (at, basis) = match self.planned {
@@ -366,6 +378,7 @@ impl TemporalParticipation {
             })
     }
 
+    #[cfg(test)]
     pub(crate) fn intrinsic_due_for_selected(&self, tick: u64) -> Option<u64> {
         let (planned, _) = self.planned?;
         (planned.round() as u64 == tick
@@ -449,7 +462,338 @@ impl TemporalParticipation {
         self.own_band_energy = own_band_energy;
     }
 
+    fn decision_footprint(&self, now: u64) -> DecisionFootprint {
+        // Integrate the planned hold and release. This is an envelope proxy;
+        // the acoustic body and render modulator can add their own decay.
+        let release = self.sound_adsr.map_or(0.0, |a| a.release_sec.max(0.0));
+        let duration = self.sound_hold_sec + release;
+        let (fs, hold_sec, adsr) = (self.fs, self.sound_hold_sec, self.sound_adsr);
+        let proxy_gain = |age: f32| {
+            adsr.map_or(1.0, |a| {
+                let attack = a.attack_sec.max(1.0 / fs as f32).min(hold_sec);
+                let before_release = if age < attack {
+                    age / attack
+                } else if a.decay_sec > 0.0 {
+                    a.sustain_level
+                        + (1.0 - a.sustain_level) * (-6.908 * (age - attack) / a.decay_sec).exp()
+                } else {
+                    a.sustain_level
+                };
+                before_release
+                    * if age < hold_sec {
+                        1.0
+                    } else {
+                        ((duration - age) / release.max(1e-12)).clamp(0.0, 1.0)
+                    }
+            })
+        };
+        // One buffer serves both shapes; the configured path uses its first 16 slots.
+        let mut points = [(0.0f64, 0.0f32); 64];
+        let (
+            footprint_bins,
+            footprint_source,
+            footprint_truncated,
+            span_frames,
+            footprint_d_samples,
+        ) = match self.onset_comparison {
+            None => {
+                for (i, point) in points.iter_mut().enumerate() {
+                    let age = (i as f32 + 0.5) * duration / 64.0;
+                    let gain = proxy_gain(age);
+                    *point = (age as f64 * self.fs, gain * gain);
+                }
+                (
+                    64u8,
+                    "none",
+                    false,
+                    (f64::from(duration) * self.fs).ceil() as u64,
+                    f64::from(duration) * self.fs,
+                )
+            }
+            Some(config) => {
+                let record = self.body_footprint;
+                // I11-1 §5.3: no decision may rest on an observation from its future.
+                debug_assert!(
+                    record.is_none_or(|record| record.received_at <= now),
+                    "a footprint that arrives after the decision cannot be used"
+                );
+                let body = config.footprint == crate::config::FootprintSource::Body;
+                // A retained span keeps body and proxy comparable bin for bin.
+                let span = record.filter(|record| record.d_samples > 0);
+                let (d_samples, truncated) = match span {
+                    Some(record) => (record.d_samples as f64, record.truncated),
+                    None => (f64::from(duration.min(4.0)) * self.fs, duration > 4.0),
+                };
+                for (k, point) in points[..16].iter_mut().enumerate() {
+                    let delay = (k as f64 + 0.5) * d_samples / 16.0;
+                    let power = match record {
+                        Some(record) if body && record.state == FootprintState::Body => {
+                            record.power[k] as f32
+                        }
+                        _ => {
+                            let gain = proxy_gain((delay / fs) as f32);
+                            gain * gain
+                        }
+                    };
+                    *point = (delay, power);
+                }
+                let source = match (body, record.map(|record| record.state)) {
+                    (false, _) => "proxy(setting)",
+                    (true, None) => "proxy(absent)",
+                    (true, Some(FootprintState::Body)) => "body",
+                    (true, Some(FootprintState::Stale)) => "proxy(stale)",
+                    (true, Some(FootprintState::Unsupported)) => "proxy(unsupported)",
+                };
+                (16u8, source, truncated, d_samples.ceil() as u64, d_samples)
+            }
+        };
+        let footprint = &points[..footprint_bins as usize];
+        let own_total: f32 = self.own_band_energy.iter().sum();
+        let footprint_mass: f32 = footprint.iter().map(|(_, power)| power).sum();
+        DecisionFootprint {
+            points,
+            footprint_bins,
+            footprint_source,
+            footprint_truncated,
+            span_frames,
+            footprint_d_samples,
+            own_total,
+            overlap_norm: (own_total * footprint_mass).max(1e-12),
+        }
+    }
+
+    fn candidate_grid(&self, width: f64, earliest: f64) -> [Option<f64>; 23] {
+        if self.steady {
+            let mut candidates = [None; 23];
+            candidates[2] = Some(self.due_frame);
+            candidates
+        } else {
+            std::array::from_fn(|index| {
+                let offset = index as i32 - 2;
+                let shift = if offset < 0 {
+                    offset as f64 * width / 2.0
+                } else {
+                    offset as f64 * self.period_frames / 20.0
+                };
+                let at = if offset == 0 {
+                    self.due_frame.max(earliest)
+                } else {
+                    self.due_frame + shift
+                };
+                if at < earliest { None } else { Some(at) }
+            })
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn decision_trace(
+        &self,
+        now: u64,
+        width: f64,
+        earliest: f64,
+        onset_allowed: bool,
+        footprint: &DecisionFootprint,
+        forecast: Option<&TemporalForecast>,
+        arrival: Option<&ArrivalContext<'_>>,
+        arrival_set: Option<&ArrivalSet<'_>>,
+    ) -> Option<ParticipationDecision> {
+        let arrival_enabled = self.onset_comparison.is_some_and(|config| config.arrival);
+        let arrival_state =
+            arrival_enabled.then_some(arrival_set.map_or("no_snapshot", ArrivalSet::state));
+        (self.trace_decisions && self.onset_comparison.is_some()).then(|| ParticipationDecision {
+            now,
+            due_frame: self.due_frame,
+            period_frames: self.period_frames,
+            width,
+            earliest,
+            coupling: self.coupling,
+            overlap_sensitivity: self.overlap_sensitivity,
+            onset_allowed,
+            memory: self.memory,
+            own_band_energy: self.own_band_energy,
+            sound_hold_sec: self.sound_hold_sec,
+            sound_adsr: self
+                .sound_adsr
+                .map(|a| [a.attack_sec, a.decay_sec, a.sustain_level, a.release_sec]),
+            footprint_source: footprint.footprint_source,
+            footprint_identity: self.body_footprint.map(|record| record.identity),
+            current_identity: self.current_identity,
+            footprint_requested_at: self.body_footprint.map(|record| record.requested_at),
+            footprint_received_at: self.body_footprint.map(|record| record.received_at),
+            footprint_d_samples: footprint.footprint_d_samples,
+            footprint_truncated: footprint.footprint_truncated,
+            footprint_delay: std::array::from_fn(|k| footprint.points[k].0),
+            footprint_power: std::array::from_fn(|k| footprint.points[k].1),
+            forecast_observed_frame: forecast.map(TemporalForecast::observed_frame),
+            forecast_available_through_frame: forecast
+                .map(TemporalForecast::available_through_frame),
+            arrival_state,
+            arrival_groups: arrival_enabled.then_some(arrival_set.map_or(0, ArrivalSet::len)),
+            arrival_group_exclusions: arrival_set.map(ArrivalSet::exclusions),
+            arrival_self_group_known: arrival_enabled
+                .then_some(arrival.is_some_and(|context| context.self_group.is_some())),
+            arrival_self_group_state: arrival_enabled
+                .then_some(arrival.map_or("no_snapshot", |context| context.self_group_state)),
+            arrival_provenance: if arrival_enabled {
+                arrival
+                    .zip(arrival_set)
+                    .map(|(context, set)| ArrivalProvenance::capture(context, set))
+            } else {
+                None
+            },
+            selected_cost_without_arrival: None,
+            minimum_cost_without_arrival: None,
+            arrival_weight: arrival_enabled
+                .then(|| self.onset_comparison.unwrap().arrival_weight.unwrap_or(1.0)),
+            candidates: [None; 23],
+            reference_cost: f32::INFINITY,
+            selected_offset: 0,
+            selected_at: 0.0,
+            selected_cost: f32::INFINITY,
+            skipped_cycles: self.skipped_cycles,
+            skipped: false,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_candidate(
+        &self,
+        at: f64,
+        offset: i8,
+        width: f64,
+        onset_allowed: bool,
+        forecast: Option<&TemporalForecast>,
+        arrival_set: Option<&ArrivalSet<'_>>,
+        footprint: &DecisionFootprint,
+        trace: bool,
+    ) -> (CandidateTerms, Option<ParticipationContextPrediction>, f32) {
+        let arrival_enabled = self.onset_comparison.is_some_and(|config| config.arrival);
+        let displacement = (at - self.due_frame) / self.period_frames;
+        let context = forecast.and_then(|f| {
+            let onset = at.round() as u64;
+            let (start, end, present) = f.energy_window_after(onset)?;
+            let (after_start, after_end, after) =
+                f.energy_window_after(onset + (CONTEXT_DELAY_SEC * self.fs).round() as u64)?;
+            Some(ParticipationContextPrediction {
+                external_energy_footprint: None,
+                onset_frame: onset,
+                forecast_observed_frame: f.observed_frame(),
+                decision_external_history: f.observed_history,
+                energy_prediction_model: f.energy_prediction_model,
+                target_start_frames: [start, after_start],
+                target_end_frames: [end, after_end],
+                pred_external_band_energy: [present, after],
+                footprint_source: footprint.footprint_source,
+                footprint_bins: footprint.footprint_bins,
+                footprint_truncated: footprint.footprint_truncated,
+                footprint_requested_at: self.body_footprint.map(|record| record.requested_at),
+                footprint_received_at: self.body_footprint.map(|record| record.received_at),
+                reference_cost: 0.0,
+                selected_cost: 0.0,
+                selected_offset: 0,
+            })
+        });
+        let mut cost = (displacement * displacement) as f32;
+        let mut context_distance = None;
+        if onset_allowed && let (Some(memory), Some(context)) = (self.memory, context) {
+            let predicted = context.pred_external_band_energy;
+            let a_mass: f32 = memory.iter().flatten().sum();
+            let b_mass: f32 = predicted.iter().flatten().sum();
+            // Squared Hellinger distance between energy shapes, not confidence.
+            // Observed silence has its own context rather than a uniform spectrum.
+            let distance = if a_mass <= 1e-12 || b_mass <= 1e-12 {
+                u8::from((a_mass > 1e-12) != (b_mass > 1e-12)) as f32
+            } else {
+                0.5 * memory
+                    .iter()
+                    .flatten()
+                    .zip(predicted.iter().flatten())
+                    .map(|(a, b)| ((a / a_mass).sqrt() - (b / b_mass).sqrt()).powi(2))
+                    .sum::<f32>()
+            };
+            cost += self.coupling * distance;
+            context_distance = Some(distance);
+        }
+        let mut overlap_sum = None;
+        let mut external_energy = [None; 16];
+        if onset_allowed
+            && self.overlap_sensitivity != 0.0
+            && let Some(forecast) = forecast
+        {
+            let mut overlap = 0.0;
+            for (k, &(delay, power)) in footprint.points[..footprint.footprint_bins as usize]
+                .iter()
+                .enumerate()
+            {
+                if let Some(energy) = forecast.sustained_energy_at(at + delay) {
+                    if trace {
+                        external_energy[k] = Some(energy);
+                    }
+                    for (own, other) in self.own_band_energy.into_iter().zip(energy) {
+                        let own = own * power;
+                        overlap += own * other / (own + other + 1e-12);
+                    }
+                }
+            }
+            // The caller forecasts the observed external waveform's energy.
+            cost +=
+                self.coupling * 6.0 * self.overlap_sensitivity * overlap / footprint.overlap_norm;
+            overlap_sum = Some(overlap);
+        }
+        let cost_without_arrival = cost;
+        let arrival_probability = if arrival_enabled {
+            arrival_set.and_then(|set| set.probability(at, width))
+        } else {
+            None
+        };
+        let arrival_cost = arrival_probability.map(|probability| {
+            self.coupling
+                * self.onset_comparison.unwrap().arrival_weight.unwrap_or(1.0)
+                * (1.0 - probability) as f32
+        });
+        if let Some(term) = arrival_cost {
+            cost += term;
+        }
+        (
+            CandidateTerms {
+                offset,
+                at,
+                displacement_sq: (displacement * displacement) as f32,
+                context_distance,
+                pred_external_band_energy: context.map(|context| context.pred_external_band_energy),
+                overlap: overlap_sum,
+                external_energy,
+                arrival_probability,
+                arrival_cost,
+                cost,
+            },
+            context,
+            cost_without_arrival,
+        )
+    }
+
+    fn record_decision(
+        &mut self,
+        trace: Option<ParticipationDecision>,
+        skipped: bool,
+        reference_cost: f32,
+        (best_offset, best, best_cost): (i8, f64, f32),
+        costs_without_arrival: Option<(f32, f32)>,
+    ) {
+        if let Some(mut trace) = trace {
+            trace.skipped = skipped;
+            trace.reference_cost = reference_cost;
+            trace.selected_offset = best_offset;
+            trace.selected_at = best;
+            trace.selected_cost = best_cost;
+            trace.selected_cost_without_arrival = costs_without_arrival.map(|cost| cost.0);
+            trace.minimum_cost_without_arrival = costs_without_arrival.map(|cost| cost.1);
+            self.decisions.push(trace);
+        }
+    }
+
     /// Selecting a candidate does not establish that it was sounded.
+    #[cfg(test)]
     pub(crate) fn candidate(
         &mut self,
         now: u64,
@@ -461,6 +805,7 @@ impl TemporalParticipation {
         self.candidate_with_adoption(now, end, onset_allowed, forecast, arrival, None)
     }
 
+    #[cfg(test)]
     pub(crate) fn candidate_with_adoption(
         &mut self,
         now: u64,
@@ -519,94 +864,8 @@ impl TemporalParticipation {
                     )
                     .is_some()
             });
-            // Integrate the planned hold and release. This is an envelope proxy;
-            // the acoustic body and render modulator can add their own decay.
-            let release = self.sound_adsr.map_or(0.0, |a| a.release_sec.max(0.0));
-            let duration = self.sound_hold_sec + release;
-            let (fs, hold_sec, adsr) = (self.fs, self.sound_hold_sec, self.sound_adsr);
-            let proxy_gain = |age: f32| {
-                adsr.map_or(1.0, |a| {
-                    let attack = a.attack_sec.max(1.0 / fs as f32).min(hold_sec);
-                    let before_release = if age < attack {
-                        age / attack
-                    } else if a.decay_sec > 0.0 {
-                        a.sustain_level
-                            + (1.0 - a.sustain_level)
-                                * (-6.908 * (age - attack) / a.decay_sec).exp()
-                    } else {
-                        a.sustain_level
-                    };
-                    before_release
-                        * if age < hold_sec {
-                            1.0
-                        } else {
-                            ((duration - age) / release.max(1e-12)).clamp(0.0, 1.0)
-                        }
-                })
-            };
-            // One buffer serves both shapes; the configured path uses its first 16 slots.
-            let mut points = [(0.0f64, 0.0f32); 64];
-            let (
-                footprint_bins,
-                footprint_source,
-                footprint_truncated,
-                span_frames,
-                footprint_d_samples,
-            ) = match self.onset_comparison {
-                None => {
-                    for (i, point) in points.iter_mut().enumerate() {
-                        let age = (i as f32 + 0.5) * duration / 64.0;
-                        let gain = proxy_gain(age);
-                        *point = (age as f64 * self.fs, gain * gain);
-                    }
-                    (
-                        64u8,
-                        "none",
-                        false,
-                        (f64::from(duration) * self.fs).ceil() as u64,
-                        f64::from(duration) * self.fs,
-                    )
-                }
-                Some(config) => {
-                    let record = self.body_footprint;
-                    // I11-1 §5.3: no decision may rest on an observation from its future.
-                    debug_assert!(
-                        record.is_none_or(|record| record.received_at <= now),
-                        "a footprint that arrives after the decision cannot be used"
-                    );
-                    let body = config.footprint == crate::config::FootprintSource::Body;
-                    // A retained span keeps body and proxy comparable bin for bin.
-                    let span = record.filter(|record| record.d_samples > 0);
-                    let (d_samples, truncated) = match span {
-                        Some(record) => (record.d_samples as f64, record.truncated),
-                        None => (f64::from(duration.min(4.0)) * self.fs, duration > 4.0),
-                    };
-                    for (k, point) in points[..16].iter_mut().enumerate() {
-                        let delay = (k as f64 + 0.5) * d_samples / 16.0;
-                        let power = match record {
-                            Some(record) if body && record.state == FootprintState::Body => {
-                                record.power[k] as f32
-                            }
-                            _ => {
-                                let gain = proxy_gain((delay / fs) as f32);
-                                gain * gain
-                            }
-                        };
-                        *point = (delay, power);
-                    }
-                    let source = match (body, record.map(|record| record.state)) {
-                        (false, _) => "proxy(setting)",
-                        (true, None) => "proxy(absent)",
-                        (true, Some(FootprintState::Body)) => "body",
-                        (true, Some(FootprintState::Stale)) => "proxy(stale)",
-                        (true, Some(FootprintState::Unsupported)) => "proxy(unsupported)",
-                    };
-                    (16u8, source, truncated, d_samples.ceil() as u64, d_samples)
-                }
-            };
-            let footprint = &points[..footprint_bins as usize];
-            let own_total: f32 = self.own_band_energy.iter().sum();
-            let footprint_mass: f32 = footprint.iter().map(|(_, power)| power).sum();
+            let footprint = self.decision_footprint(now);
+            let own_total = footprint.own_total;
             let earliest = self.last_onset.map_or(now as f64, |last| {
                 (last as f64
                     + (self.fs / crate::life::phonation_engine::MAX_ONSET_RATE_HZ as f64).ceil())
@@ -618,26 +877,7 @@ impl TemporalParticipation {
                 self.due_frame += missed * self.period_frames;
                 continue;
             }
-            let candidate_at: [Option<f64>; 23] = if self.steady {
-                let mut candidates = [None; 23];
-                candidates[2] = Some(self.due_frame);
-                candidates
-            } else {
-                std::array::from_fn(|index| {
-                    let offset = index as i32 - 2;
-                    let shift = if offset < 0 {
-                        offset as f64 * width / 2.0
-                    } else {
-                        offset as f64 * self.period_frames / 20.0
-                    };
-                    let at = if offset == 0 {
-                        self.due_frame.max(earliest)
-                    } else {
-                        self.due_frame + shift
-                    };
-                    if at < earliest { None } else { Some(at) }
-                })
-            };
+            let candidate_at = self.candidate_grid(width, earliest);
             let arrival_enabled = self.onset_comparison.is_some_and(|config| config.arrival);
             let arrival_set = if arrival_enabled {
                 arrival.map(|context| {
@@ -653,67 +893,16 @@ impl TemporalParticipation {
             } else {
                 None
             };
-            let arrival_state = arrival_enabled.then_some(
-                arrival_set
-                    .as_ref()
-                    .map_or("no_snapshot", ArrivalSet::state),
+            let mut trace = self.decision_trace(
+                now,
+                width,
+                earliest,
+                onset_allowed,
+                &footprint,
+                forecast,
+                arrival,
+                arrival_set.as_ref(),
             );
-            let mut trace = (self.trace_decisions && self.onset_comparison.is_some()).then(|| {
-                ParticipationDecision {
-                    now,
-                    due_frame: self.due_frame,
-                    period_frames: self.period_frames,
-                    width,
-                    earliest,
-                    coupling: self.coupling,
-                    overlap_sensitivity: self.overlap_sensitivity,
-                    onset_allowed,
-                    memory: self.memory,
-                    own_band_energy: self.own_band_energy,
-                    sound_hold_sec: hold_sec,
-                    sound_adsr: adsr
-                        .map(|a| [a.attack_sec, a.decay_sec, a.sustain_level, a.release_sec]),
-                    footprint_source,
-                    footprint_identity: self.body_footprint.map(|record| record.identity),
-                    current_identity: self.current_identity,
-                    footprint_requested_at: self.body_footprint.map(|record| record.requested_at),
-                    footprint_received_at: self.body_footprint.map(|record| record.received_at),
-                    footprint_d_samples,
-                    footprint_truncated,
-                    footprint_delay: std::array::from_fn(|k| points[k].0),
-                    footprint_power: std::array::from_fn(|k| points[k].1),
-                    forecast_observed_frame: forecast.map(TemporalForecast::observed_frame),
-                    forecast_available_through_frame: forecast
-                        .map(TemporalForecast::available_through_frame),
-                    arrival_state,
-                    arrival_groups: arrival_enabled
-                        .then_some(arrival_set.as_ref().map_or(0, ArrivalSet::len)),
-                    arrival_group_exclusions: arrival_set.as_ref().map(ArrivalSet::exclusions),
-                    arrival_self_group_known: arrival_enabled
-                        .then_some(arrival.is_some_and(|context| context.self_group.is_some())),
-                    arrival_self_group_state: arrival_enabled.then_some(
-                        arrival.map_or("no_snapshot", |context| context.self_group_state),
-                    ),
-                    arrival_provenance: if arrival_enabled {
-                        arrival
-                            .zip(arrival_set.as_ref())
-                            .map(|(context, set)| ArrivalProvenance::capture(context, set))
-                    } else {
-                        None
-                    },
-                    selected_cost_without_arrival: None,
-                    minimum_cost_without_arrival: None,
-                    arrival_weight: arrival_enabled
-                        .then(|| self.onset_comparison.unwrap().arrival_weight.unwrap_or(1.0)),
-                    candidates: [None; 23],
-                    reference_cost: f32::INFINITY,
-                    selected_offset: 0,
-                    selected_at: 0.0,
-                    selected_cost: f32::INFINITY,
-                    skipped_cycles: self.skipped_cycles,
-                    skipped: false,
-                }
-            });
             // Fix candidate clocks before selecting a common group set.
             let extra = adoption
                 .take()
@@ -742,110 +931,21 @@ impl TemporalParticipation {
                 {
                     continue;
                 }
-                let displacement = (at - self.due_frame) / self.period_frames;
-                let context = forecast.and_then(|f| {
-                    let onset = at.round() as u64;
-                    let (start, end, present) = f.energy_window_after(onset)?;
-                    let (after_start, after_end, after) = f.energy_window_after(
-                        onset + (CONTEXT_DELAY_SEC * self.fs).round() as u64,
-                    )?;
-                    Some(ParticipationContextPrediction {
-                        external_energy_footprint: None,
-                        onset_frame: onset,
-                        forecast_observed_frame: f.observed_frame(),
-                        decision_external_history: f.observed_history,
-                        energy_prediction_model: f.energy_prediction_model,
-                        target_start_frames: [start, after_start],
-                        target_end_frames: [end, after_end],
-                        pred_external_band_energy: [present, after],
-                        footprint_source,
-                        footprint_bins,
-                        footprint_truncated,
-                        footprint_requested_at: self
-                            .body_footprint
-                            .map(|record| record.requested_at),
-                        footprint_received_at: self.body_footprint.map(|record| record.received_at),
-                        reference_cost: 0.0,
-                        selected_cost: 0.0,
-                        selected_offset: 0,
-                    })
-                });
-                let mut cost = (displacement * displacement) as f32;
-                let mut context_distance = None;
-                if onset_allowed && let (Some(memory), Some(context)) = (self.memory, context) {
-                    let predicted = context.pred_external_band_energy;
-                    let a_mass: f32 = memory.iter().flatten().sum();
-                    let b_mass: f32 = predicted.iter().flatten().sum();
-                    // Squared Hellinger distance between energy shapes, not confidence.
-                    // Observed silence has its own context rather than a uniform spectrum.
-                    let distance = if a_mass <= 1e-12 || b_mass <= 1e-12 {
-                        u8::from((a_mass > 1e-12) != (b_mass > 1e-12)) as f32
-                    } else {
-                        0.5 * memory
-                            .iter()
-                            .flatten()
-                            .zip(predicted.iter().flatten())
-                            .map(|(a, b)| ((a / a_mass).sqrt() - (b / b_mass).sqrt()).powi(2))
-                            .sum::<f32>()
-                    };
-                    cost += self.coupling * distance;
-                    context_distance = Some(distance);
-                }
-                let mut overlap_sum = None;
-                let mut external_energy = [None; 16];
-                if onset_allowed
-                    && self.overlap_sensitivity != 0.0
-                    && let Some(forecast) = forecast
-                {
-                    let mut overlap = 0.0;
-                    for (k, &(delay, power)) in footprint.iter().enumerate() {
-                        if let Some(energy) = forecast.sustained_energy_at(at + delay) {
-                            if trace.is_some() {
-                                external_energy[k] = Some(energy);
-                            }
-                            for (own, other) in self.own_band_energy.into_iter().zip(energy) {
-                                let own = own * power;
-                                overlap += own * other / (own + other + 1e-12);
-                            }
-                        }
-                    }
-                    // The caller forecasts the observed external waveform's energy.
-                    cost += self.coupling * 6.0 * self.overlap_sensitivity * overlap
-                        / (own_total * footprint_mass).max(1e-12);
-                    overlap_sum = Some(overlap);
-                }
-                let cost_without_arrival = cost;
+                let (terms, context, cost_without_arrival) = self.evaluate_candidate(
+                    at,
+                    offset,
+                    width,
+                    onset_allowed,
+                    forecast,
+                    arrival_set.as_ref(),
+                    &footprint,
+                    trace.is_some(),
+                );
+                let cost = terms.cost;
                 minimum_cost_without_arrival =
                     minimum_cost_without_arrival.min(cost_without_arrival);
-                let arrival_probability = if arrival_enabled {
-                    arrival_set
-                        .as_ref()
-                        .and_then(|set| set.probability(at, width))
-                } else {
-                    None
-                };
-                let arrival_cost = arrival_probability.map(|probability| {
-                    self.coupling
-                        * self.onset_comparison.unwrap().arrival_weight.unwrap_or(1.0)
-                        * (1.0 - probability) as f32
-                });
-                if let Some(term) = arrival_cost {
-                    cost += term;
-                }
                 if let Some(trace) = trace.as_mut().filter(|_| index < 23) {
-                    trace.candidates[(offset + 2) as usize] = Some(CandidateTerms {
-                        offset,
-                        at,
-                        displacement_sq: (displacement * displacement) as f32,
-                        context_distance,
-                        pred_external_band_energy: context
-                            .map(|context| context.pred_external_band_energy),
-                        overlap: overlap_sum,
-                        external_energy,
-                        arrival_probability,
-                        arrival_cost,
-                        cost,
-                    });
+                    trace.candidates[index] = Some(terms);
                 }
                 if offset == 0 {
                     reference_cost = cost;
@@ -866,18 +966,14 @@ impl TemporalParticipation {
                 && self.overlap_sensitivity > 0.0
                 && minimum_cost_without_arrival > 1.0 + self.skipped_cycles as f32
             {
-                if let Some(mut trace) = trace {
-                    trace.skipped = true;
-                    trace.reference_cost = reference_cost;
-                    trace.selected_offset = best_offset;
-                    trace.selected_at = best;
-                    trace.selected_cost = best_cost;
-                    trace.selected_cost_without_arrival =
-                        arrival_enabled.then_some(best_cost_without_arrival);
-                    trace.minimum_cost_without_arrival =
-                        arrival_enabled.then_some(minimum_cost_without_arrival);
-                    self.decisions.push(trace);
-                }
+                self.record_decision(
+                    trace,
+                    true,
+                    reference_cost,
+                    (best_offset, best, best_cost),
+                    arrival_enabled
+                        .then_some((best_cost_without_arrival, minimum_cost_without_arrival)),
+                );
                 if let Some(shape) = shape.as_deref_mut() {
                     shape.propose(super::shape_policy::Shape::Connect, now, false);
                 }
@@ -893,7 +989,7 @@ impl TemporalParticipation {
                     forecast.external_footprint(
                         [
                             context.onset_frame,
-                            context.onset_frame.saturating_add(span_frames),
+                            context.onset_frame.saturating_add(footprint.span_frames),
                         ],
                         forecast
                             .observed_frame()
@@ -901,17 +997,14 @@ impl TemporalParticipation {
                     ),
                 );
             }
-            if let Some(mut trace) = trace {
-                trace.reference_cost = reference_cost;
-                trace.selected_offset = best_offset;
-                trace.selected_at = best;
-                trace.selected_cost = best_cost;
-                trace.selected_cost_without_arrival =
-                    arrival_enabled.then_some(best_cost_without_arrival);
-                trace.minimum_cost_without_arrival =
-                    arrival_enabled.then_some(minimum_cost_without_arrival);
-                self.decisions.push(trace);
-            }
+            self.record_decision(
+                trace,
+                false,
+                reference_cost,
+                (best_offset, best, best_cost),
+                arrival_enabled
+                    .then_some((best_cost_without_arrival, minimum_cost_without_arrival)),
+            );
             if let Some(shape) = shape.as_deref_mut() {
                 shape.propose(super::shape_policy::Shape::Base, now, false);
                 shape.veto_plan =
@@ -955,16 +1048,6 @@ impl TemporalParticipation {
             self.period_frames = self.intrinsic_period_frames;
             self.last_reference_frame = None;
         }
-    }
-
-    pub(crate) fn update_parameters(&mut self, base_rate_hz: f32, coupling: f32, flow_depth: f32) {
-        let intrinsic = self.fs / base_rate_hz as f64;
-        if intrinsic != self.intrinsic_period_frames || coupling == 0.0 {
-            self.period_frames = intrinsic;
-        }
-        self.intrinsic_period_frames = intrinsic;
-        self.coupling = coupling;
-        self.set_flow_depth(flow_depth);
     }
 
     pub(crate) fn resolve(&mut self, tick: u64, sounded: bool) {
@@ -1037,8 +1120,8 @@ impl TemporalParticipation {
                 } else {
                     "outside_observed_history"
                 },
-                observed_external_band_energy: observed,
-                memory_external_band_energy: self.memory,
+                perc_external_band_energy: observed,
+                perc_memory_external_band_energy: self.memory,
             });
         }
     }
@@ -2271,8 +2354,6 @@ mod tests {
         voice.resolve(onset, true);
         assert_eq!(voice.intrinsic_due_for_selected(onset), None);
         assert_eq!(voice.period_frames(), 500.0);
-        voice.update_parameters(4.0, 0.8, 0.0);
-        assert_eq!(voice.period_frames(), 250.0);
     }
 
     #[test]
@@ -2283,7 +2364,7 @@ mod tests {
         voice.due_frame = 10_000.0;
         let onset = voice.candidate(10_000, 10_001, true, None, None).unwrap();
         let planned = voice.planned;
-        voice.update_parameters(2.0, 0.8, 0.65);
+        voice.set_flow_depth(0.65);
         assert_eq!(voice.planned, planned);
         assert_eq!(voice.period_frames(), 500.0);
         assert!(voice.last_reference_frame.is_none());
@@ -2501,7 +2582,7 @@ mod tests {
             let pending = voice.pending_contexts.clone();
             assert_eq!(voice.last_onset, Some(tick));
             let due = voice.due_frame;
-            voice.update_parameters(8.0, 0.4, 0.8);
+            voice.set_flow_depth(0.8);
             assert!(voice.memory.is_none());
             assert_eq!(voice.pending_contexts, pending);
             assert_eq!(voice.last_onset, Some(tick));
@@ -2605,7 +2686,7 @@ mod tests {
         voice.observe_context(&own, |u| updates.push(u));
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].status, "outside_observed_history");
-        assert!(updates[0].observed_external_band_energy.is_none());
+        assert!(updates[0].perc_external_band_energy.is_none());
         assert!(voice.memory.is_none() && voice.pending_contexts.is_empty());
     }
 
@@ -2783,146 +2864,9 @@ mod tests {
 }
 
 #[cfg(test)]
-mod sustained_participation_policy_tests {
-    use super::*;
-    fn setup() -> TemporalParticipation {
-        let mut p = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000);
-        p.due_frame = 10_000.0;
-        p.set_decision_trace(true);
-        p.set_onset_comparison(Some(crate::config::TemporalOnsetComparisonConfig::default()));
-        p
-    }
-    #[test]
-    fn sustained_participation_existing_grid_terms_and_tie_are_preserved() {
-        let mut old = setup();
-        let mut added = setup();
-        let a = old.candidate(10_000, 10_001, true, None, None);
-        let b = added.candidate_with_adoption(10_000, 10_001, true, None, None, Some(10_000));
-        assert_eq!(a, b);
-        let a = old.drain_decisions().next().unwrap();
-        let b = added.drain_decisions().next().unwrap();
-        assert_eq!(
-            serde_json::to_value(a.candidates).unwrap(),
-            serde_json::to_value(b.candidates).unwrap()
-        );
-        assert_eq!(b.selected_offset, 0);
-        assert!(!b.skipped);
-    }
-    #[test]
-    fn sustained_participation_committed_plan_cannot_be_replaced_and_illegal_extra_is_neutral() {
-        let mut old = setup();
-        let mut added = setup();
-        assert_eq!(
-            old.candidate(10_000, 10_001, true, None, None),
-            added.candidate_with_adoption(10_000, 10_001, true, None, None, Some(9_999))
-        );
-        let plan = added.planned;
-        added.candidate_with_adoption(10_000, 10_100, true, None, None, Some(10_001));
-        assert_eq!(added.planned, plan);
-    }
-    #[test]
-    fn sustained_participation_offer_uses_the_same_overlap_evaluator() {
-        let mut won = false;
-        for delay in 1..130 {
-            let mut old = setup();
-            let mut added = setup();
-            old.due_frame = 10_050.0;
-            added.due_frame = 10_050.0;
-            old.set_overlap(0.8, [1.0, 0.0, 0.0]);
-            added.set_overlap(0.8, [1.0, 0.0, 0.0]);
-            let forecast = TemporalForecast::energy_fixture(1000, 10_000, |sec| {
-                if sec < delay as f64 / 1000.0 {
-                    [10.0, 0.0, 0.0]
-                } else {
-                    [0.0; 3]
-                }
-            });
-            old.candidate(10_000, 10_001, true, Some(&forecast), None);
-            added.candidate_with_adoption(
-                10_000,
-                10_001,
-                true,
-                Some(&forecast),
-                None,
-                Some(10_000),
-            );
-            let a = old.drain_decisions().next().unwrap();
-            let b = added.drain_decisions().next().unwrap();
-            assert_eq!(
-                serde_json::to_value(a.candidates).unwrap(),
-                serde_json::to_value(b.candidates).unwrap()
-            );
-            if b.selected_offset == 21 && !b.skipped {
-                won = true;
-            }
-        }
-        // Cost preservation is tested even if this fixture never selects the extra sample.
-        let _ = won;
-    }
-}
+#[path = "sustained_participation_policy_tests.rs"]
+mod sustained_participation_policy_tests;
 
 #[cfg(test)]
-mod articulation_persistence_clock_tests {
-    use super::*;
-    use crate::life::shape_policy::ShapePolicy;
-
-    #[test]
-    fn articulation_persistence_intent_resolve_does_not_update_memory_last_onset_or_skip_cost() {
-        let mut clock = TemporalParticipation::new(48000, 2.0, 0.8, 0, 21, 512);
-        clock.register_initial_hold(0);
-        let forecast = TemporalForecast::energy_fixture(48000, 0, |_| [0.1, 0.2, 0.3]);
-        let mut shape = ShapePolicy::new(0.875, 21, 48000.0);
-        shape.reserve(16, 512);
-        let tick = clock
-            .candidate_with_shape(
-                0,
-                48000,
-                true,
-                Some(&forecast),
-                None,
-                None,
-                Some(&mut shape),
-            )
-            .unwrap();
-        assert!(clock.planned.unwrap().1.is_some());
-        let due = clock.planned.unwrap().0 + clock.period_frames;
-        clock.resolve(tick, false);
-        assert!(clock.pending_contexts.is_empty());
-        assert!(clock.memory.is_none());
-        assert_eq!(clock.last_onset, Some(0));
-        assert_eq!(clock.skipped_cycles, 0);
-        assert_eq!(clock.due_frame.to_bits(), due.to_bits());
-        assert!(clock.planned.is_none());
-    }
-
-    #[test]
-    fn articulation_persistence_future_plan_is_reused_without_new_shape_decisions() {
-        let mut clock = TemporalParticipation::new(48000, 2.0, 0.8, 0, 21, 512);
-        clock.due_frame = 24000.0;
-        let mut shape = ShapePolicy::new(0.75, 21, 48000.0);
-        shape.reserve(16, 512);
-        assert!(
-            clock
-                .candidate_with_shape(22000, 22500, true, None, None, None, Some(&mut shape))
-                .is_none()
-        );
-        assert!(clock.planned.is_some());
-        let state = shape.state;
-        let pending = clock.planned;
-        for now in 22500..23999 {
-            assert!(
-                clock
-                    .candidate_with_shape(now, now + 1, true, None, None, None, Some(&mut shape))
-                    .is_none()
-            );
-            assert_eq!(shape.state, state);
-            assert_eq!(clock.planned, pending);
-        }
-        assert_eq!(
-            clock.candidate_with_shape(24000, 24001, true, None, None, None, Some(&mut shape)),
-            Some(24000)
-        );
-        clock.resolve(24000, true);
-        assert_eq!(clock.last_onset, Some(24000));
-    }
-}
+#[path = "shape_policy_clock_tests.rs"]
+mod articulation_persistence_clock_tests;

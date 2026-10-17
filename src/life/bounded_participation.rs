@@ -9,26 +9,22 @@ impl Voice {
         out: &mut PhonationBatch,
     ) {
         let event = &self.phonation_scratch.events[index];
-        if event.opportunity.is_some()
-            && let Some(target) = self.pending_participation_pitch.take()
+        if event.participation_onset
+            && let Some(target) = self.participation_pitch.pending.take()
         {
             *pitch = target;
         }
-        let tone = ToneSpec {
-            opportunity: event.opportunity,
-            tone_id: event.tone_id,
-            onset: event.onset_tick,
-            hold_ticks: Some(Tick::MAX),
-            freq_hz: pitch.exp2(),
-            amp: target_amp,
-            smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
-            body: self.body_snapshot(),
-            render_modulator: self
-                .articulation
+        let tone = ToneSpec::from_event(
+            *event,
+            pitch.exp2(),
+            target_amp,
+            Some(Tick::MAX),
+            self.body_snapshot(),
+            self.articulation
                 .render_modulator_spec(PhonationMode::Gated),
-            adsr: self.voice_adsr,
-        };
-        self.last_onset_pitch_log2 = Some(tone.freq_hz.log2());
+            self.voice_adsr,
+        );
+        self.participation_pitch.last_onset_log2 = Some(tone.freq_hz.log2());
         out.tones.push(tone);
     }
 
@@ -47,45 +43,40 @@ impl Voice {
         let previous_tone = self.active_render_notes.last().map(|n| n.tone_id);
         let tau = self.effective_control.pitch.pitch_glide_tau_sec.max(0.0);
         if state.is_alive {
-            for step_index in 0..self.participation_pitch_steps.len() {
-                let step = self.participation_pitch_steps[step_index];
+            for step_index in 0..self.participation_pitch.steps.len() {
+                let step = self.participation_pitch.steps[step_index];
                 while on_index < self.phonation_scratch.events.len()
                     && self.phonation_scratch.events[on_index].onset_tick < step.at
                 {
                     self.emit_bounded_on(on_index, &mut pitch, target_amp, out);
                     on_index += 1;
                 }
-                while m_index < self.rearticulations.len()
-                    && self.rearticulations[m_index].at <= step.at
+                while m_index < self.participation_pitch.rearticulations.len()
+                    && self.participation_pitch.rearticulations[m_index].at <= step.at
                 {
-                    let m = self.rearticulations[m_index];
+                    let m = self.participation_pitch.rearticulations[m_index];
                     debug_assert!(space.is_some(), "pitch adoption needs the current grid");
                     // Release drops an adoption without a grid and keeps the processed pitch.
                     let Some(space) = space else {
                         m_index += 1;
                         continue;
                     };
-                    let reference = self.last_onset_pitch_log2.unwrap_or(pitch);
-                    self.adoption_application = select_pitch_application(
+                    let reference = self.participation_pitch.last_onset_log2.unwrap_or(pitch);
+                    self.participation_pitch.adoption_application = select_pitch_application(
                         &self.effective_control.pitch,
                         Some((space, reference, m.pitch_log2)),
                     );
-                    if self.adoption_application == PitchApplyMode::Glide {
-                        self.pending_participation_pitch = None;
-                        self.participation_glide_target = Some(m.pitch_log2);
+                    if self.participation_pitch.adoption_application == PitchApplyMode::Glide {
+                        self.participation_pitch.pending = None;
+                        self.participation_pitch.glide_target = Some(m.pitch_log2);
                     } else {
-                        self.pending_participation_pitch = Some(m.pitch_log2);
-                        self.participation_glide_target = None;
+                        self.participation_pitch.pending = Some(m.pitch_log2);
+                        self.participation_pitch.glide_target = None;
                     }
                     m_index += 1;
                 }
-                if let Some(target) = self.participation_glide_target {
-                    let alpha = if tau <= 1e-6 {
-                        1.0
-                    } else {
-                        1.0 - (-step.dt.max(0.0) / tau).exp()
-                    };
-                    pitch += (target - pitch) * alpha.clamp(0.0, 1.0);
+                if let Some(target) = self.participation_pitch.glide_target {
+                    pitch = Self::glide_pitch(pitch, target, step.dt, tau);
                     let onset = self
                         .phonation_scratch
                         .events
@@ -95,13 +86,12 @@ impl Voice {
                         .checked_sub(1)
                         .map(|i| self.phonation_scratch.events[i].tone_id)
                         .or(previous_tone);
-                    let tone = tone.filter(|tone_id| {
-                        self.phonation_engine.rest.is_none()
-                            || !out.cmds.iter().any(|cmd| {
-                                matches!(cmd, ToneCmd::Off { tone_id: off_id, off_tick }
-                                    if off_id == tone_id && *off_tick <= step.at)
-                            })
-                    });
+                    let tone = Self::surviving_tone(
+                        tone,
+                        self.phonation_engine.rest.is_some(),
+                        &out.cmds,
+                        step.at,
+                    );
                     if !onset && let Some(tone_id) = tone {
                         out.cmds.push(ToneCmd::Update {
                             tone_id,
@@ -127,33 +117,16 @@ impl Voice {
             // Release keeps the processed pitch; the hop cleanup drops unmatched adoptions.
             debug_assert_eq!(
                 m_index,
-                self.rearticulations.len(),
+                self.participation_pitch.rearticulations.len(),
                 "each adoption has a control sample"
             );
             self.body.set_pitch_log2(pitch);
         } else {
-            self.pending_participation_pitch = None;
-            self.participation_glide_target = None;
+            self.participation_pitch.pending = None;
+            self.participation_pitch.glide_target = None;
         }
-        for onset in &out.onsets {
-            self.articulation
-                .apply_phonation_onset(consonance, onset.strength);
-        }
-        self.prune_tracked_render_notes(&out.cmds);
-        for tracked in &mut self.active_render_notes {
-            tracked.last_target_freq_hz = self.body.base_freq_hz();
-        }
-        self.emit_phonation_updates(
-            now,
-            target_amp,
-            self.body.base_freq_hz(),
-            self.effective_control.body.continuous_drive,
-            &mut out.cmds,
-        );
-        self.track_new_render_notes(&out.tones);
-        self.prune_tracked_render_notes(&out.cmds);
-        self.phonation_scratch.events.clear();
-        self.rearticulations.clear();
-        self.participation_pitch_steps.clear();
+        self.apply_phonation_onsets(consonance, out);
+        self.update_surviving_render_notes(now, target_amp, out);
+        self.finish_participation_batch(out);
     }
 }

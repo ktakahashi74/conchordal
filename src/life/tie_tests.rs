@@ -61,11 +61,11 @@ fn emit(
 }
 
 fn adoption(v: &mut Voice, at: Tick, hz: f32) {
-    v.rearticulations.push(Rearticulation {
+    v.participation_pitch.rearticulations.push(Rearticulation {
         at,
         pitch_log2: hz.log2(),
     });
-    v.participation_pitch_steps.push(ParticipationPitchStep {
+    v.participation_pitch.steps.push(ParticipationPitchStep {
         at,
         before_log2: v.body.base_freq_hz().log2(),
         target_log2: hz.log2(),
@@ -86,12 +86,12 @@ fn tie_birth_hold_pending_on_and_no_unpending_restrikes() {
         let (mut v, tb, r, mut out, space) = setup(1.0, mode);
         emit(&mut v, &tb, &r, 0, &mut out, &space);
         assert_eq!(out.tones.len(), 1);
-        let initial = v.last_onset_pitch_log2;
+        let initial = v.participation_pitch.last_onset_log2;
         for i in 1..100 {
             emit(&mut v, &tb, &r, i * 512, &mut out, &space);
             assert!(out.tones.is_empty());
         }
-        assert_eq!(v.last_onset_pitch_log2, initial);
+        assert_eq!(v.participation_pitch.last_onset_log2, initial);
         assert_eq!(v.active_render_notes.len(), 1);
         adoption(&mut v, 51200, 440.0);
         let mut moved = false;
@@ -117,7 +117,7 @@ fn tie_same_sample_adoption_precedes_on_and_small_adoption_cancels() {
         for at in (512..hop).step_by(512) {
             emit(&mut v, &tb, &r, at, &mut out, &space);
         }
-        v.pending_participation_pitch = Some(440.0f32.log2());
+        v.participation_pitch.pending = Some(440.0f32.log2());
         adoption(
             &mut v,
             due,
@@ -130,8 +130,8 @@ fn tie_same_sample_adoption_precedes_on_and_small_adoption_cancels() {
         emit(&mut v, &tb, &r, hop, &mut out, &space);
         if small {
             assert!(out.tones.is_empty());
-            assert!(v.pending_participation_pitch.is_none());
-            assert!(v.participation_glide_target.is_some());
+            assert!(v.participation_pitch.pending.is_none());
+            assert!(v.participation_pitch.glide_target.is_some());
             assert!(v.body.base_freq_hz() > 330.0);
         } else {
             assert!(
@@ -194,15 +194,15 @@ fn tie_release_remove_death_priority() {
     for ending in 0..3 {
         let (mut v, tb, r, mut out, space) = setup(1.0, PitchApplyMode::Rearticulate);
         emit(&mut v, &tb, &r, 0, &mut out, &space);
-        v.pending_participation_pitch = Some(440.0f32.log2());
+        v.participation_pitch.pending = Some(440.0f32.log2());
         match ending {
-            0 => v.release_pending = true,
+            0 => v.release.pending = true,
             1 => v.start_remove_fade(0.12),
-            _ => v.release_gain = 0.0,
+            _ => v.release.gain = 0.0,
         };
         emit(&mut v, &tb, &r, 512, &mut out, &space);
         assert!(out.tones.is_empty());
-        assert!(v.pending_participation_pitch.is_none());
+        assert!(v.participation_pitch.pending.is_none());
     }
 }
 

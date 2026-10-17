@@ -47,7 +47,7 @@ fn adopt(v: &mut Voice, land: &Landscape, r: &NeuralRhythms, index: usize, at: T
     v.set_accumulated_time_for_test(0.5);
     v.set_control_tick(at);
     v.update_pitch_target(r, 0.001, land, &[], &[]);
-    assert!(v.pitch_adopted);
+    assert!(v.participation_pitch.adopted);
     v.update_articulation_autonomous(0.001, r);
 }
 
@@ -94,7 +94,7 @@ fn small_steps_glide_but_net_movement_from_actual_on_restarts() {
     let mut attacks = 0;
     for step in 1..=5 {
         adopt(&mut v, &land, &r, 100 + step, step as Tick * 512 + 64);
-        let choice = v.adoption_application;
+        let choice = v.participation_pitch.adoption_application;
         emit(&mut v, &tb, &r, step as Tick * 512, &mut out);
         attacks += out.onsets.len();
         if step != 5 {
@@ -112,13 +112,16 @@ fn earlier_queued_on_is_the_reference_within_one_output_hop() {
     emit(&mut v, &tb, &r, 0, &mut out);
     adopt(&mut v, &land, &r, 105, 576);
     adopt(&mut v, &land, &r, 106, 640);
-    assert_eq!(v.rearticulations.len(), 1);
-    assert_eq!(v.adoption_application, PitchApplyMode::Glide);
+    assert_eq!(v.participation_pitch.rearticulations.len(), 1);
+    assert_eq!(
+        v.participation_pitch.adoption_application,
+        PitchApplyMode::Glide
+    );
     emit(&mut v, &tb, &r, 512, &mut out);
     assert_eq!(out.onsets.len(), 1);
     assert_eq!(out.tones[0].onset, 576);
     assert_eq!(
-        v.last_onset_pitch_log2.unwrap().to_bits(),
+        v.participation_pitch.last_onset_log2.unwrap().to_bits(),
         out.tones[0].freq_hz.log2().to_bits()
     );
 }
@@ -127,13 +130,13 @@ fn earlier_queued_on_is_the_reference_within_one_output_hop() {
 fn lifecycle_cancel_does_not_replace_the_last_actual_on() {
     let (mut v, land, tb, r, mut out) = fixture();
     emit(&mut v, &tb, &r, 0, &mut out);
-    let actual = v.last_onset_pitch_log2;
+    let actual = v.participation_pitch.last_onset_log2;
     adopt(&mut v, &land, &r, 105, 576);
-    v.release_pending = true;
+    v.release.pending = true;
     emit(&mut v, &tb, &r, 512, &mut out);
     assert!(out.onsets.is_empty());
-    assert!(v.rearticulations.is_empty());
-    assert_eq!(v.last_onset_pitch_log2, actual);
+    assert!(v.participation_pitch.rearticulations.is_empty());
+    assert_eq!(v.participation_pitch.last_onset_log2, actual);
 }
 
 #[test]
@@ -166,14 +169,14 @@ fn glide_selection_and_actual_on_reuse_birth_storage() {
         .force_set_target_pitch_log2(land.space.centers_log2[101]);
     crate::runtime_profile::begin_allocations();
     v.select_adoption_application(&land.space, land.space.centers_log2[100]);
-    let small = v.adoption_application;
+    let small = v.participation_pitch.adoption_application;
     v.update_articulation_autonomous(0.001, &r);
     v.pitch_ctl
         .force_set_target_pitch_log2(land.space.centers_log2[105]);
     v.set_control_tick(640);
     v.select_adoption_application(&land.space, land.space.centers_log2[101]);
-    let large = v.adoption_application;
-    v.rearticulations.push(Rearticulation {
+    let large = v.participation_pitch.adoption_application;
+    v.participation_pitch.rearticulations.push(Rearticulation {
         at: 640,
         pitch_log2: v.target_pitch_log2(),
     });
@@ -195,7 +198,10 @@ fn live_boundary_keeps_choice_until_next_adoption_and_cancels_no_tone() {
         ..Default::default()
     })
     .unwrap();
-    assert_eq!(v.adoption_application, PitchApplyMode::Glide);
+    assert_eq!(
+        v.participation_pitch.adoption_application,
+        PitchApplyMode::Glide
+    );
     emit(&mut v, &tb, &r, 512, &mut out);
     assert!(out.onsets.is_empty());
     adopt(&mut v, &land, &r, 102, 1088);
@@ -206,7 +212,7 @@ fn live_boundary_keeps_choice_until_next_adoption_and_cancels_no_tone() {
 #[test]
 fn rearticulation_reference_is_net_displacement_and_birth_state_is_empty() {
     let (mut v, land, tb, r, mut out) = fixture();
-    assert!(v.last_onset_pitch_log2.is_none());
+    assert!(v.participation_pitch.last_onset_log2.is_none());
     emit(&mut v, &tb, &r, 0, &mut out);
     adopt(&mut v, &land, &r, 104, 576);
     emit(&mut v, &tb, &r, 512, &mut out);

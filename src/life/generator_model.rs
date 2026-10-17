@@ -73,9 +73,6 @@ impl TerrainPredictor {
         }
         if let Some((prev_tick, prev_scan)) = self.prev_obs.as_ref() {
             space.assert_scan_len_named(prev_scan, "perc_c_field_level_scan_prev");
-            if prev_scan.len() != last_scan.len() {
-                return Some(Arc::clone(last_scan));
-            }
             let dt = last_tick.saturating_sub(*prev_tick).max(1) as f32;
             let a = ahead_tick as f32;
             let scale = a / dt;

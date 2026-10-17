@@ -1,28 +1,22 @@
 //! Borrowed synchronous analysis, with the same numerical law as AnalysisStream.
 
+use super::potentials::PotentialScratch;
 use crate::core::landscape::{Landscape, LandscapeParams};
 use crate::core::landscape_spectral::{SpectralFrameView, SpectralFrontEnd};
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
-#[cfg(test)]
 use crate::core::psycho_state::roughness_ratio_to_state01;
 use crate::core::psycho_state::{
     compute_roughness_reference, h_pot_scan_to_h_state01_scan, r_pot_scan_to_r_state01_scan,
 };
-use crate::core::roughness_kernel::{RoughnessGeometry, erb_grid};
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct SynchronousAnalysis {
-    nsgt: RtNsgtKernelLog2,
+    pub(super) nsgt: RtNsgtKernelLog2,
     frontend: SpectralFrontEnd,
     pub landscape: Landscape,
-    pub du: Vec<f32>,
-    erb: Vec<f32>,
-    roughness_geometry: Arc<RoughnessGeometry>,
-    normalized: Vec<f32>,
-    smeared: Vec<f32>,
-    roots: Vec<f32>,
-    #[cfg(test)]
+    pub du: Arc<[f32]>,
+    potentials: PotentialScratch,
     ref_total: f32,
     ref_peak: f32,
 }
@@ -32,14 +26,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn body_only_analysis_and_birth_state_match_full_oracle_bits() {
+    fn rt_and_body_frontend_match_bits() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut rt =
+            crate::core::stream::analysis::AnalysisStream::new(params.clone(), nsgt.clone());
+        let mut body = SynchronousAnalysis::new(nsgt.clone(), &params);
+        let mut body_only = SynchronousAnalysis::new(nsgt, &params);
+        let mut audio = vec![0.; body.nsgt.hop()];
+        for frame in 0..24 {
+            let hop = audio.len();
+            for (i, sample) in audio.iter_mut().enumerate() {
+                let t = (frame * hop + i) as f32 / params.fs;
+                *sample = if frame < 3 || frame > 18 {
+                    0.
+                } else {
+                    0.13 * (t * std::f32::consts::TAU * 440.).sin()
+                        + 0.09 * (t * std::f32::consts::TAU * 603.).sin()
+                };
+            }
+            let actual = rt.process(&audio);
+            body.process_gap(&audio, 1, &params);
+            body_only.process_body_gap(&audio, 1, &params);
+            for (a, b) in [
+                (&actual.nsgt_power, &body.landscape.nsgt_power),
+                (
+                    &actual.subjective_intensity,
+                    &body.landscape.subjective_intensity,
+                ),
+                (&actual.harmonicity, &body.landscape.harmonicity),
+                (&actual.roughness, &body.landscape.roughness),
+                (
+                    &actual.roughness_shape_raw,
+                    &body.landscape.roughness_shape_raw,
+                ),
+                (&actual.roughness01, &body.landscape.roughness01),
+                (&actual.harmonicity, &body_only.landscape.harmonicity),
+                (
+                    &actual.roughness_shape_raw,
+                    &body_only.landscape.roughness_shape_raw,
+                ),
+                (&actual.roughness01, &body_only.landscape.roughness01),
+            ] {
+                assert_eq!(
+                    a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                    b.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                    "frame {frame}"
+                );
+            }
+            assert_eq!(
+                actual.roughness01_scalar.to_bits(),
+                body.landscape.roughness01_scalar.to_bits()
+            );
+            assert_eq!(
+                actual.loudness_mass.to_bits(),
+                body.landscape.loudness_mass.to_bits()
+            );
+        }
+    }
+
+    #[test]
+    fn body_only_analysis_and_birth_state_match_full_bits() {
         for gap in [1, 2, 4, 8, 18] {
             let (nsgt, mut params) = crate::runtime::body_metabolism_test_core();
             let mut full_shared = SynchronousAnalysis::new(nsgt, &params);
             let mut density_shared = full_shared.clone();
             assert!(Arc::ptr_eq(
-                &full_shared.roughness_geometry,
-                &density_shared.roughness_geometry
+                &full_shared.potentials.geometry,
+                &density_shared.potentials.geometry
             ));
             let mut full = full_shared.clone();
             let mut body = density_shared.clone();
@@ -153,14 +206,14 @@ mod tests {
                         }
                         let reference = crate::life::body_fitness::evaluate(
                             &full.landscape.space,
-                            &full.normalized,
+                            &full.potentials.normalized,
                             &full.du,
                             &full.landscape.consonance_field_score_eff,
                             &params.consonance_representation,
                         );
                         let actual = crate::life::body_fitness::evaluate(
                             &body.landscape.space,
-                            &body.normalized,
+                            &body.potentials.normalized,
                             &body.du,
                             &body.landscape.consonance_field_score_eff,
                             &params.consonance_representation,
@@ -194,22 +247,24 @@ mod tests {
 impl SynchronousAnalysis {
     pub(crate) fn new(nsgt: RtNsgtKernelLog2, params: &LandscapeParams) -> Self {
         let space = nsgt.space();
-        let bins = space.n_bins();
         let reference = compute_roughness_reference(params, space);
-        let (erb, du) = erb_grid(space);
-        let roughness_geometry = Arc::new(params.roughness_kernel.prepare_geometry(space, &erb));
+        let potentials =
+            PotentialScratch::new(space, &params.harmonicity_kernel, &params.roughness_kernel);
         let mut landscape = Landscape::new(space.clone());
+        landscape.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            reference.peak,
+            params.roughness_ref_eps,
+        );
         landscape.recompute_consonance(params);
         Self {
-            frontend: SpectralFrontEnd::new(space.clone(), params),
+            frontend: SpectralFrontEnd::new(space.clone()),
             landscape,
-            erb,
-            roughness_geometry,
-            du,
-            normalized: vec![0.; bins],
-            smeared: vec![0.; bins],
-            roots: vec![0.; params.harmonicity_kernel.root_buffer_len(space)],
-            #[cfg(test)]
+            du: Arc::clone(&potentials.du),
+            potentials,
             ref_total: reference.total,
             ref_peak: reference.peak,
             nsgt,
@@ -229,7 +284,7 @@ impl SynchronousAnalysis {
         assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
         let power = self.nsgt.process_hop(audio);
         self.frontend
-            .process_nsgt_power_reuse(power, audio.len() as f32 / params.fs, params)
+            .process_nsgt_power(power, audio.len() as f32 / params.fs, params)
     }
 
     #[cfg(test)]
@@ -243,65 +298,81 @@ impl SynchronousAnalysis {
 
     pub(crate) fn process_body_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
         assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
-        let power = self.nsgt.process_hop_gap(audio, gap);
-        let spectral = self.frontend.process_nsgt_power_reuse(
+        self.process_spectral(audio, gap, params, false);
+    }
+
+    pub(super) fn process_spectral(
+        &mut self,
+        audio: &[f32],
+        gap: i32,
+        params: &LandscapeParams,
+        full: bool,
+    ) {
+        let power = if gap == 1 {
+            self.nsgt.process_hop(audio)
+        } else {
+            self.nsgt.process_hop_gap(audio, gap)
+        };
+        if full {
+            self.landscape.nsgt_power.copy_from_slice(power);
+        }
+        let spectral = self.frontend.process_nsgt_power(
             power,
             audio.len() as f32 / params.fs * gap as f32,
             params,
         );
         let density = spectral.subjective_intensity;
         let space = &self.landscape.space;
-        space.assert_scan_len_named(density, "subjective_intensity_scan");
-        params.harmonicity_kernel.potential_h_into(
+        let eps = params.roughness_ref_eps.max(1e-12);
+        let roughness_k = params.roughness_k.max(1e-6);
+        let shape_total = self.potentials.compute_shape(
             density,
             space,
-            &mut self.smeared,
-            &mut self.roots,
+            (&params.harmonicity_kernel, &params.roughness_kernel),
+            eps,
             &mut self.landscape.harmonicity,
+            &mut self.landscape.roughness_shape_raw,
         );
-        let eps = params.roughness_ref_eps.max(1e-12);
-        let mass = density
-            .iter()
-            .zip(&self.du)
-            .map(|(&value, &width)| {
-                let value = if value.is_finite() { value.max(0.) } else { 0. };
-                let width = if width.is_finite() { width.max(0.) } else { 0. };
-                value * width
-            })
-            .sum::<f32>();
-        self.normalized.fill(0.);
-        if mass.is_finite() && mass > eps {
-            let inv = 1. / (mass + eps);
-            for (out, &value) in self.normalized.iter_mut().zip(density) {
-                *out = if value.is_finite() {
-                    value.max(0.) * inv
-                } else {
-                    0.
-                };
-            }
-        }
-        if mass > eps {
-            if !self
-                .roughness_geometry
-                .matches(&params.roughness_kernel, space, &self.erb)
-            {
-                self.roughness_geometry =
-                    Arc::new(params.roughness_kernel.prepare_geometry(space, &self.erb));
-            }
-            self.roughness_geometry.potential_r_into(
-                &self.normalized,
-                space,
-                &self.du,
-                &mut self.landscape.roughness_shape_raw,
-            );
-        } else {
-            self.landscape.roughness_shape_raw.fill(0.);
-        }
         r_pot_scan_to_r_state01_scan(
             &self.landscape.roughness_shape_raw,
             self.ref_peak.max(eps),
-            params.roughness_k.max(1e-6),
+            roughness_k,
             &mut self.landscape.roughness01,
+        );
+        if full {
+            self.potentials.geometry.potential_r_into(
+                density,
+                space,
+                &self.du,
+                &mut self.landscape.roughness,
+            );
+            self.landscape.subjective_intensity.copy_from_slice(density);
+            self.landscape.loudness_mass = crate::core::density::density_to_mass(density, &self.du);
+            self.landscape.roughness01_scalar =
+                roughness_ratio_to_state01(shape_total / self.ref_total.max(eps), roughness_k);
+        }
+        self.landscape.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            self.ref_peak,
+            params.roughness_ref_eps,
+        );
+    }
+
+    pub(super) fn reset(&mut self, params: &LandscapeParams) {
+        self.reset_density();
+        let mode = self.landscape.pitch_objective_mode;
+        self.landscape = Landscape::new(self.nsgt.space().clone());
+        self.landscape.pitch_objective_mode = mode;
+        self.landscape.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            self.ref_peak,
+            params.roughness_ref_eps,
         );
     }
 
@@ -346,88 +417,10 @@ impl SynchronousAnalysis {
         }
     }
 
-    // Keep the pre-optimization numerical path as the test oracle.
     #[cfg(test)]
     pub(crate) fn process_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
         assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
-        let power = self.nsgt.process_hop_gap(audio, gap);
-        self.landscape.nsgt_power.copy_from_slice(power);
-        let spectral = self.frontend.process_nsgt_power_reuse(
-            power,
-            audio.len() as f32 / params.fs * gap as f32,
-            params,
-        );
-        let density = spectral.subjective_intensity;
-        let space = &self.landscape.space;
-        space.assert_scan_len_named(density, "subjective_intensity_scan");
-        let eps = params.roughness_ref_eps.max(1e-12);
-        let roughness_k = params.roughness_k.max(1e-6);
-        params.harmonicity_kernel.potential_h_into(
-            density,
-            space,
-            &mut self.smeared,
-            &mut self.roots,
-            &mut self.landscape.harmonicity,
-        );
-        let total = params.roughness_kernel.potential_r_into(
-            density,
-            space,
-            &self.erb,
-            &self.du,
-            &mut self.landscape.roughness,
-        );
-        let mass = density
-            .iter()
-            .zip(&self.du)
-            .map(|(&value, &width)| {
-                let value = if value.is_finite() { value.max(0.) } else { 0. };
-                let width = if width.is_finite() { width.max(0.) } else { 0. };
-                value * width
-            })
-            .sum::<f32>();
-        self.normalized.fill(0.);
-        if mass.is_finite() && mass > eps {
-            let inv = 1. / (mass + eps);
-            for (out, &value) in self.normalized.iter_mut().zip(density) {
-                *out = if value.is_finite() {
-                    value.max(0.) * inv
-                } else {
-                    0.
-                };
-            }
-        }
-        let shape_total = if mass > eps {
-            params.roughness_kernel.potential_r_into(
-                &self.normalized,
-                space,
-                &self.erb,
-                &self.du,
-                &mut self.landscape.roughness_shape_raw,
-            )
-        } else {
-            self.landscape.roughness_shape_raw.fill(0.);
-            0.
-        };
-        r_pot_scan_to_r_state01_scan(
-            &self.landscape.roughness_shape_raw,
-            self.ref_peak.max(eps),
-            roughness_k,
-            &mut self.landscape.roughness01,
-        );
-        self.landscape.subjective_intensity.copy_from_slice(density);
-        self.landscape.loudness_mass = spectral.loudness_mass;
-        self.landscape.roughness_total = total;
-        self.landscape.roughness_scalar_raw = total;
-        self.landscape.roughness_norm = total / (spectral.loudness_mass + eps);
-        self.landscape.roughness01_scalar =
-            roughness_ratio_to_state01(shape_total / self.ref_total.max(eps), roughness_k);
-        self.landscape.roughness_suppress_sigma_erb =
-            params.roughness_kernel.params.suppress_sigma_erb.max(1e-6);
-        self.landscape.roughness_kernel_params = params.roughness_kernel.params;
-        self.landscape.harmonicity_params = params.harmonicity_kernel.params;
-        self.landscape.roughness_k = params.roughness_k;
-        self.landscape.roughness_ref_peak = self.ref_peak;
-        self.landscape.roughness_ref_eps = params.roughness_ref_eps;
+        self.process_spectral(audio, gap, params, true);
         self.landscape.recompute_consonance(params);
     }
 }

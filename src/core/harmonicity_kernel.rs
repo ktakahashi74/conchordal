@@ -31,7 +31,7 @@
 use crate::core::float::{finite_or, unit_gaussian};
 use crate::core::log2space::Log2Space;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HarmonicityParams {
     /// Downward projections for root candidates.
     pub num_subharmonics: u32,

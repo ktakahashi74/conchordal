@@ -13,25 +13,47 @@ pub use crate::core::float::sanitize01;
 
 /// Normalize a density curve for potential scans, returning (normalized, mass).
 pub fn normalize_density(density_vals: &[f32], du: &[f32], eps: f32) -> (Vec<f32>, f32) {
+    let mut norm = vec![0.; density_vals.len()];
+    let mass = normalize_density_into(density_vals, du, eps, &mut norm);
+    (norm, mass)
+}
+
+pub(crate) fn normalize_density_into(
+    density_vals: &[f32],
+    du: &[f32],
+    eps: f32,
+    norm: &mut [f32],
+) -> f32 {
     assert_eq!(density_vals.len(), du.len(), "density/du length mismatch");
+    assert_eq!(
+        density_vals.len(),
+        norm.len(),
+        "density/output length mismatch"
+    );
     let mass = density_vals
         .iter()
-        .zip(du.iter())
+        .zip(du)
         .map(|(&d, &du)| {
-            let d = if d.is_finite() { d.max(0.0) } else { 0.0 };
-            let du = if du.is_finite() { du.max(0.0) } else { 0.0 };
+            let d = if d.is_finite() { d.max(0.) } else { 0. };
+            let du = if du.is_finite() { du.max(0.) } else { 0. };
             d * du
         })
         .sum::<f32>();
+    norm.fill(0.);
     if !mass.is_finite() || mass <= eps {
-        return (vec![0.0; density_vals.len()], mass);
+        return mass;
     }
-    let inv = 1.0 / (mass + eps);
-    let norm = density_vals
-        .iter()
-        .map(|&v| if v.is_finite() { v.max(0.0) * inv } else { 0.0 })
-        .collect();
-    (norm, mass)
+    {
+        let inv = 1. / (mass + eps);
+        for (out, &value) in norm.iter_mut().zip(density_vals) {
+            *out = if value.is_finite() {
+                value.max(0.) * inv
+            } else {
+                0.
+            };
+        }
+    }
+    mass
 }
 
 /// Convert roughness ratio (relative to reference) into normalized state [0, 1].
@@ -264,5 +286,60 @@ mod tests {
         let r_pot = [0.1f32, 0.2];
         let mut out = [0.0f32; 1];
         r_pot_scan_to_r_state01_scan(&r_pot, 1.0, 1.0, &mut out);
+    }
+    #[test]
+    fn roughness_shape_invariant_to_level() {
+        let space = Log2Space::new(80.0, 8000.0, 96);
+        let params = build_params(&space);
+        let (_erb, du) = erb_grid(&space);
+
+        let mut density = vec![0.0f32; space.n_bins()];
+        let mid = density.len() / 2;
+        density[mid] = 0.8;
+        if mid + 8 < density.len() {
+            density[mid + 8] = 0.5;
+        }
+
+        let (p1, _) = normalize_density(&density, &du, params.roughness_ref_eps);
+        let (r1, _) = params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum_density(&p1, &space);
+
+        let scaled: Vec<f32> = density.iter().map(|&v| v * 5.0).collect();
+        let (p2, _) = normalize_density(&scaled, &du, params.roughness_ref_eps);
+        let (r2, _) = params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum_density(&p2, &space);
+
+        for (a, b) in r1.iter().zip(r2.iter()) {
+            assert!((a - b).abs() < 1e-6, "shape changed: {a} vs {b}");
+        }
+    }
+
+    #[test]
+    fn reference_maps_to_expected() {
+        let space = Log2Space::new(80.0, 8000.0, 96);
+        let params = build_params(&space);
+        let ref_density = build_roughness_reference_density(&params, &space);
+        let (r_shape, r_total) = params
+            .roughness_kernel
+            .potential_r_from_log2_spectrum_density(&ref_density, &space);
+        let ref_vals = compute_roughness_reference(&params, &space);
+
+        let peak = r_shape.iter().copied().fold(0.0f32, f32::max);
+        let r01_peak = roughness_ratio_to_state01(peak / ref_vals.peak, params.roughness_k);
+        let r01_scalar = roughness_ratio_to_state01(r_total / ref_vals.total, params.roughness_k);
+        let expected = 1.0 / (1.0 + params.roughness_k.max(1e-6));
+
+        assert!((r01_scalar - expected).abs() < 1e-5, "scalar {r01_scalar}");
+        assert!((r01_peak - expected).abs() < 1e-5, "peak {r01_peak}");
+    }
+
+    #[test]
+    fn roughness_ratio_handles_nan_and_inf() {
+        let k = 0.3;
+        assert_eq!(roughness_ratio_to_state01(f32::NAN, k), 0.0);
+        assert_eq!(roughness_ratio_to_state01(f32::INFINITY, k), 1.0);
+        assert_eq!(roughness_ratio_to_state01(f32::NEG_INFINITY, k), 0.0);
     }
 }

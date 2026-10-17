@@ -3,8 +3,9 @@ use crate::core::harmonic_ratios::{HARMONIC_RATIOS, ratio_to_f32};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
-use crate::core::psycho_state::{normalize_density, roughness_ratio_to_state01};
-use crate::core::roughness_kernel::{RoughnessKernel, erb_grid};
+use crate::core::psycho_state::roughness_ratio_to_state01;
+use crate::core::roughness_kernel::RoughnessKernel;
+use crate::core::stream::potentials::PotentialScratch;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::scenario::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
 use rand::{Rng, RngExt};
@@ -99,6 +100,7 @@ pub struct PitchHillClimbPitchCore {
     /// The voice's own partial ratios, for "perceive with your own body" LOO.
     /// `None` falls back to the generic assumed harmonic series.
     body_ratios: Option<Arc<[f32]>>,
+    exact_loo: Option<Box<ExactLooScratch>>,
 }
 
 impl PitchHillClimbPitchCore {
@@ -128,6 +130,7 @@ impl PitchHillClimbPitchCore {
             use_ratio_candidates: false,
             ratio_candidate_count: DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT,
             body_ratios: None,
+            exact_loo: None,
         }
     }
 
@@ -413,8 +416,13 @@ impl PitchCore for PitchHillClimbPitchCore {
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let body_ratios = self.body_ratios.clone();
-        let exact_loo_scan =
-            exact_loo_consonance_score_scan(landscape, current_pitch_log2, leave_self_out_mode);
+        let exact_loo_scan = exact_loo_consonance_score_scan(
+            landscape,
+            current_pitch_log2,
+            leave_self_out,
+            leave_self_out_mode,
+            &mut self.exact_loo,
+        );
         self.propose_with_scorer(
             current_pitch_log2,
             current_target_log2,
@@ -1018,12 +1026,24 @@ pub(crate) fn approx_loo_pitch_score(
     )
 }
 
+#[derive(Clone, Debug)]
+struct ExactLooScratch {
+    space: Log2Space,
+    harmonicity: HarmonicityKernel,
+    roughness: RoughnessKernel,
+    potentials: PotentialScratch,
+    h: Vec<f32>,
+    r: Vec<f32>,
+}
+
 fn exact_loo_consonance_score_scan(
     landscape: &Landscape,
     current_pitch_log2: f32,
+    enabled: bool,
     mode: LeaveSelfOutMode,
+    scratch: &mut Option<Box<ExactLooScratch>>,
 ) -> Option<Vec<f32>> {
-    if !matches!(mode, LeaveSelfOutMode::ExactScan) {
+    if !enabled || !matches!(mode, LeaveSelfOutMode::ExactScan) {
         return None;
     }
     let n = landscape.space.n_bins();
@@ -1061,28 +1081,47 @@ fn exact_loo_consonance_score_scan(
     let mut density_loo = landscape.subjective_intensity.clone();
     density_loo[current_idx] = (density_loo[current_idx] - current_mass).max(0.0);
 
-    let harmonicity_kernel = HarmonicityKernel::new(&landscape.space, landscape.harmonicity_params);
-    let (h_blended, _) =
-        harmonicity_kernel.potential_h_from_log2_spectrum(&density_loo, &landscape.space);
-    let roughness_kernel = RoughnessKernel::new(
-        landscape.roughness_kernel_params,
-        EXACT_LOO_ROUGHNESS_ERB_STEP,
-    );
-    let (_erb, du) = erb_grid(&landscape.space);
+    let stale = scratch.as_ref().is_none_or(|cache| {
+        cache.space.fmin != landscape.space.fmin
+            || cache.space.fmax != landscape.space.fmax
+            || cache.space.bins_per_oct != landscape.space.bins_per_oct
+            || cache.space.step_log2 != landscape.space.step_log2
+            || cache.space.centers_hz != landscape.space.centers_hz
+            || cache.space.centers_log2 != landscape.space.centers_log2
+            || cache.harmonicity.params != landscape.harmonicity_params
+            || cache.roughness.params != landscape.roughness_kernel_params
+    });
+    if stale {
+        let harmonicity = HarmonicityKernel::new(&landscape.space, landscape.harmonicity_params);
+        let roughness = RoughnessKernel::new(
+            landscape.roughness_kernel_params,
+            EXACT_LOO_ROUGHNESS_ERB_STEP,
+        );
+        let potentials = PotentialScratch::new(&landscape.space, &harmonicity, &roughness);
+        *scratch = Some(Box::new(ExactLooScratch {
+            space: landscape.space.clone(),
+            harmonicity,
+            roughness,
+            potentials,
+            h: vec![0.; n],
+            r: vec![0.; n],
+        }));
+    }
+    let cache = scratch.as_mut().unwrap();
     let eps = landscape.roughness_ref_eps.max(1e-12);
-    let (p_density, mass) = normalize_density(&density_loo, &du, eps);
-    let r_shape_raw = if mass > eps {
-        roughness_kernel
-            .potential_r_from_log2_spectrum_density(&p_density, &landscape.space)
-            .0
-    } else {
-        vec![0.0; n]
-    };
+    cache.potentials.compute_shape(
+        &density_loo,
+        &landscape.space,
+        (&cache.harmonicity, &cache.roughness),
+        eps,
+        &mut cache.h,
+        &mut cache.r,
+    );
     let roughness_ref_peak = landscape.roughness_ref_peak.max(eps);
     let roughness_k = landscape.roughness_k.max(1e-6);
     let mut out = Vec::with_capacity(n);
-    for (i, r_shape) in r_shape_raw.iter().enumerate().take(n) {
-        let h01 = h_blended.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+    for (i, r_shape) in cache.r.iter().enumerate().take(n) {
+        let h01 = cache.h.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
         let r01 = roughness_ratio_to_state01(*r_shape / roughness_ref_peak, roughness_k);
         out.push(landscape.consonance_kernel.score(h01, r01));
     }
@@ -1696,6 +1735,89 @@ mod tests {
 
     fn test_adaptation(n_bins: usize) -> AdaptationContext {
         AdaptationContext::from_config(&AdaptationConfig::default(), n_bins)
+    }
+
+    #[test]
+    fn exact_loo_cache_matches_uncached_kernels_and_invalidates() {
+        let mut landscape = Landscape::new(Log2Space::new(80., 8000., 24));
+        let mut cache = None;
+        for revision in 0..5 {
+            if revision == 2 {
+                landscape.harmonicity_params.gamma_root = 0.7;
+            }
+            if revision == 3 {
+                landscape.roughness_kernel_params.sethares_b = 4.2;
+            }
+            if revision == 4 {
+                landscape.resize_to_space(Log2Space::new(110., 6000., 36));
+            }
+            let n = landscape.space.n_bins();
+            for (i, d) in landscape.subjective_intensity.iter_mut().enumerate() {
+                *d = ((i * 17 + 3) % 29) as f32 * 0.03;
+            }
+            let index = n / 3;
+            landscape.subjective_intensity[index] = 1.;
+            let pitch = landscape.space.centers_log2[index];
+            assert!(
+                exact_loo_consonance_score_scan(
+                    &landscape,
+                    pitch,
+                    false,
+                    LeaveSelfOutMode::ExactScan,
+                    &mut cache
+                )
+                .is_none()
+            );
+            if revision == 0 {
+                assert!(cache.is_none());
+            }
+            let previous_lut = cache.as_ref().map(|c| Arc::clone(&c.roughness.lut));
+            let actual = exact_loo_consonance_score_scan(
+                &landscape,
+                pitch,
+                true,
+                LeaveSelfOutMode::ExactScan,
+                &mut cache,
+            )
+            .unwrap();
+            if revision == 1 {
+                assert!(Arc::ptr_eq(
+                    previous_lut.as_ref().unwrap(),
+                    &cache.as_ref().unwrap().roughness.lut
+                ));
+            } else if let Some(previous) = previous_lut {
+                assert!(!Arc::ptr_eq(
+                    &previous,
+                    &cache.as_ref().unwrap().roughness.lut
+                ));
+            }
+            let mut density = landscape.subjective_intensity.clone();
+            density[index] = 0.;
+            let h = HarmonicityKernel::new(&landscape.space, landscape.harmonicity_params)
+                .potential_h_from_log2_spectrum(&density, &landscape.space)
+                .0;
+            let (_, du) = crate::core::roughness_kernel::erb_grid(&landscape.space);
+            let eps = landscape.roughness_ref_eps.max(1e-12);
+            let (normalized, _) = crate::core::psycho_state::normalize_density(&density, &du, eps);
+            let r = RoughnessKernel::new(
+                landscape.roughness_kernel_params,
+                EXACT_LOO_ROUGHNESS_ERB_STEP,
+            )
+            .potential_r_from_log2_spectrum_density(&normalized, &landscape.space)
+            .0;
+            for i in 0..n {
+                let r01 = roughness_ratio_to_state01(
+                    r[i] / landscape.roughness_ref_peak.max(eps),
+                    landscape.roughness_k.max(1e-6),
+                );
+                let expected = landscape.consonance_kernel.score(h[i].clamp(0., 1.), r01);
+                assert_eq!(
+                    actual[i].to_bits(),
+                    expected.to_bits(),
+                    "revision {revision}, bin {i}"
+                );
+            }
+        }
     }
 
     #[test]

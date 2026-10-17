@@ -86,10 +86,11 @@ pub(crate) fn run(
                 &frame.nsgt_power,
             );
             warmup_samples = warmup_samples.saturating_sub(hop.len());
-            analysis = (warmup_samples == 0).then_some((frame_id, frame));
+            analysis = (warmup_samples == 0).then_some(frame_id);
             if matches!(delivery, AnalysisDelivery::Ordered)
-                && let Some((id, mut frame)) = analysis.take()
+                && let Some(id) = analysis.take()
             {
+                let mut frame = frame.clone();
                 frame.spectral_history = spectral_history.snapshot();
                 if result_tx.send((id, Some(frame))).is_err() {
                     return;
@@ -97,7 +98,8 @@ pub(crate) fn run(
             }
         }
         // Only the generator's current-state delivery may discard older snapshots.
-        if let Some((id, mut frame)) = analysis {
+        if let Some(id) = analysis {
+            let mut frame = stream.last().clone();
             frame.spectral_history = spectral_history.snapshot();
             let _ = result_tx.try_send((id, Some(frame)));
         }
@@ -173,7 +175,7 @@ mod tests {
                     0.1 * (2.0 * PI * frequency * time).sin()
                 })
                 .collect();
-            expected.push(reference.process(&audio));
+            expected.push(reference.process(&audio).clone());
             hops.push((frame_id, audio));
         }
         let mut final_history = None;

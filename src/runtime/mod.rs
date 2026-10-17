@@ -424,25 +424,22 @@ fn merge_latest_analysis_results(
         *log_space = current_landscape.space.clone();
         generator_model.set_space(log_space.clone());
     }
-    current_landscape.roughness_suppress_sigma_erb = frame.roughness_suppress_sigma_erb;
-    current_landscape.roughness_kernel_params = frame.roughness_kernel_params;
+    // Keep frame perception metadata, but use the worker's current valuation.
+    current_landscape.set_analysis_metadata(
+        frame.roughness_kernel_params,
+        frame.harmonicity_params,
+        lparams.consonance_field_kernel(),
+        frame.roughness_k,
+        frame.roughness_ref_peak,
+        frame.roughness_ref_eps,
+    );
     current_landscape.roughness = frame.roughness;
     current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
     current_landscape.roughness01 = frame.roughness01;
     current_landscape.harmonicity = frame.harmonicity;
-    current_landscape.roughness_total = frame.roughness_total;
-    current_landscape.roughness_scalar_raw = frame.roughness_scalar_raw;
-    current_landscape.roughness_norm = frame.roughness_norm;
     current_landscape.roughness01_scalar = frame.roughness01_scalar;
     current_landscape.loudness_mass = frame.loudness_mass;
     current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
-    current_landscape.harmonicity_params = frame.harmonicity_params;
-    // Frames analyzed before a valuation update still carry the old kernel;
-    // the worker's params are authoritative for everything recomputed here.
-    current_landscape.consonance_kernel = lparams.consonance_field_kernel();
-    current_landscape.roughness_k = frame.roughness_k;
-    current_landscape.roughness_ref_peak = frame.roughness_ref_peak;
-    current_landscape.roughness_ref_eps = frame.roughness_ref_eps;
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
     current_landscape.spectral_history = frame.spectral_history;
@@ -3359,6 +3356,7 @@ mod tests {
             )?;
             writeln!(writer)?;
             let mut end_sample = 0;
+            let window_samples = stream.window_samples();
             for chunk in audio.chunks_exact(core.hop) {
                 end_sample += chunk.len();
                 let frame = stream.process(chunk);
@@ -3385,7 +3383,7 @@ mod tests {
                     &mut writer,
                     &serde_json::json!({
                         "type": "spectral_evidence", "available_sec": end_sample as f64 / spec.sample_rate as f64,
-                        "full_window": end_sample >= stream.window_samples(),
+                        "full_window": end_sample >= window_samples,
                         "nsgt_power_scan": frame.nsgt_power,
                         "subjective_intensity_scan": frame.subjective_intensity,
                         "history_ages_sec": crate::core::temporal_history::HISTORY_AGES_SEC,

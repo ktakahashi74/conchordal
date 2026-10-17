@@ -1,197 +1,54 @@
+use super::synchronous::SynchronousAnalysis;
 use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
-use crate::core::landscape_spectral::SpectralFrontEnd;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
-use crate::core::psycho_state::{
-    compute_roughness_reference, normalize_density, r_pot_scan_to_r_state01_scan,
-    roughness_ratio_to_state01,
-};
-use crate::core::roughness_kernel::erb_grid;
 
-/// Analysis Stream (formerly Roughness Stream).
-/// Handles slow spectral analysis for roughness and harmonicity.
+/// Spectral analysis shared with the body's synchronous perception path.
 #[cfg_attr(test, derive(Clone))]
 pub struct AnalysisStream {
-    nsgt_rt: RtNsgtKernelLog2,
+    analysis: SynchronousAnalysis,
     params: LandscapeParams,
-    spectral_frontend: SpectralFrontEnd,
-    roughness_ref_total: f32,
-    roughness_ref_peak: f32,
-    // ERB grid depends only on the space, which is fixed for the stream's lifetime.
-    erb: Vec<f32>,
-    du: Vec<f32>,
-
-    // Last computed state (roughness/harmonicity side of the landscape)
-    last_landscape: Landscape,
 }
 
 impl AnalysisStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
-        let spectral_frontend = SpectralFrontEnd::new(nsgt_rt.space().clone(), &params);
-        let ref_vals = compute_roughness_reference(&params, nsgt_rt.space());
-        let roughness_ref_total = ref_vals.total;
-        let roughness_ref_peak = ref_vals.peak;
-        let mut last_landscape = Landscape::new(nsgt_rt.space().clone());
-        last_landscape.roughness_suppress_sigma_erb =
-            params.roughness_kernel.params.suppress_sigma_erb.max(1e-6);
-        last_landscape.roughness_kernel_params = params.roughness_kernel.params;
-        last_landscape.harmonicity_params = params.harmonicity_kernel.params;
-        last_landscape.consonance_kernel = params.consonance_field_kernel();
-        last_landscape.roughness_k = params.roughness_k;
-        last_landscape.roughness_ref_peak = roughness_ref_peak;
-        last_landscape.roughness_ref_eps = params.roughness_ref_eps;
-
-        let (erb, du) = erb_grid(nsgt_rt.space());
-
-        Self {
-            nsgt_rt: nsgt_rt.clone(),
-            params,
-            spectral_frontend,
-            roughness_ref_total,
-            roughness_ref_peak,
-            erb,
-            du,
-            last_landscape,
-        }
+        let mut analysis = SynchronousAnalysis::new(nsgt_rt, &params);
+        // Live analysis publishes raw perception; the worker derives consonance.
+        let ref_peak = analysis.landscape.roughness_ref_peak;
+        analysis.landscape = Landscape::new(analysis.nsgt.space().clone());
+        analysis.landscape.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            ref_peak,
+            params.roughness_ref_eps,
+        );
+        Self { analysis, params }
     }
 
-    /// Access the most recent landscape snapshot without processing.
     pub fn last(&self) -> &Landscape {
-        &self.last_landscape
+        &self.analysis.landscape
     }
-
     pub(crate) fn window_samples(&self) -> usize {
-        self.nsgt_rt.nfft()
+        self.analysis.nsgt.nfft()
     }
-
     pub(crate) fn hop_samples(&self) -> usize {
-        self.nsgt_rt.hop()
+        self.analysis.nsgt.hop()
     }
-
     pub(crate) fn sample_rate(&self) -> f32 {
         self.params.fs
     }
 
-    /// Process audio chunk asynchronously.
-    /// Returns the updated Landscape.
-    pub fn process(&mut self, audio: &[f32]) -> Landscape {
-        if audio.is_empty() {
-            return self.last_landscape.clone();
+    /// Borrow the current frame; callers clone only when publishing it.
+    pub fn process(&mut self, audio: &[f32]) -> &Landscape {
+        if !audio.is_empty() {
+            self.analysis.process_spectral(audio, 1, &self.params, true);
         }
-
-        // 1. Update Spectrum (NSGT + Normalization)
-        // Copy the envelope once, straight into the snapshot buffer.
-        {
-            let env = self.nsgt_rt.process_hop(audio);
-            let dst = &mut self.last_landscape.nsgt_power;
-            if dst.len() == env.len() {
-                dst.copy_from_slice(env);
-            } else {
-                dst.clear();
-                dst.extend_from_slice(env);
-            }
-        }
-        let dt_sec = audio.len() as f32 / self.params.fs;
-        let spectral_frame = self.spectral_frontend.process_nsgt_power(
-            &self.last_landscape.nsgt_power,
-            dt_sec,
-            &self.params,
-        );
-
-        // 2. Compute Roughness
-        self.compute_potentials(
-            &spectral_frame.subjective_intensity,
-            spectral_frame.loudness_mass,
-        );
-
-        // 3. Return snapshot
-        self.last_landscape.clone()
-    }
-
-    fn compute_potentials(&mut self, density: &[f32], loudness_mass: f32) {
-        let space = self.nsgt_rt.space();
-        let (erb, du) = (&self.erb[..], &self.du[..]);
-        let eps = self.params.roughness_ref_eps.max(1e-12);
-        let roughness_k = self.params.roughness_k.max(1e-6);
-        self.last_landscape.roughness_suppress_sigma_erb = self
-            .params
-            .roughness_kernel
-            .params
-            .suppress_sigma_erb
-            .max(1e-6);
-        self.last_landscape.roughness_kernel_params = self.params.roughness_kernel.params;
-        self.last_landscape.harmonicity_params = self.params.harmonicity_kernel.params;
-        self.last_landscape.consonance_kernel = self.params.consonance_field_kernel();
-        self.last_landscape.roughness_k = self.params.roughness_k;
-        self.last_landscape.roughness_ref_peak = self.roughness_ref_peak;
-        self.last_landscape.roughness_ref_eps = self.params.roughness_ref_eps;
-        let (harmonicity, _) = self
-            .params
-            .harmonicity_kernel
-            .potential_h_from_log2_spectrum(density, space);
-
-        // Roughness strength (level-dependent).
-        let (r_strength, r_total) = self
-            .params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum_density_with_grid(density, space, erb, du);
-        let r_norm = r_total / (loudness_mass + eps);
-
-        // Roughness shape (level-invariant).
-        let (p_density, mass) = normalize_density(density, du, eps);
-        let (r_shape_raw, r_shape_total) = if mass > eps {
-            self.params
-                .roughness_kernel
-                .potential_r_from_log2_spectrum_density_with_grid(&p_density, space, erb, du)
-        } else {
-            (vec![0.0; r_strength.len()], 0.0)
-        };
-
-        let r_ref_peak = self.roughness_ref_peak.max(eps);
-        let r_ref_total = self.roughness_ref_total.max(eps);
-        {
-            let out = &mut self.last_landscape.roughness01;
-            if out.len() != r_shape_raw.len() {
-                out.resize(r_shape_raw.len(), 0.0);
-            }
-            r_pot_scan_to_r_state01_scan(&r_shape_raw, r_ref_peak, roughness_k, out);
-        }
-        let r01_scalar = roughness_ratio_to_state01(r_shape_total / r_ref_total, roughness_k);
-
-        self.last_landscape.roughness = r_strength;
-        self.last_landscape.roughness_shape_raw = r_shape_raw;
-        self.last_landscape.harmonicity = harmonicity;
-        self.last_landscape.roughness_total = r_total;
-        self.last_landscape.roughness_scalar_raw = r_total;
-        self.last_landscape.roughness_norm = r_norm;
-        self.last_landscape.roughness01_scalar = r01_scalar;
-        self.last_landscape.loudness_mass = loudness_mass;
-        let subj = &mut self.last_landscape.subjective_intensity;
-        if subj.len() == density.len() {
-            subj.copy_from_slice(density);
-        } else {
-            subj.clear();
-            subj.extend_from_slice(density);
-        }
+        &self.analysis.landscape
     }
 
     pub fn reset(&mut self) {
-        self.nsgt_rt.reset();
-        self.spectral_frontend.reset();
-        let mut landscape = Landscape::new(self.nsgt_rt.space().clone());
-        landscape.pitch_objective_mode = self.last_landscape.pitch_objective_mode;
-        landscape.roughness_suppress_sigma_erb = self
-            .params
-            .roughness_kernel
-            .params
-            .suppress_sigma_erb
-            .max(1e-6);
-        landscape.roughness_kernel_params = self.params.roughness_kernel.params;
-        landscape.harmonicity_params = self.params.harmonicity_kernel.params;
-        landscape.consonance_kernel = self.params.consonance_field_kernel();
-        landscape.roughness_k = self.params.roughness_k;
-        landscape.roughness_ref_peak = self.roughness_ref_peak;
-        landscape.roughness_ref_eps = self.params.roughness_ref_eps;
-        self.last_landscape = landscape;
+        self.analysis.reset(&self.params);
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
@@ -199,7 +56,7 @@ impl AnalysisStream {
             self.params.set_roughness_aversion(w);
         }
         if let Some(mode) = upd.pitch_objective_mode {
-            self.last_landscape.pitch_objective_mode = mode;
+            self.analysis.landscape.pitch_objective_mode = mode;
         }
     }
 }
@@ -207,106 +64,54 @@ impl AnalysisStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
-    use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
-    use crate::core::landscape::LandscapeParams;
-    use crate::core::log2space::Log2Space;
-    use crate::core::psycho_state::build_roughness_reference_density;
-    use crate::core::roughness_kernel::{KernelParams, RoughnessKernel};
 
-    fn build_params(space: &Log2Space) -> LandscapeParams {
-        LandscapeParams {
-            fs: 48_000.0,
-            max_hist_cols: 1,
-            roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
-            harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
-            consonance_kernel: ConsonanceKernel::default(),
-            consonance_representation: ConsonanceRepresentationParams::default(),
-            consonance_density_roughness_gain: 1.0,
-            roughness_aversion: 1.0,
-            habituation: crate::core::habituation::HabituationParams::default(),
-            loudness_exp: 1.0,
-            ref_power: 1.0,
-            tau_ms: 1.0,
-            roughness_k: 1.0,
-            roughness_ref_f0_hz: 1000.0,
-            roughness_ref_sep_erb: 0.25,
-            roughness_ref_mass_split: 0.5,
-            roughness_ref_eps: 1e-12,
+    #[test]
+    fn reset_and_variable_chunks_preserve_analysis_contract() {
+        let (mut nsgt, mut params) = crate::runtime::body_metabolism_test_core();
+        nsgt.process_hop(&vec![0.1; nsgt.hop()]);
+        let mut reference = nsgt.clone();
+        let hop = nsgt.hop();
+        let mut stream = AnalysisStream::new(params.clone(), nsgt);
+        for len in [hop / 2, hop, 2 * hop + 1] {
+            let audio: Vec<_> = (0..len).map(|i| 0.1 * (i as f32 * 0.13).sin()).collect();
+            let expected = reference.process_hop(&audio);
+            let frame = stream.process(&audio);
+            assert_eq!(
+                frame
+                    .nsgt_power
+                    .iter()
+                    .map(|v| v.to_bits())
+                    .collect::<Vec<_>>(),
+                expected.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+            );
         }
-    }
-
-    #[test]
-    fn roughness_shape_invariant_to_level() {
-        let space = Log2Space::new(80.0, 8000.0, 96);
-        let params = build_params(&space);
-        let (_erb, du) = erb_grid(&space);
-
-        let mut density = vec![0.0f32; space.n_bins()];
-        let mid = density.len() / 2;
-        density[mid] = 0.8;
-        if mid + 8 < density.len() {
-            density[mid + 8] = 0.5;
+        let previous = stream.last().subjective_intensity.clone();
+        assert_eq!(stream.process(&[]).subjective_intensity, previous);
+        let update = LandscapeUpdate {
+            roughness_aversion: Some(0.3),
+            ..Default::default()
+        };
+        stream.apply_update(update);
+        params.set_roughness_aversion(0.3);
+        stream.reset();
+        let (nsgt, _) = crate::runtime::body_metabolism_test_core();
+        let mut fresh = AnalysisStream::new(params.clone(), nsgt);
+        let audio: Vec<_> = (0..hop).map(|i| 0.1 * (i as f32 * 0.11).sin()).collect();
+        let actual = stream.process(&audio);
+        let expected = fresh.process(&audio);
+        for (a, b) in [
+            (&actual.subjective_intensity, &expected.subjective_intensity),
+            (&actual.harmonicity, &expected.harmonicity),
+            (&actual.roughness01, &expected.roughness01),
+        ] {
+            assert_eq!(
+                a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                b.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+            );
         }
-
-        let (p1, _) = normalize_density(&density, &du, params.roughness_ref_eps);
-        let (r1, _) = params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum_density(&p1, &space);
-
-        let scaled: Vec<f32> = density.iter().map(|&v| v * 5.0).collect();
-        let (p2, _) = normalize_density(&scaled, &du, params.roughness_ref_eps);
-        let (r2, _) = params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum_density(&p2, &space);
-
-        for (a, b) in r1.iter().zip(r2.iter()) {
-            assert!((a - b).abs() < 1e-6, "shape changed: {a} vs {b}");
-        }
-    }
-
-    #[test]
-    fn reference_maps_to_expected() {
-        let space = Log2Space::new(80.0, 8000.0, 96);
-        let params = build_params(&space);
-        let ref_density = build_roughness_reference_density(&params, &space);
-        let (r_shape, r_total) = params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum_density(&ref_density, &space);
-        let ref_vals = compute_roughness_reference(&params, &space);
-
-        let peak = r_shape.iter().copied().fold(0.0f32, f32::max);
-        let r01_peak = roughness_ratio_to_state01(peak / ref_vals.peak, params.roughness_k);
-        let r01_scalar = roughness_ratio_to_state01(r_total / ref_vals.total, params.roughness_k);
-        let expected = 1.0 / (1.0 + params.roughness_k.max(1e-6));
-
-        assert!((r01_scalar - expected).abs() < 1e-5, "scalar {r01_scalar}");
-        assert!((r01_peak - expected).abs() < 1e-5, "peak {r01_peak}");
-    }
-
-    #[test]
-    fn roughness_ratio_handles_nan_and_inf() {
-        let k = 0.3;
-        assert_eq!(roughness_ratio_to_state01(f32::NAN, k), 0.0);
-        assert_eq!(roughness_ratio_to_state01(f32::INFINITY, k), 1.0);
-        assert_eq!(roughness_ratio_to_state01(f32::NEG_INFINITY, k), 0.0);
-    }
-
-    #[test]
-    fn single_peak_has_zero_self_roughness() {
-        let space = Log2Space::new(80.0, 8000.0, 96);
-        let params = build_params(&space);
-        let (_erb, du) = erb_grid(&space);
-
-        let mut density = vec![0.0f32; space.n_bins()];
-        let mid = density.len() / 2;
-        density[mid] = 1.0;
-
-        let (p_density, _) = normalize_density(&density, &du, params.roughness_ref_eps);
-        let (r_shape, _r_total) = params
-            .roughness_kernel
-            .potential_r_from_log2_spectrum_density(&p_density, &space);
-
-        assert!(r_shape[mid].abs() < 1e-6, "self roughness {}", r_shape[mid]);
+        assert_eq!(
+            actual.consonance_kernel.score(0.4, 0.6).to_bits(),
+            params.consonance_field_kernel().score(0.4, 0.6).to_bits()
+        );
     }
 }

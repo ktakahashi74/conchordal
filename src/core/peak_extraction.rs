@@ -7,8 +7,6 @@ use crate::core::roughness_kernel::erb_grid;
 
 #[derive(Clone, Debug)]
 pub struct Peak {
-    #[allow(dead_code)]
-    pub u_erb: f32,
     pub mass: f32,
     pub bin_idx: usize,
 }
@@ -25,7 +23,6 @@ pub(crate) struct PeakScratch {
     candidates: Vec<Candidate>,
     selected: Vec<Candidate>,
     mass_sum: Vec<f32>,
-    u_weighted: Vec<f32>,
     keep: Vec<bool>,
     peaks: Vec<Peak>,
 }
@@ -42,7 +39,6 @@ impl PeakScratch {
             candidates: Vec::with_capacity(bins),
             selected: Vec::with_capacity(bins),
             mass_sum: Vec::with_capacity(bins),
-            u_weighted: Vec::with_capacity(bins),
             keep: Vec::with_capacity(bins),
             peaks: Vec::with_capacity(bins),
         }
@@ -156,177 +152,9 @@ pub fn extract_peaks_density(
     assert_eq!(power_density.len(), space.centers_hz.len());
 
     let (erb, du) = erb_grid(space);
-    extract_peaks_density_with_grid(power_density, &erb, &du, cfg)
-}
-
-pub fn extract_peaks_density_with_grid(
-    power_density: &[f32],
-    erb: &[f32],
-    du: &[f32],
-    cfg: &PeakExtractConfig,
-) -> Vec<Peak> {
-    if power_density.is_empty() || erb.is_empty() || du.is_empty() {
-        return vec![];
-    }
-    assert_eq!(power_density.len(), erb.len());
-    assert_eq!(power_density.len(), du.len());
-
-    let max_power = power_density.iter().cloned().fold(0.0f32, f32::max);
-    if max_power <= 0.0 {
-        return vec![];
-    }
-
-    let min_abs_rel = max_power * db::db_to_power_ratio(cfg.min_rel_db_power);
-    let min_abs_abs = cfg.min_abs_power_density.unwrap_or(0.0);
-    let min_abs = min_abs_rel.max(min_abs_abs);
-
-    #[derive(Clone, Copy, Debug)]
-    struct Candidate {
-        idx: usize,
-        u_erb: f32,
-        power: f32,
-    }
-
-    let mut candidates = Vec::new();
-    if power_density.len() >= 3 {
-        for i in 1..(power_density.len() - 1) {
-            let a = power_density[i];
-            if a < min_abs {
-                continue;
-            }
-            if a > power_density[i - 1] && a >= power_density[i + 1] {
-                let prom_db = local_prominence_db_power(power_density, i);
-                if prom_db >= cfg.min_prominence_db_power {
-                    candidates.push(Candidate {
-                        idx: i,
-                        u_erb: erb[i],
-                        power: a,
-                    });
-                }
-            }
-        }
-    }
-
-    if candidates.is_empty() {
-        return vec![];
-    }
-
-    candidates.sort_by(|a, b| {
-        b.power
-            .partial_cmp(&a.power)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    let mut selected: Vec<Candidate> = Vec::new();
-    for cand in candidates {
-        if selected
-            .iter()
-            .any(|p| (p.u_erb - cand.u_erb).abs() < cfg.min_sep_erb)
-        {
-            continue;
-        }
-        selected.push(cand);
-        if let Some(max_peaks) = cfg.max_peaks
-            && selected.len() >= max_peaks
-        {
-            break;
-        }
-    }
-
-    if selected.is_empty() {
-        return vec![];
-    }
-
-    let mut mass_sum = vec![0.0f32; selected.len()];
-    let mut u_weighted = vec![0.0f32; selected.len()];
-
-    for (j, &power) in power_density.iter().enumerate() {
-        if power < min_abs {
-            continue;
-        }
-        let u = erb[j];
-        let mut best = 0usize;
-        let mut best_d = (u - selected[0].u_erb).abs();
-        for (k, sel) in selected.iter().enumerate().skip(1) {
-            let d = (u - sel.u_erb).abs();
-            if d < best_d {
-                best_d = d;
-                best = k;
-            }
-        }
-        let mass = power * du[j];
-        mass_sum[best] += mass;
-        u_weighted[best] += u * mass;
-    }
-
-    let max_mass = mass_sum.iter().cloned().fold(0.0f32, f32::max);
-    let total_mass: f32 = mass_sum.iter().sum();
-    let min_mass_rel = max_mass * db::db_to_power_ratio(cfg.min_rel_mass_db_power);
-    let min_mass_total = cfg.min_mass_fraction.map(|frac| total_mass * frac);
-    let mut keep: Vec<bool> = mass_sum
-        .iter()
-        .map(|&mass| {
-            let mut remove = mass < min_mass_rel;
-            if let Some(min_total) = min_mass_total {
-                remove |= mass < min_total;
-            }
-            !remove
-        })
-        .collect();
-
-    if keep.iter().all(|&k| !k)
-        && max_mass > 0.0
-        && let Some((idx, _)) = mass_sum
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-    {
-        keep[idx] = true;
-    }
-
-    if keep.iter().any(|&k| k) {
-        for i in 0..mass_sum.len() {
-            if keep[i] || mass_sum[i] <= 0.0 {
-                continue;
-            }
-            let u_i = selected[i].u_erb;
-            let mut best = None;
-            let mut best_d = f32::MAX;
-            for (k, &is_keep) in keep.iter().enumerate() {
-                if !is_keep {
-                    continue;
-                }
-                let d = (selected[k].u_erb - u_i).abs();
-                if d < best_d {
-                    best_d = d;
-                    best = Some(k);
-                }
-            }
-            if let Some(k) = best {
-                mass_sum[k] += mass_sum[i];
-                u_weighted[k] += u_weighted[i];
-                mass_sum[i] = 0.0;
-                u_weighted[i] = 0.0;
-            }
-        }
-    }
-
-    let mut peaks = Vec::with_capacity(selected.len());
-    for (k, sel) in selected.iter().enumerate() {
-        let mass = mass_sum[k];
-        if mass <= 0.0 {
-            continue;
-        }
-        let u_erb = u_weighted[k] / mass;
-        let bin_idx = sel.idx;
-        peaks.push(Peak {
-            u_erb,
-            mass,
-            bin_idx,
-        });
-    }
-
-    peaks
+    let mut scratch = PeakScratch::new(power_density.len());
+    extract_peaks_density_with_grid_reuse(power_density, &erb, &du, cfg, &mut scratch);
+    scratch.peaks
 }
 
 pub(crate) fn extract_peaks_density_with_grid_reuse<'a>(
@@ -408,8 +236,6 @@ pub(crate) fn extract_peaks_density_with_grid_reuse<'a>(
 
     scratch.mass_sum.clear();
     scratch.mass_sum.resize(scratch.selected.len(), 0.0);
-    scratch.u_weighted.clear();
-    scratch.u_weighted.resize(scratch.selected.len(), 0.0);
 
     for (j, &power) in power_density.iter().enumerate() {
         if power < min_abs {
@@ -427,7 +253,6 @@ pub(crate) fn extract_peaks_density_with_grid_reuse<'a>(
         }
         let mass = power * du[j];
         scratch.mass_sum[best] += mass;
-        scratch.u_weighted[best] += u * mass;
     }
 
     let max_mass = scratch.mass_sum.iter().cloned().fold(0.0f32, f32::max);
@@ -474,9 +299,7 @@ pub(crate) fn extract_peaks_density_with_grid_reuse<'a>(
             }
             if let Some(k) = best {
                 scratch.mass_sum[k] += scratch.mass_sum[i];
-                scratch.u_weighted[k] += scratch.u_weighted[i];
                 scratch.mass_sum[i] = 0.0;
-                scratch.u_weighted[i] = 0.0;
             }
         }
     }
@@ -486,13 +309,8 @@ pub(crate) fn extract_peaks_density_with_grid_reuse<'a>(
         if mass <= 0.0 {
             continue;
         }
-        let u_erb = scratch.u_weighted[k] / mass;
         let bin_idx = sel.idx;
-        scratch.peaks.push(Peak {
-            u_erb,
-            mass,
-            bin_idx,
-        });
+        scratch.peaks.push(Peak { mass, bin_idx });
     }
 
     &scratch.peaks
@@ -794,11 +612,5 @@ mod tests {
         assert_eq!(peaks_left.len(), 1);
         assert_eq!(peaks_right[0].bin_idx, center);
         assert_eq!(peaks_left[0].bin_idx, center);
-
-        let u_mid = 0.5 * (erb[center] + erb[center + 1]);
-        assert!(
-            peaks_right[0].u_erb > u_mid || peaks_left[0].u_erb < u_mid,
-            "expected centroid skew without bin jitter"
-        );
     }
 }

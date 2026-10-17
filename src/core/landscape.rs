@@ -1,7 +1,7 @@
 //! core/landscape.rs — Data container for the psychoacoustic map (The Map).
 //!
-//! This module now holds only the data structures and lightweight helpers.
-//! Processing lives in the Dorsal (rhythm) and Roughness/Harmonicity streams.
+//! Stores perception scans and derives consonance and habituation views.
+//! Audio analysis lives in the dorsal and spectral streams.
 
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::float::sanitize_nonnegative_finite;
@@ -148,9 +148,6 @@ pub struct Landscape {
     pub(crate) spectral_history:
         Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
     /// perc_state_R (summary statistics).
-    pub roughness_total: f32,
-    pub roughness_scalar_raw: f32,
-    pub roughness_norm: f32,
     pub roughness01_scalar: f32,
     pub loudness_mass: f32,
     pub pitch_objective_mode: PitchObjectiveMode,
@@ -166,6 +163,24 @@ pub struct Landscape {
 pub type LandscapeFrame = Landscape;
 
 impl Landscape {
+    pub(crate) fn set_analysis_metadata(
+        &mut self,
+        roughness: crate::core::roughness_kernel::KernelParams,
+        harmonicity: crate::core::harmonicity_kernel::HarmonicityParams,
+        consonance: ConsonanceKernel,
+        k: f32,
+        ref_peak: f32,
+        eps: f32,
+    ) {
+        self.roughness_suppress_sigma_erb = roughness.suppress_sigma_erb.max(1e-6);
+        self.roughness_kernel_params = roughness;
+        self.harmonicity_params = harmonicity;
+        self.consonance_kernel = consonance;
+        self.roughness_k = k;
+        self.roughness_ref_peak = ref_peak;
+        self.roughness_ref_eps = eps;
+    }
+
     pub fn new(space: Log2Space) -> Self {
         let n = space.n_bins();
         Self {
@@ -190,9 +205,6 @@ impl Landscape {
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             spectral_history: None,
-            roughness_total: 0.0,
-            roughness_scalar_raw: 0.0,
-            roughness_norm: 0.0,
             roughness01_scalar: 0.0,
             loudness_mass: 0.0,
             pitch_objective_mode: PitchObjectiveMode::Consonance,

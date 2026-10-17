@@ -62,7 +62,7 @@ fn observe(
         .chunks_exact(hop)
         .enumerate()
         .map(|(index, chunk)| {
-            let mut frame = stream.process(chunk);
+            let mut frame = stream.process(chunk).clone();
             frame.recompute_consonance(params);
             let end_sample = start + (index + 1) * hop;
             Observation {

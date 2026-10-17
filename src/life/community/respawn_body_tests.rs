@@ -295,7 +295,7 @@ fn rendered_score(
     tone.arm_onset_trigger(1.0);
     let mut nsgt = kernel.clone();
     let mut frontend =
-        crate::core::landscape_spectral::SpectralFrontEnd::new(landscape.space.clone(), params);
+        crate::core::landscape_spectral::SpectralFrontEnd::new(landscape.space.clone());
     let mut rhythms = crate::core::modulation::NeuralRhythms::default();
     let mut pcm = vec![0.0; 512];
     let mut mean = vec![0.0; landscape.space.n_bins()];

@@ -593,37 +593,14 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
     let rt = init_runtime(args, config, stop_flag);
     rt.start_flag.store(true, Ordering::SeqCst);
     let _audio = rt.audio_out;
-    // Discarding the join result would let a panicked worker exit 0, which makes
-    // headless script tests pass on a dead run. Surface it as a failure instead.
-    let mut failures = Vec::new();
-    if let Some(handle) = rt.worker_handle
-        && let Err(err) = join_thread("worker", handle).and_then(|result| result)
-    {
-        failures.push(err);
-    }
-    for (name, handle) in [
-        ("analysis", rt.analysis_handle),
-        ("listener-analysis", rt.listener_analysis_handle),
-    ] {
-        if let Some(handle) = handle
-            && let Err(err) = join_thread(name, handle)
-        {
-            failures.push(err);
-        }
-    }
-    if let Some(audio) = _audio.as_ref() {
-        let errors = audio
-            .counters()
-            .callback_errors_total
-            .load(Ordering::Relaxed);
-        if errors > 0 {
-            failures.push(format!("audio callback failed: {errors} stream errors"));
-        }
-    }
-    if !failures.is_empty() {
-        for err in &failures {
-            eprintln!("{err}");
-        }
+    if let Err(err) = join_runtime(
+        rt.worker_handle,
+        [
+            ("analysis", rt.analysis_handle),
+            ("listener-analysis", rt.listener_analysis_handle),
+        ],
+    ) {
+        eprintln!("{err}");
         std::process::exit(1);
     }
 }
@@ -693,15 +670,27 @@ pub fn run_render(
         },
     )?;
 
+    join_runtime(
+        Some(wiring.worker_handle),
+        [
+            ("wav", Some(wav_handle)),
+            ("analysis", Some(wiring.analysis_handle)),
+            ("listener-analysis", wiring.listener_analysis_handle),
+        ],
+    )
+}
+
+pub(crate) fn join_runtime(
+    worker: Option<thread::JoinHandle<Result<(), String>>>,
+    observers: impl IntoIterator<Item = (&'static str, Option<thread::JoinHandle<()>>)>,
+) -> Result<(), String> {
     let mut failures = Vec::new();
-    if let Err(err) = join_thread("worker", wiring.worker_handle).and_then(|result| result) {
+    if let Some(handle) = worker
+        && let Err(err) = join_thread("worker", handle).and_then(|result| result)
+    {
         failures.push(err);
     }
-    for (name, handle) in [
-        ("wav", Some(wav_handle)),
-        ("analysis", Some(wiring.analysis_handle)),
-        ("listener-analysis", wiring.listener_analysis_handle),
-    ] {
+    for (name, handle) in observers {
         if let Some(handle) = handle
             && let Err(err) = join_thread(name, handle)
         {

@@ -75,7 +75,7 @@ use wiring::*;
 use worker::*;
 
 pub use scenario_load::{compile_scenario_from_script, run_compile_only};
-pub(crate) use wiring::{init_runtime, join_thread};
+pub(crate) use wiring::{init_runtime, join_runtime, join_thread};
 pub use wiring::{run_headless, run_render};
 
 fn report_try<F>(reporter: &mut Option<JsonlReporter>, label: &str, f: F)

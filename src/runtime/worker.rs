@@ -59,6 +59,7 @@ pub(super) struct WorkerState {
     pub(super) finish_logged: bool,
     pub(super) finished: bool,
     pub(super) finalized: bool,
+    pub(super) pending_final_ui_frame: Option<UiFrame>,
     pub(super) failures: Vec<String>,
     pub(super) log_space: Log2Space,
     pub(super) frame_idx: u64,
@@ -158,6 +159,7 @@ impl WorkerState {
             finish_logged: false,
             finished: false,
             finalized: false,
+            pending_final_ui_frame: None,
             failures: Vec::new(),
             log_space,
             frame_idx: 0,
@@ -257,6 +259,12 @@ pub(super) fn worker_loop(
         }
 
         if state.finished && cfg.wait_user_exit {
+            if let Some(frame) = state.pending_final_ui_frame.take()
+                && let Some(tx) = &channels.ui_tx
+                && let Err(crossbeam_channel::TrySendError::Full(frame)) = tx.try_send(frame)
+            {
+                state.pending_final_ui_frame = Some(frame);
+            }
             if let Some(prod) = channels.audio_prod.as_mut() {
                 while prod.vacant_len() >= cfg.hop {
                     AudioOutput::push_samples(prod, &idle_silence, None);
@@ -288,6 +296,14 @@ pub(super) fn worker_loop(
             thread::sleep(Duration::from_millis(1));
         }
     }
+    if let Some(counters) = &cfg.audio_counters {
+        let errors = counters.callback_errors_total.load(Ordering::Relaxed);
+        if errors > 0 {
+            state
+                .failures
+                .push(format!("audio callback failed: {errors} stream errors"));
+        }
+    }
     if state.failures.is_empty() {
         Ok(())
     } else {
@@ -317,6 +333,11 @@ pub(super) fn finish_run(
     if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
         capture.finish();
         let snapshot = capture.snapshot();
+        if snapshot.state == crate::temporal_cognition::observation::ObservationState::Failed {
+            state
+                .failures
+                .push("private body analysis worker failed".into());
+        }
 
         if let Some(current) = state.body_snapshot.as_mut() {
             **current = snapshot;

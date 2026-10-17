@@ -59,12 +59,13 @@ fn fixture(
 }
 
 fn join(wiring: RuntimeWiring) -> Result<(), String> {
-    let result = join_thread("worker", wiring.worker_handle).and_then(|result| result);
-    join_thread("analysis", wiring.analysis_handle).unwrap();
-    if let Some(handle) = wiring.listener_analysis_handle {
-        join_thread("listener", handle).unwrap();
-    }
-    result
+    join_runtime(
+        Some(wiring.worker_handle),
+        [
+            ("analysis", Some(wiring.analysis_handle)),
+            ("listener", wiring.listener_analysis_handle),
+        ],
+    )
 }
 
 #[test]
@@ -191,5 +192,146 @@ fn renderer_tail_does_not_bypass_ui_rate_limit_before_finish() {
         frames.last().unwrap().meta.playback_state,
         PlaybackState::Finished
     );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
+    let mut opts = options();
+    opts.listener_forced = true;
+    let mut injected = false;
+    opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
+        if injected {
+            return;
+        }
+        injected = true;
+        let mut config = AppConfig::default();
+        config.analysis.nfft = 2048;
+        let core = build_analysis_runtime_core(&config, 48_000);
+        let mut capture = crate::temporal_cognition::body::Capture::spawn(
+            core.nsgt,
+            crate::config::TemporalBodyConfig {
+                means: [0.; 6],
+                deviations: [1.; 6],
+                accent_means: [0.; 2],
+                accent_deviations: [1.; 2],
+            },
+            false,
+            None,
+        );
+        capture.inject_worker_panic();
+        state.body_snapshot = Some(Box::new(capture.snapshot()));
+        state.schedule_renderer.body_capture = Some(capture);
+    }));
+    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.03);");
+    let result = join(wiring).unwrap_err();
+    assert!(
+        result.contains("private body analysis worker failed"),
+        "{result}"
+    );
+    let report = std::fs::read_to_string(dir.join("run.jsonl")).unwrap();
+    assert!(report.contains("listener_confidence_summary"));
+    let rows: Vec<serde_json::Value> = report
+        .lines()
+        .map(|row| serde_json::from_str(row).unwrap())
+        .collect();
+    assert!(
+        rows.iter()
+            .any(|row| row["type"] == "body_observation" && row["state"] == "failed")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn audio_callback_error_during_playback_fails_the_worker_result() {
+    let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+    let counter = Arc::clone(&counters);
+    let mut opts = options();
+    opts.listener_forced = true;
+    opts.audio_counters = Some(counters);
+    opts.offline_body_probe = Some(Box::new(move |_, _, _, _| {
+        counter.callback_errors_total.store(1, Ordering::Relaxed);
+    }));
+    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.2);");
+    let result = join(wiring).unwrap_err();
+    assert!(
+        result.contains("audio callback failed: 1 stream errors"),
+        "{result}"
+    );
+    assert!(
+        std::fs::read_to_string(dir.join("run.jsonl"))
+            .unwrap()
+            .contains("rhythm_summary")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn audio_callback_error_after_finalization_fails_the_worker_result() {
+    let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+    let mut opts = options();
+    opts.listener_forced = true;
+    opts.audio_counters = Some(Arc::clone(&counters));
+    opts.wait_user_exit = true;
+    let (wiring, stop, dir) = fixture(opts, "seed(21); wait(0.03);");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !std::fs::read_to_string(dir.join("run.jsonl"))
+        .unwrap()
+        .contains("listener_confidence_summary")
+    {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!wiring.worker_handle.is_finished());
+    counters.callback_errors_total.store(1, Ordering::Relaxed);
+    while !wiring.worker_handle.is_finished() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+    let finished_without_user_exit = wiring.worker_handle.is_finished();
+    stop.store(true, Ordering::SeqCst);
+    let result = join(wiring).unwrap_err();
+    assert!(finished_without_user_exit);
+    assert!(
+        result.contains("audio callback failed: 1 stream errors"),
+        "{result}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
+    use crate::temporal_cognition::observation::ObservationState;
+    let (tx, rx) = bounded(UI_CHANNEL_CAPACITY);
+    for _ in 0..UI_CHANNEL_CAPACITY {
+        tx.try_send(UiFrame::default()).unwrap();
+    }
+    let mut opts = options();
+    opts.ui_tx = Some(tx);
+    opts.wait_user_exit = true;
+    opts.listener_forced = true;
+    let (wiring, stop, dir) = fixture(opts, "temporal_mode(\"observe\"); seed(21); wait(0.03);");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !std::fs::read_to_string(dir.join("run.jsonl"))
+        .unwrap()
+        .contains("listener_confidence_summary")
+    {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!wiring.worker_handle.is_finished());
+    for _ in 0..UI_CHANNEL_CAPACITY {
+        assert_eq!(
+            rx.try_recv().unwrap().meta.playback_state,
+            PlaybackState::NotStarted
+        );
+    }
+    let frame = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(frame.meta.playback_state, PlaybackState::Finished);
+    for observer in frame.temporal.iter() {
+        assert_eq!(observer.state, ObservationState::Finished);
+        assert!(observer.received_frames > 0);
+    }
+    stop.store(true, Ordering::SeqCst);
+    join(wiring).unwrap();
     std::fs::remove_dir_all(dir).unwrap();
 }

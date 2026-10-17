@@ -105,6 +105,8 @@ struct Frame {
 }
 
 pub(crate) struct Capture {
+    #[cfg(test)]
+    panic_requested: Arc<std::sync::atomic::AtomicBool>,
     slots: Vec<Option<Slot>>,
     next_generation: u32,
     hop: usize,
@@ -331,6 +333,10 @@ impl Capture {
         };
         let snapshot = Arc::new(Mutex::new(initial));
         let output = Arc::clone(&snapshot);
+        #[cfg(test)]
+        let panic_requested = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        #[cfg(test)]
+        let worker_panic_requested = Arc::clone(&panic_requested);
         let clock = Arc::new(AtomicU64::new(0));
         let worker_clock = Arc::clone(&clock);
         let (tx, rx) = bounded::<Box<Frame>>(BUFFERS);
@@ -363,6 +369,11 @@ impl Capture {
                 let mut meter =
                     resources::Meter::new(sample_rate, hop as u64, resources::elapsed_ns(startup));
                 while let Ok(frame) = rx.recv() {
+                    #[cfg(test)]
+                    if worker_panic_requested.load(Ordering::SeqCst) {
+                        let _guard = output.lock().unwrap();
+                        panic!("private body worker fixture");
+                    }
                     let began = Instant::now();
                     let mut publish = false;
                     for (index, lane) in lanes.iter_mut().enumerate() {
@@ -444,6 +455,8 @@ impl Capture {
             })
             .expect("spawn private body analysis");
         Self {
+            #[cfg(test)]
+            panic_requested,
             slots: (0..VOICES).map(|_| None).collect(),
             next_generation: 1,
             hop,
@@ -596,6 +609,13 @@ impl Capture {
         snapshot.capture_drops = self.dropped;
         snapshot.outside_voice_hops = self.outside;
         snapshot
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_worker_panic(&mut self) {
+        self.panic_requested.store(true, Ordering::SeqCst);
+        let frame = self.free.try_recv().expect("unused capture buffer");
+        self.tx.as_ref().unwrap().try_send(frame).unwrap();
     }
 
     pub(crate) fn finish(&mut self) {

@@ -206,7 +206,7 @@ pub(super) fn send_runtime_ui_frame(
     let Some(tx) = &channels.ui_tx else {
         return;
     };
-    let _ = tx.try_send(build_runtime_ui_frame(RuntimeUiFrameInput {
+    let frame = build_runtime_ui_frame(RuntimeUiFrameInput {
         body: state.body_snapshot.as_deref(),
         temporal: &state.temporal_frames,
         scenario_name: &cfg.scenario_name,
@@ -225,6 +225,13 @@ pub(super) fn send_runtime_ui_frame(
         now_tick,
         hop: cfg.hop,
         fs: cfg.fs,
-    }));
+    });
+    // A newer terminal snapshot supersedes an undelivered one from the last hop.
+    state.pending_final_ui_frame = None;
+    if let Err(crossbeam_channel::TrySendError::Full(frame)) = tx.try_send(frame)
+        && (state.playback_state == PlaybackState::Finished || cfg.exiting.load(Ordering::SeqCst))
+    {
+        state.pending_final_ui_frame = Some(frame);
+    }
     state.last_ui_update = Instant::now();
 }

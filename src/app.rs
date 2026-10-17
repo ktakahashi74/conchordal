@@ -21,9 +21,8 @@ pub struct App {
     last_frame: UiFrame,
     _audio: Option<AudioOutput>,
     runtime_error: Option<String>,
-    worker_handle: Option<std::thread::JoinHandle<Result<(), String>>>,
-    analysis_handle: Option<std::thread::JoinHandle<()>>,
-    listener_analysis_handle: Option<std::thread::JoinHandle<()>>,
+    shutdown_handle: Option<std::thread::JoinHandle<()>>,
+    runtime_result_rx: Receiver<Result<(), String>>,
     exiting: Arc<AtomicBool>,
     drop_started: Arc<AtomicBool>,
     runtime_failed: Arc<AtomicBool>,
@@ -43,13 +42,31 @@ impl App {
         runtime_failed: Arc<AtomicBool>,
     ) -> Self {
         let drop_started = Arc::new(AtomicBool::new(false));
+        let rt = crate::runtime::init_runtime(args, config, stop_flag.clone());
+        let (runtime_result_tx, runtime_result_rx) = crossbeam_channel::bounded(1);
         let drop_watch = Arc::clone(&drop_started);
+        let failed_watch = Arc::clone(&runtime_failed);
         let repaint_ctx = cc.egui_ctx.clone();
         let stop_flag_watch = stop_flag.clone();
-        std::thread::spawn(move || {
+        let shutdown_handle = std::thread::spawn(move || {
             watch_for_close(
                 &stop_flag_watch,
                 &drop_watch,
+                rt.worker_handle.expect("GUI worker handle"),
+                |worker| {
+                    let result = crate::runtime::join_runtime(
+                        Some(worker),
+                        [
+                            ("analysis", rt.analysis_handle),
+                            ("listener-analysis", rt.listener_analysis_handle),
+                        ],
+                    );
+                    if let Err(err) = &result {
+                        tracing::error!("{err}");
+                        failed_watch.store(true, Ordering::SeqCst);
+                    }
+                    let _ = runtime_result_tx.try_send(result);
+                },
                 || {
                     repaint_ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     repaint_ctx.request_repaint();
@@ -57,8 +74,6 @@ impl App {
                 || std::process::exit(1),
             );
         });
-
-        let rt = crate::runtime::init_runtime(args, config, stop_flag.clone());
 
         cc.egui_ctx
             .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2 {
@@ -78,9 +93,8 @@ impl App {
             runtime_error: rt
                 .audio_init_error
                 .map(|err| format!("Audio init failed: {err}")),
-            worker_handle: rt.worker_handle,
-            analysis_handle: rt.analysis_handle,
-            listener_analysis_handle: rt.listener_analysis_handle,
+            shutdown_handle: Some(shutdown_handle),
+            runtime_result_rx,
             exiting: stop_flag,
             drop_started,
             runtime_failed,
@@ -153,19 +167,8 @@ impl eframe::App for App {
             self.exiting.store(true, Ordering::SeqCst);
         }
 
-        if self
-            .worker_handle
-            .as_ref()
-            .is_some_and(|handle| handle.is_finished())
-        {
-            let handle = self.worker_handle.take().expect("finished worker handle");
-            if let Err(err) =
-                crate::runtime::join_thread("worker", handle).and_then(|result| result)
-            {
-                tracing::error!("{err}");
-                self.runtime_failed.store(true, Ordering::SeqCst);
-                self.runtime_error = Some(err);
-            }
+        if let Ok(Err(err)) = self.runtime_result_rx.try_recv() {
+            self.runtime_error = Some(err);
         }
 
         if self.exiting.load(Ordering::SeqCst) {
@@ -201,24 +204,9 @@ impl Drop for App {
         debug!("App drop. Finalizing..");
         self.exiting.store(true, Ordering::SeqCst);
 
-        let mut failures = Vec::new();
-        if let Some(handle) = self.worker_handle.take()
-            && let Err(err) =
-                crate::runtime::join_thread("worker", handle).and_then(|result| result)
+        if let Some(handle) = self.shutdown_handle.take()
+            && let Err(err) = crate::runtime::join_thread("shutdown", handle)
         {
-            failures.push(err);
-        }
-        for (name, handle) in [
-            ("analysis", self.analysis_handle.take()),
-            ("listener-analysis", self.listener_analysis_handle.take()),
-        ] {
-            if let Some(handle) = handle
-                && let Err(err) = crate::runtime::join_thread(name, handle)
-            {
-                failures.push(err);
-            }
-        }
-        for err in failures {
             tracing::error!("{err}");
             self.runtime_failed.store(true, Ordering::SeqCst);
         }
@@ -228,13 +216,18 @@ impl Drop for App {
 fn watch_for_close(
     stop_flag: &AtomicBool,
     drop_started: &AtomicBool,
+    worker: std::thread::JoinHandle<Result<(), String>>,
+    cleanup: impl FnOnce(std::thread::JoinHandle<Result<(), String>>),
     close: impl FnOnce(),
     force_exit: impl FnOnce(),
 ) {
-    while !stop_flag.load(Ordering::SeqCst) {
+    while !stop_flag.load(Ordering::SeqCst) && !worker.is_finished() {
         std::thread::sleep(Duration::from_millis(50));
     }
+    stop_flag.store(true, Ordering::SeqCst);
     close();
+    // Cleanup must progress even when the GUI event loop never reaches Drop.
+    cleanup(worker);
     std::thread::sleep(Duration::from_millis(200));
     if !drop_started.load(Ordering::SeqCst) {
         force_exit();
@@ -246,61 +239,85 @@ mod tests {
     use super::*;
 
     #[test]
-    fn close_watchdog_only_forces_exit_when_drop_has_not_started() {
+    fn close_watchdog_waits_for_finalization_and_observer_join_before_forcing_exit() {
         for dropping in [false, true] {
-            let stop = AtomicBool::new(true);
-            let drop_started = AtomicBool::new(false);
-            let forced = AtomicBool::new(false);
-            let closed = AtomicBool::new(false);
-            watch_for_close(
-                &stop,
-                &drop_started,
-                || {
-                    closed.store(true, Ordering::SeqCst);
-                    drop_started.store(dropping, Ordering::SeqCst);
-                },
-                || forced.store(true, Ordering::SeqCst),
-            );
-            assert!(closed.load(Ordering::SeqCst));
+            let stop = Arc::new(AtomicBool::new(true));
+            let drop_started = Arc::new(AtomicBool::new(false));
+            let forced = Arc::new(AtomicBool::new(false));
+            let (finish_tx, finish_rx) = crossbeam_channel::bounded(0);
+            let (observer_tx, observer_rx) = crossbeam_channel::bounded(0);
+            let (close_tx, close_rx) = crossbeam_channel::bounded(0);
+            let (joined_tx, joined_rx) = crossbeam_channel::bounded(0);
+            let worker = std::thread::spawn(move || {
+                finish_rx.recv().unwrap();
+                Ok(())
+            });
+            let observer = std::thread::spawn(move || observer_rx.recv().unwrap());
+            let forced_watch = Arc::clone(&forced);
+            let dropped_watch = Arc::clone(&drop_started);
+            let watchdog = std::thread::spawn(move || {
+                watch_for_close(
+                    &stop,
+                    &dropped_watch,
+                    worker,
+                    |worker| {
+                        crate::runtime::join_thread("worker", worker)
+                            .unwrap()
+                            .unwrap();
+                        joined_tx.send(()).unwrap();
+                        crate::runtime::join_thread("analysis", observer).unwrap();
+                    },
+                    || close_tx.send(()).unwrap(),
+                    || forced_watch.store(true, Ordering::SeqCst),
+                );
+            });
+            close_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            // The GUI still has not entered Drop after the old 200ms deadline.
+            std::thread::sleep(Duration::from_millis(250));
+            assert!(!forced.load(Ordering::SeqCst));
+            finish_tx.send(()).unwrap();
+            joined_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            std::thread::sleep(Duration::from_millis(250));
+            assert!(!forced.load(Ordering::SeqCst));
+            drop_started.store(dropping, Ordering::SeqCst);
+            observer_tx.send(()).unwrap();
+            watchdog.join().unwrap();
             assert_eq!(forced.load(Ordering::SeqCst), !dropping);
         }
     }
 
     #[test]
-    fn app_drop_records_worker_errors_and_panics_after_disabling_watchdog() {
-        for panic in [false, true] {
-            let drop_started = Arc::new(AtomicBool::new(false));
-            let dropped = Arc::clone(&drop_started);
-            let failed = Arc::new(AtomicBool::new(false));
-            let stop = Arc::new(AtomicBool::new(false));
-            let stop_worker = Arc::clone(&stop);
-            let handle = std::thread::spawn(move || {
-                while !stop_worker.load(Ordering::SeqCst) {
-                    std::thread::yield_now();
-                }
-                assert!(dropped.load(Ordering::SeqCst));
-                assert!(!panic, "worker panic fixture");
-                Err("report write failed".to_owned())
-            });
-            let (_, ui_frame_rx) = crossbeam_channel::bounded(1);
-            drop(App {
-                ui_frame_rx,
-                last_frame: UiFrame::default(),
-                _audio: None,
-                runtime_error: None,
-                worker_handle: Some(handle),
-                analysis_handle: None,
-                listener_analysis_handle: None,
-                exiting: stop,
-                drop_started,
-                runtime_failed: Arc::clone(&failed),
-                listener_rhythm_history: VecDeque::new(),
-                listener_attention_history: VecDeque::new(),
-                start_flag: Arc::new(AtomicBool::new(false)),
-                level_history: VecDeque::new(),
-                show_raw_nsgt_power: false,
-            });
-            assert!(failed.load(Ordering::SeqCst));
-        }
+    fn app_drop_waits_for_shutdown_and_records_panics() {
+        let failed = Arc::new(AtomicBool::new(false));
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_worker = Arc::clone(&stop);
+        let dropping = Arc::new(AtomicBool::new(false));
+        let dropped = Arc::clone(&dropping);
+        let shutdown = std::thread::spawn(move || {
+            while !stop_worker.load(Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            assert!(dropped.load(Ordering::SeqCst));
+            panic!("shutdown panic fixture");
+        });
+        let (_, ui_frame_rx) = crossbeam_channel::bounded(1);
+        let (_, runtime_result_rx) = crossbeam_channel::bounded(1);
+        drop(App {
+            ui_frame_rx,
+            last_frame: UiFrame::default(),
+            _audio: None,
+            runtime_error: None,
+            shutdown_handle: Some(shutdown),
+            runtime_result_rx,
+            exiting: stop,
+            drop_started: dropping,
+            runtime_failed: Arc::clone(&failed),
+            listener_rhythm_history: VecDeque::new(),
+            listener_attention_history: VecDeque::new(),
+            start_flag: Arc::new(AtomicBool::new(false)),
+            level_history: VecDeque::new(),
+            show_raw_nsgt_power: false,
+        });
+        assert!(failed.load(Ordering::SeqCst));
     }
 }

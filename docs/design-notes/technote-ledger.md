@@ -7,14 +7,115 @@ only the implemented state and a condensed ledger. Headings, section numbers (§
 §9.3.1–§9.3.55) and HTML anchors are preserved verbatim so existing references remain valid.
 New design findings go here, not to the technote. The moved text is retained as history;
 later adoptions and revisions are recorded with their dates.
-Last updated: 2026-10-10. The two-tier rule, acceptance criteria and revised
+Last updated: 2026-10-14. The two-tier rule, acceptance criteria and revised
 adoptions are in [§9.3.57](#two-tier-rule); real-time results and the revised
 dynamic-metabolism acceptance are in [§9.3.58](#realtime-acceptance-scope), and
 timbre/temporal selection results and continuing design are in
-[§9.3.59](#temporal-rule-calibration-outcome). Scope,
-execution order and results of the 20 units follow the
-[current plan](../roadmap/plan-current.md). Earlier sections remain dated records.
+[§9.3.59](#temporal-rule-calibration-outcome). Current scope and the restart point follow the
+[current plan](../roadmap/plan-current.md); the 20-unit results are preserved in
+[plan history §7](../roadmap/plan-history-20261007-20261014.md#7-結果). Earlier sections remain dated records.
 Japanese counterpart: `technote-ledger.ja.md`.
+
+See [evidence locations](../operations/evidence-locations.md) for historical reference limits and the storage policy for new records.
+
+## Section index
+
+- [§9.1 The Ledger](#91-the-ledger)
+- [§9.2 Implemented Adaptation and the Remaining Expectation Gap](#92-implemented-adaptation-and-the-remaining-expectation-gap)
+- [§9.3 Upstream Revisions](#93-upstream-revisions)
+  - [§9.3.1 Temporal Memory: Cognitive Constraints and Observation Contract](#931-temporal-memory-cognitive-constraints-and-observation-contract)
+  - [§9.3.2 Reconstructing the Published Memory Constraint](#932-reconstructing-the-published-memory-constraint)
+  - [§9.3.3 Numerical Reference and the Meaning of Memory Duration](#933-numerical-reference-and-the-meaning-of-memory-duration)
+  - [§9.3.4 Continuous Interval Retrieval: Implemented Hypothesis and Limits](#934-continuous-interval-retrieval-implemented-hypothesis-and-limits)
+  - [§9.3.5 Contract for Perception, Memory and Action under DCC](#935-contract-for-perception-memory-and-action-under-dcc)
+  - [§9.3.6 Preserve Observation Order before Choosing Memory Duration](#936-preserve-observation-order-before-choosing-memory-duration)
+  - [§9.3.7 Parallel Histories for Regularity and Cross-channel Relations](#937-parallel-histories-for-regularity-and-cross-channel-relations)
+  - [§9.3.8 A Candidate Temporal History with Separate Observation Coverage](#938-a-candidate-temporal-history-with-separate-observation-coverage)
+  - [§9.3.9 Associations from Temporal History and Recall Issued before Input](#939-associations-from-temporal-history-and-recall-issued-before-input)
+  - [§9.3.10 Cue Competition and the Limits of Rate Predictions](#9310-cue-competition-and-the-limits-of-rate-predictions)
+  - [§9.3.11 Continuous observations and context revision](#9311-continuous-observations-and-context-revision)
+  - [§9.3.12 Concurrent covariation, past predictive information, and continuity of a stream](#9312-concurrent-covariation-past-predictive-information-and-continuity-of-a-stream)
+  - [§9.3.13 Fine-envelope coherence and peripheral phase response](#9313-fine-envelope-coherence-and-peripheral-phase-response)
+  - [§9.3.14 Peripheral Phase Compensation and Flow Beyond Change Magnitude](#9314-peripheral-phase-compensation-and-flow-beyond-change-magnitude)
+  - [§9.3.15 Bodies, Excitation, Relational History, and Perceptual Tasks](#9315-bodies-excitation-relational-history-and-perceptual-tasks)
+  - [§9.3.16 Audio-Only Modal Candidates and the Boundary of a Validated Forecast](#9316-audio-only-modal-candidates-and-the-boundary-of-a-validated-forecast)
+  - [§9.3.17 Driven Acoustic Forecasts and Power Lost by Averaging Waveforms](#9317-driven-acoustic-forecasts-and-power-lost-by-averaging-waveforms)
+  - [§9.3.18 Continuous-Phase Trajectories and the Separation of Parameters from Vibration State](#9318-continuous-phase-trajectories-and-the-separation-of-parameters-from-vibration-state)
+  - [§9.3.19 Conditional Amplitude and Residual-State Updates from the Latest Audio](#9319-conditional-amplitude-and-residual-state-updates-from-the-latest-audio)
+  - [§9.3.20 Joining an Issued Onset to Subsequent Acoustic Evidence](#9320-joining-an-issued-onset-to-subsequent-acoustic-evidence)
+  - [§9.3.21 Owned-State Branch Forecasts and Updates After Observed Outcomes](#9321-owned-state-branch-forecasts-and-updates-after-observed-outcomes)
+  - [§9.3.22 Separating Proposed Frequency Support from Amplitude Evolution](#9322-separating-proposed-frequency-support-from-amplitude-evolution)
+  - [§9.3.23 Mapping Sound/Wait Forecasts through the Same Observed Auditory State](#9323-mapping-soundwait-forecasts-through-the-same-observed-auditory-state)
+  - [§9.3.24 Updating Residual Variance from the Selected Action's Actual Sound](#9324-updating-residual-variance-from-the-selected-actions-actual-sound)
+  - [§9.3.25 Retaining Conditional Structural Predictions](#9325-retaining-conditional-structural-predictions)
+  - [§9.3.26 Refitting Frequencies and Non-Growing Carrier Gains](#9326-refitting-frequencies-and-non-growing-carrier-gains)
+  - [§9.3.27 Conditional Predictions with Continuous Frequency and Decay Uncertainty](#9327-conditional-predictions-with-continuous-frequency-and-decay-uncertainty)
+  - [§9.3.28 Conditional Driven Vibration State without a Duplicate Resonant Residual](#9328-conditional-driven-vibration-state-without-a-duplicate-resonant-residual)
+  - [§9.3.29 Component-Weighted Perceptual Integration](#9329-component-weighted-perceptual-integration)
+  - [§9.3.30 Prospective Action Branches and the Limits of Chosen-Outcome Updates](#9330-prospective-action-branches-and-the-limits-of-chosen-outcome-updates)
+  - [§9.3.31 Selected-Evidence Proposals and Separate Retention/Reset Controls](#9331-selected-evidence-proposals-and-separate-retentionreset-controls)
+  - [§9.3.32 Updating Continuous Energy Forecasts from Outcomes at the Same Lead](#9332-updating-continuous-energy-forecasts-from-outcomes-at-the-same-lead)
+  - [§9.3.33 Keeping Pending Candidate Information Separate from Delayed Outcomes](#9333-keeping-pending-candidate-information-separate-from-delayed-outcomes)
+  - [§9.3.34 Removing Known Self PCM Before Observing the Surroundings](#9334-removing-known-self-pcm-before-observing-the-surroundings)
+  - [§9.3.35 Distinguishing Predicted Context from Experienced Context](#9335-distinguishing-predicted-context-from-experienced-context)
+  - [§9.3.36 Retaining the Order Before a Decision as Continuous History](#9336-retaining-the-order-before-a-decision-as-continuous-history)
+  - [§9.3.37 Predicting from Prior History and Comparing Issued Candidates with Sound](#9337-predicting-from-prior-history-and-comparing-issued-candidates-with-sound)
+  - [§9.3.38 Scoring Each Actor's Issued Forecast against Its Subsequent Surroundings](#9338-scoring-each-actors-issued-forecast-against-its-subsequent-surroundings)
+  - [§9.3.39 Pending Candidate Geometry Does Not Uniformly Improve Local Mixing](#9339-pending-candidate-geometry-does-not-uniformly-improve-local-mixing)
+  - [§9.3.40 Issuance Context, Actual Request Time and Completed Local Matches](#9340-issuance-context-actual-request-time-and-completed-local-matches)
+  - [§9.3.41 Known Prediction Differences and Unobserved Local Residuals](#9341-known-prediction-differences-and-unobserved-local-residuals)
+  - [§9.3.42 Directly Learning the Candidate Loss Difference](#9342-directly-learning-the-candidate-loss-difference)
+  - [§9.3.43 Spectral Configurations and Order Lost at the Temporal Memory Input](#9343-spectral-configurations-and-order-lost-at-the-temporal-memory-input)
+  - [§9.3.44 Native Frequency History Before Delivery Coalescing](#9344-native-frequency-history-before-delivery-coalescing)
+  - [§9.3.45 Regional Predictions and the Contribution of Partner History](#9345-regional-predictions-and-the-contribution-of-partner-history)
+  - [§9.3.46 Retaining Relational Contexts and Separating Numerical Decay Tails](#9346-retaining-relational-contexts-and-separating-numerical-decay-tails)
+  - [§9.3.47 Numerical decay to zero and the limits of tail likelihood](#9347-numerical-decay-to-zero-and-the-limits-of-tail-likelihood)
+  - [§9.3.48 Scoring forecast distributions without treating numerical precision as auditory fidelity](#9348-scoring-forecast-distributions-without-treating-numerical-precision-as-auditory-fidelity)
+  - [§9.3.49 Observation uncertainty in a nonnegative regression likelihood](#9349-observation-uncertainty-in-a-nonnegative-regression-likelihood)
+  - [§9.3.50 Context inference with observation noise, and the limits of its prior](#9350-context-inference-with-observation-noise-and-the-limits-of-its-prior)
+  - [§9.3.51 Continuation conditional on the current sound, with contextual corrections](#9351-continuation-conditional-on-the-current-sound-with-contextual-corrections)
+  - [§9.3.52 Learning predictive residual variation while retaining the stationary accumulation limit](#9352-learning-predictive-residual-variation-while-retaining-the-stationary-accumulation-limit)
+  - [§9.3.53 Evolving forecast deviation and retained coefficients](#9353-evolving-forecast-deviation-and-retained-coefficients)
+  - [§9.3.54 Continuous acoustic observations, independent requests and missing input](#9354-continuous-acoustic-observations-independent-requests-and-missing-input)
+  - [§9.3.55 Temporal DCC across the hierarchy and its connection to local generation](#9355-temporal-dcc-across-the-hierarchy-and-its-connection-to-local-generation)
+  - [§9.3.56 Layers of the listener model: what is fixed and who sets the rest](#9356-layers-of-the-listener-model-what-is-fixed-and-who-sets-the-rest)
+  - [§9.3.57 Two-tier Rule, Acceptance and Revised Adoptions](#two-tier-rule)
+  - [§9.3.58 Real-time acceptance (R-1) and its scope](#realtime-acceptance-scope)
+  - [§9.3.59 Temporal structure: what rules and signal checks settled, and what they did not (M-3, T-6)](#temporal-rule-calibration-outcome)
+  - [§9.3.60 Habituation enabled by default: author decision and real-time evidence](#habituation-default-on-20261010)
+  - [§9.3.61 Stopping phase separation inside metric, and the participation route](#metric-phase-separation-stopped-20261010)
+  - [§9.3.62 Beat synchronization and two unresolved conditions in main](#metric-beat-sync-regressions-20261010)
+  - [§9.3.63 The motif and phrase generation gap, and two ecological routes](#motif-phrase-generation-gap-20261010)
+  - [§9.3.64 Negative results from two learned-pattern proposal prototypes](#learned-pattern-prototypes-negative-20261010)
+  - [§9.3.65 Melodic lines from habituation and existing vocabulary](#habituation-melodic-materials-20261010)
+  - [§9.3.66 One onset per adopted pitch target: an articulation prototype](#pitch-adoption-articulation-prototype-20261010)
+  - [§9.3.67 Acoustic onset recurrence: native validation and integration](#meter-onset-recurrence-branch-20261011)
+  - [§9.3.68 Basin-centered metric initialization: author adoption and native implementation](#metric-basin-initial-rate-20261011)
+  - [§9.3.69 Sustained sound with participation opportunities](#sustained-participation-native-20261011)
+  - [§9.3.70 Re-adopting two body-metabolism updates per hop](#body-metabolism-update-count-20261011)
+  - [§9.3.71 Composer articulation boundary and deferred participation target](#articulation-boundary-and-deferred-target-20261011)
+  - [§9.3.72 Finite participation notes and a rest after actual sound completion](#finite-notes-and-rest-20261011)
+  - [§9.3.73 A movement boundary within sustained participation](#bounded-sustained-participation-20261011)
+  - [§9.3.74 Private articulation-policy persistence](#articulation-policy-persistence-20261011)
+  - [§9.3.75 Intrinsic bodily rate at creation](#intrinsic-bodily-rate-20261012)
+  - [§9.3.76 Tying opportunities without pending pitch](#tie-opportunities-20261012)
+  - [§9.3.77 Author selection of four polyphonic samples](#polyphonic-samples-author-selection-20261012)
+  - [§9.3.78 Initial placement with `at()` for explicitly moving Voices](#at-initial-explicit-movement-20261012)
+  - [§9.3.79 Sustained sound and synchronization in the same Voice](#sustained-synchronization-20261013)
+  - [§9.3.80 Omitted tie in sustained synchronization extends pending-free beats](#synchronized-tie-default-20261013)
+  - [§9.3.81 2026-10-13: complete the mechanisms next, with L1–L4 as the denominator](#mechanism-completion-scope-20261013)
+  - [§9.3.82 2026-10-13: adopt pitch-movement requirement L5 and the founder preset steady()](#pitch-movement-requirement-and-steady-20261013)
+  - [§9.3.83 2026-10-13: adopt L2's expectation target and record the L2, L3 and L5 designs](#l2-expectation-adoption-and-design-results-20261013)
+  - [§9.3.84 2026-10-13: steady() preserves private opportunities and selects sound or skip](#steady-private-opportunities-20261013)
+  - [§9.3.85 2026-10-13: close L5 with existing controls and restore the L1–L4 denominator](#pitch-movement-closed-with-existing-controls-20261013)
+  - [§9.3.86 2026-10-13: close L3 as tools; its Voice-side final form remains unmet and deferred until after composition](#l3-tools-closed-final-form-deferred-20261013)
+  - [§9.3.87 2026-10-13: L1 contract documentation, the limited L2 prototype and L4 preparation](#l1-contracts-l2-prototype-l4-preparation-20261013)
+  - [§9.3.88 2026-10-13: T-20 and T-21 results; stop the L2 stream and return the design problem](#l2-support-waves-stopped-author-decision-20261013)
+  - [§9.3.89 2026-10-14: R-3 device results and push; the L2 path remains undecided](#r3-current-source-device-results-20261014)
+  - [§9.3.90 2026-10-14: Deriving L2 contracts, a continuous-input calculation and a prototype](#l2-principle-derivation-continuous-prototype-20261014)
+  - [§9.3.91 2026-10-14: Opt-in L2 adoption and integration, CI repairs and R-4 device results](#l2-opt-in-integration-ci-r4-results-20261014)
+  - [§9.3.92 2026-10-14: Author adoption of rounded sample constants and Generations endurance](#sample-rounded-constants-generations-endurance-20261014)
+- [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
 
@@ -6015,7 +6116,7 @@ change a quantity.
 
 Sources are the [2026-09-24 milestone amendment](../roadmap/temporal-dcc/milestones.md#two-tier-terrain-scope),
 the [I13 design boundary](../roadmap/temporal-dcc/i13-author-controls.md), and
-[§1 of the current plan](../roadmap/plan-current.md#1-原則).
+[§1 of the current plan](../roadmap/plan-history-20261007-20261014.md#1-原則).
 
 #### Three acceptance criteria and the conditions for evaluation
 
@@ -8259,7 +8360,7 @@ contracts. The denominator consists of four requirements: L1 participation's
 temporal relations; L2 T2 expectations affecting phonation; L3 a Voice choosing
 articulation across multiple sounds; and L4 integration and real-device operation
 of the adopted configuration. Their exits and dependencies are defined in the
-[new current-plan section](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+[new current-plan section](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Workers, evidence files, reviews and test counts do not increase that denominator.
 Compositions and beta follow this stage.
 
@@ -8418,7 +8519,7 @@ At 17:07 the author adopted both recommendations:
   in force. V-14 implementation is in progress at this record's date; steady()
   is not recorded as implemented.
 
-The [current plan §8](../roadmap/plan-current.md#mechanism-completion-scope-20261013)
+The [current plan §8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013)
 defines the requirements and dependencies. No further design, number or default
 change is adopted by this entry. It does not change production source or
 technote's implementation verdicts.
@@ -8548,7 +8649,7 @@ and production decisions remain unconfirmed. Zero new continuous quantities does
 not mean that discrete rules have been adopted. This entry changes neither src
 nor technote's implementation verdicts.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are machine-local .orchestration/units/D-15/brief.md, T-18/report.md §§3–4
 and author decisions, A-16/report.md §§2–6, A-15/report.md's action inventory and
 candidates A/B, and the corresponding author decision and prototype instructions
@@ -8745,7 +8846,7 @@ was rendered. Effects on other bodies or scenes, listening with different timbre
 and device real-time operation remain unconfirmed. This entry establishes neither
 completion of all L1–L4 requirements nor new technote implementation verdicts.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are machine-local .orchestration/units/D-16/brief.md, A-17/report.md §§3–4,
 retained inputs and reports under L5-boundary-check-20261013/, orchestration's
 saved counts and author responses in .agent-shell/transcripts/2026-10-12-12-44-51.md,
@@ -8858,7 +8959,7 @@ Connect/Strike or R-c, candidate B's design and prototype, Voice phrase-dependen
 selection, and device operation remain unconfirmed or incomplete. This document
 entry changes neither production nor technote implementation verdicts.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are machine-local .orchestration/units/D-17/brief.md, A-18/report.md §§1
 and 4–7 and its listening list, A-7/report.md, the author's 19:33 and 19:34 responses
 in .agent-shell/transcripts/2026-10-12-12-44-51.md, and the corresponding
@@ -8987,7 +9088,7 @@ inclusion and default enablement, final-usage device operation, and L1/L2/L4
 acceptance remain incomplete. No new audition, listening conclusion or technote
 implementation verdict is added.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are machine-local .orchestration/units/D-20/brief.md, D-18/report.md,
 D-19/report.md, T-19/report.md stage 2 §§3–7, R-3/README.md, the corresponding
 orchestration progress record and saved CI record.
@@ -9110,7 +9211,7 @@ parameter domain, listening, production inclusion and device operation remain
 unconfirmed or undecided. No implementation was added and technote verdicts
 remain unchanged.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are machine-local .orchestration/units/D-21/brief.md, T-20/report.md's
 continued results, T-21/report.md §§5–7, the 21:31 and 23:01 entries and saved-replay
 counts in .orchestration/records/decisions-20261007-orchestrator.md, AGENTS.md's
@@ -9198,7 +9299,7 @@ criteria remain unmet; the Voice-side final form of L3 remains unmet and
 deferred. Public technote §9.1 verdicts are unchanged. Their update belongs
 to a separate unit after the L2 path is selected and L1/L4 are closed.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are the last two sections of machine-local
 .orchestration/units/R-3/README.md, R-3/realtime/orchestrator-run-quiet.log,
 device-{A,B,A-prime,B-prime}-forms-v1-analysis-r2/performances.csv in that
@@ -9350,7 +9451,7 @@ used source without production L2; an L2 incorporation path requires device
 measurements on that source. The principle document and public technote
 remain unchanged.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are machine-local .orchestration/units/T-22/report.md §§1, 3–7,
 T-23/report.md §§1–9, T-24/brief.md, and the 2026-10-14 09:34, 10:05 and
 10:41 entries in .orchestration/records/decisions-20261007-orchestrator.md.
@@ -9513,7 +9614,7 @@ Voice-side L3 final form and L5's closure using existing controls remain.
 Only implemented descriptions in the public technote table are aligned;
 its status labels are unchanged.
 
-The plan of record is [§8](../roadmap/plan-current.md#mechanism-completion-scope-20261013).
+The plan of record is [§8](../roadmap/plan-history-20261007-20261014.md#mechanism-completion-scope-20261013).
 Sources are machine-local .orchestration/units/T-24/report.md,
 T-25/report.md, T-26/report.md, T-27/report.md, V-15/report.md,
 V-16/report.md, V-17/report.md, the final section of R-4/README.md,

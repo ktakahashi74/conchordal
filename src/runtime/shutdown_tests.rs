@@ -122,6 +122,7 @@ fn final_report_is_written_once_while_waiting_for_user_exit() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn multiple_worker_failures_return_without_an_error_receiver() {
     let mut opts = options();

@@ -5,7 +5,9 @@
 # silently: ask the user.
 # usage: timing_lock.sh acquire <owner> <minutes> | release <owner> | check
 set -euo pipefail
-LOCK=/home/shafi/lwrk/conchordal/.orchestration/timing-exclusive.lock
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+common_dir=$(git -C "$script_dir" rev-parse --path-format=absolute --git-common-dir)
+LOCK=$(dirname -- "$common_dir")/.orchestration/timing-exclusive.lock
 
 case "${1:-}" in
   acquire)

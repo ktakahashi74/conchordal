@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -84,14 +85,16 @@ fn config_path() -> PathBuf {
 }
 
 fn unique_target_path(name: &str, ext: &str) -> PathBuf {
+    static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
     let now_ns = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time after epoch")
         .as_nanos();
     PathBuf::from(format!(
-        "target/{name}_{}_{}.{}",
+        "target/{name}_{}_{}_{}.{}",
         std::process::id(),
         now_ns,
+        NEXT_PATH.fetch_add(1, Ordering::Relaxed),
         ext
     ))
 }

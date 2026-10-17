@@ -7,8 +7,6 @@
 .\#*
 *.bak
 a.wav
-repomix-output.xml
-repomix*.xml
 *.tgz
 *.tar
 *.diff
@@ -16,15 +14,6 @@ log?
 .aider*
 nohup.out
 config.toml
-.chat_url
-.driver_prompt.md
-context.xml
-context-*.xml
-diff.patch
-diff-*.patch
-sync_report.md
-sync_report-*.md
-chat_request.md
 test_report.txt
 test_status.txt
 test_report_release.txt
@@ -42,3 +31,7 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 /.agent-shell/
+/.claude/
+/.codex
+/web/static/docs/rhai/
+/web/static/ja/docs/rhai/

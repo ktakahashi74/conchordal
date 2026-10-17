@@ -537,7 +537,7 @@ def main(argv=None):
             if not source.is_file():
                 source = root / "samples" / (value if value.endswith(".rhai") else value + ".rhai")
             source = source.resolve(strict=True)
-            if source.suffix != ".rhai" or any(p.startswith(".") for p in source.parts):
+            if source.suffix != ".rhai" or source.name.startswith("."):
                 raise ValueError(f"scenario must be an explicit non-hidden .rhai file: {source}")
             relative = source.relative_to(root) if source.is_relative_to(root) else Path(
                 "samples", "external", f"{index:02d}_{source.name}")

@@ -6,7 +6,9 @@
 (require 'agent-shell)
 (require 'agent-shell-openai)
 
-(defconst conchordal-worker-root "/home/shafi/lwrk/conchordal/"
+(defconst conchordal-worker-root
+  (file-name-directory
+   (directory-file-name (file-name-directory (or load-file-name buffer-file-name))))
   "Checkout the workers start in.")
 
 (defun conchordal-worker-start (name)

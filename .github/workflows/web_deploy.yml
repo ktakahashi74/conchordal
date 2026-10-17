@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'web/**'
+      - 'docs/rhai_book*/**'
+      - '.github/workflows/web_deploy.yml'
   workflow_dispatch:
 
 permissions:
@@ -37,6 +39,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
         working-directory: web
+
+      - name: Install mdbook
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook@0.5.2
+
+      - name: Build books
+        run: |
+          mdbook build docs/rhai_book
+          mdbook build docs/rhai_book_ja
 
       - name: Build
         run: npm run build

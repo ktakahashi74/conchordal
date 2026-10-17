@@ -3,3 +3,7 @@
 # files to CRLF, which breaks byte-exact drift checks for generated artifacts
 # (e.g. rhai-defs/conchordal.d.rhai, docs/rhai_book/src/reference/api.md).
 * text=auto eol=lf
+
+docs/roadmap/temporal-dcc/**/*.json linguist-generated=true
+web/static/docs/rhai/** linguist-generated=true
+web/static/ja/docs/rhai/** linguist-generated=true

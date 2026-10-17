@@ -29,7 +29,7 @@ let anchor = harmonic()
     .modes(harmonic_modes().count(6))
     .brightness(0.20)
     .sustain_drive(0.001)
-    .pitch_smooth(0.12)
+
     .adsr(
         anchor_attack_sec,
         anchor_decay_sec,
@@ -44,7 +44,7 @@ let assay_voice = harmonic()
     .modes(harmonic_modes().count(6))
     .brightness(0.20)
     .sustain_drive(0.001)
-    .pitch_smooth(0.12)
+
     .endurance(voice_endurance_sec)
     .attack_cost_fraction(0.0)
     .attack_recharge_fraction(0.0)
@@ -56,7 +56,7 @@ let assay_voice = harmonic()
         voice_release_sec,
     );
 
-let random_turnover = variant(assay_voice)
+let random_turnover = assay_voice
     .respawn_background_death_rate(0.03 * audition_speedup)
     .respawn_random()
     .respawn_capacity(16);

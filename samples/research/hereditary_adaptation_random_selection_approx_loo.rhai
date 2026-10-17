@@ -29,7 +29,7 @@ let anchor = harmonic()
     .modes(harmonic_modes().count(6))
     .brightness(0.20)
     .sustain_drive(0.001)
-    .pitch_smooth(0.12)
+
     .adsr(
         anchor_attack_sec,
         anchor_decay_sec,
@@ -44,7 +44,7 @@ let assay_voice = harmonic()
     .modes(harmonic_modes().count(6))
     .brightness(0.20)
     .sustain_drive(0.001)
-    .pitch_smooth(0.12)
+
     .endurance(voice_endurance_sec)
     .attack_cost_fraction(0.0)
     .attack_recharge_fraction(0.0)
@@ -56,11 +56,11 @@ let assay_voice = harmonic()
         voice_release_sec,
     );
 
-let random_selection = variant(assay_voice)
+let random_selection = assay_voice
     .recovery(voice_endurance_sec)
     .consonance_viability(0.30, 0.80)
     .dissonance_penalty(1.0)
-    .selection_approx_loo(true)
+    .viability_scope("environment")
     .respawn_random()
     .respawn_capacity(16);
 

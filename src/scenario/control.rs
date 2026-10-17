@@ -115,15 +115,6 @@ impl VoiceControl {
             0.0
         };
     }
-
-    #[inline]
-    pub fn set_pitch_smooth_tau_clamped(&mut self, value: f32) {
-        self.body.pitch_smooth_tau = if value.is_finite() {
-            value.max(0.0)
-        } else {
-            0.0
-        };
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -178,7 +169,6 @@ pub struct BodyControl {
     pub timbre: TimbreControl,
     pub modes: Option<ModePattern>,
     pub continuous_drive: f32,
-    pub pitch_smooth_tau: f32,
     pub envelope: EnvelopeConfig,
     pub routing: Routing,
 }
@@ -192,7 +182,6 @@ impl Default for BodyControl {
             timbre: TimbreControl::default(),
             modes: None,
             continuous_drive: 0.0,
-            pitch_smooth_tau: 0.0,
             envelope: EnvelopeConfig::for_body_method(method),
             routing: Routing::default(),
         }
@@ -382,7 +371,6 @@ pub struct ControlUpdate {
     pub timbre_spread: Option<f32>,
     pub timbre_unison: Option<i64>,
     pub continuous_drive: Option<f32>,
-    pub pitch_smooth_tau: Option<f32>,
     pub move_cost_coeff: Option<f32>,
     pub move_cost_exp: Option<i64>,
     pub proposal_interval_sec: Option<f32>,
@@ -688,9 +676,6 @@ impl VoiceControl {
         if let Some(drive) = update.continuous_drive {
             self.set_continuous_drive_clamped(drive);
         }
-        if let Some(tau) = update.pitch_smooth_tau {
-            self.set_pitch_smooth_tau_clamped(tau);
-        }
         self.pitch.apply_update(update);
     }
 }
@@ -719,7 +704,6 @@ mod tests {
             timbre_spread: Some(2.0),
             timbre_unison: Some(99),
             continuous_drive: None,
-            pitch_smooth_tau: None,
             move_cost_coeff: Some(-0.2),
             move_cost_exp: Some(7),
             proposal_interval_sec: Some(-1.0),

@@ -26,7 +26,7 @@ let colony_body = harmonic()
     .brightness(0.42)
     .avoid_neighbors(0.70);
 
-let colony_life = variant(colony_body)
+let colony_life = colony_body
     .endurance(9.0)
     .recovery(1.4)
     .attack_cost_fraction(0.042)
@@ -35,11 +35,11 @@ let colony_life = variant(colony_body)
     .dissonance_penalty(0.80);
 
 // The colony regenerates itself: starved voices respawn onto consonant peaks.
-let colony_voice = variant(colony_life)
+let colony_voice = colony_life
     .respawn_consonance()
     .respawn_capacity(12)
     .respawn_settle(settle_strategy)
-    .respawn_min_c_level(0.22)
+    .respawn_min_consonance(0.22)
     .respawn_background_death_rate(0.015)
     .adsr(0.45, 1.40, 0.86, 1.80);
 
@@ -51,7 +51,7 @@ section("generations", || {
     // A population settles onto the landscape.
     let colony_a = place(colony_voice, open_density.count(5));
     wait(1.3);
-    let colony_b = place(variant(colony_voice).amp(0.046), open_density.count(4));
+    let colony_b = place(colony_voice.amp(0.046), open_density.count(4));
     wait(6.0);
 
     // The colony grows restless: the search heats up, voices stray off

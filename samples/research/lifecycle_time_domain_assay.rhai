@@ -16,7 +16,7 @@ let baseline = sine()
 
 section("Lifecycle Time-Domain Assay", || {
     place(baseline, at(220.0));
-    place(variant(baseline).endurance(4.0), at(330.0));
-    place(variant(baseline).endurance(8.0), at(440.0));
+    place(baseline.endurance(4.0), at(330.0));
+    place(baseline.endurance(8.0), at(440.0));
     wait(9.0);
 });

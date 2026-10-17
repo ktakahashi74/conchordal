@@ -2,7 +2,7 @@
 
 [English version](/docs/rhai/)
 
-Conchordalは、生成的な作曲のための生体音響楽器です。Rhaiは、この楽器にシナリオを
+Conchordalは、生成的な作曲のための心理音響楽器です。Rhaiは、この楽器にシナリオを
 与えるための言語であり、音符を順番に並べるためのものではありません。音から
 Consonance Fieldをつくり、複数のVoiceがその中を移動し、生き残り、世代を重ねながら
 Populationを再編成します。

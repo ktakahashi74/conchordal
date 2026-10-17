@@ -23,7 +23,7 @@ population.
 - **PopulationSpecs** describe founder voices and population policy. Start one
   with `sine()`, `harmonic()`,
   `modal()`, `saw()`, `square()`, and `noise()`.
-- **Variants** clone a specification with `variant(population_spec)`.
+- **Variants** clone a specification with `population_spec`.
 - **Placements** decide where populations enter: field targets
   `consonance()`, `dissonance()`, `edge()`, `gap()` (cloud by default,
   `.peak()` for the extremum), plus `random()`, `at()`, and `line()`.
@@ -142,3 +142,17 @@ section("emergence", || {
 - [Timeline and Structure](../concepts/timeline.md) — placement boundaries,
   scopes, reusable gestures, and parallel branches.
 - [Curated Samples](../reference/samples.md) — the guided listening path.
+
+## Checking a script before playing
+
+```bash
+cargo run --release -- samples/01_a_single_voice.rhai --compile-only
+```
+
+`--compile-only` evaluates the Rhai script and validates its scenario without
+starting audio or the GUI. Loops, closures and script print statements run.
+The final `Warnings: N` line counts diagnostics. Each warning includes its
+source position and explains a setting that was ignored; revise the combination
+or remove an ineffective setting. An invalid enum name stops evaluation with
+an error. Enum names are case-sensitive lowercase canonical names; aliases and
+surrounding whitespace are rejected.

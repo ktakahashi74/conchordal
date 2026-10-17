@@ -454,15 +454,15 @@ class CampaignTests(unittest.TestCase):
             script = rt.scenario_text(4, "modal", 21, 5, 10, workload=mode)
             self.assertIn(f".{mode}().cycles(1)", script)
             self.assertNotIn(".pulse(", script)
-            self.assertNotIn("set_scaffold", script)
+            self.assertNotIn("scaffold_", script)
             with self.assertRaises(SystemExit):
                 rt.main(self.args(self.directory / ("invalid-" + mode)) + ["--workload", mode, "--timing", "synchronized"])
 
     def test_synchronization_is_explicit_and_requires_onset_evidence(self):
         adaptive = rt.scenario_text(4, "modal", 1, 5, 10, workload="dense")
         synchronized = rt.scenario_text(4, "modal", 1, 5, 10, workload="dense", timing="synchronized")
-        self.assertNotIn("set_scaffold_shared", adaptive)
-        self.assertIn("set_scaffold_shared(16.0)", synchronized)
+        self.assertNotIn("scaffold_shared", adaptive)
+        self.assertIn("scaffold_shared(16.0)", synchronized)
         self.assertIn(".pulse(32.0)", synchronized)
         self.assertIn(".pulse(8.0)", adaptive)
         with self.assertRaises(SystemExit):

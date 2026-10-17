@@ -239,7 +239,7 @@ def scenario_text(voices, body, seed, warmup_sec, duration_sec, *, workload="sus
         phonation = f".{workload}().cycles(1).attack_cost_fraction(0.0)"
     envelope = "0.02, 0.10, 0.85, 0.25" if workload == "sustain" else "0.003, 0.025, 0.30, 0.05"
     amplitude_count = overload_voices if workload == "recovery" else voices
-    scaffold = "set_scaffold_shared(16.0); // Explicit synchronization performance assay.\n" if timing == "synchronized" else ""
+    scaffold = "scaffold_shared(16.0); // Explicit synchronization performance assay.\n" if timing == "synchronized" else ""
     stress = f'''
     let extra = place(voice, line(110.0, 880.0).count({overload_voices - voices}));
     wait({stress_sec:.9f});

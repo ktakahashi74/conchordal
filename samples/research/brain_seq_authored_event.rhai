@@ -40,8 +40,8 @@ section("Seq Authored Events", || {
 
     place(authored, at(660.0));
     wait(2.0);
-    place(variant(authored).brightness(0.90), at(495.0));
+    place(authored.brightness(0.90), at(495.0));
     wait(2.0);
-    place(variant(authored).amp(0.14), at(742.5));
+    place(authored.amp(0.14), at(742.5));
     wait(2.0);
 });

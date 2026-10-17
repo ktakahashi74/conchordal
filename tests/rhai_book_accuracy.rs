@@ -223,3 +223,119 @@ fn performance_chapter_teaches_execution_and_replay_before_reports() {
     assert!(!silent.play);
     assert_eq!(silent.report.as_deref(), Some("run.jsonl"));
 }
+
+#[test]
+fn prose_and_registry_details_only_name_registered_rhai_calls() {
+    use conchordal::scripting::defs_gen;
+    use std::collections::BTreeSet;
+
+    let reference = defs_gen::render_reference_md();
+    let known: BTreeSet<_> = reference
+        .lines()
+        .filter_map(|line| {
+            line.strip_prefix("#### `")
+                .and_then(|line| line.strip_suffix('`'))
+        })
+        .collect();
+    let mut sources = vec![("registry details".to_string(), reference.clone())];
+    for root in ["docs/rhai_book/src", "docs/rhai_book_ja/src"] {
+        for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) == Some("md")
+                && !path.ends_with("reference/api.md")
+            {
+                sources.push((
+                    path.display().to_string(),
+                    fs::read_to_string(path).unwrap(),
+                ));
+            }
+        }
+    }
+    let mut violations = Vec::new();
+    for (path, source) in sources {
+        let mut fence: Option<&str> = None;
+        for (index, line) in source.lines().enumerate() {
+            if let Some(info) = line.trim_start().strip_prefix("```") {
+                fence = if fence.is_some() {
+                    None
+                } else {
+                    Some(info.trim())
+                };
+                continue;
+            }
+            if fence.is_some_and(|info| info != "rhai" && info != "rhai,ignore") {
+                continue;
+            }
+            let bytes = line.as_bytes();
+            for (offset, character) in line.char_indices() {
+                if character != '(' {
+                    continue;
+                }
+                let mut start = offset;
+                while start > 0
+                    && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_')
+                {
+                    start -= 1;
+                }
+                let name = &line[start..offset];
+                if name.is_empty()
+                    || known.contains(name)
+                    || name == "cos"
+                    || name == "Voice"
+                    || (start > 0 && bytes[start - 1] == b'*')
+                {
+                    continue;
+                }
+                violations.push(format!("{path}:{}: unregistered {name}()", index + 1));
+            }
+        }
+    }
+    assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+#[test]
+fn compile_only_prints_positioned_warnings_and_one_error_location() {
+    use std::process::Command;
+    let dir = std::env::temp_dir().join(format!("q5_rhai_cli_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("config.toml"), "").unwrap();
+    let script = dir.join("warnings.rhai");
+    fs::write(
+        &script,
+        "place(harmonic().tie(0.5), at(220));\nwait(0.01);\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
+        .args([script.to_str().unwrap(), "--compile-only", "--config"])
+        .arg(dir.join("config.toml"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let diagnostics = String::from_utf8_lossy(&output.stderr);
+    assert!(diagnostics.contains("Warnings: 1"), "{diagnostics}");
+    assert!(
+        diagnostics.contains("tie() ignored")
+            && diagnostics.contains(&format!("{}:1:", script.display())),
+        "{diagnostics}"
+    );
+    fs::write(&script, "\nharmonic().pitch_core(\"hill\");\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
+        .args([script.to_str().unwrap(), "--compile-only", "--config"])
+        .arg(dir.join("config.toml"))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let diagnostics = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        diagnostics.matches(script.to_str().unwrap()).count(),
+        1,
+        "{diagnostics}"
+    );
+    assert_eq!(diagnostics.matches("line 2").count(), 1, "{diagnostics}");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("Debug script error"));
+    fs::remove_dir_all(&dir).unwrap();
+}

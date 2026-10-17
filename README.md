@@ -1,6 +1,6 @@
 # Conchordal
 
-**A bio-acoustic instrument for generative composition.**
+**A psychoacoustic instrument for generative composition**
 
 > **v0.4.0 Alpha** — August 2026, accompanying an
 > [oral presentation at ALIFE 2026](https://2026.alife.org/wp-content/uploads/sites/2/2026/08/ALIFE2026-Program-Semifinal-2026-08-10-Rev5-1.pdf#page=8).
@@ -48,10 +48,11 @@ The Landscape represents auditory structure in frequency and time:
 
 * **Emergent Meter (Time):** Instead of a fixed filterbank or imposed clock,
   a forced limit-cycle oscillator listens to the Community's own onsets, learns
-  a shared beat, and reports confidence through phase locking. Each Voice has a
-  coupling clock on a single continuum:
+  a shared beat, and reports confidence through phase locking. Each Voice chooses its
+  relationship to heard timing:
     * **Metric:** strong attraction to the shared beat.
-    * **Entrained:** synchronization emerges as confidence grows.
+    * **Entrained:** participation adapts to heard recurrence.
+    * **Steady:** private regular opportunities; acoustic context chooses sound or skip.
     * **Flow:** weakly coupled, clustered renewal timing without a beat grid.
 
   The Director shapes where a pulse can form through soft priors such as
@@ -201,23 +202,14 @@ Common operations:
 * Config file: `--config config.toml`
 * Headless playback: `--nogui`
 * Silent simulation: `--play=false`
-* Compile without GUI, audio, or execution: `--compile-only`
+* Evaluate and validate the script without GUI or audio: `--compile-only`
 * Write a JSONL runtime report: `--report run.jsonl`
 * Replay a logged run: `--seed <SEED>`
 * Start on a performance cue: `--wait-user-start`
 * Keep the window open after playback: `--wait-user-exit`
 * Exit when the scenario ends: `--wait-user-exit=false`
 
-The production meter can use raw habitat T2 recurrence with the top-level TOML
-key `temporal_meter_t2 = true` (default `false`). Place it before TOML sections.
-The generated, machine-local `config.toml` template includes
-`# temporal_meter_t2 = false`. Setting the key to true selects the continuous
-recurrence input of the existing meter; the presentation-side ListenerTwin meter
-keeps its event input. It needs no group-event or Periodic arrival configuration.
-`[temporal_t2]` remains the separate, explicitly configured group accent path.
-Continuous confirmation is a bounded engineering score, not a probability that
-beat phase is correct. Offline rendering consumes each raw source hop at a fixed
-cut; playback consumes available packets without waiting for T2.
+Meter input configuration is documented in the [rhythm guide](docs/rhai_book/src/concepts/rhythm.md#continuous-audio-recurrence).
 
 For example, run headless while recording a report:
 

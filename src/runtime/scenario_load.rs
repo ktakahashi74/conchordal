@@ -35,17 +35,7 @@ pub fn compile_scenario_from_script(
     crate::life::modal::register_modal();
     validate_scenario_script_extension(script_path)?;
     let path_str = script_path.to_string_lossy();
-    let scenario = ScriptHost::load_script(&path_str, seed).map_err(|e| {
-        let pos = e
-            .position
-            .map(|pos| format!(" (line {})", pos.line().unwrap_or(0)))
-            .unwrap_or_default();
-        format!(
-            "Failed to run scenario script {}: {}{pos}",
-            script_path.display(),
-            e.message
-        )
-    })?;
+    let scenario = ScriptHost::load_script(&path_str, seed).map_err(|error| error.to_string())?;
     validate_scenario(&scenario)?;
     Ok(scenario)
 }
@@ -107,7 +97,12 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
 
 pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
     let path = Path::new(&args.scenario_path);
-    let scenario = compile_scenario_from_script(path, args.seed)?;
+    crate::life::modal::register_modal();
+    validate_scenario_script_extension(path)?;
+    let (scenario, warnings) =
+        ScriptHost::load_script_with_warnings(&path.to_string_lossy(), args.seed)
+            .map_err(|error| error.to_string())?;
+    validate_scenario(&scenario)?;
     let mut markers = scenario.scene_markers.clone();
     markers.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
     for marker in &markers {
@@ -134,6 +129,15 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
         .map(|event| event.actions.len())
         .sum();
     let marker_count = scenario.scene_markers.len();
+    for warning in &warnings {
+        eprintln!(
+            "{}:{:?}: warning: {}",
+            path.display(),
+            warning.position,
+            warning.message
+        );
+    }
+    eprintln!("Warnings: {}", warnings.len());
     eprintln!(
         "OK compile-only: {} (events={}, actions={}, markers={})",
         path.display(),

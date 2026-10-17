@@ -38,7 +38,7 @@ let mover = harmonic()
 
 section("Habituation Field Assay", || {
     place(terrain, at(110.0));
-    place(variant(terrain).brightness(0.24), at(165.0));
+    place(terrain.brightness(0.24), at(165.0));
     place(mover, consonance(120.0, 880.0).count(5));
     wait(60.0);
 });

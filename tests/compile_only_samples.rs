@@ -2,7 +2,7 @@ use std::path::Path;
 
 use walkdir::WalkDir;
 
-use conchordal::app::compile_scenario_from_script;
+use conchordal::scripting::ScriptHost;
 
 #[test]
 fn compile_only_samples_tests() {
@@ -19,8 +19,9 @@ fn compile_only_samples_tests() {
             continue;
         }
         count += 1;
-        compile_scenario_from_script(path, None)
+        let (_, warnings) = ScriptHost::load_script_with_warnings(&path.to_string_lossy(), None)
             .unwrap_or_else(|e| panic!("compile-only failed for {}: {e}", path.display()));
+        assert!(warnings.is_empty(), "{}: {warnings:?}", path.display());
     }
     assert!(count > 0, "no .rhai scripts found in samples");
 }

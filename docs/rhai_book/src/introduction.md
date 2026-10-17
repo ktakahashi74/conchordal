@@ -2,7 +2,7 @@
 
 [日本語版](/ja/docs/rhai/)
 
-Conchordal is a bio-acoustic instrument for generative composition. Rhai is
+Conchordal is a psychoacoustic instrument for generative composition. Rhai is
 its scenario language: it directs the instrument without reducing it to note
 scheduling. The central idea is shaping a perceptual consonance field, then
 letting populations of voices move, survive, and reorganize inside it.
@@ -38,7 +38,7 @@ music-production vocabulary.
 - **Reference** contains the generated
   [API Reference](reference/api.md) and the
   [Curated Samples](reference/samples.md) listening path. The reference is
-  split into four tiers: the **Core API** (enough for every curated sample),
+  split into four tiers: the **Core API** (enough for top-level samples together with Experimental),
   **Experimental** (candidate Core verbs under audition), **Mechanism
   Tuning**, and **Research Controls**. Start with Core and ignore the rest
   until a piece demands it. Registered signatures and tier membership are

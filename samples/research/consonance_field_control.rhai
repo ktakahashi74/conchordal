@@ -76,7 +76,7 @@ section("Consonance Field Control", || {
     wait(0.4);
     field.freq(field_c_hz);
     root.freq(field_c_hz);
-    let marker_c = place(variant(marker).brightness(0.42), consonance(field_c_hz).peak().range(0.8, 1.9).spacing(0.95).count(2));
+    let marker_c = place(marker.brightness(0.42), consonance(field_c_hz).peak().range(0.8, 1.9).spacing(0.95).count(2));
     wait(6.5);
 
     release(guide);

@@ -63,12 +63,35 @@ impl Sig {
         }
     }
 
-    fn decl(&self) -> String {
+    fn decl(&self, doc: &FnDoc) -> String {
+        let receiver = usize::from(doc.style == Style::Method);
+        let usage = doc
+            .usage
+            .iter()
+            .find(|usage| usage_arity(usage, doc.name).ok() == Some(self.params.len() - receiver))
+            .expect("validated usage arity");
+        let inside = usage.split_once('(').unwrap().1.trim_end_matches(')');
+        let mut names: Vec<&str> = if inside.is_empty() {
+            Vec::new()
+        } else {
+            inside.split(',').map(str::trim).collect()
+        };
+        if receiver == 1 {
+            names.insert(
+                0,
+                match self.params[0].as_str() {
+                    "PopulationSpec" => "population_spec",
+                    "Population" => "population",
+                    "Placement" => "placement",
+                    _ => "pattern",
+                },
+            );
+        }
         let params = self
             .params
             .iter()
             .enumerate()
-            .map(|(i, ty)| format!("arg{i}: {ty}"))
+            .map(|(i, ty)| format!("{}: {ty}", names[i]))
             .collect::<Vec<_>>()
             .join(", ");
         match &self.ret {
@@ -87,6 +110,9 @@ fn collect() -> (Vec<Sig>, Vec<String>) {
     for raw in engine.gen_fn_signatures(false) {
         let name_end = raw.find('(').expect("signature has '('");
         let name = &raw[..name_end];
+        if name == "create" {
+            continue;
+        }
         if RHAI_RESERVED.contains(&name) || !is_rhai_identifier(name) {
             skipped.push(raw);
             continue;
@@ -178,7 +204,7 @@ fn population(sigs: Vec<Sig>) -> Populations {
             .push(sig);
     }
     for sigs in populations.values_mut() {
-        sigs.sort_by_key(Sig::decl);
+        sigs.sort_by_key(|sig| (sig.params.clone(), sig.ret.clone()));
     }
     populations
 }
@@ -332,6 +358,10 @@ pub fn render_d_rhai() -> String {
     out.push_str(
         "// Source of truth: src/scripting/engine.rs (signatures) + src/scripting/docs.rs (docs).\n\n",
     );
+    out.push_str("/// # Types\n");
+    for doc in docs::TYPE_DOCS {
+        let _ = writeln!(out, "/// - {}: {}", doc.name, doc.summary);
+    }
     out.push_str("module static;\n\n");
     out.push_str("// Built-in buses (registered as module constants).\n");
     for c in docs::CONST_DOCS {
@@ -352,7 +382,10 @@ pub fn render_d_rhai() -> String {
         out.push('\n');
         for sig in sigs {
             let _ = writeln!(out, "/// {tag}{}", doc.summary);
-            let _ = writeln!(out, "{}", sig.decl());
+            for line in doc.details.lines() {
+                let _ = writeln!(out, "/// {line}");
+            }
+            let _ = writeln!(out, "{}", sig.decl(doc));
         }
     }
 
@@ -404,12 +437,12 @@ drifts from the engine. Regenerate with:\n\n```bash\ncargo run --bin gen_rhai_de
     }
     match language {
         ReferenceLanguage::English => out.push_str(
-            "Builder methods return their receiver and are chainable. Integer and float literals \
+            "Enum names are case-sensitive canonical lowercase names; aliases and surrounding whitespace are rejected. Invalid names stop evaluation at their source position.\n\nBuilder methods return their receiver and are chainable. Integer and float literals \
 are interchangeable wherever both overloads are registered; the generated LSP definitions \
 (`rhai-defs/conchordal.d.rhai`) list the exact overloads.\n\n",
         ),
         ReferenceLanguage::Japanese => out.push_str(
-            "構築用のメソッドは操作対象を返すため、続けて呼び出せます。整数と小数は、\
+            "文字列の選択肢は小文字の正規名を使います。大文字、別名、前後の空白は受け付けず、入力位置を示すエラーで停止します。\n\n構築用のメソッドは操作対象を返すため、続けて呼び出せます。整数と小数は、\
 両方のoverloadが登録されている箇所では交換可能です。正確なoverloadは生成されたLSP定義\
 （`rhai-defs/conchordal.d.rhai`）に記載されています。\n\n",
         ),
@@ -417,14 +450,13 @@ are interchangeable wherever both overloads are registered; the generated LSP de
     match language {
         ReferenceLanguage::English => out.push_str(
             "The surface is split into four tiers. **Core API** is the curated composing \
-surface — it is enough for every curated sample. **Experimental** contains candidate Core \
+surface — it is enough for every top-level sample (together with Experimental). **Experimental** contains candidate Core \
 verbs under audition. **Mechanism Tuning** adjusts the mechanisms behind the core verbs \
 when a piece needs a behavior the core surface does not express. **Research Controls** \
 exist for studying the instrument, not composing with it.\n\n",
         ),
         ReferenceLanguage::Japanese => out.push_str(
-            "スクリプティング面は四層に分かれます。**Core API**は選別された作曲用の面で、\
-すべてのサンプルを記述できます。**Experimental**は試聴中のCore候補です。\
+            "スクリプティング面は四層に分かれます。**Core API**は作曲用の基本語彙です。Experimentalと併せてトップレベルのサンプルを記述できます。**Experimental**は試聴中のCore候補です。\
 **Mechanism Tuning**は、Coreでは表せない挙動を作品が必要とするとき、動詞の背後にある\
 機構を調整します。**Research Controls**は作曲ではなく、instrumentを研究するためのものです。\
 関数ごとの技術説明は、LSP hoverと同じ英語の単一ソースを掲載しています。\n\n",
@@ -469,7 +501,7 @@ exist for studying the instrument, not composing with it.\n\n",
         (
             Tier::Core,
             "Core API",
-            "The curated composing surface. These verbs are enough for every curated sample.",
+            "The curated composing surface. These verbs are enough for every top-level sample (together with Experimental).",
         ),
         (
             Tier::Experimental,
@@ -496,7 +528,7 @@ disappear as their research questions settle.",
         (
             Tier::Core,
             "Core API",
-            "選別された作曲用の面です。すべてのサンプルは、ここにある動詞だけで記述できます。",
+            "作曲用の基本語彙です。Experimentalと併せてトップレベルのサンプルを記述できます。",
         ),
         (
             Tier::Experimental,
@@ -740,5 +772,107 @@ fn applies_line(doc: &FnDoc, sigs: &[Sig], language: ReferenceLanguage) -> Optio
             ReferenceLanguage::Japanese => "適用対象：`ModePattern`。".to_string(),
         }),
         Owner::Global => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_float_argument_has_an_integer_overload() {
+        let (sigs, _) = collect();
+        for sig in &sigs {
+            for (index, ty) in sig.params.iter().enumerate() {
+                if ty != "f64" {
+                    continue;
+                }
+                let mut integer_params = sig.params.clone();
+                integer_params[index] = "i64".into();
+                assert!(
+                    sigs.iter().any(|candidate| candidate.name == sig.name
+                        && candidate.params == integer_params
+                        && candidate.ret == sig.ret),
+                    "{} {:?} lacks integer argument {}",
+                    sig.name,
+                    sig.params,
+                    index
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn lsp_hover_contains_named_parameters_units_defaults_and_types() {
+        let definitions = render_d_rhai();
+        assert!(
+            definitions
+                .contains("attack_sec: f64, decay_sec: f64, sustain_level: f64, release_sec: f64")
+        );
+        assert!(definitions.contains("Attack, decay and release are nonnegative seconds"));
+        assert!(definitions.contains("default 0"));
+        assert!(!definitions.contains("arg0:"));
+        for doc in docs::TYPE_DOCS {
+            assert!(definitions.contains(doc.summary), "{}", doc.name);
+        }
+        assert!(
+            docs::FN_DOCS
+                .iter()
+                .all(|doc| doc.details.split_whitespace().count() <= 120)
+        );
+    }
+
+    #[test]
+    fn top_level_samples_only_call_core_or_experimental_api() {
+        let names: BTreeSet<_> = docs::FN_DOCS.iter().map(|doc| doc.name).collect();
+        for entry in std::fs::read_dir("samples").unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("rhai") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap();
+            // Samples use line comments and quoted strings, with no block comments.
+            let mut quoted = false;
+            let mut escaped = false;
+            let mut identifier = String::new();
+            for line in source.lines() {
+                let mut chars = line.chars().peekable();
+                while let Some(character) = chars.next() {
+                    if quoted {
+                        if escaped {
+                            escaped = false;
+                        } else if character == '\\' {
+                            escaped = true;
+                        } else if character == '"' {
+                            quoted = false;
+                        }
+                        continue;
+                    }
+                    if character == '/' && chars.peek() == Some(&'/') {
+                        break;
+                    }
+                    if character == '"' {
+                        quoted = true;
+                        identifier.clear();
+                        continue;
+                    }
+                    if character.is_ascii_alphanumeric() || character == '_' {
+                        identifier.push(character);
+                    } else if !character.is_whitespace() {
+                        if character == '(' && names.contains(identifier.as_str()) {
+                            let tier = docs::tier_of(&identifier);
+                            assert!(
+                                matches!(tier, Tier::Core | Tier::Experimental),
+                                "{} uses {} ({tier:?})",
+                                path.display(),
+                                identifier
+                            );
+                        }
+                        identifier.clear();
+                    }
+                }
+                identifier.clear();
+            }
+        }
     }
 }

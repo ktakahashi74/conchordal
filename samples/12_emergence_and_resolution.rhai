@@ -35,7 +35,7 @@ let consonance_colony = harmonic()
     .dissonance_penalty(0.42)
     .respawn_consonance()
     .respawn_capacity(10)
-    .respawn_min_c_level(0.26)
+    .respawn_min_consonance(0.26)
     .respawn_background_death_rate(0.009)
     .adsr(0.055, 0.380, 0.70, 0.82);
 

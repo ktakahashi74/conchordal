@@ -9,7 +9,7 @@ let bell = modal()
 
 section("a bar", || {
     place(
-        variant(bell).brightness(0.58).modes(modal_table("uniform_aluminum_bar").count(6)),
+        bell.brightness(0.58).modes(modal_table("uniform_aluminum_bar").count(6)),
         at(196.0)
     );
     wait(2.1);
@@ -17,7 +17,7 @@ section("a bar", || {
 
 section("a stiff string", || {
     place(
-        variant(bell).brightness(0.6).modes(stiff_string_modes(0.004).count(9)),
+        bell.brightness(0.6).modes(stiff_string_modes(0.004).count(9)),
         at(130.81)
     );
     wait(2.1);
@@ -25,7 +25,7 @@ section("a stiff string", || {
 
 section("a glass", || {
     place(
-        variant(bell).brightness(0.85).modes(modal_table("wine_glass").count(6)),
+        bell.brightness(0.85).modes(modal_table("wine_glass").count(6)),
         at(330.0)
     );
     wait(2.1);
@@ -38,7 +38,7 @@ section("a bell of the field", || {
     );
     wait(1.0);
     place(
-        variant(bell)
+        bell
             .amp(0.07)
             .brightness(0.7)
             .modes(landscape_density_modes().count(10).range(1.0, 5.5).gamma(1.5).spacing(0.7)),

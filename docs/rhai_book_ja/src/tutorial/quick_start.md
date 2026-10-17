@@ -20,7 +20,7 @@ wait(2.0);
 
 - **PopulationSpec**は、初代として生成されるVoiceとPopulation全体の方針を記述します。
   `sine()`、`harmonic()`、`modal()`、`saw()`、`square()`、`noise()`から始めます。
-- **Variant**は`variant(population_spec)`でspecificationを複製します。
+- **Variant**は`population_spec`でspecificationを複製します。
 - **Placement**はPopulationをどこへ配置するかを決めます。協和、不協和、その境界、空いた音域を
   `consonance()`、`dissonance()`、`edge()`、`gap()`で選べます。既定では候補を確率分布として
   扱い、`.peak()`を付けると最も強い一点を選びます。ほかに`random()`、`at()`、`line()`があります。
@@ -130,3 +130,15 @@ section("emergence", || {
 - [ルーティングとListenerTwin](../concepts/routing.md) — 生態系が知覚する音、聴衆が聴く音、観測される状態。
 - [タイムラインと構造](../concepts/timeline.md) — 配置境界、有効範囲、再利用可能な身振り、並行する流れ。
 - [サンプル](../reference/samples.md) — 機能を順番に試すための道筋。
+
+## 演奏前にスクリプトを確認する
+
+```bash
+cargo run --release -- samples/01_a_single_voice.rhai --compile-only
+```
+
+`--compile-only`はRhaiスクリプトを評価し、シナリオを検査します。音声とGUIは起動しません。
+ループ、クロージャ、スクリプト中の出力は実行します。末尾の`Warnings: N`が警告の件数です。
+警告には入力位置と無視された設定の理由が出ます。組み合わせを修正するか、効かない指定を
+外してください。不正な選択肢はエラーで停止します。選択肢は小文字の正規名を使い、
+大文字、別名、前後の空白は受け付けません。

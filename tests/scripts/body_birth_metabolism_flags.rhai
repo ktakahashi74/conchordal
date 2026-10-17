@@ -7,7 +7,7 @@ wait(0.4);
 let body = harmonic().amp(0.025).sustain().anchor()
     .modes(harmonic_modes().count(3)).spread(0.0).unison(1)
     .endurance(0.12).recovery(0.4).consonance_viability(0.6, 0.95)
-    .respawn_random().respawn_capacity(4).respawn_min_c_level(0.0)
+    .respawn_random().respawn_capacity(4).respawn_min_consonance(0.0)
     .respawn_settle(consonance(160.0, 600.0).spacing(0.1))
     .respawn_background_death_rate(2.0).adsr(0.01, 0.01, 0.9, 0.02);
 let colony = place(body, consonance(160.0, 600.0).count(4).spacing(0.1));

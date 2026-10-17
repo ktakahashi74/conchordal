@@ -31,7 +31,7 @@ let colony = harmonic()
     .dissonance_penalty(0.35)
     .adsr(0.055, 0.380, 0.72, 0.85);
 
-let late_colony = variant(colony)
+let late_colony = colony
     .amp(0.032)
     .entrained()
     // Responds more strongly to what it hears than the default (0.5).

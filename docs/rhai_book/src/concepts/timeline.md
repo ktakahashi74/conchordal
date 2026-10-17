@@ -99,3 +99,16 @@ This distinction is central:
 Use the workflow in [Performance](../tutorial/observing.md) to inspect the
 result and revise the scenario. Use `seed(...)` or `--seed` only when a
 particular realization must be replayed.
+
+## Scene settings and timed changes
+
+Global parameter names describe when they apply. Bare names set scene-wide initial
+conditions: `meter_stability`, `temporal_basin`, `control_update_mode`, `scaffold_off`,
+`scaffold_shared`, `scaffold_scrambled`, and `seed`. Their last declaration wins,
+even after `wait()`. `temporal_mode` is also a scene setting, but must be declared
+once at top level before events.
+
+The `set_` verbs schedule parameter changes at the current cursor:
+`set_roughness_aversion`, `set_global_coupling`, and `set_pitch_objective`.
+Use `wait()` to choose when those changes take effect. Placement, release and
+scope verbs continue to describe actions rather than parameter settings.

@@ -49,7 +49,6 @@ let assay_voice = harmonic()
     .dissonance_penalty(0.0)
     .rhythm_freq(voice_pulse_hz)
     .rhythm_coupling_vitality(0.8, 0.4)
-    .rhythm_reward(2.0, "attack_phase_match")
     .pulse(voice_pulse_hz)
     .cycles(voice_cycles)
     .respawn_consonance()
@@ -62,7 +61,7 @@ let assay_voice = harmonic()
     );
 
 section("E: Scaffold Off", || {
-    set_scaffold_off();
+    scaffold_off();
     let drone = place(anchor, at(220.0).count(1));
     wait(intro_sec);
 

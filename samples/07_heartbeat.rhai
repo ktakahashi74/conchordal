@@ -36,7 +36,7 @@ let consonant_pulse = harmonic()
     .adsr(0.018, 0.120, 0.72, 0.34);
 
 // The syncopation is alive: a colony voice leaning half a beat across the grid.
-let offbeat = variant(consonant_pulse)
+let offbeat = consonant_pulse
     .amp(0.030)
     .rhythm_role("subdivision")
     .microtiming(0.5)

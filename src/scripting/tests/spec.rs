@@ -1,119 +1,4 @@
 use super::*;
-use crate::core::landscape::LandscapeFrame;
-use crate::core::timebase::Timebase;
-use crate::life::community::Community;
-use crate::life::voice::AnyArticulationCore;
-use crate::life::voice::sound_body::SoundBody;
-use crate::scenario::{
-    DurationSpec, FieldSampling, FieldTarget, PhonationTiming, RhythmCouplingMode, RhythmRole,
-};
-use rand::SeedableRng;
-
-fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
-    let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let _ = engine.eval::<Dynamic>(src).expect("script runs");
-    let mut ctx_out = ctx.lock().expect("lock script context");
-    ctx_out.finish();
-    (ctx_out.scenario.clone(), ctx_out.warnings.clone())
-}
-
-fn run_script_err(src: &str) -> ScriptError {
-    let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-    let engine = ScriptHost::create_engine(ctx);
-    let err = engine.eval::<Dynamic>(src).expect_err("script should fail");
-    ScriptError::from_eval(err, None)
-}
-
-/// Like `run_script`, but seeds the context the way a CLI `--seed` override
-/// does: `ScriptContext::with_seed` instead of a fresh random draw.
-fn run_script_with_seed(src: &str, seed: u64) -> (Scenario, ScriptWarnings) {
-    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(seed)));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let _ = engine.eval::<Dynamic>(src).expect("script runs");
-    let mut ctx_out = ctx.lock().expect("lock script context");
-    ctx_out.finish();
-    (ctx_out.scenario.clone(), ctx_out.warnings.clone())
-}
-
-fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
-    let mut out = Vec::new();
-    for ev in &scenario.events {
-        for action in &ev.actions {
-            out.push((ev.time, action));
-        }
-    }
-    out
-}
-
-#[test]
-fn temporal_mode_is_a_single_pre_performance_setting() {
-    use crate::scenario::TemporalMode;
-    assert_eq!(run_script("").0.temporal_mode, TemporalMode::Off);
-    assert_eq!(
-        run_script("temporal_mode(\"off\");").0.temporal_mode,
-        TemporalMode::Off
-    );
-    assert_eq!(
-        run_script("temporal_mode(\"observe\"); create(sine(), 1);")
-            .0
-            .temporal_mode,
-        TemporalMode::Observe
-    );
-    for script in [
-        "temporal_mode(\"observe\"); temporal_mode(\"observe\");",
-        "wait(1.0); temporal_mode(\"observe\");",
-        "create(sine(), 1); temporal_mode(\"observe\");",
-        "section(\"a\", || { temporal_mode(\"observe\"); });",
-        "parallel([|| { temporal_mode(\"observe\"); }]);",
-        "fn mode() { temporal_mode(\"observe\"); } mode();",
-    ] {
-        assert!(
-            run_script_err(script)
-                .to_string()
-                .contains("temporal_mode must be declared"),
-            "{script}"
-        );
-    }
-    assert!(
-        run_script_err("temporal_mode(\"participate\");")
-            .to_string()
-            .contains("not implemented")
-    );
-    assert!(
-        run_script_err("temporal_mode(\"unknown\");")
-            .to_string()
-            .contains("expects off or observe")
-    );
-
-    let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    assert!(
-        engine
-            .eval::<Dynamic>("temporal_mode(\"participate\");")
-            .is_err()
-    );
-    assert_eq!(
-        ctx.lock().unwrap().scenario.temporal_mode,
-        TemporalMode::Off
-    );
-    let _ = engine
-        .eval::<Dynamic>("temporal_mode(\"observe\");")
-        .unwrap();
-}
-
-fn first_spawn_spec_for_script(src: &str) -> VoiceSpec {
-    let (scenario, _warnings) = run_script(src);
-    scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action")
-}
 
 #[test]
 fn steady_is_initial_only_and_timing_presets_use_the_last_written_policy() {
@@ -197,33 +82,6 @@ fn steady_sustain_combines_pitch_shape_and_rest_controls() {
         .tie,
         0.0
     );
-}
-
-#[test]
-fn intrinsic_rate_resolves_at_creation_independent_of_builder_order() {
-    for body in ["sine", "harmonic", "modal"] {
-        for preset in ["entrained()", "steady()", "flow()"] {
-            for chain in [
-                format!("intrinsic_rate(1.0/2.128).sustain().{preset}"),
-                format!("sustain().intrinsic_rate(1.0/2.128).{preset}"),
-                format!("sustain().{preset}.intrinsic_rate(1.0/2.128)"),
-            ] {
-                for script in [
-                    format!("create({body}().{chain},1);"),
-                    format!("place({body}().{chain},at(330.0));"),
-                ] {
-                    let spec = first_spawn_spec_for_script(&script);
-                    let PhonationTiming::Coupled(timing) = spec.control.phonation.spec.timing
-                    else {
-                        panic!("{script}")
-                    };
-                    assert_eq!(timing.relation, RhythmRelation::Participating);
-                    assert_eq!(timing.base_rate_hz, (1.0 / 2.128) as f32);
-                    assert!(spec.control.phonation.spec.is_sustained_participation());
-                }
-            }
-        }
-    }
 }
 
 #[test]
@@ -420,87 +278,6 @@ fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
 }
 
 #[test]
-fn cli_seed_is_used_when_script_has_no_seed_call() {
-    let (scenario, _warnings) = run_script_with_seed(
-        r#"
-            create(sine(), 1);
-            flush();
-        "#,
-        123_456_789,
-    );
-    assert_eq!(scenario.seed, 123_456_789);
-}
-
-#[test]
-fn script_seed_call_overrides_cli_seed() {
-    let (scenario, _warnings) = run_script_with_seed(
-        r#"
-            seed(42);
-            create(sine(), 1);
-            flush();
-        "#,
-        123_456_789,
-    );
-    assert_eq!(scenario.seed, 42);
-}
-
-#[test]
-fn population_is_spawned_without_wait_or_flush() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine(), 1);
-        "#,
-    );
-    let has_spawn = scenario
-        .events
-        .iter()
-        .any(|ev| ev.actions.iter().any(|a| matches!(a, Action::Spawn { .. })));
-    assert!(has_spawn, "place/create is the population boundary");
-}
-
-#[test]
-fn flush_does_not_delay_or_advance_immediate_spawn() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine(), 1);
-            flush();
-            wait(1.0);
-        "#,
-    );
-    let mut spawn_time = None;
-    let mut finish_time = None;
-    for (time, action) in action_times(&scenario) {
-        match action {
-            Action::Spawn { .. } => spawn_time = Some(time),
-            Action::Finish => finish_time = Some(time),
-            _ => {}
-        }
-    }
-    assert_eq!(spawn_time, Some(0.0));
-    assert_eq!(finish_time, Some(1.0));
-}
-
-#[test]
-fn scene_scope_releases_live_populations() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            section("alpha", || {
-                let population = create(sine(), 1);
-                flush();
-                wait(0.5);
-            });
-        "#,
-    );
-    let mut release_time = None;
-    for (time, action) in action_times(&scenario) {
-        if matches!(action, Action::ReleasePopulation { .. }) {
-            release_time = Some(time);
-        }
-    }
-    assert_eq!(release_time, Some(0.5));
-}
-
-#[test]
 fn parallel_advances_to_max_child_end() {
     let (scenario, _warnings) = run_script(
         r#"
@@ -528,95 +305,6 @@ fn parallel_advances_to_max_child_end() {
 }
 
 #[test]
-fn scope_releases_population_even_without_wait() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            section("alpha", || { create(sine(), 1); });
-        "#,
-    );
-    assert!(scenario.events.iter().any(|event| {
-        event
-            .actions
-            .iter()
-            .any(|action| matches!(action, Action::ReleasePopulation { .. }))
-    }));
-}
-
-#[test]
-fn scope_emits_pending_patch_before_automatic_release() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            section("alpha", || {
-                let population = place(sine().amp(0.1), at(220.0));
-                wait(0.5);
-                population.amp(0.3);
-            });
-        "#,
-    );
-    let actions: Vec<&Action> = scenario
-        .events
-        .iter()
-        .filter(|event| (event.time - 0.5).abs() <= f32::EPSILON)
-        .flat_map(|event| event.actions.iter())
-        .collect();
-    let update_idx = actions
-        .iter()
-        .position(|action| {
-            matches!(
-                action,
-                Action::UpdatePopulation { patch, .. } if patch.amp == Some(0.3)
-            )
-        })
-        .expect("scope should emit its pending patch");
-    let release_idx = actions
-        .iter()
-        .position(|action| matches!(action, Action::ReleasePopulation { .. }))
-        .expect("scope should release its population");
-    assert!(update_idx < release_idx);
-}
-
-#[test]
-fn placement_count_must_be_positive() {
-    for count in [0, -1] {
-        let err = run_script_err(&format!("place(sine(), at(220.0).count({count}));"));
-        assert!(
-            err.message.contains("population count must be >= 1"),
-            "unexpected error for count {count}: {}",
-            err.message
-        );
-    }
-}
-
-#[test]
-fn field_placement_bounds_must_fit_sound_body_frequency_limits() {
-    for placement in [
-        "consonance(30000.0, 31000.0)",
-        "dissonance(0.5, 100.0)",
-        "edge(-100.0, 100.0)",
-        "gap(100.0, 0.0)",
-        "random(100.0, 20001.0)",
-        "consonance(10000.0).range(1.0, 3.0)",
-        "consonance(1e100, 100.0)",
-    ] {
-        let err = run_script_err(&format!("place(sine(), {placement});"));
-        assert!(
-            err.message
-                .contains("field placement bounds must be finite"),
-            "{placement}: {}",
-            err.message
-        );
-    }
-    let err = run_script_err(
-        "place(sine().respawn_random().respawn_settle(consonance(30000.0, 31000.0)), at(220.0));",
-    );
-    assert!(
-        err.message
-            .contains("field placement bounds must be finite")
-    );
-    run_script("place(sine(), consonance(20000.0, 1.0));");
-}
-
-#[test]
 fn respawn_capacity_cannot_be_below_founder_count() {
     let err = run_script_err(
         r#"
@@ -632,222 +320,6 @@ fn respawn_capacity_cannot_be_below_founder_count() {
         "unexpected error: {}",
         err.message
     );
-}
-
-#[test]
-fn release_is_terminal_for_live_patches() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let population = place(sine(), at(220.0));
-            release(population);
-            population.amp(0.5);
-            flush();
-        "#,
-    );
-    assert!(!scenario.events.iter().any(|event| {
-        event
-            .actions
-            .iter()
-            .any(|action| matches!(action, Action::UpdatePopulation { .. }))
-    }));
-    assert!(scenario.events.iter().any(|event| {
-        event
-            .actions
-            .iter()
-            .any(|action| matches!(action, Action::ReleasePopulation { .. }))
-    }));
-}
-
-#[test]
-fn population_spec_is_reusable_across_placements() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let spec = sine().amp(0.2);
-            place(spec, at(220.0));
-            place(spec, at(330.0));
-        "#,
-    );
-    let spawns = scenario
-        .events
-        .iter()
-        .flat_map(|event| event.actions.iter())
-        .filter(|action| matches!(action, Action::Spawn { .. }))
-        .count();
-    assert_eq!(spawns, 2);
-}
-
-#[test]
-fn spawn_order_is_population_id_order() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let a = create(sine(), 1);
-            let b = create(sine(), 1);
-            flush();
-        "#,
-    );
-    let mut spawns = Vec::new();
-    for event in &scenario.events {
-        for action in &event.actions {
-            if let Action::Spawn {
-                population_id, ids, ..
-            } = action
-            {
-                spawns.push((event.time, *population_id, ids.clone()));
-            }
-        }
-    }
-    assert_eq!(spawns.len(), 2);
-    assert_eq!(spawns[0].0, 0.0);
-    assert_eq!(spawns[0].1, 1);
-    assert_eq!(spawns[0].2, vec![1]);
-    assert_eq!(spawns[1].0, 0.0);
-    assert_eq!(spawns[1].1, 2);
-    assert_eq!(spawns[1].2, vec![2]);
-}
-
-#[test]
-fn place_spawns_population_and_same_time_patch_is_separate() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let p = place(
-                harmonic().amp(0.04).send(habitat_bus | presentation_bus),
-                consonance(90.0, 900.0).count(3).spacing(0.8)
-            );
-            p.amp(0.02);
-            flush();
-        "#,
-    );
-    let mut spawn = None;
-    let mut patch = None;
-    for event in &scenario.events {
-        for action in &event.actions {
-            match action {
-                Action::Spawn {
-                    ids,
-                    spec,
-                    strategy,
-                    ..
-                } => {
-                    spawn = Some((
-                        event.time,
-                        ids.len(),
-                        spec.control.clone(),
-                        strategy.clone(),
-                    ));
-                }
-                Action::UpdatePopulation { patch: update, .. } => {
-                    patch = update.amp;
-                }
-                _ => {}
-            }
-        }
-    }
-    let (time, count, control, strategy) = spawn.expect("spawn action");
-    assert_eq!(time, 0.0);
-    assert_eq!(count, 3);
-    assert_eq!(control.body.amp, 0.04);
-    assert_eq!(patch, Some(0.02));
-    assert!(control.body.routing.to_habitat);
-    assert!(control.body.routing.to_presentation);
-    assert!(matches!(
-        strategy,
-        Some(SpawnStrategy::Field {
-            target: FieldTarget::Consonance,
-            ..
-        })
-    ));
-}
-
-#[test]
-fn field_can_be_user_variable_when_using_habitat_bus() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let field = place(harmonic().amp(0.04).send(habitat_bus), at(220.0));
-            field.freq(330.0);
-            flush();
-        "#,
-    );
-    let (control, patch_freq) = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some((spec.control.clone(), None)),
-            _ => None,
-        })
-        .expect("spawn action");
-    let patch_freq = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::UpdatePopulation { patch, .. } => patch.freq,
-            _ => None,
-        })
-        .or(patch_freq);
-
-    assert!(control.body.routing.to_habitat);
-    assert!(!control.body.routing.to_presentation);
-    assert!((control.pitch.freq - 220.0).abs() <= 1e-6);
-    assert_eq!(patch_freq, Some(330.0));
-}
-
-#[test]
-fn flush_events_have_increasing_order_at_same_time() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine(), 1);
-            flush();
-            create(sine(), 1);
-            flush();
-        "#,
-    );
-    let mut orders = Vec::new();
-    for event in &scenario.events {
-        if (event.time - 0.0).abs() <= f32::EPSILON {
-            orders.push(event.order);
-        }
-    }
-    assert!(orders.len() >= 2);
-    for pair in orders.windows(2) {
-        assert!(pair[0] < pair[1]);
-    }
-}
-
-#[test]
-fn population_freq_patch_preserves_founder_placement() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let population = place(sine(), consonance(220.0).peak().count(4));
-            population.freq(330.0);
-            flush();
-        "#,
-    );
-    let strategy = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { strategy, .. } => Some(strategy.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-    assert!(matches!(
-        strategy,
-        Some(SpawnStrategy::Field {
-            target: FieldTarget::Consonance,
-            ..
-        })
-    ));
-    let patch_freq = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::UpdatePopulation { patch, .. } => patch.freq,
-            _ => None,
-        });
-    assert_eq!(patch_freq, Some(330.0));
 }
 
 #[test]
@@ -992,61 +464,6 @@ fn population_spec_anchor_sets_spawn_mode() {
 }
 
 #[test]
-fn at_placement_respects_final_pitch_intent() {
-    for (chain, mode) in [
-        ("", PitchMode::Lock),
-        (".anchor()", PitchMode::Lock),
-        (".freq(110.0)", PitchMode::Lock),
-        (".seek_consonance()", PitchMode::Free),
-        (".seek_consonance().freq(110.0)", PitchMode::Lock),
-        (".freq(110.0).seek_consonance()", PitchMode::Free),
-        (".seek_consonance().anchor()", PitchMode::Lock),
-        (".anchor().seek_consonance()", PitchMode::Free),
-    ] {
-        let (scenario, _) = run_script(&format!("place(sine(){chain}, at(330.0).count(3));"));
-        let mut community = Community::new(Timebase {
-            fs: 48_000.0,
-            hop: 64,
-        });
-        let landscape = LandscapeFrame::default();
-        for action in scenario.events.iter().flat_map(|event| &event.actions) {
-            if let Action::Spawn {
-                ids,
-                spec,
-                strategy,
-                ..
-            } = action
-            {
-                assert_eq!(ids.len(), 3, "{chain}");
-                assert_eq!(spec.control.pitch.mode, mode, "{chain}");
-                if mode == PitchMode::Free {
-                    assert!(
-                        matches!(
-                            strategy,
-                            Some(SpawnStrategy::Linear {
-                                start_freq: 330.0,
-                                end_freq: 330.0
-                            })
-                        ),
-                        "{chain}"
-                    );
-                } else {
-                    assert!(strategy.is_none(), "{chain}");
-                    assert_eq!(spec.control.pitch.freq, 330.0, "{chain}");
-                }
-                community.apply_action(action.clone(), &landscape);
-            }
-        }
-        assert_eq!(community.voices.len(), 3);
-        for voice in &community.voices {
-            assert_eq!(voice.base_control.pitch.mode, mode, "{chain}");
-            assert_eq!(voice.effective_control.pitch.mode, mode, "{chain}");
-            assert_eq!(voice.body.base_freq_hz(), 330.0, "{chain}");
-        }
-    }
-}
-
-#[test]
 fn at_seek_matches_degenerate_line_with_custom_pitch_controls() {
     for count in [1, 3] {
         let chain = "harmonic().freq(110.0).seek_consonance().sustain()\
@@ -1138,72 +555,70 @@ fn at_seek_does_not_change_create_or_live_freq_lock() {
 
 #[test]
 fn at_seek_keeps_supported_tie_and_persistence_without_ignored_warnings() {
-    #[derive(Clone)]
-    struct Capture(Arc<Mutex<Vec<u8>>>);
-    impl std::io::Write for Capture {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let captured = Arc::new(Mutex::new(Vec::new()));
-    let writer = Capture(captured.clone());
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
-        .without_time()
-        .with_ansi(false)
-        .with_writer(move || writer.clone())
-        .finish();
-    tracing::subscriber::with_default(subscriber, || {
-        for timing in ["entrained()", "steady()", "flow()"] {
-            for mode in ["gate_snap", "rearticulate"] {
-                let persistence = if mode == "rearticulate" {
-                    ".rearticulate_above(75).articulation_persistence(0.75)"
-                } else {
-                    ""
-                };
-                let spec = first_spawn_spec_for_script(&format!(
-                    "place(harmonic().sustain().{timing}.seek_consonance()\
-                     .pitch_apply_mode(\"{mode}\").tie(0.5){persistence},at(330.0));"
-                ));
-                assert!(spec.control.supports_tie());
-                assert_eq!(spec.control.phonation.tie, 0.5);
-                if mode == "rearticulate" {
-                    assert!(spec.control.supports_articulation_persistence());
-                    assert_eq!(spec.control.phonation.articulation_persistence, 0.75);
-                }
+    for timing in ["entrained()", "steady()", "flow()"] {
+        for mode in ["gate_snap", "rearticulate"] {
+            let persistence = if mode == "rearticulate" {
+                ".rearticulate_above(75).articulation_persistence(0.75)"
+            } else {
+                ""
+            };
+            let (scenario, warnings) = run_script(&format!(
+                "place(harmonic().sustain().{timing}.seek_consonance().pitch_apply_mode(\"{mode}\").tie(0.5){persistence},at(330.0));"
+            ));
+            assert!(warnings.lock().unwrap().is_empty());
+            let spec = scenario
+                .events
+                .iter()
+                .flat_map(|event| &event.actions)
+                .find_map(|action| match action {
+                    Action::Spawn { spec, .. } => Some(spec),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(spec.control.supports_tie());
+            assert_eq!(spec.control.phonation.tie, 0.5);
+            if mode == "rearticulate" {
+                assert!(spec.control.supports_articulation_persistence());
+                assert_eq!(spec.control.phonation.articulation_persistence, 0.75);
             }
         }
-        assert!(captured.lock().unwrap().is_empty());
-        first_spawn_spec_for_script(
-            "place(harmonic().sustain().entrained().anchor()\
-             .pitch_apply_mode(\"rearticulate\").rearticulate_above(75)\
-             .articulation_persistence(0.75).tie(0.5),at(330.0));",
-        );
-        let (scenario, _) = run_script(
-            "place(harmonic().seek_consonance().respawn_random()\
-             .respawn_settle(at(440.0)),at(330.0));",
-        );
-        let settle = scenario
-            .events
+    }
+    let (_, warnings) = run_script(
+        "place(harmonic().sustain().entrained().anchor().pitch_apply_mode(\"rearticulate\").rearticulate_above(75).articulation_persistence(0.75).tie(0.5),at(330.0));",
+    );
+    let warnings = warnings.lock().unwrap();
+    assert!(
+        warnings
             .iter()
-            .flat_map(|event| &event.actions)
-            .find_map(|action| match action {
-                Action::SetRespawnPolicy {
-                    settle_strategy, ..
-                } => Some(settle_strategy),
-                _ => None,
-            })
-            .expect("respawn policy");
-        assert!(settle.is_none());
-    });
-    let messages = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
-    assert!(messages.contains("tie() ignored"));
-    assert!(messages.contains("articulation_persistence() ignored"));
-    assert!(messages.contains("respawn_settle() requires"));
+            .any(|warning| warning.message.contains("tie() ignored"))
+    );
+    assert!(warnings.iter().any(|warning| {
+        warning
+            .message
+            .contains("articulation_persistence() ignored")
+    }));
+    let (scenario, warnings) = run_script(
+        "place(harmonic().seek_consonance().respawn_random().respawn_settle(at(440.0)),at(330.0));",
+    );
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|warning| warning.message.contains("respawn_settle() requires"))
+    );
+    let settle = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .find_map(|action| match action {
+            Action::SetRespawnPolicy {
+                settle_strategy, ..
+            } => Some(settle_strategy),
+            _ => None,
+        })
+        .unwrap();
+    assert!(settle.is_none());
 }
 
 #[test]
@@ -1254,21 +669,6 @@ fn consonance_movement_snaps_on_reattacking_phonation() {
             spec.control.pitch.pitch_apply_mode,
             PitchApplyMode::GateSnap,
             "seek_consonance with {preset} should snap at onsets"
-        );
-    }
-}
-
-#[test]
-fn explicit_pitch_apply_mode_is_order_independent() {
-    for script in [
-        r#"create(sine().pitch_apply_mode("glide").metric().seek_consonance(), 1); flush();"#,
-        r#"create(sine().metric().seek_consonance().pitch_apply_mode("glide"), 1); flush();"#,
-    ] {
-        let spec = first_spawn_spec_for_script(script);
-        assert_eq!(
-            spec.control.pitch.pitch_apply_mode,
-            PitchApplyMode::Glide,
-            "explicit pitch_apply_mode must win regardless of call order"
         );
     }
 }
@@ -1505,82 +905,6 @@ fn population_amp_live_update_preserves_member_pitch_centers() {
             "amp-only live update must not modify member pitch center"
         );
     }
-}
-
-#[test]
-fn population_live_update_last_write_wins_within_flush() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(sine(), 1);
-            flush();
-            let g = g.amp(0.2).amp(0.8);
-            flush();
-            let g = g.avoid_neighbors(1.0, 35.0).avoid_neighbors(1.0);
-            flush();
-            let g = g.avoid_neighbors(1.0).avoid_neighbors(1.0, 35.0);
-            flush();
-        "#,
-    );
-
-    let updates = scenario
-        .events
-        .iter()
-        .flat_map(|event| event.actions.iter())
-        .filter_map(|action| match action {
-            Action::UpdatePopulation { patch, .. } => Some(patch.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(updates.len(), 3, "expected three live update flushes");
-    assert_eq!(updates[0].amp, Some(0.8));
-    assert_eq!(updates[1].crowding_strength, Some(1.0));
-    assert_eq!(updates[1].crowding_sigma_cents, Some(35.0));
-    assert_eq!(updates[2].crowding_strength, Some(1.0));
-    assert_eq!(updates[2].crowding_sigma_cents, Some(35.0));
-}
-
-#[test]
-fn flush_emits_update_before_release_for_same_population() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(sine(), 1);
-            flush();
-            let g = g.amp(0.25);
-            release(g);
-            flush();
-        "#,
-    );
-
-    let event = scenario
-        .events
-        .iter()
-        .find(|event| {
-            event
-                .actions
-                .iter()
-                .any(|action| matches!(action, Action::UpdatePopulation { .. }))
-                && event
-                    .actions
-                    .iter()
-                    .any(|action| matches!(action, Action::ReleasePopulation { .. }))
-        })
-        .expect("event with both update and release");
-
-    let update_idx = event
-        .actions
-        .iter()
-        .position(|action| matches!(action, Action::UpdatePopulation { .. }))
-        .expect("update action");
-    let release_idx = event
-        .actions
-        .iter()
-        .position(|action| matches!(action, Action::ReleasePopulation { .. }))
-        .expect("release action");
-    assert!(
-        update_idx < release_idx,
-        "flush must emit update before release within same event"
-    );
 }
 
 #[test]
@@ -2131,7 +1455,7 @@ fn population_advanced_pitch_knobs_live_update_reaches_individual() {
 fn set_pitch_objective_emits_landscape_update() {
     let (scenario, _warnings) = run_script(
         r#"
-            set_pitch_objective("negative_consonance");
+            set_pitch_objective("dissonance");
             wait(0.1);
             set_pitch_objective("consonance");
         "#,
@@ -2310,7 +1634,7 @@ fn population_respawn_tier2_settings_reach_runtime_action() {
                     .respawn_hereditary(0.03)
                     .respawn_settle(consonance(220.0).peak().range(0.75, 1.5).spacing(0.5))
                     .respawn_capacity(3)
-                    .respawn_min_c_level(0.4)
+                    .respawn_min_consonance(0.4)
                     .respawn_background_death_rate(0.03),
                 1
             );
@@ -2353,46 +1677,6 @@ fn population_respawn_tier2_settings_reach_runtime_action() {
         }
     }
     assert!(saw_policy, "expected SetRespawnPolicy with tier-2 settings");
-}
-
-#[test]
-fn set_control_update_mode_updates_scenario() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            set_control_update_mode("sequential_rotating");
-        "#,
-    );
-    assert_eq!(
-        scenario.control_update_mode,
-        ControlUpdateMode::SequentialRotating
-    );
-}
-
-#[test]
-fn set_scaffold_shared_updates_scenario() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            set_scaffold_shared(2.5);
-        "#,
-    );
-    assert!(matches!(
-        scenario.scaffold,
-        ScaffoldConfig::Shared { freq_hz } if (freq_hz - 2.5).abs() <= 1e-6
-    ));
-}
-
-#[test]
-fn set_scaffold_scrambled_updates_scenario() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            set_scaffold_scrambled(3.0, 17);
-        "#,
-    );
-    assert!(matches!(
-        scenario.scaffold,
-        ScaffoldConfig::Scrambled { freq_hz, seed }
-            if (freq_hz - 3.0).abs() <= 1e-6 && seed == 17
-    ));
 }
 
 #[test]
@@ -2520,7 +1804,7 @@ fn spawn_payload_preserves_selection_approx_loo() {
         r#"
             create(
                 harmonic()                    .endurance(10.0)
-                    .selection_approx_loo(true),
+                    .viability_scope("environment"),
                 1
             );
             flush();
@@ -2555,41 +1839,6 @@ fn selection_approx_loo_can_override_consonance_viability_for_reference_assays()
             create(
                 harmonic()                    .endurance(10.0)
                     .consonance_viability(0.3, 0.8)
-                    .selection_approx_loo(false),
-                1
-            );
-            flush();
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-    let ArticulationCoreConfig::Entrain { lifecycle, .. } = spawn.articulation else {
-        panic!("expected entrain articulation");
-    };
-    let LifecycleConfig::Sustain {
-        selection_approx_loo,
-        ..
-    } = lifecycle
-    else {
-        panic!("expected sustain lifecycle");
-    };
-    assert!(!selection_approx_loo);
-}
-
-#[test]
-fn viability_scope_total_overrides_environment_default() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(
-                harmonic()                    .endurance(10.0)
-                    .consonance_viability(0.3, 0.8)
                     .viability_scope("total"),
                 1
             );
@@ -2616,63 +1865,6 @@ fn viability_scope_total_overrides_environment_default() {
         panic!("expected sustain lifecycle");
     };
     assert!(!selection_approx_loo);
-}
-
-#[test]
-fn population_spec_viability_scope_total_overrides_environment_default() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(
-                harmonic()
-                    .endurance(10.0)
-                    .consonance_viability(0.3, 0.8)
-                    .viability_scope("total"),
-                1
-            );
-        "#,
-    );
-    let spawn = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.clone()),
-            _ => None,
-        })
-        .expect("spawn action");
-    let ArticulationCoreConfig::Entrain { lifecycle, .. } = spawn.articulation else {
-        panic!("expected entrain articulation");
-    };
-    let LifecycleConfig::Sustain {
-        selection_approx_loo,
-        ..
-    } = lifecycle
-    else {
-        panic!("expected sustain lifecycle");
-    };
-    assert!(!selection_approx_loo);
-}
-
-#[test]
-fn live_population_brightness_emits_timbre_patch() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(harmonic(), 1);
-            flush();
-            g.brightness(0.25);
-            flush();
-        "#,
-    );
-    let patch = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::UpdatePopulation { patch, .. } => Some(patch.clone()),
-            _ => None,
-        })
-        .expect("update action");
-    assert_eq!(patch.timbre_brightness, Some(0.25));
 }
 
 #[test]
@@ -2780,29 +1972,6 @@ fn spread_and_unison_methods_update_timbre() {
 }
 
 #[test]
-fn live_population_spread_and_unison_emit_timbre_patch() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(harmonic(), 1);
-            flush();
-            g.spread(0.3).unison(4);
-            flush();
-        "#,
-    );
-    let patch = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::UpdatePopulation { patch, .. } => Some(patch.clone()),
-            _ => None,
-        })
-        .expect("update action");
-    assert_eq!(patch.timbre_spread, Some(0.3));
-    assert_eq!(patch.timbre_unison, Some(4));
-}
-
-#[test]
 fn rhythm_modulators_are_sanitized_at_core_boundary() {
     let (scenario, _warnings) = run_script(
         r#"
@@ -2838,33 +2007,6 @@ fn rhythm_modulators_are_sanitized_at_core_boundary() {
     );
     let reward = core.rhythm_reward.expect("expected rhythm reward");
     assert_eq!(reward.rho_t, 0.0);
-}
-
-#[test]
-fn measure_accent_tuning_is_bounded_and_order_independent() {
-    for preset in ["metric", "entrained", "flow"] {
-        for chain in [
-            format!("{preset}().measure_accent(0.6)"),
-            format!("measure_accent(0.6).{preset}()"),
-        ] {
-            let spawn = first_spawn_spec_for_script(&format!(
-                "create(sine().{chain}.cycles(1), 1); flush();"
-            ));
-            let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
-                panic!("expected coupled timing");
-            };
-            assert!((spec.measure_accent - 0.6).abs() < 1e-6);
-        }
-    }
-    for (amount, expected) in [("-1.0", 0.0), ("2.0", 1.0)] {
-        let spawn = first_spawn_spec_for_script(&format!(
-            "create(sine().measure_accent({amount}), 1); flush();"
-        ));
-        let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
-            panic!("expected coupled timing");
-        };
-        assert_eq!(spec.measure_accent, expected);
-    }
 }
 
 #[test]
@@ -2995,110 +2137,6 @@ fn metric_respawn_starts_from_the_resolved_population_template() {
             .intrinsic_period_sec(),
         period
     );
-}
-
-#[test]
-fn metric_and_pulse_tuning_are_order_independent() {
-    for (label, script) in [
-        (
-            "metric then tuning",
-            r#"
-                create(sine().metric().entrainment(0.8).rhythm_role("accent").cycles(2), 1);
-                flush();
-            "#,
-        ),
-        (
-            "tuning then metric",
-            r#"
-                create(sine().entrainment(0.8).rhythm_role("accent").metric().cycles(2), 1);
-                flush();
-            "#,
-        ),
-    ] {
-        let spawn = first_spawn_spec_for_script(script);
-        let PhonationTiming::Coupled(spec) = spawn.control.phonation.spec.timing else {
-            panic!("{label}: expected coupled timing intent");
-        };
-        assert!((spec.coupling - 0.8).abs() <= 1e-6, "{label}");
-        assert_eq!(spec.role, RhythmRole::Accent, "{label}");
-    }
-
-    for (label, script) in [
-        (
-            "pulse then tuning",
-            r#"
-                create(sine().repeat().pulse(2.0).pulse_lock(0.35).cycles(2), 1);
-                flush();
-            "#,
-        ),
-        (
-            "tuning then pulse",
-            r#"
-                create(sine().pulse_lock(0.35).pulse(2.0).cycles(2), 1);
-                flush();
-            "#,
-        ),
-    ] {
-        let spawn = first_spawn_spec_for_script(script);
-        let PhonationTiming::Pulse { rate_hz, sync, .. } = &spawn.control.phonation.spec.timing
-        else {
-            panic!("{label}: expected pulse timing");
-        };
-        assert!((*rate_hz - 2.0).abs() <= 1e-6, "{label}");
-        assert!((*sync - 0.35).abs() <= 1e-6, "{label}");
-        assert!(
-            matches!(
-                spawn.control.phonation.spec.duration,
-                DurationSpec::Gates(2)
-            ),
-            "{label}"
-        );
-    }
-}
-
-#[test]
-fn adaptive_duration_tuning_is_order_independent() {
-    for (label, script) in [
-        (
-            "duration then tuning",
-            r#"
-                create(
-                    sine()
-                        .once()
-                        .adaptive_duration()
-                        .duration_range(0.2, 0.8)
-                        .duration_curve(3.0, 0.4)
-                        .shorten_on_drop(0.6),
-                    1
-                );
-                flush();
-            "#,
-        ),
-        (
-            "tuning then duration",
-            r#"
-                create(
-                    sine()
-                        .duration_range(0.2, 0.8)
-                        .duration_curve(3.0, 0.4)
-                        .shorten_on_drop(0.6)
-                        .adaptive_duration(),
-                    1
-                );
-                flush();
-            "#,
-        ),
-    ] {
-        let spawn = first_spawn_spec_for_script(script);
-        let DurationSpec::Field(field) = spawn.control.phonation.spec.duration else {
-            panic!("{label}: expected adaptive field duration");
-        };
-        assert!((field.hold_min_theta - 0.2).abs() <= 1e-6, "{label}");
-        assert!((field.hold_max_theta - 0.8).abs() <= 1e-6, "{label}");
-        assert!((field.curve_k - 3.0).abs() <= 1e-6, "{label}");
-        assert!((field.curve_x0 - 0.4).abs() <= 1e-6, "{label}");
-        assert!((field.drop_gain - 0.6).abs() <= 1e-6, "{label}");
-    }
 }
 
 #[test]
@@ -3270,66 +2308,6 @@ fn microtiming_sets_signed_beat_phase_offset() {
 }
 
 #[test]
-fn rearticulate_final_placement_validates_both_builder_orders() {
-    for timing in [
-        "repeat().pulse(2.0)",
-        "metric()",
-        "entrained()",
-        "cycles(1)",
-    ] {
-        for chain in [
-            format!("sine().seek_consonance().pitch_apply_mode(\"rearticulate\").{timing}"),
-            format!("sine().{timing}.seek_consonance().pitch_apply_mode(\"rearticulate\")"),
-        ] {
-            let err = run_script_err(&format!("place({chain}, line(330.0, 330.0).count(1));"));
-            let message = err.to_string();
-            assert!(message.contains("Gated"), "{message}");
-            assert!(message.contains("rearticulate"));
-            assert!(message.contains("sustain()"));
-            assert!(message.contains("gate_snap"));
-            assert!(message.contains("glide"));
-        }
-    }
-    for script in [
-        "place(sine().seek_consonance().pitch_apply_mode(\"rearticulate\").pulse(2.0).sustain(), line(330.0, 330.0));",
-        "place(sine().sustain().pitch_apply_mode(\"rearticulate\").seek_consonance(), line(330.0, 330.0));",
-        "place(sine().anchor().pulse(2.0).pitch_apply_mode(\"rearticulate\"), at(330.0));",
-        "let p = place(sine().sustain().seek_consonance(), line(330.0, 330.0)); p.pitch_apply_mode(\"rearticulate\"); wait(1.0); p.pitch_apply_mode(\"glide\"); wait(1.0);",
-    ] {
-        run_script(script);
-    }
-}
-
-#[test]
-fn rearticulate_live_error_preserves_spec_pending_patch_and_future_template() {
-    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let mut scope = rhai::Scope::new();
-    let _ = engine.eval_with_scope::<Dynamic>(&mut scope, "let p = place(sine().repeat().pulse(2.0).seek_consonance(), line(330.0, 330.0)); p.amp(0.2);").unwrap();
-    let (mode, patch, event_count) = {
-        let state = ctx.lock().unwrap();
-        let population = state.populations.values().next().unwrap();
-        (
-            population.spec.spawn_spec().control.pitch.pitch_apply_mode,
-            population.pending_patch.clone(),
-            state.scenario.events.len(),
-        )
-    };
-    let error = engine
-        .eval_with_scope::<Dynamic>(&mut scope, "p.pitch_apply_mode(\"rearticulate\");")
-        .expect_err("incompatible live designation");
-    assert!(error.to_string().contains("Gated"));
-    let state = ctx.lock().unwrap();
-    let population = state.populations.values().next().unwrap();
-    assert_eq!(
-        population.spec.spawn_spec().control.pitch.pitch_apply_mode,
-        mode
-    );
-    assert_eq!(population.pending_patch, patch);
-    assert_eq!(state.scenario.events.len(), event_count);
-}
-
-#[test]
 fn rearticulate_respawn_inherits_initial_and_live_population_template() {
     for live in [false, true] {
         let mode = if live { "glide" } else { "rearticulate" };
@@ -3370,172 +2348,6 @@ fn rearticulate_respawn_inherits_initial_and_live_population_template() {
                 PitchApplyMode::Rearticulate
             );
             assert!(child.reports_onset_pitch());
-        }
-    }
-}
-
-#[test]
-fn rearticulate_native_invalid_patch_keeps_voice_and_respawn_template() {
-    let (scenario, _) = run_script_with_seed(
-        "create(sine().repeat().pulse(2.0).seek_consonance().respawn_random().respawn_background_death_rate(10000.0), 1);",
-        21,
-    );
-    let mut community = Community::new(Timebase {
-        fs: 48_000.0,
-        hop: 64,
-    });
-    community.set_seed(scenario.seed);
-    let landscape = LandscapeFrame::default();
-    for action in scenario.events.iter().flat_map(|e| &e.actions) {
-        if matches!(
-            action,
-            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
-        ) {
-            community.apply_action(action.clone(), &landscape);
-        }
-    }
-    let patch = ControlUpdate {
-        pitch_apply_mode: Some(PitchApplyMode::Rearticulate),
-        ..Default::default()
-    };
-    let v = &mut community.voices[0];
-    assert!(v.apply_patch(&patch).is_err());
-    assert_eq!(
-        v.base_control.pitch.pitch_apply_mode,
-        PitchApplyMode::GateSnap
-    );
-    assert_eq!(
-        v.effective_control.pitch.pitch_apply_mode,
-        PitchApplyMode::GateSnap
-    );
-    let population_id = v.metadata.population_id;
-    let founder = v.id();
-    community.apply_action(
-        Action::UpdatePopulation {
-            population_id,
-            patch,
-        },
-        &landscape,
-    );
-    assert_eq!(
-        community.voices[0].effective_control.pitch.pitch_apply_mode,
-        PitchApplyMode::GateSnap
-    );
-    community.advance(64, 0, 64.0 / 48_000.0, &landscape);
-    community.cleanup_dead(0, 64.0 / 48_000.0, false, &landscape);
-    assert!(community.voices.iter().any(|v| v.id() != founder));
-    for child in community.voices.iter().filter(|v| v.id() != founder) {
-        assert_eq!(
-            child.effective_control.pitch.pitch_apply_mode,
-            PitchApplyMode::GateSnap
-        );
-    }
-}
-
-#[test]
-fn sustained_participation_explicit_builders_are_order_independent() {
-    use crate::life::phonation_engine::PhonationEngine;
-    for preset in ["entrained()", "steady()", "flow()"] {
-        for pitch in ["", ".seek_consonance()"] {
-            let a = first_spawn_spec_for_script(&format!(
-                "create(harmonic().sustain().{preset}{pitch}, 1);"
-            ));
-            let b = first_spawn_spec_for_script(&format!(
-                "create(harmonic().{preset}.sustain(){pitch}, 1);"
-            ));
-            assert_eq!(a.control.phonation.spec, b.control.phonation.spec);
-            assert_eq!(
-                format!("{:?}", a.articulation),
-                format!("{:?}", b.articulation)
-            );
-            assert!(a.control.phonation.spec.is_sustained_participation());
-            assert_eq!(a.control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
-            assert_eq!(b.control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
-            let config = PhonationEngine::from_spec(&a.control.phonation.spec, 21);
-            assert_eq!(config.mode, crate::scenario::PhonationMode::Hold);
-            assert!(config.uses_participation());
-        }
-    }
-    for (chain, hold) in [
-        ("", true),
-        (".sustain()", true),
-        (".entrained()", false),
-        (".flow()", false),
-    ] {
-        let spec = first_spawn_spec_for_script(&format!("create(sine(){chain}, 1);"));
-        assert!(!spec.control.phonation.spec.is_sustained_participation());
-        let config = PhonationEngine::from_spec(&spec.control.phonation.spec, 21);
-        assert_eq!(config.mode == crate::scenario::PhonationMode::Hold, hold);
-        assert_eq!(
-            spec.control.pitch.pitch_apply_mode,
-            PitchApplyMode::GateSnap
-        );
-    }
-    for chain in [
-        "while_alive().entrained()",
-        "while_alive().flow()",
-        "entrained().while_alive()",
-        "flow().while_alive()",
-    ] {
-        let spec = first_spawn_spec_for_script(&format!("create(sine().{chain}, 1);"));
-        assert!(!spec.control.phonation.spec.is_sustained_participation());
-    }
-    for preset in ["pulse(2.0)", "repeat()"] {
-        for (chain, hold) in [
-            (format!("sustain().{preset}"), false),
-            (format!("{preset}.sustain()"), true),
-        ] {
-            let spec = first_spawn_spec_for_script(&format!("create(sine().{chain}, 1);"));
-            assert!(!spec.control.phonation.spec.is_sustained_participation());
-            let config = PhonationEngine::from_spec(&spec.control.phonation.spec, 21);
-            assert_eq!(config.mode == crate::scenario::PhonationMode::Hold, hold);
-        }
-    }
-}
-
-#[test]
-fn synchronized_explicit_builders_and_finite_rest_are_order_independent() {
-    use crate::life::phonation_engine::PhonationEngine;
-    for chain in ["sustain().metric()", "metric().sustain()"] {
-        for pitch in [
-            "",
-            ".pitch_apply_mode(\"gate_snap\").tie(1)",
-            ".pitch_apply_mode(\"rearticulate\").rearticulate_above(50).articulation_persistence(0.5)",
-        ] {
-            let spec = first_spawn_spec_for_script(&format!("create(sine().{chain}{pitch},1);"));
-            assert!(spec.control.phonation.spec.is_sustained_participation());
-            let engine = PhonationEngine::from_spec(&spec.control.phonation.spec, 21);
-            assert_eq!(engine.mode, crate::scenario::PhonationMode::Hold);
-            assert!(!engine.uses_participation());
-        }
-    }
-    let words = ["sustain()", "metric()", "cycles(1)", "rest()"];
-    for a in 0..4 {
-        for b in 0..4 {
-            for c in 0..4 {
-                for d in 0..4 {
-                    if [a, b, c, d]
-                        .iter()
-                        .enumerate()
-                        .any(|(i, v)| [a, b, c, d][..i].contains(v))
-                    {
-                        continue;
-                    }
-                    let chain = [words[a], words[b], words[c], words[d]].join(".");
-                    let spec = first_spawn_spec_for_script(&format!(
-                        "create(sine().{chain}.pitch_apply_mode(\"rearticulate\"),1);"
-                    ));
-                    assert!(
-                        spec.control.phonation.spec.is_sustained_participation(),
-                        "{chain}"
-                    );
-                    assert_eq!(spec.control.phonation.rest_periods, Some(1.));
-                    assert_eq!(
-                        spec.control.phonation.finite_duration,
-                        Some(crate::scenario::DurationSpec::Gates(1))
-                    );
-                }
-            }
         }
     }
 }
@@ -3625,70 +2437,6 @@ fn synchronized_respawn_retains_controls_and_starts_fresh_private_policy() {
 }
 
 #[test]
-fn sustained_participation_rearticulate_order_live_and_respawn_are_valid() {
-    for preset in ["entrained()", "steady()", "flow()"] {
-        for chain in [
-            format!("sustain().{preset}.pitch_apply_mode(\"rearticulate\").rearticulate_above(50)"),
-            format!("rearticulate_above(50).pitch_apply_mode(\"rearticulate\").{preset}.sustain()"),
-            format!("{preset}.pitch_apply_mode(\"rearticulate\").sustain().rearticulate_above(50)"),
-        ] {
-            let spec = first_spawn_spec_for_script(&format!("create(sine().{chain}, 1);"));
-            assert!(spec.control.phonation.spec.is_sustained_participation());
-            assert_eq!(
-                spec.control.pitch.pitch_apply_mode,
-                PitchApplyMode::Rearticulate
-            );
-            assert_eq!(spec.control.pitch.rearticulate_above_cents, 50.);
-        }
-        let (scenario, _) = run_script_with_seed(
-            &format!(
-                "let p = create(sine().sustain().{preset}.seek_consonance().respawn_random().respawn_background_death_rate(10000.0),1); p.pitch_apply_mode(\"rearticulate\"); p.rearticulate_above(100); flush();"
-            ),
-            21,
-        );
-        let mut community = Community::new(Timebase {
-            fs: 48000.,
-            hop: 257,
-        });
-        community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
-        for action in scenario.events.iter().flat_map(|e| &e.actions) {
-            if matches!(
-                action,
-                Action::Spawn { .. }
-                    | Action::SetRespawnPolicy { .. }
-                    | Action::UpdatePopulation { .. }
-            ) {
-                community.apply_action(action.clone(), &landscape);
-            }
-        }
-        let founder = community.voices[0].id();
-        community.advance(257, 0, 257. / 48000., &landscape);
-        community.cleanup_dead(0, 257. / 48000., false, &landscape);
-        let children: Vec<_> = community
-            .voices
-            .iter()
-            .filter(|v| v.id() != founder)
-            .collect();
-        assert!(!children.is_empty());
-        for child in children {
-            assert_eq!(
-                child.effective_control.pitch.pitch_apply_mode,
-                PitchApplyMode::Rearticulate
-            );
-            assert_eq!(child.effective_control.pitch.rearticulate_above_cents, 100.);
-            assert!(
-                child
-                    .effective_control
-                    .phonation
-                    .spec
-                    .is_sustained_participation()
-            );
-        }
-    }
-}
-
-#[test]
 fn boundary_respawn_inherits_initial_and_live_population_template() {
     for live in [false, true] {
         let mode = if live { "glide" } else { "rearticulate" };
@@ -3735,55 +2483,6 @@ fn boundary_respawn_inherits_initial_and_live_population_template() {
             );
         }
     }
-}
-
-#[test]
-fn boundary_script_order_sanitize_and_outside_mode_ignore() {
-    for chain in [
-        "rearticulate_above(50).pitch_apply_mode(\"rearticulate\")",
-        "pitch_apply_mode(\"rearticulate\").rearticulate_above(50)",
-    ] {
-        let (scenario, _) = run_script(&format!("create(sine().sustain().{chain}, 1);"));
-        let spec = scenario
-            .events
-            .iter()
-            .flat_map(|e| &e.actions)
-            .find_map(|a| match a {
-                Action::Spawn { spec, .. } => Some(spec),
-                _ => None,
-            })
-            .unwrap();
-        assert_eq!(spec.control.pitch.rearticulate_above_cents, 50.0);
-    }
-    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let mut scope = rhai::Scope::new();
-    let _ = engine.eval_with_scope::<Dynamic>(&mut scope, "let p = create(sine().sustain().pitch_apply_mode(\"glide\").rearticulate_above(50), 1); p.rearticulate_above(100); p.amp(0.2);").unwrap();
-    {
-        let state = ctx.lock().unwrap();
-        let p = state.populations.values().next().unwrap();
-        assert_eq!(p.spec.control.pitch.rearticulate_above_cents, 0.0);
-        assert_eq!(p.pending_patch.rearticulate_above_cents, None);
-    }
-    let _ = engine
-        .eval_with_scope::<Dynamic>(
-            &mut scope,
-            "p.pitch_apply_mode(\"rearticulate\"); p.rearticulate_above(100);",
-        )
-        .unwrap();
-    {
-        let state = ctx.lock().unwrap();
-        let p = state.populations.values().next().unwrap();
-        assert_eq!(p.spec.control.pitch.rearticulate_above_cents, 100.0);
-        assert_eq!(p.pending_patch.rearticulate_above_cents, Some(100.0));
-    }
-    let mut pitch = crate::scenario::control::PitchControl::default();
-    for value in [-1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        pitch.set_rearticulate_above_cents_clamped(value);
-        assert_eq!(pitch.rearticulate_above_cents, 0.0);
-    }
-    pitch.set_rearticulate_above_cents_clamped(f32::MAX);
-    assert_eq!(pitch.rearticulate_above_cents, f32::MAX);
 }
 
 #[test]
@@ -3840,83 +2539,6 @@ fn deferred_participation_respawn_inherits_initial_and_live_population_template(
 }
 
 #[test]
-fn deferred_participation_script_order_and_live_gate_snap_are_valid() {
-    for preset in ["entrained()", "steady()", "flow()"] {
-        for chain in [
-            format!("sustain().{preset}.pitch_apply_mode(\"gate_snap\")"),
-            format!("pitch_apply_mode(\"gate_snap\").{preset}.sustain()"),
-            format!("{preset}.pitch_apply_mode(\"gate_snap\").sustain()"),
-        ] {
-            let (scenario, _) =
-                run_script(&format!("create(sine().{chain}.seek_consonance(), 1);"));
-            let spec = scenario
-                .events
-                .iter()
-                .flat_map(|e| &e.actions)
-                .find_map(|a| match a {
-                    Action::Spawn { spec, .. } => Some(spec),
-                    _ => None,
-                })
-                .unwrap();
-            assert_eq!(
-                spec.control.pitch.pitch_apply_mode,
-                PitchApplyMode::GateSnap
-            );
-            assert!(spec.control.phonation.spec.is_sustained_participation());
-        }
-        run_script(&format!(
-            "let p = create(sine().sustain().{preset}.seek_consonance(), 1); p.pitch_apply_mode(\"gate_snap\"); wait(0.1); p.pitch_apply_mode(\"glide\"); flush();"
-        ));
-    }
-}
-
-#[test]
-fn rest_builder_order_preserves_duration_and_participation() {
-    for preset in ["entrained()", "steady()", "flow()"] {
-        let words = ["sustain()", preset, "adaptive_duration()", "rest()"];
-        for a in 0..4 {
-            for b in 0..4 {
-                for c in 0..4 {
-                    for d in 0..4 {
-                        if [a, b, c, d]
-                            .iter()
-                            .enumerate()
-                            .any(|(i, n)| [a, b, c, d][..i].contains(n))
-                        {
-                            continue;
-                        }
-                        let chain = [words[a], words[b], words[c], words[d]].join(".");
-                        let spec = first_spawn_spec_for_script(&format!(
-                            "create(harmonic().{chain}.duration_range(0.2,0.2),1);"
-                        ));
-                        assert!(
-                            spec.control.phonation.spec.is_sustained_participation(),
-                            "{chain}"
-                        );
-                        assert_eq!(spec.control.phonation.rest_periods, Some(1.));
-                        assert!(
-                            matches!(spec.control.phonation.finite_duration,Some(DurationSpec::Field(f)) if f.hold_min_theta==0.2 && f.hold_max_theta==0.2)
-                        );
-                        assert_eq!(spec.control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
-                    }
-                }
-            }
-        }
-        for chain in [
-            format!("cycles(2).sustain().{preset}.rest(0.5)"),
-            format!("rest(0.5).sustain().{preset}.cycles(2)"),
-        ] {
-            let spec = first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
-            assert!(spec.control.phonation.spec.is_sustained_participation());
-            assert_eq!(
-                spec.control.phonation.finite_duration,
-                Some(DurationSpec::Gates(2))
-            );
-        }
-    }
-}
-
-#[test]
 fn rest_numeric_overloads_and_sanitize_match_existing_vocabulary() {
     for (call, value) in [
         ("rest()", 1.),
@@ -3937,40 +2559,6 @@ fn rest_numeric_overloads_and_sanitize_match_existing_vocabulary() {
             p.rest_periods,
             Some(if x.is_finite() { x.max(0.) } else { 0. })
         );
-    }
-}
-
-#[test]
-fn rest_invalid_placement_and_live_writes_are_transactional() {
-    for chain in [
-        "sustain().entrained().rest()",
-        "sustain().entrained().adaptive_duration().while_alive().rest()",
-        "adaptive_duration().sustain().rest()",
-    ] {
-        let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
-        let engine = ScriptHost::create_engine(ctx.clone());
-        let err = engine
-            .eval::<Dynamic>(&format!("create(sine().{chain},1);"))
-            .expect_err("invalid rest");
-        assert!(err.to_string().contains("rest()"));
-        let state = ctx.lock().unwrap();
-        assert!(state.populations.is_empty());
-        assert_eq!(state.next_population_id, 1);
-    }
-    let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let mut scope = rhai::Scope::new();
-    let _ = engine.eval_with_scope::<Dynamic>(&mut scope,"let p=create(sine().sustain().entrained().cycles(1).rest().pitch_apply_mode(\"gate_snap\"),1);").unwrap();
-    let _ = engine
-        .eval_with_scope::<Dynamic>(
-            &mut scope,
-            "p.pitch_apply_mode(\"rearticulate\"); p.rearticulate_above(50);",
-        )
-        .unwrap();
-    let before = format!("{:?}", ctx.lock().unwrap().populations);
-    for call in ["p.rest();", "p.cycles(2);", "p.duration_range(0.2,0.3);"] {
-        assert!(engine.eval_with_scope::<Dynamic>(&mut scope, call).is_err());
-        assert_eq!(format!("{:?}", ctx.lock().unwrap().populations), before);
     }
 }
 
@@ -4023,45 +2611,6 @@ fn rest_respawn_inherits_template_and_starts_with_empty_performance_state() {
             child.phonation_engine.rest.unwrap().phase,
             crate::life::phonation_engine::RestPhase::Ready
         );
-    }
-}
-
-#[test]
-fn articulation_persistence_builder_order_and_common_creation_point() {
-    fn permutations(parts: &[&str]) -> Vec<String> {
-        if parts.is_empty() {
-            return vec![String::new()];
-        }
-        let mut result = Vec::new();
-        for (index, part) in parts.iter().enumerate() {
-            let remaining: Vec<_> = parts
-                .iter()
-                .enumerate()
-                .filter_map(|(i, p)| (i != index).then_some(*p))
-                .collect();
-            for tail in permutations(&remaining) {
-                result.push(format!(".{part}{tail}"));
-            }
-        }
-        result
-    }
-    for timing in ["entrained()", "steady()", "flow()"] {
-        for chain in permutations(&[
-            "sustain()",
-            timing,
-            "pitch_apply_mode(\"rearticulate\")",
-            "rearticulate_above(50)",
-            "articulation_persistence(0.75)",
-        ]) {
-            for script in [
-                format!("create(sine(){chain},1);"),
-                format!("place(sine(){chain},line(330.0,330.0));"),
-            ] {
-                let spec = first_spawn_spec_for_script(&script);
-                assert!(spec.control.supports_articulation_persistence(), "{script}");
-                assert_eq!(spec.control.phonation.articulation_persistence, 0.75);
-            }
-        }
     }
 }
 
@@ -4208,89 +2757,6 @@ fn articulation_persistence_endpoints_allocate_no_private_policy() {
             panic!()
         };
         assert!(clock.shape.is_none());
-    }
-}
-
-#[test]
-fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
-    use crate::life::phonation_engine::PhonationClock;
-    use crate::life::shape_policy::Shape;
-    use crate::life::voice::PhonationBatch;
-    for suspend in ["p.pitch_apply_mode(\"glide\");", "p.rearticulate_above(0);"] {
-        let (scenario, _) = run_script_with_seed(
-            &format!(
-                "let p=create(sine().sustain().entrained().pitch_apply_mode(\"rearticulate\").rearticulate_above(50).articulation_persistence(0.75).respawn_random().respawn_background_death_rate(10000.0),1); {suspend} flush();"
-            ),
-            21,
-        );
-        let tb = Timebase {
-            fs: 48000.,
-            hop: 257,
-        };
-        let mut community = Community::new(tb);
-        community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
-        for action in scenario.events.iter().flat_map(|event| &event.actions) {
-            if matches!(
-                action,
-                Action::Spawn { .. }
-                    | Action::SetRespawnPolicy { .. }
-                    | Action::UpdatePopulation { .. }
-            ) {
-                community.apply_action(action.clone(), &landscape);
-            }
-        }
-        let parent = community.voices[0].id();
-        let PhonationClock::Participation(clock) = &mut community.voices[0].phonation_engine.clock
-        else {
-            panic!()
-        };
-        clock.shape.as_mut().unwrap().state = Shape::Connect;
-        community.advance(257, 0, 257. / 48000., &landscape);
-        community.cleanup_dead(0, 257. / 48000., false, &landscape);
-        assert!(community.voices.iter().any(|v| v.id() != parent));
-        for child in community.voices.iter_mut().filter(|v| v.id() != parent) {
-            assert_eq!(
-                child.effective_control.phonation.articulation_persistence,
-                0.75
-            );
-            assert!(!child.effective_control.supports_articulation_persistence());
-            let PhonationClock::Participation(clock) = &child.phonation_engine.clock else {
-                panic!()
-            };
-            let shape = clock
-                .shape
-                .as_ref()
-                .expect("inherited persistence must survive temporary suspension");
-            assert_eq!(shape.state, Shape::Base);
-            assert!(!shape.enabled && !shape.veto_plan && !shape.has_tone);
-            child
-                .apply_patch(&crate::scenario::control::ControlUpdate {
-                    pitch_apply_mode: Some(crate::scenario::control::PitchApplyMode::Rearticulate),
-                    rearticulate_above_cents: Some(50.),
-                    ..Default::default()
-                })
-                .unwrap();
-            let mut out = PhonationBatch::default();
-            child.prepare_phonation_batch(&mut out);
-            child.tick_phonation_into_with_arrival(
-                &tb,
-                257,
-                &landscape.rhythm,
-                None,
-                0.,
-                1.,
-                0.8,
-                None,
-                None,
-                &mut out,
-            );
-            let PhonationClock::Participation(clock) = &child.phonation_engine.clock else {
-                panic!()
-            };
-            assert!(clock.shape.as_ref().unwrap().enabled);
-            assert_eq!(out.tones.len(), 1);
-        }
     }
 }
 
@@ -4487,39 +2953,18 @@ fn synchronized_tie_default_sound_and_live_modes_use_existing_policy() {
 
 #[test]
 fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
-    #[derive(Clone)]
-    struct Capture(Arc<Mutex<Vec<u8>>>);
-    impl std::io::Write for Capture {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
+    for chain in [
+        "sustain().metric().pitch_apply_mode(\"gate_snap\")",
+        "sustain().metric().pitch_apply_mode(\"rearticulate\")",
+        "sustain().metric().pitch_apply_mode(\"glide\")",
+        "sustain().metric().anchor().pitch_apply_mode(\"gate_snap\")",
+        "sustain().steady().pitch_apply_mode(\"gate_snap\")",
+        "sustain().steady().pitch_apply_mode(\"rearticulate\")",
+        "sustain().steady().pitch_apply_mode(\"glide\")",
+    ] {
+        let (_, warnings) = run_script(&format!("create(sine().{chain},1);"));
+        assert!(warnings.lock().unwrap().is_empty());
     }
-    let captured = Arc::new(Mutex::new(Vec::new()));
-    let writer = Capture(captured.clone());
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
-        .without_time()
-        .with_ansi(false)
-        .with_writer(move || writer.clone())
-        .finish();
-    tracing::subscriber::with_default(subscriber, || {
-        for chain in [
-            "sustain().metric().pitch_apply_mode(\"gate_snap\")",
-            "sustain().metric().pitch_apply_mode(\"rearticulate\")",
-            "sustain().metric().pitch_apply_mode(\"glide\")",
-            "sustain().metric().anchor().pitch_apply_mode(\"gate_snap\")",
-            "sustain().steady().pitch_apply_mode(\"gate_snap\")",
-            "sustain().steady().pitch_apply_mode(\"rearticulate\")",
-            "sustain().steady().pitch_apply_mode(\"glide\")",
-        ] {
-            first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
-        }
-    });
-    assert!(captured.lock().unwrap().is_empty());
     let (scene, _) = run_script_with_seed(
         "create(sine().sustain().metric().pitch_apply_mode(\"gate_snap\").respawn_random().respawn_background_death_rate(10000.0),1);",
         21,
@@ -4551,69 +2996,6 @@ fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
         assert_eq!(shape.tie.as_ref().unwrap().trials, 0);
     }
     assert!(children > 0);
-}
-
-#[test]
-fn tie_builder_order_values_scope_and_no_live_setter() {
-    for timing in ["entrained()", "steady()", "flow()"] {
-        for mode in ["gate_snap", "rearticulate"] {
-            for chain in [
-                format!("tie(0.5).sustain().{timing}.pitch_apply_mode(\"{mode}\")"),
-                format!("sustain().{timing}.pitch_apply_mode(\"{mode}\").tie(0.5)"),
-            ] {
-                for script in [
-                    format!("create(sine().{chain},1);"),
-                    format!("place(sine().{chain},line(330.0,330.0));"),
-                ] {
-                    let spec = first_spawn_spec_for_script(&script);
-                    assert_eq!(spec.control.phonation.tie, 0.5, "{script}");
-                    assert!(spec.control.supports_tie());
-                }
-            }
-        }
-    }
-    for (value, expected) in [
-        (0., 0.),
-        (1., 1.),
-        (-1., 0.),
-        (2., 1.),
-        (f32::NAN, 0.),
-        (f32::INFINITY, 1.),
-        (f32::NEG_INFINITY, 0.),
-    ] {
-        let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
-        let mut engine = ScriptHost::create_engine(ctx.clone());
-        engine.register_fn("test_value", move || value as rhai::FLOAT);
-        let _ = engine.eval::<Dynamic>("create(sine().sustain().entrained().pitch_apply_mode(\"gate_snap\").tie(test_value()),1);").unwrap();
-        assert_eq!(
-            ctx.lock()
-                .unwrap()
-                .populations
-                .values()
-                .next()
-                .unwrap()
-                .spec
-                .control
-                .phonation
-                .tie,
-            expected
-        );
-    }
-    for chain in [
-        "sustain()",
-        "sustain().entrained()",
-        "pulse(2).cycles(1)",
-        "sustain().entrained().anchor().pitch_apply_mode(\"gate_snap\")",
-    ] {
-        assert_eq!(
-            first_spawn_spec_for_script(&format!("create(sine().{chain}.tie(1),1);"))
-                .control
-                .phonation
-                .tie,
-            0.0
-        );
-    }
-    assert!(run_script_err("let p=create(sine().sustain().entrained().pitch_apply_mode(\"gate_snap\").tie(1),1); p.tie(0.5);").to_string().contains("tie"));
 }
 
 #[test]
@@ -4667,5 +3049,70 @@ fn tie_respawn_inherits_parameter_and_resets_private_policy() {
         assert!(!shape.veto_plan && !shape.has_tone);
         assert!(!shape.tie.as_ref().unwrap().pending_pitch);
         assert_eq!(shape.tie.as_ref().unwrap().trials, 0);
+    }
+}
+
+#[test]
+fn explicit_pitch_and_viability_choices_override_preset_defaults_in_either_order() {
+    for (a, b) in [
+        (
+            "glide(0.12).pitch_core(\"peak_sampler\").seek_consonance()",
+            "seek_consonance().pitch_core(\"peak_sampler\").glide(0.12)",
+        ),
+        (
+            "viability_scope(\"total\").consonance_viability(0.2, 0.8)",
+            "consonance_viability(0.2, 0.8).viability_scope(\"total\")",
+        ),
+    ] {
+        let a = first_spawn_spec_for_script(&format!("place(harmonic().{a}, line(220, 330));"));
+        let b = first_spawn_spec_for_script(&format!("place(harmonic().{b}, line(220, 330));"));
+        assert_eq!(a.control.pitch.core_kind, b.control.pitch.core_kind);
+        assert_eq!(
+            a.control.pitch.pitch_glide_tau_sec,
+            b.control.pitch.pitch_glide_tau_sec
+        );
+        for spec in [&a, &b] {
+            if let ArticulationCoreConfig::Entrain {
+                lifecycle:
+                    LifecycleConfig::Sustain {
+                        selection_approx_loo,
+                        ..
+                    },
+                ..
+            } = &spec.articulation
+            {
+                assert!(!selection_approx_loo);
+            }
+        }
+    }
+    let explicit = first_spawn_spec_for_script(
+        "place(harmonic().glide(0.12).pitch_core(\"peak_sampler\").seek_consonance(), line(220,330));",
+    );
+    assert_eq!(explicit.control.pitch.core_kind, PitchCoreKind::PeakSampler);
+    assert_eq!(explicit.control.pitch.pitch_glide_tau_sec, 0.12);
+    let implicit =
+        first_spawn_spec_for_script("place(harmonic().seek_consonance(), line(220,330));");
+    assert_eq!(implicit.control.pitch.pitch_glide_tau_sec, 0.30);
+}
+
+#[test]
+fn counts_accept_integers_only_and_removed_verbs_are_unregistered() {
+    for method in ["unison", "top_k", "random_candidates", "respawn_capacity"] {
+        run_script(&format!("place(harmonic().{method}(2), at(220));"));
+        assert!(
+            run_script_err(&format!("harmonic().{method}(2.0);"))
+                .message
+                .contains(method)
+        );
+    }
+    for script in [
+        "variant(harmonic());",
+        "harmonic().pitch_smooth(0.12);",
+        "harmonic().selection_approx_loo(true);",
+        "set_control_update_mode(\"snapshot_phased\");",
+        "set_scaffold_off();",
+        "harmonic().respawn_min_c_level(0.5);",
+    ] {
+        run_script_err(script);
     }
 }

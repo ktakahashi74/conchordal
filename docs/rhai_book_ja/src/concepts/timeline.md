@@ -89,3 +89,15 @@ section("overlap", || {
 
 [演奏](../tutorial/observing.md)で説明した手順を使って結果を確かめ、scenarioを修正します。
 特定の実現を再現するときだけ`seed(...)`または`--seed`を使います。
+
+## シーン全体の設定と途中の変更
+
+大域的な設定の名前は、いつ適用されるかを表します。`set_`のない
+`meter_stability`、`temporal_basin`、`control_update_mode`、`scaffold_off`、
+`scaffold_shared`、`scaffold_scrambled`、`seed`はシーン全体の初期条件です。
+`wait()`の後に書いても、最後の指定が全体へ適用されます。`temporal_mode`も
+初期条件ですが、イベントを置く前に最上位で一度だけ宣言します。
+
+`set_roughness_aversion`、`set_global_coupling`、`set_pitch_objective`は、
+その時点のスクリプト時刻に変更を置きます。`wait()`で変更の時刻を選べます。
+配置、解放、有効範囲を作る語は、引き続き操作そのものを表します。

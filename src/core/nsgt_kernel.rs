@@ -300,7 +300,8 @@ impl NsgtKernelLog2 {
         }
     }
 
-    /// Construct with coherent power mode (backwards-compatible default).
+    /// Construct a coherent kernel for offline-analysis tests.
+    #[cfg(test)]
     pub fn new_coherent(
         cfg: NsgtLog2Config,
         space: Log2Space,

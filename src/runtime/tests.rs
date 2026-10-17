@@ -310,7 +310,6 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
 fn build_test_params(space: &Log2Space) -> LandscapeParams {
     LandscapeParams {
         fs: 48_000.0,
-        max_hist_cols: 1,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
         harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
         consonance_kernel: ConsonanceKernel::default(),

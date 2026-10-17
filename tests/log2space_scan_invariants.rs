@@ -140,16 +140,12 @@ fn apply_habituation_panics_on_long_state_scan() {
     landscape.apply_habituation(&h, 0.0, &ConsonanceRepresentationParams::default());
 }
 
-/// Sampling an aligned scan still uses `NEG_INFINITY` as the out-of-space
-/// sentinel; only length mismatch was promoted to a panic.
+/// Out-of-space sampling yields zero; a misaligned scan remains a caller bug.
 #[test]
-fn sample_scan_linear_log2_keeps_out_of_range_sentinel() {
+fn sample_scan_linear_log2_returns_zero_out_of_range() {
     let space = Log2Space::new(55.0, 4000.0, 24);
     let scan = vec![0.5f32; space.n_bins()];
-    assert_eq!(
-        sample_scan_linear_log2(&space, &scan, 20.0),
-        f32::NEG_INFINITY
-    );
+    assert_eq!(sample_scan_linear_log2(&space, &scan, 20.0), 0.0);
     assert_eq!(sample_scan_linear_log2(&space, &scan, 220.0), 0.5);
 }
 

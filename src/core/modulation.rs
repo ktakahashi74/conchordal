@@ -1,15 +1,8 @@
+use crate::core::float::smoothstep;
 use std::f32::consts::TAU;
 
 use crate::core::meter::MeterState;
 use crate::core::phase::wrap_pm_pi;
-
-fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
-    if hi <= lo {
-        return 0.0;
-    }
-    let t = ((x - lo) / (hi - lo)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
 
 #[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]

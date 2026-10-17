@@ -1,4 +1,5 @@
 use crate::core::density;
+use crate::core::float::sanitize_nonnegative_finite;
 use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
 use crate::core::roughness_kernel::erb_grid;
@@ -34,8 +35,8 @@ pub(crate) fn normalize_density_into(
         .iter()
         .zip(du)
         .map(|(&d, &du)| {
-            let d = if d.is_finite() { d.max(0.) } else { 0. };
-            let du = if du.is_finite() { du.max(0.) } else { 0. };
+            let d = sanitize_nonnegative_finite(d);
+            let du = sanitize_nonnegative_finite(du);
             d * du
         })
         .sum::<f32>();
@@ -43,15 +44,9 @@ pub(crate) fn normalize_density_into(
     if !mass.is_finite() || mass <= eps {
         return mass;
     }
-    {
-        let inv = 1. / (mass + eps);
-        for (out, &value) in norm.iter_mut().zip(density_vals) {
-            *out = if value.is_finite() {
-                value.max(0.) * inv
-            } else {
-                0.
-            };
-        }
+    let inv = 1.0 / (mass + eps);
+    for (out, &value) in norm.iter_mut().zip(density_vals) {
+        *out = sanitize_nonnegative_finite(value) * inv;
     }
     mass
 }
@@ -182,7 +177,6 @@ mod tests {
     fn build_params(space: &Log2Space) -> LandscapeParams {
         LandscapeParams {
             fs: 48_000.0,
-            max_hist_cols: 1,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             consonance_kernel: ConsonanceKernel::default(),

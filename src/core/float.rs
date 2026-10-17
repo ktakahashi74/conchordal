@@ -36,6 +36,16 @@ pub fn unit_gaussian(d: f32, sigma: f32) -> f32 {
     (-0.5 * (d / sigma).powi(2)).exp()
 }
 
+/// Cubic interpolation from zero to one between the supplied bounds.
+#[inline]
+pub fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
+    if hi <= lo {
+        return 0.0;
+    }
+    let t = ((x - lo) / (hi - lo)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

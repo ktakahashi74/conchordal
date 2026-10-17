@@ -196,16 +196,16 @@ pub struct HabituationConfig {
 
 impl HabituationConfig {
     fn default_enabled() -> bool {
-        true
+        crate::core::habituation::HabituationParams::default().enabled
     }
     fn default_satiation_sec() -> f32 {
-        5.0
+        crate::core::habituation::HabituationParams::default().satiation_sec
     }
     fn default_recovery_sec() -> f32 {
-        8.0
+        crate::core::habituation::HabituationParams::default().recovery_sec
     }
     fn default_ref_drive() -> f32 {
-        0.25
+        crate::core::habituation::HabituationParams::default().ref_drive
     }
 }
 

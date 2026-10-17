@@ -62,57 +62,62 @@ fn fill_output(
     }
 }
 
+fn choose_f32_config(
+    default: &cpal::SupportedStreamConfig,
+    ranges: impl Iterator<Item = cpal::SupportedStreamConfigRange>,
+) -> Option<cpal::SupportedStreamConfig> {
+    let candidate = ranges
+        .filter(|range| range.sample_format() == cpal::SampleFormat::F32)
+        .max_by_key(|range| {
+            (
+                range.min_sample_rate() <= PREFERRED_OUTPUT_SAMPLE_RATE
+                    && PREFERRED_OUTPUT_SAMPLE_RATE <= range.max_sample_rate(),
+                range.channels() == default.channels(),
+                range.channels(),
+            )
+        });
+    if let Some(range) = candidate {
+        if range.min_sample_rate() <= PREFERRED_OUTPUT_SAMPLE_RATE
+            && PREFERRED_OUTPUT_SAMPLE_RATE <= range.max_sample_rate()
+        {
+            return Some(range.with_sample_rate(PREFERRED_OUTPUT_SAMPLE_RATE));
+        }
+        if default.sample_format() != cpal::SampleFormat::F32 {
+            let rate = default
+                .sample_rate()
+                .clamp(range.min_sample_rate(), range.max_sample_rate());
+            return Some(range.with_sample_rate(rate));
+        }
+    }
+    (default.sample_format() == cpal::SampleFormat::F32).then(|| default.clone())
+}
+
 fn select_output_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
-    let default_config = device
+    let default = device
         .default_output_config()
         .context("No default config")?;
-    if default_config.sample_rate() == PREFERRED_OUTPUT_SAMPLE_RATE {
-        return Ok(default_config);
+    if default.sample_rate() == PREFERRED_OUTPUT_SAMPLE_RATE
+        && default.sample_format() == cpal::SampleFormat::F32
+    {
+        return Ok(default);
     }
-
-    let default_format = default_config.sample_format();
-    let default_channels = default_config.channels();
-
-    let preferred = match device.supported_output_configs() {
-        Ok(configs) => configs
-            .filter(|range| range.sample_format() == default_format)
-            .filter(|range| {
-                let min = range.min_sample_rate();
-                let max = range.max_sample_rate();
-                min <= PREFERRED_OUTPUT_SAMPLE_RATE && PREFERRED_OUTPUT_SAMPLE_RATE <= max
-            })
-            .max_by_key(|range| {
-                (
-                    u8::from(range.channels() == default_channels),
-                    range.channels(),
-                )
-            })
-            .map(|range| range.with_sample_rate(PREFERRED_OUTPUT_SAMPLE_RATE)),
+    let selected = match device.supported_output_configs() {
+        Ok(configs) => choose_f32_config(&default, configs),
         Err(err) => {
             debug!("Could not enumerate supported output configs: {err}");
-            None
+            (default.sample_format() == cpal::SampleFormat::F32).then(|| default.clone())
         }
-    };
-
-    if let Some(config) = preferred {
-        info!(
-            "Audio output config: preferring {} Hz over default {} Hz (ch={} fmt={:?})",
-            PREFERRED_OUTPUT_SAMPLE_RATE,
-            default_config.sample_rate(),
-            config.channels(),
-            config.sample_format()
-        );
-        return Ok(config);
     }
-
+    .context("Audio output device has no supported f32 configuration")?;
     info!(
-        "Audio output config: preferred {} Hz unavailable; using default {} Hz (ch={} fmt={:?})",
-        PREFERRED_OUTPUT_SAMPLE_RATE,
-        default_config.sample_rate(),
-        default_channels,
-        default_format
+        "Audio output config: {} Hz ch={} fmt={:?} (default {} Hz fmt={:?})",
+        selected.sample_rate(),
+        selected.channels(),
+        selected.sample_format(),
+        default.sample_rate(),
+        default.sample_format()
     );
-    Ok(default_config)
+    Ok(selected)
 }
 
 /// Module for connecting to the output device.
@@ -284,6 +289,51 @@ impl Drop for AudioOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_selection_requires_f32_even_at_the_default_rate() {
+        let range = |format, min, max| {
+            cpal::SupportedStreamConfigRange::new(
+                2,
+                min,
+                max,
+                cpal::SupportedBufferSize::Unknown,
+                format,
+            )
+        };
+        let default = range(cpal::SampleFormat::I16, 48_000, 48_000).with_sample_rate(48_000);
+        let selected = choose_f32_config(
+            &default,
+            [
+                range(cpal::SampleFormat::I16, 48_000, 96_000),
+                range(cpal::SampleFormat::F32, 44_100, 48_000),
+            ]
+            .into_iter(),
+        )
+        .unwrap();
+        assert_eq!(selected.sample_format(), cpal::SampleFormat::F32);
+        assert_eq!(selected.sample_rate(), 48_000);
+        let fallback = choose_f32_config(
+            &default,
+            [range(cpal::SampleFormat::F32, 44_100, 44_100)].into_iter(),
+        )
+        .unwrap();
+        assert_eq!(fallback.sample_format(), cpal::SampleFormat::F32);
+        assert_eq!(fallback.sample_rate(), 44_100);
+        assert!(
+            choose_f32_config(
+                &default,
+                [range(cpal::SampleFormat::I16, 44_100, 48_000)].into_iter()
+            )
+            .is_none()
+        );
+        assert_eq!(
+            choose_f32_config(&fallback, std::iter::empty())
+                .unwrap()
+                .sample_rate(),
+            44_100
+        );
+    }
 
     #[test]
     fn low_latency_buffer_accepts_a_complete_worker_hop() {

@@ -1,4 +1,4 @@
-use std::env;
+use crate::core::float::finite_or;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
@@ -76,11 +76,11 @@ impl LimiterMeter {
             self.over_count.fetch_add(stats.num_over, Ordering::Relaxed);
         }
         self.max_reduction_bits
-            .store(stats.max_reduction_db.to_bits(), Ordering::Relaxed);
+            .fetch_max(stats.max_reduction_db.to_bits(), Ordering::Relaxed);
         self.max_abs_in_bits
-            .store(stats.max_abs_in.to_bits(), Ordering::Relaxed);
+            .fetch_max(stats.max_abs_in.to_bits(), Ordering::Relaxed);
         self.max_abs_out_bits
-            .store(stats.max_abs_out.to_bits(), Ordering::Relaxed);
+            .fetch_max(stats.max_abs_out.to_bits(), Ordering::Relaxed);
     }
 
     pub fn take_snapshot(&self) -> Option<LimiterStats> {
@@ -163,10 +163,16 @@ impl Limiter {
         match self.mode {
             LimiterMode::None => {}
             LimiterMode::SoftClip(params) => {
-                let ceiling = params.ceiling.abs().max(1e-6);
-                let drive = params.drive.max(0.0);
+                let ceiling = finite_or(params.ceiling, SoftClipParams::default().ceiling)
+                    .abs()
+                    .max(1e-6);
+                // Drive sets headroom: at drive=2 the identity knee is ceiling/2.
+                let below_ceiling = f32::from_bits(ceiling.to_bits() - 1);
+                let knee =
+                    (ceiling - ceiling / finite_or(params.drive, 2.0).max(1.0)).min(below_ceiling);
+                let headroom = ceiling - knee;
                 for s in frames.iter_mut() {
-                    let x = if s.is_finite() { *s } else { 0.0 };
+                    let x = finite_or(*s, 0.0);
                     let abs_in = x.abs();
                     if abs_in > self.stats.max_abs_in {
                         self.stats.max_abs_in = abs_in;
@@ -174,7 +180,13 @@ impl Limiter {
                     if abs_in > ceiling {
                         self.stats.num_over += 1;
                     }
-                    let y = (x * drive).tanh() * ceiling;
+                    let y = if abs_in <= knee {
+                        x
+                    } else {
+                        let magnitude = knee + headroom * ((abs_in - knee) / headroom).tanh();
+                        // tanh rounds to one for large input; retain the strict ceiling.
+                        magnitude.min(below_ceiling).copysign(x)
+                    };
                     let abs_out = y.abs();
                     if abs_out > self.stats.max_abs_out {
                         self.stats.max_abs_out = abs_out;
@@ -199,7 +211,7 @@ impl Limiter {
                         for ch in 0..channels {
                             let idx = frame * channels + ch;
                             let x = frames[idx];
-                            let abs_in = if x.is_finite() { x.abs() } else { 0.0 };
+                            let abs_in = finite_or(x, 0.0).abs();
                             peak = peak.max(abs_in);
                         }
                         let target_gain = if peak > ceiling && peak > 0.0 {
@@ -216,11 +228,7 @@ impl Limiter {
                         state.gain = gain;
                         for ch in 0..channels {
                             let idx = frame * channels + ch;
-                            let x = if frames[idx].is_finite() {
-                                frames[idx]
-                            } else {
-                                0.0
-                            };
+                            let x = finite_or(frames[idx], 0.0);
                             let abs_in = x.abs();
                             if abs_in > self.stats.max_abs_in {
                                 self.stats.max_abs_in = abs_in;
@@ -253,11 +261,7 @@ impl Limiter {
                     for frame in 0..n_frames {
                         for ch in 0..channels {
                             let idx = frame * channels + ch;
-                            let x = if frames[idx].is_finite() {
-                                frames[idx]
-                            } else {
-                                0.0
-                            };
+                            let x = finite_or(frames[idx], 0.0);
                             let abs_in = x.abs();
                             let target_gain = if abs_in > ceiling && abs_in > 0.0 {
                                 ceiling / abs_in
@@ -296,10 +300,6 @@ impl Limiter {
             meter.record(&self.stats);
         }
     }
-
-    pub fn from_env_or(config_mode: LimiterMode) -> LimiterMode {
-        mode_from_env().unwrap_or(config_mode)
-    }
 }
 
 fn time_to_coeff(time_ms: f32, sample_rate: f32) -> f32 {
@@ -336,32 +336,74 @@ fn update_reduction(stats: &mut LimiterStats, abs_in: f32, abs_out: f32) {
     }
 }
 
-fn mode_from_env() -> Option<LimiterMode> {
-    let value = env::var("CONCHORDAL_LIMITER").ok()?;
-    let norm = value.trim().to_ascii_lowercase();
-    match norm.as_str() {
-        "none" | "off" | "0" => Some(LimiterMode::None),
-        "soft" | "softclip" => Some(LimiterMode::SoftClip(SoftClipParams::default())),
-        "limiter" | "peak" | "peaklimiter" => {
-            Some(LimiterMode::PeakLimiter(PeakLimiterParams::default()))
-        }
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn safety_softclip() {
-        let mut guard = Limiter::new(LimiterMode::SoftClip(SoftClipParams::default()), 48_000, 1);
-        let mut buf = [0.0f32, 1.5, -1.5, 0.5];
+    fn softclip_preserves_small_signals_and_knee() {
+        let params = SoftClipParams::default();
+        let knee = params.ceiling - params.ceiling / params.drive;
+        let mut guard = Limiter::new(LimiterMode::SoftClip(params), 48_000, 1);
+        let mut buf = [-knee, -0.1, -1e-6, 0.0, 1e-6, 0.1, knee];
+        let original = buf;
         guard.process_interleaved(&mut buf, 1);
-        let ceiling = SoftClipParams::default().ceiling + 1e-6;
-        for &v in &buf {
-            assert!(v.abs() <= ceiling, "{v} exceeds ceiling");
+        assert_eq!(buf.map(f32::to_bits), original.map(f32::to_bits));
+    }
+
+    #[test]
+    fn softclip_is_monotone_odd_and_strictly_below_ceiling() {
+        for drive in [0.0, 1.0, 2.0, 10.0, f32::MAX] {
+            let params = SoftClipParams {
+                drive,
+                ..SoftClipParams::default()
+            };
+            let mut guard = Limiter::new(LimiterMode::SoftClip(params), 48_000, 1);
+            let mut positive: Vec<_> = (0..=2000).map(|i| i as f32 * 0.01).collect();
+            positive.push(f32::MAX);
+            let mut negative: Vec<_> = positive.iter().map(|x| -x).collect();
+            guard.process_interleaved(&mut positive, 1);
+            guard.process_interleaved(&mut negative, 1);
+            assert!(positive.windows(2).all(|w| w[0] <= w[1]));
+            for (&a, &b) in positive.iter().zip(&negative) {
+                assert!(a.abs() < params.ceiling);
+                assert_eq!(a, -b);
+            }
         }
+    }
+
+    #[test]
+    fn meter_returns_interval_maxima_then_resets() {
+        let meter = LimiterMeter::default();
+        meter.record(&LimiterStats {
+            max_abs_in: 4.0,
+            max_abs_out: 0.9,
+            max_reduction_db: 12.0,
+            num_over: 2,
+        });
+        meter.record(&LimiterStats {
+            max_abs_in: 2.0,
+            max_abs_out: 0.98,
+            max_reduction_db: 6.0,
+            num_over: 3,
+        });
+        let snapshot = meter.take_snapshot().unwrap();
+        assert_eq!(snapshot.max_abs_in, 4.0);
+        assert_eq!(snapshot.max_abs_out, 0.98);
+        assert_eq!(snapshot.max_reduction_db, 12.0);
+        assert_eq!(snapshot.num_over, 5);
+        assert!(meter.take_snapshot().is_none());
+        meter.record(&LimiterStats {
+            max_abs_in: 1.5,
+            max_abs_out: 0.8,
+            max_reduction_db: 3.0,
+            num_over: 1,
+        });
+        let snapshot = meter.take_snapshot().unwrap();
+        assert_eq!(snapshot.max_abs_in, 1.5);
+        assert_eq!(snapshot.max_abs_out, 0.8);
+        assert_eq!(snapshot.max_reduction_db, 3.0);
+        assert_eq!(snapshot.num_over, 1);
     }
 
     #[test]

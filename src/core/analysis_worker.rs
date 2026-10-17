@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, TrySendError};
 
 use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::core::stream::analysis::AnalysisStream;
@@ -9,10 +9,26 @@ use crate::core::stream::analysis::AnalysisStream;
 /// `(frame_id, landscape_snapshot)`, with `None` invalidating pre-gap observations.
 pub type AnalysisResult = (u64, Option<Landscape>);
 
-#[derive(Clone, Copy)]
 pub(crate) enum AnalysisDelivery {
-    Latest,
+    Latest(Receiver<AnalysisResult>),
     Ordered,
+}
+
+fn publish_latest(
+    sender: &Sender<AnalysisResult>,
+    stale: &Receiver<AnalysisResult>,
+    mut result: AnalysisResult,
+) {
+    loop {
+        match sender.try_send(result) {
+            Ok(()) | Err(TrySendError::Disconnected(_)) => return,
+            Err(TrySendError::Full(value)) => {
+                result = value;
+                // The consumer may have freed a slot since try_send failed.
+                let _ = stale.try_recv();
+            }
+        }
+    }
 }
 
 /// Analysis worker: receives time-domain hops, runs NSGT-based audio analysis,
@@ -66,8 +82,15 @@ pub(crate) fn run(
                 stream.reset();
                 warmup_samples = stream.window_samples();
                 // Invalidation must arrive even when old snapshots fill the result queue.
-                if result_tx.send((frame_id, None)).is_err() {
-                    return;
+                match &delivery {
+                    AnalysisDelivery::Latest(stale) => {
+                        publish_latest(&result_tx, stale, (frame_id, None));
+                    }
+                    AnalysisDelivery::Ordered => {
+                        if result_tx.send((frame_id, None)).is_err() {
+                            return;
+                        }
+                    }
                 }
             }
             next_frame_id = frame_id.wrapping_add(1);
@@ -87,7 +110,7 @@ pub(crate) fn run(
             );
             warmup_samples = warmup_samples.saturating_sub(hop.len());
             analysis = (warmup_samples == 0).then_some(frame_id);
-            if matches!(delivery, AnalysisDelivery::Ordered)
+            if matches!(&delivery, AnalysisDelivery::Ordered)
                 && let Some(id) = analysis.take()
             {
                 let mut frame = frame.clone();
@@ -98,10 +121,12 @@ pub(crate) fn run(
             }
         }
         // Only the generator's current-state delivery may discard older snapshots.
-        if let Some(id) = analysis {
+        if let Some(id) = analysis
+            && let AnalysisDelivery::Latest(stale) = &delivery
+        {
             let mut frame = stream.last().clone();
             frame.spectral_history = spectral_history.snapshot();
-            let _ = result_tx.try_send((id, Some(frame)));
+            publish_latest(&result_tx, stale, (id, Some(frame)));
         }
     }
     // Publish the final observer state before disconnecting the analysis result channel.
@@ -127,7 +152,6 @@ mod tests {
     fn build_params(space: &Log2Space) -> LandscapeParams {
         LandscapeParams {
             fs: 48_000.0,
-            max_hist_cols: 1,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             consonance_kernel: ConsonanceKernel::default(),
@@ -144,6 +168,24 @@ mod tests {
             roughness_ref_mass_split: 0.5,
             roughness_ref_eps: 1e-12,
         }
+    }
+
+    #[test]
+    fn latest_replaces_oldest_when_production_queue_is_full() {
+        let (tx, rx) = crossbeam_channel::bounded(4);
+        for id in 0..4 {
+            tx.send((id, Some(Landscape::default()))).unwrap();
+        }
+        // A gap invalidation also has to pass a full queue without blocking.
+        publish_latest(&tx, &rx, (4, None));
+        publish_latest(&tx, &rx, (5, Some(Landscape::default())));
+        let results: Vec<_> = rx.try_iter().collect();
+        assert_eq!(
+            results.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            [2, 3, 4, 5]
+        );
+        assert!(results[2].1.is_none());
+        assert!(results[3].1.is_some());
     }
 
     #[test]
@@ -258,7 +300,7 @@ mod tests {
             hop_rx,
             result_tx,
             update_rx,
-            AnalysisDelivery::Latest,
+            AnalysisDelivery::Latest(result_rx.clone()),
             Some(tap),
             None,
         );
@@ -329,9 +371,10 @@ mod tests {
     fn analysis_gap_invalidates_results_until_a_full_window_is_refilled() {
         let fs = 48_000.0;
         let hop = 128;
-        for (recovery_hops, delivery) in [1, 3, 4].into_iter().flat_map(|hops| {
-            [AnalysisDelivery::Latest, AnalysisDelivery::Ordered].map(|delivery| (hops, delivery))
-        }) {
+        for (recovery_hops, ordered) in [1, 3, 4]
+            .into_iter()
+            .flat_map(|hops| [false, true].map(|ordered| (hops, ordered)))
+        {
             let space = Log2Space::new(200.0, 4_000.0, 12);
             let params = build_params(&space);
             let nsgt = NsgtKernelLog2::new(
@@ -364,9 +407,14 @@ mod tests {
                 hop_tx.send((frame_id, Arc::clone(&silence))).unwrap();
             }
             drop(hop_tx);
+            let delivery = if ordered {
+                AnalysisDelivery::Ordered
+            } else {
+                AnalysisDelivery::Latest(result_rx.clone())
+            };
             run(stream, hop_rx, result_tx, update_rx, delivery, None, None);
 
-            if matches!(delivery, AnalysisDelivery::Ordered) {
+            if ordered {
                 let (frame_id, frame) = result_rx.recv().unwrap();
                 assert_eq!(frame_id, 0);
                 assert!(frame.unwrap().nsgt_power.iter().any(|&power| power > 0.0));
@@ -411,17 +459,9 @@ mod tests {
         let (result_tx, result_rx) = crossbeam_channel::unbounded::<AnalysisResult>();
         let (_update_tx, update_rx) = crossbeam_channel::unbounded::<LandscapeUpdate>();
 
-        let handle = thread::spawn(move || {
-            run(
-                stream,
-                hop_rx,
-                result_tx,
-                update_rx,
-                AnalysisDelivery::Latest,
-                None,
-                None,
-            )
-        });
+        let delivery = AnalysisDelivery::Latest(result_rx.clone());
+        let handle =
+            thread::spawn(move || run(stream, hop_rx, result_tx, update_rx, delivery, None, None));
 
         let warmup = 2u64;
         let steps = 8u64;

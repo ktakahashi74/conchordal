@@ -121,7 +121,6 @@ mod tests {
     fn build_params(fs: f32, space: &Log2Space) -> LandscapeParams {
         LandscapeParams {
             fs,
-            max_hist_cols: 1,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             consonance_kernel: ConsonanceKernel::default(),

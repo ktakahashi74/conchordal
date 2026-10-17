@@ -1,5 +1,7 @@
 //! Acoustic onset evidence shared by temporal observers.
 
+pub(crate) const REFRACTORY_SEC: f32 = 0.06;
+
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Onset {
     pub(crate) fired: bool,
@@ -32,7 +34,7 @@ impl OnsetDetector {
             let denominator = (drive - self.previous_drive).max(1e-6);
             onset.frac = ((threshold - self.previous_drive) / denominator).clamp(0.0, 1.0);
             onset.fired = true;
-            self.refractory_left = 0.06;
+            self.refractory_left = REFRACTORY_SEC;
         }
         self.previous_drive = drive;
         onset

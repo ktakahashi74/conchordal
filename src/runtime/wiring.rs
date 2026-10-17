@@ -28,7 +28,6 @@ pub(super) fn build_analysis_runtime_core(
     let space = Log2Space::new(55.0, 8000.0, 96);
     let lparams = LandscapeParams {
         fs,
-        max_hist_cols: 256,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
         harmonicity_kernel: HarmonicityKernel::new(&space, HarmonicityParams::default()),
         consonance_kernel: ConsonanceKernel {
@@ -123,7 +122,7 @@ pub(super) fn spawn_analysis_worker(
 }
 
 pub(super) fn resolve_limiter_mode(config: &AppConfig) -> LimiterMode {
-    let guard_mode = match config.audio.limiter {
+    match config.audio.limiter {
         crate::config::LimiterSetting::None => LimiterMode::None,
         crate::config::LimiterSetting::SoftClip => {
             LimiterMode::SoftClip(crate::audio::limiter::SoftClipParams::default())
@@ -131,8 +130,7 @@ pub(super) fn resolve_limiter_mode(config: &AppConfig) -> LimiterMode {
         crate::config::LimiterSetting::PeakLimiter => {
             LimiterMode::PeakLimiter(crate::audio::limiter::PeakLimiterParams::default())
         }
-    };
-    Limiter::from_env_or(guard_mode)
+    }
 }
 
 /// Path-specific wiring knobs. Every field is an actual difference between the
@@ -283,7 +281,7 @@ pub(super) fn wire_runtime(
         audio_to_analysis_rx,
         analysis_result_tx,
         analysis_update_rx,
-        analysis_worker::AnalysisDelivery::Latest,
+        analysis_worker::AnalysisDelivery::Latest(analysis_result_rx.clone()),
         (taps[0].take(), raw_output),
     );
 

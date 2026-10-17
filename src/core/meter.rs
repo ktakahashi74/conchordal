@@ -13,7 +13,9 @@
 
 use std::f32::consts::TAU;
 
-use crate::core::onset::OnsetDetector;
+use crate::core::float::smoothstep;
+
+use crate::core::onset::{Onset, OnsetDetector, REFRACTORY_SEC};
 use crate::core::phase::wrap_pm_pi;
 
 #[path = "meter/continuous_recurrence.rs"]
@@ -46,7 +48,7 @@ mod hierarchy_tests;
 const F_BEAT_MIN: f32 = 0.5;
 const F_BEAT_MAX: f32 = 4.0;
 const F_BEAT_INIT: f32 = 2.0;
-// Existing integration floor, also bounds the number of interval additions.
+// Existing integration floor, also bounds accumulated interval roundoff.
 const MIN_STEP_SEC: f32 = 1e-4;
 
 // `temporal_basin` restoring rate (per second): a weak pull of the beat
@@ -82,6 +84,11 @@ const MEASURE_TAU: f32 = 6.0;
 // Leaky tracking rate for the running onset-strength baseline (per onset). An
 // accent is an onset louder than this baseline.
 const STRENGTH_BL_RATE: f32 = 0.1;
+
+#[inline]
+fn ioi_window<T: rustfft::num_traits::Float>(period: T) -> T {
+    (T::from(0.2).unwrap() * period).min(T::from(0.06).unwrap())
+}
 
 /// One metrical level's reported state.
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -158,8 +165,8 @@ struct Recurrence {
 
 impl Recurrence {
     fn new() -> Self {
-        // Two maximum intervals plus the existing confirmation-window tail.
-        let capacity = (RECURRENCE_HISTORY_SECONDS / MIN_STEP_SEC as f64).ceil() as usize + 2;
+        // One onset per refractory interval; two endpoint slots cover interpolation.
+        let capacity = (RECURRENCE_HISTORY_SECONDS / REFRACTORY_SEC as f64).ceil() as usize + 2;
         Self {
             history: Vec::with_capacity(capacity),
             echo: Vec::with_capacity(capacity),
@@ -229,7 +236,7 @@ impl Recurrence {
             let p = self.history[n - 2] - self.history[n - 3];
             self.history
                 .windows(2)
-                .all(|x| ((x[1] - x[0]) - p).abs() <= (0.2 * p).min(0.06))
+                .all(|x| ((x[1] - x[0]) - p).abs() <= ioi_window(p))
         } else {
             false
         };
@@ -239,7 +246,7 @@ impl Recurrence {
             .period
             .map(|p| {
                 let p = p as f64;
-                self.coverage(p, (0.2 * p).min(0.06))
+                self.coverage(p, ioi_window(p))
             })
             .unwrap_or(-1.0);
         for j in 1..n.saturating_sub(1) {
@@ -248,7 +255,7 @@ impl Recurrence {
                 if !(0.0625..=2.0).contains(&period) {
                     continue;
                 }
-                let window = (0.2 * period).min(0.06);
+                let window = ioi_window(period);
                 if ((onset_time - self.history[j]) - period).abs() > window {
                     continue;
                 }
@@ -298,7 +305,7 @@ impl Recurrence {
         self.multi = self
             .history
             .windows(2)
-            .any(|x| x[1] - x[0] < period as f64 - (0.2 * period as f64).min(0.06));
+            .any(|x| x[1] - x[0] < period as f64 - ioi_window(period as f64));
     }
 
     fn reset_evidence(&mut self) {
@@ -315,7 +322,7 @@ impl Recurrence {
             self.echo.push(Echo {
                 observation_deadline: t + 0.06,
                 target: t + period as f64,
-                window: (0.2 * period as f64).min(0.06),
+                window: ioi_window(period as f64),
                 weight: None,
                 observation_done: false,
                 prediction_done: false,
@@ -440,17 +447,74 @@ impl MeterNetwork {
         }
     }
     fn process_evidence(&mut self, dt: f32, drive: Option<f32>) -> MeterState {
-        // Composer enculturation: attractor depth is also the tempo-prior weight.
         let preference_weight = self.shaping.stability.clamp(0.0, 1.0);
         let dt = dt.max(MIN_STEP_SEC);
         let drive_known = drive.is_some();
         let drive = drive.unwrap_or(0.0).clamp(0.0, 1.0);
-        let onset = if drive_known {
+        let onset = self.observe_onset(dt, drive_known, drive);
+        let confirmed_period = self.confirm_period(dt, onset);
+        let force_gain = 1.0 + self.shaping.stability.clamp(0.0, 1.0);
+        let phi_before = self.beat_phi;
+        let omega_before = self.beat_omega;
+        self.integrate_hopf(dt, drive, force_gain);
+        let (lo, hi, center) = self.apply_tempo_prior(dt, preference_weight);
+        let (omega_lo, omega_hi) = (TAU * lo, TAU * hi);
+        self.beat_omega = self.beat_omega.clamp(omega_lo, omega_hi);
+        let observed_phi = wrap_pm_pi(phi_before + omega_before * dt * onset.frac);
+        let mut seeded_now = false;
+        if onset.fired {
+            let proposal = self.propose_period(
+                dt,
+                onset.frac,
+                confirmed_period,
+                (lo, hi, center),
+                preference_weight,
+            );
+            if !self.seeded
+                && let Some(frequency) = proposal
+            {
+                self.seed_beat(frequency, dt, onset.frac);
+                seeded_now = true;
+            }
+            if !seeded_now {
+                self.correct_phase(
+                    dt,
+                    onset.frac,
+                    force_gain,
+                    observed_phi,
+                    omega_before,
+                    proposal,
+                );
+            }
+            self.beat_omega = self.beat_omega.clamp(omega_lo, omega_hi);
+            self.onset_age = Some(dt * (1.0 - onset.frac));
+        } else if let Some(age) = self.onset_age.as_mut() {
+            *age += dt;
+        }
+        self.accumulate_evidence(dt, onset.fired, seeded_now, observed_phi, drive);
+        if let RecurrenceInput::Events(state) = &mut self.recurrence
+            && onset.fired
+            && self.seeded
+            && !seeded_now
+        {
+            state.issue(onset.frac, dt);
+        }
+        let att_a = (-dt / 0.3).exp();
+        self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
+        self.last = self.build_state();
+        self.last
+    }
+
+    fn observe_onset(&mut self, dt: f32, drive_known: bool, drive: f32) -> Onset {
+        if drive_known {
             self.onset_detector.process(dt, drive)
         } else {
             self.onset_detector.advance_missing(dt);
             crate::core::onset::Onset::default()
-        };
+        }
+    }
+
+    fn confirm_period(&mut self, dt: f32, onset: Onset) -> Option<f32> {
         let confirmed_period = match &mut self.recurrence {
             RecurrenceInput::Continuous(state) => {
                 let onset_tick = state.fast_start as f64
@@ -467,17 +531,18 @@ impl MeterNetwork {
             }
             RecurrenceInput::Events(state) => state.observe(dt, onset.fired, onset.frac),
         };
-        let confirmed_period = if self.recurrence.events().is_some_and(|s| s.uniform) {
+        if self.recurrence.events().is_some_and(|s| s.uniform) {
             self.onset_age
                 .zip(self.pending_period)
                 .and_then(|(age, period)| {
-                    ((age + dt * onset.frac - period).abs() <= (0.2 * period).min(0.06))
-                        .then_some(period)
+                    ((age + dt * onset.frac - period).abs() <= ioi_window(period)).then_some(period)
                 })
         } else {
             confirmed_period
-        };
-        let force_gain = 1.0 + self.shaping.stability.clamp(0.0, 1.0);
+        }
+    }
+
+    fn integrate_hopf(&mut self, dt: f32, drive: f32, force_gain: f32) {
         let phi_before = self.beat_phi;
         let omega_before = self.beat_omega;
         let dr = ALPHA * self.beat_r
@@ -486,8 +551,10 @@ impl MeterNetwork {
         self.beat_r = (self.beat_r + dr * dt).clamp(0.0, 2.0);
         self.beat_phi = wrap_pm_pi(phi_before + omega_before * dt);
         self.beat_cycles += omega_before * dt / TAU;
+    }
 
-        let (lo, hi, center) = match self.shaping.basin_hz {
+    fn apply_tempo_prior(&mut self, dt: f32, preference_weight: f32) -> (f32, f32, f32) {
+        match self.shaping.basin_hz {
             Some((min_hz, max_hz)) => {
                 let (lo, hi) = sane_basin(min_hz, max_hz);
                 let center = 0.5 * (lo + hi);
@@ -500,133 +567,148 @@ impl MeterNetwork {
                 (lo, hi, center)
             }
             None => (F_BEAT_MIN, F_BEAT_MAX, F_BEAT_INIT),
-        };
-        let (omega_lo, omega_hi) = (TAU * lo, TAU * hi);
-        self.beat_omega = self.beat_omega.clamp(omega_lo, omega_hi);
-        let observed_phi = wrap_pm_pi(phi_before + omega_before * dt * onset.frac);
-        let mut seeded_now = false;
+        }
+    }
 
-        if onset.fired {
-            let mut proposal = None;
-            if let Some(age) = self.onset_age {
-                let ioi = age + dt * onset.frac;
-                if let Some(period) = confirmed_period {
-                    // Reuse temporal_participation's min(0.2*IOI, 60 ms) candidate window.
-                    {
-                        let observed_frequency = 1.0 / period;
-                        let mut best_score = -1.0;
-                        // Positive f32 interval sums: gamma_n bounds roundoff at the band edge.
-                        // At most 1/lo seconds at the existing minimum step, plus endpoint arithmetic.
-                        let n_epsilon = ((1.0 / lo / MIN_STEP_SEC).ceil() + 3.0) * f32::EPSILON;
-                        let relative_roundoff = n_epsilon / (1.0 - n_epsilon);
-                        // Existing integer layers, evaluated at continuous observed frequencies.
-                        for ratio in [1.0_f32, 0.5, 1.0 / 3.0, 0.25, 2.0, 3.0, 4.0] {
-                            let raw_frequency = ratio * observed_frequency;
+    fn propose_period(
+        &mut self,
+        dt: f32,
+        onset_frac: f32,
+        confirmed_period: Option<f32>,
+        band: (f32, f32, f32),
+        preference_weight: f32,
+    ) -> Option<f32> {
+        let (lo, hi, center) = band;
+        let mut proposal = None;
+        if let Some(age) = self.onset_age {
+            let ioi = age + dt * onset_frac;
+            if let Some(period) = confirmed_period {
+                // Reuse temporal_participation's min(0.2*IOI, 60 ms) candidate window.
+                {
+                    let observed_frequency = 1.0 / period;
+                    let mut best_score = -1.0;
+                    // Positive f32 interval sums: gamma_n bounds roundoff at the band edge.
+                    // At most 1/lo seconds at the existing minimum step, plus endpoint arithmetic.
+                    let n_epsilon = ((1.0 / lo / MIN_STEP_SEC).ceil() + 3.0) * f32::EPSILON;
+                    let relative_roundoff = n_epsilon / (1.0 - n_epsilon);
+                    // Existing integer layers, evaluated at continuous observed frequencies.
+                    for ratio in [1.0_f32, 0.5, 1.0 / 3.0, 0.25, 2.0, 3.0, 4.0] {
+                        let raw_frequency = ratio * observed_frequency;
+                        let frequency = raw_frequency.clamp(lo, hi);
+                        let raw_period = 1.0 / raw_frequency;
+                        if (raw_period - 1.0 / frequency).abs()
+                            > (relative_roundoff * raw_period).min(ioi_window(raw_period))
+                        {
+                            continue;
+                        }
+                        // Free log-distance profile, not a fitted literature resonance curve.
+                        let distance = if frequency <= center {
+                            (frequency / center).ln() / (lo / center).ln()
+                        } else {
+                            (frequency / center).ln() / (hi / center).ln()
+                        };
+                        let preference = (1.0 - distance).clamp(0.0, 1.0);
+                        // Ideal nested event trains: intersection / union coverage.
+                        let support = ratio.min(1.0 / ratio);
+                        let score =
+                            support * ((1.0 - preference_weight) + preference_weight * preference);
+                        if score > best_score {
+                            best_score = score;
+                            proposal = Some(frequency);
+                        }
+                    }
+                    // Preserve an established tactus across whole missed beats.
+                    if self.seeded {
+                        let current_period = TAU / self.beat_omega;
+                        for missing_ratio in [2.0_f32, 3.0, 4.0] {
+                            let expected = missing_ratio * current_period;
+                            let raw_frequency = missing_ratio / period;
                             let frequency = raw_frequency.clamp(lo, hi);
                             let raw_period = 1.0 / raw_frequency;
-                            if (raw_period - 1.0 / frequency).abs()
-                                > (relative_roundoff * raw_period).min((0.2 * raw_period).min(0.06))
+                            if (period - expected).abs() <= ioi_window(expected)
+                                && (raw_period - 1.0 / frequency).abs()
+                                    <= (relative_roundoff * raw_period).min(ioi_window(raw_period))
                             {
-                                continue;
-                            }
-                            // Free log-distance profile, not a fitted literature resonance curve.
-                            let distance = if frequency <= center {
-                                (frequency / center).ln() / (lo / center).ln()
-                            } else {
-                                (frequency / center).ln() / (hi / center).ln()
-                            };
-                            let preference = (1.0 - distance).clamp(0.0, 1.0);
-                            // Ideal nested event trains: intersection / union coverage.
-                            let support = ratio.min(1.0 / ratio);
-                            let score = support
-                                * ((1.0 - preference_weight) + preference_weight * preference);
-                            if score > best_score {
-                                best_score = score;
                                 proposal = Some(frequency);
-                            }
-                        }
-                        // Preserve an established tactus across whole missed beats.
-                        if self.seeded {
-                            let current_period = TAU / self.beat_omega;
-                            for missing_ratio in [2.0_f32, 3.0, 4.0] {
-                                let expected = missing_ratio * current_period;
-                                let raw_frequency = missing_ratio / period;
-                                let frequency = raw_frequency.clamp(lo, hi);
-                                let raw_period = 1.0 / raw_frequency;
-                                if (period - expected).abs() <= (0.2 * expected).min(0.06)
-                                    && (raw_period - 1.0 / frequency).abs()
-                                        <= (relative_roundoff * raw_period)
-                                            .min((0.2 * raw_period).min(0.06))
-                                {
-                                    proposal = Some(frequency);
-                                    break;
-                                }
+                                break;
                             }
                         }
                     }
                 }
-                self.pending_period =
-                    if (1.0 / (F_BEAT_MAX * 4.0)..=1.0 / F_BEAT_MIN).contains(&ioi) {
-                        Some(ioi)
-                    } else {
-                        None
-                    };
             }
-            if let (Some(period), Some(frequency)) = (confirmed_period, proposal) {
-                let ratio = frequency * period;
-                match &mut self.recurrence {
-                    RecurrenceInput::Continuous(state) => state.accept(ratio.min(1.0 / ratio)),
-                    RecurrenceInput::Events(state) => state.accept(period, ratio.min(1.0 / ratio)),
-                }
-            }
-            if !self.seeded
-                && let Some(frequency) = proposal
-            {
-                self.beat_omega = TAU * frequency;
-                self.beat_phi = wrap_pm_pi(self.beat_omega * dt * (1.0 - onset.frac));
-                self.beat_cycles = self.beat_omega * dt * (1.0 - onset.frac) / TAU;
-                // A new coordinate discards old evidence; this onset cannot certify itself.
-                match &mut self.recurrence {
-                    RecurrenceInput::Continuous(state) => state.seed(),
-                    RecurrenceInput::Events(state) => state.reset_evidence(),
-                }
-                self.plv_count = 0.0;
-                self.beat_re = 0.0;
-                self.beat_im = 0.0;
-                self.sub_re = [0.0; 3];
-                self.sub_im = [0.0; 3];
-                self.meas_re = [0.0; 3];
-                self.meas_im = [0.0; 3];
-                self.meas_norm = 0.0;
-                self.previous_phase_error = Some(0.0);
-                self.seeded = true;
-                seeded_now = true;
-            }
-            if !seeded_now {
-                if let Some(previous_error) = self.previous_phase_error {
-                    let period = TAU / self.beat_omega;
-                    self.beat_omega = TAU
-                        / (period * (1.0 + PERIOD_GAIN * force_gain * previous_error.sin() / TAU));
-                }
-                let correction = -PHASE_GAIN * force_gain * observed_phi.sin();
-                let tail = (self.beat_omega - omega_before) * dt * (1.0 - onset.frac);
-                self.beat_phi = wrap_pm_pi(self.beat_phi + correction + tail);
-                self.beat_cycles += (correction + tail) / TAU;
-                self.previous_phase_error = Some(observed_phi);
-                if let Some(frequency) = proposal {
-                    let omega = TAU * frequency;
-                    let tail = (omega - self.beat_omega) * dt * (1.0 - onset.frac);
-                    self.beat_phi = wrap_pm_pi(self.beat_phi + tail);
-                    self.beat_cycles += tail / TAU;
-                    self.beat_omega = omega;
-                }
-            }
-            self.beat_omega = self.beat_omega.clamp(omega_lo, omega_hi);
-            self.onset_age = Some(dt * (1.0 - onset.frac));
-        } else if let Some(age) = self.onset_age.as_mut() {
-            *age += dt;
+            self.pending_period = if (1.0 / (F_BEAT_MAX * 4.0)..=1.0 / F_BEAT_MIN).contains(&ioi) {
+                Some(ioi)
+            } else {
+                None
+            };
         }
+        if let (Some(period), Some(frequency)) = (confirmed_period, proposal) {
+            let ratio = frequency * period;
+            match &mut self.recurrence {
+                RecurrenceInput::Continuous(state) => state.accept(ratio.min(1.0 / ratio)),
+                RecurrenceInput::Events(state) => state.accept(period, ratio.min(1.0 / ratio)),
+            }
+        }
+        proposal
+    }
 
+    fn seed_beat(&mut self, frequency: f32, dt: f32, onset_frac: f32) {
+        self.beat_omega = TAU * frequency;
+        self.beat_phi = wrap_pm_pi(self.beat_omega * dt * (1.0 - onset_frac));
+        self.beat_cycles = self.beat_omega * dt * (1.0 - onset_frac) / TAU;
+        // A new coordinate discards old evidence; this onset cannot certify itself.
+        match &mut self.recurrence {
+            RecurrenceInput::Continuous(state) => state.seed(),
+            RecurrenceInput::Events(state) => state.reset_evidence(),
+        }
+        self.plv_count = 0.0;
+        self.beat_re = 0.0;
+        self.beat_im = 0.0;
+        self.sub_re = [0.0; 3];
+        self.sub_im = [0.0; 3];
+        self.meas_re = [0.0; 3];
+        self.meas_im = [0.0; 3];
+        self.meas_norm = 0.0;
+        self.previous_phase_error = Some(0.0);
+        self.seeded = true;
+    }
+
+    fn correct_phase(
+        &mut self,
+        dt: f32,
+        onset_frac: f32,
+        force_gain: f32,
+        observed_phi: f32,
+        omega_before: f32,
+        proposal: Option<f32>,
+    ) {
+        if let Some(previous_error) = self.previous_phase_error {
+            let period = TAU / self.beat_omega;
+            self.beat_omega =
+                TAU / (period * (1.0 + PERIOD_GAIN * force_gain * previous_error.sin() / TAU));
+        }
+        let correction = -PHASE_GAIN * force_gain * observed_phi.sin();
+        let tail = (self.beat_omega - omega_before) * dt * (1.0 - onset_frac);
+        self.beat_phi = wrap_pm_pi(self.beat_phi + correction + tail);
+        self.beat_cycles += (correction + tail) / TAU;
+        self.previous_phase_error = Some(observed_phi);
+        if let Some(frequency) = proposal {
+            let omega = TAU * frequency;
+            let tail = (omega - self.beat_omega) * dt * (1.0 - onset_frac);
+            self.beat_phi = wrap_pm_pi(self.beat_phi + tail);
+            self.beat_cycles += tail / TAU;
+            self.beat_omega = omega;
+        }
+    }
+
+    fn accumulate_evidence(
+        &mut self,
+        dt: f32,
+        onset_fired: bool,
+        seeded_now: bool,
+        observed_phi: f32,
+        drive: f32,
+    ) {
         // --- Confidence accumulators: decay every tick (persistence), add an
         // impulse at each onset. ---
         let decay = (-dt / PERSIST_TAU).exp();
@@ -644,7 +726,7 @@ impl MeterNetwork {
             self.meas_im[k] *= m_decay;
         }
 
-        if onset.fired && !seeded_now {
+        if onset_fired && !seeded_now {
             let onset_phi = observed_phi;
             // An uncorroborated coordinate is unknown, not weak beat evidence.
             if self.seeded {
@@ -678,19 +760,6 @@ impl MeterNetwork {
                 }
             }
         }
-
-        if let RecurrenceInput::Events(state) = &mut self.recurrence
-            && onset.fired
-            && self.seeded
-            && !seeded_now
-        {
-            state.issue(onset.frac, dt);
-        }
-        let att_a = (-dt / 0.3).exp();
-        self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
-
-        self.last = self.build_state();
-        self.last
     }
 
     fn build_state(&self) -> MeterState {
@@ -826,14 +895,6 @@ pub(crate) fn sane_basin(min_hz: f32, max_hz: f32) -> (f32, f32) {
     }
 }
 
-fn smoothstep(lo: f32, hi: f32, x: f32) -> f32 {
-    if hi <= lo {
-        return 0.0;
-    }
-    let t = ((x - lo) / (hi - lo)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -857,6 +918,26 @@ mod tests {
             t += DT;
         }
         net.state()
+    }
+
+    #[test]
+    fn recurrence_capacity_covers_refractory_limited_onsets() {
+        for dt in [0.0001_f32, 0.001, 0.005, 0.02, 0.07] {
+            let mut net = MeterNetwork::new();
+            let initial = net.recurrence.events().unwrap();
+            let capacities = (initial.history.capacity(), initial.echo.capacity());
+            assert!(capacities.0 < 100);
+            let mut high = false;
+            for _ in 0..(12.0 / dt) as usize {
+                high = !high;
+                net.process(dt, if high { 1.0 } else { 0.0 });
+            }
+            let recurrence = net.recurrence.events().unwrap();
+            assert_eq!(
+                capacities,
+                (recurrence.history.capacity(), recurrence.echo.capacity())
+            );
+        }
     }
 
     #[test]

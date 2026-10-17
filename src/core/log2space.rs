@@ -1,4 +1,4 @@
-//! core/log2.rs — Log2 frequency space (octave-based).
+//! core/log2space.rs — Log2 frequency space (octave-based).
 //!
 //! Provides uniform log2(Hz) mapping used by NSGT and kernel convolution.
 //! Example: 27.5 Hz → log2(27.5)=4.78, 55 Hz→5.78 (1 octave up).
@@ -162,26 +162,14 @@ pub(crate) fn sample_scan_linear_at_pos(scan: &[f32], pos: f32) -> f32 {
 
 /// Sample a Log2Space-aligned scan by linear interpolation in log2-frequency.
 ///
-/// `NEG_INFINITY` is the "no value here" sentinel for frequencies outside the
-/// space; a misaligned `scan` is a caller bug and panics instead.
+/// Outside the space, invalid frequency or non-finite data yields zero.
+/// A misaligned `scan` is a caller bug and panics instead.
 pub fn sample_scan_linear_log2(space: &Log2Space, scan: &[f32], freq_hz: f32) -> f32 {
     space.assert_scan_len_named(scan, "sample_scan_linear_log2");
-    if !freq_hz.is_finite() || freq_hz <= 0.0 {
-        return f32::NEG_INFINITY;
-    }
-    if freq_hz < space.fmin || freq_hz > space.fmax {
-        return f32::NEG_INFINITY;
-    }
-    let pos = match space.bin_pos_of_freq(freq_hz) {
-        Some(pos) => pos,
-        None => return f32::NEG_INFINITY,
+    let Some(pos) = space.bin_pos_of_freq(freq_hz) else {
+        return 0.0;
     };
-    let out = sample_scan_linear_at_pos(scan, pos);
-    if out.is_finite() {
-        out
-    } else {
-        f32::NEG_INFINITY
-    }
+    crate::core::float::finite_or(sample_scan_linear_at_pos(scan, pos), 0.0)
 }
 
 #[cfg(test)]
@@ -212,25 +200,13 @@ mod tests {
     }
 
     #[test]
-    fn sample_scan_linear_log2_out_of_range_and_invalid_returns_neg_inf() {
+    fn sample_scan_linear_log2_out_of_range_and_invalid_returns_zero() {
         let space = Log2Space::new(100.0, 6400.0, 24);
         let scan = vec![0.5f32; space.n_bins()];
-        assert_eq!(
-            sample_scan_linear_log2(&space, &scan, 80.0),
-            f32::NEG_INFINITY
-        );
-        assert_eq!(
-            sample_scan_linear_log2(&space, &scan, 9000.0),
-            f32::NEG_INFINITY
-        );
-        assert_eq!(
-            sample_scan_linear_log2(&space, &scan, f32::NAN),
-            f32::NEG_INFINITY
-        );
-        assert_eq!(
-            sample_scan_linear_log2(&space, &scan, f32::INFINITY),
-            f32::NEG_INFINITY
-        );
+        assert_eq!(sample_scan_linear_log2(&space, &scan, 80.0), 0.0);
+        assert_eq!(sample_scan_linear_log2(&space, &scan, 9000.0), 0.0);
+        assert_eq!(sample_scan_linear_log2(&space, &scan, f32::NAN), 0.0);
+        assert_eq!(sample_scan_linear_log2(&space, &scan, f32::INFINITY), 0.0);
     }
 
     #[test]

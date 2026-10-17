@@ -63,7 +63,6 @@ pub struct ResonatorBank {
     b1: Vec<f32>,
     b2: Vec<f32>,
     gain: Vec<f32>,
-    theta: Vec<f32>,
 }
 
 impl ResonatorBank {
@@ -77,7 +76,6 @@ impl ResonatorBank {
             &mut self.b1,
             &mut self.b2,
             &mut self.gain,
-            &mut self.theta,
         ] {
             buffer.fill(0.0);
         }
@@ -103,8 +101,6 @@ impl ResonatorBank {
         b2.resize(max_modes, 0.0);
         let mut gain = Vec::with_capacity(max_modes);
         gain.resize(max_modes, 0.0);
-        let mut theta = Vec::with_capacity(max_modes);
-        theta.resize(max_modes, 0.0);
 
         Ok(Self {
             fs,
@@ -117,7 +113,6 @@ impl ResonatorBank {
             b1,
             b2,
             gain,
-            theta,
         })
     }
 
@@ -151,7 +146,6 @@ impl ResonatorBank {
             self.b1[i] = coeffs.b1;
             self.b2[i] = coeffs.b2;
             self.gain[i] = coeffs.gain;
-            self.theta[i] = 2.0 * PI * params.freq_hz / self.fs;
         }
     }
 
@@ -220,7 +214,6 @@ impl ResonatorBank {
             (&self.b1, &other.b1),
             (&self.b2, &other.b2),
             (&self.gain, &other.gain),
-            (&self.theta, &other.theta),
         ] {
             assert_eq!(
                 a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
@@ -547,7 +540,6 @@ mod tests {
             bank.b1.as_ptr(),
             bank.b2.as_ptr(),
             bank.gain.as_ptr(),
-            bank.theta.as_ptr(),
         );
         let caps = (
             bank.x.capacity(),
@@ -557,7 +549,6 @@ mod tests {
             bank.b1.capacity(),
             bank.b2.capacity(),
             bank.gain.capacity(),
-            bank.theta.capacity(),
         );
 
         let modes_a = [
@@ -589,7 +580,6 @@ mod tests {
         assert_eq!(ptrs.4, bank.b1.as_ptr());
         assert_eq!(ptrs.5, bank.b2.as_ptr());
         assert_eq!(ptrs.6, bank.gain.as_ptr());
-        assert_eq!(ptrs.7, bank.theta.as_ptr());
         assert_eq!(caps.0, bank.x.capacity());
         assert_eq!(caps.1, bank.y.capacity());
         assert_eq!(caps.2, bank.e.capacity());
@@ -597,7 +587,6 @@ mod tests {
         assert_eq!(caps.4, bank.b1.capacity());
         assert_eq!(caps.5, bank.b2.capacity());
         assert_eq!(caps.6, bank.gain.capacity());
-        assert_eq!(caps.7, bank.theta.capacity());
 
         bank.set_modes(&modes_b).unwrap();
         assert_eq!(ptrs.0, bank.x.as_ptr());
@@ -607,7 +596,6 @@ mod tests {
         assert_eq!(ptrs.4, bank.b1.as_ptr());
         assert_eq!(ptrs.5, bank.b2.as_ptr());
         assert_eq!(ptrs.6, bank.gain.as_ptr());
-        assert_eq!(ptrs.7, bank.theta.as_ptr());
         assert_eq!(caps.0, bank.x.capacity());
         assert_eq!(caps.1, bank.y.capacity());
         assert_eq!(caps.2, bank.e.capacity());
@@ -615,7 +603,6 @@ mod tests {
         assert_eq!(caps.4, bank.b1.capacity());
         assert_eq!(caps.5, bank.b2.capacity());
         assert_eq!(caps.6, bank.gain.capacity());
-        assert_eq!(caps.7, bank.theta.capacity());
     }
 
     #[test]

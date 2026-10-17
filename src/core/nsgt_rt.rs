@@ -154,7 +154,7 @@ impl RtNsgtKernelLog2 {
         }
     }
 
-    /// Process an arbitrary block and emit per-hop band power/PSD slices via callback.
+    /// Push one complete hop into the raw window without updating the analysis.
     pub(crate) fn push_without_analysis(&mut self, audio: &[f32]) {
         assert_eq!(audio.len(), self.hop);
         self.write_hop(audio);
@@ -406,6 +406,47 @@ mod tests {
             var += d * d;
         }
         (var / data.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn coherent_rt_one_frame_matches_offline_coefficient_power() {
+        for nfft in [256, 512, 2048] {
+            let kernel = NsgtKernelLog2::new(
+                NsgtLog2Config {
+                    fs: 48_000.0,
+                    overlap: 0.5,
+                    nfft_override: Some(nfft),
+                    ..Default::default()
+                },
+                Log2Space::new(100.0, 8000.0, 24),
+                None,
+                PowerMode::Coherent,
+            );
+            let mut frame = mk_two_sine(nfft, 440.0, 1234.0, 48_000.0, 0.3);
+            frame[nfft / 3] += 0.25;
+            let offline = kernel.analyze(&frame);
+            let mut rt = RtNsgtKernelLog2::with_config(
+                kernel,
+                RtConfig {
+                    tau_min: 1e-6,
+                    tau_max: 1e-6,
+                    f_ref: 200.0,
+                },
+            );
+            // alpha underflows to zero, exposing instantaneous power without inversion.
+            assert!(rt.bands_state.iter().all(|state| state.alpha == 0.0));
+            let observed = rt.process_hop(&frame);
+            for (band, &power) in offline.iter().zip(observed) {
+                assert_eq!(band.coeffs.len(), 1);
+                // Identical FFT, sparse accumulation order, and exact power-of-two scaling.
+                assert_eq!(
+                    power.to_bits(),
+                    band.coeffs[0].norm_sqr().to_bits(),
+                    "nfft={nfft} band={}",
+                    band.f_hz
+                );
+            }
+        }
     }
 
     #[test]

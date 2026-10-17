@@ -10,7 +10,7 @@ use tracing::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
 use ringbuf::traits::Observer;
 
-use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
+use crate::audio::limiter::{LimiterMeter, LimiterMode};
 use crate::core::analysis_worker;
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::harmonicity_kernel::HarmonicityKernel;

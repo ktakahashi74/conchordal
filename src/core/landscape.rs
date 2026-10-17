@@ -5,14 +5,13 @@
 
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::float::sanitize_nonnegative_finite;
-use crate::core::log2space::{Log2Space, sample_scan_linear_at_pos};
+use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::psycho_state::sanitize01;
 
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
     pub fs: f32,
-    pub max_hist_cols: usize,
     pub roughness_kernel: crate::core::roughness_kernel::RoughnessKernel,
     pub harmonicity_kernel: crate::core::harmonicity_kernel::HarmonicityKernel,
     pub consonance_kernel: ConsonanceKernel,
@@ -312,24 +311,13 @@ impl Landscape {
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
         self.assert_scan_lengths();
 
-        reset_if_len_mismatch(&mut self.harmonicity01, self.harmonicity.len());
-        reset_if_len_mismatch(&mut self.roughness01, self.roughness.len());
-
         let n = self.consonance_field_score.len();
-        reset_if_len_mismatch(&mut self.consonance_field_level, n);
-        reset_if_len_mismatch(&mut self.consonance_density_mass, n);
-        reset_if_len_mismatch(&mut self.consonance_density, n);
-        reset_if_len_mismatch(&mut self.consonance_field_energy, n);
-
         let perc_h_pot_scan = &self.harmonicity;
         crate::core::psycho_state::h_pot_scan_to_h_state01_scan(
             perc_h_pot_scan,
             1.0,
             &mut self.harmonicity01,
         );
-
-        debug_assert_eq!(self.harmonicity01.len(), n);
-        debug_assert_eq!(self.roughness01.len(), n);
 
         self.recompute_consonance_field(params);
         self.recompute_consonance_density_mass(params);
@@ -348,8 +336,9 @@ impl Landscape {
     }
 
     /// Apply a habituation state to the raw kernel outputs, producing the
-    /// effective views the consumers read. `h[i] == 0` is identity. Also
-    /// re-normalizes the spawn PMF (`consonance_density`) from the eroded mass.
+    /// effective views the consumers read. `h[i] == 0` is identity.
+    /// Range-local spawn sampling normalizes the effective mass when needed;
+    /// `consonance_density` remains the base PMF.
     pub fn apply_habituation(
         &mut self,
         h: &[f32],
@@ -371,14 +360,9 @@ impl Landscape {
             self.consonance_density_mass_eff[i] =
                 crate::core::habituation::erode_mass(self.consonance_density_mass[i], hi);
         }
-        for i in 0..n {
-            self.consonance_density[i] = self.consonance_density_mass_eff[i];
-        }
-        normalize_or_uniform(&mut self.consonance_density[..n], None);
     }
 
     fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
-        self.assert_scan_lengths();
         let n = self.consonance_field_score.len();
         let kernel = params.consonance_field_kernel();
         for i in 0..n {
@@ -392,14 +376,13 @@ impl Landscape {
     }
 
     fn recompute_consonance_density_mass(&mut self, params: &LandscapeParams) {
-        self.assert_scan_lengths();
         let density_kernel = params.consonance_density_kernel();
         let n = self.consonance_density_mass.len();
         for i in 0..n {
             let h01 = sanitize01(self.harmonicity01[i]);
             let r01 = sanitize01(self.roughness01[i]);
-            let mass = density_kernel.score(h01, r01).max(0.0);
-            self.consonance_density_mass[i] = if mass.is_finite() { mass } else { 0.0 };
+            self.consonance_density_mass[i] =
+                sanitize_nonnegative_finite(density_kernel.score(h01, r01));
         }
     }
 
@@ -438,28 +421,20 @@ impl Landscape {
     }
 
     fn sample_linear(&self, data: &[f32], freq_hz: f32) -> f32 {
-        if data.is_empty() || freq_hz < self.space.fmin || freq_hz > self.space.fmax {
-            return 0.0;
-        }
-        let l = freq_hz.log2();
-        self.sample_linear_log2(data, l)
+        sample_scan_linear_log2(&self.space, data, freq_hz)
     }
 
     pub(crate) fn sample_linear_log2(&self, data: &[f32], log_freq: f32) -> f32 {
-        if data.is_empty() || !log_freq.is_finite() {
+        self.space.assert_scan_len_named(data, "sample_linear_log2");
+        let (lo, hi) = self.freq_bounds_log2();
+        if !log_freq.is_finite() || log_freq < lo || log_freq > hi {
             return 0.0;
         }
-        let step = self.space.step();
-        let base = self.space.centers_log2[0];
-        let pos = (log_freq - base) / step;
-        sample_scan_linear_at_pos(data, pos)
-    }
-}
-
-#[inline]
-fn reset_if_len_mismatch(scan: &mut Vec<f32>, expected_len: usize) {
-    if scan.len() != expected_len {
-        *scan = vec![0.0; expected_len];
+        // Round-trip at the declared edges must not put a valid log2 pitch outside.
+        let hz = 2.0f32
+            .powf(log_freq)
+            .clamp(self.space.fmin, self.space.fmax);
+        self.sample_linear(data, hz)
     }
 }
 
@@ -502,17 +477,6 @@ fn normalize_or_uniform(out: &mut [f32], mask: Option<(&[bool], usize)>) {
     }
 }
 
-pub fn map_roughness01(r_norm: f32, r_half: f32) -> f32 {
-    // Range compression helper (not a psychoacoustic normalization).
-    let half = r_half.max(1e-12);
-    let denom = r_norm + half;
-    if denom <= 0.0 {
-        0.0
-    } else {
-        (r_norm / denom).clamp(0.0, 1.0)
-    }
-}
-
 impl Default for Landscape {
     fn default() -> Self {
         Self::new(Log2Space::new(1.0, 2.0, 1))
@@ -529,7 +493,6 @@ mod tests {
     fn build_params(space: &Log2Space) -> LandscapeParams {
         LandscapeParams {
             fs: 48_000.0,
-            max_hist_cols: 1,
             roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),
             harmonicity_kernel: HarmonicityKernel::new(space, HarmonicityParams::default()),
             consonance_kernel: ConsonanceKernel::default(),
@@ -546,12 +509,6 @@ mod tests {
             roughness_ref_mass_split: 0.5,
             roughness_ref_eps: 1e-12,
         }
-    }
-
-    #[test]
-    fn landscape_params_carries_habituation() {
-        let p = crate::core::habituation::HabituationParams::default();
-        assert!(!p.enabled);
     }
 
     #[test]
@@ -600,30 +557,6 @@ mod tests {
     }
 
     #[test]
-    fn roughness01_in_range_and_halfpoint() {
-        let r_half = 0.2;
-        let r0 = map_roughness01(0.0, r_half);
-        let r_half_out = map_roughness01(r_half, r_half);
-        let r_big = map_roughness01(10.0, r_half);
-        assert!((0.0..=1.0).contains(&r0));
-        assert!((r_half_out - 0.5).abs() < 1e-6);
-        assert!((0.0..=1.0).contains(&r_big));
-    }
-
-    #[test]
-    fn roughness01_invariant_to_joint_scaling() {
-        let r_half = 0.3;
-        let r_raw = 2.0;
-        let loudness = 5.0;
-        let r_norm = r_raw / (loudness + 1e-12);
-        let r01 = map_roughness01(r_norm, r_half);
-        let scale = 4.0;
-        let r_norm2 = (r_raw * scale) / (loudness * scale + 1e-12);
-        let r012 = map_roughness01(r_norm2, r_half);
-        assert!((r01 - r012).abs() < 1e-6);
-    }
-
-    #[test]
     fn consonance_field_level_stays_in_range() {
         let params = build_params(&Log2Space::new(100.0, 400.0, 12));
         let h01 = [0.0f32, 0.5, 1.0];
@@ -655,18 +588,49 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_pitch_score_log2_outside_space_uses_edge_bins() {
+    fn pitch_sampling_agrees_in_hz_and_log2_including_outside_space() {
         let mut landscape = Landscape::new(Log2Space::new(100.0, 400.0, 12));
-        let n = landscape.consonance_field_score_eff.len();
-        landscape.consonance_field_score_eff.fill(0.0);
-        landscape.consonance_field_score_eff[0] = 0.25;
-        landscape.consonance_field_score_eff[n - 1] = 0.75;
+        for (i, value) in landscape.consonance_field_score_eff.iter_mut().enumerate() {
+            *value = 0.25 + i as f32 * 0.02;
+        }
+        for hz in [
+            1.0_f32, 99.0, 100.0, 141.0, 200.0, 399.0, 400.0, 401.0, 1e10,
+        ] {
+            assert_eq!(
+                landscape.evaluate_pitch_score(hz).to_bits(),
+                landscape.evaluate_pitch_score_log2(hz.log2()).to_bits(),
+                "hz={hz}"
+            );
+        }
+        for log_freq in [f32::NAN, f32::NEG_INFINITY, f32::INFINITY, -1000.0, 1000.0] {
+            assert_eq!(landscape.evaluate_pitch_score_log2(log_freq), 0.0);
+        }
+    }
 
-        let lo = landscape.evaluate_pitch_score_log2(landscape.space.fmin.log2() - 10.0);
-        let hi = landscape.evaluate_pitch_score_log2(landscape.space.fmax.log2() + 10.0);
+    #[test]
+    #[should_panic(expected = "scan length mismatch: sample_linear_log2")]
+    fn sample_linear_log2_checks_length_before_invalid_frequency() {
+        let landscape = Landscape::default();
+        landscape.sample_linear_log2(&[], f32::NAN);
+    }
 
-        assert!((lo - 0.25).abs() < 1e-6, "lo={lo}");
-        assert!((hi - 0.75).abs() < 1e-6, "hi={hi}");
+    #[test]
+    fn habituation_keeps_the_base_density_pmf() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut landscape = Landscape::new(space.clone());
+        landscape.harmonicity.fill(0.8);
+        landscape.recompute_consonance(&build_params(&space));
+        let base = landscape.consonance_density.clone();
+        let state = vec![0.5; space.n_bins()];
+        landscape.apply_habituation(&state, 0.0, &ConsonanceRepresentationParams::default());
+        assert_eq!(landscape.consonance_density, base);
+        assert!(
+            landscape
+                .consonance_density_mass_eff
+                .iter()
+                .zip(&landscape.consonance_density_mass)
+                .all(|(eff, raw)| *eff == 0.5 * raw)
+        );
     }
 
     #[test]

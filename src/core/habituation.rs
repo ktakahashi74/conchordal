@@ -29,7 +29,7 @@ pub struct HabituationParams {
 impl Default for HabituationParams {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             satiation_sec: 5.0,
             recovery_sec: 8.0,
             ref_drive: 0.25,
@@ -122,17 +122,19 @@ mod tests {
     use super::*;
 
     fn full_drive_params() -> HabituationParams {
-        HabituationParams {
-            enabled: true,
-            satiation_sec: 5.0,
-            recovery_sec: 8.0,
-            ref_drive: 0.25,
-        }
+        HabituationParams::default()
     }
 
     #[test]
     fn disabled_is_identity() {
-        let f = HabituationField::new(&HabituationParams::default(), 0.0, 4);
+        let f = HabituationField::new(
+            &HabituationParams {
+                enabled: false,
+                ..Default::default()
+            },
+            0.0,
+            4,
+        );
         assert!(!f.is_enabled());
         assert_eq!(erode_score(0.7, 0.0, 0.0), 0.7);
         assert_eq!(erode_mass(0.7, 0.0), 0.7);
@@ -140,7 +142,14 @@ mod tests {
 
     #[test]
     fn disabled_advance_is_noop() {
-        let mut f = HabituationField::new(&HabituationParams::default(), 0.0, 3);
+        let mut f = HabituationField::new(
+            &HabituationParams {
+                enabled: false,
+                ..Default::default()
+            },
+            0.0,
+            3,
+        );
         assert!(!f.is_enabled());
         for _ in 0..100 {
             f.advance_from_parts(&[1.0, 1.0, 1.0], &[1e6, 1e6, 1e6], 0.05);

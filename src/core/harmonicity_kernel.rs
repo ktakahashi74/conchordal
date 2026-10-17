@@ -28,7 +28,7 @@
 //! Uses a "Shift-and-Add" approach with pre-calculated bounds
 //! to ensure O(N) efficiency and SIMD-friendly loops.
 
-use crate::core::float::{finite_or, unit_gaussian};
+use crate::core::float::{finite_or, sanitize_nonnegative_finite, unit_gaussian};
 use crate::core::log2space::Log2Space;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -81,6 +81,9 @@ pub struct HarmonicityKernel {
     pad_bins: usize, // Internal padding size
     sub_limit: u32,
     harm_limit: u32,
+    diag_a: f32,
+    absfreq_gate_scan: Option<Vec<f32>>,
+    gate_start_log2: f32,
 }
 
 impl HarmonicityKernel {
@@ -113,6 +116,24 @@ impl HarmonicityKernel {
         let max_oct = (max_limit as f32).max(1.0).log2();
         let pad_bins = (max_oct * space.bins_per_oct as f32).ceil() as usize;
 
+        let diag_a = if params.diag_weight < 1.0 {
+            let mut sum_a = 0.0f32;
+            for k in 1..=sub_limit.min(harm_limit).max(1) {
+                let a = (k as f32).powf(-params.rho_common_root);
+                sum_a += a * a;
+            }
+            sum_a
+        } else {
+            0.0
+        };
+        let absfreq_gate_scan = params.freq_gate.then(|| {
+            space
+                .centers_hz
+                .iter()
+                .map(|&f| 1.0 / (1.0 + (f / params.tfs_f_pl_hz).powf(params.tfs_eta)))
+                .collect()
+        });
+
         Self {
             bins_per_oct: space.bins_per_oct,
             params,
@@ -120,6 +141,9 @@ impl HarmonicityKernel {
             pad_bins,
             sub_limit,
             harm_limit,
+            diag_a,
+            absfreq_gate_scan,
+            gate_start_log2: space.centers_log2[0],
         }
     }
 
@@ -166,24 +190,12 @@ impl HarmonicityKernel {
         let bins_per_oct = self.bins_per_oct as f32;
         let sub_limit = self.sub_limit.max(1);
         let harm_limit = self.harm_limit.max(1);
-        let k_diag = sub_limit.min(harm_limit).max(1);
 
         // Step 0: Smooth Input (O(N))
         self.convolve_smooth_into(envelope, smeared_env);
 
         // Diagonal self-term correction factor.
         let diag_w = self.params.diag_weight.clamp(0.0, 1.0);
-        let diag_a = if diag_w < 1.0 {
-            let mut sum_a = 0.0f32;
-            for k in 1..=k_diag {
-                let a = (k as f32).powf(-self.params.rho_common_root);
-                sum_a += a * a;
-            }
-            sum_a
-        } else {
-            0.0
-        };
-
         // Buffer for virtual roots (centered with padding on both sides).
         let padding = self.pad_bins;
         let center_offset = padding as f32;
@@ -217,18 +229,25 @@ impl HarmonicityKernel {
         if diag_w < 1.0 {
             let scale = 1.0 - diag_w;
             for i in 0..n_bins {
-                let adjusted = landscape[i] - scale * diag_a * smeared_env[i];
+                let adjusted = landscape[i] - scale * self.diag_a * smeared_env[i];
                 landscape[i] = adjusted.max(0.0);
             }
         }
 
         // Step 3: Post-processing (optional gating, then peak find / normalize).
         let mut max_val = 1e-12;
-        let do_gate = self.params.freq_gate;
+        let gate_scan = self.absfreq_gate_scan.as_deref();
         let do_norm = self.params.normalize_output;
+        if let Some(gates) = gate_scan {
+            space.assert_scan_len_named(gates, "h_absfreq_gate_scan");
+            assert_eq!(
+                space.centers_log2[0], self.gate_start_log2,
+                "harmonicity gate space mismatch"
+            );
+        }
         for (i, v) in landscape.iter_mut().enumerate().take(n_bins) {
-            if do_gate {
-                *v *= Self::absfreq_gate(space.freq_of_index(i), &self.params);
+            if let Some(gates) = gate_scan {
+                *v *= gates[i];
             }
             if *v > max_val {
                 max_val = *v;
@@ -308,11 +327,7 @@ impl HarmonicityKernel {
         // Optimization: Use separate loop for the main part to avoid boundary checks.
         if self.smooth_kernel.len() == 1 {
             for (out, &value) in output.iter_mut().zip(input) {
-                *out = if value.is_finite() {
-                    value.max(0.0)
-                } else {
-                    0.0
-                };
+                *out = sanitize_nonnegative_finite(value);
             }
             return;
         }
@@ -335,20 +350,11 @@ impl HarmonicityKernel {
 
             for j in start_k..end_k {
                 let input_idx = i + j - half;
-                let x = if input[input_idx].is_finite() {
-                    input[input_idx].max(0.0)
-                } else {
-                    0.0
-                };
+                let x = sanitize_nonnegative_finite(input[input_idx]);
                 acc += x * self.smooth_kernel[j];
             }
             *out_val = acc;
         }
-    }
-
-    #[inline]
-    fn absfreq_gate(f_hz: f32, p: &HarmonicityParams) -> f32 {
-        1.0 / (1.0 + (f_hz / p.tfs_f_pl_hz).powf(p.tfs_eta))
     }
 }
 

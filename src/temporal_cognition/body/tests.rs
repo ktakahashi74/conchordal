@@ -508,3 +508,20 @@ fn private_capture_matches_isolated_render_for_every_body_and_route() {
         }
     }
 }
+
+#[test]
+fn finish_records_worker_panic_and_poisoned_snapshot_without_panicking() {
+    let mut capture = Capture::spawn(analyzer(), config(), false, None);
+    capture.finish();
+    let snapshot = Arc::clone(&capture.snapshot);
+    capture.handle = Some(std::thread::spawn(move || {
+        let _guard = snapshot.lock().unwrap();
+        panic!("private body worker fixture");
+    }));
+    capture.finish();
+    assert_eq!(
+        capture.snapshot().state,
+        crate::temporal_cognition::observation::ObservationState::Failed
+    );
+    drop(capture);
+}

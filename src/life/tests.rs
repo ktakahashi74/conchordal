@@ -101,7 +101,6 @@ fn population_spawn_and_release_removes_voice() {
             strategy: None,
         },
         &landscape,
-        None,
     );
     assert_eq!(pop.voices.len(), 1);
 
@@ -111,7 +110,6 @@ fn population_spawn_and_release_removes_voice() {
             fade_sec: 0.05,
         },
         &landscape,
-        None,
     );
 
     let fs = test_timebase().fs;
@@ -144,22 +142,10 @@ fn conductor_dispatches_finish_on_time() {
     let mut conductor = Conductor::from_scenario(scenario);
     let mut pop = Community::new(test_timebase());
     let landscape = LandscapeFrame::default();
-    conductor.dispatch_until(
-        0.5,
-        0,
-        &landscape,
-        None::<&mut crate::core::stream::analysis::AnalysisStream>,
-        &mut pop,
-    );
+    conductor.dispatch_until(0.5, &landscape, &mut pop);
     assert!(!pop.abort_requested);
 
-    conductor.dispatch_until(
-        1.1,
-        100,
-        &landscape,
-        None::<&mut crate::core::stream::analysis::AnalysisStream>,
-        &mut pop,
-    );
+    conductor.dispatch_until(1.1, &landscape, &mut pop);
     assert!(pop.abort_requested);
 }
 
@@ -194,13 +180,7 @@ fn conductor_keeps_future_events_queued_in_order() {
     let mut pop = Community::new(test_timebase());
     let landscape = LandscapeFrame::default();
 
-    conductor.dispatch_until(
-        1.0,
-        0,
-        &landscape,
-        None::<&mut crate::core::stream::analysis::AnalysisStream>,
-        &mut pop,
-    );
+    conductor.dispatch_until(1.0, &landscape, &mut pop);
     assert_eq!(
         conductor.remaining_events(),
         1,
@@ -208,13 +188,7 @@ fn conductor_keeps_future_events_queued_in_order() {
     );
     assert!(!pop.abort_requested);
 
-    conductor.dispatch_until(
-        2.0,
-        100,
-        &landscape,
-        None::<&mut crate::core::stream::analysis::AnalysisStream>,
-        &mut pop,
-    );
+    conductor.dispatch_until(2.0, &landscape, &mut pop);
     assert!(pop.abort_requested);
     assert!(conductor.is_done());
 }
@@ -233,7 +207,6 @@ fn voice_lifecycle_decay_death() {
             strategy: None,
         },
         &landscape,
-        None,
     );
 
     let fs = 48_000.0;
@@ -283,7 +256,6 @@ fn lock_mode_advances_release_gain() {
             strategy: None,
         },
         &LandscapeFrame::default(),
-        None,
     );
     let voice = pop.voices.first_mut().expect("agent exists");
     voice.start_remove_fade(0.05);
@@ -313,7 +285,6 @@ fn lock_mode_keeps_pitch_and_target() {
             strategy: None,
         },
         &LandscapeFrame::default(),
-        None,
     );
 
     let (freq_before, target_before) = {
@@ -364,7 +335,6 @@ fn lock_mode_preserves_placements_outside_analysis_range() {
                     }),
                 },
                 &landscape,
-                None,
             );
             let initial_freq = pop.voices[0].body.base_freq_hz();
             assert!((lo..=hi).contains(&initial_freq));
@@ -397,7 +367,6 @@ fn lock_mode_prevents_snapback() {
             strategy: None,
         },
         &LandscapeFrame::default(),
-        None,
     );
 
     let old_target = pop
@@ -417,7 +386,6 @@ fn lock_mode_prevents_snapback() {
             },
         },
         &LandscapeFrame::default(),
-        None,
     );
 
     let mut rhythms = NeuralRhythms::default();

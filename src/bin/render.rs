@@ -23,8 +23,8 @@ struct Args {
     output: String,
 
     /// Path to config TOML
-    #[arg(long, default_value = "config.toml")]
-    config: String,
+    #[arg(long)]
+    config: Option<String>,
 
     /// Override the fresh scenario seed (a script-level seed() still wins)
     #[arg(long)]
@@ -49,7 +49,7 @@ fn main() {
         .try_init();
 
     let args = Args::parse();
-    let config = match conchordal::config::AppConfig::load_or_default(&args.config) {
+    let config = match conchordal::config::AppConfig::load_or_default(args.config.as_deref()) {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("{err:#}");

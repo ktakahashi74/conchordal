@@ -3,27 +3,6 @@ use std::path::Path;
 use walkdir::WalkDir;
 
 use conchordal::app::compile_scenario_from_script;
-use conchordal::cli::Args;
-use conchordal::config::AppConfig;
-
-fn args_for_path(path: &Path) -> Args {
-    Args {
-        play: false,
-        scenario_path: path.to_string_lossy().to_string(),
-        config: "config.toml".to_string(),
-        wait_user_exit: None,
-        wait_user_start: None,
-        nogui: false,
-        compile_only: false,
-        report: None,
-        profile: None,
-        seed: None,
-    }
-}
-
-fn default_config() -> AppConfig {
-    AppConfig::default()
-}
 
 #[test]
 fn compile_only_samples_tests() {
@@ -40,9 +19,7 @@ fn compile_only_samples_tests() {
             continue;
         }
         count += 1;
-        let args = args_for_path(path);
-        let config = default_config();
-        compile_scenario_from_script(path, &args, &config)
+        compile_scenario_from_script(path, None)
             .unwrap_or_else(|e| panic!("compile-only failed for {}: {e}", path.display()));
     }
     assert!(count > 0, "no .rhai scripts found in samples");

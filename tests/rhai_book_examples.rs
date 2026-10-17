@@ -14,8 +14,6 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use conchordal::app::compile_scenario_from_script;
-use conchordal::cli::Args;
-use conchordal::config::AppConfig;
 
 struct Fence {
     source: PathBuf,
@@ -87,28 +85,14 @@ fn book_rhai_examples_execute() {
         let script_path = tmp_dir.join(format!("fence_{idx}.rhai"));
         fs::write(&script_path, &fence.code)
             .unwrap_or_else(|e| panic!("write {}: {e}", script_path.display()));
-        let args = Args {
-            play: false,
-            scenario_path: script_path.to_string_lossy().to_string(),
-            config: "config.toml".to_string(),
-            wait_user_exit: None,
-            wait_user_start: None,
-            nogui: false,
-            compile_only: false,
-            report: None,
-            profile: None,
-            seed: None,
-        };
-        compile_scenario_from_script(&script_path, &args, &AppConfig::default()).unwrap_or_else(
-            |e| {
-                panic!(
-                    "book example failed ({}:{}):\n{}\n\nerror: {e}",
-                    fence.source.display(),
-                    fence.start_line,
-                    fence.code
-                )
-            },
-        );
+        compile_scenario_from_script(&script_path, None).unwrap_or_else(|e| {
+            panic!(
+                "book example failed ({}:{}):\n{}\n\nerror: {e}",
+                fence.source.display(),
+                fence.start_line,
+                fence.code
+            )
+        });
     }
 
     let _ = fs::remove_dir_all(&tmp_dir);

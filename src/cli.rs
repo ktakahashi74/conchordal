@@ -12,11 +12,11 @@ pub struct Args {
     pub scenario_path: String,
 
     /// Path to config TOML
-    #[arg(long, default_value = "config.toml")]
-    pub config: String,
+    #[arg(long)]
+    pub config: Option<String>,
 
     /// Wait for user action to exit after playback (overrides config)
-    #[arg(long, num_args = 0..=1, default_missing_value = "false")]
+    #[arg(long, num_args = 0..=1, default_missing_value = "true", require_equals = true)]
     pub wait_user_exit: Option<bool>,
 
     /// Wait for user action before starting playback (overrides config)
@@ -56,5 +56,15 @@ mod tests {
         cmd.write_long_help(&mut help).expect("write help");
         let help = String::from_utf8(help).expect("utf8 help");
         assert!(help.contains("--config"));
+    }
+    #[test]
+    fn wait_user_exit_flag_enables_wait_and_accepts_explicit_false() {
+        let args = Args::try_parse_from(["conchordal", "sample.rhai", "--wait-user-exit"]).unwrap();
+        assert_eq!(args.wait_user_exit, Some(true));
+        let args = Args::try_parse_from(["conchordal", "--wait-user-exit", "sample.rhai"]).unwrap();
+        assert_eq!(args.wait_user_exit, Some(true));
+        let args =
+            Args::try_parse_from(["conchordal", "sample.rhai", "--wait-user-exit=false"]).unwrap();
+        assert_eq!(args.wait_user_exit, Some(false));
     }
 }

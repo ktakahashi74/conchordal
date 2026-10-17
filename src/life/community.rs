@@ -1315,7 +1315,6 @@ mod tests {
                 }),
             },
             &landscape,
-            None,
         );
         for voice in pop.voices.iter_mut() {
             voice.set_theta_phase_state_for_test(0.9, true);
@@ -1364,7 +1363,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::Spawn {
@@ -1374,7 +1372,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetPopulationCrowdingTarget {
@@ -1383,7 +1380,6 @@ mod tests {
                 other_population_visible,
             },
             &landscape,
-            None,
         );
 
         for voice in pop.voices.iter_mut() {
@@ -1411,7 +1407,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
 
         let voice = pop.voices.first_mut().expect("spawned voice");
@@ -1520,7 +1515,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
 
         let mut batches = vec![PhonationBatch {
@@ -1599,7 +1593,6 @@ mod tests {
                 strategy: None,
             },
             &landscape_low,
-            None,
         );
 
         let mut batches = Vec::new();
@@ -1670,7 +1663,6 @@ mod tests {
                 strategy: None,
             },
             &landscape_high,
-            None,
         );
 
         let mut batches = Vec::new();

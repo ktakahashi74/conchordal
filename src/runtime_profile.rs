@@ -95,7 +95,7 @@ pub(crate) struct RunProfile {
     seed: u64,
     report_enabled: bool,
     dcc_coupling_strength: f32,
-    listener_enabled: bool,
+    pub(crate) listener_enabled: bool,
     sample_rate: u32,
     hop_size: usize,
     hop_budget_us: f64,

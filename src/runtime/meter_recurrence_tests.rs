@@ -34,12 +34,7 @@ fn check_metric_population(
         std::process::id()
     ));
     std::fs::write(&path, script).unwrap();
-    let scenario = compile_scenario_from_script(
-        &path,
-        &render_compile_args(path.to_str().unwrap(), None),
-        &config,
-    )
-    .unwrap();
+    let scenario = compile_scenario_from_script(&path, None).unwrap();
     std::fs::remove_file(path).unwrap();
     let observed = Arc::new(Mutex::new(BTreeMap::<u64, (usize, u64)>::new()));
     let counts = observed.clone();
@@ -114,7 +109,7 @@ fn check_metric_population(
         WiringOptions {
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
-            ui_channel_capacity: 1,
+            ui_tx: None,
             listener_forced: false,
             wait_user_exit: false,
             start_playing: true,
@@ -131,7 +126,9 @@ fn check_metric_population(
         },
     )
     .unwrap();
-    join_thread("worker", wiring.worker_handle).unwrap();
+    join_thread("worker", wiring.worker_handle)
+        .unwrap()
+        .unwrap();
     join_thread("analysis", wiring.analysis_handle).unwrap();
     if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener", handle).unwrap();

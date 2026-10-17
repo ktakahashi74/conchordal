@@ -205,24 +205,56 @@ fn config_load_custom_values() {
     let text = toml::to_string_pretty(&custom).expect("serialize custom");
     fs::write(&path, text).expect("write custom config");
 
-    let loaded = AppConfig::load_or_default(&path_str).expect("load custom config");
+    let loaded = AppConfig::load_or_default(Some(&path_str)).expect("load custom config");
     assert_config_eq(&loaded, &custom);
 
     let _ = fs::remove_file(&path);
 }
 
 #[test]
-fn config_missing_file_fallback() {
+fn explicit_missing_config_is_an_error() {
     let path = unique_path("missing.toml");
     let path_str = path.to_string_lossy().to_string();
     let _ = fs::remove_file(&path);
 
-    let loaded = AppConfig::load_or_default(&path_str).expect("write and load defaults");
-    let defaults = AppConfig::default();
-    assert!(path.exists(), "missing config should be created");
-    assert_config_eq(&loaded, &defaults);
-
-    let _ = fs::remove_file(&path);
+    assert!(AppConfig::load_or_default(Some(&path_str)).is_err());
+    assert!(
+        !path.exists(),
+        "explicit missing config must not be created"
+    );
+    for binary in [
+        env!("CARGO_BIN_EXE_conchordal"),
+        env!("CARGO_BIN_EXE_conchordal-render"),
+    ] {
+        let status = std::process::Command::new(binary)
+            .args(["samples/01_a_single_voice.rhai", "--config", &path_str])
+            .args(if binary.ends_with("-render") {
+                vec!["-o", "unused.wav"]
+            } else {
+                vec!["--compile-only"]
+            })
+            .output()
+            .unwrap();
+        assert!(!status.status.success());
+        assert!(String::from_utf8_lossy(&status.stderr).contains("config file does not exist"));
+        assert!(!path.exists());
+        let dir = unique_path("explicit_default");
+        fs::create_dir(&dir).unwrap();
+        let status = std::process::Command::new(binary)
+            .current_dir(&dir)
+            .args(["unused.rhai", "--config", "config.toml"])
+            .args(if binary.ends_with("-render") {
+                vec!["-o", "unused.wav"]
+            } else {
+                vec!["--compile-only"]
+            })
+            .output()
+            .unwrap();
+        assert!(!status.status.success());
+        assert!(String::from_utf8_lossy(&status.stderr).contains("config file does not exist"));
+        assert!(!dir.join("config.toml").exists());
+        fs::remove_dir(dir).unwrap();
+    }
 }
 
 #[test]

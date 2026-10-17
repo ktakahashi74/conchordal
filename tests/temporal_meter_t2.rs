@@ -67,7 +67,18 @@ fn continuous_config_combinations_preserve_group_dependencies() {
     use conchordal::config::AppConfig;
     let (dir, _guard) = directory("config");
     let template = dir.join("config.toml");
-    let generated = AppConfig::load_or_default(template.to_str().unwrap()).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
+        .current_dir(&dir)
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/01_a_single_voice.rhai"))
+        .arg("--compile-only")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated = AppConfig::load_or_default(template.to_str()).unwrap();
     assert!(!generated.temporal_meter_t2);
     assert!(
         fs::read_to_string(template)

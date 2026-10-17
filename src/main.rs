@@ -1,6 +1,5 @@
 use clap::Parser;
 use conchordal::{app, cli::Args, config::AppConfig};
-use std::path::Path;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -19,7 +18,7 @@ fn main() -> eframe::Result<()> {
         .try_init();
 
     let args = Args::parse();
-    let mut config = match AppConfig::load_or_default(&args.config) {
+    let mut config = match AppConfig::load_or_default(args.config.as_deref()) {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("{err:#}");
@@ -33,11 +32,6 @@ fn main() -> eframe::Result<()> {
         config.playback.wait_user_start = val;
     }
 
-    if let Err(e) = app::validate_scenario_script_extension(Path::new(&args.scenario_path)) {
-        eprintln!("{e}");
-        std::process::exit(1);
-    }
-
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_for_ctrlc = stop_flag.clone();
 
@@ -47,7 +41,10 @@ fn main() -> eframe::Result<()> {
     .expect("Error setting Ctrl-C handler");
 
     if args.compile_only {
-        app::run_compile_only(args, config);
+        if let Err(err) = app::run_compile_only(args) {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
         return Ok(());
     }
 
@@ -69,7 +66,9 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let runtime_failed = Arc::new(AtomicBool::new(false));
+    let gui_failed = Arc::clone(&runtime_failed);
+    let result = eframe::run_native(
         "Conchordal",
         native_options,
         Box::new(move |cc| {
@@ -78,11 +77,16 @@ fn main() -> eframe::Result<()> {
                 args.clone(),
                 config.clone(),
                 stop_flag.clone(),
+                Arc::clone(&gui_failed),
             )))
         }),
     )
     .map_err(|e| {
         eprintln!("Error: {:?}", e);
         e
-    })
+    });
+    if runtime_failed.load(Ordering::SeqCst) {
+        std::process::exit(1);
+    }
+    result
 }

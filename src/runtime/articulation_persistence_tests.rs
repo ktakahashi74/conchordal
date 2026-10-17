@@ -38,12 +38,7 @@ fn render_case(
     let mut config: AppConfig = toml::from_str(CONFIG).unwrap();
     config.render_prototype = native;
     config.validate().unwrap();
-    let mut scenario = compile_scenario_from_script(
-        &script_path,
-        &render_compile_args(script_path.to_str().unwrap(), None),
-        &config,
-    )
-    .unwrap();
+    let mut scenario = compile_scenario_from_script(&script_path, None).unwrap();
     for action in scenario
         .events
         .iter_mut()
@@ -133,7 +128,7 @@ fn render_case(
         WiringOptions {
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
-            ui_channel_capacity: 1,
+            ui_tx: None,
             listener_forced: true,
             wait_user_exit: false,
             start_playing: true,
@@ -150,15 +145,15 @@ fn render_case(
         },
     )
     .unwrap();
-    join_thread("worker", wiring.worker_handle).unwrap();
+    join_thread("worker", wiring.worker_handle)
+        .unwrap()
+        .unwrap();
     join_thread("wav", wav_handle).unwrap();
     join_thread("analysis", wiring.analysis_handle).unwrap();
     if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener", handle).unwrap();
     }
-    if let Some(rx) = wiring.report_error_rx {
-        assert!(rx.try_recv().is_err());
-    }
+
     let observations = observed.lock().unwrap();
     assert!(!observations.is_empty());
     assert!(

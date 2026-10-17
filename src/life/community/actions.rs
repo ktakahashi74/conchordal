@@ -6,12 +6,7 @@ use rand::{SeedableRng, rngs::SmallRng};
 use tracing::warn;
 
 impl Community {
-    pub fn apply_action(
-        &mut self,
-        action: Action,
-        landscape: &LandscapeFrame,
-        _analysis_rt: Option<&mut crate::core::stream::analysis::AnalysisStream>,
-    ) {
+    pub fn apply_action(&mut self, action: Action, landscape: &LandscapeFrame) {
         match action {
             Action::Finish => {
                 self.abort_requested = true;
@@ -308,7 +303,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         let update = ControlUpdate {
             amp: Some(0.42),
@@ -320,7 +314,6 @@ mod tests {
                 patch: update,
             },
             &landscape,
-            None,
         );
         for voice in &pop.voices {
             assert!((voice.effective_control.body.amp - 0.42).abs() <= 1e-6);
@@ -339,7 +332,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::ReleasePopulation {
@@ -347,7 +339,6 @@ mod tests {
                 fade_sec: 0.05,
             },
             &landscape,
-            None,
         );
         let released: Vec<u64> = pop
             .voices
@@ -372,7 +363,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         let spawned = pop.voices.first().expect("spawned");
         assert!((spawned.body.base_freq_hz() - 275.0).abs() <= 1e-6);
@@ -395,7 +385,6 @@ mod tests {
                 }),
             },
             &landscape,
-            None,
         );
         let voice = pop.voices.first().expect("spawned");
         assert_eq!(voice.effective_control.pitch.mode, PitchMode::Free);

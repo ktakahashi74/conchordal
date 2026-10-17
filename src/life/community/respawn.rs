@@ -719,7 +719,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
 
         for frame in 0..300 {
@@ -745,7 +744,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -757,7 +755,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         let mut saw_respawned = false;
@@ -789,7 +786,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -801,7 +797,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         force_dead(&mut pop, 820);
@@ -824,7 +819,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -836,7 +830,6 @@ mod tests {
                 background_death_rate_per_sec: 10_000.0,
             },
             &landscape,
-            None,
         );
 
         step_population(&mut pop, 0, 0.01, &landscape);
@@ -866,7 +859,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -878,7 +870,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         let mut saw_respawned = false;
@@ -913,7 +904,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -925,7 +915,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         let parent_target_hz: f32 = 440.0;
@@ -965,7 +954,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -977,7 +965,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         let mut respawned_id = None;
@@ -1001,7 +988,6 @@ mod tests {
                 fade_sec: 0.05,
             },
             &landscape,
-            None,
         );
 
         let respawned = pop
@@ -1025,7 +1011,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -1037,7 +1022,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         let mut respawned_id = None;
@@ -1064,7 +1048,6 @@ mod tests {
                 },
             },
             &landscape,
-            None,
         );
 
         let respawned = pop
@@ -1088,7 +1071,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -1100,7 +1082,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::UpdatePopulation {
@@ -1111,7 +1092,6 @@ mod tests {
                 },
             },
             &landscape,
-            None,
         );
 
         for member in pop.voices.iter().filter(|v| v.metadata.population_id == 91) {
@@ -1142,7 +1122,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -1154,7 +1133,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::ReleasePopulation {
@@ -1162,7 +1140,6 @@ mod tests {
                 fade_sec: 0.01,
             },
             &landscape,
-            None,
         );
 
         let mut saw_new_id = false;
@@ -1203,7 +1180,6 @@ mod tests {
                 }),
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -1215,7 +1191,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         let parent_freq = pop
@@ -1262,7 +1237,6 @@ mod tests {
                 }),
             },
             &landscape,
-            None,
         );
         pop.apply_action(
             Action::SetRespawnPolicy {
@@ -1276,7 +1250,6 @@ mod tests {
                 background_death_rate_per_sec: 0.0,
             },
             &landscape,
-            None,
         );
 
         if let Some(parent) = pop.voices.iter_mut().find(|v| v.id() == 131) {
@@ -1359,7 +1332,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         let mut population = enabled.populations[&1].clone();
         population.strategy = Some(SpawnStrategy::Field {

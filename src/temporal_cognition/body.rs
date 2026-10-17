@@ -61,6 +61,7 @@ impl Record {
 
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct Snapshot {
+    pub(crate) state: super::observation::ObservationState,
     pub config: TemporalBodyConfig,
     pub prototype_model_version: Option<[u8; 32]>,
     #[serde(skip)]
@@ -312,6 +313,7 @@ impl Capture {
         let hop = nsgt.hop();
         let sample_rate = nsgt.fs() as u32;
         let initial = Snapshot {
+            state: super::observation::ObservationState::Waiting,
             config,
             prototype_model_version: prototypes.as_ref().map(|p| p.version),
             prototype_assignments: [None; VOICES * 2],
@@ -401,6 +403,7 @@ impl Capture {
                     }
                     state.input_end = frame.start + hop as u64;
                     state.processed_frames += 1;
+                    state.state = super::observation::ObservationState::Receiving;
                     state.processing_us = began.elapsed().as_micros() as u64;
                     state.max_processing_us = state.max_processing_us.max(state.processing_us);
                     let mut destination =
@@ -433,6 +436,7 @@ impl Capture {
                 let finishing = Instant::now();
                 state.version += 1;
                 state.finished = true;
+                state.state = super::observation::ObservationState::Finished;
                 let mut destination = output.lock().expect("final private descriptor snapshot");
                 *destination = state;
                 meter.finish(state.input_end, resources::elapsed_ns(finishing));
@@ -569,9 +573,10 @@ impl Capture {
                 self.dropped += 1;
             } else if let Some(completed) = &self.completed {
                 // Offline generation may read or advance only after this frame is published.
-                completed
-                    .recv()
-                    .expect("private body publication completion");
+                if completed.recv().is_err() {
+                    self.completed = None;
+                    self.finish();
+                }
             }
         }
         for slot in &mut self.slots {
@@ -582,7 +587,12 @@ impl Capture {
     }
 
     pub(crate) fn snapshot(&self) -> Snapshot {
-        let mut snapshot = *self.snapshot.lock().expect("private descriptor snapshot");
+        let snapshot = self.snapshot.lock().unwrap_or_else(|poisoned| {
+            let mut snapshot = poisoned.into_inner();
+            snapshot.state = super::observation::ObservationState::Failed;
+            snapshot
+        });
+        let mut snapshot = *snapshot;
         snapshot.capture_drops = self.dropped;
         snapshot.outside_voice_hops = self.outside;
         snapshot
@@ -591,7 +601,15 @@ impl Capture {
     pub(crate) fn finish(&mut self) {
         self.tx.take();
         if let Some(handle) = self.handle.take() {
-            handle.join().expect("private body worker");
+            let failed = handle.join().is_err();
+            let mut snapshot = self.snapshot.lock().unwrap_or_else(|poisoned| {
+                let mut snapshot = poisoned.into_inner();
+                snapshot.state = super::observation::ObservationState::Failed;
+                snapshot
+            });
+            if failed {
+                snapshot.state = super::observation::ObservationState::Failed;
+            }
         }
     }
 }

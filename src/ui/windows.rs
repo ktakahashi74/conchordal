@@ -617,7 +617,7 @@ pub fn main_window(
     frame: &UiFrame,
     rhythm_history: &VecDeque<(f64, crate::core::meter::MeterState)>,
     dorsal_history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
-    audio_error: Option<&str>,
+    runtime_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,
     start_flag: &Arc<AtomicBool>,
     show_raw_nsgt_power: &mut bool,
@@ -718,8 +718,8 @@ pub fn main_window(
     });
 
     CentralPanel::default().show_inside(root_ui, |ui| {
-        if let Some(err) = audio_error {
-            ui.colored_label(egui::Color32::RED, format!("Audio init failed: {err}"));
+        if let Some(err) = runtime_error {
+            ui.colored_label(egui::Color32::RED, err);
         }
         let time_link_id = "time_freq_link";
         let x_max = rhythm_history.back().map(|(t, _)| *t).unwrap_or(0.0);

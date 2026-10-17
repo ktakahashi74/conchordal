@@ -201,31 +201,6 @@ impl ScheduleRenderer {
         fork
     }
 
-    #[cfg(test)]
-    pub(crate) fn fork_all_without_capture(&self) -> Self {
-        let mut fork = Self::new(self.time);
-        fork.cutoff_tick = self.cutoff_tick;
-        fork.tones = self
-            .tones
-            .iter()
-            .map(|(key, routed)| {
-                (
-                    *key,
-                    RoutedTone {
-                        tone: routed.tone.clone(),
-                        routing: routed.routing,
-                        self_slot: None,
-                        source_generation: routed.source_generation,
-                        body_slot: None,
-                        scheduled_release: routed.scheduled_release,
-                        source_pcm_slot: None,
-                    },
-                )
-            })
-            .collect();
-        fork
-    }
-
     pub(crate) fn prepare_self_sound(
         &mut self,
         ids: impl Iterator<Item = u64>,

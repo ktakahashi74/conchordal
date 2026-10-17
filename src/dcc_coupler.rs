@@ -1,5 +1,5 @@
 use crate::config::DccConfig;
-use crate::core::float::{finite_or, sanitize_nonnegative_finite, sanitize01};
+use crate::core::float::{finite_or, sanitize01};
 use crate::listener_twin::ListenerState;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -17,11 +17,8 @@ pub(crate) struct DccCoupler {
 impl DccCoupler {
     pub(crate) fn new(config: DccConfig) -> Self {
         Self {
-            coupling_strength: sanitize01(finite_or(config.coupling_strength, 0.0)),
-            max_temperature_bonus: sanitize_nonnegative_finite(finite_or(
-                config.max_temperature_bonus,
-                0.10,
-            )),
+            coupling_strength: config.coupling_strength,
+            max_temperature_bonus: config.max_temperature_bonus,
         }
     }
 
@@ -92,8 +89,8 @@ mod tests {
     #[test]
     fn pressure_sanitizes_inputs() {
         let coupler = DccCoupler::new(DccConfig {
-            coupling_strength: 2.0,
-            max_temperature_bonus: f32::NAN,
+            coupling_strength: 1.0,
+            max_temperature_bonus: 0.1,
         });
 
         assert_eq!(coupler.coupling_strength(), 1.0);

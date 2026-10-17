@@ -205,6 +205,7 @@ Common operations:
 * Write a JSONL runtime report: `--report run.jsonl`
 * Replay a logged run: `--seed <SEED>`
 * Start on a performance cue: `--wait-user-start`
+* Keep the window open after playback: `--wait-user-exit`
 * Exit when the scenario ends: `--wait-user-exit=false`
 
 The production meter can use raw habitat T2 recurrence with the top-level TOML

@@ -186,7 +186,6 @@ mod tests {
                 strategy: None,
             },
             &landscape,
-            None,
         );
         let shared_phase = 0.75;
         for (idx, voice) in pop.voices.iter_mut().enumerate() {

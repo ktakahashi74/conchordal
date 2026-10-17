@@ -616,7 +616,6 @@ mod tests {
                             strategy: Some(strategy.clone()),
                         },
                         &landscape,
-                        None,
                     );
                 }
                 samples.push(start.elapsed().as_secs_f64() * 1000.0);

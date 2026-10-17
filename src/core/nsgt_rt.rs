@@ -58,6 +58,7 @@ pub struct RtNsgtKernelLog2 {
     fs: f32,
     nfft: usize,
     hop: usize,
+    #[cfg(test)]
     dt: f32,
 
     // runtime buffers (no per-hop alloc)
@@ -77,6 +78,7 @@ pub struct RtNsgtKernelLog2 {
 
 impl RtNsgtKernelLog2 {
     /// Construct with default RtConfig.
+    #[cfg(test)]
     pub fn new(nsgt: NsgtKernelLog2) -> Self {
         Self::with_config(nsgt, RtConfig::default())
     }
@@ -113,6 +115,7 @@ impl RtNsgtKernelLog2 {
             fs,
             nfft,
             hop,
+            #[cfg(test)]
             dt,
             ring: vec![0.0; nfft],
             write_pos: 0,
@@ -167,6 +170,7 @@ impl RtNsgtKernelLog2 {
     }
 
     /// Process an arbitrary block and emit per-hop band power/PSD slices via callback.
+    #[cfg(test)]
     pub fn process_block_emit<F: FnMut(&[f32])>(&mut self, block: &[f32], mut emit: F) {
         let mut i = 0usize;
         while i + self.hop <= block.len() {
@@ -188,6 +192,7 @@ impl RtNsgtKernelLog2 {
         self.hop
     }
     #[inline]
+    #[cfg(test)]
     pub fn dt(&self) -> f32 {
         self.dt
     }
@@ -200,6 +205,7 @@ impl RtNsgtKernelLog2 {
         self.nfft
     }
     /// Center frequencies [Hz].
+    #[cfg(test)]
     pub fn freqs(&self) -> Vec<f32> {
         self.nsgt.bands().iter().map(|b| b.f_hz).collect()
     }

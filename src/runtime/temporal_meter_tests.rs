@@ -34,12 +34,7 @@ fn continuous_offline_delivery_is_independent_of_producer_delay() {
         ("delayed", Duration::from_millis(2)),
     ] {
         let path = directory.join(format!("{name}.jsonl"));
-        let scenario = compile_scenario_from_script(
-            &script,
-            &render_compile_args(script.to_str().unwrap(), None),
-            &config,
-        )
-        .unwrap();
+        let scenario = compile_scenario_from_script(&script, None).unwrap();
         let mut reporter = JsonlReporter::create(path.to_str().unwrap()).unwrap();
         reporter.write_meta(scenario.seed).unwrap();
         let wiring = wire_runtime(
@@ -51,7 +46,7 @@ fn continuous_offline_delivery_is_independent_of_producer_delay() {
             WiringOptions {
                 offline_body_probe: None,
                 raw_t2_delay: delay,
-                ui_channel_capacity: 1,
+                ui_tx: None,
                 listener_forced: true,
                 wait_user_exit: false,
                 start_playing: true,
@@ -68,12 +63,13 @@ fn continuous_offline_delivery_is_independent_of_producer_delay() {
             },
         )
         .unwrap();
-        join_thread("worker", wiring.worker_handle).unwrap();
+        join_thread("worker", wiring.worker_handle)
+            .unwrap()
+            .unwrap();
         join_thread("analysis", wiring.analysis_handle).unwrap();
         if let Some(handle) = wiring.listener_analysis_handle {
             join_thread("listener", handle).unwrap();
         }
-        assert!(wiring.report_error_rx.unwrap().try_recv().is_err());
         let mut rows = Vec::new();
         for line in BufReader::new(std::fs::File::open(path).unwrap()).lines() {
             let mut row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
@@ -122,7 +118,7 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
         WiringOptions {
             offline_body_probe: None,
             raw_t2_delay: Duration::ZERO,
-            ui_channel_capacity: 1,
+            ui_tx: None,
             listener_forced: false,
             wait_user_exit: false,
             start_playing: true,

@@ -507,6 +507,70 @@ impl Default for PlaybackConfig {
 impl AppConfig {
     /// Validate the dimensions shared by the runtime and the NSGT kernel.
     pub fn validate(&self) -> Result<()> {
+        let psycho = &self.psychoacoustics;
+        for (name, value, minimum) in [
+            (
+                "psychoacoustics.habituation.satiation_sec",
+                psycho.habituation.satiation_sec,
+                1e-3,
+            ),
+            (
+                "psychoacoustics.habituation.recovery_sec",
+                psycho.habituation.recovery_sec,
+                1e-3,
+            ),
+            (
+                "psychoacoustics.habituation.ref_drive",
+                psycho.habituation.ref_drive,
+                1e-6,
+            ),
+            ("psychoacoustics.loudness_exp", psycho.loudness_exp, 0.01),
+            ("analysis.tau_ms", self.analysis.tau_ms, 1.0),
+            ("psychoacoustics.roughness_k", psycho.roughness_k, 1e-6),
+            (
+                "psychoacoustics.consonance.density.roughness_gain",
+                psycho.consonance.density.roughness_gain,
+                0.0,
+            ),
+            (
+                "psychoacoustics.consonance.field.level.beta",
+                psycho.consonance.field.level.beta,
+                0.0,
+            ),
+            (
+                "dcc.max_temperature_bonus",
+                self.dcc.max_temperature_bonus,
+                0.0,
+            ),
+        ] {
+            ensure!(
+                value.is_finite() && value >= minimum,
+                "{name} must be finite and at least {minimum}"
+            );
+        }
+        ensure!(
+            psycho.consonance.density.roughness_gain <= 1_000_000.0,
+            "psychoacoustics.consonance.density.roughness_gain exceeds the kernel limit 1000000"
+        );
+        let field = &psycho.consonance.field;
+        for (name, value) in [
+            ("a", field.kernel.a),
+            ("b", field.kernel.b),
+            ("c", field.kernel.c),
+            ("d", field.kernel.d),
+            ("beta", field.level.beta),
+            ("theta", field.level.theta),
+        ] {
+            ensure!(
+                value.is_finite(),
+                "psychoacoustics.consonance.field {name} must be finite"
+            );
+        }
+        ensure!(
+            self.dcc.coupling_strength.is_finite()
+                && (0.0..=1.0).contains(&self.dcc.coupling_strength),
+            "dcc.coupling_strength must be finite and in [0, 1]"
+        );
         if let Some(body) = self.body_metabolism.filter(|body| body.enabled) {
             ensure!(
                 body.updates_per_hop > 0,
@@ -578,9 +642,11 @@ impl AppConfig {
             }
         }
         crate::temporal_cognition::body_model::validate(self)?;
-        if self.temporal_meter_t2 {
+        if self.temporal_meter_t2 || self.temporal_t2.is_some() {
             crate::temporal_cognition::t2::Producer::new(self.audio.sample_rate)
                 .map_err(anyhow::Error::msg)?;
+        }
+        if self.temporal_meter_t2 {
             crate::core::meter::MeterNetwork::continuous_geometry(
                 self.audio.sample_rate,
                 self.analysis.hop_size as u64,
@@ -589,8 +655,6 @@ impl AppConfig {
         }
         if let Some(t2) = self.temporal_t2 {
             crate::temporal_cognition::t2::validate_config(t2).map_err(anyhow::Error::msg)?;
-            crate::temporal_cognition::t2::Producer::new(self.audio.sample_rate)
-                .map_err(anyhow::Error::msg)?;
             ensure!(
                 self.temporal_acoustic.is_some() && self.temporal_period.is_some(),
                 "temporal_t2 requires temporal_acoustic and temporal_period"
@@ -637,7 +701,11 @@ impl AppConfig {
     }
 
     fn round_f32(x: f32) -> f32 {
-        (x * 1_000_000.0).round() / 1_000_000.0
+        if x.abs() > f32::MAX / 1_000_000.0 {
+            x
+        } else {
+            (x * 1_000_000.0).round() / 1_000_000.0
+        }
     }
 
     fn format_f32_compact(x: f32) -> String {
@@ -669,24 +737,8 @@ impl AppConfig {
 
         let density = &mut self.psychoacoustics.consonance.density;
         density.roughness_gain = Self::round_f32(density.roughness_gain);
-        density.roughness_gain = if density.roughness_gain.is_finite() {
-            density.roughness_gain.max(0.0)
-        } else {
-            1.0
-        };
-
         self.dcc.coupling_strength = Self::round_f32(self.dcc.coupling_strength);
-        self.dcc.coupling_strength = if self.dcc.coupling_strength.is_finite() {
-            self.dcc.coupling_strength.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
         self.dcc.max_temperature_bonus = Self::round_f32(self.dcc.max_temperature_bonus);
-        self.dcc.max_temperature_bonus = if self.dcc.max_temperature_bonus.is_finite() {
-            self.dcc.max_temperature_bonus.max(0.0)
-        } else {
-            DccConfig::default_max_temperature_bonus()
-        };
     }
 
     fn rounded(mut self) -> Self {
@@ -694,23 +746,29 @@ impl AppConfig {
         self
     }
 
-    /// Loads `path`, or writes and returns defaults when the file is absent.
+    /// Loads an explicit path, or creates config.toml when no path was given.
     /// An existing but unreadable or malformed file (including unknown keys)
     /// is a hard error: a mistyped key must not silently fall back to a default.
-    pub fn load_or_default(path: &str) -> Result<Self> {
+    pub fn load_or_default(path: Option<&str>) -> Result<Self> {
+        Self::load_config(path.unwrap_or("config.toml"), path.is_none())
+    }
+
+    fn load_config(path: &str, create_default: bool) -> Result<Self> {
         let path_obj = Path::new(path);
         if path_obj.exists() {
             let contents = fs::read_to_string(path_obj)
                 .with_context(|| format!("failed to read config file '{path}'"))?;
             let mut cfg: Self = toml::from_str(&contents)
                 .with_context(|| format!("failed to parse config file '{path}'"))?;
-            cfg.round_f32_inplace();
             cfg.validate()
                 .with_context(|| format!("invalid config file '{path}'"))?;
+            cfg.round_f32_inplace();
             return Ok(cfg);
         }
 
-        // File does not exist: write defaults and return them.
+        ensure!(create_default, "config file does not exist: '{path}'");
+
+        // Only the implicit config.toml path may create a template.
         let default_cfg = Self::default().rounded();
         if let Ok(text) = toml::to_string_pretty(&default_cfg) {
             let mut commented = String::new();
@@ -938,7 +996,7 @@ mod tests {
         // Ensure clean slate
         let _ = fs::remove_file(&path);
 
-        let cfg = AppConfig::load_or_default(&path_str).expect("write and load defaults");
+        let cfg = AppConfig::load_config(&path_str, true).expect("write and load defaults");
         assert!(path.exists(), "config file should be created");
         assert_eq!(cfg.audio.latency_ms, 50.0);
         assert_eq!(cfg.audio.sample_rate, 48_000);
@@ -985,7 +1043,7 @@ mod tests {
         assert!(contents.contains("[psychoacoustics.habituation]\n# enabled = true"));
 
         // Written defaults must survive a reload under deny_unknown_fields.
-        AppConfig::load_or_default(&path_str).expect("written defaults must reload");
+        AppConfig::load_or_default(Some(&path_str)).expect("written defaults must reload");
 
         let _ = fs::remove_file(&path);
     }
@@ -1052,7 +1110,7 @@ mod tests {
         let text = toml::to_string_pretty(&custom).unwrap();
         fs::write(&path, text).unwrap();
 
-        let cfg = AppConfig::load_or_default(&path_str).expect("load existing config");
+        let cfg = AppConfig::load_or_default(Some(&path_str)).expect("load existing config");
         assert_eq!(cfg.audio.latency_ms, 75.0);
         assert_eq!(cfg.audio.sample_rate, 44_100);
         assert_eq!(cfg.audio.limiter, LimiterSetting::SoftClip);
@@ -1083,7 +1141,8 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         fs::write(&path, "[features]\nmulti_agent = true\n").unwrap();
 
-        let err = AppConfig::load_or_default(&path_str).expect_err("unknown section must fail");
+        let err =
+            AppConfig::load_or_default(Some(&path_str)).expect_err("unknown section must fail");
         let msg = format!("{err:#}");
         assert!(msg.contains(&path_str), "error must name the file: {msg}");
         assert!(
@@ -1100,7 +1159,7 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         fs::write(&path, "[audio]\nlatency_msec = 30.0\n").unwrap();
 
-        let err = AppConfig::load_or_default(&path_str).expect_err("mistyped key must fail");
+        let err = AppConfig::load_or_default(Some(&path_str)).expect_err("mistyped key must fail");
         let msg = format!("{err:#}");
         assert!(msg.contains(&path_str), "error must name the file: {msg}");
         assert!(
@@ -1117,7 +1176,7 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         fs::write(&path, "[audio]\nsample_rate = 44100\n").unwrap();
 
-        let cfg = AppConfig::load_or_default(&path_str).expect("partial config must load");
+        let cfg = AppConfig::load_or_default(Some(&path_str)).expect("partial config must load");
         assert_eq!(cfg.audio.sample_rate, 44_100);
         assert_eq!(cfg.audio.latency_ms, AudioConfig::default_latency_ms());
         assert_eq!(cfg.audio.limiter, LimiterSetting::default());
@@ -1189,7 +1248,7 @@ mod tests {
         ] {
             let path = unique_path(name);
             fs::write(&path, contents).unwrap();
-            let err = AppConfig::load_or_default(path.to_str().unwrap())
+            let err = AppConfig::load_or_default(path.to_str())
                 .expect_err("invalid dimensions must fail before runtime startup");
             let message = format!("{err:#}");
             assert!(message.contains(key), "{name}: {message}");
@@ -1320,38 +1379,22 @@ ref_drive = 0.4
     }
 
     #[test]
-    fn round_f32_inplace_clamps_negative_density_roughness_gain_to_zero() {
-        let text = r#"
-[psychoacoustics.consonance.density]
-roughness_gain = -1.0
-"#;
-        let mut parsed: AppConfig =
-            toml::from_str(text).expect("parse consonance density negative roughness gain");
-        parsed.round_f32_inplace();
-        assert_eq!(
-            parsed.psychoacoustics.consonance.density.roughness_gain,
-            0.0
-        );
-    }
-
-    #[test]
-    fn round_f32_inplace_maps_nan_density_roughness_gain_to_one() {
-        let mut cfg = AppConfig::default();
-        cfg.psychoacoustics.consonance.density.roughness_gain = f32::NAN;
-        cfg.round_f32_inplace();
-        assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 1.0);
-    }
-
-    #[test]
-    fn round_f32_inplace_sanitizes_dcc_coupling() {
-        let mut cfg = AppConfig::default();
-        cfg.dcc.coupling_strength = 2.0;
-        cfg.dcc.max_temperature_bonus = f32::NAN;
-        cfg.round_f32_inplace();
-        assert_eq!(cfg.dcc.coupling_strength, 1.0);
-        assert_eq!(
-            cfg.dcc.max_temperature_bonus,
-            DccConfig::default_max_temperature_bonus()
-        );
+    fn validate_rejects_invalid_psychoacoustics_and_dcc_values() {
+        for text in [
+            "[psychoacoustics.consonance.density]\nroughness_gain = -1.0",
+            "[psychoacoustics.consonance.field.kernel]\na = nan",
+            "[psychoacoustics.consonance.field.level]\nbeta = inf",
+            "[psychoacoustics]\nloudness_exp = 0.0",
+            "[psychoacoustics]\nroughness_k = nan",
+            "[analysis]\ntau_ms = -0.1",
+            "[psychoacoustics.habituation]\nsatiation_sec = 0.0",
+            "[psychoacoustics.habituation]\nrecovery_sec = inf",
+            "[psychoacoustics.habituation]\nref_drive = 0.0",
+            "[dcc]\ncoupling_strength = 2.0",
+            "[dcc]\nmax_temperature_bonus = nan",
+        ] {
+            let config: AppConfig = toml::from_str(text).unwrap();
+            assert!(config.validate().is_err(), "accepted {text}");
+        }
     }
 }

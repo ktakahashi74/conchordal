@@ -70,9 +70,7 @@ impl Conductor {
     pub fn dispatch_until(
         &mut self,
         time_sec: f32,
-        _current_frame: u64,
         landscape: &LandscapeFrame,
-        mut analysis_rt: Option<&mut crate::core::stream::analysis::AnalysisStream>,
         community: &mut Community,
     ) {
         // Audio thread: pop-then-restore avoids an `expect`, and logging one line per
@@ -86,7 +84,7 @@ impl Conductor {
             let time = ev.time;
             for action in ev.actions {
                 info!("[t={time:.3}] Event: {action}");
-                community.apply_action(action, landscape, analysis_rt.as_deref_mut());
+                community.apply_action(action, landscape);
             }
         }
     }

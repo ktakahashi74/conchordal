@@ -26,12 +26,7 @@ fn n3_offline_body_equivalence() {
         config.analysis.nfft = 2048;
     }
     crate::life::modal::register_modal();
-    let scenario = compile_scenario_from_script(
-        std::path::Path::new(&path),
-        &render_compile_args(&path, Some(seed)),
-        &config,
-    )
-    .unwrap();
+    let scenario = compile_scenario_from_script(std::path::Path::new(&path), Some(seed)).unwrap();
     let mut states =
         std::io::BufWriter::new(std::fs::File::create(directory.join("states.jsonl")).unwrap());
     let mut habitat =
@@ -116,7 +111,7 @@ fn n3_offline_body_equivalence() {
         WiringOptions {
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
-            ui_channel_capacity: 1,
+            ui_tx: None,
             listener_forced: false,
             wait_user_exit: false,
             start_playing: true,
@@ -133,15 +128,12 @@ fn n3_offline_body_equivalence() {
         },
     )
     .unwrap();
-    join_thread("worker", wiring.worker_handle).unwrap();
+    join_thread("worker", wiring.worker_handle)
+        .unwrap()
+        .unwrap();
     join_thread("analysis", wiring.analysis_handle).unwrap();
     if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener", handle).unwrap();
-    }
-    if let Some(rx) = wiring.report_error_rx
-        && let Ok(error) = rx.try_recv()
-    {
-        panic!("{error}");
     }
 }
 
@@ -172,12 +164,7 @@ fn render_birth_metabolism_flags(
     };
     config.analysis.nfft = 2048;
     config.dcc.coupling_strength = 0.0;
-    let scenario = compile_scenario_from_script(
-        std::path::Path::new(path),
-        &render_compile_args(path, Some(42)),
-        &config,
-    )
-    .unwrap();
+    let scenario = compile_scenario_from_script(std::path::Path::new(path), Some(42)).unwrap();
     assert_eq!(scenario.seed, 42);
     let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
     let captured = Arc::clone(&snapshots);
@@ -230,7 +217,7 @@ fn render_birth_metabolism_flags(
         WiringOptions {
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
-            ui_channel_capacity: 1,
+            ui_tx: None,
             listener_forced: false,
             wait_user_exit: false,
             start_playing: true,
@@ -247,7 +234,9 @@ fn render_birth_metabolism_flags(
         },
     )
     .unwrap();
-    join_thread("worker", wiring.worker_handle).unwrap();
+    join_thread("worker", wiring.worker_handle)
+        .unwrap()
+        .unwrap();
     join_thread("analysis", wiring.analysis_handle).unwrap();
     if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener", handle).unwrap();
@@ -388,12 +377,7 @@ fn b7_dynamic_etude_render() {
         ..Default::default()
     };
     crate::life::modal::register_modal();
-    let scenario = compile_scenario_from_script(
-        std::path::Path::new(&path),
-        &render_compile_args(&path, Some(seed)),
-        &config,
-    )
-    .unwrap();
+    let scenario = compile_scenario_from_script(std::path::Path::new(&path), Some(seed)).unwrap();
     assert_eq!(scenario.seed, seed);
     let mut states =
         std::io::BufWriter::new(std::fs::File::create(directory.join("states.jsonl")).unwrap());
@@ -448,7 +432,7 @@ fn b7_dynamic_etude_render() {
         WiringOptions {
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
-            ui_channel_capacity: 1,
+            ui_tx: None,
             listener_forced: false,
             wait_user_exit: false,
             start_playing: true,
@@ -465,14 +449,11 @@ fn b7_dynamic_etude_render() {
         },
     )
     .unwrap();
-    join_thread("worker", wiring.worker_handle).unwrap();
+    join_thread("worker", wiring.worker_handle)
+        .unwrap()
+        .unwrap();
     join_thread("analysis", wiring.analysis_handle).unwrap();
     if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener", handle).unwrap();
-    }
-    if let Some(rx) = wiring.report_error_rx {
-        if let Ok(error) = rx.try_recv() {
-            panic!("{error}");
-        }
     }
 }

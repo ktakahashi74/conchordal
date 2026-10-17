@@ -347,7 +347,7 @@ fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
                     action,
                     Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
                 ) {
-                    community.apply_action(action.clone(), &landscape, None);
+                    community.apply_action(action.clone(), &landscape);
                 }
             }
             let parent = community.voices[0].id();
@@ -913,7 +913,7 @@ fn anchored_spec_survives_population_spawn() {
         hop: 64,
     });
     let landscape = LandscapeFrame::default();
-    pop.apply_action(spawn_action, &landscape, None);
+    pop.apply_action(spawn_action, &landscape);
 
     let voice = pop.voices.first().expect("spawned");
     assert_eq!(voice.base_control.pitch.mode, PitchMode::Lock);
@@ -1021,7 +1021,7 @@ fn at_placement_respects_final_pitch_intent() {
                     assert!(strategy.is_none(), "{chain}");
                     assert_eq!(spec.control.pitch.freq, 330.0, "{chain}");
                 }
-                community.apply_action(action.clone(), &landscape, None);
+                community.apply_action(action.clone(), &landscape);
             }
         }
         assert_eq!(community.voices.len(), 3);
@@ -1076,7 +1076,7 @@ fn at_seek_can_adopt_a_target_from_its_initial_pitch() {
         community.set_seed(scenario.seed);
         for action in scenario.events.iter().flat_map(|event| &event.actions) {
             if matches!(action, Action::Spawn { .. }) {
-                community.apply_action(action.clone(), &landscape, None);
+                community.apply_action(action.clone(), &landscape);
             }
         }
         let voice = &mut community.voices[0];
@@ -1108,7 +1108,7 @@ fn at_seek_does_not_change_create_or_live_freq_lock() {
     });
     let landscape = LandscapeFrame::default();
     for action in scenario.events.iter().flat_map(|event| &event.actions) {
-        community.apply_action(action.clone(), &landscape, None);
+        community.apply_action(action.clone(), &landscape);
     }
     assert_eq!(community.voices.len(), 2);
     assert_eq!(
@@ -1212,7 +1212,7 @@ fn consonance_movement_sets_free_hill_climb_glide_defaults() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned voice");
@@ -1340,7 +1340,7 @@ fn population_spec_landscape_weight_reaches_spawned_individual() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -1366,7 +1366,7 @@ fn population_spec_temperature_reaches_spawned_core() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -1421,7 +1421,7 @@ fn population_landscape_weight_live_update_reaches_individual() {
     {
         match action {
             Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape, None);
+                pop.apply_action(action.clone(), &landscape);
             }
             _ => {}
         }
@@ -1450,7 +1450,7 @@ fn population_amp_live_update_preserves_member_pitch_centers() {
 
     for event in &scenario.events {
         for action in &event.actions {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
         if event
             .actions
@@ -1592,7 +1592,7 @@ fn population_temperature_live_update_reaches_individual() {
     {
         match action {
             Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape, None);
+                pop.apply_action(action.clone(), &landscape);
             }
             _ => {}
         }
@@ -1644,7 +1644,7 @@ fn population_spec_crowding_reaches_spawned_core() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -1671,7 +1671,7 @@ fn population_spec_crowding_single_arg_uses_default_sigma() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -1725,7 +1725,7 @@ fn population_crowding_live_update_reaches_individual_core() {
     {
         match action {
             Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape, None);
+                pop.apply_action(action.clone(), &landscape);
             }
             _ => {}
         }
@@ -1825,7 +1825,7 @@ fn population_spec_leave_self_out_and_temperature_reach_spawned_core() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -1855,7 +1855,7 @@ fn population_leave_self_out_and_temperature_live_update_reaches_individual() {
     {
         match action {
             Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape, None);
+                pop.apply_action(action.clone(), &landscape);
             }
             _ => {}
         }
@@ -1884,7 +1884,7 @@ fn population_spec_move_cost_reaches_spawned_core() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -1913,7 +1913,7 @@ fn population_move_cost_live_update_reaches_individual() {
     {
         match action {
             Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape, None);
+                pop.apply_action(action.clone(), &landscape);
             }
             _ => {}
         }
@@ -1949,7 +1949,7 @@ fn population_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
     {
         match action {
             Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape, None);
+                pop.apply_action(action.clone(), &landscape);
             }
             _ => {}
         }
@@ -1999,7 +1999,7 @@ fn population_spec_peak_sampler_knobs_reach_spawned_core() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -2041,7 +2041,7 @@ fn population_spec_advanced_pitch_knobs_reach_spawned_core() {
         .flat_map(|event| event.actions.iter())
     {
         if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape, None);
+            pop.apply_action(action.clone(), &landscape);
         }
     }
     let voice = pop.voices.first().expect("spawned");
@@ -2091,7 +2091,7 @@ fn population_advanced_pitch_knobs_live_update_reaches_individual() {
     {
         match action {
             Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape, None);
+                pop.apply_action(action.clone(), &landscape);
             }
             _ => {}
         }
@@ -2943,7 +2943,7 @@ fn metric_respawn_starts_from_the_resolved_population_template() {
             action,
             Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
         ) {
-            population.apply_action(action.clone(), &landscape, None);
+            population.apply_action(action.clone(), &landscape);
         }
     }
     let founder = population.voices[0].id();
@@ -3345,7 +3345,7 @@ fn rearticulate_respawn_inherits_initial_and_live_population_template() {
                     | Action::SetRespawnPolicy { .. }
                     | Action::UpdatePopulation { .. }
             ) {
-                community.apply_action(action.clone(), &landscape, None);
+                community.apply_action(action.clone(), &landscape);
             }
         }
         let founder = community.voices[0].id();
@@ -3379,7 +3379,7 @@ fn rearticulate_native_invalid_patch_keeps_voice_and_respawn_template() {
             action,
             Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
         ) {
-            community.apply_action(action.clone(), &landscape, None);
+            community.apply_action(action.clone(), &landscape);
         }
     }
     let patch = ControlUpdate {
@@ -3404,7 +3404,6 @@ fn rearticulate_native_invalid_patch_keeps_voice_and_respawn_template() {
             patch,
         },
         &landscape,
-        None,
     );
     assert_eq!(
         community.voices[0].effective_control.pitch.pitch_apply_mode,
@@ -3581,7 +3580,7 @@ fn synchronized_respawn_retains_controls_and_starts_fresh_private_policy() {
             action,
             Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
         ) {
-            community.apply_action(action.clone(), &landscape, None);
+            community.apply_action(action.clone(), &landscape);
         }
     }
     let parent = community.voices[0].id();
@@ -3648,7 +3647,7 @@ fn sustained_participation_rearticulate_order_live_and_respawn_are_valid() {
                     | Action::SetRespawnPolicy { .. }
                     | Action::UpdatePopulation { .. }
             ) {
-                community.apply_action(action.clone(), &landscape, None);
+                community.apply_action(action.clone(), &landscape);
             }
         }
         let founder = community.voices[0].id();
@@ -3705,7 +3704,7 @@ fn boundary_respawn_inherits_initial_and_live_population_template() {
                     | Action::SetRespawnPolicy { .. }
                     | Action::UpdatePopulation { .. }
             ) {
-                community.apply_action(action.clone(), &landscape, None);
+                community.apply_action(action.clone(), &landscape);
             }
         }
         let founder = community.voices[0].id();
@@ -3803,7 +3802,7 @@ fn deferred_participation_respawn_inherits_initial_and_live_population_template(
                     | Action::SetRespawnPolicy { .. }
                     | Action::UpdatePopulation { .. }
             ) {
-                community.apply_action(action.clone(), &landscape, None);
+                community.apply_action(action.clone(), &landscape);
             }
         }
         let founder = community.voices[0].id();
@@ -3980,7 +3979,7 @@ fn rest_respawn_inherits_template_and_starts_with_empty_performance_state() {
             action,
             Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
         ) {
-            community.apply_action(action.clone(), &landscape, None);
+            community.apply_action(action.clone(), &landscape);
         }
     }
     let parent = community.voices[0].id();
@@ -4137,7 +4136,7 @@ fn articulation_persistence_respawn_inherits_parameter_and_resets_private_policy
             action,
             Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
         ) {
-            community.apply_action(action.clone(), &landscape, None);
+            community.apply_action(action.clone(), &landscape);
         }
     }
     let parent = community.voices[0].id();
@@ -4190,7 +4189,7 @@ fn articulation_persistence_endpoints_allocate_no_private_policy() {
             hop: 512,
         });
         for action in scenario.events.iter().flat_map(|event| &event.actions) {
-            community.apply_action(action.clone(), &LandscapeFrame::default(), None);
+            community.apply_action(action.clone(), &LandscapeFrame::default());
         }
         let PhonationClock::Participation(clock) = &community.voices[0].phonation_engine.clock
         else {
@@ -4226,7 +4225,7 @@ fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
                     | Action::SetRespawnPolicy { .. }
                     | Action::UpdatePopulation { .. }
             ) {
-                community.apply_action(action.clone(), &landscape, None);
+                community.apply_action(action.clone(), &landscape);
             }
         }
         let parent = community.voices[0].id();
@@ -4386,7 +4385,7 @@ fn synchronized_tie_default_sound_and_live_modes_use_existing_policy() {
         c.set_seed(21);
         for action in scene.events.iter().flat_map(|e| &e.actions) {
             if matches!(action, Action::Spawn { .. }) {
-                c.apply_action(action.clone(), &LandscapeFrame::default(), None);
+                c.apply_action(action.clone(), &LandscapeFrame::default());
             }
         }
         c.voices.remove(0)
@@ -4524,7 +4523,7 @@ fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
             action,
             Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
         ) {
-            c.apply_action(action.clone(), &landscape, None);
+            c.apply_action(action.clone(), &landscape);
         }
     }
     let parent = c.voices[0].id();
@@ -4624,7 +4623,7 @@ fn tie_respawn_inherits_parameter_and_resets_private_policy() {
             action,
             Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
         ) {
-            community.apply_action(action.clone(), &landscape, None);
+            community.apply_action(action.clone(), &landscape);
         }
     }
     let parent = community.voices[0].id();

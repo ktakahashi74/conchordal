@@ -846,7 +846,7 @@ The application creates four primary thread contexts, plus the GUI event loop:
 1.  **Audio Thread (Real-Time Priority)**:
     *   Managed by `cpal` in `audio/output.rs`.
     *   **Constraint**: Must never block. No Mutexes, no memory allocation.
-    *   **Responsibility**: Pops mono samples from a lock-free ring buffer and copies them to all output channels. A `Limiter` (soft-clip or peak-limiter) is applied in-place on the interleaved output.
+    *   **Responsibility**: Pops mono samples from a lock-free ring buffer and copies them to all output channels. The output guard is selected by `[audio].limiter`: `peak-limiter` (default), `soft-clip`, or `none`. It is applied in-place on the interleaved output. SoftClip preserves samples up to its knee and compresses larger samples strictly below the ceiling; its small-signal gain is unity. Limiter meters aggregate maxima over each reporting interval.
 
 2.  **Analysis Thread (Background Priority)**:
     *   Defined in `core/analysis_worker.rs`, running `AnalysisStream` from `core/stream/analysis.rs`.
@@ -858,7 +858,7 @@ The application creates four primary thread contexts, plus the GUI event loop:
     *   **Responsibility**: Models what an audience member perceives—including its own habituation field and the perception meter's beat confidence—for the UI, the headless report, and the DCC pressure coupler.
 
 4.  **Worker Thread (Simulation Loop)**:
-    *   Named `"worker"` in `app.rs`.
+    *   Named `"worker"` in `runtime/wiring.rs`; the loop lives in `runtime/worker.rs`.
     *   **Responsibility**: Runs the main simulation loop. Each iteration: merges analysis results into the current Landscape, dispatches Conductor events, advances the Population (pitch retargeting, articulation, metabolism), renders audio via `ScheduleRenderer` (which processes `PhonationBatch` vectors of `ToneCmd` and maintains the `Tone` pool), drives the production `MeterNetwork` from habitat flux and the population's own onsets, and pushes mono samples into the ring buffer for the audio thread.
 
 5.  **App/GUI Thread (Main)**:
@@ -871,7 +871,7 @@ To maintain data consistency without locking the audio thread, Conchordal uses a
 
 1.  The **Worker Thread** renders audio per bus and sends each habitat hop to the **Analysis Thread**; presentation hops go to the **Listener-Analysis Thread**.
 2.  The **Analysis Thread** runs the NSGT + subjective-intensity + Roughness + Harmonicity pipeline and sends the resulting raw `Landscape` snapshot back.
-3.  The **Worker Thread** merges the analysis result into the current `LandscapeFrame`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
+3.  The **Worker Thread** merges the analysis result into the current `Landscape`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
 4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the phonation onset strengths of habitat-routed voices; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
 5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
 6.  When DCC coupling is enabled, `tension_pressure = tension_level * coupling_strength` produces a bounded temperature bonus that feeds the Voices' pitch search. Listener tension already includes resolvability; the coupler applies no second factor. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
@@ -890,7 +890,7 @@ The API follows four explicit lifetimes: a **PopulationSpec** is a reusable pre-
 
 A PopulationSpec begins with a preset and is refined through method chaining. It contains founder Voice defaults together with population-level lifecycle, viability, and respawn policy:
 
-**Presets**: `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()`. `variant(parent)` clones an existing PopulationSpec for modification.
+**Presets**: `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()`. Assign an existing PopulationSpec to another variable and apply builders to derive a modified value.
 
 **Body**: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)` (habitat/presentation routing).
 
@@ -987,15 +987,17 @@ clears finite intent. Absence of `rest` retains existing behavior. Every note in
 this form has a finite end; per-note selection of sustain versus release is not
 implemented.
 
+Explicit `glide`, `pitch_core`, and `viability_scope` settings take precedence over preset defaults regardless of builder order. Enum parameters accept only their exact canonical names; invalid names are positioned errors, and ineffective settings produce positioned warnings.
+
 **Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
 
 **Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`; finite sustained participation with `rest()` / `rest(periods)`.
 
-**Rhythm (Section 5.4)**: `metric()` selects shared-beat attraction; `entrained()`, `steady()` and `flow()` select acoustic participation. `entrainment(v)` changes the influence within that intention. `microtiming(v)` offsets the synchronized target only. `temporal_basin` shapes the production meter and initializes metric bodies at its center; `intrinsic_rate(hz)` sets the separate founder bodily scale of entrained/steady/flow, otherwise 2 Hz, and changes note lengths and rests in seconds together. Articulation controls remain separate: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, and `rhythm_reward(rho_t, "attack_phase_match")`.
+**Rhythm (Section 5.4)**: `metric()` selects shared-beat attraction; `entrained()`, `steady()` and `flow()` select acoustic participation. `entrainment(v)` changes the influence within that intention. `microtiming(v)` offsets the synchronized target only. `temporal_basin` shapes the production meter and initializes metric bodies at its center; `intrinsic_rate(hz)` sets the separate founder bodily scale of entrained/steady/flow, otherwise 2 Hz, and changes note lengths and rests in seconds together. Articulation controls remain separate: `rhythm_freq(v)`, `rhythm_coupling_vitality(lambda_v, v_floor)`, and `rhythm_reward(rho_t, "attack_phase_match")` (Entrain Hold with autonomous attacks enabled).
 
 **Lifecycle/Viability**: `endurance(sec)`, optional `recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, and `phonate_when_viable()` (withhold the first onset until the viability window opens).
 
-**Respawn**: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)` (maximum living membership; founder count by default and never lower than it), `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`.
+**Respawn**: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)` (maximum living membership; founder count by default and never lower than it), `respawn_settle(placement)`, `respawn_min_consonance(v)`, `respawn_background_death_rate(v)`.
 
 ### 6.3.2 Mode Patterns
 

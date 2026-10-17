@@ -254,10 +254,9 @@ The renderer shares the core engine but is not the real-time instrument.
 
 ## Contributing
 
-We invite engineers and artists exploring Auditory Scene Analysis and
-Computational Creativity. Check the
-[Issue Tracker](https://github.com/ktakahashi74/conchordal/issues) for open
-research topics.
+Start with the [documentation guide](docs/README.md) for scenario authoring,
+implementation notes, and development operations. See the [changelog](CHANGELOG.md)
+for changes since the latest release.
 
 ## License
 

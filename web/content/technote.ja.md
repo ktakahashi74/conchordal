@@ -791,7 +791,7 @@ offlineはその後にWAVを閉じ、headlessは終了する。GUIは既定で�
 1.  **オーディオスレッド（リアルタイム優先度）**:
     *   `audio/output.rs` で `cpal` により管理される。
     *   **制約**: 絶対にブロックしてはならない。Mutexもメモリ確保も禁止。
-    *   **責務**: ロックフリーリングバッファからモノサンプルをポップし、すべての出力チャンネルにコピーする。`Limiter` がインターリーブされた出力にインプレースで適用される。
+    *   **責務**: ロックフリーリングバッファからモノサンプルをポップし、すべての出力チャンネルにコピーする。出力の保護方式は`[audio].limiter`の`peak-limiter`（既定）、`soft-clip`、`none`から選び、インターリーブされた出力にインプレースで適用する。SoftClipはkneeまでの入力をそのまま通し、それを超える入力をceiling未満へ圧縮する。小信号の利得は1である。limiterのmeterは報告区間内の最大値を保持する。
 
 2.  **解析スレッド（バックグラウンド優先度）**:
     *   `core/analysis_worker.rs` で定義され、`core/stream/analysis.rs` の `AnalysisStream` を実行する。
@@ -803,7 +803,7 @@ offlineはその後にWAVを閉じ、headlessは終了する。GUIは既定で�
     *   **責務**: 独立したhabituation fieldと知覚メーターのビート確信度を含め、聴衆が知覚するものをモデル化し、UI、ヘッドレスレポート、DCC圧力カプラに供給する。
 
 4.  **ワーカースレッド（シミュレーションループ）**:
-    *   `app.rs` で `"worker"` と命名される。
+    *   `runtime/wiring.rs`で`"worker"`と命名され、ループは`runtime/worker.rs`にある。
     *   **責務**: メインシミュレーションループを実行する。各イテレーション：解析結果を地形にマージ → Conductorイベントのディスパッチ → Population の進行（ピッチリターゲティング、アーティキュレーション、代謝） → `PhonationEngine` が `ToneCmd` を生成 → `ScheduleRenderer` でオーディオをレンダリング → ハビタットフラックスと集団自身のオンセットから生成 `MeterNetwork` を駆動 → リングバッファにモノサンプルをプッシュ。
 
 5.  **App/GUI スレッド（メイン）**:
@@ -816,7 +816,7 @@ offlineはその後にWAVを閉じ、headlessは終了する。GUIは既定で�
 
 1.  **ワーカースレッド**がバスごとにオーディオをレンダリングし、ハビタットホップを**解析スレッド**へ、プレゼンテーションホップを**リスナー解析スレッド**へ送信する。
 2.  **解析スレッド**がNSGT + subjective intensity + roughness + harmonicityパイプラインを実行し、raw `Landscape`スナップショットを返送する。
-3.  **ワーカースレッド**が解析結果を`LandscapeFrame`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
+3.  **ワーカースレッド**が解析結果を`Landscape`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
 4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）とハビタットへ送られるボイスの発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
 5.  `Community`がeffective Landscapeを、ピッチ選択、代謝、spawn、respawn、Voiceのライフサイクルに使う。
 6.  DCC couplingが有効なら、`tension_pressure = tension_level * coupling_strength`から上限つきのtemperature bonusを作り、Voiceのpitch searchへ戻す。Listenerのtensionにはすでにresolvabilityが含まれるため、couplerでは重ねて掛けない。デフォルトのcoupling strengthは0であり、明示的に有効化しない限り挙動は変わらない。
@@ -829,7 +829,7 @@ offlineはその後にWAVを閉じ、headlessは終了する。GUIは既定で�
 
 Conductor モジュールは人間のアーティストとエコシステムの間のインターフェースとして機能する。[Rhai](https://rhai.rs/) スクリプト言語を組み込み、シミュレーション制御のための階層化された API を公開する。API は四つの明示的な寿命に従う。**PopulationSpec** は再利用可能な配置前定義、**Population** は `place()` が生成する安定した集団同一性、**Voice** は一個の生きた構成員、実行時の **Community** は同じ Landscape を共有する全 Population の集約である。常に最新の網羅的リファレンスは日本語版 Script Reference ブック（`docs/rhai_book_ja`、`/ja/docs/rhai/` で公開）にあり、本節は概念的な階層のみを要約する。`Species` というオブジェクトはなく、設定の単位は PopulationSpec である。
 
-**PopulationSpec の構築**: プリセット `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()` から開始し、`variant(parent)` で複製・派生する。PopulationSpec は創始 Voice の既定値と、集団全体のライフサイクル・生存可能性・リスポーン方針を併せ持つ。
+**PopulationSpec の構築**: プリセット `sine()`, `harmonic()`, `saw()`, `square()`, `noise()`, `modal()` から開始し、既存のPopulationSpecを別の変数へ代入し、builderで値を変更して派生させる。PopulationSpec は創始 Voice の既定値と、集団全体のライフサイクル・生存可能性・リスポーン方針を併せ持つ。
 
 *   ボディ: `amp(v)`, `freq(v)`, `brightness(v)`, `spread(v)`, `unison(n)`, `modes(pattern)`, `adsr(a,d,s,r)`, `send(bus)`（ハビタット/プレゼンテーションのルーティング）。
 *   ピッチ: `anchor()`（ピッチを保持。`freq(hz)` はアンカーを含意）, `seek_consonance()`（協和地形を登る。適用モードは自動解決される——持続ボイスはグライド、再アタックするボイスはオンセットでスナップ——`pitch_apply_mode("gate_snap"|"glide"|"rearticulate")` で明示上書き可）, `pitch_core("hill_climb"|"peak_sampler")`, `glide(v)`, `landscape_weight(v)`, `tessitura_gravity(v)`, `temperature(v)`（両コア共有の探索ノブ。0 で貪欲に落ち着く——音楽的にはこれが運動の緊張のノブで、高温ではボイスが協和から外れて彷徨い、冷ますと解決する）ほか。
@@ -903,11 +903,13 @@ entrained／steady／flow以外は、配置時の書き込み前にerrorにす�
 明示の`while_alive()`は有限の指定を消す。`rest`がなければ従来の挙動を保つ。この形では
 全ての音が有限長で終わり、一音ごとに伸ばすか切るかを選ぶ機能は含まれない。
 
+明示した`glide`、`pitch_core`、`viability_scope`は、builderの順序にかかわらずpresetの省略値より優先される。列挙値の引数は正規名だけを受け付け、不正名は位置付きのerrorとなる。効かない設定には位置付きの警告を出す。
+
 *   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`；有限音長の持続＋参加には`rest()`／`rest(periods)`。
-*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`・`steady()`・`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、`intrinsic_rate(hz)`はentrained／steady／flowの独立した創始の身体の尺度（省略時2 Hz）を置き、音長と間の秒数も一緒に変える。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。
+*   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`・`steady()`・`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、`intrinsic_rate(hz)`はentrained／steady／flowの独立した創始の身体の尺度（省略時2 Hz）を置き、音長と間の秒数も一緒に変える。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。rhythm_rewardは自律attackが有効なEntrainのHoldで使う。
 *   ライフサイクル/生存可能性: `endurance(sec)`, 任意の`recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, `phonate_when_viable()`（viability windowが開くまで最初のonsetを保留）。
-*   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_c_level(v)`, `respawn_background_death_rate(v)`。
+*   リスポーン: `respawn_random()`, `respawn_hereditary(sigma_oct)`, `respawn_consonance()`, `respawn_capacity(n)`（生存構成員数の上限。未指定時は創始Voice数で、それより小さくはできない）, `respawn_settle(placement)`, `respawn_min_consonance(v)`, `respawn_background_death_rate(v)`。
 
 **モードパターン**: モーダル合成のためのモード比率生成関数。
 

@@ -10,10 +10,13 @@
     - `roughness_kernel.rs`: Sensory dissonance calculation via interference kernels.
     - `phase.rs`: Phase wrap/diff utilities (shared across rhythm + kernels).
     - `landscape.rs`: Real-time integration of Roughness and Harmonicity.
-    - `fft.rs`: FFT wrappers and Hilbert transform logic.
+    - `fft.rs`: Symmetric Blackman-Harris window construction.
+    - `stream/potentials.rs`: Shared harmonicity and roughness scratch for streaming,
+      synchronous body analysis, and exact leave-self-out evaluation.
     - `erb.rs`: Equivalent Rectangular Bandwidth scales.
   - `audio/` (Real-time I/O):
     - `output.rs`: cpal stream management (ringbuffer producer).
+    - `limiter.rs`: Output peak limiter, soft clipping, and interval meters.
     - `writer.rs`: Disk recording (WAV).
   - `synth/` (Synthesis engine):
     - Modal resonator bank and mode-table primitives (Hz/sec domain).
@@ -28,23 +31,40 @@
     - `voice.rs` owns the `#[path]` submodules `articulation_core.rs`,
       `pitch_controller.rs`, `pitch_core.rs`, `sound_body.rs` (files stay flat
       under `src/life/`).
-  - `scripting/` (Rhai engine, API registration, generated docs).
-  - `runtime/` (thread wiring, `worker_loop`, scenario execution).
-    - `wire_runtime(WiringOptions)` is the single wiring path shared by
-      `init_runtime` (GUI/headless) and `run_render` (offline).
-    - `worker_loop` owns `WorkerConfig` / `WorkerChannels` / `WorkerState` and
-      delegates one hop to `process_hop`, which calls the phase functions
-      (`wait_for_analysis`, `apply_landscape_updates`, `wait_for_listener`,
-      `advance_population`, `emit_hop_reports`, `render_and_route_audio`,
-      `drive_production_meter`, `log_guard_meter`, `send_runtime_ui_frame`).
+    - `phonation_engine.rs` owns the flat `#[path]` modules `phonation_clock.rs`,
+      `phonation_rules.rs`, and `phonation_timing.rs`; `temporal_participation.rs`,
+      `sustained_participation.rs`, and `shape_participation.rs` implement participation
+      decisions and their Voice-side application.
+  - `scripting/` (Rhai engine, API registration, generated docs):
+    - `spec.rs`: PopulationSpec builders and resolution.
+    - `placement.rs`: Placement builders and routing values.
+    - `context.rs`: Script context, handles, and positioned diagnostics.
+    - `engine.rs`: Registration; `tests/`: spec, placement, and context suites.
+  - `runtime/` (thread wiring, worker loop, scenario execution):
+    - `wiring.rs`: `wire_runtime(WiringOptions)`, the single wiring path shared by
+      `init_runtime` (GUI/headless) and `run_render` (offline), plus run/join entrypoints.
+    - `worker.rs`: `WorkerConfig` / `WorkerChannels` / `WorkerState`, `worker_loop`,
+      `process_hop`, and finalization. One hop delegates to the modules below.
+    - `analysis_sync.rs`: `wait_for_analysis`, `apply_landscape_updates`,
+      `wait_for_listener`, merge, and ecology/listener habituation.
+    - `phases.rs`: `advance_population`, `emit_hop_reports`, `render_and_route_audio`,
+      `drive_production_meter`, and body/temporal routing.
+    - `ui_frame.rs`: UI frame construction and `send_runtime_ui_frame`.
+    - `monitor.rs`: `AudioMonitor` and `log_guard_meter`.
+    - `scenario_load.rs`: Script compilation, validation, and compile-only diagnostics.
+  - `temporal_cognition/` (declared by `temporal_cognition.rs`): ordered auditory
+    evidence, grouping, body observation, arrival, proposals, and opt-in T2 integration.
   - `listener_twin/` (listener-side model).
   - `scenario.rs` + `scenario/control.rs` / `scenario/lifecycle.rs`: scenario IR,
     voice control config, lifecycle config.
   - `viewdata.rs`: worker -> UI snapshot contract (`UiFrame` and friends). It is
     deliberately outside `ui/` so `runtime/` has no dependency on `ui/`.
   - `config.rs` / `dcc_coupler.rs`: TOML config, DCC coupling.
+  - `cli.rs`: Instrument CLI arguments.
+  - `runtime_profile.rs`: Hop timing, run profiles, and `profile-alloc` instrumentation.
   - `bin/`: `render.rs` (conchordal-render) and `gen_rhai_defs.rs`.
-- Entrypoints: `src/main.rs` (binary) and `src/app.rs` (GUI/Thread wiring).
+- Entrypoints: `src/main.rs` (instrument) and `src/app.rs` (GUI and shutdown
+  ownership); engine/thread wiring lives in `wire_runtime` (`src/runtime/wiring.rs`).
 - `web/` (Astro site sources; build with `npm ci && npm run build` in `web/`) lives at the repository root, not under `src/`.
 - Samples: execution-test scripts live under `tests/scripts/`. Compile-only samples stay under `samples/`.
 
@@ -53,7 +73,7 @@
 - Run (release): `cargo run --release` (Recommended for real-time DSP performance)
 - Tests: `cargo test` (required after `src/` changes; run once on the final revision).
 - Format: `cargo fmt --all`
-- Lint: `cargo clippy -- -D warnings`
+- Lint: `cargo clippy --all-targets -- -D warnings`
 - Verify all targets: `cargo check --all-targets`
 - Test all targets: `cargo test --all-targets`
 - Check examples explicitly: `cargo check --examples`
@@ -69,7 +89,9 @@ use their own focused tests rather than a full crate build.
 ## End-of-Task Test Record
 
 When a task modifies code under src/, finish by running the tests and recording the
-status. `just sync` reads `test_status.txt` and reports it as missing otherwise.
+status. `just test` runs the command below and writes both record files; `CARGO`
+can select a wrapper such as cargo-slot. Other recipes include `just fmt`,
+`just clippy`, `just gen_rhai_defs`, and `just mdbook`.
 
 Run tests with full output and backtraces enabled, and record the exit code in the
 same shell invocation. `$?` does not survive a separate shell — if you split these
@@ -167,50 +189,53 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 
 ## Coding Style & Naming Conventions
 - **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.
-- **DSP Efficiency**: Prefer `f32`. Minimize allocations in the audio thread (`worker_loop`)
-  and the cpal callback. Use `Vec::with_capacity` or pre-allocated ringbuffers.
-  This is a budget, not an absolute. After the decomposition into `process_hop` + phase
-  functions, the runtime layer's own steady-state per-hop allocations are exactly these
-  five:
-  - the two audio `Arc<[f32]>` chunks in `render_and_route_audio`
-    (`src/runtime/mod.rs`), handed to the WAV, listener and analysis channels;
-  - the terrain `Arc` in `apply_landscape_updates` (`src/runtime/mod.rs`), fed to
-    `GeneratorModel::observe_consonance_field_level`, and only when analysis or
-    landscape params actually changed;
-  - the UI snapshot built by `build_runtime_ui_frame` (`src/runtime/mod.rs`), reached
-    through `send_runtime_ui_frame` and rate-limited by `UI_MIN_INTERVAL`;
-  - the report path (`emit_hop_reports`, `src/runtime/mod.rs`), which early-returns
-    unless `--report` attached a reporter;
-  - the harmonicity projection in `drive_and_apply_habituation`
-    (`src/runtime/mod.rs`, `potential_h_from_log2_spectrum` returns an owned `Vec`),
-    which now runs on the default steady-state path because
-    `[psychoacoustics.habituation]` is enabled by default. Explicit `enabled = false`
-    skips this existing projection; the default change adds no allocation path.
-  Two more sit off the steady-state path: the analysis-lag warning string in
-  `AudioMonitor::update` (`src/runtime/mod.rs`, at most once a second) and the space
-  clones in `merge_latest_analysis_results` (`src/runtime/mod.rs`, only on a
-  Log2Space reconfiguration). `idle_silence` (`src/runtime/mod.rs`) is allocated
-  once before the loop, not per hop. The rule is "do not add allocations beyond what the
-  handoff requires", not "zero allocations".
-  Downstream of `runtime/`, the `life` layer allocates too, and that list is
-  representative rather than exhaustive — audit the call path, do not trust this
-  paragraph as a census. Known live examples: the prediction scan in
-  `TerrainPredictor::predict_consonance_field_level_at`
-  (`src/life/generator_model.rs`, once per theta gate because
-  `cache_pred_next_gate` memoizes the gate tick); the visit-order permutation in
-  `Community::advance_substep_sequential_current` (`src/life/community.rs`, once per
-  control substep); and `dying_ids` in `Community::apply_background_turnover`
-  (`src/life/community.rs`, which only reaches the heap when a death actually fires).
-  Where a hop path has already been made allocation-free it stays that way: the
-  `Community` / `Voice` / `PhonationEngine` paths reuse pre-allocated scratch buffers
-  (`Community::advance_scratch` / `gate_open_scratch` / `dead_id_scratch`,
-  `src/life/community.rs`; `scratch_candidates` / `scratch_merged` /
-  `scratch_grid` / `scratch_field`, `src/life/phonation_engine.rs`). Clear and
-  refill those instead of introducing a new `Vec` in a hop path.
-  The analysis worker (`src/core/analysis_worker.rs`) runs on its own thread and is not
-  bound by this rule; it allocates roughly 30 times per hop, dominated by the
-  `Landscape` snapshot `AnalysisStream::process` clones
-  (`src/core/stream/analysis.rs`) and sends over the channel.
+- **DSP Efficiency**: Prefer `f32`. Minimize allocations in `worker_loop` and the
+  cpal callback. Reuse scratch or pre-allocated ringbuffers. Audit the actual call path;
+  the following is a conditional budget, not an exact allocation census.
+  - `render_and_route_audio` (`src/runtime/phases.rs`) creates two `Arc<[f32]>`
+    chunks for the presentation and habitat buses, shared with WAV/listener/analysis
+    channels as needed.
+  - `apply_landscape_updates` (`src/runtime/analysis_sync.rs`) allocates the observed
+    field `Arc` for `GeneratorModel::observe_consonance_field_level` only after analysis
+    or valuation updates with an available analysis frame.
+  - `drive_and_apply_habituation` (`src/runtime/analysis_sync.rs`) obtains an owned
+    harmonicity projection from `potential_h_from_log2_spectrum`. Habituation is enabled
+    by default. The ecology path runs per hop, and `observe_listener_analysis_results`
+    runs the same projection per received listener frame; the default GUI has both
+    paths. Explicitly disabling habituation skips these projections.
+  - `build_runtime_ui_frame` (`src/runtime/ui_frame.rs`) clones the Landscape and
+    builds spectrum, Voice, phase, and temporal/body snapshots. `send_runtime_ui_frame`
+    rate-limits ordinary GUI frames with `UI_MIN_INTERVAL`; terminal delivery retains
+    one pending snapshot for retry. Headless and offline render pass `ui_tx = None`
+    and construct neither initial nor runtime UI frames.
+  - Reporting allocates only when enabled, across `emit_hop_reports`, participation
+    context/decision collection in `advance_population`, prediction/body/outcome paths
+    in `render_and_route_audio` and `drive_production_meter` (`src/runtime/phases.rs`),
+    listener contour/hop timing in `process_hop`, and `finish_run`
+    (`src/runtime/worker.rs`). Do not treat `emit_hop_reports` as the whole report cost.
+  - `merge_latest_analysis_results` (`src/runtime/analysis_sync.rs`) clones frequency
+    spaces only on Log2Space reconfiguration. `idle_silence` (`src/runtime/worker.rs`)
+    is allocated before the loop. The old analysis-lag warning allocation is gone;
+    `AudioMonitor` (`src/runtime/monitor.rs`) aggregates slow-hop warnings at stats cadence.
+  The `life` layer has its own conditional allocations. The prediction scan in
+  `TerrainPredictor::predict_consonance_field_level_at` (`src/life/generator_model.rs`)
+  builds a Vec/Arc when extrapolating two observations; `cache_pred_next_gate` reuses
+  the gate result until invalidated. `Community::advance_substep_sequential_current`
+  (`src/life/community.rs`) computes rotating indices directly, without an order Vec.
+  `Community::respawn_on_new_deaths` (`src/life/community/respawn.rs`) returns before
+  Vec/BTreeMap construction if no new death exists. `dying_ids` in
+  `Community::apply_background_turnover` allocates only when a death is selected.
+  Preserve reused `Community` buffers (`advance_scratch`, `gate_open_scratch`,
+  `dead_id_scratch`), pitch proposal scratch (`src/life/pitch_core.rs`), and
+  `PhonationEngine` buffers (`scratch_candidates`, `scratch_merged`, `scratch_grid`,
+  `scratch_field`, `src/life/phonation_engine.rs`). Clear and refill them.
+  The analysis worker (`src/core/analysis_worker.rs`) is a separate thread. Streaming
+  and synchronous analysis share front-end/potential scratch; `AnalysisStream::process`
+  (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only
+  at publication (every Ordered frame or the last Latest frame), attaching a spectral
+  history snapshot. This still allocates; the former per-hop count is obsolete.
+  Use `--features profile-alloc` when measuring or asserting allocations; without it,
+  allocation counts are unavailable. Runtime measurements live in `runtime_profile.rs`.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
 
 ## Anti-Bloat Rules
@@ -232,11 +257,13 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
 ## Testing Policy
 - **Inline tests** (`#[cfg(test)] mod tests` in the same source file) are for module-internal logic and private APIs.
 - **Integration tests** (`tests/` directory) are for public API and cross-module behavior; treat them as black-box specs.
-- **Crate-internal test modules** (`src/<module>/tests.rs`, declared with
-  `#[cfg(test)] mod tests;`) are used where a suite is too large to inline but needs
-  access to private APIs across a module tree — currently `src/life/tests.rs` and
-  `src/scripting/tests.rs`. Prefer one of the two forms above; reach for this only when
-  the suite genuinely needs crate-internal visibility.
+- **Crate-internal test modules** hold larger suites that require private APIs:
+  `src/life/tests.rs`, `src/scripting/tests/{mod,spec,placement,context}.rs`, runtime
+  `tests.rs` / `shutdown_tests.rs`, and nested temporal-cognition `tests.rs` files.
+  Flat `#[path = "*_tests.rs"]` modules (for example `phonation_engine_tests.rs`,
+  `shape_policy_clock_tests.rs`, and `core/meter_hierarchy_tests.rs`) remain attached
+  to the owning module for private access. Use these forms only when that access is
+  needed; keep public/cross-module black-box specifications under `tests/`.
 
 ## Architecture Notes for Agents
 - The core perception model is **Landscape**. It ingests audio, transforms it to Log2-frequency space via NSGT, and computes two potentials:
@@ -305,7 +332,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 2. `consonance_field_level`
 - Definition: `sigmoid(beta*(score-theta))`.
 - Usage: base value. Consumed as the habituation drive in
-  `drive_and_apply_habituation` (`src/runtime/mod.rs`) and as the source for the
+  `drive_and_apply_habituation` (`src/runtime/analysis_sync.rs`) and as the source for the
   eroded view. Behavior and the listener read variant 6, not this one.
 3. `consonance_field_energy`
 - Definition: `-score`.
@@ -316,16 +343,18 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - Usage: base value. It is the source for the eroded mass and the input to
   `build_consonance_density` (`src/core/landscape.rs`). Range-local spawn reads
   variant 6, not this one.
-5. `consonance_density_pmf`
-- Definition: normalized PMF from density mass; uniform fallback on all-zero totals.
-- Implementation: `build_consonance_density` in `src/core/landscape.rs`.
+5. `consonance_density` (base PMF)
+- Definition: normalized base density mass; uniform fallback on all-zero totals.
+- Implementation: `recompute_consonance` in `src/core/landscape.rs` normalizes it once.
+  `apply_habituation` updates effective mass without renormalizing this base PMF.
+  `build_consonance_density` separately builds an occupancy-masked base PMF on request.
 - Usage: currently exercised only by inline tests. Spawn placement goes through
   `SpawnStrategy::Field` (see the Rhai Spawn API section), not through this PMF.
 6. `consonance_field_score_eff` / `consonance_field_level_eff` / `consonance_density_mass_eff`
 - Definition: variants 1, 2 and 4 after habituation erosion is applied.
 - Implementation: fields at `src/core/landscape.rs`, written by
   `Landscape::apply_habituation` (`src/core/landscape.rs`); driven per hop from
-  `apply_landscape_updates` (`src/runtime/mod.rs`) when
+  `apply_landscape_updates` (`src/runtime/analysis_sync.rs`) when
   `[psychoacoustics.habituation]` is enabled.
 - Usage split:
   - Behavior, listener and spawn read the eroded views:
@@ -344,10 +373,12 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - `beta, theta` (defaults: `2.0, 0.0`)
 - `[psychoacoustics.consonance.density]`
 - `roughness_gain` (`rho`, default: `1.0`)
-- `rho` is density roughness sensitivity; negative values clamp to `0`, non-finite values sanitize to `1`.
+- `rho` is density roughness sensitivity. Config validation requires a finite value
+  in `[0, 1000000]`; the kernel guards direct internal callers separately.
 - `[psychoacoustics.habituation]`
 - `enabled` (default: `true`), `satiation_sec` (`5.0`), `recovery_sec` (`8.0`),
   `ref_drive` (`0.25`)
+- Defaults come from `HabituationParams::default()` in `src/core/habituation.rs`.
 - When `enabled = false` the `_eff` consonance views equal their base variants.
 
 Other top-level sections exist and are defined in `src/config.rs`:
@@ -357,11 +388,12 @@ read `src/config.rs` for their keys and defaults.
 Note: every config struct carries `#[serde(deny_unknown_fields)]`, so a misspelled TOML
 key is a hard error rather than a silent fallback. `#[serde(default)]` still fills in
 *missing* keys. `AppConfig::load_or_default` (`src/config.rs`) returns
-`anyhow::Result`: an absent file still writes and returns defaults, but an existing file
-that is unreadable, malformed, or carries an unknown key fails the run.
+`anyhow::Result`: only an omitted config path with no default `config.toml` writes and
+returns defaults. An explicit missing `--config` path, unreadable/malformed file,
+unknown key, or invalid numeric range fails the run.
 
 ## Rhai Spawn API
-Placement builders produce a `Placement` (defined in `src/scripting/mod.rs`,
+Placement builders produce a `Placement` (defined in `src/scripting/placement.rs`,
 registered in `src/scripting/engine.rs`), which lowers to `SpawnStrategy`
 in `src/scenario.rs`.
 
@@ -413,7 +445,8 @@ We represent frequency-direction terrains as **Log2Space-aligned scans**.
   `src/core/log2space.rs`, but it has no production callers — do not reach for it.)
   Never return a sentinel for a length mismatch — it is a
   programming error, not a runtime condition (`sample_scan_linear_log2`,
-  `src/core/log2space.rs`, panics rather than yielding `NEG_INFINITY`).
+  `src/core/log2space.rs`, panics on a length mismatch). Invalid or out-of-range
+  frequency coordinates return `0.0` after that length check.
   Per-element and per-bin checks stay `debug_assert`. A hop-path function that can
   degrade instead of aborting the performance may keep a `debug_assert` plus a graceful
   fallback, but it must say so: see `exact_loo_consonance_score_scan`
@@ -491,31 +524,7 @@ This restriction concerns dedicated synchronization support, not pitch-only
   scientific control. Keep those comparisons distinct from product compatibility;
   a synthesis change does not inherit an old-waveform identity requirement.
 
-## Multi-agent Orchestration
-- The plan of record is `docs/roadmap/plan-current.md`. Its units are run by one
-  orchestrating session that dispatches workers and escalates only author decisions. It
-  keeps one line of status per unit in `.orchestration/status.md`, and each unit's brief
-  and report under `.orchestration/units/<unit>/` (machine-local, untracked). Nothing that
-  is the only copy of a record goes under `target/`: `cargo clean` removes it, as it did on
-  2026-10-07 with the earlier decision records and the old orchestration board.
-- Roles (author instruction, 2026-10-07): the orchestrator is a Claude Opus session. The
-  workers are `gpt-6.1-sol` at reasoning effort `xhigh`, each an agent-shell buffer on the
-  KEIO account, started and addressed through `scripts/worker-shell.el`
-  (`conchordal-worker-start`, `conchordal-worker-send`, `conchordal-worker-status`). A
-  worker that meets an unspecified author choice returns it to the orchestrator; a model
-  does not expand the authorized scope.
-- One unit per worker, with its worktree, `CARGO_TARGET_DIR`, sources to read, exit
-  criteria and report file stated. A worker writes its result to the report file named in
-  its brief; the orchestrator reads that file, not the shell buffer.
-- Independent units run concurrently, as many as are independent. Serialize only when two
-  units change the same files, when one needs the other's output, while a pass/fail timing
-  measurement holds the exclusive window (design and document units continue meanwhile),
-  and for integration into main. At most two workers build or test with cargo at once.
-- Each wave names the registered criterion it closes or the design problem it solves. A
-  stream that closes none in two consecutive waves stops and returns the design problem to
-  the author. Usage limits are stop conditions, never targets. Completion is counted over
-  live requirements only; requirements already complete or moved out of the core scope are
-  not in the denominator.
+For orchestration, pass/fail timing, or long jobs on blanche, read [operations/orchestration.md](docs/operations/orchestration.md).
 
 ## Author Decision Requests
 - For each recommended option state the implementation, validation and acquisition work it
@@ -531,24 +540,11 @@ This restriction concerns dedicated synchronization support, not pitch-only
 - Before creating any commit, always run `cargo clippy -- -D warnings` and confirm it passes.
 - If a commit is requested, commit only the files relevant to the requested task.
 - While several sessions share the main checkout, commit from a worktree branch, never in
-  the shared checkout: the pre-commit hook stages every tracked change there.
-- Timing measurements used for pass/fail run in an exclusive window:
-  `scripts/timing_lock.sh acquire <owner> <minutes>` before, `release <owner>` after. While
-  another owner holds the lock, run no cargo, tests or renders, even in another worktree. A
-  lock past its expected end is reported to the user, not removed.
+  the shared checkout, to isolate each session's index and changes. The tracked hook
+  `.githooks/pre-commit` runs `cargo fmt --all -- --check` and never changes the index;
+  enable it with `git config core.hooksPath .githooks`.
 - Before every push, integrate the remote first with `git pull --rebase --autostash`.
   Two machines and several agents push to `main`.
 - If two appends to a record file (e.g. `docs/roadmap/**`) conflict, keep both entries,
   upstream first. Edits to the same paragraph and conflicts in code need a real merge;
   stop and report when the intent of either side is unclear.
-
-## Host Memory Safety (blanche)
-- The 2026-10-01 global Ptyxis memory policy and `run-guarded` deployment were withdrawn
-  after systemd-oomd killed two terminal scopes. Do not reinstall those templates.
-- Constrain explicitly owned computation jobs, not shared terminals or editor processes.
-  Existing scientific registrations retain their own limits and entry gates; do not
-  restart or move a live acquisition to change its operational limits.
-- Check systemd-oomd logs and monitored memory pressure as well as kernel OOM counters.
-  `OOMPolicy=continue` does not protect a cgroup from systemd-oomd killing it.
-- Save PID, command, cwd, actual limits, true exit, memory peak and the source of any kill.
-  Do not retry a scientific acquisition automatically. See `docs/operations/oom-prevention.md`.

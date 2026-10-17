@@ -222,13 +222,13 @@ fn explicit_missing_config_is_an_error() {
         !path.exists(),
         "explicit missing config must not be created"
     );
-    for binary in [
-        env!("CARGO_BIN_EXE_conchordal"),
-        env!("CARGO_BIN_EXE_conchordal-render"),
+    for (binary, is_render) in [
+        (env!("CARGO_BIN_EXE_conchordal"), false),
+        (env!("CARGO_BIN_EXE_conchordal-render"), true),
     ] {
         let status = std::process::Command::new(binary)
             .args(["samples/01_a_single_voice.rhai", "--config", &path_str])
-            .args(if binary.ends_with("-render") {
+            .args(if is_render {
                 vec!["-o", "unused.wav"]
             } else {
                 vec!["--compile-only"]
@@ -243,7 +243,7 @@ fn explicit_missing_config_is_an_error() {
         let status = std::process::Command::new(binary)
             .current_dir(&dir)
             .args(["unused.rhai", "--config", "config.toml"])
-            .args(if binary.ends_with("-render") {
+            .args(if is_render {
                 vec!["-o", "unused.wav"]
             } else {
                 vec!["--compile-only"]

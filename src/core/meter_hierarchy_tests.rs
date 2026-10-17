@@ -222,7 +222,7 @@ fn basin_follows_in_band_evidence_and_retains_unknowns_without_it() {
             for tick in 0..(20.0 / DT) as usize {
                 let time = tick as f64 * DT as f64;
                 let drive = if hz > 0.0 && time >= next {
-                    next += 1.0 / hz as f64;
+                    next += 1.0 / hz;
                     1.0
                 } else {
                     0.0

@@ -85,8 +85,10 @@ fn read_audio(path: &Path) -> anyhow::Result<Vec<f32>> {
     let bytes = fs::read(path)?;
     anyhow::ensure!(bytes.len().is_multiple_of(4), "incomplete f32 sample");
     let audio: Vec<f32> = bytes
-        .chunks_exact(4)
-        .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|bytes| f32::from_le_bytes(*bytes))
         .collect();
     anyhow::ensure!(audio.iter().all(|x| x.is_finite()), "non-finite audio");
     Ok(audio)

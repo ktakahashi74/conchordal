@@ -1,5 +1,5 @@
 use super::articulation_core::{ArticulationSignal, PinkNoise};
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::sound::mode_utils::{
@@ -467,7 +467,7 @@ pub struct SoundBodyBuildInput<'a> {
     pub control: &'a VoiceControl,
     pub base_freq_hz: f32,
     pub fs: f32,
-    pub landscape: Option<&'a LandscapeFrame>,
+    pub landscape: Option<&'a Landscape>,
 }
 
 pub trait SoundBodyFactory: Send + Sync {
@@ -547,7 +547,7 @@ pub fn build_sound_body_from_control(
     control: &VoiceControl,
     base_freq_hz: f32,
     fs: f32,
-    landscape: Option<&LandscapeFrame>,
+    landscape: Option<&Landscape>,
     rng: &mut SmallRng,
 ) -> AnySoundBody {
     let method_id = body_method_id(control.body.method);

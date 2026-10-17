@@ -1,4 +1,4 @@
-use crate::core::landscape::{Landscape, LandscapeFrame};
+use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
@@ -399,7 +399,7 @@ impl Voice {
         start_frame: u64,
         metadata: VoiceMetadata,
         fs: f32,
-        landscape: Option<&LandscapeFrame>,
+        landscape: Option<&Landscape>,
         seed_offset: u64,
     ) -> Self {
         let seed = seed_offset ^ assigned_id ^ start_frame.wrapping_mul(0x9E37_79B9_7F4A_7C15);
@@ -1727,7 +1727,7 @@ impl VoiceSpec {
         start_frame: u64,
         metadata: VoiceMetadata,
         fs: f32,
-        landscape: Option<&LandscapeFrame>,
+        landscape: Option<&Landscape>,
         seed_offset: u64,
     ) -> Voice {
         Voice::spawn_from_control(

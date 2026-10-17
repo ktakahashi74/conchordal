@@ -16,8 +16,8 @@ fn sustained_participation_existing_grid_terms_and_tie_are_preserved() {
     let a = old.drain_decisions().next().unwrap();
     let b = added.drain_decisions().next().unwrap();
     assert_eq!(
-        serde_json::to_value(&a.candidates).unwrap(),
-        serde_json::to_value(&b.candidates).unwrap()
+        serde_json::to_value(a.candidates).unwrap(),
+        serde_json::to_value(b.candidates).unwrap()
     );
     assert_eq!(b.selected_offset, 0);
     assert!(!b.skipped);
@@ -56,8 +56,8 @@ fn sustained_participation_offer_uses_the_same_overlap_evaluator() {
         let a = old.drain_decisions().next().unwrap();
         let b = added.drain_decisions().next().unwrap();
         assert_eq!(
-            serde_json::to_value(&a.candidates).unwrap(),
-            serde_json::to_value(&b.candidates).unwrap()
+            serde_json::to_value(a.candidates).unwrap(),
+            serde_json::to_value(b.candidates).unwrap()
         );
         won |= b.selected_offset == 21 && !b.skipped;
     }

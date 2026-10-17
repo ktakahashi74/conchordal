@@ -21,6 +21,187 @@ pub(crate) struct SynchronousAnalysis {
     ref_peak: f32,
 }
 
+impl SynchronousAnalysis {
+    pub(crate) fn new(nsgt: RtNsgtKernelLog2, params: &LandscapeParams) -> Self {
+        let space = nsgt.space();
+        let reference = compute_roughness_reference(params, space);
+        let potentials =
+            PotentialScratch::new(space, &params.harmonicity_kernel, &params.roughness_kernel);
+        let mut landscape = Landscape::new(space.clone());
+        landscape.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            reference.peak,
+            params.roughness_ref_eps,
+        );
+        landscape.recompute_consonance(params);
+        Self {
+            frontend: SpectralFrontEnd::new(space.clone()),
+            landscape,
+            du: Arc::clone(&potentials.du),
+            potentials,
+            ref_total: reference.total,
+            ref_peak: reference.peak,
+            nsgt,
+        }
+    }
+
+    pub(crate) fn reset_density(&mut self) {
+        self.nsgt.reset();
+        self.frontend.reset();
+    }
+
+    pub(crate) fn density<'a>(
+        &'a mut self,
+        audio: &[f32],
+        params: &LandscapeParams,
+    ) -> SpectralFrameView<'a> {
+        assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
+        let power = self.nsgt.process_hop(audio);
+        self.frontend
+            .process_nsgt_power(power, audio.len() as f32 / params.fs, params)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn process(&mut self, audio: &[f32], params: &LandscapeParams) {
+        self.process_gap(audio, 1, params);
+    }
+
+    pub(crate) fn skip(&mut self, audio: &[f32]) {
+        self.nsgt.push_without_analysis(audio);
+    }
+
+    pub(crate) fn process_body_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
+        assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
+        self.process_spectral(audio, gap, params, false);
+    }
+
+    pub(super) fn process_spectral(
+        &mut self,
+        audio: &[f32],
+        gap: i32,
+        params: &LandscapeParams,
+        full: bool,
+    ) {
+        let power = if gap == 1 {
+            self.nsgt.process_hop(audio)
+        } else {
+            self.nsgt.process_hop_gap(audio, gap)
+        };
+        if full {
+            self.landscape.nsgt_power.copy_from_slice(power);
+        }
+        let spectral = self.frontend.process_nsgt_power(
+            power,
+            audio.len() as f32 / params.fs * gap as f32,
+            params,
+        );
+        let density = spectral.subjective_intensity;
+        let space = &self.landscape.space;
+        let eps = params.roughness_ref_eps.max(1e-12);
+        let roughness_k = params.roughness_k.max(1e-6);
+        let shape_total = self.potentials.compute_shape(
+            density,
+            space,
+            (&params.harmonicity_kernel, &params.roughness_kernel),
+            eps,
+            &mut self.landscape.harmonicity,
+            &mut self.landscape.roughness_shape_raw,
+        );
+        r_pot_scan_to_r_state01_scan(
+            &self.landscape.roughness_shape_raw,
+            self.ref_peak.max(eps),
+            roughness_k,
+            &mut self.landscape.roughness01,
+        );
+        if full {
+            self.potentials.geometry.potential_r_into(
+                density,
+                space,
+                &self.du,
+                &mut self.landscape.roughness,
+            );
+            self.landscape.subjective_intensity.copy_from_slice(density);
+            self.landscape.loudness_mass = crate::core::density::density_to_mass(density, &self.du);
+            self.landscape.roughness01_scalar =
+                roughness_ratio_to_state01(shape_total / self.ref_total.max(eps), roughness_k);
+        }
+        self.landscape.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            self.ref_peak,
+            params.roughness_ref_eps,
+        );
+    }
+
+    pub(super) fn reset(&mut self, params: &LandscapeParams) {
+        self.reset_density();
+        let mode = self.landscape.pitch_objective_mode;
+        self.landscape = Landscape::new(self.nsgt.space().clone());
+        self.landscape.pitch_objective_mode = mode;
+        self.landscape.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            self.ref_peak,
+            params.roughness_ref_eps,
+        );
+    }
+
+    pub(crate) fn recompute_body_score(
+        &mut self,
+        params: &LandscapeParams,
+        habituation: Option<&[f32]>,
+    ) {
+        let landscape = &mut self.landscape;
+        landscape
+            .space
+            .assert_scan_len_named(&landscape.harmonicity, "h_pot_scan");
+        landscape
+            .space
+            .assert_scan_len_named(&landscape.roughness01, "r_state01_scan");
+        landscape
+            .space
+            .assert_scan_len_named(&landscape.consonance_field_score, "c_score_scan");
+        landscape
+            .space
+            .assert_scan_len_named(&landscape.consonance_field_score_eff, "c_score_eff_scan");
+        if let Some(h) = habituation {
+            landscape
+                .space
+                .assert_scan_len_named(h, "habituation_state_scan");
+        }
+        h_pot_scan_to_h_state01_scan(&landscape.harmonicity, 1., &mut landscape.harmonicity01);
+        let kernel = params.consonance_field_kernel();
+        for i in 0..landscape.space.n_bins() {
+            let h01 = crate::core::float::sanitize01(landscape.harmonicity01[i]);
+            let r01 = crate::core::float::sanitize01(landscape.roughness01[i]);
+            let score = kernel.score(h01, r01);
+            landscape.consonance_field_score[i] = score;
+            landscape.consonance_field_score_eff[i] = match habituation {
+                Some(h) => crate::core::habituation::erode_score(
+                    score,
+                    h[i],
+                    params.consonance_representation.theta,
+                ),
+                None => score,
+            };
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn process_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
+        assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
+        self.process_spectral(audio, gap, params, true);
+        self.landscape.recompute_consonance(params);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,7 +218,7 @@ mod tests {
             let hop = audio.len();
             for (i, sample) in audio.iter_mut().enumerate() {
                 let t = (frame * hop + i) as f32 / params.fs;
-                *sample = if frame < 3 || frame > 18 {
+                *sample = if !(3..=18).contains(&frame) {
                     0.
                 } else {
                     0.13 * (t * std::f32::consts::TAU * 440.).sin()
@@ -241,186 +422,5 @@ mod tests {
                 }
             }
         }
-    }
-}
-
-impl SynchronousAnalysis {
-    pub(crate) fn new(nsgt: RtNsgtKernelLog2, params: &LandscapeParams) -> Self {
-        let space = nsgt.space();
-        let reference = compute_roughness_reference(params, space);
-        let potentials =
-            PotentialScratch::new(space, &params.harmonicity_kernel, &params.roughness_kernel);
-        let mut landscape = Landscape::new(space.clone());
-        landscape.set_analysis_metadata(
-            params.roughness_kernel.params,
-            params.harmonicity_kernel.params,
-            params.consonance_field_kernel(),
-            params.roughness_k,
-            reference.peak,
-            params.roughness_ref_eps,
-        );
-        landscape.recompute_consonance(params);
-        Self {
-            frontend: SpectralFrontEnd::new(space.clone()),
-            landscape,
-            du: Arc::clone(&potentials.du),
-            potentials,
-            ref_total: reference.total,
-            ref_peak: reference.peak,
-            nsgt,
-        }
-    }
-
-    pub(crate) fn reset_density(&mut self) {
-        self.nsgt.reset();
-        self.frontend.reset();
-    }
-
-    pub(crate) fn density<'a>(
-        &'a mut self,
-        audio: &[f32],
-        params: &LandscapeParams,
-    ) -> SpectralFrameView<'a> {
-        assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
-        let power = self.nsgt.process_hop(audio);
-        self.frontend
-            .process_nsgt_power(power, audio.len() as f32 / params.fs, params)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn process(&mut self, audio: &[f32], params: &LandscapeParams) {
-        self.process_gap(audio, 1, params);
-    }
-
-    pub(crate) fn skip(&mut self, audio: &[f32]) {
-        self.nsgt.push_without_analysis(audio);
-    }
-
-    pub(crate) fn process_body_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
-        assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
-        self.process_spectral(audio, gap, params, false);
-    }
-
-    pub(super) fn process_spectral(
-        &mut self,
-        audio: &[f32],
-        gap: i32,
-        params: &LandscapeParams,
-        full: bool,
-    ) {
-        let power = if gap == 1 {
-            self.nsgt.process_hop(audio)
-        } else {
-            self.nsgt.process_hop_gap(audio, gap)
-        };
-        if full {
-            self.landscape.nsgt_power.copy_from_slice(power);
-        }
-        let spectral = self.frontend.process_nsgt_power(
-            power,
-            audio.len() as f32 / params.fs * gap as f32,
-            params,
-        );
-        let density = spectral.subjective_intensity;
-        let space = &self.landscape.space;
-        let eps = params.roughness_ref_eps.max(1e-12);
-        let roughness_k = params.roughness_k.max(1e-6);
-        let shape_total = self.potentials.compute_shape(
-            density,
-            space,
-            (&params.harmonicity_kernel, &params.roughness_kernel),
-            eps,
-            &mut self.landscape.harmonicity,
-            &mut self.landscape.roughness_shape_raw,
-        );
-        r_pot_scan_to_r_state01_scan(
-            &self.landscape.roughness_shape_raw,
-            self.ref_peak.max(eps),
-            roughness_k,
-            &mut self.landscape.roughness01,
-        );
-        if full {
-            self.potentials.geometry.potential_r_into(
-                density,
-                space,
-                &self.du,
-                &mut self.landscape.roughness,
-            );
-            self.landscape.subjective_intensity.copy_from_slice(density);
-            self.landscape.loudness_mass = crate::core::density::density_to_mass(density, &self.du);
-            self.landscape.roughness01_scalar =
-                roughness_ratio_to_state01(shape_total / self.ref_total.max(eps), roughness_k);
-        }
-        self.landscape.set_analysis_metadata(
-            params.roughness_kernel.params,
-            params.harmonicity_kernel.params,
-            params.consonance_field_kernel(),
-            params.roughness_k,
-            self.ref_peak,
-            params.roughness_ref_eps,
-        );
-    }
-
-    pub(super) fn reset(&mut self, params: &LandscapeParams) {
-        self.reset_density();
-        let mode = self.landscape.pitch_objective_mode;
-        self.landscape = Landscape::new(self.nsgt.space().clone());
-        self.landscape.pitch_objective_mode = mode;
-        self.landscape.set_analysis_metadata(
-            params.roughness_kernel.params,
-            params.harmonicity_kernel.params,
-            params.consonance_field_kernel(),
-            params.roughness_k,
-            self.ref_peak,
-            params.roughness_ref_eps,
-        );
-    }
-
-    pub(crate) fn recompute_body_score(
-        &mut self,
-        params: &LandscapeParams,
-        habituation: Option<&[f32]>,
-    ) {
-        let landscape = &mut self.landscape;
-        landscape
-            .space
-            .assert_scan_len_named(&landscape.harmonicity, "h_pot_scan");
-        landscape
-            .space
-            .assert_scan_len_named(&landscape.roughness01, "r_state01_scan");
-        landscape
-            .space
-            .assert_scan_len_named(&landscape.consonance_field_score, "c_score_scan");
-        landscape
-            .space
-            .assert_scan_len_named(&landscape.consonance_field_score_eff, "c_score_eff_scan");
-        if let Some(h) = habituation {
-            landscape
-                .space
-                .assert_scan_len_named(h, "habituation_state_scan");
-        }
-        h_pot_scan_to_h_state01_scan(&landscape.harmonicity, 1., &mut landscape.harmonicity01);
-        let kernel = params.consonance_field_kernel();
-        for i in 0..landscape.space.n_bins() {
-            let h01 = crate::core::float::sanitize01(landscape.harmonicity01[i]);
-            let r01 = crate::core::float::sanitize01(landscape.roughness01[i]);
-            let score = kernel.score(h01, r01);
-            landscape.consonance_field_score[i] = score;
-            landscape.consonance_field_score_eff[i] = match habituation {
-                Some(h) => crate::core::habituation::erode_score(
-                    score,
-                    h[i],
-                    params.consonance_representation.theta,
-                ),
-                None => score,
-            };
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn process_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
-        assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
-        self.process_spectral(audio, gap, params, true);
-        self.landscape.recompute_consonance(params);
     }
 }

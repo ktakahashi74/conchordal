@@ -158,9 +158,6 @@ pub struct Landscape {
     pub rhythm: NeuralRhythms,
 }
 
-/// Alias retained for existing call sites.
-pub type LandscapeFrame = Landscape;
-
 impl Landscape {
     pub(crate) fn set_analysis_metadata(
         &mut self,

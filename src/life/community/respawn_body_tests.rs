@@ -62,7 +62,7 @@ fn respawn_body_level_uses_configured_sigmoid_and_upper_partials() {
     control.body.modes = Some(ModePattern::custom_modes(vec![2.0]));
     control.pitch.freq = 440.0;
     let state = population(control);
-    let mut landscape = LandscapeFrame::new(Log2Space::new(100.0, 1600.0, 96));
+    let mut landscape = Landscape::new(Log2Space::new(100.0, 1600.0, 96));
     landscape.consonance_field_score_eff.fill(-1.0);
     landscape.consonance_field_level_eff.fill(repr.level(-1.0));
     let bin = landscape.space.nearest_index(880.0);
@@ -191,7 +191,7 @@ fn n2_saved_final_distribution() {
         match row["schema"].as_str().unwrap() {
             "direct-body-v2-environment" => {
                 let space = &row["space"];
-                let mut frame = LandscapeFrame::new(Log2Space::new(
+                let mut frame = Landscape::new(Log2Space::new(
                     space["fmin"].as_f64().unwrap() as f32,
                     space["fmax"].as_f64().unwrap() as f32,
                     space["bins_per_oct"].as_u64().unwrap() as u32,
@@ -255,7 +255,7 @@ fn rendered_score(
     row: &serde_json::Value,
     body: BodySnapshot,
     hz: f32,
-    landscape: &LandscapeFrame,
+    landscape: &Landscape,
     params: &crate::core::landscape::LandscapeParams,
     kernel: &crate::core::nsgt_rt::RtNsgtKernelLog2,
 ) -> (f32, Vec<f32>) {
@@ -347,7 +347,7 @@ fn n2_peak_render_reference() {
         }
         if row["schema"] == "direct-body-v2-environment" {
             let s = &row["space"];
-            let mut frame = LandscapeFrame::new(Log2Space::new(
+            let mut frame = Landscape::new(Log2Space::new(
                 s["fmin"].as_f64().unwrap() as f32,
                 s["fmax"].as_f64().unwrap() as f32,
                 s["bins_per_oct"].as_u64().unwrap() as u32,
@@ -595,7 +595,7 @@ fn constant_body_scene_keeps_random_and_hereditary_rng_and_parent_rules() {
             generation: 3,
         }],
     )]);
-    let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+    let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
     for score in [0.0, 0.5] {
         landscape.consonance_field_score_eff.fill(score);
         landscape
@@ -640,7 +640,7 @@ fn native_respawn_field_proposals_keep_body_placement() {
         min_dist_erb: 0.0,
         tension: 0.0,
     });
-    let mut landscape = LandscapeFrame::new(Log2Space::new(100.0, 1600.0, 24));
+    let mut landscape = Landscape::new(Log2Space::new(100.0, 1600.0, 24));
     let upper = landscape.space.nearest_index(440.0);
     landscape.consonance_density_mass_eff[upper] = 1.0;
     let mut rng = SmallRng::seed_from_u64(9);
@@ -738,7 +738,7 @@ fn n2_respawn_cost() {
         hop: 512,
     });
     let source = super::super::tests::peak_bias_landscape();
-    let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+    let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
     for (idx, &hz) in landscape.space.centers_hz.iter().enumerate() {
         landscape.consonance_field_score_eff[idx] = if (220.0..=880.0).contains(&hz) {
             source.evaluate_pitch_score(hz)
@@ -815,7 +815,7 @@ fn finite_body_scores_with_overflowing_weight_sum_still_choose_a_candidate() {
         end_freq: 880.0,
     });
     state.spawn_count_hint = 16;
-    let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+    let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
     landscape.consonance_field_score_eff.fill(1e38);
     let mut scores = [0.0; 16];
     let frequencies: [f32; 16] = std::array::from_fn(|i| 220.0 + 660.0 * i as f32 / 15.0);

@@ -1,12 +1,12 @@
 use super::{Community, RuntimePopulationState, SpawnParams, SpawnReason};
-use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
+use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::scenario::control::MIN_FREQ_HZ;
 use crate::scenario::{Action, RespawnPolicy, SpawnStrategy, VoiceSpec};
 use rand::{SeedableRng, rngs::SmallRng};
 use tracing::warn;
 
 impl Community {
-    pub fn apply_action(&mut self, action: Action, landscape: &LandscapeFrame) {
+    pub fn apply_action(&mut self, action: Action, landscape: &Landscape) {
         match action {
             Action::Finish => {
                 self.abort_requested = true;
@@ -75,7 +75,7 @@ impl Community {
         ids: Vec<u64>,
         spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
     ) {
         let spawn_seq = self.spawn_counter;
         self.spawn_counter = self.spawn_counter.wrapping_add(1);
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn update_applies_to_population_members() {
         let mut pop = test_pop();
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,
@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn release_marks_population_members() {
         let mut pop = test_pop();
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn spawn_without_strategy_keeps_spec_frequency() {
         let mut pop = test_pop();
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         pop.apply_action(
             Action::Spawn {
                 population_id: 6,
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn spawn_strategy_respects_free_pitch_mode() {
         let mut pop = test_pop();
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         let mut spec = spawn_spec_with_freq(110.0);
         spec.control.pitch.mode = PitchMode::Free;
         pop.apply_action(

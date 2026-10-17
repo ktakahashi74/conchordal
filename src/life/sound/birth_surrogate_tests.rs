@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Write};
 fn deterministic_recipe_preview_matches_each_builtin_body() {
     crate::life::modal::register_modal();
     let space = Log2Space::new(55.0, 8000.0, 96);
-    let mut landscape = LandscapeFrame::new(space);
+    let mut landscape = Landscape::new(space);
     for i in 0..landscape.space.n_bins() {
         landscape.consonance_density_mass[i] = (i % 17) as f32 / 17.0;
         landscape.consonance_field_level[i] = (i % 13) as f32 / 13.0;
@@ -106,7 +106,7 @@ fn cache_reuses_equal_recipes_but_reads_current_terrain_and_space() {
     control.body.method = crate::scenario::control::BodyMethod::Harmonic;
     control.body.timbre.spread = 0.0;
     control.body.timbre.unison = 1;
-    let mut landscape = LandscapeFrame::new(Log2Space::new(100.0, 2000.0, 24));
+    let mut landscape = Landscape::new(Log2Space::new(100.0, 2000.0, 24));
     let mut work = BirthSurrogate::new(
         Timebase {
             fs: 48000.0,
@@ -132,7 +132,7 @@ fn cache_reuses_equal_recipes_but_reads_current_terrain_and_space() {
     work.candidates(&control, &landscape, 7, (200.0, 400.0), |_| 0.25)
         .unwrap();
     assert_eq!(work.preparations, 10);
-    landscape = LandscapeFrame::new(Log2Space::new(100.0, 2000.0, 12));
+    landscape = Landscape::new(Log2Space::new(100.0, 2000.0, 12));
     work.candidates(&control, &landscape, 7, (200.0, 400.0), |_| 0.25)
         .unwrap();
     assert_eq!(work.preparations, 11);
@@ -362,7 +362,7 @@ fn saved_v1_density_and_distribution_conformance() {
                 space.assert_scan_len_named(terrain, "recovered_birth_density_mass_scan");
                 let direct_weight = work.density_weight(mass, terrain, space);
                 let weight = if support {
-                    let mut landscape = LandscapeFrame::new(space.clone());
+                    let mut landscape = Landscape::new(space.clone());
                     landscape.consonance_density_mass_eff.clone_from(terrain);
                     let mut control = VoiceControl::default();
                     control.body.method = match body.kind {
@@ -468,7 +468,7 @@ fn respawn_point_scores_keep_preallocated_capacity_and_exact_frequency_mapping()
     );
     let mut control = VoiceControl::default();
     control.body.method = crate::scenario::control::BodyMethod::Sine;
-    let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+    let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
     let hz = 440.37;
     let bin = landscape.space.nearest_index(hz);
     landscape.consonance_field_score_eff[bin] = 1.0;
@@ -526,7 +526,7 @@ fn respawn_score_boundary_rejects_misaligned_scan() {
     );
     let mut control = VoiceControl::default();
     control.body.method = crate::scenario::control::BodyMethod::Sine;
-    let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+    let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
     landscape.consonance_field_score_eff.pop();
     work.respawn_scores(
         &control,
@@ -609,7 +609,7 @@ fn native_birth_distribution_conformance() {
                 .as_ref()
                 .map(|r| ModePattern::custom_modes(r.to_vec()));
             assert_eq!(model_kind(&control, true), Some(body.kind));
-            let mut landscape = LandscapeFrame::new(space.clone());
+            let mut landscape = Landscape::new(space.clone());
             landscape.consonance_density_mass_eff.clone_from(terrain);
             let slot = surrogate
                 .candidates(&control, &landscape, 0, (hz, hz), |i| terrain[i])

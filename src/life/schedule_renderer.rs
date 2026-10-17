@@ -1079,7 +1079,7 @@ mod tests {
                             );
                         }
                         if let Some(mut forecast) = observer.forecast() {
-                            let mut expected = forecast.clone();
+                            let mut expected = forecast;
                             observer.use_external_energy(&mut forecast, &mut own.history.external);
                             observer
                                 .use_external_energy(&mut expected, &mut other.history.external);

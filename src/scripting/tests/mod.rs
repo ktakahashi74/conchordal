@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::core::timebase::Timebase;
 use crate::life::community::Community;
 use crate::life::voice::AnyArticulationCore;

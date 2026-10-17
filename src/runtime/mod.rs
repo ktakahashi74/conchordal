@@ -14,7 +14,7 @@ use crate::audio::limiter::{LimiterMeter, LimiterMode};
 use crate::core::analysis_worker;
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeParams, LandscapeUpdate};
+use crate::core::landscape::{Landscape, LandscapeParams, LandscapeUpdate};
 use crate::core::log2space::Log2Space;
 use crate::core::meter::MeterNetwork;
 use crate::core::modulation::NeuralRhythms;
@@ -135,3 +135,7 @@ mod temporal_meter_tests;
 
 #[cfg(test)]
 mod shutdown_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/test_output_directory.rs"]
+mod test_output_directory;

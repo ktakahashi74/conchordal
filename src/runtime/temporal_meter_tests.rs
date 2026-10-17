@@ -2,9 +2,7 @@
 use super::*;
 use std::io::{BufRead, BufReader};
 
-#[path = "../../tests/support/test_output_directory.rs"]
-mod test_output_directory;
-use test_output_directory::TestOutputDirectory;
+use super::test_output_directory::TestOutputDirectory;
 
 #[test]
 fn continuous_offline_delivery_is_independent_of_producer_delay() {

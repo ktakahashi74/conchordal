@@ -849,7 +849,11 @@ impl OscillatorBank {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "simd-wide",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     fn render_block_for_test(
         &mut self,
         drive: &[f32],

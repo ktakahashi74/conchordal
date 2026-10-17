@@ -146,7 +146,7 @@ fn at_placement_respects_final_pitch_intent() {
             fs: 48_000.0,
             hop: 64,
         });
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         for action in scenario.events.iter().flat_map(|event| &event.actions) {
             if let Action::Spawn {
                 ids,

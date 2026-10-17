@@ -1,5 +1,5 @@
 use crate::core::float::sanitize_nonnegative_finite;
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::meter::{MeterNetwork, MeterState};
 use crate::core::roughness_kernel::erb_grid;
@@ -144,7 +144,7 @@ impl ListenerTwin {
         time_sec: f32,
         generated_frame_id: u64,
         analysis_frame_id: u64,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
     ) -> ListenerState {
         self.spectral_history = landscape.spectral_history.clone();
         let space = &landscape.space;
@@ -215,7 +215,7 @@ impl Default for ListenerTwin {
     }
 }
 
-fn has_audible_evidence(landscape: &LandscapeFrame, erb_du: &[f32]) -> bool {
+fn has_audible_evidence(landscape: &Landscape, erb_du: &[f32]) -> bool {
     landscape
         .subjective_intensity
         .iter()
@@ -225,7 +225,7 @@ fn has_audible_evidence(landscape: &LandscapeFrame, erb_du: &[f32]) -> bool {
         > AUDIBLE_EVIDENCE_EPS
 }
 
-fn weighted_stability_level(landscape: &LandscapeFrame, erb_du: &[f32]) -> f32 {
+fn weighted_stability_level(landscape: &Landscape, erb_du: &[f32]) -> f32 {
     let mut sum = 0.0f32;
     let mut weight_sum = 0.0f32;
     for ((&value, &density), &du) in landscape
@@ -250,7 +250,7 @@ fn weighted_stability_level(landscape: &LandscapeFrame, erb_du: &[f32]) -> f32 {
 }
 
 fn weighted_resolution_gain(
-    landscape: &LandscapeFrame,
+    landscape: &Landscape,
     erb_du: &[f32],
     config: &ListenerTwinConfig,
 ) -> f32 {

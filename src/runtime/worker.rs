@@ -49,7 +49,7 @@ pub(super) struct WorkerState {
     pub(super) temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pub(super) pop: Community,
     pub(super) conductor: Conductor,
-    pub(super) current_landscape: LandscapeFrame,
+    pub(super) current_landscape: Landscape,
     pub(super) lparams: LandscapeParams,
     pub(super) dorsal: DorsalStream,
     pub(super) reporter: Option<JsonlReporter>,
@@ -109,7 +109,7 @@ impl WorkerState {
         reporter: Option<JsonlReporter>,
         cfg: &WorkerConfig,
     ) -> Self {
-        let current_landscape: LandscapeFrame = landscape;
+        let current_landscape: Landscape = landscape;
         let log_space = current_landscape.space.clone();
         let timebase = crate::core::timebase::Timebase {
             fs: cfg.fs,

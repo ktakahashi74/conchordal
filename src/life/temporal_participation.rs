@@ -2334,7 +2334,7 @@ mod tests {
 
     #[test]
     fn waiting_for_sound_to_clear_does_not_retrain_the_bodily_tempo() {
-        let mut voice = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000 as u64);
+        let mut voice = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000_u64);
         voice.due_frame = 10_000.0;
         assert_eq!(voice.advance(10_000, 10_001, true, None), Some(10_000));
         voice.set_overlap(0.8, [1.0, 0.0, 0.0]);
@@ -2358,7 +2358,7 @@ mod tests {
 
     #[test]
     fn flow_keeps_committed_actions_and_still_responds_to_acoustic_overlap() {
-        let mut voice = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000 as u64);
+        let mut voice = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000_u64);
         voice.period_frames = 600.0;
         voice.last_reference_frame = Some(9000);
         voice.due_frame = 10_000.0;
@@ -2414,7 +2414,7 @@ mod tests {
 
     #[test]
     fn overlap_can_skip_a_cycle_but_cannot_prescribe_permanent_silence() {
-        let mut voice = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000 as u64);
+        let mut voice = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000_u64);
         voice.set_overlap(0.8, [1.0, 0.0, 0.0]);
         voice.due_frame = 10_000.0;
         let occupied = TemporalForecast::energy_fixture(1000, 10_000, |_| [10.0, 0.0, 0.0]);
@@ -2432,8 +2432,7 @@ mod tests {
         assert_eq!(voice.skipped_cycles, 0);
 
         for (coupling, profile) in [(0.0, [1.0, 0.0, 0.0]), (0.8, [0.0, 1.0, 0.0])] {
-            let mut control =
-                TemporalParticipation::new(1000, 2.0, coupling, 10_000, 21, 1000 as u64);
+            let mut control = TemporalParticipation::new(1000, 2.0, coupling, 10_000, 21, 1000_u64);
             control.due_frame = 10_000.0;
             control.set_overlap(0.8, profile);
             assert_eq!(
@@ -2452,8 +2451,8 @@ mod tests {
                 [0.0; 3]
             }
         });
-        let mut short = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000 as u64);
-        let mut long = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000 as u64);
+        let mut short = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000_u64);
+        let mut long = TemporalParticipation::new(1000, 2.0, 0.8, 10_000, 21, 1000_u64);
         for voice in [&mut short, &mut long] {
             voice.due_frame = 10_000.0;
             voice.set_overlap(0.8, [1.0, 0.0, 0.0]);
@@ -2482,7 +2481,7 @@ mod tests {
     #[test]
     fn no_evidence_preserves_bodily_pace_without_a_shared_phase() {
         let mut voices = [1, 21, 42]
-            .map(|seed| TemporalParticipation::new(48_000, 2.0, 0.7, 0, seed, 48_000 as u64));
+            .map(|seed| TemporalParticipation::new(48_000, 2.0, 0.7, 0, seed, 48_000_u64));
         let mut onsets: [Vec<u64>; 3] = std::array::from_fn(|_| Vec::new());
         for now in (0..48_000 * 15).step_by(480) {
             for (voice, track) in voices.iter_mut().zip(&mut onsets) {
@@ -2502,8 +2501,8 @@ mod tests {
     #[test]
     fn shifting_the_audio_clock_origin_does_not_change_bodily_actions() {
         let shift = 12_345;
-        let mut original = TemporalParticipation::new(48_000, 2.0, 0.7, 0, 21, 48_000 as u64);
-        let mut shifted = TemporalParticipation::new(48_000, 2.0, 0.7, shift, 21, 48_000 as u64);
+        let mut original = TemporalParticipation::new(48_000, 2.0, 0.7, 0, 21, 48_000_u64);
+        let mut shifted = TemporalParticipation::new(48_000, 2.0, 0.7, shift, 21, 48_000_u64);
         for now in (0..48_000 * 15).step_by(480) {
             let a = original.advance(now, now + 480, true, None);
             let b = shifted.advance(now + shift, now + shift + 480, true, None);
@@ -2513,7 +2512,7 @@ mod tests {
 
     #[test]
     fn inaudible_actions_do_not_learn_a_relation_or_reset_every_body() {
-        let mut voice = TemporalParticipation::new(48_000, 2.0, 0.7, 0, 21, 48_000 as u64);
+        let mut voice = TemporalParticipation::new(48_000, 2.0, 0.7, 0, 21, 48_000_u64);
         for now in (0..48_000 * 12).step_by(480) {
             assert!(voice.advance(now, now + 480, false, None).is_none());
         }
@@ -2541,8 +2540,7 @@ mod tests {
         }
         let forecast = observer.forecast().unwrap();
         for steady in [false, true] {
-            let mut voice =
-                TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000 as u64);
+            let mut voice = TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000_u64);
             voice.set_steady(steady);
             let tick = voice
                 .candidate(480_000, 486_000, true, Some(&forecast), None)
@@ -2566,8 +2564,7 @@ mod tests {
             assert!(voice.memory.is_none());
             assert!(voice.last_onset.is_none());
             let rejected_tick = tick;
-            let mut voice =
-                TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000 as u64);
+            let mut voice = TemporalParticipation::new(48_000, 10.0, 0.7, 480_000, 21, 48_000_u64);
             voice.set_steady(steady);
             let tick = voice
                 .candidate(480_000, 486_000, true, Some(&forecast), None)

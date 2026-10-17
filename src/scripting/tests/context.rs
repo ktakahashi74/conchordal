@@ -757,7 +757,7 @@ fn rearticulate_native_invalid_patch_keeps_voice_and_respawn_template() {
         hop: 64,
     });
     community.set_seed(scenario.seed);
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario.events.iter().flat_map(|e| &e.actions) {
         if matches!(
             action,
@@ -939,7 +939,7 @@ fn sustained_participation_rearticulate_order_live_and_respawn_are_valid() {
             hop: 257,
         });
         community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         for action in scenario.events.iter().flat_map(|e| &e.actions) {
             if matches!(
                 action,
@@ -1159,7 +1159,7 @@ fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
         };
         let mut community = Community::new(tb);
         community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         for action in scenario.events.iter().flat_map(|event| &event.actions) {
             if matches!(
                 action,

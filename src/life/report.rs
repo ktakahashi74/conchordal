@@ -4,7 +4,7 @@ use std::io::{BufWriter, Write};
 
 use serde::Serialize;
 
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::dcc_coupler::ListenerPressure;
 use crate::life::community::{PhonationGateOpenEvent, RuntimeEvent, SpawnReason};
 use crate::life::telemetry::LifeRecord;
@@ -1136,7 +1136,7 @@ fn mean_and_std(values: &[f32]) -> Option<(f32, f32)> {
 pub fn summarize_populations(
     voices: &[Voice],
     active_population_ids: &[u64],
-    landscape: &LandscapeFrame,
+    landscape: &Landscape,
     time_sec: f32,
 ) -> Vec<PopulationStepSummary> {
     #[derive(Default)]
@@ -1299,7 +1299,7 @@ mod tests {
 
     #[test]
     fn population_step_keeps_active_population_visible_when_empty() {
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         let steps = summarize_populations(&[], &[7], &landscape, 1.5);
 
         assert_eq!(steps.len(), 1);

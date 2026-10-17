@@ -47,7 +47,15 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Check plotcheck targets
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo check --all-targets --features plotcheck
+
+      - name: Check scalar targets
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo check --all-targets --no-default-features
 
       - name: Tests
         run: cargo test

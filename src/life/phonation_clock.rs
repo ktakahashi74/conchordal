@@ -378,6 +378,8 @@ impl ParticipationClock {
     }
 }
 
+// Keep coupling clocks inline to avoid an extra allocation per Voice.
+#[allow(clippy::large_enum_variant)]
 pub enum PhonationClock {
     ThetaGate(ThetaGateClock),
     Coupling(CouplingClock),

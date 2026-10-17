@@ -214,7 +214,7 @@ fn intrinsic_rate_respawn_reads_template_and_drops_parent_performance_state() {
                 hop: 257,
             });
             community.set_seed(scenario.seed);
-            let landscape = LandscapeFrame::default();
+            let landscape = Landscape::default();
             for action in scenario.events.iter().flat_map(|event| &event.actions) {
                 if matches!(
                     action,
@@ -397,7 +397,7 @@ fn anchored_spec_survives_population_spawn() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     pop.apply_action(spawn_action, &landscape);
 
     let voice = pop.voices.first().expect("spawned");
@@ -536,7 +536,7 @@ fn at_seek_does_not_change_create_or_live_freq_lock() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario.events.iter().flat_map(|event| &event.actions) {
         community.apply_action(action.clone(), &landscape);
     }
@@ -633,7 +633,7 @@ fn consonance_movement_sets_free_hill_climb_glide_defaults() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -746,7 +746,7 @@ fn population_spec_landscape_weight_reaches_spawned_individual() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -772,7 +772,7 @@ fn population_spec_temperature_reaches_spawned_core() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -826,7 +826,7 @@ fn population_landscape_weight_live_update_reaches_individual() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -857,7 +857,7 @@ fn population_amp_live_update_preserves_member_pitch_centers() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     let mut before_update: Vec<(u64, f32)> = Vec::new();
     let mut after_update: Vec<(u64, f32)> = Vec::new();
 
@@ -921,7 +921,7 @@ fn population_temperature_live_update_reaches_individual() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -974,7 +974,7 @@ fn population_spec_crowding_reaches_spawned_core() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1001,7 +1001,7 @@ fn population_spec_crowding_single_arg_uses_default_sigma() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1054,7 +1054,7 @@ fn population_crowding_live_update_reaches_individual_core() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1155,7 +1155,7 @@ fn population_spec_leave_self_out_and_temperature_reach_spawned_core() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1184,7 +1184,7 @@ fn population_leave_self_out_and_temperature_live_update_reaches_individual() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1214,7 +1214,7 @@ fn population_spec_move_cost_reaches_spawned_core() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1242,7 +1242,7 @@ fn population_move_cost_live_update_reaches_individual() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1278,7 +1278,7 @@ fn population_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1329,7 +1329,7 @@ fn population_spec_peak_sampler_knobs_reach_spawned_core() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1371,7 +1371,7 @@ fn population_spec_advanced_pitch_knobs_reach_spawned_core() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -1420,7 +1420,7 @@ fn population_advanced_pitch_knobs_live_update_reaches_individual() {
         fs: 48_000.0,
         hop: 64,
     });
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario
         .events
         .iter()
@@ -2092,7 +2092,7 @@ fn metric_respawn_starts_from_the_resolved_population_template() {
         hop: 64,
     });
     population.set_seed(scenario.seed);
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario.events.iter().flat_map(|event| &event.actions) {
         if matches!(
             action,
@@ -2327,7 +2327,7 @@ fn rearticulate_respawn_inherits_initial_and_live_population_template() {
             hop: 257,
         });
         community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         for action in scenario.events.iter().flat_map(|e| &e.actions) {
             if matches!(
                 action,
@@ -2398,7 +2398,7 @@ fn synchronized_respawn_retains_controls_and_starts_fresh_private_policy() {
         hop: 257,
     });
     community.set_seed(scene.seed);
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scene.events.iter().flat_map(|e| &e.actions) {
         if matches!(
             action,
@@ -2456,7 +2456,7 @@ fn boundary_respawn_inherits_initial_and_live_population_template() {
             hop: 257,
         });
         community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         for action in scenario.events.iter().flat_map(|e| &e.actions) {
             if matches!(
                 action,
@@ -2505,7 +2505,7 @@ fn deferred_participation_respawn_inherits_initial_and_live_population_template(
             hop: 257,
         });
         community.set_seed(scenario.seed);
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         for action in scenario.events.iter().flat_map(|e| &e.actions) {
             if matches!(
                 action,
@@ -2573,7 +2573,7 @@ fn rest_respawn_inherits_template_and_starts_with_empty_performance_state() {
         hop: 257,
     });
     community.set_seed(scenario.seed);
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario.events.iter().flat_map(|e| &e.actions) {
         if matches!(
             action,
@@ -2691,7 +2691,7 @@ fn articulation_persistence_respawn_inherits_parameter_and_resets_private_policy
         hop: 257,
     });
     community.set_seed(scenario.seed);
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario.events.iter().flat_map(|event| &event.actions) {
         if matches!(
             action,
@@ -2750,7 +2750,7 @@ fn articulation_persistence_endpoints_allocate_no_private_policy() {
             hop: 512,
         });
         for action in scenario.events.iter().flat_map(|event| &event.actions) {
-            community.apply_action(action.clone(), &LandscapeFrame::default());
+            community.apply_action(action.clone(), &Landscape::default());
         }
         let PhonationClock::Participation(clock) = &community.voices[0].phonation_engine.clock
         else {
@@ -2863,7 +2863,7 @@ fn synchronized_tie_default_sound_and_live_modes_use_existing_policy() {
         c.set_seed(21);
         for action in scene.events.iter().flat_map(|e| &e.actions) {
             if matches!(action, Action::Spawn { .. }) {
-                c.apply_action(action.clone(), &LandscapeFrame::default());
+                c.apply_action(action.clone(), &Landscape::default());
             }
         }
         c.voices.remove(0)
@@ -2974,7 +2974,7 @@ fn synchronized_tie_default_respawn_and_omissions_do_not_warn() {
         hop: 257,
     });
     c.set_seed(21);
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scene.events.iter().flat_map(|e| &e.actions) {
         if matches!(
             action,
@@ -3011,7 +3011,7 @@ fn tie_respawn_inherits_parameter_and_resets_private_policy() {
         hop: 257,
     });
     community.set_seed(scenario.seed);
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     for action in scenario.events.iter().flat_map(|event| &event.actions) {
         if matches!(
             action,

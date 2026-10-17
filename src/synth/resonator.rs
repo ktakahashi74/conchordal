@@ -129,12 +129,8 @@ impl ResonatorBank {
     /// Reset all internal states to zero.
     #[cfg(test)]
     pub fn reset_state(&mut self) {
-        for v in &mut self.x {
-            *v = 0.0;
-        }
-        for v in &mut self.y {
-            *v = 0.0;
-        }
+        self.x.fill(0.0);
+        self.y.fill(0.0);
     }
 
     #[inline]

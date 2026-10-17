@@ -63,8 +63,8 @@ mod tests {
             let preview = predictor.preview_comparison(recurrence, history);
             assert_eq!(predictor.preview_comparison(recurrence, history), preview);
             assert_eq!(
-                serde_json::to_value(&predictor.errors).unwrap(),
-                serde_json::to_value(&untouched.errors).unwrap()
+                serde_json::to_value(predictor.errors).unwrap(),
+                serde_json::to_value(untouched.errors).unwrap()
             );
             assert_eq!(
                 predictor.issue_comparison(step, recurrence, history, None),

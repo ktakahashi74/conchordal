@@ -1,6 +1,6 @@
 use crate::core::erb::hz_to_erb;
 use crate::core::float::sanitize_nonnegative_finite;
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
 use tracing::warn;
@@ -177,7 +177,7 @@ impl ModePattern {
         &self,
         base_hz: f32,
         space: &Log2Space,
-        landscape: Option<&LandscapeFrame>,
+        landscape: Option<&Landscape>,
         rng: &mut SmallRng,
     ) -> Vec<f32> {
         if let Some(seed) = self.seed {
@@ -194,7 +194,7 @@ impl ModePattern {
     pub(crate) fn eval_without_jitter_into(
         &self,
         base_hz: f32,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         ratios: &mut Vec<f32>,
         weights: &mut Vec<f32>,
         candidates: &mut Vec<(usize, f32)>,
@@ -356,7 +356,7 @@ impl ModePattern {
         &self,
         base_hz: f32,
         space: &Log2Space,
-        landscape: Option<&LandscapeFrame>,
+        landscape: Option<&Landscape>,
         rng: &mut R,
     ) -> Vec<f32> {
         if !base_hz.is_finite() || base_hz <= 0.0 {
@@ -522,7 +522,7 @@ impl ModePattern {
         &self,
         base_hz: f32,
         _space: &Log2Space,
-        landscape: Option<&LandscapeFrame>,
+        landscape: Option<&Landscape>,
         min_mul: f32,
         max_mul: f32,
     ) -> Vec<f32> {
@@ -590,7 +590,7 @@ impl ModePattern {
         &self,
         base_hz: f32,
         _space: &Log2Space,
-        landscape: Option<&LandscapeFrame>,
+        landscape: Option<&Landscape>,
         min_mul: f32,
         max_mul: f32,
     ) -> Vec<f32> {

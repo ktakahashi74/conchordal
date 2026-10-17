@@ -755,7 +755,7 @@ mod tests {
     #[test]
     fn sustained_participation_skip_keeps_the_current_tone() {
         for steady in [false, true] {
-            (|| {
+            {
                 use crate::core::temporal_expectation::TemporalForecast;
                 let (mut v, tb, r, mut out) = setup(false);
                 if steady {
@@ -784,13 +784,13 @@ mod tests {
                     }
                 }
                 assert!(saw_skip);
-            })();
+            };
         }
     }
     #[test]
     fn sustained_participation_energy_changes_once_per_on_and_autonomous_pulse_is_absent() {
         for steady in [false, true] {
-            (|| {
+            {
                 let (mut v, tb, r, mut out) = setup(true);
                 if steady {
                     use_steady(&mut v);
@@ -825,7 +825,7 @@ mod tests {
                         ));
                     }
                 }
-            })();
+            };
         }
     }
     #[test]
@@ -973,7 +973,7 @@ mod tests {
     #[test]
     fn rest_finite_release_g1_waits_then_consumes_without_forced_on() {
         for steady in [false, true] {
-            (|| {
+            {
                 use crate::life::phonation_engine::RestPhase;
                 let (mut v, tb, r, mut out) = rest_setup(1.);
                 if steady {
@@ -1030,7 +1030,7 @@ mod tests {
                     }
                 }
                 assert!(found);
-            })();
+            };
         }
     }
     #[test]
@@ -1426,7 +1426,7 @@ mod tests {
     #[test]
     fn bounded_small_glides_without_attack_and_large_freezes() {
         for steady in [false, true] {
-            (|| {
+            {
                 let (mut v, tb, r, mut out) = bounded_fixture(false);
                 if steady {
                     use_steady(&mut v);
@@ -1445,7 +1445,7 @@ mod tests {
                 assert!(out.onsets.is_empty());
                 assert_eq!(v.body.base_freq_hz().to_bits(), before.to_bits());
                 assert_eq!(v.participation_pitch.pending, Some(440.0f32.log2()));
-            })();
+            };
         }
     }
     #[test]
@@ -1665,7 +1665,7 @@ mod tests {
     #[test]
     fn bounded_live_modes_cancel_unrendered_requests_without_extra_on() {
         for steady in [false, true] {
-            (|| {
+            {
                 for source in [
                     PitchApplyMode::Glide,
                     PitchApplyMode::GateSnap,
@@ -1713,7 +1713,7 @@ mod tests {
                         }
                     }
                 }
-            })();
+            };
         }
     }
     #[test]
@@ -1936,7 +1936,7 @@ mod tests {
     #[test]
     fn articulation_persistence_initial_on_is_never_vetoed_and_same_sample_is_one_on() {
         for steady in [false, true] {
-            (|| {
+            {
                 let (mut v, tb, r, mut out) = articulation_persistence_fixture(0.75);
                 if steady {
                     use_steady(&mut v);
@@ -1953,7 +1953,7 @@ mod tests {
                     v.participation_pitch.last_onset_log2,
                     Some(out.tones[0].freq_hz.log2())
                 );
-            })();
+            };
         }
     }
 
@@ -2113,7 +2113,7 @@ mod tests {
     #[test]
     fn articulation_persistence_cost_skip_cannot_be_forced_into_an_on() {
         for steady in [false, true] {
-            (|| {
+            {
                 use crate::core::temporal_expectation::TemporalForecast;
                 for p in [0.5, 0.75, 0.875] {
                     let (mut v, tb, r, mut out) = articulation_persistence_fixture(p);
@@ -2148,7 +2148,7 @@ mod tests {
                     }
                     assert!(skipped);
                 }
-            })();
+            };
         }
     }
     #[cfg(feature = "profile-alloc")]

@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use tracing::info;
 
 use super::community::Community;
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::scenario::{Action, Scenario, SceneMarker, TimedEvent};
 
 #[derive(Debug, Clone)]
@@ -70,7 +70,7 @@ impl Conductor {
     pub fn dispatch_until(
         &mut self,
         time_sec: f32,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         community: &mut Community,
     ) {
         // Audio thread: pop-then-restore avoids an `expect`, and logging one line per

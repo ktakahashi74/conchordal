@@ -10,7 +10,7 @@ use super::spectral::{
 use super::{BodyKind, BodySnapshot};
 use crate::core::consonance_kernel::ConsonanceRepresentationParams;
 use crate::core::erb::hz_to_erb;
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::{DEFAULT_MODE_COUNT, ModePattern, ModePatternKind};
 use crate::core::timebase::Timebase;
@@ -290,7 +290,7 @@ impl BirthSurrogate {
     pub(crate) fn candidates(
         &mut self,
         control: &VoiceControl,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         frame: u64,
         freq_range: (f32, f32),
         terrain: impl FnMut(usize) -> f32,
@@ -302,7 +302,7 @@ impl BirthSurrogate {
         &mut self,
         control: &VoiceControl,
         policy: RespawnPolicy,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         frame: u64,
         frequencies: &[f32],
     ) -> Option<usize> {
@@ -365,7 +365,7 @@ impl BirthSurrogate {
     fn evaluate_candidates(
         &mut self,
         control: &VoiceControl,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         frame: u64,
         (freq_range, frequencies): ((f32, f32), Option<&[f32]>),
         mut terrain: impl FnMut(usize) -> f32,

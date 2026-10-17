@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::core::meter::MeterState;
 use crate::core::timebase::Tick;
 
@@ -103,7 +103,7 @@ pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
     pub listener: ListenerFrame,
-    pub landscape: LandscapeFrame,
+    pub landscape: Landscape,
     pub meta: SimulationMeta,
     pub prediction: PredictionFrame,
     pub voices: Vec<VoiceStateInfo>,

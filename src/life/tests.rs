@@ -1,4 +1,4 @@
-use crate::core::landscape::{Landscape, LandscapeFrame};
+use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
@@ -89,7 +89,7 @@ fn sustain_entrain_articulation() -> ArticulationCoreConfig {
 #[test]
 fn population_spawn_and_release_removes_voice() {
     let mut pop = Community::new(test_timebase());
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
 
@@ -141,7 +141,7 @@ fn conductor_dispatches_finish_on_time() {
 
     let mut conductor = Conductor::from_scenario(scenario);
     let mut pop = Community::new(test_timebase());
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     conductor.dispatch_until(0.5, &landscape, &mut pop);
     assert!(!pop.abort_requested);
 
@@ -178,7 +178,7 @@ fn conductor_keeps_future_events_queued_in_order() {
 
     let mut conductor = Conductor::from_scenario(scenario);
     let mut pop = Community::new(test_timebase());
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
 
     conductor.dispatch_until(1.0, &landscape, &mut pop);
     assert_eq!(
@@ -196,7 +196,7 @@ fn conductor_keeps_future_events_queued_in_order() {
 #[test]
 fn voice_lifecycle_decay_death() {
     let mut pop = Community::new(test_timebase());
-    let landscape = LandscapeFrame::default();
+    let landscape = Landscape::default();
     let mut control = VoiceControl::default();
     control.pitch.freq = 440.0;
     pop.apply_action(
@@ -255,7 +255,7 @@ fn lock_mode_advances_release_gain() {
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
-        &LandscapeFrame::default(),
+        &Landscape::default(),
     );
     let voice = pop.voices.first_mut().expect("agent exists");
     voice.start_remove_fade(0.05);
@@ -284,7 +284,7 @@ fn lock_mode_keeps_pitch_and_target() {
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
-        &LandscapeFrame::default(),
+        &Landscape::default(),
     );
 
     let (freq_before, target_before) = {
@@ -366,7 +366,7 @@ fn lock_mode_prevents_snapback() {
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
-        &LandscapeFrame::default(),
+        &Landscape::default(),
     );
 
     let old_target = pop
@@ -385,7 +385,7 @@ fn lock_mode_prevents_snapback() {
                 ..ControlUpdate::default()
             },
         },
-        &LandscapeFrame::default(),
+        &Landscape::default(),
     );
 
     let mut rhythms = NeuralRhythms::default();

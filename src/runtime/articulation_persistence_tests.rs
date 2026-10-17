@@ -8,9 +8,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-#[path = "../../tests/support/test_output_directory.rs"]
-mod test_output_directory;
-use test_output_directory::TestOutputDirectory;
+use super::test_output_directory::TestOutputDirectory;
 
 const ONE: &str = include_str!("../../tests/fixtures/articulation_persistence/one.rhai");
 const PEER: &str = include_str!("../../tests/fixtures/articulation_persistence/peer.rhai");

@@ -1,6 +1,6 @@
 use super::{Community, ParentCandidate, RuntimePopulationState, SpawnParams, SpawnReason};
 use crate::core::float::unit_gaussian;
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::core::peak_extraction::{PeakExtractConfig, extract_peaks_density};
 use crate::life::voice::{AnyArticulationCore, SoundBody};
 use crate::scenario::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
@@ -76,7 +76,7 @@ pub(super) fn peak_bias_parent_octave(
 }
 
 pub(super) fn peak_bias_candidate_bins(
-    landscape: &LandscapeFrame,
+    landscape: &Landscape,
     min_hz: f32,
     max_hz: f32,
     candidate_count: usize,
@@ -141,7 +141,7 @@ pub(super) fn peak_bias_candidate_bins(
 }
 
 pub(super) fn peak_bias_local_search_frequency(
-    landscape: &LandscapeFrame,
+    landscape: &Landscape,
     center_hz: f32,
     min_hz: f32,
     max_hz: f32,
@@ -190,7 +190,7 @@ fn peak_bias_local_search_with(
 }
 
 pub(super) fn choose_candidate_by_scene_score<R: Rng + ?Sized>(
-    landscape: &LandscapeFrame,
+    landscape: &Landscape,
     candidates: &[f32],
     rng: &mut R,
 ) -> Option<f32> {
@@ -240,7 +240,7 @@ impl Community {
     fn respawn_body_scores(
         &self,
         population: &RuntimePopulationState,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         frequencies: &[f32],
         scores: &mut [f32],
     ) -> bool {
@@ -267,7 +267,7 @@ impl Community {
     fn respawn_level(
         &self,
         population: &RuntimePopulationState,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         freq_hz: f32,
     ) -> f32 {
         let mut scores = [0.0];
@@ -286,7 +286,7 @@ impl Community {
     fn random_respawn_frequency<R: Rng + ?Sized>(
         &self,
         population: &RuntimePopulationState,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         rng: &mut R,
         member_idx: usize,
     ) -> f32 {
@@ -315,7 +315,7 @@ impl Community {
         &self,
         population: &RuntimePopulationState,
         selected_parent: Option<ParentCandidate>,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         rng: &mut R,
         member_idx: usize,
         config: RespawnPeakBiasConfig,
@@ -441,7 +441,7 @@ impl Community {
         population_id: u64,
         population: &RuntimePopulationState,
         alive_by_population: &BTreeMap<u64, Vec<ParentCandidate>>,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         rng: &mut R,
         member_idx: usize,
     ) -> Option<(f32, Option<u64>, Option<u32>)> {
@@ -594,11 +594,7 @@ impl Community {
         Some((chosen_freq, parent_id, parent_gen))
     }
 
-    pub(super) fn respawn_on_new_deaths(
-        &mut self,
-        scenario_finished: bool,
-        landscape: &LandscapeFrame,
-    ) {
+    pub(super) fn respawn_on_new_deaths(&mut self, scenario_finished: bool, landscape: &Landscape) {
         if scenario_finished || self.abort_requested {
             return;
         }
@@ -1286,7 +1282,7 @@ mod tests {
 
     #[test]
     fn random_respawn_selection_uses_weighted_scene_scores() {
-        let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 880.0, 96));
+        let mut landscape = Landscape::new(Log2Space::new(220.0, 880.0, 96));
         let candidate_bins = [12usize, 36usize, 60usize];
         let candidate_freqs = candidate_bins.map(|idx| landscape.space.centers_hz[idx]);
         let candidate_scores = [0.0f32, 0.5, 2.0];

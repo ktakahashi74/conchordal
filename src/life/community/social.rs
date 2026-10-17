@@ -107,7 +107,7 @@ impl Community {
 mod tests {
     use super::super::tests::{spawn_spec_with_freq, test_pop};
     use super::*;
-    use crate::core::landscape::LandscapeFrame;
+    use crate::core::landscape::Landscape;
     use crate::life::phonation_engine::OnsetEvent;
     use crate::scenario::Action;
     use rand::{RngExt, SeedableRng};
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn kuramoto_order_parameter_uses_relative_phase_offset() {
         let mut pop = test_pop();
-        let landscape = LandscapeFrame::default();
+        let landscape = Landscape::default();
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,

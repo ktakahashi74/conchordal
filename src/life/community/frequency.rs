@@ -1,6 +1,6 @@
 use super::Community;
 use crate::core::float::unit_gaussian;
-use crate::core::landscape::LandscapeFrame;
+use crate::core::landscape::Landscape;
 use crate::life::voice::SoundBody;
 use crate::scenario::{FieldSampling, FieldTarget, SpawnStrategy};
 use rand::{Rng, RngExt, distr::Distribution, distr::weighted::WeightedIndex};
@@ -10,7 +10,7 @@ use rand::{Rng, RngExt, distr::Distribution, distr::weighted::WeightedIndex};
 const TENSION_LEVEL_SIGMA_FRAC: f32 = 0.15;
 
 /// Peak score for a field target at bin `i` (higher = better extremum).
-fn field_peak_score(target: FieldTarget, landscape: &LandscapeFrame, i: usize) -> f32 {
+fn field_peak_score(target: FieldTarget, landscape: &Landscape, i: usize) -> f32 {
     match target {
         FieldTarget::Consonance => landscape
             .consonance_field_level_eff
@@ -41,12 +41,7 @@ fn field_peak_score(target: FieldTarget, landscape: &LandscapeFrame, i: usize) -
 
 /// Non-negative density mass for a field target at bin `i`. `gap_ref` is the
 /// loudest in-range intensity, used only by `Gap`.
-fn field_density_mass(
-    target: FieldTarget,
-    landscape: &LandscapeFrame,
-    i: usize,
-    gap_ref: f32,
-) -> f32 {
+fn field_density_mass(target: FieldTarget, landscape: &Landscape, i: usize, gap_ref: f32) -> f32 {
     match target {
         FieldTarget::Consonance => landscape
             .consonance_density_mass_eff
@@ -116,7 +111,7 @@ impl Community {
     fn decide_frequency<R: Rng + ?Sized>(
         &self,
         strategy: &SpawnStrategy,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         rng: &mut R,
         reserved: &[f32],
         control: Option<&crate::scenario::control::VoiceControl>,
@@ -407,7 +402,7 @@ impl Community {
     pub(super) fn resolve_strategy_frequency<R: Rng + ?Sized>(
         &self,
         strategy: &SpawnStrategy,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         rng: &mut R,
         reserved: &[f32],
         members: (usize, usize),
@@ -443,7 +438,7 @@ mod tests {
     fn birth_surrogate_keeps_occupancy_spacing_and_zero_mass_fallback_in_range() {
         use crate::scenario::control::VoiceControl;
         let space = Log2Space::new(100.0, 800.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         let lo = 200.0;
         let hi = 400.0;
         let occupied_hz = space.freq_of_index(space.nearest_index(220.0));
@@ -487,7 +482,7 @@ mod tests {
     #[test]
     fn excluded_body_uses_exact_legacy_selection_and_rng() {
         use crate::scenario::control::{BodyMethod, VoiceControl};
-        let mut landscape = LandscapeFrame::new(Log2Space::new(100.0, 800.0, 24));
+        let mut landscape = Landscape::new(Log2Space::new(100.0, 800.0, 24));
         for i in 0..landscape.space.n_bins() {
             landscape.consonance_density_mass_eff[i] = (i % 11) as f32 / 11.0;
             landscape.consonance_field_level_eff[i] = (i % 7) as f32 / 7.0;
@@ -534,7 +529,7 @@ mod tests {
     fn harmonic_birth_reads_upper_partials_instead_of_only_the_fundamental() {
         use crate::core::mode_pattern::ModePattern;
         use crate::scenario::control::{BodyMethod, VoiceControl};
-        let mut landscape = LandscapeFrame::new(Log2Space::new(100.0, 1600.0, 24));
+        let mut landscape = Landscape::new(Log2Space::new(100.0, 1600.0, 24));
         let upper = landscape.space.nearest_index(440.0);
         landscape.consonance_density_mass_eff[upper] = 1.0;
         let mut control = VoiceControl::default();
@@ -566,11 +561,13 @@ mod tests {
 
     #[test]
     #[ignore = "release-only diagnostic cost; never a real-time acceptance gate"]
+    // Preserve the runtime profile guard so debug builds still compile this ignored assay.
+    #[allow(clippy::assertions_on_constants)]
     fn birth_surrogate_release_cost() {
         use crate::scenario::control::BodyMethod;
         use std::time::Instant;
         assert!(!cfg!(debug_assertions), "release profile required");
-        let mut landscape = LandscapeFrame::new(Log2Space::new(55.0, 8000.0, 96));
+        let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
         landscape.consonance_density_mass_eff.fill(0.5);
         for (name, count, distinct) in [
             ("one", 1, false),
@@ -633,7 +630,7 @@ mod tests {
     #[test]
     fn field_placement_keeps_narrow_and_clipped_ranges_in_hz() {
         let space = Log2Space::new(100.0, 410.0, 24);
-        let landscape = LandscapeFrame::new(space.clone());
+        let landscape = Landscape::new(space.clone());
         let pop = test_pop();
         let mut rng = rand::rngs::StdRng::seed_from_u64(1);
         for target in [
@@ -678,7 +675,7 @@ mod tests {
 
     #[test]
     fn field_placement_without_analysis_overlap_stays_in_requested_range() {
-        let landscape = LandscapeFrame::new(Log2Space::new(100.0, 400.0, 24));
+        let landscape = Landscape::new(Log2Space::new(100.0, 400.0, 24));
         let pop = test_pop();
         let mut rng = rand::rngs::StdRng::seed_from_u64(2);
         for target in [
@@ -713,7 +710,7 @@ mod tests {
     #[test]
     fn field_placement_checks_spacing_at_clipped_bin_frequency() {
         let space = Log2Space::new(100.0, 400.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         let min_freq = 219.0;
         let idx_min = space.nearest_index(min_freq);
         let next_freq = space.freq_of_index(idx_min + 1);
@@ -744,7 +741,7 @@ mod tests {
     #[test]
     fn decide_frequency_uses_consonance_field_level() {
         let space = Log2Space::new(100.0, 400.0, 12);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         landscape.consonance_field_score.fill(-10.0);
         landscape.consonance_field_score_eff.fill(-10.0);
         landscape.consonance_field_level.fill(0.0);
@@ -775,7 +772,7 @@ mod tests {
     #[test]
     fn consonance_density_sampling_uses_density_pmf() {
         let space = Log2Space::new(100.0, 400.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         landscape.consonance_density_mass.fill(0.0);
         landscape.consonance_density_mass_eff.fill(0.0);
         let idx_target = space.index_of_freq(220.0).expect("idx target");
@@ -803,7 +800,7 @@ mod tests {
     #[test]
     fn consonance_tension_peak_targets_a_lower_step() {
         let space = Log2Space::new(100.0, 800.0, 48);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         // Background well below the three steps so L_min is the background.
         for s in landscape.consonance_field_score.iter_mut() {
             *s = -1.0;
@@ -842,7 +839,7 @@ mod tests {
     #[test]
     fn consonance_density_range_zero_weights_fallback_is_range_uniform() {
         let space = Log2Space::new(100.0, 400.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         landscape.consonance_density_mass.fill(1.0);
         landscape.consonance_density_mass_eff.fill(1.0);
 
@@ -885,7 +882,7 @@ mod tests {
     #[test]
     fn consonance_density_range_all_occupied_fallback_does_not_panic() {
         let space = Log2Space::new(100.0, 400.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         landscape.consonance_density_mass.fill(1.0);
         landscape.consonance_density_mass_eff.fill(1.0);
 
@@ -920,7 +917,7 @@ mod tests {
     #[test]
     fn consonance_density_avoids_occupied_when_unoccupied_exists() {
         let space = Log2Space::new(100.0, 400.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         landscape.consonance_density_mass.fill(1.0);
         landscape.consonance_density_mass_eff.fill(1.0);
 
@@ -957,7 +954,7 @@ mod tests {
     #[test]
     fn consonance_density_zero_sum_fallback_still_avoids_occupied() {
         let space = Log2Space::new(100.0, 400.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         landscape.consonance_density_mass.fill(1.0);
         landscape.consonance_density_mass_eff.fill(1.0);
 
@@ -998,7 +995,7 @@ mod tests {
     #[test]
     fn consonance_density_reversed_range_is_handled_safely() {
         let space = Log2Space::new(100.0, 400.0, 24);
-        let mut landscape = LandscapeFrame::new(space.clone());
+        let mut landscape = Landscape::new(space.clone());
         landscape.consonance_density_mass.fill(0.0);
         landscape.consonance_density_mass_eff.fill(0.0);
 

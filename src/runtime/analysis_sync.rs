@@ -15,7 +15,7 @@ pub(super) fn analysis_ok(frame_idx: u64, last_analysis: Option<u64>, max_lag: u
 /// window while waiting, so the caller must end the run instead of waiting.
 pub(super) fn merge_latest_analysis_results(
     analysis_result_rx: &Receiver<analysis_worker::AnalysisResult>,
-    current_landscape: &mut LandscapeFrame,
+    current_landscape: &mut Landscape,
     log_space: &mut Log2Space,
     generator_model: &mut crate::life::generator_model::GeneratorModel,
     lparams: &LandscapeParams,
@@ -368,7 +368,7 @@ pub(super) fn wait_for_listener(
 pub(super) fn apply_pending_landscape_update(
     pop: &mut Community,
     params: &mut LandscapeParams,
-    current_landscape: &mut LandscapeFrame,
+    current_landscape: &mut Landscape,
     analysis_update_tx: &Sender<LandscapeUpdate>,
     listener_analysis_update_tx: Option<&Sender<LandscapeUpdate>>,
 ) -> bool {

@@ -1,6 +1,6 @@
 use super::telemetry::LifeRecord;
 use super::voice::{AnyArticulationCore, PhonationBatch, SoundBody, Voice, VoiceMetadata};
-use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
+use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::dcc_coupler::ListenerPressure;
@@ -378,7 +378,7 @@ impl Community {
     pub fn collect_phonation_batches(
         &mut self,
         generator_model: &mut GeneratorModel,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         now: Tick,
     ) -> Vec<PhonationBatch> {
         let mut batches = Vec::new();
@@ -399,7 +399,7 @@ impl Community {
     pub(crate) fn collect_phonation_batches_into(
         &mut self,
         generator_model: &mut GeneratorModel,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
         now: Tick,
         arrival: Option<&crate::temporal_cognition::observation::Snapshot>,
         body: Option<&crate::temporal_cognition::body::Snapshot>,
@@ -550,7 +550,7 @@ impl Community {
         used
     }
 
-    fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceSpec, landscape: &LandscapeFrame) {
+    fn spawn_one(&mut self, params: SpawnParams, spec: &VoiceSpec, landscape: &Landscape) {
         let SpawnParams {
             id,
             population_id,
@@ -1047,7 +1047,7 @@ impl Community {
         current_frame: u64,
         dt_sec: f32,
         scenario_finished: bool,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
     ) {
         self.current_frame = current_frame;
         self.respawn_on_new_deaths(scenario_finished, landscape);
@@ -1101,7 +1101,7 @@ impl Community {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::landscape::LandscapeFrame;
+    use crate::core::landscape::Landscape;
     use crate::core::log2space::Log2Space;
     use crate::core::timebase::Timebase;
     use crate::life::generator_model::GeneratorModel;
@@ -1230,12 +1230,12 @@ mod tests {
         }
     }
 
-    pub(super) fn runtime_landscape() -> LandscapeFrame {
-        LandscapeFrame::new(Log2Space::new(55.0, 1760.0, 24))
+    pub(super) fn runtime_landscape() -> Landscape {
+        Landscape::new(Log2Space::new(55.0, 1760.0, 24))
     }
 
-    fn crowding_order_landscape() -> LandscapeFrame {
-        let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 440.0, 96));
+    fn crowding_order_landscape() -> Landscape {
+        let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 96));
         let center_log2 = 330.0f32.log2();
         let width_cents = 50.0f32;
         for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
@@ -1249,8 +1249,8 @@ mod tests {
         landscape
     }
 
-    pub(super) fn peak_bias_landscape() -> LandscapeFrame {
-        let mut landscape = LandscapeFrame::new(Log2Space::new(220.0, 880.0, 96));
+    pub(super) fn peak_bias_landscape() -> Landscape {
+        let mut landscape = Landscape::new(Log2Space::new(220.0, 880.0, 96));
         let peak_a_log2 = 330.0f32.log2();
         let peak_b_log2 = 660.0f32.log2();
         let sigma_cents = 35.0f32;
@@ -1274,7 +1274,7 @@ mod tests {
         pop: &mut Community,
         frame: u64,
         dt_sec: f32,
-        landscape: &LandscapeFrame,
+        landscape: &Landscape,
     ) {
         let fs = 48_000.0;
         let samples_per_hop = (fs * dt_sec) as usize;
@@ -1504,7 +1504,7 @@ mod tests {
             hop: 64,
         };
         let space = Log2Space::new(55.0, 880.0, 12);
-        let landscape = LandscapeFrame::new(space.clone());
+        let landscape = Landscape::new(space.clone());
         let mut world = GeneratorModel::new(time, space);
         let mut pop = Community::new(time);
         let spec = spawn_spec_with_freq(440.0);
@@ -1576,10 +1576,10 @@ mod tests {
         let mut pop = Community::new(time);
         pop.enable_auto_observe();
 
-        let mut landscape_low = LandscapeFrame::new(space.clone());
+        let mut landscape_low = Landscape::new(space.clone());
         landscape_low.consonance_field_level.fill(0.0);
         landscape_low.consonance_field_level_eff.fill(0.0);
-        let mut landscape_high = LandscapeFrame::new(space);
+        let mut landscape_high = Landscape::new(space);
         landscape_high.consonance_field_level.fill(1.0);
         landscape_high.consonance_field_level_eff.fill(1.0);
 
@@ -1649,7 +1649,7 @@ mod tests {
         let mut pop = Community::new(time);
         pop.enable_auto_observe();
 
-        let mut landscape_high = LandscapeFrame::new(space);
+        let mut landscape_high = Landscape::new(space);
         landscape_high.consonance_field_level.fill(1.0);
         landscape_high.consonance_field_level_eff.fill(1.0);
 

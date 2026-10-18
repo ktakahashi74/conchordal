@@ -88,6 +88,10 @@ impl PitchController {
         self.last_target_salience
     }
 
+    pub(crate) fn environment_score(&mut self, landscape: &Landscape, freq_hz: f32) -> f32 {
+        self.core.environment_score(landscape, freq_hz)
+    }
+
     pub(crate) fn loo_input_mut(&mut self) -> &mut super::pitch_core::LooInput {
         self.core.loo_input_mut()
     }

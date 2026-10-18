@@ -290,21 +290,6 @@ impl ScriptHost {
         );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
-            "leave_self_out_harmonics",
-            move |call_ctx: NativeCallContext,
-                  mut population_spec: PopulationSpecHandle,
-                  value: INT| {
-                population_spec.spec.record_call(
-                    "leave_self_out_harmonics",
-                    call_ctx.call_position(),
-                    &diagnostics,
-                );
-                population_spec.spec.set_leave_self_out_harmonics(value);
-                population_spec
-            },
-        );
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
             "pitch_apply_mode",
             move |call_ctx: NativeCallContext,
                   mut population_spec: PopulationSpecHandle,
@@ -1535,44 +1520,6 @@ impl ScriptHost {
                         handle.id,
                         "move_cost_time_scale",
                         call.call_position(),
-                    ),
-                }
-                Ok(handle)
-            },
-        );
-        let ctx_for_population_loo_harmonics = ctx.clone();
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
-            "leave_self_out_harmonics",
-            move |call_ctx: NativeCallContext,
-                  handle: PopulationHandle,
-                  value: INT|
-                  -> Result<PopulationHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_population_loo_harmonics
-                    .lock()
-                    .expect("lock script context");
-                let Some(population) = ctx.populations.get_mut(&handle.id) else {
-                    diagnostics
-                        .lock()
-                        .expect("lock script warnings")
-                        .push(ScriptWarning {
-                            message: format!(
-                                "leave_self_out_harmonics ignored for unknown population {}",
-                                handle.id
-                            ),
-                            position: call_ctx.call_position(),
-                        });
-                    return Ok(handle);
-                };
-                match population.status {
-                    PopulationStatus::Live => {
-                        population.spec.set_leave_self_out_harmonics(value);
-                        population.pending_patch.leave_self_out_harmonics = Some(value);
-                    }
-                    _ => ctx.warn_population_inactive(
-                        handle.id,
-                        "leave_self_out_harmonics",
-                        call_ctx.call_position(),
                     ),
                 }
                 Ok(handle)

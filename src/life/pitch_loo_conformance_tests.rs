@@ -189,6 +189,75 @@ fn metrics(
            "registered_movement_gate_pass":ds<=0.025 && dl<=0.0125 && reversals==0})
 }
 
+fn viability_voice(hz: f32, kind: PitchCoreKind) -> crate::life::voice::Voice {
+    let mut control = VoiceControl::default();
+    control.body.method = BodyMethod::Sine;
+    control.pitch.freq = hz;
+    control.pitch.core_kind = kind;
+    control.pitch.leave_self_out = false;
+    let lifecycle = crate::scenario::lifecycle::LifecycleConfig::Sustain {
+        endurance_sec: Some(10.0),
+        recovery_sec: Some(1.0),
+        attack_cost_fraction: Some(0.0),
+        attack_recharge_fraction: Some(0.0),
+        continuous_recharge_score_low: Some(-1.0),
+        continuous_recharge_score_high: Some(1.0),
+        selection_environment: true,
+        dissonance_penalty: 0.0,
+        envelope: crate::scenario::EnvelopeConfig::default(),
+    };
+    let mut voice = VoiceSpec {
+        control,
+        articulation: ArticulationCoreConfig::Entrain {
+            lifecycle,
+            rhythm_freq: None,
+            rhythm_coupling: crate::scenario::RhythmCouplingMode::TemporalOnly,
+            rhythm_reward: None,
+            breath_gain_init: Some(1.0),
+        },
+    }
+    .spawn_with_landscape(2, 0, VoiceMetadata::default(), FS, None, 17);
+    if let crate::life::voice::AnyArticulationCore::Entrain(core) = &mut voice.articulation.core {
+        core.energy = 0.5;
+    }
+    voice
+}
+
+#[test]
+fn environment_viability_prepares_ownership_without_pitch_self_exclusion() {
+    let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
+    landscape.subjective_intensity[landscape.space.nearest_index(220.0)] = 1.0;
+    landscape.loudness_exp = 0.23;
+    let score = recompute_loo_score_scan(&landscape, &landscape.subjective_intensity, &mut None);
+    landscape.consonance_field_score_eff = score;
+    for kind in [PitchCoreKind::HillClimb, PitchCoreKind::PeakSampler] {
+        let mut voice = viability_voice(220.0, kind);
+        // An isolated caller without a snapshot still reads the observed field.
+        assert_eq!(
+            voice.pitch_ctl.environment_score(&landscape, 220.0),
+            landscape.evaluate_pitch_score(220.0)
+        );
+        voice.last_signal = ArticulationSignal {
+            amplitude: 1.0,
+            is_active: true,
+            ..Default::default()
+        };
+        let mut community = crate::life::community::Community::new(Timebase { fs: FS, hop: 512 });
+        community.add_voice(voice);
+        community.advance(512, 0, 512.0 / FS, &landscape);
+        let voice = &mut community.voices[0];
+        assert!(!voice.effective_control.pitch.leave_self_out);
+        let input = voice.pitch_ctl.loo_input_mut();
+        assert_eq!(input.own_power_scan.len(), landscape.space.n_bins());
+        assert!(input.own_power_scan.iter().any(|&x| x > 0.0));
+        assert!(
+            input.computed_score.is_some(),
+            "lifecycle must consume the snapshot"
+        );
+        assert!(voice.pitch_ctl.environment_score(&landscape, 220.0).abs() <= 1e-6);
+    }
+}
+
 #[test]
 #[ignore = "84 rendered scenes; run explicitly with --nocapture"]
 fn rendered_loo_conformance() {
@@ -375,6 +444,50 @@ fn rendered_loo_conformance() {
                     computed_score: None,
                 };
                 let candidate_scan = loo_score_scan(&mix, &mut input, &mut None);
+                let expected_score =
+                    sample_ownership_score(&mix, current, candidate_scan.as_deref());
+                let old_score = legacy_sample_consonance_score_with_loo(
+                    current,
+                    current,
+                    &mix,
+                    true,
+                    ReferenceLooMode::ApproxHarmonics,
+                    1,
+                    None,
+                    ratios,
+                );
+                let reference_score = removed.evaluate_pitch_score_log2(current);
+                for kind in [PitchCoreKind::HillClimb, PitchCoreKind::PeakSampler] {
+                    let mut voice = viability_voice(base_hz, kind);
+                    *voice.pitch_ctl.loo_input_mut() = LooInput {
+                        computed_score: None,
+                        ..input.clone()
+                    };
+                    let score = voice.pitch_ctl.environment_score(&mix, base_hz);
+                    assert_eq!(score, expected_score);
+                    assert!(
+                        (score - reference_score).abs() - (old_score - reference_score).abs()
+                            <= 1e-6,
+                        "environment viability worsened: {family}, {base_hz}, {other_hz:?}, {kind:?}"
+                    );
+                    let mut expected = voice.articulation.clone();
+                    expected.process(
+                        mix.evaluate_pitch_level(base_hz),
+                        expected_score,
+                        &NeuralRhythms::default(),
+                        0.1,
+                        0.0,
+                    );
+                    voice.tick_articulation_lifecycle(0.1, &NeuralRhythms::default(), &mix, 0.0);
+                    match (&voice.articulation.core, &expected.core) {
+                        (
+                            crate::life::voice::AnyArticulationCore::Entrain(actual),
+                            crate::life::voice::AnyArticulationCore::Entrain(expected),
+                        ) => assert_eq!(actual.energy, expected.energy),
+                        _ => unreachable!(),
+                    }
+                }
+                let mut legacy_errors = [0.0_f32; 4];
                 let old_exact_scan = exact_loo_consonance_score_scan(
                     &mix,
                     current,
@@ -521,6 +634,24 @@ fn rendered_loo_conformance() {
                     let point_reference_level = repr.level(point_reference[3]);
                     let body_shortcut_level = repr.level(body_shortcut[3]);
                     let body_reference_level = repr.level(body_reference[3]);
+                    let errors = [
+                        (point_shortcut[3] - point_reference[3]).abs(),
+                        (point_shortcut_level - point_reference_level).abs(),
+                        (body_shortcut[3] - body_reference[3]).abs(),
+                        (body_shortcut_level - body_reference_level).abs(),
+                    ];
+                    if method == "approx" {
+                        legacy_errors = errors;
+                    }
+                    if method == "t31" {
+                        assert!(
+                            errors
+                                .iter()
+                                .zip(legacy_errors)
+                                .all(|(new, old)| new - old <= 1e-6),
+                            "viability current-position errors: {family}, {base_hz}, {other_hz:?}"
+                        );
+                    }
                     println!(
                         "T32_CASE {}",
                         json!({"method":method,"family":family,"base_hz":base_hz,"other_hz":other_hz,"recipe_body":format!("{:?}",own_recipe.body),

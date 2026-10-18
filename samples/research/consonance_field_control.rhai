@@ -48,7 +48,6 @@ let mover = harmonic()
     .modes(harmonic_modes().count(5))
     .brightness(0.40)
     .avoid_neighbors(0.18)
-    .leave_self_out_harmonics(2)
     .global_peaks(3, 140.0)
     .ratio_candidates(2)
     .adsr(0.24, 0.70, 0.82, 1.3);

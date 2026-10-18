@@ -384,13 +384,6 @@ fn leave_self_out(population: Population, enabled: bool) -> Population;
 /// Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
 fn leave_self_out(population_spec: PopulationSpec, enabled: bool) -> PopulationSpec;
 
-/// [tuning] Harmonic count for environment viability's retained self-subtraction estimate.
-/// Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
-fn leave_self_out_harmonics(population: Population, count: i64) -> Population;
-/// [tuning] Harmonic count for environment viability's retained self-subtraction estimate.
-/// Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
-fn leave_self_out_harmonics(population_spec: PopulationSpec, count: i64) -> PopulationSpec;
-
 /// Linear interpolation of positions between two frequencies.
 fn line(start_hz: f64, end_hz: f64) -> Placement;
 /// Linear interpolation of positions between two frequencies.
@@ -875,7 +868,7 @@ fn unison(population: Population, count: i64) -> Population;
 fn unison(population_spec: PopulationSpec, count: i64) -> PopulationSpec;
 
 /// [tuning] `"environment"` or `"total"`: choose the field used for viability.
-/// Use `"total"` only when the selection question should include the voice's own contribution.
+/// Environment uses the same spectral-ownership estimate as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 fn viability_scope(population_spec: PopulationSpec, name: String) -> PopulationSpec;
 
 /// Emit pending live patches, then advance the timeline cursor.

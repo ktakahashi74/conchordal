@@ -256,7 +256,6 @@ pub struct PitchControl {
     pub sigma_cents: Option<f32>,
     pub random_candidates: Option<usize>,
     pub move_cost_time_scale: MoveCostTimeScale,
-    pub leave_self_out_harmonics: u8,
     pub pitch_apply_mode: PitchApplyMode,
     pub pitch_glide_tau_sec: f32,
     pub rearticulate_above_cents: f32,
@@ -289,7 +288,6 @@ impl Default for PitchControl {
             sigma_cents: None,
             random_candidates: None,
             move_cost_time_scale: MoveCostTimeScale::LegacyIntegrationWindow,
-            leave_self_out_harmonics: 1,
             pitch_apply_mode: PitchApplyMode::GateSnap,
             pitch_glide_tau_sec: DEFAULT_PITCH_GLIDE_TAU_SEC,
             rearticulate_above_cents: 0.0,
@@ -374,7 +372,6 @@ pub struct ControlUpdate {
     pub sigma_cents: Option<f32>,
     pub random_candidates: Option<i64>,
     pub move_cost_time_scale: Option<MoveCostTimeScale>,
-    pub leave_self_out_harmonics: Option<i64>,
     pub pitch_apply_mode: Option<PitchApplyMode>,
     pub pitch_glide_tau_sec: Option<f32>,
     pub rearticulate_above_cents: Option<f32>,
@@ -533,11 +530,6 @@ impl PitchControl {
     }
 
     #[inline]
-    pub fn set_leave_self_out_harmonics_clamped(&mut self, value: i64) {
-        self.leave_self_out_harmonics = value.clamp(1, i64::from(u8::MAX)) as u8;
-    }
-
-    #[inline]
     pub fn set_pitch_apply_mode(&mut self, value: PitchApplyMode) {
         self.pitch_apply_mode = value;
     }
@@ -623,9 +615,6 @@ impl PitchControl {
         if let Some(scale) = update.move_cost_time_scale {
             self.set_move_cost_time_scale(scale);
         }
-        if let Some(harmonics) = update.leave_self_out_harmonics {
-            self.set_leave_self_out_harmonics_clamped(harmonics);
-        }
         if let Some(mode) = update.pitch_apply_mode {
             self.set_pitch_apply_mode(mode);
         }
@@ -698,7 +687,6 @@ mod tests {
             sigma_cents: Some(-10.0),
             random_candidates: Some(-3),
             move_cost_time_scale: Some(MoveCostTimeScale::ProposalInterval),
-            leave_self_out_harmonics: Some(0),
             pitch_apply_mode: Some(PitchApplyMode::Glide),
             pitch_glide_tau_sec: Some(-0.2),
             rearticulate_above_cents: None,
@@ -730,7 +718,6 @@ mod tests {
             control.pitch.move_cost_time_scale,
             MoveCostTimeScale::ProposalInterval
         );
-        assert_eq!(control.pitch.leave_self_out_harmonics, 1);
         assert_eq!(control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
         assert!((control.pitch.pitch_glide_tau_sec - 0.0).abs() <= 1e-6);
         assert!((control.body.timbre.brightness - 0.0).abs() <= 1e-6);

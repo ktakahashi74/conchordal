@@ -25,6 +25,7 @@ const DEFAULT_RANDOM_CANDIDATES: usize = 3;
 const DEFAULT_RANDOM_SIGMA_CENTS: f32 = 30.0;
 const DEFAULT_MOVE_COST_COEFF: f32 = 0.5;
 const DEFAULT_MOVE_COST_EXP: u8 = 1;
+#[cfg(any(test, feature = "loo-diagnostic"))]
 const DEFAULT_APPROX_LOO_SIGMA_CENTS: f32 = 24.0;
 const DEFAULT_GLOBAL_PEAK_COUNT: usize = 0;
 const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
@@ -101,7 +102,6 @@ pub struct PitchHillClimbPitchCore {
     leave_self_out: bool,
     #[cfg(any(test, feature = "loo-diagnostic"))]
     reference_loo_mode: ReferenceLooMode,
-    leave_self_out_harmonics: u8,
     global_peak_count: usize,
     global_peak_min_sep_log2: f32,
     use_ratio_candidates: bool,
@@ -145,7 +145,6 @@ impl PitchHillClimbPitchCore {
             leave_self_out: false,
             #[cfg(any(test, feature = "loo-diagnostic"))]
             reference_loo_mode: ReferenceLooMode::ApproxHarmonics,
-            leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
             global_peak_count: DEFAULT_GLOBAL_PEAK_COUNT,
             global_peak_min_sep_log2: cents_to_log2(DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS),
             use_ratio_candidates: false,
@@ -252,10 +251,6 @@ impl PitchHillClimbPitchCore {
     pub fn set_ratio_candidates(&mut self, enabled: bool, count: usize) {
         self.use_ratio_candidates = enabled;
         self.ratio_candidate_count = count;
-    }
-
-    pub fn set_leave_self_out_harmonics(&mut self, harmonics: u8) {
-        self.leave_self_out_harmonics = harmonics.max(1);
     }
 
     fn move_cost_time_sec(&self, integration_window: f32) -> f32 {
@@ -473,7 +468,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         let reference_loo_mode = self.reference_loo_mode;
         #[cfg(not(any(test, feature = "loo-diagnostic")))]
         let reference_loo_mode = ReferenceLooMode::ApproxHarmonics;
-        let leave_self_out_harmonics = self.leave_self_out_harmonics;
+        let reference_harmonics = DEFAULT_LOO_HARMONICS;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let body_ratios = self.body_ratios.clone();
@@ -531,7 +526,7 @@ impl PitchCore for PitchHillClimbPitchCore {
                     perceptual,
                     leave_self_out,
                     reference_loo_mode,
-                    leave_self_out_harmonics,
+                    reference_harmonics,
                     loo_scan.as_deref(),
                     body_ratios.as_deref(),
                     crowding_strength,
@@ -939,7 +934,7 @@ fn adjusted_pitch_score_with_loo_harmonics(
     landscape: &Landscape,
     perceptual: &AdaptationContext,
     leave_self_out: bool,
-    leave_self_out_harmonics: u8,
+    reference_harmonics: u8,
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     neighbor_pitch_log2: &[f32],
@@ -958,7 +953,7 @@ fn adjusted_pitch_score_with_loo_harmonics(
         perceptual,
         leave_self_out,
         ReferenceLooMode::ApproxHarmonics,
-        leave_self_out_harmonics,
+        reference_harmonics,
         None,
         None,
         crowding_strength,
@@ -982,7 +977,7 @@ fn adjusted_pitch_score_impl(
     perceptual: &AdaptationContext,
     leave_self_out: bool,
     reference_loo_mode: ReferenceLooMode,
-    leave_self_out_harmonics: u8,
+    reference_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
     body_ratios: Option<&[f32]>,
     crowding_strength: f32,
@@ -998,7 +993,7 @@ fn adjusted_pitch_score_impl(
         landscape,
         leave_self_out,
         reference_loo_mode,
-        leave_self_out_harmonics,
+        reference_harmonics,
         exact_loo_scan,
         body_ratios,
     );
@@ -1046,7 +1041,7 @@ fn sample_consonance_score_with_loo(
     landscape: &Landscape,
     leave_self_out: bool,
     reference_loo_mode: ReferenceLooMode,
-    leave_self_out_harmonics: u8,
+    reference_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
     body_ratios: Option<&[f32]>,
 ) -> f32 {
@@ -1058,7 +1053,7 @@ fn sample_consonance_score_with_loo(
             landscape,
             leave_self_out,
             reference_loo_mode,
-            leave_self_out_harmonics,
+            reference_harmonics,
             exact_loo_scan,
             body_ratios,
         );
@@ -1074,7 +1069,7 @@ fn sample_consonance_score_with_loo(
             landscape,
             leave_self_out,
             reference_loo_mode,
-            leave_self_out_harmonics,
+            reference_harmonics,
             exact_loo_scan,
             body_ratios,
         );
@@ -1082,10 +1077,18 @@ fn sample_consonance_score_with_loo(
     let _ = (
         current_pitch_log2,
         reference_loo_mode,
-        leave_self_out_harmonics,
+        reference_harmonics,
         body_ratios,
     );
-    if leave_self_out && let Some(scan) = exact_loo_scan {
+    sample_ownership_score(
+        landscape,
+        pitch_log2,
+        exact_loo_scan.filter(|_| leave_self_out),
+    )
+}
+
+fn sample_ownership_score(landscape: &Landscape, pitch_log2: f32, scan: Option<&[f32]>) -> f32 {
+    if let Some(scan) = scan {
         landscape
             .space
             .assert_scan_len_named(scan, "loo_score_scan");
@@ -1097,6 +1100,7 @@ fn sample_consonance_score_with_loo(
     landscape.evaluate_pitch_score_log2(pitch_log2)
 }
 
+#[cfg(any(test, feature = "loo-diagnostic"))]
 #[allow(clippy::too_many_arguments)]
 fn legacy_sample_consonance_score_with_loo(
     pitch_log2: f32,
@@ -1104,7 +1108,7 @@ fn legacy_sample_consonance_score_with_loo(
     landscape: &Landscape,
     leave_self_out: bool,
     reference_loo_mode: ReferenceLooMode,
-    leave_self_out_harmonics: u8,
+    reference_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
     body_ratios: Option<&[f32]>,
 ) -> f32 {
@@ -1149,7 +1153,7 @@ fn legacy_sample_consonance_score_with_loo(
             }
         } else {
             // Generic assumed harmonic series (bodies without ratios, e.g. Sine).
-            let harmonics = leave_self_out_harmonics.max(1);
+            let harmonics = reference_harmonics.max(1);
             for harmonic in 1..=harmonics {
                 let harmonic_f = harmonic as f32;
                 let harmonic_log2 = current_clamped + harmonic_f.log2();
@@ -1167,25 +1171,6 @@ fn legacy_sample_consonance_score_with_loo(
         }
     }
     score
-}
-
-pub(crate) fn approx_loo_pitch_score(
-    landscape: &Landscape,
-    freq_hz: f32,
-    harmonics: u8,
-    ratios: Option<&[f32]>,
-) -> f32 {
-    let p = freq_hz.max(1.0).log2();
-    legacy_sample_consonance_score_with_loo(
-        p,
-        p,
-        landscape,
-        true,
-        ReferenceLooMode::ApproxHarmonics,
-        harmonics.max(1),
-        None,
-        ratios,
-    )
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1692,6 +1677,15 @@ impl AnyPitchCore {
         core
     }
 
+    pub(crate) fn environment_score(&mut self, landscape: &Landscape, freq_hz: f32) -> f32 {
+        let (input, scratch) = match self {
+            Self::PitchHillClimb(core) => (&mut core.loo_input, &mut core.loo_scratch),
+            Self::PitchPeakSampler(core) => (&mut core.loo_input, &mut core.loo_scratch),
+        };
+        let scan = loo_score_scan(landscape, input, scratch);
+        sample_ownership_score(landscape, freq_hz.max(1.0).log2(), scan.as_deref())
+    }
+
     pub(crate) fn loo_input_mut(&mut self) -> &mut LooInput {
         match self {
             Self::PitchHillClimb(core) => &mut core.loo_input,
@@ -1748,7 +1742,6 @@ fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchCon
     core.set_global_peaks(pitch.global_peak_count, pitch.global_peak_min_sep_cents);
     core.set_ratio_candidates(pitch.use_ratio_candidates, pitch.ratio_candidate_count);
     core.set_move_cost_time_scale(pitch.move_cost_time_scale);
-    core.set_leave_self_out_harmonics(pitch.leave_self_out_harmonics);
     core.set_proposal_interval_sec(pitch.proposal_interval_sec);
 }
 
@@ -1835,13 +1828,6 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.move_cost_time_scale,
             AnyPitchCore::PitchPeakSampler(_) => MoveCostTimeScale::LegacyIntegrationWindow,
-        }
-    }
-
-    pub(crate) fn leave_self_out_harmonics_for_test(&self) -> u8 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.leave_self_out_harmonics,
-            AnyPitchCore::PitchPeakSampler(_) => DEFAULT_LOO_HARMONICS,
         }
     }
 

@@ -21,7 +21,6 @@ let mover = sine()
     .ratio_candidates(4)
     .move_cost(0.65)
     .move_cost_time_scale("proposal_interval")
-    .leave_self_out_harmonics(1)
     .temperature(0.1)
     .avoid_neighbors(1.20)
     .glide(0.40);

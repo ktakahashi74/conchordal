@@ -92,7 +92,6 @@ const TUNING_FNS: &[&str] = &[
     "ratio_candidates",
     // neighbor awareness details
     "crowding_target",
-    "leave_self_out_harmonics",
     // lifecycle / respawn details
     "viability_scope",
     // global valuation and coupling
@@ -1204,16 +1203,6 @@ the two-argument form sets it explicitly in cents.",
         summary: "Estimate the field without this voice when choosing pitch.",
         details: "Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.",
     },
-    FnDoc {
-        name: "leave_self_out_harmonics",
-        owner: Owner::Population,
-        category: "neighbors",
-        style: Style::Method,
-        patch: Patch::Live,
-        usage: &["leave_self_out_harmonics(count)"],
-        summary: "Harmonic count for environment viability's retained self-subtraction estimate.",
-        details: "Applies to viability_scope(\"environment\") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.",
-    },
     // --- lifecycle ---
     FnDoc {
         name: "endurance",
@@ -1285,8 +1274,7 @@ the separate per-attack economy.",
         patch: Patch::Initial,
         usage: &["viability_scope(name)"],
         summary: "`\"environment\"` or `\"total\"`: choose the field used for viability.",
-        details: "Use `\"total\"` only when the selection question should include the voice's \
-own contribution.",
+        details: "Environment uses the same spectral-ownership estimate as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `\"total\"` only when selection should include the voice's own contribution.",
     },
     FnDoc {
         name: "dissonance_penalty",

@@ -1353,7 +1353,6 @@ fn population_spec_advanced_pitch_knobs_reach_spawned_core() {
                     .global_peaks(12, 40.0)
                     .ratio_candidates(5)
                     .move_cost_time_scale("proposal_interval")
-                    .leave_self_out_harmonics(4)
                     .pitch_apply_mode("glide")
                     .glide(0.08),
                 1
@@ -1385,7 +1384,6 @@ fn population_spec_advanced_pitch_knobs_reach_spawned_core() {
         core.move_cost_time_scale_for_test(),
         MoveCostTimeScale::ProposalInterval
     );
-    assert_eq!(core.leave_self_out_harmonics_for_test(), 4);
     assert_eq!(
         voice.effective_control.pitch.pitch_apply_mode,
         PitchApplyMode::Glide
@@ -1404,7 +1402,6 @@ fn population_advanced_pitch_knobs_live_update_reaches_individual() {
                 .global_peaks(10, 30)
                 .ratio_candidates(4)
                 .move_cost_time_scale("proposal_interval")
-                .leave_self_out_harmonics(3)
                 .pitch_apply_mode("glide")
                 .glide(0.05);
             flush();
@@ -1437,7 +1434,6 @@ fn population_advanced_pitch_knobs_live_update_reaches_individual() {
         core.move_cost_time_scale_for_test(),
         MoveCostTimeScale::ProposalInterval
     );
-    assert_eq!(core.leave_self_out_harmonics_for_test(), 3);
     assert_eq!(
         voice.effective_control.pitch.pitch_apply_mode,
         PitchApplyMode::Glide
@@ -1732,7 +1728,7 @@ fn spawn_payload_preserves_consonance_viability_window() {
     let LifecycleConfig::Sustain {
         continuous_recharge_score_low,
         continuous_recharge_score_high,
-        selection_approx_loo,
+        selection_environment,
         ..
     } = lifecycle
     else {
@@ -1740,7 +1736,7 @@ fn spawn_payload_preserves_consonance_viability_window() {
     };
     assert_eq!(continuous_recharge_score_low, Some(0.3));
     assert_eq!(continuous_recharge_score_high, Some(0.8));
-    assert!(selection_approx_loo);
+    assert!(selection_environment);
 }
 
 #[test]
@@ -1793,7 +1789,7 @@ fn lifecycle_seconds_resolve_to_normalized_runtime_rates() {
 }
 
 #[test]
-fn spawn_payload_preserves_selection_approx_loo() {
+fn spawn_payload_preserves_selection_environment() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
@@ -1817,17 +1813,17 @@ fn spawn_payload_preserves_selection_approx_loo() {
         panic!("expected entrain articulation");
     };
     let LifecycleConfig::Sustain {
-        selection_approx_loo,
+        selection_environment,
         ..
     } = lifecycle
     else {
         panic!("expected sustain lifecycle");
     };
-    assert!(selection_approx_loo);
+    assert!(selection_environment);
 }
 
 #[test]
-fn selection_approx_loo_can_override_consonance_viability_for_reference_assays() {
+fn selection_environment_can_override_consonance_viability_for_reference_assays() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
@@ -1852,13 +1848,13 @@ fn selection_approx_loo_can_override_consonance_viability_for_reference_assays()
         panic!("expected entrain articulation");
     };
     let LifecycleConfig::Sustain {
-        selection_approx_loo,
+        selection_environment,
         ..
     } = lifecycle
     else {
         panic!("expected sustain lifecycle");
     };
-    assert!(!selection_approx_loo);
+    assert!(!selection_environment);
 }
 
 #[test]
@@ -3069,13 +3065,13 @@ fn explicit_pitch_and_viability_choices_override_preset_defaults_in_either_order
             if let ArticulationCoreConfig::Entrain {
                 lifecycle:
                     LifecycleConfig::Sustain {
-                        selection_approx_loo,
+                        selection_environment,
                         ..
                     },
                 ..
             } = &spec.articulation
             {
-                assert!(!selection_approx_loo);
+                assert!(!selection_environment);
             }
         }
     }
@@ -3103,6 +3099,8 @@ fn counts_accept_integers_only_and_removed_verbs_are_unregistered() {
         "variant(harmonic());",
         "harmonic().pitch_smooth(0.12);",
         "harmonic().selection_approx_loo(true);",
+        "harmonic().leave_self_out_harmonics(2);",
+        "let p = place(harmonic(), at(220)); p.leave_self_out_harmonics(2);",
         "set_control_update_mode(\"snapshot_phased\");",
         "set_scaffold_off();",
         "harmonic().respawn_min_c_level(0.5);",

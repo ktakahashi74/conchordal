@@ -98,12 +98,24 @@ single-bin removal remains compiled only for tests and the `loo-diagnostic`
 feature, so the retained three-way conformance comparison stays reproducible.
 The public mode selector and its enum/configuration patches are removed.
 
-Environment viability keeps its legacy partial-score subtraction. At the current
-position, the new point **level** error is no worse in all 84 scenes, but its point
-**score** error is greater in 15 scenes, with tiny positive residuals where the old
-method was zero or closer to zero. The adopted criterion requires no worsening
-in every scene and provides no extra tolerance for this comparison. Thus viability
-is not switched, and `leave_self_out_harmonics` remains used for that consumer.
+Environment viability uses the same spectral-ownership score at the current
+pitch as movement. T-34 applies T-33's existing `1e-6` tie width to differences
+between absolute errors: a candidate error increase no larger than this width
+is equal, not worse. This is the existing tie rule, not a new tolerance.
+Rejudging the saved T-33 values passes all 84 scenes for point score/level and
+body score/level. The largest point-score increase is `6.092173e-14`; the other
+three quantities never increase. No new acquisition was needed for that decision.
+
+The ownership snapshot is prepared when either pitch self-exclusion or
+`viability_scope("environment")` needs it, including stationary Voices and both
+pitch cores. The score is cached with movement within the hop. Missing ownership
+retains the observed field. The ordinary mixed-field level used for basal drain
+and telemetry, and the optional PCM body-metabolism evaluator, keep their existing
+semantics; the environment scope selects the continuous-recharge score.
+The obsolete harmonic-count API and production partial-score subtraction are
+removed. Historical subtraction remains only in tests or `loo-diagnostic`.
+The conformance suite exercises the lifecycle consumer at the current pitch
+against the same PCM self-removal reference and retained approximate control.
 
 The full T-33 matrix was acquired once. A later focused check of the 28 tied
 scenes recorded all native scorer extrema, closing the coverage gap between the

@@ -683,7 +683,7 @@ impl Community {
         if self
             .voices
             .iter()
-            .any(|v| v.effective_control.pitch.leave_self_out)
+            .any(|v| v.effective_control.pitch.leave_self_out || v.selection_environment)
         {
             let total = &mut self.advance_scratch.loo_total_power_scan;
             total.resize(landscape.space.n_bins(), 0.0);
@@ -1205,7 +1205,7 @@ mod tests {
                     attack_recharge_fraction: Some(0.0),
                     continuous_recharge_score_low: None,
                     continuous_recharge_score_high: None,
-                    selection_approx_loo: false,
+                    selection_environment: false,
                     dissonance_penalty: 0.0,
                     envelope: crate::scenario::EnvelopeConfig::default(),
                 },
@@ -1238,7 +1238,7 @@ mod tests {
                     attack_recharge_fraction: Some(0.0),
                     continuous_recharge_score_low: Some(viability_low),
                     continuous_recharge_score_high: Some(0.95),
-                    selection_approx_loo: false,
+                    selection_environment: false,
                     dissonance_penalty: 0.0,
                     envelope: crate::scenario::EnvelopeConfig::default(),
                 },

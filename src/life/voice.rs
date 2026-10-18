@@ -61,7 +61,7 @@ pub struct Voice {
     pub(crate) social_coupling: f32,
     pub body: AnySoundBody,
     pub last_signal: ArticulationSignal,
-    pub(crate) selection_approx_loo: bool,
+    pub(crate) selection_environment: bool,
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
     amp_update_pending: bool,
@@ -275,7 +275,6 @@ impl Dirty {
             || update.sigma_cents.is_some()
             || update.random_candidates.is_some()
             || update.move_cost_time_scale.is_some()
-            || update.leave_self_out_harmonics.is_some()
             || update.pitch_apply_mode.is_some()
             || update.pitch_glide_tau_sec.is_some()
             || update.rearticulate_above_cents.is_some();
@@ -411,11 +410,11 @@ impl Voice {
         let target_freq = effective_control.pitch.freq.max(1.0);
         let target_pitch_log2 = target_freq.log2();
         let integration_window = PitchController::integration_window_for_freq(target_freq);
-        let selection_approx_loo = matches!(
+        let selection_environment = matches!(
             &articulation_config,
             ArticulationCoreConfig::Entrain {
                 lifecycle: LifecycleConfig::Sustain {
-                    selection_approx_loo: true,
+                    selection_environment: true,
                     ..
                 },
                 ..
@@ -595,7 +594,7 @@ impl Voice {
             social_coupling,
             body,
             last_signal: Default::default(),
-            selection_approx_loo,
+            selection_environment,
             phonation_scratch: Default::default(),
             active_render_notes: Vec::new(),
             amp_update_pending: false,
@@ -1187,14 +1186,9 @@ impl Voice {
         body: Option<super::body_fitness::BodyFitness>,
     ) -> ArticulationSignal {
         let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
-        let selection_score = if self.selection_approx_loo {
-            let ratios = self.body.snapshot().ratios;
-            self::pitch_core::approx_loo_pitch_score(
-                landscape,
-                self.body.base_freq_hz(),
-                self.effective_control.pitch.leave_self_out_harmonics,
-                ratios.as_deref(),
-            )
+        let selection_score = if self.selection_environment {
+            self.pitch_ctl
+                .environment_score(landscape, self.body.base_freq_hz())
         } else {
             landscape.evaluate_pitch_score(self.body.base_freq_hz())
         };
@@ -1993,7 +1987,7 @@ mod tests {
             attack_recharge_fraction: None,
             continuous_recharge_score_low: Some(low),
             continuous_recharge_score_high: Some(0.95),
-            selection_approx_loo: false,
+            selection_environment: false,
             dissonance_penalty: 0.0,
             envelope: crate::scenario::EnvelopeConfig::default(),
         };

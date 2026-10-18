@@ -543,11 +543,12 @@ still evaluated at its fundamental. The projection does not reconstruct individu
 Tone phase, delayed analysis history or release tails. No body-specific choice of
 self-exclusion algorithm or public mode selector exists.
 
-Environment viability retains its earlier score-subtraction rule: positive field
-contributions near assumed partials are subtracted with a 24-cent exponential
-scale and `1/n` weights. Explicit body ratios determine the positions; otherwise
-`leave_self_out_harmonics(n)` sets the integer harmonic count. That setting affects
-viability only, not the spectral-ownership estimate used for pitch movement.
+Environment viability (`viability_scope("environment")`) uses the same ownership
+estimate at the current pitch for its continuous-recharge score. It can be used
+independently of pitch self-exclusion, including by stationary Voices. Both
+consumers share the snapshot and cached score within the hop. The ordinary
+mixed-field level still drives basal drain and telemetry; the optional PCM
+body-metabolism evaluator retains its separate body-weighted evaluation.
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 
@@ -1004,7 +1005,7 @@ implemented.
 
 Explicit `glide`, `pitch_core`, and `viability_scope` settings take precedence over preset defaults regardless of builder order. Enum parameters accept only their exact canonical names; invalid names are positioned errors, and ineffective settings produce positioned warnings.
 
-**Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_harmonics(n)`.
+**Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`.
 
 **Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`; finite sustained participation with `rest()` / `rest(periods)`.
 

@@ -497,13 +497,13 @@ fn viability_scope_total_overrides_environment_default() {
         panic!("expected entrain articulation");
     };
     let LifecycleConfig::Sustain {
-        selection_approx_loo,
+        selection_environment,
         ..
     } = lifecycle
     else {
         panic!("expected sustain lifecycle");
     };
-    assert!(!selection_approx_loo);
+    assert!(!selection_environment);
 }
 
 #[test]
@@ -532,13 +532,13 @@ fn population_spec_viability_scope_total_overrides_environment_default() {
         panic!("expected entrain articulation");
     };
     let LifecycleConfig::Sustain {
-        selection_approx_loo,
+        selection_environment,
         ..
     } = lifecycle
     else {
         panic!("expected sustain lifecycle");
     };
-    assert!(!selection_approx_loo);
+    assert!(!selection_environment);
 }
 
 #[test]

@@ -19,7 +19,7 @@ pub enum LifecycleConfig {
         attack_recharge_fraction: Option<f32>,
         continuous_recharge_score_low: Option<f32>,
         continuous_recharge_score_high: Option<f32>,
-        selection_approx_loo: bool,
+        selection_environment: bool,
         dissonance_penalty: f32,
         envelope: EnvelopeConfig,
     },
@@ -68,7 +68,7 @@ impl fmt::Display for LifecycleConfig {
                 attack_recharge_fraction,
                 continuous_recharge_score_low,
                 continuous_recharge_score_high,
-                selection_approx_loo,
+                selection_environment,
                 dissonance_penalty,
                 envelope,
                 ..
@@ -95,7 +95,7 @@ impl fmt::Display for LifecycleConfig {
                 ) {
                     write!(f, ", consonance_viability=[{low:.3}, {high:.3}]")?;
                 }
-                if *selection_approx_loo {
+                if *selection_environment {
                     write!(f, ", environment_relative")?;
                 }
                 write!(f, ")")

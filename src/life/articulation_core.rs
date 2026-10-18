@@ -1416,7 +1416,7 @@ mod tests {
             attack_recharge_fraction: Some(0.0),
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            selection_approx_loo: false,
+            selection_environment: false,
             dissonance_penalty: 3.0,
             envelope: crate::scenario::EnvelopeConfig::default(),
         };

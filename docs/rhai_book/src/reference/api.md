@@ -1212,16 +1212,6 @@ Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running v
 
 Which voices are visible to crowding: own population, other populations (booleans).
 
-#### `leave_self_out_harmonics`
-
-```rhai,ignore
-leave_self_out_harmonics(count)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Harmonic count for environment viability's retained self-subtraction estimate. Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
-
 ### Lifecycle & Viability
 
 #### `viability_scope`
@@ -1232,7 +1222,7 @@ viability_scope(name)
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-`"environment"` or `"total"`: choose the field used for viability. Use `"total"` only when the selection question should include the voice's own contribution.
+`"environment"` or `"total"`: choose the field used for viability. Environment uses the same spectral-ownership estimate as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 
 ### Director & Global Parameters
 

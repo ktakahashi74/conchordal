@@ -95,9 +95,11 @@ whether the voice fits the total field including itself.
 Pitch movement has its own switch, `leave_self_out(true)`. It estimates each
 Voice's share of body-projected spectral power, removes that share from the
 observed density, and recomputes the field. All bodies use this one method;
-there is no mode selector. Environment viability retains the earlier partial-score
-subtraction, and `leave_self_out_harmonics(n)` controls that rule only when the
-body supplies no explicit partial ratios. Neither path is exact PCM subtraction.
+there is no mode selector. Environment viability uses the same estimate at the
+current pitch for its continuous-recharge score, even without pitch movement.
+The two consumers share the calculation within a hop. This is an estimate rather
+than exact PCM subtraction. The ordinary mixed-field level used for basal drain
+and telemetry is unchanged.
 
 ## Energy, death, and replacement
 

@@ -43,7 +43,7 @@ pub(super) struct PopulationSpec {
     pub(super) attack_recharge_fraction: Option<f32>,
     pub(super) continuous_recharge_score_low: Option<f32>,
     pub(super) continuous_recharge_score_high: Option<f32>,
-    pub(super) selection_approx_loo: bool,
+    pub(super) selection_environment: bool,
     pub(super) dissonance_penalty: Option<f32>,
     pub(super) adsr_user_set: bool,
     pub(super) rhythm_coupling: RhythmCouplingMode,
@@ -118,7 +118,7 @@ impl PopulationSpec {
             attack_recharge_fraction: None,
             continuous_recharge_score_low: None,
             continuous_recharge_score_high: None,
-            selection_approx_loo: false,
+            selection_environment: false,
             dissonance_penalty: None,
             adsr_user_set: false,
             rhythm_coupling: RhythmCouplingMode::TemporalOnly,
@@ -206,8 +206,8 @@ impl PopulationSpec {
     }
 
     pub(super) fn lifecycle_config(&self) -> LifecycleConfig {
-        let selection_approx_loo = if self.viability_scope_user_set {
-            self.selection_approx_loo
+        let selection_environment = if self.viability_scope_user_set {
+            self.selection_environment
         } else {
             self.continuous_recharge_score_low.is_some()
         };
@@ -217,7 +217,7 @@ impl PopulationSpec {
             || self.attack_recharge_fraction.is_some()
             || self.continuous_recharge_score_low.is_some()
             || self.continuous_recharge_score_high.is_some()
-            || selection_approx_loo
+            || selection_environment
             || self.dissonance_penalty.is_some();
         if energy_knobs || self.adsr_user_set {
             // An explicit ADSR is a timbral statement, not a mortality
@@ -230,7 +230,7 @@ impl PopulationSpec {
                 attack_recharge_fraction: self.attack_recharge_fraction,
                 continuous_recharge_score_low: self.continuous_recharge_score_low,
                 continuous_recharge_score_high: self.continuous_recharge_score_high,
-                selection_approx_loo,
+                selection_environment,
                 dissonance_penalty: self.dissonance_penalty.unwrap_or(0.0),
                 envelope: self.lifecycle_envelope(),
             }
@@ -434,12 +434,6 @@ impl PopulationSpec {
         )?;
         self.control.pitch.set_move_cost_time_scale(value);
         Ok(())
-    }
-
-    pub(super) fn set_leave_self_out_harmonics(&mut self, value: i64) {
-        self.control
-            .pitch
-            .set_leave_self_out_harmonics_clamped(value);
     }
 
     pub(super) fn set_pitch_apply_mode(
@@ -898,7 +892,7 @@ impl PopulationSpec {
             &[("environment", true), ("total", false)],
         )?;
         self.viability_scope_user_set = true;
-        self.selection_approx_loo = value;
+        self.selection_environment = value;
         Ok(())
     }
 

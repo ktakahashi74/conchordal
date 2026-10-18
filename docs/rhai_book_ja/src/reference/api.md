@@ -1212,16 +1212,6 @@ crowding_target(same_visible, other_visible)
 
 Which voices are visible to crowding: own population, other populations (booleans).
 
-#### `leave_self_out_harmonics`
-
-```rhai,ignore
-leave_self_out_harmonics(count)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Harmonic count for environment viability's retained self-subtraction estimate. Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
-
 ### LifecycleとViability
 
 #### `viability_scope`
@@ -1232,7 +1222,7 @@ viability_scope(name)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-`"environment"` or `"total"`: choose the field used for viability. Use `"total"` only when the selection question should include the voice's own contribution.
+`"environment"` or `"total"`: choose the field used for viability. Environment uses the same spectral-ownership estimate as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 
 ### Directorとglobal parameter
 

@@ -182,6 +182,7 @@ pub struct PhonationGateOpenEvent {
 
 #[derive(Default)]
 struct AdvanceScratch {
+    loo_total_power_scan: Vec<f32>,
     freq_snapshot: Vec<(u64, u64, f32)>,
     population_visibility: HashMap<u64, (bool, bool)>,
     neighbor_pitch_log2: Vec<f32>,
@@ -678,6 +679,25 @@ impl Community {
         let dt_step_sec = dt_sec / steps as f32;
         if !dt_step_sec.is_finite() || dt_step_sec <= 0.0 {
             return;
+        }
+        if self
+            .voices
+            .iter()
+            .any(|v| v.effective_control.pitch.leave_self_out)
+        {
+            let total = &mut self.advance_scratch.loo_total_power_scan;
+            total.resize(landscape.space.n_bins(), 0.0);
+            total.fill(0.0);
+            for voice in &mut self.voices {
+                let power = voice.project_loo_power(&landscape.space);
+                for (sum, &value) in total.iter_mut().zip(power) {
+                    *sum += value;
+                }
+            }
+            let total: std::sync::Arc<[f32]> = total.as_slice().into();
+            for voice in &mut self.voices {
+                voice.set_loo_total_power(total.clone());
+            }
         }
         let mut rhythms = landscape.rhythm;
         let global_coupling = self.global_coupling;

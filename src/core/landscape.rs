@@ -142,6 +142,7 @@ pub struct Landscape {
     pub perc_habituation_state_scan: Vec<f32>,
     /// Level-neutral baseline used by score erosion (mirrors representation theta).
     pub consonance_theta: f32,
+    pub(crate) loudness_exp: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     pub(crate) spectral_history:
@@ -198,6 +199,7 @@ impl Landscape {
             consonance_density_mass_eff: vec![0.0; n],
             perc_habituation_state_scan: vec![0.0; n],
             consonance_theta: 0.0,
+            loudness_exp: 1.0,
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             spectral_history: None,

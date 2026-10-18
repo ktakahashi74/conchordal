@@ -88,6 +88,10 @@ impl PitchController {
         self.last_target_salience
     }
 
+    pub(crate) fn loo_input_mut(&mut self) -> &mut super::pitch_core::LooInput {
+        self.core.loo_input_mut()
+    }
+
     pub(crate) fn apply_control(&mut self, pitch: &PitchControl) {
         self.core.apply_control(pitch);
     }
@@ -194,6 +198,20 @@ impl PitchController {
             );
             let features = FeaturesNow::from_occupancy_scan(&landscape.space, &self.occupancy_scan);
             self.adaptation.ensure_len(features.density.len());
+            #[cfg(feature = "loo-diagnostic")]
+            super::pitch_core::diagnostic::replay(
+                &self.core,
+                &self.rng,
+                current_pitch_log2,
+                target_pitch_log2,
+                current_freq,
+                self.integration_window,
+                landscape,
+                &self.adaptation,
+                &features,
+                neighbor_pitch_log2,
+                neighbor_salience,
+            );
             let proposal = self.core.propose_target_with_crowding_salience(
                 current_pitch_log2,
                 target_pitch_log2,

@@ -97,10 +97,12 @@ pub struct PitchHillClimbPitchCore {
     global_peak_min_sep_log2: f32,
     use_ratio_candidates: bool,
     ratio_candidate_count: usize,
-    /// The voice's own partial ratios, for "perceive with your own body" LOO.
-    /// `None` falls back to the generic assumed harmonic series.
+    /// Ratios for the unchanged exact fallback and diagnostic replay.
     body_ratios: Option<Arc<[f32]>>,
     exact_loo: Option<Box<ExactLooScratch>>,
+    loo_input: LooInput,
+    #[cfg(feature = "loo-diagnostic")]
+    diagnostic_variant: Option<&'static str>,
     scratch: std::cell::RefCell<ProposalScratch>,
 }
 
@@ -140,6 +142,9 @@ impl PitchHillClimbPitchCore {
             ratio_candidate_count: DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT,
             body_ratios: None,
             exact_loo: None,
+            loo_input: LooInput::default(),
+            #[cfg(feature = "loo-diagnostic")]
+            diagnostic_variant: None,
             scratch: Default::default(),
         }
     }
@@ -275,6 +280,8 @@ impl PitchHillClimbPitchCore {
         let (fmin, fmax) = landscape.freq_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
 
+        #[cfg(feature = "loo-diagnostic")]
+        let _ = scorer(current_pitch_log2);
         let adaptive_window_cents =
             (self.neighbor_step_log2.abs() * 1200.0 * 4.0).max(DEFAULT_LOCAL_WINDOW_CENTS);
         let window_bins = window_bins_from_cents(landscape, adaptive_window_cents);
@@ -347,6 +354,8 @@ impl PitchHillClimbPitchCore {
             };
         }
 
+        #[cfg(feature = "loo-diagnostic")]
+        diagnostic::record_candidates(scored);
         let mut best_pitch = current_target_log2;
         let mut best_score = f32::MIN;
         let mut best_distance = f32::INFINITY;
@@ -444,13 +453,33 @@ impl PitchCore for PitchHillClimbPitchCore {
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let body_ratios = self.body_ratios.clone();
-        let exact_loo_scan = exact_loo_consonance_score_scan(
-            landscape,
-            current_pitch_log2,
-            leave_self_out,
-            leave_self_out_mode,
-            &mut self.exact_loo,
-        );
+        #[cfg(feature = "loo-diagnostic")]
+        let variant = self
+            .diagnostic_variant
+            .unwrap_or_else(diagnostic::runtime_variant);
+        #[cfg(not(feature = "loo-diagnostic"))]
+        let variant = "corrected";
+        #[cfg(feature = "loo-diagnostic")]
+        diagnostic::set_variant(variant);
+        let leave_self_out_mode = if variant == "exact" {
+            LeaveSelfOutMode::ExactScan
+        } else {
+            leave_self_out_mode
+        };
+        let exact_loo_scan: Option<Arc<[f32]>> = if !leave_self_out || variant == "legacy" {
+            None
+        } else if matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan) || variant == "exact" {
+            exact_loo_consonance_score_scan(
+                landscape,
+                current_pitch_log2,
+                true,
+                LeaveSelfOutMode::ExactScan,
+                &mut self.exact_loo,
+            )
+            .map(Arc::from)
+        } else {
+            approximate_loo_score_scan(landscape, &mut self.loo_input, &mut self.exact_loo)
+        };
         self.propose_with_scorer(
             current_pitch_log2,
             current_target_log2,
@@ -498,9 +527,10 @@ pub struct PitchPeakSamplerCore {
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     leave_self_out: bool,
-    /// The voice's own partial ratios, for "perceive with your own body" LOO.
-    /// `None` falls back to the generic assumed harmonic series.
+    /// Ratios for the unchanged exact fallback and diagnostic replay.
     body_ratios: Option<Arc<[f32]>>,
+    exact_loo: Option<Box<ExactLooScratch>>,
+    loo_input: LooInput,
 }
 
 impl PitchPeakSamplerCore {
@@ -533,6 +563,8 @@ impl PitchPeakSamplerCore {
             crowding_sigma_cents: 60.0,
             leave_self_out: false,
             body_ratios: None,
+            exact_loo: None,
+            loo_input: LooInput::default(),
         }
     }
 
@@ -665,6 +697,11 @@ impl PitchCore for PitchPeakSamplerCore {
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let body_ratios = self.body_ratios.clone();
+        let loo_scan = if leave_self_out {
+            approximate_loo_score_scan(landscape, &mut self.loo_input, &mut self.exact_loo)
+        } else {
+            None
+        };
         let mut scorer = |pitch_log2: f32| -> f32 {
             adjusted_pitch_score_impl(
                 pitch_log2,
@@ -680,7 +717,7 @@ impl PitchCore for PitchPeakSamplerCore {
                 leave_self_out,
                 LeaveSelfOutMode::ApproxHarmonics,
                 DEFAULT_LOO_HARMONICS,
-                None,
+                loo_scan.as_deref(),
                 body_ratios.as_deref(),
                 crowding_strength,
                 crowding_sigma_cents,
@@ -965,11 +1002,71 @@ fn adjusted_pitch_score_impl(
     };
     let base = weighted_score - penalty - gravity_penalty - crowding_penalty;
     let idx = landscape.space.index_of_log2(clamped).unwrap_or(0);
-    base + perceptual.score_adjustment(idx)
+    let result = base + perceptual.score_adjustment(idx);
+    #[cfg(feature = "loo-diagnostic")]
+    diagnostic::record_score(clamped, score, result);
+    result
 }
 
 #[allow(clippy::too_many_arguments)]
 fn sample_consonance_score_with_loo(
+    pitch_log2: f32,
+    current_pitch_log2: f32,
+    landscape: &Landscape,
+    leave_self_out: bool,
+    leave_self_out_mode: LeaveSelfOutMode,
+    leave_self_out_harmonics: u8,
+    exact_loo_scan: Option<&[f32]>,
+    body_ratios: Option<&[f32]>,
+) -> f32 {
+    #[cfg(feature = "loo-diagnostic")]
+    if diagnostic::variant() == "legacy" {
+        return legacy_sample_consonance_score_with_loo(
+            pitch_log2,
+            current_pitch_log2,
+            landscape,
+            leave_self_out,
+            leave_self_out_mode,
+            leave_self_out_harmonics,
+            exact_loo_scan,
+            body_ratios,
+        );
+    }
+    if leave_self_out
+        && matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan)
+        && exact_loo_scan.is_none()
+    {
+        return legacy_sample_consonance_score_with_loo(
+            pitch_log2,
+            current_pitch_log2,
+            landscape,
+            leave_self_out,
+            leave_self_out_mode,
+            leave_self_out_harmonics,
+            exact_loo_scan,
+            body_ratios,
+        );
+    }
+    let _ = (
+        current_pitch_log2,
+        leave_self_out_mode,
+        leave_self_out_harmonics,
+        body_ratios,
+    );
+    if leave_self_out && let Some(scan) = exact_loo_scan {
+        landscape
+            .space
+            .assert_scan_len_named(scan, "loo_score_scan");
+        let raw = landscape.sample_linear_log2(scan, pitch_log2);
+        let h = landscape.sample_linear_log2(&landscape.perc_habituation_state_scan, pitch_log2);
+        return crate::core::habituation::erode_score(raw, h, landscape.consonance_theta);
+    }
+    // Without an ownership estimate, preserve the observed field.
+    landscape.evaluate_pitch_score_log2(pitch_log2)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn legacy_sample_consonance_score_with_loo(
     pitch_log2: f32,
     current_pitch_log2: f32,
     landscape: &Landscape,
@@ -1042,19 +1139,63 @@ pub(crate) fn approx_loo_pitch_score(
     landscape: &Landscape,
     freq_hz: f32,
     harmonics: u8,
-    body_ratios: Option<&[f32]>,
+    ratios: Option<&[f32]>,
 ) -> f32 {
-    let pitch_log2 = freq_hz.max(1.0).log2();
-    sample_consonance_score_with_loo(
-        pitch_log2,
-        pitch_log2,
+    let p = freq_hz.max(1.0).log2();
+    legacy_sample_consonance_score_with_loo(
+        p,
+        p,
         landscape,
         true,
         LeaveSelfOutMode::ApproxHarmonics,
         harmonics.max(1),
         None,
-        body_ratios,
+        ratios,
     )
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct LooInput {
+    pub(crate) own_power_scan: Vec<f32>,
+    pub(crate) total_power_scan: Arc<[f32]>,
+    pub(crate) computed_score: Option<Option<Arc<[f32]>>>,
+}
+
+fn approximate_loo_score_scan(
+    landscape: &Landscape,
+    input: &mut LooInput,
+    scratch: &mut Option<Box<ExactLooScratch>>,
+) -> Option<Arc<[f32]>> {
+    // Both empty means no Community ownership snapshot has been supplied.
+    if input.own_power_scan.is_empty() && input.total_power_scan.is_empty() {
+        return None;
+    }
+    let space = &landscape.space;
+    space.assert_scan_len_named(&input.own_power_scan, "loo_own_power_scan");
+    space.assert_scan_len_named(&input.total_power_scan, "loo_total_power_scan");
+    space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity_scan");
+    if let Some(score) = &input.computed_score {
+        return score.clone();
+    }
+
+    let mut density = landscape.subjective_intensity.clone();
+    let mut removed = false;
+    for (i, value) in density.iter_mut().enumerate() {
+        let own = input.own_power_scan[i];
+        let total = input.total_power_scan[i];
+        if own > 0.0 && total > 0.0 && own.is_finite() && total.is_finite() {
+            let fraction = (own / total).clamp(0.0, 1.0);
+            *value *= (1.0 - fraction).powf(landscape.loudness_exp);
+            removed |= fraction > 0.0 && *value != landscape.subjective_intensity[i];
+        }
+    }
+    if !removed {
+        input.computed_score = Some(None);
+        return None;
+    }
+    let score: Arc<[f32]> = recompute_loo_score_scan(landscape, &density, scratch).into();
+    input.computed_score = Some(Some(score.clone()));
+    Some(score)
 }
 
 #[derive(Clone, Debug)]
@@ -1112,6 +1253,15 @@ fn exact_loo_consonance_score_scan(
     let mut density_loo = landscape.subjective_intensity.clone();
     density_loo[current_idx] = (density_loo[current_idx] - current_mass).max(0.0);
 
+    Some(recompute_loo_score_scan(landscape, &density_loo, scratch))
+}
+
+fn recompute_loo_score_scan(
+    landscape: &Landscape,
+    density_loo: &[f32],
+    scratch: &mut Option<Box<ExactLooScratch>>,
+) -> Vec<f32> {
+    let n = landscape.space.n_bins();
     let stale = scratch.as_ref().is_none_or(|cache| {
         cache.space.fmin != landscape.space.fmin
             || cache.space.fmax != landscape.space.fmax
@@ -1141,7 +1291,7 @@ fn exact_loo_consonance_score_scan(
     let cache = scratch.as_mut().unwrap();
     let eps = landscape.roughness_ref_eps.max(1e-12);
     cache.potentials.compute_shape(
-        &density_loo,
+        density_loo,
         &landscape.space,
         (&cache.harmonicity, &cache.roughness),
         eps,
@@ -1156,7 +1306,7 @@ fn exact_loo_consonance_score_scan(
         let r01 = roughness_ratio_to_state01(*r_shape / roughness_ref_peak, roughness_k);
         out.push(landscape.consonance_kernel.score(h01, r01));
     }
-    Some(out)
+    out
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1505,6 +1655,13 @@ impl AnyPitchCore {
         };
         core.apply_control(pitch);
         core
+    }
+
+    pub(crate) fn loo_input_mut(&mut self) -> &mut LooInput {
+        match self {
+            Self::PitchHillClimb(core) => &mut core.loo_input,
+            Self::PitchPeakSampler(core) => &mut core.loo_input,
+        }
     }
 
     pub(crate) fn apply_control(&mut self, pitch: &PitchControl) {
@@ -1907,7 +2064,16 @@ mod tests {
     fn approx_loo_pitch_score_reduces_positive_self_peak_score() {
         let landscape = test_landscape(&[(220.0, 1.0)]);
         let raw = landscape.evaluate_pitch_score(220.0);
-        let loo = approx_loo_pitch_score(&landscape, 220.0, 1, None);
+        let loo = legacy_sample_consonance_score_with_loo(
+            220.0f32.log2(),
+            220.0f32.log2(),
+            &landscape,
+            true,
+            LeaveSelfOutMode::ApproxHarmonics,
+            1,
+            None,
+            None,
+        );
 
         assert!(raw > 0.0);
         assert!(loo < raw);
@@ -1924,7 +2090,7 @@ mod tests {
 
         // On the body's own 2.5 partial: body path subtracts it, generic path does not.
         let cand_25 = (2.5 * f0).log2();
-        let body_25 = sample_consonance_score_with_loo(
+        let body_25 = legacy_sample_consonance_score_with_loo(
             cand_25,
             current,
             &landscape,
@@ -1934,7 +2100,7 @@ mod tests {
             None,
             Some(&ratios),
         );
-        let generic_25 = sample_consonance_score_with_loo(
+        let generic_25 = legacy_sample_consonance_score_with_loo(
             cand_25,
             current,
             &landscape,
@@ -1951,7 +2117,7 @@ mod tests {
 
         // On the 2f position: generic (k=2) subtracts it, the body ([1.0, 2.5]) must not.
         let cand_20 = (2.0 * f0).log2();
-        let body_20 = sample_consonance_score_with_loo(
+        let body_20 = legacy_sample_consonance_score_with_loo(
             cand_20,
             current,
             &landscape,
@@ -1961,7 +2127,7 @@ mod tests {
             None,
             Some(&ratios),
         );
-        let generic_20 = sample_consonance_score_with_loo(
+        let generic_20 = legacy_sample_consonance_score_with_loo(
             cand_20,
             current,
             &landscape,
@@ -1987,7 +2153,7 @@ mod tests {
         let harmonic_ratios = [1.0f32, 2.0, 3.0];
         for cand_hz in [f0, 1.5 * f0, 2.0 * f0, 2.7 * f0, 3.0 * f0] {
             let cand = cand_hz.log2();
-            let body = sample_consonance_score_with_loo(
+            let body = legacy_sample_consonance_score_with_loo(
                 cand,
                 current,
                 &landscape,
@@ -1997,7 +2163,7 @@ mod tests {
                 None,
                 Some(&harmonic_ratios),
             );
-            let generic = sample_consonance_score_with_loo(
+            let generic = legacy_sample_consonance_score_with_loo(
                 cand,
                 current,
                 &landscape,
@@ -2332,39 +2498,25 @@ mod tests {
         );
         assert!(current_no_loo > nearby_no_loo);
 
-        let current_with_loo = adjusted_pitch_score(
+        let current_with_loo = legacy_sample_consonance_score_with_loo(
             current,
             current,
-            0.0,
-            current,
-            0.0,
-            1.0,
-            0.0,
-            1,
             &landscape,
-            &perceptual,
             true,
-            0.0,
-            0.0,
-            &[],
-            &[],
+            LeaveSelfOutMode::ApproxHarmonics,
+            DEFAULT_LOO_HARMONICS,
+            None,
+            None,
         );
-        let nearby_with_loo = adjusted_pitch_score(
+        let nearby_with_loo = legacy_sample_consonance_score_with_loo(
             nearby,
             current,
-            0.0,
-            current,
-            0.0,
-            1.0,
-            0.0,
-            1,
             &landscape,
-            &perceptual,
             true,
-            0.0,
-            0.0,
-            &[],
-            &[],
+            LeaveSelfOutMode::ApproxHarmonics,
+            DEFAULT_LOO_HARMONICS,
+            None,
+            None,
         );
         assert!(nearby_with_loo > current_with_loo);
     }
@@ -3116,3 +3268,11 @@ mod tests {
         );
     }
 }
+
+#[cfg(feature = "loo-diagnostic")]
+#[path = "pitch_loo_diagnostic.rs"]
+pub(crate) mod diagnostic;
+
+#[cfg(test)]
+#[path = "pitch_loo_tests.rs"]
+mod loo_tests;

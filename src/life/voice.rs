@@ -28,7 +28,6 @@ pub(crate) mod pitch_core;
 #[path = "sound_body.rs"]
 pub(crate) mod sound_body;
 
-use self::pitch_core::approx_loo_pitch_score;
 pub use articulation_core::{
     AnyArticulationCore, ArticulationCore, ArticulationSignal, ArticulationState,
     ArticulationWrapper, DroneCore, KuramotoCore, PinkNoise, PlannedGate, PlannedPitch,
@@ -842,6 +841,13 @@ impl Voice {
         neighbor_salience: &[f32],
         listener_pressure: ListenerPressure,
     ) {
+        #[cfg(feature = "loo-diagnostic")]
+        self::pitch_core::diagnostic::set_owner(
+            self.id,
+            self.metadata.population_id,
+            self.metadata.generation,
+            self.control_tick.unwrap_or(0),
+        );
         let current_freq = self.body.base_freq_hz();
         let previous = self.target_pitch_log2();
         self.participation_pitch.adopted = self.pitch_ctl.update_pitch_target(
@@ -1184,7 +1190,7 @@ impl Voice {
         let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
         let selection_score = if self.selection_approx_loo {
             let ratios = self.body.snapshot().ratios;
-            approx_loo_pitch_score(
+            self::pitch_core::approx_loo_pitch_score(
                 landscape,
                 self.body.base_freq_hz(),
                 self.effective_control.pitch.leave_self_out_harmonics,
@@ -1689,6 +1695,27 @@ impl Voice {
             smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
             fs,
         })
+    }
+
+    pub(crate) fn project_loo_power(&mut self, space: &Log2Space) -> &[f32] {
+        let input = self.pitch_ctl.loo_input_mut();
+        input.computed_score = None;
+        input.own_power_scan.resize(space.n_bins(), 0.0);
+        input.own_power_scan.fill(0.0);
+        if self.effective_control.body.routing.to_habitat {
+            self.body
+                .project_spectral_body(&mut input.own_power_scan, space, &self.last_signal);
+        }
+        for value in &mut input.own_power_scan {
+            *value *= *value;
+        }
+        &input.own_power_scan
+    }
+
+    pub(crate) fn set_loo_total_power(&mut self, total: std::sync::Arc<[f32]>) {
+        let input = self.pitch_ctl.loo_input_mut();
+        input.total_power_scan = total;
+        input.computed_score = None;
     }
 
     pub fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {

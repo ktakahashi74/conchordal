@@ -123,6 +123,7 @@ impl SynchronousAnalysis {
                 &self.du,
                 &mut self.landscape.roughness,
             );
+            self.landscape.loudness_exp = params.loudness_exp.max(0.01);
             self.landscape.subjective_intensity.copy_from_slice(density);
             self.landscape.loudness_mass = crate::core::density::density_to_mass(density, &self.du);
             self.landscape.roughness01_scalar =

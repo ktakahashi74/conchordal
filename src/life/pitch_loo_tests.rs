@@ -141,6 +141,10 @@ fn ownership_scan_boundary_is_checked() {
     loo_score_scan(&l, &mut input, &mut None);
 }
 
+// The captured values are a Linux f32 snapshot. Other platforms' libm differs by a
+// few ulps, which this bound does not absorb; cross-platform consumer agreement is
+// covered by the rendered conformance test instead.
+#[cfg(target_os = "linux")]
 #[test]
 fn captured_work_proposals_preserve_scores_ranks_and_acceptance_probabilities() {
     let records: Vec<serde_json::Value> =

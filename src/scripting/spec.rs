@@ -372,24 +372,6 @@ impl PopulationSpec {
         self.control.pitch.set_leave_self_out(enabled);
     }
 
-    pub(super) fn set_leave_self_out_mode(
-        &mut self,
-        name: &str,
-        position: Position,
-    ) -> Result<(), Box<EvalAltResult>> {
-        let value = parse_enum(
-            "leave_self_out_mode",
-            name,
-            position,
-            &[
-                ("approx", LeaveSelfOutMode::ApproxHarmonics),
-                ("exact", LeaveSelfOutMode::ExactScan),
-            ],
-        )?;
-        self.control.pitch.set_leave_self_out_mode(value);
-        Ok(())
-    }
-
     pub(super) fn set_move_cost_coeff(&mut self, value: f32) {
         self.control.pitch.set_move_cost_coeff_clamped(value);
     }

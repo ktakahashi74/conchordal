@@ -377,22 +377,19 @@ fn landscape_weight(population_spec: PopulationSpec, value: f64) -> PopulationSp
 /// [tuning] Nonnegative dimensionless landscape-objective weight, default 1.
 fn landscape_weight(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
-/// Subtract the voice's own spectral contribution when evaluating the field.
+/// Estimate the field without this voice when choosing pitch.
+/// Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
 fn leave_self_out(population: Population, enabled: bool) -> Population;
-/// Subtract the voice's own spectral contribution when evaluating the field.
+/// Estimate the field without this voice when choosing pitch.
+/// Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
 fn leave_self_out(population_spec: PopulationSpec, enabled: bool) -> PopulationSpec;
 
-/// [tuning] Number of harmonics used for approximate self-subtraction.
+/// [tuning] Harmonic count for environment viability's retained self-subtraction estimate.
+/// Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
 fn leave_self_out_harmonics(population: Population, count: i64) -> Population;
-/// [tuning] Number of harmonics used for approximate self-subtraction.
+/// [tuning] Harmonic count for environment viability's retained self-subtraction estimate.
+/// Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
 fn leave_self_out_harmonics(population_spec: PopulationSpec, count: i64) -> PopulationSpec;
-
-/// [research] Choose approximate (`approx`) or exact (`exact`) self-removal.
-/// Canonical, case-sensitive names: `approx` (default) and `exact`. Selects approximate harmonic removal or an exact scan when `leave_self_out()` is enabled.
-fn leave_self_out_mode(population: Population, name: String) -> Population;
-/// [research] Choose approximate (`approx`) or exact (`exact`) self-removal.
-/// Canonical, case-sensitive names: `approx` (default) and `exact`. Selects approximate harmonic removal or an exact scan when `leave_self_out()` is enabled.
-fn leave_self_out_mode(population_spec: PopulationSpec, name: String) -> PopulationSpec;
 
 /// Linear interpolation of positions between two frequencies.
 fn line(start_hz: f64, end_hz: f64) -> Placement;

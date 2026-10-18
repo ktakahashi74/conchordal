@@ -56,51 +56,16 @@ pub(crate) fn add_log2_energy(amps: &mut [f32], space: &Log2Space, freq_hz: f32,
     let log_f = freq_hz.log2();
     let base = space.centers_log2[0];
     let step = space.step();
-    let pos = (log_f - base) / step;
-    let idx_base = pos.floor();
-    let idx = idx_base as isize;
-    if idx < 0 {
-        return;
-    }
-    let idx = idx as usize;
-    let frac = pos - idx_base;
-    if idx + 1 < amps.len() {
-        amps[idx] += energy * (1.0 - frac);
-        amps[idx + 1] += energy * frac;
-    } else if idx < amps.len() {
-        amps[idx] += energy;
+    // The analysis front end places each resolved peak in one bin.
+    let idx = ((log_f - base) / step).round() as usize;
+    if let Some(amp) = amps.get_mut(idx) {
+        *amp += energy;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn add_log2_energy_reference(amps: &mut [f32], space: &Log2Space, freq_hz: f32, energy: f32) {
-        if !freq_hz.is_finite() || energy == 0.0 {
-            return;
-        }
-        if freq_hz < space.fmin || freq_hz > space.fmax {
-            return;
-        }
-        let log_f = freq_hz.log2();
-        let base = space.centers_log2[0];
-        let step = space.step();
-        let pos = (log_f - base) / step;
-        let idx_base = pos.floor();
-        let idx = idx_base as isize;
-        if idx < 0 {
-            return;
-        }
-        let idx = idx as usize;
-        let frac = pos - idx_base;
-        if idx + 1 < amps.len() {
-            amps[idx] += energy * (1.0 - frac);
-            amps[idx + 1] += energy * frac;
-        } else if idx < amps.len() {
-            amps[idx] += energy;
-        }
-    }
 
     fn harmonic_ratio_reference(genotype: &TimbreGenotype, k: usize) -> f32 {
         let kf = k.max(1) as f32;
@@ -128,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn add_log2_energy_matches_reference() {
+    fn resolved_peak_projection_preserves_mass_and_support() {
         let space = Log2Space::new(55.0, 1760.0, 24);
         let mut got = vec![0.0f32; space.n_bins()];
         let mut want = vec![0.0f32; space.n_bins()];
@@ -146,9 +111,13 @@ mod tests {
         ];
         for (freq_hz, energy) in cases {
             add_log2_energy(&mut got, &space, freq_hz, energy);
-            add_log2_energy_reference(&mut want, &space, freq_hz, energy);
         }
 
+        want[0] = 0.25;
+        want[24] = 1.0;
+        want[48] = 0.75;
+        want[72] = -0.5;
+        want[120] = 0.125;
         for (lhs, rhs) in got.iter().zip(want.iter()) {
             assert!((lhs - rhs).abs() <= 1e-6);
         }

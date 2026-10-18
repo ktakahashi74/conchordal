@@ -519,18 +519,28 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 ## 5.3 ピッチリターゲティングとクラウディング
 
-エージェントは静的ではない。適応度を改善するために周波数空間を移動する。候補評価は候補基音位置のhabituationで浸食されたscoreを読む。`ExactScan`は現在の基音ビンを消してraw scoreを計算し直し、比較前に同じlocal erosionを適用する。身体込みの代謝を有効にしても、移動の候補採点はこの点評価のままである。energyの変化は、既存のenergyに依存する振る舞いを通じて、その後の移動へ波及しうる。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
+エージェントは静的ではない。適応度を改善するために周波数空間を移動する。候補評価は候補基音位置のhabituationで浸食されたscoreを読む。自己除外を有効にすると、身体投影から推定した残余密度でraw scoreを計算し直し、比較前に同じlocal erosionを適用する。身体込みの代謝を有効にしても、移動の候補採点はこの点評価のままである。energyの変化は、既存のenergyに依存する振る舞いを通じて、その後の移動へ波及しうる。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
 
 **音高の適用**: ピッチ移動は `PitchApplyMode` が決める。`GateSnap` はノートの境界でピッチを離散的に切り替え（各ノートは一つの安定した周波数で鳴る）、`Glide` は連続的なポルタメントで移る。`seek_consonance()` を使うボイスでは、スクリプトが明示しない限りモードは発声タイミングから自動的に決まる。持続するVoice（`once()`）と明示の持続＋参加はGlide、打ち直すVoice（pulse / coupled）は発音時に切り替わる。参加の時計を持たない自由音高のHoldでは、Rearticulateの境界0は採用時に打ち直し、正の境界は最後の発音音高からの変位に応じて滑るか打ち直すかを選ぶ。持続＋参加の明示のGateSnapは、採用した目標を鳴らすと選ぶ機会まで保留する。
 
 **クラウディング**: クラウディング（相互排斥）とピッチ適応は、単一の共有された占有場（occupancy field）を参照する。各占有*基音*（生 f0）を中心とするガウシアンペナルティで、その幅は `crowding_sigma_cents`（デフォルト 60）が定め、強度は `crowding_strength` が制御する。これにより、エージェント同士が同一周波数に収束して「団子」状態になるのを防ぐ。オクターブ等価（クロマ）のペナルティは適用せず、オクターブ関係は協和ポテンシャルを通してだけ作用する。
 
-**Leave-Self-Out**: ピッチ評価には次の二つの近似がある。
+**Leave-Self-Out**: 音高移動では、自分を除いた場を近似する。
 
-*   `ApproxHarmonics`: 想定した部分音位置の周辺で、正の地形scoreを差し引く。距離による減衰は24セントを尺度とする指数関数、重みは部分音の添字ごとの`1/n`である。明示された身体の比率があればその位置を、なければ整数倍音列を使う。重みは実際に放射された部分音振幅ではない。
-*   `ExactScan`: 前処理済みのsubjective-intensity密度から現在の基音ビン一つを消し、H・R・Cを再計算する。上部部分音は残り、消したビンにある他者の寄与も失われる。名称は既存モードの識別子であり、音源単位の厳密な自己除去を意味しない。そのビンに正の有限な密度がなければ`ApproxHarmonics`へ戻る。
+`leave_self_out(true)`による音高移動の自己除外は、すべての身体で共通の所有率推定を使う。
+habitat busへ送る各Voiceの身体投影を二乗し、全Voiceの投影パワーに対する自己の割合を求める。
+静止部分音は最近接の解析ビンへ置き、Harmonicのmotionは描画と同じ共通Hz偏移の正弦変調から
+周期平均のパワー分布を求める。観測密度へ残余パワー比の既存loudness指数乗を掛け、H・R・scoreを
+再計算する。候補の比較前には通常のhabituationによる浸食を適用する。投影とscoreは同じhop内で
+再利用し、次のhopで無効化する。所有率が未供給なら観測場を保つ。
 
-どちらも他者だけの音を再構成してから解析する方式ではない。結果の地形は候補基音位置で評価し、候補身体のスペクトル全体では平均しない。
+音源別PCMを引いた厳密解析ではなく、候補基音での点評価である。個別Toneの変調位相、解析遅延、
+releaseの尾を復元する投影ではない。身体の種類で自己除外方式を切り替える分岐や公開mode選択はない。
+
+`viability_scope("environment")`による生存選択は従来の得点減算を保つ。想定部分音位置の正の得点を
+24 centの指数減衰と`1/n`重みで引く。身体が比率を持つ場合はその比率を使い、持たない場合は
+`leave_self_out_harmonics(n)`が整数倍音の数を指定する。この設定は生存選択だけに作用し、音高移動の
+所有率推定には作用しない。
 
 **探索温度**: 単一の `temperature` パラメータが確率的な探索の強さを制御し、両方のピッチコアで共有される。`0` では貪欲に落ち着き（ヒルクライムは明確な改善があるときだけ動き、ピークサンプラーは最尤候補を選ぶ）、値を上げるとヒルクライムは Metropolis 規則で下り方向の移動も受け入れ、ピークサンプラーの候補選択はソフトマックスで和らぐ。これにより局所最適からの脱出が可能になる。これは同時に運動の緊張のノブでもある。温度の高いボイスは協和から外れて彷徨い、温度を下げれば協和へ落ち着く——緊張と解決が探索温度そのものとして現れる。
 
@@ -905,7 +915,7 @@ entrained／steady／flow以外は、配置時の書き込み前にerrorにす�
 
 明示した`glide`、`pitch_core`、`viability_scope`は、builderの順序にかかわらずpresetの省略値より優先される。列挙値の引数は正規名だけを受け付け、不正名は位置付きのerrorとなる。効かない設定には位置付きの警告を出す。
 
-*   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`。
+*   クラウディング: `avoid_neighbors(strength)`（デフォルトのシグマ）／ `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`。
 *   発声: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(v)`；持続は `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`；有限音長の持続＋参加には`rest()`／`rest(periods)`。
 *   **リズム（5.4節）**: `metric()`は共有拍への同期、`entrained()`・`steady()`・`flow()`は音を参照する参加を選ぶ。`entrainment(v)`は選んだ関係の中で影響の強さを変え、`microtiming(v)`は同期目標だけをずらす。`temporal_basin`は生成側の拍の地形とmetricの身体の初期周期を設定し、`intrinsic_rate(hz)`はentrained／steady／flowの独立した創始の身体の尺度（省略時2 Hz）を置き、音長と間の秒数も一緒に変える。アーティキュレーション側の`rhythm_freq(v)`、`rhythm_coupling_vitality(lambda_v, v_floor)`、`rhythm_reward(rho_t, "attack_phase_match")`は別の制御である。rhythm_rewardは自律attackが有効なEntrainのHoldで使う。
 *   ライフサイクル/生存可能性: `endurance(sec)`, 任意の`recovery(sec)`, `attack_cost_fraction(v)`, `attack_recharge_fraction(v)`, `consonance_viability(low, high)`, `dissonance_penalty(v)`, `phonate_when_viable()`（viability windowが開くまで最初のonsetを保留）。

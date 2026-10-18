@@ -21,7 +21,7 @@ fn zero_self_preserves_observed_field() {
         total_power_scan: vec![1.0; l.space.n_bins()].into(),
         ..Default::default()
     };
-    assert!(approximate_loo_score_scan(&l, &mut input, &mut None).is_none());
+    assert!(loo_score_scan(&l, &mut input, &mut None).is_none());
     for &p in &l.space.centers_log2 {
         assert_eq!(
             sample_consonance_score_with_loo(
@@ -29,7 +29,7 @@ fn zero_self_preserves_observed_field() {
                 p,
                 &l,
                 true,
-                LeaveSelfOutMode::ApproxHarmonics,
+                ReferenceLooMode::ApproxHarmonics,
                 1,
                 None,
                 None
@@ -53,7 +53,7 @@ fn shared_unison_leaves_other_voice_power() {
         total_power_scan: total.into(),
         ..Default::default()
     };
-    let actual = approximate_loo_score_scan(&l, &mut input, &mut None).unwrap();
+    let actual = loo_score_scan(&l, &mut input, &mut None).unwrap();
     let mut residual = l.subjective_intensity.clone();
     residual[idx] *= 0.75f32.powf(l.loudness_exp);
     assert!(residual[idx] > 0.0);
@@ -63,7 +63,7 @@ fn shared_unison_leaves_other_voice_power() {
         &l,
         220.0f32.log2(),
         true,
-        LeaveSelfOutMode::ExactScan,
+        ReferenceLooMode::ExactScan,
         &mut None,
     )
     .unwrap();
@@ -84,9 +84,9 @@ fn isolated_fundamental_matches_exact_ranks_and_adoption() {
         total_power_scan: own.into(),
         ..Default::default()
     };
-    let approx = approximate_loo_score_scan(&l, &mut input, &mut None).unwrap();
+    let approx = loo_score_scan(&l, &mut input, &mut None).unwrap();
     let exact =
-        exact_loo_consonance_score_scan(&l, current, true, LeaveSelfOutMode::ExactScan, &mut None)
+        exact_loo_consonance_score_scan(&l, current, true, ReferenceLooMode::ExactScan, &mut None)
             .unwrap();
     // Both residuals are the same; no score-error budget is needed.
     assert_eq!(&*approx, exact.as_slice());
@@ -95,7 +95,7 @@ fn isolated_fundamental_matches_exact_ranks_and_adoption() {
     a.set_temperature(0.12);
     a.loo_input = input;
     let mut b = a.clone();
-    b.set_leave_self_out_mode(LeaveSelfOutMode::ExactScan);
+    b.set_reference_loo_mode(ReferenceLooMode::ExactScan);
     let mut perceptual = AdaptationContext::from_config(&Default::default(), n);
     perceptual.set_enabled(false);
     let features = FeaturesNow::from_occupancy_scan(&l.space, &l.subjective_intensity);
@@ -138,7 +138,7 @@ fn ownership_scan_boundary_is_checked() {
         total_power_scan: vec![1.0].into(),
         ..Default::default()
     };
-    approximate_loo_score_scan(&l, &mut input, &mut None);
+    loo_score_scan(&l, &mut input, &mut None);
 }
 
 #[test]
@@ -213,12 +213,12 @@ fn captured_work_proposals_preserve_scores_ranks_and_acceptance_probabilities() 
         let current = row["proposal"]["current"].as_f64().unwrap() as f32;
         let target = row["proposal"]["current_target"].as_f64().unwrap() as f32;
         let temperature = row["proposal"]["temperature"].as_f64().unwrap();
-        let approx = approximate_loo_score_scan(&l, &mut input, &mut None);
+        let approx = loo_score_scan(&l, &mut input, &mut None);
         let exact = exact_loo_consonance_score_scan(
             &l,
             current,
             true,
-            LeaveSelfOutMode::ExactScan,
+            ReferenceLooMode::ExactScan,
             &mut None,
         );
         for (name, scan) in [("corrected", approx), ("exact", exact.map(Arc::from))] {
@@ -242,7 +242,7 @@ fn captured_work_proposals_preserve_scores_ranks_and_acceptance_probabilities() 
                     current,
                     &l,
                     true,
-                    LeaveSelfOutMode::ApproxHarmonics,
+                    ReferenceLooMode::ApproxHarmonics,
                     1,
                     Some(&scan),
                     None,
@@ -302,7 +302,7 @@ fn exact_missing_fundamental_retains_previous_approximate_fallback() {
     l.consonance_field_score_eff.fill(1.0);
     let current = 220.0f32.log2();
     assert!(
-        exact_loo_consonance_score_scan(&l, current, true, LeaveSelfOutMode::ExactScan, &mut None)
+        exact_loo_consonance_score_scan(&l, current, true, ReferenceLooMode::ExactScan, &mut None)
             .is_none()
     );
     let actual = sample_consonance_score_with_loo(
@@ -310,7 +310,7 @@ fn exact_missing_fundamental_retains_previous_approximate_fallback() {
         current,
         &l,
         true,
-        LeaveSelfOutMode::ExactScan,
+        ReferenceLooMode::ExactScan,
         1,
         None,
         None,
@@ -320,7 +320,7 @@ fn exact_missing_fundamental_retains_previous_approximate_fallback() {
         current,
         &l,
         true,
-        LeaveSelfOutMode::ExactScan,
+        ReferenceLooMode::ExactScan,
         1,
         None,
         None,
@@ -337,5 +337,5 @@ fn total_ownership_scan_boundary_is_checked() {
         own_power_scan: vec![0.0; l.space.n_bins()],
         ..Default::default()
     };
-    approximate_loo_score_scan(&l, &mut input, &mut None);
+    loo_score_scan(&l, &mut input, &mut None);
 }

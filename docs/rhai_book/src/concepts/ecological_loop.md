@@ -92,6 +92,13 @@ habitat bus and reshape the terrain for every other voice. Use
 `viability_scope("total")` only when the intended question is explicitly
 whether the voice fits the total field including itself.
 
+Pitch movement has its own switch, `leave_self_out(true)`. It estimates each
+Voice's share of body-projected spectral power, removes that share from the
+observed density, and recomputes the field. All bodies use this one method;
+there is no mode selector. Environment viability retains the earlier partial-score
+subtraction, and `leave_self_out_harmonics(n)` controls that rule only when the
+body supplies no explicit partial ratios. Neither path is exact PCM subtraction.
+
 ## Energy, death, and replacement
 
 The ecological lifecycle belongs to `brain("entrain")`. Its energy is

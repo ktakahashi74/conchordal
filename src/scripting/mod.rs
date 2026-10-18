@@ -26,8 +26,8 @@ use crate::core::mode_pattern::ModePattern;
 use crate::core::meter::{MeterShaping, sane_basin};
 use crate::scenario::PhonationTiming;
 use crate::scenario::control::{
-    BodyMethod, ControlUpdate, LeaveSelfOutMode, MAX_FREQ_HZ, MIN_FREQ_HZ, MoveCostTimeScale,
-    PhonationGate, PitchApplyMode, PitchCoreKind, PitchMode, Routing, VoiceControl,
+    BodyMethod, ControlUpdate, MAX_FREQ_HZ, MIN_FREQ_HZ, MoveCostTimeScale, PhonationGate,
+    PitchApplyMode, PitchCoreKind, PitchMode, Routing, VoiceControl,
 };
 use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{

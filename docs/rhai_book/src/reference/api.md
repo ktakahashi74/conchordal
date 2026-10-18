@@ -617,7 +617,7 @@ leave_self_out(enabled)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Subtract the voice's own spectral contribution when evaluating the field.
+Estimate the field without this voice when choosing pitch. Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
 
 ### Lifecycle & Viability
 
@@ -1220,7 +1220,7 @@ leave_self_out_harmonics(count)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Number of harmonics used for approximate self-subtraction.
+Harmonic count for environment viability's retained self-subtraction estimate. Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
 
 ### Lifecycle & Viability
 
@@ -1279,18 +1279,6 @@ move_cost_time_scale(name)
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`. Canonical names: `legacy` (default, integration-window scaling) and `proposal_interval`. Research control; changes the time scale used for movement cost.
-
-### Neighbor Awareness
-
-#### `leave_self_out_mode`
-
-```rhai,ignore
-leave_self_out_mode(name)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Choose approximate (`approx`) or exact (`exact`) self-removal. Canonical, case-sensitive names: `approx` (default) and `exact`. Selects approximate harmonic removal or an exact scan when `leave_self_out()` is enabled.
 
 ### Director & Global Parameters
 

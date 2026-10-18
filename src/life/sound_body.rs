@@ -279,7 +279,22 @@ impl SoundBody for HarmonicBody {
                 let detune =
                     cluster_detune_mul(self.cluster_spread_cents, cluster_unison, unison_idx);
                 let freq = self.base_freq_hz * ratio * detune;
-                add_log2_energy(amps, space, freq, amp_scale * part_amp);
+                let amplitude = amp_scale * part_amp;
+                let deviation_hz = self.base_freq_hz * self.genotype.vibrato_depth;
+                if deviation_hz <= 0.0 {
+                    add_log2_energy(amps, space, freq, amplitude);
+                    continue;
+                }
+                // Tone adds the same FM offset to every lane. Uniform phase gives
+                // the arcsine frequency law; integrate its power over each bin.
+                // This cycle average does not recover a finite window's FM phase.
+                let half_step = space.step() * 0.5;
+                for (amp, &center) in amps.iter_mut().zip(&space.centers_log2) {
+                    let lo = (((center - half_step).exp2() - freq) / deviation_hz).clamp(-1.0, 1.0);
+                    let hi = (((center + half_step).exp2() - freq) / deviation_hz).clamp(-1.0, 1.0);
+                    let mass = (hi.asin() - lo.asin()) / PI;
+                    *amp += amplitude * mass.max(0.0).sqrt();
+                }
             }
         }
     }

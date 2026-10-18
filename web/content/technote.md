@@ -441,7 +441,7 @@ Behavior is split into three focused cores plus the `PhonationEngine`, each defi
     *   `DroneCore`: Sustained output with optional sway modulation.
 
 *   **PitchCore (Where)** — `life/pitch_core.rs`: Proposes the next target in log-frequency space. Two implementations:
-    *   `PitchHillClimbPitchCore`: Local search over the consonance terrain. Parameters: `neighbor_step_log2`, `tessitura_gravity`, `landscape_weight`, `move_cost_coeff`, `move_cost_exp`, and a single search `temperature` (0 = greedy settling; higher accepts downhill moves via a Metropolis rule). Occupancy/crowding: `crowding_strength`, `crowding_sigma_cents`. Leave-self-out analysis supports `ApproxHarmonics` and `ExactScan` modes.
+    *   `PitchHillClimbPitchCore`: Local search over the consonance terrain. Parameters: `neighbor_step_log2`, `tessitura_gravity`, `landscape_weight`, `move_cost_coeff`, `move_cost_exp`, and a single search `temperature` (0 = greedy settling; higher accepts downhill moves via a Metropolis rule). Occupancy/crowding: `crowding_strength`, `crowding_sigma_cents`. Leave-self-out pitch evaluation uses a shared body-power ownership estimate.
     *   `PitchPeakSamplerCore`: Probabilistic peak sampling with `window_cents`, `top_k`, `sigma_cents`, `random_candidates`, and the same search `temperature` (softmax over candidates).
 
 *   **PhonationEngine** — `life/phonation_engine.rs`: Manages note-level command scheduling. Issues `ToneCmd` (On, Off, Update) to the `ScheduleRenderer`. Uses a gate grid (`ThetaGrid`) for onset bookkeeping and note-off placement. Configuration is via `PhonationSpec`:
@@ -510,7 +510,7 @@ This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Poor 
 
 ## 5.3 Pitch Retargeting Logic
 
-Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target. Candidate evaluation reads the habituation-eroded score at the candidate fundamental. `ExactScan` recomputes a raw score after clearing the current fundamental bin, then applies the same local erosion before comparison. Body-aware metabolism leaves these point-based movement evaluations in place. Its energy changes can still affect subsequent movement through the existing energy-dependent behavior.
+Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target. Candidate evaluation reads the habituation-eroded score at the candidate fundamental. Self-exclusion recomputes a raw score from the estimated remaining density, then applies the same local erosion before comparison. Body-aware metabolism leaves these point-based movement evaluations in place. Its energy changes can still affect subsequent movement through the existing energy-dependent behavior.
 
 ### 5.3.1 Pitch Application Modes
 
@@ -527,12 +527,27 @@ For `seek_consonance()` voices the mode is resolved automatically from the phona
 
 The crowding system prevents agents from collapsing to identical frequencies. Both crowding (mutual repulsion) and pitch adaptation read one shared occupancy field: a Gaussian penalty centered on each occupied fundamental (raw f0), with width set by `crowding_sigma_cents` (default 60) and strength by `crowding_strength`. A pairwise split bias further prevents frequency degeneracy. No octave-equivalence (chroma) penalty is applied; octave relations act only through the consonance potential.
 
-Pitch evaluation supports two leave-self-out approximations:
+`leave_self_out(true)` uses one spectral-ownership estimate for pitch movement.
+Each habitat-routed Voice projects its body into the analysis bins. Static partials
+occupy their nearest bin; Harmonic motion spreads power using the cycle-averaged
+sinusoidal frequency distribution with the renderer's common Hz deviation.
+The squared projection gives each Voice's share of the total projected power.
+The observed subjective-intensity density is multiplied by the remaining power
+fraction raised to the existing loudness exponent, then H, R and the field score
+are recomputed. Candidate evaluation applies the existing local habituation erosion.
+Ownership and the resulting score are reused within a hop and invalidated at the next.
+Without an ownership snapshot the observed field is retained.
 
-*   **`ApproxHarmonics`**: Subtracts positive terrain-score contributions around assumed partial positions, using an exponential distance decay with a 24-cent scale and per-index weights `1/n`. Explicit body ratios determine the positions when available; otherwise an integer harmonic series is assumed. The weights do not measure the rendered partial amplitudes.
-*   **`ExactScan`**: Clears one bin at the current fundamental in the processed subjective-intensity density, then recomputes H, R, and C. Upper partials remain, and another source's contribution in the cleared bin is removed too. The name refers to the historical mode; it does not provide exact source separation. If that bin has no positive finite density, evaluation falls back to `ApproxHarmonics`.
+This is an estimate, not exact source-separated PCM analysis. Candidate pitch is
+still evaluated at its fundamental. The projection does not reconstruct individual
+Tone phase, delayed analysis history or release tails. No body-specific choice of
+self-exclusion algorithm or public mode selector exists.
 
-Neither mode reconstructs the audio of all other sources before spectral analysis. Both evaluate the resulting terrain at the candidate fundamental rather than averaging it over the candidate body's spectrum.
+Environment viability retains its earlier score-subtraction rule: positive field
+contributions near assumed partials are subtracted with a 24-cent exponential
+scale and `1/n` weights. Explicit body ratios determine the positions; otherwise
+`leave_self_out_harmonics(n)` sets the integer harmonic count. That setting affects
+viability only, not the spectral-ownership estimate used for pitch movement.
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 
@@ -989,7 +1004,7 @@ implemented.
 
 Explicit `glide`, `pitch_core`, and `viability_scope` settings take precedence over preset defaults regardless of builder order. Enum parameters accept only their exact canonical names; invalid names are positioned errors, and ineffective settings produce positioned warnings.
 
-**Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_mode("approx"|"exact")`, `leave_self_out_harmonics(n)`.
+**Crowding**: `avoid_neighbors(strength)` (default sigma) / `avoid_neighbors(strength, sigma_cents)`, `crowding_target(same, other)`, `leave_self_out(bool)`, `leave_self_out_harmonics(n)`.
 
 **Brain/Phonation**: `brain("entrain"|"seq"|"drone")`, `sustain()`, `repeat()`, `once()`, `pulse(rate)`, `pulse_lock(depth)`, `social(coupling)`; duration via `while_alive()`, `cycles(n)`, `adaptive_duration()`, `duration_range(min,max)`, `duration_curve(k,x0)`, `shorten_on_drop(gain)`; finite sustained participation with `rest()` / `rest(periods)`.
 

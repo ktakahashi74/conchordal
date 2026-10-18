@@ -7,7 +7,15 @@ use crate::core::psycho_state::roughness_ratio_to_state01;
 use crate::core::roughness_kernel::RoughnessKernel;
 use crate::core::stream::potentials::PotentialScratch;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-use crate::scenario::control::{LeaveSelfOutMode, MoveCostTimeScale, PitchControl, PitchCoreKind};
+use crate::scenario::control::{MoveCostTimeScale, PitchControl, PitchCoreKind};
+
+// Historical comparators remain available only to tests and shadow diagnostics.
+#[derive(Clone, Copy, Debug)]
+enum ReferenceLooMode {
+    ApproxHarmonics,
+    #[cfg(any(test, feature = "loo-diagnostic"))]
+    ExactScan,
+}
 use rand::{Rng, RngExt};
 use std::sync::Arc;
 
@@ -91,15 +99,16 @@ pub struct PitchHillClimbPitchCore {
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     leave_self_out: bool,
-    leave_self_out_mode: LeaveSelfOutMode,
+    #[cfg(any(test, feature = "loo-diagnostic"))]
+    reference_loo_mode: ReferenceLooMode,
     leave_self_out_harmonics: u8,
     global_peak_count: usize,
     global_peak_min_sep_log2: f32,
     use_ratio_candidates: bool,
     ratio_candidate_count: usize,
-    /// Ratios for the unchanged exact fallback and diagnostic replay.
+    /// Ratios retained for historical test controls and diagnostic replay.
     body_ratios: Option<Arc<[f32]>>,
-    exact_loo: Option<Box<ExactLooScratch>>,
+    loo_scratch: Option<Box<LooScratch>>,
     loo_input: LooInput,
     #[cfg(feature = "loo-diagnostic")]
     diagnostic_variant: Option<&'static str>,
@@ -134,14 +143,15 @@ impl PitchHillClimbPitchCore {
             crowding_strength: 0.0,
             crowding_sigma_cents: 60.0,
             leave_self_out: false,
-            leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
+            #[cfg(any(test, feature = "loo-diagnostic"))]
+            reference_loo_mode: ReferenceLooMode::ApproxHarmonics,
             leave_self_out_harmonics: DEFAULT_LOO_HARMONICS,
             global_peak_count: DEFAULT_GLOBAL_PEAK_COUNT,
             global_peak_min_sep_log2: cents_to_log2(DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS),
             use_ratio_candidates: false,
             ratio_candidate_count: DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT,
             body_ratios: None,
-            exact_loo: None,
+            loo_scratch: None,
             loo_input: LooInput::default(),
             #[cfg(feature = "loo-diagnostic")]
             diagnostic_variant: None,
@@ -178,8 +188,9 @@ impl PitchHillClimbPitchCore {
         self.leave_self_out = enabled;
     }
 
-    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
-        self.leave_self_out_mode = mode;
+    #[cfg(test)]
+    fn set_reference_loo_mode(&mut self, mode: ReferenceLooMode) {
+        self.reference_loo_mode = mode;
     }
 
     pub fn set_neighbor_step_cents(&mut self, value: f32) {
@@ -458,7 +469,10 @@ impl PitchCore for PitchHillClimbPitchCore {
         let move_cost_coeff = self.move_cost_coeff;
         let move_cost_exp = self.move_cost_exp;
         let leave_self_out = self.leave_self_out;
-        let leave_self_out_mode = self.leave_self_out_mode;
+        #[cfg(any(test, feature = "loo-diagnostic"))]
+        let reference_loo_mode = self.reference_loo_mode;
+        #[cfg(not(any(test, feature = "loo-diagnostic")))]
+        let reference_loo_mode = ReferenceLooMode::ApproxHarmonics;
         let leave_self_out_harmonics = self.leave_self_out_harmonics;
         let crowding_strength = self.crowding_strength;
         let crowding_sigma_cents = self.crowding_sigma_cents;
@@ -467,28 +481,35 @@ impl PitchCore for PitchHillClimbPitchCore {
         let variant = self
             .diagnostic_variant
             .unwrap_or_else(diagnostic::runtime_variant);
-        #[cfg(not(feature = "loo-diagnostic"))]
+        #[cfg(all(test, not(feature = "loo-diagnostic")))]
         let variant = "corrected";
         #[cfg(feature = "loo-diagnostic")]
         diagnostic::set_variant(variant);
-        let leave_self_out_mode = if variant == "exact" {
-            LeaveSelfOutMode::ExactScan
+        let loo_scan = if leave_self_out {
+            loo_score_scan(landscape, &mut self.loo_input, &mut self.loo_scratch)
         } else {
-            leave_self_out_mode
-        };
-        let exact_loo_scan: Option<Arc<[f32]>> = if !leave_self_out || variant == "legacy" {
             None
-        } else if matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan) || variant == "exact" {
+        };
+        #[cfg(any(test, feature = "loo-diagnostic"))]
+        let reference_loo_mode = if variant == "exact" {
+            ReferenceLooMode::ExactScan
+        } else {
+            reference_loo_mode
+        };
+        #[cfg(any(test, feature = "loo-diagnostic"))]
+        let loo_scan: Option<Arc<[f32]>> = if !leave_self_out || variant == "legacy" {
+            None
+        } else if matches!(reference_loo_mode, ReferenceLooMode::ExactScan) || variant == "exact" {
             exact_loo_consonance_score_scan(
                 landscape,
                 current_pitch_log2,
                 true,
-                LeaveSelfOutMode::ExactScan,
-                &mut self.exact_loo,
+                ReferenceLooMode::ExactScan,
+                &mut self.loo_scratch,
             )
             .map(Arc::from)
         } else {
-            approximate_loo_score_scan(landscape, &mut self.loo_input, &mut self.exact_loo)
+            loo_scan
         };
         self.propose_with_scorer(
             current_pitch_log2,
@@ -509,9 +530,9 @@ impl PitchCore for PitchHillClimbPitchCore {
                     landscape,
                     perceptual,
                     leave_self_out,
-                    leave_self_out_mode,
+                    reference_loo_mode,
                     leave_self_out_harmonics,
-                    exact_loo_scan.as_deref(),
+                    loo_scan.as_deref(),
                     body_ratios.as_deref(),
                     crowding_strength,
                     crowding_sigma_cents,
@@ -537,9 +558,9 @@ pub struct PitchPeakSamplerCore {
     crowding_strength: f32,
     crowding_sigma_cents: f32,
     leave_self_out: bool,
-    /// Ratios for the unchanged exact fallback and diagnostic replay.
+    /// Ratios retained for historical test controls and diagnostic replay.
     body_ratios: Option<Arc<[f32]>>,
-    exact_loo: Option<Box<ExactLooScratch>>,
+    loo_scratch: Option<Box<LooScratch>>,
     loo_input: LooInput,
 }
 
@@ -573,7 +594,7 @@ impl PitchPeakSamplerCore {
             crowding_sigma_cents: 60.0,
             leave_self_out: false,
             body_ratios: None,
-            exact_loo: None,
+            loo_scratch: None,
             loo_input: LooInput::default(),
         }
     }
@@ -708,7 +729,7 @@ impl PitchCore for PitchPeakSamplerCore {
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let body_ratios = self.body_ratios.clone();
         let loo_scan = if leave_self_out {
-            approximate_loo_score_scan(landscape, &mut self.loo_input, &mut self.exact_loo)
+            loo_score_scan(landscape, &mut self.loo_input, &mut self.loo_scratch)
         } else {
             None
         };
@@ -725,7 +746,7 @@ impl PitchCore for PitchPeakSamplerCore {
                 landscape,
                 perceptual,
                 leave_self_out,
-                LeaveSelfOutMode::ApproxHarmonics,
+                ReferenceLooMode::ApproxHarmonics,
                 DEFAULT_LOO_HARMONICS,
                 loo_scan.as_deref(),
                 body_ratios.as_deref(),
@@ -893,7 +914,7 @@ fn adjusted_pitch_score(
         landscape,
         perceptual,
         leave_self_out,
-        LeaveSelfOutMode::ApproxHarmonics,
+        ReferenceLooMode::ApproxHarmonics,
         DEFAULT_LOO_HARMONICS,
         None,
         None,
@@ -936,7 +957,7 @@ fn adjusted_pitch_score_with_loo_harmonics(
         landscape,
         perceptual,
         leave_self_out,
-        LeaveSelfOutMode::ApproxHarmonics,
+        ReferenceLooMode::ApproxHarmonics,
         leave_self_out_harmonics,
         None,
         None,
@@ -960,7 +981,7 @@ fn adjusted_pitch_score_impl(
     landscape: &Landscape,
     perceptual: &AdaptationContext,
     leave_self_out: bool,
-    leave_self_out_mode: LeaveSelfOutMode,
+    reference_loo_mode: ReferenceLooMode,
     leave_self_out_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
     body_ratios: Option<&[f32]>,
@@ -976,7 +997,7 @@ fn adjusted_pitch_score_impl(
         current_pitch_log2,
         landscape,
         leave_self_out,
-        leave_self_out_mode,
+        reference_loo_mode,
         leave_self_out_harmonics,
         exact_loo_scan,
         body_ratios,
@@ -1024,7 +1045,7 @@ fn sample_consonance_score_with_loo(
     current_pitch_log2: f32,
     landscape: &Landscape,
     leave_self_out: bool,
-    leave_self_out_mode: LeaveSelfOutMode,
+    reference_loo_mode: ReferenceLooMode,
     leave_self_out_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
     body_ratios: Option<&[f32]>,
@@ -1036,14 +1057,15 @@ fn sample_consonance_score_with_loo(
             current_pitch_log2,
             landscape,
             leave_self_out,
-            leave_self_out_mode,
+            reference_loo_mode,
             leave_self_out_harmonics,
             exact_loo_scan,
             body_ratios,
         );
     }
+    #[cfg(any(test, feature = "loo-diagnostic"))]
     if leave_self_out
-        && matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan)
+        && matches!(reference_loo_mode, ReferenceLooMode::ExactScan)
         && exact_loo_scan.is_none()
     {
         return legacy_sample_consonance_score_with_loo(
@@ -1051,7 +1073,7 @@ fn sample_consonance_score_with_loo(
             current_pitch_log2,
             landscape,
             leave_self_out,
-            leave_self_out_mode,
+            reference_loo_mode,
             leave_self_out_harmonics,
             exact_loo_scan,
             body_ratios,
@@ -1059,7 +1081,7 @@ fn sample_consonance_score_with_loo(
     }
     let _ = (
         current_pitch_log2,
-        leave_self_out_mode,
+        reference_loo_mode,
         leave_self_out_harmonics,
         body_ratios,
     );
@@ -1081,19 +1103,21 @@ fn legacy_sample_consonance_score_with_loo(
     current_pitch_log2: f32,
     landscape: &Landscape,
     leave_self_out: bool,
-    leave_self_out_mode: LeaveSelfOutMode,
+    reference_loo_mode: ReferenceLooMode,
     leave_self_out_harmonics: u8,
     exact_loo_scan: Option<&[f32]>,
     body_ratios: Option<&[f32]>,
 ) -> f32 {
+    #[cfg(any(test, feature = "loo-diagnostic"))]
     if leave_self_out
-        && matches!(leave_self_out_mode, LeaveSelfOutMode::ExactScan)
+        && matches!(reference_loo_mode, ReferenceLooMode::ExactScan)
         && let Some(scan) = exact_loo_scan
     {
         let raw = landscape.sample_linear_log2(scan, pitch_log2);
         let h = landscape.sample_linear_log2(&landscape.perc_habituation_state_scan, pitch_log2);
         return crate::core::habituation::erode_score(raw, h, landscape.consonance_theta);
     }
+    let _ = (reference_loo_mode, exact_loo_scan);
     let (fmin, fmax) = landscape.freq_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
     let mut score = landscape.evaluate_pitch_score_log2(clamped);
@@ -1157,7 +1181,7 @@ pub(crate) fn approx_loo_pitch_score(
         p,
         landscape,
         true,
-        LeaveSelfOutMode::ApproxHarmonics,
+        ReferenceLooMode::ApproxHarmonics,
         harmonics.max(1),
         None,
         ratios,
@@ -1171,10 +1195,10 @@ pub(crate) struct LooInput {
     pub(crate) computed_score: Option<Option<Arc<[f32]>>>,
 }
 
-fn approximate_loo_score_scan(
+fn loo_score_scan(
     landscape: &Landscape,
     input: &mut LooInput,
-    scratch: &mut Option<Box<ExactLooScratch>>,
+    scratch: &mut Option<Box<LooScratch>>,
 ) -> Option<Arc<[f32]>> {
     // Both empty means no Community ownership snapshot has been supplied.
     if input.own_power_scan.is_empty() && input.total_power_scan.is_empty() {
@@ -1209,7 +1233,7 @@ fn approximate_loo_score_scan(
 }
 
 #[derive(Clone, Debug)]
-struct ExactLooScratch {
+struct LooScratch {
     space: Log2Space,
     harmonicity: HarmonicityKernel,
     roughness: RoughnessKernel,
@@ -1218,14 +1242,15 @@ struct ExactLooScratch {
     r: Vec<f32>,
 }
 
+#[cfg(any(test, feature = "loo-diagnostic"))]
 fn exact_loo_consonance_score_scan(
     landscape: &Landscape,
     current_pitch_log2: f32,
     enabled: bool,
-    mode: LeaveSelfOutMode,
-    scratch: &mut Option<Box<ExactLooScratch>>,
+    mode: ReferenceLooMode,
+    scratch: &mut Option<Box<LooScratch>>,
 ) -> Option<Vec<f32>> {
-    if !enabled || !matches!(mode, LeaveSelfOutMode::ExactScan) {
+    if !enabled || !matches!(mode, ReferenceLooMode::ExactScan) {
         return None;
     }
     let n = landscape.space.n_bins();
@@ -1269,7 +1294,7 @@ fn exact_loo_consonance_score_scan(
 fn recompute_loo_score_scan(
     landscape: &Landscape,
     density_loo: &[f32],
-    scratch: &mut Option<Box<ExactLooScratch>>,
+    scratch: &mut Option<Box<LooScratch>>,
 ) -> Vec<f32> {
     let n = landscape.space.n_bins();
     let stale = scratch.as_ref().is_none_or(|cache| {
@@ -1289,7 +1314,7 @@ fn recompute_loo_score_scan(
             EXACT_LOO_ROUGHNESS_ERB_STEP,
         );
         let potentials = PotentialScratch::new(&landscape.space, &harmonicity, &roughness);
-        *scratch = Some(Box::new(ExactLooScratch {
+        *scratch = Some(Box::new(LooScratch {
             space: landscape.space.clone(),
             harmonicity,
             roughness,
@@ -1713,7 +1738,6 @@ fn apply_hill_climb_control(core: &mut PitchHillClimbPitchCore, pitch: &PitchCon
     );
     core.set_crowding(pitch.crowding_strength, pitch.crowding_sigma_cents);
     core.set_leave_self_out(pitch.leave_self_out);
-    core.set_leave_self_out_mode(pitch.leave_self_out_mode);
     if let Some(cents) = pitch.neighbor_step_cents {
         core.set_neighbor_step_cents(cents);
     }
@@ -1762,13 +1786,6 @@ impl AnyPitchCore {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.leave_self_out,
             AnyPitchCore::PitchPeakSampler(core) => core.leave_self_out,
-        }
-    }
-
-    pub(crate) fn leave_self_out_mode_for_test(&self) -> LeaveSelfOutMode {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.leave_self_out_mode,
-            AnyPitchCore::PitchPeakSampler(_) => LeaveSelfOutMode::ApproxHarmonics,
         }
     }
 
@@ -1968,7 +1985,7 @@ mod tests {
                     &landscape,
                     pitch,
                     false,
-                    LeaveSelfOutMode::ExactScan,
+                    ReferenceLooMode::ExactScan,
                     &mut cache
                 )
                 .is_none()
@@ -1981,7 +1998,7 @@ mod tests {
                 &landscape,
                 pitch,
                 true,
-                LeaveSelfOutMode::ExactScan,
+                ReferenceLooMode::ExactScan,
                 &mut cache,
             )
             .unwrap();
@@ -2038,7 +2055,7 @@ mod tests {
             mid_log2,
             &landscape,
             true,
-            LeaveSelfOutMode::ExactScan,
+            ReferenceLooMode::ExactScan,
             0,
             Some(&scan),
             None,
@@ -2059,7 +2076,7 @@ mod tests {
             mid_log2,
             &landscape,
             true,
-            LeaveSelfOutMode::ExactScan,
+            ReferenceLooMode::ExactScan,
             0,
             Some(&scan),
             None,
@@ -2079,7 +2096,7 @@ mod tests {
             220.0f32.log2(),
             &landscape,
             true,
-            LeaveSelfOutMode::ApproxHarmonics,
+            ReferenceLooMode::ApproxHarmonics,
             1,
             None,
             None,
@@ -2105,7 +2122,7 @@ mod tests {
             current,
             &landscape,
             true,
-            LeaveSelfOutMode::ApproxHarmonics,
+            ReferenceLooMode::ApproxHarmonics,
             2,
             None,
             Some(&ratios),
@@ -2115,7 +2132,7 @@ mod tests {
             current,
             &landscape,
             true,
-            LeaveSelfOutMode::ApproxHarmonics,
+            ReferenceLooMode::ApproxHarmonics,
             2,
             None,
             None,
@@ -2132,7 +2149,7 @@ mod tests {
             current,
             &landscape,
             true,
-            LeaveSelfOutMode::ApproxHarmonics,
+            ReferenceLooMode::ApproxHarmonics,
             2,
             None,
             Some(&ratios),
@@ -2142,7 +2159,7 @@ mod tests {
             current,
             &landscape,
             true,
-            LeaveSelfOutMode::ApproxHarmonics,
+            ReferenceLooMode::ApproxHarmonics,
             2,
             None,
             None,
@@ -2168,7 +2185,7 @@ mod tests {
                 current,
                 &landscape,
                 true,
-                LeaveSelfOutMode::ApproxHarmonics,
+                ReferenceLooMode::ApproxHarmonics,
                 3,
                 None,
                 Some(&harmonic_ratios),
@@ -2178,7 +2195,7 @@ mod tests {
                 current,
                 &landscape,
                 true,
-                LeaveSelfOutMode::ApproxHarmonics,
+                ReferenceLooMode::ApproxHarmonics,
                 3,
                 None,
                 None,
@@ -2513,7 +2530,7 @@ mod tests {
             current,
             &landscape,
             true,
-            LeaveSelfOutMode::ApproxHarmonics,
+            ReferenceLooMode::ApproxHarmonics,
             DEFAULT_LOO_HARMONICS,
             None,
             None,
@@ -2523,7 +2540,7 @@ mod tests {
             current,
             &landscape,
             true,
-            LeaveSelfOutMode::ApproxHarmonics,
+            ReferenceLooMode::ApproxHarmonics,
             DEFAULT_LOO_HARMONICS,
             None,
             None,

@@ -82,6 +82,12 @@ footprintを聴くことでviableに見えるかもしれません。そこで`c
 すべてのVoiceが読むConsonance Fieldを変え続けます。自分も含むConsonance Field全体への適合度を問いたい場合だけ
 `viability_scope("total")`を使います。
 
+音高移動では、別の設定`leave_self_out(true)`を使います。各Voiceの身体投影から
+スペクトルの所有率を推定し、観測密度から自己の割合を除いて場を計算し直します。
+身体によらず同じ方式を使い、modeを選ぶ設定はありません。生存選択の環境相対評価は
+従来の部分音位置での得点減算を保ちます。`leave_self_out_harmonics(n)`は、身体が
+部分音比率を持たない場合の生存選択にだけ作用します。どちらもPCMの厳密な自己減算ではありません。
+
 ## Energy、death、replacement
 
 生態学的lifecycleは`brain("entrain")`に属し、energyは`0..1`へ正規化されます。

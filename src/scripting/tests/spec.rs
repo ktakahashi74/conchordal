@@ -1260,7 +1260,7 @@ fn population_move_cost_live_update_reaches_individual() {
 }
 
 #[test]
-fn population_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
+fn population_hill_climb_knobs_and_loo_live_update_reach_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
@@ -1270,7 +1270,7 @@ fn population_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
                 .tessitura_gravity(0.12)
                 .move_cost_exp(2)
                 .leave_self_out(true)
-                .leave_self_out_mode("exact");
+                .leave_self_out(true);
             flush();
         "#,
     );
@@ -1297,14 +1297,8 @@ fn population_hill_climb_knobs_and_exact_loo_live_update_reach_individual() {
     assert!((core.tessitura_gravity_for_test() - 0.12).abs() <= 1e-6);
     assert_eq!(core.move_cost_exp_for_test(), 2);
     assert!(core.leave_self_out_for_test());
-    assert_eq!(
-        core.leave_self_out_mode_for_test(),
-        LeaveSelfOutMode::ExactScan
-    );
-    assert_eq!(
-        voice.effective_control.pitch.leave_self_out_mode,
-        LeaveSelfOutMode::ExactScan
-    );
+    assert!(core.leave_self_out_for_test());
+    assert!(voice.effective_control.pitch.leave_self_out);
 }
 
 #[test]

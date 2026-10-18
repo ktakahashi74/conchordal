@@ -1372,11 +1372,6 @@ fn invalid_enum_names_stop_before_writes_and_show_one_position() {
             "proposal_interval",
             vec!["proposal", "integration", "integration_window"],
         ),
-        (
-            "leave_self_out_mode",
-            "approx",
-            vec!["harmonics", "approx_harmonics", "exact_scan", "scan"],
-        ),
         ("viability_scope", "environment", vec!["off"]),
         ("brain", "drone", vec!["dronee"]),
         ("rhythm_role", "beat", vec!["beats"]),
@@ -1412,11 +1407,7 @@ fn invalid_enum_names_stop_before_writes_and_show_one_position() {
     ] {
         assert!(run_script_err(&format!("\n{call};")).position.is_some());
     }
-    for method in [
-        "pitch_apply_mode",
-        "move_cost_time_scale",
-        "leave_self_out_mode",
-    ] {
+    for method in ["pitch_apply_mode", "move_cost_time_scale"] {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx.clone());
         assert!(
@@ -1429,5 +1420,19 @@ fn invalid_enum_names_stop_before_writes_and_show_one_position() {
         let ctx = ctx.lock().unwrap();
         let population = ctx.populations.values().next().unwrap();
         assert_eq!(population.pending_patch, ControlUpdate::default());
+    }
+}
+
+#[test]
+fn removed_loo_mode_is_not_a_script_control() {
+    for source in [
+        r#"harmonic().leave_self_out_mode("approx");"#,
+        r#"let p = place(harmonic(), at(220)); p.leave_self_out_mode("exact");"#,
+    ] {
+        assert!(
+            run_script_err(source)
+                .message
+                .contains("leave_self_out_mode")
+        );
     }
 }

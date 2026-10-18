@@ -222,13 +222,6 @@ pub enum MoveCostTimeScale {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LeaveSelfOutMode {
-    #[default]
-    ApproxHarmonics,
-    ExactScan,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PitchApplyMode {
     #[default]
     GateSnap,
@@ -250,7 +243,6 @@ pub struct PitchControl {
     pub crowding_strength: f32,
     pub crowding_sigma_cents: f32,
     pub leave_self_out: bool,
-    pub leave_self_out_mode: LeaveSelfOutMode,
     pub move_cost_coeff: f32,
     pub move_cost_exp: Option<u8>,
     pub proposal_interval_sec: Option<f32>,
@@ -284,7 +276,6 @@ impl Default for PitchControl {
             crowding_strength: 0.0,
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
             leave_self_out: false,
-            leave_self_out_mode: LeaveSelfOutMode::ApproxHarmonics,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
             move_cost_exp: None,
             proposal_interval_sec: None,
@@ -364,7 +355,6 @@ pub struct ControlUpdate {
     pub crowding_strength: Option<f32>,
     pub crowding_sigma_cents: Option<f32>,
     pub leave_self_out: Option<bool>,
-    pub leave_self_out_mode: Option<LeaveSelfOutMode>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
     pub timbre_motion: Option<f32>,
@@ -451,11 +441,6 @@ impl PitchControl {
     #[inline]
     pub fn set_leave_self_out(&mut self, enabled: bool) {
         self.leave_self_out = enabled;
-    }
-
-    #[inline]
-    pub fn set_leave_self_out_mode(&mut self, mode: LeaveSelfOutMode) {
-        self.leave_self_out_mode = mode;
     }
 
     #[inline]
@@ -599,9 +584,6 @@ impl PitchControl {
         if let Some(enabled) = update.leave_self_out {
             self.set_leave_self_out(enabled);
         }
-        if let Some(mode) = update.leave_self_out_mode {
-            self.set_leave_self_out_mode(mode);
-        }
         if let Some(coeff) = update.move_cost_coeff {
             self.set_move_cost_coeff_clamped(coeff);
         }
@@ -697,7 +679,6 @@ mod tests {
             crowding_strength: Some(-4.0),
             crowding_sigma_cents: Some(-3.0),
             leave_self_out: Some(true),
-            leave_self_out_mode: Some(LeaveSelfOutMode::ExactScan),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
             timbre_motion: Some(0.5),
@@ -731,10 +712,6 @@ mod tests {
         assert!((control.pitch.crowding_strength - 0.0).abs() <= 1e-6);
         assert!((control.pitch.crowding_sigma_cents - 1e-3).abs() <= 1e-6);
         assert!(control.pitch.leave_self_out);
-        assert_eq!(
-            control.pitch.leave_self_out_mode,
-            LeaveSelfOutMode::ExactScan
-        );
         assert_eq!(control.pitch.neighbor_step_cents, Some(0.0));
         assert_eq!(control.pitch.tessitura_gravity, Some(0.0));
         assert!((control.pitch.move_cost_coeff - 0.0).abs() <= 1e-6);

@@ -262,7 +262,6 @@ impl Dirty {
             || update.crowding_strength.is_some()
             || update.crowding_sigma_cents.is_some()
             || update.leave_self_out.is_some()
-            || update.leave_self_out_mode.is_some()
             || update.move_cost_coeff.is_some()
             || update.move_cost_exp.is_some()
             || update.proposal_interval_sec.is_some()

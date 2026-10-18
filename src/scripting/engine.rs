@@ -183,24 +183,6 @@ impl ScriptHost {
                 population_spec
             },
         );
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
-            "leave_self_out_mode",
-            move |call_ctx: NativeCallContext,
-                  mut population_spec: PopulationSpecHandle,
-                  name: &str|
-                  -> Result<PopulationSpecHandle, Box<EvalAltResult>> {
-                population_spec.spec.record_call(
-                    "leave_self_out_mode",
-                    call_ctx.call_position(),
-                    &diagnostics,
-                );
-                population_spec
-                    .spec
-                    .set_leave_self_out_mode(name, call_ctx.call_position())?;
-                Ok(population_spec)
-            },
-        );
         register_population_spec_numeric_methods(
             &mut engine,
             ctx.clone(),
@@ -1310,48 +1292,6 @@ impl ScriptHost {
                 Ok(handle)
             },
         );
-        let ctx_for_population_leave_self_out_mode = ctx.clone();
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
-            "leave_self_out_mode",
-            move |call: NativeCallContext,
-                  handle: PopulationHandle,
-                  name: &str|
-                  -> Result<PopulationHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_population_leave_self_out_mode
-                    .lock()
-                    .expect("lock script context");
-                let Some(population) = ctx.populations.get_mut(&handle.id) else {
-                    diagnostics
-                        .lock()
-                        .expect("lock script warnings")
-                        .push(ScriptWarning {
-                            message: format!(
-                                "leave_self_out_mode ignored for unknown population {}",
-                                handle.id
-                            ),
-                            position: call.call_position(),
-                        });
-                    return Ok(handle);
-                };
-                population
-                    .spec
-                    .set_leave_self_out_mode(name, call.call_position())?;
-                let mode = population.spec.control.pitch.leave_self_out_mode;
-                match population.status {
-                    PopulationStatus::Live => {
-                        population.spec.control.pitch.set_leave_self_out_mode(mode);
-                        patch_leave_self_out_mode(&mut population.pending_patch, mode);
-                    }
-                    _ => ctx.warn_population_inactive(
-                        handle.id,
-                        "leave_self_out_mode",
-                        call.call_position(),
-                    ),
-                }
-                Ok(handle)
-            },
-        );
         register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
@@ -2186,10 +2126,6 @@ fn patch_tessitura_gravity(update: &mut ControlUpdate, value: f32) {
 
 fn patch_continuous_drive(update: &mut ControlUpdate, value: f32) {
     update.continuous_drive = Some(value);
-}
-
-fn patch_leave_self_out_mode(update: &mut ControlUpdate, mode: LeaveSelfOutMode) {
-    update.leave_self_out_mode = Some(mode);
 }
 
 fn patch_move_cost_coeff(update: &mut ControlUpdate, value: f32) {

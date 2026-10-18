@@ -22,6 +22,7 @@ use crate::scenario::control::{BodyMethod, VoiceControl};
 use crate::scenario::{ArticulationCoreConfig, VoiceSpec};
 use rand::{SeedableRng, rngs::SmallRng};
 use serde_json::json;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -167,6 +168,12 @@ fn metrics(
         .zip(reference)
         .map(|(a, b)| (repr.level(*a) - repr.level(*b)).abs())
         .fold(0.0_f32, f32::max);
+    let spread = |values: &[f32]| {
+        values.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+            - values.iter().copied().fold(f32::INFINITY, f32::min)
+    };
+    let reference_tied = spread(reference) <= 1e-6;
+    let shortcut_tied = spread(scores) <= 1e-6;
     let mut reversals = 0;
     for i in 0..scores.len() {
         for j in i + 1..scores.len() {
@@ -177,7 +184,8 @@ fn metrics(
             }
         }
     }
-    json!({"max_score_error":ds,"max_level_error":dl,"rank_reversals_at_ref_gap_0p1":reversals,
+    json!({"reference_tied":reference_tied,"shortcut_tied":shortcut_tied,
+           "reference_spread":spread(reference),"shortcut_spread":spread(scores),"max_score_error":ds,"max_level_error":dl,"rank_reversals_at_ref_gap_0p1":reversals,
            "registered_movement_gate_pass":ds<=0.025 && dl<=0.0125 && reversals==0})
 }
 
@@ -213,11 +221,17 @@ fn rendered_loo_conformance() {
     assert_eq!(hop, 512);
     assert!(!params.habituation.enabled);
     let pilot = std::env::var_os("T32_PILOT").is_some();
+    let motion_only = std::env::var_os("T33_MOTION_ONLY").is_some();
+    let ties_only = std::env::var_os("T33_TIES_ONLY").is_some();
+    assert!(u8::from(pilot) + u8::from(motion_only) + u8::from(ties_only) <= 1);
     let mut total = 0;
     let mut family_pass: BTreeMap<String, [bool; 3]> = BTreeMap::new();
     let mut density_cache = BTreeMap::new();
     for base_hz in [440.0_f32, 1800.0] {
         for other_hz in [None, Some(base_hz), Some(466.0_f32)] {
+            if ties_only && other_hz.is_some() {
+                continue;
+            }
             let others: Vec<_> = other_hz
                 .map(|hz| batch(3, &recipe("sine", hz, template.last())))
                 .into_iter()
@@ -241,6 +255,9 @@ fn rendered_loo_conformance() {
             let mut reference = other_stream.last().clone();
             reference.recompute_consonance(&params);
             for family in families {
+                if motion_only && family != "motion" {
+                    continue;
+                }
                 if pilot && (family != "sine" || base_hz != 440.0 || other_hz != Some(466.0)) {
                     continue;
                 }
@@ -357,12 +374,12 @@ fn rendered_loo_conformance() {
                     total_power_scan: total_power.into(),
                     computed_score: None,
                 };
-                let candidate_scan = approximate_loo_score_scan(&mix, &mut input, &mut None);
+                let candidate_scan = loo_score_scan(&mix, &mut input, &mut None);
                 let old_exact_scan = exact_loo_consonance_score_scan(
                     &mix,
                     current,
                     true,
-                    LeaveSelfOutMode::ExactScan,
+                    ReferenceLooMode::ExactScan,
                     &mut None,
                 );
                 for (method_index, method) in ["approx", "exact", "t31"].into_iter().enumerate() {
@@ -372,7 +389,7 @@ fn rendered_loo_conformance() {
                             current,
                             &mix,
                             true,
-                            LeaveSelfOutMode::ApproxHarmonics,
+                            ReferenceLooMode::ApproxHarmonics,
                             1,
                             None,
                             ratios,
@@ -382,7 +399,7 @@ fn rendered_loo_conformance() {
                             current,
                             &mix,
                             true,
-                            LeaveSelfOutMode::ExactScan,
+                            ReferenceLooMode::ExactScan,
                             1,
                             old_exact_scan.as_deref(),
                             ratios,
@@ -392,7 +409,7 @@ fn rendered_loo_conformance() {
                             current,
                             &mix,
                             true,
-                            LeaveSelfOutMode::ApproxHarmonics,
+                            ReferenceLooMode::ApproxHarmonics,
                             1,
                             candidate_scan.as_deref(),
                             ratios,
@@ -441,6 +458,8 @@ fn rendered_loo_conformance() {
                     }
                     let mut final_decisions = Vec::new();
                     let mut native_decisions = Vec::new();
+                    let native_shortcut_bounds = Cell::new((f32::INFINITY, f32::NEG_INFINITY));
+                    let native_reference_bounds = Cell::new((f32::INFINITY, f32::NEG_INFINITY));
                     for temperature in [0.0_f32, 0.05, 0.2] {
                         let mut hill = PitchHillClimbPitchCore::new(24.0, current, 0.0);
                         hill.set_temperature(temperature);
@@ -466,7 +485,13 @@ fn rendered_loo_conformance() {
                                 &mix,
                                 &[],
                                 &mut rng,
-                                &score,
+                                |x| {
+                                    let value = score(x);
+                                    assert!(value.is_finite());
+                                    let (lo, hi) = native_shortcut_bounds.get();
+                                    native_shortcut_bounds.set((lo.min(value), hi.max(value)));
+                                    value
+                                },
                             );
                             let mut rng = SmallRng::seed_from_u64(seed);
                             let native_ref = hill.propose_with_scorer(
@@ -475,12 +500,22 @@ fn rendered_loo_conformance() {
                                 &removed,
                                 &[],
                                 &mut rng,
-                                |x| removed.evaluate_pitch_score_log2(x),
+                                |x| {
+                                    let value = removed.evaluate_pitch_score_log2(x);
+                                    assert!(value.is_finite());
+                                    let (lo, hi) = native_reference_bounds.get();
+                                    native_reference_bounds.set((lo.min(value), hi.max(value)));
+                                    value
+                                },
                             );
                             native_decisions.push(json!({"temperature":temperature,"seed":seed,
                             "shortcut_target_bits":native.target_pitch_log2.to_bits(),"pcm_target_bits":native_ref.target_pitch_log2.to_bits()}));
                         }
                     }
+                    let (shortcut_min, shortcut_max) = native_shortcut_bounds.get();
+                    let (reference_min, reference_max) = native_reference_bounds.get();
+                    let native_reference_tied = reference_max - reference_min <= 1e-6;
+                    let native_shortcut_tied = shortcut_max - shortcut_min <= 1e-6;
                     let main_level = mix.evaluate_pitch_level(base_hz);
                     let point_shortcut_level = repr.level(point_shortcut[3]);
                     let point_reference_level = repr.level(point_reference[3]);
@@ -489,6 +524,11 @@ fn rendered_loo_conformance() {
                     println!(
                         "T32_CASE {}",
                         json!({"method":method,"family":family,"base_hz":base_hz,"other_hz":other_hz,"recipe_body":format!("{:?}",own_recipe.body),
+                    "ownership_bins":if family == "motion" {
+                        Some((0..space.n_bins()).filter(|&i| mix.subjective_intensity[i] > 0.0 || removed.subjective_intensity[i] > 0.0)
+                            .map(|i| json!([i,space.centers_hz[i],input.own_power_scan[i],input.total_power_scan[i],mix.subjective_intensity[i],removed.subjective_intensity[i]]))
+                            .collect::<Vec<_>>())
+                    } else { None },
                     "source_id":2,"environment_frames":ENV_FRAMES,"representative_frames":BODY_FRAMES,"cents":CENTS,
                     "oracle":{"pcm_max_abs":max_pcm_error,"density_max_normalized_l1":max_l1,"field_max_abs":max_field_error,
                         "registered_f1_pass":max_l1<=1e-3 && max_field_error<=1e-3},
@@ -496,6 +536,9 @@ fn rendered_loo_conformance() {
                     "body_shortcut_scores":body_shortcut,"body_pcm_scores":body_reference,
                     "point_metrics":metrics(&point_shortcut,&point_reference,&repr),"body_metrics":metrics(&body_shortcut,&body_reference,&repr),
                     "final_decisions":final_decisions,"native_point_decisions":native_decisions,
+                    "native_ties":{"reference_tied":native_reference_tied,"shortcut_tied":native_shortcut_tied,
+                        "reference_min":reference_min,"reference_max":reference_max,
+                        "shortcut_min":shortcut_min,"shortcut_max":shortcut_max},
                     "metabolism":{"main_mix_level":main_level,"point_shortcut_score":point_shortcut[3],"point_pcm_score":point_reference[3],
                         "body_shortcut_score":body_shortcut[3],"body_pcm_score":body_reference[3],
                         "point_shortcut_level":point_shortcut_level,"point_pcm_level":point_reference_level,
@@ -504,22 +547,47 @@ fn rendered_loo_conformance() {
                         "body_shortcut_minus_body_pcm_level":body_shortcut_level-body_reference_level,
                         "main_mix_minus_body_pcm_level":main_level-body_reference_level}})
                     );
-                    let point_gate = metrics(&point_shortcut, &point_reference, &repr)["registered_movement_gate_pass"].as_bool().unwrap();
-                    let body_gate = metrics(&body_shortcut, &body_reference, &repr)["registered_movement_gate_pass"].as_bool().unwrap();
-                    let selection_match = final_decisions.iter().all(|d| {
-                        d["point_shortcut_target_bits"] == d["point_pcm_target_bits"]
-                            && d["body_shortcut_target_bits"] == d["body_pcm_target_bits"]
-                    }) && native_decisions
-                        .iter()
-                        .all(|d| d["shortcut_target_bits"] == d["pcm_target_bits"]);
+                    let point_metrics = metrics(&point_shortcut, &point_reference, &repr);
+                    let body_metrics = metrics(&body_shortcut, &body_reference, &repr);
+                    let point_selection =
+                        if point_metrics["reference_tied"] == true && native_reference_tied {
+                            point_metrics["shortcut_tied"] == true && native_shortcut_tied
+                        } else {
+                            final_decisions.iter().all(|d| {
+                                d["point_shortcut_target_bits"] == d["point_pcm_target_bits"]
+                            }) && native_decisions
+                                .iter()
+                                .all(|d| d["shortcut_target_bits"] == d["pcm_target_bits"])
+                        };
+                    let body_selection = if body_metrics["reference_tied"] == true {
+                        body_metrics["shortcut_tied"] == true
+                    } else {
+                        final_decisions
+                            .iter()
+                            .all(|d| d["body_shortcut_target_bits"] == d["body_pcm_target_bits"])
+                    };
                     family_pass.entry(family.to_string()).or_insert([true; 3])[method_index] &=
-                        point_gate && body_gate && selection_match;
+                        point_metrics["registered_movement_gate_pass"] == true
+                            && body_metrics["registered_movement_gate_pass"] == true
+                            && point_selection
+                            && body_selection;
                 }
                 total += 1;
             }
         }
     }
-    assert_eq!(total, if pilot { 1 } else { 84 });
+    assert_eq!(
+        total,
+        if pilot {
+            1
+        } else if motion_only {
+            6
+        } else if ties_only {
+            28
+        } else {
+            84
+        }
+    );
     println!(
         "T32_COMPLETE {}",
         json!({"cases":total,"fs":FS,"hop":hop,"families":families,"family_pass":family_pass,"habituation_enabled":false,"distinct_body_densities":density_cache.len()})
@@ -527,12 +595,12 @@ fn rendered_loo_conformance() {
     if !pilot {
         let unsupported: Vec<_> = family_pass
             .iter()
-            .filter(|(_, methods)| !methods.iter().any(|&passed| passed))
+            .filter(|(_, methods)| !methods[2])
             .map(|(family, _)| family.as_str())
             .collect();
         assert!(
             unsupported.is_empty(),
-            "no conforming LOO method for: {unsupported:?}"
+            "T-31 candidate does not conform for: {unsupported:?}"
         );
     }
 }

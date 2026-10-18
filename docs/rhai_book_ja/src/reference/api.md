@@ -617,7 +617,7 @@ leave_self_out(enabled)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Subtract the voice's own spectral contribution when evaluating the field.
+Estimate the field without this voice when choosing pitch. Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
 
 ### LifecycleとViability
 
@@ -1220,7 +1220,7 @@ leave_self_out_harmonics(count)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Number of harmonics used for approximate self-subtraction.
+Harmonic count for environment viability's retained self-subtraction estimate. Applies to viability_scope("environment") when the body supplies no explicit partial ratios. It does not change leave_self_out pitch evaluation.
 
 ### LifecycleとViability
 
@@ -1279,18 +1279,6 @@ move_cost_time_scale(name)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`. Canonical names: `legacy` (default, integration-window scaling) and `proposal_interval`. Research control; changes the time scale used for movement cost.
-
-### 近傍の知覚
-
-#### `leave_self_out_mode`
-
-```rhai,ignore
-leave_self_out_mode(name)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Choose approximate (`approx`) or exact (`exact`) self-removal. Canonical, case-sensitive names: `approx` (default) and `exact`. Selects approximate harmonic removal or an exact scan when `leave_self_out()` is enabled.
 
 ### Directorとglobal parameter
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-18
+
 ### Composer-facing
 
 - `steady()` offers private, regular opportunities; acoustic context selects sound or skip without shifting the grid.

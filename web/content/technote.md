@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "da31aba"
+source_commit = "12422be"
 author = "Koichi Takahashi"
-last_updated = "2026-10-08"
-source_version = "0.4.0"
-source_snapshot = "da31aba"
-revision_scope = "Section 5.4 and Chapter 9 synchronized with optional Periodic arrival costs (2026-10-08)"
+last_updated = "2026-10-18"
+source_version = "0.5.0"
+source_snapshot = "12422be"
+revision_scope = "Synchronized with runtime, perception and Rhai API improvements, and unified pitch/environment self-exclusion (2026-10-18)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -1091,7 +1091,9 @@ Conchordal establishes a foundation for Bio-Mimetic Computational Audio. By repl
 
 The paper "Conchordal: Emergent Harmony via Direct Cognitive Coupling in a Psychoacoustic Landscape" (arXiv:2603.25637) validated the psychoacoustic landscape as an effective ALife terrain through controlled experiments demonstrating self-organization, selection, synchronization, and hereditary accumulation. These results confirm that the Roughness-Harmonicity-Consonance pipeline and the Kuramoto entrainment model produce musically coherent emergent behavior under a range of initial conditions.
 
-Version 0.4.0 integrates the paper findings into the instrument and adds the temporal axis of the architecture: the fixed rhythm filterbank is replaced by an emergent meter (a forced limit-cycle oscillator with corroborated acoustic recurrence and phase/pattern confidence), voice timing is expressed as synchronized (`metric`) or acoustic-participation (`entrained`, `flow`) intentions (Section 5.4), and the composer's temporal control is reduced to terrain priors (`meter_stability`, `temporal_basin`) that shape where a pulse forms without ever scheduling one. A dual-bus design separates the habitat (what the ecosystem senses) from the presentation (what the audience hears). Landscape habituation is enabled by default. A simulated `ListenerTwin` feedback path can raise pitch-search temperature; its coupling remains zero by default.
+Version 0.4.0 integrated the paper findings into the instrument and added the temporal axis of the architecture: the fixed rhythm filterbank was replaced by an emergent meter (a forced limit-cycle oscillator with corroborated acoustic recurrence and phase/pattern confidence), voice timing was expressed as synchronized (`metric`) or acoustic-participation (`entrained`, `flow`) intentions (Section 5.4), and the composer's temporal control was reduced to terrain priors (`meter_stability`, `temporal_basin`) that shape where a pulse forms without ever scheduling one. A dual-bus design separated the habitat (what the ecosystem senses) from the presentation (what the audience hears). Landscape habituation is enabled by default. A simulated `ListenerTwin` feedback path can raise pitch-search temperature; its coupling remains zero by default.
+
+Version 0.5.0 expands sustained articulation, unifies pitch-movement and environment-viability self-exclusion, and improves scenario diagnostics, shutdown, and perception processing.
 
 The technical architecture—anchored by the `Log2Space` coordinate system and the "Sibling Projection" algorithm—provides a robust mathematical foundation for this paradigm. The use of Rust ensures that these complex biological simulations can run in real-time, bridging the gap between ALife research and performative musical instruments.
 

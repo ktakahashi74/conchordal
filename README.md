@@ -2,8 +2,7 @@
 
 **A psychoacoustic instrument for generative composition**
 
-> **v0.4.0 Alpha** — August 2026, accompanying an
-> [oral presentation at ALIFE 2026](https://2026.alife.org/wp-content/uploads/sites/2/2026/08/ALIFE2026-Program-Semifinal-2026-08-10-Rev5-1.pdf#page=8).
+> **v0.5.0 Alpha** — October 2026.
 > This is an early preview for researchers and developers: features are
 > incomplete and APIs may change. Composers and creators should wait for beta.
 
@@ -249,7 +248,8 @@ The renderer shares the core engine but is not the real-time instrument.
 - **Aug 25, 2025** — Project started
 - **Dec 25, 2025** — Source & web release (pre-alpha)
 - **Mar 2026** — v0.3.0 pre-alpha paper release
-- **Aug 2026** — v0.4.0 Alpha for the ALIFE 2026 oral presentation: emergent-meter rhythm/harmony ecology, ListenerTwin, and a tiered scripting API ← *current*
+- **Aug 2026** — v0.4.0 Alpha for the [ALIFE 2026 oral presentation](https://2026.alife.org/wp-content/uploads/sites/2/2026/08/ALIFE2026-Program-Semifinal-2026-08-10-Rev5-1.pdf#page=8): emergent-meter rhythm/harmony ecology, ListenerTwin, and a tiered scripting API
+- **Oct 2026** — v0.5.0 Alpha: sustained articulation, adaptive meter, unified self-exclusion, and runtime/API hardening ← *current*
 - **2026–2027** — Beta with first compositions
 
 ## Contributing

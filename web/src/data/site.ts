@@ -21,7 +21,8 @@ export const site = {
     { date: 'Aug 2025', text: 'Project started' },
     { date: 'Dec 2025', text: 'v0.1.0 source & web release (pre-alpha)' },
     { date: 'Mar 2026', text: 'v0.3.0 pre-alpha — ', link: { url: 'https://arxiv.org/abs/2603.25637', text: 'paper on arXiv' } },
-    { date: 'Aug 2026', text: 'v0.4.0 Alpha — ', state: 'current', link: { url: 'https://2026.alife.org/wp-content/uploads/sites/2/2026/08/ALIFE2026-Program-Semifinal-2026-08-10-Rev5-1.pdf#page=8', text: 'ALIFE 2026 oral presentation' } },
+    { date: 'Aug 2026', text: 'v0.4.0 Alpha — ', link: { url: 'https://2026.alife.org/wp-content/uploads/sites/2/2026/08/ALIFE2026-Program-Semifinal-2026-08-10-Rev5-1.pdf#page=8', text: 'ALIFE 2026 oral presentation' } },
+    { date: 'Oct 2026', text: 'v0.5.0 Alpha — sustained articulation, adaptive meter, unified self-exclusion, and runtime/API hardening — ', state: 'current', link: { url: 'https://github.com/ktakahashi74/conchordal/releases/tag/v0.5.0', text: 'release notes' } },
     { date: '2026–2027', text: 'Beta with first compositions', state: 'future' },
   ],
 } as const;

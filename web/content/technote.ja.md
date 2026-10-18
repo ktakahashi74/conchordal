@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "da31aba"
+source_commit = "12422be"
 author = "Koichi Takahashi"
-last_updated = "2026-10-08"
-source_version = "0.4.0"
-source_snapshot = "da31aba"
-revision_scope = "Section 5.4 and Chapter 9 synchronized with optional Periodic arrival costs (2026-10-08)"
+last_updated = "2026-10-18"
+source_version = "0.5.0"
+source_snapshot = "12422be"
+revision_scope = "終了処理・知覚処理・Rhai APIの改善と、音高移動・environmentの生存選択の自己除外統一に同期（2026-10-18）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -993,6 +993,8 @@ Conchordal は生体模倣的計算音響のプルーフオブコンセプトを
 v0.4.0は論文の知見を楽器そのものに統合し、アーキテクチャに時間軸を加えた。固定のリズムフィルタバンクは、発音の再来の確認によるテンポ適応と、位相・型の再来から得る確信度を備えた強制リミットサイクル振動子——創発メーター——に置き換わった。Voiceのタイミングは、同期する`metric`と、音響への参加である`entrained`・`steady`・`flow`の意図として表す（5.4節）。そして作曲家による時間の制御は、パルスをスケジュールすることなくその形成場所だけを形づくる地形事前分布（`meter_stability`、`temporal_basin`）へと還元された。デュアルバス設計は、ハビタット（エコシステムが感じるもの）とプレゼンテーション（聴衆が聴くもの）を分離する。Landscapeの慣れは既定で有効である。`ListenerTwin`の模擬feedback pathはpitch探索のtemperatureを上げられるが、その結合強度は引き続き既定で0である。
 
 第9章は、Manifesto の公約について果たされたものと未解決のものを縮約した台帳として示し、本書を閉じる。各行の背後の設計判断と、実装が逆に教えたものは、本ノートではなくリポジトリの設計台帳に置く。
+
+v0.5.0では、持続音の発音制御を拡充し、音高移動とenvironmentの生存選択の自己除外を一方式に統一するとともに、シナリオの診断、終了処理、知覚処理を改善した。
 
 # 9. Manifesto との対応と未解決問題
 

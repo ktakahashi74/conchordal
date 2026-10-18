@@ -356,6 +356,17 @@ impl PitchHillClimbPitchCore {
 
         #[cfg(feature = "loo-diagnostic")]
         diagnostic::record_candidates(scored);
+        let current_adjusted = scorer(current_target_log2);
+        self.select_scored(current_target_log2, current_adjusted, scored, rng)
+    }
+
+    fn select_scored<R: Rng + ?Sized>(
+        &self,
+        current_target_log2: f32,
+        current_adjusted: f32,
+        scored: &mut Vec<(f32, f32)>,
+        rng: &mut R,
+    ) -> TargetProposal {
         let mut best_pitch = current_target_log2;
         let mut best_score = f32::MIN;
         let mut best_distance = f32::INFINITY;
@@ -373,7 +384,6 @@ impl PitchHillClimbPitchCore {
             }
         }
 
-        let current_adjusted = scorer(current_target_log2);
         let improvement = best_score - current_adjusted;
         let mut target_pitch_log2 = current_target_log2;
 
@@ -3276,3 +3286,7 @@ pub(crate) mod diagnostic;
 #[cfg(test)]
 #[path = "pitch_loo_tests.rs"]
 mod loo_tests;
+
+#[cfg(test)]
+#[path = "pitch_loo_conformance_tests.rs"]
+mod loo_conformance_tests;

@@ -52,6 +52,28 @@
     border-color: #3b82f6;
 }
 
+/* The theme turns the scrolled navbar white; keep the dark palette instead. */
+#mainNav.navbar-shrink {
+    background-color: #000;
+}
+
+#mainNav.navbar-shrink .navbar-brand {
+    color: #e4e4e7;
+}
+
+#mainNav.navbar-shrink .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+#mainNav.navbar-shrink .nav-link:hover,
+#mainNav.navbar-shrink .nav-link.active {
+    color: #3b82f6;
+}
+
+#mainNav.navbar-shrink .nav-link.active {
+    border-bottom-color: #3b82f6;
+}
+
 #mainNav .navbar-toggler:hover,
 #mainNav .navbar-toggler:focus {
     color: #60a5fa;

@@ -36,6 +36,8 @@
 - Entrained and flow participation use causal external-audio context to choose near-due onsets, waits, or skips.
   Only actual onsets update onset-context memory; hold lengths follow the intrinsic period independently of cadence adaptation.
 - Phonation invariant failures are reported without terminating the performance.
+- `leave_self_out(true)` and `viability_scope("environment")` now remove only the Voice's own spectral share,
+  estimated from each Voice's body projection, instead of the whole field at its partials; samples 08, 10, 12 and 13–16 sound different.
 
 ### Runtime and CLI
 
@@ -87,6 +89,8 @@
 | `variant(spec)` | Assign the value and apply builders to the copy |
 | `selection_approx_loo(true/false)` | `viability_scope("environment"/"total")` |
 | `respawn_min_c_level(level)` | `respawn_min_consonance(level)` |
+| `leave_self_out_mode(name)` | Removed; one self-exclusion method remains |
+| `leave_self_out_harmonics(count)` | Removed; the body projection supplies the partials |
 | `set_control_update_mode(name)` | `control_update_mode(name)` |
 | `set_scaffold_off()` | `scaffold_off()` |
 | `set_scaffold_shared(freq_hz)` | `scaffold_shared(freq_hz)` |
@@ -95,7 +99,7 @@
 - `unison`, `top_k`, `random_candidates`, and `respawn_capacity` take integers only.
   Floating-point parameters accept integer arguments where applicable.
 - `pitch_apply_mode`: `gate_snap`/`glide`/`rearticulate`; `pitch_core`: `hill_climb`/`peak_sampler`.
-- `move_cost_time_scale`: `legacy`/`proposal_interval`; `leave_self_out_mode`: `approx`/`exact`.
+- `move_cost_time_scale`: `legacy`/`proposal_interval`.
 - `rhythm_reward`: `attack_phase_match`/`none`; `set_pitch_objective`: `consonance`/`dissonance`.
 - `control_update_mode`: `snapshot_phased`/`sequential_rotating`.
 - Participation JSONL renames `observed_external_band_energy` to `perc_external_band_energy`

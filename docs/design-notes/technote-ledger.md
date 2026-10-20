@@ -23,7 +23,7 @@ The Manifesto declares commitments; this chapter audits them. Each row of the le
 | Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, Hebbian tempo learning, PLV confidence | §4, §5.4 | Metric retains explicit synchronization. Entrained/flow use a bounded acoustic observer and bodily participation policy through normal Voice rendering (9.3). Device load checks and the author's no-collapse report for Sample 08 apply to their recorded versions; later changes require separate author judgments. Relation persistence across all conditions remains open. Measure-accent coupling is opt-in |
 | Landscape variability (culture, individual, unknown principles) | `roughness_k`, consonance kernel coefficients, optional habituation erosion | §3.4–3.5, §6.3.6 | Partial — cultural tuning systems not yet absorbed |
-| Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, passive ListenerTwin interval observations and acoustic participation memory | §3.5, §5 | Partial: short-term recurrence, energy forecasts updated from matching observed windows, and experienced context memory are connected to habitat participation (9.3.32–9.3.35). Continuous relational histories and action-conditioned acoustic hypotheses remain research work (9.3.8–9.3.31). Ordinary samples do not provide scorable intervals. Cognitive retention/interference, stream identity, phrase/scene expectation and action-value learning remain open. |
+| Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, passive ListenerTwin interval observations and acoustic participation memory | §3.5, §5 | Partial: short-term recurrence, energy forecasts updated from matching observed windows, and experienced context memory are connected to habitat participation (9.3.32–9.3.35). Continuous relational histories and action-conditioned acoustic hypotheses remain research work (9.3.8–9.3.31). Ordinary samples do not provide scorable intervals. Cognitive retention/interference, stream identity, phrase/scene expectation and action-value learning remain open. Per-bin surprise and precision exist only as a default-off report diagnostic (9.3.56). |
 | Acoustic life: perception, metabolism, autonomy | The Voice: distinct articulation-life cores plus normalized energy, time-domain endurance/recovery, and viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; the meter emerges from the population's own onsets | §4–5, §7 | Implemented; dedicated beat carriers and temporal scaffolds are restricted to explicit synchronization demonstrations or assays (sample 07 among the public samples) |
@@ -6060,6 +6060,227 @@ gates. The [implementation record](../roadmap/temporal-dcc/m0-rust-preparation.m
 keeps source/input/output provenance and single-caller resource limits. The result
 is not full O04, MR3, T4/T6 adoption or M0 completion. The embodiment requirements
 above remain separate; no physical body law or R/H/C behavior changed.
+
+### 9.3.56 Listener-Side Spectral Prediction and Surprise as Candidates for Sonic Richness
+
+<a id="info-terrain"></a>
+
+#### Scrutiny, registrations A, A-2 and A-3, and findings (2026-10-20; recorded 2026-10-21; A-3 not adopted)
+
+This entry records a scrutiny under the [mechanism-selection rule](#mechanism-selection-rule), three pre-implementation
+registrations of passive diagnostics, their measurements, and the author's decision to stop at this point. Everything below
+is default off and report-only. No coupling to generation (function B) was judged or implemented, the author audition of
+registration A §7.5 has not been run, and no authorial adoption is recorded. The scrutiny, the registrations and the result
+tables are kept in [`docs/roadmap/info-terrain/`](../roadmap/info-terrain/README.md).
+
+**Background.** Flora, a field-form inhabitant ([design note](flora.md)), runs on provisional dynamics: a replicator plus its
+own fatigue. On a fixed terrain it settles to a static chord. With two hills, after 60 s the fatigue is h ≈ 0.80 and
+h ≈ 0.667 and both fitnesses are g ≈ 0.200; in an offline render the sine configuration settles within seconds on 3 × 55 Hz
+and 5 × 55 Hz. This is the mixed equilibrium of one fatigue law; it does not show that temporal evolution can only be added
+from outside. It did expose a gap. The DCC terrain represents stability (R/H to C) and the adaptation that erodes it
+(habituation, `AdaptationContext`), but no shared quantity says where in the sound a listener would find perceptual novelty.
+The question was whether a short-timescale quantity tied to spectral prediction can sit on the DCC side. The phrase- and
+scene-level expectation gap of §9.2 is a different question, and these quantities would not fill it.
+
+**Scrutiny** ([scrutiny.ja.md](../roadmap/info-terrain/scrutiny.ja.md); six independent Astra reviews, draft 6 acceptable).
+Two functions were separated: A, a passive per-bin observation, and B, generation reading A (Flora first). Under the rule, A
+may be kept as a default-off passive diagnostic even when conditions fail. The exception does not make the quantity
+cognitively valid, and it stops applying to any path through which B reads A.
+
+- Target responses. R1a, deviance response and adaptation (stimulus-specific adaptation and the MMN: Ulanovsky et al. 2003,
+  2004; Garrido et al. 2009; Lieder et al. 2013). R1b, tracking of precision (Barascud et al. 2016). R1c, judgments of
+  unpredictability (Anikin 2026). Texture summary statistics (McDermott et al. 2013) inform the choice of representation
+  only. Pleasure (Cheung et al. 2019; Gold et al. 2019) motivates the form of B and is not claimed.
+- Condition 1. R1a and R1b have candidate mechanisms; R1c has behavioural evidence only. For all three, correspondence with
+  the proposed indicators is not established: the evidence comes from pure-tone oddballs, tone-pip sequences and rated
+  synthetic sequences, not from continuous change in sustained complex tones. Lieder et al. 2013 favoured the
+  model-adjustment family over the novelty-detection family that approximates Shannon surprise, so mapping the surprise
+  indicator to R1a stays a hypothesis.
+- Condition 2. The predictive information rate was rejected: for a stationary Gaussian AR(1) process it stays at
+  ½ log(1 + a²) > 0 after learning, so stationary coloured noise is always rewarded. The surprise indicator takes Anikin
+  2026, Eq. 4, as its prototype, `S = (y − μ)² / (2 s²)` over the preceding window, with the changes recorded separately.
+  The precision indicator is a new authored representation.
+- Condition 3. A can be judged by author audition against the measurements; B needs implementation and then audition.
+- On 2026-10-20 the author decided that claims are limited to candidate correspondence with R1a–R1c, that the quantity is
+  two scans (precision and surprise), and that the prototype and a linear-prediction extension are measured side by side.
+  B was left unjudged.
+
+**Registration A (measured as A-1) and its revision A-2** ([A](../roadmap/info-terrain/registration-a.ja.md), five reviews;
+[A-2](../roadmap/info-terrain/registration-a2.ja.md), three reviews; both acceptable in the last round). A-2 replaces A-1 in
+the code.
+
+- Input is the NSGT amplitude `a = √P` per Log2Space bin. The window is `W = floor(1 s / hop)` frames including the
+  current one (93 at the default hop); the mean and deviation use the 92 preceding frames.
+- Prototype: the soundgen 3.0.0 form `min(½ z², −ln 1e-12)` with the population standard deviation, checked against the
+  paper's OSF analysis code and the soundgen source. Precision is `1 / (1 + c²)` with `c = sd / m`; it is authored, since the
+  prototype has no precision indicator.
+- Extension (authored): RLS with λ = 0.999 over ten features (a constant, the previous amplitude, and the eight
+  `SpectralHistory` age RMS values). The amplitude features and the target are both divided by the pre-update `EMA(a)`.
+  In A-1, surprise is `min(e² / (2 v̂), −ln 1e-12)` and precision `1 / (1 + v̂)`.
+- A-2 adds a perceptual floor of ΔL = 1 dB (δ ≈ 0.122), an authored value of the same order as intensity discrimination
+  thresholds (the near miss to Weber's law in Jesteadt, Wier & Green 1977; about 0.41 dB for broadband noise in Miller 1947).
+  The prototype uses `sd_eff = max(sd, δ m)`. The extension floors only the evaluation denominator,
+  `v_eff = max(v̂, δ²)`, in both surprise `min(e² / (2 v_eff), −ln 1e-12)` and precision `1 / (1 + v_eff)`; its precision
+  is therefore capped at `1 / (1 + δ²)` ≈ .985. A-2 also starts the extension from persistence weights with `v̂ = δ²` and
+  initialises `EMA(a)` from the window mean.
+- Placement: per stream (habitat and presentation) in the analysis worker. One-second block aggregates go over a dedicated
+  channel to the report only; nothing reaches `Landscape` or generation. Settings: `[info_terrain]` with `enabled = false`
+  by default, plus `trace` and `efe` (A-3).
+- Invariance: with the section off, existing outputs match the reference hashes (`tests/flora_invariance.rs`).
+  `tests/info_terrain.rs` renders a short scenario offline under the seven settings of `enabled`, `trace` and `efe` listed
+  in the test (all but `trace` and `efe` on with `enabled` off), separately with and without `--report`, and requires
+  identical audio within each; the A-3 verification record logs the same
+  ([verification.json](../roadmap/info-terrain/results/a3/verification.json)). The real-time half of the requirement
+  (analysis lag and presentation drops, off against on) has not been measured.
+
+Measurements on the habitat-equivalent stream over [2, 20) s, soundgen 3.0.0 aggregation. Each cell is mean surprise /
+mean precision over the hops where each is defined. Stimuli 1–5 went through the analysis harness directly; the Flora
+configurations and samples were rendered offline, `03_gravity` with an extra 6 s wait so that 20 s are available.
+
+| Stimulus | Prototype A-1 | Prototype A-2 | Extension A-1 | Extension A-2 |
+|---|---|---|---|---|
+| 1 pure tone, 440 Hz | .511 / 1.000 | ≈0 / 1.000 | .039 / 1.000 | ≈0 / .985 |
+| 2a white noise (2b at −30 dB identical) | .544 / .847 | .544 / .847 | .503 / .894 | .470 / .895 |
+| 3 pink noise | .575 / .846 | .575 / .846 | .502 / .937 | .399 / .935 |
+| 4 alternation 440/660 Hz every 500 ms | .539 / .511 | .539 / .511 | .389 / .604 | .365 / .963 |
+| 5 deviants within 4 | .722 / .493 | .722 / .493 | .368 / .511 | .344 / .895 |
+| Flora, sine + residual | .810 / .892 | .735 / .892 | .419 / .865 | .303 / .898 |
+| Flora, sine only | 1.564 / .977 | .408 / .977 | .268 / .944 | .057 / .920 |
+| Flora, resonant + residual | .834 / .856 | .782 / .856 | .432 / .861 | .325 / .886 |
+| `03_gravity` | 1.240 / .806 | .744 / .806 | .325 / .971 | .088 / .928 |
+| `09_rain` | .736 / .832 | .686 / .832 | .366 / .866 | .326 / .792 |
+| `12_emergence_and_resolution` | .957 / .799 | .890 / .799 | .405 / .884 | .289 / .742 |
+
+Findings from A-1 and A-2:
+
+1. **The prototype is scale-invariant and overreacts to small, slow monotone changes.** With the population standard deviation, any
+   evenly spaced non-zero linear ramp gives `|z| = √(3(n+1)/(n−1))`, which at n = 92 is 1.751 (S = 1.533) whatever the slope.
+   That is why near-static sine-only Flora scored highest in A-1. In its WAV (the eight main bins, 9–12 s) 51 % of frames
+   lay outside the preceding second's range, while the within-window range had a median of 0.41 dB (90th percentile
+   2.05 dB). Partial frequencies drifted at a median of 0.05 cent/s (maximum 2.7) and amplitudes at 0.47 dB/s. The A-2
+   floor lowered sine-only Flora from 1.56 to 0.41 and `03_gravity` from 1.24 to 0.74, and left the noises unchanged.
+   Audibility of these changes was not tested; a discrimination threshold is a task criterion, not a boundary below which
+   nothing is heard, and the floor reduces small deviations without setting them to zero.
+2. **On the measured stationary fluctuating inputs, mean surprise stayed near ½.** The prototype gave .54–.57 for white
+   noise, pink noise and the alternation. This is close to ½, the mean of `½ z²` when the window's mean and spread represent
+   the current input well and neither the floor nor the cap acts (an approximation, not a guarantee), so mean surprise did
+   not place noise below music. A steady pure tone differs: its spread falls below the A-2 floor and its
+   surprise goes to ≈0. The extension normalises itself in a similar way: if the variance estimate is close to the true
+   residual variance σ², the floor and cap do not act and the residual mean is near zero, then
+   `E[S′] ≈ ½ (1 + μ_e² / σ²)` ≈ ½. A-1's extension also had a start-up transient (the alternation rose
+   from .23 at 2–6 s to .50 at 14–20 s): `EMA(a)` was initialised during a quiet phase, `v̂` then swelled to about 3800, and
+   decay took about 8 s. A-2 removed that rise: on the alternation the extension went from .40 at 2–6 s to .35 at
+   14–20 s.
+3. **Registered hypotheses** (no pass thresholds). Pure tone below white noise in surprise and above it in precision: held
+   for both versions in A-1 and A-2. Gain invariance (2a against 2b): identical missing masks and no tolerance violation in
+   [2, 20) s; four start-up differences in extension surprise at 1.01–1.12 s lie outside that interval. Pink between pure
+   tone and white: not for the prototype, yes for the extension (no direction was registered). Alternation: prototype
+   surprise persists at every switch (0.5 s segment means ≈ .54, maxima 1.39–1.65); the extension rose in A-1 and fell
+   only slightly in A-2. Deviant segment maxima above the alternation's: prototype 4 of 4 (7.01 against 1.65), extension 3 of 4 in A-1
+   and 2 of 4 in A-2.
+4. **External check against Anikin 2026** (300 of 303 stimuli after three failed the token join; 25 prototypes; cluster
+   bootstrap with 10,000 resamples). Pearson r with `1 − fit` under the soundgen 3.0.0 aggregation: STFT/mel approximation
+   with soundgen rules (R-S) .532 [.377, .664]; NSGT amplitude with soundgen rules (N-S) .493 [.335, .628] and with this
+   registration's rules (N-O) .542 [.389, .659]; NSGT power with soundgen rules (N-P-S) .274 [.109, .398]. The R-S − N-S
+   difference is not resolved (.039 [−.094, .171]); amplitude beats power (N-S − N-P-S .219 [.132, .313]). An auxiliary
+   aggregation modelled on the OSF-bundled code (the registered per-hop maxima as weights, with the population standard
+   deviation; the bundled code's reuse of the final window's weights is not reproduced) gives .59–.64 for the R and N
+   versions, against the paper's r > .6. The intervals exclude the uncertainty of the `fit` estimates. The A-2 floor left
+   the correspondence unchanged (Δr ≈ 6 × 10⁻⁹). This is correspondence at the level of whole sequences; it is not
+   evidence for per-bin or per-hop values.
+
+**Exploratory dimensions A4** (unregistered; used only to motivate a later registration;
+[table](../roadmap/info-terrain/results/exploratory_dimensions.md)).
+
+- Spectral flatness over 100–4000 Hz separated the noises: white .44 and pink .66, everything else ≤ .16 (the Flora
+  configurations with residual give .15–.16).
+- KL divergence between consecutive one-second windows separated stationary inputs (alternation .0009, pure tone .016,
+  white .11, pink .16) from changing ones (deviants 889, Flora 2 × 10³–2 × 10⁴, samples 10¹⁰–10²⁰). The magnitudes blow up
+  because the per-bin floor δ·m collapses where a bin starts from silence; the floor should be set relative to the overall
+  level.
+- Not discriminating: an index based on Anikin's Eq. 5, the log Gaussian KL plus 2 ln W (−0.7 to +0.5; flooring only one
+  of the two variances raised the pure tone to 11.7, a definition error); the variance explained by the predictor (pure tone and alternation .98, noises
+  .43–.62, but `09_rain` and `12_emergence_and_resolution` .01–.05, below the noises, so predictability may be non-monotone
+  in the intended ordering); energy-weighted H01 and C (H01 values adding a tone at a place, not the organisation of what
+  already sounds); and peak and harmonic-group counts (white noise highest).
+- A product computed afterwards from the table's aggregates, `(1 − flatness) · log10(1 + window KL)` (not part of the
+  harness output), ordered the samples above Flora and the deviants, far above the noises, which in turn lie above the
+  static inputs. It was built after seeing the data and has no evidential weight.
+  The sample WAVs were presentation-bus output and may differ from the habitat (the anchor of `09_rain` is routed only to
+  the habitat).
+
+**Registration A-3: a passive composite inspired by expected free energy**
+([A-3](../roadmap/info-terrain/registration-a3.ja.md); six reviews, draft 6 acceptable). The discussion before the
+registration read the static-chord degeneracy as the dark-room problem (Friston, Thornton & Clark 2012): minimising surprise
+favours a static sound and maximising it favours noise. A-3 borrowed ambiguity from the risk-plus-ambiguity decomposition
+of expected free energy and information gain from the cost-minus-information-gain decomposition (Friston et al. 2015;
+Schwartenbeck et al. 2019). The composite is neither decomposition, and it is not called richness.
+
+- Generative model: the volatility–stochasticity model of Piray & Daw 2021 (Kalman updates per particle, Beta-multiplicative
+  precisions), run per 1-ERB cell on the Flora rule with observation `o = ½ ln(Σ P + ε)`. Authored values: hop-rate updates,
+  64 particles, λ_v = λ_s = 0.01 per hop, initial (v, s) = (0.01, 0.05). Silent cells are frozen.
+- Indicators: floored ambiguity `A` (floor at 1 dB), realised information gain over particle hypotheses `N`, a
+  state-information control `S_x` and a reference terrain mismatch `R`. Composite `V = Ñ − Ã`, energy-weighted over cells.
+- Stage 1, fixed in advance, tested whether the model recovers volatility v and stochasticity s from a synthetic random
+  walk with observation noise: a 3 × 3 grid with v ∈ {10⁻⁴, 10⁻³, 10⁻²} and s ∈ {10⁻³, 10⁻², 10⁻¹}, 20 s each. There were
+  two paths: the observation fed directly, and a pure tone at the centre of the 1 kHz cell with envelope `exp(o_t)` passed
+  through the NSGT analysis path. Estimates were the time medians of v̂ and ŝ over [10, 20) s, compared in log10. Each
+  path had to meet all of: Spearman ≥ .8; at least 7 of 9 conditions within 0.5 decade
+  of the true value; cross-talk (the spread of one estimate when only the other parameter changes) ≤ 0.6 decade, i.e. 0.3
+  of the two-decade range; and ≥ 90 % valid hops. The base setting and four stability variants (seeds +1000 and +2000,
+  128 particles, initial values (0.001, 0.5)) all had to pass before stage 2.
+
+Stage 1 results (valid hops 100 % throughout):
+
+| Path | Spearman v / s | Within 0.5 decade, v / s (of 9) | Cross-talk ŝ / v̂ (decades) |
+|---|---|---|---|
+| Direct | .69–.95 / .95 | 6 / 9 (s: 6 in the initial-value variant) | .26–.42 / .36–.72 |
+| NSGT analysis | .42–.69 / .79–.95 | 5 / 3 | .12–.36 / .68–1.13 |
+
+- All ten combinations (five settings × two paths) failed. Under the stop rule, stage 2 (hypotheses H-A, H-N1, H-N2, H-V)
+  was not run and A-3 was not adopted.
+- On the analysis path, observation noise is read as state change. In the base setting ŝ stays at about 1–3 × 10⁻³ for
+  s ≥ 10⁻² (with initial values (0.001, 0.5) it lies at 0.6–2.2 × 10⁻² for every s), and changing only s moves v̂ by about
+  a decade (base, v = 10⁻⁴: v̂ = 8.9 × 10⁻⁴, 1.8 × 10⁻³ and 8.5 × 10⁻³ for s = 10⁻³,
+  10⁻², 10⁻¹). The likely cause, not tested separately, is that the overlapping NSGT windows and smoothing turn independent
+  observation noise into temporally correlated fluctuation, which the model attributes to volatility. The review of the
+  first draft had raised this concern, which is why stage 1 was registered.
+- Even with direct input, v is not recovered well enough: the smallest v is overestimated by about an order of magnitude
+  (base, v = 10⁻⁴: v̂ = 1.0–2.3 × 10⁻³). Hop-rate updates, 64–128 particles and 20 s do not separate a small v from a
+  large s.
+- Conclusion: with per-cell NSGT log amplitude observed every hop and these settings, the model did not meet the
+  registered recovery and separation criteria, so the composite could not proceed to stage 2. This is a failed registered
+  check, not a proof that the two parameters are unidentifiable.
+
+**Decision (2026-10-21).** The author chose to stop here and record. Flora's dynamics are handled by authored rules and
+scripts, not by a DCC information terrain. B remains unjudged. The A-2 indicators stay as a default-off passive diagnostic
+with the limits above. A re-registration A-3b, which would correct the observation model (decimating to the analysis
+filter's effective smoothing length, or modelling its autocorrelation as coloured observation noise) and re-run stage 1
+under the same criteria, is possible but undecided. Because direct input already fell short on v, A-3b could fail even
+with a corrected observation model.
+
+**What the findings support.** At the level of whole sequences, sample surprise tracks rated unpredictability (r ≈ .5 on
+Anikin's stimuli). On the stimuli measured here it did not order noise, stillness and music: it is scale-invariant,
+overreacts to small slow changes unless floored at the order of a discrimination threshold, and stayed near ½ on the white,
+pink and alternation stimuli. On this stimulus set the exploration motivated combining spectral organisation with statistical
+novelty; that remains exploratory. The registered recovery check for separating volatility and stochasticity failed on
+the present per-hop representation. Nothing here identifies a listener's sense of richness or supports B.
+
+**Two tiers.** Only the surprise formula checked against soundgen 3.0.0, with its stated differences from the OSF-bundled
+code, is part of an existing stimulus-to-percept model. The representation changes, the precision definitions, the
+silence, missing-data and aggregation rules, the extension, the floor value and form, and A-3's particle approximation, learning rules, values and composite form are all
+authored. For A-3 only the Kalman and Gaussian KL/entropy identities under the declared model are principle-tier
+candidates; checking the model against its source does not move a perceptual quantity into the principle tier.
+
+**Unchanged and open.** Default-off settings, `Landscape`, R/H/C, generation, ListenerTwin and the technote are unchanged.
+The code is in `src/core/info_terrain.rs` (A-2) and `src/core/info_terrain/efe.rs` (A-3); the evaluation harness is in
+`src/core/info_terrain/info_terrain_eval/` and `src/core/info_terrain/efe/evaluation.rs` (crate tests, ignored by
+default). Whether to keep the A-3 implementation on main or preserve it elsewhere is open and follows the A-3b decision.
+Review texts and logs, JSON other than the copied `verification.json` files, traces, WAVs and worker records remain in
+`target/info-terrain-20261020/` and are not preserved; A-1 values cannot be regenerated from the current code ([README](../roadmap/info-terrain/README.md)).
+
+This entry went through three independent Astra reviews (drafts 1–2 conditionally acceptable, draft 3 acceptable;
+`target/info-terrain-20261020/ledger-review-1.md` to `ledger-review-3.md`).
 
 ## 9.4 Alignment and Extension Sequence
 

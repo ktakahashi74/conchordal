@@ -1,0 +1,5 @@
+# name fnv1a64(wav bytes), captured from the pre-Flora build
+sine d72563480f9eda51
+harmonic 2bf8cc5d62b4f9b7
+modal 1fcc0b90488a8bc2
+habituation 2be10cb4ac4f8695

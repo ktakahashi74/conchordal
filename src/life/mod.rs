@@ -11,6 +11,7 @@ pub mod voice;
 pub(crate) use voice::articulation_core;
 pub(crate) mod adaptation;
 pub mod community;
+pub(crate) mod flora;
 pub mod generator_model;
 pub(crate) mod metabolism_policy;
 pub(crate) mod modal;

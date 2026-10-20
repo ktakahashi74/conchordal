@@ -1,0 +1,10 @@
+{
+  "tuning_seed": 41101,
+  "evaluation_seeds": [42101, 42102, 42103],
+  "margins": null,
+  "measurement_window_sec": [18, 34],
+  "uniform_reference": "equal mass per in-extent Log2Space bin, 96 bins/octave",
+  "rendered_measure": "Flora-only PCM, one-second Hann power spectra, 65536-point FFT, conditioned on extent",
+  "pass_rule": "every seed and configuration, latent and rendered: uniform_near - near > margins[0] AND lattice - uniform_lattice > margins[1]",
+  "status": "measurement only; margins unregistered before the first evaluation; do not set them from these evaluation seeds"
+}

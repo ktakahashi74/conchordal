@@ -152,6 +152,7 @@ pub(crate) struct ParticipationOutcomeSample {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
+    Flora(crate::life::flora::FloraReport<'a>),
     BodyDefault(&'a crate::life::action_candidates::live::Record),
     BodyCandidateEnergy(&'a crate::life::action_candidates::energy::Record),
     BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
@@ -450,6 +451,28 @@ impl JsonlReporter {
 
     pub(crate) fn write_hop_timing(&mut self, sample: &HopTimingSample) -> Result<(), String> {
         self.write_record(&ReportRecord::HopTiming(sample))
+    }
+
+    pub(crate) fn write_info_terrain_block(
+        &mut self,
+        block: &crate::core::info_terrain::Block,
+    ) -> Result<(), String> {
+        block.assert_scan_lengths();
+        #[derive(Serialize)]
+        struct Record<'a> {
+            #[serde(rename = "type")]
+            kind: &'static str,
+            #[serde(flatten)]
+            block: &'a crate::core::info_terrain::Block,
+        }
+        self.write_record(&Record {
+            kind: "info_terrain_block",
+            block,
+        })
+    }
+
+    pub(crate) fn write_info_terrain_summary(&mut self, dropped_blocks: u64) -> Result<(), String> {
+        self.write_record(&serde_json::json!({ "type": "info_terrain_summary", "dropped_blocks": dropped_blocks }))
     }
 
     pub(crate) fn write_spectral_history(
@@ -858,6 +881,14 @@ impl JsonlReporter {
             one_over_f_slope: summary.one_over_f_slope,
             ioi_one_over_f_slope: summary.ioi_one_over_f_slope,
         })
+    }
+
+    pub(crate) fn write_flora(
+        &mut self,
+        flora: &crate::life::flora::Flora,
+        time_sec: f64,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::Flora(flora.report(time_sec)))
     }
 
     pub fn flush(&mut self) -> Result<(), String> {

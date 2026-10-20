@@ -270,11 +270,25 @@ impl Default for PsychoAcousticsConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
+pub struct InfoTerrainConfig {
+    /// Passive A-3 diagnostic, active only when `enabled` is true.
+    #[serde(default)]
+    pub efe: bool,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub trace: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AppConfig {
     #[serde(default)]
     pub audio: AudioConfig,
     #[serde(default)]
     pub analysis: AnalysisConfig,
+    #[serde(default)]
+    pub info_terrain: InfoTerrainConfig,
     #[serde(default)]
     pub psychoacoustics: PsychoAcousticsConfig,
     #[serde(default)]
@@ -606,6 +620,12 @@ impl AppConfig {
             )
             .is_zero(),
             "analysis.hop_size / audio.sample_rate must produce a nonzero hop duration"
+        );
+        ensure!(
+            !self.info_terrain.enabled
+                || (1.0 / (self.analysis.hop_size as f64 / self.audio.sample_rate as f64)).floor()
+                    >= 2.0,
+            "info_terrain requires at least two frames per 1 s window"
         );
         if let Some(body) = self.temporal_body {
             crate::temporal_cognition::body::validate(body).map_err(anyhow::Error::msg)?;
@@ -947,6 +967,7 @@ mod tests {
         let path = unique_path("custom.toml");
         let path_str = path.to_string_lossy().to_string();
         let custom = AppConfig {
+            info_terrain: InfoTerrainConfig::default(),
             temporal_ridge: None,
             temporal_acoustic: None,
             temporal_memory: None,

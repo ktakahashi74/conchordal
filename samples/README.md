@@ -1,6 +1,6 @@
 # Samples
 
-Twelve small demonstrations, in order. Run and read them to see the
+Thirteen small demonstrations, in order. Run and read them to see the
 instrument's main capabilities one at a time.
 
 ```bash
@@ -19,10 +19,11 @@ cargo run --release -- samples/01_a_single_voice.rhai
 10. **Generations** — voices live, starve, and are reborn where harmony can hold them.
 11. **Autumn Cycle** — a directed harmony; the season turns and comes home.
 12. **Emergence and Resolution** — a colony heats up and settles, with rhythmic input from its own onsets and no dedicated beat carrier.
+13. **Flora** — a sounding Population and spectral growth share a habitat; retuning the Population reaches Flora through sound, and its halo can settle.
 
 Samples 1–6 walk the consonance terrain (placement, gravity, tension,
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
-10 closes the loop into life; 11–12 combine several mechanisms. All samples
+10 closes the loop into life; 11–13 combine several mechanisms. All samples
 are compile-checked by the test suite, so they always match the current API.
 Top-level samples intentionally do not call `seed(...)`: each run starts from
 a fresh scenario seed. Research assays keep fixed seeds so comparisons remain

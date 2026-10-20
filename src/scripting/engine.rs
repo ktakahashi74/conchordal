@@ -7,6 +7,8 @@ impl ScriptHost {
 
         engine.register_type_with_name::<PopulationSpecHandle>("PopulationSpec");
         engine.register_type_with_name::<PopulationHandle>("Population");
+        engine.register_type_with_name::<FloraSpecHandle>("FloraSpec");
+        engine.register_type_with_name::<FloraHandle>("Flora");
         engine.register_type_with_name::<Placement>("Placement");
         engine.register_type_with_name::<Bus>("Bus");
         engine.register_type_with_name::<BusSet>("BusSet");
@@ -49,6 +51,104 @@ impl ScriptHost {
             },
         });
         engine.register_fn("variant", |parent: PopulationSpecHandle| parent);
+
+        engine.register_fn("flora", || FloraSpecHandle {
+            spec: FloraSpec {
+                amp: 0.03,
+                rate: 0.5,
+                fatigue_sec: 6.0,
+                fade_sec: 2.0,
+                tone: FloraTone::Sine,
+                residual: true,
+                routing: Routing::default(),
+            },
+        });
+        for name in ["amp", "rate", "fatigue", "fade"] {
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, spec: FloraSpecHandle, value: FLOAT| {
+                    spec.with_numeric(name, value, call.call_position())
+                },
+            );
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, spec: FloraSpecHandle, value: INT| {
+                    spec.with_numeric(name, value as FLOAT, call.call_position())
+                },
+            );
+        }
+        for name in ["amp", "rate", "fatigue"] {
+            let ctx_float = ctx.clone();
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, handle: FloraHandle, value: FLOAT| {
+                    let mut ctx = ctx_float.lock().expect("lock script context");
+                    update_flora_numeric(&mut ctx, handle, name, value, call.call_position())
+                },
+            );
+            let ctx_int = ctx.clone();
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, handle: FloraHandle, value: INT| {
+                    let mut ctx = ctx_int.lock().expect("lock script context");
+                    update_flora_numeric(
+                        &mut ctx,
+                        handle,
+                        name,
+                        value as FLOAT,
+                        call.call_position(),
+                    )
+                },
+            );
+        }
+        engine.register_fn(
+            "tone",
+            |call: NativeCallContext,
+             mut spec: FloraSpecHandle,
+             name: &str|
+             -> Result<FloraSpecHandle, Box<EvalAltResult>> {
+                spec.spec.tone = match name {
+                    "sine" => FloraTone::Sine,
+                    "resonant" => FloraTone::Resonant,
+                    _ => {
+                        return Err(Box::new(EvalAltResult::ErrorRuntime(
+                            "Flora tone expects 'sine' or 'resonant'".into(),
+                            call.call_position(),
+                        )));
+                    }
+                };
+                Ok(spec)
+            },
+        );
+        engine.register_fn("residual", |mut spec: FloraSpecHandle, enabled: bool| {
+            spec.spec.residual = enabled;
+            spec
+        });
+        engine.register_fn("send", |mut spec: FloraSpecHandle, bus: Bus| {
+            spec.spec.routing = bus.routing;
+            spec
+        });
+        engine.register_fn("send", |mut spec: FloraSpecHandle, buses: BusSet| {
+            spec.spec.routing = buses.routing();
+            spec
+        });
+        let ctx_place_flora = ctx.clone();
+        engine.register_fn(
+            "place",
+            move |call: NativeCallContext, spec: FloraSpecHandle, placement: Placement| {
+                ctx_place_flora
+                    .lock()
+                    .expect("lock script context")
+                    .place_flora(spec, placement, call.call_position())
+            },
+        );
+        let ctx_release_flora = ctx.clone();
+        engine.register_fn("release", move |handle: FloraHandle| {
+            ctx_release_flora
+                .lock()
+                .expect("lock script context")
+                .release_flora(handle.id);
+        });
 
         engine.register_fn("|", |left: Bus, right: Bus| left.set().combine(right.set()));
         engine.register_fn("|", |left: BusSet, right: Bus| left.combine(right.set()));
@@ -911,7 +1011,7 @@ impl ScriptHost {
                     return Ok(handle);
                 };
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.crowding_target_same = same_population_visible;
                         population.crowding_target_other = other_population_visible;
                         population
@@ -942,7 +1042,7 @@ impl ScriptHost {
                     return Ok(handle);
                 };
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.set_leave_self_out(enabled);
                         population.pending_patch.leave_self_out = Some(enabled);
                     }
@@ -972,7 +1072,7 @@ impl ScriptHost {
                     name,
                 );
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.control.pitch.set_leave_self_out_mode(mode);
                         patch_leave_self_out_mode(&mut population.pending_patch, mode);
                     }
@@ -1016,7 +1116,7 @@ impl ScriptHost {
                     return Ok(handle);
                 };
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.set_global_peaks(count, 0.0);
                         population.pending_patch.global_peak_count = Some(count);
                         population.pending_patch.global_peak_min_sep_cents = Some(0.0);
@@ -1042,7 +1142,7 @@ impl ScriptHost {
                 };
                 let min_sep = min_sep_cents as f32;
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.set_global_peaks(count, min_sep);
                         population.pending_patch.global_peak_count = Some(count);
                         population.pending_patch.global_peak_min_sep_cents = Some(min_sep);
@@ -1068,7 +1168,7 @@ impl ScriptHost {
                 };
                 let min_sep = min_sep_cents as f32;
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.set_global_peaks(count, min_sep);
                         population.pending_patch.global_peak_count = Some(count);
                         population.pending_patch.global_peak_min_sep_cents = Some(min_sep);
@@ -1095,7 +1195,7 @@ impl ScriptHost {
                     return Ok(handle);
                 };
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.set_ratio_candidates(count);
                         population.pending_patch.ratio_candidate_count = Some(count);
                         population.pending_patch.use_ratio_candidates = Some(count > 0);
@@ -1160,7 +1260,7 @@ impl ScriptHost {
                     }
                 };
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population
                             .spec
                             .control
@@ -1190,7 +1290,7 @@ impl ScriptHost {
                     return Ok(handle);
                 };
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.set_leave_self_out_harmonics(value);
                         population.pending_patch.leave_self_out_harmonics = Some(value);
                     }
@@ -1225,7 +1325,7 @@ impl ScriptHost {
                     }
                 };
                 match population.status {
-                    PopulationStatus::Live => {
+                    HandleStatus::Live => {
                         population.spec.set_pitch_apply_mode_resolved(mode);
                         population.pending_patch.pitch_apply_mode = Some(mode);
                     }

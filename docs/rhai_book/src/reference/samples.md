@@ -1,6 +1,6 @@
 # Samples
 
-This is an ordered set of twelve small demonstrations. Run and read them to
+This is an ordered set of thirteen small demonstrations. Run and read them to
 see the instrument's main capabilities one at a time. They are API and
 behavior samples, not musical works.
 
@@ -27,10 +27,12 @@ cargo run --release -- samples/01_a_single_voice.rhai
 11. **Autumn Cycle** — a directed harmony; the season turns and comes home.
 12. **Emergence and Resolution** — a colony heats up and settles, with rhythmic
     input from its own onsets and no dedicated beat carrier.
+13. **Flora** — a sounding Population and spectral growth interact through the
+    Landscape; the halo can settle into a held spectrum.
 
 Samples 1–6 walk the consonance terrain (placement, gravity, tension,
 movement, timbre); 7–9 walk the rhythm continuum one region at a time;
-10 closes the loop into life; 11–12 combine several mechanisms. All samples
+10 closes the loop into life; 11–13 combine several mechanisms. All samples
 are compile-checked by the test suite, so they always match the current API.
 Top-level samples intentionally do not call `seed(...)`: each run starts from
 a fresh scenario seed. Research assays keep fixed seeds so comparisons remain

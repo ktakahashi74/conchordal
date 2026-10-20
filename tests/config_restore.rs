@@ -27,6 +27,8 @@ fn assert_close(a: f32, b: f32, label: &str) {
 }
 
 fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
+    assert_eq!(actual.info_terrain.enabled, expected.info_terrain.enabled);
+    assert_eq!(actual.info_terrain.trace, expected.info_terrain.trace);
     assert_close(
         actual.audio.latency_ms,
         expected.audio.latency_ms,
@@ -143,6 +145,7 @@ fn config_load_custom_values() {
     let path = unique_path("custom.toml");
     let path_str = path.to_string_lossy().to_string();
     let custom = AppConfig {
+        info_terrain: Default::default(),
         temporal_ridge: None,
         temporal_acoustic: None,
         temporal_memory: None,

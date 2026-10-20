@@ -9,6 +9,36 @@ use crate::core::meter::MeterShaping;
 use control::{BodyMethod, ControlUpdate, VoiceControl};
 use lifecycle::LifecycleConfig;
 
+#[derive(Debug, Clone, Copy)]
+pub struct FloraSpec {
+    pub amp: f32,
+    pub rate: f32,
+    pub fatigue_sec: f32,
+    pub fade_sec: f32,
+    pub tone: FloraTone,
+    pub residual: bool,
+    pub routing: control::Routing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FloraTone {
+    Sine,
+    Resonant,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FloraPatch {
+    pub amp: Option<f32>,
+    pub rate: Option<f32>,
+    pub fatigue_sec: Option<f32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum FloraSeeding {
+    Consonance,
+    Uniform,
+}
+
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub seed: u64,
@@ -648,6 +678,20 @@ impl Default for RespawnPeakBiasConfig {
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum Action {
+    PlaceFlora {
+        flora_id: u64,
+        spec: FloraSpec,
+        extent_hz: (f32, f32),
+        seeding: FloraSeeding,
+    },
+    UpdateFlora {
+        flora_id: u64,
+        patch: FloraPatch,
+    },
+    ReleaseFlora {
+        flora_id: u64,
+        fade_sec: f32,
+    },
     Spawn {
         population_id: u64,
         ids: Vec<u64>,
@@ -691,6 +735,11 @@ pub enum Action {
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Action::PlaceFlora { flora_id, .. } => write!(f, "Place Flora={flora_id}"),
+            Action::UpdateFlora { flora_id, .. } => write!(f, "Update Flora={flora_id}"),
+            Action::ReleaseFlora { flora_id, fade_sec } => {
+                write!(f, "Release Flora={flora_id} fade={fade_sec:.3}")
+            }
             Action::Spawn {
                 population_id, ids, ..
             } => {

@@ -1,6 +1,6 @@
 # サンプル
 
-12個の小さなサンプルを、順番に並べています。実行してscriptを読み、instrumentの主な機能を
+13個の小さなサンプルを、順番に並べています。実行してscriptを読み、instrumentの主な機能を
 一つずつ確認するためのものです。音楽作品ではなく、APIと挙動のデモです。
 
 ```bash
@@ -19,9 +19,10 @@ cargo run --release -- samples/01_a_single_voice.rhai
 10. **Generations** — Voiceが生き、飢え、和声に支えられる場所へ生まれ直す。
 11. **Autumn Cycle** — directionを持つharmony。季節が巡り戻る。
 12. **Emergence and Resolution** — Populationの探索が強まり、再び落ち着く。専用の拍打ちは置かず、Voice自身の発音がリズムの入力を担う。
+13. **Flora** — 音を鳴らすPopulationとスペクトルの成長が、Landscapeを介して作用する。響きは静止した状態へ落ち着く場合もある。
 
 サンプル1–6はConsonance terrain（placement、gravity、tension、movement、timbre）、
-7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–12は複数の
+7–9はrhythm continuumを領域ごとに示し、10はloopをlifeとして閉じます。11–13は複数の
 mechanismを組み合わせます。全サンプルはtest suiteでcompile-checkされ、現在のAPIとの
 不一致を検出します。最上位のサンプルは意図的に`seed(...)`を呼ばず、毎runを新しい
 scenario seedで始めます。

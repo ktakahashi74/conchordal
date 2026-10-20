@@ -1,5 +1,6 @@
 use super::{Community, RuntimePopulationState, SpawnParams, SpawnReason};
 use crate::core::landscape::{LandscapeFrame, LandscapeUpdate};
+use crate::life::flora::Flora;
 use crate::scenario::control::MIN_FREQ_HZ;
 use crate::scenario::{Action, RespawnPolicy, SpawnStrategy, VoiceSpec};
 use rand::{SeedableRng, rngs::SmallRng};
@@ -14,7 +15,42 @@ impl Community {
     ) {
         match action {
             Action::Finish => {
-                self.abort_requested = true;
+                // Flora needs its finite release tail; retain no-Flora render invariance.
+                if !self.has_placed_flora {
+                    self.abort_requested = true;
+                }
+            }
+            Action::PlaceFlora {
+                flora_id,
+                spec,
+                extent_hz,
+                seeding,
+            } => {
+                self.has_placed_flora = true;
+                self.flora.push(Flora::new(
+                    flora_id,
+                    spec,
+                    extent_hz,
+                    seeding,
+                    self.seed,
+                    landscape,
+                    self.time.fs,
+                    self.time.hop,
+                ));
+            }
+            Action::UpdateFlora { flora_id, patch } => {
+                if let Some(flora) = self.flora.iter_mut().find(|flora| flora.id == flora_id) {
+                    flora.apply_patch(&patch);
+                } else {
+                    warn!(flora_id, "Update ignored for unknown Flora");
+                }
+            }
+            Action::ReleaseFlora { flora_id, fade_sec } => {
+                if let Some(flora) = self.flora.iter_mut().find(|flora| flora.id == flora_id) {
+                    flora.release(fade_sec);
+                } else {
+                    warn!(flora_id, "Release ignored for unknown Flora");
+                }
             }
             Action::Spawn {
                 population_id,

@@ -89,6 +89,49 @@ fn conchordal_render_generates_valid_wav() {
 }
 
 #[test]
+fn conchordal_render_flora_atom_configurations_finish_with_finite_audio() {
+    for (tone, residual) in [("sine", true), ("sine", false), ("resonant", true)] {
+        let scenario = write_inline_scenario(&format!(
+            r#"
+            seed(74);
+            let sun = place(harmonic().brain("drone").sustain().amp(0.08).send(habitat_bus), at(110));
+            wait(0.2);
+            let moss = place(flora().amp(0.1).fade(0.1).tone("{tone}").residual({residual}), consonance(110, 1760));
+            wait(0.5);
+            moss.amp(0.06);
+            release(moss);
+            release(sun);
+            wait(0.2);
+        "#
+        ));
+        let wav = unique_wav_path();
+        let output = run_render_binary(&scenario, &wav);
+        assert!(
+            output.status.success(),
+            "tone={tone}, residual={residual}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let reader = hound::WavReader::open(&wav).expect("valid Flora WAV");
+        let duration_sec = reader.duration() as f64 / reader.spec().sample_rate as f64;
+        assert!(
+            (0.9..5.0).contains(&duration_sec),
+            "unexpected render duration {duration_sec}"
+        );
+        let samples: Vec<f32> = reader
+            .into_samples::<i16>()
+            .map(|sample| sample.expect("valid PCM sample") as f32 / i16::MAX as f32)
+            .collect();
+        assert!(samples.iter().all(|sample| sample.is_finite()));
+        assert!(
+            samples.iter().any(|sample| sample.abs() > 1e-4),
+            "silent Flora configuration: {tone}, {residual}"
+        );
+        fs::remove_file(scenario).unwrap();
+        fs::remove_file(wav).unwrap();
+    }
+}
+
+#[test]
 fn temporal_observation_preserves_audio_and_finishes_both_buses() {
     let config = unique_temp_path("toml");
     fs::write(

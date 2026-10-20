@@ -15,6 +15,8 @@ pub enum Owner {
     Global,
     /// First param is `PopulationSpec` or `Population`.
     Population,
+    /// First param is `FloraSpec` or `Flora`.
+    Flora,
     /// First param is `Placement`.
     Placement,
     /// First param is `ModePattern`.
@@ -30,14 +32,14 @@ pub enum Style {
     Method,
 }
 
-/// Whether a method may patch an already placed `Population`.
+/// Whether a method may patch an already placed handle.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Patch {
-    /// Patches running voices when called on a `Population`.
+    /// Records live patches when called on a placed handle.
     Live,
-    /// Initial-only: registered only on `PopulationSpec`.
+    /// Initial-only: registered only on the spec type.
     Initial,
-    /// Not a PopulationSpec or Population method.
+    /// Not a spec or handle method.
     Na,
 }
 
@@ -171,6 +173,14 @@ pub struct ConstDoc {
 
 pub const TYPE_DOCS: &[TypeDoc] = &[
     TypeDoc {
+        name: "FloraSpec",
+        summary: "Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent.",
+    },
+    TypeDoc {
+        name: "Flora",
+        summary: "Placed spectral growth; supports pending amplitude, growth-rate and fatigue patches, and release.",
+    },
+    TypeDoc {
         name: "PopulationSpec",
         summary: "Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules.",
     },
@@ -210,6 +220,11 @@ pub const CONST_DOCS: &[ConstDoc] = &[
 ];
 
 pub const CATEGORY_DOCS: &[CategoryDoc] = &[
+    CategoryDoc {
+        id: "flora",
+        title: "Flora",
+        intro: "Flora grows spectral mass over a frequency extent using authored dynamics driven by the Landscape. It is not a model of auditory cognition.",
+    },
     CategoryDoc {
         id: "population_specs",
         title: "Population Specs",
@@ -292,6 +307,107 @@ priors: they shape the terrain and never schedule a beat or force a measure.",
 ];
 
 pub const FN_DOCS: &[FnDoc] = &[
+    // --- Flora ---
+    FnDoc {
+        name: "flora",
+        owner: Owner::Global,
+        category: "flora",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["flora()"],
+        summary: "Build a FloraSpec for spectral growth over a frequency extent.",
+        details: "Defaults: amp 0.03, rate 0.5/s, fatigue 6 s, fade 2 s, sine tone, residual enabled, both buses.",
+    },
+    FnDoc {
+        name: "amp",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Live,
+        usage: &["amp(level)"],
+        summary: "Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.",
+        details: "This bounds targets only, not transient amplitudes or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.",
+    },
+    FnDoc {
+        name: "rate",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Live,
+        usage: &["rate(per_second)"],
+        summary: "Set Flora's growth response in [0.05, 4] per second.",
+        details: "Requires a finite value before and after f32 conversion; invalid values raise script errors.",
+    },
+    FnDoc {
+        name: "fatigue",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Live,
+        usage: &["fatigue(seconds)"],
+        summary: "Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.",
+        details: "Requires a finite value before and after f32 conversion; invalid values raise script errors.",
+    },
+    FnDoc {
+        name: "fade",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["fade(seconds)"],
+        summary: "Set Flora's placement and release fade in [0, 60] seconds.",
+        details: "Requires a finite value before and after f32 conversion; invalid values raise script errors.",
+    },
+    FnDoc {
+        name: "tone",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["tone(name)"],
+        summary: "Choose Flora's tonal atom: exactly \"sine\" or \"resonant\".",
+        details: "Other strings raise script errors.",
+    },
+    FnDoc {
+        name: "residual",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["residual(enabled)"],
+        summary: "Enable or disable rendering diffuse Flora mass as band noise.",
+        details: "Enabled by default.",
+    },
+    FnDoc {
+        name: "send",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["send(bus_or_set)"],
+        summary: "Route Flora to a Bus or BusSet, using the same buses as Populations.",
+        details: "Default: habitat_bus | presentation_bus.",
+    },
+    FnDoc {
+        name: "place",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["place(flora_spec, placement)"],
+        summary: "Place a Flora over a consonance or random frequency extent.",
+        details: "Consonance seeds from the current consonance density mass; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.",
+    },
+    FnDoc {
+        name: "release",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["release(flora)"],
+        summary: "Mark a Flora for release using its spec's fade.",
+        details: "The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.",
+    },
     // --- population specs ---
     FnDoc {
         name: "sine",

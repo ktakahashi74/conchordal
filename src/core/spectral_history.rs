@@ -44,13 +44,7 @@ impl SpectralHistory {
         self.space
             .assert_scan_len_named(power_scan, "spectral_history_power_scan");
         assert!(start_sample >= self.next_sample && end_sample > start_sample);
-        if start_sample > self.next_sample {
-            let dt = (start_sample - self.next_sample) as f64 / self.sample_rate;
-            for lane in &mut self.lanes {
-                lane.advance(dt, None);
-            }
-            self.contiguous_samples = 0;
-        }
+        self.advance_to(start_sample);
         let count = end_sample - start_sample;
         self.contiguous_samples = self
             .contiguous_samples
@@ -71,6 +65,33 @@ impl SpectralHistory {
             lane.advance(dt, input);
         }
         self.next_sample = end_sample;
+    }
+
+    pub(crate) fn advance_to(&mut self, start_sample: u64) {
+        assert!(start_sample >= self.next_sample);
+        if start_sample > self.next_sample {
+            let dt = (start_sample - self.next_sample) as f64 / self.sample_rate;
+            for lane in &mut self.lanes {
+                lane.advance(dt, None);
+            }
+            self.contiguous_samples = 0;
+            self.next_sample = start_sample;
+        }
+    }
+
+    /// Read pre-observation features into observer-owned storage.
+    pub(crate) fn read_age_features(&self, age_rms_scan: &mut [[f32; 8]]) -> [f32; 8] {
+        self.space
+            .assert_scan_len_named(age_rms_scan, "age_rms_scan");
+        for (index, lane) in self.lanes.iter().enumerate() {
+            let snapshot = lane.snapshot();
+            for channel in 0..3 {
+                if let Some(ages) = age_rms_scan.get_mut(index * 3 + channel) {
+                    *ages = snapshot.known_band_rms_by_age.map(|age| age[channel]);
+                }
+            }
+        }
+        self.lanes[0].snapshot().known_coverage_by_age
     }
 
     /// Allocation belongs to the analysis handoff, not to the history update.
@@ -181,6 +202,30 @@ mod tests {
         );
         assert!(actual.known_rms_by_age_scan[3][2] > 0.0);
         assert!(actual.known_coverage_by_age[2] < 0.4);
+    }
+
+    #[test]
+    fn pre_observation_features_match_snapshots_and_advance_unknown_gaps_first() {
+        let mut history = SpectralHistory::new(Log2Space::new(100.0, 200.0, 3), 1000.0, 10);
+        for i in 0..30 {
+            history.observe(i * 10, (i + 1) * 10, &[1.0, 4.0, 9.0, 16.0]);
+        }
+        let mut features = [[0.0; 8]; 4];
+        let coverage = history.read_age_features(&mut features);
+        let snapshot = history.snapshot().unwrap();
+        assert_eq!(features.as_slice(), snapshot.known_rms_by_age_scan);
+        assert_eq!(coverage, snapshot.known_coverage_by_age);
+        let before = features;
+        history.advance_to(600);
+        let coverage = history.read_age_features(&mut features);
+        assert!(history.snapshot().is_none());
+        assert!(coverage[0] < snapshot.known_coverage_by_age[0]);
+        assert!(features[3][1] > 0.0);
+        assert_ne!(features, before);
+        let aged = features;
+        history.observe(600, 610, &[0.0; 4]);
+        history.read_age_features(&mut features);
+        assert_ne!(features, aged);
     }
 
     #[test]

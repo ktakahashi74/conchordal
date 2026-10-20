@@ -3,6 +3,7 @@ use super::action_observation::ActionKind;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::temporal_expectation::{AcousticTemporalExpectation, OwnSoundHistory};
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::flora::Flora;
 use crate::life::phonation_engine::ToneCmd;
 use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
@@ -303,7 +304,13 @@ impl ScheduleRenderer {
         now: Tick,
         rhythms: &NeuralRhythms,
     ) -> RenderFrame<'_> {
-        self.render_with_prediction_matches(phonation_batches, now, rhythms, |_, _, _, _| {})
+        self.render_with_prediction_matches(
+            phonation_batches,
+            now,
+            rhythms,
+            &mut [],
+            |_, _, _, _| {},
+        )
     }
 
     pub(crate) fn render_with_prediction_matches(
@@ -311,6 +318,7 @@ impl ScheduleRenderer {
         phonation_batches: &[PhonationBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
+        flora: &mut [Flora],
         mut emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
     ) -> RenderFrame<'_> {
         let mut checkpoint = self.profile.as_ref().map(|_| Instant::now());
@@ -415,6 +423,9 @@ impl ScheduleRenderer {
             self.buf_presentation[idx] = acc_presentation;
             self.buf_habitat[idx] = acc_habitat;
             rhythms.advance_in_place(dt);
+        }
+        for flora in flora {
+            flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
         }
         let samples_us = profile_lap(&mut checkpoint);
 
@@ -1164,6 +1175,91 @@ mod tests {
                 adsr: None,
             }],
             onsets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn flora_enters_external_history_without_entering_voice_body_or_own_habitat() {
+        use crate::core::landscape::Landscape;
+        use crate::core::log2space::Log2Space;
+        use crate::scenario::{FloraSeeding, FloraSpec, FloraTone};
+
+        let time = Timebase {
+            fs: 8000.0,
+            hop: 80,
+        };
+        let observer = AcousticTemporalExpectation::new(time.fs as u32).unwrap();
+        let mut expected_history = OwnSoundHistory::new(&observer, 0);
+        let mut tracked = ScheduleRenderer::new(time);
+        let mut voice_only = ScheduleRenderer::new(time);
+        tracked.prepare_self_sound(std::iter::once(2), 0, &observer);
+        let landscape = Landscape::new(Log2Space::new(110.0, 1760.0, 48));
+        let mut flora = [Flora::new(
+            7,
+            FloraSpec {
+                amp: 0.2,
+                rate: 2.0,
+                fatigue_sec: 6.0,
+                fade_sec: 0.0,
+                tone: FloraTone::Sine,
+                residual: true,
+                routing: Routing {
+                    to_presentation: false,
+                    to_habitat: true,
+                },
+            },
+            (220.0, 880.0),
+            FloraSeeding::Uniform,
+            42,
+            &landscape,
+            time.fs,
+            time.hop,
+        )];
+        let mut batch = outcome_batch(BodyKind::Sine);
+        batch.tones[0].onset = 0;
+        batch.tones[0].hold_ticks = Some(8000);
+        batch.tones[0].render_modulator = RenderModulatorSpec::SeqGate { duration_sec: 1.0 };
+        let rhythms = NeuralRhythms::default();
+        for hop in 0..20 {
+            let now = hop * time.hop as u64;
+            let batches = if hop == 0 {
+                std::slice::from_ref(&batch)
+            } else {
+                &[]
+            };
+            flora[0].advance(&landscape);
+            let actual = tracked.render_with_prediction_matches(
+                batches,
+                now,
+                &rhythms,
+                &mut flora,
+                |_, _, _, _| {},
+            );
+            let control = voice_only.render(batches, now, &rhythms);
+            assert_eq!(actual.presentation, control.presentation);
+            assert_ne!(actual.habitat, control.habitat);
+            expected_history.process(
+                now,
+                control.presentation,
+                control.habitat,
+                actual.habitat,
+                |_, _, _| {},
+            );
+            let own = tracked
+                .self_sound
+                .iter()
+                .flatten()
+                .find(|s| s.source_id == 2)
+                .unwrap();
+            assert_eq!(own.body, control.presentation);
+            assert_eq!(own.habitat, control.habitat);
+            let end = now + time.hop as u64;
+            let expected = expected_history.observed_external_energy(now, end).unwrap();
+            assert!(expected.iter().sum::<f32>() > 0.0);
+            assert_eq!(
+                own.history.observed_external_energy(now, end),
+                Some(expected)
+            );
         }
     }
 

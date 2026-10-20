@@ -13,6 +13,7 @@
 - [Population — Voiceをまとめる持続単位](concepts/voice_life.md)
 - [VoiceとLandscape — 音と環境のフィードバック](concepts/ecological_loop.md)
 - [Consonance Field — 音高を評価する地形](concepts/consonance.md)
+- [Flora — スペクトルの成長](concepts/flora.md)
 - [リズム：一つの結合連続体](concepts/rhythm.md)
 - [ルーティングとListenerTwin](concepts/routing.md)
 - [タイムラインと構造](concepts/timeline.md)

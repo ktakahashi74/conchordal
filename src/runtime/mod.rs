@@ -1,3 +1,4 @@
+use crate::core::habituation::drive_and_apply_habituation;
 use std::path::Path;
 use std::sync::{
     Arc,
@@ -489,26 +490,6 @@ fn merge_latest_analysis_results(
     (true, unavailable)
 }
 
-/// Advance a habituation field one hop from the landscape's raw views, then
-/// write the effective views. No-op when disabled: `recompute_consonance`
-/// already seeded the effective views bit-exact to raw.
-fn drive_and_apply_habituation(
-    landscape: &mut Landscape,
-    hab: &mut crate::core::habituation::HabituationField,
-    lparams: &LandscapeParams,
-    dt_sec: f32,
-) {
-    if !hab.is_enabled() {
-        return;
-    }
-    hab.ensure_len(landscape.space.n_bins());
-    let (proj, _max) = lparams
-        .harmonicity_kernel
-        .potential_h_from_log2_spectrum(&landscape.subjective_intensity, &landscape.space);
-    hab.advance_from_parts(&landscape.consonance_field_level, &proj, dt_sec);
-    landscape.apply_habituation(hab.state(), hab.theta(), &lparams.consonance_representation);
-}
-
 #[allow(clippy::too_many_arguments)]
 fn observe_listener_analysis_results(
     listener_result_rx: Option<&Receiver<analysis_worker::AnalysisResult>>,
@@ -707,6 +688,20 @@ fn build_analysis_runtime_core(
     }
 }
 
+#[cfg(test)]
+pub(crate) fn info_terrain_eval_stream(sample_rate: u32) -> AnalysisStream {
+    let config = AppConfig::default();
+    let core = build_analysis_runtime_core(&config, sample_rate);
+    AnalysisStream::new(core.lparams, core.nsgt)
+}
+
+#[cfg(test)]
+pub(crate) fn info_terrain_efe_eval_stream(config: &AppConfig, sample_rate: u32) -> AnalysisStream {
+    let core = build_analysis_runtime_core(config, sample_rate);
+    AnalysisStream::new(core.lparams, core.nsgt)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn spawn_analysis_worker(
     name: &'static str,
     analysis_stream: AnalysisStream,
@@ -715,6 +710,7 @@ fn spawn_analysis_worker(
     analysis_update_rx: Receiver<LandscapeUpdate>,
     delivery: analysis_worker::AnalysisDelivery,
     temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
+    info_tap: Option<crate::core::info_terrain::Observer>,
 ) -> thread::JoinHandle<()> {
     thread::Builder::new()
         .name(name.into())
@@ -726,6 +722,7 @@ fn spawn_analysis_worker(
                 analysis_update_rx,
                 delivery,
                 temporal_tap,
+                info_tap,
             )
         })
         .expect("spawn analysis worker")
@@ -780,6 +777,9 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                     has_finish = true;
                 }
                 Action::Spawn { .. }
+                | Action::PlaceFlora { .. }
+                | Action::UpdateFlora { .. }
+                | Action::ReleaseFlora { .. }
                 | Action::UpdatePopulation { .. }
                 | Action::ReleasePopulation { .. }
                 | Action::SetRespawnPolicy { .. }
@@ -984,6 +984,12 @@ fn wire_runtime(
     let hop = core.hop;
     let hop_duration = core.hop_duration;
     let lparams_runtime = core.lparams.clone();
+    if config.info_terrain.enabled && (1.0 / (hop as f64 / fs as f64)).floor() < 2.0 {
+        return Err(
+            "info_terrain requires at least two frames per 1 s window at the runtime sample rate"
+                .into(),
+        );
+    }
 
     let (ui_frame_tx, ui_frame_rx) = bounded::<UiFrame>(ui_channel_capacity);
     let (report_error_tx, report_error_rx) = if reporter.is_some() || profile.is_some() {
@@ -1052,7 +1058,28 @@ fn wire_runtime(
     } else {
         None
     };
+    let dcc_coupler = DccCoupler::new(config.dcc);
+    let listener_analysis_enabled =
+        observing || listener_forced || dcc_coupler.coupling_strength() > 0.0;
     let analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
+    let mut info_outputs = [None, None];
+    let mut info_taps = std::array::from_fn::<_, 2, _>(|bus| {
+        (config.info_terrain.enabled && (bus == 0 || listener_analysis_enabled)).then(|| {
+            let (mut tap, output) = crate::core::info_terrain::Observer::new(
+                core.landscape.space.clone(),
+                runtime_sample_rate,
+                hop,
+                if bus == 0 { "habitat" } else { "presentation" },
+                config.info_terrain.trace,
+                deterministic_analysis,
+            );
+            if config.info_terrain.efe {
+                tap.enable_efe(config, core.nsgt.nfft());
+            }
+            info_outputs[bus] = Some(output);
+            tap
+        })
+    });
     let analysis_handle = spawn_analysis_worker(
         "field-analysis",
         analysis_stream,
@@ -1061,11 +1088,9 @@ fn wire_runtime(
         analysis_update_rx,
         analysis_worker::AnalysisDelivery::Latest,
         taps[0].take(),
+        info_taps[0].take(),
     );
 
-    let dcc_coupler = DccCoupler::new(config.dcc);
-    let listener_analysis_enabled =
-        observing || listener_forced || dcc_coupler.coupling_strength() > 0.0;
     let (
         presentation_to_listener_tx,
         listener_result_rx,
@@ -1084,6 +1109,7 @@ fn wire_runtime(
             update_rx,
             analysis_worker::AnalysisDelivery::Ordered,
             taps[1].take(),
+            info_taps[1].take(),
         );
         (
             Some(presentation_tx),
@@ -1141,6 +1167,7 @@ fn wire_runtime(
         deterministic_footprints,
     };
     let channels = WorkerChannels {
+        info_outputs,
         candidate_tables,
         reference_context,
         temporal_snapshots,
@@ -1535,6 +1562,7 @@ struct WorkerConfig {
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
 struct WorkerChannels {
+    info_outputs: [Option<crate::core::info_terrain::Output>; 2],
     candidate_tables: [Option<
         Arc<
             std::sync::Mutex<
@@ -1827,17 +1855,13 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
                     });
                 }
             }
-            if channels.temporal_snapshots.iter().any(Option::is_some)
+            if (channels.temporal_snapshots.iter().any(Option::is_some)
+                || channels.info_outputs.iter().any(Option::is_some))
                 && channels.audio_to_analysis_tx.is_some()
             {
                 // Close input and drain publishers before reading their final observer state.
                 // This runs after generation has stopped, never in a live hop or callback.
-                channels.audio_to_analysis_tx.take();
-                channels.presentation_to_listener_tx.take();
-                for _ in &channels.analysis_result_rx {}
-                if let Some(rx) = &channels.listener_result_rx {
-                    for _ in rx {}
-                }
+                finish_analysis(&mut channels, &mut state.reporter);
                 let now_sec = state.current_time();
                 if let Some(observer) = state.schedule_renderer.action_observer.as_ref() {
                     report_try(
@@ -1951,6 +1975,17 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
         "listener confidence summary",
         |writer| writer.write_listener_confidence_summary(),
     );
+    if channels.info_outputs.iter().any(Option::is_some) {
+        let dropped_blocks = channels
+            .info_outputs
+            .iter()
+            .flatten()
+            .map(|output| output.dropped.load(Ordering::Acquire))
+            .sum();
+        report_try(&mut state.reporter, "info terrain summary", |writer| {
+            writer.write_info_terrain_summary(dropped_blocks)
+        });
+    }
     report_try(&mut state.reporter, "flush", |writer| writer.flush());
     let mut failure = state
         .reporter
@@ -2016,11 +2051,59 @@ fn worker_loop(cfg: WorkerConfig, mut channels: WorkerChannels, mut state: Worke
     }
 }
 
+/// Drain all publishers together: ordered results and passive blocks can both block.
+fn finish_analysis(channels: &mut WorkerChannels, reporter: &mut Option<JsonlReporter>) {
+    channels.audio_to_analysis_tx.take();
+    channels.presentation_to_listener_tx.take();
+    let never_result = crossbeam_channel::never();
+    let never_block = crossbeam_channel::never();
+    let mut results_open = [true, channels.listener_result_rx.is_some()];
+    let mut blocks_open = channels.info_outputs.each_ref().map(Option::is_some);
+    while results_open.iter().chain(&blocks_open).any(|open| *open) {
+        let habitat = if results_open[0] {
+            &channels.analysis_result_rx
+        } else {
+            &never_result
+        };
+        let presentation = if results_open[1] {
+            channels.listener_result_rx.as_ref().unwrap()
+        } else {
+            &never_result
+        };
+        let blocks: [_; 2] = std::array::from_fn(|bus| {
+            if blocks_open[bus] {
+                &channels.info_outputs[bus].as_ref().unwrap().rx
+            } else {
+                &never_block
+            }
+        });
+        crossbeam_channel::select! {
+            recv(habitat) -> result => { if result.is_err() { results_open[0] = false; } }
+            recv(presentation) -> result => { if result.is_err() { results_open[1] = false; } }
+            recv(blocks[0]) -> result => match result {
+                Ok(block) => report_try(reporter, "final info terrain block", |writer| writer.write_info_terrain_block(&block)),
+                Err(_) => blocks_open[0] = false,
+            },
+            recv(blocks[1]) -> result => match result {
+                Ok(block) => report_try(reporter, "final info terrain block", |writer| writer.write_info_terrain_block(&block)),
+                Err(_) => blocks_open[1] = false,
+            },
+        }
+    }
+}
+
 /// One generated hop: analysis merge, ecology step, render, routing, telemetry.
 fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut WorkerState) {
     let t_start = Instant::now();
     if state.profile.is_some() {
         begin_allocations();
+    }
+    for output in channels.info_outputs.iter().flatten() {
+        for block in output.rx.try_iter() {
+            report_try(&mut state.reporter, "info terrain block", |writer| {
+                writer.write_info_terrain_block(&block)
+            });
+        }
     }
     let frame_idx = state.frame_idx;
     let buffer_capacity = channels
@@ -2194,7 +2277,9 @@ fn process_hop(cfg: &WorkerConfig, channels: &mut WorkerChannels, state: &mut Wo
     let finished_now = if state.pop.abort_requested {
         true
     } else {
-        state.scenario_end_tick.is_some() && state.schedule_renderer.is_idle()
+        state.scenario_end_tick.is_some()
+            && state.schedule_renderer.is_idle()
+            && state.pop.flora.is_empty()
     };
     if finished_now {
         state.playback_state = PlaybackState::Finished;
@@ -2325,6 +2410,11 @@ fn wait_for_analysis(
 ) -> bool {
     let mut analysis_updated = false;
     loop {
+        let old_space = (
+            state.log_space.fmin,
+            state.log_space.fmax,
+            state.log_space.bins_per_oct,
+        );
         let (merged, analysis_unavailable) = merge_latest_analysis_results(
             analysis_result_rx,
             &mut state.current_landscape,
@@ -2334,6 +2424,17 @@ fn wait_for_analysis(
             &mut state.last_analysis_frame,
             state.frame_idx,
         );
+        if old_space
+            != (
+                state.log_space.fmin,
+                state.log_space.fmax,
+                state.log_space.bins_per_oct,
+            )
+        {
+            for flora in &mut state.pop.flora {
+                flora.on_space_change(&state.log_space);
+            }
+        }
         if merged {
             analysis_updated = true;
         }
@@ -2472,6 +2573,10 @@ fn advance_population(
         None::<&mut crate::core::stream::analysis::AnalysisStream>,
         &mut state.pop,
     );
+    state.pop.flora.retain(|flora| !flora.is_finished());
+    for flora in &mut state.pop.flora {
+        flora.advance(&state.current_landscape);
+    }
     if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
         capture.prepare(
             state
@@ -2628,6 +2733,9 @@ fn advance_population(
         state.scenario_end_tick = Some(now_tick);
         state.pop.voices.clear();
         state.schedule_renderer.shutdown_at(now_tick);
+        for flora in &mut state.pop.flora {
+            flora.release_at_scenario_end();
+        }
     }
 
     state.pop.advance_with_listener_pressure(
@@ -2910,6 +3018,7 @@ fn render_and_route_audio(
         &state.phonation_batches_buf[..phonation_count],
         now_tick,
         &state.current_landscape.rhythm,
+        &mut state.pop.flora,
         |id, start, window, matched| {
             report_try(&mut state.reporter, "local prediction match", |writer| {
                 writer.write_local_prediction_match(id, cfg.fs as u32, start, window, matched)
@@ -2934,6 +3043,16 @@ fn render_and_route_audio(
 
     let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);
     let habitat_chunk: Arc<[f32]> = Arc::from(frame.habitat);
+    let start_sample = state.frame_idx * cfg.hop as u64;
+    let end_sample = start_sample + cfg.hop as u64;
+    if state.reporter.is_some() && end_sample / cfg.fs as u64 > start_sample / cfg.fs as u64 {
+        for flora in &state.pop.flora {
+            report_try(&mut state.reporter, "flora", |writer| {
+                writer.write_flora(flora, end_sample as f64 / cfg.fs as f64)
+            });
+        }
+    }
+    state.pop.flora.retain(|flora| !flora.is_finished());
     #[cfg(test)]
     if let Some(mut probe) = state.offline_body_probe.take() {
         probe(
@@ -3374,7 +3493,7 @@ mod tests {
                     end_sample as u64,
                     &frame.nsgt_power,
                 );
-                let history = (end_sample / core.hop % 10 == 0
+                let history = ((end_sample / core.hop).is_multiple_of(10)
                     || end_sample + core.hop > audio.len())
                 .then(|| spectral_history.snapshot())
                 .flatten();
@@ -3463,6 +3582,333 @@ mod tests {
             roughness_ref_sep_erb: 0.25,
             roughness_ref_mass_split: 0.5,
             roughness_ref_eps: 1e-12,
+        }
+    }
+
+    mod flora {
+        use super::*;
+        use crate::scenario::control::Routing;
+        use crate::scenario::{FloraPatch, FloraSeeding, FloraSpec, FloraTone, TimedEvent};
+
+        struct Harness {
+            cfg: WorkerConfig,
+            state: WorkerState,
+            channels: WorkerChannels,
+            habitat_rx: Receiver<(u64, Arc<[f32]>)>,
+            presentation_rx: Receiver<(u64, Arc<[f32]>)>,
+            analysis_tx: Sender<analysis_worker::AnalysisResult>,
+            _ui_rx: Receiver<UiFrame>,
+        }
+
+        fn spec(fade_sec: f32) -> FloraSpec {
+            FloraSpec {
+                amp: 0.2,
+                rate: 2.0,
+                fatigue_sec: 6.0,
+                fade_sec,
+                tone: FloraTone::Sine,
+                residual: true,
+                routing: Routing::default(),
+            }
+        }
+
+        fn event(time: f32, order: u64, actions: Vec<Action>) -> TimedEvent {
+            TimedEvent {
+                time,
+                order,
+                actions,
+            }
+        }
+
+        fn place(spec: FloraSpec) -> Action {
+            Action::PlaceFlora {
+                flora_id: 7,
+                spec,
+                extent_hz: (220.0, 880.0),
+                seeding: FloraSeeding::Consonance,
+            }
+        }
+
+        impl Harness {
+            fn new(events: Vec<TimedEvent>) -> Self {
+                let time = Timebase {
+                    fs: 8000.0,
+                    hop: 80,
+                };
+                let cfg = WorkerConfig {
+                    private_trace: None,
+                    onset_comparison: None,
+                    scenario_name: "Flora runtime".into(),
+                    wait_user_exit: false,
+                    start_flag: Arc::new(AtomicBool::new(true)),
+                    exiting: Arc::new(AtomicBool::new(false)),
+                    scaffold: Default::default(),
+                    meter_shaping: Default::default(),
+                    guard_meter: None,
+                    underrun_frames: None,
+                    audio_counters: None,
+                    dcc_coupler: DccCoupler::new(Default::default()),
+                    hop: time.hop,
+                    hop_duration: Duration::from_secs_f32(time.hop as f32 / time.fs),
+                    fs: time.fs,
+                    deterministic_analysis: true,
+                    deterministic_footprints: true,
+                };
+                let scenario = Scenario {
+                    seed: 42,
+                    temporal_mode: Default::default(),
+                    control_update_mode: Default::default(),
+                    scaffold: Default::default(),
+                    meter_shaping: Default::default(),
+                    scene_markers: Vec::new(),
+                    duration_sec: events.last().unwrap().time,
+                    events,
+                };
+                validate_scenario(&scenario).unwrap();
+                let space = Log2Space::new(110.0, 1760.0, 48);
+                let mut params = build_test_params(&space);
+                params.fs = time.fs;
+                let mut pop = Community::new(time);
+                pop.set_seed(scenario.seed);
+                let state = WorkerState::new(
+                    pop,
+                    Conductor::from_scenario(scenario),
+                    Landscape::new(space),
+                    params,
+                    DorsalStream::new(time.fs),
+                    None,
+                    &cfg,
+                );
+                let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
+                let (audio_tx, habitat_rx) = crossbeam_channel::unbounded();
+                let (presentation_tx, presentation_rx) = crossbeam_channel::unbounded();
+                let (analysis_tx, analysis_result_rx) = crossbeam_channel::unbounded();
+                let (analysis_update_tx, _) = crossbeam_channel::unbounded();
+                Self {
+                    cfg,
+                    state,
+                    habitat_rx,
+                    presentation_rx,
+                    analysis_tx,
+                    _ui_rx: ui_rx,
+                    channels: WorkerChannels {
+                        info_outputs: [None, None],
+                        candidate_tables: [None, None],
+                        reference_context: None,
+                        temporal_snapshots: [None, None],
+                        ui_tx,
+                        report_error_tx: None,
+                        audio_prod: None,
+                        wav_tx: None,
+                        audio_to_analysis_tx: Some(audio_tx),
+                        analysis_result_rx,
+                        analysis_update_tx,
+                        presentation_to_listener_tx: Some(presentation_tx),
+                        listener_result_rx: None,
+                        listener_analysis_update_tx: None,
+                    },
+                }
+            }
+
+            fn step(&mut self) -> [Arc<[f32]>; 2] {
+                // Hold the field fixed unless the test supplies a reconfiguration.
+                self.state.last_analysis_frame = Some(self.state.frame_idx);
+                process_hop(&self.cfg, &mut self.channels, &mut self.state);
+                [
+                    self.presentation_rx.try_recv().unwrap().1,
+                    self.habitat_rx.try_recv().unwrap().1,
+                ]
+            }
+        }
+
+        #[test]
+        fn flora_routing_reaches_only_the_selected_worker_chunk() {
+            for presentation in [false, true] {
+                let mut spec = spec(0.0);
+                spec.routing = Routing {
+                    to_presentation: presentation,
+                    to_habitat: !presentation,
+                };
+                let mut run = Harness::new(vec![
+                    event(0.0, 0, vec![place(spec)]),
+                    event(1.0, 1, vec![Action::Finish]),
+                ]);
+                let chunks = run.step();
+                let sounding = usize::from(!presentation);
+                assert!(chunks[sounding].iter().any(|&x| x != 0.0));
+                assert!(chunks[1 - sounding].iter().all(|&x| x == 0.0));
+                assert!(run.state.pop.voices.is_empty());
+                assert!(!run.state.finished);
+            }
+        }
+
+        #[test]
+        fn lone_flora_finishes_after_explicit_release_and_keeps_vec_capacity() {
+            let mut run = Harness::new(vec![
+                event(0.0, 0, vec![place(spec(0.0))]),
+                event(
+                    0.05,
+                    1,
+                    vec![Action::ReleaseFlora {
+                        flora_id: 7,
+                        fade_sec: 0.03,
+                    }],
+                ),
+                event(0.1, 2, vec![Action::Finish]),
+            ]);
+            run.step();
+            let capacity = run.state.pop.flora.capacity();
+            for frame in 1..=10 {
+                assert_eq!(run.state.frame_idx, frame);
+                run.step();
+                assert_eq!(run.state.pop.flora.is_empty(), frame >= 7);
+                assert_eq!(run.state.finished, frame == 10);
+            }
+            assert_eq!(run.state.pop.flora.capacity(), capacity);
+            assert!(!run.state.pop.abort_requested);
+        }
+
+        #[test]
+        fn flora_end_of_script_fades_from_full_gain_or_during_fade_in() {
+            for finish_frame in [2, 10] {
+                let mut run = Harness::new(vec![
+                    event(0.0, 0, vec![place(spec(0.06))]),
+                    event(finish_frame as f32 / 100.0, 1, vec![Action::Finish]),
+                ]);
+                for frame in 0..finish_frame + 6 {
+                    let chunks = run.step();
+                    assert!(chunks[0].iter().any(|&x| x != 0.0));
+                    assert_eq!(run.state.finished, frame == finish_frame + 5);
+                    if frame >= finish_frame {
+                        assert!(run.state.scenario_end_tick.is_some());
+                        assert!(!run.state.pop.abort_requested);
+                    }
+                }
+                assert!(run.state.pop.flora.is_empty());
+                assert!(run.cfg.exiting.load(Ordering::SeqCst));
+            }
+        }
+
+        #[test]
+        fn flora_release_during_fade_in_keeps_its_deadline_at_finish() {
+            let mut run = Harness::new(vec![
+                event(0.0, 0, vec![place(spec(1.0))]),
+                event(
+                    0.02,
+                    1,
+                    vec![Action::ReleaseFlora {
+                        flora_id: 7,
+                        fade_sec: 0.05,
+                    }],
+                ),
+                event(0.03, 2, vec![Action::Finish]),
+            ]);
+            for frame in 0..=6 {
+                run.step();
+                assert_eq!(run.state.finished, frame == 6);
+            }
+            assert!(run.state.pop.flora.is_empty());
+        }
+
+        #[test]
+        fn flora_same_event_actions_apply_in_order_and_unknown_ids_are_ignored() {
+            let mut run = Harness::new(vec![
+                event(
+                    0.0,
+                    0,
+                    vec![
+                        Action::UpdateFlora {
+                            flora_id: 99,
+                            patch: FloraPatch::default(),
+                        },
+                        Action::ReleaseFlora {
+                            flora_id: 99,
+                            fade_sec: 0.0,
+                        },
+                        place(spec(0.0)),
+                        Action::UpdateFlora {
+                            flora_id: 7,
+                            patch: FloraPatch {
+                                amp: Some(0.0),
+                                ..Default::default()
+                            },
+                        },
+                        Action::ReleaseFlora {
+                            flora_id: 7,
+                            fade_sec: 0.0,
+                        },
+                    ],
+                ),
+                event(0.1, 1, vec![Action::Finish]),
+            ]);
+            let chunks = run.step();
+            assert!(run.state.pop.flora.is_empty());
+            assert!(chunks.iter().all(|chunk| chunk.iter().all(|&x| x == 0.0)));
+        }
+
+        #[test]
+        fn flora_runtime_space_change_goes_dormant_then_resumes() {
+            let mut run = Harness::new(vec![
+                event(0.0, 0, vec![place(spec(0.0))]),
+                event(10.0, 1, vec![Action::Finish]),
+            ]);
+            run.step();
+            for (space, dormant) in [
+                (Log2Space::new(110.0, 1760.0, 96), false),
+                (Log2Space::new(2000.0, 3000.0, 48), true),
+                (Log2Space::new(110.0, 1760.0, 24), false),
+            ] {
+                let mut landscape = Landscape::new(space);
+                let peak = landscape.space.nearest_index(440.0);
+                landscape.harmonicity[peak] = 1.0;
+                run.analysis_tx
+                    .send((run.state.frame_idx, Some(landscape)))
+                    .unwrap();
+                let mut sounded = false;
+                // Resumption seeds uniformly; a nonflat field must grow excess mass first.
+                for _ in 0..100 {
+                    let chunks = run.step();
+                    sounded |= chunks[0].iter().any(|&x| x != 0.0);
+                }
+                assert_ne!(sounded, dormant);
+                assert_eq!(run.state.pop.flora.len(), 1);
+            }
+        }
+
+        #[test]
+        fn flora_abort_still_stops_the_worker_immediately() {
+            let mut run = Harness::new(vec![
+                event(0.0, 0, vec![place(spec(1.0))]),
+                event(1.0, 1, vec![Action::Finish]),
+            ]);
+            run.step();
+            run.state.pop.abort_requested = true;
+            run.step();
+            assert!(run.state.finished);
+            assert!(run.state.scenario_end_tick.is_none());
+        }
+
+        #[test]
+        #[cfg(feature = "profile-alloc")]
+        fn flora_worker_total_allocations_are_recorded() {
+            let mut run = Harness::new(vec![
+                event(0.0, 0, vec![place(spec(0.0))]),
+                event(10.0, 1, vec![Action::Finish]),
+            ]);
+            for _ in 0..20 {
+                run.step();
+            }
+            begin_allocations();
+            for _ in 0..100 {
+                run.step();
+            }
+            let counts = finish_allocations().unwrap();
+            eprintln!(
+                "Flora worker-total: 100 live-Flora hops, allocations={}, bytes={}",
+                counts.count, counts.bytes
+            );
+            assert_eq!(run.state.pop.flora.len(), 1);
+            assert!(!run.state.finished);
         }
     }
 
@@ -3583,6 +4029,7 @@ mod tests {
         let (_analysis_tx, analysis_result_rx) = crossbeam_channel::unbounded();
         let (analysis_update_tx, _update_rx) = crossbeam_channel::unbounded();
         let mut channels = WorkerChannels {
+            info_outputs: [None, None],
             candidate_tables: [None, None],
             reference_context: None,
             temporal_snapshots: [Some(Arc::clone(&shared)), None],

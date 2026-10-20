@@ -24,6 +24,15 @@ fn amp(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Amplitude in 0.0-1.0.
 fn amp(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
+/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+fn amp(arg0: Flora, arg1: f64) -> Flora;
+/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+fn amp(arg0: Flora, arg1: i64) -> Flora;
+/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+fn amp(arg0: FloraSpec, arg1: f64) -> FloraSpec;
+/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+fn amp(arg0: FloraSpec, arg1: i64) -> FloraSpec;
+
 /// Hold the voice at its pitch: an anchored voice never moves.
 fn anchor(arg0: PopulationSpec) -> PopulationSpec;
 
@@ -174,6 +183,23 @@ fn entrained(arg0: PopulationSpec) -> PopulationSpec;
 fn entrainment(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Influence in 0-1: acoustic context for entrained/flow, beat-phase attraction for metric.
 fn entrainment(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
+
+/// Set Flora's placement and release fade in [0, 60] seconds.
+fn fade(arg0: FloraSpec, arg1: f64) -> FloraSpec;
+/// Set Flora's placement and release fade in [0, 60] seconds.
+fn fade(arg0: FloraSpec, arg1: i64) -> FloraSpec;
+
+/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
+fn fatigue(arg0: Flora, arg1: f64) -> Flora;
+/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
+fn fatigue(arg0: Flora, arg1: i64) -> Flora;
+/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
+fn fatigue(arg0: FloraSpec, arg1: f64) -> FloraSpec;
+/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
+fn fatigue(arg0: FloraSpec, arg1: i64) -> FloraSpec;
+
+/// Build a FloraSpec for spectral growth over a frequency extent.
+fn flora() -> FloraSpec;
 
 /// Clustered bodily renewal with weak acoustic participation, for non-metric texture.
 fn flow(arg0: PopulationSpec) -> PopulationSpec;
@@ -369,6 +395,9 @@ fn pitch_smooth(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// Create a Population at the current script time.
 fn place(arg0: PopulationSpec, arg1: Placement) -> Population;
 
+/// Place a Flora over a consonance or random frequency extent.
+fn place(arg0: FloraSpec, arg1: Placement) -> Flora;
+
 /// Scoped callback execution with automatic population release.
 fn play(arg0: Fn);
 /// Scoped callback execution with automatic population release.
@@ -432,6 +461,15 @@ fn range(arg0: Placement, arg1: i64, arg2: i64) -> Placement;
 /// Frequency range; only valid on `landscape_*_modes()`.
 fn range(arg0: ModePattern, arg1: f64, arg2: f64) -> ModePattern;
 
+/// Set Flora's growth response in [0.05, 4] per second.
+fn rate(arg0: Flora, arg1: f64) -> Flora;
+/// Set Flora's growth response in [0.05, 4] per second.
+fn rate(arg0: Flora, arg1: i64) -> Flora;
+/// Set Flora's growth response in [0.05, 4] per second.
+fn rate(arg0: FloraSpec, arg1: f64) -> FloraSpec;
+/// Set Flora's growth response in [0.05, 4] per second.
+fn rate(arg0: FloraSpec, arg1: i64) -> FloraSpec;
+
 /// [tuning] Ratio-based movement candidates; 0 disables.
 fn ratio_candidates(arg0: Population, arg1: i64) -> Population;
 /// [tuning] Ratio-based movement candidates; 0 disables.
@@ -445,8 +483,14 @@ fn recovery(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 /// Close a live Population; its voices enter their release phase and fade out.
 fn release(arg0: Population);
 
+/// Mark a Flora for release using its spec's fade.
+fn release(arg0: Flora);
+
 /// Repeated/pulsed phonation mode.
 fn repeat(arg0: PopulationSpec) -> PopulationSpec;
+
+/// Enable or disable rendering diffuse Flora mass as band noise.
+fn residual(arg0: FloraSpec, arg1: bool) -> FloraSpec;
 
 /// Background turnover rate per second.
 fn respawn_background_death_rate(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
@@ -513,6 +557,11 @@ fn selection_approx_loo(arg0: PopulationSpec, arg1: bool) -> PopulationSpec;
 fn send(arg0: PopulationSpec, arg1: Bus) -> PopulationSpec;
 /// Route the voice to specific buses; accepts a `Bus` or a `BusSet`.
 fn send(arg0: PopulationSpec, arg1: BusSet) -> PopulationSpec;
+
+/// Route Flora to a Bus or BusSet, using the same buses as Populations.
+fn send(arg0: FloraSpec, arg1: Bus) -> FloraSpec;
+/// Route Flora to a Bus or BusSet, using the same buses as Populations.
+fn send(arg0: FloraSpec, arg1: BusSet) -> FloraSpec;
 
 /// [research] `"snapshot_phased"`/`"snapshot"` (default) or `"sequential_rotating"`/`"sequential"`. Research control.
 fn set_control_update_mode(arg0: String);
@@ -630,6 +679,9 @@ fn tessitura_gravity(arg0: Population, arg1: i64) -> Population;
 fn tessitura_gravity(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// [tuning] Gravity toward the tessitura center.
 fn tessitura_gravity(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
+
+/// Choose Flora's tonal atom: exactly "sine" or "resonant".
+fn tone(arg0: FloraSpec, arg1: String) -> FloraSpec;
 
 /// [tuning] Number of top candidates kept by the peak sampler.
 fn top_k(arg0: Population, arg1: f64) -> Population;

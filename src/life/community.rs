@@ -1,3 +1,4 @@
+use super::flora::Flora;
 use super::telemetry::LifeRecord;
 use super::voice::{AnyArticulationCore, PhonationBatch, SoundBody, Voice, VoiceMetadata};
 use crate::core::landscape::{Landscape, LandscapeFrame, LandscapeUpdate};
@@ -79,6 +80,8 @@ impl PredGateAccum {
 
 pub struct Community {
     pub voices: Vec<Voice>,
+    pub(crate) flora: Vec<Flora>,
+    has_placed_flora: bool,
     current_frame: u64,
     pub abort_requested: bool,
     pub global_coupling: f32,
@@ -204,6 +207,8 @@ impl Community {
         debug!("Community sample rate: {:.1} Hz", time.fs);
         Self {
             voices: Vec::new(),
+            flora: Vec::new(),
+            has_placed_flora: false,
             current_frame: 0,
             abort_requested: false,
             global_coupling: 1.0,

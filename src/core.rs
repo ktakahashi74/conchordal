@@ -9,6 +9,7 @@ pub(crate) mod habituation;
 pub(crate) mod harmonic_ratios;
 pub(crate) mod harmonicity_kernel;
 pub(crate) mod history_prediction;
+pub(crate) mod info_terrain;
 pub mod landscape;
 pub(crate) mod landscape_spectral;
 pub mod log2space;

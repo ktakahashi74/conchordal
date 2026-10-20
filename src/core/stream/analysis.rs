@@ -59,6 +59,10 @@ impl AnalysisStream {
         &self.last_landscape
     }
 
+    pub(crate) fn landscape_params(&self) -> &LandscapeParams {
+        &self.params
+    }
+
     pub(crate) fn window_samples(&self) -> usize {
         self.nsgt_rt.nfft()
     }

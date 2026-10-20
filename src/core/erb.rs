@@ -18,9 +18,65 @@ pub fn erb_to_hz(e: f32) -> f32 {
 
 /// Returns ERB bandwidth in Hz (Glasberg & Moore 1990)
 #[inline]
-#[cfg(test)]
 pub fn erb_bw_hz(f_hz: f32) -> f32 {
     24.7 * (4.37e-3 * f_hz + 1.0)
+}
+
+pub(crate) struct ErbCell {
+    pub(crate) lo_erb: f32,
+    pub(crate) hi_erb: f32,
+    pub(crate) bins: std::ops::Range<usize>,
+}
+
+/// One-ERB cells; merge short trailing edges and empty cells as in Flora.
+pub(crate) fn partition_erb_cells(
+    space: &super::log2space::Log2Space,
+    erb_scan: &[f32],
+    extent_hz: (f32, f32),
+) -> Vec<ErbCell> {
+    space.assert_scan_len_named(erb_scan, "erb_scan");
+    let start = space.centers_hz.partition_point(|&f| f < extent_hz.0);
+    let end = space.centers_hz.partition_point(|&f| f <= extent_hz.1);
+    let mut cells: Vec<ErbCell> = Vec::new();
+    if start >= end {
+        return cells;
+    }
+    let lo = hz_to_erb(extent_hz.0.max(space.fmin));
+    let hi = hz_to_erb(extent_hz.1.min(space.fmax));
+    let whole = (hi - lo).floor() as usize;
+    let count = if hi - lo - (whole as f32) < 0.5 {
+        whole.max(1)
+    } else {
+        whole + 1
+    };
+    let mut bin = start;
+    let mut pending_lo = lo;
+    for c in 0..count {
+        let upper = if c + 1 == count {
+            hi
+        } else {
+            lo + (c + 1) as f32
+        };
+        let first = bin;
+        while bin < end && (c + 1 == count || erb_scan[bin] < upper) {
+            bin += 1;
+        }
+        if bin == first {
+            if let Some(prev) = cells.last_mut() {
+                prev.hi_erb = upper;
+            }
+        } else {
+            cells.push(ErbCell {
+                lo_erb: pending_lo,
+                hi_erb: upper,
+                bins: first..bin,
+            });
+        }
+        if !cells.is_empty() {
+            pending_lo = upper;
+        }
+    }
+    cells
 }
 
 #[cfg(test)]

@@ -989,7 +989,7 @@ fn flora_ownership_cases(supported: bool) {
                 continue;
             }
             assert_eq!(
-                flora[0].habitat_power_scan().iter().any(|x| *x > 0.),
+                mixed_renderer.flora_habitat.iter().any(|x| *x != 0.),
                 habitat && [63, 191, 199].contains(&frame)
             );
             for kind in [PitchCoreKind::HillClimb, PitchCoreKind::PeakSampler] {

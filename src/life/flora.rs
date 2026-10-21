@@ -168,8 +168,6 @@ struct Lane {
     q: f32,
     target: f32,
     power_sum: f32,
-    ownership_power_sum: f32,
-    ownership_log2_moment: f32,
     age_samples: usize,
     slew_target: f32,
     slew_left: usize,
@@ -195,8 +193,6 @@ impl Lane {
             q: 0.0,
             target: 0.0,
             power_sum: 0.0,
-            ownership_power_sum: 0.0,
-            ownership_log2_moment: 0.0,
             age_samples: 0,
             slew_target: 0.0,
             slew_left: 0,
@@ -302,8 +298,6 @@ pub(crate) struct Flora {
     diffusion: f32,
     rng: u64,
     biomass_mass_scan: Vec<f32>,
-    habitat_power_scan: Vec<f32>,
-    projection_edges_hz: Vec<f64>,
     resource_state_scan: Vec<f32>,
     scratch_scan: Vec<f32>,
     erb_scan: Vec<f32>,
@@ -375,8 +369,6 @@ impl Flora {
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
             biomass_mass_scan: Vec::new(),
-            habitat_power_scan: Vec::new(),
-            projection_edges_hz: Vec::new(),
             resource_state_scan: Vec::new(),
             scratch_scan: Vec::new(),
             erb_scan: Vec::new(),
@@ -488,19 +480,6 @@ impl Flora {
         let end = space.centers_hz.partition_point(|&f| f <= self.extent_hz.1);
         self.range = start..end;
         self.scratch_scan = vec![0.0; space.n_bins()];
-        self.habitat_power_scan = vec![0.0; space.n_bins()];
-        self.projection_edges_hz = (0..=space.n_bins())
-            .map(|i| {
-                let log2 = if i == 0 {
-                    space.centers_log2[0] - space.step() * 0.5
-                } else if i == space.n_bins() {
-                    space.centers_log2[i - 1] + space.step() * 0.5
-                } else {
-                    (space.centers_log2[i - 1] + space.centers_log2[i]) * 0.5
-                };
-                f64::from(log2.exp2()).clamp(0.0, f64::from(self.fs) * 0.5)
-            })
-            .collect();
         self.erb_scan = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
         self.assert_scans();
         self.consumption_rows.clear();
@@ -604,14 +583,12 @@ impl Flora {
         }
         self.order = Vec::with_capacity(self.lanes.len());
         self.noise = vec![0.0; 2 * self.noisy_len * self.hop];
-        self.update_habitat_projection();
         self.assert_scans();
     }
 
     fn assert_scans(&self) {
         for (scan, name) in [
             (&self.biomass_mass_scan, "biomass_mass_scan"),
-            (&self.habitat_power_scan, "flora_habitat_power_scan"),
             (&self.resource_state_scan, "resource_state_scan"),
             (&self.scratch_scan, "scratch_scan"),
             (&self.erb_scan, "erb_scan"),
@@ -979,8 +956,6 @@ impl Flora {
         }
         for lane in &mut self.lanes {
             lane.power_sum = 0.0;
-            lane.ownership_power_sum = 0.0;
-            lane.ownership_log2_moment = 0.0;
             let norm = lane.z[0].hypot(lane.z[1]);
             lane.z[0] /= norm;
             lane.z[1] /= norm;
@@ -1022,18 +997,6 @@ impl Flora {
             }
             let noise = &self.noise[t * 2 * self.noisy_len..(t + 1) * 2 * self.noisy_len];
             let out = synthesize::<SIMD>(&mut self.lanes, noise, amp);
-            if self.spec.routing.to_habitat {
-                for lane in &mut self.lanes {
-                    // Realized envelope energy, including retiring lanes and all three ramps.
-                    let envelope = lane.e[0] * lane.e[0] + lane.e[1] * lane.e[1];
-                    let power = (amp * lane.r).powi(2) * envelope;
-                    let log2 = lane.position
-                        + (lane.target_position - lane.position) * (t / 64 * 64 + 1) as f32
-                            / self.hop as f32;
-                    lane.ownership_power_sum += power;
-                    lane.ownership_log2_moment += power * log2;
-                }
-            }
             if self.spec.routing.to_presentation {
                 presentation[t] += out;
             }
@@ -1048,64 +1011,7 @@ impl Flora {
             }
             self.energy[usize::from(!lane.tonal)] += lane.power_sum as f64 / self.fs as f64;
         }
-        self.update_habitat_projection();
         self.rendered_samples += self.hop as u64;
-    }
-
-    /// Amplitude projection squared, in the same units as Voice::project_loo_power.
-    /// Describes the previous rendered hop at the next Community ownership snapshot.
-    #[cfg(test)]
-    pub(crate) fn habitat_power_scan(&self) -> &[f32] {
-        self.space
-            .assert_scan_len_named(&self.habitat_power_scan, "flora_habitat_power_scan");
-        &self.habitat_power_scan
-    }
-
-    fn update_habitat_projection(&mut self) {
-        self.space
-            .assert_scan_len_named(&self.habitat_power_scan, "flora_habitat_power_scan");
-        self.habitat_power_scan.fill(0.0);
-        if !self.spec.routing.to_habitat {
-            return;
-        }
-        for lane in &self.lanes {
-            let power = lane.ownership_power_sum / self.hop as f32;
-            if power <= 0.0 {
-                continue;
-            }
-            let log2 = lane.ownership_log2_moment / lane.ownership_power_sum;
-            let hz = log2.exp2();
-            if !lane.noisy {
-                if hz >= self.space.fmin && hz <= self.space.fmax {
-                    self.habitat_power_scan[self.space.nearest_index(hz)] += power.sqrt();
-                }
-                continue;
-            }
-            // Integrate the mirrored discrete AR(1) PSD over each bin's Hz edges.
-            // Its total on [0, Nyquist] is one: power here is sinusoid-equivalent
-            // amplitude squared, not PCM mean-square (which has an extra factor 1/2).
-            let a = f64::from(lane.a);
-            let cdf = |f: f64| {
-                let theta = std::f64::consts::TAU * f / f64::from(self.fs);
-                let turns = ((theta + std::f64::consts::PI) / std::f64::consts::TAU).floor();
-                let wrapped = theta - turns * std::f64::consts::TAU;
-                (2.0 * (((1.0 + a) / (1.0 - a)) * (wrapped * 0.5).tan()).atan()
-                    + turns * std::f64::consts::TAU)
-                    / std::f64::consts::TAU
-            };
-            for (i, edges) in self.projection_edges_hz.windows(2).enumerate() {
-                let [lo, hi] = [edges[0], edges[1]];
-                if hi <= lo {
-                    continue;
-                }
-                let hz = f64::from(hz);
-                let mass = (cdf(hi - hz) - cdf(lo - hz) + cdf(hi + hz) - cdf(lo + hz)).max(0.0);
-                self.habitat_power_scan[i] += (power * mass as f32).sqrt();
-            }
-        }
-        for value in &mut self.habitat_power_scan {
-            *value *= *value;
-        }
     }
 
     // Reporting owns these allocations; ordinary advance/render remain allocation-free.
@@ -2640,106 +2546,5 @@ mod tests {
                 f.births, f.retirements
             );
         }
-    }
-
-    #[test]
-    fn ownership_projection_follows_routing_ramps_retirement_and_space() {
-        let l = terrain();
-        for tone in [FloraTone::Sine, FloraTone::Resonant] {
-            let mut f = flora(&l);
-            f.spec.tone = tone;
-            f.on_space_change(&l.space);
-            f.spec.residual = false;
-            f.biomass_mass_scan.fill(0.0);
-            hill(&mut f, 33, 1.0);
-            let mut p = vec![0.; f.hop];
-            let mut h = p.clone();
-            assert!(f.habitat_power_scan().iter().all(|x| *x == 0.));
-            for _ in 0..3 {
-                f.render_add(&mut p, &mut h);
-            }
-            let before = f.habitat_power_scan().to_vec();
-            assert!(before[33] > 0.);
-            let other = before.iter().enumerate().any(|(i, x)| i != 33 && *x > 0.);
-            assert_eq!(other, tone == FloraTone::Resonant);
-            // Advance changes biomass, but cannot replace evidence of the last rendered hop.
-            f.advance(&l);
-            assert_eq!(f.habitat_power_scan(), before);
-            f.biomass_mass_scan.fill(0.0);
-            f.render_add(&mut p, &mut h);
-            assert!(f.lanes.iter().any(|lane| lane.mode == Mode::Retiring));
-            assert!(f.habitat_power_scan().iter().any(|x| *x > 0.));
-            f.apply_patch(&FloraPatch {
-                amp: Some(0.),
-                ..Default::default()
-            });
-            for _ in 0..3 {
-                f.render_add(&mut p, &mut h);
-            }
-            assert!(f.habitat_power_scan().iter().all(|x| *x == 0.));
-            f.on_space_change(&Log2Space::new(220., 1760., 48));
-            assert_eq!(f.habitat_power_scan().len(), f.space.n_bins());
-            assert!(f.habitat_power_scan().iter().all(|x| *x == 0.));
-        }
-        let mut f = flora(&l);
-        f.spec.routing.to_habitat = false;
-        let mut p = vec![0.; f.hop];
-        let mut h = p.clone();
-        hill(&mut f, 33, 1.0);
-        f.render_add(&mut p, &mut h);
-        assert!(p.iter().any(|x| *x != 0.));
-        assert!(h.iter().all(|x| *x == 0.));
-        assert!(f.habitat_power_scan().iter().all(|x| *x == 0.));
-    }
-
-    #[test]
-    fn ownership_noisy_band_integrates_amplitude_squared_and_release_tail() {
-        let l = Landscape::new(Log2Space::new(1., 999., 192));
-        let mut f = Flora::new(
-            7,
-            spec(),
-            (440., 880.),
-            FloraSeeding::Uniform,
-            42,
-            &l,
-            2000.,
-            100,
-        );
-        // One residual's AR(1) kernel. Constant envelope realizes amplitude squared = 0.25.
-        let lane = &mut f.lanes[f.tonal_len];
-        lane.ownership_power_sum = 0.25 * f.hop as f32;
-        lane.ownership_log2_moment = lane.ownership_power_sum * 600_f32.log2();
-        lane.a = 0.0;
-        f.update_habitat_projection();
-        let total: f32 = f.habitat_power_scan().iter().sum();
-        // For white complex noise, each bin receives exactly its share of [0, Nyquist].
-        let lo = (f.space.centers_log2[0] - 0.5 * f.space.step()).exp2();
-        let hi = (f.space.centers_log2.last().unwrap() + 0.5 * f.space.step())
-            .exp2()
-            .min(f.fs * 0.5);
-        let expected = 0.25 * (hi - lo) / (f.fs * 0.5);
-        assert!(
-            (total - expected).abs() <= 32.0 * f32::EPSILON * expected,
-            "{total} != {expected}"
-        );
-        assert!(f.habitat_power_scan()[f.space.nearest_index(620.)] > 0.);
-        f.release(0.1);
-        let previous = f.habitat_power_scan().to_vec();
-        assert_eq!(f.habitat_power_scan(), previous);
-        let mut p = vec![0.; f.hop];
-        let mut h = p.clone();
-        for _ in 0..3 {
-            f.render_add(&mut p, &mut h);
-        }
-        assert!(f.is_finished());
-        assert!(f.habitat_power_scan().iter().all(|x| *x == 0.));
-    }
-
-    #[test]
-    #[should_panic(expected = "flora_habitat_power_scan")]
-    fn f2_ownership_projection_checks_its_scan() {
-        let mut f = flora(&terrain());
-        f.habitat_power_scan.pop();
-        f.habitat_power_scan();
     }
 }

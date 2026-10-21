@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "12422be"
+source_commit = "6cbf951"
 author = "Koichi Takahashi"
-last_updated = "2026-10-18"
+last_updated = "2026-10-22"
 source_version = "0.5.0"
-source_snapshot = "12422be"
-revision_scope = "Synchronized with runtime, perception and Rhai API improvements, and unified pitch/environment self-exclusion (2026-10-18)"
+source_snapshot = "6cbf951"
+revision_scope = "Flora composition mode (2026-10-22); Synchronized with runtime, perception and Rhai API improvements, and unified pitch/environment self-exclusion (2026-10-18)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -834,6 +834,24 @@ where $\omega_{target}$ is the theta band's angular frequency, $K_{global}$ the 
 *   **Rhythm Coupling Modes**: `TemporalOnly` (pure phase coupling) or `TemporalTimesVitality { lambda_v, v_floor }` (healthy agents synchronize more strongly).
 *   **Rhythm Reward**: an optional `MetabolismRhythmReward` (`rho_t`, `AttackPhaseMatch`) grants a metabolic bonus for phase-matched onsets, linking rhythmic conformity to survival.
 *   **Autonomous Attack**: self-triggered attacks when envelope-gate and confidence thresholds align.
+
+## 5.6 Flora: Sound as a Growing Spectral Mass
+
+Flora adds a composition mode alongside Populations. A Flora is a non-negative
+spectral biomass over a bounded Log2Space extent. It grows from the effective
+consonance field and shares the habitat with Voices. Coupling between Flora and a
+Population passes only through their radiated sound and the resulting Landscape.
+
+Local consumer–resource rules govern growth, spread, consumption and recovery.
+ERB cells decompose biomass into tracked tonal and residual lanes. Sine or resonant
+tones and optional residual sound turn those lanes into audio, with sample-rate
+fades and amplitude ramps. Placement, updates, release and bus routing are available
+through the Experimental Rhai surface; sample `17_flora.rhai` combines Flora with a
+retuned Population.
+
+These dynamics belong to the authored-rule tier. Their use of an auditory landscape
+does not make the growth or succession rules a model grounded in auditory cognition.
+The API stability tier, Experimental, is independent of that classification.
 
 # 6. System Architecture and Implementation Details
 

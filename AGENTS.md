@@ -25,6 +25,7 @@
       `src/viewdata.rs`, not here.
   - `life/` (Voices and behaviors):
     - Voice/Community models, temporal cores, fields, and phonation.
+    - `flora.rs`: spectral biomass dynamics, ERB cells, lanes, and sound atoms.
     - `community.rs` holds the hop-path core; the `community/` submodules split out
       action dispatch (`actions.rs`), spawn-frequency choice (`frequency.rs`),
       respawn/inheritance (`respawn.rs`), and the Kuramoto/social paths (`social.rs`).
@@ -232,6 +233,7 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   `dead_id_scratch`), pitch proposal scratch (`src/life/pitch_core.rs`), and
   `PhonationEngine` buffers (`scratch_candidates`, `scratch_merged`, `scratch_grid`,
   `scratch_field`, `src/life/phonation_engine.rs`). Clear and refill them.
+  Flora's own advance/render/projection has zero steady-state allocations, including births and retirements; placement, reconfiguration, and reporting may allocate.
   The analysis worker (`src/core/analysis_worker.rs`) is a separate thread. Streaming
   and synchronous analysis share front-end/potential scratch; `AnalysisStream::process`
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only

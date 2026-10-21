@@ -1,11 +1,10 @@
 # Flora: a Field-Form Inhabitant
 
-Status: specification, draft 14 (2026-10-21). The design is adopted: the rendering of
-draft 12 and the consumer–resource dynamics of State and Dynamics. Main has no
-implementation yet; a reference implementation on an older base is described in
-[Reference Implementation](#reference-implementation). The DCC route for the drive of
-temporal evolution, a listener-side information terrain, is closed (technote ledger
-§9.3.93); the dynamics stay authored.
+Status: implemented (main), 2026-10-22. The adopted design is draft 14: the rendering
+of draft 12 and the consumer–resource dynamics of State and Dynamics. Current paths
+and the historical branch are listed in [Reference Implementation](#reference-implementation).
+The DCC route for the drive of temporal evolution, a listener-side information terrain,
+is closed (technote ledger §9.3.93); the dynamics stay authored.
 Scope: a new composition mode in which sound is a spectral mass that grows over the
 consonance landscape, instead of a set of Individuals that each carry a fixed body.
 Flora coexists with Populations in the same habitat and couples to them only through
@@ -676,12 +675,15 @@ Unit and integration tests assert. Assays render offline, record their measureme
 and are judged by listening together with those records.
 
 1. **Invariance.**
-   - A representative set of renders, made offline with deterministic analysis and a
-     pinned seed, is bit-identical to references captured from the pre-Flora build.
-   - The set holds one top-level sample per body backend (sine, harmonic, modal), plus
-     one `samples/research` assay with habituation enabled.
-   - The references are captured once before the change; the suite compares against
-     stored hashes.
+   - Four short, pinned-seed offline cases in `tests/flora_invariance.rs` cover sine,
+     harmonic and modal bodies, plus a moving harmonic case with habituation enabled.
+     They are focused scenarios, not full top-level sample renders.
+   - `tests/fixtures/flora_invariance_hashes.txt` stores the pre-Flora WAV hashes for
+     each captured target-feature combination. A matching combination compares all
+     four hashes; an uncaptured combination checks render completion without claiming
+     bit identity. The baselines are captured before Flora, never refreshed by the
+     implementation under test. These frozen cases retain their own 2048-sample
+     configuration; the current measurement campaigns below use the default window.
    - Structurally, a scenario with no Flora passes an empty slice to the renderer, and
      Flora's code adds no arithmetic to the voice path.
 2. **Dynamics (unit, fixed synthetic terrain).**
@@ -825,7 +827,9 @@ and are judged by listening together with those records.
      body buffer does not.
    - **Space change.** A Log2Space reconfiguration resamples the biomass and the resource
      and keeps the Hz extent. An extent that leaves the space goes dormant and resumes.
-6. **Closed-loop assays (offline, recorded).** Use the default analysis window: a
+6. **Closed-loop assays (offline, recorded).** All campaigns (`closed_loop`,
+   `mixing_*`, `succession`) use the default analysis window (16384 samples, hop 512)
+   and default-enabled habituation, and retain their resolved configuration. A
    2048-sample window biases harmonicity and level peaks 2–3 bins low (Implementation
    Findings). Each scenario runs in all three rendering configurations and records, per
    second, lane births and retirements, flapping events (a lane retired within 80 ms of
@@ -874,10 +878,11 @@ and are judged by listening together with those records.
 - `CLAUDE.md`'s module list gains `life/flora.rs`.
 - The technote is updated only when the implementation lands.
 
-## Implementation Findings (reference implementation)
+## Implementation Findings
 
-These entries come from the reference implementation (Reference Implementation); the
-first two concern the replaced draft-12 dynamics.
+The entries dated 2026-10-20 and 2026-10-21 come from the historical reference
+implementation (Reference Implementation); the first two concern the replaced
+draft-12 dynamics. The main remeasurement is recorded separately below.
 
 **2026-10-20, the provisional dynamics settle to a static chord.**
 
@@ -973,6 +978,100 @@ first two concern the replaced draft-12 dynamics.
   record is kept here, and the levels are not tuned.
 
 <a id="dynamics-redesign"></a>
+
+### main での再測定、2026-10-22
+
+The current main-layout implementation was measured from engine revision `6cbf951`;
+this acquisition precedes the separate ownership follow-up. The adopted dynamics and
+rendering constants were unchanged. All 45 campaign renders used 48 kHz, nfft 16384,
+hop 512 and default-enabled habituation (5 s satiation, 8 s recovery, reference drive
+0.25). Every output retains the fully resolved config and the compiled Flora settings.
+The three configurations are sine + residual, sine only, and resonant + residual.
+A bounded six-second real-producer run in each configuration first checked the report
+schema, applied settings, residual presence/absence and aggregation. Only then were
+the 24 succession, nine closed-loop and twelve mixing renders acquired.
+
+The table gives ranges over the three configurations. Overlap pools the two Flora;
+the saved summary also retains each Flora separately. JS distances use the base-two,
+0.25-ERB Gaussian partial proxy on a 0.05-ERB grid, after 20 s of Flora age, with
+non-silent endpoints. Recurrence uses an earlier spectrum at least 5 s away and JS
+at most 0.1, as a descriptive definition, not an acceptance threshold. Main windows
+are [22,102) s for drone/mute and [22,88) s otherwise. Maximum biomass is the largest
+**one-second recorded** total over the whole run, including warm-up and release;
+it does not bound unobserved between-record peaks.
+
+| Scene | JS 1 s | JS 5 s | JS 20 s | Recurrence | PR | Lane changes/s | Flap/s | Maximum biomass |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| drone | 0.046–0.067 | 0.177–0.231 | 0.407–0.512 | 0.080–0.293 | 4.724–8.487 | 1.013–1.876 | 0.000–0.100 | 1.041–1.112 |
+| mute | 0.033–0.043 | 0.138–0.151 | 0.245–0.309 | 0.536–0.679 | 3.696–5.658 | 0.262–0.812 | 0.000 | 1.073–1.331 |
+| population | 0.036–0.044 | 0.164–0.182 | 0.340–0.377 | 0.525–0.639 | 3.727–5.815 | 0.212–1.032 | 0.000–0.015 | 1.044–1.191 |
+| habitat_only | 0.036–0.046 | 0.166–0.184 | 0.340–0.378 | 0.557–0.639 | 3.682–5.870 | 0.243–1.074 | 0.000–0.060 | 1.064–1.224 |
+| presentation_only | 0.035–0.041 | 0.163–0.184 | 0.344–0.379 | 0.557–0.639 | 3.666–5.496 | 0.243 | 0.000 | 1.106 |
+| rate8 | 0.080–0.091 | 0.336–0.364 | 0.469–0.538 | 0.475–0.607 | 5.462–7.158 | 1.303–2.425 | 0.000–0.015 | 3.216–3.294 |
+| low | 0.047–0.047 | 0.190–0.224 | 0.441–0.471 | 0.279–0.443 | 2.296–4.186 | 0.000–0.030 | 0.000 | 1.073–1.257 |
+| overlap | 0.031–0.044 | 0.134–0.147 | 0.204–0.257 | 0.492–0.689 | 6.390–10.863 | 0.425–3.864 | 0.000–0.349 | 2.324–2.634 |
+
+Retune lattice fractions are measured against 110 Hz in [22,42) s, then against
+both 110 and 146.83 Hz in [57,102) s (15 s after retune):
+
+| Configuration | Lattice before | Old lattice after | New lattice after | Maximum biomass |
+|---|---:|---:|---:|---:|
+| sine_residual | 0.8055 | 0.1890 | 0.6655 | 1.0431 |
+| sine_only | 1.0000 | 0.1877 | 0.9811 | 1.0415 |
+| resonant_residual | 0.7901 | 0.1862 | 0.6596 | 1.1121 |
+
+Main-window mean tonal/residual powers below are deterministic lane-power proxies,
+not PCM powers. Envelope noise, bandwidth and inter-lane interference are excluded;
+combined overlap rows pool powers without cross terms. The full records retain
+per-second levels and lane-change maxima as well as the means above.
+
+| Scene | Tonal power | Residual power |
+|---|---:|---:|
+| drone | 1.030e-04–1.033e-04 | 0.000e+00–4.497e-05 |
+| mute | 8.812e-05–8.925e-05 | 0.000e+00–2.139e-05 |
+| population | 1.080e-04–1.091e-04 | 0.000e+00–3.001e-05 |
+| habitat_only | 1.073e-04–1.091e-04 | 0.000e+00–3.018e-05 |
+| presentation_only | 1.074e-04–1.074e-04 | 0.000e+00–2.547e-05 |
+| rate8 | 8.834e-05–8.890e-05 | 0.000e+00–1.230e-05 |
+| low | 1.199e-04–1.675e-04 | 0.000e+00–4.374e-05 |
+| overlap | 1.635e-04–1.720e-04 | 0.000e+00–4.625e-05 |
+
+During mute [42,62) s, 19/20 sampled proxy spectra are silent in every configuration;
+the first sampled transition is included. Mean tonal power falls from
+1.011–1.052e-4 before mute to 9.904e-8–1.004e-7 during it, then is
+1.227–1.235e-4 in [67,102) s. Biomass remains positive during mute
+(0.124–0.162 across the sampled records). No exact equality of pre/post levels is
+claimed.
+
+These observations differ from the historical succession campaign: drone JS at 5 s
+is 0.177–0.231 versus 0.41–0.46, and rate-8 JS is 0.336–0.364 versus 0.68–0.72.
+The drone's pre-retune lattice fraction is 0.790–1.000 versus 0.92–1.00; the new
+lattice afterwards is 0.660–0.981 versus 0.80–0.995. Drone participation is
+4.724–8.487 versus 3.1–4.2. Mean flapping reaches 0.100/s around the drone and
+0.349/s in combined overlap; the old campaign reported at most 0.015/s. These are
+observed differences, not failed acceptance thresholds. Main's defaults, engine base
+and integration differ from that branch; the acquisition does not isolate a single
+cause. The older closed-loop/mixing campaigns at nfft 2048 remain historical data;
+they are not relabelled as current default-window measurements.
+
+Mixing remains **measurement only**. Tuning seed 41101 and the previously used
+seeds 42101–42103 were remeasured with the unchanged masks and measurement window
+[18,34) s. The evaluation-labelled files are repeated measurements, not a new
+held-out acceptance test. Ranges over the three evaluation seeds are:
+
+| Configuration | Near fraction latent / PCM | Lattice fraction latent / PCM | Uniform near / lattice |
+|---|---:|---:|---:|
+| sine_residual | 0.685–0.692 / 0.725–0.752 | 0.647–0.674 / 0.745–0.771 | 0.648 / 0.312 |
+| sine_only | 0.684–0.692 / 0.855–0.903 | 0.645–0.672 / 0.986–1.000 | 0.648 / 0.312 |
+| resonant_residual | 0.677–0.688 / 0.727–0.733 | 0.651–0.653 / 0.686–0.696 | 0.648 / 0.312 |
+
+The PCM measure uses Flora-only output, one-second Hann windows and 65536-point
+FFTs, conditioned on the extent. Margins remain null and every `accepted` field is
+null. Neither these fractions nor successful execution decide the avoidance
+hypothesis: the near-partial mask still overlaps the lattice and covers much of the
+extent. A decision would require the separate metric redesign, discriminating
+controls and a justified margin registered with unused seeds. No parameter was tuned
+from these results, and no author audition or real-time-load acceptance is claimed.
 
 ## Dynamics Design Record
 
@@ -1152,9 +1251,8 @@ acceptable, draft 4 acceptable as a proposal, with the checks before adoption st
 A complete implementation of this specification exists on branch
 `research/flora-info-terrain-20261021`, on a base that main has since left behind
 (it branched before main's runtime, scripting and life refactors and carries an
-unmerged temporal checkpoint). It is not mergeable as is. Use it as a code reference
-when implementing Flora on main. File paths elsewhere in this note follow the branch's
-layout.
+unmerged temporal checkpoint). It was not merged as is. It remains a historical
+code and measurement reference. The current implementation follows main's refactored layout, listed below.
 
 **Commits.** `eb13308` adds the draft-12 Flora (and the passive information-terrain
 diagnostics, which stay on the branch); `ceddde5` replaces the dynamics by the
@@ -1180,6 +1278,25 @@ note's evidence.
   `tests/flora_assays.rs` (`closed_loop`, `mixing_*`, `succession`).
 - `samples/13_flora.rhai`, `samples/research/flora_*.rhai`,
   `docs/rhai_book*/src/concepts/flora.md`.
+
+**Current main layout (2026-10-22).**
+
+- `src/life/flora.rs` (including its private ERB partition): state, dynamics,
+  rendering, sound projection, report data and internal tests; pure Flora IR types
+  and actions remain in `src/scenario.rs`.
+- `src/life/community/actions.rs` dispatches placement, updates and release;
+  `src/runtime/phases.rs` advances and drains Flora, and `src/runtime/analysis_sync.rs`
+  handles space changes. `src/life/schedule_renderer.rs` mixes its sound into the buses.
+- `src/runtime/worker.rs` publishes the per-second records through `src/life/report.rs`.
+- `src/scripting/{spec,placement,context,engine,docs}.rs` and `src/scripting/tests/`
+  hold the builders, strict validation, positioned diagnostics and API tier registry.
+  Flora-specific vocabulary is Experimental; the authored-rule classification is a
+  separate axis. Generated definitions are in `rhai-defs/` and both Rhai Books.
+- `tests/flora_invariance.rs`, `tests/flora_assays.rs`, their fixtures and
+  `samples/research/flora_*.rhai` hold regression checks and opt-in measurements.
+  `FLORA_ASSAY_OUTPUT_DIR` selects a persistent acquisition directory outside `target/`.
+- `samples/17_flora.rhai` is the unseeded composition; the English and Japanese
+  concept pages are `docs/rhai_book*/src/concepts/flora.md`.
 
 **What to carry over unchanged.** The cell partition and decomposition, the lane
 tracking and births, the atom kernel and its SIMD path, and their unit tests do not

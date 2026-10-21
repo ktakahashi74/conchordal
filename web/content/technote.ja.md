@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "12422be"
+source_commit = "6cbf951"
 author = "Koichi Takahashi"
-last_updated = "2026-10-18"
+last_updated = "2026-10-22"
 source_version = "0.5.0"
-source_snapshot = "12422be"
-revision_scope = "終了処理・知覚処理・Rhai APIの改善と、音高移動・environmentの生存選択の自己除外統一に同期（2026-10-18）"
+source_snapshot = "6cbf951"
+revision_scope = "Flora composition mode (2026-10-22); 終了処理・知覚処理・Rhai APIの改善と、音高移動・environmentの生存選択の自己除外統一に同期（2026-10-18）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -773,6 +773,14 @@ $\omega_{target}$ はシータ帯域の角周波数、$K_{global}$ はシーン�
 *   **結合モード**: `TemporalOnly`（純粋な位相結合）または `TemporalTimesVitality { lambda_v, v_floor }`（健康なエージェントほど強く同期する）。
 *   **rhythm_reward**: オプションの `MetabolismRhythmReward`（`rho_t`、`AttackPhaseMatch`）が位相の合ったオンセットに代謝ボーナスを与え、リズム的同調を生存に結びつける。
 *   **autonomous_attack**: エンベロープゲートと確信度の閾値が整合した際の自律的アタック。
+
+## 5.6 Flora：育つスペクトル質量としての音
+
+Flora は Population と並ぶ作曲の形である。一つの Flora は、Log2Space 上の限られた帯域に非負のスペクトル質量を持つ。habituation 適用後の協和性地形から育ち、Voice と同じ habitat に住む。Flora と Population の結合は、互いの放射音と、それを分析した Landscape だけを通る。
+
+局所的な消費者–資源の規則が、成長、拡散、消費、回復を進める。ERB cell で質量を tonal lane と residual lane に分け、lane を追跡しながら、sine または resonant の音と任意の residual 成分を合成する。fade と振幅変更の ramp は sample ごとに進む。配置、更新、release、bus routing は Experimental の Rhai API から使える。`17_flora.rhai` は、途中で音高を変える Population と Flora を組み合わせる。
+
+この力学は authored-rule tier、すなわち作者が設計した規則に属する。聴覚モデルの地形を使っていても、成長や遷移の規則自体を聴覚認知に根差すモデルとは位置付けない。API の安定性を示す Experimental とは別の分類である。
 
 # 6. システムアーキテクチャと実装詳細
 

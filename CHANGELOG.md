@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Flora adds an Experimental composition mode: spectral biomass grows over the shared
+  consonance landscape, with sine or resonant tones and optional residual sound.
+  It coexists with Populations through sound alone. Its consumer–resource dynamics
+  are authored rules. Sample 17 demonstrates the mode; the Rhai Book documents it
+  in English and Japanese.
+
 ## 0.5.0 — 2026-10-18
 
 ### Composer-facing

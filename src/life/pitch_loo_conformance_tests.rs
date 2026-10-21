@@ -838,9 +838,11 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
     let mut config = AppConfig::default();
     config.psychoacoustics.habituation.enabled = false;
     let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(&config, FS as u32);
-    let template = AnalysisStream::new(params.clone(), kernel);
+    let template = AnalysisStream::new(params.clone(), kernel.clone());
     let timebase = Timebase { fs: FS, hop };
-    let mut over_removal_cases = Vec::new();
+    let mut failed_cases = Vec::new();
+    let mut density_cache = BTreeMap::new();
+    let diagnostics = std::env::var_os("T35_FLORA_DIAGNOSTICS").is_some();
     for (tone, residual, habitat) in [
         (FloraTone::Sine, false, true),
         (FloraTone::Resonant, true, true),
@@ -1004,81 +1006,311 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                         own + flora[0].habitat_power_scan()[i]
                     );
                 }
-                let mut input_copy = input.clone();
-                let scores = loo_score_scan(&mix, &mut input_copy, &mut None);
-                let pitches: Vec<_> = CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
-                let got: Vec<_> = pitches
-                    .iter()
-                    .map(|p| sample_ownership_score(&mix, *p, scores.as_deref()))
-                    .collect();
-                let expected: Vec<_> = pitches
-                    .iter()
-                    .map(|p| actual.evaluate_pitch_score_log2(*p))
-                    .collect();
-                let mut legacy_input = LooInput {
-                    own_power_scan: own_power.clone(),
-                    total_power_scan: own_power.into(),
-                    computed_score: None,
+                if diagnostics
+                    && tone == FloraTone::Resonant
+                    && frame == 63
+                    && kind == PitchCoreKind::HillClimb
+                {
+                    // With gamma_root=1 the unnormalized H operator is linear.
+                    // Changing the denominator changes only the owned bin's retained mass.
+                    let owned: Vec<_> = own_power
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, p)| **p > 0.)
+                        .map(|(i, _)| i)
+                        .collect();
+                    assert_eq!(owned.len(), 1);
+                    let idx = owned[0];
+                    let mut background = mix.subjective_intensity.clone();
+                    background[idx] = 0.;
+                    let mut self_bin = vec![0.; mix.space.n_bins()];
+                    self_bin[idx] = mix.subjective_intensity[idx];
+                    let mut hparams = mix.harmonicity_params;
+                    assert_eq!(hparams.gamma_root, 1.);
+                    hparams.normalize_output = false;
+                    let hkernel = HarmonicityKernel::new(&mix.space, hparams);
+                    let (a, _) = hkernel.potential_h_from_log2_spectrum(&background, &mix.space);
+                    let (b, _) = hkernel.potential_h_from_log2_spectrum(&self_bin, &mix.space);
+                    let ia = a
+                        .iter()
+                        .enumerate()
+                        .max_by(|(_, x), (_, y)| x.total_cmp(y))
+                        .unwrap()
+                        .0;
+                    let ib = b
+                        .iter()
+                        .enumerate()
+                        .max_by(|(_, x), (_, y)| x.total_cmp(y))
+                        .unwrap()
+                        .0;
+                    // Two actual bins and the normalization floor lower-bound max H.
+                    let lines = [
+                        (a[ia] as f64, b[ia] as f64),
+                        (a[ib] as f64, b[ib] as f64),
+                        (1e-12, 0.),
+                    ];
+                    let mut fractions = vec![0., 1.];
+                    for i in 0..lines.len() {
+                        for j in i + 1..lines.len() {
+                            let f = (lines[j].0 - lines[i].0) / (lines[i].1 - lines[j].1);
+                            if f.is_finite() && (0.0..=1.).contains(&f) {
+                                fractions.push(f);
+                            }
+                        }
+                    }
+                    // A ratio of affine functions is monotone between these crossings.
+                    let mut bounds = Vec::new();
+                    for cents in CENTS {
+                        let pitch = 440_f32.log2() + cents / 1200.;
+                        let ha = mix.sample_linear_log2(&a, pitch) as f64;
+                        let hb = mix.sample_linear_log2(&b, pitch) as f64;
+                        let bound = fractions
+                            .iter()
+                            .map(|f| {
+                                (ha + f * hb)
+                                    / lines.iter().map(|(c, d)| c + f * d).fold(0_f64, f64::max)
+                            })
+                            .fold(0_f64, f64::max)
+                            .min(1.);
+                        bounds.push(bound);
+                    }
+                    println!(
+                        "T35_BOUND {}",
+                        json!({"tone":"Resonant","residual":true,"frame":frame,"owned_bin":idx,
+                        "denominator_lines":lines,"fractions":fractions,"h_upper_bounds":bounds,
+                        "point_reference":CENTS.iter().map(|c| actual.evaluate_pitch_score_log2(440_f32.log2()+c/1200.)).collect::<Vec<_>>(),
+                        "density":mix.subjective_intensity.iter().zip(&actual.subjective_intensity).enumerate().filter(|(_, (a,b))| **a>0. || **b>0.).map(|(i,(a,b))| json!([i,a,b])).collect::<Vec<_>>() })
+                    );
+                }
+                let methods: &[&str] = if diagnostics {
+                    &["lane", "nsgt", "nsgt_amp2", "density_oracle"]
+                } else {
+                    &["lane"]
                 };
-                let legacy_scan = loo_score_scan(&mix, &mut legacy_input, &mut None);
-                let legacy: Vec<_> = pitches
-                    .iter()
-                    .map(|p| sample_ownership_score(&mix, *p, legacy_scan.as_deref()))
-                    .collect();
-                let result = metrics(&got, &expected, &params.consonance_representation);
-                let baseline = metrics(&legacy, &expected, &params.consonance_representation);
-                println!(
-                    "F12_LOO tone={tone:?} residual={residual} habitat={habitat} frame={frame} kind={kind:?} corrected={result} baseline={baseline}"
-                );
-                // R/H need not be monotone in retained sound. Check over-removal in the
-                // observed density itself, using the existing PCM-conformance relative L1
-                // budget on bins the Voice owns. Unowned bins are never subtracted.
-                if habitat && [63, 191, 199].contains(&frame) {
+                for &method in methods {
+                    let mut input = input.clone();
+                    if method == "nsgt" || method == "nsgt_amp2" {
+                        input.total_power_scan = input
+                            .own_power_scan
+                            .iter()
+                            .zip(&reference.nsgt_power)
+                            .map(|(own, external)| {
+                                own + external * if method == "nsgt_amp2" { 4. } else { 1. }
+                            })
+                            .collect::<Vec<_>>()
+                            .into();
+                        input.computed_score = None;
+                    } else if method == "density_oracle" {
+                        input.total_power_scan = input
+                            .own_power_scan
+                            .iter()
+                            .enumerate()
+                            .map(|(i, own)| {
+                                let ratio = if mix.subjective_intensity[i] > 0. {
+                                    (actual.subjective_intensity[i] / mix.subjective_intensity[i])
+                                        .clamp(0., 1.)
+                                } else {
+                                    1.
+                                };
+                                let q = 1. - ratio.powf(1. / mix.loudness_exp);
+                                if q > 0. { own / q } else { f32::MAX }
+                            })
+                            .collect::<Vec<_>>()
+                            .into();
+                        input.computed_score = None;
+                    }
+                    let mut input_copy = input.clone();
+                    let scores = loo_score_scan(&mix, &mut input_copy, &mut None);
+                    let pitches: Vec<_> =
+                        CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
+                    let got: Vec<_> = pitches
+                        .iter()
+                        .map(|p| sample_ownership_score(&mix, *p, scores.as_deref()))
+                        .collect();
+                    let expected: Vec<_> = pitches
+                        .iter()
+                        .map(|p| actual.evaluate_pitch_score_log2(*p))
+                        .collect();
+                    let mut legacy_input = LooInput {
+                        own_power_scan: own_power.clone(),
+                        total_power_scan: own_power.clone().into(),
+                        computed_score: None,
+                    };
+                    let legacy_scan = loo_score_scan(&mix, &mut legacy_input, &mut None);
+                    let legacy: Vec<_> = pitches
+                        .iter()
+                        .map(|p| sample_ownership_score(&mix, *p, legacy_scan.as_deref()))
+                        .collect();
+                    let repr = &params.consonance_representation;
+                    let point_metrics = metrics(&got, &expected, repr);
                     let (_, du) = erb_grid(&mix.space);
+                    let scan: Vec<_> = mix
+                        .space
+                        .centers_log2
+                        .iter()
+                        .map(|p| sample_ownership_score(&mix, *p, scores.as_deref()))
+                        .collect();
+                    let old_scan: Vec<_> = mix
+                        .space
+                        .centers_log2
+                        .iter()
+                        .map(|p| sample_ownership_score(&mix, *p, legacy_scan.as_deref()))
+                        .collect();
+                    let mut representative = SynchronousAnalysis::new(kernel.clone(), &params);
+                    let mut body = Vec::new();
+                    let mut body_ref = Vec::new();
+                    let mut body_old = Vec::new();
+                    for &pitch in &pitches {
+                        let density = density_cache.entry(pitch.to_bits()).or_insert_with(|| {
+                            representative_density(
+                                &own_recipe,
+                                pitch.exp2(),
+                                &mut representative,
+                                &params,
+                            )
+                        });
+                        for (target, field) in [
+                            (&mut body, &scan),
+                            (&mut body_ref, &actual.consonance_field_score_eff),
+                            (&mut body_old, &old_scan),
+                        ] {
+                            target.push(
+                                body_fitness::evaluate(&mix.space, density, &du, field, repr)
+                                    .unwrap()
+                                    .score,
+                            );
+                        }
+                    }
+                    let body_metrics = metrics(&body, &body_ref, repr);
+                    let full_metrics = metrics(&scan, &actual.consonance_field_score_eff, repr);
+                    let mut decisions = Vec::new();
+                    let mut selection_pass = true;
+                    let mut perceptual =
+                        AdaptationContext::from_config(&Default::default(), mix.space.n_bins());
+                    perceptual.set_enabled(false);
+                    let features = FeaturesNow {
+                        density: vec![0.; mix.space.n_bins()],
+                        mass: 0.,
+                    };
+                    for temperature in [0.0_f32, 0.05, 0.2] {
+                        let mut hill = PitchHillClimbPitchCore::new(24.0, pitches[3], 0.0);
+                        hill.set_temperature(temperature);
+                        for ordinal in 0..if temperature == 0. { 1 } else { 64 } {
+                            let seed = 0xF17E0001_u64 + ordinal;
+                            for (label, values, reference_values, m) in [
+                                ("point", &got, &expected, &point_metrics),
+                                ("body", &body, &body_ref, &body_metrics),
+                            ] {
+                                let a = final_scores(
+                                    &hill,
+                                    &pitches,
+                                    values,
+                                    &mut SmallRng::seed_from_u64(seed),
+                                );
+                                let b = final_scores(
+                                    &hill,
+                                    &pitches,
+                                    reference_values,
+                                    &mut SmallRng::seed_from_u64(seed),
+                                );
+                                let pass = if m["reference_tied"] == true {
+                                    m["shortcut_tied"] == true
+                                } else {
+                                    a.target_pitch_log2.to_bits() == b.target_pitch_log2.to_bits()
+                                };
+                                selection_pass &= pass;
+                                if !pass {
+                                    decisions.push(json!({"kind":label,"temperature":temperature,"seed":seed,"got":a.target_pitch_log2,"reference":b.target_pitch_log2}));
+                                }
+                            }
+                            let mut native = pop.voices[0].pitch_core_for_test().clone();
+                            *native.loo_input_mut() = input.clone();
+                            native.set_temperature(temperature);
+                            let mut reference_core = native.clone();
+                            *reference_core.loo_input_mut() = LooInput::default();
+                            let a = native.propose_target(
+                                pitches[3],
+                                pitches[3],
+                                440.,
+                                1.,
+                                &mix,
+                                &perceptual,
+                                &features,
+                                &[],
+                                &mut SmallRng::seed_from_u64(seed),
+                            );
+                            let b = reference_core.propose_target(
+                                pitches[3],
+                                pitches[3],
+                                440.,
+                                1.,
+                                &actual,
+                                &perceptual,
+                                &features,
+                                &[],
+                                &mut SmallRng::seed_from_u64(seed),
+                            );
+                            let pass = if full_metrics["reference_tied"] == true {
+                                full_metrics["shortcut_tied"] == true
+                            } else {
+                                a.target_pitch_log2.to_bits() == b.target_pitch_log2.to_bits()
+                            };
+                            selection_pass &= pass;
+                            if !pass {
+                                decisions.push(json!({"kind":"native","temperature":temperature,"seed":seed,"got":a.target_pitch_log2,"reference":b.target_pitch_log2}));
+                            }
+                        }
+                    }
+                    let mut environment_deltas = Vec::new();
+                    for (new, old, reference) in [
+                        (got[3], legacy[3], expected[3]),
+                        (body[3], body_old[3], body_ref[3]),
+                    ] {
+                        environment_deltas.push((new - reference).abs() - (old - reference).abs());
+                        environment_deltas.push(
+                            (repr.level(new) - repr.level(reference)).abs()
+                                - (repr.level(old) - repr.level(reference)).abs(),
+                        );
+                    }
+                    let environment_pass = environment_deltas.iter().all(|d| *d <= 1e-6);
+                    // Density loss is diagnostic; acceptance follows the registered consumers.
                     let reference_mass: f32 = actual
                         .subjective_intensity
                         .iter()
                         .zip(&du)
                         .map(|(x, w)| x * w)
                         .sum();
-                    let mut over_removed = 0.0;
+                    let mut over_removed = 0.;
                     for (i, &own) in input.own_power_scan.iter().enumerate() {
-                        if own <= 0.0 {
+                        if own <= 0. {
                             continue;
                         }
                         let retained = mix.subjective_intensity[i]
-                            * (1.0 - own / input.total_power_scan[i]).powf(mix.loudness_exp);
-                        over_removed +=
-                            (actual.subjective_intensity[i] - retained).max(0.0) * du[i];
+                            * (1. - own / input.total_power_scan[i]).powf(mix.loudness_exp);
+                        over_removed += (actual.subjective_intensity[i] - retained).max(0.) * du[i];
                     }
+                    let pass = point_metrics["registered_movement_gate_pass"] == true
+                        && body_metrics["registered_movement_gate_pass"] == true
+                        && selection_pass
+                        && environment_pass;
                     println!(
-                        "F12_OVER_REMOVAL tone={tone:?} residual={residual} frame={frame} relative={}",
-                        over_removed / reference_mass.max(1e-12)
+                        "T35_CASE {}",
+                        json!({"method":method,"tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"kind":format!("{kind:?}"),
+                    "point_scores":got,"point_reference":expected,"body_scores":body,"body_reference":body_ref,"point":point_metrics,"body":body_metrics,"selection_pass":selection_pass,"environment_pass":environment_pass,"native_ties":full_metrics,
+                    "environment_error_deltas":environment_deltas,"decision_failure_count":decisions.len(),"decision_failure_examples":decisions.iter().take(4).collect::<Vec<_>>(),"owned_bins":input.own_power_scan.iter().enumerate().filter(|(_,x)| **x>0.).map(|(i,x)| json!([i,x,mix.subjective_intensity[i],actual.subjective_intensity[i]])).collect::<Vec<_>>(),"density_over_removed":over_removed/reference_mass.max(1e-12),"pass":pass})
                     );
-                    let relative = over_removed / reference_mass.max(1e-12);
-                    if relative > 1e-3 {
-                        over_removal_cases.push((tone, residual, frame, kind, relative));
+                    if !pass {
+                        failed_cases.push((method, tone, residual, habitat, frame, kind));
                     }
+                    let mut environment = pop.voices[0].pitch_core_for_test().clone();
+                    *environment.loo_input_mut() = input;
+                    assert_eq!(environment.environment_score(&mix, 440.), got[3]);
                 }
-                let idx = mix.space.nearest_index(440.);
-                if flora[0].habitat_power_scan()[idx] > 0. {
-                    let remaining = 1. - input.own_power_scan[idx] / input.total_power_scan[idx];
-                    assert!(remaining > 0. && actual.subjective_intensity[idx] > 0.);
-                } else {
-                    assert_eq!(
-                        got, legacy,
-                        "silent and presentation-only preserve the old path"
-                    );
-                }
-                assert_eq!(
-                    pop.voices[0].pitch_ctl.environment_score(&mix, 440.),
-                    got[3]
-                );
             }
         }
     }
     assert!(
-        over_removal_cases.is_empty(),
-        "noisy ownership PCM counterexamples: {over_removal_cases:?}"
+        failed_cases.is_empty(),
+        "Flora consumer counterexamples: {failed_cases:?}"
     );
 }

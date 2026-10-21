@@ -178,7 +178,7 @@ pub const TYPE_DOCS: &[TypeDoc] = &[
     },
     TypeDoc {
         name: "Flora",
-        summary: "Placed spectral growth; supports pending amplitude, growth-rate and fatigue patches, and release.",
+        summary: "Placed spectral growth; supports pending amplitude, growth-rate and renewal patches, and release.",
     },
     TypeDoc {
         name: "PopulationSpec",
@@ -316,7 +316,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Na,
         usage: &["flora()"],
         summary: "Build a FloraSpec for spectral growth over a frequency extent.",
-        details: "Defaults: amp 0.03, rate 0.5/s, fatigue 6 s, fade 2 s, sine tone, residual enabled, both buses.",
+        details: "Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.",
     },
     FnDoc {
         name: "amp",
@@ -325,8 +325,8 @@ pub const FN_DOCS: &[FnDoc] = &[
         style: Style::Method,
         patch: Patch::Live,
         usage: &["amp(level)"],
-        summary: "Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.",
-        details: "This bounds targets only, not transient amplitudes or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.",
+        summary: "Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.",
+        details: "Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.",
     },
     FnDoc {
         name: "rate",
@@ -335,17 +335,17 @@ pub const FN_DOCS: &[FnDoc] = &[
         style: Style::Method,
         patch: Patch::Live,
         usage: &["rate(per_second)"],
-        summary: "Set Flora's growth response in [0.05, 4] per second.",
+        summary: "Set Flora's growth response in [0.05, 8] per second.",
         details: "Requires a finite value before and after f32 conversion; invalid values raise script errors.",
     },
     FnDoc {
-        name: "fatigue",
+        name: "renewal",
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
         patch: Patch::Live,
-        usage: &["fatigue(seconds)"],
-        summary: "Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.",
+        usage: &["renewal(seconds)"],
+        summary: "Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.",
         details: "Requires a finite value before and after f32 conversion; invalid values raise script errors.",
     },
     FnDoc {

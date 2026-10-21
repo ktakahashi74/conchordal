@@ -1199,7 +1199,7 @@ mod tests {
             FloraSpec {
                 amp: 0.2,
                 rate: 2.0,
-                fatigue_sec: 6.0,
+                renewal_sec: 6.0,
                 fade_sec: 0.0,
                 tone: FloraTone::Sine,
                 residual: true,

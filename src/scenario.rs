@@ -13,7 +13,7 @@ use lifecycle::LifecycleConfig;
 pub struct FloraSpec {
     pub amp: f32,
     pub rate: f32,
-    pub fatigue_sec: f32,
+    pub renewal_sec: f32,
     pub fade_sec: f32,
     pub tone: FloraTone,
     pub residual: bool,
@@ -30,7 +30,7 @@ pub enum FloraTone {
 pub struct FloraPatch {
     pub amp: Option<f32>,
     pub rate: Option<f32>,
-    pub fatigue_sec: Option<f32>,
+    pub renewal_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy)]

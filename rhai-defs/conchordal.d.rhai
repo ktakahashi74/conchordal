@@ -24,13 +24,13 @@ fn amp(arg0: PopulationSpec, arg1: f64) -> PopulationSpec;
 /// Amplitude in 0.0-1.0.
 fn amp(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 
-/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
 fn amp(arg0: Flora, arg1: f64) -> Flora;
-/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
 fn amp(arg0: Flora, arg1: i64) -> Flora;
-/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
 fn amp(arg0: FloraSpec, arg1: f64) -> FloraSpec;
-/// Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared.
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
 fn amp(arg0: FloraSpec, arg1: i64) -> FloraSpec;
 
 /// Hold the voice at its pitch: an anchored voice never moves.
@@ -188,15 +188,6 @@ fn entrainment(arg0: PopulationSpec, arg1: i64) -> PopulationSpec;
 fn fade(arg0: FloraSpec, arg1: f64) -> FloraSpec;
 /// Set Flora's placement and release fade in [0, 60] seconds.
 fn fade(arg0: FloraSpec, arg1: i64) -> FloraSpec;
-
-/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
-fn fatigue(arg0: Flora, arg1: f64) -> Flora;
-/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
-fn fatigue(arg0: Flora, arg1: i64) -> Flora;
-/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
-fn fatigue(arg0: FloraSpec, arg1: f64) -> FloraSpec;
-/// Set Flora's satiation time in [0, 600] seconds; zero disables fatigue.
-fn fatigue(arg0: FloraSpec, arg1: i64) -> FloraSpec;
 
 /// Build a FloraSpec for spectral growth over a frequency extent.
 fn flora() -> FloraSpec;
@@ -461,13 +452,13 @@ fn range(arg0: Placement, arg1: i64, arg2: i64) -> Placement;
 /// Frequency range; only valid on `landscape_*_modes()`.
 fn range(arg0: ModePattern, arg1: f64, arg2: f64) -> ModePattern;
 
-/// Set Flora's growth response in [0.05, 4] per second.
+/// Set Flora's growth response in [0.05, 8] per second.
 fn rate(arg0: Flora, arg1: f64) -> Flora;
-/// Set Flora's growth response in [0.05, 4] per second.
+/// Set Flora's growth response in [0.05, 8] per second.
 fn rate(arg0: Flora, arg1: i64) -> Flora;
-/// Set Flora's growth response in [0.05, 4] per second.
+/// Set Flora's growth response in [0.05, 8] per second.
 fn rate(arg0: FloraSpec, arg1: f64) -> FloraSpec;
-/// Set Flora's growth response in [0.05, 4] per second.
+/// Set Flora's growth response in [0.05, 8] per second.
 fn rate(arg0: FloraSpec, arg1: i64) -> FloraSpec;
 
 /// [tuning] Ratio-based movement candidates; 0 disables.
@@ -485,6 +476,15 @@ fn release(arg0: Population);
 
 /// Mark a Flora for release using its spec's fade.
 fn release(arg0: Flora);
+
+/// Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+fn renewal(arg0: Flora, arg1: f64) -> Flora;
+/// Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+fn renewal(arg0: Flora, arg1: i64) -> Flora;
+/// Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+fn renewal(arg0: FloraSpec, arg1: f64) -> FloraSpec;
+/// Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+fn renewal(arg0: FloraSpec, arg1: i64) -> FloraSpec;
 
 /// Repeated/pulsed phonation mode.
 fn repeat(arg0: PopulationSpec) -> PopulationSpec;

@@ -48,28 +48,6 @@ pub struct HabituationField {
 }
 
 impl HabituationField {
-    /// Advance caller-owned state with this field's transfer and time constants.
-    pub(crate) fn advance_state_from_drive(
-        &self,
-        space: &crate::core::log2space::Log2Space,
-        state_scan: &mut [f32],
-        drive_scan: &[f32],
-        dt: f32,
-    ) {
-        space.assert_scan_len_named(state_scan, "fatigue_state_scan");
-        space.assert_scan_len_named(drive_scan, "sounding_drive_scan");
-        if !self.enabled {
-            return;
-        }
-        let a_e = (-dt.max(0.0) / self.tau_e).exp();
-        let a_r = (-dt.max(0.0) / self.tau_r).exp();
-        for (h, &drive) in state_scan.iter_mut().zip(drive_scan) {
-            let d = self.transfer(drive).clamp(0.0, 1.0);
-            let a = if d > *h { a_e } else { a_r };
-            *h = (a * *h + (1.0 - a) * d).clamp(0.0, 1.0);
-        }
-    }
-
     pub fn new(params: &HabituationParams, theta: f32, n_bins: usize) -> Self {
         Self {
             enabled: params.enabled,

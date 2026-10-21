@@ -50,7 +50,7 @@ fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
 fn flora_specs_emit_placement_actions_and_route_buses() {
     let (scenario, _) = run_script(
         r#"
-        let moss = flora().amp(0.1).rate(1).fatigue(0).fade(0.25)
+        let moss = flora().amp(0.1).rate(1).renewal(10).fade(0.25)
             .tone("resonant").residual(false).send(presentation_bus);
         place(moss, consonance(110).range(1, 16));
         place(flora().send(habitat_bus), random(220, 880));
@@ -76,8 +76,8 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
     assert_eq!((time, id, extent), (0.0, 1, (110.0, 1760.0)));
     assert!(matches!(seeding, FloraSeeding::Consonance));
     assert_eq!(
-        (spec.amp, spec.rate, spec.fatigue_sec, spec.fade_sec),
-        (0.1, 1.0, 0.0, 0.25)
+        (spec.amp, spec.rate, spec.renewal_sec, spec.fade_sec),
+        (0.1, 1.0, 10.0, 0.25)
     );
     assert_eq!(spec.tone, FloraTone::Resonant);
     assert!(!spec.residual);
@@ -89,8 +89,8 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
     for (_, _, spec, _, _) in &placed[2..] {
         assert!(spec.routing.to_habitat && spec.routing.to_presentation);
         assert_eq!(
-            (spec.amp, spec.rate, spec.fatigue_sec, spec.fade_sec),
-            (0.03, 0.5, 6.0, 2.0)
+            (spec.amp, spec.rate, spec.renewal_sec, spec.fade_sec),
+            (0.03, 4.0, 10.0, 2.0)
         );
         assert_eq!(spec.tone, FloraTone::Sine);
         assert!(spec.residual);
@@ -170,8 +170,8 @@ fn flora_rejects_each_unsupported_placement_component() {
 fn flora_numeric_validation_covers_specs_and_patches() {
     for (name, min, max) in [
         ("amp", 0.0, 1.0),
-        ("rate", 0.05, 4.0),
-        ("fatigue", 0.0, 600.0),
+        ("rate", 0.05, 8.0),
+        ("renewal", 0.5, 600.0),
         ("fade", 0.0, 60.0),
     ] {
         for patch in [false, true] {
@@ -236,7 +236,7 @@ fn flora_numeric_validation_covers_specs_and_patches() {
             "{error}"
         );
     }
-    run_script("flora().amp(1).rate(4).fatigue(600).fade(60).tone(\"sine\");");
+    run_script("flora().amp(1).rate(8).renewal(600).fade(60).tone(\"sine\");");
 }
 
 #[test]
@@ -251,7 +251,7 @@ fn flora_patches_are_pending_until_wait_flush_or_finish() {
                 r#"
             let m = place(flora(), random(110, 880));
             wait(0.25);
-            m.amp(0.1).amp(0.2).rate(2).fatigue(0);
+            m.amp(0.1).amp(0.2).rate(2).renewal(10);
         "#,
             )
             .unwrap();
@@ -272,8 +272,8 @@ fn flora_patches_are_pending_until_wait_flush_or_finish() {
         assert_eq!((updates[0].0, updates[0].1), (0.25, 1));
         let patch = updates[0].2;
         assert_eq!(
-            (patch.amp, patch.rate, patch.fatigue_sec),
-            (Some(0.2), Some(2.0), Some(0.0))
+            (patch.amp, patch.rate, patch.renewal_sec),
+            (Some(0.2), Some(2.0), Some(10.0))
         );
     }
 }

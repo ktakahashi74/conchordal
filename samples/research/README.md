@@ -17,6 +17,14 @@ Comparison fixtures for studying the instrument, not for playing it:
 - `flora_mixing_tuning.rhai` — 110 Hz drone, 110–1760 Hz Flora, seed 41101.
 - `flora_mixing_evaluation_{1,2,3}.rhai` — 146.83 Hz drone, 146.83–2349.3 Hz
   Flora, held-out seeds 42101–42103.
+- `flora_succession_drone.rhai` — 110 Hz drone, retuned to 146.83 Hz at 42 s; seed 43001.
+- `flora_succession_mute.rhai` — Flora muted at 42 s and restored at 62 s; seed 43002.
+- `flora_succession_population.rhai` — habitat drone and five moving seekers; seed 43003.
+- `flora_succession_habitat_only.rhai` — Flora routed only to habitat; seed 43004.
+- `flora_succession_presentation_only.rhai` — Flora routed only to presentation; seed 43005.
+- `flora_succession_rate8.rhai` — Flora at rate 8/s against a 110 Hz drone; seed 43006.
+- `flora_succession_low.rhai` — 55 Hz drone and 55–220 Hz Flora; seed 43007.
+- `flora_succession_overlap.rhai` — 110–880 Hz and 220–1760 Hz Flora; seed 43008.
 
 Headless report runs are recorded in
 `docs/roadmap/v0.4.0-rhythm-report-runs.md`.
@@ -51,6 +59,7 @@ These offline integration tests are ignored by the default test run:
 cargo test --test flora_assays closed_loop -- --ignored --exact --nocapture
 cargo test --test flora_assays mixing_tuning -- --ignored --exact --nocapture
 cargo test --test flora_assays mixing_evaluation -- --ignored --exact --nocapture
+cargo test --release --test flora_assays succession -- --ignored --nocapture
 ```
 
 Each runs sine with residual, sine without residual, and resonant with residual.
@@ -91,3 +100,23 @@ ignored and reports measurements with `accepted: null`. Successful execution is
 not mixing acceptance. Never choose margins from these evaluation results; a future
 registered acceptance campaign needs fresh evaluation seeds. No growth parameter
 is adjusted by either campaign, and the known settling dynamics remain unchanged.
+
+The succession campaign renders all eight `flora_succession_*` samples in all three
+configurations and writes `succession/summary.json` and `succession/summary.md`.
+The two 106 s samples release at 102 s; the six 92 s samples release at 88 s.
+All Flora are placed at 2 s. Summary measurements use [22 s, release), with
+additional mute level windows [22, 42), [42, 62), and [67, 102) s. Snapshot windows
+use the report's integer second; counter windows use the intervals ending within
+(begin, end], with each rate divided by its actual interval duration. The JSON
+includes every per-second normalized spectrum and metric, including release tails,
+and marks undefined measurements as `null`.
+
+Rendered spectra use all reported partials, including residual and retiring lanes,
+on a 0.05 ERB-rate grid over each extent, smoothed with sigma 0.25 ERB. Each
+Gaussian is normalized on the extent before depositing its partial's power, so edge
+partials retain their weight. Silent snapshots are excluded from spectrum distances,
+lattice fractions, and participation. Recurrence compares each non-silent second
+with all non-silent seconds at least 5 s earlier after warm-up; its denominator
+includes only seconds with an eligible predecessor. Overlapping Flora are also
+measured together by pooling their partials and summing counters and biomass,
+without waveform interference terms. No acceptance threshold is applied.

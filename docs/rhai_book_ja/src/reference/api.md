@@ -46,7 +46,7 @@ Floraは、Landscapeを入力とする作曲上の規則で、指定した周波
 flora() -> FloraSpec
 ```
 
-Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 0.5/s, fatigue 6 s, fade 2 s, sine tone, residual enabled, both buses.
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.
 
 #### `amp`
 
@@ -56,7 +56,7 @@ amp(level)
 
 適用対象：`FloraSpec`, `Flora`。
 
-Set Flora's target amplitude in [0, 1]; squared lane target amplitudes sum to at most amp squared. This bounds targets only, not transient amplitudes or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
 
 #### `rate`
 
@@ -66,17 +66,17 @@ rate(per_second)
 
 適用対象：`FloraSpec`, `Flora`。
 
-Set Flora's growth response in [0.05, 4] per second. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+Set Flora's growth response in [0.05, 8] per second. Requires a finite value before and after f32 conversion; invalid values raise script errors.
 
-#### `fatigue`
+#### `renewal`
 
 ```rhai,ignore
-fatigue(seconds)
+renewal(seconds)
 ```
 
 適用対象：`FloraSpec`, `Flora`。
 
-Set Flora's satiation time in [0, 600] seconds; zero disables fatigue. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+Set the time Flora's band resource takes to recover, in [0.5, 600] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
 
 #### `fade`
 

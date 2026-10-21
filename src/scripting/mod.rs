@@ -1709,8 +1709,8 @@ fn validate_flora_numeric(
 ) -> Result<f32, Box<EvalAltResult>> {
     let (min, max) = match name {
         "amp" => (0.0, 1.0),
-        "rate" => (0.05, 4.0),
-        "fatigue" => (0.0, 600.0),
+        "rate" => (0.05, 8.0),
+        "renewal" => (0.5, 600.0),
         "fade" => (0.0, 60.0),
         _ => unreachable!("registered Flora parameter"),
     };
@@ -1741,7 +1741,7 @@ impl FloraSpecHandle {
         match name {
             "amp" => self.spec.amp = value,
             "rate" => self.spec.rate = value,
-            "fatigue" => self.spec.fatigue_sec = value,
+            "renewal" => self.spec.renewal_sec = value,
             "fade" => self.spec.fade_sec = value,
             _ => unreachable!("registered Flora spec parameter"),
         }
@@ -1766,7 +1766,7 @@ fn update_flora_numeric(
         match name {
             "amp" => patch.amp = Some(value),
             "rate" => patch.rate = Some(value),
-            "fatigue" => patch.fatigue_sec = Some(value),
+            "renewal" => patch.renewal_sec = Some(value),
             _ => unreachable!("registered Flora patch parameter"),
         }
     } else {

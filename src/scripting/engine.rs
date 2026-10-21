@@ -55,15 +55,15 @@ impl ScriptHost {
         engine.register_fn("flora", || FloraSpecHandle {
             spec: FloraSpec {
                 amp: 0.03,
-                rate: 0.5,
-                fatigue_sec: 6.0,
+                rate: 4.0,
+                renewal_sec: 10.0,
                 fade_sec: 2.0,
                 tone: FloraTone::Sine,
                 residual: true,
                 routing: Routing::default(),
             },
         });
-        for name in ["amp", "rate", "fatigue", "fade"] {
+        for name in ["amp", "rate", "renewal", "fade"] {
             engine.register_fn(
                 name,
                 move |call: NativeCallContext, spec: FloraSpecHandle, value: FLOAT| {
@@ -77,7 +77,7 @@ impl ScriptHost {
                 },
             );
         }
-        for name in ["amp", "rate", "fatigue"] {
+        for name in ["amp", "rate", "renewal"] {
             let ctx_float = ctx.clone();
             engine.register_fn(
                 name,

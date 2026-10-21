@@ -7,14 +7,19 @@ use serde::Serialize;
 
 use crate::core::erb::{erb_bw_hz, erb_to_hz, hz_to_erb};
 use crate::core::float::{finite_or, sanitize01, unit_gaussian};
-use crate::core::habituation::{HabituationField, HabituationParams};
 use crate::core::landscape::Landscape;
 use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::scenario::{FloraPatch, FloraSeeding, FloraSpec, FloraTone};
 #[cfg(feature = "simd-wide")]
 use wide::f32x8;
 
-const MUTATION: f32 = 0.02;
+const METABOLISM: f32 = 0.3;
+const CONSUMPTION_SEC: f32 = 0.3;
+const REFERENCE_DENSITY: f32 = 10.0;
+const ALLEE_DENSITY: f32 = 0.576;
+const SEED_RAIN_DENSITY: f32 = 0.48;
+const BACKGROUND_SEED_DENSITY: f32 = 9.6e-4;
+const INITIAL_BIOMASS: f32 = 0.5;
 const SLEW_SEC: f32 = 0.08;
 const DEAD_MASS: f32 = 0.001;
 
@@ -239,13 +244,12 @@ pub(crate) struct Flora {
     substeps: usize,
     diffusion: f32,
     rng: u64,
-    density_scan: Vec<f32>,
-    fatigue_state_scan: Vec<f32>,
-    fitness_level_scan: Vec<f32>,
-    sounding_drive_scan: Vec<f32>,
+    biomass_mass_scan: Vec<f32>,
+    resource_state_scan: Vec<f32>,
     scratch_scan: Vec<f32>,
     erb_scan: Vec<f32>,
-    fatigue: HabituationField,
+    consumption_rows: Vec<(usize, Range<usize>)>,
+    consumption_weights: Vec<f32>,
     cells: Vec<Cell>,
     lanes: Vec<Lane>,
     tonal_len: usize,
@@ -270,7 +274,8 @@ pub(crate) struct FloraReport<'a> {
     flora_id: u64,
     extent_hz: (f32, f32),
     frequency_hz: &'a [f32],
-    density_scan: &'a [f32],
+    biomass_mass_scan: &'a [f32],
+    total_biomass_mass: f32,
     latent_peaks_hz: Vec<f32>,
     births: u64,
     retirements: u64,
@@ -310,22 +315,12 @@ impl Flora {
             substeps: 1,
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
-            density_scan: Vec::new(),
-            fatigue_state_scan: Vec::new(),
-            fitness_level_scan: Vec::new(),
-            sounding_drive_scan: Vec::new(),
+            biomass_mass_scan: Vec::new(),
+            resource_state_scan: Vec::new(),
             scratch_scan: Vec::new(),
             erb_scan: Vec::new(),
-            fatigue: HabituationField::new(
-                &HabituationParams {
-                    enabled: spec.fatigue_sec > 0.0,
-                    satiation_sec: spec.fatigue_sec,
-                    recovery_sec: 1.6 * spec.fatigue_sec,
-                    ref_drive: 0.25,
-                },
-                0.0,
-                0,
-            ),
+            consumption_rows: Vec::new(),
+            consumption_weights: Vec::new(),
             cells: Vec::new(),
             lanes: Vec::new(),
             tonal_len: 0,
@@ -349,21 +344,32 @@ impl Flora {
         );
         if !flora.range.is_empty() {
             for i in flora.range.clone() {
-                flora.density_scan[i] = match seeding {
+                flora.biomass_mass_scan[i] = match seeding {
                     FloraSeeding::Uniform => 1.0,
                     FloraSeeding::Consonance => {
                         finite_or(landscape.consonance_density_mass_eff[i], 0.0).max(0.0)
                     }
                 };
             }
-            if flora.density_scan.iter().sum::<f32>() == 0.0 {
-                flora.density_scan[flora.range.clone()].fill(1.0);
+            if flora.biomass_mass_scan.iter().sum::<f32>() == 0.0 {
+                flora.biomass_mass_scan[flora.range.clone()].fill(1.0);
             }
             for i in flora.range.clone() {
-                flora.density_scan[i] *= 0.9 + 0.2 * random_unit(&mut flora.rng);
+                flora.biomass_mass_scan[i] *= 0.9 + 0.2 * random_unit(&mut flora.rng);
             }
-            flora.normalize_density();
+            // Divide before scaling so tiny seeding weights cannot overflow; weights that
+            // underflowed to zero during the perturbation fall back to uniform.
+            let total: f32 = flora.biomass_mass_scan[flora.range.clone()].iter().sum();
+            let uniform = INITIAL_BIOMASS / flora.range.len() as f32;
+            for i in flora.range.clone() {
+                flora.biomass_mass_scan[i] = if total > 0.0 {
+                    flora.biomass_mass_scan[i] / total * INITIAL_BIOMASS
+                } else {
+                    uniform
+                };
+            }
         }
+        flora.assert_scans();
         flora.gain.to(1.0, spec.fade_sec, fs);
         flora
     }
@@ -375,28 +381,12 @@ impl Flora {
         }
         if let Some(rate) = patch.rate {
             self.spec.rate = rate;
-            self.substeps = ((self.hop as f32 / self.fs)
-                * (rate / 0.05)
-                    .max(MUTATION / 0.05)
-                    .max(self.diffusion / 0.25))
-            .ceil()
-            .max(1.0) as usize;
+            self.substeps = ((self.hop as f32 / self.fs) * (rate / 0.05).max(self.diffusion / 0.25))
+                .ceil()
+                .max(1.0) as usize;
         }
-        if let Some(seconds) = patch.fatigue_sec {
-            if seconds == 0.0 || self.spec.fatigue_sec == 0.0 {
-                self.fatigue_state_scan.fill(0.0);
-            }
-            self.spec.fatigue_sec = seconds;
-            self.fatigue = HabituationField::new(
-                &HabituationParams {
-                    enabled: seconds > 0.0,
-                    satiation_sec: seconds,
-                    recovery_sec: 1.6 * seconds,
-                    ref_drive: 0.25,
-                },
-                0.0,
-                0,
-            );
+        if let Some(seconds) = patch.renewal_sec {
+            self.spec.renewal_sec = seconds;
         }
     }
 
@@ -426,35 +416,61 @@ impl Flora {
     }
 
     pub(crate) fn on_space_change(&mut self, space: &Log2Space) {
-        if !self.density_scan.is_empty() {
+        if !self.biomass_mass_scan.is_empty() {
             self.assert_scans();
         }
         let old_space = std::mem::replace(&mut self.space, space.clone());
-        let old_p = std::mem::replace(&mut self.density_scan, vec![0.0; space.n_bins()]);
-        let old_h = std::mem::replace(&mut self.fatigue_state_scan, vec![0.0; space.n_bins()]);
+        let old_v = std::mem::replace(&mut self.biomass_mass_scan, vec![0.0; space.n_bins()]);
+        let old_u = std::mem::replace(&mut self.resource_state_scan, vec![0.0; space.n_bins()]);
         let was_dormant = self.range.is_empty();
         let start = space.centers_hz.partition_point(|&f| f < self.extent_hz.0);
         let end = space.centers_hz.partition_point(|&f| f <= self.extent_hz.1);
         self.range = start..end;
-        self.fitness_level_scan = vec![0.0; space.n_bins()];
-        self.sounding_drive_scan = vec![0.0; space.n_bins()];
         self.scratch_scan = vec![0.0; space.n_bins()];
         self.erb_scan = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
+        self.assert_scans();
+        self.consumption_rows.clear();
+        self.consumption_weights.clear();
         if !self.range.is_empty() {
-            if !was_dormant && !old_p.is_empty() {
-                old_space.assert_scan_len_named(&old_p, "density_scan");
-                old_space.assert_scan_len_named(&old_h, "fatigue_state_scan");
+            self.resource_state_scan[self.range.clone()].fill(1.0);
+            if !was_dormant && !old_v.is_empty() {
+                old_space.assert_scan_len_named(&old_v, "biomass_mass_scan");
+                old_space.assert_scan_len_named(&old_u, "resource_state_scan");
+                let mass_scale = old_space.bins_per_oct as f32 / space.bins_per_oct as f32;
                 for i in self.range.clone() {
                     let f = space.centers_hz[i];
                     if f >= old_space.centers_hz[0] && f <= *old_space.centers_hz.last().unwrap() {
-                        self.density_scan[i] =
-                            sample_scan_linear_log2(&old_space, &old_p, f).max(0.0);
-                        self.fatigue_state_scan[i] =
-                            sanitize01(sample_scan_linear_log2(&old_space, &old_h, f));
+                        self.biomass_mass_scan[i] =
+                            sample_scan_linear_log2(&old_space, &old_v, f).max(0.0) * mass_scale;
+                        self.resource_state_scan[i] =
+                            sanitize01(sample_scan_linear_log2(&old_space, &old_u, f));
                     }
                 }
+            } else {
+                self.biomass_mass_scan[self.range.clone()]
+                    .fill(INITIAL_BIOMASS / self.range.len() as f32);
             }
-            self.normalize_density();
+            for i in self.range.clone() {
+                let lo = self
+                    .erb_scan
+                    .partition_point(|&x| x < self.erb_scan[i] - 1.5)
+                    .max(self.range.start);
+                let hi = self
+                    .erb_scan
+                    .partition_point(|&x| x <= self.erb_scan[i] + 1.5)
+                    .min(self.range.end);
+                let first = self.consumption_weights.len();
+                self.consumption_weights.extend(
+                    (lo..hi).map(|j| unit_gaussian(self.erb_scan[j] - self.erb_scan[i], 0.5)),
+                );
+                let weights = &mut self.consumption_weights[first..];
+                let total: f32 = weights.iter().sum();
+                for weight in weights.iter_mut() {
+                    *weight /= total;
+                }
+                self.consumption_rows
+                    .push((lo, first..self.consumption_weights.len()));
+            }
         }
         self.diffusion = 0.5 * (10.0 * space.bins_per_oct as f32 / 1200.0).powi(2);
         self.apply_patch(&FloraPatch {
@@ -517,33 +533,10 @@ impl Flora {
         self.assert_scans();
     }
 
-    fn normalize_density(&mut self) {
-        self.space
-            .assert_scan_len_named(&self.density_scan, "density_scan");
-        if self.range.is_empty() {
-            return;
-        }
-        // Compensate when a narrow peak is followed by many tiny mutation bins.
-        let mut total = 0.0;
-        let mut correction = 0.0;
-        for &p in &self.density_scan[self.range.clone()] {
-            let y = p - correction;
-            let next = total + y;
-            correction = (next - total) - y;
-            total = next;
-        }
-        let uniform = 1.0 / self.range.len() as f32;
-        for p in &mut self.density_scan[self.range.clone()] {
-            *p = if total > 0.0 { *p / total } else { uniform };
-        }
-    }
-
     fn assert_scans(&self) {
         for (scan, name) in [
-            (&self.density_scan, "density_scan"),
-            (&self.fatigue_state_scan, "fatigue_state_scan"),
-            (&self.fitness_level_scan, "fitness_level_scan"),
-            (&self.sounding_drive_scan, "sounding_drive_scan"),
+            (&self.biomass_mass_scan, "biomass_mass_scan"),
+            (&self.resource_state_scan, "resource_state_scan"),
             (&self.scratch_scan, "scratch_scan"),
             (&self.erb_scan, "erb_scan"),
         ] {
@@ -557,6 +550,8 @@ impl Flora {
             &landscape.consonance_field_level_eff,
             "consonance_field_level_eff",
         );
+        self.space
+            .assert_scan_len_named(&landscape.harmonicity01, "harmonicity01");
         assert_eq!(
             (self.space.fmin, self.space.step()),
             (landscape.space.fmin, landscape.space.step()),
@@ -565,40 +560,62 @@ impl Flora {
         if self.range.is_empty() {
             return;
         }
-        for i in self.range.clone() {
-            self.fitness_level_scan[i] = sanitize01(landscape.consonance_field_level_eff[i])
-                * (1.0 - self.fatigue_state_scan[i]);
-        }
         let dt = self.hop as f32 / self.fs / self.substeps as f32;
-        let mutation = MUTATION * dt;
-        let spread = self.diffusion * dt;
-        let uniform = 1.0 / self.range.len() as f32;
+        let bins_per_oct = self.space.bins_per_oct as f32;
+        let allee_mass = ALLEE_DENSITY / bins_per_oct;
         for _ in 0..self.substeps {
-            let mean: f32 = self
-                .range
-                .clone()
-                .map(|i| self.density_scan[i] * self.fitness_level_scan[i])
-                .sum();
-            for i in self.range.clone() {
-                self.scratch_scan[i] = (1.0 - mutation)
-                    * self.density_scan[i]
-                    * (1.0 + dt * self.spec.rate * (self.fitness_level_scan[i] - mean))
-                    + mutation * uniform;
-            }
+            let maximum = self.biomass_mass_scan[self.range.clone()]
+                .iter()
+                .copied()
+                .fold(0.0, f32::max);
             for i in self.range.clone() {
                 let left = i.saturating_sub(1).max(self.range.start);
                 let right = (i + 1).min(self.range.end - 1);
-                let q = self.scratch_scan[i];
-                self.density_scan[i] =
-                    q + spread * (self.scratch_scan[left] - 2.0 * q + self.scratch_scan[right]);
+                let v = self.biomass_mass_scan[i];
+                let u = self.resource_state_scan[i];
+                let growth = self.spec.rate
+                    * v
+                    * (sanitize01(landscape.consonance_field_level_eff[i]) * u * v
+                        / (v + allee_mass)
+                        - METABOLISM);
+                let spread = self.diffusion
+                    * (self.biomass_mass_scan[left] - 2.0 * v + self.biomass_mass_scan[right]);
+                let seeds = u
+                    * (BACKGROUND_SEED_DENSITY
+                        + SEED_RAIN_DENSITY * sanitize01(landscape.harmonicity01[i]))
+                    / bins_per_oct;
+                let next = v + dt * (growth + spread + seeds);
+                debug_assert!(next >= -1e-6 * maximum, "negative Flora biomass: {next}");
+                self.scratch_scan[i] = next.max(0.0);
             }
-            self.normalize_density();
+            std::mem::swap(&mut self.biomass_mass_scan, &mut self.scratch_scan);
+            self.advance_resource(dt);
+        }
+    }
+
+    fn advance_resource(&mut self, dt: f32) {
+        self.assert_scans();
+        let bins_per_oct = self.space.bins_per_oct as f32;
+        let renewal = 1.0 / self.spec.renewal_sec;
+        for (row, (lo, weights)) in self.consumption_rows.iter().enumerate() {
+            let i = self.range.start + row;
+            let biomass_consumption_density: f32 = self.consumption_weights[weights.clone()]
+                .iter()
+                .enumerate()
+                .map(|(j, &weight)| weight * self.biomass_mass_scan[lo + j])
+                .sum::<f32>()
+                * bins_per_oct
+                / REFERENCE_DENSITY;
+            let a = renewal + biomass_consumption_density / CONSUMPTION_SEC;
+            let equilibrium = renewal / a;
+            self.resource_state_scan[i] =
+                equilibrium + (self.resource_state_scan[i] - equilibrium) * (-a * dt).exp();
         }
     }
 
     fn decompose(&mut self) {
         self.assert_scans();
-        let p = &self.density_scan;
+        let p = &self.biomass_mass_scan;
         let maximum = p[self.range.clone()].iter().copied().fold(0.0, f32::max);
         for cell in &mut self.cells {
             cell.peak = None;
@@ -853,7 +870,7 @@ impl Flora {
                     if held.is_some_and(|peak| peak.window.contains(&i)) {
                         continue;
                     }
-                    let x = self.density_scan[i] - cell.floor;
+                    let x = self.biomass_mass_scan[i] - cell.floor;
                     moment += x * self.space.centers_log2[i];
                     mass += x;
                 }
@@ -862,6 +879,12 @@ impl Flora {
                         .clamp(erb_to_hz(cell.lo_erb).log2(), erb_to_hz(cell.hi_erb).log2());
                 }
             }
+        }
+        // Bound all targets together; slews and retiring amplitudes keep their history.
+        let target_power: f32 = self.lanes.iter().map(|lane| lane.target.powi(2)).sum();
+        let scale = target_power.max(1.0).sqrt().recip();
+        for lane in &mut self.lanes {
+            lane.target *= scale;
         }
     }
 
@@ -936,34 +959,6 @@ impl Flora {
             self.energy[usize::from(!lane.tonal)] += lane.power_sum as f64 / self.fs as f64;
         }
         self.rendered_samples += self.hop as u64;
-        self.sounding_drive_scan.fill(0.0);
-        if !self.range.is_empty() {
-            for lane in &self.lanes {
-                let power = lane.power_sum / self.hop as f32;
-                if power == 0.0 {
-                    continue;
-                }
-                let erb = hz_to_erb(lane.position.exp2());
-                let lo = self.erb_scan.partition_point(|&x| x < erb - 1.5);
-                let hi = self.erb_scan.partition_point(|&x| x <= erb + 1.5);
-                for i in lo..hi {
-                    self.sounding_drive_scan[i] +=
-                        power * unit_gaussian(self.erb_scan[i] - erb, 0.5);
-                }
-            }
-            let maximum = self.sounding_drive_scan.iter().copied().fold(0.0, f32::max);
-            if maximum > 0.0 {
-                for s in &mut self.sounding_drive_scan {
-                    *s /= maximum;
-                }
-            }
-        }
-        self.fatigue.advance_state_from_drive(
-            &self.space,
-            &mut self.fatigue_state_scan,
-            &self.sounding_drive_scan,
-            self.hop as f32 / self.fs,
-        );
     }
 
     // Reporting owns these allocations; ordinary advance/render remain allocation-free.
@@ -973,10 +968,10 @@ impl Flora {
             .range
             .clone()
             .filter_map(|i| {
-                let p = self.density_scan[i];
+                let p = self.biomass_mass_scan[i];
                 (p > 0.0
-                    && (i == self.range.start || p > self.density_scan[i - 1])
-                    && (i + 1 == self.range.end || p >= self.density_scan[i + 1]))
+                    && (i == self.range.start || p > self.biomass_mass_scan[i - 1])
+                    && (i + 1 == self.range.end || p >= self.biomass_mass_scan[i + 1]))
                     .then_some(self.space.centers_hz[i])
             })
             .collect();
@@ -986,7 +981,8 @@ impl Flora {
             flora_id: self.id,
             extent_hz: self.extent_hz,
             frequency_hz: &self.space.centers_hz,
-            density_scan: &self.density_scan,
+            biomass_mass_scan: &self.biomass_mass_scan,
+            total_biomass_mass: self.biomass_mass_scan.iter().sum(),
             latent_peaks_hz,
             births: self.births,
             retirements: self.retirements,
@@ -1080,8 +1076,8 @@ mod tests {
     fn spec() -> FloraSpec {
         FloraSpec {
             amp: 0.4,
-            rate: 2.0,
-            fatigue_sec: 6.0,
+            rate: 4.0,
+            renewal_sec: 10.0,
             fade_sec: 0.0,
             tone: FloraTone::Sine,
             residual: true,
@@ -1107,13 +1103,13 @@ mod tests {
     }
 
     fn uniform(f: &mut Flora) {
-        f.density_scan.fill(0.0);
-        f.density_scan[f.range.clone()].fill(1.0 / f.range.len() as f32);
+        f.biomass_mass_scan.fill(0.0);
+        f.biomass_mass_scan[f.range.clone()].fill(1.0 / f.range.len() as f32);
     }
 
     fn normalize(f: &mut Flora) {
-        let total: f32 = f.density_scan.iter().sum();
-        for p in &mut f.density_scan {
+        let total: f32 = f.biomass_mass_scan.iter().sum();
+        for p in &mut f.biomass_mass_scan {
             *p /= total;
         }
     }
@@ -1121,7 +1117,7 @@ mod tests {
     fn hill(f: &mut Flora, bin: usize, height: f32) {
         for (offset, weight) in [(-2, 0.1), (-1, 0.5), (0, 1.0), (1, 0.5), (2, 0.1)] {
             let i = (bin as isize + offset) as usize;
-            f.density_scan[i] = height * weight;
+            f.biomass_mass_scan[i] = height * weight;
         }
     }
 
@@ -1158,17 +1154,22 @@ mod tests {
             .filter(|lane| lane.mode == Mode::Current)
             .map(|lane| lane.target.powi(2))
             .sum();
-        assert!((actual - expected).abs() < 2e-7, "{actual} != {expected}");
-        assert!(expected <= 1.0 + 1e-6);
+        assert!(
+            (actual - expected.min(1.0)).abs() < 2e-7,
+            "{actual} != {expected}"
+        );
+        assert!(actual <= 1.0 + 1e-6);
     }
 
     #[test]
-    fn dynamics_large_hop_high_rate_preserves_pmf_and_extent() {
-        let l = Landscape::new(Log2Space::new(110.0, 1760.0, 96));
+    fn dynamics_large_hop_high_rate_preserves_nonnegativity_and_extent() {
+        let mut l = Landscape::new(Log2Space::new(110.0, 1760.0, 96));
+        l.consonance_field_level_eff.fill(1.0);
+        l.harmonicity01.fill(1.0);
         let mut f = Flora::new(
             1,
             FloraSpec {
-                rate: 100.0,
+                rate: 8.0,
                 ..spec()
             },
             (440.0, 880.0),
@@ -1178,16 +1179,105 @@ mod tests {
             2000.0,
             800,
         );
-        assert!(f.substeps > 1);
-        for _ in 0..30 {
+        assert_eq!(f.substeps, 64);
+        for _ in 0..100 {
             f.advance(&l);
-            assert!((f.density_scan.iter().sum::<f32>() - 1.0).abs() < 2e-6);
-            for (i, &p) in f.density_scan.iter().enumerate() {
-                if f.range.contains(&i) {
-                    assert!(p > 0.0);
-                } else {
-                    assert_eq!(p, 0.0);
+            for (i, &v) in f.biomass_mass_scan.iter().enumerate() {
+                assert!(v.is_finite() && v >= 0.0);
+                assert!((0.0..=1.0).contains(&f.resource_state_scan[i]));
+                if !f.range.contains(&i) {
+                    assert_eq!(v, 0.0);
+                    assert_eq!(f.resource_state_scan[i], 0.0);
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn resource_recovers_without_biomass_and_falls_under_consumption() {
+        let l = terrain();
+        let mut f = flora(&l);
+        f.biomass_mass_scan.fill(0.0);
+        f.resource_state_scan[f.range.clone()].fill(0.2);
+        for _ in 0..120 {
+            f.advance_resource(1.0);
+        }
+        assert!(
+            f.resource_state_scan[f.range.clone()]
+                .iter()
+                .all(|&u| (u - 1.0).abs() < 1e-5)
+        );
+        f.biomass_mass_scan[f.range.clone()].fill(100.0 / f.space.bins_per_oct as f32);
+        f.advance_resource(1.0);
+        assert!(
+            f.resource_state_scan[f.range.clone()]
+                .iter()
+                .all(|&u| u < 0.01)
+        );
+        for _ in 0..120 {
+            f.advance_resource(1.0);
+            assert!(
+                f.resource_state_scan
+                    .iter()
+                    .all(|&u| (0.0..=1.0).contains(&u))
+            );
+        }
+        let before = f.resource_state_scan.clone();
+        f.apply_patch(&FloraPatch {
+            renewal_sec: Some(20.0),
+            ..FloraPatch::default()
+        });
+        assert_eq!(f.resource_state_scan, before);
+    }
+
+    #[test]
+    fn consumption_kernel_is_truncated_row_normalized_and_extent_local() {
+        let l = Landscape::new(Log2Space::new(110.0, 1760.0, 96));
+        let mut f = flora(&l);
+        for (row, (lo, weights)) in f.consumption_rows.iter().enumerate() {
+            let i = f.range.start + row;
+            let weights = &f.consumption_weights[weights.clone()];
+            assert!((weights.iter().sum::<f32>() - 1.0).abs() < 1e-6);
+            for (j, &weight) in weights.iter().enumerate() {
+                assert!(f.range.contains(&(lo + j)));
+                let distance = f.erb_scan[lo + j] - f.erb_scan[i];
+                assert!(distance.abs() <= 1.5 + 1e-6);
+                assert!(weight > 0.0);
+                let centre_weight = weights[i - lo];
+                assert!((weight / centre_weight - unit_gaussian(distance, 0.5)).abs() < 1e-6);
+            }
+        }
+        f.biomass_mass_scan[f.range.clone()].fill(REFERENCE_DENSITY / f.space.bins_per_oct as f32);
+        f.advance_resource(1.0);
+        let a = 1.0 / f.spec.renewal_sec + 1.0 / CONSUMPTION_SEC;
+        let equilibrium = (1.0 / f.spec.renewal_sec) / a;
+        let expected = equilibrium + (1.0 - equilibrium) * (-a).exp();
+        assert!(
+            f.resource_state_scan[f.range.clone()]
+                .iter()
+                .all(|&u| (u - expected).abs() < 1e-6)
+        );
+    }
+
+    #[test]
+    fn flat_terrain_biomass_stays_below_twenty_over_120_seconds() {
+        let mut l = terrain();
+        l.consonance_field_level_eff.fill(0.5);
+        l.harmonicity01.fill(0.0);
+        for total in [0.05, 5.0] {
+            let mut f = flora(&l);
+            f.apply_patch(&FloraPatch {
+                rate: Some(8.0),
+                ..FloraPatch::default()
+            });
+            f.biomass_mass_scan[f.range.clone()].fill(total / f.range.len() as f32);
+            for _ in 0..2400 {
+                f.advance(&l);
+                let biomass: f32 = f.biomass_mass_scan.iter().sum();
+                assert!(
+                    biomass.is_finite() && biomass < 20.0,
+                    "initial {total}, biomass {biomass}"
+                );
             }
         }
     }
@@ -1202,141 +1292,100 @@ mod tests {
                 rate: Some(0.0),
                 ..FloraPatch::default()
             });
-            f.density_scan.fill(0.0);
+            f.biomass_mass_scan.fill(0.0);
             let edge = if right {
                 f.range.end - 1
             } else {
                 f.range.start
             };
-            f.density_scan[edge] = 1.0;
-            let dt = f.hop as f32 / f.fs;
-            let q_edge = 1.0 - MUTATION * dt + MUTATION * dt / f.range.len() as f32;
-            let q_other = MUTATION * dt / f.range.len() as f32;
-            let expected = q_edge + dt * f.diffusion * (q_other - q_edge);
-            f.advance(&l);
-            assert!((f.density_scan[edge] - expected).abs() < 2e-6);
-            assert!((f.density_scan.iter().sum::<f32>() - 1.0).abs() < 2e-6);
-            results.push(f.density_scan[edge]);
+            f.biomass_mass_scan[edge] = 1.0;
+            assert_eq!(f.substeps, 1);
+            let expected = 1.0 - f.hop as f32 / f.fs * f.diffusion;
+            for step in 0..200 {
+                // Zero resource suppresses seeds for this single-substep hop.
+                f.resource_state_scan.fill(0.0);
+                f.advance(&l);
+                if step == 0 {
+                    assert!((f.biomass_mass_scan[edge] - expected).abs() < 2e-6);
+                }
+                assert!((f.biomass_mass_scan.iter().sum::<f32>() - 1.0).abs() < 2e-6);
+            }
+            results.push(f.biomass_mass_scan[edge]);
         }
         assert!((results[0] - results[1]).abs() < 2e-6);
     }
 
-    fn two_hills(second: f32, spread: bool) -> (bool, bool, [f32; 2]) {
-        let mut l = terrain();
-        l.consonance_field_level_eff[31..35].fill(1.0);
-        l.consonance_field_level_eff[71..75].fill(second);
-        // 96 bins on [440, 880); the constructor's upper-edge bin is excluded.
-        let hi = f32::from_bits(l.space.centers_hz[96].to_bits() - 1);
+    #[test]
+    fn substep_count_uses_smallest_rate_and_spread_bound() {
+        let l = terrain();
         let mut f = Flora::new(
-            1,
+            7,
             spec(),
-            (440.0, hi),
+            (440.0, 880.0),
             FloraSeeding::Uniform,
             42,
             &l,
             48000.0,
             512,
         );
-        assert_eq!(f.range.len(), 96);
-        assert!(f.cells[1].bins.contains(&31) && f.cells[3].bins.contains(&71));
-        uniform(&mut f);
-        if !spread {
-            f.diffusion = 0.0;
+        for (rate, expected) in [(4.0, 1), (8.0, 2)] {
+            f.apply_patch(&FloraPatch {
+                rate: Some(rate),
+                ..FloraPatch::default()
+            });
+            assert_eq!(f.substeps, expected);
+            let hop_dt = f.hop as f32 / f.fs;
+            let valid =
+                |n| rate * hop_dt / n as f32 <= 0.05 && f.diffusion * hop_dt / n as f32 <= 0.25;
+            assert!(valid(f.substeps));
+            assert!(f.substeps == 1 || !valid(f.substeps - 1));
         }
-        let mut presentation = vec![0.0; f.hop];
-        let mut habitat = vec![0.0; f.hop];
-        let mut majority = false;
-        let mut crossed = false;
-        let dt = f.hop as f32 / f.fs;
-        for i in 0..(60.0 / dt).ceil() as usize {
-            f.advance(&l);
-            presentation.fill(0.0);
-            habitat.fill(0.0);
-            f.render_add(&mut presentation, &mut habitat);
-            let m1: f32 = f.density_scan[31..35].iter().sum();
-            let m2: f32 = f.density_scan[71..75].iter().sum();
-            if (i + 1) as f32 * dt <= 6.0 && m1 > 0.5 {
-                majority = true;
-            }
-            if (i + 1) as f32 * dt < 24.0 && m2 > m1 {
-                crossed = true;
-            }
-            if !spread {
-                assert!(m2 <= m1 + 1e-7, "hop {i}: {m2} > {m1}");
-            }
-            assert!(f.fatigue_state_scan.iter().all(|&h| h <= 0.800001));
-        }
-        (
-            majority,
-            crossed,
-            [
-                f.density_scan[31..35].iter().sum(),
-                f.density_scan[71..75].iter().sum(),
-            ],
-        )
+        f.on_space_change(&Log2Space::new(440.0, 880.0, 1200));
+        assert_eq!(f.substeps, 3);
     }
 
     #[test]
-    #[ignore = "provisional dynamics settle to a mixed fixed point; see Implementation Findings in docs/design-notes/flora.md"]
-    fn dynamics_sounding_fatigue_alternates_reachable_hills() {
-        let (majority, crossed, final_masses) = two_hills(0.6, true);
-        assert!(
-            majority,
-            "high hill did not take a majority by satiation time"
-        );
-        assert!(
-            crossed,
-            "second hill did not overtake before four satiation times; masses at 60 s: {final_masses:?}"
-        );
-    }
-
-    #[test]
-    fn dynamics_sounding_fatigue_cannot_reach_weak_hill() {
-        assert!(!two_hills(0.1, false).1);
-    }
-
-    #[test]
-    fn dynamics_without_fatigue_converges_and_patches_preserve_or_clear_state() {
+    fn biomass_growth_uses_harmonic_seed_rain_and_not_amplitude() {
         let mut l = terrain();
-        l.consonance_field_level_eff[31..35].fill(1.0);
+        let mut a = flora(&l);
+        a.biomass_mass_scan.fill(0.0);
+        let mut b = a.clone();
+        a.spec.amp = 0.0;
+        b.spec.amp = 1.0;
+        l.harmonicity01[33] = 1.0;
+        a.advance(&l);
+        b.advance(&l);
+        assert_eq!(a.biomass_mass_scan, b.biomass_mass_scan);
+        assert_eq!(a.resource_state_scan, b.resource_state_scan);
+        assert!(a.biomass_mass_scan[33] > 100.0 * a.biomass_mass_scan[73]);
+    }
+
+    #[test]
+    fn target_scaling_bounds_tonal_and_residual_amplitudes_together() {
+        let l = terrain();
         let mut f = flora(&l);
-        f.apply_patch(&FloraPatch {
-            fatigue_sec: Some(0.0),
-            ..FloraPatch::default()
-        });
-        for _ in 0..2000 {
-            f.advance(&l);
+        f.biomass_mass_scan.fill(0.001);
+        hill(&mut f, 33, 100.0);
+        // An increasing cell has residual mass without another tonal candidate.
+        for (offset, i) in f.cells[3].bins.clone().enumerate() {
+            f.biomass_mass_scan[i] = 10.0 + offset as f32;
         }
-        let before = f.density_scan.clone();
-        for _ in 0..20 {
-            f.advance(&l);
-        }
-        let change: f32 = before
-            .iter()
-            .zip(&f.density_scan)
-            .map(|(a, b)| (a - b).abs())
-            .sum();
-        assert!(change < 1e-4, "one-second change {change}");
-        assert!(f.fatigue_state_scan.iter().all(|&h| h == 0.0));
-        f.apply_patch(&FloraPatch {
-            fatigue_sec: Some(3.0),
-            ..FloraPatch::default()
-        });
-        f.fatigue_state_scan.fill(0.3);
-        f.apply_patch(&FloraPatch {
-            fatigue_sec: Some(4.0),
-            ..FloraPatch::default()
-        });
-        assert!(f.fatigue_state_scan.iter().all(|&h| h == 0.3));
-        f.apply_patch(&FloraPatch {
-            fatigue_sec: Some(0.0),
-            ..FloraPatch::default()
-        });
-        f.apply_patch(&FloraPatch {
-            fatigue_sec: Some(6.0),
-            ..FloraPatch::default()
-        });
-        assert!(f.fatigue_state_scan.iter().all(|&h| h == 0.0));
+        let mut p = vec![0.0; f.hop];
+        let mut h = p.clone();
+        f.render_add(&mut p, &mut h);
+        assert!(f.cells.iter().map(|c| c.excess).sum::<f32>() > 1.0);
+        assert!(f.lanes[..f.tonal_len].iter().any(|l| l.target > 0.0));
+        assert!(
+            f.lanes[f.tonal_len..f.residual_end]
+                .iter()
+                .any(|l| l.target > 0.0)
+        );
+        let target_power: f32 = f.lanes.iter().map(|l| l.target.powi(2)).sum();
+        assert!(
+            (target_power - 1.0).abs() <= 1e-6,
+            "target power {target_power}"
+        );
+        mass_accounting(&f);
     }
 
     #[test]
@@ -1357,12 +1406,71 @@ mod tests {
         };
         let a = make(&l);
         let b = make(&l);
-        assert_eq!(a.density_scan, b.density_scan);
-        assert!((a.density_scan[31..35].iter().sum::<f32>() - 1.0).abs() < 1e-6);
+        assert_eq!(a.biomass_mass_scan, b.biomass_mass_scan);
+        let total: f32 = a.biomass_mass_scan.iter().sum();
+        assert!((total - INITIAL_BIOMASS).abs() < 1e-6, "{total}");
+        assert_eq!(total, a.biomass_mass_scan[31..35].iter().sum::<f32>());
+        assert!(
+            a.resource_state_scan[a.range.clone()]
+                .iter()
+                .all(|&u| u == 1.0)
+        );
         l.consonance_density_mass_eff.fill(0.0);
         let f = make(&l);
-        assert!(f.density_scan[f.range.clone()].iter().all(|&p| p > 0.0));
-        assert_ne!(f.density_scan[0], f.density_scan[1]);
+        assert!(
+            f.biomass_mass_scan[f.range.clone()]
+                .iter()
+                .all(|&p| p > 0.0)
+        );
+        assert_ne!(f.biomass_mass_scan[0], f.biomass_mass_scan[1]);
+        let total: f32 = f.biomass_mass_scan.iter().sum();
+        assert!((total - INITIAL_BIOMASS).abs() < 1e-6, "{total}");
+        // Tiny weights next to zero bins must not overflow to Inf or NaN.
+        l.consonance_density_mass_eff[31..33].fill(1e-40);
+        let tiny = make(&l);
+        assert!(tiny.biomass_mass_scan.iter().all(|v| v.is_finite()));
+        let total: f32 = tiny.biomass_mass_scan.iter().sum();
+        assert!((total - INITIAL_BIOMASS).abs() < 1e-6, "{total}");
+    }
+
+    #[test]
+    fn advance_matches_the_closed_form_update_for_uniform_biomass() {
+        // Uniform biomass removes the spread and makes consumption the local density.
+        let mut l = terrain();
+        l.consonance_field_level_eff.fill(0.7);
+        l.harmonicity01.fill(0.4);
+        let mut f = flora(&l);
+        let bins_per_oct = f.space.bins_per_oct as f32;
+        let (v0, u0) = (2e-3f32, 0.8f32);
+        f.biomass_mass_scan.fill(0.0);
+        f.biomass_mass_scan[f.range.clone()].fill(v0);
+        f.resource_state_scan[f.range.clone()].fill(u0);
+        let dt = f.hop as f32 / f.fs / f.substeps as f32;
+        let (mut v, mut u) = (v0, u0);
+        for _ in 0..f.substeps {
+            let allee = ALLEE_DENSITY / bins_per_oct;
+            v += dt
+                * (f.spec.rate * v * (0.7 * u * v / (v + allee) - METABOLISM)
+                    + u * (BACKGROUND_SEED_DENSITY + SEED_RAIN_DENSITY * 0.4) / bins_per_oct);
+            let a =
+                1.0 / f.spec.renewal_sec + v * bins_per_oct / REFERENCE_DENSITY / CONSUMPTION_SEC;
+            let fixed = (1.0 / f.spec.renewal_sec) / a;
+            u = fixed + (u - fixed) * (-a * dt).exp();
+        }
+        f.advance(&l);
+        for i in f.range.clone() {
+            assert!(
+                (f.biomass_mass_scan[i] - v).abs() <= 1e-6 * v,
+                "biomass {} != {v}",
+                f.biomass_mass_scan[i]
+            );
+            assert!(
+                (f.resource_state_scan[i] - u).abs() <= 1e-5,
+                "resource {} != {u}",
+                f.resource_state_scan[i]
+            );
+        }
+        assert!(v != v0 && u != u0);
     }
 
     #[test]
@@ -1464,7 +1572,7 @@ mod tests {
         let l = terrain();
         let mut f = flora(&l);
         for i in f.range.clone() {
-            f.density_scan[i] = i as f32 + 1.0;
+            f.biomass_mass_scan[i] = i as f32 + 1.0;
         }
         f.decompose();
         assert!(
@@ -1473,8 +1581,8 @@ mod tests {
                 .all(|c| c.peak.is_none())
         );
         let boundary = f.cells[1].bins.start;
-        f.density_scan.fill(0.001);
-        f.density_scan[boundary - 2..boundary + 2].fill(1.0);
+        f.biomass_mass_scan.fill(0.001);
+        f.biomass_mass_scan[boundary - 2..boundary + 2].fill(1.0);
         f.decompose();
         assert_eq!(f.cells[0].peak.as_ref().unwrap().bin, boundary - 1);
         assert!(f.cells[1].peak.is_none());
@@ -1485,17 +1593,17 @@ mod tests {
     fn decomposition_equal_maxima_choose_lower_and_window_stops_at_minimum() {
         let l = terrain();
         let mut f = flora(&l);
-        f.density_scan.fill(0.001);
+        f.biomass_mass_scan.fill(0.001);
         let c = f.cells[1].bins.clone();
         let a = c.start + 3;
         let b = a + 4;
-        f.density_scan[a - 1..b + 2].copy_from_slice(&[0.7, 1.0, 0.8, 0.7, 0.8, 1.0, 0.7]);
+        f.biomass_mass_scan[a - 1..b + 2].copy_from_slice(&[0.7, 1.0, 0.8, 0.7, 0.8, 1.0, 0.7]);
         f.decompose();
         let peak = f.cells[1].peak.as_ref().unwrap();
         assert_eq!(peak.bin, a);
         assert!(peak.window.end <= a + 3);
         assert!(!peak.window.contains(&b));
-        f.density_scan[a] = 1.2;
+        f.biomass_mass_scan[a] = 1.2;
         f.decompose();
         let peak = f.cells[1].peak.as_ref().unwrap();
         assert!((0.5..=4.0).contains(&peak.sigma));
@@ -1503,7 +1611,7 @@ mod tests {
     }
 
     #[test]
-    fn decomposition_flat_floor_zeros_end_peak_and_silent_drive_are_finite() {
+    fn decomposition_flat_floor_zeros_and_end_peaks_are_finite() {
         let l = terrain();
         let mut f = flora(&l);
         uniform(&mut f);
@@ -1526,10 +1634,9 @@ mod tests {
         let mut h = p.clone();
         f.render_add(&mut p, &mut h);
         assert!(p.iter().all(|&x| x == 0.0));
-        assert!(f.sounding_drive_scan.iter().all(|&s| s == 0.0));
         for bin in [f.range.start, f.range.end - 1] {
-            f.density_scan.fill(0.0);
-            f.density_scan[bin] = 1.0;
+            f.biomass_mass_scan.fill(0.0);
+            f.biomass_mass_scan[bin] = 1.0;
             allocate(&mut f);
             assert!(
                 f.cells
@@ -1547,13 +1654,13 @@ mod tests {
         let l = terrain();
         let mut f = flora(&l);
         for i in f.range.clone() {
-            f.density_scan[i] = i as f32 + 1.0;
+            f.biomass_mass_scan[i] = i as f32 + 1.0;
         }
         normalize(&mut f);
         allocate(&mut f);
         mass_accounting(&f);
         f = flora(&l);
-        f.density_scan.fill(0.00001);
+        f.biomass_mass_scan.fill(0.00001);
         hill(&mut f, 33, 1.0);
         hill(&mut f, 73, 0.005);
         normalize(&mut f);
@@ -1561,7 +1668,7 @@ mod tests {
         assert_eq!(f.cells[3].tonal_mass, 0.0);
         mass_accounting(&f);
         f = flora(&l);
-        f.density_scan.fill(0.00001);
+        f.biomass_mass_scan.fill(0.00001);
         hill(&mut f, 33, 1.0);
         normalize(&mut f);
         for lane in &mut f.lanes[..f.tonal_len] {
@@ -1591,7 +1698,7 @@ mod tests {
         let mut visited_cells = Vec::new();
         for shift in [-0.6, -0.2, 0.2, 0.6, 0.2, -0.2, -0.6] {
             for i in f.range.clone() {
-                f.density_scan[i] =
+                f.biomass_mass_scan[i] =
                     0.000001 + unit_gaussian(i as f32 - (boundary as f32 + shift), 1.2);
             }
             normalize(&mut f);
@@ -1620,14 +1727,14 @@ mod tests {
         }
         assert!(visited_cells.windows(2).any(|w| w[0] != w[1]));
         f = flora(&l);
-        f.density_scan.fill(0.000001);
+        f.biomass_mass_scan.fill(0.000001);
         hill(&mut f, 33, 1.0);
         hill(&mut f, 73, 0.03);
         normalize(&mut f);
         allocate(&mut f);
         let lane = f.cells[3].peak.as_ref().unwrap().claimed.unwrap();
         for height in [0.012, 0.03, 0.012, 0.03] {
-            f.density_scan.fill(0.000001);
+            f.biomass_mass_scan.fill(0.000001);
             hill(&mut f, 33, 1.0);
             hill(&mut f, 73, height);
             normalize(&mut f);
@@ -1640,7 +1747,7 @@ mod tests {
     fn tracking_jump_retires_old_lane_and_births_another() {
         let l = terrain();
         let mut f = flora(&l);
-        f.density_scan.fill(0.000001);
+        f.biomass_mass_scan.fill(0.000001);
         hill(&mut f, 33, 1.0);
         normalize(&mut f);
         hop(&mut f, &l);
@@ -1648,7 +1755,7 @@ mod tests {
             .iter()
             .position(|l| l.mode == Mode::Current)
             .unwrap();
-        f.density_scan.fill(0.000001);
+        f.biomass_mass_scan.fill(0.000001);
         hill(&mut f, 43, 1.0);
         normalize(&mut f);
         allocate(&mut f);
@@ -1667,9 +1774,9 @@ mod tests {
         let l = terrain();
         let mut f = flora(&l);
         let boundary = f.cells[2].bins.start;
-        f.density_scan.fill(0.000001);
-        f.density_scan[boundary - 2] = 0.6;
-        f.density_scan[boundary + 1] = 1.0;
+        f.biomass_mass_scan.fill(0.000001);
+        f.biomass_mass_scan[boundary - 2] = 0.6;
+        f.biomass_mass_scan[boundary + 1] = 1.0;
         normalize(&mut f);
         f.decompose();
         // Start with both held to exercise separation, rather than birth rejection.
@@ -1693,7 +1800,7 @@ mod tests {
     fn separation_three_cell_chain_is_deterministic_for_input_order() {
         let l = terrain();
         let mut template = flora(&l);
-        template.density_scan.fill(0.001);
+        template.biomass_mass_scan.fill(0.001);
         hill(&mut template, 33, 1.0);
         normalize(&mut template);
         template.decompose();
@@ -1741,7 +1848,7 @@ mod tests {
             2000.0,
             400,
         );
-        f.density_scan.fill(0.000001);
+        f.biomass_mass_scan.fill(0.000001);
         hill(&mut f, 33, 1.0);
         hill(&mut f, 73, 0.5);
         normalize(&mut f);
@@ -1789,7 +1896,7 @@ mod tests {
         let mut f = flora(&l);
         f.hop = 400;
         f.noise.resize(2 * f.noisy_len * f.hop, 0.0);
-        f.density_scan.fill(0.001);
+        f.biomass_mass_scan.fill(0.001);
         hill(&mut f, 33, 1.0);
         normalize(&mut f);
         f.apply_patch(&FloraPatch {
@@ -1862,7 +1969,7 @@ mod tests {
                 100,
             );
             for bin in f.range.clone() {
-                f.density_scan[bin] = unit_gaussian(bin as f32 - 33.0, width);
+                f.biomass_mass_scan[bin] = unit_gaussian(bin as f32 - 33.0, width);
             }
             normalize(&mut f);
             f.render_add(&mut p, &mut h);
@@ -1885,9 +1992,9 @@ mod tests {
         {
             let l = Landscape::new(Log2Space::new(lo, hi, bins_per_oct));
             let mut f = Flora::new(7, s, (lo, hi), FloraSeeding::Uniform, 42, &l, 4000.0, 100);
-            f.density_scan.fill(0.0);
+            f.biomass_mass_scan.fill(0.0);
             let peak = f.range.start + f.range.len() / 2;
-            f.density_scan[peak] = 1.0;
+            f.biomass_mass_scan[peak] = 1.0;
             f.render_add(&mut p, &mut h);
             let lane = f
                 .lanes
@@ -1995,13 +2102,15 @@ mod tests {
                     100..150 => None,
                     _ => Some(33 + (hop - 150) / 10),
                 };
-                f.density_scan.fill(0.00001);
+                f.biomass_mass_scan.fill(0.00001);
                 if let Some(bin) = bin {
                     hill(&mut f, bin, 1.0);
                     hill(&mut f, 73, 0.7);
                 }
                 normalize(&mut f);
-                scalar.density_scan.copy_from_slice(&f.density_scan);
+                scalar
+                    .biomass_mass_scan
+                    .copy_from_slice(&f.biomass_mass_scan);
                 let position = f.lanes[0].position;
                 let births = f.births;
                 let retirements = f.retirements;
@@ -2050,50 +2159,7 @@ mod tests {
     }
 
     #[test]
-    fn fatigue_drive_counts_hop_mean_and_lane_freeing_mid_hop() {
-        let l = terrain();
-        let mut f = flora(&l);
-        uniform(&mut f);
-        let i = 0;
-        f.lanes[i].mode = Mode::Retiring;
-        f.lanes[i].r = 0.25;
-        f.lanes[i].q = 0.0625;
-        f.lanes[i].position = 600.0_f32.log2();
-        f.lanes[i].target_position = f.lanes[i].position;
-        let step = 1.0 / (0.08 * f.fs);
-        let expected: f32 = (1..=f.hop)
-            .map(|t| (f.spec.amp * (0.25 - t as f32 * step).max(0.0)).powi(2))
-            .sum();
-        let mut p = vec![0.0; f.hop];
-        let mut h = p.clone();
-        f.render_add(&mut p, &mut h);
-        assert_eq!(f.lanes[i].mode, Mode::Free);
-        assert!((f.lanes[i].power_sum - expected).abs() < 1e-6);
-        let erb = hz_to_erb(600.0);
-        let max_weight = f
-            .erb_scan
-            .iter()
-            .map(|&e| {
-                if (e - erb).abs() <= 1.5 {
-                    unit_gaussian(e - erb, 0.5)
-                } else {
-                    0.0
-                }
-            })
-            .fold(0.0, f32::max);
-        for bin in f.range.clone() {
-            let d = f.erb_scan[bin] - erb;
-            let expected = if d.abs() <= 1.5 {
-                unit_gaussian(d, 0.5) / max_weight
-            } else {
-                0.0
-            };
-            assert!((f.sounding_drive_scan[bin] - expected).abs() < 2e-5);
-        }
-    }
-
-    #[test]
-    fn reconfiguration_interpolates_density_and_fatigue_in_log2() {
+    fn reconfiguration_interpolates_biomass_and_resource_without_normalizing() {
         let l = Landscape::new(Log2Space::new(256.0, 2048.0, 1));
         let mut f = Flora::new(
             7,
@@ -2106,22 +2172,48 @@ mod tests {
             100,
         );
         // Old log2 bins: 8, 9, 10, 11. New in-range bins: 8.5, 9.5, 10.5.
-        f.density_scan
-            .copy_from_slice(&[1.0 / 16.0, 5.0 / 16.0, 3.0 / 16.0, 7.0 / 16.0]);
-        f.fatigue_state_scan.copy_from_slice(&[0.0, 0.5, 1.0, 0.25]);
+        f.biomass_mass_scan.copy_from_slice(&[1.0, 5.0, 3.0, 7.0]);
+        f.resource_state_scan
+            .copy_from_slice(&[0.0, 0.5, 1.0, 0.25]);
         f.on_space_change(&Log2Space::new(2.0_f32.powf(7.5), 2.0_f32.powf(11.5), 1));
         assert_eq!(f.range, 1..4);
-        // Midpoint masses are 3/16, 4/16, 5/16, totaling 3/4 before normalization.
-        let interpolated = [0.0, 3.0 / 16.0, 4.0 / 16.0, 5.0 / 16.0, 0.0];
-        let normalized = [0.0, 1.0 / 4.0, 1.0 / 3.0, 5.0 / 12.0, 0.0];
-        let fatigue = [0.0, 0.25, 0.75, 0.625, 0.0];
+        let interpolated = [0.0, 3.0, 4.0, 5.0, 0.0];
+        let resource = [0.0, 0.25, 0.75, 0.625, 0.0];
         for i in 0..f.space.n_bins() {
-            assert!((f.density_scan[i] * 0.75 - interpolated[i]).abs() < 1e-7);
-            assert!((f.density_scan[i] - normalized[i]).abs() < 1e-7);
-            assert!((f.fatigue_state_scan[i] - fatigue[i]).abs() < 1e-7);
-            if !f.range.contains(&i) {
-                assert_eq!(f.density_scan[i], 0.0);
-                assert_eq!(f.fatigue_state_scan[i], 0.0);
+            assert!((f.biomass_mass_scan[i] - interpolated[i]).abs() < 1e-6);
+            assert!((f.resource_state_scan[i] - resource[i]).abs() < 1e-7);
+        }
+    }
+
+    #[test]
+    fn reconfiguration_preserves_biomass_density_across_bin_resolutions() {
+        let l = Landscape::new(Log2Space::new(256.0, 512.0, 96));
+        let mut f = Flora::new(
+            7,
+            spec(),
+            (256.0, 512.0),
+            FloraSeeding::Uniform,
+            42,
+            &l,
+            2000.0,
+            100,
+        );
+        f.biomass_mass_scan.fill(3.0 / 96.0);
+        f.resource_state_scan.fill(0.4);
+        let initial: f32 = f.biomass_mass_scan.iter().sum();
+        for bins in [192, 72, 120, 96] {
+            let mut resampled = f.clone();
+            resampled.on_space_change(&Log2Space::new(256.0, 512.0, bins));
+            let total: f32 = resampled.biomass_mass_scan.iter().sum();
+            // Endpoint inclusion can change the sum by one bin on the coarser grid.
+            let endpoint_error = 3.0 / 96.0_f32.min(bins as f32);
+            assert!(
+                (total - initial).abs() <= endpoint_error + 1e-5,
+                "{bins} bins/octave: initial {initial}, resampled {total}"
+            );
+            for i in resampled.range.clone() {
+                assert!((resampled.biomass_mass_scan[i] * bins as f32 - 3.0).abs() < 1e-5);
+                assert!((resampled.resource_state_scan[i] - 0.4).abs() < 1e-6);
             }
         }
     }
@@ -2130,7 +2222,7 @@ mod tests {
     fn reconfiguration_carries_orphans_across_two_changes() {
         let l = terrain();
         let mut f = flora(&l);
-        f.density_scan.fill(0.000001);
+        f.biomass_mass_scan.fill(0.000001);
         hill(&mut f, 33, 1.0);
         normalize(&mut f);
         hop(&mut f, &l);
@@ -2192,9 +2284,14 @@ mod tests {
         assert!(p.iter().all(|&x| x == 0.0));
         f.on_space_change(&l.space);
         assert!(!f.range.is_empty());
-        assert!(f.fatigue_state_scan.iter().all(|&h| h == 0.0));
         assert!(
-            f.density_scan[f.range.clone()]
+            f.resource_state_scan[f.range.clone()]
+                .iter()
+                .all(|&u| u == 1.0)
+        );
+        assert!((f.biomass_mass_scan.iter().sum::<f32>() - INITIAL_BIOMASS).abs() < 1e-6);
+        assert!(
+            f.biomass_mass_scan[f.range.clone()]
                 .windows(2)
                 .all(|w| w[0] == w[1])
         );
@@ -2252,7 +2349,7 @@ mod tests {
                 to_presentation: presentation,
                 to_habitat: !presentation,
             };
-            f.density_scan.fill(0.001);
+            f.biomass_mass_scan.fill(0.001);
             hill(&mut f, 33, 1.0);
             normalize(&mut f);
             let mut p = vec![0.25; f.hop];
@@ -2268,27 +2365,19 @@ mod tests {
     fn f2_every_internal_scan_boundary_names_the_bad_scan() {
         let l = terrain();
         for name in [
-            "density_scan",
-            "fatigue_state_scan",
-            "fitness_level_scan",
-            "sounding_drive_scan",
+            "biomass_mass_scan",
+            "resource_state_scan",
             "scratch_scan",
             "erb_scan",
         ] {
-            for operation in 0..4 {
+            for operation in 0..7 {
                 let mut f = flora(&l);
                 match name {
-                    "density_scan" => {
-                        f.density_scan.pop();
+                    "biomass_mass_scan" => {
+                        f.biomass_mass_scan.pop();
                     }
-                    "fatigue_state_scan" => {
-                        f.fatigue_state_scan.pop();
-                    }
-                    "fitness_level_scan" => {
-                        f.fitness_level_scan.pop();
-                    }
-                    "sounding_drive_scan" => {
-                        f.sounding_drive_scan.pop();
+                    "resource_state_scan" => {
+                        f.resource_state_scan.pop();
                     }
                     "scratch_scan" => {
                         f.scratch_scan.pop();
@@ -2302,7 +2391,12 @@ mod tests {
                         0 => f.advance(&l),
                         1 => f.decompose(),
                         2 => f.residual_targets(),
-                        _ => f.render_add(&mut [0.0; 100], &mut [0.0; 100]),
+                        3 => f.render_add(&mut [0.0; 100], &mut [0.0; 100]),
+                        4 => {
+                            f.report(0.0);
+                        }
+                        5 => f.advance_resource(0.01),
+                        _ => f.on_space_change(&l.space),
                     }));
                 let error = result.expect_err(name);
                 let message = error
@@ -2313,22 +2407,6 @@ mod tests {
                 assert!(message.contains(name), "{message}");
             }
         }
-        let f = flora(&l);
-        for state_bad in [true, false] {
-            let mut state = vec![0.0; f.space.n_bins() - usize::from(state_bad)];
-            let drive = vec![0.0; f.space.n_bins() - usize::from(!state_bad)];
-            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                f.fatigue
-                    .advance_state_from_drive(&f.space, &mut state, &drive, 0.01);
-            }))
-            .expect_err("fatigue scan mismatch");
-            let message = error.downcast_ref::<String>().unwrap();
-            assert!(message.contains(if state_bad {
-                "fatigue_state_scan"
-            } else {
-                "sounding_drive_scan"
-            }));
-        }
     }
 
     #[test]
@@ -2337,6 +2415,15 @@ mod tests {
         let mut l = terrain();
         let mut f = flora(&l);
         l.consonance_field_level_eff.pop();
+        f.advance(&l);
+    }
+
+    #[test]
+    #[should_panic(expected = "harmonicity01")]
+    fn f2_advance_checks_harmonicity_input() {
+        let mut l = terrain();
+        let mut f = flora(&l);
+        l.harmonicity01.pop();
         f.advance(&l);
     }
 
@@ -2367,7 +2454,7 @@ mod tests {
                 f.cells[2].bins.start
             };
             l.consonance_field_level_eff[bin] = 1.0;
-            f.density_scan.fill(0.000001);
+            f.biomass_mass_scan.fill(0.000001);
             hill(&mut f, bin, 1.0);
             normalize(&mut f);
             f.advance(&l);

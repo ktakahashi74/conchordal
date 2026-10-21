@@ -22,7 +22,7 @@
       `src/viewdata.rs`, not here.
   - `life/` (Voices and behaviors):
     - Voice/Community models, temporal cores, fields, and phonation.
-    - `flora.rs`: Per-instance spectral growth, fatigue, and cell-based synthesis.
+    - `flora.rs`: Per-instance biomass and band-resource dynamics, and cell-based synthesis.
     - `community.rs` holds the hop-path core; the `community/` submodules split out
       action dispatch (`actions.rs`), spawn-frequency choice (`frequency.rs`),
       respawn/inheritance (`respawn.rs`), and the Kuramoto/social paths (`social.rs`).

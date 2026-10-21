@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "6cbf951"
+source_commit = "d1f90b8"
 author = "Koichi Takahashi"
 last_updated = "2026-10-22"
 source_version = "0.5.0"
-source_snapshot = "6cbf951"
-revision_scope = "Flora composition mode (2026-10-22); 終了処理・知覚処理・Rhai APIの改善と、音高移動・environmentの生存選択の自己除外統一に同期（2026-10-18）"
+source_snapshot = "d1f90b8"
+revision_scope = "Flora self-exclusion scope (2026-10-22); Flora composition mode (2026-10-22); 終了処理・知覚処理・Rhai APIの改善と、音高移動・environmentの生存選択の自己除外統一に同期（2026-10-18）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -536,6 +536,7 @@ habitat busへ送る各Voiceの身体投影を二乗し、全Voiceの投影パ�
 
 音源別PCMを引いた厳密解析ではなく、候補基音での点評価である。個別Toneの変調位相、解析遅延、
 releaseの尾を復元する投影ではない。身体の種類で自己除外方式を切り替える分岐や公開mode選択はない。
+Flora がある場合の対応範囲は、residual を切った tonal-only の sine と presentation 専用の場面であり、自己除外を使う Voice の近くで residual 付きの sine／resonant Flora が habitat に鳴る場面は精度保証の範囲外とする。
 
 `viability_scope("environment")`による生存選択も、現在の音高で同じ所有率推定を使い、
 継続的なエネルギー回復の得点を求める。音高移動の自己除外とは独立に設定でき、動かないVoiceにも

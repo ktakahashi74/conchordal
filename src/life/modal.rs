@@ -156,19 +156,6 @@ impl SoundBody for ModalBody {
         space: &Log2Space,
         signal: &ArticulationSignal,
     ) {
-        // Preserve the existing unit-gain ownership projection.
-        self.visit_spectral_partials(space, signal, 1., &mut |hz, amp, _| {
-            crate::life::sound::spectral::add_log2_energy(amps, space, hz, amp);
-        });
-    }
-
-    fn visit_spectral_partials(
-        &mut self,
-        _space: &Log2Space,
-        signal: &ArticulationSignal,
-        gain: f32,
-        emit: &mut dyn FnMut(f32, f32, Option<usize>),
-    ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
@@ -176,8 +163,7 @@ impl SoundBody for ModalBody {
         let mut scratch = [0.0f32; 1];
         self.engine
             .render_block(&[0.0], self.control_block(0.0), &mut scratch);
-        self.engine
-            .visit_spectral_partials(signal, &mut |hz, amp| emit(hz, amp * gain, None));
+        self.engine.project_spectral(amps, space, signal);
     }
 
     fn apply_timbre_controls(

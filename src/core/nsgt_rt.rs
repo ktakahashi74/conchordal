@@ -77,14 +77,6 @@ pub struct RtNsgtKernelLog2 {
 }
 
 impl RtNsgtKernelLog2 {
-    #[cfg(test)]
-    pub(crate) fn power_response_metadata(&self) -> (Arc<NsgtKernelLog2>, Vec<f32>) {
-        (
-            self.nsgt.clone(),
-            self.bands_state.iter().map(|b| b.alpha).collect(),
-        )
-    }
-
     /// Construct with default RtConfig.
     #[cfg(test)]
     pub fn new(nsgt: NsgtKernelLog2) -> Self {

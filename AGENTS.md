@@ -239,6 +239,8 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only
   at publication (every Ordered frame or the last Latest frame), attaching a spectral
   history snapshot. This still allocates; the former per-hop count is obsolete.
+  Only a run with Flora placed and a Voice consuming pitch/environment self-exclusion
+  enables the Flora observer (including zero packets to drain its history after release).
   The conditional Flora observer processes that packet with a second AnalysisStream
   and publishes one additional f64 scan with the same Landscape. In the profile-alloc
   census (48 kHz, hop 512, window 16384, 690 bins, Ordered, one hop per batch), warmed

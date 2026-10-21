@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "6cbf951"
+source_commit = "d1f90b8"
 author = "Koichi Takahashi"
 last_updated = "2026-10-22"
 source_version = "0.5.0"
-source_snapshot = "6cbf951"
-revision_scope = "Flora composition mode (2026-10-22); Synchronized with runtime, perception and Rhai API improvements, and unified pitch/environment self-exclusion (2026-10-18)"
+source_snapshot = "d1f90b8"
+revision_scope = "Flora self-exclusion scope (2026-10-22); Flora composition mode (2026-10-22); Synchronized with runtime, perception and Rhai API improvements, and unified pitch/environment self-exclusion (2026-10-18)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -542,6 +542,7 @@ This is an estimate, not exact source-separated PCM analysis. Candidate pitch is
 still evaluated at its fundamental. The projection does not reconstruct individual
 Tone phase, delayed analysis history or release tails. No body-specific choice of
 self-exclusion algorithm or public mode selector exists.
+The validated Flora cases cover tonal-only sine with residual disabled and presentation-only routing; nearby habitat-routed sine or resonant Flora with residual sound lies outside this self-exclusion conformance claim.
 
 Environment viability (`viability_scope("environment")`) uses the same ownership
 estimate at the current pitch for its continuous-recharge score. It can be used

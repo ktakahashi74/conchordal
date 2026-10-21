@@ -328,16 +328,6 @@ impl ModalEngine {
         signal: &ArticulationSignal,
     ) {
         debug_assert_eq!(amps.len(), space.n_bins());
-        self.visit_spectral_partials(signal, &mut |hz, amp| {
-            add_log2_energy(amps, space, hz, amp);
-        });
-    }
-
-    pub(crate) fn visit_spectral_partials(
-        &mut self,
-        signal: &ArticulationSignal,
-        emit: &mut dyn FnMut(f32, f32),
-    ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
@@ -356,13 +346,13 @@ impl ModalEngine {
                     let ratio = harmonic_ratio(genotype, k);
                     let freq_hz = pitch_hz * ratio;
                     let gain = harmonic_gain(genotype, k, energy);
-                    emit(freq_hz, amp_scale * gain);
+                    add_log2_energy(amps, space, freq_hz, amp_scale * gain);
                 }
             }
             ModeShape::Modal { modes } => {
                 for mode in modes {
                     let freq_hz = pitch_hz * mode.ratio;
-                    emit(freq_hz, amp_scale * mode.gain);
+                    add_log2_energy(amps, space, freq_hz, amp_scale * mode.gain);
                 }
             }
         }

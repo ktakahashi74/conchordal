@@ -85,9 +85,11 @@ habituation field.
    forecast of its own future spectrum.
 7. **ListenerTwin** receives the presentation chunk, which contains presented Flora.
    Nothing is added on the listener side.
-8. **Invariance.** A scenario that places no Flora renders bit-identically to the
-   current build. Existing samples and the temporal DCC acceptance material contain no
-   Flora and are unaffected.
+8. **Invariance.** Flora's empty render/dispatch path preserves the four frozen
+   no-Flora cases in Tests 1. The independently adopted Voice self-exclusion
+   redistribution and silence-floor changes intentionally affect existing no-Flora
+   samples that use self-exclusion (listed in the Changelog); the four hashes are
+   not a claim that every older sample output is unchanged.
 
 ## Closed-Loop Caveats
 
@@ -102,6 +104,46 @@ These are recorded as caveats, not solved by the design:
   model is insensitive to up to 213 ms of added delay. That does not prove stability,
   because the loop is discontinuous (next item). Stability is checked by the closed-loop
   assays in Tests, including a low-register extent and two overlapping Flora.
+- **Voice self-exclusion has a declared scope.** The adopted implementation uses
+  f64 own/other power accumulation, residual peak-mass redistribution and the existing
+  shared silence floor, together with a synchronized Flora-only analysis stream.
+  It is an estimate of the external field, not exact PCM source subtraction.
+  In the registered coherent-NSGT fixture (48 kHz, hop 512, window 16384,
+  habituation off, seed 42, a 440 Hz sine Voice at amplitude 0.35), the supported
+  cases are tonal-only Flora (`tone("sine").residual(false)`) and presentation-only
+  Flora. Both pitch cores are asserted at frames 63/127/191/199/255 (before mute,
+  after mute, after restore, during release, after release), with the unchanged
+  score/level, ranking, movement/tie and environment-viability criteria. The B-1
+  suite's 84 cases also remain assertions; these finite fixtures do not establish
+  arbitrary-scene or incoherent-kernel accuracy.
+
+  Nearby habitat-routed Flora with residual enabled, for both sine and resonant
+  tone, is outside that conformance claim. Those 20 cases run as an ordinary,
+  non-ignored measurement test, retaining point/body score and level errors, rank
+  reversals, movement discrepancies and viability errors. Nonlinear peak/loudness
+  observations, redistribution support/history and same-frequency interference
+  prevent this estimate from reproducing the PCM oracle in these conditions.
+  The measured maxima in that fixture are:
+
+  | Quantity | Point candidates | Body candidates |
+  |---|---:|---:|
+  | Absolute score error | 0.458810 | 0.474461 |
+  | Absolute level error | 0.181897 | 0.185842 |
+  | Rank inversions for reference gaps at least 0.1 | 2 | 1 |
+  | Current-pitch viability score error | 0.340342 | 0.340297 |
+  | Current-pitch viability level error | 0.145965 | 0.145744 |
+
+  Across both cores, 12/20 cases have at least one fixed/native movement discrepancy
+  (at most 144 decisions in one case); the existing viability non-worsening check has
+  no failures and its maximum error delta against the previous estimate is zero.
+  The full-bin scan used by native proposal diagnostics has maximum score/level
+  errors 0.927339/0.407283; these are distinct from the seven point/body candidates.
+  Passing the ordinary test means that measurements were recorded, not that these
+  errors meet the supported-case gates. Records are written under
+  `FLORA_LOO_REPORT_DIR` when specified, otherwise a process-specific temporary
+  directory. Exact per-Voice PCM subtraction at the complex NSGT coefficient stage
+  remains a separate work unit, beginning with its real-time cost measurement;
+  it is not implemented here, and the present error budget is not relaxed.
 - **Latent mass versus sounding spectrum.** The biomass `v` is latent. What sounds is
   the tonal mass of held peaks, plus the residual when it is on.
   The design narrows the gap three ways:
@@ -541,8 +583,11 @@ is unchanged.
   - the `2 × N_cells` tonal pool and the `N_cells` residual lanes;
   - the noise scratch buffer, `2 × noisy lanes × hop`.
 
-  The steady-state hop path, including continual births and retirements, adds no
-  allocations. The allocation census in `CLAUDE.md` therefore does not change.
+  Flora's own steady-state advance/render/capture/ownership path, including continual
+  births and retirements, adds no allocations. Runtime PCM ownership, conditional
+  Flora analysis publication and GUI/report snapshots are separate allocation paths;
+  `AGENTS.md` records their measured conditions and counts. Placement, reconfiguration
+  and reporting remain exceptions to the per-instance steady-state claim.
 
 ## Rhai Surface
 
@@ -982,7 +1027,9 @@ draft-12 dynamics. The main remeasurement is recorded separately below.
 ### main での再測定、2026-10-22
 
 The current main-layout implementation was measured from engine revision `6cbf951`;
-this acquisition precedes the separate ownership follow-up. The adopted dynamics and
+this acquisition precedes the separate ownership follow-up. The campaign was not
+repeated after the adopted redistribution, f64/floor and Flora-only stream changes;
+its numbers remain measurements of that earlier producer. The adopted dynamics and
 rendering constants were unchanged. All 45 campaign renders used 48 kHz, nfft 16384,
 hop 512 and default-enabled habituation (5 s satiation, 8 s recovery, reference drive
 0.25). Every output retains the fully resolved config and the compiled Flora settings.
@@ -1288,6 +1335,16 @@ note's evidence.
   `src/runtime/phases.rs` advances and drains Flora, and `src/runtime/analysis_sync.rs`
   handles space changes. `src/life/schedule_renderer.rs` mixes its sound into the buses.
 - `src/runtime/worker.rs` publishes the per-second records through `src/life/report.rs`.
+- `src/life/community.rs` separately accumulates own/other projected power in f64;
+  `src/life/pitch_core.rs` redistributes remaining peak mass to other-source positions.
+  `src/core/stream/potentials.rs` applies the shared existing near-silence floor.
+  `src/life/schedule_renderer.rs` captures the actually rendered Flora habitat PCM;
+  `src/runtime/worker.rs` includes it in the same analysis packet, and
+  `src/core/analysis_worker.rs` advances a synchronized Flora-only `AnalysisStream`.
+  `src/runtime/analysis_sync.rs` merges its equivalent-power scan with the matching
+  Landscape; gap, warm-up and space-change validity travel with that observation.
+  These are the adopted redistribution and observed-Flora paths, not the discarded
+  pre-peak power-subtraction trial.
 - `src/scripting/{spec,placement,context,engine,docs}.rs` and `src/scripting/tests/`
   hold the builders, strict validation, positioned diagnostics and API tier registry.
   Flora-specific vocabulary is Experimental; the authored-rule classification is a

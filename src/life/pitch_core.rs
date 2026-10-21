@@ -3390,7 +3390,3 @@ mod loo_tests;
 #[cfg(test)]
 #[path = "pitch_loo_conformance_tests.rs"]
 mod loo_conformance_tests;
-
-#[cfg(test)]
-#[path = "pitch_power_loo_tests.rs"]
-mod power_loo_tests;

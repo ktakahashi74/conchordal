@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Voice self-exclusion redistributes remaining observed peak mass to other sources'
+  projected positions, accumulates own/other power separately in f64, and applies the
+  existing near-silence floor to both H and R. Pitch movement and environment viability
+  share the result. A synchronized Flora-only analysis stream supplies its observed
+  contribution when Flora has been placed and a Voice consumes self-exclusion.
+  The validated Flora cases cover tonal-only sine without residual and presentation-only
+  routing; nearby habitat-routed sine/resonant Flora with residual remains outside the
+  conformance claim and records its errors in ordinary tests.
+  These intentional behavior changes affect samples 08, 10, 12, 13, 14, 15 and 16;
+  their scripts are unchanged. Exact per-Voice complex-NSGT subtraction is separate work.
+
 - Flora adds an Experimental composition mode: spectral biomass grows over the shared
   consonance landscape, with sine or resonant tones and optional residual sound.
   It coexists with Populations through sound alone. Its consumer–resource dynamics

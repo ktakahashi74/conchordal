@@ -9,6 +9,36 @@ use crate::core::meter::MeterShaping;
 use control::{BodyMethod, ControlUpdate, VoiceControl};
 use lifecycle::LifecycleConfig;
 
+#[derive(Debug, Clone, Copy)]
+pub struct FloraSpec {
+    pub amp: f32,
+    pub rate: f32,
+    pub renewal_sec: f32,
+    pub fade_sec: f32,
+    pub tone: FloraTone,
+    pub residual: bool,
+    pub routing: control::Routing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FloraTone {
+    Sine,
+    Resonant,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FloraPatch {
+    pub amp: Option<f32>,
+    pub rate: Option<f32>,
+    pub renewal_sec: Option<f32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum FloraSeeding {
+    Consonance,
+    Uniform,
+}
+
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub seed: u64,

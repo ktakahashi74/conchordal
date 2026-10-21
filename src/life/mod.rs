@@ -5,6 +5,8 @@ pub(crate) mod conductor;
 pub(crate) mod constants;
 mod control_adapters;
 pub(crate) mod energy_window;
+#[allow(dead_code)] // F-1 core; runtime consumers land in F-2.
+pub(crate) mod flora;
 pub mod gate_clock;
 pub(crate) mod onset_footprint;
 pub(crate) mod tone_energy;

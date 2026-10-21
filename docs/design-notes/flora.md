@@ -1,10 +1,12 @@
 # Flora: a Field-Form Inhabitant
 
-Status: Design, draft 12 (2026-10-19). Nothing here is implemented.
-The dynamics (State and Dynamics) are a provisional baseline. Where the drive of
-temporal evolution should come from is an open DCC question: an information terrain on
-the listener side is under consideration. The baseline is implemented first so that it
-can be heard. The rendering (cells, atoms, residual) is independent of that question.
+Status: draft 13 (2026-10-21). The rendering of draft 12 and the consumer–resource
+dynamics of [Dynamics Redesign](#dynamics-redesign) are implemented. State and Dynamics,
+Expected Behaviour and test group 2 describe the replaced draft-12 baseline and are kept
+as the record of what settled to a static chord; where they disagree with Dynamics
+Redesign, the redesign is authoritative. The author adopted the dynamics on 2026-10-21.
+The DCC route for the drive of temporal evolution, a listener-side information terrain,
+is closed (technote ledger §9.3.56); the dynamics stay authored.
 Scope: a new composition mode in which sound is a spectral mass that grows over the
 consonance landscape, instead of a set of Individuals that each carry a fixed body.
 Flora coexists with Populations in the same habitat and couples to them only through
@@ -123,6 +125,9 @@ These are recorded as caveats, not solved by the design:
   alone is measured, not assumed.
 
 ## State and Dynamics
+
+*Replaced on 2026-10-21 by [Dynamics Redesign](#dynamics-redesign); kept as the record of
+the draft-12 baseline.*
 
 Each Flora instance holds:
 
@@ -461,8 +466,7 @@ Every lane outputs `y = A_s · r · Re(e · z)`.
     once per hop from `σ`, and `σ` depends on the sound through the closed loop. Then
     `E|e′|² = 1 + E[a² (|e|² − 1)]`, and the last term need not vanish. `C` and `z` can
     also correlate with `e` through the loop. The unit second moment, the output power
-    and the PSD formula are therefore nominal in closed loop. The fatigue drive
-    uses the nominal power `(A_s r)²` as a proxy in both cases.
+    and the PSD formula are therefore nominal in closed loop.
   - The discrete power spectrum of `e` is `(1 − a²) / (1 + a² − 2a cos ω)`. For
     `B ≪ fs` this is close to a Lorentzian of FWHM `B`, and the recursion is close to
     the continuous Ornstein–Uhlenbeck process. These are approximations, stated as such.
@@ -494,7 +498,7 @@ fallback. Both paths use the same `mul_add_fast` policy as `OscillatorBank`.
   default space;
 - `2 × noisy lanes × hop` uniform draws;
 - `O(N_extent · n)` for the dynamics and `O(N_extent)` for the decomposition;
-- `O(lanes × w)` for the fatigue kernel, truncated at ±3σ.
+- `O(N_extent × w)` for the consumption kernel, truncated at ±3σ.
 
 **Known limits.**
 
@@ -536,8 +540,7 @@ is unchanged.
   - every live Flora runs its substeps.
 
   The landscape is current here because `apply_landscape_updates` has already run.
-  Rendering, and the fatigue update from the rendered spectrum, follow in
-  `render_and_route_audio`.
+  Rendering follows in `render_and_route_audio`.
 - **Fade.** `fade_gain` is a linear ramp, so it ends in finite time:
   - placement: 0 → 1 over `fade`;
   - release: from its current value → 0 over `fade_sec`.
@@ -558,8 +561,8 @@ is unchanged.
   ring out after `shutdown_at`.
 - **Allocation.** Every per-instance buffer is allocated when `PlaceFlora` is applied,
   as `Spawn` allocates Voices:
-  - the scans `p`, `h`, `g`, `s`, the spread scratch `q`, and the per-bin ERB-rate scan for
-  the fatigue kernel;
+  - the biomass and resource scans, the update scratch, the per-bin ERB-rate scan and
+    the consumption kernel;
   - the cell index arrays;
   - the `2 × N_cells` tonal pool and the `N_cells` residual lanes;
   - the noise scratch buffer, `2 × noisy lanes × hop`.
@@ -571,9 +574,9 @@ is unchanged.
 
 ```rhai
 let moss = flora()
-    .amp(0.03)        // target level: Σ a² ≤ amp²
-    .rate(0.5)        // growth response, 1/s
-    .fatigue(6.0)     // satiation seconds; 0 disables fatigue
+    .amp(0.03)        // nominal target-amplitude scale: Σ a² ≤ amp²
+    .rate(4.0)        // growth response, 1/s (default 4)
+    .renewal(10.0)    // band-resource recovery time, s (default 10)
     .tone("sine")     // tonal atom: "sine" or "resonant"
     .residual(true)   // render diffuse mass as band noise
     .fade(2.0);       // fade-in at place, fade-out at release
@@ -585,20 +588,20 @@ m.amp(0.015);
 release(m);
 ```
 
-- `flora()` returns a `FloraSpec`, with `.amp`, `.rate`, `.fatigue`, `.tone`,
+- `flora()` returns a `FloraSpec`, with `.amp`, `.rate`, `.renewal`, `.tone`,
   `.residual`, `.fade` and `.send` (same `Bus` / `BusSet` values as Populations).
   `.tone` accepts only `"sine"` and `"resonant"`; any other string is a script error.
 - **Validation.** Every numeric argument, on the spec and on handle patches, must be
   finite both as given and after conversion to `f32`. Overflow to infinity in the
   conversion is an error. Out-of-range values are script errors, not clamps:
-  - `rate` outside `[0.05, 4]`;
+  - `rate` outside `[0.05, 8]`;
   - `amp` outside `[0, 1]`;
-  - `fatigue` outside `[0, 600]` s;
+  - `renewal` outside `[0.5, 600]` s;
   - `fade` outside `[0, 60]` s.
 
   The upper bounds keep every ramp finite on a musical time scale.
 - `place(FloraSpec, Placement)` returns a `Flora` handle.
-  - Handle methods `.amp`, `.rate` and `.fatigue` record a pending patch. As for
+  - Handle methods `.amp`, `.rate` and `.renewal` record a pending patch. As for
     Populations, the patch is emitted as `UpdateFlora` at the next `wait` / `flush`,
     or at scope end.
   - `release(Flora)` marks the release pending, as `release_population` does
@@ -630,6 +633,9 @@ release(m);
 
 ## Expected Behaviour (hypotheses to audition)
 
+*These hypotheses concern the replaced draft-12 baseline. The consumer–resource
+expectations and measurements are in [Dynamics Redesign](#dynamics-redesign).*
+
 These are hypotheses about the dynamics, not guarantees:
 
 - **Lone Flora.** It organizes into sparse peaks spaced beyond a critical band and biased
@@ -652,7 +658,8 @@ Every part of Flora's dynamics belongs to the authored-rule tier of the two-tier
 reading (technote ledger §9.3.55):
 
 - the use of the terrain as fitness;
-- the replicator–mutator form, the spread, the fatigue drive;
+- the consumer–resource form (growth with the Allee term, metabolism, spread, seed rain,
+  consumption and renewal) and its constants;
 - the cell partition, the decomposition, the lane rules, the atoms' bandwidth maps
   and every constant above.
 
@@ -675,8 +682,8 @@ describe Flora's behaviour as grounded in auditory cognition.
 - **An explicit Flora forecast** for the `GeneratorModel`, and a `pred` self-term.
 - **Further atoms.** Transients, and a grain atom whose source is `p` or the terrain
   (see the end of this note's discussion record).
-- **The dynamics' redesign.** A consumer–resource drive from a listener-side
-  information terrain is an open DCC question. It is not part of v1.
+- **The dynamics' redesign.** Not part of draft 12. The authored consumer–resource
+  proposal is in [Dynamics Redesign](#dynamics-redesign).
 - **GUI.** No visualization of `p` / `h`.
 - **Reports.** The only report record is one `flora` record per second per Flora, written
   only under `--report` (the report path's existing allocation exemption). It carries what
@@ -698,7 +705,8 @@ and are judged by listening together with those records.
      stored hashes.
    - Structurally, a scenario with no Flora passes an empty slice to the renderer, and
      Flora's code adds no arithmetic to the voice path.
-2. **Dynamics (unit, fixed synthetic terrain).**
+2. **Dynamics (unit, fixed synthetic terrain).** *Replaced on 2026-10-21 by the unit tests
+   listed under Dynamics Redesign → Consequences; the items below record the baseline's.*
    - `p` stays a PMF: non-negative, summing to 1, zero outside the extent, every
      in-extent bin positive.
    - These hold for a large hop and a high `rate`, where `n > 1` substeps are needed.
@@ -940,6 +948,313 @@ and are judged by listening together with those records.
 - **Next.** Before margins are registered, the measure needs to be redesigned. Restrict
   it to the resolved harmonics, and count mass near a partial but off it (between 25
   cents and 0.5 ERB).
+
+**2026-10-21, a 2048-sample analysis window biases the terrain low.**
+
+- **Observation.** With `[analysis] nfft = 2048`, the configuration the Flora assay
+  helper wrote for every campaign until now, a 110 Hz harmonic drone gives NSGT power
+  peaks at the right bins but harmonicity and consonance-level peaks 2–3 bins low:
+  107.6, 215.3 and 322.6 Hz instead of 110, 220 and 330 Hz. With the default 16384
+  they coincide. The bias appears before any Flora is placed.
+- **Consequence.** Flora follows the biased terrain, so the earlier closed-loop and
+  mixing campaigns measured it 25–37 cents flat of the drone's lattice (a beating halo).
+  Their recorded numbers, including the lattice fractions above, carry this bias.
+- **What changed.** The assay helper now takes the analysis section per campaign; the
+  earlier campaigns keep 2048 for comparability, the succession campaign uses the
+  default. The repository's `config.toml` uses the default, so the instrument is not
+  affected. Where the shift arises in the spectral front end (peak extraction from broad
+  low-band lobes) is not yet diagnosed.
+
+**2026-10-21, the consumer–resource dynamics keep moving in closed loop.**
+
+- **Setup.** `succession` in `tests/flora_assays.rs`: eight research samples
+  (`samples/research/flora_succession_*.rhai`, seeds 43001–43008) in the three
+  configurations, offline with the full NSGT path at the default window. Metrics are
+  those of the reduced model, computed on the per-second rendered partials after a 20 s
+  warm-up (`target/flora-assays/succession/summary.md`).
+- **Drone at 110 Hz with a retune to 146.83 Hz.** In all three configurations the
+  dominant partials keep changing (5 s JS distance 0.41–0.46) with a participation
+  ratio of 3.1–4.2. Recurrence is 0–0.11. Before the retune 0.92–1.00 of the rendered
+  power lies on the drone's lattice; from 15 s after it, 0.80–0.995 lies on the new
+  one. The largest total biomass is 1.7.
+- **Flicker.** In the drone sample, lane births plus retirements average about 1/s (at
+  most 7 in a second) and nothing flaps; across all runs flapping stays at or below
+  0.015/s. Under the biased window the same samples flapped up to 4/s.
+- **Mute and restore.** With `amp` at 0 for 20 s the output is silent and the ecology
+  runs on; after restoring, the succession resumes at the same level.
+- **A moving Population, routing, overlap.** With five seekers, with habitat-only or
+  presentation-only routing, and with two overlapping Flora, the 5 s JS distance stays
+  at 0.29–0.41.
+- **`rate = 8/s`.** Faster (0.68–0.72), with about 3 lane changes per second.
+- **Low register (55–220 Hz over a 55 Hz drone).** Calmer: 0.18–0.36, and the sine-only
+  configuration mostly recurs (0.79).
+- **Adoption.** The author adopted the dynamics as implemented on 2026-10-21. No audition
+  record is kept here, and the levels are not tuned.
+
+<a id="dynamics-redesign"></a>
+
+## Dynamics Redesign: Consumer–Resource (implemented 2026-10-21)
+
+Status: proposal draft 4, chosen for implementation by the author on 2026-10-21 and
+implemented the same day. It replaces the replicator–mutator with fatigue in State and
+Dynamics, and changes the rendering only where stated below. The closed-loop checks are
+recorded in Implementation Findings. The consumption rule is biomass-driven as a base; the
+author asked to pursue its ideal form without haste (Open decisions 1). After the
+closed-loop checks the author adopted the dynamics as implemented on 2026-10-21; the
+levels are not tuned.
+The open DCC question named at the top of this note is closed: a listener-side
+information terrain did not pass its registered checks (technote ledger §9.3.56), and
+Flora's dynamics stay in the authored-rule tier.
+
+### Why the baseline settles
+
+- On a fixed terrain the pure replicator term raises the mean fitness. With mutation,
+  spread and fatigue the full update makes no such claim, but the measured outcome is a
+  mixed equilibrium: fatigue is driven by `s = v / max v`, so every sounding peak tires
+  in proportion to its share and fitness equalizes across them (Implementation
+  Findings).
+- The closed loop behaves the same way. In the `flora_sine_only` render of
+  `samples/13_flora.rhai` (the info-terrain measurement, seed 5), Flora holds 15–16 weak
+  partials on the drone's lattice. When the drone moves from 110 Hz to 146.83 Hz at
+  14 s, the rendered partials stay at 110, 165, 220, 275, 330, 440, … Hz.
+- Crowding, deeper fatigue or a minimum-mutation condition would each suppress one
+  failure. None of them gives the system a reason to keep moving.
+
+### The proposal
+
+An excitable consumer–resource ecology:
+
+- biomass consumes a band resource that renews slowly;
+- a patch needs a minimum density to sustain itself (an Allee effect), so it either
+  blooms or dies out;
+- new growth is seeded where the heard sound is harmonic and the resource is fresh.
+
+A bloom depletes its resource and collapses; seeds then establish at harmonic positions
+whose resource is still fresh. This is a mechanism for succession, not a proof that no
+static state is stable: whether the coexistence state persists depends on the
+parameters, and the evidence below is limited to the conditions explored.
+
+**State.**
+
+- Biomass `v[x] ≥ 0`, mass per bin on the extent, replaces the PMF `p`. Its total is not
+  conserved and is not renormalized.
+- Resource `u[x] ∈ [0, 1]` replaces fatigue `h`.
+- Flora reads `g = consonance_field_level_eff` and `H01 = harmonicity01` per hop.
+
+**Update.** Per substep, with the terrain held for the hop:
+
+```
+v ← v + dt · [ rate · v · (g · u · v / (v + v_a) − k)     growth, Allee term, metabolism
+             + D · ∇²v                                     spread, reflecting ends (old values)
+             + u · (ι_bg + ι · H01) ]                      seed rain
+c[x] = Σ_y Ĝ(x, y) · v[y] · bins_per_oct / c_ref           local mean density per octave
+u ← u* + (u − u*) · exp(−a · dt),  a = 1/τ_r + c/τ_c,  u* = (1/τ_r) / a
+```
+
+- `Ĝ` is a Gaussian in ERB-rate (σ = 0.5 ERB, truncated at ±3σ) with rows normalized
+  to 1, so `c` measures density rather than the number of bins.
+- The resource is updated exactly for the consumption at the end of the substep, so it
+  stays in `[0, 1]` for any `c ≥ 0`. All time constants and `c_ref` are positive.
+- **Non-negativity.** `v` stays non-negative without clipping when
+  `dt · (rate · k + 2D) ≤ 1`. The existing substep rule (`rate · dt ≤ 0.05`,
+  `D · dt ≤ 0.25`) implies it. The `μ` condition is dropped with the mutation term.
+- **Boundedness is not proven.** Consumption is driven by biomass, not by the rendered
+  spectrum, so biomass that does not sound is consumed too, and every reduced-model run
+  stayed bounded (largest totals below). Ingredients for a bound: the reflecting spread
+  conserves `Σ v`; the seed input per bin is at most `(ι_bg + ι) / bins_per_oct` per
+  second; the per-bin growth rate is at most `rate · (u − k)`; and `Ĝ(x, x) > 0`, so a
+  bin's own biomass drives its resource below `k` once it is large enough. These do not
+  yet bound a bin that keeps receiving seeds and spread from its neighbours, so a bound
+  remains to be derived. Until then boundedness is a check before adoption: a unit test
+  on a flat terrain at the largest rate (planned), and the closed-loop renders.
+- With `ι_bg > 0`, `v = 0` is not an equilibrium: a silent Flora keeps a low seed bank.
+  In the flat-terrain runs below its mean target sum stayed under 0.001.
+
+**Rendering.** Unchanged except that it reads `v` where it now reads `p`:
+
+- Candidacy (`κ_in`, `κ_out`) stays relative to `max v`.
+- After the tonal update, with `S = Σ r*²` over every target (tonal and residual),
+  every target amplitude is multiplied by `min(1, 1/√S)`, so `Σ r*² ≤ 1`. The reduced
+  model applies the equivalent factor `min(1, 1/S)` to the masses. `amp` is the nominal target-amplitude
+  scale, as the current Rendering section already distinguishes the target sum from a
+  loudness guarantee. Retiring lanes, slews, interference and the envelope's fluctuation
+  remain.
+- Consumption does not read `amp` or the fade. They still act indirectly: Flora's level
+  enters its own terrain (`g`, `H01`) through self-perception. `amp = 0` removes Flora
+  from its own terrain, and the ecology runs on the terrain made by others; in the
+  reduced model the succession continues without self-perception (below).
+
+**Units.** `v` is mass per bin. `v_a`, `ι`, `ι_bg` and `c_ref` are densities per octave,
+divided by `bins_per_oct` where a per-bin value is needed. `D = σ²/2` in cents²/s is
+converted with `(bins_per_oct / 1200)²`. `k`, `rate`, `τ_r` and `τ_c` carry no bin
+units. The initial biomass is a total `v_0`, distributed by the existing seeding rule and
+perturbed as now, with `u = 1`.
+
+**Space reconfiguration.** Resample `v` as a density per octave and convert back to mass
+per bin; resample `u` by log2 interpolation and clamp to `[0, 1]`. Nothing is
+renormalized. A Flora that goes dormant reseeds with `v_0` and `u = 1`.
+
+**Coupling Contract.**
+
+- Item 2 gains `harmonicity01` as a second read.
+- Item 3 changes: self-perception still shapes the pattern (Flora's own roughness and
+  harmonicity), but it is no longer the mechanism that keeps Flora moving. In the reduced
+  model the succession continues on a fixed terrain.
+- Item 4 changes accordingly: presentation-only routing removes self-perception, and the
+  succession continues on the terrain made by others.
+
+### Evidence from a reduced closed-loop model
+
+[`flora-reduced-model/`](flora-reduced-model/README.md) ports the harmonicity and
+roughness kernels and the consonance level from `src/core`. It renders the dominant peak
+of each 1-ERB cell (sine only, no residual) over 110–1760 Hz and lets Flora hear itself
+and an optional 8-partial drone one hop later. NSGT, the residual layer, lanes and
+Populations are omitted. Metrics are taken on the rendered spectrum after a 20 s
+warm-up, sampled every 0.501 s; their definitions are in the README, and every number
+below is in `results/experiments.jsonl` or `results/sequences.txt`.
+
+**Validation of the model.** The implemented baseline (revision 1 of the model)
+reproduces the lattice-locked weak chord of the render above: 15–16 weak partials on the
+drone's lattice and a JS distance of 0.02 between states 5 s apart. Unlike the render,
+it partly follows a retune (0.82 of the rendered power on the new lattice from 15 s
+after the move), so the model is less sticky than the full renderer.
+
+**Reference setting.** `rate = 4/s`, `τ_r = 10 s`, `τ_c = 0.3 s`, `k = 0.3`,
+`c_ref = 10`, `v_a = 0.576`, `ι = 0.48/s`, `ι_bg = 9.6·10⁻⁴/s` (per octave),
+`v_0 = 0.5`.
+
+- **Drone at 110 Hz, 180 s.** An initial bloom reaches the ceiling at 3–6 s and
+  collapses by 15 s, visiting 165, 550, 1101, 1318 and 1760 Hz. From about 20 s, 110 Hz
+  (the drone's own fundamental) persists, and 220, 440, 330 and 659 Hz take turns above
+  it, each for about 6–12 s, in varying order. The 5 s JS distance is 0.40, the
+  participation ratio 3.0, and the mean target sum 0.38 of the ceiling. 36 % of frames
+  lie within JS 0.1 of a frame at least 5 s earlier: the order varies, but the
+  repertoire is small. The character is a slow succession over the drone's lower
+  harmonics, not a dense texture.
+- **Retune.** With the drone moving to 146.83 Hz at 40 s (120 s run), the time-mean
+  power fraction on the new lattice from 55 s on is 0.9994 (0.25 also on the old
+  lattice, through shared positions). After the move, 147 Hz persists and 220, 294, 440,
+  587, 880, 1175 and 1760 Hz take turns. Over this run the 5 s JS distance is 0.48 and no frame
+  recurs.
+
+**Ablation** (the retune run, one change each):
+
+| Change | Outcome | JS 5 s | Participation | New lattice |
+|---|---|---|---|---|
+| none | moving | .48 | 3.2 | .9994 |
+| no Allee term | haze | .05 | 11.0 | .95 |
+| consumption about 3·10⁹ times weaker (`τ_c = 10⁹ s`) | biomass reaches 5·10⁹, haze | .17 | 9.4 | .88 |
+| renewal 1 s | frozen | .003 | 9.5 | .58 |
+| uniform seed rain, same total before the resource weighting | silent (mean target sum < 0.001) | — | — | — |
+| uniform seed rain, same total after the resource weighting | silent (mean target sum < 0.001) | — | — | — |
+| seed rain from Flora's own harmonicity | moving | .41 | 3.2 | .65 (old 1.00) |
+| Flora does not hear itself (fixed terrain) | moving | .48 | 2.8 | .9995 |
+| consumption by rendered power (revision 1) | biomass reaches 8·10³², haze | .24 | 8.3 | .88 |
+
+- In this setting, removing the Allee term, the consumption, the slow renewal or the
+  harmonic placement of seeds each loses the succession. Each change is made at the
+  reference values without retuning the others, so this shows what the reference
+  depends on, not that no other combination works.
+- The succession does not need self-perception: on the drone's fixed terrain it still
+  occurs. Seeding from what is heard, rather than from Flora's own harmonicity, is what
+  lets it follow the drone.
+- In revision 1, the baseline at `rate = 4/s` gave a haze (JS 0.09 on biomass,
+  participation 11.2): a faster rate alone does not produce the succession.
+
+**Breadth.** A 3⁴ grid around the reference with the drone at 110 Hz, 90 s each:
+`rate` 3, 4, 6; `τ_r` 6, 10, 15 s; `v_a` × 1, 1.67, 3.33; `ι` × 0.5, 1, 2. 29 of 81
+settings are labelled moving, 30 frozen, 19 recurrent and 3 haze.
+
+- No setting with `v_a` × 3.33 moves (19 frozen, 8 recurrent).
+- `τ_r = 6 s` is mostly recurrent or frozen (13 and 10 of 27); `τ_r` 10 and 15 s give 14
+  and 12 moving.
+- `rate` 3, 4 and 6 give 7, 11 and 11 moving; `ι` × 0.5 gives 5, mostly frozen (17).
+
+**Robustness and numerics.**
+
+- Five seeds: 5 s JS distance 0.460–0.461.
+- Lone Flora without a drone, 180 s: 0.46, no recurrence, participation 3.7.
+- Drone at 220 Hz: 0.48. Drone at 82.41 Hz with the extent from 55 Hz: 0.35.
+- 10 or 20 hops (107 or 213 ms) of added perception delay: 0.484–0.485, against 0.485
+  without.
+- Two substeps per hop instead of the one the rule gives: 0.483. The rule gives two at
+  `rate = 6/s`. The model does not clip the biomass; the smallest value in each of the
+  122 runs was positive (smallest 1.07·10⁻⁸).
+- **Resolution.** At 48 bins/oct the regime is calmer (0.24, participation 6.1). The
+  model's tonal window is ±2 bins, so it widens in cents at coarse resolution; the
+  implementation's window must be checked at the runtime resolution.
+- **Rate** sets the tempo: at 2, 3, 4 and 6/s the 5 s JS distance is 0.10, 0.26, 0.48 and
+  0.74. At 2/s 61 % of frames recur; at 6/s the 1 s distance reaches 0.22.
+- **Level.** Scaling `c_ref`, `v_a`, `ι`, `ι_bg` and `v_0` together from 0.1 to 2 times
+  the reference leaves the 5 s JS distance at 0.45–0.46 and the participation at
+  2.7–2.8, while the mean target sum goes from 0.038 to 0.76. Scaling `c_ref` alone by
+  10 gives a haze (0.08, participation 9.1), because the biomass then far exceeds `v_a`.
+  Scaling the power of Flora's partials in its own terrain by 0.03 to 1 (a power factor
+  on self-perception, not a measured level ratio to the drone) gives 0.44–0.46.
+- **Boundedness.** The largest total biomass is 3.4 in the reference and 6.8 at twice its
+  scale. On a flat terrain (no drone, no self-perception, `g = 0.5`) biomass started at
+  0.05 or 1.0 never exceeds its initial total and dies out within 120 s, with `c_ref` at 1
+  or 10. Finite runs do not replace a bound.
+
+**Limits.** Sine only: the residual configurations are untested. The model omits NSGT
+smearing and its band-dependent delay, lane births, slews and the minimum separation,
+moving Populations and routing, and its labels use fixed reading thresholds, not
+registered criteria. Whether the succession survives the full renderer, and whether it
+sounds rich rather than restless or monotonous, are questions for closed-loop renders and
+audition.
+
+### Before adoption
+
+*Run on 2026-10-21 by the `succession` campaign; results in Implementation Findings. The
+author adopted the dynamics the same day.*
+
+Closed-loop offline renders with the full NSGT path, with the metrics above computed on
+the rendered spectrum and lane counts from the `flora` report record:
+
+- the reference over 110–1760 Hz with the drone of `samples/13_flora.rhai`, including its
+  retune, at the runtime resolution;
+- a low-register extent (55–220 Hz);
+- threshold flicker: lane births and retirements per second;
+- sine + residual and resonant + residual;
+- two overlapping Flora;
+- a moving Population, and habitat-only and presentation-only routing;
+- muting (`amp` to 0) and restoring Flora mid-run;
+- `rate` 4 and 8.
+
+### Consequences (applied 2026-10-21)
+
+- **Rhai** (decided 2026-10-21). `.fatigue(sec)` becomes `.renewal(sec)`, the resource
+  time constant `τ_r`, in `[0.5, 600]` s with default 10 s (`fatigue = 0`, which disabled
+  fatigue, has no counterpart). The `rate` range widens to `[0.05, 8]`, default 4/s. `amp` is documented as the nominal target-amplitude scale. `v_a`, `ι`,
+  `ι_bg`, `k`, `τ_c`, `c_ref` and `v_0` stay internal authored constants.
+- **Defaults.** Start from the reference setting; set the level scale (`c_ref`, `v_a`,
+  `ι`, `ι_bg`, `v_0` together) by audition.
+- **Tests.** The ignored alternation test is replaced by the closed-loop render assays
+  above, recorded and judged by listening. The invariance suite is unchanged. Unit tests
+  cover non-negativity under the substep rule, the resource range, boundedness on a flat
+  terrain, the reflecting spread, the target scaling and space reconfiguration.
+- **Samples.** `samples/13_flora.rhai` and the Flora research assays move to the new
+  surface.
+
+### Open decisions
+
+1. **The ideal consumption rule (under study, not rushed).** The implementation starts
+   with Flora's own biomass, which the boundedness argument needs in any form. Whether
+   heard habitat sound also consumes, so that Populations and other Flora deplete
+   Flora's bands, is studied separately: a reduced model with Population-like sources,
+   a level reference for heard power (which depends on `amp`), the double counting of
+   Flora's own sound, and whether the resource should be one shared ecological field
+   rather than a per-Flora state. The consumption is kept as one term so that the result
+   can be added without restructuring.
+2. Whether the residual configuration needs its own treatment of diffuse biomass.
+3. The repertoire. In the reference the long-run succession narrows to the drone's lower
+   harmonics. Widening it (for example through the weighting of `H01` in the seed rain)
+   is an authored choice to audition.
+4. The defaults, by audition after implementation.
+
+The proposal went through four independent Astra reviews (drafts 1–3 conditionally
+acceptable, draft 4 acceptable as a proposal, with the checks before adoption still open;
+`target/flora-redesign-20261021/review-1.md` to `review-4.md`).
 
 ## Appendix A: Peak-Tracking Allocation (not implemented)
 

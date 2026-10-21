@@ -89,7 +89,9 @@ habituation field.
    no-Flora cases in Tests 1. The independently adopted Voice self-exclusion
    redistribution and silence-floor changes intentionally affect existing no-Flora
    samples that use self-exclusion (listed in the Changelog); the four hashes are
-   not a claim that every older sample output is unchanged.
+   not a claim that every older sample output is unchanged. The shared floor also
+   applies to general analysis without Flora or self-exclusion consumers, so even
+   those paths have no general invariance guarantee for tiny positive inputs.
 
 ## Closed-Loop Caveats
 
@@ -583,7 +585,7 @@ is unchanged.
   - the `2 × N_cells` tonal pool and the `N_cells` residual lanes;
   - the noise scratch buffer, `2 × noisy lanes × hop`.
 
-  Flora's own steady-state advance/render/capture/ownership path, including continual
+  Flora's own steady-state advance/render/capture path, including continual
   births and retirements, adds no allocations. Runtime PCM ownership, conditional
   Flora analysis publication and GUI/report snapshots are separate allocation paths;
   `AGENTS.md` records their measured conditions and counts. Placement, reconfiguration
@@ -1329,7 +1331,7 @@ note's evidence.
 **Current main layout (2026-10-22).**
 
 - `src/life/flora.rs` (including its private ERB partition): state, dynamics,
-  rendering, sound projection, report data and internal tests; pure Flora IR types
+  rendering, report data and internal tests; pure Flora IR types
   and actions remain in `src/scenario.rs`.
 - `src/life/community/actions.rs` dispatches placement, updates and release;
   `src/runtime/phases.rs` advances and drains Flora, and `src/runtime/analysis_sync.rs`
@@ -1338,6 +1340,8 @@ note's evidence.
 - `src/life/community.rs` separately accumulates own/other projected power in f64;
   `src/life/pitch_core.rs` redistributes remaining peak mass to other-source positions.
   `src/core/stream/potentials.rs` applies the shared existing near-silence floor.
+  Flora has no separate lane/AR(1) ownership projection; its runtime contribution
+  comes only from the actually rendered PCM observation described below.
   `src/life/schedule_renderer.rs` captures the actually rendered Flora habitat PCM;
   `src/runtime/worker.rs` includes it in the same analysis packet, and
   `src/core/analysis_worker.rs` advances a synchronized Flora-only `AnalysisStream`.

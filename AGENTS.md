@@ -198,7 +198,7 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
     channels as needed. When Flora has been placed and a Voice consumes LOO,
     `process_hop` also owns one Flora-only habitat PCM `Arc` in the same analysis
     packet. Capture scratch is reused; the packet allocation is not part of the
-    allocation-free Flora advance/render/ownership claim.
+    allocation-free Flora advance/render/capture claim.
   - `apply_landscape_updates` (`src/runtime/analysis_sync.rs`) allocates the observed
     field `Arc` for `GeneratorModel::observe_consonance_field_level` only after analysis
     or valuation updates with an available analysis frame.
@@ -233,7 +233,7 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   `dead_id_scratch`), pitch proposal scratch (`src/life/pitch_core.rs`), and
   `PhonationEngine` buffers (`scratch_candidates`, `scratch_merged`, `scratch_grid`,
   `scratch_field`, `src/life/phonation_engine.rs`). Clear and refill them.
-  Flora's own advance/render/projection has zero steady-state allocations, including births and retirements; placement, reconfiguration, and reporting may allocate.
+  Flora's own advance/render/capture has zero steady-state allocations, including births and retirements; placement, reconfiguration, and reporting may allocate.
   The analysis worker (`src/core/analysis_worker.rs`) is a separate thread. Streaming
   and synchronous analysis share front-end/potential scratch; `AnalysisStream::process`
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only
@@ -249,6 +249,8 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   construction. These counts exclude input PCM ownership and UI clones; cloning a
   Landscape with the Flora scan adds another scan allocation. Gap resets and
   reconfiguration are outside the steady-state counts.
+  The shared density-normalization floor applies to general analysis as well as LOO,
+  independently of Flora placement or self-exclusion consumers.
   Use `--features profile-alloc` when measuring or asserting allocations; without it,
   allocation counts are unavailable. Runtime measurements live in `runtime_profile.rs`.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.

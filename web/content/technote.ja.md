@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "d1f90b8"
+source_commit = "996f2c2"
 author = "Koichi Takahashi"
 last_updated = "2026-10-22"
 source_version = "0.5.0"
-source_snapshot = "d1f90b8"
-revision_scope = "Flora self-exclusion scope (2026-10-22); Flora composition mode (2026-10-22); 終了処理・知覚処理・Rhai APIの改善と、音高移動・environmentの生存選択の自己除外統一に同期（2026-10-18）"
+source_snapshot = "996f2c2"
+revision_scope = "Flora の旧投影除去と、実装済みの自己除外・共通 floor の説明に同期（2026-10-22）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -527,15 +527,13 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 **Leave-Self-Out**: 音高移動では、自分を除いた場を近似する。
 
-`leave_self_out(true)`による音高移動の自己除外は、すべての身体で共通の所有率推定を使う。
-habitat busへ送る各Voiceの身体投影を二乗し、全Voiceの投影パワーに対する自己の割合を求める。
-静止部分音は最近接の解析ビンへ置き、Harmonicのmotionは描画と同じ共通Hz偏移の正弦変調から
-周期平均のパワー分布を求める。観測密度へ残余パワー比の既存loudness指数乗を掛け、H・R・scoreを
-再計算する。候補の比較前には通常のhabituationによる浸食を適用する。投影とscoreは同じhop内で
-再利用し、次のhopで無効化する。所有率が未供給なら観測場を保つ。
+`leave_self_out(true)` は、Voice の周りに残る音の場を推定する。habitat へ送る各 Voice の身体の振幅を解析 bin へ投影し、パワーを求める。静止部分音は最近接 bin に置き、Harmonic の motion は描画と同じ共通 Hz 偏移から周期平均の周波数分布を求める。自己と他音源のパワーを別に保持し、その集計と残余の比を f64 で計算する。
 
-音源別PCMを引いた厳密解析ではなく、候補基音での点評価である。個別Toneの変調位相、解析遅延、
-releaseの尾を復元する投影ではない。身体の種類で自己除外方式を切り替える分岐や公開mode選択はない。
+自己の投影がある bin では、peak 抽出器が質量を割り当てた範囲を使う。他音源のパワー比と既存の loudness 指数から残す質量を求め、元の bin の密度を除いた後、範囲内の他音源の投影位置へ ERB の bin 幅に応じて配り直す。現在の frame にない平滑履歴の peak には、既存の抑制幅を使う。その密度から H・R・score を計算し直し、候補の比較前に通常の habituation による浸食を適用する。密度質量が共通の near-silence floor 以下なら H と粗さの shape を0にする。この floor は、Flora や自己除外の有無にかかわらず一般の解析にも適用される。
+
+Flora が配置された run で、音高移動または environment の生存選択に自己除外を使う Voice がいる場合だけ、実際に描画した Flora の habitat PCM を捕捉する。混合 PCM と同じ packet・frame で解析側へ送り、同じ NSGT と前段処理を持つ同期した stream から、他音源の集計に使う Flora の観測寄与を得る。有効な観測が揃うまでは観測場を保つ。投影と計算済み score は同じ hop 内で再利用し、次の hop で無効化する。
+
+音源分離は推定であり、候補基音での点評価である。Voice の投影は個別 Tone の位相、解析遅延や release の尾を復元しない。Flora の別 stream は、それ自身の解析履歴を保持する。身体の種類で自己除外方式を切り替える分岐や公開 mode 選択はない。
 Flora がある場合の対応範囲は、residual を切った tonal-only の sine と presentation 専用の場面であり、自己除外を使う Voice の近くで residual 付きの sine／resonant Flora が habitat に鳴る場面は精度保証の範囲外とする。
 
 `viability_scope("environment")`による生存選択も、現在の音高で同じ所有率推定を使い、

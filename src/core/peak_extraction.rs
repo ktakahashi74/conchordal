@@ -18,7 +18,7 @@ struct Candidate {
     power: f32,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(crate) struct PeakScratch {
     candidates: Vec<Candidate>,
     selected: Vec<Candidate>,
@@ -34,6 +34,41 @@ impl Clone for PeakScratch {
 }
 
 impl PeakScratch {
+    // The same nearest-peak assignment used for mass accumulation, including
+    // redistribution of pruned peaks. Unlike suppression, this has no ERB radius.
+    pub(crate) fn mass_owner_bin(&self, u: f32) -> Option<usize> {
+        if self.peaks.is_empty() {
+            return None;
+        }
+        let mut best = self
+            .selected
+            .iter()
+            .enumerate()
+            .min_by(|(ia, a), (ib, b)| {
+                (u - a.u_erb)
+                    .abs()
+                    .total_cmp(&(u - b.u_erb).abs())
+                    .then(ia.cmp(ib))
+            })?
+            .0;
+        if !self.keep[best] {
+            let u = self.selected[best].u_erb;
+            best = self
+                .selected
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| self.keep[*i])
+                .min_by(|(ia, a), (ib, b)| {
+                    (u - a.u_erb)
+                        .abs()
+                        .total_cmp(&(u - b.u_erb).abs())
+                        .then(ia.cmp(ib))
+                })?
+                .0;
+        }
+        Some(self.selected[best].idx)
+    }
+
     pub(crate) fn new(bins: usize) -> Self {
         Self {
             candidates: Vec::with_capacity(bins),
@@ -322,6 +357,26 @@ mod tests {
     use crate::core::density;
     use crate::core::log2space::Log2Space;
     use crate::core::roughness_kernel::erb_grid;
+
+    #[test]
+    fn assignment_retains_pruned_peak_basin_beyond_suppression_radius() {
+        let power = [0., 8., 0.001, 0.005, 0.01, 0.001, 4., 0.];
+        let erb = [0., 1., 2., 3., 4., 5., 6., 7.];
+        let du = [1.; 8];
+        let mut scratch = PeakScratch::new(8);
+        let cfg = PeakExtractConfig {
+            min_prominence_db_power: 0.,
+            ..PeakExtractConfig::nsgt_default()
+        };
+        let peaks = extract_peaks_density_with_grid_reuse(&power, &erb, &du, &cfg, &mut scratch);
+        assert_eq!(peaks.len(), 2);
+        // Bin 3 first belongs to peak 4, whose small mass is redirected to 6.
+        // Choosing the nearest retained peak directly would incorrectly choose 1.
+        assert_eq!(scratch.mass_owner_bin(3.), Some(6));
+        assert_eq!(scratch.mass_owner_bin(2.), Some(1));
+        extract_peaks_density_with_grid_reuse(&[0.; 8], &erb, &du, &cfg, &mut scratch);
+        assert_eq!(scratch.mass_owner_bin(3.), None);
+    }
 
     #[test]
     fn small_peaks_are_dropped_and_mass_is_conserved() {

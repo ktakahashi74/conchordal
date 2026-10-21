@@ -184,7 +184,7 @@ pub struct PhonationGateOpenEvent {
 
 #[derive(Default)]
 struct AdvanceScratch {
-    loo_total_power_scan: Vec<f32>,
+    loo_other_power_scan: Vec<f64>,
     freq_snapshot: Vec<(u64, u64, f32)>,
     population_visibility: HashMap<u64, (bool, bool)>,
     neighbor_pitch_log2: Vec<f32>,
@@ -666,6 +666,43 @@ impl Community {
         );
     }
 
+    fn update_loo_ownership(&mut self, landscape: &Landscape) {
+        let prefix = &mut self.advance_scratch.loo_other_power_scan;
+        prefix.resize(landscape.space.n_bins(), 0.0);
+        prefix.fill(0.0);
+        // Keep the other sources separate; total - own also loses tiny powers in f64.
+        for flora in &self.flora {
+            let power = flora.habitat_power_scan();
+            landscape
+                .space
+                .assert_scan_len_named(power, "flora_habitat_power_scan");
+            for (sum, &value) in prefix.iter_mut().zip(power) {
+                *sum += value as f64;
+            }
+        }
+        for voice in &mut self.voices {
+            voice.project_loo_power(&landscape.space);
+            let input = voice.pitch_ctl.loo_input_mut();
+            input.other_power_scan.clone_from(prefix);
+            for (sum, &value) in prefix.iter_mut().zip(&input.own_power_scan) {
+                *sum += value as f64;
+            }
+        }
+        prefix.fill(0.0);
+        for voice in self.voices.iter_mut().rev() {
+            let input = voice.pitch_ctl.loo_input_mut();
+            for ((other, sum), &own) in input
+                .other_power_scan
+                .iter_mut()
+                .zip(prefix.iter_mut())
+                .zip(&input.own_power_scan)
+            {
+                *other += *sum;
+                *sum += own as f64;
+            }
+        }
+    }
+
     pub(crate) fn advance_with_listener_pressure(
         &mut self,
         samples_len: usize,
@@ -689,29 +726,7 @@ impl Community {
             .iter()
             .any(|v| v.effective_control.pitch.leave_self_out || v.selection_environment)
         {
-            let total = &mut self.advance_scratch.loo_total_power_scan;
-            total.resize(landscape.space.n_bins(), 0.0);
-            total.fill(0.0);
-            for voice in &mut self.voices {
-                let power = voice.project_loo_power(&landscape.space);
-                for (sum, &value) in total.iter_mut().zip(power) {
-                    *sum += value;
-                }
-            }
-            // Previous rendered hop, like each Voice's last_signal; never future biomass.
-            for flora in &self.flora {
-                let power = flora.habitat_power_scan();
-                landscape
-                    .space
-                    .assert_scan_len_named(power, "flora_habitat_power_scan");
-                for (sum, &value) in total.iter_mut().zip(power) {
-                    *sum += value;
-                }
-            }
-            let total: std::sync::Arc<[f32]> = total.as_slice().into();
-            for voice in &mut self.voices {
-                voice.set_loo_total_power(total.clone());
-            }
+            self.update_loo_ownership(landscape);
         }
         let mut rhythms = landscape.rhythm;
         let global_coupling = self.global_coupling;

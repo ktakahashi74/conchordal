@@ -1176,7 +1176,7 @@ fn legacy_sample_consonance_score_with_loo(
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LooInput {
     pub(crate) own_power_scan: Vec<f32>,
-    pub(crate) total_power_scan: Arc<[f32]>,
+    pub(crate) other_power_scan: Vec<f64>,
     pub(crate) computed_score: Option<Option<Arc<[f32]>>>,
 }
 
@@ -1186,28 +1186,29 @@ fn loo_score_scan(
     scratch: &mut Option<Box<LooScratch>>,
 ) -> Option<Arc<[f32]>> {
     // Both empty means no Community ownership snapshot has been supplied.
-    if input.own_power_scan.is_empty() && input.total_power_scan.is_empty() {
+    if input.own_power_scan.is_empty() && input.other_power_scan.is_empty() {
         return None;
     }
     let space = &landscape.space;
     space.assert_scan_len_named(&input.own_power_scan, "loo_own_power_scan");
-    space.assert_scan_len_named(&input.total_power_scan, "loo_total_power_scan");
+    space.assert_scan_len_named(&input.other_power_scan, "loo_other_power_scan");
     space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity_scan");
     if let Some(score) = &input.computed_score {
         return score.clone();
     }
 
-    let mut density = landscape.subjective_intensity.clone();
-    let mut removed = false;
-    for (i, value) in density.iter_mut().enumerate() {
-        let own = input.own_power_scan[i];
-        let total = input.total_power_scan[i];
-        if own > 0.0 && total > 0.0 && own.is_finite() && total.is_finite() {
-            let fraction = (own / total).clamp(0.0, 1.0);
-            *value *= (1.0 - fraction).powf(landscape.loudness_exp);
-            removed |= fraction > 0.0 && *value != landscape.subjective_intensity[i];
-        }
+    if !input
+        .own_power_scan
+        .iter()
+        .zip(&landscape.subjective_intensity)
+        .any(|(&own, &observed)| own > 0. && own.is_finite() && observed > 0.)
+    {
+        input.computed_score = Some(None);
+        return None;
     }
+    let cache = prepare_loo_scratch(landscape, scratch);
+    let mut density = landscape.subjective_intensity.clone();
+    let removed = redistribute_loo_density(landscape, input, cache, &mut density);
     if !removed {
         input.computed_score = Some(None);
         return None;
@@ -1215,6 +1216,72 @@ fn loo_score_scan(
     let score: Arc<[f32]> = recompute_loo_score_scan(landscape, &density, scratch).into();
     input.computed_score = Some(Some(score.clone()));
     Some(score)
+}
+
+// The extractor assigns all admitted mass to the nearest selected peak, then
+// redirects pruned peaks. Its actual assignment supplies the redistribution basin.
+// Historical smoothed peaks absent from the current frame use the suppression span.
+fn redistribute_loo_density(
+    landscape: &Landscape,
+    input: &LooInput,
+    cache: &mut LooScratch,
+    density: &mut [f32],
+) -> bool {
+    landscape
+        .space
+        .assert_scan_len_named(density, "loo_residual_density_scan");
+    let space = &landscape.space;
+    space.assert_scan_len_named(&landscape.nsgt_power, "nsgt_power_scan");
+    let cfg = crate::core::peak_extraction::PeakExtractConfig::nsgt_default();
+    for (i, raw) in cache.raw_density.iter_mut().enumerate() {
+        *raw = (landscape.nsgt_power[i] / cache.potentials.du[i].max(1e-12)).max(0.);
+    }
+    cache.merge_ranges.clone_from(&cache.suppression_ranges);
+    let peaks = crate::core::peak_extraction::extract_peaks_density_with_grid_reuse(
+        &cache.raw_density,
+        &cache.erb,
+        &cache.potentials.du,
+        &cfg,
+        &mut cache.peak_scratch,
+    );
+    for peak in peaks {
+        cache.merge_ranges[peak.bin_idx] = (space.n_bins(), 0);
+    }
+    for (j, &u) in cache.erb.iter().enumerate() {
+        if let Some(i) = cache.peak_scratch.mass_owner_bin(u) {
+            let range = &mut cache.merge_ranges[i];
+            range.0 = range.0.min(j);
+            range.1 = range.1.max(j + 1);
+        }
+    }
+    for (i, value) in density.iter_mut().enumerate() {
+        if input.own_power_scan[i] > 0.0 && input.own_power_scan[i].is_finite() {
+            *value = 0.0;
+        }
+    }
+    let mut removed = false;
+    for (i, &own) in input.own_power_scan.iter().enumerate() {
+        let observed = landscape.subjective_intensity[i];
+        if own <= 0.0 || !own.is_finite() || observed <= 0.0 {
+            continue;
+        }
+        let (lo, hi) = cache.merge_ranges[i];
+        let other: f64 = input.other_power_scan[lo..hi].iter().sum();
+        let own: f64 = input.own_power_scan[lo..hi].iter().map(|&v| v as f64).sum();
+        // Form the residual directly: 1 - own / total loses quiet neighbours.
+        let retained =
+            (observed as f64 * (other / (own + other)).powf(landscape.loudness_exp as f64)) as f32;
+        if other > 0.0 {
+            let mass = retained as f64 * cache.potentials.du[i] as f64;
+            for (j, &power) in input.other_power_scan.iter().enumerate().take(hi).skip(lo) {
+                density[j] += (mass * (power / other) / cache.potentials.du[j] as f64) as f32;
+            }
+        } else {
+            density[i] += retained;
+        }
+        removed = true;
+    }
+    removed
 }
 
 #[derive(Clone, Debug)]
@@ -1225,6 +1292,11 @@ struct LooScratch {
     potentials: PotentialScratch,
     h: Vec<f32>,
     r: Vec<f32>,
+    merge_ranges: Vec<(usize, usize)>,
+    suppression_ranges: Vec<(usize, usize)>,
+    erb: Vec<f32>,
+    raw_density: Vec<f32>,
+    peak_scratch: crate::core::peak_extraction::PeakScratch,
 }
 
 #[cfg(any(test, feature = "loo-diagnostic"))]
@@ -1276,11 +1348,10 @@ fn exact_loo_consonance_score_scan(
     Some(recompute_loo_score_scan(landscape, &density_loo, scratch))
 }
 
-fn recompute_loo_score_scan(
+fn prepare_loo_scratch<'a>(
     landscape: &Landscape,
-    density_loo: &[f32],
-    scratch: &mut Option<Box<LooScratch>>,
-) -> Vec<f32> {
+    scratch: &'a mut Option<Box<LooScratch>>,
+) -> &'a mut LooScratch {
     let n = landscape.space.n_bins();
     let stale = scratch.as_ref().is_none_or(|cache| {
         cache.space.fmin != landscape.space.fmin
@@ -1306,9 +1377,35 @@ fn recompute_loo_score_scan(
             potentials,
             h: vec![0.; n],
             r: vec![0.; n],
+            merge_ranges: vec![(0, 0); n],
+            suppression_ranges: {
+                let (erb, _) = crate::core::roughness_kernel::erb_grid(&landscape.space);
+                let sep =
+                    crate::core::peak_extraction::PeakExtractConfig::nsgt_default().min_sep_erb;
+                erb.iter()
+                    .map(|&u| {
+                        (
+                            erb.partition_point(|&v| v <= u - sep),
+                            erb.partition_point(|&v| v < u + sep),
+                        )
+                    })
+                    .collect()
+            },
+            erb: crate::core::roughness_kernel::erb_grid(&landscape.space).0,
+            raw_density: vec![0.; n],
+            peak_scratch: crate::core::peak_extraction::PeakScratch::new(n),
         }));
     }
-    let cache = scratch.as_mut().unwrap();
+    scratch.as_mut().unwrap()
+}
+
+fn recompute_loo_score_scan(
+    landscape: &Landscape,
+    density_loo: &[f32],
+    scratch: &mut Option<Box<LooScratch>>,
+) -> Vec<f32> {
+    let n = landscape.space.n_bins();
+    let cache = prepare_loo_scratch(landscape, scratch);
     let eps = landscape.roughness_ref_eps.max(1e-12);
     cache.potentials.compute_shape(
         density_loo,

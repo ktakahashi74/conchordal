@@ -45,7 +45,15 @@ impl PotentialScratch {
     ) -> f32 {
         space.assert_scan_len_named(density, "subjective_intensity_scan");
         space.assert_scan_len_named(roughness_shape, "r_shape_scan");
+        space.assert_scan_len_named(harmonicity, "h_pot_scan");
         let (h, r) = kernels;
+        let mass = normalize_density_into(density, &self.du, eps, &mut self.normalized);
+        // Apply the existing density-normalization floor to both potentials.
+        if !mass.is_finite() || mass <= eps {
+            harmonicity.fill(0.);
+            roughness_shape.fill(0.);
+            return 0.;
+        }
         self.roots.resize(h.root_buffer_len(space), 0.);
         h.potential_h_into(
             density,
@@ -54,16 +62,10 @@ impl PotentialScratch {
             &mut self.roots,
             harmonicity,
         );
-        let mass = normalize_density_into(density, &self.du, eps, &mut self.normalized);
         if !self.geometry.matches(r, space, &self.erb) {
             self.geometry = Arc::new(r.prepare_geometry(space, &self.erb));
         }
-        if mass > eps {
-            self.geometry
-                .potential_r_into(&self.normalized, space, &self.du, roughness_shape)
-        } else {
-            roughness_shape.fill(0.);
-            0.
-        }
+        self.geometry
+            .potential_r_into(&self.normalized, space, &self.du, roughness_shape)
     }
 }

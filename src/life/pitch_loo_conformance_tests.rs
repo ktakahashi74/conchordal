@@ -294,6 +294,7 @@ fn rendered_loo_conformance() {
     let ties_only = std::env::var_os("T33_TIES_ONLY").is_some();
     assert!(u8::from(pilot) + u8::from(motion_only) + u8::from(ties_only) <= 1);
     let mut total = 0;
+    let mut viability_failures = Vec::new();
     let mut family_pass: BTreeMap<String, [bool; 3]> = BTreeMap::new();
     let mut density_cache = BTreeMap::new();
     for base_hz in [440.0_f32, 1800.0] {
@@ -431,16 +432,16 @@ fn rendered_loo_conformance() {
                 let current = base_hz.log2();
                 let ratios = own_recipe.body.ratios.as_deref();
                 let own_power = projected_power(&own_recipe, &mix);
-                let mut total_power = own_power.clone();
+                let mut other_power = vec![0_f64; own_power.len()];
                 if let Some(hz) = other_hz {
-                    let other_power = projected_power(&recipe("sine", hz, &reference), &mix);
-                    for (total, other) in total_power.iter_mut().zip(other_power) {
-                        *total += other;
+                    let projected = projected_power(&recipe("sine", hz, &reference), &mix);
+                    for (other, value) in other_power.iter_mut().zip(projected) {
+                        *other = value as f64;
                     }
                 }
                 let mut input = LooInput {
                     own_power_scan: own_power,
-                    total_power_scan: total_power.into(),
+                    other_power_scan: other_power,
                     computed_score: None,
                 };
                 let candidate_scan = loo_score_scan(&mix, &mut input, &mut None);
@@ -465,11 +466,10 @@ fn rendered_loo_conformance() {
                     };
                     let score = voice.pitch_ctl.environment_score(&mix, base_hz);
                     assert_eq!(score, expected_score);
-                    assert!(
-                        (score - reference_score).abs() - (old_score - reference_score).abs()
-                            <= 1e-6,
-                        "environment viability worsened: {family}, {base_hz}, {other_hz:?}, {kind:?}"
-                    );
+                    if (score - reference_score).abs() - (old_score - reference_score).abs() > 1e-6
+                    {
+                        viability_failures.push(json!({"family":family,"base_hz":base_hz,"other_hz":other_hz,"kind":format!("{kind:?}"),"path":"environment"}));
+                    }
                     let mut expected = voice.articulation.clone();
                     expected.process(
                         mix.evaluate_pitch_level(base_hz),
@@ -643,21 +643,20 @@ fn rendered_loo_conformance() {
                     if method == "approx" {
                         legacy_errors = errors;
                     }
-                    if method == "t31" {
-                        assert!(
-                            errors
-                                .iter()
-                                .zip(legacy_errors)
-                                .all(|(new, old)| new - old <= 1e-6),
-                            "viability current-position errors: {family}, {base_hz}, {other_hz:?}"
-                        );
+                    if method == "t31"
+                        && !errors
+                            .iter()
+                            .zip(legacy_errors)
+                            .all(|(new, old)| new - old <= 1e-6)
+                    {
+                        viability_failures.push(json!({"family":family,"base_hz":base_hz,"other_hz":other_hz,"path":"point_body","new_errors":errors,"legacy_errors":legacy_errors}));
                     }
                     println!(
                         "T32_CASE {}",
                         json!({"method":method,"family":family,"base_hz":base_hz,"other_hz":other_hz,"recipe_body":format!("{:?}",own_recipe.body),
                     "ownership_bins":if family == "motion" {
                         Some((0..space.n_bins()).filter(|&i| mix.subjective_intensity[i] > 0.0 || removed.subjective_intensity[i] > 0.0)
-                            .map(|i| json!([i,space.centers_hz[i],input.own_power_scan[i],input.total_power_scan[i],mix.subjective_intensity[i],removed.subjective_intensity[i]]))
+                            .map(|i| json!([i,space.centers_hz[i],input.own_power_scan[i],(input.own_power_scan[i] as f64 + input.other_power_scan[i]),mix.subjective_intensity[i],removed.subjective_intensity[i]]))
                             .collect::<Vec<_>>())
                     } else { None },
                     "source_id":2,"environment_frames":ENV_FRAMES,"representative_frames":BODY_FRAMES,"cents":CENTS,
@@ -721,7 +720,11 @@ fn rendered_loo_conformance() {
     );
     println!(
         "T32_COMPLETE {}",
-        json!({"cases":total,"fs":FS,"hop":hop,"families":families,"family_pass":family_pass,"habituation_enabled":false,"distinct_body_densities":density_cache.len()})
+        json!({"cases":total,"fs":FS,"hop":hop,"families":families,"family_pass":family_pass,"habituation_enabled":false,"distinct_body_densities":density_cache.len(),"viability_failures":viability_failures})
+    );
+    assert!(
+        viability_failures.is_empty(),
+        "viability counterexamples: {viability_failures:?}"
     );
     if !pilot {
         let unsupported: Vec<_> = family_pass
@@ -1000,10 +1003,10 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                 pop.advance(64, frame as u64, 1e-4, &mix);
                 let input = pop.voices[0].pitch_ctl.loo_input_mut().clone();
                 assert_eq!(input.own_power_scan, own_power);
-                for (i, &own) in own_power.iter().enumerate() {
+                for i in 0..own_power.len() {
                     assert_eq!(
-                        input.total_power_scan[i],
-                        own + flora[0].habitat_power_scan()[i]
+                        input.other_power_scan[i],
+                        flora[0].habitat_power_scan()[i] as f64
                     );
                 }
                 if diagnostics
@@ -1090,18 +1093,16 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                 for &method in methods {
                     let mut input = input.clone();
                     if method == "nsgt" || method == "nsgt_amp2" {
-                        input.total_power_scan = input
-                            .own_power_scan
+                        input.other_power_scan = reference
+                            .nsgt_power
                             .iter()
-                            .zip(&reference.nsgt_power)
-                            .map(|(own, external)| {
-                                own + external * if method == "nsgt_amp2" { 4. } else { 1. }
+                            .map(|&external| {
+                                external as f64 * if method == "nsgt_amp2" { 4. } else { 1. }
                             })
-                            .collect::<Vec<_>>()
-                            .into();
+                            .collect();
                         input.computed_score = None;
                     } else if method == "density_oracle" {
-                        input.total_power_scan = input
+                        input.other_power_scan = input
                             .own_power_scan
                             .iter()
                             .enumerate()
@@ -1113,14 +1114,36 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                                     1.
                                 };
                                 let q = 1. - ratio.powf(1. / mix.loudness_exp);
-                                if q > 0. { own / q } else { f32::MAX }
+                                if q > 0. {
+                                    (own / q - own) as f64
+                                } else {
+                                    f32::MAX as f64
+                                }
                             })
-                            .collect::<Vec<_>>()
-                            .into();
+                            .collect();
                         input.computed_score = None;
                     }
                     let mut input_copy = input.clone();
                     let scores = loo_score_scan(&mix, &mut input_copy, &mut None);
+                    let mut scratch = None;
+                    let cache = prepare_loo_scratch(&mix, &mut scratch);
+                    let mut density = mix.subjective_intensity.clone();
+                    redistribute_loo_density(&mix, &input, cache, &mut density);
+                    if std::env::var_os("T36_WITNESSES").is_some()
+                        && kind == PitchCoreKind::HillClimb
+                    {
+                        let (_, du) = erb_grid(&mix.space);
+                        println!(
+                            "T36_DENSITY {}",
+                            json!({
+                                "tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"method":method,
+                                "floor":mix.roughness_ref_eps.max(1e-12),
+                                "mass_reference":actual.subjective_intensity.iter().zip(&du).map(|(a,w)| a*w).sum::<f32>(),
+                                "mass_estimate":density.iter().zip(&du).map(|(a,w)| a*w).sum::<f32>(),
+                                "bins":(0..du.len()).filter(|&i| mix.subjective_intensity[i] > 0. || actual.subjective_intensity[i] > 0. || input.other_power_scan[i] > 0.).map(|i| json!([i,mix.space.centers_hz[i],du[i],input.own_power_scan[i],input.other_power_scan[i],mix.subjective_intensity[i],density[i],actual.subjective_intensity[i]])).collect::<Vec<_>>()
+                            })
+                        );
+                    }
                     let pitches: Vec<_> =
                         CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
                     let got: Vec<_> = pitches
@@ -1133,7 +1156,7 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                         .collect();
                     let mut legacy_input = LooInput {
                         own_power_scan: own_power.clone(),
-                        total_power_scan: own_power.clone().into(),
+                        other_power_scan: vec![0.; own_power.len()],
                         computed_score: None,
                     };
                     let legacy_scan = loo_score_scan(&mix, &mut legacy_input, &mut None);
@@ -1280,15 +1303,13 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                         .zip(&du)
                         .map(|(x, w)| x * w)
                         .sum();
-                    let mut over_removed = 0.;
-                    for (i, &own) in input.own_power_scan.iter().enumerate() {
-                        if own <= 0. {
-                            continue;
-                        }
-                        let retained = mix.subjective_intensity[i]
-                            * (1. - own / input.total_power_scan[i]).powf(mix.loudness_exp);
-                        over_removed += (actual.subjective_intensity[i] - retained).max(0.) * du[i];
-                    }
+                    let over_removed: f32 = actual
+                        .subjective_intensity
+                        .iter()
+                        .zip(&density)
+                        .zip(&du)
+                        .map(|((&reference, &retained), &w)| (reference - retained).max(0.) * w)
+                        .sum();
                     let pass = point_metrics["registered_movement_gate_pass"] == true
                         && body_metrics["registered_movement_gate_pass"] == true
                         && selection_pass

@@ -1705,12 +1705,6 @@ impl Voice {
         &input.own_power_scan
     }
 
-    pub(crate) fn set_loo_total_power(&mut self, total: std::sync::Arc<[f32]>) {
-        let input = self.pitch_ctl.loo_input_mut();
-        input.total_power_scan = total;
-        input.computed_score = None;
-    }
-
     pub fn render_spectrum(&mut self, amps: &mut [f32], space: &Log2Space) {
         let signal = self.last_signal;
         if !signal.is_active || signal.amplitude <= 0.0 {

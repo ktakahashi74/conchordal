@@ -1,0 +1,61 @@
+{
+  "cargo_fmt_all": "passed",
+  "cargo_clippy": 0,
+  "cargo_clippy_all_targets": 101,
+  "all_target_findings": {
+    "src/core/history_prediction.rs": 2,
+    "src/life/action_candidates/energy/release_trace.rs": 1,
+    "src/life/temporal_participation.rs": 12,
+    "src/temporal_cognition/action_profiles/tests.rs": 1
+  },
+  "task_file_findings": 0,
+  "cargo_test_lib": {
+    "passed": 1192,
+    "failed": 0,
+    "ignored": 41
+  },
+  "selected_integration_tests": {
+    "passed": 16,
+    "failed": 0
+  },
+  "cargo_test_full": {
+    "exit": 0,
+    "passed": 1278,
+    "failed": 0,
+    "ignored": 44,
+    "record": "cargo test exit=0 @ 2026-10-20T17:51:32+09:00"
+  },
+  "release_harness": {
+    "exit": 0,
+    "stage1_conditions": 90,
+    "stage1_path_variants": 10,
+    "stage1_pass": false,
+    "stage2_ran": false
+  },
+  "invariance": {
+    "audio_bytes_off_on": "identical",
+    "A2_blocks_per_stream_off_on": "identical",
+    "flora_reference_hashes": "unchanged"
+  },
+  "registration_drafts": "unchanged",
+  "code_changes_after_measurement": false,
+  "files_changed": [
+    "src/config.rs",
+    "src/core/analysis_worker.rs",
+    "src/core/erb.rs",
+    "src/core/habituation.rs",
+    "src/core/stream/analysis.rs",
+    "src/runtime/mod.rs",
+    "src/life/flora.rs",
+    "src/core/info_terrain.rs",
+    "src/core/info_terrain/efe.rs",
+    "src/core/info_terrain/efe/tests.rs",
+    "src/core/info_terrain/efe/evaluation.rs",
+    "src/core/info_terrain/info_terrain_eval/mod.rs",
+    "src/core/info_terrain/info_terrain_eval/controls.rs",
+    "tests/info_terrain.rs"
+  ],
+  "deviations": [
+    "all-target clippy blocked by 16 existing findings in four untouched files"
+  ]
+}

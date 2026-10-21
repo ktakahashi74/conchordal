@@ -1,0 +1,52 @@
+{
+  "utc": "2026-10-20T01:01:07.513866+00:00",
+  "git_describe": "i11-stage1-baseline-32-g4e93573-dirty",
+  "registration_draft": 5,
+  "fmt_all_check_exit": 0,
+  "clippy_default_exit": 0,
+  "clippy_all_targets": {
+    "exit": 101,
+    "preexisting_findings": 16,
+    "files": [
+      "src/core/history_prediction.rs",
+      "src/life/action_candidates/energy/release_trace.rs",
+      "src/life/temporal_participation.rs",
+      "src/temporal_cognition/action_profiles/tests.rs"
+    ],
+    "findings_in_touched_files": 0
+  },
+  "cargo_test_lib": {
+    "passed": 1170,
+    "failed": 0,
+    "ignored": 42
+  },
+  "cargo_test_full": {
+    "status": "cargo test exit=0 @ 2026-10-20T09:58:06+09:00",
+    "passed": 1256,
+    "failed": 0,
+    "ignored": 45
+  },
+  "release_ignored_harness": {
+    "passed": 4,
+    "failed": 0,
+    "log": "../a2-harness-final.log"
+  },
+  "initial_full_suite_failure": "existing runtime_profile_binary fixture temp directory collision; focused serial retry passed; final full suite passed",
+  "artifact_validation": "all provenance source hashes match current files; controls 1875 hops and 1687 evaluation hops; render habitat blocks contiguous and loss-free; external 303 outputs, common 300 stimuli/25 prototypes",
+  "source_changes": {
+    "added": [
+      "src/core/info_terrain/info_terrain_eval/mod.rs",
+      "src/core/info_terrain/info_terrain_eval/controls.rs",
+      "src/core/info_terrain/info_terrain_eval/external.rs"
+    ],
+    "modified": [
+      "src/core/info_terrain.rs (cfg(test) module declaration only)",
+      "src/runtime/mod.rs (cfg(test) AnalysisStream factory only)"
+    ]
+  },
+  "reports_sha256": {
+    "test_report.txt": "3712be75c3551947efeb32d58db1be1eb6e514b65ee6435661806afcb5244c68",
+    "test_status.txt": "9730ff5803cab120174be6811de5496479129f779473c39de080524bbe3a48ba",
+    "target/info-terrain-20261020/a2-harness-final.log": "6d618f4a73243f38b92c6771efb396aac1ee037d484e36410352d07e334f54a2"
+  }
+}

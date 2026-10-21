@@ -1,0 +1,292 @@
+{
+  "utc": "2026-10-20T04:00:59.299344+00:00",
+  "git_describe": "i11-stage1-baseline-32-g4e93573-dirty",
+  "registration_draft": 5,
+  "revision": "A-2",
+  "revision_draft": 3,
+  "fmt_all_check_exit": 0,
+  "clippy_default_exit": 0,
+  "clippy_all_targets": {
+    "exit": 101,
+    "preexisting_findings": 16,
+    "files": [
+      "src/core/history_prediction.rs",
+      "src/life/action_candidates/energy/release_trace.rs",
+      "src/life/temporal_participation.rs",
+      "src/temporal_cognition/action_profiles/tests.rs"
+    ],
+    "findings_in_touched_files": 0
+  },
+  "cargo_test_lib": {
+    "passed": 1176,
+    "failed": 0,
+    "ignored": 39
+  },
+  "requested_integration_tests": {
+    "passed": 16,
+    "failed": 0,
+    "suites": [
+      "flora_invariance",
+      "info_terrain",
+      "render_binary"
+    ]
+  },
+  "cargo_test_full": {
+    "status": "cargo test exit=0 @ 2026-10-20T12:56:57+09:00",
+    "passed": 1262,
+    "failed": 0,
+    "ignored": 42
+  },
+  "release_ignored_harness": {
+    "passed": 1,
+    "failed": 0,
+    "measurements": [
+      "controls",
+      "renders",
+      "external",
+      "wav"
+    ],
+    "paired_comparison_report": "a1_vs_a2.md",
+    "log": "../a3-harness.log"
+  },
+  "artifact_validation": {
+    "all_provenance_source_hashes_current": true,
+    "control_count": 6,
+    "render_count": 6,
+    "external_input_count": 303,
+    "external_common_count": 300,
+    "external_prototype_count": 25,
+    "shared_resample_indices_sha256_le_u64": "17f1afb9759fd9e3741dd633dab5666738ea4149251248f18c49cdde345dc7e1",
+    "rule_s_traces_and_means_identical_to_a1": true,
+    "all_control_and_render_wavs_identical_to_a1": true,
+    "archive_files_unchanged": 367,
+    "registration_drafts_unchanged": true,
+    "baseline_tracked_files_unchanged": true
+  },
+  "gain_check": {
+    "evaluation_window": {
+      "mask_mismatches": 0,
+      "tolerance_failures": 0
+    },
+    "gain_factor": 0.03162277660168379,
+    "mask_mismatches": 0,
+    "maximum_nsgt_amplitude_relative_error": 0.0004883850372372489,
+    "maximum_tolerance_fraction": 2.198608853477993,
+    "scope": "every bin and hop, both indicators and versions, including startup",
+    "tolerance_failures": 4,
+    "violations": [
+      {
+        "absolute_difference": 6.9619844523804986e-06,
+        "allowed_difference": 4.3640541299243275e-06,
+        "bin": 386,
+        "current_amplitudes": [
+          0.0030467951179828103,
+          9.634815661834139e-05
+        ],
+        "frame_id": 95,
+        "frequency_hz": 892.7996826171875,
+        "indicator": "surprise",
+        "post_update_residual_variances": [
+          0.01585413190949085,
+          0.015854119486906303
+        ],
+        "post_update_weights": [
+          [
+            0.0026236117042932137,
+            0.4619297423470824,
+            0.6612951895477961,
+            -0.14046305160063513,
+            -0.2370337839319777,
+            0.0026236117042921243,
+            0.002623611704292112,
+            0.0026236117042921243,
+            0.0026236117042913194,
+            0.0026236117042905092
+          ],
+          [
+            0.00262375262400431,
+            0.46193097256851495,
+            0.661291862614435,
+            -0.14046193082034403,
+            -0.2370331304052767,
+            0.0026237526240031808,
+            0.0026237526240037203,
+            0.0026237526240031808,
+            0.0026237526240026413,
+            0.002623752624002154
+          ]
+        ],
+        "time_sec": 1.0133333333333334,
+        "tolerance_fraction": 1.5953020391388268,
+        "values": [
+          0.03364054129924327,
+          0.03363357931479089
+        ],
+        "version": "extended"
+      },
+      {
+        "absolute_difference": 2.8432494707242295e-05,
+        "allowed_difference": 2.8313012189318722e-05,
+        "bin": 557,
+        "current_amplitudes": [
+          0.006688354525536773,
+          0.00021150442592132428
+        ],
+        "frame_id": 95,
+        "frequency_hz": 3068.765380859375,
+        "indicator": "surprise",
+        "post_update_residual_variances": [
+          0.017921681483176483,
+          0.017921681214682073
+        ],
+        "post_update_weights": [
+          [
+            0.22010347586775392,
+            -0.3273433740539201,
+            -0.711330008349202,
+            0.7064778371386673,
+            -0.29847398271139247,
+            0.2201034758677524,
+            0.22010347586775164,
+            0.2201034758677524,
+            0.2201034758677532,
+            0.220103475867754
+          ],
+          [
+            0.22010353349425607,
+            -0.3273431243800524,
+            -0.7113290916166494,
+            0.7064763051057728,
+            -0.2984731708151599,
+            0.22010353349425604,
+            0.22010353349425604,
+            0.22010353349425446,
+            0.2201035334942549,
+            0.2201035334942553
+          ]
+        ],
+        "time_sec": 1.0133333333333334,
+        "tolerance_fraction": 1.0042200567401531,
+        "values": [
+          0.27310168939847995,
+          0.2731301218931872
+        ],
+        "version": "extended"
+      },
+      {
+        "absolute_difference": 3.128450603393819e-06,
+        "allowed_difference": 1.4229227715720802e-06,
+        "bin": 661,
+        "current_amplitudes": [
+          0.007566155845436028,
+          0.0002392629483325035
+        ],
+        "frame_id": 95,
+        "frequency_hz": 6502.490234375,
+        "indicator": "surprise",
+        "post_update_residual_variances": [
+          0.016419064973051796,
+          0.016419049757713335
+        ],
+        "post_update_weights": [
+          [
+            0.18081207088029083,
+            -0.1441114156745273,
+            -0.5457831717367606,
+            0.4179445193100345,
+            -0.08849825407282111,
+            0.18081207088028978,
+            0.18081207088028928,
+            0.18081207088028978,
+            0.18081207088029033,
+            0.18081207088029083
+          ],
+          [
+            0.18081154837150237,
+            -0.14411148488486497,
+            -0.5457778917846228,
+            0.41794238080100365,
+            -0.08849875785306173,
+            0.18081154837150237,
+            0.18081154837150287,
+            0.1808115483715034,
+            0.1808115483715039,
+            0.18081154837150445
+          ]
+        ],
+        "time_sec": 1.0133333333333334,
+        "tolerance_fraction": 2.198608853477993,
+        "values": [
+          0.004226099265117409,
+          0.004229227715720802
+        ],
+        "version": "extended"
+      },
+      {
+        "absolute_difference": 3.7302786103227126e-06,
+        "allowed_difference": 3.323116218490408e-06,
+        "bin": 518,
+        "current_amplitudes": [
+          0.010175684398855593,
+          0.00032178347930680845
+        ],
+        "frame_id": 96,
+        "frequency_hz": 2315.6357421875,
+        "indicator": "surprise",
+        "post_update_residual_variances": [
+          0.020846979383844177,
+          0.020846981069287968
+        ],
+        "post_update_weights": [
+          [
+            0.41865888555140957,
+            -1.422559595186253,
+            -0.6846984177267154,
+            1.1697994581435658,
+            -0.3072864674688713,
+            0.41865888555140957,
+            0.41865888555140957,
+            0.41865888555140873,
+            0.41865888555140823,
+            0.4186588855514108
+          ],
+          [
+            0.4186593607152479,
+            -1.4225606596278728,
+            -0.684700427996504,
+            1.1697987648112893,
+            -0.3072860196655003,
+            0.4186593607152483,
+            0.4186593607152483,
+            0.41865936071524745,
+            0.41865936071524673,
+            0.41865936071524595
+          ]
+        ],
+        "time_sec": 1.024,
+        "tolerance_fraction": 1.1225242709137828,
+        "values": [
+          0.023231162184904078,
+          0.023227431906293755
+        ],
+        "version": "extended"
+      }
+    ]
+  },
+  "additional_registration_deviations": [],
+  "inherited_a1_conventions": [
+    "Gravity terminal wait extended by 6 s; other scenarios rendered in full and restricted to [2,20) s for evaluation"
+  ],
+  "source_changes": [
+    "src/core/info_terrain.rs",
+    "src/core/info_terrain/info_terrain_eval/mod.rs",
+    "src/core/info_terrain/info_terrain_eval/controls.rs",
+    "src/core/info_terrain/info_terrain_eval/external.rs",
+    "src/core/info_terrain/info_terrain_eval/comparison.rs"
+  ],
+  "reports_sha256": {
+    "test_report.txt": "643a8bbf2194eb7b83a475a9398c1b033ba63bf23ca330a8e07acbd6c0c30aea",
+    "test_status.txt": "635d4997e5bb33d38e1336887f6509f0ebed9a768b042c1b128bae33312f2dc0",
+    "target/info-terrain-20261020/a3-harness.log": "076bb85989e8f6a5ab56b250423fcf76207d233fb1bfb7b7fb6a90bf49c4f61f"
+  }
+}

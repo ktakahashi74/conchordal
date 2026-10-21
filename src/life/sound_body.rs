@@ -32,6 +32,22 @@ pub trait SoundBody: Send {
         amps: &mut [f32],
         space: &Log2Space,
         signal: &ArticulationSignal,
+    ) {
+        self.visit_spectral_partials(space, signal, self.amp(), &mut |hz, amp, bin| {
+            if let Some(bin) = bin {
+                // Preserve direct placement of the existing FM cycle-average grid.
+                amps[bin] += amp;
+            } else {
+                add_log2_energy(amps, space, hz, amp);
+            }
+        });
+    }
+    fn visit_spectral_partials(
+        &mut self,
+        space: &Log2Space,
+        signal: &ArticulationSignal,
+        gain: f32,
+        emit: &mut dyn FnMut(f32, f32, Option<usize>),
     );
     fn apply_timbre_controls(
         &mut self,
@@ -86,17 +102,18 @@ impl SoundBody for SineBody {
         *sample += self.amp * signal.amplitude * self.audio_phase.sin();
     }
 
-    fn project_spectral_body(
+    fn visit_spectral_partials(
         &mut self,
-        amps: &mut [f32],
-        space: &Log2Space,
+        _space: &Log2Space,
         signal: &ArticulationSignal,
+        gain: f32,
+        emit: &mut dyn FnMut(f32, f32, Option<usize>),
     ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
-        let energy = self.amp.max(0.0) * signal.amplitude;
-        add_log2_energy(amps, space, self.freq_hz, energy);
+        let energy = gain.max(0.0) * signal.amplitude;
+        emit(self.freq_hz, energy, None);
     }
 
     fn apply_timbre_controls(
@@ -253,11 +270,12 @@ impl SoundBody for HarmonicBody {
         *sample += self.amp * signal.amplitude * acc;
     }
 
-    fn project_spectral_body(
+    fn visit_spectral_partials(
         &mut self,
-        amps: &mut [f32],
         space: &Log2Space,
         signal: &ArticulationSignal,
+        gain: f32,
+        emit: &mut dyn FnMut(f32, f32, Option<usize>),
     ) {
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
@@ -266,7 +284,7 @@ impl SoundBody for HarmonicBody {
         if partials == 0 {
             return;
         }
-        let amp_scale = self.amp.max(0.0) * signal.amplitude;
+        let amp_scale = gain.max(0.0) * signal.amplitude;
         let cluster_unison = self.active_cluster_unison();
         for idx in 0..partials {
             let ratio = self.partial_ratio(idx);
@@ -282,18 +300,18 @@ impl SoundBody for HarmonicBody {
                 let amplitude = amp_scale * part_amp;
                 let deviation_hz = self.base_freq_hz * self.genotype.vibrato_depth;
                 if deviation_hz <= 0.0 {
-                    add_log2_energy(amps, space, freq, amplitude);
+                    emit(freq, amplitude, None);
                     continue;
                 }
                 // Tone adds the same FM offset to every lane. Uniform phase gives
                 // the arcsine frequency law; integrate its power over each bin.
                 // This cycle average does not recover a finite window's FM phase.
                 let half_step = space.step() * 0.5;
-                for (amp, &center) in amps.iter_mut().zip(&space.centers_log2) {
+                for (bin, &center) in space.centers_log2.iter().enumerate() {
                     let lo = (((center - half_step).exp2() - freq) / deviation_hz).clamp(-1.0, 1.0);
                     let hi = (((center + half_step).exp2() - freq) / deviation_hz).clamp(-1.0, 1.0);
                     let mass = (hi.asin() - lo.asin()) / PI;
-                    *amp += amplitude * mass.max(0.0).sqrt();
+                    emit(center.exp2(), amplitude * mass.max(0.0).sqrt(), Some(bin));
                 }
             }
         }
@@ -445,6 +463,20 @@ impl SoundBody for AnySoundBody {
             AnySoundBody::Sine(body) => body.project_spectral_body(amps, space, signal),
             AnySoundBody::Harmonic(body) => body.project_spectral_body(amps, space, signal),
             AnySoundBody::Dyn(body) => body.project_spectral_body(amps, space, signal),
+        }
+    }
+
+    fn visit_spectral_partials(
+        &mut self,
+        space: &Log2Space,
+        signal: &ArticulationSignal,
+        gain: f32,
+        emit: &mut dyn FnMut(f32, f32, Option<usize>),
+    ) {
+        match self {
+            AnySoundBody::Sine(body) => body.visit_spectral_partials(space, signal, gain, emit),
+            AnySoundBody::Harmonic(body) => body.visit_spectral_partials(space, signal, gain, emit),
+            AnySoundBody::Dyn(body) => body.visit_spectral_partials(space, signal, gain, emit),
         }
     }
 

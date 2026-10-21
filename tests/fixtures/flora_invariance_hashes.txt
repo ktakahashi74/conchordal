@@ -1,0 +1,15 @@
+# Pre-Flora baseline: 1104e553d9225ef869a772af73e4aefa312c0110
+# Input: tests/flora_invariance.rs CASES (embedded scripts, no sample files).
+# Seeds: sine=11, harmonic=12, modal=13, habituation=14.
+# Config: 48000 Hz mono PCM16; nfft=2048; hop_size=512; other keys default.
+# Habituation: sine/harmonic/modal=false; habituation=true.
+# Renderer: conchordal-render, deterministic offline analysis, dev profile.
+# Toolchain: rustc 1.99.0 (b940084d7 2026-09-28)
+# Features: default (simd-wide); platform: Linux x86_64 (GNU).
+# RUSTFLAGS: -C target-cpu=x86-64
+# Each case captured twice below; both WAV hashes must agree.
+# name fnv1a64(complete WAV bytes)
+sine a83ee63023d228a6
+harmonic 77349d05378d3394
+modal 98d6af9efa0f1c1b
+habituation 18f6e989d790a0e0

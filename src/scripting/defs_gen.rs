@@ -57,6 +57,7 @@ impl Sig {
     fn owner(&self) -> Owner {
         match self.params.first().map(String::as_str) {
             Some("PopulationSpec") | Some("Population") => Owner::Population,
+            Some("FloraSpec") | Some("Flora") => Owner::Flora,
             Some("Placement") => Owner::Placement,
             Some("ModePattern") => Owner::ModePattern,
             _ => Owner::Global,
@@ -82,6 +83,8 @@ impl Sig {
                 match self.params[0].as_str() {
                     "PopulationSpec" => "population_spec",
                     "Population" => "population",
+                    "FloraSpec" => "flora_spec",
+                    "Flora" => "flora",
                     "Placement" => "placement",
                     _ => "pattern",
                 },
@@ -169,6 +172,8 @@ fn map_type(t: &str) -> String {
         "array" => "[?]".to_string(),
         "PopulationSpecHandle" => "PopulationSpec".to_string(),
         "PopulationHandle" => "Population".to_string(),
+        "FloraSpecHandle" => "FloraSpec".to_string(),
+        "FloraHandle" => "Flora".to_string(),
         other => other.to_string(),
     }
 }
@@ -269,14 +274,18 @@ pub fn check() -> Result<(), String> {
             Style::Free => 0,
         };
         let actual: BTreeSet<usize> = sigs.iter().map(|s| s.params.len() - receiver).collect();
-        if *owner == Owner::Population {
+        if matches!(owner, Owner::Population | Owner::Flora) {
+            let (spec, handle) = match owner {
+                Owner::Flora => ("FloraSpec", "Flora"),
+                _ => ("PopulationSpec", "Population"),
+            };
             let receivers: BTreeSet<&str> = sigs
                 .iter()
                 .filter_map(|sig| sig.params.first().map(String::as_str))
                 .collect();
             let expected = match doc.patch {
-                Patch::Initial => Some(BTreeSet::from(["PopulationSpec"])),
-                Patch::Live => Some(BTreeSet::from(["Population", "PopulationSpec"])),
+                Patch::Initial => Some(BTreeSet::from([spec])),
+                Patch::Live => Some(BTreeSet::from([handle, spec])),
                 Patch::Na => None,
             };
             if let Some(expected) = expected
@@ -613,6 +622,12 @@ fn localized_type_summary(doc: &docs::TypeDoc, language: ReferenceLanguage) -> &
         return doc.summary;
     }
     match doc.name {
+        "FloraSpec" => {
+            "`flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。"
+        }
+        "Flora" => {
+            "配置されたスペクトル成長。振幅、成長速度、帯域資源の回復時間の更新と解放を指定できる。"
+        }
         "PopulationSpec" => {
             "再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。"
         }
@@ -648,6 +663,7 @@ fn localized_category_title(
         return category.title;
     }
     match category.id {
+        "flora" => "Flora",
         "population_specs" => "PopulationSpec",
         "placement" => "配置",
         "timeline" => "TimelineとPopulation",
@@ -672,6 +688,9 @@ fn localized_category_intro(
         return category.intro;
     }
     match category.id {
+        "flora" => {
+            "Floraは、Landscapeを入力とする作曲上の規則で、指定した周波数範囲にスペクトルの重みを成長させる。聴覚認知のモデルではない。"
+        }
         "population_specs" => {
             "PopulationSpecは、初代のVoiceの特性とPopulation全体の生存規則を定める。生成関数で作り、構築用メソッドで調整し、`place()`でPopulationにする。"
         }
@@ -727,6 +746,17 @@ fn applies_line(doc: &FnDoc, sigs: &[Sig], language: ReferenceLanguage) -> Optio
         return None;
     }
     match doc.owner {
+        Owner::Flora => {
+            let receivers = match doc.patch {
+                Patch::Live => "`FloraSpec`, `Flora`",
+                Patch::Initial => "`FloraSpec`",
+                Patch::Na => unreachable!("Flora method patch contract"),
+            };
+            Some(match language {
+                ReferenceLanguage::English => format!("Applies to: {receivers}."),
+                ReferenceLanguage::Japanese => format!("適用対象：{receivers}。"),
+            })
+        }
         Owner::Population => {
             let has_spec = sigs
                 .iter()

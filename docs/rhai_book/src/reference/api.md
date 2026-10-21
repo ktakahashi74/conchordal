@@ -18,6 +18,8 @@ The surface is split into four tiers. **Core API** is the curated composing surf
 
 | Type | Description |
 |------|-------------|
+| `FloraSpec` | Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent. |
+| `Flora` | Placed spectral growth; supports pending amplitude, growth-rate and renewal patches, and release. |
 | `PopulationSpec` | Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules. |
 | `Population` | Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations. |
 | `Placement` | Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`. |
@@ -35,6 +37,46 @@ The surface is split into four tiers. **Core API** is the curated composing surf
 ## Core API
 
 The curated composing surface. These verbs are enough for every top-level sample (together with Experimental).
+
+### Flora
+
+Flora grows spectral mass over a frequency extent using authored dynamics driven by the Landscape. It is not a model of auditory cognition.
+
+#### `amp`
+
+```rhai,ignore
+amp(level)
+```
+
+Applies to: `FloraSpec`, `Flora`.
+
+Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+
+#### `send`
+
+```rhai,ignore
+send(bus_or_set)
+```
+
+Applies to: `FloraSpec`.
+
+Route Flora to a Bus or BusSet, using the same buses as Populations. Default: habitat_bus | presentation_bus.
+
+#### `place`
+
+```rhai,ignore
+place(flora_spec, placement) -> Flora
+```
+
+Place a Flora over a consonance or random frequency extent. Consonance seeds from the current consonance density mass; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
+
+#### `release`
+
+```rhai,ignore
+release(flora)
+```
+
+Mark a Flora for release using its spec's fade. The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.
 
 ### Population Specs
 
@@ -948,6 +990,66 @@ Cursor event: choose consonance or dissonance valuation. Cursor event: changes p
 ## Experimental
 
 Candidate core verbs under audition: composing surface by intent, but with research-grade stability until validated.
+
+### Flora
+
+#### `flora`
+
+```rhai,ignore
+flora() -> FloraSpec
+```
+
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.
+
+#### `rate`
+
+```rhai,ignore
+rate(per_second)
+```
+
+Applies to: `FloraSpec`, `Flora`.
+
+Set Flora's growth response in [0.05, 8] per second. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+
+#### `renewal`
+
+```rhai,ignore
+renewal(seconds)
+```
+
+Applies to: `FloraSpec`, `Flora`.
+
+Set the time Flora's band resource takes to recover, in [0.5, 600] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+
+#### `fade`
+
+```rhai,ignore
+fade(seconds)
+```
+
+Applies to: `FloraSpec`.
+
+Set Flora's placement and release fade in [0, 60] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+
+#### `tone`
+
+```rhai,ignore
+tone(name)
+```
+
+Applies to: `FloraSpec`.
+
+Choose Flora's tonal atom: exactly "sine" or "resonant". Other strings raise script errors.
+
+#### `residual`
+
+```rhai,ignore
+residual(enabled)
+```
+
+Applies to: `FloraSpec`.
+
+Enable or disable rendering diffuse Flora mass as band noise. Enabled by default.
 
 ### Phonation & Rhythm
 

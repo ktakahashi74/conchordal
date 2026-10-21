@@ -18,6 +18,8 @@ cargo run --bin gen_rhai_defs
 
 | 型 | 説明 |
 |------|-------------|
+| `FloraSpec` | `flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。 |
+| `Flora` | 配置されたスペクトル成長。振幅、成長速度、帯域資源の回復時間の更新と解放を指定できる。 |
 | `PopulationSpec` | 再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。 |
 | `Population` | `place()`が返すPopulation。Voiceが死亡し世代交代しても、同一性を保つ安定した参照。 |
 | `Placement` | 初代のVoiceをどこへ配置するかを表す。`at()`、`consonance()`、`dissonance()`、`edge()`、`gap()`、`random()`、`line()`で作る。 |
@@ -35,6 +37,46 @@ cargo run --bin gen_rhai_defs
 ## Core API
 
 作曲用の基本語彙です。Experimentalと併せてトップレベルのサンプルを記述できます。
+
+### Flora
+
+Floraは、Landscapeを入力とする作曲上の規則で、指定した周波数範囲にスペクトルの重みを成長させる。聴覚認知のモデルではない。
+
+#### `amp`
+
+```rhai,ignore
+amp(level)
+```
+
+適用対象：`FloraSpec`, `Flora`。
+
+Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+
+#### `send`
+
+```rhai,ignore
+send(bus_or_set)
+```
+
+適用対象：`FloraSpec`。
+
+Route Flora to a Bus or BusSet, using the same buses as Populations. Default: habitat_bus | presentation_bus.
+
+#### `place`
+
+```rhai,ignore
+place(flora_spec, placement) -> Flora
+```
+
+Place a Flora over a consonance or random frequency extent. Consonance seeds from the current consonance density mass; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
+
+#### `release`
+
+```rhai,ignore
+release(flora)
+```
+
+Mark a Flora for release using its spec's fade. The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.
 
 ### PopulationSpec
 
@@ -948,6 +990,66 @@ Cursor event: choose consonance or dissonance valuation. Cursor event: changes p
 ## Experimental
 
 Core候補として試聴中の動詞です。作曲用ですが、検証が済むまでは研究段階の安定性です。
+
+### Flora
+
+#### `flora`
+
+```rhai,ignore
+flora() -> FloraSpec
+```
+
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.
+
+#### `rate`
+
+```rhai,ignore
+rate(per_second)
+```
+
+適用対象：`FloraSpec`, `Flora`。
+
+Set Flora's growth response in [0.05, 8] per second. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+
+#### `renewal`
+
+```rhai,ignore
+renewal(seconds)
+```
+
+適用対象：`FloraSpec`, `Flora`。
+
+Set the time Flora's band resource takes to recover, in [0.5, 600] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+
+#### `fade`
+
+```rhai,ignore
+fade(seconds)
+```
+
+適用対象：`FloraSpec`。
+
+Set Flora's placement and release fade in [0, 60] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+
+#### `tone`
+
+```rhai,ignore
+tone(name)
+```
+
+適用対象：`FloraSpec`。
+
+Choose Flora's tonal atom: exactly "sine" or "resonant". Other strings raise script errors.
+
+#### `residual`
+
+```rhai,ignore
+residual(enabled)
+```
+
+適用対象：`FloraSpec`。
+
+Enable or disable rendering diffuse Flora mass as band noise. Enabled by default.
 
 ### Phonationとリズム
 

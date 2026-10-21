@@ -380,7 +380,7 @@ impl ScheduleRenderer {
         rhythms: &NeuralRhythms,
         emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
     ) -> RenderFrame<'_> {
-        self.render_with_source_pcm(phonation_batches, now, rhythms, &mut [], emit)
+        self.render_with_source_pcm(phonation_batches, now, rhythms, &mut [], &mut [], emit)
     }
 
     pub(crate) fn render_with_source_pcm(
@@ -389,6 +389,7 @@ impl ScheduleRenderer {
         now: Tick,
         rhythms: &NeuralRhythms,
         sources: &mut [SourcePcm],
+        flora: &mut [super::flora::Flora],
         mut emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
     ) -> RenderFrame<'_> {
         for source in sources.iter_mut() {
@@ -515,6 +516,9 @@ impl ScheduleRenderer {
         #[cfg(test)]
         if !use_blocks {
             self.render_sample_major_oracle(now, end, rhythms, sources);
+        }
+        for flora in flora {
+            flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
         }
         self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
@@ -1020,6 +1024,7 @@ mod tests {
                         now,
                         &rhythms,
                         &mut sources,
+                        &mut [],
                         |id, start, window, m| matches.push(match_bits(id, start, window, m)),
                     );
                     let expected = oracle.render_with_source_pcm(
@@ -1027,6 +1032,7 @@ mod tests {
                         now,
                         &rhythms,
                         &mut expected_sources,
+                        &mut [],
                         |id, start, window, m| {
                             expected_matches.push(match_bits(id, start, window, m))
                         },
@@ -1258,6 +1264,105 @@ mod tests {
     /// The control keeps observation and learning but strips the policy facts and
 
     #[test]
+    fn flora_enters_external_history_without_entering_voice_body_or_own_habitat() {
+        use crate::core::landscape::Landscape;
+        use crate::core::log2space::Log2Space;
+        use crate::life::flora::Flora;
+        use crate::scenario::{FloraSeeding, FloraSpec, FloraTone};
+        for prototype in [false, true] {
+            for oracle in [false, true] {
+                let time = Timebase {
+                    fs: 8000.0,
+                    hop: 80,
+                };
+                let observer = AcousticTemporalExpectation::new(time.fs as u32).unwrap();
+                let mut expected_history = OwnSoundHistory::new(&observer, 0);
+                let mut tracked = ScheduleRenderer::new(time).with_prototype(prototype);
+                tracked.sample_major_oracle = oracle;
+                let mut voice_only = ScheduleRenderer::new(time).with_prototype(prototype);
+                voice_only.sample_major_oracle = oracle;
+                tracked.prepare_self_sound(std::iter::once(2), 0, &observer);
+                let landscape = Landscape::new(Log2Space::new(110.0, 1760.0, 48));
+                let mut flora = [Flora::new(
+                    7,
+                    FloraSpec {
+                        amp: 0.2,
+                        rate: 2.0,
+                        renewal_sec: 6.0,
+                        fade_sec: 0.0,
+                        tone: FloraTone::Sine,
+                        residual: true,
+                        routing: Routing {
+                            to_presentation: false,
+                            to_habitat: true,
+                        },
+                    },
+                    (220.0, 880.0),
+                    FloraSeeding::Uniform,
+                    42,
+                    &landscape,
+                    time.fs,
+                    time.hop,
+                )];
+                let mut batch = outcome_batch(BodyKind::Sine);
+                batch.tones[0].onset = 0;
+                batch.tones[0].hold_ticks = Some(8000);
+                batch.tones[0].render_modulator =
+                    RenderModulatorSpec::SeqGate { duration_sec: 1.0 };
+                let rhythms = NeuralRhythms::default();
+                let mut sources = [SourcePcm {
+                    id: 2,
+                    generation: 7,
+                    habitat: vec![0.; time.hop],
+                }];
+                for hop in 0..20 {
+                    let now = hop * time.hop as u64;
+                    let batches = if hop == 0 {
+                        std::slice::from_ref(&batch)
+                    } else {
+                        &[]
+                    };
+                    flora[0].advance(&landscape);
+                    let actual = tracked.render_with_source_pcm(
+                        batches,
+                        now,
+                        &rhythms,
+                        &mut sources,
+                        &mut flora,
+                        |_, _, _, _| {},
+                    );
+                    let control = voice_only.render(batches, now, &rhythms);
+                    assert_eq!(actual.presentation, control.presentation);
+                    assert_ne!(actual.habitat, control.habitat);
+                    expected_history.process(
+                        now,
+                        control.presentation,
+                        control.habitat,
+                        actual.habitat,
+                        |_, _, _| {},
+                    );
+                    let own = tracked
+                        .self_sound
+                        .iter()
+                        .flatten()
+                        .find(|s| s.source_id == 2)
+                        .unwrap();
+                    assert_eq!(own.body, control.presentation);
+                    assert_eq!(own.habitat, control.habitat);
+                    assert_eq!(sources[0].habitat, control.habitat);
+                    let end = now + time.hop as u64;
+                    let expected = expected_history.observed_external_energy(now, end).unwrap();
+                    assert!(expected.iter().sum::<f32>() > 0.0);
+                    assert_eq!(
+                        own.history.observed_external_energy(now, end),
+                        Some(expected)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn source_pcm_preserves_mix_and_separates_routing_and_generation() {
         let time = Timebase { fs: 8000., hop: 64 };
         let rhythms = NeuralRhythms::default();
@@ -1302,6 +1407,7 @@ mod tests {
                     now,
                     &rhythms,
                     &mut scratch,
+                    &mut [],
                     |_, _, _, _| {},
                 );
                 let expected = ordinary.render(commands, now, &rhythms);
@@ -1833,6 +1939,7 @@ mod tests {
                     0,
                     &rhythms,
                     &mut sources,
+                    &mut [],
                     |_, _, _, _| {},
                 );
                 assert!(renderer.rest_sources.iter().all(|s| s.quiet_at.is_none()));
@@ -1843,6 +1950,7 @@ mod tests {
                         at,
                         &rhythms,
                         &mut sources,
+                        &mut [],
                         |_, _, _, _| {},
                     );
                     assert!(renderer.rest_sources[1].quiet_at.is_none());
@@ -1860,6 +1968,7 @@ mod tests {
                         at,
                         &rhythms,
                         &mut sources,
+                        &mut [],
                         |_, _, _, _| {},
                     );
                     assert!(sources[0].habitat.iter().all(|x| *x == 0.));

@@ -2,6 +2,8 @@
 // Source of truth: src/scripting/engine.rs (signatures) + src/scripting/docs.rs (docs).
 
 /// # Types
+/// - FloraSpec: Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent.
+/// - Flora: Placed spectral growth; supports pending amplitude, growth-rate and renewal patches, and release.
 /// - PopulationSpec: Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules.
 /// - Population: Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations.
 /// - Placement: Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`.
@@ -77,6 +79,19 @@ fn amp(population: Population, value: i64) -> Population;
 fn amp(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
 /// Amplitude in 0.0-1.0.
 fn amp(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
+
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
+/// Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+fn amp(flora: Flora, level: f64) -> Flora;
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
+/// Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+fn amp(flora: Flora, level: i64) -> Flora;
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
+/// Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+fn amp(flora_spec: FloraSpec, level: f64) -> FloraSpec;
+/// Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.
+/// Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+fn amp(flora_spec: FloraSpec, level: i64) -> FloraSpec;
 
 /// Hold the voice at its pitch: an anchored voice never moves.
 /// `at()` anchors implicitly unless the final spec explicitly seeks consonance and remains free; in that case it sets only the initial position. `freq()` still sets an anchored pitch. A later `anchor()` or `freq()` overrides movement, while a later `seek_consonance()` restores it. Use `anchor()` to hold strategy-placed voices (`consonance()`, `dissonance()`, ...) at their settled position, or to state the intent explicitly.
@@ -281,6 +296,17 @@ fn entrainment(population_spec: PopulationSpec, strength: f64) -> PopulationSpec
 /// Preset-specific acoustic timing influence or beat-rate and phase attraction.
 /// Order-independent with presets: `entrainment(0.8).metric()` and `metric().entrainment(0.8)` are equivalent. Within a selected preset it changes the timing influence, not the preset. For entrained(), it weights acoustic period adaptation and timing costs; for flow(), acoustic timing costs while the renewal scale stays fixed; for steady(), sound-or-skip costs without adapting the period or moving due. For metric(), beat confidence weights its attraction of both effective rate and phase toward the confirmed beat. Omitted values are 0.95 for metric(), 0.5 for entrained()/steady() and 0.05 for flow(). Zero removes these acoustic timing influences; flow still draws irregular renewal intervals. Without an already coupled timing specification, a bare call initializes Coupled timing with its defaults.
 fn entrainment(population_spec: PopulationSpec, strength: i64) -> PopulationSpec;
+
+/// [experimental] Set Flora's placement and release fade in [0, 60] seconds.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
+/// [experimental] Set Flora's placement and release fade in [0, 60] seconds.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
+
+/// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
+/// Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.
+fn flora() -> FloraSpec;
 
 /// Irregular bodily renewal with acoustic timing choices.
 /// Draws irregular renewal intervals at the intrinsic body scale (default 2 Hz), with acoustic context selecting sounding, waiting or skipping. Default entrainment 0.05. `intrinsic_rate()` sets the body scale. Finite note lengths use three times the body period. Explicit `sustain()` retains a Tone between opportunities.
@@ -497,6 +523,10 @@ fn pitch_core(population_spec: PopulationSpec, name: String) -> PopulationSpec;
 /// `place()` is the sole Population boundary. Configure initial-only properties on the PopulationSpec first; the returned Population exposes only live patches and release.
 fn place(population_spec: PopulationSpec, placement: Placement) -> Population;
 
+/// Place a Flora over a consonance or random frequency extent.
+/// Consonance seeds from the current consonance density mass; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
+fn place(flora_spec: FloraSpec, placement: Placement) -> Flora;
+
 /// Scoped callback execution with automatic population release.
 /// Accepts 0-3 positional arguments, or an array of arguments.
 fn play(callback: Fn);
@@ -573,6 +603,19 @@ fn range(pattern: ModePattern, min_mul: i64, max_mul: f64) -> ModePattern;
 /// Frequency multipliers relative to the fundamental; only valid on `landscape_*_modes()`.
 fn range(pattern: ModePattern, min_mul: i64, max_mul: i64) -> ModePattern;
 
+/// [experimental] Set Flora's growth response in [0.05, 8] per second.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn rate(flora: Flora, per_second: f64) -> Flora;
+/// [experimental] Set Flora's growth response in [0.05, 8] per second.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn rate(flora: Flora, per_second: i64) -> Flora;
+/// [experimental] Set Flora's growth response in [0.05, 8] per second.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn rate(flora_spec: FloraSpec, per_second: f64) -> FloraSpec;
+/// [experimental] Set Flora's growth response in [0.05, 8] per second.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn rate(flora_spec: FloraSpec, per_second: i64) -> FloraSpec;
+
 /// [tuning] Ratio-based movement candidates; 0 disables.
 fn ratio_candidates(population: Population, count: i64) -> Population;
 /// [tuning] Ratio-based movement candidates; 0 disables.
@@ -602,8 +645,29 @@ fn recovery(population_spec: PopulationSpec, seconds: i64) -> PopulationSpec;
 /// Release is terminal at the scripting surface: later live patches on the same Population are ignored.
 fn release(population: Population);
 
+/// Mark a Flora for release using its spec's fade.
+/// The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.
+fn release(flora: Flora);
+
+/// [experimental] Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn renewal(flora: Flora, seconds: f64) -> Flora;
+/// [experimental] Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn renewal(flora: Flora, seconds: i64) -> Flora;
+/// [experimental] Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn renewal(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
+/// [experimental] Set the time Flora's band resource takes to recover, in [0.5, 600] seconds.
+/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
+fn renewal(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
+
 /// Repeated/pulsed phonation mode.
 fn repeat(population_spec: PopulationSpec) -> PopulationSpec;
+
+/// [experimental] Enable or disable rendering diffuse Flora mass as band noise.
+/// Enabled by default.
+fn residual(flora_spec: FloraSpec, enabled: bool) -> FloraSpec;
 
 /// Background turnover rate per second.
 fn respawn_background_death_rate(population_spec: PopulationSpec, rate: f64) -> PopulationSpec;
@@ -719,6 +783,13 @@ fn send(population_spec: PopulationSpec, bus: Bus) -> PopulationSpec;
 /// Route the voice to specific buses; accepts a `Bus` or a `BusSet`.
 /// PopulationSpec only. `send(habitat_bus)` makes a voice sensed by the ecology but absent from the presented sound; `send(presentation_bus)` is heard without perturbing the ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).
 fn send(population_spec: PopulationSpec, bus: BusSet) -> PopulationSpec;
+
+/// Route Flora to a Bus or BusSet, using the same buses as Populations.
+/// Default: habitat_bus | presentation_bus.
+fn send(flora_spec: FloraSpec, bus_or_set: Bus) -> FloraSpec;
+/// Route Flora to a Bus or BusSet, using the same buses as Populations.
+/// Default: habitat_bus | presentation_bus.
+fn send(flora_spec: FloraSpec, bus_or_set: BusSet) -> FloraSpec;
 
 /// [tuning] Cursor event: nonnegative dimensionless Voice interaction strength (default 1).
 /// Cursor event: changes interaction strength from this script time onward. Dimensionless, nonnegative, default 1.
@@ -856,6 +927,10 @@ fn tie(population_spec: PopulationSpec, p: f64) -> PopulationSpec;
 /// Extend a living Tone with probability p at an opportunity without pending pitch.
 /// Initial-only probability in [0,1] for free-pitch explicit sustained metric/entrained/steady/flow with gate_snap or rearticulate. At a selected opportunity without pending pitch, extend the living Tone with probability p; otherwise attack. Pending targets and initial/post-rest onsets still attack. Default 1 for sustained metric, 0 for sustained participation. Finite Off, tails, rest and release take priority. Unsupported explicit settings warn and are ignored. This thins opportunities; it does not select phrases or move their timing.
 fn tie(population_spec: PopulationSpec, p: i64) -> PopulationSpec;
+
+/// [experimental] Choose Flora's tonal atom: exactly "sine" or "resonant".
+/// Other strings raise script errors.
+fn tone(flora_spec: FloraSpec, name: String) -> FloraSpec;
 
 /// [tuning] Number of top candidates kept by the peak sampler.
 fn top_k(population: Population, count: i64) -> Population;

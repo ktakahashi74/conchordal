@@ -23,6 +23,8 @@ impl ScriptHost {
 
         engine.register_type_with_name::<PopulationSpecHandle>("PopulationSpec");
         engine.register_type_with_name::<PopulationHandle>("Population");
+        engine.register_type_with_name::<FloraSpecHandle>("FloraSpec");
+        engine.register_type_with_name::<FloraHandle>("Flora");
         engine.register_type_with_name::<Placement>("Placement");
         engine.register_type_with_name::<Bus>("Bus");
         engine.register_type_with_name::<BusSet>("BusSet");
@@ -64,6 +66,103 @@ impl ScriptHost {
                 spec
             },
         });
+
+        engine.register_fn("flora", || FloraSpecHandle {
+            spec: FloraSpec {
+                amp: 0.03,
+                rate: 4.0,
+                renewal_sec: 10.0,
+                fade_sec: 2.0,
+                tone: FloraTone::Sine,
+                residual: true,
+                routing: Routing::default(),
+            },
+        });
+        for name in ["amp", "rate", "renewal", "fade"] {
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, spec: FloraSpecHandle, value: FLOAT| {
+                    spec.with_numeric(name, value, call.call_position())
+                },
+            );
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, spec: FloraSpecHandle, value: INT| {
+                    spec.with_numeric(name, value as FLOAT, call.call_position())
+                },
+            );
+        }
+        for name in ["amp", "rate", "renewal"] {
+            let ctx_float = ctx.clone();
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, handle: FloraHandle, value: FLOAT| {
+                    let mut ctx = ctx_float.lock().expect("lock script context");
+                    update_flora_numeric(&mut ctx, handle, name, value, call.call_position())
+                },
+            );
+            let ctx_int = ctx.clone();
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, handle: FloraHandle, value: INT| {
+                    let mut ctx = ctx_int.lock().expect("lock script context");
+                    update_flora_numeric(
+                        &mut ctx,
+                        handle,
+                        name,
+                        value as FLOAT,
+                        call.call_position(),
+                    )
+                },
+            );
+        }
+        engine.register_fn(
+            "tone",
+            |call: NativeCallContext,
+             mut spec: FloraSpecHandle,
+             name: &str|
+             -> Result<FloraSpecHandle, Box<EvalAltResult>> {
+                spec.spec.tone = parse_enum(
+                    "Flora tone",
+                    name,
+                    call.call_position(),
+                    &[("sine", FloraTone::Sine), ("resonant", FloraTone::Resonant)],
+                )?;
+                Ok(spec)
+            },
+        );
+        engine.register_fn("residual", |mut spec: FloraSpecHandle, enabled: bool| {
+            spec.spec.residual = enabled;
+            spec
+        });
+        engine.register_fn("send", |mut spec: FloraSpecHandle, bus: Bus| {
+            spec.spec.routing = bus.routing;
+            spec
+        });
+        engine.register_fn("send", |mut spec: FloraSpecHandle, buses: BusSet| {
+            spec.spec.routing = buses.routing();
+            spec
+        });
+        let ctx_place_flora = ctx.clone();
+        engine.register_fn(
+            "place",
+            move |call: NativeCallContext, spec: FloraSpecHandle, placement: Placement| {
+                ctx_place_flora
+                    .lock()
+                    .expect("lock script context")
+                    .place_flora(spec, placement, call.call_position())
+            },
+        );
+        let ctx_release_flora = ctx.clone();
+        engine.register_fn(
+            "release",
+            move |call: NativeCallContext, handle: FloraHandle| {
+                ctx_release_flora
+                    .lock()
+                    .expect("lock script context")
+                    .release_flora(handle.id, call.call_position());
+            },
+        );
 
         engine.register_fn("|", |left: Bus, right: Bus| left.set().combine(right.set()));
         engine.register_fn("|", |left: BusSet, right: Bus| left.combine(right.set()));

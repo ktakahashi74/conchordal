@@ -22,6 +22,13 @@ pub(super) struct PopulationState {
 }
 
 #[derive(Clone, Debug)]
+struct FloraState {
+    spec: FloraSpec,
+    status: PopulationStatus,
+    pending_patch: Option<FloraPatch>,
+}
+
+#[derive(Clone, Debug)]
 pub struct ScriptWarning {
     pub message: String,
     pub position: Position,
@@ -32,6 +39,7 @@ pub(super) type ScriptWarnings = Arc<Mutex<Vec<ScriptWarning>>>;
 #[derive(Debug, Clone)]
 pub(super) struct ScopeFrame {
     pub(super) created_populations: Vec<u64>,
+    created_flora: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +49,8 @@ pub struct ScriptContext {
     pub seed: u64,
     pub next_event_order: u64,
     pub(super) next_population_id: u64,
+    next_flora_id: u64,
+    flora: BTreeMap<u64, FloraState>,
     pub(super) next_voice_id: u64,
     pub(super) populations: BTreeMap<u64, PopulationState>,
     pub(super) scopes: Vec<ScopeFrame>,
@@ -80,11 +90,114 @@ impl ScriptContext {
             seed,
             next_event_order: 1,
             next_population_id: 1,
+            next_flora_id: 1,
+            flora: BTreeMap::new(),
             next_voice_id: 1,
             populations: BTreeMap::new(),
             scopes: Vec::new(),
             temporal_mode_declared: false,
             warnings: Arc::default(),
+        }
+    }
+
+    pub(super) fn place_flora(
+        &mut self,
+        spec: FloraSpecHandle,
+        placement: Placement,
+        position: Position,
+    ) -> Result<FloraHandle, Box<EvalAltResult>> {
+        let error =
+            |message: String| Box::new(EvalAltResult::ErrorRuntime(message.into(), position));
+        let (target, sampling, min_freq, max_freq, min_dist_erb, tension) = match placement.strategy
+        {
+            Some(SpawnStrategy::Field {
+                target,
+                sampling,
+                min_freq,
+                max_freq,
+                min_dist_erb,
+                tension,
+            }) => (target, sampling, min_freq, max_freq, min_dist_erb, tension),
+            Some(SpawnStrategy::Linear { .. }) => {
+                return Err(error("Flora rejects line placement".into()));
+            }
+            None => return Err(error("Flora rejects at placement".into())),
+        };
+        let (seeding, default_spacing) = match target {
+            FieldTarget::Consonance => (FloraSeeding::Consonance, 1.0),
+            FieldTarget::Uniform => (FloraSeeding::Uniform, 0.0),
+            other => return Err(error(format!("Flora rejects {other:?} placement target"))),
+        };
+        if placement.count != 1 {
+            return Err(error("Flora placement count must be 1".into()));
+        }
+        if sampling != FieldSampling::Density {
+            return Err(error("Flora rejects peak sampling; use density".into()));
+        }
+        if tension != 0.0 {
+            return Err(error("Flora placement tension must be 0".into()));
+        }
+        if min_dist_erb != default_spacing {
+            return Err(error(format!(
+                "Flora placement spacing must be {default_spacing}"
+            )));
+        }
+        if [min_freq, max_freq]
+            .iter()
+            .any(|freq| !(MIN_FREQ_HZ..=MAX_FREQ_HZ).contains(freq))
+        {
+            return Err(error(format!(
+                "field placement bounds must be finite and within {MIN_FREQ_HZ}..={MAX_FREQ_HZ} Hz"
+            )));
+        }
+        // Scripts have no runtime space; use the initial grid's 96 bins/octave.
+        if (f64::from(max_freq) / f64::from(min_freq)).log2() < 1.0 / 96.0 {
+            return Err(error(
+                "Flora extent must span at least one Log2Space bin (1/96 octave)".into(),
+            ));
+        }
+        let id = self.next_flora_id;
+        self.next_flora_id = self.next_flora_id.wrapping_add(1);
+        self.flora.insert(
+            id,
+            FloraState {
+                spec: spec.spec,
+                status: PopulationStatus::Live,
+                pending_patch: None,
+            },
+        );
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.created_flora.push(id);
+        }
+        self.push_event(
+            self.cursor,
+            vec![Action::PlaceFlora {
+                flora_id: id,
+                spec: spec.spec,
+                extent_hz: (min_freq, max_freq),
+                seeding,
+            }],
+        );
+        Ok(FloraHandle { id })
+    }
+
+    pub(super) fn release_flora(&mut self, flora_id: u64, position: Position) {
+        let Some(flora) = self.flora.get_mut(&flora_id) else {
+            self.warn(format!("release on unknown Flora {flora_id}"), position);
+            return;
+        };
+        match flora.status {
+            PopulationStatus::Live => flora.status = PopulationStatus::ReleasePending,
+            PopulationStatus::ReleasePending => {
+                self.warn(
+                    format!("release ignored for Flora {flora_id}: release already pending"),
+                    position,
+                );
+            }
+            PopulationStatus::Released => self.warn(
+                format!("release ignored for inactive Flora {flora_id}"),
+                position,
+            ),
         }
     }
 
@@ -114,6 +227,7 @@ impl ScriptContext {
     pub(super) fn push_scope(&mut self) {
         self.scopes.push(ScopeFrame {
             created_populations: Vec::new(),
+            created_flora: Vec::new(),
         });
     }
 
@@ -159,6 +273,20 @@ impl ScriptContext {
                 PopulationStatus::Released => {}
             }
         }
+        for flora_id in scope.created_flora {
+            let flora = self.flora.get_mut(&flora_id).expect("scoped Flora");
+            if flora.status == PopulationStatus::Released {
+                continue;
+            }
+            if let Some(patch) = flora.pending_patch.take() {
+                updates.push(Action::UpdateFlora { flora_id, patch });
+            }
+            releases.push(Action::ReleaseFlora {
+                flora_id,
+                fade_sec: flora.spec.fade_sec,
+            });
+            flora.status = PopulationStatus::Released;
+        }
         if !updates.is_empty() || !crowding_updates.is_empty() || !releases.is_empty() {
             updates.extend(crowding_updates);
             updates.extend(releases);
@@ -180,7 +308,9 @@ impl ScriptContext {
         let mut max_end: f32 = 0.0;
         for event in &self.scenario.events {
             for action in &event.actions {
-                if let Action::ReleasePopulation { fade_sec, .. } = action {
+                if let Action::ReleasePopulation { fade_sec, .. }
+                | Action::ReleaseFlora { fade_sec, .. } = action
+                {
                     let fade = fade_sec.max(0.0);
                     max_end = max_end.max(event.time + fade);
                 }
@@ -233,6 +363,22 @@ impl ScriptContext {
                 }
                 population.pending_release = false;
                 population.status = PopulationStatus::Released;
+            }
+        }
+
+        for (&flora_id, flora) in &mut self.flora {
+            if flora.status == PopulationStatus::Released {
+                continue;
+            }
+            if let Some(patch) = flora.pending_patch.take() {
+                update_actions.push(Action::UpdateFlora { flora_id, patch });
+            }
+            if flora.status == PopulationStatus::ReleasePending {
+                release_actions.push(Action::ReleaseFlora {
+                    flora_id,
+                    fade_sec: flora.spec.fade_sec,
+                });
+                flora.status = PopulationStatus::Released;
             }
         }
 
@@ -596,4 +742,36 @@ impl ScriptContext {
             position,
         );
     }
+}
+
+pub(super) fn update_flora_numeric(
+    ctx: &mut ScriptContext,
+    handle: FloraHandle,
+    name: &str,
+    value: FLOAT,
+    position: Position,
+) -> Result<FloraHandle, Box<EvalAltResult>> {
+    let value = validate_flora_numeric(name, value, position)?;
+    let Some(flora) = ctx.flora.get_mut(&handle.id) else {
+        ctx.warn(
+            format!("{name} ignored for unknown Flora {}", handle.id),
+            position,
+        );
+        return Ok(handle);
+    };
+    if flora.status == PopulationStatus::Live {
+        let patch = flora.pending_patch.get_or_insert_with(FloraPatch::default);
+        match name {
+            "amp" => patch.amp = Some(value),
+            "rate" => patch.rate = Some(value),
+            "renewal" => patch.renewal_sec = Some(value),
+            _ => unreachable!("registered Flora patch parameter"),
+        }
+    } else {
+        ctx.warn(
+            format!("{name} ignored for inactive Flora {}", handle.id),
+            position,
+        );
+    }
+    Ok(handle)
 }

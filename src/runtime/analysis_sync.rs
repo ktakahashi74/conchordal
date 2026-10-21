@@ -10,7 +10,7 @@ pub(super) fn analysis_ok(frame_idx: u64, last_analysis: Option<u64>, max_lag: u
     }
 }
 
-/// Returns `(updated, unavailable)`. `unavailable` means the analysis thread is
+/// Returns `(updated, unavailable, space_changed)`. `unavailable` means the analysis thread is
 /// gone or invalidated: fixed-lag field analysis cannot generate the recovery
 /// window while waiting, so the caller must end the run instead of waiting.
 pub(super) fn merge_latest_analysis_results(
@@ -21,7 +21,7 @@ pub(super) fn merge_latest_analysis_results(
     lparams: &LandscapeParams,
     last_analysis_frame: &mut Option<u64>,
     frame_idx: u64,
-) -> (bool, bool) {
+) -> (bool, bool, bool) {
     let mut latest_audio: Option<(u64, Landscape)> = None;
     let mut unavailable = false;
     loop {
@@ -44,7 +44,7 @@ pub(super) fn merge_latest_analysis_results(
         }
     }
     let Some((_analysis_id, frame)) = latest_audio else {
-        return (false, unavailable);
+        return (false, unavailable, false);
     };
 
     let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
@@ -114,7 +114,7 @@ pub(super) fn merge_latest_analysis_results(
         );
     }
 
-    (true, unavailable)
+    (true, unavailable, space_changed)
 }
 
 /// Advance a habituation field one hop from the landscape's raw views, then
@@ -227,7 +227,7 @@ pub(super) fn wait_for_analysis(
 ) -> bool {
     let mut analysis_updated = false;
     loop {
-        let (merged, analysis_unavailable) = merge_latest_analysis_results(
+        let (merged, analysis_unavailable, space_changed) = merge_latest_analysis_results(
             analysis_result_rx,
             &mut state.current_landscape,
             &mut state.log_space,
@@ -236,6 +236,11 @@ pub(super) fn wait_for_analysis(
             &mut state.last_analysis_frame,
             state.frame_idx,
         );
+        if space_changed {
+            for flora in &mut state.pop.flora {
+                flora.on_space_change(&state.log_space);
+            }
+        }
         if merged {
             analysis_updated = true;
         }

@@ -11,6 +11,7 @@
 # Concepts
 
 - [Population — A Persistent Unit of Voices](concepts/voice_life.md)
+- [Flora](concepts/flora.md)
 - [Voice and Landscape — Sound–Environment Feedback](concepts/ecological_loop.md)
 - [Consonance Field — A Terrain for Evaluating Pitch](concepts/consonance.md)
 - [Rhythm: Evidence and Participation](concepts/rhythm.md)

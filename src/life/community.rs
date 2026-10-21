@@ -83,6 +83,8 @@ pub struct Community {
     pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
     birth_surrogate: std::cell::RefCell<Option<super::sound::birth_surrogate::BirthSurrogate>>,
     pub voices: Vec<Voice>,
+    pub(crate) flora: Vec<super::flora::Flora>,
+    pub(crate) has_placed_flora: bool,
     current_frame: u64,
     pub abort_requested: bool,
     pub global_coupling: f32,
@@ -212,6 +214,8 @@ impl Community {
             birth_surrogate: std::cell::RefCell::new(None),
             rest_enabled: false,
             voices: Vec::new(),
+            flora: Vec::new(),
+            has_placed_flora: false,
             current_frame: 0,
             abort_requested: false,
             global_coupling: 1.0,
@@ -690,6 +694,16 @@ impl Community {
             total.fill(0.0);
             for voice in &mut self.voices {
                 let power = voice.project_loo_power(&landscape.space);
+                for (sum, &value) in total.iter_mut().zip(power) {
+                    *sum += value;
+                }
+            }
+            // Previous rendered hop, like each Voice's last_signal; never future biomass.
+            for flora in &self.flora {
+                let power = flora.habitat_power_scan();
+                landscape
+                    .space
+                    .assert_scan_len_named(power, "flora_habitat_power_scan");
                 for (sum, &value) in total.iter_mut().zip(power) {
                     *sum += value;
                 }

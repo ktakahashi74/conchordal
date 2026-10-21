@@ -987,3 +987,66 @@ pub struct PopulationSpecHandle {
 pub struct PopulationHandle {
     pub(super) id: u64,
 }
+
+#[derive(Clone, Debug)]
+pub(super) struct FloraSpecHandle {
+    pub(super) spec: FloraSpec,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct FloraHandle {
+    pub(super) id: u64,
+}
+
+pub(super) fn validate_flora_numeric(
+    name: &str,
+    value: FLOAT,
+    position: Position,
+) -> Result<f32, Box<EvalAltResult>> {
+    let (min, max) = match name {
+        "amp" => (0.0, 1.0),
+        "rate" => (0.05, 8.0),
+        "renewal" => (0.5, 600.0),
+        "fade" => (0.0, 60.0),
+        _ => unreachable!("registered Flora parameter"),
+    };
+    if !value.is_finite() {
+        return Err(Box::new(EvalAltResult::ErrorRuntime(
+            format!("Flora {name} must be finite before and after f32 conversion").into(),
+            position,
+        )));
+    }
+    if !(min..=max).contains(&value) {
+        return Err(Box::new(EvalAltResult::ErrorRuntime(
+            format!("Flora {name} must be within [{min}, {max}]").into(),
+            position,
+        )));
+    }
+    let converted = value as f32;
+    if !converted.is_finite() {
+        return Err(Box::new(EvalAltResult::ErrorRuntime(
+            format!("Flora {name} must be finite before and after f32 conversion").into(),
+            position,
+        )));
+    }
+    Ok(converted)
+}
+
+impl FloraSpecHandle {
+    pub(super) fn with_numeric(
+        mut self,
+        name: &str,
+        value: FLOAT,
+        position: Position,
+    ) -> Result<Self, Box<EvalAltResult>> {
+        let value = validate_flora_numeric(name, value, position)?;
+        match name {
+            "amp" => self.spec.amp = value,
+            "rate" => self.spec.rate = value,
+            "renewal" => self.spec.renewal_sec = value,
+            "fade" => self.spec.fade_sec = value,
+            _ => unreachable!("registered Flora spec parameter"),
+        }
+        Ok(self)
+    }
+}

@@ -693,6 +693,21 @@ impl Default for RespawnPeakBiasConfig {
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum Action {
+    PlaceFlora {
+        flora_id: u64,
+        spec: FloraSpec,
+        extent_hz: (f32, f32),
+        seeding: FloraSeeding,
+    },
+    UpdateFlora {
+        flora_id: u64,
+        patch: FloraPatch,
+    },
+    ReleaseFlora {
+        flora_id: u64,
+        fade_sec: f32,
+    },
+
     Spawn {
         population_id: u64,
         ids: Vec<u64>,
@@ -736,6 +751,11 @@ pub enum Action {
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Action::PlaceFlora { flora_id, .. } => write!(f, "Place Flora={flora_id}"),
+            Action::UpdateFlora { flora_id, .. } => write!(f, "Update Flora={flora_id}"),
+            Action::ReleaseFlora { flora_id, fade_sec } => {
+                write!(f, "Release Flora={flora_id} fade={fade_sec:.3}")
+            }
             Action::Spawn {
                 population_id, ids, ..
             } => {

@@ -336,3 +336,76 @@ fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
     join(wiring).unwrap();
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn flora_force_stop_ends_generation_without_waiting_for_release() {
+    for prototype in [false, true] {
+        let dir = std::env::temp_dir().join(format!(
+            "conchordal-flora-stop-{}-{prototype}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let script = dir.join("input.rhai");
+        std::fs::write(
+            &script,
+            "seed(21); place(flora().amp(0.2).fade(60), random(220, 880)); wait(0.01);",
+        )
+        .unwrap();
+        let scenario = compile_scenario_from_script(&script, None).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let trigger = stop.clone();
+        let mut opts = options();
+        opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
+            if state.frame_idx == 8 {
+                assert!(!state.pop.flora.is_empty());
+                assert!(state.scenario_end_tick.is_some());
+                trigger.store(true, Ordering::SeqCst);
+            }
+        }));
+        let profile = dir.join("profile.json");
+        opts.profile = Some(
+            RunProfile::create(
+                profile.to_str().unwrap(),
+                21,
+                false,
+                0.,
+                false,
+                48000,
+                512,
+                None,
+            )
+            .unwrap(),
+        );
+        let mut config = AppConfig::default();
+        config.analysis.nfft = 2048;
+        config.render_prototype = prototype;
+        let wiring = wire_runtime(
+            &config,
+            48000,
+            "Flora stop".into(),
+            scenario,
+            stop.clone(),
+            opts,
+        )
+        .unwrap();
+        join(wiring).unwrap();
+        assert!(stop.load(Ordering::SeqCst));
+        let profile: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(profile).unwrap()).unwrap();
+        let hops = profile["hops"].as_array().unwrap();
+        assert_eq!(hops.len(), 9);
+        #[cfg(feature = "profile-alloc")]
+        {
+            let counts: Vec<_> = hops
+                .iter()
+                .map(|hop| hop["worker_allocations"]["count"].as_u64().unwrap())
+                .collect();
+            println!("F12_WORKER_ALLOCATIONS prototype={prototype} counts={counts:?}");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

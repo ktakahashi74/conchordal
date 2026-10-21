@@ -1,0 +1,104 @@
+use std::fs;
+use std::sync::{Arc, atomic::AtomicBool};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use conchordal::{app::run_render, config::AppConfig};
+
+#[path = "support/test_output_directory.rs"]
+mod test_output_directory;
+use test_output_directory::TestOutputDirectory;
+
+#[test]
+fn flora_finishes_with_its_fade_in_both_renderers() {
+    let id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "conchordal-flora-runtime-{}-{id}",
+        std::process::id()
+    ));
+    let _guard = TestOutputDirectory::new(dir.clone());
+    for prototype in [false, true] {
+        for (name, script, end) in [
+            (
+                "lone",
+                "place(flora().amp(0.4).fade(0.1), random(220, 880)); wait(0.2);",
+                0.3,
+            ),
+            (
+                "fade_in",
+                "place(flora().amp(0.4).fade(1), random(220, 880)); wait(0.05);",
+                1.05,
+            ),
+            (
+                "explicit",
+                "let m = place(flora().amp(0.4).fade(0.4), random(220, 880)); wait(0.1); release(m);",
+                0.5,
+            ),
+            (
+                "zero",
+                "place(flora().amp(0.4).fade(0), random(220, 880)); wait(0.1);",
+                0.1,
+            ),
+            (
+                "early_flora",
+                "place(sine().brain(\"drone\").sustain().amp(0.1), at(330)); let m = place(flora().amp(0.4).fade(0), random(220, 880)); wait(0.1); release(m); wait(0.2);",
+                0.3,
+            ),
+        ] {
+            let script_path = dir.join("input.rhai");
+            fs::write(&script_path, script).unwrap();
+            let wav = dir.join(format!("{name}-{prototype}.wav"));
+            let report = dir.join(format!("{name}-{prototype}.jsonl"));
+            let mut config = AppConfig::default();
+            config.analysis.nfft = 2048;
+            config.render_prototype = prototype;
+            let hop_sec = config.analysis.hop_size as f64 / config.audio.sample_rate as f64;
+            run_render(
+                script_path.to_str().unwrap(),
+                wav.to_string_lossy().into_owned(),
+                config,
+                Arc::new(AtomicBool::new(false)),
+                Some(21),
+                Some(report.to_str().unwrap()),
+                0,
+            )
+            .unwrap();
+            let mut reader = hound::WavReader::open(&wav).unwrap();
+            let seconds = reader.duration() as f64 / reader.spec().sample_rate as f64;
+            // Placement/Finish dispatch and release completion round to hop boundaries.
+            assert!(seconds >= end, "{name}/{prototype}: {seconds} < {end}");
+            if name != "early_flora" {
+                assert!(
+                    seconds <= end + 3.0 * hop_sec,
+                    "{name}/{prototype}: {seconds}"
+                );
+            }
+            let pcm: Vec<_> = reader.samples::<i16>().map(Result::unwrap).collect();
+            assert!(pcm.iter().any(|x| *x != 0), "{name}/{prototype}: silent");
+            assert!(
+                pcm[pcm.len() - 512..].iter().all(|x| *x == 0),
+                "{name}/{prototype}: tail cut"
+            );
+            let rows: Vec<serde_json::Value> = fs::read_to_string(report)
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+            let flora: Vec<_> = rows.iter().filter(|r| r["type"] == "flora").collect();
+            assert!(!flora.is_empty());
+            assert_eq!(flora[0]["age_sec"].as_f64().unwrap(), hop_sec);
+            assert!(flora[0]["tonal_energy"].as_f64().unwrap() > 0.);
+            assert!(flora.windows(2).all(|w| w[1]["time_sec"].as_f64().unwrap()
+                - w[0]["time_sec"].as_f64().unwrap()
+                >= 1.0 - hop_sec));
+            assert_eq!(
+                rows.iter()
+                    .filter(|r| r["type"] == "rhythm_summary" && r["population_id"].is_null())
+                    .count(),
+                1
+            );
+        }
+    }
+}

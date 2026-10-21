@@ -827,3 +827,258 @@ fn representative_density(
     }
     density
 }
+
+#[test]
+fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
+    use crate::life::community::Community;
+    use crate::life::flora::Flora;
+    use crate::scenario::control::Routing;
+    use crate::scenario::{FloraPatch, FloraSeeding, FloraSpec, FloraTone};
+
+    let mut config = AppConfig::default();
+    config.psychoacoustics.habituation.enabled = false;
+    let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(&config, FS as u32);
+    let template = AnalysisStream::new(params.clone(), kernel);
+    let timebase = Timebase { fs: FS, hop };
+    let mut over_removal_cases = Vec::new();
+    for (tone, residual, habitat) in [
+        (FloraTone::Sine, false, true),
+        (FloraTone::Resonant, true, true),
+        (FloraTone::Sine, true, true),
+        (FloraTone::Sine, true, false),
+    ] {
+        let mut terrain = template.last().clone();
+        terrain.consonance_field_level_eff.fill(0.5);
+        terrain.harmonicity01.fill(0.0);
+        let peak = terrain
+            .space
+            .nearest_index(if residual { 466.0 } else { 440.0 });
+        terrain.consonance_density_mass_eff.fill(0.0);
+        for (i, value) in terrain.consonance_density_mass_eff.iter_mut().enumerate() {
+            *value = crate::core::float::unit_gaussian(
+                i as f32 - peak as f32,
+                if residual { 8.0 } else { 0.2 },
+            );
+        }
+        let flora_spec = FloraSpec {
+            amp: 0.35,
+            rate: 4.,
+            renewal_sec: 10.,
+            fade_sec: 0.,
+            tone,
+            residual,
+            routing: Routing {
+                to_habitat: habitat,
+                to_presentation: !habitat,
+            },
+        };
+        let mut flora = [Flora::new(
+            7,
+            flora_spec,
+            (330., 660.),
+            FloraSeeding::Consonance,
+            42,
+            &terrain,
+            FS,
+            hop,
+        )];
+        let mut flora_only = flora[0].clone();
+        let mut own_recipe = recipe("sine", 440., &terrain);
+        own_recipe.hold = (hop * 300) as u64;
+        own_recipe.modulator = RenderModulatorSpec::SeqGate { duration_sec: 10.0 };
+        let own_batch = [batch(2, &own_recipe)];
+        let mut mixed_renderer = ScheduleRenderer::new(timebase);
+        let mut own_renderer = ScheduleRenderer::new(timebase);
+        let mut mixed_stream = template.clone();
+        let mut removed_stream = template.clone();
+        let mut reference_stream = template.clone();
+        let mut sources = [crate::life::schedule_renderer::SourcePcm {
+            id: 2,
+            generation: 0,
+            habitat: vec![0.; hop],
+        }];
+        let mut solo_p = vec![0.; hop];
+        let mut solo_h = vec![0.; hop];
+        for frame in 0..256 {
+            if frame == 64 || frame == 128 {
+                let patch = FloraPatch {
+                    amp: Some(if frame == 64 { 0. } else { flora_spec.amp }),
+                    ..Default::default()
+                };
+                flora[0].apply_patch(&patch);
+                flora_only.apply_patch(&patch);
+            }
+            if frame == 192 {
+                flora[0].release(0.2);
+                flora_only.release(0.2);
+            }
+            flora[0].advance(&terrain);
+            flora_only.advance(&terrain);
+            let commands = if frame == 0 { &own_batch[..] } else { &[] };
+            let now = (frame * hop) as u64;
+            let full = mixed_renderer
+                .render_with_source_pcm(
+                    commands,
+                    now,
+                    &NeuralRhythms::default(),
+                    &mut sources,
+                    &mut flora,
+                    |_, _, _, _| {},
+                )
+                .habitat
+                .to_vec();
+            let own = own_renderer
+                .render(commands, now, &NeuralRhythms::default())
+                .habitat;
+            assert_eq!(sources[0].habitat, own);
+            solo_p.fill(0.);
+            solo_h.fill(0.);
+            flora_only.render_add(&mut solo_p, &mut solo_h);
+            let removed: Vec<_> = full
+                .iter()
+                .zip(own)
+                .zip(&solo_h)
+                .map(|((&a, &b), &c)| {
+                    let got = a - b;
+                    assert!(
+                        (got - c).abs()
+                            <= 32. * f32::EPSILON * 1_f32.max(a.abs()).max(b.abs()).max(c.abs())
+                    );
+                    got
+                })
+                .collect();
+            let mut mix = mixed_stream.process(&full).clone();
+            mix.recompute_consonance(&params);
+            let mut actual = removed_stream.process(&removed).clone();
+            actual.recompute_consonance(&params);
+            let mut reference = reference_stream.process(&solo_h).clone();
+            reference.recompute_consonance(&params);
+            for (a, b) in actual
+                .consonance_field_score
+                .iter()
+                .zip(&reference.consonance_field_score)
+            {
+                assert!((a - b).abs() <= 1e-3, "existing PCM oracle gate");
+            }
+            if ![63, 127, 191, 199, 255].contains(&frame) {
+                continue;
+            }
+            assert_eq!(
+                flora[0].habitat_power_scan().iter().any(|x| *x > 0.),
+                habitat && [63, 191, 199].contains(&frame)
+            );
+            for kind in [PitchCoreKind::HillClimb, PitchCoreKind::PeakSampler] {
+                let mut control = VoiceControl::default();
+                control.body.amp = 0.35;
+                control.pitch.freq = 440.;
+                control.pitch.core_kind = kind;
+                control.pitch.leave_self_out = true;
+                let mut voice = VoiceSpec {
+                    control,
+                    articulation: ArticulationCoreConfig::default(),
+                }
+                .spawn_with_landscape(
+                    2,
+                    0,
+                    VoiceMetadata::default(),
+                    FS,
+                    Some(&mix),
+                    17,
+                );
+                voice.selection_environment = true;
+                voice.last_signal = ArticulationSignal {
+                    amplitude: 1.,
+                    is_active: true,
+                    ..Default::default()
+                };
+                let own_power = voice.project_loo_power(&mix.space).to_vec();
+                let mut pop = Community::new(timebase);
+                pop.voices.push(voice);
+                pop.flora.push(flora[0].clone());
+                pop.advance(64, frame as u64, 1e-4, &mix);
+                let input = pop.voices[0].pitch_ctl.loo_input_mut().clone();
+                assert_eq!(input.own_power_scan, own_power);
+                for (i, &own) in own_power.iter().enumerate() {
+                    assert_eq!(
+                        input.total_power_scan[i],
+                        own + flora[0].habitat_power_scan()[i]
+                    );
+                }
+                let mut input_copy = input.clone();
+                let scores = loo_score_scan(&mix, &mut input_copy, &mut None);
+                let pitches: Vec<_> = CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
+                let got: Vec<_> = pitches
+                    .iter()
+                    .map(|p| sample_ownership_score(&mix, *p, scores.as_deref()))
+                    .collect();
+                let expected: Vec<_> = pitches
+                    .iter()
+                    .map(|p| actual.evaluate_pitch_score_log2(*p))
+                    .collect();
+                let mut legacy_input = LooInput {
+                    own_power_scan: own_power.clone(),
+                    total_power_scan: own_power.into(),
+                    computed_score: None,
+                };
+                let legacy_scan = loo_score_scan(&mix, &mut legacy_input, &mut None);
+                let legacy: Vec<_> = pitches
+                    .iter()
+                    .map(|p| sample_ownership_score(&mix, *p, legacy_scan.as_deref()))
+                    .collect();
+                let result = metrics(&got, &expected, &params.consonance_representation);
+                let baseline = metrics(&legacy, &expected, &params.consonance_representation);
+                println!(
+                    "F12_LOO tone={tone:?} residual={residual} habitat={habitat} frame={frame} kind={kind:?} corrected={result} baseline={baseline}"
+                );
+                // R/H need not be monotone in retained sound. Check over-removal in the
+                // observed density itself, using the existing PCM-conformance relative L1
+                // budget on bins the Voice owns. Unowned bins are never subtracted.
+                if habitat && [63, 191, 199].contains(&frame) {
+                    let (_, du) = erb_grid(&mix.space);
+                    let reference_mass: f32 = actual
+                        .subjective_intensity
+                        .iter()
+                        .zip(&du)
+                        .map(|(x, w)| x * w)
+                        .sum();
+                    let mut over_removed = 0.0;
+                    for (i, &own) in input.own_power_scan.iter().enumerate() {
+                        if own <= 0.0 {
+                            continue;
+                        }
+                        let retained = mix.subjective_intensity[i]
+                            * (1.0 - own / input.total_power_scan[i]).powf(mix.loudness_exp);
+                        over_removed +=
+                            (actual.subjective_intensity[i] - retained).max(0.0) * du[i];
+                    }
+                    println!(
+                        "F12_OVER_REMOVAL tone={tone:?} residual={residual} frame={frame} relative={}",
+                        over_removed / reference_mass.max(1e-12)
+                    );
+                    let relative = over_removed / reference_mass.max(1e-12);
+                    if relative > 1e-3 {
+                        over_removal_cases.push((tone, residual, frame, kind, relative));
+                    }
+                }
+                let idx = mix.space.nearest_index(440.);
+                if flora[0].habitat_power_scan()[idx] > 0. {
+                    let remaining = 1. - input.own_power_scan[idx] / input.total_power_scan[idx];
+                    assert!(remaining > 0. && actual.subjective_intensity[idx] > 0.);
+                } else {
+                    assert_eq!(
+                        got, legacy,
+                        "silent and presentation-only preserve the old path"
+                    );
+                }
+                assert_eq!(
+                    pop.voices[0].pitch_ctl.environment_score(&mix, 440.),
+                    got[3]
+                );
+            }
+        }
+    }
+    assert!(
+        over_removal_cases.is_empty(),
+        "noisy ownership PCM counterexamples: {over_removal_cases:?}"
+    );
+}

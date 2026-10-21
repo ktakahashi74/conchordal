@@ -1436,3 +1436,406 @@ fn removed_loo_mode_is_not_a_script_control() {
         );
     }
 }
+
+#[test]
+fn flora_specs_emit_placement_actions_and_route_buses() {
+    let (scenario, _) = run_script(
+        r#"
+        let moss = flora().amp(0.1).rate(1).renewal(10).fade(0.25)
+            .tone("resonant").residual(false).send(presentation_bus);
+        place(moss, consonance(110).range(1, 16));
+        place(flora().send(habitat_bus), random(220, 880));
+        place(flora().send(habitat_bus | presentation_bus), consonance(110, 880));
+        place(flora(), random(110, 880));
+        wait(0.5);
+        "#,
+    );
+    let placed: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(time, action)| match action {
+            Action::PlaceFlora {
+                flora_id,
+                spec,
+                extent_hz,
+                seeding,
+            } => Some((time, *flora_id, spec, *extent_hz, seeding)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(placed.len(), 4);
+    let (time, id, spec, extent, seeding) = placed[0];
+    assert_eq!((time, id, extent), (0.0, 1, (110.0, 1760.0)));
+    assert!(matches!(seeding, FloraSeeding::Consonance));
+    assert_eq!(
+        (spec.amp, spec.rate, spec.renewal_sec, spec.fade_sec),
+        (0.1, 1.0, 10.0, 0.25)
+    );
+    assert_eq!(spec.tone, FloraTone::Resonant);
+    assert!(!spec.residual);
+    assert!(!spec.routing.to_habitat && spec.routing.to_presentation);
+    assert_eq!(placed[1].1, 2);
+    assert_eq!(placed[1].3, (220.0, 880.0));
+    assert!(matches!(placed[1].4, FloraSeeding::Uniform));
+    assert!(placed[1].2.routing.to_habitat && !placed[1].2.routing.to_presentation);
+    for (_, _, spec, _, _) in &placed[2..] {
+        assert!(spec.routing.to_habitat && spec.routing.to_presentation);
+        assert_eq!(
+            (spec.amp, spec.rate, spec.renewal_sec, spec.fade_sec),
+            (0.03, 4.0, 10.0, 2.0)
+        );
+        assert_eq!(spec.tone, FloraTone::Sine);
+        assert!(spec.residual);
+    }
+    assert!(
+        !action_times(&scenario)
+            .iter()
+            .any(|(_, a)| matches!(a, Action::ReleaseFlora { .. }))
+    );
+    assert_eq!(scenario.duration_sec, 0.5);
+}
+
+#[test]
+fn flora_accepts_value_based_placement_defaults() {
+    for placement in [
+        "consonance(110, 1760)",
+        "consonance(110).range(1, 16)",
+        "consonance(110, 1760).count(1).density().tension(0).spacing(1)",
+        "random(110, 1760).count(1).density().tension(0).spacing(0)",
+        "random(1, 20000)",
+        "random(110, 880).tension(1)",
+        "consonance(110, 880).tension(-1)",
+    ] {
+        let (scenario, _) = run_script(&format!("place(flora(), {placement});"));
+        assert!(
+            matches!(scenario.events[0].actions[0], Action::PlaceFlora { .. }),
+            "{placement}"
+        );
+    }
+}
+
+#[test]
+fn flora_rejects_each_unsupported_placement_component() {
+    for (placement, message) in [
+        ("at(220)", "at placement"),
+        ("line(110, 880)", "line placement"),
+        ("dissonance(110, 880)", "Dissonance placement target"),
+        ("edge(110, 880)", "Edge placement target"),
+        ("gap(110, 880)", "Gap placement target"),
+        ("consonance(110, 880).count(0)", "count must be 1"),
+        ("consonance(110, 880).count(-1)", "count must be 1"),
+        ("random(110, 880).count(2)", "count must be 1"),
+        ("consonance(110, 880).peak()", "peak sampling"),
+        ("random(110, 880).peak()", "peak sampling"),
+        ("consonance(110, 880).tension(0.5)", "tension must be 0"),
+        ("consonance(110, 880).spacing(0)", "spacing must be 1"),
+        ("random(110, 880).spacing(1)", "spacing must be 0"),
+        ("consonance(110, 110.1)", "at least one Log2Space bin"),
+        ("consonance(110, 110)", "at least one Log2Space bin"),
+        ("random(880, 110)", "at least one Log2Space bin"),
+        ("consonance(0, 880)", "field placement bounds"),
+        ("random(110, 20001)", "field placement bounds"),
+        ("consonance(1e100, 880)", "field placement bounds"),
+    ] {
+        let error = run_script_err(&format!("place(flora(), {placement});")).to_string();
+        assert!(error.contains(message), "{placement}: {error}");
+    }
+    // Bounds are already f32 in a Placement; exercise NaN and both infinities.
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1e100] {
+        for placement in ["consonance(value, 880)", "random(110, value)"] {
+            let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+            let engine = ScriptHost::create_engine(ctx);
+            let mut scope = rhai::Scope::new();
+            scope.push("value", value);
+            let error = engine
+                .eval_with_scope::<Dynamic>(&mut scope, &format!("place(flora(), {placement});"))
+                .expect_err("invalid extent")
+                .to_string();
+            assert!(
+                error.contains("field placement bounds"),
+                "{placement}: {error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flora_numeric_validation_covers_specs_and_patches() {
+    for (name, min, max) in [
+        ("amp", 0.0, 1.0),
+        ("rate", 0.05, 8.0),
+        ("renewal", 0.5, 600.0),
+        ("fade", 0.0, 60.0),
+    ] {
+        for patch in [false, true] {
+            if patch && name == "fade" {
+                continue;
+            }
+            let script = if patch {
+                format!("let m = place(flora(), random(110, 880)); m.{name}(value);")
+            } else {
+                format!("flora().{name}(value);")
+            };
+            for value in [min, max] {
+                let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+                let engine = ScriptHost::create_engine(ctx);
+                let mut scope = rhai::Scope::new();
+                scope.push("value", value);
+                let _ = engine
+                    .eval_with_scope::<Dynamic>(&mut scope, &script)
+                    .expect("inclusive boundary accepted");
+            }
+            for value in [
+                min - 0.001,
+                max + 0.001,
+                f64::NAN,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                1e100,
+                -1e100,
+            ] {
+                let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+                let engine = ScriptHost::create_engine(ctx);
+                let mut scope = rhai::Scope::new();
+                scope.push("value", value);
+                let error = engine
+                    .eval_with_scope::<Dynamic>(&mut scope, &script)
+                    .expect_err("invalid Flora numeric argument")
+                    .to_string();
+                let expected = if !value.is_finite() {
+                    format!("Flora {name} must be finite before and after f32 conversion")
+                } else {
+                    format!("Flora {name} must be within [{min}, {max}]")
+                };
+                assert!(
+                    error.contains(&expected),
+                    "{script}, value={value}: {error}"
+                );
+            }
+            for value in [-1_i64, max as i64 + 1] {
+                let script = script.replace("value", &value.to_string());
+                let error = run_script_err(&script).to_string();
+                assert!(
+                    error.contains(&format!("Flora {name} must be within")),
+                    "{script}: {error}"
+                );
+            }
+        }
+    }
+    for tone in ["noise", "Sine", " sine", ""] {
+        let error = run_script_err(&format!("flora().tone(\"{tone}\");")).to_string();
+        assert!(
+            error.contains("Flora tone expects sine or resonant"),
+            "{error}"
+        );
+    }
+    run_script("flora().amp(1).rate(8).renewal(600).fade(60).tone(\"sine\");");
+}
+
+#[test]
+fn flora_patches_are_pending_until_wait_flush_or_finish() {
+    for boundary in ["wait(0.5);", "flush();", ""] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let mut scope = rhai::Scope::new();
+        let _ = engine
+            .eval_with_scope::<Dynamic>(
+                &mut scope,
+                r#"
+            let m = place(flora(), random(110, 880));
+            wait(0.25);
+            m.amp(0.1).amp(0.2).rate(2).renewal(10);
+        "#,
+            )
+            .unwrap();
+        assert_eq!(ctx.lock().unwrap().scenario.events.len(), 1);
+        let _ = engine
+            .eval_with_scope::<Dynamic>(&mut scope, boundary)
+            .unwrap();
+        let mut ctx = ctx.lock().unwrap();
+        ctx.finish();
+        let updates: Vec<_> = action_times(&ctx.scenario)
+            .into_iter()
+            .filter_map(|(time, action)| match action {
+                Action::UpdateFlora { flora_id, patch } => Some((time, *flora_id, patch)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(updates.len(), 1);
+        assert_eq!((updates[0].0, updates[0].1), (0.25, 1));
+        let patch = updates[0].2;
+        assert_eq!(
+            (patch.amp, patch.rate, patch.renewal_sec),
+            (Some(0.2), Some(2.0), Some(10.0))
+        );
+    }
+}
+
+#[test]
+fn flora_pending_patch_precedes_release_in_one_event_and_extends_finish() {
+    for boundary in ["wait(0.1);", "flush();", ""] {
+        let (scenario, _) = run_script(&format!(
+            r#"
+            let m = place(flora().fade(3), consonance(110, 880));
+            wait(2);
+            m.amp(0.015);
+            release(m);
+            {boundary}
+        "#
+        ));
+        let event = scenario
+            .events
+            .iter()
+            .find(|e| {
+                e.actions
+                    .iter()
+                    .any(|a| matches!(a, Action::ReleaseFlora { .. }))
+            })
+            .unwrap();
+        assert_eq!(event.time, 2.0);
+        assert!(matches!(event.actions.as_slice(), [
+            Action::UpdateFlora { flora_id: 1, patch: FloraPatch { amp: Some(amp), .. } },
+            Action::ReleaseFlora { flora_id: 1, fade_sec: 3.0 }
+        ] if *amp == 0.015));
+        assert_eq!(scenario.duration_sec, 5.0);
+        assert!(matches!(
+            scenario.events.last().unwrap().actions.as_slice(),
+            [Action::Finish]
+        ));
+        assert_eq!(scenario.events.last().unwrap().time, 5.0);
+    }
+}
+
+#[test]
+fn flora_nested_scopes_release_inner_at_inner_end_with_patches_first() {
+    let (scenario, _) = run_script(
+        r#"
+        section("outer", || {
+            let outer = place(flora().fade(0.5), random(110, 880));
+            let voices = place(sine(), at(220));
+            play(|| {
+                let inner = place(flora().fade(0.25), consonance(110, 880));
+                wait(1);
+                inner.amp(0.1);
+            });
+            wait(1);
+            voices.amp(0.05);
+            outer.rate(1);
+        });
+    "#,
+    );
+    let releases: Vec<_> = scenario
+        .events
+        .iter()
+        .filter(|e| {
+            e.actions
+                .iter()
+                .any(|a| matches!(a, Action::ReleaseFlora { .. }))
+        })
+        .collect();
+    assert_eq!(releases.len(), 2);
+    assert_eq!(releases[0].time, 1.0);
+    assert!(matches!(
+        releases[0].actions.as_slice(),
+        [
+            Action::UpdateFlora { flora_id: 2, .. },
+            Action::ReleaseFlora {
+                flora_id: 2,
+                fade_sec: 0.25
+            }
+        ]
+    ));
+    assert_eq!(releases[1].time, 2.0);
+    assert!(matches!(
+        releases[1].actions.as_slice(),
+        [
+            Action::UpdatePopulation { .. },
+            Action::UpdateFlora { flora_id: 1, .. },
+            Action::ReleasePopulation { .. },
+            Action::ReleaseFlora {
+                flora_id: 1,
+                fade_sec: 0.5
+            }
+        ]
+    ));
+    assert_eq!(scenario.duration_sec, 2.5);
+}
+
+#[test]
+fn flora_all_scoped_verbs_release_owned_flora() {
+    for script in [
+        "section(\"flora\", || { let m = place(flora(), random(110, 880)); m.amp(0.1); release(m); });",
+        "play(|| { place(flora(), random(110, 880)); });",
+        "play(|a| { place(flora(), random(110, 880)); }, 1);",
+        "play(|a, b| { place(flora(), random(110, 880)); }, 1, 2);",
+        "play(|a, b, c| { place(flora(), random(110, 880)); }, 1, 2, 3);",
+        "play(|a, b, c, d| { place(flora(), random(110, 880)); }, [1, 2, 3, 4]);",
+        "parallel([|| { place(flora(), random(110, 880)); }, || { place(flora(), consonance(110, 880)); }]);",
+    ] {
+        let (scenario, _) = run_script(script);
+        let actions = action_times(&scenario);
+        let placed = actions
+            .iter()
+            .filter(|(_, a)| matches!(a, Action::PlaceFlora { .. }))
+            .count();
+        let released = actions
+            .iter()
+            .filter(|(_, a)| matches!(a, Action::ReleaseFlora { .. }))
+            .count();
+        assert_eq!(placed, released, "{script}");
+    }
+}
+
+#[test]
+fn flora_warnings_are_collected_with_call_positions() {
+    let (scenario, warnings) = run_script(
+        r#"
+        let m = place(flora(), random(110, 880));
+        release(m); release(m); flush(); release(m); m.amp(0.5);
+        let scoped = ();
+        play(|| { scoped = place(flora(), random(110, 880)); });
+        release(scoped); scoped.renewal(5);
+    "#,
+    );
+    let warnings = warnings.lock().unwrap();
+    for message in [
+        "release already pending",
+        "release ignored for inactive Flora 1",
+        "amp ignored for inactive Flora 1",
+        "release ignored for inactive Flora 2",
+        "renewal ignored for inactive Flora 2",
+    ] {
+        let warning = warnings
+            .iter()
+            .find(|w| w.message.contains(message))
+            .expect(message);
+        assert_ne!(warning.position, Position::NONE, "{warning:?}");
+    }
+    assert_eq!(
+        action_times(&scenario)
+            .iter()
+            .filter(|(_, a)| matches!(a, Action::ReleaseFlora { .. }))
+            .count(),
+        2
+    );
+    assert!(
+        !action_times(&scenario)
+            .iter()
+            .any(|(_, a)| matches!(a, Action::UpdateFlora { .. }))
+    );
+}
+
+#[test]
+fn flora_errors_preserve_native_call_positions() {
+    for source in [
+        "\nflora().amp(1.00000001);",
+        "\nflora().tone(\"Sine\");",
+        "\nplace(flora(), at(220));",
+        "\nlet m = place(flora(), random(110, 880)); m.rate(8.00000001);",
+    ] {
+        let error = run_script_err(source);
+        assert!(
+            error.position.is_some_and(|p| p != Position::NONE),
+            "{error:?}"
+        );
+    }
+}

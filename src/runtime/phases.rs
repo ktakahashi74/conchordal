@@ -15,6 +15,9 @@ pub(super) fn advance_population(
         &state.current_landscape,
         &mut state.pop,
     );
+    for flora in &mut state.pop.flora {
+        flora.advance(&state.current_landscape);
+    }
     if state.pop.rest_enabled {
         state.schedule_renderer.prepare_rest_sources(
             state
@@ -132,6 +135,9 @@ pub(super) fn advance_population(
     if state.scenario_end_tick.is_none() && state.conductor.is_done() {
         state.scenario_end_tick = Some(now_tick);
         state.pop.voices.clear();
+        for flora in &mut state.pop.flora {
+            flora.release_at_scenario_end();
+        }
         state.schedule_renderer.shutdown_at(now_tick);
     }
 
@@ -142,6 +148,7 @@ pub(super) fn advance_population(
         &state.current_landscape,
         listener_pressure,
     );
+    state.pop.flora.retain(|flora| !flora.is_finished());
     state.pop.cleanup_dead(
         state.frame_idx,
         cfg.hop_duration.as_secs_f32(),
@@ -418,6 +425,7 @@ pub(super) fn render_and_route_audio(
         now_tick,
         &state.current_landscape.rhythm,
         sources,
+        &mut state.pop.flora,
         |id, start, window, matched| {
             report_try(&mut state.reporter, "local prediction match", |writer| {
                 writer.write_local_prediction_match(id, cfg.fs as u32, start, window, matched)

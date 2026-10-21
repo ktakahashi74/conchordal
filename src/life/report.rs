@@ -162,6 +162,7 @@ pub(crate) struct ParticipationOutcomeSample {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
+    Flora(crate::life::flora::FloraReport<'a>),
     TemporalMeter(&'a TemporalMeterSample),
     BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
     BodyDescriptor {
@@ -361,6 +362,14 @@ enum ReportRecord<'a> {
 }
 
 impl JsonlReporter {
+    pub(crate) fn write_flora(
+        &mut self,
+        flora: &crate::life::flora::Flora,
+        time_sec: f64,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::Flora(flora.report(time_sec)))
+    }
+
     pub(crate) fn write_body_observation(
         &mut self,
         snapshot: &crate::temporal_cognition::body::Snapshot,

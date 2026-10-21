@@ -52,7 +52,10 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::Finish => {
                     has_finish = true;
                 }
-                Action::Spawn { .. }
+                Action::PlaceFlora { .. }
+                | Action::UpdateFlora { .. }
+                | Action::ReleaseFlora { .. }
+                | Action::Spawn { .. }
                 | Action::UpdatePopulation { .. }
                 | Action::ReleasePopulation { .. }
                 | Action::SetRespawnPolicy { .. }

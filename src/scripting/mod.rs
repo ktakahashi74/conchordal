@@ -5,11 +5,13 @@ mod engine;
 mod placement;
 mod spec;
 
-use context::PopulationStatus;
 use context::ScriptWarnings;
+use context::{PopulationStatus, update_flora_numeric};
 pub use context::{ScriptContext, ScriptWarning};
 pub use placement::{Bus, BusSet, Placement};
-use spec::{BrainKind, PhonationKind, PopulationSpec};
+use spec::{
+    BrainKind, FloraHandle, FloraSpecHandle, PhonationKind, PopulationSpec, validate_flora_numeric,
+};
 pub use spec::{PopulationHandle, PopulationSpecHandle};
 
 use std::collections::BTreeMap;
@@ -32,10 +34,10 @@ use crate::scenario::control::{
 use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, CoupledTimingSpec, DurationSpec,
-    EnvelopeConfig, FieldDurationSpec, FieldSampling, FieldTarget, MetabolismRhythmReward,
-    PhonationSpec, RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRelation,
-    RhythmRewardMetric, RhythmRole, ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy,
-    TimedEvent, VoiceSpec,
+    EnvelopeConfig, FieldDurationSpec, FieldSampling, FieldTarget, FloraPatch, FloraSeeding,
+    FloraSpec, FloraTone, MetabolismRhythmReward, PhonationSpec, RespawnPeakBiasConfig,
+    RespawnPolicy, RhythmCouplingMode, RhythmRelation, RhythmRewardMetric, RhythmRole,
+    ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
 };
 
 fn parse_enum<T: Copy>(

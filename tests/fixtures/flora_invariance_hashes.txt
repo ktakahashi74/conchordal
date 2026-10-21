@@ -6,10 +6,17 @@
 # Renderer: conchordal-render, deterministic offline analysis, dev profile.
 # Toolchain: rustc 1.99.0 (b940084d7 2026-09-28)
 # Features: default (simd-wide); platform: Linux x86_64 (GNU).
-# RUSTFLAGS: -C target-cpu=x86-64
+# Target-feature keys: cfg!(target_feature = "fma" / "avx2" / "avx512f"), as 0/1.
+# Native Cargo config: -C target-cpu=native -C target-feature=+avx,+avx2,+fma,+f16c.
 # Each case captured twice below; both WAV hashes must agree.
-# name fnv1a64(complete WAV bytes)
-sine a83ee63023d228a6
-harmonic 77349d05378d3394
-modal 98d6af9efa0f1c1b
-habituation 18f6e989d790a0e0
+# target_features case fnv1a64(complete WAV bytes)
+# Capture fma=0,avx2=0,avx512f=0: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=-C target-cpu=x86-64
+fma=0,avx2=0,avx512f=0 sine a83ee63023d228a6
+fma=0,avx2=0,avx512f=0 harmonic 77349d05378d3394
+fma=0,avx2=0,avx512f=0 modal 98d6af9efa0f1c1b
+fma=0,avx2=0,avx512f=0 habituation 18f6e989d790a0e0
+# Capture fma=1,avx2=1,avx512f=1: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=<unset; Cargo config applies>
+fma=1,avx2=1,avx512f=1 sine 160059c3466005b5
+fma=1,avx2=1,avx512f=1 harmonic e8142f2b885caed8
+fma=1,avx2=1,avx512f=1 modal 4d98006dba9e2662
+fma=1,avx2=1,avx512f=1 habituation 6ae03657b024e499

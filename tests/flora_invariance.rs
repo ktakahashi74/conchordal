@@ -153,15 +153,19 @@ fn render_hash(name: &str, config: &str, script: &str) -> u64 {
     fnv1a64(&bytes)
 }
 
-fn read_fixture(path: &Path) -> Vec<(String, u64)> {
+fn read_fixture(path: &Path) -> Vec<(String, String, u64)> {
     fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
         .lines()
         .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
         .map(|line| {
-            let (name, hash) = line.split_once(' ').expect("fixture line: name hash");
-            let hash = u64::from_str_radix(hash.trim(), 16).expect("hex hash");
-            (name.to_string(), hash)
+            let mut fields = line.split_whitespace();
+            let key = fields.next().expect("fixture target features");
+            let name = fields.next().expect("fixture case name");
+            let hash =
+                u64::from_str_radix(fields.next().expect("fixture hash"), 16).expect("hex hash");
+            assert!(fields.next().is_none(), "fixture line: key case hash");
+            (key.to_string(), name.to_string(), hash)
         })
         .collect()
 }
@@ -169,9 +173,16 @@ fn read_fixture(path: &Path) -> Vec<(String, u64)> {
 #[test]
 fn renders_without_flora_match_pre_flora_references() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
-    // Floating-point DSP differs across platforms (including prior macOS/Windows
-    // snapshots). Compare exact bytes only on the captured Linux x86_64 platform;
-    // elsewhere, retain the finite-output and silent-tail checks above.
+    let feature_key = format!(
+        "fma={},avx2={},avx512f={}",
+        u8::from(cfg!(target_feature = "fma")),
+        u8::from(cfg!(target_feature = "avx2")),
+        u8::from(cfg!(target_feature = "avx512f")),
+    );
+    // Floating-point DSP differs across platforms and target features: native
+    // AVX/FMA builds already differ from portable x86_64 on this machine. Compare
+    // only a registered Linux x86_64 feature group. Unregistered groups and other
+    // platforms retain the finite-output and silent-tail checks above.
     let compare_hashes = cfg!(all(target_os = "linux", target_arch = "x86_64"));
     if std::env::var("FLORA_INVARIANCE_CAPTURE").as_deref() == Ok("1") {
         assert!(compare_hashes, "capture requires Linux x86_64");
@@ -180,45 +191,54 @@ fn renders_without_flora_match_pre_flora_references() {
             .output()
             .expect("read capture toolchain");
         assert!(toolchain.status.success(), "rustc -V failed");
-        let mut text = format!(
-            "# Pre-Flora baseline: 1104e553d9225ef869a772af73e4aefa312c0110\n\
-             # Input: tests/flora_invariance.rs CASES (embedded scripts, no sample files).\n\
-             # Seeds: sine=11, harmonic=12, modal=13, habituation=14.\n\
-             # Config: 48000 Hz mono PCM16; nfft=2048; hop_size=512; other keys default.\n\
-             # Habituation: sine/harmonic/modal=false; habituation=true.\n\
-             # Renderer: conchordal-render, deterministic offline analysis, dev profile.\n\
-             # Toolchain: {}\n\
-             # Features: default (simd-wide); platform: Linux x86_64 (GNU).\n\
-             # RUSTFLAGS: {}\n\
-             # Each case captured twice below; both WAV hashes must agree.\n\
-             # name fnv1a64(complete WAV bytes)\n",
+        let group_prefix = format!("{feature_key} ");
+        let capture_prefix = format!("# Capture {feature_key}:");
+        // Recapturing one group must preserve references for the other groups.
+        let mut text = fs::read_to_string(&fixture)
+            .expect("read fixture before capture")
+            .lines()
+            .filter(|line| !line.starts_with(&group_prefix) && !line.starts_with(&capture_prefix))
+            .collect::<Vec<_>>()
+            .join("\n");
+        text.push_str(&format!(
+            "\n{capture_prefix} {}; RUSTFLAGS={}\n",
             String::from_utf8_lossy(&toolchain.stdout).trim(),
-            std::env::var("RUSTFLAGS").unwrap_or_default(),
-        );
+            std::env::var("RUSTFLAGS").unwrap_or_else(|_| "<unset; Cargo config applies>".into()),
+        ));
         for (name, config, script) in CASES {
             let first = render_hash(name, config, script);
             let second = render_hash(name, config, script);
             assert_eq!(first, second, "{name}: render is not deterministic");
-            println!("{name}: capture 1={first:016x}, capture 2={second:016x}");
-            text.push_str(&format!("{name} {first:016x}\n"));
+            println!("{feature_key} {name}: capture 1={first:016x}, capture 2={second:016x}");
+            text.push_str(&format!("{feature_key} {name} {first:016x}\n"));
         }
         fs::write(&fixture, text).expect("write fixture");
         return;
     }
     if compare_hashes {
-        let expected = read_fixture(&fixture);
-        assert_eq!(expected.len(), CASES.len(), "fixture case count");
-        for ((name, config, script), (fixture_name, hash)) in CASES.iter().zip(&expected) {
-            assert_eq!(name, fixture_name, "fixture order");
+        let expected: Vec<_> = read_fixture(&fixture)
+            .into_iter()
+            .filter(|(key, _, _)| key == &feature_key)
+            .collect();
+        if !expected.is_empty() {
             assert_eq!(
-                render_hash(name, config, script),
-                *hash,
-                "{name}: render changed without Flora"
+                expected.len(),
+                CASES.len(),
+                "{feature_key}: fixture case count"
             );
+            for ((name, config, script), (_, fixture_name, hash)) in CASES.iter().zip(&expected) {
+                assert_eq!(name, fixture_name, "{feature_key}: fixture order");
+                assert_eq!(
+                    render_hash(name, config, script),
+                    *hash,
+                    "{feature_key} {name}: render changed without Flora"
+                );
+            }
+            return;
         }
-    } else {
-        for (name, config, script) in CASES {
-            render_hash(name, config, script);
-        }
+        println!("Flora invariance: no baseline for {feature_key}; checking renders only");
+    }
+    for (name, config, script) in CASES {
+        render_hash(name, config, script);
     }
 }

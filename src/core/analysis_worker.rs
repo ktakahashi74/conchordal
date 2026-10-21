@@ -5,7 +5,9 @@ use crossbeam_channel::{Receiver, Sender, TrySendError};
 use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::core::stream::analysis::AnalysisStream;
 
-/// Result payload from the analysis worker:
+/// One frame ID binds habitat PCM and optional Flora-only habitat PCM.
+pub(crate) type AnalysisHop = (u64, Arc<[f32]>, Option<Arc<[f32]>>);
+
 /// `(frame_id, landscape_snapshot)`, with `None` invalidating pre-gap observations.
 pub type AnalysisResult = (u64, Option<Landscape>);
 
@@ -35,13 +37,15 @@ fn publish_latest(
 /// and publishes either current state or every observation for listener memory.
 pub(crate) fn run(
     mut stream: AnalysisStream,
-    hop_rx: Receiver<(u64, Arc<[f32]>)>,
+    hop_rx: Receiver<AnalysisHop>,
     result_tx: Sender<AnalysisResult>,
     update_rx: Receiver<LandscapeUpdate>,
     delivery: AnalysisDelivery,
     mut temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
     raw_output: Option<crate::temporal_cognition::t2::runtime_input::Output>,
 ) {
+    let mut flora_stream: Option<AnalysisStream> = None;
+    let mut flora_warmup = 0;
     let mut next_frame_id = 0;
     let mut warmup_samples = 0;
     let hop_samples = stream.hop_samples();
@@ -60,6 +64,12 @@ pub(crate) fn run(
         stream.window_samples(),
     );
     while let Ok(first_hop) = hop_rx.recv() {
+        #[cfg(all(test, feature = "profile-alloc"))]
+        let measure = std::env::var_os("T37_ANALYSIS_ALLOC").is_some();
+        #[cfg(all(test, feature = "profile-alloc"))]
+        if measure {
+            crate::runtime_profile::begin_allocations();
+        }
         // Preserve frame IDs through backlog draining so gaps cannot splice audio together.
         let mut hops = Vec::with_capacity(8);
         hops.push(first_hop);
@@ -67,12 +77,15 @@ pub(crate) fn run(
 
         // Apply parameter updates (landscape params primarily; others are harmless here).
         for upd in update_rx.try_iter() {
+            if let Some(flora) = flora_stream.as_mut() {
+                flora.apply_update(upd);
+            }
             stream.apply_update(upd);
         }
 
         // Process each hop in-order to preserve the per-hop dt used by the normalizers.
         let mut analysis = None;
-        for (frame_id, hop) in hops {
+        for (frame_id, hop, flora_pcm) in hops {
             assert_eq!(
                 hop.len(),
                 hop_samples,
@@ -80,6 +93,10 @@ pub(crate) fn run(
             );
             if frame_id != next_frame_id {
                 stream.reset();
+                if let Some(flora) = flora_stream.as_mut() {
+                    flora.reset();
+                }
+                flora_warmup = stream.window_samples();
                 warmup_samples = stream.window_samples();
                 // Invalidation must arrive even when old snapshots fill the result queue.
                 match &delivery {
@@ -97,6 +114,25 @@ pub(crate) fn run(
             let t2 = raw
                 .as_mut()
                 .and_then(|input| input.observe(frame_id, hop.as_ref()));
+            if let Some(pcm) = flora_pcm {
+                assert_eq!(
+                    pcm.len(),
+                    hop_samples,
+                    "Flora requires the same complete hop"
+                );
+                if flora_stream.is_none() {
+                    flora_stream = Some(stream.fresh());
+                    flora_warmup = if frame_id == 0 {
+                        0
+                    } else {
+                        stream.window_samples()
+                    };
+                }
+                flora_stream.as_mut().unwrap().process(&pcm);
+                flora_warmup = flora_warmup.saturating_sub(pcm.len());
+            } else {
+                flora_stream = None;
+            }
             let frame = stream.process(hop.as_ref());
             if let Some(tap) = temporal_tap.as_mut() {
                 let mono_energy =
@@ -115,6 +151,10 @@ pub(crate) fn run(
             {
                 let mut frame = frame.clone();
                 frame.spectral_history = spectral_history.snapshot();
+                frame.flora_power_scan = flora_stream
+                    .as_ref()
+                    .filter(|_| flora_warmup == 0)
+                    .map(AnalysisStream::observed_loo_power);
                 if result_tx.send((id, Some(frame))).is_err() {
                     return;
                 }
@@ -126,7 +166,19 @@ pub(crate) fn run(
         {
             let mut frame = stream.last().clone();
             frame.spectral_history = spectral_history.snapshot();
+            frame.flora_power_scan = flora_stream
+                .as_ref()
+                .filter(|_| flora_warmup == 0)
+                .map(AnalysisStream::observed_loo_power);
             publish_latest(&result_tx, stale, (id, Some(frame)));
+        }
+        #[cfg(all(test, feature = "profile-alloc"))]
+        if measure {
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            println!(
+                "T37_ANALYSIS_ALLOC flora={} next_frame={next_frame_id} counts={counts:?}",
+                flora_stream.is_some()
+            );
         }
     }
     // Publish the final observer state before disconnecting the analysis result channel.
@@ -218,7 +270,7 @@ mod tests {
                 })
                 .collect();
             expected.push(reference.process(&audio).clone());
-            hops.push((frame_id, audio));
+            hops.push((frame_id, audio, None));
         }
         let mut final_history = None;
         for capacity in [1, 4, 24] {
@@ -400,11 +452,13 @@ mod tests {
             let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
             let (result_tx, result_rx) = crossbeam_channel::unbounded();
             let (_update_tx, update_rx) = crossbeam_channel::unbounded();
-            hop_tx.send((0, tone)).unwrap();
+            hop_tx.send((0, tone.clone(), Some(tone))).unwrap();
             // A gap inside the already-queued backlog must reset the complete history.
             let silence: Arc<[f32]> = vec![0.0; hop].into();
             for frame_id in 2..2 + recovery_hops {
-                hop_tx.send((frame_id, Arc::clone(&silence))).unwrap();
+                hop_tx
+                    .send((frame_id, Arc::clone(&silence), Some(silence.clone())))
+                    .unwrap();
             }
             drop(hop_tx);
             let delivery = if ordered {
@@ -425,7 +479,15 @@ mod tests {
             if recovery_hops == 4 {
                 let (frame_id, frame) = result_rx.recv().unwrap();
                 assert_eq!(frame_id, 5);
-                assert!(frame.unwrap().nsgt_power.iter().all(|power| *power == 0.0));
+                let frame = frame.unwrap();
+                assert!(frame.nsgt_power.iter().all(|power| *power == 0.0));
+                assert!(
+                    frame
+                        .flora_power_scan
+                        .unwrap()
+                        .iter()
+                        .all(|power| *power == 0.0)
+                );
             }
             assert!(
                 result_rx.try_recv().is_err(),
@@ -455,7 +517,7 @@ mod tests {
         let stream = AnalysisStream::new(params, nsgt_rt);
 
         // Use unbounded channels so try_send never drops in tests.
-        let (hop_tx, hop_rx) = crossbeam_channel::unbounded::<(u64, Arc<[f32]>)>();
+        let (hop_tx, hop_rx) = crossbeam_channel::unbounded::<AnalysisHop>();
         let (result_tx, result_rx) = crossbeam_channel::unbounded::<AnalysisResult>();
         let (_update_tx, update_rx) = crossbeam_channel::unbounded::<LandscapeUpdate>();
 
@@ -488,7 +550,7 @@ mod tests {
             }
 
             hop_tx
-                .send((frame_idx, Arc::clone(&audio)))
+                .send((frame_idx, Arc::clone(&audio), None))
                 .expect("hop send failed");
 
             // Wait for the analysis result for this frame.
@@ -501,5 +563,86 @@ mod tests {
 
         drop(hop_tx);
         let _ = handle.join();
+    }
+    #[test]
+    fn flora_observations_share_packet_publication_and_activation_warmup() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let template = AnalysisStream::new(params, nsgt);
+        let hop = template.hop_samples();
+        let warmup = template.window_samples().div_ceil(hop);
+        for ordered in [false, true] {
+            let mut reference = template.fresh();
+            let (tx, rx) = crossbeam_channel::unbounded();
+            let (result_tx, result_rx) = crossbeam_channel::unbounded();
+            let (_, updates) = crossbeam_channel::unbounded();
+            let mut expected = Vec::new();
+            for id in 0..warmup + 8 {
+                let mix: Arc<[f32]> = (0..hop)
+                    .map(|i| ((id * hop + i) as f32 * 0.11).sin() * 0.2)
+                    .collect();
+                let flora: Arc<[f32]> = (0..hop)
+                    .map(|i| ((id * hop + i) as f32 * 0.17).sin() * 0.1)
+                    .collect();
+                let active = id >= 2 && (!ordered || id < warmup + 6);
+                if active {
+                    reference.process(&flora);
+                }
+                expected.push((active && id > warmup).then(|| reference.observed_loo_power()));
+                tx.send((id as u64, mix, active.then_some(flora))).unwrap();
+            }
+            drop(tx);
+            let delivery = if ordered {
+                AnalysisDelivery::Ordered
+            } else {
+                AnalysisDelivery::Latest(result_rx.clone())
+            };
+            run(
+                template.fresh(),
+                rx,
+                result_tx,
+                updates,
+                delivery,
+                None,
+                None,
+            );
+            let frames: Vec<_> = result_rx.try_iter().collect();
+            assert_eq!(frames.len(), if ordered { warmup + 8 } else { 1 });
+            for (id, frame) in frames {
+                assert_eq!(frame.unwrap().flora_power_scan, expected[id as usize]);
+            }
+        }
+    }
+
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+    fn flora_analysis_steady_state_allocation_census() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let template = AnalysisStream::new(params, nsgt);
+        let hop = template.hop_samples();
+        for active in [false, true] {
+            let (tx, rx) = crossbeam_channel::bounded(1);
+            let (result_tx, result_rx) = crossbeam_channel::bounded::<AnalysisResult>(1);
+            let (_, updates) = crossbeam_channel::unbounded();
+            let producer = thread::spawn(move || {
+                let audio: Arc<[f32]> = (0..hop).map(|i| (i as f32 * 0.13).sin() * 0.2).collect();
+                for id in 0..12 {
+                    tx.send((id, audio.clone(), active.then(|| audio.clone())))
+                        .unwrap();
+                    let (actual_id, frame) = result_rx.recv().unwrap();
+                    assert_eq!(actual_id, id);
+                    assert_eq!(frame.unwrap().flora_power_scan.is_some(), active);
+                }
+            });
+            run(
+                template.fresh(),
+                rx,
+                result_tx,
+                updates,
+                AnalysisDelivery::Ordered,
+                None,
+                None,
+            );
+            producer.join().unwrap();
+        }
     }
 }

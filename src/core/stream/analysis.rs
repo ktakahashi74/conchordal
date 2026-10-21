@@ -26,6 +26,31 @@ impl AnalysisStream {
         Self { analysis, params }
     }
 
+    pub(crate) fn fresh(&self) -> Self {
+        let mut nsgt = self.analysis.nsgt.clone();
+        nsgt.reset();
+        Self::new(self.params.clone(), nsgt)
+    }
+
+    // Invert loudness on the observed ERB mass, retaining its peak and history.
+    // Coherent NSGT power is A^2/4 for a centered sinusoid; Voice projection uses A^2.
+    // Inverting a smoothed nonlinear density yields equivalent power, not raw power.
+    pub(crate) fn observed_loo_power(&self) -> Vec<f64> {
+        let frame = self.last();
+        let du = &self.analysis.du;
+        frame
+            .subjective_intensity
+            .iter()
+            .enumerate()
+            .map(|(i, &density)| {
+                4. * (density as f64 * du[i] as f64)
+                    .powf(1. / self.params.loudness_exp.max(0.01) as f64)
+                    * self.params.ref_power.max(1e-12) as f64
+                    / crate::core::utils::a_weighting_gain_pow(frame.space.centers_hz[i]) as f64
+            })
+            .collect()
+    }
+
     pub fn last(&self) -> &Landscape {
         &self.analysis.landscape
     }

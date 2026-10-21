@@ -82,6 +82,8 @@ pub struct ScheduleRenderer {
     time: Timebase,
     buf_presentation: Vec<f32>,
     buf_habitat: Vec<f32>,
+    pub(crate) capture_flora: bool,
+    pub(crate) flora_habitat: Vec<f32>,
     scratch_rhythms: Vec<NeuralRhythms>,
     scratch_pcm: Vec<f32>,
     #[cfg(test)]
@@ -149,6 +151,8 @@ impl ScheduleRenderer {
             time,
             buf_presentation: vec![0.0; time.hop],
             buf_habitat: vec![0.0; time.hop],
+            capture_flora: false,
+            flora_habitat: Vec::new(),
             scratch_rhythms: vec![NeuralRhythms::default(); time.hop],
             scratch_pcm: vec![0.0; time.hop],
             #[cfg(test)]
@@ -517,8 +521,19 @@ impl ScheduleRenderer {
         if !use_blocks {
             self.render_sample_major_oracle(now, end, rhythms, sources);
         }
-        for flora in flora {
-            flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+        if self.capture_flora {
+            self.flora_habitat.resize(self.time.hop, 0.);
+            self.flora_habitat.fill(0.);
+            for flora in flora {
+                flora.render_add(&mut self.buf_presentation, &mut self.flora_habitat);
+            }
+            for (mix, flora) in self.buf_habitat.iter_mut().zip(&self.flora_habitat) {
+                *mix += flora;
+            }
+        } else {
+            for flora in flora {
+                flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+            }
         }
         self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
@@ -2013,6 +2028,66 @@ mod tests {
             renderer.render(&[], at, &rhythms);
             let n = crate::runtime_profile::finish_allocations().unwrap();
             assert_eq!((n.count, n.bytes), (0, 0));
+        }
+    }
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+    fn flora_capture_steady_state_allocates_nothing() {
+        use crate::life::flora::Flora;
+        use crate::scenario::{FloraSeeding, FloraSpec, FloraTone};
+        let time = Timebase {
+            fs: 48000.,
+            hop: 512,
+        };
+        let landscape = crate::core::landscape::Landscape::new(
+            crate::core::log2space::Log2Space::new(110., 1760., 48),
+        );
+        for tone in [FloraTone::Sine, FloraTone::Resonant] {
+            let mut flora = [Flora::new(
+                7,
+                FloraSpec {
+                    amp: 0.2,
+                    rate: 4.,
+                    renewal_sec: 0.1,
+                    fade_sec: 0.,
+                    tone,
+                    residual: true,
+                    routing: Routing::default(),
+                },
+                (220., 880.),
+                FloraSeeding::Uniform,
+                42,
+                &landscape,
+                time.fs,
+                time.hop,
+            )];
+            let mut renderer = ScheduleRenderer::new(time);
+            renderer.capture_flora = true;
+            flora[0].advance(&landscape);
+            renderer.render_with_source_pcm(
+                &[],
+                0,
+                &NeuralRhythms::default(),
+                &mut [],
+                &mut flora,
+                |_, _, _, _| {},
+            );
+            crate::runtime_profile::begin_allocations();
+            for frame in 1..301 {
+                flora[0].advance(&landscape);
+                renderer.render_with_source_pcm(
+                    &[],
+                    frame * time.hop as u64,
+                    &NeuralRhythms::default(),
+                    &mut [],
+                    &mut flora,
+                    |_, _, _, _| {},
+                );
+            }
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            println!("T37_CAPTURE_ALLOC tone={tone:?} counts={counts:?} hops=300");
+            assert_eq!((counts.count, counts.bytes), (0, 0));
+            assert!(renderer.flora_habitat.iter().any(|v| *v != 0.));
         }
     }
 }

@@ -194,7 +194,10 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   the following is a conditional budget, not an exact allocation census.
   - `render_and_route_audio` (`src/runtime/phases.rs`) creates two `Arc<[f32]>`
     chunks for the presentation and habitat buses, shared with WAV/listener/analysis
-    channels as needed.
+    channels as needed. When Flora has been placed and a Voice consumes LOO,
+    `process_hop` also owns one Flora-only habitat PCM `Arc` in the same analysis
+    packet. Capture scratch is reused; the packet allocation is not part of the
+    allocation-free Flora advance/render/ownership claim.
   - `apply_landscape_updates` (`src/runtime/analysis_sync.rs`) allocates the observed
     field `Arc` for `GeneratorModel::observe_consonance_field_level` only after analysis
     or valuation updates with an available analysis frame.
@@ -234,6 +237,14 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only
   at publication (every Ordered frame or the last Latest frame), attaching a spectral
   history snapshot. This still allocates; the former per-hop count is obsolete.
+  The conditional Flora observer processes that packet with a second AnalysisStream
+  and publishes one additional f64 scan with the same Landscape. In the profile-alloc
+  census (48 kHz, hop 512, window 16384, 690 bins, Ordered, one hop per batch), warmed
+  analysis publication used 19 allocations / 50000 bytes without Flora and
+  20 / 55520 with Flora. The first Flora packet used 94 / 1100502 including stream
+  construction. These counts exclude input PCM ownership and UI clones; cloning a
+  Landscape with the Flora scan adds another scan allocation. Gap resets and
+  reconfiguration are outside the steady-state counts.
   Use `--features profile-alloc` when measuring or asserting allocations; without it,
   allocation counts are unavailable. Runtime measurements live in `runtime_profile.rs`.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.

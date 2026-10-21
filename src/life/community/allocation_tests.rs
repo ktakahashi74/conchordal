@@ -57,7 +57,7 @@ fn community_steady_hops_reuse_respawn_social_and_sequential_storage() {
 
 #[test]
 fn loo_ownership_steady_state_allocates_nothing_and_keeps_quiet_other() {
-    let landscape = runtime_landscape();
+    let mut landscape = runtime_landscape();
     let mut community = test_pop();
     community.apply_action(
         Action::Spawn {
@@ -117,6 +117,7 @@ fn loo_ownership_steady_state_allocates_nothing_and_keeps_quiet_other() {
         );
         community.flora.push(flora);
     }
+    landscape.flora_power_scan = Some(vec![1e-20; landscape.space.n_bins()]);
     community.update_loo_ownership(&landscape);
     crate::runtime_profile::begin_allocations();
     let start = std::time::Instant::now();

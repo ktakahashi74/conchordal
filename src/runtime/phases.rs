@@ -415,6 +415,12 @@ pub(super) fn render_and_route_audio(
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
+    state.schedule_renderer.capture_flora = state.pop.has_placed_flora
+        && state
+            .pop
+            .voices
+            .iter()
+            .any(|v| v.effective_control.pitch.leave_self_out || v.selection_environment);
     let sources = state
         .pop
         .body_metabolism
@@ -530,7 +536,7 @@ pub(super) fn render_and_route_audio(
             // observe the same hop sequence every run. Blocking applies
             // backpressure but cannot deadlock, because the fixed-lag
             // consume above keeps the worker at most one frame behind.
-            if let Err(err) = tx.send((state.frame_idx, Arc::clone(&presentation_chunk))) {
+            if let Err(err) = tx.send((state.frame_idx, Arc::clone(&presentation_chunk), None)) {
                 state
                     .failures
                     .push(format!("listener analysis worker disconnected: {err}"));
@@ -538,7 +544,7 @@ pub(super) fn render_and_route_audio(
                 channels.presentation_to_listener_tx = None;
             }
         } else {
-            match tx.try_send((state.frame_idx, Arc::clone(&presentation_chunk))) {
+            match tx.try_send((state.frame_idx, Arc::clone(&presentation_chunk), None)) {
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) => {
                     state.latest_listener_state = None;

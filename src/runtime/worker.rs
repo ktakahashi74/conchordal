@@ -32,10 +32,10 @@ pub(super) struct WorkerChannels {
     pub(super) ui_tx: Option<Sender<UiFrame>>,
     pub(super) audio_prod: Option<ringbuf::HeapProd<f32>>,
     pub(super) wav_tx: Option<Sender<Arc<[f32]>>>,
-    pub(super) audio_to_analysis_tx: Option<Sender<(u64, Arc<[f32]>)>>,
+    pub(super) audio_to_analysis_tx: Option<Sender<analysis_worker::AnalysisHop>>,
     pub(super) analysis_result_rx: Receiver<analysis_worker::AnalysisResult>,
     pub(super) analysis_update_tx: Sender<LandscapeUpdate>,
-    pub(super) presentation_to_listener_tx: Option<Sender<(u64, Arc<[f32]>)>>,
+    pub(super) presentation_to_listener_tx: Option<Sender<analysis_worker::AnalysisHop>>,
     pub(super) listener_result_rx: Option<Receiver<analysis_worker::AnalysisResult>>,
     pub(super) listener_analysis_update_tx: Option<Sender<LandscapeUpdate>>,
 }
@@ -567,6 +567,10 @@ pub(super) fn process_hop(
             });
         }
     }
+    let flora_chunk = state
+        .schedule_renderer
+        .capture_flora
+        .then(|| Arc::from(state.schedule_renderer.flora_habitat.as_slice()));
     let channel_peak = [max_abs, max_abs];
 
     if cfg.temporal_meter_t2
@@ -574,7 +578,11 @@ pub(super) fn process_hop(
             .audio_to_analysis_tx
             .as_ref()
             .expect("analysis input open during generation")
-            .send((state.frame_idx, Arc::clone(&habitat_chunk)))
+            .send((
+                state.frame_idx,
+                Arc::clone(&habitat_chunk),
+                flora_chunk.clone(),
+            ))
     {
         state
             .failures
@@ -620,7 +628,11 @@ pub(super) fn process_hop(
             .audio_to_analysis_tx
             .as_ref()
             .expect("analysis input open during generation")
-            .send((state.frame_idx, Arc::clone(&habitat_chunk)))
+            .send((
+                state.frame_idx,
+                Arc::clone(&habitat_chunk),
+                flora_chunk.clone(),
+            ))
     {
         state
             .failures

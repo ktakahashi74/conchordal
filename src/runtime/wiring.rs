@@ -95,7 +95,7 @@ pub(super) fn build_analysis_runtime_core(
 pub(super) fn spawn_analysis_worker(
     name: &'static str,
     analysis_stream: AnalysisStream,
-    audio_to_analysis_rx: Receiver<(u64, Arc<[f32]>)>,
+    audio_to_analysis_rx: Receiver<analysis_worker::AnalysisHop>,
     analysis_result_tx: Sender<analysis_worker::AnalysisResult>,
     analysis_update_rx: Receiver<LandscapeUpdate>,
     delivery: analysis_worker::AnalysisDelivery,
@@ -209,7 +209,7 @@ pub(super) fn wire_runtime(
     let lparams_runtime = core.lparams.clone();
 
     let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
-    let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+    let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<analysis_worker::AnalysisHop>(64);
     let (analysis_result_tx, analysis_result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
 
     let (raw_output, t2_inbox) = if config.temporal_meter_t2 {
@@ -298,7 +298,7 @@ pub(super) fn wire_runtime(
         listener_analysis_handle,
     ) = if listener_analysis_enabled {
         let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
-        let (presentation_tx, presentation_rx) = bounded::<(u64, Arc<[f32]>)>(64);
+        let (presentation_tx, presentation_rx) = bounded::<analysis_worker::AnalysisHop>(64);
         let (result_tx, result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
         let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
         let handle = spawn_analysis_worker(

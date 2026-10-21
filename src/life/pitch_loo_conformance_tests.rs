@@ -1,5 +1,5 @@
 //! B-1 PCM self-removal reference, ported to the current runtime and three LOO methods.
-//! Run the ignored acquisition with --nocapture; T32_CASE lines are complete witnesses.
+//! PCM consumer checks replace the obsolete T-31 score snapshots.
 use super::*;
 use crate::config::AppConfig;
 use crate::core::consonance_kernel::ConsonanceRepresentationParams;
@@ -259,7 +259,6 @@ fn environment_viability_prepares_ownership_without_pitch_self_exclusion() {
 }
 
 #[test]
-#[ignore = "84 rendered scenes; run explicitly with --nocapture"]
 fn rendered_loo_conformance() {
     crate::life::modal::register_modal();
     let mut config = AppConfig::default();
@@ -894,6 +893,8 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
         let own_batch = [batch(2, &own_recipe)];
         let mut mixed_renderer = ScheduleRenderer::new(timebase);
         let mut own_renderer = ScheduleRenderer::new(timebase);
+        mixed_renderer.capture_flora = true;
+        let mut observed_stream = template.clone();
         let mut mixed_stream = template.clone();
         let mut removed_stream = template.clone();
         let mut reference_stream = template.clone();
@@ -939,6 +940,7 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
             solo_p.fill(0.);
             solo_h.fill(0.);
             flora_only.render_add(&mut solo_p, &mut solo_h);
+            assert_eq!(mixed_renderer.flora_habitat, solo_h);
             let removed: Vec<_> = full
                 .iter()
                 .zip(own)
@@ -952,7 +954,9 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                     got
                 })
                 .collect();
+            observed_stream.process(&mixed_renderer.flora_habitat);
             let mut mix = mixed_stream.process(&full).clone();
+            mix.flora_power_scan = Some(observed_stream.observed_loo_power());
             mix.recompute_consonance(&params);
             let mut actual = removed_stream.process(&removed).clone();
             actual.recompute_consonance(&params);
@@ -1003,12 +1007,10 @@ fn flora_ownership_preserves_external_pcm_for_pitch_and_environment() {
                 pop.advance(64, frame as u64, 1e-4, &mix);
                 let input = pop.voices[0].pitch_ctl.loo_input_mut().clone();
                 assert_eq!(input.own_power_scan, own_power);
-                for i in 0..own_power.len() {
-                    assert_eq!(
-                        input.other_power_scan[i],
-                        flora[0].habitat_power_scan()[i] as f64
-                    );
-                }
+                assert_eq!(
+                    &input.other_power_scan,
+                    mix.flora_power_scan.as_ref().unwrap()
+                );
                 if diagnostics
                     && tone == FloraTone::Resonant
                     && frame == 63

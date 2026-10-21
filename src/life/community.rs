@@ -667,18 +667,25 @@ impl Community {
     }
 
     fn update_loo_ownership(&mut self, landscape: &Landscape) {
+        if self.has_placed_flora && landscape.flora_power_scan.is_none() {
+            // An unobserved warmup is unknown, not silent Flora.
+            for voice in &mut self.voices {
+                let input = voice.pitch_ctl.loo_input_mut();
+                input.own_power_scan.clear();
+                input.other_power_scan.clear();
+                input.computed_score = None;
+            }
+            return;
+        }
         let prefix = &mut self.advance_scratch.loo_other_power_scan;
         prefix.resize(landscape.space.n_bins(), 0.0);
         prefix.fill(0.0);
         // Keep the other sources separate; total - own also loses tiny powers in f64.
-        for flora in &self.flora {
-            let power = flora.habitat_power_scan();
+        if let Some(power) = &landscape.flora_power_scan {
             landscape
                 .space
-                .assert_scan_len_named(power, "flora_habitat_power_scan");
-            for (sum, &value) in prefix.iter_mut().zip(power) {
-                *sum += value as f64;
-            }
+                .assert_scan_len_named(power, "flora_power_scan");
+            prefix.copy_from_slice(power);
         }
         for voice in &mut self.voices {
             voice.project_loo_power(&landscape.space);
@@ -1165,6 +1172,38 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         })
+    }
+
+    #[test]
+    fn flora_warmup_preserves_observed_field_until_paired_scan_arrives() {
+        let mut landscape = runtime_landscape();
+        let mut community = test_pop();
+        community.apply_action(
+            Action::Spawn {
+                population_id: 7,
+                ids: vec![70],
+                spec: spawn_spec_with_freq(330.),
+                strategy: None,
+            },
+            &landscape,
+        );
+        community.has_placed_flora = true;
+        community.update_loo_ownership(&landscape);
+        let input = community.voices[0].pitch_ctl.loo_input_mut();
+        assert!(input.own_power_scan.is_empty() && input.other_power_scan.is_empty());
+        landscape.flora_power_scan = Some(vec![1e-20; landscape.space.n_bins()]);
+        community.update_loo_ownership(&landscape);
+        assert_eq!(
+            &community.voices[0]
+                .pitch_ctl
+                .loo_input_mut()
+                .other_power_scan,
+            landscape.flora_power_scan.as_ref().unwrap()
+        );
+        landscape.flora_power_scan = None;
+        community.update_loo_ownership(&landscape);
+        let input = community.voices[0].pitch_ctl.loo_input_mut();
+        assert!(input.own_power_scan.is_empty() && input.other_power_scan.is_empty());
     }
 
     fn make_dummy_tone_spec() -> crate::life::voice::ToneSpec {

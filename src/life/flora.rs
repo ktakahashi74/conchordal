@@ -1054,6 +1054,7 @@ impl Flora {
 
     /// Amplitude projection squared, in the same units as Voice::project_loo_power.
     /// Describes the previous rendered hop at the next Community ownership snapshot.
+    #[cfg(test)]
     pub(crate) fn habitat_power_scan(&self) -> &[f32] {
         self.space
             .assert_scan_len_named(&self.habitat_power_scan, "flora_habitat_power_scan");

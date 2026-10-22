@@ -40,11 +40,11 @@ fn render(sample: &str, name: &str, tone: &str, residual: bool, campaign: &str) 
     fs::create_dir_all(&output).unwrap();
     let source = fs::read_to_string(format!("samples/research/{sample}.rhai")).unwrap();
     assert!(
-        source.contains(".fade(2)"),
+        source.contains(".fade(2).residual(true)"),
         "missing renderer substitution point"
     );
     let script = source.replace(
-        ".fade(2)",
+        ".fade(2).residual(true)",
         &format!(".fade(2).tone(\"{tone}\").residual({residual})"),
     );
     fs::write(output.join("scenario.rhai"), script).unwrap();

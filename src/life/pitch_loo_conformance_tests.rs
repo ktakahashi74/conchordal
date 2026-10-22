@@ -865,13 +865,13 @@ fn flora_ownership_cases(supported: bool) {
             continue;
         }
         let mut terrain = template.last().clone();
-        terrain.consonance_field_level_eff.fill(0.5);
+        terrain.consonance_field_level.fill(0.5);
         terrain.harmonicity01.fill(0.0);
         let peak = terrain
             .space
             .nearest_index(if residual { 466.0 } else { 440.0 });
-        terrain.consonance_density_mass_eff.fill(0.0);
-        for (i, value) in terrain.consonance_density_mass_eff.iter_mut().enumerate() {
+        terrain.consonance_density_mass.fill(0.0);
+        for (i, value) in terrain.consonance_density_mass.iter_mut().enumerate() {
             *value = crate::core::float::unit_gaussian(
                 i as f32 - peak as f32,
                 if residual { 8.0 } else { 0.2 },

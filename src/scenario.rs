@@ -20,6 +20,20 @@ pub struct FloraSpec {
     pub routing: control::Routing,
 }
 
+impl Default for FloraSpec {
+    fn default() -> Self {
+        Self {
+            amp: 0.03,
+            rate: 4.0,
+            renewal_sec: 10.0,
+            fade_sec: 2.0,
+            tone: FloraTone::Sine,
+            residual: false,
+            routing: control::Routing::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloraTone {
     Sine,

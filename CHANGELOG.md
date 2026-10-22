@@ -32,6 +32,12 @@
   are authored rules. Sample 17 demonstrates the mode; the Rhai Book documents it
   in English and Japanese.
 
+- Flora grows and seeds from the base consonance field and density mass before
+  habituation. Its consumer–resource depletion supplies its band fatigue; Voices
+  and the listener retain habituation, including the drive from Flora's sound.
+  Residual band noise is now off by default; `.residual(true)` enables it.
+  Research assay templates explicitly retain their residual-on configurations.
+
 ## 0.5.0 — 2026-10-18
 
 ### Composer-facing

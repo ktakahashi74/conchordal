@@ -305,7 +305,7 @@ fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
 fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
 /// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
-/// Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.
+/// Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.
 fn flora() -> FloraSpec;
 
 /// Irregular bodily renewal with acoustic timing choices.
@@ -524,7 +524,7 @@ fn pitch_core(population_spec: PopulationSpec, name: String) -> PopulationSpec;
 fn place(population_spec: PopulationSpec, placement: Placement) -> Population;
 
 /// Place a Flora over a consonance or random frequency extent.
-/// Consonance seeds from the current consonance density mass; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
+/// Consonance seeds from the base consonance density mass before habituation; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
 fn place(flora_spec: FloraSpec, placement: Placement) -> Flora;
 
 /// Scoped callback execution with automatic population release.
@@ -666,7 +666,7 @@ fn renewal(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 fn repeat(population_spec: PopulationSpec) -> PopulationSpec;
 
 /// [experimental] Enable or disable rendering diffuse Flora mass as band noise.
-/// Enabled by default.
+/// Disabled by default; residual(true) opts in.
 fn residual(flora_spec: FloraSpec, enabled: bool) -> FloraSpec;
 
 /// Background turnover rate per second.

@@ -290,7 +290,7 @@ $$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
 
 with $\tau=\tau_e$ when the drive exceeds the current state and $\tau=\tau_r$ otherwise. `satiation_sec` and `recovery_sec` are the times to reduce the discrepancy from the respective equilibrium by 90%, so the implementation uses $\tau_e=T_s/\ln 10$ and $\tau_r=T_r/\ln 10$. The sustained-drive equilibrium depends on drive strength; after complete withdrawal it is zero. The effective score relaxes toward the neutral sigmoid threshold $\theta$, while density mass is eroded multiplicatively, as shown in the table above.
 
-The default is `enabled=true`, with `satiation_sec=5.0`, `recovery_sec=8.0`, and `ref_drive=0.25`. Explicit `enabled=false` is an exact identity: every effective view equals its base view bit-for-bit. When enabled, movement, prediction, metabolism, respawn, density placement, and the listener read effective views; the UI terrain and diagnostics intentionally retain the un-eroded base views. Habituation belongs to the sensation and in-performance listener model; Rhai provides no switch for it. Scientific controls use explicit `enabled=false`.
+The default is `enabled=true`, with `satiation_sec=5.0`, `recovery_sec=8.0`, and `ref_drive=0.25`. Explicit `enabled=false` is an exact identity: every effective view equals its base view bit-for-bit. When enabled, Voice movement, prediction, metabolism, respawn, Voice density placement, and the listener read effective views; Flora growth and seeding, the UI terrain, and diagnostics retain the base views before erosion. Habituation belongs to the sensation and in-performance listener model; Rhai provides no switch for it. Scientific controls use explicit `enabled=false`.
 
 With `--report`, an additional `habituation_scan` record at each generated second carries
 `fmin_hz`, `bins_per_octave`, `n_bins`, and the habitat's `state_scan`, `raw_score_scan`,
@@ -838,15 +838,18 @@ where $\omega_{target}$ is the theta band's angular frequency, $K_{global}$ the 
 ## 5.6 Flora: Sound as a Growing Spectral Mass
 
 Flora adds a composition mode alongside Populations. A Flora is a non-negative
-spectral biomass over a bounded Log2Space extent. It grows from the effective
-consonance field and shares the habitat with Voices. Coupling between Flora and a
+spectral biomass over a bounded Log2Space extent. It grows from the base
+consonance field before habituation and shares the habitat with Voices. Resource
+depletion and recovery provide its band fatigue; Voices and the listener retain
+habituation, which Flora's habitat audio still drives. Coupling between Flora and a
 Population passes only through their radiated sound and the resulting Landscape.
 
 Local consumer–resource rules govern growth, spread, consumption and recovery.
 ERB cells decompose biomass into tracked tonal and residual lanes. Sine or resonant
-tones and optional residual sound turn those lanes into audio, with sample-rate
-fades and amplitude ramps. Placement, updates, release and bus routing are available
-through the Experimental Rhai surface; sample `17_flora.rhai` combines Flora with a
+tones turn those lanes into audio, with sample-rate fades and amplitude ramps.
+Residual sound is disabled by default and can be enabled with `.residual(true)`.
+Placement, updates, release and bus routing are available through the Experimental
+Rhai surface; sample `17_flora.rhai` combines Flora with a
 retuned Population.
 
 These dynamics belong to the authored-rule tier. Their use of an auditory landscape

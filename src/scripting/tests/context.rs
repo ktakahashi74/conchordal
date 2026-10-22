@@ -1444,7 +1444,7 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
         let moss = flora().amp(0.1).rate(1).renewal(10).fade(0.25)
             .tone("resonant").residual(false).send(presentation_bus);
         place(moss, consonance(110).range(1, 16));
-        place(flora().send(habitat_bus), random(220, 880));
+        place(flora().residual(true).send(habitat_bus), random(220, 880));
         place(flora().send(habitat_bus | presentation_bus), consonance(110, 880));
         place(flora(), random(110, 880));
         wait(0.5);
@@ -1476,6 +1476,7 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
     assert_eq!(placed[1].1, 2);
     assert_eq!(placed[1].3, (220.0, 880.0));
     assert!(matches!(placed[1].4, FloraSeeding::Uniform));
+    assert!(placed[1].2.residual);
     assert!(placed[1].2.routing.to_habitat && !placed[1].2.routing.to_presentation);
     for (_, _, spec, _, _) in &placed[2..] {
         assert!(spec.routing.to_habitat && spec.routing.to_presentation);
@@ -1484,7 +1485,7 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
             (0.03, 4.0, 10.0, 2.0)
         );
         assert_eq!(spec.tone, FloraTone::Sine);
-        assert!(spec.residual);
+        assert!(!spec.residual);
     }
     assert!(
         !action_times(&scenario)

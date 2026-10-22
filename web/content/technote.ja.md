@@ -290,7 +290,7 @@ $$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
 
 driveが現在の状態を上回るときは$\tau=\tau_e$、それ以外は$\tau=\tau_r$を使う。`satiation_sec`と`recovery_sec`は、それぞれの平衡状態までの差が90%縮む時間であり、実装は$\tau_e=T_s/\ln 10$、$\tau_r=T_r/\ln 10$とする。持続刺激の平衡状態はdriveの強さに依存し、完全に刺激を取り去った後は0となる。effective scoreはsigmoidの中立閾値$\theta$へ近づき、density massは上表のとおり乗算的に浸食される。
 
-既定は`enabled=true`、`satiation_sec=5.0`、`recovery_sec=8.0`、`ref_drive=0.25`である。`enabled=false`を明示したときは完全な恒等写像となり、全effective viewはbase viewとbit単位で一致する。有効時には、移動、予測、代謝、respawn、density placement、listenerがeffective viewを読む。一方、UIの地形表示と診断は浸食前のbase viewを使う。慣れは感覚モデルと演奏中の聴き手の状態に属し、Rhaiから切り替える語彙は設けていない。科学的な対照では`enabled=false`を明示する。
+既定は`enabled=true`、`satiation_sec=5.0`、`recovery_sec=8.0`、`ref_drive=0.25`である。`enabled=false`を明示したときは完全な恒等写像となり、全effective viewはbase viewとbit単位で一致する。有効時には、Voiceの移動、予測、代謝、respawn、density placementとlistenerがeffective viewを読む。Floraの成長と種まき、UIの地形表示、診断は浸食前のbase viewを使う。慣れは感覚モデルと演奏中の聴き手の状態に属し、Rhaiから切り替える語彙は設けていない。科学的な対照では`enabled=false`を明示する。
 
 `--report`では、生成時刻の1秒ごとに`habituation_scan`も出力する。
 `fmin_hz`、`bins_per_octave`、`n_bins`と、habitatの`state_scan`、`raw_score_scan`、
@@ -765,9 +765,9 @@ $\omega_{target}$ はシータ帯域の角周波数、$K_{global}$ はシーン�
 
 ## 5.6 Flora：育つスペクトル質量としての音
 
-Flora は Population と並ぶ作曲の形である。一つの Flora は、Log2Space 上の限られた帯域に非負のスペクトル質量を持つ。habituation 適用後の協和性地形から育ち、Voice と同じ habitat に住む。Flora と Population の結合は、互いの放射音と、それを分析した Landscape だけを通る。
+Flora は Population と並ぶ作曲の形である。一つの Flora は、Log2Space 上の限られた帯域に非負のスペクトル質量を持つ。habituation 適用前の協和性地形から育ち、Voice と同じ habitat に住む。Flora の帯域の疲労は資源の消費と回復が表す。Voice と listener の habituation は維持され、Flora の habitat 音もその駆動に含まれる。Flora と Population の結合は、互いの放射音と、それを分析した Landscape だけを通る。
 
-局所的な消費者–資源の規則が、成長、拡散、消費、回復を進める。ERB cell で質量を tonal lane と residual lane に分け、lane を追跡しながら、sine または resonant の音と任意の residual 成分を合成する。fade と振幅変更の ramp は sample ごとに進む。配置、更新、release、bus routing は Experimental の Rhai API から使える。`17_flora.rhai` は、途中で音高を変える Population と Flora を組み合わせる。
+局所的な消費者–資源の規則が、成長、拡散、消費、回復を進める。ERB cell で質量を tonal lane と residual lane に分け、lane を追跡しながら、sine または resonant の音を合成する。residual 成分は既定で無効となり、`.residual(true)` で有効にできる。fade と振幅変更の ramp は sample ごとに進む。配置、更新、release、bus routing は Experimental の Rhai API から使える。`17_flora.rhai` は、途中で音高を変える Population と Flora を組み合わせる。
 
 この力学は authored-rule tier、すなわち作者が設計した規則に属する。聴覚モデルの地形を使っていても、成長や遷移の規則自体を聴覚認知に根差すモデルとは位置付けない。API の安定性を示す Experimental とは別の分類である。
 

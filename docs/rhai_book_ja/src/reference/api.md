@@ -68,7 +68,7 @@ Route Flora to a Bus or BusSet, using the same buses as Populations. Default: ha
 place(flora_spec, placement) -> Flora
 ```
 
-Place a Flora over a consonance or random frequency extent. Consonance seeds from the current consonance density mass; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
+Place a Flora over a consonance or random frequency extent. Consonance seeds from the base consonance density mass before habituation; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
 
 #### `release`
 
@@ -999,7 +999,7 @@ Core候補として試聴中の動詞です。作曲用ですが、検証が済�
 flora() -> FloraSpec
 ```
 
-Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.
 
 #### `rate`
 
@@ -1049,7 +1049,7 @@ residual(enabled)
 
 適用対象：`FloraSpec`。
 
-Enable or disable rendering diffuse Flora mass as band noise. Enabled by default.
+Enable or disable rendering diffuse Flora mass as band noise. Disabled by default; residual(true) opts in.
 
 ### Phonationとリズム
 

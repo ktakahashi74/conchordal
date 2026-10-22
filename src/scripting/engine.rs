@@ -68,15 +68,7 @@ impl ScriptHost {
         });
 
         engine.register_fn("flora", || FloraSpecHandle {
-            spec: FloraSpec {
-                amp: 0.03,
-                rate: 4.0,
-                renewal_sec: 10.0,
-                fade_sec: 2.0,
-                tone: FloraTone::Sine,
-                residual: true,
-                routing: Routing::default(),
-            },
+            spec: FloraSpec::default(),
         });
         for name in ["amp", "rate", "renewal", "fade"] {
             engine.register_fn(

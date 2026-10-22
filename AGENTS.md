@@ -355,14 +355,15 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - Definition: `sigmoid(beta*(score-theta))`.
 - Usage: base value. Consumed as the habituation drive in
   `drive_and_apply_habituation` (`src/runtime/analysis_sync.rs`) and as the source for the
-  eroded view. Behavior and the listener read variant 6, not this one.
+  eroded view. Voice behavior and the listener read variant 6; Flora growth reads
+  this base level because its consumer–resource dynamics already supply band fatigue.
 3. `consonance_field_energy`
 - Definition: `-score`.
 - Usage: retained for minimization view and consistency checks.
 4. `consonance_density_mass`
 - Definition: `max(0, H01*(1-rho*R01))`.
 - Implementation: `ConsonanceKernel::density_with_rho(rho)` + `src/core/landscape.rs`.
-- Usage: base value. It is the source for the eroded mass and the input to
+- Usage: Flora placement reads this base mass. It also supplies the eroded mass and
   `build_consonance_density` (`src/core/landscape.rs`). Range-local spawn reads
   variant 6, not this one.
 5. `consonance_density` (base PMF)
@@ -379,14 +380,17 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   `apply_landscape_updates` (`src/runtime/analysis_sync.rs`) when
   `[psychoacoustics.habituation]` is enabled.
 - Usage split:
-  - Behavior, listener and spawn read the eroded views:
+  - Voice behavior, listener and Voice spawn read the eroded views:
     `src/life/community/frequency.rs`, `src/life/pitch_core.rs` (through
     `Landscape::evaluate_pitch_score_log2`, `src/core/landscape.rs`),
     `src/listener_twin/mod.rs`.
   - UI and diagnostics read the base views (`src/ui/windows.rs`), so the display
     shows the un-eroded terrain.
 - With habituation explicitly disabled the `_eff` views equal their base variants
-  bit-exact, so reading the eroded view is always correct for behavior.
+  bit-exact, so reading the eroded view is always correct for Voice behavior.
+  Flora reads base level/mass and unchanged `harmonicity01`; its habitat audio still
+  drives habituation. Flora residual rendering defaults to false; explicit
+  `.residual(true)` remains available.
 
 ## Config Keys
 - `[audio].output_gain_db` (default `4.5`): fixed dB gain before cpal/WAV guards, calibrated from bundled sample peaks and the 0.98 ceiling. Analysis, listener, report and UI inputs stay at their original levels.

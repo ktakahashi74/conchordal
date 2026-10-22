@@ -7,8 +7,9 @@ Floraは、指定した周波数範囲にスペクトルの重みを成長させ
 音の交代が続くという約束でもない。
 
 PopulationとFloraが互いに作用する経路は音だけであり、内部状態を直接受け渡さない。
-habitat busの音からLandscapeが作られ、Floraはその実効的な評価水準と倍音性を読む。
-全体の慣れが有効なら、その作用を受けた水準を使う。両方の出力先を選ぶと、Flora自身の
+habitat busの音からLandscapeが作られ、Floraは慣れが作用する前の評価水準と倍音性を読む。
+Floraでは資源の消費と回復が帯域の疲労を既に表す。VoiceとListenerTwinは引き続き慣れが
+作用した地形を読む。両方の出力先を選ぶと、Flora自身の
 音も解析を経て戻ってくる。`send(presentation_bus)`なら音は聞こえるが環境には入らず、
 `send(habitat_bus)`なら環境に作用するが直接は聞こえない。資源は、音にならない部分も
 含めた成長量に応じて消費される。自分の音が戻らなくても、残るLandscapeの上で成長と
@@ -21,7 +22,7 @@ Voiceが作る音とFloraが同じ環境に作用する。
 ```rhai
 let sun = place(harmonic().brain("drone").sustain().amp(0.04), at(110));
 let moss = flora().amp(0.03).renewal(10).fade(0.5)
-    .tone("sine").residual(true).send(habitat_bus | presentation_bus);
+    .tone("sine").residual(false).send(habitat_bus | presentation_bus);
 let m = place(moss, consonance(110).range(1, 16));
 wait(2);
 m.amp(0.015);
@@ -30,7 +31,7 @@ wait(1);
 release(sun);
 ```
 
-`consonance(lo, hi)`では、その範囲の協和度の正規化前の重みから初期分布を作る。
+`consonance(lo, hi)`では、その範囲の、慣れが作用する前の協和度の正規化前の重みから初期分布を作る。
 重みの合計がゼロなら一様分布を使う。`random(lo, hi)`は最初から一様分布を使う。
 どちらも密度による選択、個数1、緊張度0、既定の間隔を必要とする。間隔の既定値は
 `consonance`が1 ERB、`random`が0。同じ値を明示した指定も受け付ける。
@@ -46,8 +47,10 @@ release(sun);
 | `renewal` | 0.5〜600秒。帯域資源の回復時間 | 10 | 可能 |
 | `fade` | 0〜60秒 | 2 | 配置前のみ |
 | `tone` | `"sine"`、`"resonant"` | `"sine"` | 配置前のみ |
-| `residual` | 真偽値。拡散した重みを帯域雑音として鳴らす | `true` | 配置前のみ |
+| `residual` | 真偽値。拡散した重みを帯域雑音として鳴らす | `false` | 配置前のみ |
 | `send` | BusまたはBusSet | 両方の出力先 | 配置前のみ |
+
+配置前に`residual(true)`を指定すると、帯域雑音の層を有効にできる。
 
 `amp`は目標振幅の基準となる倍率であり、上限を表す。一定の音量を保証する値ではない。
 フェード、振幅の追従、消えつつある音によって、一時的な出力は変わる。

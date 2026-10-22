@@ -7,8 +7,10 @@ Silence is a legitimate state. These dynamics are authored composing rules, not
 claims about auditory cognition or a guarantee of continuing succession.
 
 Population and Flora couple only through sound: habitat audio feeds the Landscape,
-and Flora reads its effective field level (after global habituation, if enabled)
-and harmonicity. There is no direct exchange of their state. With both buses selected,
+and Flora reads its base field level before habituation and its harmonicity.
+Resource depletion and recovery already supply Flora's band fatigue; Voices and the
+listener still read the habituated terrain. There is no direct exchange of their
+state. With both buses selected,
 Flora also hears its own sound through this analysis path. `send(presentation_bus)`
 removes its sound from the habitat while keeping it audible; `send(habitat_bus)` does
 the reverse. Resource consumption follows biomass, including biomass that does not
@@ -21,7 +23,7 @@ Flora can share the same habitat, as in this example:
 ```rhai
 let sun = place(harmonic().brain("drone").sustain().amp(0.04), at(110));
 let moss = flora().amp(0.03).renewal(10).fade(0.5)
-    .tone("sine").residual(true).send(habitat_bus | presentation_bus);
+    .tone("sine").residual(false).send(habitat_bus | presentation_bus);
 let m = place(moss, consonance(110).range(1, 16));
 wait(2);
 m.amp(0.015);
@@ -30,7 +32,7 @@ wait(1);
 release(sun);
 ```
 
-`consonance(lo, hi)` seeds from the current consonance density mass inside the extent,
+`consonance(lo, hi)` seeds from the base consonance density mass before habituation inside the extent,
 with a uniform fallback when that mass is zero. `random(lo, hi)` seeds uniformly.
 Both require density sampling, count 1, zero tension and the target's default spacing
 (1 ERB for consonance, 0 for random). Explicit default modifiers are accepted by value.
@@ -46,8 +48,10 @@ contains bins again.
 | `renewal` | 0.5–600 seconds; band resource recovery time | 10 | Yes |
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |
-| `residual` | Boolean; diffuse mass as band noise | `true` | Before placement |
+| `residual` | Boolean; diffuse mass as band noise | `false` | Before placement |
 | `send` | Bus or BusSet | Both buses | Before placement |
+
+`residual(true)` enables the optional band-noise layer before placement.
 
 `amp` is the nominal target-amplitude scale: a ceiling, not a guaranteed level.
 Fades, slews and retiring tones can affect the transient output.

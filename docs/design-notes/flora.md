@@ -56,10 +56,16 @@ habituation field.
    habitat bus feeds NSGT and the landscape; Populations perceive Flora there. Their
    audio reaches the same landscape, and Flora perceives them there. There is no direct
    state coupling in either direction. This is the contract Voices already follow.
-2. **Flora reads the eroded view.** It reads `consonance_field_level_eff` and
-   `harmonicity01` per hop and, at placement, `consonance_density_mass_eff`. With global
-   habituation enabled (main's default) the eroded views differ from their base
-   variants.
+2. **Flora reads the base view before habituation.** It reads
+   `consonance_field_level` and `harmonicity01` per hop and, at placement,
+   `consonance_density_mass`. Habituation does not modify `harmonicity01`.
+   Consumer–resource depletion and recovery already express fatigue of a habitat band.
+   Reading the eroded view would count that fatigue twice, including habituation
+   driven by Flora's own sound. The adopted dynamics constants were selected on the
+   reference branch without habituation. The 2026-10-22 diagnostic (F-7) isolated the
+   extra erosion, and the author adopted the base view after listening that day.
+   Global habituation remains enabled by default: Voices and the listener still read
+   eroded views, and Flora's habitat audio still drives habituation.
 3. **Flora perceives itself.** There is no leave-one-out for Flora. Self-interaction
    shapes the pattern:
    - its own roughness lowers fitness within a critical band of each sounding peak;
@@ -162,8 +168,8 @@ Implementation Findings. Every part of it belongs to the authored-rule tier.
 - the cells and lanes (see Rendering);
 - the consumption kernel and fixed-capacity scratch (see Allocation).
 
-Flora reads `g = consonance_field_level_eff` and `H01 = harmonicity01` per hop on its
-extent, and `consonance_density_mass_eff` at placement.
+Flora reads `g = consonance_field_level` and `H01 = harmonicity01` per hop on its
+extent, and `consonance_density_mass` at placement, all before habituation erosion.
 
 **Update.** Each hop runs `n` equal substeps, `dt = dt_hop / n`, with the terrain held
 for the hop. `n` is the smallest integer with `rate · dt ≤ 0.05` and `D · dt ≤ 0.25`
@@ -224,7 +230,7 @@ record the largest total biomass.
 
 **Seeding.** At placement:
 
-- `consonance(...)`: the shape of `consonance_density_mass_eff` restricted to the extent,
+- `consonance(...)`: the shape of base `consonance_density_mass` restricted to the extent,
   with a uniform fallback when the restricted total is zero (the fallback rule of
   range-local spawn in `Community::decide_frequency`);
 - `random(lo, hi)`: uniform on the extent.
@@ -268,13 +274,13 @@ candidacy is relative to `max p` and masses are excesses over the cell floor: a 
 Flora:
 
 - `.tone("sine" | "resonant")`, default `"sine"`;
-- `.residual(bool)`, default `true`.
+- `.residual(bool)`, default `false`; `.residual(true)` enables the band-noise layer.
 
 v1 audits three configurations:
 
-1. **sine + residual** (default);
-2. **sine without residual** (control);
-3. **resonant + residual**.
+1. **sine + residual** (explicit `.residual(true)`);
+2. **sine without residual** (default since the author’s 2026-10-22 audition);
+3. **resonant + residual** (explicit `.residual(true)`).
 
 The earlier peak-tracking allocation is not implemented. It is kept in Appendix A as
 the fallback, in case cell boundaries or the coarse low register prove audible.
@@ -577,7 +583,7 @@ let moss = flora()
     .rate(4.0)        // growth response, 1/s (default 4)
     .renewal(10.0)    // band-resource recovery time, s (default 10)
     .tone("sine")     // tonal atom: "sine" or "resonant"
-    .residual(true)   // render diffuse mass as band noise
+    .residual(false)  // default; true renders diffuse mass as band noise
     .fade(2.0);       // fade-in at place, fade-out at release
 
 let sun = place(harmonic().brain("drone").sustain(), at(110.0));
@@ -588,7 +594,7 @@ release(m);
 ```
 
 - Defaults: `amp` 0.03, `rate` 4/s, `renewal` 10 s, `fade` 2 s, `tone("sine")`,
-  `residual(true)`, both buses.
+  `residual(false)`, both buses.
 - `flora()` returns a `FloraSpec`, with `.amp`, `.rate`, `.renewal`, `.tone`,
   `.residual`, `.fade` and `.send` (same `Bus` / `BusSet` values as Populations).
   `.tone` accepts only `"sine"` and `"resonant"`; any other string is a script error.
@@ -1100,6 +1106,17 @@ extent. A decision would require the separate metric redesign, discriminating
 controls and a justified margin registered with unused seeds. No parameter was tuned
 from these results, and no author audition or real-time-load acceptance is claimed.
 
+**2026-10-22, habituation suppresses the adopted succession.** The F-7 comparison
+kept the front end fixed and separated global habituation from residual rendering.
+Removing habituation recovered concentrated, changing partials and higher biomass;
+scan inspection located the growth difference between base and eroded field levels.
+Residual removal separately brought the sound closer to the author's intended Flora.
+The F-7 measurement and scan reports retain the numerical values and windows. After
+listening, the author adopted base-field growth and seeding for Flora, with residual
+disabled by default. Voice/listener habituation, the seed-rain harmonicity and the
+consumer–resource constants remain unchanged. This does not adopt a wider harmonic
+repertoire or a new diffuse-biomass law.
+
 ## Dynamics Design Record
 
 Record of how the consumer–resource dynamics were chosen. The proposal went through four
@@ -1263,7 +1280,9 @@ nominal target-amplitude scale; the ignored alternation test was replaced by the
    Flora's own sound, and whether the resource should be one shared ecological field
    rather than a per-Flora state. The consumption is kept as one term so that the result
    can be added without restructuring.
-2. Whether the residual configuration needs its own treatment of diffuse biomass.
+2. **Residual default resolved by author audition, 2026-10-22:** off, with
+   `.residual(true)` retained for explicit use and the residual-on assays. A separate
+   treatment of diffuse biomass remains unadopted.
 3. The repertoire. In the reference the long-run succession narrows to the drone's lower
    harmonics. Widening it (for example through the weighting of `H01` in the seed rain)
    is an authored choice to audition.
@@ -1350,8 +1369,8 @@ depend on the runtime layout.
 4. At 96 bins/oct `harmonicity01` is one bin wide around each partial, so seeds land on
    exact bins and level peaks are one bin wide.
 5. Main enables `[psychoacoustics.habituation]` by default; the branch's measurements
-   ran with it disabled. Flora reads the eroded views, so re-measure on main before
-   comparing numbers.
+   ran with it disabled. At the initial main integration Flora read the eroded views;
+   the 2026-10-22 comparison above motivated the switch to base views.
 6. Fixed-terrain unit tests need a `Landscape` whose level and `harmonicity01` are set,
    not only the level.
 

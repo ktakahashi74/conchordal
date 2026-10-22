@@ -27,6 +27,11 @@ fn flora_finishes_with_its_fade_in_both_renderers() {
                 0.3,
             ),
             (
+                "residual_opt_in",
+                "place(flora().amp(0.4).fade(0.1).residual(true), random(220, 880)); wait(0.2);",
+                0.3,
+            ),
+            (
                 "fade_in",
                 "place(flora().amp(0.4).fade(1), random(220, 880)); wait(0.05);",
                 1.05,
@@ -90,6 +95,19 @@ fn flora_finishes_with_its_fade_in_both_renderers() {
             assert!(!flora.is_empty());
             assert_eq!(flora[0]["age_sec"].as_f64().unwrap(), hop_sec);
             assert!(flora[0]["tonal_energy"].as_f64().unwrap() > 0.);
+            if name == "residual_opt_in" {
+                assert!(
+                    flora
+                        .iter()
+                        .any(|r| r["residual_energy"].as_f64().unwrap() > 0.)
+                );
+            } else {
+                assert!(
+                    flora
+                        .iter()
+                        .all(|r| r["residual_energy"].as_f64().unwrap() == 0.)
+                );
+            }
             assert!(flora.windows(2).all(|w| w[1]["time_sec"].as_f64().unwrap()
                 - w[0]["time_sec"].as_f64().unwrap()
                 >= 1.0 - hop_sec));

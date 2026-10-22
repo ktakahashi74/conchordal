@@ -316,7 +316,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Na,
         usage: &["flora()"],
         summary: "Build a FloraSpec for spectral growth over a frequency extent.",
-        details: "Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual enabled, both buses.",
+        details: "Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.",
     },
     FnDoc {
         name: "amp",
@@ -376,7 +376,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Initial,
         usage: &["residual(enabled)"],
         summary: "Enable or disable rendering diffuse Flora mass as band noise.",
-        details: "Enabled by default.",
+        details: "Disabled by default; residual(true) opts in.",
     },
     FnDoc {
         name: "send",
@@ -396,7 +396,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Na,
         usage: &["place(flora_spec, placement)"],
         summary: "Place a Flora over a consonance or random frequency extent.",
-        details: "Consonance seeds from the current consonance density mass; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.",
+        details: "Consonance seeds from the base consonance density mass before habituation; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.",
     },
     FnDoc {
         name: "release",

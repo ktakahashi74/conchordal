@@ -392,15 +392,15 @@ impl Flora {
         };
         flora.on_space_change(&landscape.space);
         flora.space.assert_scan_len_named(
-            &landscape.consonance_density_mass_eff,
-            "consonance_density_mass_eff",
+            &landscape.consonance_density_mass,
+            "consonance_density_mass",
         );
         if !flora.range.is_empty() {
             for i in flora.range.clone() {
                 flora.biomass_mass_scan[i] = match seeding {
                     FloraSeeding::Uniform => 1.0,
                     FloraSeeding::Consonance => {
-                        finite_or(landscape.consonance_density_mass_eff[i], 0.0).max(0.0)
+                        finite_or(landscape.consonance_density_mass[i], 0.0).max(0.0)
                     }
                 };
             }
@@ -599,10 +599,8 @@ impl Flora {
 
     pub(crate) fn advance(&mut self, landscape: &Landscape) {
         self.assert_scans();
-        self.space.assert_scan_len_named(
-            &landscape.consonance_field_level_eff,
-            "consonance_field_level_eff",
-        );
+        self.space
+            .assert_scan_len_named(&landscape.consonance_field_level, "consonance_field_level");
         self.space
             .assert_scan_len_named(&landscape.harmonicity01, "harmonicity01");
         assert_eq!(
@@ -628,8 +626,7 @@ impl Flora {
                 let u = self.resource_state_scan[i];
                 let growth = self.spec.rate
                     * v
-                    * (sanitize01(landscape.consonance_field_level_eff[i]) * u * v
-                        / (v + allee_mass)
+                    * (sanitize01(landscape.consonance_field_level[i]) * u * v / (v + allee_mass)
                         - METABOLISM);
                 let spread = self.diffusion
                     * (self.biomass_mass_scan[left] - 2.0 * v + self.biomass_mass_scan[right]);
@@ -1217,7 +1214,7 @@ mod tests {
     #[test]
     fn dynamics_large_hop_high_rate_preserves_nonnegativity_and_extent() {
         let mut l = Landscape::new(Log2Space::new(110.0, 1760.0, 96));
-        l.consonance_field_level_eff.fill(1.0);
+        l.consonance_field_level.fill(1.0);
         l.harmonicity01.fill(1.0);
         let mut f = Flora::new(
             1,
@@ -1315,7 +1312,7 @@ mod tests {
     #[test]
     fn flat_terrain_biomass_stays_below_twenty_over_120_seconds() {
         let mut l = terrain();
-        l.consonance_field_level_eff.fill(0.5);
+        l.consonance_field_level.fill(0.5);
         l.harmonicity01.fill(0.0);
         for total in [0.05, 5.0] {
             let mut f = flora(&l);
@@ -1444,7 +1441,7 @@ mod tests {
     #[test]
     fn seeding_is_reproducible_restricted_and_has_uniform_fallback() {
         let mut l = terrain();
-        l.consonance_density_mass_eff[31..35].fill(2.0);
+        l.consonance_density_mass[31..35].fill(2.0);
         let make = |l: &Landscape| {
             Flora::new(
                 7,
@@ -1468,7 +1465,7 @@ mod tests {
                 .iter()
                 .all(|&u| u == 1.0)
         );
-        l.consonance_density_mass_eff.fill(0.0);
+        l.consonance_density_mass.fill(0.0);
         let f = make(&l);
         assert!(
             f.biomass_mass_scan[f.range.clone()]
@@ -1479,7 +1476,7 @@ mod tests {
         let total: f32 = f.biomass_mass_scan.iter().sum();
         assert!((total - INITIAL_BIOMASS).abs() < 1e-6, "{total}");
         // Tiny weights next to zero bins must not overflow to Inf or NaN.
-        l.consonance_density_mass_eff[31..33].fill(1e-40);
+        l.consonance_density_mass[31..33].fill(1e-40);
         let tiny = make(&l);
         assert!(tiny.biomass_mass_scan.iter().all(|v| v.is_finite()));
         let total: f32 = tiny.biomass_mass_scan.iter().sum();
@@ -1487,10 +1484,74 @@ mod tests {
     }
 
     #[test]
+    fn habituation_changes_neither_base_seeding_nor_base_driven_growth() {
+        use crate::core::consonance_kernel::ConsonanceRepresentationParams;
+        use crate::core::habituation::{HabituationField, HabituationParams};
+
+        let mut base = terrain();
+        let repr = ConsonanceRepresentationParams::default();
+        let n = base.space.n_bins();
+        for i in 0..n {
+            base.consonance_field_score[i] = 0.5 + i as f32 / n as f32;
+            base.consonance_field_level[i] = repr.level(base.consonance_field_score[i]);
+            base.consonance_density_mass[i] = 0.1 + i as f32 / n as f32;
+            base.harmonicity01[i] = (i % 11) as f32 / 10.0;
+        }
+        base.apply_habituation(&vec![0.0; n], repr.theta, &repr);
+        let mut habituated = base.clone();
+        let mut hab = HabituationField::new(&HabituationParams::default(), repr.theta, n);
+        assert!(hab.is_enabled());
+        let projection: Vec<_> = (0..n)
+            .map(|i| if i < n / 2 { 10.0 } else { 0.01 })
+            .collect();
+        for _ in 0..200 {
+            hab.advance_from_parts(&base.consonance_field_level, &projection, 0.05);
+        }
+        habituated.apply_habituation(hab.state(), repr.theta, &repr);
+        assert_ne!(
+            habituated.consonance_field_level,
+            habituated.consonance_field_level_eff
+        );
+        assert_ne!(
+            habituated.consonance_density_mass,
+            habituated.consonance_density_mass_eff
+        );
+        assert_eq!(habituated.harmonicity01, base.harmonicity01);
+        let make = |l: &Landscape| {
+            Flora::new(
+                7,
+                spec(),
+                (440.0, 880.0),
+                FloraSeeding::Consonance,
+                42,
+                l,
+                2000.0,
+                100,
+            )
+        };
+        let mut expected = make(&base);
+        let mut actual = make(&habituated);
+        assert_eq!(actual.biomass_mass_scan, expected.biomass_mass_scan);
+        let mut reduced = make(&base);
+        let mut reduced_base = habituated.clone();
+        reduced_base
+            .consonance_field_level
+            .copy_from_slice(&habituated.consonance_field_level_eff);
+        for _ in 0..100 {
+            expected.advance(&base);
+            actual.advance(&habituated);
+            reduced.advance(&reduced_base);
+        }
+        assert_eq!(actual.biomass_mass_scan, expected.biomass_mass_scan);
+        assert_eq!(actual.resource_state_scan, expected.resource_state_scan);
+        assert_ne!(actual.biomass_mass_scan, reduced.biomass_mass_scan);
+    }
+
+    #[test]
     fn advance_matches_the_closed_form_update_for_uniform_biomass() {
         // Uniform biomass removes the spread and makes consumption the local density.
         let mut l = terrain();
-        l.consonance_field_level_eff.fill(0.7);
+        l.consonance_field_level.fill(0.7);
         l.harmonicity01.fill(0.4);
         let mut f = flora(&l);
         let bins_per_oct = f.space.bins_per_oct as f32;
@@ -2463,11 +2524,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "consonance_field_level_eff")]
+    #[should_panic(expected = "consonance_field_level")]
     fn f2_advance_checks_landscape_input() {
         let mut l = terrain();
         let mut f = flora(&l);
-        l.consonance_field_level_eff.pop();
+        l.consonance_field_level.pop();
         f.advance(&l);
     }
 
@@ -2481,10 +2542,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "consonance_density_mass_eff")]
+    #[should_panic(expected = "consonance_density_mass")]
     fn f2_placement_checks_landscape_input() {
         let mut l = terrain();
-        l.consonance_density_mass_eff.pop();
+        l.consonance_density_mass.pop();
         let _ = flora(&l);
     }
 
@@ -2505,7 +2566,7 @@ mod tests {
             let mut crossings = 0;
             begin_allocations();
             for t in 0..300 {
-                l.consonance_field_level_eff.fill(0.5);
+                l.consonance_field_level.fill(0.5);
                 f.biomass_mass_scan.fill(0.000001);
                 if t % 30 < 10 {
                     hill(&mut f, 33, 1.0);

@@ -360,11 +360,46 @@ pub(super) fn wire_runtime(
     }
     let scaffold = scenario.scaffold;
     let meter_shaping = scenario.meter_shaping;
+    // Reserve observers from birth, including populations enabled by a later patch.
+    let mut loo_populations = Vec::new();
+    for action in scenario.events.iter().flat_map(|event| &event.actions) {
+        let population = match action {
+            Action::Spawn {
+                population_id,
+                spec,
+                ..
+            } if spec.control.pitch.leave_self_out
+                || matches!(
+                    &spec.articulation,
+                    crate::scenario::ArticulationCoreConfig::Entrain {
+                        lifecycle: crate::scenario::lifecycle::LifecycleConfig::Sustain {
+                            selection_environment: true,
+                            ..
+                        },
+                        ..
+                    }
+                ) =>
+            {
+                Some(*population_id)
+            }
+            Action::UpdatePopulation {
+                population_id,
+                patch,
+            } if patch.leave_self_out == Some(true) => Some(*population_id),
+            _ => None,
+        };
+        if let Some(id) = population
+            && !loo_populations.contains(&id)
+        {
+            loo_populations.push(id);
+        }
+    }
     let conductor = Conductor::from_scenario(scenario);
 
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
+        loo_populations,
         render_prototype: config.render_prototype,
         temporal_meter_t2: config.temporal_meter_t2,
         onset_comparison: config.temporal_onset_comparison,

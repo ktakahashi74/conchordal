@@ -224,7 +224,7 @@ fn viability_voice(hz: f32, kind: PitchCoreKind) -> crate::life::voice::Voice {
 }
 
 #[test]
-fn environment_viability_prepares_ownership_without_pitch_self_exclusion() {
+fn environment_viability_consumes_pcm_observation_without_pitch_self_exclusion() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
     landscape.subjective_intensity[landscape.space.nearest_index(220.0)] = 1.0;
     landscape.loudness_exp = 0.23;
@@ -242,18 +242,20 @@ fn environment_viability_prepares_ownership_without_pitch_self_exclusion() {
             is_active: true,
             ..Default::default()
         };
+        landscape.loo = vec![crate::core::stream::loo::Observation {
+            id: voice.id(),
+            generation: voice.metadata.generation,
+            h_scan: vec![0.; landscape.space.n_bins()],
+            r_scan: vec![0.; landscape.space.n_bins()],
+            score_scan: vec![0.; landscape.space.n_bins()].into(),
+        }];
         let mut community = crate::life::community::Community::new(Timebase { fs: FS, hop: 512 });
         community.add_voice(voice);
         community.advance(512, 0, 512.0 / FS, &landscape);
         let voice = &mut community.voices[0];
         assert!(!voice.effective_control.pitch.leave_self_out);
         let input = voice.pitch_ctl.loo_input_mut();
-        assert_eq!(input.own_power_scan.len(), landscape.space.n_bins());
-        assert!(input.own_power_scan.iter().any(|&x| x > 0.0));
-        assert!(
-            input.computed_score.is_some(),
-            "lifecycle must consume the snapshot"
-        );
+        assert!(input.exact_score.is_some());
         assert!(voice.pitch_ctl.environment_score(&landscape, 220.0).abs() <= 1e-6);
     }
 }
@@ -339,6 +341,7 @@ fn rendered_loo_conformance() {
                 all.extend(others.iter().cloned());
                 let mut mixed_renderer = ScheduleRenderer::new(timebase);
                 let mut own_renderer = ScheduleRenderer::new(timebase);
+                let mut candidate = crate::core::stream::loo::Observer::new(2, 0, &template);
                 let mut mixed_stream = template.clone();
                 let mut removed_stream = template.clone();
                 let mut oracle_stream = template.clone();
@@ -380,6 +383,7 @@ fn rendered_loo_conformance() {
                             value
                         })
                         .collect();
+                    candidate.process(&full, &own_pcm);
                     let mut mix = mixed_stream.process(&full).clone();
                     mix.recompute_consonance(&params);
                     let mut actual = removed_stream.process(&removed).clone();
@@ -439,11 +443,12 @@ fn rendered_loo_conformance() {
                     }
                 }
                 let mut input = LooInput {
+                    exact_score: Some(candidate.snapshot().score_scan),
                     own_power_scan: own_power,
                     other_power_scan: other_power,
                     computed_score: None,
                 };
-                let candidate_scan = loo_score_scan(&mix, &mut input, &mut None);
+                let candidate_scan = loo_score_scan(&mix, &mut input);
                 let expected_score =
                     sample_ownership_score(&mix, current, candidate_scan.as_deref());
                 let old_score = legacy_sample_consonance_score_with_loo(
@@ -831,15 +836,8 @@ fn representative_density(
 }
 
 #[test]
-fn flora_tonal_and_presentation_only_consumers_conform() {
+fn flora_all_consumers_conform() {
     flora_ownership_cases(true);
-}
-
-#[test]
-fn flora_residual_nearby_consumer_errors_are_recorded() {
-    // Residual noise is outside the validated LOO scope: nonlinear peak/loudness
-    // observations and same-frequency interference prevent exact separation.
-    // Keep fixture/oracle identities asserted; measure consumer errors without a gate.
     flora_ownership_cases(false);
 }
 
@@ -857,7 +855,6 @@ fn flora_ownership_cases(supported: bool) {
     let mut failed_cases = Vec::new();
     let mut records = Vec::new();
     let mut density_cache = BTreeMap::new();
-    let diagnostics = std::env::var_os("T35_FLORA_DIAGNOSTICS").is_some();
     for (tone, residual, habitat) in [
         (FloraTone::Sine, false, true),
         (FloraTone::Resonant, true, true),
@@ -909,8 +906,7 @@ fn flora_ownership_cases(supported: bool) {
         let own_batch = [batch(2, &own_recipe)];
         let mut mixed_renderer = ScheduleRenderer::new(timebase);
         let mut own_renderer = ScheduleRenderer::new(timebase);
-        mixed_renderer.capture_flora = true;
-        let mut observed_stream = template.clone();
+        let mut candidate = crate::core::stream::loo::Observer::new(2, 0, &template);
         let mut mixed_stream = template.clone();
         let mut removed_stream = template.clone();
         let mut reference_stream = template.clone();
@@ -956,7 +952,6 @@ fn flora_ownership_cases(supported: bool) {
             solo_p.fill(0.);
             solo_h.fill(0.);
             flora_only.render_add(&mut solo_p, &mut solo_h);
-            assert_eq!(mixed_renderer.flora_habitat, solo_h);
             let removed: Vec<_> = full
                 .iter()
                 .zip(own)
@@ -970,9 +965,8 @@ fn flora_ownership_cases(supported: bool) {
                     got
                 })
                 .collect();
-            observed_stream.process(&mixed_renderer.flora_habitat);
+            candidate.process(&full, &sources[0].habitat);
             let mut mix = mixed_stream.process(&full).clone();
-            mix.flora_power_scan = Some(observed_stream.observed_loo_power());
             mix.recompute_consonance(&params);
             let mut actual = removed_stream.process(&removed).clone();
             actual.recompute_consonance(&params);
@@ -989,7 +983,7 @@ fn flora_ownership_cases(supported: bool) {
                 continue;
             }
             assert_eq!(
-                mixed_renderer.flora_habitat.iter().any(|x| *x != 0.),
+                solo_h.iter().any(|x| *x != 0.),
                 habitat && [63, 191, 199].contains(&frame)
             );
             for kind in [PitchCoreKind::HillClimb, PitchCoreKind::PeakSampler] {
@@ -1017,151 +1011,21 @@ fn flora_ownership_cases(supported: bool) {
                     ..Default::default()
                 };
                 let own_power = voice.project_loo_power(&mix.space).to_vec();
+                let mut observation = candidate.snapshot();
+                observation.id = voice.id();
+                observation.generation = voice.metadata.generation;
+                mix.loo = vec![observation];
                 let mut pop = Community::new(timebase);
                 pop.voices.push(voice);
                 pop.flora.push(flora[0].clone());
                 pop.advance(64, frame as u64, 1e-4, &mix);
                 let input = pop.voices[0].pitch_ctl.loo_input_mut().clone();
-                assert_eq!(input.own_power_scan, own_power);
-                assert_eq!(
-                    &input.other_power_scan,
-                    mix.flora_power_scan.as_ref().unwrap()
-                );
-                if diagnostics
-                    && tone == FloraTone::Resonant
-                    && frame == 63
-                    && kind == PitchCoreKind::HillClimb
+                assert!(input.exact_score.is_some());
                 {
-                    // With gamma_root=1 the unnormalized H operator is linear.
-                    // Changing the denominator changes only the owned bin's retained mass.
-                    let owned: Vec<_> = own_power
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, p)| **p > 0.)
-                        .map(|(i, _)| i)
-                        .collect();
-                    assert_eq!(owned.len(), 1);
-                    let idx = owned[0];
-                    let mut background = mix.subjective_intensity.clone();
-                    background[idx] = 0.;
-                    let mut self_bin = vec![0.; mix.space.n_bins()];
-                    self_bin[idx] = mix.subjective_intensity[idx];
-                    let mut hparams = mix.harmonicity_params;
-                    assert_eq!(hparams.gamma_root, 1.);
-                    hparams.normalize_output = false;
-                    let hkernel = HarmonicityKernel::new(&mix.space, hparams);
-                    let (a, _) = hkernel.potential_h_from_log2_spectrum(&background, &mix.space);
-                    let (b, _) = hkernel.potential_h_from_log2_spectrum(&self_bin, &mix.space);
-                    let ia = a
-                        .iter()
-                        .enumerate()
-                        .max_by(|(_, x), (_, y)| x.total_cmp(y))
-                        .unwrap()
-                        .0;
-                    let ib = b
-                        .iter()
-                        .enumerate()
-                        .max_by(|(_, x), (_, y)| x.total_cmp(y))
-                        .unwrap()
-                        .0;
-                    // Two actual bins and the normalization floor lower-bound max H.
-                    let lines = [
-                        (a[ia] as f64, b[ia] as f64),
-                        (a[ib] as f64, b[ib] as f64),
-                        (1e-12, 0.),
-                    ];
-                    let mut fractions = vec![0., 1.];
-                    for i in 0..lines.len() {
-                        for j in i + 1..lines.len() {
-                            let f = (lines[j].0 - lines[i].0) / (lines[i].1 - lines[j].1);
-                            if f.is_finite() && (0.0..=1.).contains(&f) {
-                                fractions.push(f);
-                            }
-                        }
-                    }
-                    // A ratio of affine functions is monotone between these crossings.
-                    let mut bounds = Vec::new();
-                    for cents in CENTS {
-                        let pitch = 440_f32.log2() + cents / 1200.;
-                        let ha = mix.sample_linear_log2(&a, pitch) as f64;
-                        let hb = mix.sample_linear_log2(&b, pitch) as f64;
-                        let bound = fractions
-                            .iter()
-                            .map(|f| {
-                                (ha + f * hb)
-                                    / lines.iter().map(|(c, d)| c + f * d).fold(0_f64, f64::max)
-                            })
-                            .fold(0_f64, f64::max)
-                            .min(1.);
-                        bounds.push(bound);
-                    }
-                    println!(
-                        "T35_BOUND {}",
-                        json!({"tone":"Resonant","residual":true,"frame":frame,"owned_bin":idx,
-                        "denominator_lines":lines,"fractions":fractions,"h_upper_bounds":bounds,
-                        "point_reference":CENTS.iter().map(|c| actual.evaluate_pitch_score_log2(440_f32.log2()+c/1200.)).collect::<Vec<_>>(),
-                        "density":mix.subjective_intensity.iter().zip(&actual.subjective_intensity).enumerate().filter(|(_, (a,b))| **a>0. || **b>0.).map(|(i,(a,b))| json!([i,a,b])).collect::<Vec<_>>() })
-                    );
-                }
-                let methods: &[&str] = if diagnostics {
-                    &["lane", "nsgt", "nsgt_amp2", "density_oracle"]
-                } else {
-                    &["lane"]
-                };
-                for &method in methods {
-                    let mut input = input.clone();
-                    if method == "nsgt" || method == "nsgt_amp2" {
-                        input.other_power_scan = reference
-                            .nsgt_power
-                            .iter()
-                            .map(|&external| {
-                                external as f64 * if method == "nsgt_amp2" { 4. } else { 1. }
-                            })
-                            .collect();
-                        input.computed_score = None;
-                    } else if method == "density_oracle" {
-                        input.other_power_scan = input
-                            .own_power_scan
-                            .iter()
-                            .enumerate()
-                            .map(|(i, own)| {
-                                let ratio = if mix.subjective_intensity[i] > 0. {
-                                    (actual.subjective_intensity[i] / mix.subjective_intensity[i])
-                                        .clamp(0., 1.)
-                                } else {
-                                    1.
-                                };
-                                let q = 1. - ratio.powf(1. / mix.loudness_exp);
-                                if q > 0. {
-                                    (own / q - own) as f64
-                                } else {
-                                    f32::MAX as f64
-                                }
-                            })
-                            .collect();
-                        input.computed_score = None;
-                    }
+                    let method = "pcm";
                     let mut input_copy = input.clone();
-                    let scores = loo_score_scan(&mix, &mut input_copy, &mut None);
-                    let mut scratch = None;
-                    let cache = prepare_loo_scratch(&mix, &mut scratch);
-                    let mut density = mix.subjective_intensity.clone();
-                    redistribute_loo_density(&mix, &input, cache, &mut density);
-                    if std::env::var_os("T36_WITNESSES").is_some()
-                        && kind == PitchCoreKind::HillClimb
-                    {
-                        let (_, du) = erb_grid(&mix.space);
-                        println!(
-                            "T36_DENSITY {}",
-                            json!({
-                                "tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"method":method,
-                                "floor":mix.roughness_ref_eps.max(1e-12),
-                                "mass_reference":actual.subjective_intensity.iter().zip(&du).map(|(a,w)| a*w).sum::<f32>(),
-                                "mass_estimate":density.iter().zip(&du).map(|(a,w)| a*w).sum::<f32>(),
-                                "bins":(0..du.len()).filter(|&i| mix.subjective_intensity[i] > 0. || actual.subjective_intensity[i] > 0. || input.other_power_scan[i] > 0.).map(|i| json!([i,mix.space.centers_hz[i],du[i],input.own_power_scan[i],input.other_power_scan[i],mix.subjective_intensity[i],density[i],actual.subjective_intensity[i]])).collect::<Vec<_>>()
-                            })
-                        );
-                    }
+                    let scores = loo_score_scan(&mix, &mut input_copy);
+                    let density = candidate.last().subjective_intensity.clone();
                     let pitches: Vec<_> =
                         CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
                     let got: Vec<_> = pitches
@@ -1173,11 +1037,12 @@ fn flora_ownership_cases(supported: bool) {
                         .map(|p| actual.evaluate_pitch_score_log2(*p))
                         .collect();
                     let mut legacy_input = LooInput {
+                        exact_score: None,
                         own_power_scan: own_power.clone(),
                         other_power_scan: vec![0.; own_power.len()],
                         computed_score: None,
                     };
-                    let legacy_scan = loo_score_scan(&mix, &mut legacy_input, &mut None);
+                    let legacy_scan = approx_loo_score_scan(&mix, &mut legacy_input, &mut None);
                     let legacy: Vec<_> = pitches
                         .iter()
                         .map(|p| sample_ownership_score(&mix, *p, legacy_scan.as_deref()))
@@ -1335,16 +1200,16 @@ fn flora_ownership_cases(supported: bool) {
                         && body_metrics["registered_movement_gate_pass"] == true
                         && selection_pass
                         && environment_pass;
-                    let record = json!({"conformance_scope":if supported { "supported" } else { "measurement_only" },"method":method,"tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"kind":format!("{kind:?}"),
+                    let record = json!({"conformance_scope":"supported","method":method,"tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"kind":format!("{kind:?}"),
                     "point_scores":got,"point_reference":expected,"body_scores":body,"body_reference":body_ref,"point":point_metrics,"body":body_metrics,"selection_pass":selection_pass,"environment_pass":environment_pass,"native_ties":full_metrics,
                     "environment_errors":environment_errors,"environment_error_order":["point_score","point_level","body_score","body_level"],"environment_error_deltas":environment_deltas,"decision_failures":decisions,"decision_failure_count":decisions.len(),"decision_failure_examples":decisions.iter().take(4).collect::<Vec<_>>(),"owned_bins":input.own_power_scan.iter().enumerate().filter(|(_,x)| **x>0.).map(|(i,x)| json!([i,x,mix.subjective_intensity[i],actual.subjective_intensity[i]])).collect::<Vec<_>>(),"density_over_removed":over_removed/reference_mass.max(1e-12),"pass":pass});
                     println!("T35_CASE {record}");
                     records.push(record);
-                    if supported && method == "lane" && !pass {
+                    if !pass {
                         failed_cases.push((method, tone, residual, habitat, frame, kind));
                     }
                     let mut environment = pop.voices[0].pitch_core_for_test().clone();
-                    *environment.loo_input_mut() = input;
+                    *environment.loo_input_mut() = input.clone();
                     assert_eq!(environment.environment_score(&mix, 440.), got[3]);
                 }
             }
@@ -1359,14 +1224,12 @@ fn flora_ownership_cases(supported: bool) {
     let path = directory.join(if supported {
         "supported.json"
     } else {
-        "residual-measurements.json"
+        "residual-supported.json"
     });
     std::fs::write(&path, serde_json::to_vec_pretty(&records).unwrap()).unwrap();
     println!("Flora LOO record: {}", path.display());
-    if supported {
-        assert!(
-            failed_cases.is_empty(),
-            "Flora consumer counterexamples: {failed_cases:?}"
-        );
-    }
+    assert!(
+        failed_cases.is_empty(),
+        "Flora consumer counterexamples: {failed_cases:?}"
+    );
 }

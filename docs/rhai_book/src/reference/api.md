@@ -659,7 +659,7 @@ leave_self_out(enabled)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Estimate the field without this voice when choosing pitch. Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
+Evaluate the field without this voice when choosing pitch. Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 
 ### Lifecycle & Viability
 
@@ -1324,7 +1324,7 @@ viability_scope(name)
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-`"environment"` or `"total"`: choose the field used for viability. Environment uses the same spectral-ownership estimate as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
+`"environment"` or `"total"`: choose the field used for viability. Environment uses the same PCM self-removal observation as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 
 ### Director & Global Parameters
 

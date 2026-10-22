@@ -184,7 +184,6 @@ pub struct PhonationGateOpenEvent {
 
 #[derive(Default)]
 struct AdvanceScratch {
-    loo_other_power_scan: Vec<f64>,
     freq_snapshot: Vec<(u64, u64, f32)>,
     population_visibility: HashMap<u64, (bool, bool)>,
     neighbor_pitch_log2: Vec<f32>,
@@ -667,46 +666,13 @@ impl Community {
     }
 
     fn update_loo_ownership(&mut self, landscape: &Landscape) {
-        if self.has_placed_flora && landscape.flora_power_scan.is_none() {
-            // An unobserved warmup is unknown, not silent Flora.
-            for voice in &mut self.voices {
-                let input = voice.pitch_ctl.loo_input_mut();
-                input.own_power_scan.clear();
-                input.other_power_scan.clear();
-                input.computed_score = None;
-            }
-            return;
-        }
-        let prefix = &mut self.advance_scratch.loo_other_power_scan;
-        prefix.resize(landscape.space.n_bins(), 0.0);
-        prefix.fill(0.0);
-        // Keep the other sources separate; total - own also loses tiny powers in f64.
-        if let Some(power) = &landscape.flora_power_scan {
-            landscape
-                .space
-                .assert_scan_len_named(power, "flora_power_scan");
-            prefix.copy_from_slice(power);
-        }
         for voice in &mut self.voices {
-            voice.project_loo_power(&landscape.space);
-            let input = voice.pitch_ctl.loo_input_mut();
-            input.other_power_scan.clone_from(prefix);
-            for (sum, &value) in prefix.iter_mut().zip(&input.own_power_scan) {
-                *sum += value as f64;
-            }
-        }
-        prefix.fill(0.0);
-        for voice in self.voices.iter_mut().rev() {
-            let input = voice.pitch_ctl.loo_input_mut();
-            for ((other, sum), &own) in input
-                .other_power_scan
-                .iter_mut()
-                .zip(prefix.iter_mut())
-                .zip(&input.own_power_scan)
-            {
-                *other += *sum;
-                *sum += own as f64;
-            }
+            let score = landscape
+                .loo
+                .iter()
+                .find(|s| s.id == voice.id() && s.generation == voice.metadata.generation)
+                .map(|s| s.score_scan.clone());
+            voice.pitch_ctl.loo_input_mut().exact_score = score;
         }
     }
 
@@ -1175,7 +1141,7 @@ mod tests {
     }
 
     #[test]
-    fn flora_warmup_preserves_observed_field_until_paired_scan_arrives() {
+    fn loo_missing_or_wrong_generation_preserves_observed_field() {
         let mut landscape = runtime_landscape();
         let mut community = test_pop();
         community.apply_action(
@@ -1187,23 +1153,47 @@ mod tests {
             },
             &landscape,
         );
-        community.has_placed_flora = true;
         community.update_loo_ownership(&landscape);
-        let input = community.voices[0].pitch_ctl.loo_input_mut();
-        assert!(input.own_power_scan.is_empty() && input.other_power_scan.is_empty());
-        landscape.flora_power_scan = Some(vec![1e-20; landscape.space.n_bins()]);
-        community.update_loo_ownership(&landscape);
-        assert_eq!(
-            &community.voices[0]
+        assert!(
+            community.voices[0]
                 .pitch_ctl
                 .loo_input_mut()
-                .other_power_scan,
-            landscape.flora_power_scan.as_ref().unwrap()
+                .exact_score
+                .is_none()
         );
-        landscape.flora_power_scan = None;
+        landscape.loo.push(crate::core::stream::loo::Observation {
+            id: 70,
+            generation: 0,
+            h_scan: vec![0.; landscape.space.n_bins()],
+            r_scan: vec![0.; landscape.space.n_bins()],
+            score_scan: vec![0.; landscape.space.n_bins()].into(),
+        });
         community.update_loo_ownership(&landscape);
-        let input = community.voices[0].pitch_ctl.loo_input_mut();
-        assert!(input.own_power_scan.is_empty() && input.other_power_scan.is_empty());
+        assert!(
+            community.voices[0]
+                .pitch_ctl
+                .loo_input_mut()
+                .exact_score
+                .is_some()
+        );
+        landscape.loo[0].generation = 1;
+        community.update_loo_ownership(&landscape);
+        assert!(
+            community.voices[0]
+                .pitch_ctl
+                .loo_input_mut()
+                .exact_score
+                .is_none()
+        );
+        landscape.loo.clear();
+        community.update_loo_ownership(&landscape);
+        assert!(
+            community.voices[0]
+                .pitch_ctl
+                .loo_input_mut()
+                .exact_score
+                .is_none()
+        );
     }
 
     fn make_dummy_tone_spec() -> crate::life::voice::ToneSpec {

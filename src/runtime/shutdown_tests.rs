@@ -21,6 +21,27 @@ fn options() -> WiringOptions {
     }
 }
 
+#[test]
+#[ignore = "L-1 acquisition requires the machine timing lock"]
+fn l1_sample_acquisition() {
+    let path = std::env::var("L1_SAMPLE").expect("sample path");
+    let scenario = compile_scenario_from_script(std::path::Path::new(&path), Some(21)).unwrap();
+    let config = AppConfig::default();
+    let mut opts = options();
+    opts.deterministic_analysis = false;
+    opts.deterministic_footprints = false;
+    let wiring = wire_runtime(
+        &config,
+        48_000,
+        path,
+        scenario,
+        Arc::new(AtomicBool::new(false)),
+        opts,
+    )
+    .unwrap();
+    join(wiring).unwrap();
+}
+
 fn fixture(
     mut opts: WiringOptions,
     source: &str,

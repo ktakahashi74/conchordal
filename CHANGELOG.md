@@ -9,22 +9,14 @@
   peak-limiter ceiling; set it to `0.0` for the original output level.
   With +4.5 dB and seed 21, research runs `hereditary_adaptation_heredity_selection` / `temporal_scaffolding_shared` recorded maximum limiter reductions of 1.832700 / 3.741124 dB, respectively.
 
-- Flora no longer computes its unused per-lane ownership projection or AR(1) PSD
-  integrals. Ownership keeps using the synchronized Flora-only PCM analysis.
-
-- Voice self-exclusion redistributes remaining observed peak mass to other sources'
-  projected positions, accumulates own/other power separately in f64, and applies the
-  existing near-silence floor to both H and R. This shared floor also affects general
-  analysis without Flora or self-exclusion consumers; differences at tiny positive
-  input levels can reach listener, habituation and spawn inputs. Pitch movement and
-  environment viability share the result. A synchronized Flora-only analysis stream
-  supplies its observed contribution when Flora has been placed and a Voice consumes
-  self-exclusion.
-  The validated Flora cases cover tonal-only sine without residual and presentation-only
-  routing; nearby habitat-routed sine/resonant Flora with residual remains outside the
-  conformance claim and records its errors in ordinary tests.
-  These intentional behavior changes affect samples 08, 10, 12, 13, 14, 15 and 16;
-  their scripts are unchanged. Exact per-Voice complex-NSGT subtraction is separate work.
+- Voice self-exclusion now subtracts each Voice's actual habitat PCM before the
+  shared NSGT, smoothing and H/R/C pipeline. Pitch movement and environment
+  viability reuse the same frame and the usual habituation. Observers retain the
+  complete mixed history before birth, then follow Voice identity and generation.
+  All registered Flora cases, including nearby residual sound, are assertions.
+  Production spectral ownership, residual redistribution and the Flora-only
+  analysis stream are removed; the existing shared silence floor is unchanged.
+  Source capture and per-Voice analysis reuse scratch; publication still allocates.
 
 - Flora adds an Experimental composition mode: spectral biomass grows over the shared
   consonance landscape, with sine or resonant tones and optional residual sound.

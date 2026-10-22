@@ -145,8 +145,7 @@ pub struct Landscape {
     pub(crate) loudness_exp: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
-    /// Flora-only observed density converted to equivalent amplitude-squared power.
-    pub(crate) flora_power_scan: Option<Vec<f64>>,
+    pub(crate) loo: Vec<crate::core::stream::loo::Observation>,
     pub(crate) spectral_history:
         Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
     /// perc_state_R (summary statistics).
@@ -205,7 +204,7 @@ impl Landscape {
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             spectral_history: None,
-            flora_power_scan: None,
+            loo: Vec::new(),
             roughness01_scalar: 0.0,
             loudness_mass: 0.0,
             pitch_objective_mode: PitchObjectiveMode::Consonance,
@@ -220,7 +219,7 @@ impl Landscape {
 
     pub fn resize_to_space(&mut self, space: Log2Space) {
         self.spectral_history = None;
-        self.flora_power_scan = None;
+        self.loo.clear();
         let n = space.n_bins();
         self.space = space;
         self.roughness.resize(n, 0.0);
@@ -312,6 +311,9 @@ impl Landscape {
     }
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
+        for observation in &mut self.loo {
+            observation.revalue(&self.space, params);
+        }
         self.assert_scan_lengths();
 
         let n = self.consonance_field_score.len();

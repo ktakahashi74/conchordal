@@ -21,7 +21,7 @@ fn zero_self_preserves_observed_field() {
         other_power_scan: vec![1.0; l.space.n_bins()],
         ..Default::default()
     };
-    assert!(loo_score_scan(&l, &mut input, &mut None).is_none());
+    assert!(approx_loo_score_scan(&l, &mut input, &mut None).is_none());
     for &p in &l.space.centers_log2 {
         assert_eq!(
             sample_consonance_score_with_loo(
@@ -53,7 +53,7 @@ fn shared_unison_leaves_other_voice_power() {
         other_power_scan: total,
         ..Default::default()
     };
-    let actual = loo_score_scan(&l, &mut input, &mut None).unwrap();
+    let actual = approx_loo_score_scan(&l, &mut input, &mut None).unwrap();
     let mut residual = l.subjective_intensity.clone();
     residual[idx] *= 0.75f32.powf(l.loudness_exp);
     assert!(residual[idx] > 0.0);
@@ -84,7 +84,7 @@ fn isolated_fundamental_matches_exact_ranks_and_adoption() {
         other_power_scan: vec![0.; n],
         ..Default::default()
     };
-    let approx = loo_score_scan(&l, &mut input, &mut None).unwrap();
+    let approx = approx_loo_score_scan(&l, &mut input, &mut None).unwrap();
     let exact =
         exact_loo_consonance_score_scan(&l, current, true, ReferenceLooMode::ExactScan, &mut None)
             .unwrap();
@@ -93,6 +93,7 @@ fn isolated_fundamental_matches_exact_ranks_and_adoption() {
     let mut a = PitchHillClimbPitchCore::new(200.0, current, 0.0);
     a.set_leave_self_out(true);
     a.set_temperature(0.12);
+    input.exact_score = Some(approx.clone());
     a.loo_input = input;
     let mut b = a.clone();
     b.set_reference_loo_mode(ReferenceLooMode::ExactScan);
@@ -138,7 +139,7 @@ fn ownership_scan_boundary_is_checked() {
         other_power_scan: vec![1.0],
         ..Default::default()
     };
-    loo_score_scan(&l, &mut input, &mut None);
+    approx_loo_score_scan(&l, &mut input, &mut None);
 }
 
 #[test]
@@ -182,7 +183,7 @@ fn other_ownership_scan_boundary_is_checked() {
         own_power_scan: vec![0.0; l.space.n_bins()],
         ..Default::default()
     };
-    loo_score_scan(&l, &mut input, &mut None);
+    approx_loo_score_scan(&l, &mut input, &mut None);
 }
 
 #[test]

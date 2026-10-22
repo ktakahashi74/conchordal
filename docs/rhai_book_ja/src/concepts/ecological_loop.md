@@ -76,18 +76,21 @@ section("two responses to dissonance", || {
 
 Voiceは、後で自ら評価するConsonance Fieldへ自身のエネルギーも加えます。そのままでは、強いVoiceは自分の
 footprintを聴くことでviableに見えるかもしれません。そこで`consonance_viability()`は
-既定で環境相対評価を有効にし、自分の寄与を近似的に除いて適合度を判断します。
+既定で環境相対評価を有効にし、Voiceが実際にhabitatへ出したPCMを除き、残った音を解析して適合度を判断します。
 
 これは生存規則であり、音の送り先を決める規則ではありません。Voiceはhabitat busへ寄与し、ほかの
 すべてのVoiceが読むConsonance Fieldを変え続けます。自分も含むConsonance Field全体への適合度を問いたい場合だけ
 `viability_scope("total")`を使います。
 
-音高移動では、別の設定`leave_self_out(true)`を使います。各Voiceの身体投影から
-スペクトルの所有率を推定し、観測密度から自己の割合を除いて場を計算し直します。
-身体によらず同じ方式を使い、modeを選ぶ設定はありません。生存選択の環境相対評価も、
-現在の音高で同じ推定を使い、継続的なエネルギー回復の得点を求めます。動かないVoiceにも適用され、
-両者は同じhop内で計算結果を共有します。PCMの厳密な自己減算ではありません。
-基礎消耗と統計記録が使う混合場のlevelは変更しません。
+音高移動では、別の設定`leave_self_out(true)`を使います。両者は、混合habitat PCMから
+そのVoice自身のhabitat PCMを引いた音の観測を共有します。減算後も、混合場と同じNSGT、
+パワー平滑、A-weighting、peak抽出、loudness、密度平滑、H・R・Cの計算を使います。
+habitatへ送られたFloraは、residualを含めて残ります。身体によらず同じ方式を使い、mode選択はありません。
+
+対象Populationは、後から`leave_self_out(true)`を指定する場合も含めて出生時から観測します。
+出生前の解析状態は混合streamから引き継ぎます。VoiceのIDと世代で観測を対応づけ、frameの欠落時は
+共通の解析窓が再び埋まるまで観測を無効にします。生存選択は動かないVoiceにも適用され、現在の音高で
+継続的なエネルギー回復の得点を求めます。基礎消耗と統計記録が使う混合場のlevelは変更しません。
 
 ## Energy、death、replacement
 

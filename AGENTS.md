@@ -13,6 +13,7 @@
     - `fft.rs`: Symmetric Blackman-Harris window construction.
     - `stream/potentials.rs`: Shared harmonicity and roughness scratch for streaming,
       synchronous body analysis, and exact leave-self-out evaluation.
+    - `stream/loo.rs`: actual habitat PCM self-removal and per-Voice analysis histories.
     - `erb.rs`: Equivalent Rectangular Bandwidth scales.
   - `audio/` (Real-time I/O):
     - `output.rs`: cpal stream management (ringbuffer producer).
@@ -195,10 +196,10 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   the following is a conditional budget, not an exact allocation census.
   - `render_and_route_audio` (`src/runtime/phases.rs`) creates two `Arc<[f32]>`
     chunks for the presentation and habitat buses, shared with WAV/listener/analysis
-    channels as needed. When Flora has been placed and a Voice consumes LOO,
-    `process_hop` also owns one Flora-only habitat PCM `Arc` in the same analysis
-    packet. Capture scratch is reused; the packet allocation is not part of the
-    allocation-free Flora advance/render/capture claim.
+    channels as needed. When a scenario has self-exclusion consumers, `process_hop`
+    also transfers one recycled packet of per-Voice habitat PCM. Capture storage is
+    allocated at birth and returned by the analysis worker; steady-state capture
+    has no per-Voice allocation. Recycling backpressure counts toward worker time.
   - `apply_landscape_updates` (`src/runtime/analysis_sync.rs`) allocates the observed
     field `Arc` for `GeneratorModel::observe_consonance_field_level` only after analysis
     or valuation updates with an available analysis frame.
@@ -239,16 +240,17 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only
   at publication (every Ordered frame or the last Latest frame), attaching a spectral
   history snapshot. This still allocates; the former per-hop count is obsolete.
-  Only a run with Flora placed and a Voice consuming pitch/environment self-exclusion
-  enables the Flora observer (including zero packets to drain its history after release).
-  The conditional Flora observer processes that packet with a second AnalysisStream
-  and publishes one additional f64 scan with the same Landscape. In the profile-alloc
-  census (48 kHz, hop 512, window 16384, 690 bins, Ordered, one hop per batch), warmed
-  analysis publication used 19 allocations / 50000 bytes without Flora and
-  20 / 55520 with Flora. The first Flora packet used 94 / 1100502 including stream
-  construction. These counts exclude input PCM ownership and UI clones; cloning a
-  Landscape with the Flora scan adds another scan allocation. Gap resets and
-  reconfiguration are outside the steady-state counts.
+  A scenario reserves observers for populations with pitch/environment self-exclusion,
+  including a later enabling patch. The renderer captures those Voices by ID and
+  generation from birth. Each analysis observer subtracts actual own habitat PCM
+  before NSGT, using a clone of the mixed stream's pre-birth history. Both histories
+  reset on gaps. Processing uses reused scratch; publication owns per-Voice H/R and
+  score scans and therefore allocates. Flora has no separate observer. Allocation
+  census (48 kHz, hop 512, window 16384, 690 bins, Ordered, one hop per batch)
+  measured 19 allocations / 50192 bytes without LOO and 23 / 58568 with one LOO
+  observer. Its first packet used 66 / 520750 including observer construction.
+  These counts exclude input PCM ownership and UI cloning. Births and
+  gap/reconfiguration resets are outside the steady-state processing claim.
   The shared density-normalization floor applies to general analysis as well as LOO,
   independently of Flora placement or self-exclusion consumers.
   Use `--features profile-alloc` when measuring or asserting allocations; without it,

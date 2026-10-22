@@ -208,6 +208,63 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "L-1 cost acquisition requires the machine timing lock"]
+    fn l1_pcm_analysis_cost() {
+        use std::time::Instant;
+        let (params, nsgt, _) = crate::runtime::birth_surrogate_assay_core(
+            &crate::config::AppConfig::default(),
+            48_000,
+        );
+        let mut analysis = SynchronousAnalysis::new(nsgt, &params);
+        let mut pcm = vec![0.; analysis.nsgt.hop()];
+        let mut timings = [0_u128; 4];
+        for frame in 0..1088 {
+            for (i, x) in pcm.iter_mut().enumerate() {
+                let t = (frame * 512 + i) as f32 / 48_000.;
+                *x = 0.08 * (t * std::f32::consts::TAU * 440.).sin()
+                    + 0.06 * (t * std::f32::consts::TAU * 603.).sin();
+            }
+            let t = Instant::now();
+            let power = analysis.nsgt.process_hop(&pcm);
+            let t1 = Instant::now();
+            let spectral = analysis
+                .frontend
+                .process_nsgt_power(power, 512. / 48_000., &params);
+            let t2 = Instant::now();
+            analysis.potentials.compute_shape(
+                spectral.subjective_intensity,
+                &analysis.landscape.space,
+                (&params.harmonicity_kernel, &params.roughness_kernel),
+                params.roughness_ref_eps.max(1e-12),
+                &mut analysis.landscape.harmonicity,
+                &mut analysis.landscape.roughness_shape_raw,
+            );
+            r_pot_scan_to_r_state01_scan(
+                &analysis.landscape.roughness_shape_raw,
+                analysis.ref_peak.max(params.roughness_ref_eps.max(1e-12)),
+                params.roughness_k.max(1e-6),
+                &mut analysis.landscape.roughness01,
+            );
+            let t3 = Instant::now();
+            analysis.recompute_body_score(&params, None);
+            let t4 = Instant::now();
+            if frame >= 64 {
+                timings[0] += (t1 - t).as_nanos();
+                timings[1] += (t2 - t1).as_nanos();
+                timings[2] += (t3 - t2).as_nanos();
+                timings[3] += (t4 - t3).as_nanos();
+            }
+        }
+        println!(
+            "L1_COST {}",
+            serde_json::json!({
+                "hops": 1024, "bins": analysis.landscape.space.n_bins(),
+                "mean_us_nsgt_power_smoothing_frontend_hr_c": timings.map(|x| x as f64 / 1024. / 1000.),
+            })
+        );
+    }
+
+    #[test]
     fn rt_and_body_frontend_match_bits() {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
         let mut rt =

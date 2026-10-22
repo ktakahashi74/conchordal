@@ -1,10 +1,14 @@
 use crate::core::float::unit_gaussian;
 use crate::core::harmonic_ratios::{HARMONIC_RATIOS, ratio_to_f32};
+#[cfg(any(test, feature = "loo-diagnostic"))]
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
+#[cfg(any(test, feature = "loo-diagnostic"))]
 use crate::core::psycho_state::roughness_ratio_to_state01;
+#[cfg(any(test, feature = "loo-diagnostic"))]
 use crate::core::roughness_kernel::RoughnessKernel;
+#[cfg(any(test, feature = "loo-diagnostic"))]
 use crate::core::stream::potentials::PotentialScratch;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::scenario::control::{MoveCostTimeScale, PitchControl, PitchCoreKind};
@@ -32,6 +36,7 @@ const DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS: f32 = 0.0;
 const DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT: usize = 0;
 const DEFAULT_LOO_HARMONICS: u8 = 1;
 const DEFAULT_CROWDING_PAIR_SPLIT_EPS_FRAC: f32 = 0.25;
+#[cfg(any(test, feature = "loo-diagnostic"))]
 const EXACT_LOO_ROUGHNESS_ERB_STEP: f32 = 0.005;
 /// Minimum field improvement required to accept a greedy hill-climb move.
 const IMPROVEMENT_THRESHOLD: f32 = 0.1;
@@ -108,6 +113,7 @@ pub struct PitchHillClimbPitchCore {
     ratio_candidate_count: usize,
     /// Ratios retained for historical test controls and diagnostic replay.
     body_ratios: Option<Arc<[f32]>>,
+    #[cfg(any(test, feature = "loo-diagnostic"))]
     loo_scratch: Option<Box<LooScratch>>,
     loo_input: LooInput,
     #[cfg(feature = "loo-diagnostic")]
@@ -150,6 +156,7 @@ impl PitchHillClimbPitchCore {
             use_ratio_candidates: false,
             ratio_candidate_count: DEFAULT_RUNTIME_RATIO_CANDIDATE_COUNT,
             body_ratios: None,
+            #[cfg(any(test, feature = "loo-diagnostic"))]
             loo_scratch: None,
             loo_input: LooInput::default(),
             #[cfg(feature = "loo-diagnostic")]
@@ -481,7 +488,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         #[cfg(feature = "loo-diagnostic")]
         diagnostic::set_variant(variant);
         let loo_scan = if leave_self_out {
-            loo_score_scan(landscape, &mut self.loo_input, &mut self.loo_scratch)
+            loo_score_scan(landscape, &mut self.loo_input)
         } else {
             None
         };
@@ -555,7 +562,6 @@ pub struct PitchPeakSamplerCore {
     leave_self_out: bool,
     /// Ratios retained for historical test controls and diagnostic replay.
     body_ratios: Option<Arc<[f32]>>,
-    loo_scratch: Option<Box<LooScratch>>,
     loo_input: LooInput,
 }
 
@@ -589,7 +595,6 @@ impl PitchPeakSamplerCore {
             crowding_sigma_cents: 60.0,
             leave_self_out: false,
             body_ratios: None,
-            loo_scratch: None,
             loo_input: LooInput::default(),
         }
     }
@@ -724,7 +729,7 @@ impl PitchCore for PitchPeakSamplerCore {
         let crowding_sigma_cents = self.crowding_sigma_cents;
         let body_ratios = self.body_ratios.clone();
         let loo_scan = if leave_self_out {
-            loo_score_scan(landscape, &mut self.loo_input, &mut self.loo_scratch)
+            loo_score_scan(landscape, &mut self.loo_input)
         } else {
             None
         };
@@ -1175,12 +1180,26 @@ fn legacy_sample_consonance_score_with_loo(
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LooInput {
+    pub(crate) exact_score: Option<Arc<[f32]>>,
+    #[cfg(test)]
     pub(crate) own_power_scan: Vec<f32>,
+    #[cfg(test)]
     pub(crate) other_power_scan: Vec<f64>,
+    #[cfg(test)]
     pub(crate) computed_score: Option<Option<Arc<[f32]>>>,
 }
 
-fn loo_score_scan(
+fn loo_score_scan(landscape: &Landscape, input: &mut LooInput) -> Option<Arc<[f32]>> {
+    if let Some(scan) = &input.exact_score {
+        landscape
+            .space
+            .assert_scan_len_named(scan, "loo_score_scan");
+    }
+    input.exact_score.clone()
+}
+
+#[cfg(test)]
+fn approx_loo_score_scan(
     landscape: &Landscape,
     input: &mut LooInput,
     scratch: &mut Option<Box<LooScratch>>,
@@ -1221,6 +1240,7 @@ fn loo_score_scan(
 // The extractor assigns all admitted mass to the nearest selected peak, then
 // redirects pruned peaks. Its actual assignment supplies the redistribution basin.
 // Historical smoothed peaks absent from the current frame use the suppression span.
+#[cfg(test)]
 fn redistribute_loo_density(
     landscape: &Landscape,
     input: &LooInput,
@@ -1284,6 +1304,7 @@ fn redistribute_loo_density(
     removed
 }
 
+#[cfg(any(test, feature = "loo-diagnostic"))]
 #[derive(Clone, Debug)]
 struct LooScratch {
     space: Log2Space,
@@ -1292,10 +1313,15 @@ struct LooScratch {
     potentials: PotentialScratch,
     h: Vec<f32>,
     r: Vec<f32>,
+    #[cfg(test)]
     merge_ranges: Vec<(usize, usize)>,
+    #[cfg(test)]
     suppression_ranges: Vec<(usize, usize)>,
+    #[cfg(test)]
     erb: Vec<f32>,
+    #[cfg(test)]
     raw_density: Vec<f32>,
+    #[cfg(test)]
     peak_scratch: crate::core::peak_extraction::PeakScratch,
 }
 
@@ -1348,6 +1374,7 @@ fn exact_loo_consonance_score_scan(
     Some(recompute_loo_score_scan(landscape, &density_loo, scratch))
 }
 
+#[cfg(any(test, feature = "loo-diagnostic"))]
 fn prepare_loo_scratch<'a>(
     landscape: &Landscape,
     scratch: &'a mut Option<Box<LooScratch>>,
@@ -1377,7 +1404,9 @@ fn prepare_loo_scratch<'a>(
             potentials,
             h: vec![0.; n],
             r: vec![0.; n],
+            #[cfg(test)]
             merge_ranges: vec![(0, 0); n],
+            #[cfg(test)]
             suppression_ranges: {
                 let (erb, _) = crate::core::roughness_kernel::erb_grid(&landscape.space);
                 let sep =
@@ -1391,14 +1420,18 @@ fn prepare_loo_scratch<'a>(
                     })
                     .collect()
             },
+            #[cfg(test)]
             erb: crate::core::roughness_kernel::erb_grid(&landscape.space).0,
+            #[cfg(test)]
             raw_density: vec![0.; n],
+            #[cfg(test)]
             peak_scratch: crate::core::peak_extraction::PeakScratch::new(n),
         }));
     }
     scratch.as_mut().unwrap()
 }
 
+#[cfg(any(test, feature = "loo-diagnostic"))]
 fn recompute_loo_score_scan(
     landscape: &Landscape,
     density_loo: &[f32],
@@ -1775,11 +1808,8 @@ impl AnyPitchCore {
     }
 
     pub(crate) fn environment_score(&mut self, landscape: &Landscape, freq_hz: f32) -> f32 {
-        let (input, scratch) = match self {
-            Self::PitchHillClimb(core) => (&mut core.loo_input, &mut core.loo_scratch),
-            Self::PitchPeakSampler(core) => (&mut core.loo_input, &mut core.loo_scratch),
-        };
-        let scan = loo_score_scan(landscape, input, scratch);
+        let input = self.loo_input_mut();
+        let scan = loo_score_scan(landscape, input);
         sample_ownership_score(landscape, freq_hz.max(1.0).log2(), scan.as_deref())
     }
 

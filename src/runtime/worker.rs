@@ -2,6 +2,7 @@ use super::*;
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 pub(super) struct WorkerConfig {
+    pub(super) loo_populations: Vec<u64>,
     pub(super) render_prototype: bool,
     pub(super) temporal_meter_t2: bool,
     pub(super) onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
@@ -42,6 +43,10 @@ pub(super) struct WorkerChannels {
 
 /// Mutable worker state. Built once before the loop; hop phases take it `&mut`.
 pub(super) struct WorkerState {
+    pub(super) loo_recycle: (
+        Sender<Vec<crate::core::stream::loo::SourcePcm>>,
+        Receiver<Vec<crate::core::stream::loo::SourcePcm>>,
+    ),
     #[cfg(test)]
     pub(super) offline_body_probe: Option<OfflineBodyProbe>,
     pub(super) body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
@@ -182,6 +187,11 @@ impl WorkerState {
             generator_model,
             hab_ecology,
             hab_listener,
+            loo_recycle: {
+                let (tx, rx) = bounded(1);
+                tx.send(Vec::new()).expect("initial LOO capture storage");
+                (tx, rx)
+            },
             schedule_renderer: ScheduleRenderer::new(timebase).with_prototype(cfg.render_prototype),
             scenario_end_tick: None,
             phonation_batches_buf: Vec::new(),
@@ -208,6 +218,8 @@ pub(super) fn worker_loop(
         state.playback_state = PlaybackState::Playing;
     }
     let idle_silence = vec![0.0f32; cfg.hop];
+    #[cfg(test)]
+    let mut l1_probe = super::l1_probe::Probe::new("audio");
 
     for (target, snapshot) in state
         .temporal_frames
@@ -288,7 +300,32 @@ pub(super) fn worker_loop(
             }
         } else {
             // Offline/render-only mode: progress even without audio output.
+            #[cfg(test)]
+            let l1_begin = l1_probe
+                .as_mut()
+                .map(|p| (state.frame_idx, p.before(state.frame_idx)));
             process_hop(&cfg, &mut channels, &mut state);
+            #[cfg(test)]
+            if let (Some(p), Some((frame, begin))) = (&mut l1_probe, l1_begin) {
+                let voices = state
+                    .pop
+                    .voices
+                    .iter()
+                    .filter(|v| {
+                        v.is_alive()
+                            && (v.effective_control.pitch.leave_self_out || v.selection_environment)
+                    })
+                    .count();
+                p.after(
+                    frame,
+                    begin,
+                    voices,
+                    channels
+                        .audio_to_analysis_tx
+                        .as_ref()
+                        .map_or(0, |tx| tx.len()),
+                );
+            }
             produced_any = true;
         }
 
@@ -567,10 +604,11 @@ pub(super) fn process_hop(
             });
         }
     }
-    let flora_chunk = state
-        .schedule_renderer
-        .capture_flora
-        .then(|| Arc::from(state.schedule_renderer.flora_habitat.as_slice()));
+    let mut loo_chunk =
+        (!cfg.loo_populations.is_empty()).then(|| crate::core::stream::loo::PcmPacket {
+            sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
+            recycle: state.loo_recycle.0.clone(),
+        });
     let channel_peak = [max_abs, max_abs];
 
     if cfg.temporal_meter_t2
@@ -581,7 +619,7 @@ pub(super) fn process_hop(
             .send((
                 state.frame_idx,
                 Arc::clone(&habitat_chunk),
-                flora_chunk.clone(),
+                loo_chunk.take(),
             ))
     {
         state
@@ -631,7 +669,7 @@ pub(super) fn process_hop(
             .send((
                 state.frame_idx,
                 Arc::clone(&habitat_chunk),
-                flora_chunk.clone(),
+                loo_chunk.take(),
             ))
     {
         state

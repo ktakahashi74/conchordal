@@ -137,5 +137,8 @@ mod temporal_meter_tests;
 mod shutdown_tests;
 
 #[cfg(test)]
+pub(crate) mod l1_probe;
+
+#[cfg(test)]
 #[path = "../../tests/support/test_output_directory.rs"]
 mod test_output_directory;

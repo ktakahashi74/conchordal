@@ -27,14 +27,10 @@ struct RoutedTone {
     source_generation: u32,
     body_slot: Option<(usize, u32)>,
     source_pcm_slot: Option<usize>,
+    loo_slot: Option<usize>,
 }
 
-/// Caller-owned habitat scratch, separated by Voice identity and generation.
-pub(crate) struct SourcePcm {
-    pub id: u64,
-    pub generation: u32,
-    pub habitat: Vec<f32>,
-}
+pub(crate) use crate::core::stream::loo::SourcePcm;
 
 struct SelfSound {
     source_id: u64,
@@ -82,8 +78,7 @@ pub struct ScheduleRenderer {
     time: Timebase,
     buf_presentation: Vec<f32>,
     buf_habitat: Vec<f32>,
-    pub(crate) capture_flora: bool,
-    pub(crate) flora_habitat: Vec<f32>,
+    pub(crate) loo_pcm: Vec<SourcePcm>,
     scratch_rhythms: Vec<NeuralRhythms>,
     scratch_pcm: Vec<f32>,
     #[cfg(test)]
@@ -151,8 +146,7 @@ impl ScheduleRenderer {
             time,
             buf_presentation: vec![0.0; time.hop],
             buf_habitat: vec![0.0; time.hop],
-            capture_flora: false,
-            flora_habitat: Vec::new(),
+            loo_pcm: Vec::new(),
             scratch_rhythms: vec![NeuralRhythms::default(); time.hop],
             scratch_pcm: vec![0.0; time.hop],
             #[cfg(test)]
@@ -196,6 +190,7 @@ impl ScheduleRenderer {
                         source_generation: routed.source_generation,
                         body_slot: None,
                         source_pcm_slot: None,
+                        loo_slot: None,
                     },
                 )
             })
@@ -396,6 +391,9 @@ impl ScheduleRenderer {
         flora: &mut [super::flora::Flora],
         mut emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
     ) -> RenderFrame<'_> {
+        for source in &mut self.loo_pcm {
+            source.habitat.fill(0.);
+        }
         for source in sources.iter_mut() {
             assert_eq!(source.habitat.len(), self.time.hop, "source PCM hop length");
             source.habitat.fill(0.);
@@ -458,6 +456,9 @@ impl ScheduleRenderer {
             tone.source_pcm_slot = sources.iter().position(|source| {
                 source.id == key.source_id && source.generation == tone.source_generation
             });
+            tone.loo_slot = self.loo_pcm.iter().position(|source| {
+                source.id == key.source_id && source.generation == tone.source_generation
+            });
         }
         let commands_us = profile_lap(&mut checkpoint);
         #[cfg(test)]
@@ -509,6 +510,11 @@ impl ScheduleRenderer {
                     for (out, sample) in self.buf_habitat.iter_mut().zip(pcm) {
                         *out += sample;
                     }
+                    if let Some(slot) = rt.loo_slot {
+                        for (out, sample) in self.loo_pcm[slot].habitat.iter_mut().zip(pcm) {
+                            *out += sample;
+                        }
+                    }
                     if let Some(slot) = rt.source_pcm_slot {
                         for (out, sample) in sources[slot].habitat.iter_mut().zip(pcm) {
                             *out += sample;
@@ -521,19 +527,8 @@ impl ScheduleRenderer {
         if !use_blocks {
             self.render_sample_major_oracle(now, end, rhythms, sources);
         }
-        if self.capture_flora {
-            self.flora_habitat.resize(self.time.hop, 0.);
-            self.flora_habitat.fill(0.);
-            for flora in flora {
-                flora.render_add(&mut self.buf_presentation, &mut self.flora_habitat);
-            }
-            for (mix, flora) in self.buf_habitat.iter_mut().zip(&self.flora_habitat) {
-                *mix += flora;
-            }
-        } else {
-            for flora in flora {
-                flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
-            }
+        for flora in flora {
+            flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
         }
         self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
@@ -605,6 +600,9 @@ impl ScheduleRenderer {
                 }
                 if rt.routing.to_habitat {
                     acc_habitat += sample;
+                    if let Some(slot) = rt.loo_slot {
+                        self.loo_pcm[slot].habitat[idx] += sample;
+                    }
                     if let Some(slot) = rt.source_pcm_slot {
                         sources[slot].habitat[idx] += sample;
                     }
@@ -710,6 +708,7 @@ impl ScheduleRenderer {
                                 RoutedTone {
                                     tone,
                                     source_pcm_slot: None,
+                                    loo_slot: None,
                                     routing: batch.routing,
                                     self_slot: self.self_sound.iter().position(|sound| {
                                         sound
@@ -1224,6 +1223,7 @@ mod tests {
                     source_generation: 7,
                     body_slot: None,
                     source_pcm_slot: None,
+                    loo_slot: None,
                 },
             );
         }
@@ -1414,6 +1414,14 @@ mod tests {
                     habitat: vec![0.; time.hop],
                 },
             ];
+            captured.loo_pcm = scratch
+                .iter()
+                .map(|s| SourcePcm {
+                    id: s.id,
+                    generation: s.generation,
+                    habitat: vec![0.; time.hop],
+                })
+                .collect();
             for frame in 0..20 {
                 let now = frame * time.hop as Tick;
                 let commands = if frame == 0 { &batches[..] } else { &[] };
@@ -1437,6 +1445,9 @@ mod tests {
                     now,
                     &rhythms,
                 );
+                for (a, b) in captured.loo_pcm.iter().zip(&scratch) {
+                    assert_eq!(a.habitat, b.habitat);
+                }
                 assert_eq!(scratch[0].habitat, expected_own.habitat);
                 assert!(
                     scratch[1]
@@ -2020,6 +2031,11 @@ mod tests {
         let tb = Timebase { fs: 8000., hop: 64 };
         let rhythms = NeuralRhythms::default();
         let mut renderer = ScheduleRenderer::new(tb).with_prototype(true);
+        renderer.loo_pcm.push(SourcePcm {
+            id: 2,
+            generation: 7,
+            habitat: vec![0.; tb.hop],
+        });
         renderer.prepare_rest_sources([(2, 7)].into_iter());
         renderer.render(&[outcome_batch(BodyKind::Modal)], 0, &rhythms);
         for at in (64..16000).step_by(64) {
@@ -2032,7 +2048,7 @@ mod tests {
     }
     #[cfg(feature = "profile-alloc")]
     #[test]
-    fn flora_capture_steady_state_allocates_nothing() {
+    fn flora_render_steady_state_allocates_nothing() {
         use crate::life::flora::Flora;
         use crate::scenario::{FloraSeeding, FloraSpec, FloraTone};
         let time = Timebase {
@@ -2062,7 +2078,6 @@ mod tests {
                 time.hop,
             )];
             let mut renderer = ScheduleRenderer::new(time);
-            renderer.capture_flora = true;
             flora[0].advance(&landscape);
             renderer.render_with_source_pcm(
                 &[],
@@ -2087,7 +2102,6 @@ mod tests {
             let counts = crate::runtime_profile::finish_allocations().unwrap();
             println!("T37_CAPTURE_ALLOC tone={tone:?} counts={counts:?} hops=300");
             assert_eq!((counts.count, counts.bytes), (0, 0));
-            assert!(renderer.flora_habitat.iter().any(|v| *v != 0.));
         }
     }
 }

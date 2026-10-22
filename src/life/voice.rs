@@ -1690,6 +1690,7 @@ impl Voice {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn project_loo_power(&mut self, space: &Log2Space) -> &[f32] {
         let input = self.pitch_ctl.loo_input_mut();
         input.computed_score = None;

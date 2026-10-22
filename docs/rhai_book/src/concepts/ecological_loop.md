@@ -84,22 +84,27 @@ starting point for resolution.
 A voice contributes energy to the field it later evaluates. Without care, a
 strong voice could appear viable merely because it hears its own footprint.
 `consonance_viability()` therefore enables environment-relative evaluation by
-default: the system approximately removes the voice's own contribution before
-judging its fit.
+default: the system removes the Voice's actual habitat PCM before
+analysing the remaining sound and judging its fit.
 
 This is a survival rule, not a routing rule. The voice may still feed the
 habitat bus and reshape the terrain for every other voice. Use
 `viability_scope("total")` only when the intended question is explicitly
 whether the voice fits the total field including itself.
 
-Pitch movement has its own switch, `leave_self_out(true)`. It estimates each
-Voice's share of body-projected spectral power, removes that share from the
-observed density, and recomputes the field. All bodies use this one method;
-there is no mode selector. Environment viability uses the same estimate at the
-current pitch for its continuous-recharge score, even without pitch movement.
-The two consumers share the calculation within a hop. This is an estimate rather
-than exact PCM subtraction. The ordinary mixed-field level used for basal drain
-and telemetry is unchanged.
+Pitch movement has its own switch, `leave_self_out(true)`. Both consumers read
+one synchronized observation of the mixed habitat PCM minus that Voice's actual
+habitat PCM. The remainder passes through the same NSGT, power smoothing,
+A-weighting, peak extraction, loudness, density smoothing and H/R/C pipeline as
+the mixed field. Habitat-routed Flora, including residual sound, stays in the
+remainder. All bodies use this method; there is no mode selector.
+
+Observers are reserved from birth for populations that use either consumer,
+including a later `leave_self_out(true)` patch. Before birth their state is the
+mixed stream's state. Voice identity and generation bind the observation to its
+consumer; gaps invalidate it until the common analysis window is filled again.
+Environment viability reads the current pitch even without pitch movement. The
+ordinary mixed-field level used for basal drain and telemetry is unchanged.
 
 ## Energy, death, and replacement
 

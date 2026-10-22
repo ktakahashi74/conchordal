@@ -334,6 +334,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let hop = 512;
     let timebase = Timebase { fs, hop };
     let cfg = WorkerConfig {
+        loo_populations: Vec::new(),
         render_prototype: false,
         temporal_meter_t2: false,
         onset_comparison: None,

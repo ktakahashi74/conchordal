@@ -403,11 +403,11 @@ fn landscape_weight(population_spec: PopulationSpec, value: f64) -> PopulationSp
 /// [tuning] Nonnegative dimensionless landscape-objective weight, default 1.
 fn landscape_weight(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
-/// Estimate the field without this voice when choosing pitch.
-/// Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
+/// Evaluate the field without this voice when choosing pitch.
+/// Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 fn leave_self_out(population: Population, enabled: bool) -> Population;
-/// Estimate the field without this voice when choosing pitch.
-/// Uses body-projected spectral power ownership and recomputes the remaining field. This is an estimate, not exact PCM subtraction; the method is shared by all bodies.
+/// Evaluate the field without this voice when choosing pitch.
+/// Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 fn leave_self_out(population_spec: PopulationSpec, enabled: bool) -> PopulationSpec;
 
 /// Linear interpolation of positions between two frequencies.
@@ -943,7 +943,7 @@ fn unison(population: Population, count: i64) -> Population;
 fn unison(population_spec: PopulationSpec, count: i64) -> PopulationSpec;
 
 /// [tuning] `"environment"` or `"total"`: choose the field used for viability.
-/// Environment uses the same spectral-ownership estimate as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
+/// Environment uses the same PCM self-removal observation as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 fn viability_scope(population_spec: PopulationSpec, name: String) -> PopulationSpec;
 
 /// Emit pending live patches, then advance the timeline cursor.

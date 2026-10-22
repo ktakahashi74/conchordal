@@ -5,8 +5,8 @@ use crossbeam_channel::{Receiver, Sender, TrySendError};
 use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::core::stream::analysis::AnalysisStream;
 
-/// One frame ID binds habitat PCM and optional Flora-only habitat PCM.
-pub(crate) type AnalysisHop = (u64, Arc<[f32]>, Option<Arc<[f32]>>);
+/// One frame ID binds habitat PCM and the owned source PCM captured from that mix.
+pub(crate) type AnalysisHop = (u64, Arc<[f32]>, Option<crate::core::stream::loo::PcmPacket>);
 
 /// `(frame_id, landscape_snapshot)`, with `None` invalidating pre-gap observations.
 pub type AnalysisResult = (u64, Option<Landscape>);
@@ -44,8 +44,10 @@ pub(crate) fn run(
     mut temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
     raw_output: Option<crate::temporal_cognition::t2::runtime_input::Output>,
 ) {
-    let mut flora_stream: Option<AnalysisStream> = None;
-    let mut flora_warmup = 0;
+    let mut loo_streams: Vec<crate::core::stream::loo::Observer> = Vec::new();
+    #[cfg(test)]
+    let mut l1_probe = crate::runtime::l1_probe::Probe::new("analysis");
+
     let mut next_frame_id = 0;
     let mut warmup_samples = 0;
     let hop_samples = stream.hop_samples();
@@ -64,8 +66,10 @@ pub(crate) fn run(
         stream.window_samples(),
     );
     while let Ok(first_hop) = hop_rx.recv() {
+        #[cfg(test)]
+        let l1_begin = l1_probe.as_mut().map(|p| p.before(first_hop.0));
         #[cfg(all(test, feature = "profile-alloc"))]
-        let measure = std::env::var_os("T37_ANALYSIS_ALLOC").is_some();
+        let measure = std::env::var_os("L1_ANALYSIS_ALLOC").is_some();
         #[cfg(all(test, feature = "profile-alloc"))]
         if measure {
             crate::runtime_profile::begin_allocations();
@@ -77,15 +81,15 @@ pub(crate) fn run(
 
         // Apply parameter updates (landscape params primarily; others are harmless here).
         for upd in update_rx.try_iter() {
-            if let Some(flora) = flora_stream.as_mut() {
-                flora.apply_update(upd);
+            for observer in &mut loo_streams {
+                observer.update(upd);
             }
             stream.apply_update(upd);
         }
 
         // Process each hop in-order to preserve the per-hop dt used by the normalizers.
         let mut analysis = None;
-        for (frame_id, hop, flora_pcm) in hops {
+        for (frame_id, hop, loo_pcm) in hops {
             assert_eq!(
                 hop.len(),
                 hop_samples,
@@ -93,10 +97,9 @@ pub(crate) fn run(
             );
             if frame_id != next_frame_id {
                 stream.reset();
-                if let Some(flora) = flora_stream.as_mut() {
-                    flora.reset();
+                for observer in &mut loo_streams {
+                    observer.reset();
                 }
-                flora_warmup = stream.window_samples();
                 warmup_samples = stream.window_samples();
                 // Invalidation must arrive even when old snapshots fill the result queue.
                 match &delivery {
@@ -114,24 +117,29 @@ pub(crate) fn run(
             let t2 = raw
                 .as_mut()
                 .and_then(|input| input.observe(frame_id, hop.as_ref()));
-            if let Some(pcm) = flora_pcm {
-                assert_eq!(
-                    pcm.len(),
-                    hop_samples,
-                    "Flora requires the same complete hop"
-                );
-                if flora_stream.is_none() {
-                    flora_stream = Some(stream.fresh());
-                    flora_warmup = if frame_id == 0 {
-                        0
-                    } else {
-                        stream.window_samples()
-                    };
+            if let Some(packet) = &loo_pcm {
+                loo_streams.retain(|s| {
+                    packet
+                        .sources
+                        .iter()
+                        .any(|pcm| pcm.id == s.id && pcm.generation == s.generation)
+                });
+                for source in &packet.sources {
+                    let index = loo_streams
+                        .iter()
+                        .position(|s| s.id == source.id && s.generation == source.generation)
+                        .unwrap_or_else(|| {
+                            loo_streams.push(crate::core::stream::loo::Observer::new(
+                                source.id,
+                                source.generation,
+                                &stream,
+                            ));
+                            loo_streams.len() - 1
+                        });
+                    loo_streams[index].process(&hop, &source.habitat);
                 }
-                flora_stream.as_mut().unwrap().process(&pcm);
-                flora_warmup = flora_warmup.saturating_sub(pcm.len());
             } else {
-                flora_stream = None;
+                loo_streams.clear();
             }
             let frame = stream.process(hop.as_ref());
             if let Some(tap) = temporal_tap.as_mut() {
@@ -151,10 +159,7 @@ pub(crate) fn run(
             {
                 let mut frame = frame.clone();
                 frame.spectral_history = spectral_history.snapshot();
-                frame.flora_power_scan = flora_stream
-                    .as_ref()
-                    .filter(|_| flora_warmup == 0)
-                    .map(AnalysisStream::observed_loo_power);
+                frame.loo = loo_streams.iter().map(|s| s.snapshot()).collect();
                 if result_tx.send((id, Some(frame))).is_err() {
                     return;
                 }
@@ -166,18 +171,19 @@ pub(crate) fn run(
         {
             let mut frame = stream.last().clone();
             frame.spectral_history = spectral_history.snapshot();
-            frame.flora_power_scan = flora_stream
-                .as_ref()
-                .filter(|_| flora_warmup == 0)
-                .map(AnalysisStream::observed_loo_power);
+            frame.loo = loo_streams.iter().map(|s| s.snapshot()).collect();
             publish_latest(&result_tx, stale, (id, Some(frame)));
+        }
+        #[cfg(test)]
+        if let (Some(p), Some(begin)) = (&mut l1_probe, l1_begin) {
+            p.after(next_frame_id - 1, begin, loo_streams.len(), hop_rx.len());
         }
         #[cfg(all(test, feature = "profile-alloc"))]
         if measure {
             let counts = crate::runtime_profile::finish_allocations().unwrap();
             println!(
-                "T37_ANALYSIS_ALLOC flora={} next_frame={next_frame_id} counts={counts:?}",
-                flora_stream.is_some()
+                "L1_ANALYSIS_ALLOC loo={} next_frame={next_frame_id} counts={counts:?}",
+                !loo_streams.is_empty()
             );
         }
     }
@@ -279,7 +285,7 @@ mod tests {
             let (result_tx, result_rx) = crossbeam_channel::bounded(capacity);
             let (_update_tx, update_rx) = crossbeam_channel::unbounded();
             for row in &hops {
-                hop_tx.send(row.clone()).unwrap();
+                hop_tx.send((row.0, Arc::clone(&row.1), None)).unwrap();
             }
             drop(hop_tx);
             let handle = thread::spawn(move || {
@@ -332,7 +338,7 @@ mod tests {
         let (result_tx, result_rx) = crossbeam_channel::unbounded();
         let (_update_tx, update_rx) = crossbeam_channel::unbounded();
         for row in &hops {
-            hop_tx.send(row.clone()).unwrap();
+            hop_tx.send((row.0, Arc::clone(&row.1), None)).unwrap();
         }
         drop(hop_tx);
         let tap = crate::temporal_cognition::observation::Tap::spawn(
@@ -452,12 +458,14 @@ mod tests {
             let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
             let (result_tx, result_rx) = crossbeam_channel::unbounded();
             let (_update_tx, update_rx) = crossbeam_channel::unbounded();
-            hop_tx.send((0, tone.clone(), Some(tone))).unwrap();
+            hop_tx
+                .send((0, tone.clone(), Some(packet(7, 0, &tone))))
+                .unwrap();
             // A gap inside the already-queued backlog must reset the complete history.
             let silence: Arc<[f32]> = vec![0.0; hop].into();
             for frame_id in 2..2 + recovery_hops {
                 hop_tx
-                    .send((frame_id, Arc::clone(&silence), Some(silence.clone())))
+                    .send((frame_id, Arc::clone(&silence), Some(packet(7, 0, &silence))))
                     .unwrap();
             }
             drop(hop_tx);
@@ -481,13 +489,7 @@ mod tests {
                 assert_eq!(frame_id, 5);
                 let frame = frame.unwrap();
                 assert!(frame.nsgt_power.iter().all(|power| *power == 0.0));
-                assert!(
-                    frame
-                        .flora_power_scan
-                        .unwrap()
-                        .iter()
-                        .all(|power| *power == 0.0)
-                );
+                assert!(frame.loo[0].h_scan.iter().all(|power| *power == 0.0));
             }
             assert!(
                 result_rx.try_recv().is_err(),
@@ -564,31 +566,46 @@ mod tests {
         drop(hop_tx);
         let _ = handle.join();
     }
+    fn packet(id: u64, generation: u32, own: &[f32]) -> crate::core::stream::loo::PcmPacket {
+        let (recycle, _) = crossbeam_channel::unbounded();
+        crate::core::stream::loo::PcmPacket {
+            sources: vec![crate::core::stream::loo::SourcePcm {
+                id,
+                generation,
+                habitat: own.to_vec(),
+            }],
+            recycle,
+        }
+    }
+
     #[test]
-    fn flora_observations_share_packet_publication_and_activation_warmup() {
+    fn loo_birth_history_and_generation_share_publication_frame() {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
-        let template = AnalysisStream::new(params, nsgt);
+        let template = AnalysisStream::new(params.clone(), nsgt);
         let hop = template.hop_samples();
-        let warmup = template.window_samples().div_ceil(hop);
         for ordered in [false, true] {
-            let mut reference = template.fresh();
+            let mut reference = template.clone();
             let (tx, rx) = crossbeam_channel::unbounded();
             let (result_tx, result_rx) = crossbeam_channel::unbounded();
             let (_, updates) = crossbeam_channel::unbounded();
             let mut expected = Vec::new();
-            for id in 0..warmup + 8 {
+            for id in 0..40 {
                 let mix: Arc<[f32]> = (0..hop)
                     .map(|i| ((id * hop + i) as f32 * 0.11).sin() * 0.2)
                     .collect();
-                let flora: Arc<[f32]> = (0..hop)
-                    .map(|i| ((id * hop + i) as f32 * 0.17).sin() * 0.1)
+                let own: Vec<_> = mix.iter().map(|x| x * 0.5).collect();
+                let active = (2..38).contains(&id);
+                // Before birth the Voice contributes no PCM; copy the complete mixed history.
+                let removed: Vec<_> = mix
+                    .iter()
+                    .zip(&own)
+                    .map(|(a, b)| if active { a - b } else { *a })
                     .collect();
-                let active = id >= 2 && (!ordered || id < warmup + 6);
-                if active {
-                    reference.process(&flora);
-                }
-                expected.push((active && id > warmup).then(|| reference.observed_loo_power()));
-                tx.send((id as u64, mix, active.then_some(flora))).unwrap();
+                let mut frame = reference.process(&removed).clone();
+                frame.recompute_consonance(&params);
+                expected.push(active.then_some(frame.consonance_field_score));
+                tx.send((id as u64, mix, active.then(|| packet(7, 2, &own))))
+                    .unwrap();
             }
             drop(tx);
             let delivery = if ordered {
@@ -597,7 +614,7 @@ mod tests {
                 AnalysisDelivery::Latest(result_rx.clone())
             };
             run(
-                template.fresh(),
+                template.clone(),
                 rx,
                 result_tx,
                 updates,
@@ -606,16 +623,23 @@ mod tests {
                 None,
             );
             let frames: Vec<_> = result_rx.try_iter().collect();
-            assert_eq!(frames.len(), if ordered { warmup + 8 } else { 1 });
+            assert_eq!(frames.len(), if ordered { 40 } else { 1 });
             for (id, frame) in frames {
-                assert_eq!(frame.unwrap().flora_power_scan, expected[id as usize]);
+                let frame = frame.unwrap();
+                if let Some(expected) = &expected[id as usize] {
+                    assert_eq!(frame.loo.len(), 1);
+                    assert_eq!((frame.loo[0].id, frame.loo[0].generation), (7, 2));
+                    assert_eq!(&*frame.loo[0].score_scan, expected);
+                } else {
+                    assert!(frame.loo.is_empty());
+                }
             }
         }
     }
 
     #[cfg(feature = "profile-alloc")]
     #[test]
-    fn flora_analysis_steady_state_allocation_census() {
+    fn loo_analysis_steady_state_allocation_census() {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
         let template = AnalysisStream::new(params, nsgt);
         let hop = template.hop_samples();
@@ -626,15 +650,15 @@ mod tests {
             let producer = thread::spawn(move || {
                 let audio: Arc<[f32]> = (0..hop).map(|i| (i as f32 * 0.13).sin() * 0.2).collect();
                 for id in 0..12 {
-                    tx.send((id, audio.clone(), active.then(|| audio.clone())))
+                    tx.send((id, audio.clone(), active.then(|| packet(7, 0, &audio))))
                         .unwrap();
                     let (actual_id, frame) = result_rx.recv().unwrap();
                     assert_eq!(actual_id, id);
-                    assert_eq!(frame.unwrap().flora_power_scan.is_some(), active);
+                    assert_eq!(!frame.unwrap().loo.is_empty(), active);
                 }
             });
             run(
-                template.fresh(),
+                template.clone(),
                 rx,
                 result_tx,
                 updates,

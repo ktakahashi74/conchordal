@@ -415,12 +415,41 @@ pub(super) fn render_and_route_audio(
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
-    state.schedule_renderer.capture_flora = state.pop.has_placed_flora
-        && state
-            .pop
-            .voices
-            .iter()
-            .any(|v| v.effective_control.pitch.leave_self_out || v.selection_environment);
+    if !cfg.loo_populations.is_empty() {
+        // Reuse one owned packet. Backpressure is included in the audio deadline.
+        state.schedule_renderer.loo_pcm =
+            match state.loo_recycle.1.recv_timeout(Duration::from_secs(1)) {
+                Ok(sources) => sources,
+                Err(error) => {
+                    state
+                        .failures
+                        .push(format!("LOO capture recycling failed: {error}"));
+                    cfg.exiting.store(true, Ordering::SeqCst);
+                    Vec::new()
+                }
+            };
+        let sources = &mut state.schedule_renderer.loo_pcm;
+        sources.retain(|source| {
+            state
+                .pop
+                .voices
+                .iter()
+                .any(|v| v.id() == source.id && v.metadata.generation == source.generation)
+        });
+        for voice in &state.pop.voices {
+            if cfg.loo_populations.contains(&voice.metadata.population_id)
+                && !sources
+                    .iter()
+                    .any(|s| s.id == voice.id() && s.generation == voice.metadata.generation)
+            {
+                sources.push(crate::core::stream::loo::SourcePcm {
+                    id: voice.id(),
+                    generation: voice.metadata.generation,
+                    habitat: vec![0.; cfg.hop],
+                });
+            }
+        }
+    }
     let sources = state
         .pop
         .body_metabolism

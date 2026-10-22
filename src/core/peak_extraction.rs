@@ -36,6 +36,7 @@ impl Clone for PeakScratch {
 impl PeakScratch {
     // The same nearest-peak assignment used for mass accumulation, including
     // redistribution of pruned peaks. Unlike suppression, this has no ERB radius.
+    #[cfg(test)]
     pub(crate) fn mass_owner_bin(&self, u: f32) -> Option<usize> {
         if self.peaks.is_empty() {
             return None;

@@ -1,6 +1,8 @@
 // Sample 1 — A Single Voice
 // One voice appears, holds its breath, and leaves.
 
+output_gain(2.0);
+
 let voice = sine()
     .amp(0.08)
     .sustain()

@@ -1,6 +1,8 @@
 // Sample 15 — Folded Air
 // A long thread stays; its companion breathes, joins, and breaks away.
 
+output_gain(10.5);
+
 let strand = harmonic()
     .brain("drone")
     .sustain()

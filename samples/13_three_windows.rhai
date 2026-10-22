@@ -1,6 +1,8 @@
 // Sample 13 — Three Windows
 // Three lights cross an unseen room; each leaves by its own door.
 
+output_gain(5.0);
+
 let ground = harmonic()
     .brain("drone")
     .anchor()

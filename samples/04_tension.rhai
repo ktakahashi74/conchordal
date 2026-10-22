@@ -2,6 +2,8 @@
 // The voices settle onto consonance, grow restless and stray, then cool and
 // settle again.
 
+output_gain(4.5);
+
 let ground = harmonic()
     .brain("drone")
     .send(habitat_bus)

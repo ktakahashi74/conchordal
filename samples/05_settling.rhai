@@ -1,6 +1,8 @@
 // Sample 5 — Settling
 // Scattered by chance, the voices glide to where the field can hold them.
 
+output_gain(3.0);
+
 let ground = harmonic()
     .brain("drone")
     .send(habitat_bus)

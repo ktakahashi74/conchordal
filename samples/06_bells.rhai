@@ -1,6 +1,8 @@
 // Sample 6 — Bells
 // Struck bodies. The last bell lets the field choose its partials.
 
+output_gain(6.0);
+
 let bell = modal()
     .amp(0.10)
     .sustain()

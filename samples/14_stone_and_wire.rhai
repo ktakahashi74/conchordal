@@ -1,6 +1,8 @@
 // Sample 14 — Stone and Wire
 // Two turning stones mark the ground; a wire crosses and falls silent.
 
+output_gain(7.5);
+
 temporal_basin(1.8, 2.2);
 meter_stability(0.65);
 

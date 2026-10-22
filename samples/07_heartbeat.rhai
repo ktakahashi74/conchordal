@@ -1,6 +1,8 @@
 // Sample 7 — Heartbeat
 // A downbeat Voice marks the pulse; the colony follows the beat it hears.
 
+output_gain(-4.0);
+
 let root_hz = 220.0;
 
 let field_anchor = harmonic()

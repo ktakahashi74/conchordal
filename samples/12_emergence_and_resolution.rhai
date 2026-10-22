@@ -2,6 +2,8 @@
 // One arc: the search heats up and the reference register lifts;
 // then the search cools as the reference returns.
 
+output_gain(-1.0);
+
 let root_hz = 110.0;
 
 // Hidden harmonic ground: defines the consonance landscape the agents resolve

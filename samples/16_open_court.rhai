@@ -1,6 +1,8 @@
 // Sample 16 — Open Court
 // The court fills, two paths cross it, and the crowd leaves in layers.
 
+output_gain(5.5);
+
 temporal_basin(1.4, 1.8);
 meter_stability(0.65);
 

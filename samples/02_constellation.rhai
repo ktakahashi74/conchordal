@@ -2,6 +2,8 @@
 // Six ways to enter a field: a line, the peaks, the density,
 // the strain, the gaps, and chance.
 
+output_gain(-1.5);
+
 let star = sine()
     .amp(0.05)
     .sustain()

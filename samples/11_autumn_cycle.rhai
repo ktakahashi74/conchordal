@@ -1,6 +1,8 @@
 // Sample 11 — Autumn Cycle
 // A directed harmony; the season turns and comes home.
 
+output_gain(-2.0);
+
 let bass = sine().amp(0.1).sustain();
 let pad = harmonic()
     .amp(0.05)

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Bundled samples set per-scene playback gain with `output_gain(...)`, measured
+  across seeds 21–23 at the default +4.5 dB config gain. Values move average
+  integrated loudness toward -23 LUFS within the existing 0.98 sample-peak
+  ceiling, rounded toward zero in 0.5 dB steps; the samples retain fresh seeds.
+
 - Rhai `output_gain(db)` sets scene-wide playback gain (default 0 dB; last
   declaration wins). It adds to `[audio].output_gain_db` immediately before the
   instrument/WAV output limiter. Analysis, listener, ecology, reports and UI bus

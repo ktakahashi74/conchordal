@@ -2,6 +2,8 @@
 // A sounding Population shapes the terrain; Flora grows around it.
 // The halo can settle into a held spectrum. No beat carrier is used.
 
+output_gain(7.5);
+
 let sun = harmonic().brain("drone").sustain().anchor().amp(0.05)
     .modes(harmonic_modes().count(8)).adsr(0.6, 0.5, 0.95, 2.0);
 let moss = flora().amp(0.035).fade(2);

@@ -357,6 +357,8 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let scenario = crate::scenario::Scenario {
         temporal_mode: crate::scenario::TemporalMode::Off,
         seed: 1,
+        output_gain_db: 0.0,
+        output_gain_position: None,
         control_update_mode: Default::default(),
         scaffold: Default::default(),
         meter_shaping: Default::default(),

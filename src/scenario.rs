@@ -56,6 +56,10 @@ pub enum FloraSeeding {
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub seed: u64,
+    /// Scene playback gain, added to the audio config in dB before output guards.
+    pub output_gain_db: f32,
+    /// Source coordinates for combined config/scene gain diagnostics.
+    pub(crate) output_gain_position: Option<(usize, usize)>,
     pub temporal_mode: TemporalMode,
     pub control_update_mode: ControlUpdateMode,
     pub scaffold: ScaffoldConfig,

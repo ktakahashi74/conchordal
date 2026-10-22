@@ -104,7 +104,7 @@ particular realization must be replayed.
 
 Global parameter names describe when they apply. Bare names set scene-wide initial
 conditions: `meter_stability`, `temporal_basin`, `control_update_mode`, `scaffold_off`,
-`scaffold_shared`, `scaffold_scrambled`, and `seed`. Their last declaration wins,
+`scaffold_shared`, `scaffold_scrambled`, `seed`, and `output_gain`. Their last declaration wins,
 even after `wait()`. `temporal_mode` is also a scene setting, but must be declared
 once at top level before events.
 
@@ -112,3 +112,32 @@ The `set_` verbs schedule parameter changes at the current cursor:
 `set_roughness_aversion`, `set_global_coupling`, and `set_pitch_objective`.
 Use `wait()` to choose when those changes take effect. Placement, release and
 scope verbs continue to describe actions rather than parameter settings.
+
+## Scene playback level
+
+`output_gain(db)` sets one playback gain for the whole scene. It accepts integer
+and floating-point dB values; omission means `0` dB. As with `seed`, the last
+declaration wins, including declarations after `wait()`. It does not schedule a fade.
+
+```rhai
+output_gain(3.0);
+play(|| {
+    place(sine().amp(0.04).sustain(), at(220.0));
+    wait(2.0);
+});
+```
+
+The scene value adds to `[audio].output_gain_db` (default `+4.5` dB). The output
+amplitude multiplier is `10^((config dB + scene dB)/20)`. Both the instrument's
+speakers and the offline renderer's WAV apply it immediately before their output
+limiter, including when the limiter is disabled. A scene value of `0` preserves
+the configured playback level. The limiter can reduce peaks at higher gains.
+
+This controls playback only: analysis, ListenerTwin, ecology, reports and UI bus
+meters receive the original audio levels. To change a Population's emitted sound
+and its effect on the ecology, use its `amp()` instead.
+
+The value must be finite and convert to a finite, positive `f32` amplitude
+multiplier. The sum with the config gain must meet the same condition. Invalid
+values report the declaration's source position. These limits follow `f32`
+representation; there is no additional artistic dB range or loudness target.

@@ -988,6 +988,23 @@ impl ScriptHost {
             },
         );
 
+        macro_rules! register_output_gain {
+            ($number:ty) => {
+                let ctx_for_output_gain = ctx.clone();
+                engine.register_fn(
+                    "output_gain",
+                    move |call: NativeCallContext, db: $number| -> Result<(), Box<EvalAltResult>> {
+                        ctx_for_output_gain
+                            .lock()
+                            .expect("lock script context")
+                            .set_output_gain(db as f64, call.call_position())
+                    },
+                );
+            };
+        }
+        register_output_gain!(FLOAT);
+        register_output_gain!(INT);
+
         let ctx_for_seed = ctx.clone();
         engine.register_fn(
             "seed",

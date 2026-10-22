@@ -315,6 +315,14 @@ parallel(callbacks)
 
 Run an array of closures on parallel timelines from the current cursor. Each branch starts at the current cursor; the cursor advances to the latest branch end.
 
+#### `output_gain`
+
+```rhai,ignore
+output_gain(db)
+```
+
+Set scene-wide playback gain in dB (default 0). The last declaration wins for the whole scene, even after wait(). Added to [audio].output_gain_db; amplitude = 10^((config dB + scene dB)/20), applied immediately before the cpal/WAV output limiter, including limiter none. Analysis, listener, reports and UI bus meters remain unchanged. Accepts integers and floats; values and the combined gain must yield a finite, positive f32 amplitude gain. Invalid values report the declaration position; limits come from f32 representability, not a loudness target.
+
 #### `seed`
 
 ```rhai,ignore

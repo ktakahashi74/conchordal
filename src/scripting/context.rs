@@ -79,6 +79,8 @@ impl ScriptContext {
             cursor: 0.0,
             scenario: Scenario {
                 seed,
+                output_gain_db: 0.0,
+                output_gain_position: None,
                 temporal_mode: crate::scenario::TemporalMode::Off,
                 control_update_mode: ControlUpdateMode::SnapshotPhased,
                 scaffold: ScaffoldConfig::Off,
@@ -673,6 +675,24 @@ impl ScriptContext {
             placement.strategy,
             position,
         )
+    }
+
+    pub(super) fn set_output_gain(
+        &mut self,
+        db: f64,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        let db_f32 = db as f32;
+        let gain = 10.0f32.powf(db_f32 / 20.0);
+        if !db.is_finite() || !db_f32.is_finite() || !gain.is_finite() || gain <= 0.0 {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "output_gain must be finite and yield a finite, positive f32 amplitude gain".into(),
+                position,
+            )));
+        }
+        self.scenario.output_gain_db = db_f32;
+        self.scenario.output_gain_position = position.line().zip(position.position());
+        Ok(())
     }
 
     pub(super) fn set_seed(

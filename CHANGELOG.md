@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Rhai `output_gain(db)` sets scene-wide playback gain (default 0 dB; last
+  declaration wins). It adds to `[audio].output_gain_db` immediately before the
+  instrument/WAV output limiter. Analysis, listener, ecology, reports and UI bus
+  meters keep their original levels. Invalid or unrepresentable gains report the
+  declaration position.
+
 - `[audio].output_gain_db` applies fixed playback gain immediately before the
   output limiter in both the instrument and offline renderer. Ecology, listener,
   reports and UI meters retain the original bus levels. The +4.5 dB default is calibrated

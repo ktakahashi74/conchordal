@@ -1,6 +1,47 @@
 use super::*;
 
 #[test]
+fn output_gain_is_scene_global_and_last_declaration_wins() {
+    assert_eq!(run_script("").0.output_gain_db, 0.0);
+    assert_eq!(run_script("output_gain(6);").0.output_gain_db, 6.0);
+    let scenario = run_script("output_gain(3.5); wait(1); play(|| { output_gain(-2.5); });").0;
+    assert_eq!(scenario.output_gain_db, -2.5);
+    assert!(scenario.output_gain_position.is_some());
+    assert!(scenario.events.iter().all(|event| {
+        event
+            .actions
+            .iter()
+            .all(|action| matches!(action, Action::Finish))
+    }));
+}
+
+#[test]
+fn output_gain_errors_preserve_declaration_positions() {
+    for db in [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        1e300,
+        1000.0,
+        -1000.0,
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let mut scope = rhai::Scope::new();
+        scope.push("db", db);
+        let error = engine
+            .eval_with_scope::<Dynamic>(&mut scope, "\noutput_gain(db);")
+            .expect_err("invalid gain");
+        assert_eq!(error.position().line(), Some(2), "{error}");
+        assert!(
+            error.to_string().contains("finite, positive f32"),
+            "{error}"
+        );
+        assert_eq!(ctx.lock().unwrap().scenario.output_gain_db, 0.0);
+    }
+}
+
+#[test]
 fn temporal_mode_is_a_single_pre_performance_setting() {
     use crate::scenario::TemporalMode;
     assert_eq!(run_script("").0.temporal_mode, TemporalMode::Off);

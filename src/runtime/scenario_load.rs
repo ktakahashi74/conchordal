@@ -151,16 +151,32 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn load_scenario(path: &Path, seed: Option<u64>) -> Result<(String, Scenario), String> {
+pub(super) fn load_scenario(
+    path: &Path,
+    seed: Option<u64>,
+    audio: &crate::config::AudioConfig,
+) -> Result<(String, Scenario, f32), String> {
     let scenario_label = path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("scenario")
         .to_string();
     let scenario = compile_scenario_from_script(path, seed)?;
+    let db = audio.output_gain_db + scenario.output_gain_db;
+    let output_gain = 10.0f32.powf(db / 20.0);
+    if !db.is_finite() || !output_gain.is_finite() || output_gain <= 0.0 {
+        let position = scenario
+            .output_gain_position
+            .map(|(line, column)| format!(":{line}:{column}"))
+            .unwrap_or_default();
+        return Err(format!(
+            "{}{position}: output_gain + audio.output_gain_db must yield a finite, positive f32 amplitude gain",
+            path.display()
+        ));
+    }
     info!(
         "scenario seed: {} (replay with --seed {})",
         scenario.seed, scenario.seed
     );
-    Ok((scenario_label, scenario))
+    Ok((scenario_label, scenario, output_gain))
 }

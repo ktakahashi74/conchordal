@@ -473,6 +473,12 @@ pub(crate) fn init_runtime(
         eprintln!("{err:#}");
         std::process::exit(1);
     }
+    let path = Path::new(&args.scenario_path);
+    let (scenario_label, scenario, output_gain) = load_scenario(path, args.seed, &config.audio)
+        .unwrap_or_else(|err| {
+            eprintln!("{err}");
+            std::process::exit(1);
+        });
     crate::life::modal::register_modal();
     let latency_ms = config.audio.latency_ms;
     let guard_mode = resolve_limiter_mode(&config);
@@ -489,7 +495,7 @@ pub(crate) fn init_runtime(
             config.analysis.hop_size,
             guard_mode,
             guard_meter.clone(),
-            config.audio.output_gain(),
+            output_gain,
         ) {
             Ok((out, prod)) => (Some(out), Some(prod), None),
             Err(e) => {
@@ -528,11 +534,6 @@ pub(crate) fn init_runtime(
         (Some(tx), Some(rx))
     };
 
-    let path = Path::new(&args.scenario_path);
-    let (scenario_label, scenario) = load_scenario(path, args.seed).unwrap_or_else(|err| {
-        eprintln!("{err}");
-        std::process::exit(1);
-    });
     let mut reporter = args
         .report
         .as_deref()
@@ -660,7 +661,7 @@ pub fn run_render(
     let guard_meter = Some(Arc::new(LimiterMeter::default()));
 
     let path = Path::new(scenario_path);
-    let (scenario_label, scenario) = load_scenario(path, seed)?;
+    let (scenario_label, scenario, output_gain) = load_scenario(path, seed, &config.audio)?;
     let mut reporter = report_path.map(JsonlReporter::create).transpose()?;
     if let Some(writer) = reporter.as_mut() {
         writer.write_meta(scenario.seed)?;
@@ -676,7 +677,7 @@ pub fn run_render(
         runtime_sample_rate,
         guard_mode,
         guard_meter.clone(),
-        config.audio.output_gain(),
+        output_gain,
     );
 
     let wiring = wire_runtime(

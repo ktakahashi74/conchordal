@@ -688,6 +688,16 @@ on the PopulationSpec first; the returned Population exposes only live patches a
 branch end.",
     },
     FnDoc {
+        name: "output_gain",
+        owner: Owner::Global,
+        category: "timeline",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["output_gain(db)"],
+        summary: "Set scene-wide playback gain in dB (default 0).",
+        details: "The last declaration wins for the whole scene, even after wait(). Added to [audio].output_gain_db; amplitude = 10^((config dB + scene dB)/20), applied immediately before the cpal/WAV output limiter, including limiter none. Analysis, listener, reports and UI bus meters remain unchanged. Accepts integers and floats; values and the combined gain must yield a finite, positive f32 amplitude gain. Invalid values report the declaration position; limits come from f32 representability, not a loudness target.",
+    },
+    FnDoc {
         name: "seed",
         owner: Owner::Global,
         category: "timeline",

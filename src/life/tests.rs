@@ -130,6 +130,8 @@ fn conductor_dispatches_finish_on_time() {
     };
     let scenario = Scenario {
         seed: 0,
+        output_gain_db: 0.0,
+        output_gain_position: None,
         temporal_mode: crate::scenario::TemporalMode::Off,
         control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
         scaffold: crate::scenario::ScaffoldConfig::Off,
@@ -153,6 +155,8 @@ fn conductor_dispatches_finish_on_time() {
 fn conductor_keeps_future_events_queued_in_order() {
     let scenario = Scenario {
         seed: 0,
+        output_gain_db: 0.0,
+        output_gain_position: None,
         temporal_mode: crate::scenario::TemporalMode::Off,
         control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
         scaffold: crate::scenario::ScaffoldConfig::Off,

@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "996f2c2"
+source_commit = "b59a830"
 author = "Koichi Takahashi"
 last_updated = "2026-10-22"
 source_version = "0.5.0"
-source_snapshot = "996f2c2"
-revision_scope = "Flora の旧投影除去と、実装済みの自己除外・共通 floor の説明に同期（2026-10-22）"
+source_snapshot = "b59a830"
+revision_scope = "音高移動・環境評価のPCM自己減算に同期（2026-10-22）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -525,21 +525,11 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 **クラウディング**: クラウディング（相互排斥）とピッチ適応は、単一の共有された占有場（occupancy field）を参照する。各占有*基音*（生 f0）を中心とするガウシアンペナルティで、その幅は `crowding_sigma_cents`（デフォルト 60）が定め、強度は `crowding_strength` が制御する。これにより、エージェント同士が同一周波数に収束して「団子」状態になるのを防ぐ。オクターブ等価（クロマ）のペナルティは適用せず、オクターブ関係は協和ポテンシャルを通してだけ作用する。
 
-**Leave-Self-Out**: 音高移動では、自分を除いた場を近似する。
+**Leave-Self-Out**: `leave_self_out(true)`は、混合PCMからVoiceが実際にhabitatへ出した自己PCMを引き、残った音を解析して周囲の場を求める。減算後も、混合場と同じNSGT、パワー平滑、A-weighting、peak抽出、loudness、密度平滑、H・R・Cの計算を使う。habitatへ送られたFloraは、residualを含めて残る。身体の種類による方式の分岐や公開mode選択はない。
 
-`leave_self_out(true)` は、Voice の周りに残る音の場を推定する。habitat へ送る各 Voice の身体の振幅を解析 bin へ投影し、パワーを求める。静止部分音は最近接 bin に置き、Harmonic の motion は描画と同じ共通 Hz 偏移から周期平均の周波数分布を求める。自己と他音源のパワーを別に保持し、その集計と残余の比を f64 で計算する。
+対象Voiceごとに解析履歴を保持する。出生時には、最初の自己音が出る前の混合streamの状態を引き継ぐ。後から自己除外を有効にするPopulationも、出生時から観測する。混合PCMと自己PCMは同じframeのpacketで送り、観測結果をVoiceのIDと世代で対応づける。frameの欠落時は両方の観測を無効にし、共通の解析窓が再び埋まってから利用する。既存のnear-silence floorは自己除外と一般の解析に共通して適用し、consumerが得点を読む際に通常の共有habituationによる浸食を一度適用する。
 
-自己の投影がある bin では、peak 抽出器が質量を割り当てた範囲を使う。他音源のパワー比と既存の loudness 指数から残す質量を求め、元の bin の密度を除いた後、範囲内の他音源の投影位置へ ERB の bin 幅に応じて配り直す。現在の frame にない平滑履歴の peak には、既存の抑制幅を使う。その密度から H・R・score を計算し直し、候補の比較前に通常の habituation による浸食を適用する。密度質量が共通の near-silence floor 以下なら H と粗さの shape を0にする。この floor は、Flora や自己除外の有無にかかわらず一般の解析にも適用される。
-
-Flora が配置された run で、音高移動または environment の生存選択に自己除外を使う Voice がいる場合だけ、実際に描画した Flora の habitat PCM を捕捉する。混合 PCM と同じ packet・frame で解析側へ送り、同じ NSGT と前段処理を持つ同期した stream から、他音源の集計に使う Flora の観測寄与を得る。有効な観測が揃うまでは観測場を保つ。投影と計算済み score は同じ hop 内で再利用し、次の hop で無効化する。
-
-音源分離は推定であり、候補基音での点評価である。Voice の投影は個別 Tone の位相、解析遅延や release の尾を復元しない。Flora の別 stream は、それ自身の解析履歴を保持する。身体の種類で自己除外方式を切り替える分岐や公開 mode 選択はない。
-Flora がある場合の対応範囲は、residual を切った tonal-only の sine と presentation 専用の場面であり、自己除外を使う Voice の近くで residual 付きの sine／resonant Flora が habitat に鳴る場面は精度保証の範囲外とする。
-
-`viability_scope("environment")`による生存選択も、現在の音高で同じ所有率推定を使い、
-継続的なエネルギー回復の得点を求める。音高移動の自己除外とは独立に設定でき、動かないVoiceにも
-適用される。両者は同じhopの投影と計算済みscoreを共有する。基礎消耗と統計記録が使う混合場の
-level、および任意のPCM身体代謝評価器による身体重み付き評価は、それぞれ既存の意味を保つ。
+`viability_scope("environment")`による生存選択も、同じ観測を現在の音高で読み、継続的なエネルギー回復の得点を求める。音高移動とは独立に設定でき、動かないVoiceにも適用される。基礎消耗と統計記録が使う混合場のlevel、および任意のPCM身体代謝評価器による身体重み付き評価は、それぞれ既存の意味を保つ。
 
 **探索温度**: 単一の `temperature` パラメータが確率的な探索の強さを制御し、両方のピッチコアで共有される。`0` では貪欲に落ち着き（ヒルクライムは明確な改善があるときだけ動き、ピークサンプラーは最尤候補を選ぶ）、値を上げるとヒルクライムは Metropolis 規則で下り方向の移動も受け入れ、ピークサンプラーの候補選択はソフトマックスで和らぐ。これにより局所最適からの脱出が可能になる。これは同時に運動の緊張のノブでもある。温度の高いボイスは協和から外れて彷徨い、温度を下げれば協和へ落ち着く——緊張と解決が探索温度そのものとして現れる。
 

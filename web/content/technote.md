@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "996f2c2"
+source_commit = "b59a830"
 author = "Koichi Takahashi"
 last_updated = "2026-10-22"
 source_version = "0.5.0"
-source_snapshot = "996f2c2"
-revision_scope = "Flora projection cleanup and implemented self-exclusion / shared-floor description (2026-10-22)"
+source_snapshot = "b59a830"
+revision_scope = "PCM self-removal for pitch and environment evaluation (2026-10-22)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -527,41 +527,25 @@ For `seek_consonance()` voices the mode is resolved automatically from the phona
 
 The crowding system prevents agents from collapsing to identical frequencies. Both crowding (mutual repulsion) and pitch adaptation read one shared occupancy field: a Gaussian penalty centered on each occupied fundamental (raw f0), with width set by `crowding_sigma_cents` (default 60) and strength by `crowding_strength`. A pairwise split bias further prevents frequency degeneracy. No octave-equivalence (chroma) penalty is applied; octave relations act only through the consonance potential.
 
-`leave_self_out(true)` estimates the field remaining around each Voice. Habitat-routed
-Voices project their body amplitudes into analysis bins: static partials use the nearest
-bin, while Harmonic motion uses the renderer's common Hz deviation and a cycle-averaged
-frequency distribution. Own and other-source powers are kept separate; power sums and
-residual ratios use f64.
+`leave_self_out(true)` evaluates the surroundings by subtracting the Voice's
+actual habitat PCM from the mixed PCM before analysis. The remainder passes through
+the same NSGT, power smoothing, A-weighting, peak extraction, loudness, density
+smoothing and H/R/C calculations as the mixed field. Habitat-routed Flora, including
+residual sound, stays in the remainder. All bodies use this method; there is no
+public mode selector.
 
-For each bin with a self projection, the peak extractor's mass-assignment region
-determines the power to retain. The other-source fraction and existing loudness exponent set the
-remaining mass. After removing the original owned-bin density, that mass is distributed
-to other sources' projected positions within the region, accounting for ERB bin widths.
-Historical peaks absent from the current frame use the existing suppression span.
-H, R and the field score are then recomputed, followed by the usual local habituation
-erosion. The shared near-silence floor sets H and roughness shape to zero when integrated
-density mass is at or below the floor; this applies to general analysis as well as
-self-exclusion, with or without Flora.
+Each reserved Voice retains its own analysis history. At birth it copies the mixed
+stream's state before the first own sound. Populations enabled by a later patch are
+also observed from birth. Mixed and own PCM travel in one frame packet, and the
+result is bound to Voice ID and generation. Gaps invalidate both observations until
+the common analysis window fills again. The shared near-silence floor remains in
+force. The usual shared habituation erosion is applied once when a consumer samples
+the resulting score.
 
-When a run has placed Flora and a Voice consumes pitch or environment self-exclusion,
-the actually rendered Flora-only habitat PCM travels with the mixed PCM in the same
-analysis packet and frame. A synchronized stream with the same NSGT and front end
-supplies Flora's observed contribution to the other-source estimate. Until a valid
-observation is available, the observed field is retained. The snapshot and resulting
-score are reused within a hop and invalidated at the next.
-
-This remains an estimate of source separation. The Voice projection does not reconstruct
-individual Tone phase, delayed analysis history or release tails; Flora's separate stream
-retains its own analysis history. Candidate pitch is evaluated at its fundamental, with
-one algorithm across body types and no public mode selector.
-The validated Flora cases cover tonal-only sine with residual disabled and presentation-only routing; nearby habitat-routed sine or resonant Flora with residual sound lies outside this self-exclusion conformance claim.
-
-Environment viability (`viability_scope("environment")`) uses the same ownership
-estimate at the current pitch for its continuous-recharge score. It can be used
-independently of pitch self-exclusion, including by stationary Voices. Both
-consumers share the snapshot and cached score within the hop. The ordinary
-mixed-field level still drives basal drain and telemetry; the optional PCM
-body-metabolism evaluator retains its separate body-weighted evaluation.
+`viability_scope("environment")` uses the same observation at the current pitch for
+the continuous-recharge score, independently of pitch movement. Basal drain and
+telemetry retain their mixed-field level; the optional body-weighted metabolism
+evaluator retains its own contract.
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 

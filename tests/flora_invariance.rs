@@ -13,6 +13,7 @@ const FIXTURE: &str = "tests/fixtures/flora_invariance_hashes.txt";
 const BASE_CONFIG: &str = r#"
 [audio]
 sample_rate = 48000
+output_gain_db = 0.0
 [analysis]
 nfft = 2048
 hop_size = 512
@@ -23,6 +24,7 @@ enabled = false
 const HABITUATION_CONFIG: &str = r#"
 [audio]
 sample_rate = 48000
+output_gain_db = 0.0
 [analysis]
 nfft = 2048
 hop_size = 512

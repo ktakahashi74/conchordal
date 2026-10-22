@@ -888,6 +888,15 @@ then closes the WAV. Headless execution exits; the GUI waits for user exit by de
 and feeds silence to the ring after Finish, or exits when `wait_user_exit = false`.
 This is generator completion; no additional device or ring-drain wait is introduced.
 
+`[audio].output_gain_db` applies fixed gain to the device copy and the offline
+WAV copy immediately before their output guards. The multiplier is computed at
+startup and applied in place without allocation. Habitat analysis, the modeled
+ListenerTwin's presentation input, JSONL telemetry and UI meters retain the
+original bus levels. The +4.5 dB default is calibrated from all 17 bundled top-level
+samples at three seeds against the peak limiter's 0.98 ceiling, rounded down to
+0.5 dB steps; `0.0` restores unity gain. This calibration covers those renders,
+not arbitrary performances. Selecting `limiter = "none"` keeps the gain.
+
 The application creates four primary thread contexts, plus the GUI event loop:
 
 1.  **Audio Thread (Real-Time Priority)**:

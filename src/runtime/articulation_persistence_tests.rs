@@ -116,6 +116,7 @@ fn render_case(
         config.audio.sample_rate,
         guard_mode,
         guard_meter.clone(),
+        config.audio.output_gain(),
     );
     let wiring = wire_runtime(
         &config,

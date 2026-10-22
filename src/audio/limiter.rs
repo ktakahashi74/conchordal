@@ -112,6 +112,7 @@ struct PeakLimiterState {
 #[derive(Debug)]
 pub struct Limiter {
     mode: LimiterMode,
+    input_gain: f32,
     channels: usize,
     limiter_state: Option<PeakLimiterState>,
     stats: LimiterStats,
@@ -142,6 +143,7 @@ impl Limiter {
         };
         Self {
             mode,
+            input_gain: 1.0,
             channels,
             limiter_state,
             stats: LimiterStats::default(),
@@ -154,14 +156,34 @@ impl Limiter {
         self
     }
 
+    /// Apply fixed output gain before any guard, including the disabled guard.
+    pub(crate) fn with_input_gain(mut self, gain: f32) -> Self {
+        self.input_gain = gain;
+        self
+    }
+
+    pub(crate) fn stats(&self) -> LimiterStats {
+        self.stats
+    }
+
     pub fn process_interleaved(&mut self, frames: &mut [f32], channels: usize) {
         if frames.is_empty() || channels == 0 {
             return;
         }
         debug_assert_eq!(channels, self.channels);
         self.stats = LimiterStats::default();
+        if self.input_gain != 1.0 {
+            for sample in frames.iter_mut() {
+                *sample *= self.input_gain;
+            }
+        }
         match self.mode {
-            LimiterMode::None => {}
+            LimiterMode::None => {
+                for &sample in frames.iter() {
+                    self.stats.max_abs_in = self.stats.max_abs_in.max(sample.abs());
+                }
+                self.stats.max_abs_out = self.stats.max_abs_in;
+            }
             LimiterMode::SoftClip(params) => {
                 let ceiling = finite_or(params.ceiling, SoftClipParams::default().ceiling)
                     .abs()
@@ -339,6 +361,64 @@ fn update_reduction(stats: &mut LimiterStats, abs_in: f32, abs_out: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zero_db_output_gain_preserves_guard_output_bits() {
+        let mut config = crate::config::AudioConfig::default();
+        config.output_gain_db = 0.0;
+        for mode in [
+            LimiterMode::None,
+            LimiterMode::SoftClip(SoftClipParams::default()),
+            LimiterMode::default(),
+        ] {
+            let mut original = Limiter::new(mode, 48_000, 2);
+            let mut gained = Limiter::new(mode, 48_000, 2).with_input_gain(config.output_gain());
+            for _ in 0..3 {
+                let mut expected = [-0.0, 0.0, 0.1, -0.2, 2.0, -3.0];
+                let mut actual = expected;
+                original.process_interleaved(&mut expected, 2);
+                gained.process_interleaved(&mut actual, 2);
+                assert_eq!(actual.map(f32::to_bits), expected.map(f32::to_bits));
+            }
+        }
+    }
+
+    #[test]
+    fn default_output_gain_scales_samples_with_every_guard_mode() {
+        let config = crate::config::AudioConfig::default();
+        let gain = 10.0f32.powf(config.output_gain_db / 20.0);
+        for mode in [
+            LimiterMode::None,
+            LimiterMode::SoftClip(SoftClipParams::default()),
+            LimiterMode::default(),
+        ] {
+            let mut guard = Limiter::new(mode, 48_000, 2).with_input_gain(config.output_gain());
+            let mut samples = [0.001, -0.002, 0.0, -0.0];
+            let expected = samples.map(|s| s * gain);
+            guard.process_interleaved(&mut samples, 2);
+            assert_eq!(samples.map(f32::to_bits), expected.map(f32::to_bits));
+        }
+    }
+
+    #[test]
+    fn output_gain_precedes_limiter_and_its_input_meter() {
+        let mut guard = Limiter::new(LimiterMode::default(), 48_000, 1).with_input_gain(2.0);
+        let mut samples = [0.75, -0.75];
+        guard.process_interleaved(&mut samples, 1);
+        assert_eq!(guard.stats.max_abs_in, 1.5);
+        assert_eq!(guard.stats.num_over, 2);
+        assert!(guard.stats.max_reduction_db > 0.0);
+        assert!(
+            samples
+                .iter()
+                .all(|s| s.abs() <= PeakLimiterParams::default().ceiling)
+        );
+
+        let mut unguarded = Limiter::new(LimiterMode::None, 48_000, 1).with_input_gain(2.0);
+        let mut samples = [0.75, -0.75];
+        unguarded.process_interleaved(&mut samples, 1);
+        assert_eq!(samples, [1.5, -1.5]);
+    }
 
     #[test]
     fn softclip_preserves_small_signals_and_knee() {

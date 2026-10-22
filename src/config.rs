@@ -13,6 +13,9 @@ pub struct AudioConfig {
     pub sample_rate: u32,
     #[serde(default)]
     pub limiter: LimiterSetting,
+    /// Playback/WAV gain only; perception and bus meters stay unscaled.
+    #[serde(default = "AudioConfig::default_output_gain_db")]
+    pub output_gain_db: f32,
 }
 
 impl AudioConfig {
@@ -22,6 +25,14 @@ impl AudioConfig {
     fn default_sample_rate() -> u32 {
         48_000
     }
+    fn default_output_gain_db() -> f32 {
+        // 17 bundled studies x seeds 21..=23: peak 0.5553375, ceiling 0.98, rounded down by 0.5 dB.
+        4.5
+    }
+
+    pub(crate) fn output_gain(&self) -> f32 {
+        10.0f32.powf(self.output_gain_db / 20.0)
+    }
 }
 
 impl Default for AudioConfig {
@@ -30,6 +41,7 @@ impl Default for AudioConfig {
             latency_ms: Self::default_latency_ms(),
             sample_rate: Self::default_sample_rate(),
             limiter: LimiterSetting::default(),
+            output_gain_db: Self::default_output_gain_db(),
         }
     }
 }
@@ -605,6 +617,11 @@ impl AppConfig {
             self.audio.latency_ms.is_finite() && self.audio.latency_ms > 0.0,
             "audio.latency_ms must be finite and positive"
         );
+        let output_gain = self.audio.output_gain();
+        ensure!(
+            self.audio.output_gain_db.is_finite() && output_gain.is_finite() && output_gain > 0.0,
+            "audio.output_gain_db must be finite and yield a finite, positive f32 amplitude gain"
+        );
         let buffer_frames =
             self.audio.sample_rate as f64 * self.audio.latency_ms as f64 / 1000.0 * 2.0;
         ensure!(
@@ -721,6 +738,7 @@ impl AppConfig {
 
     pub fn round_f32_inplace(&mut self) {
         self.audio.latency_ms = Self::round_f32(self.audio.latency_ms);
+        self.audio.output_gain_db = Self::round_f32(self.audio.output_gain_db);
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
         self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
         self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
@@ -1068,6 +1086,7 @@ mod tests {
                 latency_ms: 75.0,
                 sample_rate: 44_100,
                 limiter: LimiterSetting::SoftClip,
+                output_gain_db: -3.0,
             },
             analysis: AnalysisConfig {
                 nfft: 8192,
@@ -1114,6 +1133,7 @@ mod tests {
         assert_eq!(cfg.audio.latency_ms, 75.0);
         assert_eq!(cfg.audio.sample_rate, 44_100);
         assert_eq!(cfg.audio.limiter, LimiterSetting::SoftClip);
+        assert_eq!(cfg.audio.output_gain_db, -3.0);
         assert_eq!(cfg.analysis.nfft, 8192);
         assert_eq!(cfg.analysis.hop_size, 256);
         assert_eq!(cfg.analysis.tau_ms, 60.0);
@@ -1180,6 +1200,10 @@ mod tests {
         assert_eq!(cfg.audio.sample_rate, 44_100);
         assert_eq!(cfg.audio.latency_ms, AudioConfig::default_latency_ms());
         assert_eq!(cfg.audio.limiter, LimiterSetting::default());
+        assert_eq!(
+            cfg.audio.output_gain_db,
+            AudioConfig::default_output_gain_db()
+        );
         assert_eq!(cfg.analysis.nfft, AnalysisConfig::default_nfft());
         assert_eq!(
             cfg.psychoacoustics.loudness_exp,
@@ -1188,6 +1212,26 @@ mod tests {
         assert!(cfg.playback.wait_user_exit);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn output_gain_requires_representable_finite_amplitude() {
+        for gain_db in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1000.0, -1000.0] {
+            let mut config = AppConfig::default();
+            config.audio.output_gain_db = gain_db;
+            assert!(
+                config
+                    .validate()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("audio.output_gain_db")
+            );
+        }
+        for gain_db in [-120.0, 0.0, 60.0] {
+            let mut config = AppConfig::default();
+            config.audio.output_gain_db = gain_db;
+            config.validate().unwrap();
+        }
     }
 
     #[test]

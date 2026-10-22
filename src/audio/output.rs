@@ -152,6 +152,7 @@ impl AudioOutput {
         hop_size: usize,
         guard_mode: LimiterMode,
         guard_meter: Option<Arc<LimiterMeter>>,
+        output_gain: f32,
     ) -> anyhow::Result<(Self, HeapProd<f32>)> {
         let host = cpal::default_host();
         let device = host
@@ -193,7 +194,8 @@ impl AudioOutput {
         let callback_counters = Arc::clone(&counters);
         let error_counters = Arc::clone(&counters);
 
-        let mut guard = Limiter::new(guard_mode, sample_rate, channels as usize);
+        let mut guard =
+            Limiter::new(guard_mode, sample_rate, channels as usize).with_input_gain(output_gain);
         if let Some(meter) = guard_meter {
             guard = guard.with_meter(meter);
         }
@@ -375,6 +377,20 @@ mod tests {
         fill_output(&mut cons, &mut data, 2, &missing);
         assert_eq!(data, [0.25, 0.25, -0.5, -0.5, 0.0, 0.0, 0.0, 0.0]);
         assert_eq!(missing.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn callback_output_gain_only_scales_the_device_copy() {
+        let presentation: Arc<[f32]> = Arc::from([0.1, -0.2]);
+        let listener = Arc::clone(&presentation);
+        let (mut prod, mut cons) = HeapRb::<f32>::new(4).split();
+        assert_eq!(prod.push_slice(&presentation), 2);
+        let mut data = [0.0; 4];
+        fill_output(&mut cons, &mut data, 2, &AtomicU64::new(0));
+        let mut guard = Limiter::new(LimiterMode::default(), 48_000, 2).with_input_gain(2.0);
+        guard.process_interleaved(&mut data, 2);
+        assert_eq!(data, [0.2, 0.2, -0.4, -0.4]);
+        assert_eq!(&*listener, &[0.1, -0.2]);
     }
 
     #[test]

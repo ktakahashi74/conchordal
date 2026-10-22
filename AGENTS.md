@@ -384,6 +384,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   bit-exact, so reading the eroded view is always correct for behavior.
 
 ## Config Keys
+- `[audio].output_gain_db` (default `4.5`): fixed dB gain before cpal/WAV guards, calibrated from bundled sample peaks and the 0.98 ceiling. Analysis, listener, report and UI inputs stay at their original levels.
 - `[psychoacoustics.consonance.field.kernel]`
 - `a, b, c, d` (defaults: `1.0, -1.35, 1.0, 0.0`)
 - `[psychoacoustics.consonance.field.level]`
@@ -399,7 +400,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - When `enabled = false` the `_eff` consonance views equal their base variants.
 
 Other top-level sections exist and are defined in `src/config.rs`:
-`[audio]`, `[analysis]`, `[dcc]`, `[playback]`. They are not enumerated here —
+`[analysis]`, `[dcc]`, `[playback]`. They are not enumerated here —
 read `src/config.rs` for their keys and defaults.
 
 Note: every config struct carries `#[serde(deny_unknown_fields)]`, so a misspelled TOML

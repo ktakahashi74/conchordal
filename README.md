@@ -210,6 +210,26 @@ Common operations:
 
 Meter input configuration is documented in the [rhythm guide](docs/rhai_book/src/concepts/rhythm.md#continuous-audio-recurrence).
 
+`[audio].output_gain_db` controls fixed output gain in dB for both playback and
+offline WAV rendering. It is applied immediately before the selected output
+limiter, after the ecology and modeled listener receive their audio. Analysis,
+JSONL reports and UI meters keep the original bus levels. `0.0` restores the
+original output level; `limiter = "none"` still applies the configured gain.
+The default is **+4.5 dB**, the greatest 0.5 dB step at or below
+`20 * log10(0.98 / max_peak)`, measured across all 17 top-level samples with seeds
+21, 22 and 23 at 0 dB. The maximum input peak was 0.5553374886512756
+(`07_heartbeat.rhai`, seed 23), yielding 4.933381674334326 dB before rounding.
+The 0.98 ceiling comes from the default peak limiter.
+Other seeds, scripts, levels or limiter modes can engage the guard.
+The setting must be finite and convert to a finite, positive `f32` amplitude
+multiplier; its bounds come from that representation rather than a listening
+level target. For example, to restore unity output gain:
+
+```toml
+[audio]
+output_gain_db = 0.0
+```
+
 For example, run headless while recording a report:
 
 ```bash

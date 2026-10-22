@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `[audio].output_gain_db` applies fixed playback gain immediately before the
+  output limiter in both the instrument and offline renderer. Ecology, listener,
+  reports and UI meters retain the original bus levels. The +4.5 dB default is calibrated
+  from the peaks of all 17 bundled studies across three seeds, below the 0.98
+  peak-limiter ceiling; set it to `0.0` for the original output level.
+
 - Flora no longer computes its unused per-lane ownership projection or AR(1) PSD
   integrals. Ownership keeps using the synchronized Flora-only PCM analysis.
 

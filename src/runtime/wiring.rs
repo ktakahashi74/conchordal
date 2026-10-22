@@ -454,6 +454,7 @@ pub(crate) fn init_runtime(
             config.analysis.hop_size,
             guard_mode,
             guard_meter.clone(),
+            config.audio.output_gain(),
         ) {
             Ok((out, prod)) => (Some(out), Some(prod), None),
             Err(e) => {
@@ -640,6 +641,7 @@ pub fn run_render(
         runtime_sample_rate,
         guard_mode,
         guard_meter.clone(),
+        config.audio.output_gain(),
     );
 
     let wiring = wire_runtime(

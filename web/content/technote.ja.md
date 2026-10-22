@@ -803,6 +803,14 @@ offlineはその後にWAVを閉じ、headlessは終了する。GUIは既定で�
 終了を待ち、Finish後はringへ無音を送る。`wait_user_exit = false`なら終了する。
 これは生成側の完了であり、deviceやringの再生完了を待つ規則は追加していない。
 
+`[audio].output_gain_db`は、device用とoffline WAV用のコピーに、出力保護の
+直前で固定利得を掛ける。倍率は起動時に計算し、適用時にメモリを確保しない。
+habitatの解析、モデル内のListenerTwinへのpresentation入力、JSONLの記録、
+UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-level sample全17本を
+三つのseedで描いたpeakと、peak limiterのceiling 0.98から求め、0.5 dB刻みで
+切り下げる。`0.0`なら利得は1となる。この校正が対象とするのは取得した描画であり、
+任意の演奏での保護動作を排除するものではない。`limiter = "none"`でも利得は掛かる。
+
 アプリケーションは4つの主要なスレッドコンテキストとGUIイベントループを生成する。
 
 1.  **オーディオスレッド（リアルタイム優先度）**:

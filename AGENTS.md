@@ -251,6 +251,9 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   observer. Its first packet used 66 / 520750 including observer construction.
   These counts exclude input PCM ownership and UI cloning. Births and
   gap/reconfiguration resets are outside the steady-state processing claim.
+  Self-exclusion observers run sequentially on one analysis thread, so sustained
+  analysis cost above the hop budget makes the audio worker wait and can interrupt
+  output; cost estimates must include retiring observers.
   The shared density-normalization floor applies to general analysis as well as LOO,
   independently of Flora placement or self-exclusion consumers.
   Use `--features profile-alloc` when measuring or asserting allocations; without it,

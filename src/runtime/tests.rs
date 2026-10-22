@@ -688,3 +688,134 @@ fn roughness_aversion_update_reaches_kernel_and_fields_without_touching_sensatio
     assert_eq!(landscape.harmonicity01, h01_before);
     assert_ne!(landscape.consonance_field_score[0], score_before);
 }
+
+#[test]
+fn pcm_loo_late_scenario_patch_keeps_history_from_birth() {
+    let dir = std::env::temp_dir().join(format!(
+        "conchordal-loo-late-patch-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+    ));
+    let _output = test_output_directory::TestOutputDirectory::new(dir.clone());
+    let script = dir.join("scenario.rhai");
+    std::fs::write(
+        &script,
+        r#"
+let own = place(sine().brain("drone").sustain().anchor().amp(0.1)
+    .adsr(0.001, 0.0, 1.0, 0.01).leave_self_out(false), at(440.0));
+let other = place(sine().brain("drone").sustain().anchor().amp(0.06)
+    .adsr(0.001, 0.0, 1.0, 0.01), at(660.0));
+wait(0.08);
+own.leave_self_out(true);
+wait(0.08);
+release(own);
+release(other);
+wait(0.03);
+"#,
+    )
+    .unwrap();
+    let mut config = AppConfig::default();
+    config.analysis.nfft = 2048;
+    config.dcc.coupling_strength = 0.0;
+    config.psychoacoustics.habituation.enabled = false;
+    let scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+    let (enable_time, population) = scenario
+        .events
+        .iter()
+        .find_map(|event| {
+            event.actions.iter().find_map(|action| match action {
+                Action::UpdatePopulation {
+                    population_id,
+                    patch,
+                } if patch.leave_self_out == Some(true) => Some((event.time, *population_id)),
+                _ => None,
+            })
+        })
+        .unwrap();
+    let core = build_analysis_runtime_core(&config, config.audio.sample_rate);
+    let mut reference = AnalysisStream::new(core.lparams.clone(), core.nsgt);
+    let mut previous: Option<Landscape> = None;
+    let counts = Arc::new(std::sync::Mutex::new([0_usize; 2]));
+    let observed = counts.clone();
+    let probe: OfflineBodyProbe = Box::new(move |state, tick, _, audio| {
+        let Some(voice) = state
+            .pop
+            .voices
+            .iter()
+            .find(|voice| voice.metadata.population_id == population)
+        else {
+            return;
+        };
+        let enabled = voice.base_control.pitch.leave_self_out;
+        assert_eq!(enabled, tick as f64 / 48_000.0 >= f64::from(enable_time));
+        let source = state
+            .schedule_renderer
+            .loo_pcm
+            .iter()
+            .find(|source| {
+                source.id == voice.id() && source.generation == voice.metadata.generation
+            })
+            .expect("a future self-exclusion consumer must be captured from birth");
+        if let Some(expected) = &previous {
+            assert_eq!(state.last_analysis_frame, Some(state.frame_idx - 1));
+            assert_eq!(state.current_landscape.loo.len(), 1);
+            let actual = &state.current_landscape.loo[0];
+            assert_eq!(
+                (actual.id, actual.generation),
+                (source.id, source.generation)
+            );
+            assert_eq!(actual.h_scan, expected.harmonicity01);
+            assert_eq!(actual.r_scan, expected.roughness01);
+            assert_eq!(&*actual.score_scan, &expected.consonance_field_score);
+            observed.lock().unwrap()[usize::from(enabled)] += 1;
+        }
+        let removed: Vec<_> = audio[0]
+            .iter()
+            .zip(&source.habitat)
+            .map(|(mix, own)| mix - own)
+            .collect();
+        let mut expected = reference.process(&removed).clone();
+        expected.recompute_consonance(&core.lparams);
+        assert!(expected.harmonicity01.iter().any(|h| *h > 0.));
+        previous = Some(expected);
+    });
+    let wiring = wire_runtime(
+        &config,
+        config.audio.sample_rate,
+        "late self-exclusion".into(),
+        scenario,
+        Arc::new(AtomicBool::new(false)),
+        WiringOptions {
+            offline_body_probe: Some(probe),
+            raw_t2_delay: Duration::ZERO,
+            ui_tx: None,
+            listener_forced: false,
+            wait_user_exit: false,
+            start_playing: true,
+            audio_prod: None,
+            wav_tx: None,
+            reporter: None,
+            deterministic_analysis: true,
+            deterministic_footprints: true,
+            guard_meter: None,
+            underrun_frames: None,
+            reserve_runtime_ids_through: 0,
+            profile: None,
+            audio_counters: None,
+        },
+    )
+    .unwrap();
+    join_thread("worker", wiring.worker_handle)
+        .unwrap()
+        .unwrap();
+    join_thread("analysis", wiring.analysis_handle).unwrap();
+    assert!(wiring.listener_analysis_handle.is_none());
+    let counts = counts.lock().unwrap();
+    assert!(
+        counts[0] > 0 && counts[1] > 0,
+        "both sides of the patch must be checked"
+    );
+}

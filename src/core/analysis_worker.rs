@@ -637,6 +637,162 @@ mod tests {
         }
     }
 
+    #[test]
+    fn pcm_loo_latest_publishes_active_final_hop() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let template = AnalysisStream::new(params.clone(), nsgt);
+        let mut reference = template.clone();
+        let hop = template.hop_samples();
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let (result_tx, result_rx) = crossbeam_channel::unbounded();
+        let (_, updates) = crossbeam_channel::unbounded();
+        for id in 0..40 {
+            let mix: Arc<[f32]> = (0..hop)
+                .map(|i| ((id * hop + i) as f32 * 0.11).sin() * 0.2)
+                .collect();
+            let own: Vec<_> = mix.iter().map(|x| x * 0.5).collect();
+            let active = id >= 2;
+            let removed: Vec<_> = mix
+                .iter()
+                .zip(&own)
+                .map(|(mix, own)| if active { mix - own } else { *mix })
+                .collect();
+            reference.process(&removed);
+            tx.send((id as u64, mix, active.then(|| packet(7, 2, &own))))
+                .unwrap();
+        }
+        drop(tx);
+        run(
+            template,
+            rx,
+            result_tx,
+            updates,
+            AnalysisDelivery::Latest(result_rx.clone()),
+            None,
+            None,
+        );
+        let frames: Vec<_> = result_rx.try_iter().collect();
+        assert_eq!(frames.len(), 1);
+        let (id, frame) = &frames[0];
+        assert_eq!(*id, 39);
+        let frame = frame.as_ref().unwrap();
+        assert_eq!(
+            frame.loo.len(),
+            1,
+            "Latest must publish the final active observer"
+        );
+        let observation = &frame.loo[0];
+        assert_eq!((observation.id, observation.generation), (7, 2));
+        let mut expected = reference.last().clone();
+        expected.recompute_consonance(&params);
+        assert!(expected.harmonicity01.iter().any(|h| *h > 0.));
+        assert_eq!(observation.h_scan, expected.harmonicity01);
+        assert_eq!(observation.r_scan, expected.roughness01);
+        assert_eq!(&*observation.score_scan, &expected.consonance_field_score);
+    }
+
+    #[test]
+    fn pcm_loo_generation_starts_from_mixed_not_old_exclusion_history() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let template = AnalysisStream::new(params.clone(), nsgt);
+        let hop = template.hop_samples();
+        let mut mixed = template.clone();
+        let mut old_reference = template.clone();
+        let mut new_reference = None;
+        let mut fresh_reference = template.clone();
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let (result_tx, result_rx) = crossbeam_channel::unbounded();
+        let (_, updates) = crossbeam_channel::unbounded();
+        let mut expected = Vec::new();
+        for id in 0..24 {
+            let old: Vec<_> = (0..hop)
+                .map(|i| {
+                    let t = (id * hop + i) as f32;
+                    if id < 2 { 0. } else { (t * 0.07).sin() * 0.2 }
+                })
+                .collect();
+            let own: Vec<_> = (0..hop)
+                .map(|i| {
+                    if id < 12 {
+                        old[i]
+                    } else {
+                        ((id * hop + i) as f32 * 0.11).sin() * 0.15
+                    }
+                })
+                .collect();
+            let mix: Arc<[f32]> = (0..hop)
+                .map(|i| {
+                    let other = ((id * hop + i) as f32 * 0.031).sin() * 0.07;
+                    old[i] + other + if id >= 12 { own[i] } else { 0. }
+                })
+                .collect();
+            if id == 12 {
+                // The old Voice stays in the mixed history and is now another source.
+                new_reference = Some(mixed.clone());
+            }
+            let removed: Vec<_> = mix
+                .iter()
+                .zip(&own)
+                .map(|(mix, own)| if id >= 2 { mix - own } else { *mix })
+                .collect();
+            old_reference.process(&removed);
+            let mut frame = if let Some(reference) = &mut new_reference {
+                reference.process(&removed).clone()
+            } else {
+                old_reference.last().clone()
+            };
+            frame.recompute_consonance(&params);
+            if id >= 12 {
+                let mut stale = old_reference.last().clone();
+                stale.recompute_consonance(&params);
+                let mut fresh = fresh_reference.process(&removed).clone();
+                fresh.recompute_consonance(&params);
+                if id == 12 {
+                    assert_ne!(
+                        frame.consonance_field_score, stale.consonance_field_score,
+                        "fixture must distinguish the old exclusion history"
+                    );
+                    assert_ne!(
+                        frame.consonance_field_score, fresh.consonance_field_score,
+                        "fixture must distinguish a zero-history birth"
+                    );
+                }
+            }
+            expected.push(
+                (id >= 2).then_some((if id < 12 { 2 } else { 3 }, frame.consonance_field_score)),
+            );
+            mixed.process(&mix);
+            tx.send((
+                id as u64,
+                mix,
+                (id >= 2).then(|| packet(7, if id < 12 { 2 } else { 3 }, &own)),
+            ))
+            .unwrap();
+        }
+        drop(tx);
+        run(
+            template,
+            rx,
+            result_tx,
+            updates,
+            AnalysisDelivery::Ordered,
+            None,
+            None,
+        );
+        let frames: Vec<_> = result_rx.try_iter().collect();
+        assert_eq!(frames.len(), 24);
+        for (id, frame) in frames {
+            let frame = frame.unwrap();
+            if let Some((generation, score)) = &expected[id as usize] {
+                assert_eq!(frame.loo.len(), 1);
+                assert_eq!((frame.loo[0].id, frame.loo[0].generation), (7, *generation));
+                assert_eq!(&*frame.loo[0].score_scan, score, "frame {id}");
+            } else {
+                assert!(frame.loo.is_empty());
+            }
+        }
+    }
+
     #[cfg(feature = "profile-alloc")]
     #[test]
     fn loo_analysis_steady_state_allocation_census() {

@@ -529,7 +529,7 @@ The crowding system prevents agents from collapsing to identical frequencies. Bo
 
 `leave_self_out(true)` evaluates the surroundings by subtracting the Voice's
 actual habitat PCM from the mixed PCM before analysis. The remainder passes through
-the same NSGT, power smoothing, A-weighting, peak extraction, loudness, density
+the same NSGT, power smoothing, peak extraction, A-weighting, loudness, density
 smoothing and H/R/C calculations as the mixed field. Habitat-routed Flora, including
 residual sound, stays in the remainder. All bodies use this method; there is no
 public mode selector.
@@ -537,10 +537,13 @@ public mode selector.
 Each reserved Voice retains its own analysis history. At birth it copies the mixed
 stream's state before the first own sound. Populations enabled by a later patch are
 also observed from birth. Mixed and own PCM travel in one frame packet, and the
-result is bound to Voice ID and generation. Gaps invalidate both observations until
-the common analysis window fills again. The shared near-silence floor remains in
-force. The usual shared habituation erosion is applied once when a consumer samples
-the resulting score.
+result is bound to Voice ID and generation. At the analysis-worker boundary, a gap
+resets the mixed and per-Voice histories; valid publication resumes after the common
+analysis window fills if further PCM arrives. The field runtime currently ends the
+run when a disconnected or invalidated observation leaves no usable frame within
+its fixed one-hop lag limit. It does not generate warmup hops for automatic recovery.
+The shared near-silence floor remains in force. The usual shared habituation erosion
+is applied once when a consumer samples the resulting score.
 
 `viability_scope("environment")` uses the same observation at the current pitch for
 the continuous-recharge score, independently of pitch movement. Basal drain and

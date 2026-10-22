@@ -95,14 +95,19 @@ whether the voice fits the total field including itself.
 Pitch movement has its own switch, `leave_self_out(true)`. Both consumers read
 one synchronized observation of the mixed habitat PCM minus that Voice's actual
 habitat PCM. The remainder passes through the same NSGT, power smoothing,
-A-weighting, peak extraction, loudness, density smoothing and H/R/C pipeline as
+peak extraction, A-weighting, loudness, density smoothing and H/R/C pipeline as
 the mixed field. Habitat-routed Flora, including residual sound, stays in the
 remainder. All bodies use this method; there is no mode selector.
 
 Observers are reserved from birth for populations that use either consumer,
 including a later `leave_self_out(true)` patch. Before birth their state is the
 mixed stream's state. Voice identity and generation bind the observation to its
-consumer; gaps invalidate it until the common analysis window is filled again.
+consumer. At the analysis-worker boundary, gaps reset the mixed and per-Voice
+histories; valid observations resume after the common analysis window fills if
+further PCM arrives. The field runtime currently ends the run when disconnected
+or invalidated observations leave no usable frame within its fixed one-hop lag
+limit. It does not keep generating warmup hops for automatic recovery.
+
 Environment viability reads the current pitch even without pitch movement. The
 ordinary mixed-field level used for basal drain and telemetry is unchanged.
 

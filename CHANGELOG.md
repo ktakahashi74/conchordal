@@ -17,6 +17,14 @@
   Production spectral ownership, residual redistribution and the Flora-only
   analysis stream are removed; the existing shared silence floor is unchanged.
   Source capture and per-Voice analysis reuse scratch; publication still allocates.
+  The A-to-B comparison (spectral ownership at `af8b6b0` to PCM self-removal at
+  `b59a830`, seed 21 for top-level samples) confirms changed WAV and telemetry for
+  `08_murmuration`, `13_three_windows` and `16_open_court`; their scripts are unchanged.
+  Earlier redistribution and shared-floor comparisons, recorded at `05d9d37`,
+  also changed `10_generations` and `12_emergence_and_resolution` against their
+  `a30b44c` captures, and `14_stone_and_wire` and `15_folded_air` against their
+  `a02e529` captures. Those comparisons used matching scripts, configuration and
+  seed 21; the four are historical differences, not newly acquired A-to-B differences.
 
 - Flora adds an Experimental composition mode: spectral biomass grows over the shared
   consonance landscape, with sine or resonant tones and optional residual sound.

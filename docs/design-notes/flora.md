@@ -93,7 +93,8 @@ habituation field.
 8. **Invariance.** Flora's empty render/dispatch path preserves the four frozen
    no-Flora cases in Tests 1. The independently adopted Voice self-exclusion
    PCM self-removal and silence-floor changes intentionally affect existing no-Flora
-   samples that use self-exclusion (listed in the Changelog); the four hashes are
+   samples that use self-exclusion (the Changelog's Unreleased section distinguishes
+   the A-to-B comparison from earlier changes); the four hashes are
    not a claim that every older sample output is unchanged. The shared floor also
    applies to general analysis without Flora or self-exclusion consumers, so even
    those paths have no general invariance guarantee for tiny positive inputs.

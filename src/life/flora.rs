@@ -74,7 +74,7 @@ fn partition_erb_cells(space: &Log2Space, erb_scan: &[f32], extent_hz: (f32, f32
 const METABOLISM: f32 = 0.3;
 const CONSUMPTION_SEC: f32 = 0.3;
 const REFERENCE_DENSITY: f32 = 10.0;
-const ALLEE_DENSITY: f32 = 0.576;
+const ALLEE_DENSITY: f32 = 0.144;
 const SEED_RAIN_DENSITY: f32 = 0.48;
 const BACKGROUND_SEED_DENSITY: f32 = 9.6e-4;
 const INITIAL_BIOMASS: f32 = 0.5;

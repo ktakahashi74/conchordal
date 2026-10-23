@@ -1,6 +1,14 @@
 //! Opt-in acquisition instrumentation; absent from instrument and render builds.
 use std::time::{Duration, Instant};
 
+thread_local! {
+    static BIRTHS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn record_birth() {
+    BIRTHS.with(|count| count.set(count.get() + 1));
+}
+
 pub(crate) struct Probe {
     label: &'static str,
     start: Instant,
@@ -25,6 +33,9 @@ impl Probe {
     }
 
     pub(crate) fn before(&mut self, frame: u64) -> Instant {
+        if self.label == "audio" {
+            BIRTHS.with(|count| count.set(0));
+        }
         if frame == 0 {
             self.start = Instant::now();
         }
@@ -44,6 +55,7 @@ impl Probe {
             "deadline_miss": self.paced && self.label == "audio" && end > deadline,
             "late_us": end.saturating_duration_since(deadline).as_secs_f64()*1e6,
             "voices": voices, "backlog": backlog,
+            "births": BIRTHS.with(|count| count.get()),
         }));
     }
 }

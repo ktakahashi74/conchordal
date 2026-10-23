@@ -48,10 +48,370 @@ struct PendingComparison {
     completed_before_issue: [u64; 7],
 }
 
+/// Pending targets penalize corrections but never supply invented outcome labels.
+pub(crate) struct HistoryEnergyPrediction {
+    inverse: [[f64; FEATURES]; FEATURES],
+    response_cross: Box<[[[f64; 3]; FEATURES]]>,
+    pending: Box<[PendingHistory]>,
+    comparisons: Vec<PendingComparison>,
+    comparison_slots: [Option<usize>; ENERGY_PENDING_LEN],
+    comparison_square: [[f64; 3]; FORECAST_LEN],
+    comparison_cross: [[f64; 3]; FORECAST_LEN],
+    comparison_completed: [u64; 7],
+    errors: PredictionErrorTotals,
+}
+
+impl Clone for HistoryEnergyPrediction {
+    fn clone(&self) -> Self {
+        // Reserve every ring slot, but copy only records that have been issued.
+        let mut comparisons = Vec::with_capacity(ENERGY_PENDING_LEN);
+        comparisons.extend_from_slice(&self.comparisons);
+        Self {
+            inverse: self.inverse,
+            response_cross: self.response_cross.clone(),
+            pending: self.pending.clone(),
+            comparisons,
+            comparison_slots: self.comparison_slots,
+            comparison_square: self.comparison_square,
+            comparison_cross: self.comparison_cross,
+            comparison_completed: self.comparison_completed,
+            errors: self.errors,
+        }
+    }
+}
+
+impl HistoryEnergyPrediction {
+    pub(crate) fn new() -> Self {
+        let mut inverse = [[0.0; FEATURES]; FEATURES];
+        for (i, row) in inverse.iter_mut().enumerate() {
+            row[i] = 1.0 / RIDGE;
+        }
+        Self {
+            inverse,
+            response_cross: vec![[[0.0; 3]; FEATURES]; FORECAST_LEN].into_boxed_slice(),
+            pending: vec![
+                PendingHistory {
+                    step: None,
+                    features: [0.0; FEATURES],
+                    energy: [0.0; 3]
+                };
+                ENERGY_PENDING_LEN
+            ]
+            .into_boxed_slice(),
+            comparisons: Vec::with_capacity(ENERGY_PENDING_LEN),
+            comparison_slots: [None; ENERGY_PENDING_LEN],
+            comparison_square: [[0.0; 3]; FORECAST_LEN],
+            comparison_cross: [[0.0; 3]; FORECAST_LEN],
+            comparison_completed: [0; 7],
+            errors: PredictionErrorTotals::default(),
+        }
+    }
+
+    pub(crate) fn clear_pending(&mut self, rewind: bool) {
+        for p in &mut self.pending {
+            p.step = None;
+        }
+        self.comparisons.clear();
+        self.comparison_slots.fill(None);
+        if rewind {
+            self.comparison_square.fill([0.0; 3]);
+            self.comparison_cross.fill([0.0; 3]);
+            self.comparison_completed.fill(0);
+            self.errors = PredictionErrorTotals::default();
+            self.response_cross.fill([[0.0; 3]; FEATURES]);
+            for (i, row) in self.inverse.iter_mut().enumerate() {
+                row.fill(0.0);
+                row[i] = 1.0 / RIDGE;
+            }
+        }
+    }
+
+    pub(crate) fn observe(
+        &mut self,
+        step: u64,
+        energy: [f32; 3],
+        mut emit: impl FnMut(&PredictionMatch<'_>),
+    ) {
+        for (lead, cross) in self.response_cross.iter_mut().enumerate() {
+            let Some(issued_step) = step.checked_sub((lead * FORECAST_STRIDE) as u64) else {
+                continue;
+            };
+            let comparison = self.comparison_slots
+                [(issued_step % ENERGY_PENDING_LEN as u64) as usize]
+                .map(|slot| &self.comparisons[slot])
+                .filter(|p| p.step == Some(issued_step));
+            if let Some(comparison) = comparison {
+                if let Some(index) = SCORE_LEADS.iter().position(|&h| h == lead) {
+                    self.errors.completed[index] += 1;
+                    self.comparison_completed[index] += 1;
+                    for (band, observed) in energy.into_iter().enumerate() {
+                        let observed = observed as f64;
+                        self.errors.recurrence_squared_error[index][band] +=
+                            (comparison.recurrence[lead][band] as f64 - observed).powi(2);
+                        self.errors.history_squared_error[index][band] +=
+                            (comparison.history[lead][band] as f64 - observed).powi(2);
+                        self.errors.mixed_squared_error[index][band] +=
+                            (comparison.mixed[lead][band] as f64 - observed).powi(2);
+                    }
+                    // Borrow the issuance context before the raw-history ring advances.
+                    let context = &self.pending[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
+                    emit(&PredictionMatch {
+                        issued_step,
+                        target_step: step,
+                        requested_frame: comparison.requested_frame,
+                        completed_before_issue: comparison.completed_before_issue[index],
+                        issued_features: (context.step == Some(issued_step))
+                            .then_some(context.features.as_slice()),
+                        history_weight: comparison.history_weight[index],
+                        recurrence: comparison.recurrence[lead],
+                        history: comparison.history[lead],
+                        mixed: comparison.mixed[lead],
+                        observed: energy,
+                    });
+                }
+                for (band, observed) in energy.into_iter().enumerate() {
+                    let baseline = comparison.recurrence[lead][band] as f64;
+                    let delta = comparison.history[lead][band] as f64 - baseline;
+                    self.comparison_square[lead][band] += delta * delta;
+                    self.comparison_cross[lead][band] += delta * (observed as f64 - baseline);
+                }
+            }
+            let p = &self.pending[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
+            if p.step != Some(issued_step) {
+                continue;
+            }
+            let residual: [f64; 3] = std::array::from_fn(|b| energy[b] as f64 - p.energy[b] as f64);
+            for (row, x) in cross.iter_mut().zip(p.features) {
+                for (b, value) in row.iter_mut().enumerate() {
+                    *value += x * residual[b];
+                }
+            }
+        }
+    }
+
+    fn features(energy: [f32; 3], history: &AuditoryHistorySnapshot) -> [f64; FEATURES] {
+        let mut x = [0.0; FEATURES];
+        x[0] = 1.0;
+        for (target, value) in x[1..4].iter_mut().zip(energy) {
+            *target = value.sqrt() as f64;
+        }
+        for (target, value) in x[4..28]
+            .iter_mut()
+            .zip(history.known_band_rms_by_age.iter().flatten())
+        {
+            *target = *value as f64;
+        }
+        for (target, value) in x[28..36].iter_mut().zip(history.known_coverage_by_age) {
+            *target = value as f64;
+        }
+        let mut index = 36;
+        for pair in history.known_band_rms_by_age.windows(2) {
+            let younger = pair[0].map(f64::from);
+            let older = pair[1].map(f64::from);
+            let power: f64 = younger.iter().chain(older.iter()).map(|v| v * v).sum();
+            for a in 0..3 {
+                for b in a + 1..3 {
+                    // Directed age contrasts distinguish order; the floor is numerical.
+                    x[index] = (older[a] * younger[b] - older[b] * younger[a]) / (power + 1e-12);
+                    index += 1;
+                }
+            }
+        }
+        x
+    }
+
+    pub(crate) fn issue(&mut self, step: u64, energy: [f32; 3], history: &AuditoryHistorySnapshot) {
+        let p = &mut self.pending[(step % ENERGY_PENDING_LEN as u64) as usize];
+        debug_assert_ne!(p.step, Some(step));
+        let x = Self::features(energy, history);
+        let projected: [f64; FEATURES] =
+            std::array::from_fn(|i| self.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
+        let denominator = 1.0 + x.iter().zip(projected).map(|(x, p)| x * p).sum::<f64>();
+        for (i, row) in self.inverse.iter_mut().enumerate() {
+            for (j, value) in row.iter_mut().enumerate() {
+                *value -= projected[i] * projected[j] / denominator;
+            }
+        }
+        *p = PendingHistory {
+            step: Some(step),
+            features: x,
+            energy,
+        };
+    }
+
+    pub(crate) fn forecast(
+        &self,
+        energy: [f32; 3],
+        history: &AuditoryHistorySnapshot,
+    ) -> [[f32; 3]; FORECAST_LEN] {
+        let x = Self::features(energy, history);
+        let projected: [f64; FEATURES] =
+            std::array::from_fn(|i| self.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
+        std::array::from_fn(|lead| {
+            let mut correction = [0.; 3];
+            for (row, &x) in self.response_cross[lead].iter().zip(&projected) {
+                for band in 0..3 {
+                    correction[band] += row[band] * x;
+                }
+            }
+            std::array::from_fn(|band| (energy[band] as f64 + correction[band]).max(0.) as f32)
+        })
+    }
+
+    pub(crate) fn preview_comparison(
+        &self,
+        recurrence: [[f32; 3]; FORECAST_LEN],
+        history: [[f32; 3]; FORECAST_LEN],
+    ) -> ([[f32; 3]; FORECAST_LEN], [[f32; 3]; FORECAST_LEN]) {
+        let weights = std::array::from_fn(|lead| {
+            std::array::from_fn(|band| {
+                let square = self.comparison_square[lead][band];
+                if square > 0.0 {
+                    (self.comparison_cross[lead][band] / square).clamp(0.0, 1.0) as f32
+                } else {
+                    0.0
+                }
+            })
+        });
+        let prediction = std::array::from_fn(|lead| {
+            std::array::from_fn(|band| {
+                let w = weights[lead][band];
+                (1.0 - w) * recurrence[lead][band] + w * history[lead][band]
+            })
+        });
+        (prediction, weights)
+    }
+
+    /// Publish once per observed context; only later actual outcomes fit the mixture.
+    pub(crate) fn issue_comparison(
+        &mut self,
+        step: u64,
+        recurrence: [[f32; 3]; FORECAST_LEN],
+        history: [[f32; 3]; FORECAST_LEN],
+        requested_frame: Option<u64>,
+    ) -> ([[f32; 3]; FORECAST_LEN], [[f32; 3]; FORECAST_LEN]) {
+        let (prediction, weights) = self.preview_comparison(recurrence, history);
+        let slot = &mut self.comparison_slots[(step % ENERGY_PENDING_LEN as u64) as usize];
+        if let Some(pending) = slot
+            .map(|index| &self.comparisons[index])
+            .filter(|p| p.step == Some(step))
+        {
+            debug_assert_eq!(pending.recurrence, recurrence);
+            debug_assert_eq!(pending.history, history);
+            debug_assert_eq!(pending.mixed, prediction);
+        } else {
+            self.errors.issued += 1;
+            let pending = PendingComparison {
+                step: Some(step),
+                requested_frame,
+                recurrence,
+                history,
+                mixed: prediction,
+                history_weight: SCORE_LEADS.map(|lead| weights[lead]),
+                completed_before_issue: self.comparison_completed,
+            };
+            if let Some(index) = *slot {
+                self.comparisons[index] = pending;
+            } else {
+                *slot = Some(self.comparisons.len());
+                self.comparisons.push(pending);
+            }
+        }
+        (prediction, weights)
+    }
+
+    /// Diagnostics consume completed errors, never prediction or learning state.
+    pub(crate) fn take_errors(&mut self) -> Option<PredictionErrorTotals> {
+        (self.errors.issued > 0 || self.errors.completed.iter().any(|&n| n > 0))
+            .then(|| std::mem::take(&mut self.errors))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::temporal_history::{AuditoryHistory, HISTORY_AGES_SEC};
+
+    #[test]
+    fn sparse_comparisons_match_dense_ring_after_clone_wrap_and_clear() {
+        let mut sparse = HistoryEnergyPrediction::new();
+        let mut dense = sparse.clone();
+        dense.comparisons.resize(
+            ENERGY_PENDING_LEN,
+            PendingComparison {
+                step: None,
+                requested_frame: None,
+                recurrence: [[0.0; 3]; FORECAST_LEN],
+                history: [[0.0; 3]; FORECAST_LEN],
+                mixed: [[0.0; 3]; FORECAST_LEN],
+                history_weight: [[0.0; 3]; 7],
+                completed_before_issue: [0; 7],
+            },
+        );
+        dense.comparison_slots = std::array::from_fn(Some);
+        let mut history = AuditoryHistory::new(HISTORY_AGES_SEC);
+        for step in 0..1000 {
+            let energy = [0.01 * (1.0 + (step as f32 * 0.031).sin()); 3];
+            let mut expected = Vec::new();
+            dense.observe(step, energy, |m| {
+                expected.push(serde_json::to_value(m).unwrap());
+            });
+            let mut actual = Vec::new();
+            sparse.observe(step, energy, |m| {
+                actual.push(serde_json::to_value(m).unwrap());
+            });
+            assert_eq!(actual, expected);
+            history.advance(0.01, Some(energy.map(f32::sqrt)));
+            let snapshot = history.snapshot();
+            sparse.issue(step + 1, energy, &snapshot);
+            dense.issue(step + 1, energy, &snapshot);
+            let recurrence = [[step as f32 * 0.001; 3]; FORECAST_LEN];
+            let candidate = sparse.forecast(energy, &snapshot);
+            assert_eq!(candidate, dense.forecast(energy, &snapshot));
+            if step % 7 == 0 || step % 19 == 0 {
+                for _ in 0..2 {
+                    assert_eq!(
+                        sparse.issue_comparison(step + 1, recurrence, candidate, Some(step)),
+                        dense.issue_comparison(step + 1, recurrence, candidate, Some(step))
+                    );
+                }
+            }
+            if step == 17 || step == 405 {
+                sparse = sparse.clone();
+            }
+            if step == 510 || step == 610 {
+                sparse.clear_pending(step == 610);
+                dense.clear_pending(step == 610);
+            }
+            assert_eq!(
+                serde_json::to_value(sparse.take_errors()).unwrap(),
+                serde_json::to_value(dense.take_errors()).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn cloned_comparison_ring_never_allocates_on_issue_or_reset() {
+        let mut original = HistoryEnergyPrediction::new();
+        original.issue_comparison(1, [[0.0; 3]; FORECAST_LEN], [[1.0; 3]; FORECAST_LEN], None);
+        for mut predictor in [HistoryEnergyPrediction::new().clone(), original.clone()] {
+            crate::runtime_profile::begin_allocations();
+            for rewind in [false, true] {
+                for step in 1..=2 * ENERGY_PENDING_LEN as u64 {
+                    predictor.issue_comparison(
+                        step,
+                        [[0.0; 3]; FORECAST_LEN],
+                        [[1.0; 3]; FORECAST_LEN],
+                        None,
+                    );
+                }
+                predictor.clear_pending(rewind);
+            }
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!((counts.count, counts.bytes), (0, 0));
+        }
+    }
 
     #[test]
     fn readonly_comparison_matches_issue_without_registering_or_training() {
@@ -350,265 +710,5 @@ mod tests {
         assert_eq!(initial, [[0.04; 3]; FORECAST_LEN]);
         predictor.clear_pending(true);
         assert_eq!(predictor.forecast([0.04; 3], &snapshot), initial);
-    }
-}
-
-/// Pending targets penalize corrections but never supply invented outcome labels.
-#[derive(Clone)]
-pub(crate) struct HistoryEnergyPrediction {
-    inverse: [[f64; FEATURES]; FEATURES],
-    response_cross: Box<[[[f64; 3]; FEATURES]]>,
-    pending: Box<[PendingHistory]>,
-    comparisons: Box<[PendingComparison]>,
-    comparison_square: [[f64; 3]; FORECAST_LEN],
-    comparison_cross: [[f64; 3]; FORECAST_LEN],
-    comparison_completed: [u64; 7],
-    errors: PredictionErrorTotals,
-}
-
-impl HistoryEnergyPrediction {
-    pub(crate) fn new() -> Self {
-        let mut inverse = [[0.0; FEATURES]; FEATURES];
-        for (i, row) in inverse.iter_mut().enumerate() {
-            row[i] = 1.0 / RIDGE;
-        }
-        Self {
-            inverse,
-            response_cross: vec![[[0.0; 3]; FEATURES]; FORECAST_LEN].into_boxed_slice(),
-            pending: vec![
-                PendingHistory {
-                    step: None,
-                    features: [0.0; FEATURES],
-                    energy: [0.0; 3]
-                };
-                ENERGY_PENDING_LEN
-            ]
-            .into_boxed_slice(),
-            comparisons: vec![
-                PendingComparison {
-                    step: None,
-                    requested_frame: None,
-                    recurrence: [[0.0; 3]; FORECAST_LEN],
-                    history: [[0.0; 3]; FORECAST_LEN],
-                    mixed: [[0.0; 3]; FORECAST_LEN],
-                    history_weight: [[0.0; 3]; 7],
-                    completed_before_issue: [0; 7],
-                };
-                ENERGY_PENDING_LEN
-            ]
-            .into_boxed_slice(),
-            comparison_square: [[0.0; 3]; FORECAST_LEN],
-            comparison_cross: [[0.0; 3]; FORECAST_LEN],
-            comparison_completed: [0; 7],
-            errors: PredictionErrorTotals::default(),
-        }
-    }
-
-    pub(crate) fn clear_pending(&mut self, rewind: bool) {
-        for p in &mut self.pending {
-            p.step = None;
-        }
-        for p in &mut self.comparisons {
-            p.step = None;
-        }
-        if rewind {
-            self.comparison_square.fill([0.0; 3]);
-            self.comparison_cross.fill([0.0; 3]);
-            self.comparison_completed.fill(0);
-            self.errors = PredictionErrorTotals::default();
-            self.response_cross.fill([[0.0; 3]; FEATURES]);
-            for (i, row) in self.inverse.iter_mut().enumerate() {
-                row.fill(0.0);
-                row[i] = 1.0 / RIDGE;
-            }
-        }
-    }
-
-    pub(crate) fn observe(
-        &mut self,
-        step: u64,
-        energy: [f32; 3],
-        mut emit: impl FnMut(&PredictionMatch<'_>),
-    ) {
-        for (lead, cross) in self.response_cross.iter_mut().enumerate() {
-            let Some(issued_step) = step.checked_sub((lead * FORECAST_STRIDE) as u64) else {
-                continue;
-            };
-            let comparison = &self.comparisons[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
-            if comparison.step == Some(issued_step) {
-                if let Some(index) = SCORE_LEADS.iter().position(|&h| h == lead) {
-                    self.errors.completed[index] += 1;
-                    self.comparison_completed[index] += 1;
-                    for (band, observed) in energy.into_iter().enumerate() {
-                        let observed = observed as f64;
-                        self.errors.recurrence_squared_error[index][band] +=
-                            (comparison.recurrence[lead][band] as f64 - observed).powi(2);
-                        self.errors.history_squared_error[index][band] +=
-                            (comparison.history[lead][band] as f64 - observed).powi(2);
-                        self.errors.mixed_squared_error[index][band] +=
-                            (comparison.mixed[lead][band] as f64 - observed).powi(2);
-                    }
-                    // Borrow the issuance context before the raw-history ring advances.
-                    let context = &self.pending[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
-                    emit(&PredictionMatch {
-                        issued_step,
-                        target_step: step,
-                        requested_frame: comparison.requested_frame,
-                        completed_before_issue: comparison.completed_before_issue[index],
-                        issued_features: (context.step == Some(issued_step))
-                            .then_some(context.features.as_slice()),
-                        history_weight: comparison.history_weight[index],
-                        recurrence: comparison.recurrence[lead],
-                        history: comparison.history[lead],
-                        mixed: comparison.mixed[lead],
-                        observed: energy,
-                    });
-                }
-                for (band, observed) in energy.into_iter().enumerate() {
-                    let baseline = comparison.recurrence[lead][band] as f64;
-                    let delta = comparison.history[lead][band] as f64 - baseline;
-                    self.comparison_square[lead][band] += delta * delta;
-                    self.comparison_cross[lead][band] += delta * (observed as f64 - baseline);
-                }
-            }
-            let p = &self.pending[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
-            if p.step != Some(issued_step) {
-                continue;
-            }
-            let residual: [f64; 3] = std::array::from_fn(|b| energy[b] as f64 - p.energy[b] as f64);
-            for (row, x) in cross.iter_mut().zip(p.features) {
-                for (b, value) in row.iter_mut().enumerate() {
-                    *value += x * residual[b];
-                }
-            }
-        }
-    }
-
-    fn features(energy: [f32; 3], history: &AuditoryHistorySnapshot) -> [f64; FEATURES] {
-        let mut x = [0.0; FEATURES];
-        x[0] = 1.0;
-        for (target, value) in x[1..4].iter_mut().zip(energy) {
-            *target = value.sqrt() as f64;
-        }
-        for (target, value) in x[4..28]
-            .iter_mut()
-            .zip(history.known_band_rms_by_age.iter().flatten())
-        {
-            *target = *value as f64;
-        }
-        for (target, value) in x[28..36].iter_mut().zip(history.known_coverage_by_age) {
-            *target = value as f64;
-        }
-        let mut index = 36;
-        for pair in history.known_band_rms_by_age.windows(2) {
-            let younger = pair[0].map(f64::from);
-            let older = pair[1].map(f64::from);
-            let power: f64 = younger.iter().chain(older.iter()).map(|v| v * v).sum();
-            for a in 0..3 {
-                for b in a + 1..3 {
-                    // Directed age contrasts distinguish order; the floor is numerical.
-                    x[index] = (older[a] * younger[b] - older[b] * younger[a]) / (power + 1e-12);
-                    index += 1;
-                }
-            }
-        }
-        x
-    }
-
-    pub(crate) fn issue(&mut self, step: u64, energy: [f32; 3], history: &AuditoryHistorySnapshot) {
-        let p = &mut self.pending[(step % ENERGY_PENDING_LEN as u64) as usize];
-        debug_assert_ne!(p.step, Some(step));
-        let x = Self::features(energy, history);
-        let projected: [f64; FEATURES] =
-            std::array::from_fn(|i| self.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
-        let denominator = 1.0 + x.iter().zip(projected).map(|(x, p)| x * p).sum::<f64>();
-        for (i, row) in self.inverse.iter_mut().enumerate() {
-            for (j, value) in row.iter_mut().enumerate() {
-                *value -= projected[i] * projected[j] / denominator;
-            }
-        }
-        *p = PendingHistory {
-            step: Some(step),
-            features: x,
-            energy,
-        };
-    }
-
-    pub(crate) fn forecast(
-        &self,
-        energy: [f32; 3],
-        history: &AuditoryHistorySnapshot,
-    ) -> [[f32; 3]; FORECAST_LEN] {
-        let x = Self::features(energy, history);
-        let projected: [f64; FEATURES] =
-            std::array::from_fn(|i| self.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
-        std::array::from_fn(|lead| {
-            let mut correction = [0.; 3];
-            for (row, &x) in self.response_cross[lead].iter().zip(&projected) {
-                for band in 0..3 {
-                    correction[band] += row[band] * x;
-                }
-            }
-            std::array::from_fn(|band| (energy[band] as f64 + correction[band]).max(0.) as f32)
-        })
-    }
-
-    pub(crate) fn preview_comparison(
-        &self,
-        recurrence: [[f32; 3]; FORECAST_LEN],
-        history: [[f32; 3]; FORECAST_LEN],
-    ) -> ([[f32; 3]; FORECAST_LEN], [[f32; 3]; FORECAST_LEN]) {
-        let weights = std::array::from_fn(|lead| {
-            std::array::from_fn(|band| {
-                let square = self.comparison_square[lead][band];
-                if square > 0.0 {
-                    (self.comparison_cross[lead][band] / square).clamp(0.0, 1.0) as f32
-                } else {
-                    0.0
-                }
-            })
-        });
-        let prediction = std::array::from_fn(|lead| {
-            std::array::from_fn(|band| {
-                let w = weights[lead][band];
-                (1.0 - w) * recurrence[lead][band] + w * history[lead][band]
-            })
-        });
-        (prediction, weights)
-    }
-
-    /// Publish once per observed context; only later actual outcomes fit the mixture.
-    pub(crate) fn issue_comparison(
-        &mut self,
-        step: u64,
-        recurrence: [[f32; 3]; FORECAST_LEN],
-        history: [[f32; 3]; FORECAST_LEN],
-        requested_frame: Option<u64>,
-    ) -> ([[f32; 3]; FORECAST_LEN], [[f32; 3]; FORECAST_LEN]) {
-        let (prediction, weights) = self.preview_comparison(recurrence, history);
-        let pending = &mut self.comparisons[(step % ENERGY_PENDING_LEN as u64) as usize];
-        if pending.step == Some(step) {
-            debug_assert_eq!(pending.recurrence, recurrence);
-            debug_assert_eq!(pending.history, history);
-            debug_assert_eq!(pending.mixed, prediction);
-        } else {
-            self.errors.issued += 1;
-            *pending = PendingComparison {
-                step: Some(step),
-                requested_frame,
-                recurrence,
-                history,
-                mixed: prediction,
-                history_weight: SCORE_LEADS.map(|lead| weights[lead]),
-                completed_before_issue: self.comparison_completed,
-            };
-        }
-        (prediction, weights)
-    }
-
-    /// Diagnostics consume completed errors, never prediction or learning state.
-    pub(crate) fn take_errors(&mut self) -> Option<PredictionErrorTotals> {
-        (self.errors.issued > 0 || self.errors.completed.iter().any(|&n| n > 0))
-            .then(|| std::mem::take(&mut self.errors))
     }
 }

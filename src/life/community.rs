@@ -607,6 +607,8 @@ impl Community {
         spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES, self.time.fs);
         self.rest_enabled |= spawned.phonation_engine.rest.is_some();
         self.voices.push(spawned);
+        #[cfg(test)]
+        crate::runtime::l1_probe::record_birth();
         self.track_runtime_id(id);
         if self.auto_observe.is_some() {
             self.runtime_events.push(RuntimeEvent {

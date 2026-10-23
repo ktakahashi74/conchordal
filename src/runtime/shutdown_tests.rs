@@ -26,6 +26,24 @@ fn options() -> WiringOptions {
 fn l1_sample_acquisition() {
     let path = std::env::var("L1_SAMPLE").expect("sample path");
     let scenario = compile_scenario_from_script(std::path::Path::new(&path), Some(21)).unwrap();
+    let events: Vec<_> = scenario
+        .events
+        .iter()
+        .map(|event| {
+            serde_json::json!({
+                "time_sec": event.time,
+                "actions": event.actions.iter().map(ToString::to_string).collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    serde_json::to_writer(
+        std::fs::File::create(
+            std::path::Path::new(&std::env::var("L1_OUTPUT").unwrap()).join("events.json"),
+        )
+        .unwrap(),
+        &events,
+    )
+    .unwrap();
     let config = AppConfig::default();
     let mut opts = options();
     opts.deterministic_analysis = false;

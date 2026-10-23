@@ -7,13 +7,28 @@ fn parseval_resource_power_units_support_boundaries_and_amplitude() {
     }
     let n = analyzer.nfft;
     let fs = analyzer.fs;
-    let weights = analyzer.resource_weights.get().unwrap();
-    let mut support = vec![false; n / 2 + 1];
-    for row in weights {
-        for &(k, w) in row {
-            support[k] |= w > 0.0;
+    // Derive f64 power directly from unnormalized coherent NSGT kernels.
+    let kernels: Vec<Vec<_>> = analyzer
+        .nsgt
+        .bands()
+        .iter()
+        .map(|band| {
+            band.spec_conj_sparse
+                .as_ref()
+                .expect("coherent oracle kernels")
+                .iter()
+                .filter(|(k, _)| *k <= n / 2)
+                .map(|&(k, w)| (k, f64::from(w.re).powi(2) + f64::from(w.im).powi(2)))
+                .collect()
+        })
+        .collect();
+    let mut kernel_sums = vec![0.0; n / 2 + 1];
+    for row in &kernels {
+        for &(k, power) in row {
+            kernel_sums[k] += power;
         }
     }
+    let support: Vec<_> = kernel_sums.iter().map(|&power| power > 0.0).collect();
     let tones = [
         vec![(440.0, 0.03, 0.0)],
         vec![(440.0, 0.03, 0.0), (445.0, 0.02, 1.0)],
@@ -61,12 +76,26 @@ fn parseval_resource_power_units_support_boundaries_and_amplitude() {
         rustfft::FftPlanner::<f64>::new()
             .plan_fft_forward(n)
             .process(&mut fft);
-        let supported: f64 = (0..=n / 2)
-            .filter(|&k| support[k])
+        let fft_power: Vec<_> = (0..=n / 2)
             .map(|k| {
                 fft[k].norm_sqr() * if k == 0 || k == n / 2 { 1.0 } else { 2.0 } / (n * n) as f64
             })
+            .collect();
+        let supported: f64 = fft_power
+            .iter()
+            .zip(&support)
+            .filter(|(_, supported)| **supported)
+            .map(|(power, _)| power)
             .sum();
+        let expected: Vec<f64> = kernels
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .filter(|(k, _)| kernel_sums[*k] > 0.0)
+                    .map(|&(k, power)| fft_power[k] * power / kernel_sums[k])
+                    .sum()
+            })
+            .collect();
         analyzer.reset();
         for hop in pcm.chunks(analyzer.hop) {
             analyzer.process_resource(hop);
@@ -91,8 +120,15 @@ fn parseval_resource_power_units_support_boundaries_and_amplitude() {
         for hop in doubled.chunks(analyzer.hop) {
             analyzer.process_resource(hop);
         }
-        for (&a, b) in analyzer.resource_power().unwrap().iter().zip(original) {
+        for (&a, &b) in analyzer.resource_power().unwrap().iter().zip(&original) {
             assert_eq!(a, 4.0 * b, "amplitude scaling case {case}");
+        }
+        assert_eq!(original.len(), expected.len());
+        for (bin, (&actual, expected)) in original.iter().zip(expected).enumerate() {
+            assert!(
+                (f64::from(actual) - expected).abs() <= roundoff,
+                "case {case}, band {bin}: {actual} vs {expected}"
+            );
         }
     }
     // FFT-bin support is a partition, including DC and Nyquist when supported.

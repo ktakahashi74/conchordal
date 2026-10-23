@@ -142,7 +142,9 @@ impl Flora {
                     self.retirements += 1;
                 }
             }
-            m.pending.fill(None);
+            for pending in &mut m.pending {
+                m.drops += u64::from(pending.take().is_some());
+            }
         } else if crossing || !m.active {
             self.update_tones();
         } else {
@@ -343,8 +345,7 @@ impl Flora {
             }
         }
         for (c, cell) in self.cells.iter().enumerate() {
-            let candidate = m
-                .active
+            let candidate = (m.active && !self.releasing)
                 .then_some(())
                 .and(cell.peak.as_ref())
                 .filter(|p| p.enter && p.claimed.is_none() && !p.suppressed);
@@ -535,6 +536,54 @@ mod tests {
                 .pending
                 .iter()
                 .all(Option::is_none)
+        );
+    }
+
+    #[test]
+    fn flora_metric_release_discards_pending_on_active_beats() {
+        let mut violations = Vec::new();
+        for fade_sec in [0.05, 0.0] {
+            let mut f = setup(FloraTone::Sine, false);
+            let bin = (f.cells[3].bins.start + f.cells[3].bins.end) / 2;
+            hill(&mut f, bin, 0.1);
+            f.observe_rhythm(observation(0, true), 0, Default::default());
+            f.temporal.as_mut().unwrap().crossings.clear();
+            f.render_add(&mut vec![0.; 512], &mut vec![0.; 512]);
+            let m = f.temporal.as_ref().unwrap();
+            let pending = m.pending.iter().filter(|p| p.is_some()).count() as u64;
+            let expected_drops = m.drops + pending;
+            assert!(m.active && pending > 0);
+            assert!(
+                f.cells
+                    .iter()
+                    .any(|c| c.peak.as_ref().is_some_and(|p| p.enter))
+            );
+            assert_eq!(f.births, 0);
+            f.release(fade_sec);
+            for hop in 1..=3 {
+                let now = hop * 512;
+                f.observe_rhythm(observation(now, true), now, Default::default());
+                let m = f.temporal.as_mut().unwrap();
+                m.crossings.clear();
+                m.crossings.push(CandidatePoint {
+                    tick: now + 173,
+                    gate: 0,
+                });
+                f.render_add(&mut vec![0.; 512], &mut vec![0.; 512]);
+                let m = f.temporal.as_ref().unwrap();
+                let remaining = m.pending.iter().filter(|p| p.is_some()).count();
+                if remaining != 0 || m.drops != expected_drops {
+                    violations.push((fade_sec, hop, remaining, m.drops, expected_drops));
+                }
+                assert_eq!(f.births, 0);
+                if hop == 1 && fade_sec > 0.0 {
+                    assert!(!f.is_finished());
+                }
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "release must cancel pending once and never recreate it: {violations:?}"
         );
     }
 

@@ -13,8 +13,16 @@ listener still read the habituated terrain. There is no direct exchange of their
 state. With both buses selected,
 Flora also hears its own sound through this analysis path. `send(presentation_bus)`
 removes its sound from the habitat while keeping it audible; `send(habitat_bus)` does
-the reverse. Resource consumption follows biomass, including biomass that does not
-sound. The ecology continues on the available terrain without self-perception.
+the reverse. The ecology continues on the available terrain without self-perception.
+
+Resource consumption includes latent biomass, even when it does not sound, and the
+power of other habitat audio. Each Flora removes its own actual habitat PCM before
+measuring that external power. The base consonance and harmonicity used for growth
+and seeding still include its own habitat sound. The fixed power reference is the
+mean square of a sine with amplitude 0.03 (`0.03²/2 = 0.00045`); changing the Flora's
+amplitude does not change that reference. Missing observations do not count as
+silence: resources retain their initial state before the first valid observation,
+and later gaps retain the last observed external consumption.
 
 `flora()` builds a reusable FloraSpec. `place(spec, placement)` returns a Flora that
 can receive amplitude, growth-rate and resource-renewal updates. A Population's Voices and

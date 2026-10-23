@@ -594,20 +594,25 @@ pub(super) fn process_hop(
         .unwrap_or_default();
     let post_render_start = state.profile.as_ref().map(|_| Instant::now());
     let second_ticks = cfg.fs as Tick;
-    if state.reporter.is_some()
-        && (now_tick == 0
-            || now_tick / second_ticks != now_tick.saturating_sub(cfg.hop as Tick) / second_ticks)
-    {
+    if state.reporter.is_some() {
         for flora in &state.pop.flora {
-            report_try(&mut state.reporter, "flora", |writer| {
-                writer.write_flora(flora, f64::from(now_sec))
-            });
+            if flora.lifecycle_changed
+                || now_tick == 0
+                || now_tick / second_ticks
+                    != now_tick.saturating_sub(cfg.hop as Tick) / second_ticks
+            {
+                report_try(&mut state.reporter, "flora", |writer| {
+                    writer.write_flora(flora, f64::from(now_sec), &state.current_landscape)
+                });
+            }
         }
     }
     let mut loo_chunk =
-        (!cfg.loo_populations.is_empty()).then(|| crate::core::stream::loo::PcmPacket {
-            sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
-            recycle: state.loo_recycle.0.clone(),
+        (!cfg.loo_populations.is_empty() || state.pop.has_placed_flora).then(|| {
+            crate::core::stream::loo::PcmPacket {
+                sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
+                recycle: state.loo_recycle.0.clone(),
+            }
         });
     let channel_peak = [max_abs, max_abs];
 

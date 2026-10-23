@@ -845,6 +845,14 @@ habituation, which Flora's habitat audio still drives. Coupling between Flora an
 Population passes only through their radiated sound and the resulting Landscape.
 
 Local consumer–resource rules govern growth, spread, consumption and recovery.
+Each Flora's resource is consumed by its latent biomass and by other habitat
+sound. Its actual habitat PCM is removed before external power is measured;
+its base consonance and harmonicity still include self-sound. The acoustic
+reference is the mean square of a sine with nominal amplitude 0.03. Supported
+FFT power is distributed across NSGT bins and integrated with the existing band
+coefficients. Missing observations preserve initial resource state or the last
+observed consumption, rather than counting as silence. Resources are per Flora;
+a muted or presentation-only neighbour contributes no habitat power.
 ERB cells decompose biomass into tracked tonal and residual lanes. Sine or resonant
 tones turn those lanes into audio, with sample-rate fades and amplitude ramps.
 Residual sound is disabled by default and can be enabled with `.residual(true)`.

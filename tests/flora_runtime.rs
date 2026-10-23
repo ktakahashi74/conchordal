@@ -108,9 +108,34 @@ fn flora_finishes_with_its_fade_in_both_renderers() {
                         .all(|r| r["residual_energy"].as_f64().unwrap() == 0.)
                 );
             }
-            assert!(flora.windows(2).all(|w| w[1]["time_sec"].as_f64().unwrap()
-                - w[0]["time_sec"].as_f64().unwrap()
-                >= 1.0 - hop_sec));
+            for pair in flora.windows(2) {
+                let before = pair[0];
+                let after = pair[1];
+                let now = after["time_sec"].as_f64().unwrap();
+                assert!(now > before["time_sec"].as_f64().unwrap());
+                if now.fract() < hop_sec + 1e-6 {
+                    continue;
+                }
+                // Extra snapshots must document a lifecycle change between seconds.
+                let states = |row: &serde_json::Value| {
+                    row["lanes"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|lane| {
+                            (
+                                lane["slot"].as_u64().unwrap(),
+                                lane["state"].as_str().unwrap().to_owned(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert!(
+                    before["births"] != after["births"]
+                        || before["retirements"] != after["retirements"]
+                        || states(before) != states(after)
+                );
+            }
             assert_eq!(
                 rows.iter()
                     .filter(|r| r["type"] == "rhythm_summary" && r["population_id"].is_null())

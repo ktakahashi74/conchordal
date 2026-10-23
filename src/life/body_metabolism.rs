@@ -363,6 +363,7 @@ impl BodyMetabolism {
                         density_recipe_changes: 0,
                     });
                     self.pcm.push(SourcePcm {
+                        kind: crate::core::stream::loo::SourceKind::Voice,
                         id: voice.id(),
                         generation: voice.metadata.generation,
                         habitat: vec![0.; self.time.hop],

@@ -454,10 +454,14 @@ impl ScheduleRenderer {
         self.apply_phonation_batches(phonation_batches, now);
         for (key, tone) in &mut self.tones {
             tone.source_pcm_slot = sources.iter().position(|source| {
-                source.id == key.source_id && source.generation == tone.source_generation
+                source.kind == crate::core::stream::loo::SourceKind::Voice
+                    && source.id == key.source_id
+                    && source.generation == tone.source_generation
             });
             tone.loo_slot = self.loo_pcm.iter().position(|source| {
-                source.id == key.source_id && source.generation == tone.source_generation
+                source.kind == crate::core::stream::loo::SourceKind::Voice
+                    && source.id == key.source_id
+                    && source.generation == tone.source_generation
             });
         }
         let commands_us = profile_lap(&mut checkpoint);
@@ -529,6 +533,13 @@ impl ScheduleRenderer {
         }
         for flora in flora {
             flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+            if let Some(source) = self
+                .loo_pcm
+                .iter_mut()
+                .find(|s| s.kind == crate::core::stream::loo::SourceKind::Flora && s.id == flora.id)
+            {
+                source.habitat.copy_from_slice(&flora.habitat_pcm);
+            }
         }
         self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
@@ -865,6 +876,7 @@ mod tests {
                     .into_iter()
                     .enumerate()
                     .map(|(index, id)| SourcePcm {
+                        kind: crate::core::stream::loo::SourceKind::Voice,
                         id,
                         generation: if index == 1 { 8 } else { 7 },
                         habitat: vec![0.; time.hop],
@@ -873,6 +885,7 @@ mod tests {
                 let mut expected_sources = sources
                     .iter()
                     .map(|s| SourcePcm {
+                        kind: crate::core::stream::loo::SourceKind::Voice,
                         id: s.id,
                         generation: s.generation,
                         habitat: s.habitat.clone(),
@@ -1326,6 +1339,7 @@ mod tests {
                     RenderModulatorSpec::SeqGate { duration_sec: 1.0 };
                 let rhythms = NeuralRhythms::default();
                 let mut sources = [SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Voice,
                     id: 2,
                     generation: 7,
                     habitat: vec![0.; time.hop],
@@ -1399,16 +1413,19 @@ mod tests {
             let mut own_reference = ScheduleRenderer::new(time);
             let mut scratch = [
                 SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Voice,
                     id: 2,
                     generation: 7,
                     habitat: vec![0.; time.hop],
                 },
                 SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Voice,
                     id: 2,
                     generation: 8,
                     habitat: vec![0.; time.hop],
                 },
                 SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Voice,
                     id: 999,
                     generation: 0,
                     habitat: vec![0.; time.hop],
@@ -1417,6 +1434,7 @@ mod tests {
             captured.loo_pcm = scratch
                 .iter()
                 .map(|s| SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Voice,
                     id: s.id,
                     generation: s.generation,
                     habitat: vec![0.; time.hop],
@@ -1950,11 +1968,13 @@ mod tests {
                 third.tones[0].hold_ticks = Some(120);
                 let mut sources = [
                     SourcePcm {
+                        kind: crate::core::stream::loo::SourceKind::Voice,
                         id: 2,
                         generation: 7,
                         habitat: vec![0.; 64],
                     },
                     SourcePcm {
+                        kind: crate::core::stream::loo::SourceKind::Voice,
                         id: 2,
                         generation: 8,
                         habitat: vec![0.; 64],
@@ -2032,6 +2052,7 @@ mod tests {
         let rhythms = NeuralRhythms::default();
         let mut renderer = ScheduleRenderer::new(tb).with_prototype(true);
         renderer.loo_pcm.push(SourcePcm {
+            kind: crate::core::stream::loo::SourceKind::Voice,
             id: 2,
             generation: 7,
             habitat: vec![0.; tb.hop],
@@ -2078,6 +2099,12 @@ mod tests {
                 time.hop,
             )];
             let mut renderer = ScheduleRenderer::new(time);
+            renderer.loo_pcm.push(SourcePcm {
+                kind: crate::core::stream::loo::SourceKind::Flora,
+                id: 7,
+                generation: 0,
+                habitat: vec![0.0; time.hop],
+            });
             flora[0].advance(&landscape);
             renderer.render_with_source_pcm(
                 &[],

@@ -128,6 +128,10 @@ fn producer_compatibility() {
         );
         let rows = per_second(&output);
         assert!(rows.len() >= 4);
+        assert!(rows.windows(2).all(|pair| {
+            pair[1]["time_sec"].as_f64().unwrap().floor()
+                > pair[0]["time_sec"].as_f64().unwrap().floor()
+        }));
         assert!(
             rows.iter()
                 .any(|r| r["tonal_power"].as_f64().unwrap() > 0.0)
@@ -186,6 +190,12 @@ fn per_second(output: &Path) -> Vec<Value> {
         let id = row["flora_id"].as_u64().unwrap();
         let age = row["age_sec"].as_f64().unwrap();
         let old = previous.get(&id);
+        // Lifecycle snapshots must not overweight seconds with more turnover.
+        if old.is_some_and(|prior| {
+            prior["time_sec"].as_f64().unwrap().floor() == row["time_sec"].as_f64().unwrap().floor()
+        }) {
+            continue;
+        }
         let elapsed = age - old.map_or(0.0, |v| v["age_sec"].as_f64().unwrap());
         row["interval_sec"] = json!(elapsed);
         for key in ["births", "retirements", "flapping"] {

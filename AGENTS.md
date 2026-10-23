@@ -234,7 +234,12 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   `dead_id_scratch`), pitch proposal scratch (`src/life/pitch_core.rs`), and
   `PhonationEngine` buffers (`scratch_candidates`, `scratch_merged`, `scratch_grid`,
   `scratch_field`, `src/life/phonation_engine.rs`). Clear and refill them.
-  Flora's own advance/render/capture has zero steady-state allocations, including births and retirements; placement, reconfiguration, and reporting may allocate.
+  Flora's own advance/render/capture has zero steady-state allocations, including lane births and retirements; placement, reconfiguration, and reporting may allocate.
+  Flora capture allocates one hop buffer at placement and one recycled packet entry
+  at first capture; existing storage is reused through fade and retirement. Flora
+  power publication owns a scan and allocates. Reports include resource/consumption
+  scans and lane state at seconds and lifecycle changes; their allocations are
+  outside the renderer contract.
   The analysis worker (`src/core/analysis_worker.rs`) is a separate thread. Streaming
   and synchronous analysis share front-end/potential scratch; `AnalysisStream::process`
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only
@@ -245,7 +250,12 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   generation from birth. Each analysis observer subtracts actual own habitat PCM
   before NSGT, using a clone of the mixed stream's pre-birth history. Both histories
   reset on gaps. Processing uses reused scratch; publication owns per-Voice H/R and
-  score scans and therefore allocates. Flora has no separate observer. Allocation
+  score scans and therefore allocates. Flora has a separate power observer for each instance. It subtracts actual own
+  habitat PCM, copies the mixed pre-birth raw/power history, and reuses the FFT
+  and shared sparse power weights without evaluating H/R. SourceKind separates
+  Voice and Flora identities. Voice observer clones disable the mixed stream's
+  resource tracker because they consume only H/R. Full-window coverage gates power publication;
+  gaps hold timestamped consumption and geometry changes discard it. Allocation
   census (48 kHz, hop 512, window 16384, 690 bins, Ordered, one hop per batch)
   measured 19 allocations / 50192 bytes without LOO and 23 / 58568 with one LOO
   observer. Its first packet used 66 / 520750 including observer construction.

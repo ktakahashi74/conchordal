@@ -911,6 +911,7 @@ fn flora_ownership_cases(supported: bool) {
         let mut removed_stream = template.clone();
         let mut reference_stream = template.clone();
         let mut sources = [crate::life::schedule_renderer::SourcePcm {
+            kind: crate::core::stream::loo::SourceKind::Voice,
             id: 2,
             generation: 0,
             habitat: vec![0.; hop],

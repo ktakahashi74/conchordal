@@ -6,7 +6,7 @@ use std::ops::Range;
 use serde::Serialize;
 
 use crate::core::erb::{erb_bw_hz, erb_to_hz, hz_to_erb};
-use crate::core::float::{finite_or, sanitize01, unit_gaussian};
+use crate::core::float::{finite_or, sanitize_nonnegative_finite, sanitize01, unit_gaussian};
 use crate::core::landscape::Landscape;
 use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::scenario::{FloraPatch, FloraSeeding, FloraSpec, FloraTone};
@@ -299,6 +299,11 @@ pub(crate) struct Flora {
     rng: u64,
     biomass_mass_scan: Vec<f32>,
     resource_state_scan: Vec<f32>,
+    biomass_consumption_scan: Vec<f32>,
+    external_consumption_scan: Vec<f32>,
+    external_observed_frame: Option<u64>,
+    external_current: bool,
+    pub(crate) habitat_pcm: Vec<f32>,
     scratch_scan: Vec<f32>,
     erb_scan: Vec<f32>,
     consumption_rows: Vec<(usize, Range<usize>)>,
@@ -318,6 +323,7 @@ pub(crate) struct Flora {
     flapping: u64,
     energy: [f64; 2],
     rendered_samples: u64,
+    pub(crate) lifecycle_changed: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -328,6 +334,11 @@ pub(crate) struct FloraReport<'a> {
     extent_hz: (f32, f32),
     frequency_hz: &'a [f32],
     biomass_mass_scan: &'a [f32],
+    resource_state_scan: &'a [f32],
+    biomass_consumption_scan: &'a [f32],
+    external_consumption_scan: &'a [f32],
+    external_observed_frame: Option<u64>,
+    external_current: bool,
     total_biomass_mass: f32,
     latent_peaks_hz: Vec<f32>,
     births: u64,
@@ -336,6 +347,19 @@ pub(crate) struct FloraReport<'a> {
     tonal_energy: f64,
     residual_energy: f64,
     rendered_partials: Vec<(f32, f32, bool)>,
+    target_partials: Vec<(f32, f32, bool)>,
+    lanes: Vec<FloraLaneReport>,
+    growth_level_scan: &'a [f32],
+    harmonicity_state_scan: &'a [f32],
+}
+
+#[derive(Debug, Serialize)]
+struct FloraLaneReport {
+    slot: usize,
+    state: &'static str,
+    frequency_hz: f32,
+    target_mass: f32,
+    age_sec: f64,
 }
 
 impl Flora {
@@ -370,6 +394,11 @@ impl Flora {
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
             biomass_mass_scan: Vec::new(),
             resource_state_scan: Vec::new(),
+            biomass_consumption_scan: Vec::new(),
+            external_consumption_scan: Vec::new(),
+            external_observed_frame: None,
+            external_current: false,
+            habitat_pcm: vec![0.0; hop],
             scratch_scan: Vec::new(),
             erb_scan: Vec::new(),
             consumption_rows: Vec::new(),
@@ -389,6 +418,7 @@ impl Flora {
             flapping: 0,
             energy: [0.0; 2],
             rendered_samples: 0,
+            lifecycle_changed: true,
         };
         flora.on_space_change(&landscape.space);
         flora.space.assert_scan_len_named(
@@ -479,6 +509,10 @@ impl Flora {
         let start = space.centers_hz.partition_point(|&f| f < self.extent_hz.0);
         let end = space.centers_hz.partition_point(|&f| f <= self.extent_hz.1);
         self.range = start..end;
+        self.biomass_consumption_scan = vec![0.0; space.n_bins()];
+        self.external_consumption_scan = vec![0.0; space.n_bins()];
+        self.external_observed_frame = None;
+        self.external_current = false;
         self.scratch_scan = vec![0.0; space.n_bins()];
         self.erb_scan = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
         self.assert_scans();
@@ -590,11 +624,46 @@ impl Flora {
         for (scan, name) in [
             (&self.biomass_mass_scan, "biomass_mass_scan"),
             (&self.resource_state_scan, "resource_state_scan"),
+            (&self.biomass_consumption_scan, "biomass_consumption_scan"),
+            (&self.external_consumption_scan, "external_consumption_scan"),
             (&self.scratch_scan, "scratch_scan"),
             (&self.erb_scan, "erb_scan"),
         ] {
             self.space.assert_scan_len_named(scan, name);
         }
+    }
+
+    pub(crate) fn observe_external(&mut self, landscape: &Landscape, frame: Option<u64>) {
+        self.external_current = false;
+        let Some(frame) = frame else {
+            return;
+        };
+        let Some(power) = landscape
+            .flora_power
+            .iter()
+            .find(|s| s.id == self.id && s.generation == 0)
+            .and_then(|s| s.power_scan.as_ref())
+        else {
+            return;
+        };
+        self.space
+            .assert_scan_len_named(power, "external_power_scan");
+        self.external_current = true;
+        if self.external_observed_frame == Some(frame) {
+            return;
+        }
+        // Fixed author unit: nominal sine amplitude 0.03 has mean square 0.00045.
+        let scale = self.space.bins_per_oct as f32 / REFERENCE_DENSITY / 0.00045;
+        for (row, (lo, weights)) in self.consumption_rows.iter().enumerate() {
+            self.external_consumption_scan[self.range.start + row] = self.consumption_weights
+                [weights.clone()]
+            .iter()
+            .enumerate()
+            .map(|(j, &w)| w * sanitize_nonnegative_finite(power[lo + j]))
+            .sum::<f32>()
+                * scale;
+        }
+        self.external_observed_frame = Some(frame);
     }
 
     pub(crate) fn advance(&mut self, landscape: &Landscape) {
@@ -656,7 +725,14 @@ impl Flora {
                 .sum::<f32>()
                 * bins_per_oct
                 / REFERENCE_DENSITY;
-            let a = renewal + biomass_consumption_density / CONSUMPTION_SEC;
+            self.biomass_consumption_scan[i] = biomass_consumption_density;
+            // Unknown initial consumption cannot be interpreted as silence.
+            if self.external_observed_frame.is_none() {
+                continue;
+            }
+            let a = renewal
+                + (biomass_consumption_density + self.external_consumption_scan[i])
+                    / CONSUMPTION_SEC;
             let equilibrium = renewal / a;
             self.resource_state_scan[i] =
                 equilibrium + (self.resource_state_scan[i] - equilibrium) * (-a * dt).exp();
@@ -944,6 +1020,11 @@ impl Flora {
 
     fn render<const SIMD: bool>(&mut self, presentation: &mut [f32], habitat: &mut [f32]) {
         self.assert_scans();
+        let before = (
+            self.births,
+            self.retirements,
+            self.lanes.iter().filter(|l| l.mode != Mode::Free).count(),
+        );
         assert_eq!(presentation.len(), self.hop);
         assert_eq!(habitat.len(), self.hop);
         if !(self.range.is_empty() || self.releasing && self.gain.value == 0.0) {
@@ -972,6 +1053,7 @@ impl Flora {
         for pair in self.noise.as_chunks_mut::<2>().0 {
             pair.copy_from_slice(&noise_draw(&mut self.rng));
         }
+        self.habitat_pcm.fill(0.0);
         for t in 0..self.hop {
             let amp = self.amp.tick() * self.gain.tick();
             let amp = if self.range.is_empty() { 0.0 } else { amp };
@@ -999,6 +1081,7 @@ impl Flora {
             }
             if self.spec.routing.to_habitat {
                 habitat[t] += out;
+                self.habitat_pcm[t] = out;
             }
         }
         for lane in &mut self.lanes {
@@ -1008,11 +1091,17 @@ impl Flora {
             }
             self.energy[usize::from(!lane.tonal)] += lane.power_sum as f64 / self.fs as f64;
         }
+        self.lifecycle_changed = before
+            != (
+                self.births,
+                self.retirements,
+                self.lanes.iter().filter(|l| l.mode != Mode::Free).count(),
+            );
         self.rendered_samples += self.hop as u64;
     }
 
     // Reporting owns these allocations; ordinary advance/render remain allocation-free.
-    pub(crate) fn report(&self, time_sec: f64) -> FloraReport<'_> {
+    pub(crate) fn report<'a>(&'a self, time_sec: f64, landscape: &'a Landscape) -> FloraReport<'a> {
         self.assert_scans();
         let latent_peaks_hz = self
             .range
@@ -1025,13 +1114,47 @@ impl Flora {
                     .then_some(self.space.centers_hz[i])
             })
             .collect();
+        self.space
+            .assert_scan_len_named(&landscape.consonance_field_level, "growth_level_scan");
+        self.space
+            .assert_scan_len_named(&landscape.harmonicity01, "harmonicity_state_scan");
         FloraReport {
+            growth_level_scan: &landscape.consonance_field_level,
+            harmonicity_state_scan: &landscape.harmonicity01,
+            target_partials: self
+                .lanes
+                .iter()
+                .filter(|l| l.mode == Mode::Current && l.target > 0.0)
+                .map(|l| (l.target_position.exp2(), l.target.powi(2), l.tonal))
+                .collect(),
+            lanes: self
+                .lanes
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.age_samples > 0)
+                .map(|(slot, l)| FloraLaneReport {
+                    slot,
+                    state: match l.mode {
+                        Mode::Free => "free",
+                        Mode::Current => "current",
+                        Mode::Retiring => "retiring",
+                    },
+                    frequency_hz: l.position.exp2(),
+                    target_mass: l.target.powi(2),
+                    age_sec: l.age_samples as f64 / self.fs as f64,
+                })
+                .collect(),
             time_sec,
             age_sec: self.rendered_samples as f64 / self.fs as f64,
             flora_id: self.id,
             extent_hz: self.extent_hz,
             frequency_hz: &self.space.centers_hz,
             biomass_mass_scan: &self.biomass_mass_scan,
+            resource_state_scan: &self.resource_state_scan,
+            biomass_consumption_scan: &self.biomass_consumption_scan,
+            external_consumption_scan: &self.external_consumption_scan,
+            external_observed_frame: self.external_observed_frame,
+            external_current: self.external_current,
             total_biomass_mass: self.biomass_mass_scan.iter().sum(),
             latent_peaks_hz,
             births: self.births,
@@ -1140,7 +1263,7 @@ mod tests {
     }
 
     fn flora(landscape: &Landscape) -> Flora {
-        Flora::new(
+        let mut flora = Flora::new(
             7,
             spec(),
             (440.0, 880.0),
@@ -1149,7 +1272,10 @@ mod tests {
             landscape,
             2000.0,
             100,
-        )
+        );
+        // Legacy biomass-only fixtures have a known silent external environment.
+        flora.external_observed_frame = Some(0);
+        flora
     }
 
     fn uniform(f: &mut Flora) {
@@ -1229,6 +1355,7 @@ mod tests {
             2000.0,
             800,
         );
+        f.external_observed_frame = Some(0);
         assert_eq!(f.substeps, 64);
         for _ in 0..100 {
             f.advance(&l);
@@ -2009,6 +2136,7 @@ mod tests {
         let l = terrain();
         let mut f = flora(&l);
         f.hop = 400;
+        f.habitat_pcm.resize(f.hop, 0.0);
         f.noise.resize(2 * f.noisy_len * f.hop, 0.0);
         f.biomass_mass_scan.fill(0.001);
         hill(&mut f, 33, 1.0);
@@ -2507,7 +2635,7 @@ mod tests {
                         2 => f.residual_targets(),
                         3 => f.render_add(&mut [0.0; 100], &mut [0.0; 100]),
                         4 => {
-                            f.report(0.0);
+                            f.report(0.0, &l);
                         }
                         5 => f.advance_resource(0.01),
                         _ => f.on_space_change(&l.space),
@@ -2609,3 +2737,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "flora_heard_tests.rs"]
+mod heard_tests;

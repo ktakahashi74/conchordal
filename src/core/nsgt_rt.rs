@@ -18,7 +18,7 @@
 use crate::core::log2space::Log2Space;
 use crate::core::nsgt_kernel::{NsgtKernelLog2, PowerMode};
 use rustfft::num_complex::Complex32;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Smoothing configuration.
 #[derive(Clone, Copy, Debug)]
@@ -71,6 +71,11 @@ pub struct RtNsgtKernelLog2 {
     // per-band states & cached meta
     bands_state: Vec<BandState>,
     out_env: Vec<f32>,
+
+    // Resource power shares geometry, FFT, and the raw rectangular PCM window.
+    resource_weights: Arc<OnceLock<Vec<Vec<(usize, f32)>>>>,
+    resource_power: Option<Vec<f32>>,
+    valid_samples: usize,
 
     // settings
     power_mode: PowerMode,
@@ -125,6 +130,106 @@ impl RtNsgtKernelLog2 {
             out_env: vec![0.0; bands_state.len()],
             bands_state,
             power_mode,
+            resource_weights: Arc::new(OnceLock::new()),
+            resource_power: None,
+            valid_samples: 0,
+        }
+    }
+
+    pub(crate) fn enable_resource_power(&mut self) {
+        self.resource_weights.get_or_init(|| {
+            let mut rows = Vec::with_capacity(self.nsgt.bands().len());
+            let mut sums = vec![0.0f64; self.nfft / 2 + 1];
+            for band in self.nsgt.bands() {
+                let row: Vec<_> = if let Some(weights) = &band.spec_pow_sparse {
+                    weights
+                        .iter()
+                        .copied()
+                        .filter(|(k, _)| *k <= self.nfft / 2)
+                        .collect()
+                } else {
+                    band.spec_conj_sparse
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .filter(|(k, _)| *k <= self.nfft / 2)
+                        .map(|&(k, w)| (k, w.norm_sqr()))
+                        .collect()
+                };
+                for &(k, w) in &row {
+                    sums[k] += f64::from(w);
+                }
+                rows.push(row);
+            }
+            for row in &mut rows {
+                for (k, w) in row {
+                    *w = if sums[*k] > 0.0 {
+                        (f64::from(*w) / sums[*k]) as f32
+                    } else {
+                        0.0
+                    };
+                }
+            }
+            rows
+        });
+        if self.resource_power.is_none() {
+            self.resource_power = Some(vec![0.0; self.bands_state.len()]);
+        }
+    }
+
+    pub(crate) fn disable_resource_power(&mut self) {
+        self.resource_power = None;
+    }
+
+    pub(crate) fn resource_power(&self) -> Option<&[f32]> {
+        if let Some(power) = &self.resource_power {
+            self.space()
+                .assert_scan_len_named(power, "resource_power_scan");
+        }
+        (self.valid_samples >= self.nfft)
+            .then_some(self.resource_power.as_deref())
+            .flatten()
+    }
+
+    /// Advance only the acoustic resource input, without H/R evaluation.
+    pub(crate) fn process_resource(&mut self, audio: &[f32]) {
+        assert_eq!(audio.len(), self.hop);
+        self.write_hop(audio);
+        self.analyze_fft();
+        self.update_resource_power(1);
+    }
+
+    fn update_resource_power(&mut self, gap: i32) {
+        let Some(out) = self.resource_power.as_mut() else {
+            return;
+        };
+        // The shared FFT uses a rectangular window: sum(window^2) = N.
+        let normalization = 1.0 / (self.nfft as f32 * self.nfft as f32);
+        for ((value, row), state) in out
+            .iter_mut()
+            .zip(self.resource_weights.get().unwrap())
+            .zip(&self.bands_state)
+        {
+            let power = row
+                .iter()
+                .map(|&(k, w)| {
+                    let sided = if k == 0 || (self.nfft.is_multiple_of(2) && k == self.nfft / 2) {
+                        1.0
+                    } else {
+                        2.0
+                    };
+                    self.fft_buf[k].norm_sqr() * w * sided * normalization
+                })
+                .sum::<f32>();
+            let alpha = if gap == 1 {
+                state.alpha
+            } else {
+                state.alpha.powi(gap)
+            };
+            *value = (1.0 - alpha) * power + alpha * *value;
+            if value.is_subnormal() {
+                *value = 0.0;
+            }
         }
     }
 
@@ -220,6 +325,10 @@ impl RtNsgtKernelLog2 {
         for state in &mut self.bands_state {
             state.smooth = 0.0;
         }
+        self.valid_samples = 0;
+        if let Some(power) = &mut self.resource_power {
+            power.fill(0.0);
+        }
         self.ring.fill(0.0);
         self.write_pos = 0;
         for z in &mut self.fft_buf {
@@ -244,6 +353,7 @@ impl RtNsgtKernelLog2 {
             }
         }
         self.write_pos = wp;
+        self.valid_samples = (self.valid_samples + self.hop).min(self.nfft);
     }
 
     #[inline]
@@ -270,6 +380,7 @@ impl RtNsgtKernelLog2 {
             i += 1;
         }
         self.write_pos = wp;
+        self.valid_samples = (self.valid_samples + self.hop).min(self.nfft);
     }
 
     /// Build contiguous FFT frame from ring, run FFT, accumulate bands, and update smoothing.
@@ -277,7 +388,7 @@ impl RtNsgtKernelLog2 {
         self.analyze_one_and_update_gap(1);
     }
 
-    fn analyze_one_and_update_gap(&mut self, gap: i32) {
+    fn analyze_fft(&mut self) {
         // Reassemble latest nfft samples: [write_pos..end) then [0..write_pos)
         let n = self.nfft;
         let left = n - self.write_pos;
@@ -294,7 +405,12 @@ impl RtNsgtKernelLog2 {
 
         self.fft
             .process_with_scratch(&mut self.fft_buf, &mut self.fft_scratch);
+    }
 
+    fn analyze_one_and_update_gap(&mut self, gap: i32) {
+        self.analyze_fft();
+        self.update_resource_power(gap);
+        let n = self.nfft;
         // Sparse inner products (same math as NsgtKernelLog2::analyze)
         let bands = self.nsgt.bands();
         let inv_nfft = 1.0 / n as f32;
@@ -813,3 +929,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "resource_power_tests.rs"]
+mod resource_power_tests;

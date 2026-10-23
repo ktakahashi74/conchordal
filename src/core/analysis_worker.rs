@@ -119,21 +119,36 @@ pub(crate) fn run(
                 .and_then(|input| input.observe(frame_id, hop.as_ref()));
             if let Some(packet) = &loo_pcm {
                 loo_streams.retain(|s| {
-                    packet
-                        .sources
-                        .iter()
-                        .any(|pcm| pcm.id == s.id && pcm.generation == s.generation)
+                    packet.sources.iter().any(|pcm| {
+                        pcm.kind == s.kind && pcm.id == s.id && pcm.generation == s.generation
+                    })
                 });
                 for source in &packet.sources {
                     let index = loo_streams
                         .iter()
-                        .position(|s| s.id == source.id && s.generation == source.generation)
+                        .position(|s| {
+                            s.kind == source.kind
+                                && s.id == source.id
+                                && s.generation == source.generation
+                        })
                         .unwrap_or_else(|| {
-                            loo_streams.push(crate::core::stream::loo::Observer::new(
-                                source.id,
-                                source.generation,
-                                &stream,
-                            ));
+                            let observer = match source.kind {
+                                crate::core::stream::loo::SourceKind::Voice => {
+                                    crate::core::stream::loo::Observer::new(
+                                        source.id,
+                                        source.generation,
+                                        &stream,
+                                    )
+                                }
+                                crate::core::stream::loo::SourceKind::Flora => {
+                                    crate::core::stream::loo::Observer::flora(
+                                        source.id,
+                                        source.generation,
+                                        &mut stream,
+                                    )
+                                }
+                            };
+                            loo_streams.push(observer);
                             loo_streams.len() - 1
                         });
                     loo_streams[index].process(&hop, &source.habitat);
@@ -159,7 +174,16 @@ pub(crate) fn run(
             {
                 let mut frame = frame.clone();
                 frame.spectral_history = spectral_history.snapshot();
-                frame.loo = loo_streams.iter().map(|s| s.snapshot()).collect();
+                frame.loo = loo_streams
+                    .iter()
+                    .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
+                    .map(|s| s.snapshot())
+                    .collect();
+                frame.flora_power = loo_streams
+                    .iter()
+                    .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Flora)
+                    .map(|s| s.resource_snapshot())
+                    .collect();
                 if result_tx.send((id, Some(frame))).is_err() {
                     return;
                 }
@@ -171,7 +195,16 @@ pub(crate) fn run(
         {
             let mut frame = stream.last().clone();
             frame.spectral_history = spectral_history.snapshot();
-            frame.loo = loo_streams.iter().map(|s| s.snapshot()).collect();
+            frame.loo = loo_streams
+                .iter()
+                .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
+                .map(|s| s.snapshot())
+                .collect();
+            frame.flora_power = loo_streams
+                .iter()
+                .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Flora)
+                .map(|s| s.resource_snapshot())
+                .collect();
             publish_latest(&result_tx, stale, (id, Some(frame)));
         }
         #[cfg(test)]
@@ -570,11 +603,82 @@ mod tests {
         let (recycle, _) = crossbeam_channel::unbounded();
         crate::core::stream::loo::PcmPacket {
             sources: vec![crate::core::stream::loo::SourcePcm {
+                kind: crate::core::stream::loo::SourceKind::Voice,
                 id,
                 generation,
                 habitat: own.to_vec(),
             }],
             recycle,
+        }
+    }
+
+    #[test]
+    fn flora_and_voice_share_numeric_id_without_sharing_history() {
+        use crate::core::stream::loo::{PcmPacket, SourceKind, SourcePcm};
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut stream = AnalysisStream::new(params, nsgt);
+        stream.enable_resource_power();
+        let hop = stream.hop_samples();
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let (result_tx, result_rx) = crossbeam_channel::unbounded();
+        let (_, updates) = crossbeam_channel::unbounded();
+        let (recycle, _) = crossbeam_channel::unbounded();
+        for frame in 0..40 {
+            let mix: Arc<[f32]> = vec![0.03; hop].into();
+            let sources = vec![
+                SourcePcm {
+                    kind: SourceKind::Voice,
+                    id: 7,
+                    generation: 0,
+                    habitat: mix.to_vec(),
+                },
+                SourcePcm {
+                    kind: SourceKind::Flora,
+                    id: 7,
+                    generation: u32::from(frame >= 36),
+                    habitat: vec![0.0; hop],
+                },
+            ];
+            tx.send((
+                frame,
+                mix,
+                Some(PcmPacket {
+                    sources,
+                    recycle: recycle.clone(),
+                }),
+            ))
+            .unwrap();
+        }
+        drop(tx);
+        run(
+            stream,
+            rx,
+            result_tx,
+            updates,
+            AnalysisDelivery::Ordered,
+            None,
+            None,
+        );
+        for (id, frame) in result_rx.try_iter() {
+            let frame = frame.unwrap();
+            assert_eq!(frame.loo.len(), 1);
+            assert_eq!(frame.flora_power.len(), 1);
+            assert!(frame.loo[0].h_scan.iter().all(|&x| x == 0.0));
+            let observation = &frame.flora_power[0];
+            assert_eq!(
+                (observation.id, observation.generation),
+                (7, u32::from(id >= 36))
+            );
+            if id >= 32 {
+                assert!(
+                    observation
+                        .power_scan
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .any(|&p| p > 0.0)
+                );
+            }
         }
     }
 

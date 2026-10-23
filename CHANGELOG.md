@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Flora resources now consume other habitat sound as well as their own latent
+  biomass. Each instance subtracts its actual habitat PCM before power analysis;
+  base C/H still include self-sound. Power uses a fixed nominal sine reference
+  of 0.03, with Parseval-normalized NSGT support weights and existing band
+  integration. Unknown windows retain resource state or timestamped consumption.
+  Resource and lane telemetry expose depletion and lifecycle changes. Temporal
+  participation remains uncoupled; no seed, Allee or timing constants change.
+
 - Bundled samples set per-scene playback gain with `output_gain(...)`, measured
   across seeds 21–23 at the default +4.5 dB config gain. Values move average
   integrated loudness toward -23 LUFS within the existing 0.98 sample-peak

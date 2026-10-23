@@ -16,6 +16,7 @@ pub(super) fn advance_population(
         &mut state.pop,
     );
     for flora in &mut state.pop.flora {
+        flora.observe_external(&state.current_landscape, state.last_analysis_frame);
         flora.advance(&state.current_landscape);
     }
     if state.pop.rest_enabled {
@@ -415,7 +416,7 @@ pub(super) fn render_and_route_audio(
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
-    if !cfg.loo_populations.is_empty() {
+    if !cfg.loo_populations.is_empty() || state.pop.has_placed_flora {
         // Reuse one owned packet. Backpressure is included in the audio deadline.
         state.schedule_renderer.loo_pcm =
             match state.loo_recycle.1.recv_timeout(Duration::from_secs(1)) {
@@ -429,23 +430,42 @@ pub(super) fn render_and_route_audio(
                 }
             };
         let sources = &mut state.schedule_renderer.loo_pcm;
-        sources.retain(|source| {
-            state
+        sources.retain(|source| match source.kind {
+            crate::core::stream::loo::SourceKind::Voice => state
                 .pop
                 .voices
                 .iter()
-                .any(|v| v.id() == source.id && v.metadata.generation == source.generation)
+                .any(|v| v.id() == source.id && v.metadata.generation == source.generation),
+            crate::core::stream::loo::SourceKind::Flora => {
+                state.pop.flora.iter().any(|f| f.id == source.id)
+            }
         });
         for voice in &state.pop.voices {
             if cfg.loo_populations.contains(&voice.metadata.population_id)
-                && !sources
-                    .iter()
-                    .any(|s| s.id == voice.id() && s.generation == voice.metadata.generation)
+                && !sources.iter().any(|s| {
+                    s.kind == crate::core::stream::loo::SourceKind::Voice
+                        && s.id == voice.id()
+                        && s.generation == voice.metadata.generation
+                })
             {
                 sources.push(crate::core::stream::loo::SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Voice,
                     id: voice.id(),
                     generation: voice.metadata.generation,
                     habitat: vec![0.; cfg.hop],
+                });
+            }
+        }
+        for flora in &state.pop.flora {
+            if !sources
+                .iter()
+                .any(|s| s.kind == crate::core::stream::loo::SourceKind::Flora && s.id == flora.id)
+            {
+                sources.push(crate::core::stream::loo::SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Flora,
+                    id: flora.id,
+                    generation: 0,
+                    habitat: vec![0.0; cfg.hop],
                 });
             }
         }

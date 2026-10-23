@@ -26,6 +26,22 @@ impl AnalysisStream {
         Self { analysis, params }
     }
 
+    pub(crate) fn enable_resource_power(&mut self) {
+        self.analysis.nsgt.enable_resource_power();
+    }
+
+    pub(crate) fn voice_observer(&self) -> Self {
+        let mut observer = self.clone();
+        // Voice observers consume H/R only, even when the mixed stream feeds Flora.
+        observer.analysis.nsgt.disable_resource_power();
+        observer
+    }
+
+    pub(crate) fn resource_observer(&mut self) -> RtNsgtKernelLog2 {
+        self.analysis.nsgt.enable_resource_power();
+        self.analysis.nsgt.clone()
+    }
+
     pub fn last(&self) -> &Landscape {
         &self.analysis.landscape
     }
@@ -64,6 +80,29 @@ impl AnalysisStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn voice_observers_drop_resource_work_without_changing_perception() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut mixed = AnalysisStream::new(params, nsgt);
+        mixed.enable_resource_power();
+        let audio: Vec<_> = (0..mixed.hop_samples())
+            .map(|i| 0.03 * (i as f32 * 0.11).sin())
+            .collect();
+        for _ in 0..40 {
+            mixed.process(&audio);
+        }
+        assert!(mixed.analysis.nsgt.resource_power().is_some());
+        let mut voice = mixed.voice_observer();
+        assert!(voice.analysis.nsgt.resource_power().is_none());
+        for _ in 0..40 {
+            let expected = mixed.process(&audio);
+            let actual = voice.process(&audio);
+            assert_eq!(actual.nsgt_power, expected.nsgt_power);
+            assert_eq!(actual.harmonicity, expected.harmonicity);
+            assert_eq!(actual.roughness01, expected.roughness01);
+        }
+    }
 
     #[test]
     fn reset_and_variable_chunks_preserve_analysis_contract() {

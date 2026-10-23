@@ -274,7 +274,15 @@ pub(super) fn wire_runtime(
     } else {
         None
     };
-    let analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
+    let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
+    if scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }))
+    {
+        analysis_stream.enable_resource_power();
+    }
     let analysis_handle = spawn_analysis_worker(
         "field-analysis",
         analysis_stream,

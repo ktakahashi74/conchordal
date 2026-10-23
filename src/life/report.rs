@@ -366,8 +366,9 @@ impl JsonlReporter {
         &mut self,
         flora: &crate::life::flora::Flora,
         time_sec: f64,
+        landscape: &crate::core::landscape::Landscape,
     ) -> Result<(), String> {
-        self.write_record(&ReportRecord::Flora(flora.report(time_sec)))
+        self.write_record(&ReportRecord::Flora(flora.report(time_sec, landscape)))
     }
 
     pub(crate) fn write_body_observation(

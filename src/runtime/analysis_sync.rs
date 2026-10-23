@@ -34,6 +34,7 @@ pub(super) fn merge_latest_analysis_results(
                 unavailable = true;
                 current_landscape.spectral_history = None;
                 current_landscape.loo.clear();
+                current_landscape.flora_power.clear();
                 *last_analysis_frame = None;
                 latest_audio = None;
             }
@@ -76,6 +77,7 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
     current_landscape.loo = frame.loo;
+    current_landscape.flora_power = frame.flora_power;
     current_landscape.spectral_history = frame.spectral_history;
     current_landscape.recompute_consonance(lparams);
 

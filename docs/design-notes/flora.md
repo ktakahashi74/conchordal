@@ -66,8 +66,9 @@ habituation field.
    extra erosion, and the author adopted the base view after listening that day.
    Global habituation remains enabled by default: Voices and the listener still read
    eroded views, and Flora's habitat audio still drives habituation.
-3. **Flora perceives itself.** There is no leave-one-out for Flora. Self-interaction
-   shapes the pattern:
+3. **Flora perceives itself in C/H.** Base consonance and harmonicity include its
+   own sound. Only the external resource-consumption input excludes its actual
+   habitat PCM. Self-interaction in C/H shapes the pattern:
    - its own roughness lowers fitness within a critical band of each sounding peak;
    - its own harmonicity raises fitness and seeds at common-root relatives.
 
@@ -118,6 +119,12 @@ These are recorded as caveats, not solved by the design:
   model is insensitive to up to 213 ms of added delay. That does not prove stability,
   because the loop is discontinuous (next item). Stability is checked by the closed-loop
   assays in Tests, including a low-register extent and two overlapping Flora.
+- **External power also has analysis latency.** Each Flora subtracts only its own
+  habitat PCM before FFT. Initial windows and post-gap windows are unknown; an
+  available old consumption is a timestamped hold approximation. The resource law
+  can suppress total target mass as well as move peaks. Low occupied fractions alone
+  do not demonstrate audible succession; absolute target mass and five-second
+  Jensen–Shannon distance must be read together.
 - **Voice self-exclusion follows PCM subtraction.** Each reserved Voice has an
   independent analysis history for `mixed habitat PCM - own habitat PCM`.
   At birth, before the first own sound, it copies the mixed stream's complete
@@ -144,7 +151,8 @@ These are recorded as caveats, not solved by the design:
 - **A future `pred` self-term.** If delayed self-perception has to be replaced by
   Flora's own state, Flora's perceived contribution must first be removed from the
   terrain it reads. Otherwise it would be counted twice. That requires per-source
-  separation of the landscape, which does not exist and is out of scope.
+  separation of Flora's C/H landscape, which the consumption-only power observer
+  does not provide and which remains out of scope.
 - **Temporal observation.** With `temporal_mode("observe")`, temporal observation sees
   Flora's audio. Births and deaths are slewed (see Rendering) so that steady Flora is
   not a train of attacks. Whether the existing onset detector stays quiet on Flora
@@ -180,7 +188,10 @@ default hop it is 1 for `rate ≤ 4.68/s` and 2 at `rate = 8/s`. Each substep:
 v ← v + dt · [ rate · v · (g · u · v / (v + v_a) − k)     growth, Allee term, metabolism
              + D · ∇²v                                     spread
              + u · (ι_bg + ι · H01) ]                      seed rain
-c[x] = Σ_y Ĝ(x, y) · v[y] · bins_per_oct / c_ref           local mean density per octave
+c_b[x] = Σ_y Ĝ(x, y) · v[y] · bins_per_oct / c_ref
+z[y] = p_external[y] / 0.00045
+c_e[x] = Σ_y Ĝ(x, y) · z[y] · bins_per_oct / c_ref
+c[x] = c_b[x] + c_e[x]
 u ← u* + (u − u*) · exp(−a · dt),  a = 1/τ_r + c/τ_c,  u* = (1/τ_r) / a
 ```
 
@@ -191,9 +202,26 @@ u ← u* + (u − u*) · exp(−a · dt),  a = 1/τ_r + c/τ_c,  u* = (1/τ_r) /
   bins. It is built at placement and on a space change.
 - Consumption is computed from the biomass after its update, then the resource is
   updated exactly for that consumption, which keeps it in `[0, 1]` for any `c ≥ 0`.
-- Consumption is driven by biomass, not by the rendered spectrum, so biomass that does
-  not sound is consumed too. It is kept as one term so that a heard-sound term can be
-  added (Dynamics Design Record, Open decisions 1).
+- Biomass consumption includes latent mass even while muted or presentation-only.
+  External consumption uses the actual mixed habitat PCM minus this Flora's own
+  rendered habitat PCM, including fades, retiring tails and residual sound. Other
+  Flora remain audible to this observer. Resources remain per instance.
+- The fixed reference `P_ref = 0.03²/2 = 0.00045` maps the default nominal sine's
+  mean square at unit unsaturated target mass to biomass 1. This is an authored
+  acoustic unit, not a fitted auditory constant; changing or muting this Flora's
+  amplitude does not change it. Playback gain and guards are downstream.
+- The observer reuses the mixed stream's pre-birth raw window and power integration.
+  For the shared rectangular PCM window, `sum(window²) = N`. One-sided FFT power
+  is `|X[k]|²/(N sum(window²))`, doubled except at DC and Nyquist. Each supported
+  FFT bin is distributed with `|K_i[k]|² / sum_l |K_l[k]|²`; unsupported power is
+  excluded. Sparse weights are shared per geometry. Band integration reuses the
+  existing NSGT coefficients. This is separate from `nsgt_power`, and the smoothed
+  sum is not the instantaneous hop RMS.
+- External observation is fixed within a hop. Before the first full valid window,
+  resource updates wait while biomass and rendering continue. Gaps hold the last
+  valid consumption with its observation frame; they never manufacture silence.
+  Geometry changes discard the old external scan and wait for a valid new scan.
+  Reports distinguish current observations, held observations and initial unknown.
 
 **Why it moves.** A bloom depletes its resource and collapses; seeds then establish at
 harmonic positions whose resource is still fresh. In the explored conditions the
@@ -911,6 +939,62 @@ and are judged by listening together with those records.
 
 ## Implementation Findings
 
+### Heard habitat consumption, 2026-10-23
+
+Native T0 renders compared the biomass-only implementation at `05abeb0` with
+external power consumption, using unchanged sample 17, seeds 21–23, and a 90-second
+110 Hz drone made by extending its first held segment. Reporting-only additions on
+the baseline leave sample17 seed21 WAV bytes identical to the uninstrumented build.
+Both use the default +4.5 dB playback gain and the sample's existing +7.5 dB gain.
+The reference amplitude remains 0.03; seed rain, Allee, rate and renewal are unchanged.
+
+The occupied fraction is the share of Flora target mass within ±25 cents of the
+eight sounding drone partials. The active mature sample17 interval is 22–26 seconds
+(Flora age at least 20 seconds); the long-drone interval is 22–92 seconds. Absolute
+target mass is before the Flora amplitude factor. PR is the inverse concentration
+of lane target masses. JS5 is the square-root Jensen–Shannon divergence in bits,
+after the existing 0.25 ERB row-normalized display smoothing, at a five-second lag.
+The native summaries sample once per second, retaining lifecycle changes separately.
+
+| Scene/window | Consumption | Occupied fraction | Target total | Vacant target | PR | JS5 |
+|---|---|---:|---:|---:|---:|---:|
+| 17 seed21, 22–26 s | biomass only | .95182 | .13612 | .00330 | 2.446 | — |
+| 17 seed21, 22–26 s | biomass + external | .74438 | .02314 | .00592 | 9.939 | — |
+| 17 seed22, 22–26 s | biomass only | .93064 | .10186 | .00492 | 2.590 | — |
+| 17 seed22, 22–26 s | biomass + external | .76963 | .02510 | .00578 | 9.544 | — |
+| 17 seed23, 22–26 s | biomass only | .92573 | .09865 | .00465 | 2.716 | — |
+| 17 seed23, 22–26 s | biomass + external | .72115 | .02150 | .00600 | 10.926 | — |
+| 90 s drone, 22–92 s | biomass only | .87294 | .41651 | .07444 | 2.699 | .52113 |
+| 90 s drone, 22–92 s | biomass + external | .82341 | .08216 | .00714 | 6.032 | .33719 |
+
+The four-second active mature sample17 window cannot provide a five-second lag.
+Across 22–32 seconds, including drone release and the following silence, its JS5 is
+.51361/.37652 for biomass-only/external at seed21, .52438/.35083 at seed22 and
+.54148/.29119 at seed23. Those transitions are not evidence for stationary-scene
+succession. In the long drone's final 30-second window, JS5 remains .44055 with
+external consumption, with 16 births and 15 retirements between the endpoint
+snapshots. The reduced model's weak *stationary* polyphony did not recur here.
+
+This does not remove the repertoire problem. The external version is weaker and
+has more simultaneous lanes; its long-drone occupied fraction remains high, and
+its absolute vacant target is lower than the baseline. At 80 seconds, the vacant
+1100.75 Hz bin has `v_crit = .00595`, actual biomass `.00104`, and seed supply
+`.00128 mass/bin/s`; at 164.81 Hz these are `.00680`, `.00122`, and `.00170`.
+These are local, instantaneous seed-free threshold diagnostics, not a proof of
+future establishment in the coupled system. No seed or Allee redesign is adopted.
+
+The declared real-time set (top-level samples 01–17 plus sample08 with one Flora)
+completed 59,144 hops at 48 kHz / hop512 in the default release profile: zero deadline
+misses, zero queued analysis hops, and no harness disturbance flag. The largest
+case used 12 Voice observers and one Flora observer. This is a bounded measurement
+on the acquisition machine, not a guarantee for arbitrary populations or hardware.
+
+The instrument still has no audio-file output. Audition copies come from the offline
+renderer with one common static gain; separately normalized copies are auxiliary.
+Numerical implementation and these bounded render observations do not imply an
+author's listening verdict.
+
+
 The entries dated 2026-10-20 and 2026-10-21 come from the historical reference
 implementation (Reference Implementation); the first two concern the replaced
 draft-12 dynamics. The main remeasurement is recorded separately below.
@@ -1122,8 +1206,10 @@ repertoire or a new diffuse-biomass law.
 Record of how the consumer–resource dynamics were chosen. The proposal went through four
 Astra reviews (draft 4 acceptable), was implemented on the reference branch, checked in
 closed loop (Implementation Findings), and adopted by the author on 2026-10-21; the
-levels are not tuned. The consumption rule is biomass-driven as a base; the author asked
-to pursue its ideal form without haste (Open decisions 1). A listener-side information
+levels are not tuned. On 2026-10-22 the author adopted heard habitat power as an
+additional resource consumer; on 2026-10-23 the fixed 0.03 reference amplitude was
+adopted. The implementation retains biomass consumption and the existing seed,
+Allee, renewal, cell and lane rules. C/H still include self-sound. A listener-side information
 terrain as the drive did not pass its registered checks (technote ledger §9.3.93).
 
 ### Why the baseline settles
@@ -1272,14 +1358,11 @@ nominal target-amplitude scale; the ignored alternation test was replaced by the
 
 ### Open decisions
 
-1. **The ideal consumption rule (under study, not rushed).** The implementation starts
-   with Flora's own biomass, which the boundedness argument needs in any form. Whether
-   heard habitat sound also consumes, so that Populations and other Flora deplete
-   Flora's bands, is studied separately: a reduced model with Population-like sources,
-   a level reference for heard power (which depends on `amp`), the double counting of
-   Flora's own sound, and whether the resource should be one shared ecological field
-   rather than a per-Flora state. The consumption is kept as one term so that the result
-   can be added without restructuring.
+1. **Heard-sound consumption adopted and implemented, 2026-10-23.** Per-Flora
+   resources consume latent biomass plus the power of all other habitat sound.
+   Self-removal occurs on actual PCM, with fixed `P_ref = 0.00045`; the existing
+   extent-local 0.5 ERB kernel applies to both terms. This adoption does not select
+   new seed or Allee rules, nor guarantee persistent succession.
 2. **Residual default resolved by author audition, 2026-10-22:** off, with
    `.residual(true)` retained for explicit use and the residual-on assays. A separate
    treatment of diffuse biomass remains unadopted.
@@ -1287,6 +1370,9 @@ nominal target-amplitude scale; the ignored alternation test was replaced by the
    harmonics. Widening it (for example through the weighting of `H01` in the seed rain)
    is an authored choice to audition.
 4. The defaults, by audition after implementation.
+5. **Temporal participation adopted, implementation pending:** T1 will be opt-in;
+   T0 remains the default and the current implementation. This resource change
+   adds no beat gate or temporal participation mechanism.
 
 The proposal went through four independent Astra reviews (drafts 1–3 conditionally
 acceptable, draft 4 acceptable as a proposal, with the checks before adoption still open;

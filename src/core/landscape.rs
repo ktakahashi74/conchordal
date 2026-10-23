@@ -145,6 +145,7 @@ pub struct Landscape {
     pub(crate) loudness_exp: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
+    pub(crate) flora_power: Vec<crate::core::stream::loo::FloraObservation>,
     pub(crate) loo: Vec<crate::core::stream::loo::Observation>,
     pub(crate) spectral_history:
         Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
@@ -205,6 +206,7 @@ impl Landscape {
             nsgt_power: vec![0.0; n],
             spectral_history: None,
             loo: Vec::new(),
+            flora_power: Vec::new(),
             roughness01_scalar: 0.0,
             loudness_mass: 0.0,
             pitch_objective_mode: PitchObjectiveMode::Consonance,
@@ -220,6 +222,7 @@ impl Landscape {
     pub fn resize_to_space(&mut self, space: Log2Space) {
         self.spectral_history = None;
         self.loo.clear();
+        self.flora_power.clear();
         let n = space.n_bins();
         self.space = space;
         self.roughness.resize(n, 0.0);

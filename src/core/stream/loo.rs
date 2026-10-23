@@ -1,10 +1,17 @@
 //! PCM self-removal before the shared nonlinear perception pipeline.
 use super::analysis::AnalysisStream;
-use crate::core::landscape::{Landscape, LandscapeParams};
+use crate::core::landscape::LandscapeParams;
 use crossbeam_channel::Sender;
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SourceKind {
+    Voice,
+    Flora,
+}
+
 pub(crate) struct SourcePcm {
+    pub kind: SourceKind,
     pub id: u64,
     pub generation: u32,
     pub habitat: Vec<f32>,
@@ -50,10 +57,19 @@ impl Observation {
     }
 }
 
-pub(crate) struct Observer {
+#[derive(Clone, Debug)]
+pub(crate) struct FloraObservation {
     pub id: u64,
     pub generation: u32,
-    stream: AnalysisStream,
+    pub power_scan: Option<Vec<f32>>,
+}
+
+pub(crate) struct Observer {
+    pub kind: SourceKind,
+    pub id: u64,
+    pub generation: u32,
+    stream: Option<AnalysisStream>,
+    power: Option<crate::core::nsgt_rt::RtNsgtKernelLog2>,
     pcm: Vec<f32>,
 }
 
@@ -62,34 +78,68 @@ impl Observer {
         Self {
             id,
             generation,
-            stream: before_birth.clone(),
+            kind: SourceKind::Voice,
+            stream: Some(before_birth.voice_observer()),
+            power: None,
             pcm: vec![0.; before_birth.hop_samples()],
         }
     }
 
-    pub(crate) fn process(&mut self, mix: &[f32], own: &[f32]) -> &Landscape {
+    pub(crate) fn flora(id: u64, generation: u32, before_birth: &mut AnalysisStream) -> Self {
+        Self {
+            id,
+            generation,
+            kind: SourceKind::Flora,
+            pcm: vec![0.0; before_birth.hop_samples()],
+            power: Some(before_birth.resource_observer()),
+            stream: None,
+        }
+    }
+
+    pub(crate) fn process(&mut self, mix: &[f32], own: &[f32]) {
         assert_eq!(mix.len(), self.pcm.len(), "LOO complete mix hop");
         assert_eq!(own.len(), self.pcm.len(), "LOO complete own hop");
         for ((out, &mix), &own) in self.pcm.iter_mut().zip(mix).zip(own) {
             *out = mix - own;
         }
-        self.stream.process(&self.pcm)
+        if let Some(stream) = &mut self.stream {
+            stream.process(&self.pcm);
+        }
+        if let Some(power) = &mut self.power {
+            power.process_resource(&self.pcm);
+        }
     }
 
     #[cfg(test)]
-    pub(crate) fn last(&self) -> &Landscape {
-        self.stream.last()
+    pub(crate) fn last(&self) -> &crate::core::landscape::Landscape {
+        self.stream.as_ref().unwrap().last()
     }
 
     pub(crate) fn reset(&mut self) {
-        self.stream.reset();
+        if let Some(stream) = &mut self.stream {
+            stream.reset();
+        }
+        if let Some(power) = &mut self.power {
+            power.reset();
+        }
     }
     pub(crate) fn update(&mut self, update: crate::core::landscape::LandscapeUpdate) {
-        self.stream.apply_update(update);
+        if let Some(stream) = &mut self.stream {
+            stream.apply_update(update);
+        }
+    }
+
+    pub(crate) fn resource_snapshot(&self) -> FloraObservation {
+        let power = self.power.as_ref().expect("Flora power observer");
+        FloraObservation {
+            id: self.id,
+            generation: self.generation,
+            power_scan: power.resource_power().map(<[f32]>::to_vec),
+        }
     }
 
     pub(crate) fn snapshot(&self) -> Observation {
-        let frame = self.stream.last();
+        let frame = self.stream.as_ref().unwrap().last();
         let h_scan: Vec<_> = frame
             .harmonicity
             .iter()

@@ -108,6 +108,59 @@ fn join(wiring: RuntimeWiring) -> Result<(), String> {
 }
 
 #[test]
+fn flora_meter_is_reserved_only_for_metric_and_observes_before_placement() {
+    for continuous in [false, true] {
+        for placement in [
+            "",
+            "let g = place(flora(), consonance(220, 880));",
+            "let g = place(flora().metric(), consonance(220, 880));",
+        ] {
+            let metric = placement.contains("metric()");
+            let dir = std::env::temp_dir().join(format!(
+                "flora-meter-{}-{continuous}-{}",
+                std::process::id(),
+                placement.len()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let script = dir.join("scenario.rhai");
+            std::fs::write(&script, format!("wait(0.05); {placement} wait(0.05);")).unwrap();
+            let scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+            let seen = Arc::new(std::sync::Mutex::new([false; 2]));
+            let observed = Arc::clone(&seen);
+            let mut opts = options();
+            opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+                assert_eq!(state.flora_meter.is_some(), metric);
+                if tick > 0 {
+                    assert_eq!(state.flora_rhythm.observed_end, metric.then_some(tick));
+                    assert_eq!(state.flora_rhythm.known, metric);
+                    observed.lock().unwrap()[usize::from(tick >= 2400)] = true;
+                }
+                if tick < 2400 {
+                    assert!(state.pop.flora.is_empty());
+                } else {
+                    assert_eq!(state.pop.has_placed_flora, !placement.is_empty());
+                }
+            }));
+            let mut config = AppConfig::default();
+            config.analysis.nfft = 2048;
+            config.temporal_meter_t2 = continuous;
+            let wiring = wire_runtime(
+                &config,
+                48_000,
+                "Flora meter reservation".into(),
+                scenario,
+                Arc::new(AtomicBool::new(false)),
+                opts,
+            )
+            .unwrap();
+            join(wiring).unwrap();
+            assert_eq!(*seen.lock().unwrap(), [true, true]);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+}
+
+#[test]
 fn final_report_is_written_once_while_waiting_for_user_exit() {
     let (tx, rx) = bounded(UI_CHANNEL_CAPACITY);
     let mut opts = options();

@@ -345,7 +345,8 @@ pub(crate) struct Flora {
 pub(crate) struct FloraReport<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     temporal: Option<&'a MetricState>,
-    acoustic_observation: &'a TemporalObservation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acoustic_observation: Option<&'a TemporalObservation>,
     time_sec: f64,
     age_sec: f64,
     flora_id: u64,
@@ -377,10 +378,16 @@ struct FloraLaneReport {
     state: &'static str,
     frequency_hz: f32,
     target_mass: f32,
+    #[serde(flatten)]
+    timing: Option<FloraLaneTimingReport>,
+    age_sec: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct FloraLaneTimingReport {
     generation: u64,
     pending_since: Option<u64>,
     forced_reason: Option<&'static str>,
-    age_sec: f64,
 }
 
 impl Flora {
@@ -1180,9 +1187,10 @@ impl Flora {
             .assert_scan_len_named(&landscape.consonance_field_level, "growth_level_scan");
         self.space
             .assert_scan_len_named(&landscape.harmonicity01, "harmonicity_state_scan");
+        let timing = self.temporal.is_some() || self.acoustic_observation.observed_end.is_some();
         FloraReport {
             temporal: self.temporal.as_ref(),
-            acoustic_observation: &self.acoustic_observation,
+            acoustic_observation: timing.then_some(&self.acoustic_observation),
             growth_level_scan: &landscape.consonance_field_level,
             harmonicity_state_scan: &landscape.harmonicity01,
             target_partials: self
@@ -1205,9 +1213,11 @@ impl Flora {
                     },
                     frequency_hz: l.position.exp2(),
                     target_mass: l.target.powi(2),
-                    generation: l.generation,
-                    pending_since: l.pending_since,
-                    forced_reason: l.forced_reason,
+                    timing: timing.then_some(FloraLaneTimingReport {
+                        generation: l.generation,
+                        pending_since: l.pending_since,
+                        forced_reason: l.forced_reason,
+                    }),
                     age_sec: l.age_samples as f64 / self.fs as f64,
                 })
                 .collect(),

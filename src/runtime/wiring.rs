@@ -402,12 +402,19 @@ pub(super) fn wire_runtime(
             loo_populations.push(id);
         }
     }
+    // Accumulate acoustic history from run start, even for a later placement.
+    let flora_metric = scenario
+        .events
+        .iter()
+        .flat_map(|event| &event.actions)
+        .any(|action| matches!(action, Action::PlaceFlora { spec, .. } if spec.metric));
     let conductor = Conductor::from_scenario(scenario);
 
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
         loo_populations,
+        flora_metric,
         render_prototype: config.render_prototype,
         temporal_meter_t2: config.temporal_meter_t2,
         onset_comparison: config.temporal_onset_comparison,

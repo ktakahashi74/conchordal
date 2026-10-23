@@ -694,12 +694,14 @@ pub(super) fn drive_production_meter(
     let meter_state = if let Some(inbox) = channels.t2_inbox.as_mut() {
         let start = state.timebase.frame_start_tick(state.frame_idx);
         let end = state.timebase.frame_end_tick(state.frame_idx);
-        state.flora_meter.continuous_fast(
-            start,
-            end,
-            cfg.hop_duration.as_secs_f32(),
-            fast_known.then_some(flux_drive),
-        );
+        if let Some(meter) = state.flora_meter.as_mut() {
+            meter.continuous_fast(
+                start,
+                end,
+                cfg.hop_duration.as_secs_f32(),
+                fast_known.then_some(flux_drive),
+            );
+        }
         state.prod_meter.continuous_fast(
             start,
             end,
@@ -715,7 +717,9 @@ pub(super) fn drive_production_meter(
             match inbox.rx.try_recv() {
                 Ok(delivery) => {
                     let packet = inbox.received(delivery, end);
-                    if let Err(reason) = state.flora_meter.continuous_ingest(packet) {
+                    if let Some(meter) = state.flora_meter.as_mut()
+                        && let Err(reason) = meter.continuous_ingest(packet)
+                    {
                         failure = Some(reason);
                         break;
                     }
@@ -744,12 +748,14 @@ pub(super) fn drive_production_meter(
             cfg.exiting.store(true, Ordering::SeqCst);
             state.failures.push(reason.to_owned());
         }
-        state.flora_rhythm = crate::life::flora::TemporalObservation {
-            observed_end: Some(end),
-            known: fast_known && failure.is_none(),
-            flux: flux_drive,
-            state: state.flora_meter.continuous_finish(),
-        };
+        if let Some(meter) = state.flora_meter.as_mut() {
+            state.flora_rhythm = crate::life::flora::TemporalObservation {
+                observed_end: Some(end),
+                known: fast_known && failure.is_none(),
+                flux: flux_drive,
+                state: meter.continuous_finish(),
+            };
+        }
         let result = state.prod_meter.continuous_finish();
         if state.reporter.is_some() || state.profile.is_some() {
             let sample = crate::life::report::TemporalMeterSample {
@@ -770,18 +776,16 @@ pub(super) fn drive_production_meter(
         }
         result
     } else {
-        state.flora_rhythm = crate::life::flora::TemporalObservation {
-            observed_end: Some(state.timebase.frame_end_tick(state.frame_idx)),
-            known: habitat_chunk.iter().all(|v| v.is_finite()),
-            flux: flux_drive,
-            state: state.flora_meter.process_evidence(
-                cfg.hop_duration.as_secs_f32(),
-                habitat_chunk
-                    .iter()
-                    .all(|v| v.is_finite())
-                    .then_some(flux_drive),
-            ),
-        };
+        if let Some(meter) = state.flora_meter.as_mut() {
+            let known = habitat_chunk.iter().all(|v| v.is_finite());
+            state.flora_rhythm = crate::life::flora::TemporalObservation {
+                observed_end: Some(state.timebase.frame_end_tick(state.frame_idx)),
+                known,
+                flux: flux_drive,
+                state: meter
+                    .process_evidence(cfg.hop_duration.as_secs_f32(), known.then_some(flux_drive)),
+            };
+        }
         state
             .prod_meter
             .process(cfg.hop_duration.as_secs_f32(), drive)

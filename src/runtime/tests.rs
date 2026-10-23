@@ -335,6 +335,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let timebase = Timebase { fs, hop };
     let cfg = WorkerConfig {
         loo_populations: Vec::new(),
+        flora_metric: false,
         render_prototype: false,
         temporal_meter_t2: false,
         onset_comparison: None,
@@ -830,6 +831,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
             loo_populations: Vec::new(),
+            flora_metric: true,
             render_prototype: false,
             temporal_meter_t2: continuous,
             onset_comparison: None,

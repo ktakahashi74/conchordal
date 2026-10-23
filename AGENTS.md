@@ -400,7 +400,9 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   bit-exact, so reading the eroded view is always correct for Voice behavior.
   Flora reads base level/mass and unchanged `harmonicity01`; its habitat audio still
   drives habituation. Flora `metric()` opts into T1 lane timing with a shared
-  habitat audio-only meter and a private CouplingClock. Internal onset commands
+  habitat audio-only meter and a private CouplingClock. Wiring creates the meter
+  only if the scenario contains a metric Flora placement; it observes from run
+  start, including audio before that placement. Internal onset commands
   never drive that meter. Pending windows reserve current excess once; support
   loss and release retire immediately. Changes apply at sample crossings within
   the hop. Unknown observations fall back to T0; biomass/resources stay continuous.

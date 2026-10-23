@@ -459,8 +459,10 @@ ramp and `fade_gain`.
 
 ### Opt-in metric allocation (T1)
 
-`flora().metric()` is implemented. T0 remains the default. The shared habitat
-acoustic MeterNetwork receives flux and the selected event/continuous recurrence
+`flora().metric()` is implemented. T0 remains the default. Wiring reserves the
+shared habitat acoustic MeterNetwork only when the scenario contains a metric
+Flora placement. In that run it observes from the start, before any Flora is
+placed. The MeterNetwork receives flux and the selected event/continuous recurrence
 path with the scene's enculturation priors. It receives neither internal Voice
 onset commands nor Flora allocation commands. Each Flora owns only its private
 CouplingClock, using the Population metric rule (0.95 attraction, independent
@@ -492,7 +494,8 @@ crossing as support falls, and slew delays acoustic onset detection.
 Flora reports include the acoustic observation end tick, flux, full meter support,
 active/fallback state, local phase, bounded pending slots, drops, and transition
 ticks, generations, waiting samples and forced reasons. Reporting allocation is
-outside the allocation-free renderer contract.
+outside the allocation-free renderer contract. Runs without a metric Flora
+placement omit acoustic timing fields and retain the T0 report shape.
 
 ### Atoms: one kernel
 

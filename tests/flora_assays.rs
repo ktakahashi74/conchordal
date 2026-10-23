@@ -160,10 +160,10 @@ fn producer_compatibility() {
                 assert_eq!(js_distance(&spectrum, &spectrum), 0.0);
             }
         }
-        let hash = format!(
-            "{:x}",
-            Sha256::digest(fs::read(output.join("audio.wav")).unwrap())
-        );
+        let hash: String = Sha256::digest(fs::read(output.join("audio.wav")).unwrap())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
         assert!(results.iter().all(|r: &Value| r["wav_sha256"] != hash));
         results.push(json!({"configuration": name, "records": rows.len(), "wav_sha256": hash,
             "resolved_config": output.join("resolved-config.json"), "resolved_scenario": output.join("resolved-scenario.json")}));

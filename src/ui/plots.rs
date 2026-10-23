@@ -95,7 +95,7 @@ pub fn log2_plot_hz(
         })
         .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value));
     if let Some(link) = link_population {
-        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+        plot = plot.link_axis(Id::unique(link), Vec2b::new(true, false));
     }
 
     plot.show(ui, |plot_ui| {
@@ -160,7 +160,7 @@ pub fn draw_roughness_harmonicity(
         })
         .y_axis_formatter(|mark, _range| format!("{:.2}", mark.value));
     if let Some(link) = link_population {
-        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+        plot = plot.link_axis(Id::unique(link), Vec2b::new(true, false));
     }
 
     plot.show(ui, |plot_ui| {
@@ -244,7 +244,7 @@ pub fn neural_activity_plot(
         .y_axis_formatter(|_, _| String::new())
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value));
     if let Some(link) = link_population {
-        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+        plot = plot.link_axis(Id::unique(link), Vec2b::new(true, false));
     }
     plot.show(ui, |plot_ui| {
         plot_ui.set_plot_bounds_x(window_start..=window_end);
@@ -386,7 +386,7 @@ pub fn plot_population_dynamics(
         .default_x_bounds(x_min, x_max)
         .x_axis_formatter(|mark, _| format!("{:.0} Hz", 2f64.powf(mark.value)))
         .y_axis_formatter(|mark, _| format!("{:.2}", mark.value))
-        .link_axis(Id::new("landscape_population"), Vec2b::new(true, false));
+        .link_axis(Id::unique("landscape_population"), Vec2b::new(true, false));
 
     plot.show(ui, |plot_ui| {
         plot_ui.set_plot_bounds_x(x_min..=x_max);
@@ -471,7 +471,7 @@ pub fn spectrum_time_freq_axes(
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
         .y_axis_formatter(|_, _| String::new());
     if let Some(link) = link_population {
-        plot = plot.link_axis(Id::new(link), Vec2b::new(true, false));
+        plot = plot.link_axis(Id::unique(link), Vec2b::new(true, false));
     }
 
     plot.show(ui, |plot_ui| {

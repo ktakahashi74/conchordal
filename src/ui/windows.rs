@@ -623,7 +623,7 @@ pub fn main_window(
     show_raw_nsgt_power: &mut bool,
 ) {
     let ctx = root_ui.ctx().clone();
-    Panel::top("top").show_inside(root_ui, |ui| {
+    Panel::top("top").show(root_ui, |ui| {
         ui.horizontal(|ui| {
             ui.heading("Conchordal");
             ui.separator();
@@ -717,7 +717,7 @@ pub fn main_window(
         }
     });
 
-    CentralPanel::default().show_inside(root_ui, |ui| {
+    CentralPanel::default().show(root_ui, |ui| {
         if let Some(err) = runtime_error {
             ui.colored_label(egui::Color32::RED, err);
         }

@@ -50,8 +50,8 @@ clap = { version = "4.6", features = ["derive"]}
 ctrlc = "3.5"
 
 # GUI
-egui = "0.34"
-egui_plot = "0.35"
+egui = "0.37"
+egui_plot = "0.38"
 
 # Concurrency
 crossbeam-channel = "0.5"
@@ -64,7 +64,7 @@ plotters = { version = "0.3", optional = true, default-features = false, feature
 # Config (TOML)
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip"] }
-sha2 = "0.10"
+sha2 = "0.11"
 toml = "1.1"
 
 
@@ -73,18 +73,18 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 # Audio I/O
-cpal = "0.17"
+cpal = "0.18"
 hound = "3.5"
 
 ringbuf = "0.5"
-rhai = { version = "1.24", features = ["metadata"] }
-wide = { version = "1.4.0", optional = true }
+rhai = { version = "1.27", features = ["metadata"] }
+wide = { version = "1.7.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.34", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-eframe = { version = "0.34", default-features = false, features = ["default_fonts", "glow"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow"] }
 
 [features]
 default = ["simd-wide"]

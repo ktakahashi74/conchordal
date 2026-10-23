@@ -89,7 +89,7 @@ fn choose_f32_config(
             return Some(range.with_sample_rate(rate));
         }
     }
-    (default.sample_format() == cpal::SampleFormat::F32).then(|| default.clone())
+    (default.sample_format() == cpal::SampleFormat::F32).then_some(*default)
 }
 
 fn select_output_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
@@ -105,7 +105,7 @@ fn select_output_config(device: &cpal::Device) -> anyhow::Result<cpal::Supported
         Ok(configs) => choose_f32_config(&default, configs),
         Err(err) => {
             debug!("Could not enumerate supported output configs: {err}");
-            (default.sample_format() == cpal::SampleFormat::F32).then(|| default.clone())
+            (default.sample_format() == cpal::SampleFormat::F32).then_some(default)
         }
     }
     .context("Audio output device has no supported f32 configuration")?;
@@ -202,7 +202,7 @@ impl AudioOutput {
 
         let stream = device
             .build_output_stream(
-                &config,
+                config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     callback_counters
                         .callback_count

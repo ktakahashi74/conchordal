@@ -223,19 +223,20 @@ u ← u* + (u − u*) · exp(−a · dt),  a = 1/τ_r + c/τ_c,  u* = (1/τ_r) /
   Geometry changes discard the old external scan and wait for a valid new scan.
   Reports distinguish current observations, held observations and initial unknown.
 
-**Why it moves.** A bloom depletes its resource and collapses; seeds then establish at
-harmonic positions whose resource is still fresh. In the explored conditions the
-coexistence state does not persist. This is a mechanism for succession, not a proof that
-no static state is stable.
+**Why it moves.** A bloom depletes its resource and collapses; seeds can then establish
+at harmonic positions whose resource is still fresh. Turnover occurs in the finite
+reference and native observations below. This is a mechanism for succession, not a
+proof that no static state is stable.
 
-**Constants and defaults.** All are authored and none is fitted to listeners. They come
-from the reference setting of the reduced model (Dynamics Design Record) and were kept
-unchanged through the closed-loop checks.
+**Constants and defaults.** All are authored and none is fitted to listeners. The
+initial values came from the reduced-model reference setting (Dynamics Design Record).
+On 2026-10-23 the author adopted the establishment study's recommendation to lower the
+fixed Allee density from 0.576 to 0.144 mass per octave; the other constants are retained.
 
 - Rhai: `rate` 4/s (in `[0.05, 8]`), `renewal` (the resource time constant `τ_r`) 10 s
   (in `[0.5, 600]`).
 - Internal: metabolism `k = 0.3`; consumption time `τ_c = 0.3 s`; reference density
-  `c_ref = 10` per octave; Allee half-saturation `v_a = 0.576` per octave; seed rain
+  `c_ref = 10` per octave; Allee half-saturation `v_a = 0.144` mass per octave; seed rain
   `ι = 0.48` and background seed `ι_bg = 9.6·10⁻⁴` per octave per second; initial total
   biomass `v_0 = 0.5`; spread σ = 10 cents/√s, `D = σ²/2` in cents²/s.
 - Units: `v` is mass per bin. `v_a`, `ι`, `ι_bg` and `c_ref` are densities per octave,
@@ -243,6 +244,12 @@ unchanged through the closed-loop checks.
   `(bins_per_oct / 1200)²`.
 - Level scale: `c_ref`, `v_a`, `ι`, `ι_bg` and `v_0` scale together without changing the
   dynamics; scaling `c_ref` alone removes the Allee effect and gives a haze.
+
+The new Allee value is two halvings of the previous 0.576 reference, below the
+0.219–0.252 mass/oct limits diagnosed at two vacant positions with neighbours held
+fixed. It is a coarse authored choice, not an optimum or a uniquely derived auditory
+constant. The local calculation and its limitations are recorded below. Choosing
+0.288 instead of 0.144 remains an audition choice, not an implementation gate.
 
 **Non-negativity.** The substep rule implies `dt · (rate · k + 2D) ≤ 1`, under which `v`
 stays non-negative in exact arithmetic. An implementation may guard f32 rounding with
@@ -709,21 +716,29 @@ release(m);
 
 ## Expected Behaviour (hypotheses to audition)
 
-Measured in the reduced model and in closed loop with the reference implementation
-(Dynamics Design Record, Implementation Findings); still hypotheses for audition:
+The current 0.144 Allee setting has finite T0 measurements in Implementation Findings.
+The historical consumer–resource reference below used 0.576. Its numbers do not
+predict the current setting, and the following sound descriptions remain audition
+hypotheses:
 
-- **Flora around a drone.** The dominant partials keep changing along the drone's
-  harmonic lattice; two to four partials carry most of the power at a time, each for
-  several seconds. After a retune the
-  partials move to the new lattice within about 15 s.
-- **Lone Flora.** The succession continues on Flora's own harmonic relations.
-- **Character.** A slow succession over a few positions rather than a dense texture. Over
-  long runs positions recur in varying order.
-- **Rate.** `rate` sets the tempo of succession; at 2/s it mostly recurs, at 8/s it is
-  fast.
-- **Degenerate regimes** outside the explored parameters: a haze when biomass far
-  exceeds `v_a` (for example `c_ref` scaled alone), a frozen chord when renewal is fast
-  (about 1 s), and calm recurrence in the low register (55–220 Hz).
+- **Flora around a drone.** Vacant-position target mass increases in the measured
+  scenes, but does not become the majority in the long drone: 58.0–64.2% of target
+  mass still lies near its eight partials. Positions near the fifth and above the
+  highest sounding partial can establish. This is not a promise of broad repertoire
+  or tracking within a fixed delay after a retune.
+- **Number and clarity.** The short mature sample17 window has target participation
+  ratio 3.51–4.45; the 90-second drone has 6.55–7.09. These are effective target counts,
+  not a count of clearly heard tones. A few clear positions is an audition hypothesis,
+  especially in the longer scene.
+- **Turnover.** The fixed drone retains distribution changes and lane births and
+  retirements in its final 30 seconds. Its mature-window JS5 is lower than at 0.576;
+  the new setting does not establish uniformly faster succession or perpetual motion.
+- **Lone Flora and rate.** Self-related succession and tempo control by `rate` remain
+  hypotheses for the new setting. Earlier reference runs support them at 0.576; the
+  current establishment comparison did not repeat a lone-Flora or rate sweep.
+- **Degenerate regimes.** Earlier reference ablations produced haze when biomass far
+  exceeded `v_a`, a frozen chord with fast renewal (about 1 s), and calm low-register
+  recurrence. Their boundaries have not been remeasured at 0.144.
 
 ## Tier and Claims
 
@@ -992,6 +1007,53 @@ and are judged by listening together with those records.
 
 ## Implementation Findings
 
+### Lower fixed Allee density, 2026-10-23
+
+The author adopted 0.144 mass/oct as the fixed establishment reference. The native
+comparison used continuous T0 allocation before the metric extension, unchanged
+sample17 and a 90-second 110 Hz drone, seeds 21–23, rate 4/s, renewal 10 s, residual
+sound off, Flora amp .035 and Population amp .05. Config +4.5 dB and scene +7.5 dB
+playback gain were common to all versions. These are retained design observations,
+not a new acquisition with T1 or a listening verdict.
+
+Occupied fraction is the snapshot-mean share of target mass within ±25 cents of the
+eight drone partials. Vacant target and total target are absolute design mass before
+Flora amp, not perceived loudness. PR is inverse target concentration. JS5 is the
+square-root Jensen–Shannon distance (base 2), after 0.25 ERB row-normalized smoothing,
+at a five-second lag. One prescribed snapshot per second is used; lifecycle rows do
+not duplicate it. The mature windows are 22≤t<26 s for sample17 and 22≤t<92 s for the
+drone. The short window cannot supply JS5.
+
+| Scene / seed | Allee mass/oct | Occupied fraction | Vacant target | Total target | PR | JS5 |
+|---|---:|---:|---:|---:|---:|---:|
+| 17 / 21 | .576 | .744376 | .005922 | .023141 | 9.939038 | — |
+| 17 / 21 | .144 | .670503 | .047591 | .143164 | 4.004526 | — |
+| 17 / 22 | .576 | .769634 | .005784 | .025102 | 9.544027 | — |
+| 17 / 22 | .144 | .789110 | .044110 | .206821 | 4.447641 | — |
+| 17 / 23 | .576 | .721149 | .005999 | .021503 | 10.926361 | — |
+| 17 / 23 | .144 | .561748 | .093222 | .213571 | 3.512130 | — |
+| drone / 21 | .576 | .823405 | .007144 | .082155 | 6.032428 | .337192 |
+| drone / 21 | .144 | .589451 | .229287 | .539877 | 6.703420 | .302567 |
+| drone / 22 | .576 | .793823 | .018111 | .092441 | 5.092415 | .360587 |
+| drone / 22 | .144 | .580494 | .239168 | .547551 | 6.552970 | .312159 |
+| drone / 23 | .576 | .827650 | .007254 | .083404 | 5.801425 | .344621 |
+| drone / 23 | .144 | .641829 | .214478 | .555448 | 7.091063 | .295076 |
+
+The lower density recovers target quantity and increases vacant target, without
+uniformly reducing occupied fraction: sample17 seed22 becomes more occupied. Long
+drone PR increases, so fewer simultaneous effective tones is not established there.
+The alternative 0.288 restores the seed21 drone's total target to .409429 with PR
+5.003700, but sample17 vacant target is only .006645 against .005922 at .576. This is
+why 0.144 was recommended first; it does not establish an optimal sound.
+
+In the last 30 seconds (62≤t<92 s), the .144 seed21 drone has vacant target .199395,
+total .488345, PR 6.632030 and JS5 .276040, with seven births and seven retirements.
+The other two seeds also retain distribution changes. The mature-window fifth-region
+target is .1015/.1109/.0975 for seeds 21–23, and target above the highest of the eight
+partials is .1047/.1097/.0974. These finite observations do not prove persistent
+succession, majority-vacant occupation, perceptual clarity or T1 behaviour. The
+reduced model's high-register fraction must not be substituted for these native values.
+
 ### Heard habitat consumption, 2026-10-23
 
 Native T0 renders compared the biomass-only implementation at `05abeb0` with
@@ -999,7 +1061,8 @@ external power consumption, using unchanged sample 17, seeds 21–23, and a 90-s
 110 Hz drone made by extending its first held segment. Reporting-only additions on
 the baseline leave sample17 seed21 WAV bytes identical to the uninstrumented build.
 Both use the default +4.5 dB playback gain and the sample's existing +7.5 dB gain.
-The reference amplitude remains 0.03; seed rain, Allee, rate and renewal are unchanged.
+In this earlier comparison the reference amplitude is 0.03 and seed rain, Allee
+(0.576 mass/oct), rate and renewal are unchanged.
 
 The occupied fraction is the share of Flora target mass within ±25 cents of the
 eight sounding drone partials. The active mature sample17 interval is 22–26 seconds
@@ -1034,7 +1097,8 @@ its absolute vacant target is lower than the baseline. At 80 seconds, the vacant
 1100.75 Hz bin has `v_crit = .00595`, actual biomass `.00104`, and seed supply
 `.00128 mass/bin/s`; at 164.81 Hz these are `.00680`, `.00122`, and `.00170`.
 These are local, instantaneous seed-free threshold diagnostics, not a proof of
-future establishment in the coupled system. No seed or Allee redesign is adopted.
+future establishment in the coupled system. This comparison predates the lower
+fixed Allee density adopted above; it did not itself change seed or Allee rules.
 
 The declared real-time set (top-level samples 01–17 plus sample08 with one Flora)
 completed 59,144 hops at 48 kHz / hop512 in the default release profile: zero deadline
@@ -1261,8 +1325,9 @@ Astra reviews (draft 4 acceptable), was implemented on the reference branch, che
 closed loop (Implementation Findings), and adopted by the author on 2026-10-21; the
 levels are not tuned. On 2026-10-22 the author adopted heard habitat power as an
 additional resource consumer; on 2026-10-23 the fixed 0.03 reference amplitude was
-adopted. The implementation retains biomass consumption and the existing seed,
-Allee, renewal, cell and lane rules. C/H still include self-sound. A listener-side information
+adopted. Later on 2026-10-23 the author adopted a fixed Allee density of 0.144
+mass/oct for establishment, retaining the same law and the existing biomass
+consumption, seed, renewal, cell and lane rules. C/H still include self-sound. A listener-side information
 terrain as the drive did not pass its registered checks (technote ledger §9.3.93).
 
 ### Why the baseline settles
@@ -1284,6 +1349,41 @@ terrain as the drive did not pass its registered checks (technote ledger §9.3.9
 Specified in State and Dynamics, with the rendering change under Rendering (target sum)
 and the contract changes under Coupling Contract items 2–4.
 
+### Local establishment barrier with seed and diffusion
+
+For one interior bin, hold the terrain, resource and neighbouring biomass fixed.
+Let `r = rate`, `q = g u`, `a = v_a / bins_per_oct`, and
+`s = u (ι_bg + ι H01) / bins_per_oct`. Splitting diffusion into inflow and outflow gives
+
+```text
+dv/dt = r v [q v/(v+a) − m] + S
+m = k + 2D/r
+S = s + D(v_left + v_right)
+S_crit = r a (sqrt(q) − sqrt(q−m))²,  q > m
+```
+
+`S_crit` is the maximum net loss along this fixed local curve. If `S > S_crit`, its
+low-biomass establishment barrier disappears; equality leaves a tangent equilibrium.
+For `q ≤ m` there is no high-biomass growth branch of this form, so the formula is not
+extrapolated there. Reflecting ends change the outflow count. In the coupled system
+`u`, `g` and neighbouring biomass evolve, so this is not a general establishment or
+stability guarantee.
+
+At 80 s in the seed21 native drone with external consumption and the old .576 density,
+`r = 4/s`, `D = .32 bins²/s`, `k = .3`, hence `m = .46`. The diagnostics are:
+
+| Vacant position Hz | q | Seed mass/bin/s | Diffusive inflow | Barrier without spread | Barrier with fixed neighbours | Limiting Allee mass/oct |
+|---|---:|---:|---:|---:|---:|---:|
+| 164.81 | .564542 | .001702 | .000221 | .001348 | .004397 | .251840 |
+| 1100.75 | .602505 | .001282 | .000170 | .001228 | .003815 | .219104 |
+
+Seed alone exceeds the no-spread barrier, but seed plus inflow stays below the barrier
+including diffusive outflow. The last column is
+`bins_per_oct S / [r (sqrt(q) − sqrt(q−m))²]`. A half step to .288 remains above both
+limits; the second halving to .144 is below them. These two sampled local conditions
+motivate the coarse comparison, not a unique or optimal value. The authored rate,
+renewal and seed law were not changed, and no position-dependent compensation was added.
+
 ### Evidence from a reduced closed-loop model
 
 [`flora-reduced-model/`](flora-reduced-model/README.md) ports the harmonicity and
@@ -1300,7 +1400,7 @@ drone's lattice and a JS distance of 0.02 between states 5 s apart. Unlike the r
 it partly follows a retune (0.82 of the rendered power on the new lattice from 15 s
 after the move), so the model is less sticky than the full renderer.
 
-**Reference setting.** `rate = 4/s`, `τ_r = 10 s`, `τ_c = 0.3 s`, `k = 0.3`,
+**Historical 2026-10-21 reference setting** (before the .144 adoption). `rate = 4/s`, `τ_r = 10 s`, `τ_c = 0.3 s`, `k = 0.3`,
 `c_ref = 10`, `v_a = 0.576`, `ι = 0.48/s`, `ι_bg = 9.6·10⁻⁴/s` (per octave),
 `v_0 = 0.5`.
 
@@ -1419,9 +1519,13 @@ nominal target-amplitude scale; the ignored alternation test was replaced by the
 2. **Residual default resolved by author audition, 2026-10-22:** off, with
    `.residual(true)` retained for explicit use and the residual-on assays. A separate
    treatment of diffuse biomass remains unadopted.
-3. The repertoire. In the reference the long-run succession narrows to the drone's lower
-   harmonics. Widening it (for example through the weighting of `H01` in the seed rain)
-   is an authored choice to audition.
+3. **Establishment recommendation adopted, 2026-10-23.** D1 lowers the fixed Allee
+   density rather than changing seed rain. D2 selects 0.144 mass/oct, two halvings of
+   .576 and below the two local .219–.252 diagnostics. The implemented reference is
+   .144; choosing .288 instead remains an author audition choice. This is not an
+   optimum claim. Occupied-position bias, long-scene polyphony and perceived clarity
+   remain sound-design questions; the finite improvement is not a new acceptance
+   requirement for perpetual succession or a reason to expose an internal knob.
 4. The defaults, by audition after implementation.
 5. **Temporal participation implemented:** T1 is opt-in through `flora().metric()`;
    T0 remains the default. See Rendering for the acoustic-only observation, bounded

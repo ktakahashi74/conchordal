@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Flora lowers its fixed Allee half-saturation density from 0.576 to 0.144 mass
+  per octave, reducing the growth barrier for small biomass. Seed rain, rate,
+  renewal and metric lane scheduling retain their existing rules.
+
 - Flora now supports opt-in `metric()` lane opportunities (T1), using a shared
   habitat audio-only meter and private CouplingClocks. Births and replacements
   apply at sample crossings; pending windows reserve current excess once, while

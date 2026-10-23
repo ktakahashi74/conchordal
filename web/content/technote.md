@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "b59a830"
+source_commit = "395628d"
 author = "Koichi Takahashi"
-last_updated = "2026-10-22"
+last_updated = "2026-10-23"
 source_version = "0.5.0"
-source_snapshot = "b59a830"
-revision_scope = "PCM self-removal for pitch and environment evaluation (2026-10-22)"
+source_snapshot = "395628d"
+revision_scope = "Flora fixed Allee density of 0.144 mass/oct (2026-10-23)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -845,6 +845,8 @@ habituation, which Flora's habitat audio still drives. Coupling between Flora an
 Population passes only through their radiated sound and the resulting Landscape.
 
 Local consumer–resource rules govern growth, spread, consumption and recovery.
+The Allee half-saturation density is fixed at 0.144 mass per octave and converted
+to mass per bin on the Log2Space grid.
 Each Flora's resource is consumed by its latent biomass and by other habitat
 sound. Its actual habitat PCM is removed before external power is measured;
 its base consonance and harmonicity still include self-sound. The acoustic

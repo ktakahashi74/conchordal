@@ -409,8 +409,8 @@ struct FloraLaneTimingReport {
 
 impl Flora {
     #[cfg(test)]
-    pub(crate) fn aud_m1_cell_signs(landscape: &Landscape) -> Vec<Vec<i8>> {
-        let mut result = Vec::new();
+    pub(crate) fn aud_m1_start_window(landscape: &Landscape) -> Vec<Self> {
+        let mut states = Vec::new();
         for density in [0.02, 0.144, 1.0] {
             for resource in [0.5, 1.0] {
                 let mut flora = Self::new(
@@ -427,27 +427,44 @@ impl Flora {
                     .biomass_mass_scan
                     .fill(density / landscape.space.bins_per_oct as f32);
                 flora.resource_state_scan.fill(resource);
-                let before = flora.biomass_mass_scan.clone();
-                flora.advance(landscape);
-                result.push(
-                    flora
-                        .biomass_mass_scan
-                        .iter()
-                        .zip(before)
-                        .map(|(&v, old)| {
-                            if v > old {
-                                1
-                            } else if v < old {
-                                -1
-                            } else {
-                                0
-                            }
-                        })
-                        .collect(),
-                );
+                states.push(flora);
             }
         }
-        result
+        states
+    }
+
+    #[cfg(test)]
+    pub(crate) fn aud_m1_window_signs(states: &[Self]) -> Vec<Vec<i8>> {
+        assert_eq!(states.len(), 6);
+        states
+            .iter()
+            .enumerate()
+            .map(|(i, flora)| {
+                let before = [0.02, 0.144, 1.0][i / 2] / flora.space.bins_per_oct as f32;
+                flora
+                    .biomass_mass_scan
+                    .iter()
+                    .map(|&v| {
+                        if v > before {
+                            1
+                        } else if v < before {
+                            -1
+                        } else {
+                            0
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn aud_m1_cell_signs(landscape: &Landscape) -> Vec<Vec<i8>> {
+        let mut states = Self::aud_m1_start_window(landscape);
+        for flora in &mut states {
+            flora.advance(landscape);
+        }
+        Self::aud_m1_window_signs(&states)
     }
 
     #[allow(clippy::too_many_arguments)]

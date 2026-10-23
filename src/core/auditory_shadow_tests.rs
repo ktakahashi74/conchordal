@@ -949,3 +949,6 @@ fn endpoint_fade_preserves_deposited_mass() {
         assert!(front.density_scan.iter().all(|&x| x == 0.0));
     }
 }
+
+#[path = "auditory_window_assay.rs"]
+mod a4;

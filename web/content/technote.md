@@ -860,6 +860,15 @@ Placement, updates, release and bus routing are available through the Experiment
 Rhai surface; sample `17_flora.rhai` combines Flora with a
 retuned Population.
 
+`flora().metric()` optionally schedules tonal births and ordinary replacements
+at private CouplingClock crossings. A shared habitat audio-only meter uses the
+selected recurrence path and enculturation priors, without internal onset commands.
+Biomass and resources remain continuous. Waiting lanes reserve only current excess
+in their last window; unsupported tones, separation conflicts and release retire
+immediately. Transitions occur inside the hop at sample ticks and retain the
+existing slew. Unconfirmed or unavailable observations fall back to continuous
+allocation; T0 remains the default.
+
 These dynamics belong to the authored-rule tier. Their use of an auditory landscape
 does not make the growth or succession rules a model grounded in auditory cognition.
 The API stability tier, Experimental, is independent of that classification.

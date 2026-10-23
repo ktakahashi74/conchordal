@@ -2,13 +2,20 @@
 
 ## Unreleased
 
+- Flora now supports opt-in `metric()` lane opportunities (T1), using a shared
+  habitat audio-only meter and private CouplingClocks. Births and replacements
+  apply at sample crossings; pending windows reserve current excess once, while
+  unsupported tones, separation conflicts and release retire immediately.
+  Unknown beat observations use continuous allocation. Default T0, biomass,
+  resources, seed and Allee dynamics remain unchanged.
+
 - Flora resources now consume other habitat sound as well as their own latent
   biomass. Each instance subtracts its actual habitat PCM before power analysis;
   base C/H still include self-sound. Power uses a fixed nominal sine reference
   of 0.03, with Parseval-normalized NSGT support weights and existing band
   integration. Unknown windows retain resource state or timestamped consumption.
   Resource and lane telemetry expose depletion and lifecycle changes. Temporal
-  participation remains uncoupled; no seed, Allee or timing constants change.
+  participation defaults to uncoupled T0; no seed or Allee constants change.
 
 - Bundled samples set per-scene playback gain with `output_gain(...)`, measured
   across seeds 21–23 at the default +4.5 dB config gain. Values move average

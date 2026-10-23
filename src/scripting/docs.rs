@@ -369,6 +369,16 @@ pub const FN_DOCS: &[FnDoc] = &[
         details: "Other strings raise script errors.",
     },
     FnDoc {
+        name: "metric",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["metric()"],
+        summary: "Opt into beat opportunities for tonal lane births and replacements.",
+        details: "Default Flora is continuous (T0). Like Population metric(), this uses a private confidence-weighted CouplingClock (0.95), starting at the tempo-basin center or 2 Hz. Flora listens to a shared habitat audio-only meter, without internal onset commands. Unconfirmed or unavailable observations use continuous allocation. Biomass and resources remain continuous; unsupported windows, range changes, release and separation conflicts do not wait for a beat. Pending windows reserve only current excess mass; changes occur at sample crossings, followed by existing slews.",
+    },
+    FnDoc {
         name: "residual",
         owner: Owner::Flora,
         category: "flora",

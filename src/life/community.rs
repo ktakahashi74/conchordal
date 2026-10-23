@@ -374,6 +374,11 @@ impl Community {
     /// (the seed of an emergent measure), not just an onset count. This is the
     /// meter's motor-side input beside habitat flux; presentation-only decor stays
     /// outside it. Strength is the commanded accent, not the rendered level.
+    #[cfg(test)]
+    pub(crate) fn set_test_habitat_onset_strength(&mut self, strength: f32) {
+        self.last_habitat_onset_strength_in_hop = Some(strength);
+    }
+
     pub fn last_habitat_onset_strength_in_hop(&self) -> Option<f32> {
         self.last_habitat_onset_strength_in_hop
     }

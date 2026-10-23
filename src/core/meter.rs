@@ -446,7 +446,7 @@ impl MeterNetwork {
             _ => None,
         }
     }
-    fn process_evidence(&mut self, dt: f32, drive: Option<f32>) -> MeterState {
+    pub(crate) fn process_evidence(&mut self, dt: f32, drive: Option<f32>) -> MeterState {
         let preference_weight = self.shaping.stability.clamp(0.0, 1.0);
         let dt = dt.max(MIN_STEP_SEC);
         let drive_known = drive.is_some();

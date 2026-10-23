@@ -92,6 +92,7 @@ pub(super) const COUPLING_PULL_K: f32 = 1.0;
 /// crossings of the oscillator phase; a phase pull toward the meter beat phase
 /// drags those crossings into a common alignment, so independently placed
 /// voices synchronize without any externally imposed grid.
+#[derive(Clone, Debug)]
 pub struct CouplingClock {
     pub(crate) shape: Option<crate::life::shape_policy::ShapePolicy>,
     pub(super) coupling: f32,
@@ -113,7 +114,7 @@ pub struct CouplingClock {
 }
 
 impl CouplingClock {
-    pub(super) fn new(
+    pub(crate) fn new(
         coupling: f32,
         base_rate_hz: f32,
         flow_depth: f32,
@@ -153,6 +154,10 @@ impl CouplingClock {
         }
     }
 
+    pub(crate) fn phase_cycles(&self) -> f64 {
+        self.phase
+    }
+
     pub(super) fn nominal_period_ticks(&self, fs: f32) -> Option<f64> {
         if fs.is_finite() && fs > 0.0 {
             Some((fs as f64 / self.last_f_eff_hz.max(0.01) as f64).max(1.0))
@@ -161,15 +166,15 @@ impl CouplingClock {
         }
     }
 
-    pub(super) fn velocity(&self, ctx: &CoreTickCtx) -> (f32, f32, f32) {
-        let conf = ctx.rhythms.delta.alpha.clamp(0.0, 1.0);
+    fn velocity_from_rhythms(&self, rhythms: &NeuralRhythms) -> (f32, f32, f32) {
+        let conf = rhythms.delta.alpha.clamp(0.0, 1.0);
         let lock = (self.coupling * conf).clamp(0.0, 1.0);
         let f_band = {
-            let f = ctx.rhythms.delta.freq_hz;
+            let f = rhythms.delta.freq_hz;
             if f.is_finite() && f > 0.0 { f } else { 2.0 }
         };
         // Meter beat phase in cycles, [0,1); microtiming offsets the lock target.
-        let target_frac = ((ctx.rhythms.delta.phase / TAU) + self.microtiming).rem_euclid(1.0);
+        let target_frac = ((rhythms.delta.phase / TAU) + self.microtiming).rem_euclid(1.0);
 
         let f_intrinsic = self.intrinsic_rate_hz.max(0.01);
         let mut f_eff = (1.0 - lock) * f_intrinsic + lock * f_band;
@@ -194,12 +199,23 @@ impl CouplingClock {
         ctx: &CoreTickCtx,
         out: &mut Vec<CandidatePoint>,
     ) {
-        let fs = ctx.fs;
-        if !fs.is_finite() || fs <= 0.0 || ctx.frame_end <= ctx.now_tick {
+        self.gather_rhythm(ctx.fs, ctx.now_tick, ctx.frame_end, &ctx.rhythms, out);
+    }
+
+    pub(crate) fn gather_rhythm(
+        &mut self,
+        fs: f32,
+        now_tick: Tick,
+        frame_end: Tick,
+        rhythms: &NeuralRhythms,
+        out: &mut Vec<CandidatePoint>,
+    ) {
+        if !fs.is_finite() || fs <= 0.0 || frame_end <= now_tick {
             return;
         }
-        let frame_end = ctx.frame_end as f64;
-        let mut cursor = ctx.now_tick as f64;
+        let end_tick = frame_end;
+        let frame_end = frame_end as f64;
+        let mut cursor = now_tick as f64;
         // Defensive bound on in-hop crossings (degenerate rates only).
         let mut guard = 0u32;
         loop {
@@ -207,7 +223,7 @@ impl CouplingClock {
             if guard > 100_000 {
                 break;
             }
-            let (f_eff, phase_dot, my_frac) = self.velocity(ctx);
+            let (f_eff, phase_dot, my_frac) = self.velocity_from_rhythms(rhythms);
             self.last_f_eff_hz = f_eff;
 
             // Cycles to the next integer crossing (a full cycle when on a beat).
@@ -227,7 +243,7 @@ impl CouplingClock {
             // Land exactly on the integer to stop floating drift accumulating.
             self.phase = self.phase.round();
 
-            let tick = (cross_tick.round() as Tick).clamp(ctx.now_tick, ctx.frame_end - 1);
+            let tick = (cross_tick.round() as Tick).clamp(now_tick, end_tick - 1);
             if self.has_gate {
                 self.gate_index = self.gate_index.saturating_add(1);
             } else {
@@ -423,7 +439,7 @@ impl PhonationClock {
         let (at, basis) = match self {
             Self::Participation(clock) => return clock.policy.as_ref()?.opportunity(ctx.now_tick),
             Self::Coupling(clock) => {
-                let (_, phase_dot, my_frac) = clock.velocity(ctx);
+                let (_, phase_dot, my_frac) = clock.velocity_from_rhythms(&ctx.rhythms);
                 let crossing =
                     ctx.now_tick as f64 + (1.0 - my_frac as f64) / phase_dot as f64 * ctx.fs as f64;
                 if !crossing.is_finite() || crossing.round() >= Tick::MAX as f64 {

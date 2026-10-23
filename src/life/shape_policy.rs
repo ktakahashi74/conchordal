@@ -6,7 +6,7 @@ pub(crate) enum Shape {
     Connect,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ShapePolicy {
     pub(crate) enabled: bool,
     pub(crate) retention_active: bool,
@@ -112,7 +112,7 @@ impl ShapePolicy {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct TiePolicy {
     pub(crate) enabled: bool,
     pub(crate) pending_pitch: bool,

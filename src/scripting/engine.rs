@@ -123,6 +123,10 @@ impl ScriptHost {
                 Ok(spec)
             },
         );
+        engine.register_fn("metric", |mut spec: FloraSpecHandle| {
+            spec.spec.metric = true;
+            spec
+        });
         engine.register_fn("residual", |mut spec: FloraSpecHandle, enabled: bool| {
             spec.spec.residual = enabled;
             spec

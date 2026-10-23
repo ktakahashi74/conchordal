@@ -821,3 +821,158 @@ wait(0.03);
         "both sides of the patch must be checked"
     );
 }
+
+#[test]
+fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
+    for continuous in [false, true] {
+        let fs = 48_000.0;
+        let hop = 512;
+        let timebase = Timebase { fs, hop };
+        let cfg = WorkerConfig {
+            loo_populations: Vec::new(),
+            render_prototype: false,
+            temporal_meter_t2: continuous,
+            onset_comparison: None,
+            scenario_name: "clock regression".into(),
+            wait_user_exit: false,
+            start_flag: Arc::new(AtomicBool::new(true)),
+            exiting: Arc::new(AtomicBool::new(false)),
+            scaffold: Default::default(),
+            meter_shaping: Default::default(),
+            guard_meter: None,
+            underrun_frames: None,
+            audio_counters: None,
+            dcc_coupler: DccCoupler::new(Default::default()),
+            hop,
+            hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
+            fs,
+            deterministic_analysis: true,
+            deterministic_footprints: true,
+        };
+        let scenario = crate::scenario::Scenario {
+            temporal_mode: crate::scenario::TemporalMode::Off,
+            seed: 1,
+            output_gain_db: 0.0,
+            output_gain_position: None,
+            control_update_mode: Default::default(),
+            scaffold: Default::default(),
+            meter_shaping: Default::default(),
+            scene_markers: Vec::new(),
+            events: vec![crate::scenario::TimedEvent {
+                time: 605.0,
+                order: 0,
+                actions: vec![Action::Finish],
+            }],
+            duration_sec: 605.0,
+        };
+        let space = Log2Space::new(200.0, 4_000.0, 12);
+        let state = WorkerState::new(
+            Community::new(timebase),
+            Conductor::from_scenario(scenario),
+            Landscape::new(space.clone()),
+            build_test_params(&space),
+            DorsalStream::new(fs),
+            None,
+            &cfg,
+        );
+
+        let make_channels = |inbox| WorkerChannels {
+            t2_inbox: inbox,
+            temporal_snapshots: [None, None],
+            ui_tx: None,
+            audio_prod: None,
+            wav_tx: None,
+            audio_to_analysis_tx: None,
+            analysis_result_rx: bounded(1).1,
+            analysis_update_tx: bounded(1).0,
+            presentation_to_listener_tx: None,
+            listener_result_rx: None,
+            listener_analysis_update_tx: None,
+        };
+        let scenario = crate::scenario::Scenario {
+            temporal_mode: crate::scenario::TemporalMode::Off,
+            seed: 1,
+            output_gain_db: 0.0,
+            output_gain_position: None,
+            control_update_mode: Default::default(),
+            scaffold: Default::default(),
+            meter_shaping: Default::default(),
+            scene_markers: Vec::new(),
+            events: vec![crate::scenario::TimedEvent {
+                time: 605.0,
+                order: 0,
+                actions: vec![Action::Finish],
+            }],
+            duration_sec: 605.0,
+        };
+        let mut control = WorkerState::new(
+            Community::new(timebase),
+            Conductor::from_scenario(scenario),
+            Landscape::new(space.clone()),
+            build_test_params(&space),
+            DorsalStream::new(fs),
+            None,
+            &cfg,
+        );
+        let mut changed = state;
+        let (output_a, inbox_a) = crate::temporal_cognition::t2::runtime_input::channel(48000, 512);
+        let (output_b, inbox_b) = crate::temporal_cognition::t2::runtime_input::channel(48000, 512);
+        let mut input_a = crate::temporal_cognition::t2::runtime_input::Input::new(
+            48000,
+            512,
+            continuous.then_some(output_a),
+        )
+        .unwrap();
+        let mut input_b = crate::temporal_cognition::t2::runtime_input::Input::new(
+            48000,
+            512,
+            continuous.then_some(output_b),
+        )
+        .unwrap();
+        let mut a = make_channels(continuous.then_some(inbox_a));
+        let mut b = make_channels(continuous.then_some(inbox_b));
+        let mut pcm = [0.; 512];
+        let mut production_differs = false;
+        let mut confirmed = false;
+        for frame in 0..1000 {
+            for (i, x) in pcm.iter_mut().enumerate() {
+                let sample = frame * 512 + i as u64;
+                let beat = sample % 24000;
+                *x = if beat < 2400 {
+                    0.15 * (-(beat as f32) / 700.).exp()
+                        * (sample as f32 * std::f32::consts::TAU * 440. / 48000.).sin()
+                } else {
+                    0.
+                };
+            }
+            if continuous {
+                input_a.observe(frame, &pcm);
+                input_b.observe(frame, &pcm);
+            }
+            control.frame_idx = frame;
+            changed.frame_idx = frame;
+            control.pop.set_test_habitat_onset_strength(0.);
+            changed
+                .pop
+                .set_test_habitat_onset_strength(if frame % 17 == 0 { 4. } else { 0. });
+            drive_production_meter(&mut control, &cfg, &mut a, &pcm);
+            drive_production_meter(&mut changed, &cfg, &mut b, &pcm);
+            assert_eq!(
+                serde_json::to_value(control.flora_rhythm).unwrap(),
+                serde_json::to_value(changed.flora_rhythm).unwrap()
+            );
+            assert_eq!(control.flora_rhythm.observed_end, Some((frame + 1) * 512));
+            production_differs |= control.current_landscape.rhythm.delta.alpha.to_bits()
+                != changed.current_landscape.rhythm.delta.alpha.to_bits();
+            confirmed |= control.flora_rhythm.state.beat.confidence > 0.;
+        }
+        assert!(
+            production_differs,
+            "the command intervention must affect its real consumer"
+        );
+        assert!(
+            confirmed,
+            "the acoustic input must produce supported opportunities"
+        );
+    }
+}

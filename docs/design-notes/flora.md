@@ -1,6 +1,6 @@
 # Flora: a Field-Form Inhabitant
 
-Status: implemented (main), 2026-10-22. The adopted design is draft 14: the rendering
+Status: implemented, including opt-in T1, 2026-10-23. The adopted design is draft 14: the rendering
 of draft 12 and the consumer–resource dynamics of State and Dynamics. Current paths
 and the historical branch are listed in [Reference Implementation](#reference-implementation).
 The DCC route for the drive of temporal evolution, a listener-side information terrain,
@@ -402,7 +402,7 @@ patches with a linear 80 ms ramp, and `fade_gain` is the placement and release r
 - a relative amplitude `r`, its target `r*`, and its power `q = r²`;
 - a mode: free, current or retiring.
 
-**Tonal update.** Once per hop, after the decomposition, over the whole pool in fixed
+**Tonal update (default T0).** Once per hop, after the decomposition, over the whole pool in fixed
 stages:
 
 1. **Track.** Current lanes, in descending previous `r*` (ties to the lower lane
@@ -456,6 +456,43 @@ summed amplitude during transitions is needed. Each lane's own ramp is the guara
 **Ramps per sample.** As in draft 6, every ramp is evaluated at each sample time with
 its end values pinned, and the output is their product: the lane slew, `amp_s`'s 80 ms
 ramp and `fade_gain`.
+
+### Opt-in metric allocation (T1)
+
+`flora().metric()` is implemented. T0 remains the default. The shared habitat
+acoustic MeterNetwork receives flux and the selected event/continuous recurrence
+path with the scene's enculturation priors. It receives neither internal Voice
+onset commands nor Flora allocation commands. Each Flora owns only its private
+CouplingClock, using the Population metric rule (0.95 attraction, independent
+phase, tempo-basin center or 2 Hz initial rate). The meter observation is frozen
+at the hop start; its audio interval ends at that start. Positive beat confidence
+is the existing model's confirmation signal, not a new confidence threshold.
+Unknown, stale or unconfirmed observations use T0 allocation.
+
+Biomass and resource integration remain continuous. Between crossings, current
+lanes track nearby supported candidates. Ordinary replacement retirement becomes
+pending; each such lane retains its last tonal window and targets only that
+window's current excess. One bounded pending birth slot per cell records the
+candidate bin and first waiting tick, revalidated every hop. A changed/disappeared
+candidate is dropped. A lane's generation identifies each reuse of its slot.
+
+Reservations are a union of the current tonal windows: each bin's excess belongs
+to at most one tone, and is subtracted from the residual once. Empty windows,
+out-of-range support, release and minimum-separation conflicts force immediate
+retirement through the existing slew. At a local crossing, decomposition and
+allocation are reevaluated in existing W order, tie breaks and pool capacity.
+Born/current/pending/retiring describe lifecycle and waiting status; pending
+retirement remains a sounding current lane until the opportunity or support loss.
+The render loop applies the transition at its sample tick, including births
+inside the hop. Retirement reaches zero within the existing 80 ms bound.
+Fallback discards queued candidates and reevaluates current biomass without
+resetting the clock or replaying the queue. Actual envelopes may change before a
+crossing as support falls, and slew delays acoustic onset detection.
+
+Flora reports include the acoustic observation end tick, flux, full meter support,
+active/fallback state, local phase, bounded pending slots, drops, and transition
+ticks, generations, waiting samples and forced reasons. Reporting allocation is
+outside the allocation-free renderer contract.
 
 ### Atoms: one kernel
 
@@ -713,7 +750,10 @@ describe Flora's behaviour as grounded in auditory cognition.
   expected-free-energy composite). Examined under the mechanism-selection rule and not
   adopted (technote ledger §9.3.93).
 
-## Out of Scope for v1
+## Original v1 exclusions
+
+The T1 extension above implements beat opportunities for tonal allocation. The
+following list records the original v1 scope; phrase prediction remains excluded.
 
 - **Onsets or pulses** (temporal attacks), and any coupling to the production meter,
   arrival hazard or participation. The boom-and-bust of the dynamics is spectral, not an
@@ -729,6 +769,16 @@ describe Flora's behaviour as grounded in auditory cognition.
 - **Temporal DCC acceptance.** No change to the acceptance steps or their material.
 
 ## Tests
+
+T1 adds a saved candidate/rhythm replay against T0, sample-interior birth and
+expired-candidate tests, retained-window mass accounting, unknown fallback and
+clock continuity, and zero-allocation turnover for both atoms. Runtime tests feed
+identical PCM with different internal onset commands through both recurrence
+paths and compare the acoustic meter exactly. Closed-loop silence, drone,
+ordinary multi-Voice and explicit synchronization scenes compare transition
+phase, waits/drops/forced retirements and PCM envelopes without treating phase
+concentration as musical value. Non-opt-in output retains the F-10 WAV control.
+
 
 Unit and integration tests assert. Assays render offline, record their measurements,
 and are judged by listening together with those records.
@@ -1370,9 +1420,9 @@ nominal target-amplitude scale; the ignored alternation test was replaced by the
    harmonics. Widening it (for example through the weighting of `H01` in the seed rain)
    is an authored choice to audition.
 4. The defaults, by audition after implementation.
-5. **Temporal participation adopted, implementation pending:** T1 will be opt-in;
-   T0 remains the default and the current implementation. This resource change
-   adds no beat gate or temporal participation mechanism.
+5. **Temporal participation implemented:** T1 is opt-in through `flora().metric()`;
+   T0 remains the default. See Rendering for the acoustic-only observation, bounded
+   pending state, sample crossings and immediate support-loss exceptions.
 
 The proposal went through four independent Astra reviews (drafts 1–3 conditionally
 acceptable, draft 4 acceptable as a proposal, with the checks before adoption still open;

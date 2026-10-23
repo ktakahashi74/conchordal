@@ -13,6 +13,11 @@ use crate::scenario::{FloraPatch, FloraSeeding, FloraSpec, FloraTone};
 #[cfg(feature = "simd-wide")]
 use wide::f32x8;
 
+#[path = "flora_metric.rs"]
+mod metric;
+use metric::MetricState;
+pub(crate) use metric::TemporalObservation;
+
 struct ErbCell {
     lo_erb: f32,
     hi_erb: f32,
@@ -169,6 +174,10 @@ struct Lane {
     target: f32,
     power_sum: f32,
     age_samples: usize,
+    generation: u64,
+    window: Range<usize>,
+    pending_since: Option<u64>,
+    forced_reason: Option<&'static str>,
     slew_target: f32,
     slew_left: usize,
     z: [f32; 2],
@@ -194,6 +203,10 @@ impl Lane {
             target: 0.0,
             power_sum: 0.0,
             age_samples: 0,
+            generation: 0,
+            window: 0..0,
+            pending_since: None,
+            forced_reason: None,
             slew_target: 0.0,
             slew_left: 0,
             z: [1.0, 0.0],
@@ -289,6 +302,8 @@ struct Cell {
 pub(crate) struct Flora {
     pub(crate) id: u64,
     spec: FloraSpec,
+    temporal: Option<MetricState>,
+    acoustic_observation: TemporalObservation,
     extent_hz: (f32, f32),
     space: Log2Space,
     range: Range<usize>,
@@ -328,6 +343,9 @@ pub(crate) struct Flora {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct FloraReport<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temporal: Option<&'a MetricState>,
+    acoustic_observation: &'a TemporalObservation,
     time_sec: f64,
     age_sec: f64,
     flora_id: u64,
@@ -359,6 +377,9 @@ struct FloraLaneReport {
     state: &'static str,
     frequency_hz: f32,
     target_mass: f32,
+    generation: u64,
+    pending_since: Option<u64>,
+    forced_reason: Option<&'static str>,
     age_sec: f64,
 }
 
@@ -384,6 +405,10 @@ impl Flora {
         let mut flora = Self {
             id,
             spec,
+            acoustic_observation: TemporalObservation::default(),
+            temporal: spec
+                .metric
+                .then(|| MetricState::new(scenario_seed ^ id, fs, hop)),
             extent_hz,
             space: landscape.space.clone(),
             range: 0..0,
@@ -477,7 +502,7 @@ impl Flora {
         if !self.releasing {
             self.releasing = true;
             self.gain.to(0.0, fade_sec, self.fs);
-            if self.gain.value == 0.0 {
+            if self.temporal.is_none() && self.gain.value == 0.0 {
                 for lane in &mut self.lanes {
                     lane.mode = Mode::Free;
                     lane.r = 0.0;
@@ -613,6 +638,13 @@ impl Flora {
             if lane.noisy {
                 lane.noise_index = self.noisy_len;
                 self.noisy_len += 1;
+            }
+        }
+        if let Some(temporal) = &mut self.temporal {
+            temporal.resize(self.cells.len(), self.lanes.len(), space.n_bins());
+            for lane in &mut self.lanes {
+                lane.window = 0..0;
+                lane.pending_since = None;
             }
         }
         self.order = Vec::with_capacity(self.lanes.len());
@@ -963,6 +995,7 @@ impl Flora {
             if lane.noisy {
                 lane.e = noise_draw(&mut self.rng);
             }
+            lane.generation = self.births + 1;
             self.lanes[i] = lane;
             self.births += 1;
             self.cells[c].peak.as_mut().unwrap().claimed = Some(i);
@@ -973,6 +1006,8 @@ impl Flora {
                 lane.target = peak.mass.sqrt();
                 lane.target_position = peak.position;
                 lane.sigma = peak.sigma;
+                lane.window = peak.window.clone();
+                lane.pending_since = None;
             }
         }
     }
@@ -1027,7 +1062,9 @@ impl Flora {
         );
         assert_eq!(presentation.len(), self.hop);
         assert_eq!(habitat.len(), self.hop);
-        if !(self.range.is_empty() || self.releasing && self.gain.value == 0.0) {
+        if self.temporal.is_some() {
+            self.metric_allocate(false, 0);
+        } else if !(self.range.is_empty() || self.releasing && self.gain.value == 0.0) {
             self.decompose();
             self.update_tones();
             self.residual_targets();
@@ -1055,6 +1092,28 @@ impl Flora {
         }
         self.habitat_pcm.fill(0.0);
         for t in 0..self.hop {
+            if self
+                .temporal
+                .as_ref()
+                .is_some_and(|m| m.active && m.crossings.iter().any(|c| c.tick == m.now + t as u64))
+                && !self.releasing
+                && !self.range.is_empty()
+            {
+                self.metric_allocate(true, t);
+                for lane in &mut self.lanes {
+                    if lane.noisy && lane.mode == Mode::Current {
+                        let f = lane.target_position.exp2();
+                        let b = if lane.tonal {
+                            (f * ((lane.sigma / self.space.bins_per_oct as f32).exp2() - 1.0))
+                                .clamp(0.5, 0.5 * erb_bw_hz(f))
+                        } else {
+                            erb_bw_hz(f)
+                        };
+                        lane.a = (-PI * b / self.fs).exp();
+                        lane.b = (1.0 - lane.a * lane.a).sqrt();
+                    }
+                }
+            }
             let amp = self.amp.tick() * self.gain.tick();
             let amp = if self.range.is_empty() { 0.0 } else { amp };
             for lane in &mut self.lanes {
@@ -1066,8 +1125,11 @@ impl Flora {
                 } else {
                     lane.slew(self.fs);
                 }
+                if self.temporal.is_some() && lane.mode != Mode::Free {
+                    lane.age_samples += 1;
+                }
                 lane.power_sum += (amp * lane.r).powi(2);
-                if t % 64 == 0 {
+                if t % 64 == 0 || (self.temporal.is_some() && lane.age_samples == 1) {
                     let log2 = lane.position
                         + (lane.target_position - lane.position) * (t + 1) as f32 / self.hop as f32;
                     let (sin, cos) = (TAU * log2.exp2() / self.fs).sin_cos();
@@ -1086,7 +1148,7 @@ impl Flora {
         }
         for lane in &mut self.lanes {
             lane.position = lane.target_position;
-            if lane.mode != Mode::Free {
+            if self.temporal.is_none() && lane.mode != Mode::Free {
                 lane.age_samples += self.hop;
             }
             self.energy[usize::from(!lane.tonal)] += lane.power_sum as f64 / self.fs as f64;
@@ -1119,6 +1181,8 @@ impl Flora {
         self.space
             .assert_scan_len_named(&landscape.harmonicity01, "harmonicity_state_scan");
         FloraReport {
+            temporal: self.temporal.as_ref(),
+            acoustic_observation: &self.acoustic_observation,
             growth_level_scan: &landscape.consonance_field_level,
             harmonicity_state_scan: &landscape.harmonicity01,
             target_partials: self
@@ -1141,6 +1205,9 @@ impl Flora {
                     },
                     frequency_hz: l.position.exp2(),
                     target_mass: l.target.powi(2),
+                    generation: l.generation,
+                    pending_since: l.pending_since,
+                    forced_reason: l.forced_reason,
                     age_sec: l.age_samples as f64 / self.fs as f64,
                 })
                 .collect(),
@@ -1254,6 +1321,7 @@ mod tests {
             fade_sec: 0.0,
             tone: FloraTone::Sine,
             residual: true,
+            metric: false,
             routing: Routing::default(),
         }
     }

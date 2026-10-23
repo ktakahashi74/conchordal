@@ -884,6 +884,7 @@ fn flora_ownership_cases(supported: bool) {
             fade_sec: 0.,
             tone,
             residual,
+            metric: false,
             routing: Routing {
                 to_habitat: habitat,
                 to_presentation: !habitat,

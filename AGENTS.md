@@ -399,7 +399,12 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - With habituation explicitly disabled the `_eff` views equal their base variants
   bit-exact, so reading the eroded view is always correct for Voice behavior.
   Flora reads base level/mass and unchanged `harmonicity01`; its habitat audio still
-  drives habituation. Flora residual rendering defaults to false; explicit
+  drives habituation. Flora `metric()` opts into T1 lane timing with a shared
+  habitat audio-only meter and a private CouplingClock. Internal onset commands
+  never drive that meter. Pending windows reserve current excess once; support
+  loss and release retire immediately. Changes apply at sample crossings within
+  the hop. Unknown observations fall back to T0; biomass/resources stay continuous.
+  Flora residual rendering defaults to false; explicit
   `.residual(true)` remains available.
 
 ## Config Keys

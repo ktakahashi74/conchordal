@@ -1320,6 +1320,7 @@ mod tests {
                         fade_sec: 0.0,
                         tone: FloraTone::Sine,
                         residual: true,
+                        metric: false,
                         routing: Routing {
                             to_presentation: false,
                             to_habitat: true,
@@ -2089,6 +2090,7 @@ mod tests {
                     fade_sec: 0.,
                     tone,
                     residual: true,
+                    metric: false,
                     routing: Routing::default(),
                 },
                 (220., 880.),

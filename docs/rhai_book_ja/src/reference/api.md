@@ -52,6 +52,16 @@ amp(level)
 
 Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
 
+#### `metric`
+
+```rhai,ignore
+metric()
+```
+
+適用対象：`FloraSpec`。
+
+Opt into beat opportunities for tonal lane births and replacements. Default Flora is continuous (T0). Like Population metric(), this uses a private confidence-weighted CouplingClock (0.95), starting at the tempo-basin center or 2 Hz. Flora listens to a shared habitat audio-only meter, without internal onset commands. Unconfirmed or unavailable observations use continuous allocation. Biomass and resources remain continuous; unsupported windows, range changes, release and separation conflicts do not wait for a beat. Pending windows reserve only current excess mass; changes occur at sample crossings, followed by existing slews.
+
 #### `send`
 
 ```rhai,ignore

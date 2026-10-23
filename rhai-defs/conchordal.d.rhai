@@ -437,6 +437,10 @@ fn meter_stability(value: i64);
 /// Attracts rate and phase to the beat confirmed from sound; before confirmation, each Voice free-runs with an independent phase. Default entrainment 0.95. The starting rate is the scene's final tempo-basin center, or 2 Hz without a basin. Every crossing is an opportunity, subject to lifecycle, gates and rests. Explicit `sustain()` retains a Tone between crossings. See `pitch_apply_mode()` and `tie()` for how pitch and attacks meet.
 fn metric(population_spec: PopulationSpec) -> PopulationSpec;
 
+/// Opt into beat opportunities for tonal lane births and replacements.
+/// Default Flora is continuous (T0). Like Population metric(), this uses a private confidence-weighted CouplingClock (0.95), starting at the tempo-basin center or 2 Hz. Flora listens to a shared habitat audio-only meter, without internal onset commands. Unconfirmed or unavailable observations use continuous allocation. Biomass and resources remain continuous; unsupported windows, range changes, release and separation conflicts do not wait for a beat. Pending windows reserve only current excess mass; changes occur at sample crossings, followed by existing slews.
+fn metric(flora_spec: FloraSpec) -> FloraSpec;
+
 /// Signed beat-phase offset for metric timing, in -0.5..0.5.
 /// A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/steady/flow participants at fixed offsets.
 fn microtiming(population_spec: PopulationSpec, amount: f64) -> PopulationSpec;

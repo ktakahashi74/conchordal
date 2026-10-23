@@ -49,6 +49,7 @@ contains bins again.
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |
 | `residual` | Boolean; diffuse mass as band noise | `false` | Before placement |
+| `metric()` | Beat opportunities for lane changes | Off (T0) | Before placement |
 | `send` | Bus or BusSet | Both buses | Before placement |
 
 `residual(true)` enables the optional band-noise layer before placement.
@@ -67,3 +68,27 @@ Flora released at the inner scope's end. Explicit release fades extend the scrip
 duration when needed. Flora still live at script end fades after Finish.
 
 The Flora API is Experimental. Its dynamics are authored composition rules; this API tier is separate from claims about auditory cognition.
+
+## Beat opportunities
+
+`flora().metric()` opts into T1: new tonal lanes and ordinary replacements wait
+for the Flora's next local beat crossing. The default T0 updates allocation every
+hop. Biomass and resources continue to evolve every hop in both modes.
+
+Like Population `metric()`, Flora uses a private CouplingClock with confidence-weighted
+rate and phase attraction (coupling 0.95), an independent initial phase, and the
+scene's tempo-basin center as its starting rate (2 Hz without a basin). Its shared
+meter reads only habitat audio: flux and the selected acoustic recurrence path,
+with the same enculturation priors. Internal Voice onset commands and Flora lane
+commands never enter this meter. This is separate from the production meter used
+by Population timing.
+
+A waiting tone owns only the current excess in its last tonal window. That mass
+is removed once from the residual. Empty windows, out-of-range tones, separation
+conflicts and release start retirement immediately. New assignments occur at the
+sample crossing within the hop; the existing amplitude slew follows. Thus neither
+all endings nor detected acoustic onsets are quantized to the beat.
+
+Before beat confirmation, or while the observation is unavailable, allocation uses
+T0. Pending candidates are discarded and current biomass is reconsidered; the
+private clock is not reset and stored candidates are not replayed as a burst.

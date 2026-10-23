@@ -769,6 +769,8 @@ Flora は Population と並ぶ作曲の形である。一つの Flora は、Log2
 
 局所的な消費者–資源の規則が、成長、拡散、消費、回復を進める。各 Flora の資源は、自身の潜在的な biomass と、ほかの habitat 音によって消費される。外音の power を測る前に、実際に描画した自身の habitat PCM を引く。成長と種まきが読む base の協和性・調和性には、引き続き自己音を含める。power の基準は振幅 0.03 の正弦波の平均二乗である。FFT の支持内 power を NSGT bin に配分し、既存の帯域別係数で時間積分する。観測がない間は無音とみなさず、初期の資源状態、または最後に観測した消費を保持する。資源は個体ごとに持ち、mute 中や presentation のみに送られた隣の個体は habitat power を与えない。ERB cell で質量を tonal lane と residual lane に分け、lane を追跡しながら、sine または resonant の音を合成する。residual 成分は既定で無効となり、`.residual(true)` で有効にできる。fade と振幅変更の ramp は sample ごとに進む。配置、更新、release、bus routing は Experimental の Rhai API から使える。`17_flora.rhai` は、途中で音高を変える Population と Flora を組み合わせる。
 
+`flora().metric()`を指定すると、tonal laneの出生と通常の交代を、各FloraのCouplingClockが拍を通過する機会へ寄せる。共有の拍観測はhabitatの実音だけを読み、選択中のrecurrence経路と文化的事前分布を使う。内部onset指令は入力しない。biomassと資源は連続に更新する。保留中の音は最後のwindowに残る超過質量だけを予約し、音の支持が失われた場合、最小分離の違反、releaseでは直ちに退場する。変更はhop内のsample時刻で適用し、既存のslewが続く。拍が未確認、または観測が使えない間は連続割当へ戻る。既定は従来のT0である。
+
 この力学は authored-rule tier、すなわち作者が設計した規則に属する。聴覚モデルの地形を使っていても、成長や遷移の規則自体を聴覚認知に根差すモデルとは位置付けない。API の安定性を示す Experimental とは別の分類である。
 
 # 6. システムアーキテクチャと実装詳細

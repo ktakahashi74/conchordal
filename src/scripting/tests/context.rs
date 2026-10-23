@@ -1881,3 +1881,25 @@ fn flora_errors_preserve_native_call_positions() {
         );
     }
 }
+
+#[test]
+fn flora_metric_is_opt_in_initial_only_and_independent_of_population_metric() {
+    for (chain, expected) in [("", false), (".metric()", true)] {
+        let (scenario, _) = run_script(&format!("place(flora(){chain}, random(110,880));"));
+        let spec = scenario
+            .events
+            .iter()
+            .flat_map(|e| &e.actions)
+            .find_map(|a| match a {
+                Action::PlaceFlora { spec, .. } => Some(spec),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(spec.metric, expected);
+    }
+    assert!(
+        run_script_err("let f=place(flora(),random(110,880)); f.metric();")
+            .to_string()
+            .contains("metric")
+    );
+}

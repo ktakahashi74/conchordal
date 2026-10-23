@@ -82,6 +82,8 @@ pub(super) struct WorkerState {
     // perception meter inside ListenerTwin. See "Perception vs Production".
     // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
     pub(super) prod_meter: MeterNetwork,
+    pub(super) flora_meter: MeterNetwork,
+    pub(super) flora_rhythm: crate::life::flora::TemporalObservation,
     pub(super) t2_sample: Option<crate::life::report::TemporalMeterSample>,
     pub(super) temporal_expectation:
         Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
@@ -126,6 +128,12 @@ impl WorkerState {
             MeterNetwork::new()
         };
         prod_meter.set_shaping(cfg.meter_shaping);
+        let mut flora_meter = if cfg.temporal_meter_t2 {
+            MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64)
+        } else {
+            MeterNetwork::new()
+        };
+        flora_meter.set_shaping(cfg.meter_shaping);
         let mut generator_model =
             crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
         generator_model.advance_to(timebase.frame_start_tick(0));
@@ -179,6 +187,8 @@ impl WorkerState {
             latest_listener_fast_state: None,
             latest_listener_state: None,
             prod_meter,
+            flora_meter,
+            flora_rhythm: Default::default(),
             t2_sample: None,
             temporal_expectation:
                 crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32),

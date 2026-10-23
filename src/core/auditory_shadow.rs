@@ -7,6 +7,9 @@ use crate::core::utils::a_weighting_gain_pow;
 use rustfft::num_complex::Complex32;
 use std::f32::consts::TAU;
 
+#[path = "auditory_spread.rs"]
+mod spread;
+
 // Niemitalo's published evolutionary design, H2 + i H1, scaled by 1/2.
 // https://yehar.com/blog/?p=368 (Equations 1-4).
 const ALLPASS_POLES: [[f64; 4]; 2] = [
@@ -67,6 +70,7 @@ pub(crate) struct Bank {
     pub frequency: Vec<f32>,
     pub coherence: Vec<f32>,
     correlation: Vec<Complex32>,
+    spread: Option<spread::SpreadHistory>,
     fs: f32,
 }
 
@@ -106,6 +110,7 @@ impl Bank {
             frequency: vec![0.0; n],
             coherence: vec![0.0; n],
             correlation: vec![Complex32::default(); n],
+            spread: None,
         }
     }
 
@@ -118,6 +123,9 @@ impl Bank {
                 self.state[stage][c] =
                     self.poles[c] * self.state[stage][c] + self.gains[c] * self.state[stage - 1][c];
             }
+        }
+        if let Some(spread) = &mut self.spread {
+            spread.observe(&self.state[3]);
         }
     }
 
@@ -133,6 +141,9 @@ impl Bank {
         assert!(samples > 0);
         self.energy.fill(0.0);
         self.correlation.fill(Complex32::default());
+        if let Some(spread) = &mut self.spread {
+            spread.start_hop();
+        }
         for x in input {
             self.one(x);
             for c in 0..self.centers.len() {
@@ -151,6 +162,9 @@ impl Bank {
             };
             self.energy[c] *= 2.0 / samples as f32;
         }
+        if let Some(spread) = &mut self.spread {
+            spread.finish(self.fs);
+        }
     }
 
     fn gain_power(&self, channel: usize, unit: Complex32) -> f32 {
@@ -167,6 +181,9 @@ impl Bank {
         self.correlation.fill(Complex32::default());
         self.frequency.fill(0.0);
         self.coherence.fill(0.0);
+        if let Some(spread) = &mut self.spread {
+            spread.clear();
+        }
     }
 }
 
@@ -191,6 +208,15 @@ pub(crate) struct ShadowFrontEnd {
 }
 
 impl ShadowFrontEnd {
+    pub(crate) fn with_gaussian_spread(mut self) -> Self {
+        self.bank.spread = Some(spread::SpreadHistory::new(
+            &self.bank.centers,
+            self.bank.fs,
+            self.beta,
+        ));
+        self
+    }
+
     pub(crate) fn new(space: Log2Space, fs: f32, beta: f64, analytic: bool, window: usize) -> Self {
         let step = 0.25_f64.min(0.75 * beta);
         let bank = Bank::new(&space, fs, step, beta);
@@ -339,6 +365,21 @@ impl ShadowFrontEnd {
             self.channel_power[c] = kept;
             self.channel_mass[c] = mass;
             assert!(kept.is_finite() && mass.is_finite());
+            if let Some(spread) = &self.bank.spread
+                && spread.sigma_hz[c] > 0.0
+                && (kept > 0.0 || mass > 0.0)
+            {
+                spread::gaussian_weights(
+                    &self.space,
+                    f64::from(raw_frequency),
+                    spread.sigma_hz[c],
+                    |i, weight| {
+                        self.power_scan[i] += weight * kept / self.du[i];
+                        self.density_scan[i] += (1.0 - leak) * weight * mass / self.du[i];
+                    },
+                );
+                continue;
+            }
             let edge = if position < 0.0 {
                 (1.0 + position).max(0.0)
             } else if position > (self.du.len() - 1) as f32 {

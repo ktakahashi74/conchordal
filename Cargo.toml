@@ -95,6 +95,7 @@ simd-wide = ["dep:wide"]
 plotcheck = ["dep:plotters"]
 
 [dev-dependencies]
+libm = "0.2"
 serde = { version = "1.0", features = ["rc"] }
 approx = "0.5"
 walkdir = "2.5"

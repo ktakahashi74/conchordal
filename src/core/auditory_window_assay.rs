@@ -3,7 +3,7 @@ use super::*;
 use crate::life::flora::Flora;
 use std::{collections::BTreeMap, io::Write};
 
-fn span_extrema(space: &Log2Space, scan: &[f32], low: f32, high: f32) -> (f32, f32) {
+pub(super) fn span_extrema(space: &Log2Space, scan: &[f32], low: f32, high: f32) -> (f32, f32) {
     space.assert_scan_len_named(scan, "interval_consumer_scan");
     let a = crate::core::log2space::sample_scan_linear_log2(space, scan, low);
     let b = crate::core::log2space::sample_scan_linear_log2(space, scan, high);

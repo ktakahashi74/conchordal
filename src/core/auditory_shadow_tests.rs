@@ -952,3 +952,9 @@ fn endpoint_fade_preserves_deposited_mass() {
 
 #[path = "auditory_window_assay.rs"]
 mod a4;
+
+#[path = "auditory_diagnosis_assay.rs"]
+mod a5_diagnosis;
+
+#[path = "auditory_validation_assay.rs"]
+mod a5_validation;

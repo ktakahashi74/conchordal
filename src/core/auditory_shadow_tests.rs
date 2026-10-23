@@ -961,3 +961,12 @@ mod a5_validation;
 
 #[path = "auditory_statistics_assay.rs"]
 mod a6_statistics;
+
+#[path = "auditory_conformance_assay.rs"]
+mod a8_conformance;
+
+#[path = "auditory_cost_assay.rs"]
+mod a8_cost;
+
+#[path = "auditory_sample_assay.rs"]
+mod a8_samples;

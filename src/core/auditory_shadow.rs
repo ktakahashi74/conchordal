@@ -7,6 +7,60 @@ use crate::core::utils::a_weighting_gain_pow;
 use rustfft::num_complex::Complex32;
 use std::f32::consts::TAU;
 
+thread_local! {
+    static SELECTED_TEST_FRONTEND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn selected_test_active() -> bool {
+    SELECTED_TEST_FRONTEND.with(std::cell::Cell::get)
+}
+
+pub(crate) fn with_selected_test_frontend<T>(run: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SELECTED_TEST_FRONTEND.with(|s| s.set(self.0));
+        }
+    }
+    let _restore = Restore(SELECTED_TEST_FRONTEND.with(|s| s.replace(true)));
+    run()
+}
+
+pub(crate) fn selected_test_frontend(
+    space: Log2Space,
+    fs: f32,
+    hop: usize,
+    window: usize,
+) -> Option<ShadowFrontEnd> {
+    selected_test_active()
+        .then(|| ShadowFrontEnd::new(space, fs, 0.25, false, window).with_statistics(hop, true))
+}
+
+pub(crate) fn save_v3_witness(mut payload: serde_json::Value, history: &[Vec<f32>; 4]) {
+    use sha2::Digest;
+    let dir = std::path::PathBuf::from(
+        std::env::var("AUD_M1_OUTPUT").expect("explicit V3 witness directory"),
+    );
+    if dir.join("witness.json").exists() {
+        return;
+    }
+    let mut files = Vec::new();
+    for (name, pcm) in ["mix", "own", "removed", "oracle"].into_iter().zip(history) {
+        let bytes: Vec<_> = pcm.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let filename = format!("{name}.f32");
+        std::fs::write(dir.join(&filename), &bytes).unwrap();
+        files.push(serde_json::json!({"role":name,"pcm":filename,"samples":pcm.len(),"sha256":sha2::Sha256::digest(&bytes).iter().map(|b|format!("{b:02x}")).collect::<String>()}));
+    }
+    payload["pcm"] = serde_json::json!(files);
+    payload["configuration"] =
+        serde_json::json!({"beta":0.25,"boxcar":true,"erb_context":true,"s1":false});
+    std::fs::write(
+        dir.join("witness.json"),
+        serde_json::to_vec(&payload).unwrap(),
+    )
+    .unwrap();
+}
+
 #[path = "auditory_spread.rs"]
 mod spread;
 
@@ -224,6 +278,13 @@ pub(crate) struct ShadowFrontEnd {
 }
 
 impl ShadowFrontEnd {
+    pub(crate) fn diagnostic(&self) -> serde_json::Value {
+        serde_json::json!({"centers_hz":self.bank.centers,"frequency_hz":self.bank.frequency,"energy":self.bank.energy,
+            "correlation":self.bank.correlation.iter().map(|z|[z.re,z.im]).collect::<Vec<_>>(),
+            "statistic_hops":self.bank.statistics.as_ref().map(|s|&s.counts),"deposit_power":self.deposit_power,
+            "pcb":self.context_power,"mass":self.channel_mass,"density":self.density_scan,"power":self.power_scan})
+    }
+
     fn with_statistics(mut self, hop: usize, erb_context: bool) -> Self {
         self.bank.statistics = Some(statistics::StatisticsWindow::new(
             &self.bank.centers,

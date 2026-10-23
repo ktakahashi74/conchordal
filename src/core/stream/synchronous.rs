@@ -14,6 +14,8 @@ use std::sync::Arc;
 pub(crate) struct SynchronousAnalysis {
     pub(super) nsgt: RtNsgtKernelLog2,
     frontend: SpectralFrontEnd,
+    #[cfg(test)]
+    pub(super) shadow: Option<crate::core::auditory_shadow::ShadowFrontEnd>,
     pub landscape: Landscape,
     pub du: Arc<[f32]>,
     potentials: PotentialScratch,
@@ -38,6 +40,13 @@ impl SynchronousAnalysis {
         );
         landscape.recompute_consonance(params);
         Self {
+            #[cfg(test)]
+            shadow: crate::core::auditory_shadow::selected_test_frontend(
+                space.clone(),
+                params.fs,
+                nsgt.hop(),
+                nsgt.nfft(),
+            ),
             frontend: SpectralFrontEnd::new(space.clone()),
             landscape,
             du: Arc::clone(&potentials.du),
@@ -51,6 +60,10 @@ impl SynchronousAnalysis {
     pub(crate) fn reset_density(&mut self) {
         self.nsgt.reset();
         self.frontend.reset();
+        #[cfg(test)]
+        if let Some(shadow) = &mut self.shadow {
+            shadow.reset();
+        }
     }
 
     pub(crate) fn density<'a>(
@@ -60,6 +73,13 @@ impl SynchronousAnalysis {
     ) -> SpectralFrameView<'a> {
         assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
         let power = self.nsgt.process_hop(audio);
+        #[cfg(test)]
+        if let Some(shadow) = &mut self.shadow {
+            shadow.process(audio, params);
+            return SpectralFrameView {
+                subjective_intensity: &shadow.density_scan,
+            };
+        }
         self.frontend
             .process_nsgt_power(power, audio.len() as f32 / params.fs, params)
     }
@@ -71,6 +91,10 @@ impl SynchronousAnalysis {
 
     pub(crate) fn skip(&mut self, audio: &[f32]) {
         self.nsgt.push_without_analysis(audio);
+        #[cfg(test)]
+        if let Some(shadow) = &mut self.shadow {
+            shadow.skip(audio);
+        }
     }
 
     pub(crate) fn process_body_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
@@ -93,11 +117,25 @@ impl SynchronousAnalysis {
         if full {
             self.landscape.nsgt_power.copy_from_slice(power);
         }
+        #[cfg(not(test))]
         let spectral = self.frontend.process_nsgt_power(
             power,
             audio.len() as f32 / params.fs * gap as f32,
             params,
         );
+        #[cfg(test)]
+        let spectral = if let Some(shadow) = &mut self.shadow {
+            shadow.process_body_gap(audio, gap as usize, params);
+            SpectralFrameView {
+                subjective_intensity: &shadow.density_scan,
+            }
+        } else {
+            self.frontend.process_nsgt_power(
+                power,
+                audio.len() as f32 / params.fs * gap as f32,
+                params,
+            )
+        };
         let density = spectral.subjective_intensity;
         let space = &self.landscape.space;
         let eps = params.roughness_ref_eps.max(1e-12);
@@ -206,6 +244,45 @@ impl SynchronousAnalysis {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aud_m1_adapter_preserves_nsgt_and_selected_history() {
+        let (params, kernel, hop) =
+            crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+        let mut baseline = SynchronousAnalysis::new(kernel.clone(), &params);
+        assert!(baseline.shadow.is_none());
+        let mut selected = crate::core::auditory_shadow::with_selected_test_frontend(|| {
+            SynchronousAnalysis::new(kernel.clone(), &params)
+        });
+        let mut direct = selected.shadow.as_ref().unwrap().clone();
+        assert!(SynchronousAnalysis::new(kernel, &params).shadow.is_none());
+        for frame in 0..16 {
+            let pcm: Vec<_> = (0..hop)
+                .map(|i| {
+                    let t = (frame * hop + i) as f32 / params.fs;
+                    0.1 * (std::f32::consts::TAU * 110.0 * t).cos()
+                        + 0.05 * (std::f32::consts::TAU * 150.0 * t).cos()
+                })
+                .collect();
+            baseline.process(&pcm, &params);
+            selected.process(&pcm, &params);
+            direct.process(&pcm, &params);
+            assert_eq!(selected.landscape.subjective_intensity, direct.density_scan);
+            assert_eq!(selected.landscape.nsgt_power, baseline.landscape.nsgt_power);
+        }
+        assert_ne!(
+            selected.landscape.subjective_intensity,
+            baseline.landscape.subjective_intensity
+        );
+        let mut copy = selected.clone();
+        let silence = vec![0.0; hop];
+        selected.process(&silence, &params);
+        copy.process(&silence, &params);
+        assert_eq!(
+            selected.landscape.subjective_intensity,
+            copy.landscape.subjective_intensity
+        );
+    }
 
     #[test]
     #[ignore = "L-1 cost acquisition requires the machine timing lock"]

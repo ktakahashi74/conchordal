@@ -348,6 +348,9 @@ fn rendered_loo_conformance() {
                 let mut max_pcm_error = 0.0_f32;
                 let mut max_l1 = 0.0_f32;
                 let mut max_field_error = 0.0_f32;
+                let mut audit: Option<[Vec<f32>; 4]> =
+                    crate::core::auditory_shadow::selected_test_active()
+                        .then(|| std::array::from_fn(|_| Vec::new()));
                 for frame in 0..ENV_FRAMES {
                     let now = (frame * hop) as u64;
                     let full = mixed_renderer
@@ -383,6 +386,16 @@ fn rendered_loo_conformance() {
                             value
                         })
                         .collect();
+                    if let Some(history) = &mut audit {
+                        for (target, pcm) in history.iter_mut().zip([
+                            &full[..],
+                            &own_pcm[..],
+                            &removed[..],
+                            &other_pcm[frame][..],
+                        ]) {
+                            target.extend_from_slice(pcm);
+                        }
+                    }
                     candidate.process(&full, &own_pcm);
                     let mut mix = mixed_stream.process(&full).clone();
                     mix.recompute_consonance(&params);
@@ -404,6 +417,7 @@ fn rendered_loo_conformance() {
                         .map(|((a, b), w)| (a - b).abs() * w)
                         .sum::<f32>();
                     max_l1 = max_l1.max(l1 / mass.max(1e-12));
+                    let mut frame_field_error = 0.0_f32;
                     for (a, b) in [
                         (&actual.harmonicity, &oracle.harmonicity),
                         (&actual.roughness, &oracle.roughness),
@@ -413,11 +427,23 @@ fn rendered_loo_conformance() {
                             &oracle.consonance_field_score,
                         ),
                     ] {
-                        max_field_error = max_field_error.max(
-                            a.iter()
-                                .zip(b)
-                                .map(|(a, b)| (a - b).abs())
-                                .fold(0.0_f32, f32::max),
+                        let error = a
+                            .iter()
+                            .zip(b)
+                            .map(|(a, b)| (a - b).abs())
+                            .fold(0.0_f32, f32::max);
+                        max_field_error = max_field_error.max(error);
+                        frame_field_error = frame_field_error.max(error);
+                    }
+                    if (l1 / mass.max(1e-12) > 1e-3 || frame_field_error > 1e-3)
+                        && let Some(history) = &audit
+                    {
+                        crate::core::auditory_shadow::save_v3_witness(
+                            json!({"gate":"B-1 PCM oracle","family":family,"base_hz":base_hz,
+                            "other_hz":other_hz,"frame":frame,"fs":FS,"hop":hop,"density_l1":l1/mass.max(1e-12),
+                            "field_error":frame_field_error,"tolerance":1e-3,
+                            "actual_shadow":removed_stream.aud_m1_shadow_diagnostic(),"oracle_shadow":oracle_stream.aud_m1_shadow_diagnostic()}),
+                            history,
                         );
                     }
                     if other_hz.is_none() {
@@ -472,6 +498,14 @@ fn rendered_loo_conformance() {
                     assert_eq!(score, expected_score);
                     if (score - reference_score).abs() - (old_score - reference_score).abs() > 1e-6
                     {
+                        if let Some(history) = &audit {
+                            crate::core::auditory_shadow::save_v3_witness(
+                                json!({"gate":"B-1 environment","family":family,"base_hz":base_hz,"other_hz":other_hz,
+                                "fs":FS,"hop":hop,"score":score,"reference":reference_score,"legacy":old_score,
+                                "actual_shadow":removed_stream.aud_m1_shadow_diagnostic(),"oracle_shadow":oracle_stream.aud_m1_shadow_diagnostic()}),
+                                history,
+                            );
+                        }
                         viability_failures.push(json!({"family":family,"base_hz":base_hz,"other_hz":other_hz,"kind":format!("{kind:?}"),"path":"environment"}));
                     }
                     let mut expected = voice.articulation.clone();
@@ -653,6 +687,14 @@ fn rendered_loo_conformance() {
                             .zip(legacy_errors)
                             .all(|(new, old)| new - old <= 1e-6)
                     {
+                        if let Some(history) = &audit {
+                            crate::core::auditory_shadow::save_v3_witness(
+                                json!({"gate":"B-1 point/body environment","family":family,"base_hz":base_hz,"other_hz":other_hz,
+                                "fs":FS,"hop":hop,"new_errors":errors,"legacy_errors":legacy_errors,
+                                "actual_shadow":removed_stream.aud_m1_shadow_diagnostic(),"oracle_shadow":oracle_stream.aud_m1_shadow_diagnostic()}),
+                                history,
+                            );
+                        }
                         viability_failures.push(json!({"family":family,"base_hz":base_hz,"other_hz":other_hz,"path":"point_body","new_errors":errors,"legacy_errors":legacy_errors}));
                     }
                     println!(
@@ -700,11 +742,23 @@ fn rendered_loo_conformance() {
                             .iter()
                             .all(|d| d["body_shortcut_target_bits"] == d["body_pcm_target_bits"])
                     };
+                    let method_pass = point_metrics["registered_movement_gate_pass"] == true
+                        && body_metrics["registered_movement_gate_pass"] == true
+                        && point_selection
+                        && body_selection;
                     family_pass.entry(family.to_string()).or_insert([true; 3])[method_index] &=
-                        point_metrics["registered_movement_gate_pass"] == true
-                            && body_metrics["registered_movement_gate_pass"] == true
-                            && point_selection
-                            && body_selection;
+                        method_pass;
+                    if method == "t31"
+                        && !method_pass
+                        && let Some(history) = &audit
+                    {
+                        crate::core::auditory_shadow::save_v3_witness(
+                            json!({"gate":"B-1 consumer","family":family,"base_hz":base_hz,"other_hz":other_hz,
+                            "fs":FS,"hop":hop,"point":point_metrics,"body":body_metrics,"point_selection":point_selection,"body_selection":body_selection,
+                            "actual_shadow":removed_stream.aud_m1_shadow_diagnostic(),"oracle_shadow":oracle_stream.aud_m1_shadow_diagnostic()}),
+                            history,
+                        );
+                    }
                 }
                 total += 1;
             }
@@ -741,6 +795,12 @@ fn rendered_loo_conformance() {
             "T-31 candidate does not conform for: {unsupported:?}"
         );
     }
+}
+
+#[test]
+#[ignore = "AUD-M1 selected front-end B-1 gate"]
+fn aud_m1_v3_b1() {
+    crate::core::auditory_shadow::with_selected_test_frontend(rendered_loo_conformance);
 }
 
 fn final_scores(
@@ -841,6 +901,12 @@ fn flora_all_consumers_conform() {
     flora_ownership_cases(false);
 }
 
+#[test]
+#[ignore = "AUD-M1 selected front-end Flora gate"]
+fn aud_m1_v3_flora() {
+    crate::core::auditory_shadow::with_selected_test_frontend(flora_all_consumers_conform);
+}
+
 fn flora_ownership_cases(supported: bool) {
     use crate::life::community::Community;
     use crate::life::flora::Flora;
@@ -917,6 +983,8 @@ fn flora_ownership_cases(supported: bool) {
         }];
         let mut solo_p = vec![0.; hop];
         let mut solo_h = vec![0.; hop];
+        let mut audit: Option<[Vec<f32>; 4]> = crate::core::auditory_shadow::selected_test_active()
+            .then(|| std::array::from_fn(|_| Vec::new()));
         for frame in 0..256 {
             if frame == 64 || frame == 128 {
                 let patch = FloraPatch {
@@ -964,6 +1032,15 @@ fn flora_ownership_cases(supported: bool) {
                     got
                 })
                 .collect();
+            if let Some(history) = &mut audit {
+                for (target, pcm) in
+                    history
+                        .iter_mut()
+                        .zip([&full[..], own, &removed[..], &solo_h[..]])
+                {
+                    target.extend_from_slice(pcm);
+                }
+            }
             candidate.process(&full, &sources[0].habitat);
             let mut mix = mixed_stream.process(&full).clone();
             mix.recompute_consonance(&params);
@@ -971,11 +1048,26 @@ fn flora_ownership_cases(supported: bool) {
             actual.recompute_consonance(&params);
             let mut reference = reference_stream.process(&solo_h).clone();
             reference.recompute_consonance(&params);
-            for (a, b) in actual
+            for (bin, (a, b)) in actual
                 .consonance_field_score
                 .iter()
                 .zip(&reference.consonance_field_score)
+                .enumerate()
             {
+                if ((a - b).abs() > 1e-3 || !(a - b).is_finite())
+                    && let Some(history) = &audit
+                {
+                    crate::core::auditory_shadow::save_v3_witness(
+                        json!({"gate":"Flora PCM oracle","tone":format!("{tone:?}"),
+                        "residual":residual,"habitat":habitat,"supported":supported,"frame":frame,"bin":bin,
+                        "fs":FS,"hop":hop,"error":(a-b).abs(),"tolerance":1e-3,"hz":mix.space.centers_hz[bin],
+                        "actual_c":actual.consonance_field_score,"oracle_c":reference.consonance_field_score,
+                        "actual_h":actual.harmonicity,"oracle_h":reference.harmonicity,
+                        "actual_r":actual.roughness01,"oracle_r":reference.roughness01,
+                        "actual_shadow":removed_stream.aud_m1_shadow_diagnostic(),"oracle_shadow":reference_stream.aud_m1_shadow_diagnostic()}),
+                        history,
+                    );
+                }
                 assert!((a - b).abs() <= 1e-3, "existing PCM oracle gate");
             }
             if ![63, 127, 191, 199, 255].contains(&frame) {
@@ -1202,6 +1294,13 @@ fn flora_ownership_cases(supported: bool) {
                     let record = json!({"conformance_scope":"supported","method":method,"tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"kind":format!("{kind:?}"),
                     "point_scores":got,"point_reference":expected,"body_scores":body,"body_reference":body_ref,"point":point_metrics,"body":body_metrics,"selection_pass":selection_pass,"environment_pass":environment_pass,"native_ties":full_metrics,
                     "environment_errors":environment_errors,"environment_error_order":["point_score","point_level","body_score","body_level"],"environment_error_deltas":environment_deltas,"decision_failures":decisions,"decision_failure_count":decisions.len(),"decision_failure_examples":decisions.iter().take(4).collect::<Vec<_>>(),"owned_bins":input.own_power_scan.iter().enumerate().filter(|(_,x)| **x>0.).map(|(i,x)| json!([i,x,mix.subjective_intensity[i],actual.subjective_intensity[i]])).collect::<Vec<_>>(),"density_over_removed":over_removed/reference_mass.max(1e-12),"pass":pass});
+                    if !pass && let Some(history) = &audit {
+                        crate::core::auditory_shadow::save_v3_witness(
+                            json!({"gate":"Flora consumer","record":record,"fs":FS,"hop":hop,
+                            "actual_shadow":removed_stream.aud_m1_shadow_diagnostic(),"oracle_shadow":reference_stream.aud_m1_shadow_diagnostic()}),
+                            history,
+                        );
+                    }
                     println!("T35_CASE {record}");
                     records.push(record);
                     if !pass {

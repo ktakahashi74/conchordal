@@ -10,6 +10,14 @@ pub struct AnalysisStream {
 }
 
 impl AnalysisStream {
+    #[cfg(test)]
+    pub(crate) fn aud_m1_shadow_diagnostic(&self) -> serde_json::Value {
+        self.analysis
+            .shadow
+            .as_ref()
+            .map_or(serde_json::Value::Null, |s| s.diagnostic())
+    }
+
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let mut analysis = SynchronousAnalysis::new(nsgt_rt, &params);
         // Live analysis publishes raw perception; the worker derives consonance.

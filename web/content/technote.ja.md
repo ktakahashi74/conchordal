@@ -63,9 +63,9 @@ DSP処理の内部ループで $O(1)$ アクセスを実現するため、2つ�
 
 ## 2.2 定Q帯域幅特性
 
-`Log2Space` はスペクトル全体にわたって定Q（Constant Quality Factor）特性を本質的に実現する。信号処理の用語では、$Q$ は中心周波数と帯域幅の比として定義される：$Q = f / \Delta f$。
+`Log2Space`のbinの配置は、全域で定Q（Constant Quality Factor）の性質を持つ。信号処理の用語では、$Q$ は中心周波数と帯域幅の比として定義される：$Q = f / \Delta f$。
 
-線形システム（標準的なFFTなど）では $\Delta f$ が一定であるため、$Q$ は周波数とともに増加する。`Log2Space` では、$i$ 番目のビンの帯域幅 $\Delta f_i$ は中心周波数 $f_i$ に比例してスケーリングする。この特性は人間の聴覚系の周波数選択性を模倣している——耳の周波数分解能は（絶対Hz値で見ると）周波数が高くなるにつれて低下する。この整合により、Conchordal は高い周波数では高い時間分解能を、低い周波数では高いスペクトル分解能を——手動のマルチレート処理なしに——効率的に計算資源を配分できる。
+線形システム（標準的なFFTなど）では $\Delta f$ が一定であるため、$Q$ は周波数とともに増加する。`Log2Space` では、$i$ 番目のビンの帯域幅 $\Delta f_i$ は中心周波数 $f_i$ に比例してスケーリングする。この特性は人間の聴覚系の周波数選択性を模倣している——耳の周波数分解能は（絶対Hz値で見ると）周波数が高くなるにつれて低下する。これは出力の格子と、残るNSGT kernelの性質である。聴覚の前処理にはERBに応じた帯域幅のフィルタを使う（3.1節）。出力binの間隔が、フィルタの周波数選択性を決めるわけではない。
 
 ## 2.3 等価矩形帯域幅（ERB）スケール
 
@@ -96,50 +96,45 @@ Conchordal はこの構造を工学則として実装する。システムは自
 *   **粗さ（$R$）**: 近接する部分音間の急速なうなりによって引き起こされる感覚的不協和。
 *   **調波性（$H$）**: 仮想ピッチの強度およびスペクトル周期性の測度。
 
-どちらのメトリクスも $[0, 1]$ に正規化される。本章はこのあと解析パイプラインの順に進む。3.1節で対数周波数スペクトルを構築し（NSGT）、3.2節と3.3節でそこから粗さと調波性の各フィールドを導出し、3.4節で両者を、エージェントが実際に登る協和性の地形へと統合する。
+どちらのメトリクスも $[0, 1]$ に正規化される。本章はこのあと解析パイプラインの順に進む。3.1節で聴覚の主観強度密度を構築し、3.2節と3.3節でそこから粗さと調波性の各フィールドを導出し、3.4節で両者を、エージェントが実際に登る協和性の地形へと統合する。
 
-## 3.1 非定常ガボール変換（NSGT）
+## 3.1 因果的な聴覚解析
 
-`Log2Space` をスペクトルデータで満たすために、Conchordal は非定常ガボール変換（NSGT）のカスタム実装を使用する。固定窓サイズを使用する短時間フーリエ変換（STFT）とは異なり、NSGT は2.2節で導出された定Q特性を維持するために窓長 $L$ を周波数に反比例させて変化させる。
+`AuditoryFrontEnd`（`core/auditory_frontend.rs`）は、habitatの実数PCMからLog2Spaceに揃った主観強度の密度を作る。ListenerTwinが受け取るpresentationの音や、Voiceの自己除外で実際に減算した`mix − own`の音にも、同じ処理を使う。複素フィルタ群、hopごとの統計、周波数の再配置、音量の圧縮という順に進む。
 
-### 3.1.1 カーネルベースのスペクトル解析
+### 3.1.1 フィルタとhopごとの統計
 
-`core/nsgt_kernel.rs` の実装は、この変換を効率的に行うためにスパースカーネルアプローチを採用している。各対数周波数帯域 $k$ について、時間領域カーネル $h_k$ が事前計算される。このカーネルは、帯域の中心周波数 $f_k$ における複素正弦波と長さ $L_k \approx Q \cdot f_s / f_k$ の周期的ハン窓 $w_k$ を結合する。
+各channelは、正の角度のpoleを持つ複素one-poleフィルタを4段つないだもの。中心での利得は1、帯域幅は$b_c=\tfrac14\,1.0186(24.7+f_c/9.265)$ Hzとする。中心周波数はLTFATのERB番号$e(f)=9.2645\ln(1+0.00437f)$の上に、1000 Hzを基準として0.1875間隔で並ぶ。55〜8000 Hzの両端に0.375 ERB番号分の余白を加え、約46.001〜8175.326 Hzの170 channelを使う。すべての中心がNyquist周波数より下に入る必要があり、対応できないsample rateは設定エラーになる。
 
-$$ h_k[n] = w_k[n] \cdot e^{-j 2\pi f_k n / f_s} $$
+完全な$N$ sampleのhopごとに、energy $E_h=\sum|z[n]|^2$と1 sample遅れの相関$S_h=\sum z[n]\overline{z[n-1]}$を積算する。hopの最初では、前のhopの最後の出力を使う。各channelは直近$n_c=\max(1,\lceil f_s/(N\,0.75\,\mathrm{ERB}(f_c))\rceil)$ hopの和を保つ。開始前の部分は無音として0で埋め、窓が満ちるまでも分母を縮めない。
 
-これらのカーネルは初期化時に周波数領域（$K_k[\nu]$）に変換される。性能を最適化するため、システムはこれらの周波数カーネルをスパース化し、有意なエネルギーを持つビンのみを保持する。
+周波数の推定値と、再配置する実数の平均二乗powerは次の式になる。
 
-実行時には、入力オーディオバッファに対して単一のFFTを実行してスペクトル $X[\nu]$ を取得する。帯域 $k$ の複素係数 $C_k$ は周波数領域での内積により計算される。
+$$\hat f_c=\frac{f_s}{2\pi}\arg\sum_h S_h,\qquad d_c=\frac{2|\sum_h S_h|}{n_cN\,G(\hat f_c)},\qquad G(f)=\sum_j|H_j(f)|^2.$$
 
-$$ C_k = \frac{1}{N_{fft}} \sum_{\nu} X[\nu] \cdot K_k^*[\nu] $$
+$G$は構築時に表を作り、補間して読む。位置とpowerを同じ複素相関から取るので、相関が0に近づくと再配置するpowerも0へ近づく。
 
-この「1回のFFT、多数のカーネル」アプローチにより、帯域ごとに個別のDFTを計算したり、再帰フィルタバンクを用いたりすることなく、高分解能の対数間隔スペクトルを得られる。現在のinstrument runtimeは55 Hzから8 kHzまでを1オクターブ96ビンで解析する。`Log2Space`自体は、実験やtestで別の正の上下限も扱える。
+### 3.1.2 臨界帯域のpowerと密度
 
-### 3.1.2 リアルタイム時間平滑化
+圧縮の前に、再配置したpowerから臨界帯域の文脈を作る。
 
-瞬時帯域power $p_k=|C_k|^2$ は、オーディオ入力の確率的性質（特にノイズベースのエージェント）により高い分散を示す。エージェントが読む安定したフィールドを作るため、`RtNsgtKernelLog2` 構造体はNSGTを時間平滑化層でラップする。
+$$P_{cb}(x)=\sum_j d_j\left[1+\left(\frac{x_j-x}{1.0186\,\mathrm{ERB}(x)}\right)^2\right]^{-4}.$$
 
-帯域ごとのリーキー積分器（指数平滑化）が実装される。重要なのは、時定数 $\tau$ が周波数依存であることだ。緩やかに変化する低周波はより長い $\tau$ で平滑化され、過渡的な詳細を含む高周波はより短い $\tau$ を持つ。
+実装ではERB番号1/32幅のbucketに6次までのmomentを集め、照会する位置から±4 ERB番号にかかるbucketを評価する。各depositでは$P=\max(P_{cb},d)$を取り、連続なgate $\gamma=\max(0,1-10^{-6}/(P/du))$を掛ける。$du$は、その位置で補間したLog2SpaceのERB cell幅。文脈のpowerが0なら重みも0とする。圧縮後の重みは次の式になる。
 
-$$ y_k[t] = (1 - \alpha_k) \cdot p_k[t] + \alpha_k \cdot y_k[t-1] $$
+$$m=\gamma\frac{d}{P}\left(\frac{A_w(x)P}{P_{ref}}\right)^{\texttt{loudness\_exp}}.$$
 
-ここで平滑化係数 $\alpha_k$ はフレーム間隔 $\Delta t$ から導出される。
+$A_w$はA-weightingのpower利得、圧縮指数の既定値は0.23。この重みを対数周波数上で隣り合う二binへ線形に配り、それぞれのcell幅で割って密度にする。端のbinの中心より外では一binの幅で0へ落とし、周波数が0以下なら寄与を0とする。範囲外のdepositも、臨界帯域の文脈の集計には入る。
 
-$$ \alpha_k = e^{-\Delta t / \tau(f_k)} $$
+最後にS6のleaky平滑を施す。時定数は`analysis.tau_ms`で、既定値は10 ms。この`subjective_intensity`密度をHとRが共通して読む。積分値の`loudness_mass`、`roughness`、`roughness01_scalar`は算出式と型を保つが、入力の密度が変わるので数値も変わる。
 
-これは耳の「積分時間」をモデル化する。ただし、この出力がそのままroughnessとharmonicityへ入るわけではない。平滑化されたpowerは、次の知覚前処理で疎なsubjective-intensity densityへ変換される。
+ListenerTwinは、正のbin質量を局所の山ごとに成分へまとめてから、安定さと改善の余地を重み付けする。成分の重みは所属するbinの質量の和、levelは山のbinの値とする。移動候補はその成分の外に限り、移動費用の距離は山から測る。これにより、二binに配られた一つの成分を一度だけ数える。gain scale、到達範囲、移動費用、tensionを定める積の式は保つ。
 
-### 3.1.3 NSGT powerからsubjective intensityへ
+### 3.1.3 スペクトルのpower、履歴、時刻
 
-`SpectralFrontEnd`（`core/landscape_spectral.rs`）は、平滑化されたNSGT powerをそのままLandscape kernelへ渡さない。各hopで次の処理を行う。
+混合音とlistenerのstreamでは、スペクトル表示、report、spectral history、研究用tapのNSGT powerも計算する。Floraの資源powerは、別のFFTとNSGT重みによる解析を保つ。Voiceの自己除外のobserverではNSGTを計算しない。`analysis.nfft`は残るNSGTの窓、Floraの資源のcoverage、欠測後の公表の待ちに効く。`analysis.kernel_align`はNSGTのkernelの配置、`psychoacoustics.use_incoherent_power`はNSGT powerの方式を指定し、H・Rへの入力とは独立している。
 
-1.  Log2Spaceに対応するERB cell幅を使い、ビンごとのpowerをpower densityへ変換する。
-2.  有意なスペクトルpeakを抽出する。各解析ビンを独立したpartialとはみなさず、peakの積分massを保存する。
-3.  各peak massへA-weightingの**power** gainと圧縮指数`loudness_exp`を適用する。
-4.  変換後のmassを、Log2Spaceに揃った疎なsubjective-intensity densityへ戻し、`analysis.tau_ms`を時定数とする二段目のleaky normalizationを施す。
-
-以下のroughnessとharmonicityが共通して読むのは、生の$|C_k|$でもNSGT powerでもなく、この`subjective_intensity` scanである。その積分値は`loudness_mass`として別に保持される。
+hop Kが読むのは引き続きframe K−1で、観測にはそのframeの終了時刻を付ける。run開始前の履歴は無音。欠測ではフィルタ、前のsample、統計の窓、密度をresetし、従来の`window_samples()`が満ちるまで公表を待つ。既定では16384 sample、48 kHzで341.333 msとなる。この待ちはIIRの残りの精度を保証する境界ではない。cloneは因果的な履歴をすべて引き継ぐ。同期のbody解析では、選ばれないhopもフィルタと統計を進める。選ばれたhopでS4〜S6を一度行い、S6には経過したhop数を使う。
 
 ## 3.2 粗さ（$R$）計算：Plomp-Levelt モデル
 
@@ -525,7 +520,7 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 **クラウディング**: クラウディング（相互排斥）とピッチ適応は、単一の共有された占有場（occupancy field）を参照する。各占有*基音*（生 f0）を中心とするガウシアンペナルティで、その幅は `crowding_sigma_cents`（デフォルト 60）が定め、強度は `crowding_strength` が制御する。これにより、エージェント同士が同一周波数に収束して「団子」状態になるのを防ぐ。オクターブ等価（クロマ）のペナルティは適用せず、オクターブ関係は協和ポテンシャルを通してだけ作用する。
 
-**Leave-Self-Out**: `leave_self_out(true)`は、混合PCMからVoiceが実際にhabitatへ出した自己PCMを引き、残った音を解析して周囲の場を求める。減算後も、混合場と同じNSGT、パワー平滑、peak抽出、A-weighting、loudness、密度平滑、H・R・Cの計算を使う。habitatへ送られたFloraは、residualを含めて残る。身体の種類による方式の分岐や公開mode選択はない。
+**Leave-Self-Out**: `leave_self_out(true)`は、混合PCMからVoiceが実際にhabitatへ出した自己PCMを引き、残った音を解析して周囲の場を求める。減算後も、混合場と同じ聴覚フィルタ群、hopの統計、再配置、臨界帯域の圧縮、密度平滑、H・R・Cの計算を使う。habitatへ送られたFloraは、residualを含めて残る。身体の種類による方式の分岐や公開mode選択はない。
 
 対象Voiceごとに解析履歴を保持する。出生時には、最初の自己音が出る前の混合streamの状態を引き継ぐ。後から自己除外を有効にするPopulationも、出生時から観測する。混合PCMと自己PCMは同じframeのpacketで送り、観測結果をVoiceのIDと世代で対応づける。解析処理は、音声データの欠落を検出すると、混合音と自己除外後の音の履歴をリセットする。後続のPCMが届けば、共通の解析窓が再び埋まった時点から有効な観測の公表を再開する。一方、Consonance Fieldを利用する実行時の処理は、観測経路の切断・無効化により1 hop以内の遅れで有効な観測を得られないと、現在の方針では実行を終了する。解析窓を埋めるための音声生成を続ける自動復旧は行わない。既存のnear-silence floorは自己除外と一般の解析に共通して適用し、consumerが得点を読む際に通常の共有habituationによる浸食を一度適用する。
 
@@ -812,7 +807,7 @@ UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-le
 
 2.  **解析スレッド（バックグラウンド優先度）**:
     *   `core/analysis_worker.rs` で定義され、`core/stream/analysis.rs` の `AnalysisStream` を実行する。
-    *   **責務**: ハビタットバスのホップを受信し、NSGTを実行してlog2パワースペクトルを生成し、調波性フィールドと粗さフィールドの両方を単一のパイプラインで計算する。
+    *   **責務**: ハビタットバスのホップを受信し、聴覚の前処理で主観強度密度を作り、調波性と粗さの両フィールドを計算する。NSGT powerはスペクトル表示と履歴のために並行して保持する。
     *   **更新サイクル**: 完了した地形スナップショットをバウンドSPSCチャンネル経由でワーカースレッドに送信する。
 
 3.  **リスナー解析スレッド**:
@@ -832,7 +827,7 @@ UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-le
 オーディオスレッドをロックせずにデータの一貫性を保つため、Conchordal はランドスケープを複数チャネル経由で更新する。レンダリングされたオーディオは二つのバスに分かれる。**ハビタットバス**はエコシステムが感じ取る環境であり、**プレゼンテーションバス**は聴衆が実際に聴く音である。ドローンをハビタットバスだけに送れば、聴かせることなく地形だけを形づくることもできる。
 
 1.  **ワーカースレッド**がバスごとにオーディオをレンダリングし、ハビタットホップを**解析スレッド**へ、プレゼンテーションホップを**リスナー解析スレッド**へ送信する。
-2.  **解析スレッド**がNSGT + subjective intensity + roughness + harmonicityパイプラインを実行し、raw `Landscape`スナップショットを返送する。
+2.  **解析スレッド**が聴覚の主観強度密度 + roughness + harmonicityの処理とNSGT powerの計算を実行し、raw `Landscape`スナップショットを返送する。
 3.  **ワーカースレッド**が解析結果を`Landscape`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
 4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）とハビタットへ送られるボイスの発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
 5.  `Community`がeffective Landscapeを、ピッチ選択、代謝、spawn、respawn、Voiceのライフサイクルに使う。
@@ -1057,7 +1052,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `habituation.recovery_sec` | `HabituationParams` | 秒 | driveがなくなってから90%回復する時間（デフォルト 8.0）。 |
 | `habituation.ref_drive` | `HabituationParams` | Float | habituationの伝達関数における半飽和drive（デフォルト 0.25）。 |
 | `loudness_exp` | `LandscapeParams` | Float | subjective-intensity front endでA-weighted peak powerに適用する圧縮指数（デフォルト 0.23）。 |
-| `tau_ms` | `LandscapeParams` | ミリ秒 | peak抽出後のleaky normalization時定数（`[analysis].tau_ms`）。 |
+| `tau_ms` | `LandscapeParams` | ミリ秒 | S6の主観強度密度のleaky平滑の時定数（`[analysis].tau_ms`）。 |
 | `stability` | `MeterShaping` | 0.0-1.0 | ビートアトラクタ深度（`meter_stability`）：強制力とテンポ学習をスケール。 |
 | `basin_hz` | `MeterShaping` | Hz ペア | sceneのテンポ領域（`temporal_basin`）：拍の周波数学習の初期値と帯域制限。中心はstabilityに依らずmetricの身体の初期周期にも使う。 |
 | `coupling` | `CoupledTimingSpec` | 0.0-1.0 | 参加では音響文脈の影響、同期では共有拍への引力（`entrainment`）。 |

@@ -27,7 +27,7 @@ pub struct LandscapeParams {
     pub loudness_exp: f32,
     /// Reference power for normalization. Tune to your signal scale.
     pub ref_power: f32,
-    /// Leaky integration time constant [ms]. Typical: 60–120 ms.
+    /// S6 subjective-intensity smoothing time constant [ms], default 10 ms.
     pub tau_ms: f32,
 
     /// Roughness normalization constant (k) for physiological saturation.

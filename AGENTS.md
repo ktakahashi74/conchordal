@@ -4,6 +4,8 @@
 - Source lives in `src/` with focused modules:
   - `core/` (Psychoacoustic DSP primitives):
     - `log2space.rs`: Log-frequency coordinate system (octave-based).
+    - `auditory_frontend.rs` / `auditory_statistics.rs`: Causal complex filterbank,
+      hop boxcars, reassigned power, critical-band compression and S6 density.
     - `nsgt_rt.rs` / `nsgt_kernel.rs`: Non-Stationary Gabor Transform (streaming RT
       variant and offline kernel variant). An older FFT variant is retired to `attic/`.
     - `harmonicity_kernel.rs`: Virtual pitch/root detection via harmonic templates.
@@ -208,6 +210,9 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
     by default. The ecology path runs per hop, and `observe_listener_analysis_results`
     runs the same projection per received listener frame; the default GUI has both
     paths. Explicitly disabling habituation skips these projections.
+  - ListenerTwin groups bin masses into local-maximum components with cached mass,
+    component-mass and ascent-owner buffers. Initial observation and frequency-space
+    changes may allocate; ordinary observations reuse those buffers.
   - `build_runtime_ui_frame` (`src/runtime/ui_frame.rs`) clones the Landscape and
     builds spectrum, Voice, phase, and temporal/body snapshots. `send_runtime_ui_frame`
     rate-limits ordinary GUI frames with `UI_MIN_INTERVAL`; terminal delivery retains
@@ -248,17 +253,24 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   A scenario reserves observers for populations with pitch/environment self-exclusion,
   including a later enabling patch. The renderer captures those Voices by ID and
   generation from birth. Each analysis observer subtracts actual own habitat PCM
-  before NSGT, using a clone of the mixed stream's pre-birth history. Both histories
+  before the auditory front end, using a clone of the mixed stream's pre-birth
+  history. Both histories
   reset on gaps. Processing uses reused scratch; publication owns per-Voice H/R and
   score scans and therefore allocates. Flora has a separate power observer for each instance. It subtracts actual own
   habitat PCM, copies the mixed pre-birth raw/power history, and reuses the FFT
   and shared sparse power weights without evaluating H/R. SourceKind separates
-  Voice and Flora identities. Voice observer clones disable the mixed stream's
-  resource tracker because they consume only H/R. Full-window coverage gates power publication;
-  gaps hold timestamped consumption and geometry changes discard it. Allocation
-  census (48 kHz, hop 512, window 16384, 690 bins, Ordered, one hop per batch)
-  measured 19 allocations / 50192 bytes without LOO and 23 / 58568 with one LOO
-  observer. Its first packet used 66 / 520750 including observer construction.
+  Voice and Flora identities. Voice observer clones skip NSGT and disable the mixed stream's
+  resource tracker because they consume only H/R. The auditory filterbank, hop
+  boxcars and ERB-context scratch allocate at construction and reuse storage.
+  Body skip advances filters and hop statistics; selected updates apply S4–S6 once.
+  Flora power publication requires full-window coverage; gaps hold timestamped
+  consumption and geometry changes discard it. Allocation
+  census with `profile-alloc` (48 kHz, hop 512, window 16384, 690 bins, Ordered,
+  one hop per batch) measured 19 allocations / 50192 bytes without LOO and
+  23 / 58808 with one Voice LOO observer. Its first packet used 79 / 586496,
+  including observer construction and test-only assay storage. A separate
+  64-hop test measured zero allocations / zero bytes for the selected auditory
+  front end, including body skip and intermittent updates.
   These counts exclude input PCM ownership and UI cloning. Births and
   gap/reconfiguration resets are outside the steady-state processing claim.
   Self-exclusion observers run sequentially on one analysis thread, so sustained
@@ -298,7 +310,9 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   needed; keep public/cross-module black-box specifications under `tests/`.
 
 ## Architecture Notes for Agents
-- The core perception model is **Landscape**. It ingests audio, transforms it to Log2-frequency space via NSGT, and computes two potentials:
+- The core perception model is **Landscape**. It ingests PCM through a causal complex auditory filterbank (bandwidth factor
+1/4), channel-dependent hop boxcars, frequency reassignment and critical-band
+loudness compression. Its Log2Space-aligned density feeds two potentials:
   1. **Roughness (R)**: Amplitude fluctuations within critical bands (dissonance).
   2. **Harmonicity (H)**: Periodicity/Template matching (consonance/fusion).
 - Sound bodies (synthesis methods) are replaceable modules; the boundary is in
@@ -410,6 +424,15 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   `.residual(true)` remains available.
 
 ## Config Keys
+- `[analysis].nfft`: retained NSGT window for spectrum/UI, reports, spectral history,
+  research taps, gap publication warmup and Flora resource coverage. H/R use the
+  auditory filterbank independently of this window. `kernel_align` applies to NSGT.
+- `[analysis].tau_ms`: S6 density smoothing (default 10 ms).
+- `[psychoacoustics].use_incoherent_power`: retained NSGT power only, not H/R density.
+- The fixed auditory grid includes its 8175.326 Hz upper margin channel. Configured
+  and actual device sample rates must put every channel below Nyquist (integer
+  rates at least 16351 Hz for the runtime's 55..8000 Hz grid); unsupported rates
+  return configuration errors before analysis construction.
 - `[audio].output_gain_db` (default `4.5`): fixed dB gain before cpal/WAV guards, calibrated from bundled sample peaks and the 0.98 ceiling. Analysis, listener, report and UI inputs stay at their original levels.
 - `[psychoacoustics.consonance.field.kernel]`
 - `a, b, c, d` (defaults: `1.0, -1.35, 1.0, 0.0`)

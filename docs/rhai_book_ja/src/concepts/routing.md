@@ -5,7 +5,7 @@
 各々のVoiceは、独立した二つのモノラルバスへ寄与します。
 
 - **presentation bus** → cpal出力 / offline render / UI metering（提示される作品）
-- **habitat bus** → NSGT解析 → Landscape（ALife生態系が応答するもの）
+- **habitat bus** → 聴覚解析 → Landscape（ALife生態系が応答するもの）
 
 初期状態では両方へ送られます。一方だけに送るには`send()`、両方を明示するには`|`で
 結合します。

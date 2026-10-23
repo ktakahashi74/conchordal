@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Listener stability and resolvability now aggregate components defined by local
+  mass maxima. Adjacent bins representing one component no longer offer an
+  internal resolution move. Evidence thresholds, movement costs and tension
+  coefficients retain their values. The validation fixture compares stable,
+  resolved and settled tension with the tension cluster, accounting for audible
+  upper partials that the former input pruned.
+
+- H/R perception now uses a causal complex auditory filterbank (bandwidth factor
+  1/4), channel-dependent hop boxcars, reassigned power and critical-band
+  loudness compression. Voice self-exclusion skips NSGT; mixed/listener streams
+  retain spectral power, and Flora resource analysis keeps its existing law.
+  Full-hop boundaries and sample-rate validation apply before analysis. Reported
+  loudness and roughness values follow the new density; configuration adds no keys.
+
 - All Flora now derives ecological pace from temporal DCC: T0 keeps the
   tempo-basin center (2 Hz by default); metric T1 follows confirmed heard beats
   and falls back to the center. All retiring lanes use a finite metabolic tail,

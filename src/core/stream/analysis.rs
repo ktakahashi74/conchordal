@@ -12,10 +12,15 @@ pub struct AnalysisStream {
 impl AnalysisStream {
     #[cfg(test)]
     pub(crate) fn aud_m1_shadow_diagnostic(&self) -> serde_json::Value {
-        self.analysis
-            .shadow
-            .as_ref()
-            .map_or(serde_json::Value::Null, |s| s.diagnostic())
+        self.analysis.frontend.diagnostic()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn legacy_new(params: LandscapeParams, nsgt: RtNsgtKernelLog2) -> Self {
+        Self {
+            analysis: SynchronousAnalysis::legacy_new(nsgt, &params),
+            params,
+        }
     }
 
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
@@ -42,6 +47,11 @@ impl AnalysisStream {
         let mut observer = self.clone();
         // Voice observers consume H/R only, even when the mixed stream feeds Flora.
         observer.analysis.nsgt.disable_resource_power();
+        observer.analysis.nsgt_enabled = false;
+        #[cfg(test)]
+        if self.analysis.legacy.is_some() {
+            observer.analysis.nsgt_enabled = true;
+        }
         observer
     }
 
@@ -63,9 +73,11 @@ impl AnalysisStream {
         self.params.fs
     }
 
-    /// Borrow the current frame; callers clone only when publishing it.
+    /// Process one complete hop, or hold state on empty input.
+    /// Callers clone the borrowed frame only when publishing it.
     pub fn process(&mut self, audio: &[f32]) -> &Landscape {
         if !audio.is_empty() {
+            assert_eq!(audio.len(), self.hop_samples(), "one complete analysis hop");
             self.analysis.process_spectral(audio, 1, &self.params, true);
         }
         &self.analysis.landscape
@@ -103,23 +115,47 @@ mod tests {
         assert!(mixed.analysis.nsgt.resource_power().is_some());
         let mut voice = mixed.voice_observer();
         assert!(voice.analysis.nsgt.resource_power().is_none());
+        let retained_power = voice.last().nsgt_power.clone();
         for _ in 0..40 {
+            assert!(!voice.analysis.nsgt_enabled);
             let expected = mixed.process(&audio);
             let actual = voice.process(&audio);
-            assert_eq!(actual.nsgt_power, expected.nsgt_power);
+            assert_eq!(actual.nsgt_power, retained_power);
             assert_eq!(actual.harmonicity, expected.harmonicity);
             assert_eq!(actual.roughness01, expected.roughness01);
         }
     }
 
     #[test]
-    fn reset_and_variable_chunks_preserve_analysis_contract() {
+    fn incomplete_hops_are_rejected_before_state_changes() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut stream = AnalysisStream::new(params, nsgt);
+        let hop = stream.hop_samples();
+        for len in [hop / 2, 2 * hop + 1] {
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    stream.process(&vec![0.1; len]);
+                }))
+                .is_err()
+            );
+        }
+        let mut fresh = stream.clone();
+        stream.reset();
+        let audio = vec![0.03; hop];
+        assert_eq!(
+            stream.process(&audio).subjective_intensity,
+            fresh.process(&audio).subjective_intensity
+        );
+    }
+
+    #[test]
+    fn complete_hops_reset_and_empty_input_preserve_analysis_contract() {
         let (mut nsgt, mut params) = crate::runtime::body_metabolism_test_core();
         nsgt.process_hop(&vec![0.1; nsgt.hop()]);
         let mut reference = nsgt.clone();
         let hop = nsgt.hop();
         let mut stream = AnalysisStream::new(params.clone(), nsgt);
-        for len in [hop / 2, hop, 2 * hop + 1] {
+        for len in [hop, hop, hop] {
             let audio: Vec<_> = (0..len).map(|i| 0.1 * (i as f32 * 0.13).sin()).collect();
             let expected = reference.process_hop(&audio);
             let frame = stream.process(&audio);

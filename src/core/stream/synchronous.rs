@@ -1,8 +1,10 @@
 //! Borrowed synchronous analysis, with the same numerical law as AnalysisStream.
 
 use super::potentials::PotentialScratch;
+use crate::core::auditory_frontend::{AuditoryFrontEnd, SpectralFrameView};
 use crate::core::landscape::{Landscape, LandscapeParams};
-use crate::core::landscape_spectral::{SpectralFrameView, SpectralFrontEnd};
+#[cfg(test)]
+use crate::core::landscape_spectral::SpectralFrontEnd;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
 use crate::core::psycho_state::roughness_ratio_to_state01;
 use crate::core::psycho_state::{
@@ -13,9 +15,10 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(crate) struct SynchronousAnalysis {
     pub(super) nsgt: RtNsgtKernelLog2,
-    frontend: SpectralFrontEnd,
+    pub(super) frontend: AuditoryFrontEnd,
+    pub(super) nsgt_enabled: bool,
     #[cfg(test)]
-    pub(super) shadow: Option<crate::core::auditory_shadow::ShadowFrontEnd>,
+    pub(super) legacy: Option<SpectralFrontEnd>,
     pub landscape: Landscape,
     pub du: Arc<[f32]>,
     potentials: PotentialScratch,
@@ -40,14 +43,10 @@ impl SynchronousAnalysis {
         );
         landscape.recompute_consonance(params);
         Self {
+            frontend: AuditoryFrontEnd::selected(space.clone(), params.fs, nsgt.hop(), nsgt.nfft()),
+            nsgt_enabled: true,
             #[cfg(test)]
-            shadow: crate::core::auditory_shadow::selected_test_frontend(
-                space.clone(),
-                params.fs,
-                nsgt.hop(),
-                nsgt.nfft(),
-            ),
-            frontend: SpectralFrontEnd::new(space.clone()),
+            legacy: None,
             landscape,
             du: Arc::clone(&potentials.du),
             potentials,
@@ -57,12 +56,20 @@ impl SynchronousAnalysis {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn legacy_new(nsgt: RtNsgtKernelLog2, params: &LandscapeParams) -> Self {
+        let frontend = SpectralFrontEnd::new(nsgt.space().clone());
+        let mut analysis = Self::new(nsgt, params);
+        analysis.legacy = Some(frontend);
+        analysis
+    }
+
     pub(crate) fn reset_density(&mut self) {
         self.nsgt.reset();
         self.frontend.reset();
         #[cfg(test)]
-        if let Some(shadow) = &mut self.shadow {
-            shadow.reset();
+        if let Some(legacy) = &mut self.legacy {
+            legacy.reset();
         }
     }
 
@@ -72,16 +79,18 @@ impl SynchronousAnalysis {
         params: &LandscapeParams,
     ) -> SpectralFrameView<'a> {
         assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
-        let power = self.nsgt.process_hop(audio);
         #[cfg(test)]
-        if let Some(shadow) = &mut self.shadow {
-            shadow.process(audio, params);
-            return SpectralFrameView {
-                subjective_intensity: &shadow.density_scan,
-            };
+        if let Some(legacy) = &mut self.legacy {
+            return legacy.process_nsgt_power(
+                self.nsgt.process_hop(audio),
+                audio.len() as f32 / params.fs,
+                params,
+            );
         }
-        self.frontend
-            .process_nsgt_power(power, audio.len() as f32 / params.fs, params)
+        self.frontend.process(audio, params);
+        SpectralFrameView {
+            subjective_intensity: &self.frontend.density_scan,
+        }
     }
 
     #[cfg(test)]
@@ -90,14 +99,16 @@ impl SynchronousAnalysis {
     }
 
     pub(crate) fn skip(&mut self, audio: &[f32]) {
-        self.nsgt.push_without_analysis(audio);
         #[cfg(test)]
-        if let Some(shadow) = &mut self.shadow {
-            shadow.skip(audio);
+        if self.legacy.is_some() {
+            self.nsgt.push_without_analysis(audio);
+            return;
         }
+        self.frontend.skip(audio);
     }
 
     pub(crate) fn process_body_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
+        assert!(gap > 0);
         assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
         self.process_spectral(audio, gap, params, false);
     }
@@ -109,34 +120,41 @@ impl SynchronousAnalysis {
         params: &LandscapeParams,
         full: bool,
     ) {
-        let power = if gap == 1 {
-            self.nsgt.process_hop(audio)
-        } else {
-            self.nsgt.process_hop_gap(audio, gap)
-        };
-        if full {
+        if full && self.nsgt_enabled {
+            let power = if gap == 1 {
+                self.nsgt.process_hop(audio)
+            } else {
+                self.nsgt.process_hop_gap(audio, gap)
+            };
             self.landscape.nsgt_power.copy_from_slice(power);
         }
-        #[cfg(not(test))]
-        let spectral = self.frontend.process_nsgt_power(
-            power,
-            audio.len() as f32 / params.fs * gap as f32,
-            params,
-        );
         #[cfg(test)]
-        let spectral = if let Some(shadow) = &mut self.shadow {
-            shadow.process_body_gap(audio, gap as usize, params);
-            SpectralFrameView {
-                subjective_intensity: &shadow.density_scan,
-            }
+        let density = if let Some(legacy) = &mut self.legacy {
+            let power = if full {
+                &self.landscape.nsgt_power
+            } else {
+                self.nsgt.process_hop_gap(audio, gap)
+            };
+            legacy
+                .process_nsgt_power(power, audio.len() as f32 / params.fs * gap as f32, params)
+                .subjective_intensity
         } else {
-            self.frontend.process_nsgt_power(
-                power,
-                audio.len() as f32 / params.fs * gap as f32,
-                params,
-            )
+            if full && gap == 1 {
+                self.frontend.process(audio, params);
+            } else {
+                self.frontend.process_body_gap(audio, gap as usize, params);
+            }
+            &self.frontend.density_scan
         };
-        let density = spectral.subjective_intensity;
+        #[cfg(not(test))]
+        let density = {
+            if full && gap == 1 {
+                self.frontend.process(audio, params);
+            } else {
+                self.frontend.process_body_gap(audio, gap as usize, params);
+            }
+            &self.frontend.density_scan
+        };
         let space = &self.landscape.space;
         let eps = params.roughness_ref_eps.max(1e-12);
         let roughness_k = params.roughness_k.max(1e-6);
@@ -246,16 +264,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn aud_m1_adapter_preserves_nsgt_and_selected_history() {
+    fn auditory_frontend_preserves_nsgt_and_selected_history() {
         let (params, kernel, hop) =
             crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
-        let mut baseline = SynchronousAnalysis::new(kernel.clone(), &params);
-        assert!(baseline.shadow.is_none());
+        let mut baseline = SynchronousAnalysis::legacy_new(kernel.clone(), &params);
         let mut selected = crate::core::auditory_shadow::with_selected_test_frontend(|| {
             SynchronousAnalysis::new(kernel.clone(), &params)
         });
-        let mut direct = selected.shadow.as_ref().unwrap().clone();
-        assert!(SynchronousAnalysis::new(kernel, &params).shadow.is_none());
+        let mut direct = selected.frontend.clone();
         for frame in 0..16 {
             let pcm: Vec<_> = (0..hop)
                 .map(|i| {
@@ -304,9 +320,11 @@ mod tests {
             let t = Instant::now();
             let power = analysis.nsgt.process_hop(&pcm);
             let t1 = Instant::now();
-            let spectral = analysis
-                .frontend
-                .process_nsgt_power(power, 512. / 48_000., &params);
+            let _ = power;
+            analysis.frontend.process(&pcm, &params);
+            let spectral = SpectralFrameView {
+                subjective_intensity: &analysis.frontend.density_scan,
+            };
             let t2 = Instant::now();
             analysis.potentials.compute_shape(
                 spectral.subjective_intensity,

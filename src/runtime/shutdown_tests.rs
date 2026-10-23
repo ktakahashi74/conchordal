@@ -501,3 +501,87 @@ fn flora_force_stop_ends_generation_without_waiting_for_release() {
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
+
+#[test]
+fn auditory_listener_clocks_and_device_rate_validation() {
+    let script = std::env::temp_dir().join(format!(
+        "conchordal-auditory-clock-{}.rhai",
+        std::process::id()
+    ));
+    std::fs::write(&script, "seed(29); let v = place(sine().brain(\"drone\").sustain().anchor().amp(0.05), at(220)); wait(0.2); release(v); wait(0.02);").unwrap();
+    let scenario = compile_scenario_from_script(&script, None).unwrap();
+    let mut config = AppConfig::default();
+    config.analysis.nfft = 2048;
+    for (configured, actual) in [(48000, 16000), (16000, 16000)] {
+        let mut invalid = config.clone();
+        invalid.audio.sample_rate = configured;
+        let error = wire_runtime(
+            &invalid,
+            actual,
+            "invalid auditory rate".into(),
+            scenario.clone(),
+            Arc::new(AtomicBool::new(false)),
+            options(),
+        )
+        .err()
+        .expect("reject unsupported actual rate before constructing analysis");
+        assert!(
+            error.contains("audio.sample_rate") && error.contains("Nyquist"),
+            "{error}"
+        );
+    }
+    for deterministic in [true, false] {
+        let rows = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = rows.clone();
+        let mut opts = options();
+        opts.listener_forced = true;
+        opts.deterministic_analysis = deterministic;
+        opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
+            if let Some(listener) = state.latest_listener_state {
+                assert!(listener.generated_frame_id <= state.frame_idx);
+                assert!(listener.analysis_frame_id < listener.generated_frame_id);
+                assert_eq!(
+                    listener.analysis_lag_frames,
+                    listener.generated_frame_id - listener.analysis_frame_id
+                );
+                let expected_time = (listener.analysis_frame_id + 1) as f32 * 512.0 / 48000.0;
+                assert!((listener.time_sec - expected_time).abs() < 1e-6);
+                if deterministic {
+                    assert_eq!(listener.generated_frame_id, state.frame_idx);
+                    assert_eq!(listener.analysis_frame_id + 1, state.frame_idx);
+                }
+                captured.lock().unwrap().push((
+                    state.frame_idx,
+                    listener.generated_frame_id,
+                    listener.analysis_frame_id,
+                ));
+            }
+            // Give the asynchronous listener opportunities to publish without
+            // imposing a wait in its real-time consumption path.
+            if !deterministic {
+                thread::sleep(Duration::from_millis(2));
+            }
+        }));
+        let wiring = wire_runtime(
+            &config,
+            48000,
+            "auditory listener clocks".into(),
+            scenario.clone(),
+            Arc::new(AtomicBool::new(false)),
+            opts,
+        )
+        .unwrap();
+        join_thread("worker", wiring.worker_handle)
+            .unwrap()
+            .unwrap();
+        join_thread("analysis", wiring.analysis_handle).unwrap();
+        join_thread("listener", wiring.listener_analysis_handle.unwrap()).unwrap();
+        let rows = rows.lock().unwrap();
+        assert!(
+            rows.len() >= 2,
+            "both modes must consume actual auditory analysis"
+        );
+        println!("AUD_M2_LISTENER_CLOCK deterministic={deterministic} rows={rows:?}");
+    }
+    std::fs::remove_file(script).unwrap();
+}

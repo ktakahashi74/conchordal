@@ -1,4 +1,4 @@
-//! Shared spectral front-end for landscape processing.
+//! Test-only former NSGT front-end control.
 //! NSGT power -> peak extraction -> delta + loudness -> leaky normalization.
 
 use crate::core::landscape::LandscapeParams;
@@ -9,9 +9,7 @@ use crate::core::peak_extraction::{
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::utils::a_weighting_gain_pow;
 
-pub(crate) struct SpectralFrameView<'a> {
-    pub subjective_intensity: &'a [f32],
-}
+use crate::core::auditory_frontend::SpectralFrameView;
 
 #[derive(Clone)]
 pub struct SpectralFrontEnd {

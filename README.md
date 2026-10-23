@@ -39,8 +39,8 @@ observes the sound presented to the audience.
 
 The Landscape represents auditory structure in frequency and time:
 
-* **Consonance Field (Pitch):** A Non-Stationary Gabor Transform (NSGT)
-  analyzes the habitat bus on a Log2-frequency axis. Dedicated kernels compute:
+* **Consonance Field (Pitch):** A causal auditory filterbank reassigns
+  habitat sound into a compressed Log2-frequency density. Dedicated kernels compute:
     * **Roughness (R):** sensory dissonance from interference within critical bands.
     * **Harmonicity (H):** periodicity and virtual-pitch template matching.
     * **Consonance (C):** an evaluation field derived from roughness and harmonicity.
@@ -77,7 +77,7 @@ The atomic unit of the system. Each **Voice** is an autonomous entity:
 
 ### 4. Presentation and the Listener
 
-Every Voice can feed two independent buses. The **habitat bus** drives NSGT
+Every Voice can feed two independent buses. The **habitat bus** drives auditory
 analysis and the Landscape; the **presentation bus** is what the audience,
 offline renderer, and ListenerTwin receive. Both are enabled by default, while
 scripts may route a Voice to either side deliberately.
@@ -110,7 +110,9 @@ This allows for the creation of structured "works" where the overall form is del
 * CI covers **Linux, macOS, and Windows**.
 * A multi-threaded runtime isolates the audio callback with an SPSC ring buffer
   and uses channels for rendering, analysis, UI, and reporting handoffs.
-* High-performance **Non-stationary Gabor transform (NSGT)** analysis engine, complemented by dedicated psychoacoustic evaluation and synthesis kernels.
+* **Causal auditory filterbank** with hop statistics, frequency reassignment and
+  critical-band loudness compression; NSGT power remains for spectral displays,
+  history and Flora resources.
 * **ALife engine** with configurable energy metabolism, lifecycle, respawn,
   local pitch search, and Kuramoto-style entrainment.
 * Scenario scripting via an embedded **Rhai** interpreter for dynamic control.

@@ -1,4 +1,4 @@
-//! Addendum-6 hop boxcars and linear-cost critical-band context.
+//! Hop boxcars and bounded critical-band power queries.
 use super::*;
 use rustfft::num_complex::Complex64;
 
@@ -149,6 +149,7 @@ impl ErbContext {
         power.max(0.0) as f32
     }
 
+    #[cfg(test)]
     pub fn omitted_weight_bound(frequency: f32) -> f64 {
         let f = f64::from(frequency);
         let b = 1.0186 * (24.7 + f / 9.265);
@@ -157,6 +158,7 @@ impl ErbContext {
     }
 }
 
+#[cfg(test)]
 #[test]
 fn erb_context_matches_direct_sum_and_isolated_power() {
     let mut context = ErbContext::new(48000.0);
@@ -194,6 +196,7 @@ fn erb_context_matches_direct_sum_and_isolated_power() {
     println!("AUD_M1_ERB_CONTEXT direct_sum_max_error_over_total_power={maximum}");
 }
 
+#[cfg(test)]
 #[test]
 fn boxcar_matches_explicit_hop_history_and_body_skip() {
     let (kernel, params) = crate::runtime::body_metabolism_test_core();

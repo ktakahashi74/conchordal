@@ -58,12 +58,16 @@ pub enum LimiterSetting {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnalysisConfig {
+    /// NSGT window for UI, spectral taps, gap warmup and Flora resource coverage.
+    /// Auditory H/R resolution is fixed independently of this window.
     #[serde(default = "AnalysisConfig::default_nfft")]
     pub nfft: usize,
     #[serde(default = "AnalysisConfig::default_hop_size")]
     pub hop_size: usize,
+    /// S6 subjective-intensity smoothing time constant in milliseconds.
     #[serde(default = "AnalysisConfig::default_tau_ms")]
     pub tau_ms: f32,
+    /// Alignment of the retained NSGT kernels, not the auditory IIR bank.
     #[serde(default = "AnalysisConfig::default_kernel_align")]
     pub kernel_align: KernelAlign,
 }
@@ -252,6 +256,7 @@ pub struct PsychoAcousticsConfig {
     pub consonance: ConsonanceConfig,
     #[serde(default)]
     pub habituation: HabituationConfig,
+    /// NSGT power for UI/taps only; H/R use the causal auditory front end.
     #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
     pub use_incoherent_power: bool,
 }
@@ -613,6 +618,13 @@ impl AppConfig {
             self.audio.sample_rate > 0,
             "audio.sample_rate must be positive"
         );
+        // The fixed 55..8000 Hz auditory grid includes a highest channel at
+        // 8175.326 Hz; integer rates below 16351 Hz cannot support its margin.
+        crate::core::auditory_frontend::validate_sample_rate(
+            &crate::core::log2space::Log2Space::new(55.0, 8000.0, 96),
+            self.audio.sample_rate,
+        )
+        .map_err(anyhow::Error::msg)?;
         ensure!(
             self.audio.latency_ms.is_finite() && self.audio.latency_ms > 0.0,
             "audio.latency_ms must be finite and positive"
@@ -1299,6 +1311,29 @@ mod tests {
             assert!(message.contains(path.to_str().unwrap()), "{message}");
             fs::remove_file(path).unwrap();
         }
+    }
+
+    #[test]
+    fn auditory_sample_rate_is_validated_before_construction() {
+        for rate in [8000, 16000, 16350] {
+            let mut config = AppConfig::default();
+            config.audio.sample_rate = rate;
+            let error = config.validate().unwrap_err().to_string();
+            assert!(
+                error.contains("audio.sample_rate") && error.contains("Nyquist"),
+                "{error}"
+            );
+        }
+        for rate in [16351, 22050, 44100, 48000, 96000] {
+            let mut config = AppConfig::default();
+            config.audio.sample_rate = rate;
+            config.validate().unwrap();
+        }
+        let path = unique_path("auditory_rate");
+        fs::write(&path, "[audio]\nsample_rate = 16000\n").unwrap();
+        let error = AppConfig::load_or_default(path.to_str()).unwrap_err();
+        assert!(format!("{error:#}").contains("Nyquist"));
+        fs::remove_file(path).unwrap();
     }
 
     #[test]

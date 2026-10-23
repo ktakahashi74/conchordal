@@ -33,7 +33,7 @@ fn publish_latest(
     }
 }
 
-/// Analysis worker: receives time-domain hops, runs NSGT-based audio analysis,
+/// Analysis worker: receives complete PCM hops, runs auditory and NSGT power analysis,
 /// and publishes either current state or every observation for listener memory.
 pub(crate) fn run(
     mut stream: AnalysisStream,
@@ -93,7 +93,7 @@ pub(crate) fn run(
             assert_eq!(
                 hop.len(),
                 hop_samples,
-                "analysis delivery requires complete NSGT hops"
+                "analysis delivery requires complete hops"
             );
             if frame_id != next_frame_id {
                 stream.reset();

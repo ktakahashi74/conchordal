@@ -83,8 +83,8 @@ footprintを聴くことでviableに見えるかもしれません。そこで`c
 `viability_scope("total")`を使います。
 
 音高移動では、別の設定`leave_self_out(true)`を使います。両者は、混合habitat PCMから
-そのVoice自身のhabitat PCMを引いた音の観測を共有します。減算後も、混合場と同じNSGT、
-パワー平滑、peak抽出、A-weighting、loudness、密度平滑、H・R・Cの計算を使います。
+そのVoice自身のhabitat PCMを引いた音の観測を共有します。減算後も、混合場と同じ聴覚フィルタ群、
+hopごとの統計、周波数の再配置、臨界帯域の圧縮、密度の平滑、H・R・Cの計算を使います。
 habitatへ送られたFloraは、residualを含めて残ります。身体によらず同じ方式を使い、mode選択はありません。
 
 対象Populationは、後から`leave_self_out(true)`を指定する場合も含めて出生時から観測します。

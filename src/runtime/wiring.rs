@@ -197,11 +197,9 @@ pub(super) fn wire_runtime(
         audio_counters,
     } = opts;
 
-    if runtime_sample_rate != config.audio.sample_rate {
-        let mut device_config = config.clone();
-        device_config.audio.sample_rate = runtime_sample_rate;
-        device_config.validate().map_err(|err| format!("{err:#}"))?;
-    }
+    let mut device_config = config.clone();
+    device_config.audio.sample_rate = runtime_sample_rate;
+    device_config.validate().map_err(|err| format!("{err:#}"))?;
     let core = build_analysis_runtime_core(config, runtime_sample_rate);
     let fs = core.fs;
     let hop = core.hop;

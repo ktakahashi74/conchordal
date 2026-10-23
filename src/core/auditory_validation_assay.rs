@@ -214,7 +214,7 @@ fn acquire_windows(addendum6: bool) {
             stationary.clone()
         };
         let leak = (-(hop as f32) / params.fs / (params.tau_ms * 1e-3)).exp();
-        let mut current = SynchronousAnalysis::new(kernel.clone(), &params);
+        let mut current = SynchronousAnalysis::legacy_new(kernel.clone(), &params);
         let mut reference_frames = Vec::new();
         for (frame, chunk) in pcm.chunks_exact(hop).enumerate() {
             if transient {

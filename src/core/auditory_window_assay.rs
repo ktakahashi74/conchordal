@@ -129,7 +129,7 @@ fn aud_m1_a4_windows() {
         };
         let leak = (-(hop as f32) / params.fs / (params.tau_ms * 1e-3)).exp();
         let mut front = template.clone();
-        let mut current = SynchronousAnalysis::new(kernel.clone(), &params);
+        let mut current = SynchronousAnalysis::legacy_new(kernel.clone(), &params);
         let mut populations: Option<[Vec<Flora>; 3]> = None;
         let mut cases = Vec::new();
         for (frame, chunk) in pcm.chunks_exact(hop).enumerate() {

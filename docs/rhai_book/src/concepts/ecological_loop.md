@@ -94,8 +94,8 @@ whether the voice fits the total field including itself.
 
 Pitch movement has its own switch, `leave_self_out(true)`. Both consumers read
 one synchronized observation of the mixed habitat PCM minus that Voice's actual
-habitat PCM. The remainder passes through the same NSGT, power smoothing,
-peak extraction, A-weighting, loudness, density smoothing and H/R/C pipeline as
+habitat PCM. The remainder passes through the same causal auditory filterbank, hop statistics, frequency reassignment,
+critical-band compression, density smoothing and H/R/C pipeline as
 the mixed field. Habitat-routed Flora, including residual sound, stays in the
 remainder. All bodies use this method; there is no mode selector.
 

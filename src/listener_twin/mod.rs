@@ -68,6 +68,9 @@ pub(crate) struct ListenerTwin {
     fast_state: ListenerFastState,
     erb_grid_key: Option<(u32, u32, u32, usize)>,
     erb_du_scan: Vec<f32>,
+    mass_scan: Vec<f32>,
+    component_mass_scan: Vec<f32>,
+    component_peak_bin: Vec<usize>,
     contour: Option<ContourObserver>,
     pub(crate) spectral_history:
         Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
@@ -87,6 +90,9 @@ impl ListenerTwin {
             fast_state: ListenerFastState::default(),
             erb_grid_key: None,
             erb_du_scan: Vec::new(),
+            mass_scan: Vec::new(),
+            component_mass_scan: Vec::new(),
+            component_peak_bin: Vec::new(),
             contour: None,
             spectral_history: None,
         }
@@ -162,14 +168,23 @@ impl ListenerTwin {
         if self.erb_grid_key != Some(key) {
             // The front end stores mass per ERB, so quadrature must use its grid widths.
             self.erb_du_scan = erb_grid(space).1;
+            self.mass_scan.resize(space.n_bins(), 0.0);
+            self.component_mass_scan.resize(space.n_bins(), 0.0);
+            self.component_peak_bin.resize(space.n_bins(), usize::MAX);
             self.erb_grid_key = Some(key);
         }
         space.assert_scan_len_named(&self.erb_du_scan, "listener_erb_du_scan");
         let (stability_level, resolvability_level, tension_level) =
             if has_audible_evidence(landscape, &self.erb_du_scan) {
-                let stability_level = weighted_stability_level(landscape, &self.erb_du_scan);
-                let resolution_gain =
-                    weighted_resolution_gain(landscape, &self.erb_du_scan, &self.config);
+                self.prepare_components(landscape);
+                let stability_level =
+                    weighted_stability_level(landscape, &self.component_mass_scan);
+                let resolution_gain = weighted_resolution_gain(
+                    landscape,
+                    &self.component_mass_scan,
+                    &self.component_peak_bin,
+                    &self.config,
+                );
                 let resolvability_level =
                     (resolution_gain / self.config.gain_scale.max(1e-6)).clamp(0.0, 1.0);
                 let tension_level = ((1.0 - stability_level) * resolvability_level).clamp(0.0, 1.0);
@@ -207,6 +222,66 @@ impl ListenerTwin {
                 .clamp(0.0, 1.0),
         }
     }
+
+    fn prepare_components(&mut self, landscape: &Landscape) {
+        let space = &landscape.space;
+        space.assert_scan_len_named(&self.mass_scan, "listener_mass_scan");
+        space.assert_scan_len_named(&self.component_mass_scan, "listener_component_mass_scan");
+        space.assert_scan_len_named(&self.component_peak_bin, "listener_component_peak_bins");
+        for ((mass, &density), &du) in self
+            .mass_scan
+            .iter_mut()
+            .zip(&landscape.subjective_intensity)
+            .zip(&self.erb_du_scan)
+        {
+            *mass = sanitize_nonnegative_finite(density * du);
+        }
+        self.component_mass_scan.fill(0.0);
+        self.component_peak_bin.fill(usize::MAX);
+        let n = space.n_bins();
+        let mut start = 0;
+        while start < n {
+            let mass = self.mass_scan[start];
+            if mass == 0.0 {
+                start += 1;
+                continue;
+            }
+            let mut end = start + 1;
+            while end < n && self.mass_scan[end] == mass {
+                end += 1;
+            }
+            // Equal-mass plateaus ascend as a block. Higher neighbors win;
+            // equal higher neighbors choose left; flat maxima use the left edge.
+            let left = start > 0 && self.mass_scan[start - 1] > mass;
+            let right = end < n && self.mass_scan[end] > mass;
+            let next = if left && (!right || self.mass_scan[start - 1] >= self.mass_scan[end]) {
+                start - 1
+            } else if right {
+                end
+            } else {
+                start
+            };
+            self.component_peak_bin[start..end].fill(next);
+            start = end;
+        }
+        // Resolve the static ascent forest with path compression before summing.
+        for i in 0..n {
+            if self.mass_scan[i] == 0.0 {
+                continue;
+            }
+            let mut peak = i;
+            while self.component_peak_bin[peak] != peak {
+                peak = self.component_peak_bin[peak];
+            }
+            let mut at = i;
+            while self.component_peak_bin[at] != peak {
+                let next = self.component_peak_bin[at];
+                self.component_peak_bin[at] = peak;
+                at = next;
+            }
+            self.component_mass_scan[peak] += self.mass_scan[i];
+        }
+    }
 }
 
 impl Default for ListenerTwin {
@@ -225,7 +300,78 @@ fn has_audible_evidence(landscape: &Landscape, erb_du: &[f32]) -> bool {
         > AUDIBLE_EVIDENCE_EPS
 }
 
-fn weighted_stability_level(landscape: &Landscape, erb_du: &[f32]) -> f32 {
+fn weighted_stability_level(landscape: &Landscape, component_mass_scan: &[f32]) -> f32 {
+    landscape
+        .space
+        .assert_scan_len_named(component_mass_scan, "listener_component_mass_scan");
+    let mut sum = 0.0f32;
+    let mut weight_sum = 0.0f32;
+    for (&value, &weight) in landscape
+        .consonance_field_level_eff
+        .iter()
+        .zip(component_mass_scan)
+    {
+        if weight <= 0.0 {
+            continue;
+        }
+        sum += weight * value.clamp(0.0, 1.0);
+        weight_sum += weight;
+    }
+    if weight_sum > 0.0 {
+        (sum / weight_sum).clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+fn weighted_resolution_gain(
+    landscape: &Landscape,
+    component_mass_scan: &[f32],
+    component_peak_bin: &[usize],
+    config: &ListenerTwinConfig,
+) -> f32 {
+    landscape
+        .space
+        .assert_scan_len_named(component_mass_scan, "listener_component_mass_scan");
+    landscape
+        .space
+        .assert_scan_len_named(component_peak_bin, "listener_component_peak_bins");
+    let levels = &landscape.consonance_field_level_eff;
+    let window_bins = reachable_window_bins(&landscape.space, config.reachable_cents);
+    let mut gain_sum = 0.0f32;
+    let mut weight_sum = 0.0f32;
+    for (idx, &weight) in component_mass_scan.iter().enumerate() {
+        if weight <= 0.0 {
+            continue;
+        }
+        let current = levels[idx].clamp(0.0, 1.0);
+        let lo = idx.saturating_sub(window_bins);
+        let hi = (idx + window_bins + 1).min(levels.len());
+        let mut best_gain = 0.0f32;
+        for (offset, &candidate) in levels[lo..hi].iter().enumerate() {
+            let target_idx = lo + offset;
+            if component_peak_bin[target_idx] == idx {
+                continue;
+            }
+            let dist_oct = target_idx.abs_diff(idx) as f32 / landscape.space.bins_per_oct as f32;
+            let movement_cost = config.movement_cost_per_oct.max(0.0) * dist_oct;
+            let gain = candidate.clamp(0.0, 1.0) - current - movement_cost;
+            if gain.is_finite() {
+                best_gain = best_gain.max(gain);
+            }
+        }
+        gain_sum += weight * best_gain.max(0.0);
+        weight_sum += weight;
+    }
+    if weight_sum > 0.0 {
+        gain_sum / weight_sum
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+fn bin_weighted_stability_level(landscape: &Landscape, erb_du: &[f32]) -> f32 {
     let mut sum = 0.0f32;
     let mut weight_sum = 0.0f32;
     for ((&value, &density), &du) in landscape
@@ -249,7 +395,8 @@ fn weighted_stability_level(landscape: &Landscape, erb_du: &[f32]) -> f32 {
     }
 }
 
-fn weighted_resolution_gain(
+#[cfg(test)]
+fn bin_weighted_resolution_gain(
     landscape: &Landscape,
     erb_du: &[f32],
     config: &ListenerTwinConfig,
@@ -496,6 +643,126 @@ mod tests {
         assert!(state.stability_level < 0.25);
         assert!(state.resolvability_level < 0.05);
         assert!(state.tension_level < 0.05);
+    }
+
+    #[test]
+    fn sparse_components_match_bin_consumer_exactly() {
+        for (lo, hi, bins) in [(100.0, 400.0, 12), (55.0, 8000.0, 96), (1000.0, 16000.0, 6)] {
+            let space = Log2Space::new(lo, hi, bins);
+            let n = space.n_bins();
+            for active in [
+                vec![],
+                vec![(2, 0.2, 1.0)],
+                vec![(0, 0.35, 0.01), (n / 2, 0.75, 2.0), (n - 1, 0.1, 0.5)],
+            ] {
+                let mut landscape = test_landscape_with_space(space.clone(), 0.4, &active);
+                for (i, level) in landscape.consonance_field_level_eff.iter_mut().enumerate() {
+                    if !active.iter().any(|a| a.0 == i) {
+                        *level = (i % 7) as f32 / 7.0;
+                    }
+                }
+                let du = erb_grid(&space).1;
+                for movement_cost in [0.0, 0.05, 0.45] {
+                    let config = ListenerTwinConfig {
+                        movement_cost_per_oct: movement_cost,
+                        ..Default::default()
+                    };
+                    let mut twin = ListenerTwin::new(config);
+                    twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
+                    twin.prepare_components(&landscape);
+                    assert_eq!(
+                        weighted_stability_level(&landscape, &twin.component_mass_scan),
+                        bin_weighted_stability_level(&landscape, &du)
+                    );
+                    assert_eq!(
+                        weighted_resolution_gain(
+                            &landscape,
+                            &twin.component_mass_scan,
+                            &twin.component_peak_bin,
+                            &config
+                        ),
+                        bin_weighted_resolution_gain(&landscape, &du, &config)
+                    );
+                    for &(i, _, _) in &active {
+                        assert_eq!(twin.component_peak_bin[i], i);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn two_bin_component_has_no_internal_resolution_move() {
+        let landscape = test_landscape(0.1, &[(12, 0.4, 0.75), (13, 0.9, 0.25)]);
+        let du = erb_grid(&landscape.space).1;
+        let mut twin = ListenerTwin::default();
+        let state = twin.observe_presentation_landscape(0.0, 1, 0, &landscape);
+        assert_eq!(twin.component_peak_bin[12], 12);
+        assert_eq!(twin.component_peak_bin[13], 12);
+        assert_eq!(
+            twin.component_mass_scan
+                .iter()
+                .filter(|&&w| w > 0.0)
+                .count(),
+            1
+        );
+        assert_eq!(state.stability_level, 0.4);
+        assert_eq!(state.resolvability_level, 0.0);
+        assert_eq!(state.tension_level, 0.0);
+        assert!(bin_weighted_resolution_gain(&landscape, &du, &twin.config) > 0.0);
+    }
+
+    #[test]
+    fn mass_plateaus_and_ascent_ties_have_deterministic_owners() {
+        let mut landscape = test_landscape(0.4, &[]);
+        let mut twin = ListenerTwin::default();
+        twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
+        twin.erb_du_scan.fill(1.0);
+        for (i, mass) in [
+            (2, 1.0),
+            (3, 1.0),
+            (4, 2.0),
+            (7, 4.0),
+            (8, 2.0),
+            (9, 4.0),
+            (12, 3.0),
+            (13, 3.0),
+        ] {
+            landscape.subjective_intensity[i] = mass;
+        }
+        twin.prepare_components(&landscape);
+        for (i, peak) in [
+            (2, 4),
+            (3, 4),
+            (4, 4),
+            (7, 7),
+            (8, 7),
+            (9, 9),
+            (12, 12),
+            (13, 12),
+        ] {
+            assert_eq!(twin.component_peak_bin[i], peak, "bin {i}");
+        }
+        assert_eq!(twin.component_mass_scan[4], 4.0);
+        assert_eq!(twin.component_mass_scan[7], 6.0);
+        assert_eq!(twin.component_mass_scan[9], 4.0);
+        assert_eq!(twin.component_mass_scan[12], 6.0);
+        assert_eq!(twin.component_peak_bin[6], usize::MAX);
+    }
+
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+    fn component_observation_reuses_hop_scratch() {
+        let landscape = test_landscape(0.1, &[(12, 0.4, 0.75), (13, 0.9, 0.25)]);
+        let mut twin = ListenerTwin::default();
+        twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
+        crate::runtime_profile::begin_allocations();
+        for frame in 1..65 {
+            twin.observe_presentation_landscape(frame as f32 * 0.01, frame, frame - 1, &landscape);
+        }
+        let counts = crate::runtime_profile::finish_allocations().unwrap();
+        assert_eq!((counts.count, counts.bytes), (0, 0));
+        println!("AUD_M2_LISTENER_COMPONENT_ALLOC {counts:?}");
     }
 
     #[test]

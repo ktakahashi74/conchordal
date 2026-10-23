@@ -31,7 +31,7 @@ fn aud_m1_v5_cost() {
     let (params, kernel, hop) =
         crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
     let space = kernel.space().clone();
-    let mut old = SynchronousAnalysis::new(kernel.clone(), &params);
+    let mut old = SynchronousAnalysis::legacy_new(kernel.clone(), &params);
     let mut new = ShadowFrontEnd::new(space.clone(), params.fs, 0.25, false, kernel.nfft())
         .with_statistics(hop, true);
     let mut scratch = [
@@ -77,7 +77,7 @@ fn aud_m1_v5_cost() {
         }
     }
     let mut old_template =
-        crate::core::stream::analysis::AnalysisStream::new(params.clone(), kernel.clone());
+        crate::core::stream::analysis::AnalysisStream::legacy_new(params.clone(), kernel.clone());
     let mut new_template = with_selected_test_frontend(|| {
         crate::core::stream::analysis::AnalysisStream::new(params.clone(), kernel)
     });
@@ -126,6 +126,6 @@ fn aud_m1_v5_cost() {
         "frontend_order_alternates":true,"frontend_current":statistics(&frontend[0]),"frontend_selected":statistics(&frontend[1]),
         "hr_kernel_current":statistics(&kernels[0]),"hr_kernel_selected":statistics(&kernels[1]),"loo":loo,
         "scope":"frontend includes S1-S6 or NSGT+SpectralFrontEnd; H/R compute_shape is measured separately; LOO is Observer::process plus snapshot creation and destruction",
-        "adapter_note":"selected LOO streams retain NSGT power alongside the shadow frontend; totals include both. No listener, T2, transport queue, GUI, or resource-power tracker",
+        "adapter_note":"Production selected Voice LOO streams omit NSGT; the historical M1 acquisition retained it. No listener, T2, transport queue, GUI, or resource-power tracker",
         "timing_lock":false,"host_before":before,"host_after":after})).unwrap()).unwrap();
 }

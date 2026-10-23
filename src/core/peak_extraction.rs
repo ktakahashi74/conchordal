@@ -7,6 +7,7 @@ use crate::core::roughness_kernel::erb_grid;
 
 #[derive(Clone, Debug)]
 pub struct Peak {
+    #[cfg(test)]
     pub mass: f32,
     pub bin_idx: usize,
 }
@@ -122,6 +123,7 @@ impl PeakExtractConfig {
         }
     }
 
+    #[cfg(test)]
     pub fn nsgt_default() -> Self {
         Self {
             max_peaks: Some(32),
@@ -346,7 +348,11 @@ pub(crate) fn extract_peaks_density_with_grid_reuse<'a>(
             continue;
         }
         let bin_idx = sel.idx;
-        scratch.peaks.push(Peak { mass, bin_idx });
+        scratch.peaks.push(Peak {
+            #[cfg(test)]
+            mass,
+            bin_idx,
+        });
     }
 
     &scratch.peaks

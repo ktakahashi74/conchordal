@@ -1,6 +1,7 @@
 pub(crate) mod analysis_worker;
+pub(crate) mod auditory_frontend;
 #[cfg(test)]
-pub(crate) mod auditory_shadow;
+pub(crate) use auditory_frontend as auditory_shadow;
 pub mod consonance_kernel;
 pub(crate) mod db;
 pub(crate) mod density;
@@ -12,6 +13,7 @@ pub(crate) mod harmonic_ratios;
 pub(crate) mod harmonicity_kernel;
 pub(crate) mod history_prediction;
 pub mod landscape;
+#[cfg(test)]
 pub(crate) mod landscape_spectral;
 pub mod log2space;
 pub(crate) mod meter;

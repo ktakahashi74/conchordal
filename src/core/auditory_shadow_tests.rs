@@ -123,7 +123,7 @@ fn aud_m1_v1_and_python() {
     let mut max_mass = 0.0_f64;
     for fixture in reference["fixtures"].as_array().unwrap() {
         let pcm = read_pcm(&dir.join("reference").join(fixture["pcm"].as_str().unwrap()));
-        let mut old = SynchronousAnalysis::new(kernel.clone(), &params);
+        let mut old = SynchronousAnalysis::legacy_new(kernel.clone(), &params);
         for chunk in pcm.chunks_exact(hop) {
             old.process(chunk, &params);
         }
@@ -675,7 +675,7 @@ fn aud_m1_v2_consumers() {
         anchors.sort_unstable_by(f32::total_cmp);
         anchors.dedup();
         let mut fronts = templates.clone();
-        let mut baseline = SynchronousAnalysis::new(kernel.clone(), &params);
+        let mut baseline = SynchronousAnalysis::legacy_new(kernel.clone(), &params);
         let mut stationary = vec![0.0; space.n_bins()];
         for (&f, &a) in frequencies.iter().zip(&amplitudes) {
             deposit(
@@ -970,3 +970,33 @@ mod a8_cost;
 
 #[path = "auditory_sample_assay.rs"]
 mod a8_samples;
+
+#[cfg(feature = "profile-alloc")]
+#[test]
+fn selected_frontend_hop_and_body_skip_allocate_nothing() {
+    let (kernel, params) = crate::runtime::body_metabolism_test_core();
+    let mut every = AuditoryFrontEnd::selected(
+        kernel.space().clone(),
+        params.fs,
+        kernel.hop(),
+        kernel.nfft(),
+    );
+    let mut body = every.clone();
+    let audio: Vec<_> = (0..kernel.hop())
+        .map(|i| 0.1 * (i as f32 * 0.13).sin())
+        .collect();
+    every.process(&audio, &params);
+    body.process(&audio, &params);
+    crate::runtime_profile::begin_allocations();
+    for frame in 0..64 {
+        every.process(&audio, &params);
+        if frame % 4 == 3 {
+            body.process_body_gap(&audio, 4, &params);
+        } else {
+            body.skip(&audio);
+        }
+    }
+    let counts = crate::runtime_profile::finish_allocations().unwrap();
+    assert_eq!((counts.count, counts.bytes), (0, 0));
+    println!("AUD_M2_FRONTEND_ALLOC {counts:?}");
+}

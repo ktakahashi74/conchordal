@@ -63,9 +63,9 @@ This pre-computation is vital for real-time performance, removing the need for c
 
 ## 2.2 Constant-Q Bandwidth Characteristics
 
-The `Log2Space` inherently enforces a Constant-Q (Constant Quality Factor) characteristic across the spectrum. In signal processing terms, $Q$ is defined as the ratio of the center frequency to the bandwidth: $Q = f / \Delta f$.
+The bin geometry of `Log2Space` has a Constant-Q (Constant Quality Factor) characteristic across the spectrum. In signal processing terms, $Q$ is defined as the ratio of the center frequency to the bandwidth: $Q = f / \Delta f$.
 
-In a linear system (like a standard FFT), $\Delta f$ is constant, meaning $Q$ increases with frequency. In `Log2Space`, the bandwidth $\Delta f_i$ of the $i$-th bin scales proportionally with the center frequency $f_i$. This property mimics the frequency selectivity of the human auditory system, where the ear's ability to resolve frequencies diminishes (in absolute Hz terms) as frequency increases. This alignment allows Conchordal to allocate computational resources efficiently—using high temporal resolution at high frequencies and high spectral resolution at low frequencies—without manual multirate processing.
+In a linear system (like a standard FFT), $\Delta f$ is constant, meaning $Q$ increases with frequency. In `Log2Space`, the bandwidth $\Delta f_i$ of the $i$-th bin scales proportionally with the center frequency $f_i$. This property mimics the frequency selectivity of the human auditory system, where the ear's ability to resolve frequencies diminishes (in absolute Hz terms) as frequency increases. This describes the output grid and the retained NSGT kernels. The auditory front end uses ERB-dependent filter bandwidths (Section 3.1); output-bin spacing does not set its frequency selectivity.
 
 ## 2.3 The Equivalent Rectangular Bandwidth (ERB) Scale
 
@@ -96,50 +96,50 @@ The Landscape is updated every audio frame (or block) by the Analysis Worker. It
 *   **Roughness ($R$)**: The sensory dissonance caused by rapid beating between proximal partials.
 *   **Harmonicity ($H$)**: The measure of virtual pitch strength and spectral periodicity.
 
-Both metrics are normalized to the $[0, 1]$ range. The rest of this chapter follows the analysis pipeline in order: Section 3.1 builds the log-frequency spectrum (NSGT), Sections 3.2 and 3.3 derive the Roughness and Harmonicity fields from it, and Section 3.4 integrates the two into the Consonance terrain that agents actually climb.
+Both metrics are normalized to the $[0, 1]$ range. The rest of this chapter follows the analysis pipeline in order: Section 3.1 builds the auditory subjective-intensity density, Sections 3.2 and 3.3 derive the Roughness and Harmonicity fields from it, and Section 3.4 integrates the two into the Consonance terrain that agents actually climb.
 
-## 3.1 Non-Stationary Gabor Transform (NSGT)
+## 3.1 Causal Auditory Analysis
 
-To populate the `Log2Space` with spectral data, Conchordal uses a custom implementation of the Non-Stationary Gabor Transform (NSGT). Unlike the Short-Time Fourier Transform (STFT), which uses a fixed window size, the NSGT varies the window length $L$ inversely with frequency to maintain the Constant-Q property derived in Section 2.2.
+`AuditoryFrontEnd` (`core/auditory_frontend.rs`) converts real habitat PCM into a `Log2Space`-aligned subjective-intensity density. The same processing analyzes presentation audio for ListenerTwin and the actual `mix − own` PCM for Voice self-exclusion. It uses a causal complex filterbank, hop statistics, frequency reassignment and compressive loudness weighting.
 
-### 3.1.1 Kernel-Based Spectral Analysis
+### 3.1.1 Filterbank and Hop Statistics
 
-The implementation in `core/nsgt_kernel.rs` utilizes a sparse kernel approach to perform this transform efficiently. For each log-frequency band $k$, a time-domain kernel $h_k$ is precomputed. This kernel combines a complex sinusoid at the band's center frequency $f_k$ with a periodic Hann window $w_k$ of length $L_k \approx Q \cdot f_s / f_k$.
+Each channel is a cascade of four complex one-pole filters, with positive pole angle and unity gain at its center. Its bandwidth is $b_c=\tfrac14\,1.0186(24.7+f_c/9.265)$ Hz. Centers lie on the LTFAT ERB-number scale $e(f)=9.2645\ln(1+0.00437f)$ at intervals of 0.1875, anchored at 1000 Hz. The 55–8000 Hz analysis range includes a margin of 0.375 ERB-number units on either side: 170 channels, from about 46.001 to 8175.326 Hz. All centers must lie below Nyquist; unsupported sample rates fail configuration validation.
 
-$$ h_k[n] = w_k[n] \cdot e^{-j 2\pi f_k n / f_s} $$
+For each complete hop of $N$ samples, a channel accumulates energy $E_h=\sum|z[n]|^2$ and lag-one correlation $S_h=\sum z[n]\overline{z[n-1]}$. The first sample uses the previous hop's final output. A channel keeps a boxcar of $n_c=\max(1,\lceil f_s/(N\,0.75\,\mathrm{ERB}(f_c))\rceil)$ hops. Unobserved slots start at zero and the denominator stays fixed while the boxcar fills.
 
-These kernels are transformed into the frequency domain ($K_k[\nu]$) during initialization. To optimize performance, the system sparsifies these frequency kernels, storing only the bins with significant energy.
+The estimated frequency and reassigned real mean-square power are
 
-During runtime, the system performs a single FFT on the input audio buffer to obtain the spectrum $X[\nu]$. The complex coefficient $C_k$ for band $k$ is then computed via the inner product in the frequency domain:
+$$\hat f_c=\frac{f_s}{2\pi}\arg\sum_h S_h,\qquad d_c=\frac{2|\sum_h S_h|}{n_cN\,G(\hat f_c)},\qquad G(f)=\sum_j|H_j(f)|^2.$$
 
-$$ C_k = \frac{1}{N_{fft}} \sum_{\nu} X[\nu] \cdot K_k^*[\nu] $$
+The coverage function $G$ is tabulated at construction and interpolated. Frequency and power come from the same complex correlation, so the deposited power vanishes as that correlation approaches zero.
 
-This "one FFT, many kernels" approach generates a high-resolution, logarithmically spaced spectrum without the cost of calculating a separate DFT for every band or using recursive filter banks. The current instrument runtime constructs a 96-bin-per-octave analysis space from 55 Hz to 8 kHz; `Log2Space` itself supports other positive, ordered bounds for experiments and tests.
+### 3.1.2 Critical-Band Weighting and Density
 
-### 3.1.2 Real-Time Temporal Smoothing
+Before compression, reassigned powers form a critical-band context
 
-The instantaneous band powers $p_k = |C_k|^2$ exhibit high variance due to the stochastic nature of the audio input (especially with noise-based agents). To create a stable field for agents to sample, the `RtNsgtKernelLog2` struct wraps the NSGT with a temporal smoothing layer.
+$$P_{cb}(x)=\sum_j d_j\left[1+\left(\frac{x_j-x}{1.0186\,\mathrm{ERB}(x)}\right)^2\right]^{-4}.$$
 
-It implements a per-band leaky integrator (exponential smoothing). Crucially, the time constant $\tau$ is frequency-dependent. Low frequencies, which evolve slowly, are smoothed with a longer $\tau$, while high frequencies, which carry transient details, have a shorter $\tau$.
+The implementation uses sixth-order moments in 1/32-ERB-number buckets within ±4 ERB-number units of each query. For each deposit, it takes $P=\max(P_{cb},d)$ and applies the continuous gate $\gamma=\max(0,1-10^{-6}/(P/du))$, where $du$ is the interpolated Log2Space cell width in ERB units. A zero context produces zero weight. The compressed mass is
 
-$$ y_k[t] = (1 - \alpha_k) \cdot p_k[t] + \alpha_k \cdot y_k[t-1] $$
+$$m=\gamma\frac{d}{P}\left(\frac{A_w(x)P}{P_{ref}}\right)^{\texttt{loudness\_exp}},$$
 
-where the smoothing factor $\alpha_k$ is derived from the frame interval $\Delta t$:
+with A-weighting power gain $A_w$ and default exponent 0.23. Each mass is shared linearly between adjacent log-frequency bins and divided by their cell widths. Outside the end-bin centers it fades to zero over one bin; nonpositive frequencies contribute zero. Out-of-range deposits still contribute to the critical-band context.
 
-$$ \alpha_k = e^{-\Delta t / \tau(f_k)} $$
+S6 leaky smoothing uses `analysis.tau_ms` (default 10 ms). The resulting `subjective_intensity` density feeds both H and R. Its integral remains `loudness_mass`; `roughness` and `roughness01_scalar` retain their existing formulas and types. Their values change with the new input density.
 
-This models the "integration time" of the ear. It is only the first perceptual stage: the smoothed power is subsequently converted into a sparse subjective-intensity density before the Roughness and Harmonicity kernels read it.
+ListenerTwin groups positive bin masses by ascent to local mass maxima before
+weighting stability and reachable improvement. Each component contributes its
+total mass at its peak-bin field level. Improvement candidates must lie outside
+that component, with movement cost measured from the peak. This makes one
+component shared between two bins contribute once. Gain scale, reachable range,
+movement cost and the product defining tension retain their existing values.
 
-### 3.1.3 From NSGT Power to Subjective Intensity
+### 3.1.3 Spectral Power, History and Timing
 
-`SpectralFrontEnd` (`core/landscape_spectral.rs`) does not pass the smoothed NSGT power directly to the Landscape kernels. For each hop it:
+Mixed and listener streams also calculate NSGT power for spectrum displays, reports, spectral history and research taps. Flora resource power retains its separate FFT/NSGT-weighted analysis. Voice self-exclusion observers calculate the auditory density without running NSGT. `analysis.nfft` controls the retained NSGT window, Flora resource coverage and the publication hold after gaps; `analysis.kernel_align` controls NSGT kernel alignment. `psychoacoustics.use_incoherent_power` selects the NSGT power measure, independently of H/R input.
 
-1.  Converts per-bin power to power density using the Log2Space-aligned ERB cell widths.
-2.  Extracts significant spectral peaks, preserving their integrated mass rather than treating every analysis bin as an independent partial.
-3.  Applies an A-weighting **power** gain and the compressive exponent `loudness_exp` to each peak mass.
-4.  Scatters the resulting masses back onto a sparse Log2Space-aligned subjective-intensity density and applies a second leaky normalization with time constant `analysis.tau_ms`.
-
-The resulting `subjective_intensity` scan—not raw $|C_k|$ or raw NSGT power—is the common input to the Roughness and Harmonicity computations below. Its integral is retained separately as `loudness_mass`.
+The audio worker at hop K still reads analysis frame K−1, stamped at that frame's end. Before a run, history is silence. A gap resets filter, previous sample, statistics and density state, and publication waits for the existing `window_samples()` coverage (16384 samples, 341.333 ms at 48 kHz by default). This publication rule is not an accuracy bound on the IIR tail. Clones retain the full causal history. Synchronous body analysis advances filters and hop statistics even on unselected hops; selected updates apply S4–S6 once, with the elapsed-hop interval for S6.
 
 ## 3.2 Roughness ($R$) Calculation: The Plomp-Levelt Model
 
@@ -529,7 +529,7 @@ The crowding system prevents agents from collapsing to identical frequencies. Bo
 
 `leave_self_out(true)` evaluates the surroundings by subtracting the Voice's
 actual habitat PCM from the mixed PCM before analysis. The remainder passes through
-the same NSGT, power smoothing, peak extraction, A-weighting, loudness, density
+the same auditory filterbank, hop statistics, reassignment, critical-band compression, density
 smoothing and H/R/C calculations as the mixed field. Habitat-routed Flora, including
 residual sound, stays in the remainder. All bodies use this method; there is no
 public mode selector.
@@ -923,7 +923,7 @@ The application creates four primary thread contexts, plus the GUI event loop:
 
 2.  **Analysis Thread (Background Priority)**:
     *   Defined in `core/analysis_worker.rs`, running `AnalysisStream` from `core/stream/analysis.rs`.
-    *   **Responsibility**: Receives habitat-bus hops (time-domain chunks), runs the NSGT to produce a log2 power spectrum, then computes *both* the Harmonicity field (Sibling Projection) and the Roughness field (ERB-domain convolution) in a single pipeline.
+    *   **Responsibility**: Receives habitat-bus hops (time-domain chunks), runs the auditory front end for subjective intensity and retains NSGT power for spectral displays and history, then computes *both* the Harmonicity field (Sibling Projection) and the Roughness field (ERB-domain convolution) in a single pipeline.
     *   **Update Cycle**: When analysis is complete, it sends the updated Landscape snapshot back to the worker thread via a bounded SPSC channel.
 
 3.  **Listener-Analysis Thread**:
@@ -943,7 +943,7 @@ The application creates four primary thread contexts, plus the GUI event loop:
 To maintain data consistency without locking the audio thread, Conchordal uses a multi-channel update strategy for the Landscape. Rendered audio is split across two buses: the **habitat bus** (the environment the ecosystem senses) and the **presentation bus** (what the audience hears). A drone can be routed to the habitat bus only—shaping the landscape without being presented.
 
 1.  The **Worker Thread** renders audio per bus and sends each habitat hop to the **Analysis Thread**; presentation hops go to the **Listener-Analysis Thread**.
-2.  The **Analysis Thread** runs the NSGT + subjective-intensity + Roughness + Harmonicity pipeline and sends the resulting raw `Landscape` snapshot back.
+2.  The **Analysis Thread** runs the auditory subjective-intensity + Roughness + Harmonicity pipeline alongside NSGT spectral power and sends the resulting raw `Landscape` snapshot back.
 3.  The **Worker Thread** merges the analysis result into the current `Landscape`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
 4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the phonation onset strengths of habitat-routed voices; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
 5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
@@ -951,7 +951,7 @@ To maintain data consistency without locking the audio thread, Conchordal uses a
 7.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders the selected body response into each bus (Section 5.1.3).
 8.  Rendered presentation audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
 
-This decoupled architecture ensures that the audio thread always sees a consistent stream of samples, even if the analysis thread lags slightly behind real-time. The analysis thread processes all hops in-order to maintain NSGT time continuity.
+This decoupled architecture ensures that the audio thread always sees a consistent stream of samples, even if the analysis thread lags slightly behind real-time. The analysis thread processes all hops in-order to maintain causal auditory and spectral history.
 
 ## 6.3 The Conductor: Scripting with Rhai
 
@@ -1210,7 +1210,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `habituation.recovery_sec` | `HabituationParams` | Seconds | Time to recover 90% after drive withdrawal (default 8.0). |
 | `habituation.ref_drive` | `HabituationParams` | Float | Half-saturation drive in the habituation transfer function (default 0.25). |
 | `loudness_exp` | `LandscapeParams` | Float | Compressive exponent applied to A-weighted peak power in the subjective-intensity front end (default 0.23). |
-| `tau_ms` | `LandscapeParams` | Milliseconds | Leaky normalization time constant after peak extraction (`[analysis].tau_ms`). |
+| `tau_ms` | `LandscapeParams` | Milliseconds | S6 subjective-intensity smoothing time constant (`[analysis].tau_ms`). |
 | `stability` | `MeterShaping` | 0.0-1.0 | Beat attractor depth (`meter_stability`): scales entrainment forcing and tempo learning. |
 | `basin_hz` | `MeterShaping` | Hz pair | Scene tempo region (`temporal_basin`): seeds and confines beat-frequency learning; its center initializes metric bodies independently of stability. |
 | `coupling` | `CoupledTimingSpec` | 0.0-1.0 | Acoustic-context influence for participation; shared-beat attraction for synchronization (`entrainment`). |

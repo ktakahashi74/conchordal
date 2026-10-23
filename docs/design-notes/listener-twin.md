@@ -141,15 +141,23 @@ implementation reports neutral stability, zero resolvability, and zero tension.
 
 The spectral front end stores `subjective_intensity` as an ERB density, not a
 mass per Log2Space bin. Let `d_i` be this nonnegative density and `du_i` the
-bin's ERB integration width from `erb_grid`. Use the same intensity mass for
-stability, resolution gain, and the silence/evidence check:
+bin's ERB integration width from `erb_grid`. The evidence check uses total
+intensity mass. Stability and resolution gain group positive bin masses into
+components by steepest ascent to local mass maxima. Equal-mass contiguous
+plateaus ascend as one block toward the higher neighboring mass; equal higher
+neighbors choose the lower-frequency side. A plateau with no higher neighbor
+uses its lowest-frequency bin as the representative peak. Zero-mass bins belong
+to no component.
+
+Let `B_c` be the bins assigned to component `c`, and `p_c` its peak bin:
 
 ```text
 w_i = d_i * du_i
 M = sum_i(w_i)
-L_i = consonance_field_level_eff[i]
+W_c = sum_(i in B_c)(w_i)
+L_c = consonance_field_level_eff[p_c]
 
-stability_level = sum_i(w_i * L_i) / M
+stability_level = sum_c(W_c * L_c) / M
 ```
 
 The weighted mean applies when `M` exceeds the internal evidence threshold.
@@ -157,6 +165,9 @@ Otherwise the state is `(stability, resolvability, tension) = (0.5, 0.0, 0.0)`.
 Using `d_i` directly as a weight would give equal-mass peaks unequal influence
 when their ERB bin widths differ. This unit correction preserves the existing
 consonance coefficients, movement-cost parameters, and tension formula.
+A component split between adjacent bins contributes once, with its full mass and
+its peak-bin level. Component masses, ascent owners and per-bin mass use cached
+buffers that are resized on frequency-space changes and reused for each hop.
 
 Derived values should not be stored in Phase 1:
 
@@ -222,16 +233,19 @@ nearby improvement potential without encoding a tonal grammar rule.
 Use a simple log-frequency cost first:
 
 ```text
-candidate_gain(i, j) =
-  L_j - L_i - movement_cost_per_oct * abs(log2_f_j - log2_f_i)
+candidate_gain(c, j) =
+  L_j - L_c - movement_cost_per_oct * abs(log2_f_j - log2_f_p_c)
 
-best_positive_gain_i = max(0, max_j_in_reachable_window(candidate_gain(i, j)))
-resolution_gain = sum_i(w_i * best_positive_gain_i) / M
+candidates_c = bins in the reachable window around p_c, excluding B_c
+best_positive_gain_c = max(0, max_(j in candidates_c)(candidate_gain(c, j)))
+resolution_gain = sum_c(W_c * best_positive_gain_c) / M
 resolvability_level = clamp(resolution_gain / gain_scale, 0, 1)
 ```
 
-For a multi-bin audible region, compute the gain per active bin and average by
-the intensity mass `w_i`, using the same `M` and evidence threshold as stability.
+Compute gain once per component and average by `W_c`, using the same total mass
+`M` and evidence threshold as stability. Moving within the bins that represent
+one component is not counted as resolution. For isolated single-bin components,
+these sums and candidate gains equal the former per-bin calculation.
 Keep `movement_cost_per_oct` and `gain_scale` internal constants until reports
 show that they need to be configurable.
 
@@ -445,9 +459,12 @@ This is a test fixture, not a user-facing musical sample. It deliberately
 separates hidden habitat, stable audible presentation, a distinct audible
 tension sonority that resolves into a stable chord, and a later settled
 presentation. The test checks the expected report shape: hidden habitat stays
-neutral, stable presentation has high stability and low tension, the tension
-sonority exposes resolvability and raises tension, and the resolved/settled
-windows lower tension.
+neutral, stable presentation has high stability and less tension than the tension
+sonority, that sonority exposes resolvability and raises tension, and the
+resolved/settled windows have less tension than that sonority. Audible upper
+partials remain separate components, so stable chords can have nonzero tension;
+the test compares these windows instead of retaining cutoffs calibrated to the
+former input's harmonic pruning. See `auditory-system.md` section 3.3.
 
 ### Phase 3: Weak DCC Coupling
 

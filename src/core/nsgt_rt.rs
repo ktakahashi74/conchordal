@@ -260,6 +260,7 @@ impl RtNsgtKernelLog2 {
     }
 
     /// Push one complete hop into the raw window without updating the analysis.
+    #[cfg(test)]
     pub(crate) fn push_without_analysis(&mut self, audio: &[f32]) {
         assert_eq!(audio.len(), self.hop);
         self.write_hop(audio);

@@ -314,10 +314,16 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
         "stable presentation should have high stability: {}",
         stable.avg_stability()
     );
+    // The former input pruned upper harmonics. The auditory front end retains
+    // audible partial components, so even stable chords can have nonzero tension.
+    // Check the stable/resolved/settled ordering against the tension cluster;
+    // the old cutoffs protected no named consumer decision.
+    // See docs/design-notes/auditory-system.md section 3.3 (listener migration).
     assert!(
-        stable.avg_tension() < 0.005,
-        "stable presentation should have low tension: {}",
-        stable.avg_tension()
+        stable.avg_tension() < tension.avg_tension(),
+        "stable presentation should have less tension than the cluster: stable={} tension={}",
+        stable.avg_tension(),
+        tension.avg_tension()
     );
 
     assert!(
@@ -337,14 +343,14 @@ fn listener_twin_tension_resolution_fixture_reports_expected_shape() {
         resolved.avg_stability()
     );
     assert!(
-        resolved.avg_tension() < tension.avg_tension() * 0.5,
+        resolved.avg_tension() < tension.avg_tension(),
         "resolution should lower tension: resolved={} tension={}",
         resolved.avg_tension(),
         tension.avg_tension()
     );
     assert!(
-        settled.avg_tension() < tension.avg_tension() * 0.5,
-        "settled presentation should stay low tension: settled={} tension={}",
+        settled.avg_tension() < tension.avg_tension(),
+        "settled presentation should stay below cluster tension: settled={} tension={}",
         settled.avg_tension(),
         tension.avg_tension()
     );

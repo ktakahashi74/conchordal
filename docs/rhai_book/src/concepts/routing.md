@@ -6,7 +6,7 @@ Each voice contributes to two independent mono buses:
 
 - **presentation bus** → cpal output / offline render / UI metering (the work
   as presented)
-- **habitat bus** → NSGT analysis → landscape (what the ALife ecology responds
+- **habitat bus** → auditory analysis → landscape (what the ALife ecology responds
   to)
 
 By default both buses receive the voice. Use `send()` when a voice should feed

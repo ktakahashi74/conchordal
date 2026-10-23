@@ -1,6 +1,6 @@
-//! Renders without Flora must stay bit-identical to references captured before Flora
-//! existed. Capture only on the pre-Flora revision with
-//! `FLORA_INVARIANCE_CAPTURE=1 cargo test --test flora_invariance -- --nocapture`.
+//! Fixed no-Flora render snapshots for the selected auditory front end.
+//! Authorized front-end migrations recapture each registered target-feature group
+//! with `FLORA_INVARIANCE_CAPTURE=1`; every case must match in two acquisitions.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -173,7 +173,7 @@ fn read_fixture(path: &Path) -> Vec<(String, String, u64)> {
 }
 
 #[test]
-fn renders_without_flora_match_pre_flora_references() {
+fn renders_without_flora_match_auditory_references() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
     let feature_key = format!(
         "fma={},avx2={},avx512f={}",

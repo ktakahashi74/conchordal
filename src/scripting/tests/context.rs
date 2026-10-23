@@ -1482,7 +1482,7 @@ fn removed_loo_mode_is_not_a_script_control() {
 fn flora_specs_emit_placement_actions_and_route_buses() {
     let (scenario, _) = run_script(
         r#"
-        let moss = flora().amp(0.1).rate(1).renewal(10).fade(0.25)
+        let moss = flora().amp(0.1).fade(0.25)
             .tone("resonant").residual(false).send(presentation_bus);
         place(moss, consonance(110).range(1, 16));
         place(flora().residual(true).send(habitat_bus), random(220, 880));
@@ -1507,10 +1507,7 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
     let (time, id, spec, extent, seeding) = placed[0];
     assert_eq!((time, id, extent), (0.0, 1, (110.0, 1760.0)));
     assert!(matches!(seeding, FloraSeeding::Consonance));
-    assert_eq!(
-        (spec.amp, spec.rate, spec.renewal_sec, spec.fade_sec),
-        (0.1, 1.0, 10.0, 0.25)
-    );
+    assert_eq!((spec.amp, spec.fade_sec), (0.1, 0.25));
     assert_eq!(spec.tone, FloraTone::Resonant);
     assert!(!spec.residual);
     assert!(!spec.routing.to_habitat && spec.routing.to_presentation);
@@ -1521,10 +1518,7 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
     assert!(placed[1].2.routing.to_habitat && !placed[1].2.routing.to_presentation);
     for (_, _, spec, _, _) in &placed[2..] {
         assert!(spec.routing.to_habitat && spec.routing.to_presentation);
-        assert_eq!(
-            (spec.amp, spec.rate, spec.renewal_sec, spec.fade_sec),
-            (0.03, 8.0, 10.0, 2.0)
-        );
+        assert_eq!((spec.amp, spec.fade_sec), (0.03, 2.0));
         assert_eq!(spec.tone, FloraTone::Sine);
         assert!(!spec.residual);
     }
@@ -1602,12 +1596,7 @@ fn flora_rejects_each_unsupported_placement_component() {
 
 #[test]
 fn flora_numeric_validation_covers_specs_and_patches() {
-    for (name, min, max) in [
-        ("amp", 0.0, 1.0),
-        ("rate", 0.05, 8.0),
-        ("renewal", 0.5, 600.0),
-        ("fade", 0.0, 60.0),
-    ] {
+    for (name, min, max) in [("amp", 0.0, 1.0), ("fade", 0.0, 60.0)] {
         for patch in [false, true] {
             if patch && name == "fade" {
                 continue;
@@ -1670,7 +1659,7 @@ fn flora_numeric_validation_covers_specs_and_patches() {
             "{error}"
         );
     }
-    run_script("flora().amp(1).rate(8).renewal(600).fade(60).tone(\"sine\");");
+    run_script("flora().amp(1).fade(60).tone(\"sine\");");
 }
 
 #[test]
@@ -1685,7 +1674,7 @@ fn flora_patches_are_pending_until_wait_flush_or_finish() {
                 r#"
             let m = place(flora(), random(110, 880));
             wait(0.25);
-            m.amp(0.1).amp(0.2).rate(2).renewal(10);
+            m.amp(0.1).amp(0.2);
         "#,
             )
             .unwrap();
@@ -1705,10 +1694,7 @@ fn flora_patches_are_pending_until_wait_flush_or_finish() {
         assert_eq!(updates.len(), 1);
         assert_eq!((updates[0].0, updates[0].1), (0.25, 1));
         let patch = updates[0].2;
-        assert_eq!(
-            (patch.amp, patch.rate, patch.renewal_sec),
-            (Some(0.2), Some(2.0), Some(10.0))
-        );
+        assert_eq!(patch.amp, Some(0.2));
     }
 }
 
@@ -1761,7 +1747,7 @@ fn flora_nested_scopes_release_inner_at_inner_end_with_patches_first() {
             });
             wait(1);
             voices.amp(0.05);
-            outer.rate(1);
+            outer.amp(0.1);
         });
     "#,
     );
@@ -1835,7 +1821,7 @@ fn flora_warnings_are_collected_with_call_positions() {
         release(m); release(m); flush(); release(m); m.amp(0.5);
         let scoped = ();
         play(|| { scoped = place(flora(), random(110, 880)); });
-        release(scoped); scoped.renewal(5);
+        release(scoped); scoped.amp(0.5);
     "#,
     );
     let warnings = warnings.lock().unwrap();
@@ -1844,7 +1830,7 @@ fn flora_warnings_are_collected_with_call_positions() {
         "release ignored for inactive Flora 1",
         "amp ignored for inactive Flora 1",
         "release ignored for inactive Flora 2",
-        "renewal ignored for inactive Flora 2",
+        "amp ignored for inactive Flora 2",
     ] {
         let warning = warnings
             .iter()
@@ -1872,7 +1858,7 @@ fn flora_errors_preserve_native_call_positions() {
         "\nflora().amp(1.00000001);",
         "\nflora().tone(\"Sine\");",
         "\nplace(flora(), at(220));",
-        "\nlet m = place(flora(), random(110, 880)); m.rate(8.00000001);",
+        "\nlet m = place(flora(), random(110, 880)); m.amp(1.00000001);",
     ] {
         let error = run_script_err(source);
         assert!(
@@ -1905,8 +1891,12 @@ fn flora_metric_is_opt_in_initial_only_and_independent_of_population_metric() {
 }
 
 #[test]
-fn flora_metric_uses_scene_tempo_instead_of_local_rate_overrides() {
+fn flora_uses_scene_tempo_and_removes_local_rate_overrides() {
     for script in [
+        "flora().rate(4);",
+        "flora().renewal(20);",
+        "let f = place(flora(), random(110, 1760)); f.rate(4);",
+        "let f = place(flora(), random(110, 1760)); f.renewal(20);",
         "place(flora().metric().rate(4), random(110, 1760));",
         "place(flora().renewal(20).metric(), random(110, 1760));",
         "let f = place(flora().metric(), random(110, 1760)); f.rate(4);",
@@ -1917,7 +1907,7 @@ fn flora_metric_uses_scene_tempo_instead_of_local_rate_overrides() {
         let error = engine
             .eval::<Dynamic>(script)
             .expect_err("metric time override");
-        assert!(error.to_string().contains("temporal_basin"), "{error}");
+        assert!(error.to_string().contains("Function not found"), "{error}");
     }
     let scenario =
         run_script("temporal_basin(2, 4); place(flora().metric(), random(110, 1760)); wait(1);").0;

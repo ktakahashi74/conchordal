@@ -873,8 +873,11 @@ The clock frequency, before phase correction, scales the entire ecological time
 relative to neutral 2 Hz. Fresh beat evidence contributes with the existing 0.95
 confidence weighting; stale or unknown observations return pace to the tempo-basin
 center (2 Hz without a basin) and allocation to continuous T0 opportunities.
-The macro fade still bounds release. T0 remains the default and preserves its
-original coefficients and output; rate/renewal overrides are T0-only.
+The macro fade still bounds release. T0 remains the default; it uses the fixed tempo-basin center without following
+heard beats. The same ecological time scaling and finite retirement tail apply
+to every Flora. For frequency f, growth is 4f/s, recovery is 20/f seconds and
+consumption is 0.6/f seconds. Independent rate/renewal controls are removed;
+explicit fade(0) still ends immediately.
 
 These dynamics belong to the authored-rule tier. Their use of an auditory landscape
 does not make the growth or succession rules a model grounded in auditory cognition.

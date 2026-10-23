@@ -1,6 +1,6 @@
 # Flora: a Field-Form Inhabitant
 
-Status: implemented, including opt-in T1, 2026-10-23. The adopted design is draft 14: the rendering
+Status: implemented, including T0/T1 tempo-derived pace and finite retirement, 2026-10-23. The adopted design is draft 14: the rendering
 of draft 12 and the consumer–resource dynamics of State and Dynamics. Current paths
 and the historical branch are listed in [Reference Implementation](#reference-implementation).
 The DCC route for the drive of temporal evolution, a listener-side information terrain,
@@ -52,8 +52,9 @@ habituation field.
 
 ## Coupling Contract
 
-Metric Flora shares the composer's `temporal_basin` and `meter_stability` priors
-with Voice metric timing. Only the habitat audio-only meter supplies beat evidence;
+All Flora shares the composer's `temporal_basin` and `meter_stability` priors
+with Voice metric timing. T0 keeps the basin center, or 2 Hz when unspecified,
+and ignores heard beats. T1 uses the private clock described below. Only the habitat audio-only meter supplies beat evidence;
 internal commands never supply a beat. Ecological pace uses the private clock's
 confidence-weighted frequency, excluding its phase correction. A stale, unavailable
 or unconfirmed observation uses the basin center, or 2 Hz without a basin.
@@ -122,7 +123,7 @@ These are recorded as caveats, not solved by the design:
     generated audio (`src/runtime/mod.rs`);
   - NSGT band integration adds further delay, most in low bands.
 
-  The default growth time scale (`1/rate` = 0.25 s) is above this, and the reduced
+  The neutral growth time scale (`1/rate` = 0.125 s) is above this, and the reduced
   model is insensitive to up to 213 ms of added delay. That does not prove stability,
   because the loop is discontinuous (next item). Stability is checked by the closed-loop
   assays in Tests, including a low-register extent and two overlapping Flora.
@@ -186,19 +187,21 @@ Implementation Findings. Every part of it belongs to the authored-rule tier.
 Flora reads `g = consonance_field_level` and `H01 = harmonicity01` per hop on its
 extent, and `consonance_density_mass` at placement, all before habituation erosion.
 
-**Metric ecological time.** For T1, let `f` be the private CouplingClock velocity
-before phase correction and `p = f / (2 Hz)`. Advance the entire consumer-resource
+**Ecological time.** For T0, `f` is the tempo-basin center (default 2 Hz).
+For T1, `f` is the private CouplingClock velocity before phase correction.
+In both cases, `p = f / (2 Hz)`. Advance the entire consumer-resource
 system in `dt_ecological = p * dt_physical`: growth, diffusion, seed rain, resource
 recovery and both forms of consumption use this same time. Thus default growth is
 `4 f`, renewal is `20 / f` seconds and consumption is `0.6 / f` seconds. The ratios
 come from the adopted 8/s, 10 s and 0.3 s at the existing neutral 2 Hz, not a claim
 about neural rhythms or a new bar/phrase model. Substeps are recomputed each hop
-from ecological time with the same positivity bounds. T0 retains its original time.
+from ecological time with the same positivity bounds.
 
-**T0 update (T1 uses the ecological time above).** Each hop runs `n` equal substeps, `dt = dt_hop / n`, with the terrain held
-for the hop. `n` is the smallest integer with `rate · dt ≤ 0.05` and `D · dt ≤ 0.25`
-(D in bins²/s); it is recomputed only when `rate`, the hop or the space changes. At the
-default hop it is 1 for `rate ≤ 4.68/s` and 2 at `rate = 8/s`. Each substep:
+**Update.** Each hop runs `n` equal substeps, `dt = p * dt_hop / n`, with the
+terrain held for the hop. `n` is the smallest integer with `rate * dt <= 0.05`
+and `D * dt <= 0.25`, with fixed neutral `rate = 8` and D in bins² per ecological
+second. It is recomputed each hop, including after a pace or space change.
+Each substep:
 
 ```
 v ← v + dt · [ rate · v · (g · u · v / (v + v_a) − k)     growth, Allee term, metabolism
@@ -253,8 +256,9 @@ adopted the recommendation to raise the default `rate` from 4/s to 8/s, retainin
 under Implementation Findings. This is an authored default, not an optimum, and
 the final listening choice remains with the author.
 
-- Rhai: `rate` 8/s (in `[0.05, 8]`), `renewal` (the resource time constant `τ_r`) 10 s
-  (in `[0.5, 600]`).
+- Rhai: scene-wide `temporal_basin`, with neutral center 2 Hz if omitted.
+  Internal neutral coefficients: growth 8/s and resource recovery `τ_r = 10 s`.
+  Physical-time coefficients follow the common pace above; no independent rate/renewal knobs.
 - Internal: metabolism `k = 0.3`; consumption time `τ_c = 0.3 s`; reference density
   `c_ref = 10` per octave; Allee half-saturation `v_a = 0.144` mass per octave; seed rain
   `ι = 0.48` and background seed `ι_bg = 9.6·10⁻⁴` per octave per second; initial total
@@ -469,7 +473,7 @@ stages:
 band, and its position glides to the residual position. Its bandwidth is `ERB(f)` at
 that position.
 
-**Slew (current lanes and T0 retirement).** Each lane reaches its target, or exactly 0, within 80 ms, whatever `A_s` is. Metric retirement instead uses the finite tail below.
+**Slew (current lanes).** Each lane reaches its target, or exactly 0, within 80 ms, whatever `A_s` is. Retirement in both T0 and T1 uses the finite tail below.
 A retiring tonal lane frees at 0.
 
 - `sine` tonal lanes slew amplitude: `|Δr|` per sample is at most `1 / (0.08 · fs)`.
@@ -484,9 +488,9 @@ summed amplitude during transitions is needed. Each lane's own ramp is the guara
 its end values pinned, and the output is their product: the lane slew, `amp_s`'s 80 ms
 ramp and `fade_gain`.
 
-### Opt-in metric allocation (T1)
+### Finite retirement in T0 and T1
 
-Metric retirement starts immediately but its amplitude follows the mass-decay
+Retirement starts immediately but its amplitude follows the mass-decay
 scale. Unsupported biomass has `v' = -rate * p * k * v`, so amplitude has decay
 coefficient `lambda = rate * p * k / 2` (`k = 0.3`). For a finite continuous tail,
 use the existing dead-mass floor `r_floor = sqrt(0.001)` and the authored law
@@ -495,7 +499,7 @@ This is a shifted exponential, not exact biomass tracking: the floor supplies an
 extinction drain, with zero reached after `log(1 + r0/r_floor)/lambda` seconds
 for constant pace. It avoids an arbitrary long-release duration. The macro fade
 still bounds total release, including explicit zero fade. Ordinary attack/target
-slews and all T0 retirement remain unchanged.
+slews remain unchanged.
 
 The fixed `2 * cells` tonal pool is retained. Longer retirement occupies its slots;
 a candidate waits if none is free. Retiring tails own no pending reservation and
@@ -503,6 +507,8 @@ are not reintroduced as candidates. Their actual habitat PCM remains in the
 self-exclusion capture, including the tail. Per-sample processing adds bounded
 scalar work and no allocation; no lane or scratch pool grows at retirement.
 
+
+### Opt-in metric allocation (T1)
 
 `flora().metric()` is implemented. T0 remains the default. Wiring reserves the
 shared habitat acoustic MeterNetwork only when the scenario contains a metric
@@ -526,12 +532,12 @@ candidate is dropped. A lane's generation identifies each reuse of its slot.
 Reservations are a union of the current tonal windows: each bin's excess belongs
 to at most one tone, and is subtracted from the residual once. Empty windows,
 out-of-range support, release and minimum-separation conflicts force immediate
-retirement through the existing slew. At a local crossing, decomposition and
+retirement through the finite metabolic tail. At a local crossing, decomposition and
 allocation are reevaluated in existing W order, tie breaks and pool capacity.
 Born/current/pending/retiring describe lifecycle and waiting status; pending
 retirement remains a sounding current lane until the opportunity or support loss.
 The render loop applies the transition at its sample tick, including births
-inside the hop. Retirement reaches zero within the existing 80 ms bound.
+inside the hop. Retirement reaches finite zero through the shifted exponential above.
 Fallback discards queued candidates and reevaluates current biomass without
 resetting the clock or replaying the queue. Actual envelopes may change before a
 crossing as support falls, and slew delays acoustic onset detection.
@@ -540,7 +546,7 @@ Flora reports include the acoustic observation end tick, flux, full meter suppor
 active/fallback state, local phase, bounded pending slots, drops, and transition
 ticks, generations, waiting samples and forced reasons. Reporting allocation is
 outside the allocation-free renderer contract. Runs without a metric Flora
-placement omit acoustic timing fields and retain the T0 report shape.
+placement omit acoustic timing fields. Every Flora report includes ecological pace.
 
 ### Atoms: one kernel
 
@@ -690,18 +696,15 @@ is unchanged.
 
 ## Rhai Surface
 
-Use `flora().metric()` and the scene-wide `temporal_basin(lo, hi)` to compose pace.
-No independent metric rate or renewal control is added. Nondefault `rate`/`renewal`
-overrides on a metric spec and all metric live patches of these quantities fail
-with a positioned error. Their original T0 surface remains for the explicit
-nonmetric output-preservation contract and existing scientific controls.
-
+Use scene-wide `temporal_basin(lo, hi)` to set all Flora pace. T0 keeps its
+center; `flora().metric()` additionally follows confirmed acoustic beats and
+schedules lane opportunities. The independent `rate` and `renewal` spec and live
+methods are removed. Existing assay migrations and their changed interpretation
+are listed in `samples/research/README.md`.
 
 ```rhai
 let moss = flora()
     .amp(0.03)        // nominal target-amplitude scale: Σ a² ≤ amp²
-    .rate(8.0)        // growth response, 1/s (default 8)
-    .renewal(10.0)    // band-resource recovery time, s (default 10)
     .tone("sine")     // tonal atom: "sine" or "resonant"
     .residual(false)  // default; true renders diffuse mass as band noise
     .fade(2.0);       // fade-in at place, fade-out at release
@@ -713,22 +716,20 @@ m.amp(0.015);
 release(m);
 ```
 
-- Defaults: `amp` 0.03, `rate` 8/s, `renewal` 10 s, `fade` 2 s, `tone("sine")`,
+- Defaults: `amp` 0.03, `fade` 2 s, `tone("sine")`,
   `residual(false)`, both buses.
-- `flora()` returns a `FloraSpec`, with `.amp`, `.rate`, `.renewal`, `.tone`,
+- `flora()` returns a `FloraSpec`, with `.amp`, `.tone`,
   `.residual`, `.fade` and `.send` (same `Bus` / `BusSet` values as Populations).
   `.tone` accepts only `"sine"` and `"resonant"`; any other string is a script error.
 - **Validation.** Every numeric argument, on the spec and on handle patches, must be
   finite both as given and after conversion to `f32`. Overflow to infinity in the
   conversion is an error. Out-of-range values are script errors, not clamps:
-  - `rate` outside `[0.05, 8]`;
   - `amp` outside `[0, 1]`;
-  - `renewal` outside `[0.5, 600]` s;
   - `fade` outside `[0, 60]` s.
 
   The upper bounds keep every ramp finite on a musical time scale.
 - `place(FloraSpec, Placement)` returns a `Flora` handle.
-  - Handle methods `.amp`, `.rate` and `.renewal` record a pending patch. As for
+  - The handle method `.amp` records a pending patch. As for
     Populations, the patch is emitted as `UpdateFlora` at the next `wait` / `flush`,
     or at scope end.
   - `release(Flora)` marks the release pending, as `release_population` does

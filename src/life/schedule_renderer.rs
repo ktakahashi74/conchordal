@@ -1315,8 +1315,6 @@ mod tests {
                     7,
                     FloraSpec {
                         amp: 0.2,
-                        rate: 2.0,
-                        renewal_sec: 6.0,
                         fade_sec: 0.0,
                         tone: FloraTone::Sine,
                         residual: true,
@@ -2085,8 +2083,6 @@ mod tests {
                 7,
                 FloraSpec {
                     amp: 0.2,
-                    rate: 4.,
-                    renewal_sec: 0.1,
                     fade_sec: 0.,
                     tone,
                     residual: true,

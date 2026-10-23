@@ -879,8 +879,6 @@ fn flora_ownership_cases(supported: bool) {
         }
         let flora_spec = FloraSpec {
             amp: 0.35,
-            rate: 4.,
-            renewal_sec: 10.,
             fade_sec: 0.,
             tone,
             residual,
@@ -923,7 +921,6 @@ fn flora_ownership_cases(supported: bool) {
             if frame == 64 || frame == 128 {
                 let patch = FloraPatch {
                     amp: Some(if frame == 64 { 0. } else { flora_spec.amp }),
-                    ..Default::default()
                 };
                 flora[0].apply_patch(&patch);
                 flora_only.apply_patch(&patch);

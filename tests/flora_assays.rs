@@ -84,7 +84,7 @@ fn render(sample: &str, name: &str, tone: &str, residual: bool, campaign: &str) 
                 assert_eq!(spec.residual, residual);
                 Some(
                     json!({"tone": tone, "residual": spec.residual, "amp": spec.amp,
-                "rate": spec.rate, "renewal_sec": spec.renewal_sec, "fade_sec": spec.fade_sec}),
+                "fade_sec": spec.fade_sec}),
                 )
             } else {
                 None

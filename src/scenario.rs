@@ -12,8 +12,6 @@ use lifecycle::LifecycleConfig;
 #[derive(Debug, Clone, Copy)]
 pub struct FloraSpec {
     pub amp: f32,
-    pub rate: f32,
-    pub renewal_sec: f32,
     pub fade_sec: f32,
     pub tone: FloraTone,
     pub residual: bool,
@@ -25,8 +23,6 @@ impl Default for FloraSpec {
     fn default() -> Self {
         Self {
             amp: 0.03,
-            rate: 8.0,
-            renewal_sec: 10.0,
             fade_sec: 2.0,
             tone: FloraTone::Sine,
             residual: false,
@@ -45,8 +41,6 @@ pub enum FloraTone {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FloraPatch {
     pub amp: Option<f32>,
-    pub rate: Option<f32>,
-    pub renewal_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy)]

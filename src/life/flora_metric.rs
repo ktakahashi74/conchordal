@@ -1,6 +1,6 @@
 //! Audio-only timing observations and bounded per-Flora lane opportunities.
 use super::*;
-use crate::core::meter::{MeterShaping, MeterState};
+use crate::core::meter::{MeterShaping, MeterState, sane_basin};
 use crate::core::modulation::NeuralRhythms;
 use crate::life::phonation_engine::{CandidatePoint, CouplingClock, MAX_ONSET_RATE_HZ};
 
@@ -92,9 +92,13 @@ impl Flora {
         shaping: MeterShaping,
     ) {
         self.acoustic_observation = observation;
+        let base = shaping.basin_hz.map_or(2.0, |(lo, hi)| {
+            let (lo, hi) = sane_basin(lo, hi);
+            0.5 * (lo + hi)
+        });
+        self.pace = base / 2.0;
         let Some(m) = &mut self.temporal else { return };
         if !m.initialized {
-            let base = shaping.basin_hz.map_or(2.0, |(lo, hi)| 0.5 * (lo + hi));
             m.clock = CouplingClock::new(0.95, base, 0.0, 0.0, m.seed);
             m.initialized = true;
         }
@@ -122,6 +126,7 @@ impl Flora {
         // Use the same confidence-weighted velocity as the opportunity clock;
         // phase correction changes opportunities, not the ecological time scale.
         m.pace = self.fs / m.clock.nominal_period_ticks(self.fs).unwrap() as f32 / 2.0;
+        self.pace = m.pace;
         m.local_phase_cycles = m.clock.phase_cycles();
         if !m.active {
             m.drops += m.pending.iter().filter(|p| p.is_some()).count() as u64;
@@ -426,22 +431,99 @@ mod tests {
     fn metric_pace_uses_basin_confidence_and_freshness() {
         let mut f = setup(FloraTone::Sine, false);
         let shaping = MeterShaping {
-            basin_hz: Some((3.0, 5.0)),
+            basin_hz: Some((3.5, 4.5)),
             ..Default::default()
         };
         f.observe_rhythm(observation(0, false), 0, shaping);
-        assert_eq!(f.temporal.as_ref().unwrap().pace, 2.0);
+        assert!((f.temporal.as_ref().unwrap().pace - 1.875).abs() < 1e-6);
         let mut heard = observation(512, true);
         heard.state.beat.freq_hz = 2.0;
         heard.state.beat.confidence = 1.0;
         f.observe_rhythm(heard, 512, shaping);
-        assert!((f.temporal.as_ref().unwrap().pace - 1.05).abs() < 1e-6);
+        assert!((f.temporal.as_ref().unwrap().pace - 1.04375).abs() < 1e-6);
         f.observe_rhythm(heard, 1024, shaping);
-        assert_eq!(f.temporal.as_ref().unwrap().pace, 2.0);
+        assert!((f.temporal.as_ref().unwrap().pace - 1.875).abs() < 1e-6);
         heard.observed_end = Some(1536);
         heard.state.beat.confidence = 0.0;
         f.observe_rhythm(heard, 1536, shaping);
-        assert_eq!(f.temporal.as_ref().unwrap().pace, 2.0);
+        assert!((f.temporal.as_ref().unwrap().pace - 1.875).abs() < 1e-6);
+    }
+
+    #[test]
+    fn t0_pace_uses_only_the_basin_and_shares_fallback_dynamics_and_tail() {
+        for basin in [None, Some((0.5, 1.5)), Some((2.0, 4.0))] {
+            for tone in [FloraTone::Sine, FloraTone::Resonant] {
+                let shaping = MeterShaping {
+                    basin_hz: basin,
+                    ..Default::default()
+                };
+                let mut t1 = setup(tone, false);
+                let mut t0 = t1.clone();
+                t0.temporal = None;
+                t0.spec.metric = false;
+                t0.observe_rhythm(observation(0, true), 0, shaping);
+                t1.observe_rhythm(observation(0, false), 0, shaping);
+                assert_eq!(t0.pace, basin.map_or(1.0, |(lo, hi)| (lo + hi) / 4.0));
+                assert_eq!(t0.pace, t1.pace);
+                let mut landscape = Landscape::new(t0.space.clone());
+                landscape.consonance_field_level.fill(0.7);
+                landscape.harmonicity01.fill(0.4);
+                t0.external_observed_frame = Some(0);
+                t1.external_observed_frame = Some(0);
+                t0.advance(&landscape);
+                t1.advance(&landscape);
+                assert_eq!(t0.biomass_mass_scan, t1.biomass_mass_scan);
+                assert_eq!(t0.resource_state_scan, t1.resource_state_scan);
+                let mut pcm = vec![0.0; 512];
+                let mut habitat = pcm.clone();
+                hill(&mut t0, 60, 1.0);
+                t0.render_add(&mut pcm, &mut habitat);
+                let slot = t0
+                    .lanes
+                    .iter()
+                    .position(|l| l.tonal && l.mode == Mode::Current)
+                    .unwrap();
+                t0.release(2.0);
+                t0.render_add(&mut pcm, &mut habitat);
+                assert_eq!(t0.lanes[slot].mode, Mode::Retiring);
+                assert!(t0.lanes[slot].retirement_decay > 0.0);
+                let mut hops = 1;
+                while !t0.is_finished() && hops <= 200 {
+                    t0.render_add(&mut pcm, &mut habitat);
+                    hops += 1;
+                }
+                assert!(t0.is_finished());
+                assert!(hops as f32 * 512.0 / 48000.0 <= 2.0 + 512.0 / 48000.0);
+            }
+        }
+    }
+
+    #[test]
+    fn flora_basin_uses_the_same_supported_band_as_metric_voices() {
+        for basin in [
+            (4.0, 1.0),
+            (-1.0, 20.0),
+            (f32::NAN, f32::INFINITY),
+            (1.0, 1.0),
+        ] {
+            let (lo, hi) = sane_basin(basin.0, basin.1);
+            for metric in [false, true] {
+                let mut f = setup(FloraTone::Sine, false);
+                if !metric {
+                    f.temporal = None;
+                    f.spec.metric = false;
+                }
+                f.observe_rhythm(
+                    TemporalObservation::default(),
+                    0,
+                    MeterShaping {
+                        basin_hz: Some(basin),
+                        ..Default::default()
+                    },
+                );
+                assert_eq!(f.pace, (lo + hi) / 4.0);
+            }
+        }
     }
 
     #[test]

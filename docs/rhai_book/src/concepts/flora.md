@@ -25,12 +25,12 @@ silence: resources retain their initial state before the first valid observation
 and later gaps retain the last observed external consumption.
 
 `flora()` builds a reusable FloraSpec. `place(spec, placement)` returns a Flora that
-can receive amplitude, growth-rate and resource-renewal updates. A Population's Voices and
+can receive amplitude updates. A Population's Voices and
 Flora can share the same habitat, as in this example:
 
 ```rhai
 let sun = place(harmonic().brain("drone").sustain().amp(0.04), at(110));
-let moss = flora().amp(0.03).renewal(10).fade(0.5)
+let moss = flora().amp(0.03).fade(0.5)
     .tone("sine").residual(false).send(habitat_bus | presentation_bus);
 let m = place(moss, consonance(110).range(1, 16));
 wait(2);
@@ -52,8 +52,6 @@ contains bins again.
 | Method | Accepted values | Default | Live update |
 |---|---|---|---|
 | `amp` | 0–1 | 0.03 | Yes |
-| `rate` | 0.05–8 per second | 8 | Yes |
-| `renewal` | 0.5–600 seconds; band resource recovery time | 10 | Yes |
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |
 | `residual` | Boolean; diffuse mass as band noise | `false` | Before placement |
@@ -102,21 +100,21 @@ Before beat confirmation, or while the observation is unavailable, allocation us
 T0. Pending candidates are discarded and current biomass is reconsidered; the
 private clock is not reset and stored candidates are not replayed as a burst.
 
-## Pace and release in metric Flora
+## Pace and release
 
-For `flora().metric()`, set `temporal_basin(lo, hi)` as the composer's tempo prior.
-The basin center is the fallback pace (2 Hz without a basin). Fresh heard beats
-pull the clock according to confidence and the existing 0.95 coupling. Its
-frequency scales the entire ecological time by `frequency / 2`; growth, resource
-recovery, consumption, diffusion and seed rain speed up together. The meter's
-phase correction affects opportunities only. This is an authored ecological
-response, not a model of phrase duration.
+All Flora uses `temporal_basin(lo, hi)` as the composer's tempo prior. T0 keeps
+its center frequency (2 Hz without a basin) and never follows heard beats.
+Metric Flora follows fresh, confirmed beats with confidence-weighted coupling
+0.95 and otherwise returns to the center. For frequency f, ecological time
+advances by f/2: growth is 4f/s, resource recovery is 20/f seconds and consumption
+is 0.6/f seconds. Diffusion and seed rain scale together. Phase correction only
+changes metric opportunities. This authored rule does not model phrase duration.
 
-Metric lanes retire with a finite metabolic amplitude tail. The existing macro
-`fade` still limits release. The fixed lane pool can postpone births while tails
-occupy slots. `rate` and `renewal` remain T0 controls: nondefault metric spec
-overrides and metric live patches are errors. Existing T0 assays retain their
-original coefficients and interpretation.
+All lanes retire with a finite metabolic amplitude tail. The existing macro
+`fade` bounds release; `fade(0)` ends immediately. The fixed lane pool can postpone
+births while tails occupy slots. The independent `rate` and `renewal` methods
+have been removed. Set the scene's tempo prior instead.
 
-Sample 17 uses `temporal_basin(2, 4)`: its 3 Hz center is 1.5 times the neutral
-2 Hz. This is a compositional choice, not a new default or a measured optimum.
+Sample 17 uses continuous T0 and `temporal_basin(2, 4)`: its fixed 3 Hz center is
+1.5 times neutral 2 Hz. The sustained scene has no beat carrier. This is a
+compositional choice, not a new default or a measured optimum.

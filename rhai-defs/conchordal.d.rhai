@@ -3,7 +3,7 @@
 
 /// # Types
 /// - FloraSpec: Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent.
-/// - Flora: Placed spectral growth; supports pending amplitude, growth-rate and renewal patches, and release.
+/// - Flora: Placed spectral growth; supports pending amplitude patches and release.
 /// - PopulationSpec: Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules.
 /// - Population: Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations.
 /// - Placement: Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`.
@@ -305,7 +305,7 @@ fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
 fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
 /// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
-/// Defaults: amp 0.03, rate 8/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.
+/// Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. All Flora uses temporal_basin center (default 2 Hz) for ecological pace. At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. T0 ignores heard beats. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 fn flora() -> FloraSpec;
 
 /// Irregular bodily renewal with acoustic timing choices.
@@ -438,7 +438,7 @@ fn meter_stability(value: i64);
 fn metric(population_spec: PopulationSpec) -> PopulationSpec;
 
 /// Couple Flora pace and lane opportunities to the tempo prior and heard beat.
-/// Default T0 stays continuous. Metric Flora uses the habitat audio-only meter and a private CouplingClock (0.95), starting at the basin center or 2 Hz. Its confidence-weighted frequency scales ecological time relative to 2 Hz, including growth, diffusion, seeds, recovery and consumption. Stale or unconfirmed evidence restores basin pace and continuous allocation. Nondefault rate/renewal overrides and live patches are T0-only. Pending windows reserve current excess once. Births occur at sample crossings; support loss, separation and release retire immediately. Retiring amplitudes follow a finite metabolic tail using the existing dead-mass floor; macro fade bounds release.
+/// Metric Flora uses the habitat audio-only meter and a private CouplingClock (0.95), starting at the basin center or 2 Hz. Its confidence-weighted frequency scales ecological time relative to 2 Hz, including growth, diffusion, seeds, recovery and consumption. Stale or unconfirmed evidence restores basin pace and continuous allocation. Pending windows reserve current excess once. Births occur at sample crossings; support loss, separation and release retire immediately. Retiring amplitudes follow a finite metabolic tail using the existing dead-mass floor; macro fade bounds release.
 fn metric(flora_spec: FloraSpec) -> FloraSpec;
 
 /// Signed beat-phase offset for metric timing, in -0.5..0.5.
@@ -614,19 +614,6 @@ fn range(pattern: ModePattern, min_mul: i64, max_mul: f64) -> ModePattern;
 /// Frequency multipliers relative to the fundamental; only valid on `landscape_*_modes()`.
 fn range(pattern: ModePattern, min_mul: i64, max_mul: i64) -> ModePattern;
 
-/// [experimental] Set continuous T0 Flora's growth response in [0.05, 8] per second.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn rate(flora: Flora, per_second: f64) -> Flora;
-/// [experimental] Set continuous T0 Flora's growth response in [0.05, 8] per second.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn rate(flora: Flora, per_second: i64) -> Flora;
-/// [experimental] Set continuous T0 Flora's growth response in [0.05, 8] per second.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn rate(flora_spec: FloraSpec, per_second: f64) -> FloraSpec;
-/// [experimental] Set continuous T0 Flora's growth response in [0.05, 8] per second.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn rate(flora_spec: FloraSpec, per_second: i64) -> FloraSpec;
-
 /// [tuning] Ratio-based movement candidates; 0 disables.
 fn ratio_candidates(population: Population, count: i64) -> Population;
 /// [tuning] Ratio-based movement candidates; 0 disables.
@@ -659,19 +646,6 @@ fn release(population: Population);
 /// Mark a Flora for release using its spec's fade.
 /// The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.
 fn release(flora: Flora);
-
-/// [experimental] Set continuous T0 Flora's resource recovery time in [0.5, 600] seconds.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn renewal(flora: Flora, seconds: f64) -> Flora;
-/// [experimental] Set continuous T0 Flora's resource recovery time in [0.5, 600] seconds.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn renewal(flora: Flora, seconds: i64) -> Flora;
-/// [experimental] Set continuous T0 Flora's resource recovery time in [0.5, 600] seconds.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn renewal(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
-/// [experimental] Set continuous T0 Flora's resource recovery time in [0.5, 600] seconds.
-/// Requires a finite value before and after f32 conversion; invalid values raise script errors.
-fn renewal(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
 /// Repeated/pulsed phonation mode.
 fn repeat(population_spec: PopulationSpec) -> PopulationSpec;
@@ -900,16 +874,16 @@ fn temperature(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
 fn temperature(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Without a basin, metric Voices start at 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: f64, max_hz: f64);
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Without a basin, metric Voices start at 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: f64, max_hz: i64);
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Without a basin, metric Voices start at 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: i64, max_hz: f64);
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Without a basin, metric Voices start at 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: i64, max_hz: i64);
 
 /// [research] Select off or observe for new temporal cognition before playback.

@@ -100,7 +100,8 @@ set the bodily rate or recurrence candidates of entrained/steady/flow participan
   Voices, independently of stability. Without a basin, that rate remains 2 Hz.
 
 The basin is one initial condition for the whole scene. The final declaration
-in the script applies to every metric Population, through `place()`. A declaration after a Population or after `wait()` still replaces
+in the script applies to every metric Population and every Flora, through `place()`. T0 Flora
+keeps the basin center as its ecological pace without following heard beats. A declaration after a Population or after `wait()` still replaces
 that same scene value; it does not change the basin during performance.
 
 A body's initial tempo is distinct from a beat confirmed by the listener.

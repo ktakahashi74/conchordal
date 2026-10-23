@@ -1005,8 +1005,6 @@ pub(super) fn validate_flora_numeric(
 ) -> Result<f32, Box<EvalAltResult>> {
     let (min, max) = match name {
         "amp" => (0.0, 1.0),
-        "rate" => (0.05, 8.0),
-        "renewal" => (0.5, 600.0),
         "fade" => (0.0, 60.0),
         _ => unreachable!("registered Flora parameter"),
     };
@@ -1042,8 +1040,6 @@ impl FloraSpecHandle {
         let value = validate_flora_numeric(name, value, position)?;
         match name {
             "amp" => self.spec.amp = value,
-            "rate" => self.spec.rate = value,
-            "renewal" => self.spec.renewal_sec = value,
             "fade" => self.spec.fade_sec = value,
             _ => unreachable!("registered Flora spec parameter"),
         }

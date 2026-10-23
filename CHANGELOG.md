@@ -2,14 +2,13 @@
 
 ## Unreleased
 
-- Metric Flora now couples ecological pace to the tempo basin and the
-  confidence-weighted heard beat, with basin fallback on stale/unknown evidence.
-  Retirement uses a finite metabolic amplitude tail. T0 remains unchanged;
-  metric rate/renewal overrides are rejected in favor of the scene tempo prior.
-  Sample 17 demonstrates the faster 2–4 Hz basin without a beat carrier.
-
-- Flora defaults to growth rate 8/s, up from 4/s; resource renewal remains 10 s.
-  Existing research assays explicitly retain rate 4/s where previously implicit.
+- All Flora now derives ecological pace from temporal DCC: T0 keeps the
+  tempo-basin center (2 Hz by default); metric T1 follows confirmed heard beats
+  and falls back to the center. All retiring lanes use a finite metabolic tail,
+  bounded by macro fade; explicit fade(0) remains immediate. Independent `rate`
+  and `renewal` methods are removed. Research assays use tempo priors, changing
+  former growth-only comparisons into whole-ecology pace comparisons. Sample 17
+  uses T0 with the 2–4 Hz basin for its sustained scene.
 
 - Flora lowers its fixed Allee half-saturation density from 0.576 to 0.144 mass
   per octave, reducing the growth barrier for small biomass. Seed rain, rate,

@@ -59,15 +59,7 @@ pub enum Tier {
 
 /// Candidate core verbs under audition: composing purpose, but research-grade
 /// stability until validated.
-const EXPERIMENTAL_FNS: &[&str] = &[
-    "phonate_when_viable",
-    "flora",
-    "rate",
-    "renewal",
-    "fade",
-    "tone",
-    "residual",
-];
+const EXPERIMENTAL_FNS: &[&str] = &["phonate_when_viable", "flora", "fade", "tone", "residual"];
 
 /// Mechanism-tuning functions. Everything not listed here or in
 /// [`RESEARCH_FNS`] is `Tier::Core`. `defs_gen::check()` verifies that every
@@ -178,7 +170,7 @@ pub const TYPE_DOCS: &[TypeDoc] = &[
     },
     TypeDoc {
         name: "Flora",
-        summary: "Placed spectral growth; supports pending amplitude, growth-rate and renewal patches, and release.",
+        summary: "Placed spectral growth; supports pending amplitude patches and release.",
     },
     TypeDoc {
         name: "PopulationSpec",
@@ -316,7 +308,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Na,
         usage: &["flora()"],
         summary: "Build a FloraSpec for spectral growth over a frequency extent.",
-        details: "Defaults: amp 0.03, rate 8/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.",
+        details: "Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. All Flora uses temporal_basin center (default 2 Hz) for ecological pace. At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. T0 ignores heard beats. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.",
     },
     FnDoc {
         name: "amp",
@@ -327,26 +319,6 @@ pub const FN_DOCS: &[FnDoc] = &[
         usage: &["amp(level)"],
         summary: "Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level.",
         details: "Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.",
-    },
-    FnDoc {
-        name: "rate",
-        owner: Owner::Flora,
-        category: "flora",
-        style: Style::Method,
-        patch: Patch::Live,
-        usage: &["rate(per_second)"],
-        summary: "Set continuous T0 Flora's growth response in [0.05, 8] per second.",
-        details: "Requires a finite value before and after f32 conversion; invalid values raise script errors.",
-    },
-    FnDoc {
-        name: "renewal",
-        owner: Owner::Flora,
-        category: "flora",
-        style: Style::Method,
-        patch: Patch::Live,
-        usage: &["renewal(seconds)"],
-        summary: "Set continuous T0 Flora's resource recovery time in [0.5, 600] seconds.",
-        details: "Requires a finite value before and after f32 conversion; invalid values raise script errors.",
     },
     FnDoc {
         name: "fade",
@@ -376,7 +348,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Initial,
         usage: &["metric()"],
         summary: "Couple Flora pace and lane opportunities to the tempo prior and heard beat.",
-        details: "Default T0 stays continuous. Metric Flora uses the habitat audio-only meter and a private CouplingClock (0.95), starting at the basin center or 2 Hz. Its confidence-weighted frequency scales ecological time relative to 2 Hz, including growth, diffusion, seeds, recovery and consumption. Stale or unconfirmed evidence restores basin pace and continuous allocation. Nondefault rate/renewal overrides and live patches are T0-only. Pending windows reserve current excess once. Births occur at sample crossings; support loss, separation and release retire immediately. Retiring amplitudes follow a finite metabolic tail using the existing dead-mass floor; macro fade bounds release.",
+        details: "Metric Flora uses the habitat audio-only meter and a private CouplingClock (0.95), starting at the basin center or 2 Hz. Its confidence-weighted frequency scales ecological time relative to 2 Hz, including growth, diffusion, seeds, recovery and consumption. Stale or unconfirmed evidence restores basin pace and continuous allocation. Pending windows reserve current excess once. Births occur at sample crossings; support loss, separation and release retire immediately. Retiring amplitudes follow a finite metabolic tail using the existing dead-mass floor; macro fade bounds release.",
     },
     FnDoc {
         name: "residual",
@@ -1685,7 +1657,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
         patch: Patch::Na,
         usage: &["temporal_basin(min_hz, max_hz)"],
         summary: "Set the beat's tempo band and metric Voice/Flora pace prior.",
-        details: "Scene-wide initial condition: the last declaration applies to every metric Population, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Without a basin, metric Voices start at 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.",
+        details: "Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.",
     },
     FnDoc {
         name: "set_roughness_aversion",

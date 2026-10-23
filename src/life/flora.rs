@@ -71,6 +71,8 @@ fn partition_erb_cells(space: &Log2Space, erb_scan: &[f32], extent_hz: (f32, f32
     cells
 }
 
+const GROWTH_RATE: f32 = 8.0;
+const RENEWAL_SEC: f32 = 10.0;
 const METABOLISM: f32 = 0.3;
 const CONSUMPTION_SEC: f32 = 0.3;
 const REFERENCE_DENSITY: f32 = 10.0;
@@ -323,6 +325,7 @@ pub(crate) struct Flora {
     fs: f32,
     hop: usize,
     substeps: usize,
+    pace: f32,
     diffusion: f32,
     rng: u64,
     biomass_mass_scan: Vec<f32>,
@@ -360,6 +363,7 @@ pub(crate) struct FloraReport<'a> {
     temporal: Option<&'a MetricState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     acoustic_observation: Option<&'a TemporalObservation>,
+    pace: f32,
     time_sec: f64,
     age_sec: f64,
     flora_id: u64,
@@ -435,6 +439,7 @@ impl Flora {
             fs,
             hop,
             substeps: 1,
+            pace: 1.0,
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
             biomass_mass_scan: Vec::new(),
@@ -506,15 +511,6 @@ impl Flora {
         if let Some(amp) = patch.amp {
             self.spec.amp = amp;
             self.amp.to(amp, SLEW_SEC, self.fs);
-        }
-        if let Some(rate) = patch.rate {
-            self.spec.rate = rate;
-            self.substeps = ((self.hop as f32 / self.fs) * (rate / 0.05).max(self.diffusion / 0.25))
-                .ceil()
-                .max(1.0) as usize;
-        }
-        if let Some(seconds) = patch.renewal_sec {
-            self.spec.renewal_sec = seconds;
         }
     }
 
@@ -605,10 +601,11 @@ impl Flora {
             }
         }
         self.diffusion = 0.5 * (10.0 * space.bins_per_oct as f32 / 1200.0).powi(2);
-        self.apply_patch(&FloraPatch {
-            rate: Some(self.spec.rate),
-            ..FloraPatch::default()
-        });
+        self.substeps = ((self.hop as f32 / self.fs)
+            * self.pace
+            * (GROWTH_RATE / 0.05).max(self.diffusion / 0.25))
+        .ceil()
+        .max(1.0) as usize;
 
         let mut old_lanes = std::mem::take(&mut self.lanes);
         self.cells = partition_erb_cells(space, &self.erb_scan, self.extent_hz)
@@ -732,17 +729,13 @@ impl Flora {
         if self.range.is_empty() {
             return;
         }
-        let pace = self.temporal.as_ref().map_or(1.0, |m| m.pace);
-        let substeps = if self.temporal.is_some() {
-            ((self.hop as f32 / self.fs)
-                * pace
-                * (self.spec.rate / 0.05).max(self.diffusion / 0.25))
-            .ceil()
-            .max(1.0) as usize
-        } else {
-            self.substeps
-        };
-        let dt = self.hop as f32 / self.fs * pace / substeps as f32;
+        self.substeps = ((self.hop as f32 / self.fs)
+            * self.pace
+            * (GROWTH_RATE / 0.05).max(self.diffusion / 0.25))
+        .ceil()
+        .max(1.0) as usize;
+        let substeps = self.substeps;
+        let dt = self.hop as f32 / self.fs * self.pace / substeps as f32;
         let bins_per_oct = self.space.bins_per_oct as f32;
         let allee_mass = ALLEE_DENSITY / bins_per_oct;
         for _ in 0..substeps {
@@ -755,7 +748,7 @@ impl Flora {
                 let right = (i + 1).min(self.range.end - 1);
                 let v = self.biomass_mass_scan[i];
                 let u = self.resource_state_scan[i];
-                let growth = self.spec.rate
+                let growth = GROWTH_RATE
                     * v
                     * (sanitize01(landscape.consonance_field_level[i]) * u * v / (v + allee_mass)
                         - METABOLISM);
@@ -777,7 +770,7 @@ impl Flora {
     fn advance_resource(&mut self, dt: f32) {
         self.assert_scans();
         let bins_per_oct = self.space.bins_per_oct as f32;
-        let renewal = 1.0 / self.spec.renewal_sec;
+        let renewal = 1.0 / RENEWAL_SEC;
         for (row, (lo, weights)) in self.consumption_rows.iter().enumerate() {
             let i = self.range.start + row;
             let biomass_consumption_density: f32 = self.consumption_weights[weights.clone()]
@@ -1017,10 +1010,7 @@ impl Flora {
             };
             let mut lane = Lane::new(self.spec.tone == FloraTone::Resonant, position);
             lane.noise_index = self.lanes[i].noise_index;
-            if let Some(m) = &self.temporal {
-                lane.retirement_decay =
-                    (-0.5 * self.spec.rate * m.pace * METABOLISM / self.fs).exp();
-            }
+            lane.retirement_decay = (-0.5 * GROWTH_RATE * self.pace * METABOLISM / self.fs).exp();
             lane.mode = Mode::Current;
             lane.cell = Some(c);
             let angle = TAU * random_unit(&mut self.rng);
@@ -1100,12 +1090,19 @@ impl Flora {
             self.metric_allocate(false, 0);
         } else if !(self.range.is_empty() || self.releasing && self.gain.value == 0.0) {
             self.decompose();
-            self.update_tones();
+            if self.releasing {
+                for lane in &mut self.lanes {
+                    if lane.tonal && lane.mode == Mode::Current {
+                        lane.retire();
+                        self.retirements += 1;
+                    }
+                }
+            } else {
+                self.update_tones();
+            }
             self.residual_targets();
         }
-        let decay = self.temporal.as_ref().map_or(0.0, |m| {
-            (-0.5 * self.spec.rate * m.pace * METABOLISM / self.fs).exp()
-        });
+        let decay = (-0.5 * GROWTH_RATE * self.pace * METABOLISM / self.fs).exp();
         for lane in &mut self.lanes {
             lane.retirement_decay = decay;
             lane.power_sum = 0.0;
@@ -1221,6 +1218,7 @@ impl Flora {
             .assert_scan_len_named(&landscape.harmonicity01, "harmonicity_state_scan");
         let timing = self.temporal.is_some() || self.acoustic_observation.observed_end.is_some();
         FloraReport {
+            pace: self.pace,
             temporal: self.temporal.as_ref(),
             acoustic_observation: timing.then_some(&self.acoustic_observation),
             growth_level_scan: &landscape.consonance_field_level,
@@ -1450,10 +1448,7 @@ mod tests {
         l.harmonicity01.fill(1.0);
         let mut f = Flora::new(
             1,
-            FloraSpec {
-                rate: 8.0,
-                ..spec()
-            },
+            spec(),
             (440.0, 880.0),
             FloraSeeding::Uniform,
             1,
@@ -1506,10 +1501,14 @@ mod tests {
             );
         }
         let before = f.resource_state_scan.clone();
-        f.apply_patch(&FloraPatch {
-            renewal_sec: Some(20.0),
-            ..FloraPatch::default()
-        });
+        f.observe_rhythm(
+            TemporalObservation::default(),
+            0,
+            crate::core::meter::MeterShaping {
+                basin_hz: Some((0.5, 1.5)),
+                ..Default::default()
+            },
+        );
         assert_eq!(f.resource_state_scan, before);
     }
 
@@ -1532,8 +1531,8 @@ mod tests {
         }
         f.biomass_mass_scan[f.range.clone()].fill(REFERENCE_DENSITY / f.space.bins_per_oct as f32);
         f.advance_resource(1.0);
-        let a = 1.0 / f.spec.renewal_sec + 1.0 / CONSUMPTION_SEC;
-        let equilibrium = (1.0 / f.spec.renewal_sec) / a;
+        let a = 1.0 / RENEWAL_SEC + 1.0 / CONSUMPTION_SEC;
+        let equilibrium = (1.0 / RENEWAL_SEC) / a;
         let expected = equilibrium + (1.0 - equilibrium) * (-a).exp();
         assert!(
             f.resource_state_scan[f.range.clone()]
@@ -1549,10 +1548,6 @@ mod tests {
         l.harmonicity01.fill(0.0);
         for total in [0.05, 5.0] {
             let mut f = flora(&l);
-            f.apply_patch(&FloraPatch {
-                rate: Some(8.0),
-                ..FloraPatch::default()
-            });
             f.biomass_mass_scan[f.range.clone()].fill(total / f.range.len() as f32);
             for _ in 0..2400 {
                 f.advance(&l);
@@ -1566,15 +1561,13 @@ mod tests {
     }
 
     #[test]
-    fn dynamics_reflecting_spread_conserves_mass_at_both_ends() {
+    fn dynamics_reflecting_spread_conserves_mass_except_metabolism_at_both_ends() {
         let l = terrain();
         let mut results = Vec::new();
         for right in [false, true] {
             let mut f = flora(&l);
-            f.apply_patch(&FloraPatch {
-                rate: Some(0.0),
-                ..FloraPatch::default()
-            });
+            f.hop = 1;
+            f.fs = 200.0;
             f.biomass_mass_scan.fill(0.0);
             let edge = if right {
                 f.range.end - 1
@@ -1582,8 +1575,8 @@ mod tests {
                 f.range.start
             };
             f.biomass_mass_scan[edge] = 1.0;
-            assert_eq!(f.substeps, 1);
-            let expected = 1.0 - f.hop as f32 / f.fs * f.diffusion;
+            let dt = f.hop as f32 / f.fs;
+            let expected = 1.0 - dt * (f.diffusion + GROWTH_RATE * METABOLISM);
             for step in 0..200 {
                 // Zero resource suppresses seeds for this single-substep hop.
                 f.resource_state_scan.fill(0.0);
@@ -1591,7 +1584,8 @@ mod tests {
                 if step == 0 {
                     assert!((f.biomass_mass_scan[edge] - expected).abs() < 2e-6);
                 }
-                assert!((f.biomass_mass_scan.iter().sum::<f32>() - 1.0).abs() < 2e-6);
+                let expected_total = (1.0 - dt * GROWTH_RATE * METABOLISM).powi(step + 1);
+                assert!((f.biomass_mass_scan.iter().sum::<f32>() - expected_total).abs() < 2e-6);
             }
             results.push(f.biomass_mass_scan[edge]);
         }
@@ -1614,14 +1608,20 @@ mod tests {
         // Default rate: ceil(8 * (512 / 48000) / 0.05) = 2; spread needs only 1.
         assert_eq!(f.substeps, 2);
         for (rate, expected) in [(4.0, 1), (8.0, 2)] {
-            f.apply_patch(&FloraPatch {
-                rate: Some(rate),
-                ..FloraPatch::default()
-            });
+            f.observe_rhythm(
+                TemporalObservation::default(),
+                0,
+                crate::core::meter::MeterShaping {
+                    basin_hz: Some((rate / 4.0, rate / 4.0)),
+                    ..Default::default()
+                },
+            );
+            f.advance(&l);
             assert_eq!(f.substeps, expected);
             let hop_dt = f.hop as f32 / f.fs;
-            let valid =
-                |n| rate * hop_dt / n as f32 <= 0.05 && f.diffusion * hop_dt / n as f32 <= 0.25;
+            let valid = |n| {
+                rate * hop_dt / n as f32 <= 0.05 && f.diffusion * f.pace * hop_dt / n as f32 <= 0.25
+            };
             assert!(valid(f.substeps));
             assert!(f.substeps == 1 || !valid(f.substeps - 1));
         }
@@ -1799,11 +1799,10 @@ mod tests {
         for _ in 0..f.substeps {
             let allee = ALLEE_DENSITY / bins_per_oct;
             v += dt
-                * (f.spec.rate * v * (0.7 * u * v / (v + allee) - METABOLISM)
+                * (GROWTH_RATE * v * (0.7 * u * v / (v + allee) - METABOLISM)
                     + u * (BACKGROUND_SEED_DENSITY + SEED_RAIN_DENSITY * 0.4) / bins_per_oct);
-            let a =
-                1.0 / f.spec.renewal_sec + v * bins_per_oct / REFERENCE_DENSITY / CONSUMPTION_SEC;
-            let fixed = (1.0 / f.spec.renewal_sec) / a;
+            let a = 1.0 / RENEWAL_SEC + v * bins_per_oct / REFERENCE_DENSITY / CONSUMPTION_SEC;
+            let fixed = (1.0 / RENEWAL_SEC) / a;
             u = fixed + (u - fixed) * (-a * dt).exp();
         }
         f.advance(&l);
@@ -2213,8 +2212,21 @@ mod tests {
         let mut h = p.clone();
         f.render_add(&mut p, &mut h);
         assert!(f.cells.iter().all(|c| c.tonal_mass == 0.0));
+        assert!(
+            f.lanes[..f.tonal_len]
+                .iter()
+                .all(|l| l.mode == Mode::Retiring)
+        );
+        let tail_seconds = (1.0 + 1.0 / DEAD_MASS.sqrt()).ln() / (0.5 * GROWTH_RATE * METABOLISM);
+        let max_hops = (tail_seconds * f.fs / f.hop as f32).ceil() as usize + 1;
+        for _ in 1..max_hops {
+            if f.lanes[..f.tonal_len].iter().all(|l| l.mode == Mode::Free) {
+                break;
+            }
+            f.render_add(&mut p, &mut h);
+            assert_eq!(f.births, 0);
+        }
         assert!(f.lanes[..f.tonal_len].iter().all(|l| l.mode == Mode::Free));
-        assert!(p[160..].iter().all(|&y| y == 0.0));
         f.render_add(&mut p, &mut h);
         assert_eq!(f.cells[1].peak.as_ref().unwrap().claimed, Some(0));
         assert_eq!(f.cells[3].peak.as_ref().unwrap().claimed, Some(1));
@@ -2249,10 +2261,7 @@ mod tests {
         f.biomass_mass_scan.fill(0.001);
         hill(&mut f, 33, 1.0);
         normalize(&mut f);
-        f.apply_patch(&FloraPatch {
-            amp: Some(0.0),
-            ..FloraPatch::default()
-        });
+        f.apply_patch(&FloraPatch { amp: Some(0.0) });
         let mut p = vec![0.0; f.hop];
         let mut h = p.clone();
         f.render_add(&mut p, &mut h);
@@ -2449,8 +2458,8 @@ mod tests {
                 let bin = match hop {
                     0..50 => Some(33 + hop / 10),
                     50..100 => Some(43 + (hop - 50) / 10),
-                    100..150 => None,
-                    _ => Some(33 + (hop - 150) / 10),
+                    100..180 => None,
+                    _ => Some(33 + (hop - 180) / 10),
                 };
                 f.biomass_mass_scan.fill(0.00001);
                 if let Some(bin) = bin {
@@ -2486,8 +2495,8 @@ mod tests {
                         assert!(f.retirements > retirements);
                         assert!(f.births > births);
                     }
-                    102 => assert!(f.lanes[..f.tonal_len].iter().all(|l| l.mode == Mode::Free)),
-                    150 => {
+                    179 => assert!(f.lanes[..f.tonal_len].iter().all(|l| l.mode == Mode::Free)),
+                    180 => {
                         assert_eq!(f.lanes[0].mode, Mode::Current);
                         assert!(f.births > births);
                     }
@@ -2601,7 +2610,9 @@ mod tests {
         );
         let mut p = vec![0.0; f.hop];
         let mut h = p.clone();
-        for _ in 0..2 {
+        let tail_seconds = (1.0 + 0.5 / DEAD_MASS.sqrt()).ln() / (0.5 * GROWTH_RATE * METABOLISM);
+        let max_hops = (tail_seconds * f.fs / f.hop as f32).ceil() as usize + 1;
+        for _ in 0..max_hops {
             f.render_add(&mut p, &mut h);
         }
         assert!(

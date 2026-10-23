@@ -1903,3 +1903,23 @@ fn flora_metric_is_opt_in_initial_only_and_independent_of_population_metric() {
             .contains("metric")
     );
 }
+
+#[test]
+fn flora_metric_uses_scene_tempo_instead_of_local_rate_overrides() {
+    for script in [
+        "place(flora().metric().rate(4), random(110, 1760));",
+        "place(flora().renewal(20).metric(), random(110, 1760));",
+        "let f = place(flora().metric(), random(110, 1760)); f.rate(4);",
+        "let f = place(flora().metric(), random(110, 1760)); f.renewal(20);",
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx);
+        let error = engine
+            .eval::<Dynamic>(script)
+            .expect_err("metric time override");
+        assert!(error.to_string().contains("temporal_basin"), "{error}");
+    }
+    let scenario =
+        run_script("temporal_basin(2, 4); place(flora().metric(), random(110, 1760)); wait(1);").0;
+    assert_eq!(scenario.meter_shaping.basin_hz, Some((2.0, 4.0)));
+}

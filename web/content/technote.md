@@ -868,8 +868,13 @@ selected recurrence path and enculturation priors, without internal onset comman
 Biomass and resources remain continuous. Waiting lanes reserve only current excess
 in their last window; unsupported tones, separation conflicts and release retire
 immediately. Transitions occur inside the hop at sample ticks and retain the
-existing slew. Unconfirmed or unavailable observations fall back to continuous
-allocation; T0 remains the default.
+metabolic amplitude tail with finite extinction at the existing dead-mass scale.
+The clock frequency, before phase correction, scales the entire ecological time
+relative to neutral 2 Hz. Fresh beat evidence contributes with the existing 0.95
+confidence weighting; stale or unknown observations return pace to the tempo-basin
+center (2 Hz without a basin) and allocation to continuous T0 opportunities.
+The macro fade still bounds release. T0 remains the default and preserves its
+original coefficients and output; rate/renewal overrides are T0-only.
 
 These dynamics belong to the authored-rule tier. Their use of an auditory landscape
 does not make the growth or succession rules a model grounded in auditory cognition.

@@ -52,6 +52,13 @@ habituation field.
 
 ## Coupling Contract
 
+Metric Flora shares the composer's `temporal_basin` and `meter_stability` priors
+with Voice metric timing. Only the habitat audio-only meter supplies beat evidence;
+internal commands never supply a beat. Ecological pace uses the private clock's
+confidence-weighted frequency, excluding its phase correction. A stale, unavailable
+or unconfirmed observation uses the basin center, or 2 Hz without a basin.
+
+
 1. **Only through sound.** Flora's audio enters the buses selected by its routing. The
    habitat bus feeds NSGT and the landscape; Populations perceive Flora there. Their
    audio reaches the same landscape, and Flora perceives them there. There is no direct
@@ -179,7 +186,16 @@ Implementation Findings. Every part of it belongs to the authored-rule tier.
 Flora reads `g = consonance_field_level` and `H01 = harmonicity01` per hop on its
 extent, and `consonance_density_mass` at placement, all before habituation erosion.
 
-**Update.** Each hop runs `n` equal substeps, `dt = dt_hop / n`, with the terrain held
+**Metric ecological time.** For T1, let `f` be the private CouplingClock velocity
+before phase correction and `p = f / (2 Hz)`. Advance the entire consumer-resource
+system in `dt_ecological = p * dt_physical`: growth, diffusion, seed rain, resource
+recovery and both forms of consumption use this same time. Thus default growth is
+`4 f`, renewal is `20 / f` seconds and consumption is `0.6 / f` seconds. The ratios
+come from the adopted 8/s, 10 s and 0.3 s at the existing neutral 2 Hz, not a claim
+about neural rhythms or a new bar/phrase model. Substeps are recomputed each hop
+from ecological time with the same positivity bounds. T0 retains its original time.
+
+**T0 update (T1 uses the ecological time above).** Each hop runs `n` equal substeps, `dt = dt_hop / n`, with the terrain held
 for the hop. `n` is the smallest integer with `rate · dt ≤ 0.05` and `D · dt ≤ 0.25`
 (D in bins²/s); it is recomputed only when `rate`, the hop or the space changes. At the
 default hop it is 1 for `rate ≤ 4.68/s` and 2 at `rate = 8/s`. Each substep:
@@ -453,7 +469,7 @@ stages:
 band, and its position glides to the residual position. Its bandwidth is `ERB(f)` at
 that position.
 
-**Slew.** Each lane reaches its target, or exactly 0, within 80 ms, whatever `A_s` is.
+**Slew (current lanes and T0 retirement).** Each lane reaches its target, or exactly 0, within 80 ms, whatever `A_s` is. Metric retirement instead uses the finite tail below.
 A retiring tonal lane frees at 0.
 
 - `sine` tonal lanes slew amplitude: `|Δr|` per sample is at most `1 / (0.08 · fs)`.
@@ -469,6 +485,24 @@ its end values pinned, and the output is their product: the lane slew, `amp_s`'s
 ramp and `fade_gain`.
 
 ### Opt-in metric allocation (T1)
+
+Metric retirement starts immediately but its amplitude follows the mass-decay
+scale. Unsupported biomass has `v' = -rate * p * k * v`, so amplitude has decay
+coefficient `lambda = rate * p * k / 2` (`k = 0.3`). For a finite continuous tail,
+use the existing dead-mass floor `r_floor = sqrt(0.001)` and the authored law
+`r_next = max(0, (r + r_floor) * exp(-lambda / fs) - r_floor)`, `q = r*r`.
+This is a shifted exponential, not exact biomass tracking: the floor supplies an
+extinction drain, with zero reached after `log(1 + r0/r_floor)/lambda` seconds
+for constant pace. It avoids an arbitrary long-release duration. The macro fade
+still bounds total release, including explicit zero fade. Ordinary attack/target
+slews and all T0 retirement remain unchanged.
+
+The fixed `2 * cells` tonal pool is retained. Longer retirement occupies its slots;
+a candidate waits if none is free. Retiring tails own no pending reservation and
+are not reintroduced as candidates. Their actual habitat PCM remains in the
+self-exclusion capture, including the tail. Per-sample processing adds bounded
+scalar work and no allocation; no lane or scratch pool grows at retirement.
+
 
 `flora().metric()` is implemented. T0 remains the default. Wiring reserves the
 shared habitat acoustic MeterNetwork only when the scenario contains a metric
@@ -655,6 +689,13 @@ is unchanged.
   and reporting remain exceptions to the per-instance steady-state claim.
 
 ## Rhai Surface
+
+Use `flora().metric()` and the scene-wide `temporal_basin(lo, hi)` to compose pace.
+No independent metric rate or renewal control is added. Nondefault `rate`/`renewal`
+overrides on a metric spec and all metric live patches of these quantities fail
+with a positioned error. Their original T0 surface remains for the explicit
+nonmetric output-preservation contract and existing scientific controls.
+
 
 ```rhai
 let moss = flora()
@@ -1012,6 +1053,20 @@ and are judged by listening together with those records.
 - The technote is updated only when the implementation lands.
 
 ## Implementation Findings
+
+### Metric pace and finite retirement, 2026-10-23
+
+The old slew was a maximum slope, not an 80 ms duration: a sine lane at amplitude
+`r0` reached zero in `ceil(0.08 * fs * r0)` samples. At the existing hysteresis
+threshold, low-amplitude tones could disappear within one hop. Metric retirement
+now uses the metabolic amplitude scale and a finite extinction drain; T0 remains
+the frozen continuous control. Metric ecological time follows the same
+confidence-weighted CouplingClock velocity as timing opportunities, with explicit
+basin fallback on stale or unknown observations. The neutral 2 Hz retains the
+adopted ecological coefficients. Articulation retirement and ecological recovery
+are authored embodiment, not inferred phrase lengths. The composer supplies only
+the tempo prior; no new authored ratio is exposed as a listener-state control.
+
 
 ### Default rate 8/s, 2026-10-23
 

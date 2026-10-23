@@ -94,9 +94,29 @@ by Population timing.
 A waiting tone owns only the current excess in its last tonal window. That mass
 is removed once from the residual. Empty windows, out-of-range tones, separation
 conflicts and release start retirement immediately. New assignments occur at the
-sample crossing within the hop; the existing amplitude slew follows. Thus neither
+sample crossing within the hop; births retain their amplitude slew while retiring
+tones use the metabolic tail described below. Thus neither
 all endings nor detected acoustic onsets are quantized to the beat.
 
 Before beat confirmation, or while the observation is unavailable, allocation uses
 T0. Pending candidates are discarded and current biomass is reconsidered; the
 private clock is not reset and stored candidates are not replayed as a burst.
+
+## Pace and release in metric Flora
+
+For `flora().metric()`, set `temporal_basin(lo, hi)` as the composer's tempo prior.
+The basin center is the fallback pace (2 Hz without a basin). Fresh heard beats
+pull the clock according to confidence and the existing 0.95 coupling. Its
+frequency scales the entire ecological time by `frequency / 2`; growth, resource
+recovery, consumption, diffusion and seed rain speed up together. The meter's
+phase correction affects opportunities only. This is an authored ecological
+response, not a model of phrase duration.
+
+Metric lanes retire with a finite metabolic amplitude tail. The existing macro
+`fade` still limits release. The fixed lane pool can postpone births while tails
+occupy slots. `rate` and `renewal` remain T0 controls: nondefault metric spec
+overrides and metric live patches are errors. Existing T0 assays retain their
+original coefficients and interpretation.
+
+Sample 17 uses `temporal_basin(2, 4)`: its 3 Hz center is 1.5 times the neutral
+2 Hz. This is a compositional choice, not a new default or a measured optimum.

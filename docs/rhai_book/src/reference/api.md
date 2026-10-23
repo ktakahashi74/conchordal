@@ -60,7 +60,7 @@ metric()
 
 Applies to: `FloraSpec`.
 
-Opt into beat opportunities for tonal lane births and replacements. Default Flora is continuous (T0). Like Population metric(), this uses a private confidence-weighted CouplingClock (0.95), starting at the tempo-basin center or 2 Hz. Flora listens to a shared habitat audio-only meter, without internal onset commands. Unconfirmed or unavailable observations use continuous allocation. Biomass and resources remain continuous; unsupported windows, range changes, release and separation conflicts do not wait for a beat. Pending windows reserve only current excess mass; changes occur at sample crossings, followed by existing slews.
+Couple Flora pace and lane opportunities to the tempo prior and heard beat. Default T0 stays continuous. Metric Flora uses the habitat audio-only meter and a private CouplingClock (0.95), starting at the basin center or 2 Hz. Its confidence-weighted frequency scales ecological time relative to 2 Hz, including growth, diffusion, seeds, recovery and consumption. Stale or unconfirmed evidence restores basin pace and continuous allocation. Nondefault rate/renewal overrides and live patches are T0-only. Pending windows reserve current excess once. Births occur at sample crossings; support loss, separation and release retire immediately. Retiring amplitudes follow a finite metabolic tail using the existing dead-mass floor; macro fade bounds release.
 
 #### `send`
 
@@ -987,7 +987,7 @@ Attractor depth in 0-1: how readily a pulse forms. Scene-wide initial condition 
 temporal_basin(min_hz, max_hz)
 ```
 
-Set the beat's tempo band and metric Voices' initial rate. Scene-wide initial condition: the last declaration applies to every metric Population, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Without a basin, metric Voices start at 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+Set the beat's tempo band and metric Voice/Flora pace prior. Scene-wide initial condition: the last declaration applies to every metric Population, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Without a basin, metric Voices start at 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 
 #### `set_roughness_aversion`
 
@@ -1027,7 +1027,7 @@ rate(per_second)
 
 Applies to: `FloraSpec`, `Flora`.
 
-Set Flora's growth response in [0.05, 8] per second. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+Set continuous T0 Flora's growth response in [0.05, 8] per second. Requires a finite value before and after f32 conversion; invalid values raise script errors.
 
 #### `renewal`
 
@@ -1037,7 +1037,7 @@ renewal(seconds)
 
 Applies to: `FloraSpec`, `Flora`.
 
-Set the time Flora's band resource takes to recover, in [0.5, 600] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+Set continuous T0 Flora's resource recovery time in [0.5, 600] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
 
 #### `fade`
 

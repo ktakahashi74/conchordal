@@ -37,3 +37,17 @@ can run alone and the test suite can compile-check every comparison point.
 | `off` | none | attacks drift freely |
 | `shared` | one shared phase | attacks align to a common grid |
 | `scrambled` | per-voice randomized phase | local reward remains, global lock weakens |
+
+## Flora tempo priors
+
+`flora_metric_basin_slow.rhai` and `flora_metric_basin_fast.rhai` use the same
+90-second sustained field and seed 21. Their only parameter difference is the
+tempo basin, 1–2 versus 2–4 Hz. Metric Flora follows the confidence-weighted heard
+beat and uses the basin center when evidence is unavailable; the chosen prior
+therefore does not prescribe a fixed realized tempo. The fast basin is one octave
+above the slow basin, a controlled compositional contrast, not a fitted optimum.
+
+The earlier `flora_succession_*`, `flora_mixing_*`, and ownership assays retain
+continuous T0 with their explicit rate/renewal and residual settings. Their
+historical measurements still describe T0. They are not silently migrated to the
+new metric pace or retirement law, and do not establish its closed-loop behavior.

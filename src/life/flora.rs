@@ -178,6 +178,7 @@ struct Lane {
     window: Range<usize>,
     pending_since: Option<u64>,
     forced_reason: Option<&'static str>,
+    retirement_decay: f32,
     slew_target: f32,
     slew_left: usize,
     z: [f32; 2],
@@ -207,6 +208,7 @@ impl Lane {
             window: 0..0,
             pending_since: None,
             forced_reason: None,
+            retirement_decay: 0.0,
             slew_target: 0.0,
             slew_left: 0,
             z: [1.0, 0.0],
@@ -227,6 +229,17 @@ impl Lane {
     }
 
     fn slew(&mut self, fs: f32) {
+        if self.mode == Mode::Retiring && self.retirement_decay > 0.0 {
+            // Shift the metabolic amplitude exponential by the existing dead-mass
+            // floor, giving a continuous finite tail and a reusable pool slot.
+            let floor = DEAD_MASS.sqrt();
+            self.r = ((self.r + floor) * self.retirement_decay - floor).max(0.0);
+            self.q = self.r * self.r;
+            if self.r == 0.0 {
+                self.mode = Mode::Free;
+            }
+            return;
+        }
         let duration = SLEW_SEC * fs;
         let step = 1.0 / duration;
         let target = if self.noisy {
@@ -719,10 +732,20 @@ impl Flora {
         if self.range.is_empty() {
             return;
         }
-        let dt = self.hop as f32 / self.fs / self.substeps as f32;
+        let pace = self.temporal.as_ref().map_or(1.0, |m| m.pace);
+        let substeps = if self.temporal.is_some() {
+            ((self.hop as f32 / self.fs)
+                * pace
+                * (self.spec.rate / 0.05).max(self.diffusion / 0.25))
+            .ceil()
+            .max(1.0) as usize
+        } else {
+            self.substeps
+        };
+        let dt = self.hop as f32 / self.fs * pace / substeps as f32;
         let bins_per_oct = self.space.bins_per_oct as f32;
         let allee_mass = ALLEE_DENSITY / bins_per_oct;
-        for _ in 0..self.substeps {
+        for _ in 0..substeps {
             let maximum = self.biomass_mass_scan[self.range.clone()]
                 .iter()
                 .copied()
@@ -994,6 +1017,10 @@ impl Flora {
             };
             let mut lane = Lane::new(self.spec.tone == FloraTone::Resonant, position);
             lane.noise_index = self.lanes[i].noise_index;
+            if let Some(m) = &self.temporal {
+                lane.retirement_decay =
+                    (-0.5 * self.spec.rate * m.pace * METABOLISM / self.fs).exp();
+            }
             lane.mode = Mode::Current;
             lane.cell = Some(c);
             let angle = TAU * random_unit(&mut self.rng);
@@ -1076,7 +1103,11 @@ impl Flora {
             self.update_tones();
             self.residual_targets();
         }
+        let decay = self.temporal.as_ref().map_or(0.0, |m| {
+            (-0.5 * self.spec.rate * m.pace * METABOLISM / self.fs).exp()
+        });
         for lane in &mut self.lanes {
+            lane.retirement_decay = decay;
             lane.power_sum = 0.0;
             let norm = lane.z[0].hypot(lane.z[1]);
             lane.z[0] /= norm;
@@ -1108,6 +1139,7 @@ impl Flora {
             {
                 self.metric_allocate(true, t);
                 for lane in &mut self.lanes {
+                    lane.retirement_decay = decay;
                     if lane.noisy && lane.mode == Mode::Current {
                         let f = lane.target_position.exp2();
                         let b = if lane.tonal {

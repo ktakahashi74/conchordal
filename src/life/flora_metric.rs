@@ -34,6 +34,7 @@ pub(super) struct MetricState {
     pub(super) observation: TemporalObservation,
     pub(super) now: u64,
     pub(super) active: bool,
+    pub(super) pace: f32,
     pending: Vec<Option<Pending>>,
     pub(super) events: Vec<LaneEvent>,
     pub(super) drops: u64,
@@ -60,6 +61,7 @@ impl MetricState {
             observation: TemporalObservation::default(),
             now: 0,
             active: false,
+            pace: 1.0,
             pending: Vec::new(),
             events: Vec::new(),
             drops: 0,
@@ -106,7 +108,10 @@ impl Flora {
             && observation.state.beat.confidence > 0.0
             && observation.state.beat.freq_hz.is_finite()
             && observation.state.beat.freq_hz > 0.0;
-        let rhythms = NeuralRhythms::from_meter_state(&observation.state);
+        let mut rhythms = NeuralRhythms::from_meter_state(&observation.state);
+        if !m.active {
+            rhythms.delta.alpha = 0.0;
+        }
         m.clock.gather_rhythm(
             self.fs,
             now,
@@ -114,6 +119,9 @@ impl Flora {
             &rhythms,
             &mut m.crossings,
         );
+        // Use the same confidence-weighted velocity as the opportunity clock;
+        // phase correction changes opportunities, not the ecological time scale.
+        m.pace = self.fs / m.clock.nominal_period_ticks(self.fs).unwrap() as f32 / 2.0;
         m.local_phase_cycles = m.clock.phase_cycles();
         if !m.active {
             m.drops += m.pending.iter().filter(|p| p.is_some()).count() as u64;
@@ -411,6 +419,56 @@ mod tests {
     fn hill(f: &mut Flora, bin: usize, mass: f32) {
         for (i, x) in f.biomass_mass_scan.iter_mut().enumerate() {
             *x = 0.001 + mass * (-0.5 * ((i as f32 - bin as f32) / 1.5).powi(2)).exp();
+        }
+    }
+
+    #[test]
+    fn metric_pace_uses_basin_confidence_and_freshness() {
+        let mut f = setup(FloraTone::Sine, false);
+        let shaping = MeterShaping {
+            basin_hz: Some((3.0, 5.0)),
+            ..Default::default()
+        };
+        f.observe_rhythm(observation(0, false), 0, shaping);
+        assert_eq!(f.temporal.as_ref().unwrap().pace, 2.0);
+        let mut heard = observation(512, true);
+        heard.state.beat.freq_hz = 2.0;
+        heard.state.beat.confidence = 1.0;
+        f.observe_rhythm(heard, 512, shaping);
+        assert!((f.temporal.as_ref().unwrap().pace - 1.05).abs() < 1e-6);
+        f.observe_rhythm(heard, 1024, shaping);
+        assert_eq!(f.temporal.as_ref().unwrap().pace, 2.0);
+        heard.observed_end = Some(1536);
+        heard.state.beat.confidence = 0.0;
+        f.observe_rhythm(heard, 1536, shaping);
+        assert_eq!(f.temporal.as_ref().unwrap().pace, 2.0);
+    }
+
+    #[test]
+    fn metabolic_retirement_is_continuous_finite_and_preserves_power() {
+        for noisy in [false, true] {
+            let mut lane = Lane::new(noisy, 8.0);
+            lane.mode = Mode::Current;
+            lane.r = 0.2;
+            lane.q = lane.r * lane.r;
+            lane.retirement_decay = (-0.5_f32 * 8.0 * METABOLISM / 48000.0).exp();
+            lane.retire();
+            let mut previous = lane.r;
+            let mut samples = 0;
+            while lane.mode != Mode::Free && samples < 48000 * 3 {
+                lane.slew(48000.0);
+                assert!(lane.r >= 0.0 && lane.r <= previous);
+                assert!((previous - lane.r) < 1.0 / (SLEW_SEC * 48000.0));
+                assert_eq!(lane.q, lane.r * lane.r);
+                previous = lane.r;
+                samples += 1;
+            }
+            assert_eq!(lane.mode, Mode::Free);
+            assert!(samples > 48000 / 2);
+            let expected = ((0.2_f64 + (DEAD_MASS as f64).sqrt()) / (DEAD_MASS as f64).sqrt()).ln()
+                / -(lane.retirement_decay as f64).ln();
+            // The finite-zero deadline must remain within one existing 512-sample hop.
+            assert!((samples as f64 - expected).abs() < 512.0);
         }
     }
 

@@ -158,7 +158,7 @@ impl CouplingClock {
         self.phase
     }
 
-    pub(super) fn nominal_period_ticks(&self, fs: f32) -> Option<f64> {
+    pub(crate) fn nominal_period_ticks(&self, fs: f32) -> Option<f64> {
         if fs.is_finite() && fs > 0.0 {
             Some((fs as f64 / self.last_f_eff_hz.max(0.01) as f64).max(1.0))
         } else {

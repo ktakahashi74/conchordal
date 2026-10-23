@@ -110,6 +110,14 @@ impl ScriptContext {
     ) -> Result<FloraHandle, Box<EvalAltResult>> {
         let error =
             |message: String| Box::new(EvalAltResult::ErrorRuntime(message.into(), position));
+        if spec.spec.metric
+            && (spec.spec.rate != FloraSpec::default().rate
+                || spec.spec.renewal_sec != FloraSpec::default().renewal_sec)
+        {
+            return Err(error(
+                "metric Flora uses temporal_basin; rate and renewal overrides are T0-only".into(),
+            ));
+        }
         let (target, sampling, min_freq, max_freq, min_dist_erb, tension) = match placement.strategy
         {
             Some(SpawnStrategy::Field {
@@ -779,6 +787,12 @@ pub(super) fn update_flora_numeric(
         );
         return Ok(handle);
     };
+    if flora.spec.metric && matches!(name, "rate" | "renewal") {
+        return Err(Box::new(EvalAltResult::ErrorRuntime(
+            "metric Flora uses temporal_basin; rate and renewal patches are T0-only".into(),
+            position,
+        )));
+    }
     if flora.status == PopulationStatus::Live {
         let patch = flora.pending_patch.get_or_insert_with(FloraPatch::default);
         match name {

@@ -1326,13 +1326,9 @@ mod tests {
     fn spec() -> FloraSpec {
         FloraSpec {
             amp: 0.4,
-            rate: 4.0,
-            renewal_sec: 10.0,
             fade_sec: 0.0,
-            tone: FloraTone::Sine,
             residual: true,
-            metric: false,
-            routing: Routing::default(),
+            ..FloraSpec::default()
         }
     }
 
@@ -1583,6 +1579,8 @@ mod tests {
             48000.0,
             512,
         );
+        // Default rate: ceil(8 * (512 / 48000) / 0.05) = 2; spread needs only 1.
+        assert_eq!(f.substeps, 2);
         for (rate, expected) in [(4.0, 1), (8.0, 2)] {
             f.apply_patch(&FloraPatch {
                 rate: Some(rate),

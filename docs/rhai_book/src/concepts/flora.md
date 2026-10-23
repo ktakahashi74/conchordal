@@ -52,7 +52,7 @@ contains bins again.
 | Method | Accepted values | Default | Live update |
 |---|---|---|---|
 | `amp` | 0–1 | 0.03 | Yes |
-| `rate` | 0.05–8 per second | 4 | Yes |
+| `rate` | 0.05–8 per second | 8 | Yes |
 | `renewal` | 0.5–600 seconds; band resource recovery time | 10 | Yes |
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |

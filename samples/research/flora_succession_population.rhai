@@ -7,7 +7,7 @@ let seeker = harmonic().amp(0.04).sustain().seek_consonance()
 let population = place(sun, at(110));
 wait(2);
 let seekers = place(seeker, random(120.0, 1000.0).count(5));
-let growth = place(flora().amp(0.035).fade(2).residual(true), consonance(110, 1760));
+let growth = place(flora().rate(4.0).amp(0.035).fade(2).residual(true), consonance(110, 1760));
 wait(86);
 release(population);
 release(seekers);

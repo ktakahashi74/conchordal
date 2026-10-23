@@ -231,9 +231,13 @@ proof that no static state is stable.
 **Constants and defaults.** All are authored and none is fitted to listeners. The
 initial values came from the reduced-model reference setting (Dynamics Design Record).
 On 2026-10-23 the author adopted the establishment study's recommendation to lower the
-fixed Allee density from 0.576 to 0.144 mass per octave; the other constants are retained.
+fixed Allee density from 0.576 to 0.144 mass per octave. The same day, the author
+adopted the recommendation to raise the default `rate` from 4/s to 8/s, retaining
+`renewal` at 10 s; the other constants are retained. The finite comparison appears
+under Implementation Findings. This is an authored default, not an optimum, and
+the final listening choice remains with the author.
 
-- Rhai: `rate` 4/s (in `[0.05, 8]`), `renewal` (the resource time constant `τ_r`) 10 s
+- Rhai: `rate` 8/s (in `[0.05, 8]`), `renewal` (the resource time constant `τ_r`) 10 s
   (in `[0.5, 600]`).
 - Internal: metabolism `k = 0.3`; consumption time `τ_c = 0.3 s`; reference density
   `c_ref = 10` per octave; Allee half-saturation `v_a = 0.144` mass per octave; seed rain
@@ -655,7 +659,7 @@ is unchanged.
 ```rhai
 let moss = flora()
     .amp(0.03)        // nominal target-amplitude scale: Σ a² ≤ amp²
-    .rate(4.0)        // growth response, 1/s (default 4)
+    .rate(8.0)        // growth response, 1/s (default 8)
     .renewal(10.0)    // band-resource recovery time, s (default 10)
     .tone("sine")     // tonal atom: "sine" or "resonant"
     .residual(false)  // default; true renders diffuse mass as band noise
@@ -668,7 +672,7 @@ m.amp(0.015);
 release(m);
 ```
 
-- Defaults: `amp` 0.03, `rate` 4/s, `renewal` 10 s, `fade` 2 s, `tone("sine")`,
+- Defaults: `amp` 0.03, `rate` 8/s, `renewal` 10 s, `fade` 2 s, `tone("sine")`,
   `residual(false)`, both buses.
 - `flora()` returns a `FloraSpec`, with `.amp`, `.rate`, `.renewal`, `.tone`,
   `.residual`, `.fade` and `.send` (same `Bus` / `BusSet` values as Populations).
@@ -716,10 +720,11 @@ release(m);
 
 ## Expected Behaviour (hypotheses to audition)
 
-The current 0.144 Allee setting has finite T0 measurements in Implementation Findings.
-The historical consumer–resource reference below used 0.576. Its numbers do not
-predict the current setting, and the following sound descriptions remain audition
-hypotheses:
+The current 0.144 Allee setting has finite T0 measurements in Implementation Findings,
+including the comparison that selected default rate 8/s. The establishment study's
+rate-4 observations below are retained as such; they do not predict rate 8. The
+historical consumer–resource reference used 0.576. The following sound descriptions
+remain audition hypotheses:
 
 - **Flora around a drone.** Vacant-position target mass increases in the measured
   scenes, but does not become the majority in the long drone: 58.0–64.2% of target
@@ -733,9 +738,10 @@ hypotheses:
 - **Turnover.** The fixed drone retains distribution changes and lane births and
   retirements in its final 30 seconds. Its mature-window JS5 is lower than at 0.576;
   the new setting does not establish uniformly faster succession or perpetual motion.
-- **Lone Flora and rate.** Self-related succession and tempo control by `rate` remain
-  hypotheses for the new setting. Earlier reference runs support them at 0.576; the
-  current establishment comparison did not repeat a lone-Flora or rate sweep.
+- **Lone Flora and rate.** Self-related succession and general tempo control by `rate`
+  remain hypotheses for the new setting. Earlier reference runs support them at
+  0.576. The later rate-4/rate-8 comparison covers only sample17 and the long drone,
+  not lone Flora or a rate sweep.
 - **Degenerate regimes.** Earlier reference ablations produced haze when biomass far
   exceeded `v_a`, a frozen chord with fast renewal (about 1 s), and calm low-register
   recurrence. Their boundaries have not been remeasured at 0.144.
@@ -1006,6 +1012,37 @@ and are judged by listening together with those records.
 - The technote is updated only when the implementation lands.
 
 ## Implementation Findings
+
+### Default rate 8/s, 2026-10-23
+
+After the author requested the recommendation, the default changed from rate 4/s
+to 8/s, retaining renewal 10 s. The native comparison used the same post-T1 code,
+continuous T0 allocation, Allee density .144 mass/oct, seed 21, sine, residual off,
+Flora amp .035 and Population amp .05. Config +4.5 dB and scene +7.5 dB playback
+gain were common. The two scenes were sample17 and a 90-second 110 Hz drone;
+only rate differed between the two versions of each scene.
+
+Occupied fraction and JS5 use the definitions and mature windows in the
+establishment study below. Holding time runs from a positive-target tonal lane's
+birth to retirement start, excluding its fade. Medians use completed episodes
+before macro release (2≤t<32 s for sample17, 2≤t<92 s for the drone); surviving
+lanes remain right-censored.
+
+| Scene | Rate / renewal | Occupied fraction | JS5 | Median holding (s) | Completed / censored |
+|---|---|---:|---:|---:|---:|
+| 17 | 4 / 10 | .670503 | — | 9.221 | 22 / 12 |
+| 17 | 8 / 10 | .297313 | — | 7.051 | 24 / 8 |
+| drone90 | 4 / 10 | .589451 | .302567 | 12.059 | 28 / 12 |
+| drone90 | 8 / 10 | .213873 | .534416 | 7.616 | 37 / 8 |
+
+The higher rate reduces occupied fraction and shortens holding in both measured
+scenes. It also changes quantity: mature total target increases from .143164 to
+.955215 for sample17 and .539877 to .756518 for the drone. These are design masses,
+not perceived loudness, and the change is not just a rescaling of time. The value
+8/s is the existing supported upper bound and the existing rate-8 assay's setting,
+not a fitted optimum. This one-seed comparison does not establish generality or a
+listening verdict. Final author audition remains open; explicit `.rate(4)` restores
+the earlier rate. Research assays that relied on the earlier default now pin it.
 
 ### Lower fixed Allee density, 2026-10-23
 
@@ -1526,7 +1563,11 @@ nominal target-amplitude scale; the ignored alternation test was replaced by the
    optimum claim. Occupied-position bias, long-scene polyphony and perceived clarity
    remain sound-design questions; the finite improvement is not a new acceptance
    requirement for perpetual succession or a reason to expose an internal knob.
-4. The defaults, by audition after implementation.
+4. **Default-rate recommendation adopted, 2026-10-23.** Rate 8/s replaces 4/s;
+   renewal remains 10 s. In the two seed-21 scenes, occupied fraction and median
+   holding time decrease; the long drone's JS5 increases (Implementation Findings).
+   The value is the existing supported upper bound, not an optimum. The final
+   author audition remains open; the previous rate can be restored with one value.
 5. **Temporal participation implemented:** T1 is opt-in through `flora().metric()`;
    T0 remains the default. See Rendering for the acoustic-only observation, bounded
    pending state, sample crossings and immediate support-loss exceptions.

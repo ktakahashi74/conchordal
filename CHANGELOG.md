@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Flora defaults to growth rate 8/s, up from 4/s; resource renewal remains 10 s.
+  Existing research assays explicitly retain rate 4/s where previously implicit.
+
 - Flora lowers its fixed Allee half-saturation density from 0.576 to 0.144 mass
   per octave, reducing the growth barrier for small biomass. Seed rain, rate,
   renewal and metric lane scheduling retain their existing rules.

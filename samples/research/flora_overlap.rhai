@@ -1,8 +1,8 @@
 // Closed-loop assay: two Flora share an overlapping extent through sound.
 seed(41003);
-let first = place(flora().amp(0.03).fade(2).residual(true),
+let first = place(flora().rate(4.0).amp(0.03).fade(2).residual(true),
     random(110, 880));
-let second = place(flora().amp(0.03).fade(2).residual(true),
+let second = place(flora().rate(4.0).amp(0.03).fade(2).residual(true),
     random(220, 1760));
 wait(32);
 release(first);

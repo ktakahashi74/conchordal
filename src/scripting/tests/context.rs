@@ -1523,7 +1523,7 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
         assert!(spec.routing.to_habitat && spec.routing.to_presentation);
         assert_eq!(
             (spec.amp, spec.rate, spec.renewal_sec, spec.fade_sec),
-            (0.03, 4.0, 10.0, 2.0)
+            (0.03, 8.0, 10.0, 2.0)
         );
         assert_eq!(spec.tone, FloraTone::Sine);
         assert!(!spec.residual);

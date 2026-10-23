@@ -25,7 +25,7 @@ impl Default for FloraSpec {
     fn default() -> Self {
         Self {
             amp: 0.03,
-            rate: 4.0,
+            rate: 8.0,
             renewal_sec: 10.0,
             fade_sec: 2.0,
             tone: FloraTone::Sine,

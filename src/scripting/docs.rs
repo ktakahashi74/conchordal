@@ -316,7 +316,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Na,
         usage: &["flora()"],
         summary: "Build a FloraSpec for spectral growth over a frequency extent.",
-        details: "Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.",
+        details: "Defaults: amp 0.03, rate 8/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.",
     },
     FnDoc {
         name: "amp",

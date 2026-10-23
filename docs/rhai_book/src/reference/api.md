@@ -1017,7 +1017,7 @@ Candidate core verbs under audition: composing surface by intent, but with resea
 flora() -> FloraSpec
 ```
 
-Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, rate 8/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.
 
 #### `rate`
 

@@ -305,7 +305,7 @@ fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
 fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
 /// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
-/// Defaults: amp 0.03, rate 4/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.
+/// Defaults: amp 0.03, rate 8/s, renewal 10 s, fade 2 s, sine tone, residual disabled, both buses.
 fn flora() -> FloraSpec;
 
 /// Irregular bodily renewal with acoustic timing choices.

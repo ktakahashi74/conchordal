@@ -958,3 +958,6 @@ mod a5_diagnosis;
 
 #[path = "auditory_validation_assay.rs"]
 mod a5_validation;
+
+#[path = "auditory_statistics_assay.rs"]
+mod a6_statistics;

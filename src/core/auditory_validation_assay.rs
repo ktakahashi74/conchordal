@@ -42,7 +42,7 @@ fn assess(actual: &Landscape, truth: &Landscape, anchors: &[f32]) -> Value {
         "respawn_peaks":peaks,"respawn_targets":targets.len(),"fields":field_errors(actual,truth)})
 }
 
-fn sign_errors(populations: &[Vec<Flora>; 3]) -> ([usize; 2], Value) {
+pub(super) fn sign_errors(populations: &[Vec<Flora>; 3]) -> ([usize; 2], Value) {
     let signs = populations
         .each_ref()
         .map(|s| Flora::aud_m1_window_signs(s));
@@ -59,10 +59,26 @@ fn sign_errors(populations: &[Vec<Flora>; 3]) -> ([usize; 2], Value) {
 #[test]
 #[ignore = "AUD-M1 addendum 5 fixed 47-hop acquisition"]
 fn aud_m1_a5_windows() {
+    acquire_windows(false);
+}
+
+#[test]
+#[ignore = "AUD-M1 addendum 6 boxcar and context acquisition"]
+fn aud_m1_a6_windows() {
+    acquire_windows(true);
+}
+
+fn acquire_windows(addendum6: bool) {
     use sha2::Digest;
     let input = PathBuf::from(std::env::var("AUD_M1_INPUT").unwrap());
     let dir = output_dir();
     let spread = std::env::var("AUD_M1_SPREAD").is_ok_and(|v| v == "1");
+    let selected_s1 = addendum6 && std::env::var("AUD_M1_S1").is_ok_and(|v| v == "1");
+    let reference_context =
+        addendum6 && std::env::var("AUD_M1_EXACT_CONTEXT").is_ok_and(|v| v == "1");
+    let selected_variant = std::env::var("AUD_M1_VARIANT")
+        .ok()
+        .map(|s| s.parse::<usize>().unwrap());
     let bytes = std::fs::read(input.join("manifest.json")).unwrap();
     let manifest: Value = serde_json::from_slice(&bytes).unwrap();
     let source = input
@@ -90,14 +106,29 @@ fn aud_m1_a5_windows() {
     let peak = compute_roughness_reference(&params, &space).peak;
     let mut scratch =
         PotentialScratch::new(&space, &params.harmonicity_kernel, &params.roughness_kernel);
-    let variants: Vec<_> = (0..8).filter(|&i| !spread || i >= 4).collect();
+    let variants: Vec<_> = (0..8)
+        .filter(|&i| {
+            (!(spread || addendum6) || i >= 4)
+                && selected_variant.is_none_or(|v| v == i)
+                && (!reference_context || i % 2 == 1)
+        })
+        .collect();
     let templates: Vec<_> = variants
         .iter()
         .map(|&i| {
             let beta = [1.0, 0.5, 1.0 / 3.0, 0.25][i / 2];
-            let front =
-                ShadowFrontEnd::new(space.clone(), params.fs, beta, i % 2 == 1, kernel.nfft());
-            if spread {
+            let front = ShadowFrontEnd::new(
+                space.clone(),
+                params.fs,
+                beta,
+                if addendum6 { selected_s1 } else { i % 2 == 1 },
+                kernel.nfft(),
+            );
+            if addendum6 {
+                let mut front = front.with_statistics(hop, i % 2 == 1);
+                front.reference_context = reference_context;
+                front
+            } else if spread {
                 front.with_gaussian_spread()
             } else {
                 front
@@ -110,8 +141,14 @@ fn aud_m1_a5_windows() {
         std::fs::File::create(dir.join("frame-diagnostics.jsonl")).unwrap(),
     );
     let mut summary = Vec::new();
+    let mut onset_rows =
+        std::io::BufWriter::new(std::fs::File::create(dir.join("onset-rows.jsonl")).unwrap());
     std::fs::write(dir.join("protocol.json"),serde_json::to_vec_pretty(&json!({
         "manifest_sha256":sha2::Sha256::digest(&bytes).iter().map(|b|format!("{b:02x}")).collect::<String>(),"spread":spread,"variants":variants,
+        "addendum6":addendum6,"boxcar":addendum6,"s1":selected_s1,
+        "reference_context":reference_context,
+        "a6_variants":"4=beta1/3 narrow; 5=beta1/3 ERB; 6=beta1/4 narrow; 7=beta1/4 ERB",
+        "unresolved_interval_gate":!addendum6,
         "flora_hops":47,"flora_diagnostic_hops":8,"other_consumer_hops":8,"no_tie_exclusion":true,
         "boundary":"literal numerical ERB difference >=0.75; mixed complexes retain original full-consumer diagnostic and every unresolved pair is inspected",
         "gaussian":"normal in Hz integrated against Log2Space piecewise linear interpolation hats; 8-sigma tails omitted (<1.3e-15 probability)",
@@ -195,6 +232,7 @@ fn aud_m1_a5_windows() {
                 Some((
                     evaluate(&truth_density, &space, &params, &mut scratch, peak),
                     current.landscape.clone(),
+                    truth_density.clone(),
                 ))
             } else {
                 None
@@ -219,7 +257,7 @@ fn aud_m1_a5_windows() {
             let mut max_sigma = 0.0_f64;
             for (frame, chunk) in pcm.chunks_exact(hop).enumerate() {
                 front.process(chunk, &params);
-                let Some((truth, old)) = &reference_frames[frame] else {
+                let Some((truth, old, truth_scan)) = &reference_frames[frame] else {
                     continue;
                 };
                 let actual = evaluate(&front.density_scan, &space, &params, &mut scratch, peak);
@@ -239,13 +277,83 @@ fn aud_m1_a5_windows() {
                     }
                 }
                 let errors = field_errors(&actual, truth);
+                let context_check = if addendum6
+                    && observe.contains(&frame)
+                    && front.erb_context.is_some()
+                {
+                    let total = front
+                        .deposit_power
+                        .iter()
+                        .map(|&p| f64::from(p))
+                        .sum::<f64>();
+                    let mut error = 0.0_f64;
+                    for (c, (&f, &computed)) in front
+                        .bank
+                        .frequency
+                        .iter()
+                        .zip(&front.context_power)
+                        .enumerate()
+                    {
+                        let x = f64::from(f.clamp(1.0, params.fs / 2.0 - 1.0));
+                        let b = 1.0186 * (24.7 + x / 9.265);
+                        let exact = front
+                            .bank
+                            .frequency
+                            .iter()
+                            .zip(&front.deposit_power)
+                            .map(|(&y, &p)| {
+                                f64::from(p)
+                                    * (1.0
+                                        + ((f64::from(y.clamp(1.0, params.fs / 2.0 - 1.0)) - x)
+                                            / b)
+                                            .powi(2))
+                                    .powi(-4)
+                            })
+                            .sum::<f64>();
+                        // max(P_cb,d) is applied after the context sum in both paths.
+                        let own = front.deposit_power[c];
+                        error = error.max((f64::from(computed) - exact.max(f64::from(own))).abs());
+                    }
+                    json!({"error_over_total_power":if total>0.0{error/total}else{0.0}})
+                } else {
+                    Value::Null
+                };
                 writeln!(
                     diagnostics,
                     "{}",
-                    json!({"fixture":name,"variant":variant,"frame":frame,"new_fields":errors,
+                    json!({"fixture":name,"variant":variant,"frame":frame,"new_fields":errors,"context_direct_check":context_check,
                     "current_fields":field_errors(old,truth)})
                 )
                 .unwrap();
+                if addendum6 && transient {
+                    let near: Vec<_> = space
+                        .centers_hz
+                        .iter()
+                        .map(|&f| {
+                            frequencies
+                                .iter()
+                                .any(|&g| (erbn(f64::from(f)) - erbn(f64::from(g))).abs() <= 1.0)
+                        })
+                        .collect();
+                    let mut error = [0.0_f64; 2];
+                    let mut mass = [0.0_f64; 2];
+                    let mut reference_mass = [0.0_f64; 2];
+                    for i in 0..space.n_bins() {
+                        let side = usize::from(!near[i]);
+                        error[side] +=
+                            f64::from((front.density_scan[i] - truth_scan[i]).abs() * du[i]);
+                        mass[side] += f64::from(front.density_scan[i] * du[i]);
+                        reference_mass[side] += f64::from(truth_scan[i] * du[i]);
+                    }
+                    writeln!(onset_rows,"{}",json!({"fixture":name,"variant":variant,"frame":frame,
+                        "after_onset_ms":(frame-onset+1) as f64*hop as f64/f64::from(params.fs)*1000.0,
+                        "density":front.density_scan,"truth_density":truth_scan,"density_mass_near_far":mass,
+                        "truth_mass_near_far":reference_mass,"density_l1_near_far":error,"near_mask":near,
+                        "new_fields":errors,"current_fields":field_errors(old,truth),"h01":actual.harmonicity01,
+                        "r01":actual.roughness01,"c":actual.consonance_field_score,"truth_h01":truth.harmonicity01,
+                        "truth_r01":truth.roughness01,"truth_c":truth.consonance_field_score,
+                        "current_h01":old.harmonicity01,"current_r01":old.roughness01,"current_c":old.consonance_field_score})).unwrap();
+                }
                 if !observe.contains(&frame) {
                     continue;
                 }
@@ -255,7 +363,7 @@ fn aud_m1_a5_windows() {
                     saved["old"]["fields"],
                     "unchanged current producer"
                 );
-                let new = if spread {
+                let new = if spread || addendum6 {
                     assess(&actual, truth, &anchors)
                 } else {
                     assert_eq!(
@@ -339,8 +447,36 @@ fn aud_m1_a5_windows() {
             }
             let (flora47, signs) = sign_errors(&population47.unwrap());
             let (flora8, _) = sign_errors(&population8.unwrap());
+            let near: Vec<_> = space
+                .centers_hz
+                .iter()
+                .map(|&f| {
+                    frequencies
+                        .iter()
+                        .any(|&g| (erbn(f64::from(f)) - erbn(f64::from(g))).abs() <= 1.0)
+                })
+                .collect();
+            let partitions = [1, 2].map(|which| {
+                let mut counts = [0_usize; 2];
+                let truth = signs[0].as_array().unwrap();
+                let actual = signs[which].as_array().unwrap();
+                for (a, b) in actual.iter().zip(truth) {
+                    for (i, (x, y)) in a
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .zip(b.as_array().unwrap())
+                        .enumerate()
+                    {
+                        counts[usize::from(!near[i])] += usize::from(x != y);
+                    }
+                }
+                counts
+            });
             let row = json!({"fixture":name,"category":fixture["category"],"resolution":fixture["pair_input_resolution"],
-                "variant":variant,"beta":front.beta,"s1":variant%2==1,"spread":spread,"totals":totals,"flora47_new_current":flora47,
+                "variant":variant,"beta":front.beta,"s1":if addendum6{selected_s1}else{variant%2==1},"spread":spread,
+                "boxcar":addendum6,"erb_context":addendum6 && variant%2==1,"totals":totals,"flora47_new_current":flora47,
+                "flora47_near_far_new_current":partitions,
                 "flora8_new_current":flora8,"flora47_signs_ref_new_current":signs,"flora_targets":signs[0].as_array().unwrap().iter().map(|s|s.as_array().unwrap().len()).sum::<usize>(),
                 "interval_pass":interval_pass,"interval_checks":interval_checks,"worst_c_excess_over_current":worst_c,
                 "worst_r_deficit_over_current":worst_r,"max_sigma_hz":max_sigma});
@@ -353,6 +489,7 @@ fn aud_m1_a5_windows() {
     }
     rows.flush().unwrap();
     diagnostics.flush().unwrap();
+    onset_rows.flush().unwrap();
     std::fs::write(
         dir.join("summary.json"),
         serde_json::to_vec(&summary).unwrap(),

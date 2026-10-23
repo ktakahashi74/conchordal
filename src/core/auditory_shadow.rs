@@ -10,6 +10,9 @@ use std::f32::consts::TAU;
 #[path = "auditory_spread.rs"]
 mod spread;
 
+#[path = "auditory_statistics.rs"]
+mod statistics;
+
 // Niemitalo's published evolutionary design, H2 + i H1, scaled by 1/2.
 // https://yehar.com/blog/?p=368 (Equations 1-4).
 const ALLPASS_POLES: [[f64; 4]; 2] = [
@@ -71,6 +74,7 @@ pub(crate) struct Bank {
     pub coherence: Vec<f32>,
     correlation: Vec<Complex32>,
     spread: Option<spread::SpreadHistory>,
+    statistics: Option<statistics::StatisticsWindow>,
     fs: f32,
 }
 
@@ -111,6 +115,7 @@ impl Bank {
             coherence: vec![0.0; n],
             correlation: vec![Complex32::default(); n],
             spread: None,
+            statistics: None,
         }
     }
 
@@ -153,6 +158,9 @@ impl Bank {
                 self.previous[c] = z;
             }
         }
+        if let Some(statistics) = &mut self.statistics {
+            statistics.push(&mut self.energy, &mut self.correlation, samples);
+        }
         for c in 0..self.centers.len() {
             self.frequency[c] = self.fs * self.correlation[c].arg() / TAU;
             self.coherence[c] = if self.energy[c] > 0.0 {
@@ -160,7 +168,8 @@ impl Bank {
             } else {
                 0.0
             };
-            self.energy[c] *= 2.0 / samples as f32;
+            let hops = self.statistics.as_ref().map_or(1, |s| s.counts[c]);
+            self.energy[c] *= 2.0 / (samples * hops) as f32;
         }
         if let Some(spread) = &mut self.spread {
             spread.finish(self.fs);
@@ -184,6 +193,9 @@ impl Bank {
         if let Some(spread) = &mut self.spread {
             spread.clear();
         }
+        if let Some(statistics) = &mut self.statistics {
+            statistics.clear();
+        }
     }
 }
 
@@ -197,6 +209,10 @@ pub(crate) struct ShadowFrontEnd {
     pub density_scan: Vec<f32>,
     pub channel_power: Vec<f32>,
     pub channel_mass: Vec<f32>,
+    deposit_power: Vec<f32>,
+    context_power: Vec<f32>,
+    erb_context: Option<statistics::ErbContext>,
+    reference_context: bool,
     pub beta: f64,
     pub step_erb: f64,
     cover: std::sync::Arc<[f32]>,
@@ -208,6 +224,16 @@ pub(crate) struct ShadowFrontEnd {
 }
 
 impl ShadowFrontEnd {
+    fn with_statistics(mut self, hop: usize, erb_context: bool) -> Self {
+        self.bank.statistics = Some(statistics::StatisticsWindow::new(
+            &self.bank.centers,
+            self.bank.fs,
+            hop,
+        ));
+        self.erb_context = erb_context.then(|| statistics::ErbContext::new(self.bank.fs));
+        self
+    }
+
     pub(crate) fn with_gaussian_spread(mut self) -> Self {
         self.bank.spread = Some(spread::SpreadHistory::new(
             &self.bank.centers,
@@ -248,6 +274,10 @@ impl ShadowFrontEnd {
             density_scan: vec![0.0; n],
             channel_power: vec![0.0; channels],
             channel_mass: vec![0.0; channels],
+            deposit_power: vec![0.0; channels],
+            context_power: vec![0.0; channels],
+            erb_context: None,
+            reference_context: false,
             beta,
             step_erb: step,
             cover,
@@ -268,11 +298,18 @@ impl ShadowFrontEnd {
         self.density_scan.fill(0.0);
         self.channel_power.fill(0.0);
         self.channel_mass.fill(0.0);
+        self.deposit_power.fill(0.0);
+        self.context_power.fill(0.0);
         self.missing_samples = self.warmup_samples;
     }
 
     // Every source advances S1/S2 even when body observation is not selected.
     pub(crate) fn skip(&mut self, pcm: &[f32]) {
+        if self.bank.statistics.is_some() {
+            self.bank.read_hop(pcm, &mut self.pair);
+            self.missing_samples = self.missing_samples.saturating_sub(pcm.len());
+            return;
+        }
         for &x in pcm {
             self.bank.one(
                 self.pair
@@ -324,19 +361,58 @@ impl ShadowFrontEnd {
             .min_abs_power_density
             .expect("existing NSGT absolute density floor");
         for c in 0..self.bank.centers.len() {
+            let f = self.bank.frequency[c].clamp(1.0, self.bank.fs / 2.0 - 1.0);
+            let hops = self.bank.statistics.as_ref().map_or(1, |s| s.counts[c]);
+            self.deposit_power[c] =
+                2.0 * self.bank.correlation[c].norm() / (samples * hops) as f32 / self.coverage(f);
+        }
+        if let Some(context) = &mut self.erb_context
+            && !self.reference_context
+        {
+            context.prepare(&self.bank.frequency, &self.deposit_power);
+        }
+        for c in 0..self.bank.centers.len() {
             let raw_frequency = self.bank.frequency[c];
             let f = raw_frequency.clamp(1.0, self.bank.fs / 2.0 - 1.0);
             let unit = Complex32::from_polar(1.0, TAU * f / self.bank.fs);
             // Both S1 choices preserve the real PCM's positive amplitude A/2.
             // Multiplying complex power by two restores real mean-square power.
-            let d = 2.0 * self.bank.correlation[c].norm() / samples as f32 / self.coverage(f);
+            let d = self.deposit_power[c];
             let channel_pos = ((erbn(f64::from(f)) - self.erb_first) / self.step_erb)
                 .clamp(0.0, (self.bank.centers.len() - 1) as f64);
             let lower = channel_pos.floor() as usize;
             let upper = (lower + 1).min(self.bank.centers.len() - 1);
             let w = (channel_pos - lower as f64) as f32;
             let power_at = |j| self.bank.energy[j] / self.bank.gain_power(j, unit);
-            let local = ((1.0 - w) * power_at(lower) + w * power_at(upper)).max(d);
+            let local = self
+                .erb_context
+                .as_ref()
+                .map_or_else(
+                    || (1.0 - w) * power_at(lower) + w * power_at(upper),
+                    |context| {
+                        if self.reference_context {
+                            let b = 1.0186 * (24.7 + f64::from(f) / 9.265);
+                            self.bank
+                                .frequency
+                                .iter()
+                                .zip(&self.deposit_power)
+                                .map(|(&y, &p)| {
+                                    f64::from(p)
+                                        * (1.0
+                                            + ((f64::from(y.clamp(1.0, self.bank.fs / 2.0 - 1.0))
+                                                - f64::from(f))
+                                                / b)
+                                                .powi(2))
+                                        .powi(-4)
+                                })
+                                .sum::<f64>() as f32
+                        } else {
+                            context.power_at(f)
+                        }
+                    },
+                )
+                .max(d);
+            self.context_power[c] = local;
             let position = if raw_frequency > 0.0 {
                 (raw_frequency.log2() - self.space.centers_log2[0]) / self.space.step()
             } else {

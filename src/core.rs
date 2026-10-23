@@ -1,4 +1,6 @@
 pub(crate) mod analysis_worker;
+#[cfg(test)]
+pub(crate) mod auditory_shadow;
 pub mod consonance_kernel;
 pub(crate) mod db;
 pub(crate) mod density;

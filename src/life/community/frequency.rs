@@ -78,6 +78,26 @@ fn field_density_mass(target: FieldTarget, landscape: &Landscape, i: usize, gap_
 }
 
 impl Community {
+    #[cfg(test)]
+    pub(crate) fn aud_m1_range_mass(landscape: &Landscape, range: (f32, f32)) -> Vec<f32> {
+        let lo = landscape.space.nearest_index(range.0);
+        let hi = landscape.space.nearest_index(range.1);
+        // Empty population, zero tension: every in-range bin is unoccupied.
+        let mut weights: Vec<_> = (lo..=hi)
+            .map(|i| field_density_mass(FieldTarget::Consonance, landscape, i, 0.0))
+            .collect();
+        let sum: f32 = weights.iter().sum();
+        if sum > 0.0 {
+            for w in &mut weights {
+                *w /= sum;
+            }
+        } else {
+            let uniform = 1.0 / weights.len() as f32;
+            weights.fill(uniform);
+        }
+        weights
+    }
+
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing
     /// voice's base frequency, or of any `reserved` frequency claimed earlier in the
     /// same spawn batch.

@@ -153,6 +153,25 @@ struct Channel {
     z: [Complex; 3],
 }
 
+#[cfg(test)]
+pub(crate) fn aud_m1_gammatone_trace(pcm: &[f32]) -> Vec<(f64, Vec<[f64; 2]>)> {
+    centers_hz()
+        .into_iter()
+        .map(|center| {
+            let mut channel = Channel::new(48_000.0, center);
+            let trace = pcm
+                .iter()
+                .map(|&x| {
+                    channel.one(f64::from(x));
+                    // T2 uses negative rotation; conjugate for the positive-frequency tap.
+                    [channel.gt[3].re, -channel.gt[3].im]
+                })
+                .collect();
+            (center, trace)
+        })
+        .collect()
+}
+
 impl Channel {
     fn new(fs: f64, center: f64) -> Self {
         assert!(fs.is_finite() && fs > 2000.0);

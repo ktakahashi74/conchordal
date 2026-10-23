@@ -408,6 +408,48 @@ struct FloraLaneTimingReport {
 }
 
 impl Flora {
+    #[cfg(test)]
+    pub(crate) fn aud_m1_cell_signs(landscape: &Landscape) -> Vec<Vec<i8>> {
+        let mut result = Vec::new();
+        for density in [0.02, 0.144, 1.0] {
+            for resource in [0.5, 1.0] {
+                let mut flora = Self::new(
+                    1,
+                    FloraSpec::default(),
+                    (landscape.space.fmin, landscape.space.fmax),
+                    FloraSeeding::Uniform,
+                    1,
+                    landscape,
+                    48_000.0,
+                    512,
+                );
+                flora
+                    .biomass_mass_scan
+                    .fill(density / landscape.space.bins_per_oct as f32);
+                flora.resource_state_scan.fill(resource);
+                let before = flora.biomass_mass_scan.clone();
+                flora.advance(landscape);
+                result.push(
+                    flora
+                        .biomass_mass_scan
+                        .iter()
+                        .zip(before)
+                        .map(|(&v, old)| {
+                            if v > old {
+                                1
+                            } else if v < old {
+                                -1
+                            } else {
+                                0
+                            }
+                        })
+                        .collect(),
+                );
+            }
+        }
+        result
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         id: u64,

@@ -12,6 +12,18 @@ use std::collections::BTreeMap;
 
 const RESPAWN_CANDIDATE_COUNT: usize = 16;
 
+#[cfg(test)]
+impl Community {
+    pub(crate) fn aud_m1_respawn(landscape: &Landscape) -> Vec<usize> {
+        peak_bias_candidate_bins(
+            landscape,
+            landscape.space.fmin,
+            landscape.space.fmax,
+            RESPAWN_CANDIDATE_COUNT,
+        )
+    }
+}
+
 pub(super) fn weighted_parent_select<R: Rng + ?Sized>(
     parents: &[ParentCandidate],
     rng: &mut R,

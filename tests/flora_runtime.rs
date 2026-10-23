@@ -9,6 +9,62 @@ mod test_output_directory;
 use test_output_directory::TestOutputDirectory;
 
 #[test]
+fn flora_pace_uses_the_last_scene_basin_before_or_after_placement() {
+    let id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "conchordal-flora-basin-{}-{id}",
+        std::process::id()
+    ));
+    let _guard = TestOutputDirectory::new(dir.clone());
+    for metric in [false, true] {
+        for (first, last, expected_pace) in [(1, 3, 1.5), (3, 1, 0.5)] {
+            for after_placement in [false, true] {
+                let declaration = format!("temporal_basin({last}, {last});");
+                let script = format!(
+                    "temporal_basin({first}, {first}); {} \
+                     place(flora(){}.fade(0), random(220, 880)); {} wait(0.04);",
+                    if after_placement { "" } else { &declaration },
+                    if metric { ".metric()" } else { "" },
+                    if after_placement { &declaration } else { "" },
+                );
+                let script_path = dir.join("input.rhai");
+                fs::write(&script_path, script).unwrap();
+                let report = dir.join("report.jsonl");
+                let mut config = AppConfig::default();
+                config.analysis.nfft = 2048;
+                run_render(
+                    script_path.to_str().unwrap(),
+                    dir.join("audio.wav").to_string_lossy().into_owned(),
+                    config,
+                    Arc::new(AtomicBool::new(false)),
+                    Some(21),
+                    Some(report.to_str().unwrap()),
+                    0,
+                )
+                .unwrap();
+                let rows: Vec<serde_json::Value> = fs::read_to_string(report)
+                    .unwrap()
+                    .lines()
+                    .map(|line| serde_json::from_str(line).unwrap())
+                    .filter(|row: &serde_json::Value| row["type"] == "flora")
+                    .collect();
+                assert!(!rows.is_empty());
+                for row in rows {
+                    assert_eq!(
+                        row["pace"].as_f64().unwrap(),
+                        expected_pace,
+                        "metric={metric}, last={last}, after placement={after_placement}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn flora_finishes_with_its_fade_in_both_renderers() {
     let id = SystemTime::now()
         .duration_since(UNIX_EPOCH)

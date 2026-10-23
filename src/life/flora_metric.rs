@@ -500,13 +500,15 @@ mod tests {
 
     #[test]
     fn flora_basin_uses_the_same_supported_band_as_metric_voices() {
-        for basin in [
-            (4.0, 1.0),
-            (-1.0, 20.0),
-            (f32::NAN, f32::INFINITY),
-            (1.0, 1.0),
+        for (basin, bounds, expected_pace) in [
+            ((4.0, 1.0), (1.0, 4.0), 1.25),
+            ((-1.0, 20.0), (0.5, 4.0), 1.125),
+            ((f32::NAN, f32::INFINITY), (0.5, 4.0), 1.125),
+            ((1.0, 1.0), (0.95, 1.05), 0.5),
+            ((0.5, 0.5), (0.5, 0.55), 0.2625),
+            ((4.0, 4.0), (3.95, 4.0), 1.9875),
         ] {
-            let (lo, hi) = sane_basin(basin.0, basin.1);
+            assert_eq!(sane_basin(basin.0, basin.1), bounds);
             for metric in [false, true] {
                 let mut f = setup(FloraTone::Sine, false);
                 if !metric {
@@ -521,7 +523,8 @@ mod tests {
                         ..Default::default()
                     },
                 );
-                assert_eq!(f.pace, (lo + hi) / 4.0);
+                // One rounding step through the clock's period representation is allowed.
+                assert!((f.pace - expected_pace).abs() <= f32::EPSILON * expected_pace);
             }
         }
     }

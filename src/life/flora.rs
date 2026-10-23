@@ -1788,37 +1788,42 @@ mod tests {
         let mut l = terrain();
         l.consonance_field_level.fill(0.7);
         l.harmonicity01.fill(0.4);
-        let mut f = flora(&l);
-        let bins_per_oct = f.space.bins_per_oct as f32;
-        let (v0, u0) = (2e-3f32, 0.8f32);
-        f.biomass_mass_scan.fill(0.0);
-        f.biomass_mass_scan[f.range.clone()].fill(v0);
-        f.resource_state_scan[f.range.clone()].fill(u0);
-        let dt = f.hop as f32 / f.fs / f.substeps as f32;
-        let (mut v, mut u) = (v0, u0);
-        for _ in 0..f.substeps {
-            let allee = ALLEE_DENSITY / bins_per_oct;
-            v += dt
-                * (GROWTH_RATE * v * (0.7 * u * v / (v + allee) - METABOLISM)
-                    + u * (BACKGROUND_SEED_DENSITY + SEED_RAIN_DENSITY * 0.4) / bins_per_oct);
-            let a = 1.0 / RENEWAL_SEC + v * bins_per_oct / REFERENCE_DENSITY / CONSUMPTION_SEC;
-            let fixed = (1.0 / RENEWAL_SEC) / a;
-            u = fixed + (u - fixed) * (-a * dt).exp();
+        // At a 50 ms hop, rate 8 requires 6, 8 or 12 substeps respectively.
+        for (pace, substeps) in [(0.75, 6), (1.0, 8), (1.5, 12)] {
+            let mut f = flora(&l);
+            f.pace = pace;
+            let bins_per_oct = f.space.bins_per_oct as f32;
+            let (v0, u0) = (2e-3f32, 0.8f32);
+            f.biomass_mass_scan.fill(0.0);
+            f.biomass_mass_scan[f.range.clone()].fill(v0);
+            f.resource_state_scan[f.range.clone()].fill(u0);
+            let dt = f.hop as f32 / f.fs * pace / substeps as f32;
+            let (mut v, mut u) = (v0, u0);
+            for _ in 0..substeps {
+                let allee = ALLEE_DENSITY / bins_per_oct;
+                v += dt
+                    * (GROWTH_RATE * v * (0.7 * u * v / (v + allee) - METABOLISM)
+                        + u * (BACKGROUND_SEED_DENSITY + SEED_RAIN_DENSITY * 0.4) / bins_per_oct);
+                let a = 1.0 / RENEWAL_SEC + v * bins_per_oct / REFERENCE_DENSITY / CONSUMPTION_SEC;
+                let fixed = (1.0 / RENEWAL_SEC) / a;
+                u = fixed + (u - fixed) * (-a * dt).exp();
+            }
+            f.advance(&l);
+            assert_eq!(f.substeps, substeps, "pace {pace}");
+            for i in f.range.clone() {
+                assert!(
+                    (f.biomass_mass_scan[i] - v).abs() <= 1e-6 * v,
+                    "pace {pace}: biomass {} != {v}",
+                    f.biomass_mass_scan[i]
+                );
+                assert!(
+                    (f.resource_state_scan[i] - u).abs() <= 1e-5,
+                    "pace {pace}: resource {} != {u}",
+                    f.resource_state_scan[i]
+                );
+            }
+            assert!(v != v0 && u != u0);
         }
-        f.advance(&l);
-        for i in f.range.clone() {
-            assert!(
-                (f.biomass_mass_scan[i] - v).abs() <= 1e-6 * v,
-                "biomass {} != {v}",
-                f.biomass_mass_scan[i]
-            );
-            assert!(
-                (f.resource_state_scan[i] - u).abs() <= 1e-5,
-                "resource {} != {u}",
-                f.resource_state_scan[i]
-            );
-        }
-        assert!(v != v0 && u != u0);
     }
 
     #[test]

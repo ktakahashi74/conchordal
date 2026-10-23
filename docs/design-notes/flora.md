@@ -1055,21 +1055,25 @@ and are judged by listening together with those records.
 
 ## Implementation Findings
 
-### Metric pace and finite retirement, 2026-10-23
+### Ecological pace and finite retirement, 2026-10-23
 
 The old slew was a maximum slope, not an 80 ms duration: a sine lane at amplitude
 `r0` reached zero in `ceil(0.08 * fs * r0)` samples. At the existing hysteresis
-threshold, low-amplitude tones could disappear within one hop. Metric retirement
-now uses the metabolic amplitude scale and a finite extinction drain; T0 remains
-the frozen continuous control. Metric ecological time follows the same
-confidence-weighted CouplingClock velocity as timing opportunities, with explicit
-basin fallback on stale or unknown observations. The neutral 2 Hz retains the
-adopted ecological coefficients. Articulation retirement and ecological recovery
-are authored embodiment, not inferred phrase lengths. The composer supplies only
-the tempo prior; no new authored ratio is exposed as a listener-state control.
+threshold, low-amplitude tones could disappear within one hop. Retirement in both
+T0 and T1 now uses the metabolic amplitude scale and a finite extinction drain.
+Both modes advance the entire ecology at pace `p = f/2`: T0 uses only the scene's
+normalized tempo-basin center (2 Hz if absent), while T1 follows the same
+confidence-weighted CouplingClock velocity as timing opportunities, with basin
+fallback on stale or unknown observations. The neutral 2 Hz retains the adopted
+ecological coefficients. The first implementation applied pace and finite tails
+only to T1; the subsequent extension also changed T0. T0 retains continuous lane
+allocation, not the old fixed ecological time or the old maximum-slope tail.
+Articulation retirement and ecological recovery are authored embodiment, not
+inferred phrase lengths. The composer supplies only the tempo prior; no new
+authored ratio is exposed as a listener-state control.
 
 
-### Default rate 8/s, 2026-10-23
+### Historical default rate 8/s comparison, 2026-10-23
 
 After the author requested the recommendation, the default changed from rate 4/s
 to 8/s, retaining renewal 10 s. The native comparison used the same post-T1 code,
@@ -1097,8 +1101,14 @@ scenes. It also changes quantity: mature total target increases from .143164 to
 not perceived loudness, and the change is not just a rescaling of time. The value
 8/s is the existing supported upper bound and the existing rate-8 assay's setting,
 not a fitted optimum. This one-seed comparison does not establish generality or a
-listening verdict. Final author audition remains open; explicit `.rate(4)` restores
-the earlier rate. Research assays that relied on the earlier default now pin it.
+listening verdict. At the time, explicit `.rate(4)` selected the earlier growth
+rate, and research assays pinned it. That API has since been removed, together
+with independent `renewal`. Today's `temporal_basin(1, 1)` gives `p = 0.5`, matching
+only the old growth coefficient 4/s. It gives renewal 20 s and consumption 0.6 s
+instead of the old 10 s and 0.3 s, also scales diffusion and seed rain, and uses
+the new finite tail. It does not restore these historical conditions or their
+waveforms. The numbers above remain observations of the earlier implementation;
+the current sound's final audition remains with the author.
 
 ### Lower fixed Allee density, 2026-10-23
 

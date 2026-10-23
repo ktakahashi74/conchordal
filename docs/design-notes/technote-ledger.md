@@ -9905,6 +9905,73 @@ Review texts and logs, JSON other than the copied `verification.json` files, tra
 This entry went through three independent Astra reviews (drafts 1–2 conditionally acceptable, draft 3 acceptable;
 `target/info-terrain-20261020/ledger-review-1.md` to `ledger-review-3.md`).
 
+### 9.3.94 An auditory front end for H/R: a narrowed cochlear filterbank read by phase (2026-10-24; research branch)
+
+<a id="auditory-front-end-20261024"></a>
+
+Status: design and implementation on branch `research/auditory-system-20261023` (from main `a6b197d`), not merged. The
+design note is [`auditory-system.md`](auditory-system.md) (draft 8). The test-only prototype and its validation are at
+`f72d4a88`, and the switch of the performance path is at `232d8e5c`; real-time acquisition at the declared load is in
+progress. Independent Astra reviews AUD-R1 to
+AUD-R5 are in `.orchestration/units/AUD-R*/report.md` (machine-local). No author adoption is recorded.
+
+**Question.** The author asked why the H/R front end trades latency against harmonic structure, whether the frequency
+resolution and allowed latency can be derived from human auditory cognition, and how a faithful and computationally
+elegant cochlea-to-cortex front end would look.
+
+**Findings.**
+- The NSGT bands are four to seven times narrower than the ERB (Q capped at 80, the lowest bands capped at nfft 16384).
+  Component positions are read from power peaks on the 12.5-cent grid, and phase is discarded, so one window length
+  carries both separation and precision. At 110 Hz the window centroid alone is about 171 ms.
+- The design separates the roles as hearing does. The filter bandwidth separates components; the phase advance of a
+  channel dominated by one component locates it with a precision independent of the window length; unresolved pairs
+  stay as envelope beats.
+- Consumer contracts fix what must be kept: the H/R input type (a Log2Space subjective-intensity density), approximate
+  gain invariance, the timing contract (hop K reads frame K−1), and continuity of the map from PCM to scan, which the
+  PCM self-exclusion gates (Flora 40, B-1 84) require. The SF-1 v4 failure of the Flora gate is consistent with its
+  discrete acceptance decisions (an inference).
+- ERB-width filters (β = 1) mix components one ERB apart within a channel, and the H decisions became worse than the
+  current path. The H kernel needs the positions of audible components. The design therefore uses an analysis narrower
+  than the ERB, with the ERB as its scale.
+- Three engineering design rules, not physiological limits: a classification boundary of 0.75 ERB, registered from the
+  hearing-out experiment of Moore, Glasberg, Low, Cope & Cope (2006, abstract checked); a per-channel boxcar statistics
+  window of T = 1/(0.75 ERB) rounded up to whole hops, which suppresses the beat cross terms of a pair at that spacing;
+  and a bandwidth of about β = 1/4, which places that spacing about three bandwidths apart.
+
+**Selected configuration** (draft 7 §6.0): a 4th-order complex one-pole cascade of bandwidth β·1.0186·ERB with β = 1/4
+on a 0.1875-ERB grid (170 channels), the boxcar window, power reassignment to the channel instantaneous frequency with
+mass and position from the same complex statistic, compression by the critical-band (ERB) excitation of the reassigned
+power with a continuous floor gate, and real PCM input without an analytic pre-stage. The H/R kernels, habituation and
+behaviour rules are unchanged. Computed evidence delays (group delay, boxcar centroid and leaky smoothing) are about
+96 ms at 110 Hz and 30 ms at 1 kHz, against about 191 ms and 49 ms for the current NSGT.
+
+**Results on the prototype.** On 49 synthetic inputs scored with the production consumers, discrete decisions (pitch
+proposals, respawn) were at least as close to the full-resolution reference as the current path in every resolvable
+class; harmonic complexes had 0 pitch mismatches against 536 for the current path. The existing Flora 40 and B-1 84
+self-exclusion gates and two onset counterexamples passed with unchanged tolerances. On the saved habitat PCM of samples
+17 and drone90, the share of Flora's radiated partial occurrences with a mass peak within 12.5 cent, under the same
+positive-local-maximum rule on the smoothed density, rose from 121/255 to 238/255 and from 445/773 to 760/773. This is a
+frequency correspondence on the mixed PCM, not an identification or audibility rate.
+
+**Registered differences and limitations.** The original criterion (no class and consumer worse than the current path)
+was not met by any configuration. After the results, the target was revised and the following were registered rather
+than gated:
+- the steady Flora and birth differences of a 110/150 Hz pair (Flora 45 against 35, birth PMF L1 0.052 against 0.032);
+- the low-frequency onset, where the narrow filters settle over about 100 ms and positions are transiently redistributed
+  (Flora 377 against 63 for a 110 Hz six-harmonic onset; 40 against 118 at 1 kHz);
+- pairs closer than 0.75 ERB fuse, and the narrow unison dip of the R kernel then creates a spurious consonance valley
+  inside the fused pair.
+- the listener tension. The listener was ported to count components grouped at local mass maxima, because the new
+  density splits one component linearly over two bins. After the port, the new front end still keeps upper partials as
+  components, so a stable chord no longer has zero tension (mean 0.0165 against 0.0285 in the tension window) and the
+  stable–tension contrast is weaker. With the old front end these partials had almost no mass. The fixture's three
+  absolute thresholds were replaced by the ordering that the stable, resolved and settled windows stay below the
+  tension window.
+
+Accepting this trade-off is left to author audition. Widening the scope (roughness of unresolved structure from the
+envelope, or a separate onset estimate) is an author decision. The SF-1 requirement to separate two tones 15 Hz apart,
+set by the orchestrator's brief, is replaced by consumer-decision tests and the recorded spurious-valley diagnostic.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

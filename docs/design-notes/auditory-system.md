@@ -1,11 +1,11 @@
 # 新しい聴覚系の設計
 
-状態：設計の草案（版 7）。実装、数値の受け入れ、最終のモデルと sample の作者の採用、main への統合は、どれも済んでいない。
-作成：2026-10-23。改訂：2026-10-24（独立の review AUD-R2、AUD-R3 と、試作 AUD-M1 の取得を反映）。
+状態：設計の草案（版 8）。演奏の経路の実装は branch の上で済んだ（`232d8e5c`、§9 の M2）。宣言の負荷の実時間（V5）、最終のモデルと sample の作者の採用、main への統合は済んでいない。
+作成：2026-10-23。改訂：2026-10-24（独立の review AUD-R2〜AUD-R5、試作 AUD-M1、切り替え AUD-M2 の取得を反映）。
 branch `research/auditory-system-20261023`（main `a6b197d` から）。
 入力：
 - 引き継ぎの版 2（`.orchestration/units/AUD-0/handoff.md`）
-- 独立の review AUD-R1、AUD-R2、AUD-R3（`.orchestration/units/AUD-R*/report.md`）
+- 独立の review AUD-R1〜AUD-R5（`.orchestration/units/AUD-R*/report.md`）
 - SF-1 の試作の報告（`.orchestration/units/SF-1/report.md`）
 
 引き継ぎの版 1 の数値と素案は使わない。
@@ -55,7 +55,7 @@ branch `research/auditory-system-20261023`（main `a6b197d` から）。
 
 **試作の結果と β。** test の中だけの試作（AUD-M1）で、49 の合成の入力を consumer の判断（音高、respawn、出生、Flora）で比べた。
 - 選んだ構成は β = 1/4、統計の窓あり、臨界帯域（ERB）の文脈の圧縮、S1 なし（§5.2）。成分が 0.75 ERB 以上離れた分類で、離散の判断（音高、respawn）は今の経路以上、倍音列の音高の不一致は新系 0、今の経路 536。場を積分する consumer は、110 Hz の 6 倍音の onset の Flora で今の経路より大きく遠く（377 対 63）、110/150 Hz の組の Flora と出生でわずかに遠い（45 対 35、L1 0.052 対 0.032）。これらは登録した差とした。遅れは 110 Hz で約 96 ms（今は約 191 ms）、1 kHz で約 30 ms（今は約 49 ms）。
-- 0.75 ERB 未満の組（15 Hz の組など）は、どの β でも今の経路ほどは分けられない。人も部分音を聴き分けられない間隔（Moore ほか 2006）なので、分けることは要求にしない。融合した組が R に偽の谷を作る問題は、R の kernel の狭い unison の谷と解析の分解能の食い違いから来るので、登録した限界として記録し、範囲を広げるかを作者の判断に残す（§5.4、§10）。
+- 0.75 ERB 未満の組（15 Hz の組など）は、どの β でも今の経路ほどは分けられない。初期の範囲では、これらを分けることを目標にしない（設計の判断。0.75 ERB は聴き分けの実験を参考に登録した工学の分類の境で、人の普遍的な分離の限界ではない）。融合した組が潜在の R に偽の谷を作る偏りと、それによる行動の差は、登録した限界として記録し、範囲を広げるかを作者の判断に残す（§5.4、§10）。
 - 聴き分けの実験（Moore ほか 2006）を参考に、分類の境（0.75 ERB）、統計の窓（その間隔の組のうなりの一周期、110 Hz で約 36 ms）、帯域（β ≈ 1/4）を設計の則として置いた（§5.2）。人の生理の下限や、情報の上で必要な時間を導いたものではない。
 
 **SF-1 の二つの未達。**
@@ -95,14 +95,15 @@ branch `research/auditory-system-20261023`（main `a6b197d` から）。
 | Flora の成長と配置 | base の `consonance_field_level`、`harmonicity01`。配置は base の `density_mass` | 自分の音を含む（Coupling Contract 3） | hop K に frame K−1 | Flora がある時 | 弱い部分音が位置として残る（§5.5） |
 | habituation | base の level と subjective intensity の H 射影 | 生態用と listener 用に別の field | 毎 hop | on | 入力の型は同じ |
 | 予測（`GeneratorModel`） | 混合の `level_eff` の履歴の外挿。次の θ の gate で読む | 前回と最新の観測 | gate の hop | on | 印の意味は同じ。証拠は新しくなる |
-| presentation → listener-analysis（Ordered、別の AnalysisStream） | subjective intensity を質量の重みに、listener の habituation を通した `level_eff`。出力の tension は DCC の pressure | deterministic では frame K−1 まで待つ。実時間では一回の best effort の取り出しで、古い frame や前の状態が残りうる。満杯で hop を落とすと未知にする | 観測の id と消費の hop を分けて持つ | GUI、report、observe、coupling > 0 の時。coupling の既定は 0 なので、既定では report と UI だけ | 前処理を置き換える |
+| presentation → listener-analysis（Ordered、別の AnalysisStream） | subjective intensity を質量の重みに、listener の habituation を通した `level_eff`。出力の tension は DCC の pressure | deterministic では frame K−1 まで待つ。実時間では一回の best effort の取り出しで、古い frame や前の状態が残りうる。満杯で hop を落とすと未知にする | 観測の id と消費の hop を分けて持つ | GUI、report、observe、coupling > 0 の時。coupling の既定は 0 なので、既定では report と UI だけ | 前処理を置き換える。listener の安定さと改善の余地を、bin ごとではなく質量の局所の最大ごとの成分で数えるように移植する（§3.3） |
 | Voice の LOO（`stream/loo.rs`） | `mix − own` の PCM を同じ解析に通した H01、R01、score（base） | 最初の packet の処理の前に混合の状態を写す。gap で reset | 混合と同じ | 自己除外のある population | 前処理を置き換える。§5.6 の連続性が要る。NSGT は計算しない |
 | Flora の資源の power | 矩形窓の FFT の power を NSGT の \|K\|² で帯域に配り、帯域の leaky。単位は `P_ref = 0.03²/2` | Flora ごとに `mix − own`。窓が満ちるまで publish しない。gap では Flora が保存した消費の観測を保つ | hop K に frame K−1 | Flora がある時 | 変えない（AUD-R1 M8） |
 | 同期の body 解析（`body_metabolism`） | 環境は `mix − own` を同期で解析した C score（`_eff`）。代表音は単独の render の subjective intensity の平均 | 全 source の `mix − own` を毎 hop 作り、選ばれなかった source も NSGT の ring に PCM を書く。選ばれた時だけ解析し、gap の分の平滑を進める。出生用の共有の stream も毎 hop 進む | 同じ hop の render の後、消費は hop K+1 | 既定 off | 前処理を置き換える。IIR の履歴の扱いを §7 で定義する |
 | 拍の meter（T1）、時間の期待、自分の音の履歴、listener の速い経路 | habitat か presentation の PCM の 3 帯域の flux（`DorsalStream`）。T1 は内部の onset も足す | IIR と前 hop の energy | 同じ hop か次の hop | on | 信号の定義は変わらない。ただし worker の先頭の H／R の待ちを通じて、計算の負荷には影響を受ける |
 | T2（`temporal_meter_t2`） | Hohmann 型 gammatone 30 channel（f64、負の角度の pole、実数の入力）、IHC、適応、変調 filter | field-analysis の thread で NSGT の前に PCM を読む | 同じ hop か次の hop | 既定 off | 変えない。同じ thread の負荷の影響は受ける |
 | 研究の tap（時間の観測、body capture、arrival） | 混合の `nsgt_power`、hop の平均二乗、T2。body capture は lane ごとの RtNsgt | 窓が満ちてから | 次の hop | opt-in | 入力を変えない（NSGT を残す） |
-| report と UI だけ | spectral history（`nsgt_power`）、`roughness01_scalar`、`loudness_mass`、`roughness`（UI の plot）、UI の spectrum | spectral history は窓が満ちてから | — | — | NSGT の power のまま。判断に使う consumer は無い |
+| report と UI だけ（NSGT の power から） | spectral history（`nsgt_power`）、UI の spectrum | spectral history は窓が満ちてから | — | — | NSGT の power のまま |
+| report と UI だけ（知覚の量） | `roughness01_scalar`、`loudness_mass`、`roughness`（UI の plot） | 新しい density から算出 | hop K に frame K−1 | — | 名前、型、算出の則を保つ。入力の density が変わるので値は変わる（AUD-R5 M5）。判断に使う consumer は無い |
 
 その他の確認：
 - `analysis.tau_ms` の既定は 10 ms（`src/config.rs:78`）。`LandscapeParams` の doc comment にある「60〜120 ms」は古い記述で、実行の値ではない。
@@ -161,6 +162,33 @@ AUD-R1 H1 に従い、知覚の閾を前処理の予算に直接使わない。c
 - 3.1 の候補の順位が保たれても、場の高さ、質量、時間の差は保たれない（AUD-R3 H4）。だからこれらの判断の保存は、3.1 からは導けない。
   - V2 で判断の保存を確かめるのは、音高、respawn、出生、Flora の四つに限る（§8）。
   - 発音と selection の level と score、habituation、予測、listener は、判断の保存の受け入れに繋がない。H／R／C と level の差を診断として記録し、前処理の変更による行動の変化として登録する。
+- **listener の移植**（AUD-M2 追補 2、3）。
+  - listener の tension の検証（`tests/listener_twin_validation_fixture.rs`）が、新系で落ちた。落ちた条件は、安定な和音の平均 tension < 0.005、解決と落ち着きの窓の平均 tension < 緊張の窓の半分、の三つ。
+  - 第一の原因は、一つの成分を隣り合う二 bin に線形に配る新しい表現にある。listener は bin ごとに改善の余地を数えるので、片方の bin を別の音として読んだ（安定な和音の窓で、部分音の ±6.25 cent の外の質量 15% が resolvability の 86% を生んだ。外の質量の距離の中央値は 11.25 cent）。
+  - 旧い front end は peak を一つの bin に置いていたので、listener は暗黙に「成分 = 一つの bin」を前提にしていた。
+  - そこで listener を、質量の局所の最大ごとにまとめた成分で数えるように移植した。成分の重みはまとめた質量、level は山の bin の値、改善の余地は成分の外の bin から探す。
+  - 閾値、scenario、listener の定数は変えない。成分が一つの bin だけの疎な density では、結果は旧い実装と一致する（27 の場合で差 0）。
+- **移植の後に残る差**（AUD-M2 追補 3〜5）。
+  - 保存した同じ PCM で、窓ごとの平均 tension は次のとおり（旧は旧い front end と移植した listener の組）。
+    - 安定：新 0.0165、旧 4e-23。
+    - 緊張：新 0.0285、旧 0.0108。
+    - 解決：新 0.0157、旧 6e-18。
+    - 落ち着き：新 0.0150、旧 0。
+  - 残りの大部分は、上の倍音の成分から来る。安定の窓の 4 hop で、改善の側の寄与の 82〜90% は次の三つの成分だった。
+    - E の第 3 倍音（490.5 Hz）。
+    - G の第 3 倍音（588.6 Hz）。
+    - E の第 5 倍音（817.6 Hz）。
+  - これらの成分の質量は全体の 1〜5%。山の level（0.50〜0.68）は、±220 cent の中の候補（523.25 Hz、784.0 Hz、level 約 0.84）より低い。
+  - 旧い front end では、同じ部分音の質量がほぼ 0 だった（前の 2 hop で 1e-23 以下、後の 2 hop では成分がない）。listener は事実上、和音の基音だけを評価していた。どの段で消えたかは確かめていない。
+  - 統括の見当（ERB 番号の差 0.41 の 490.5／523.2 Hz の組が一つの成分に融合した）は、成分の記録で否定された。この二つは 4 hop とも別の成分だった。
+  - ただし 812.8 Hz の山は、784.9／817.6 Hz（ERB 番号の差 0.29）の間にある。分けられない組の限界（§5.4）の影響は除けない。
+- **検証の条件の置き換え**（AUD-M2 追補 4、5）。
+  - 三つの旧い数値の条件は、上の倍音がほぼ消えた旧い入力に合わせた値で、守る consumer の判断を名指せない。
+  - そこで、安定、解決、落ち着きの窓の平均 tension が緊張の窓より小さい、という順序の条件に置き換えた。その他の条件は残した。
+- **登録する行動の差。**
+  - 安定な和音でも tension が 0 にならない。安定と緊張の対比が弱まる（平均の比は新 0.58、旧はほぼ 0）。
+  - listener の「±220 cent の中で動けば良くなる」は、本来は動ける音について立てた考えである。新系では、一つの body に属して単独では動けない部分音にも当たる。
+  - listener を音（部分音のまとまり）ごとに評価する直しは、範囲の外として §10 に置く。既定の coupling は 0 なので、既定の生成には効かない。report、UI、coupling > 0 の scenario の値は変わる。
 
 ### 3.4 同期の body 解析（既定 off）
 
@@ -337,7 +365,7 @@ channel の複素の出力 z[n] について、hop の中の S = Σ z[n]·conj(z
 
 隣の成分が漏れると偏る。最も近い channel で、隣の成分の振幅の比が r なら、偏りは約 r²Δ/(1 + r²)（Δ は周波数の差）。成り立つ条件は二つ：交差項が統計の窓の中で平均で消えること、sample の間の位相の差が小さいこと（AUD-R2 で確認）。
 
-うなりの周期が統計の窓より長い組では交差項が消えず、位置はうなりの位相に応じて一次の大きさ（約 r·Δ）で揺れる。試作の切り分け（AUD-M1 追補 5）では、110 Hz と 150 Hz の組（40 Hz のうなり、周期 25 ms）が、hop（10.7 ms）の窓で数 cent から 10 cent ほど揺れた。だから統計の窓を、聴き分けの下限の組のうなりの一周期まで延ばす（§5.2）。
+うなりの周期が統計の窓より長い組では交差項が消えず、位置はうなりの位相に応じて一次の大きさ（約 r·Δ）で揺れる。試作の切り分け（AUD-M1 追補 5）では、110 Hz と 150 Hz の組（40 Hz のうなり、周期 25 ms）が、hop（10.7 ms）の窓で数 cent から 10 cent ほど揺れた。だから統計の窓を、分類の境（0.75 ERB）の間隔の組のうなりの一周期まで延ばす（§5.2）。一周期でも交差項の係数は 0 にならず、有限の窓の D_N に応じて残る。
 
 β = 1 で、等振幅の隣が片側にある時（`AUD-1/derive.py`）：
 - 1 ERB：−11.7 dB の漏れ、1 kHz で 14 cent。
@@ -370,7 +398,7 @@ AUD-R1 H2 のとおり、瞬時周波数は一つの成分が channel を占め�
 **試作の結果と原理による分け方**（AUD-M1、追補 3 の固定の手順）
 - どの β（1、1/2、1/3、1/4）でも、15 Hz の組、LOO の近い組、近い mode の body で、完全な分解の正解との判断の一致は今の経路に及ばなかった。今の NSGT は 110 Hz で帯域 5.9 Hz の窓（重心の遅れ約 171 ms）を使い、これらの組を分けている。
 - 低い帯域でこれらの組まで分けるには、帯域を今の窓と同じ程度に狭くする必要があり、遅れも同じ程度になる。時間と周波数の物理の制約で、位相を使っても消えない。作者が最初に挙げた引き換えそのものである。
-- これらの組の間隔（110 Hz の 15 Hz で 0.41 ERB、1 kHz の 15 Hz で 0.11 ERB、40 Hz で 0.30 ERB）は、人が部分音を聴き分けられる下限（約 0.75 ERB、Moore ほか 2006、§3.5）より狭い。人の末梢もこれらを分けず、一つのうなる音として聴く。
+- これらの組の間隔（110 Hz の 15 Hz で 0.41 ERB、1 kHz の 15 Hz で 0.11 ERB、40 Hz で 0.30 ERB）は、登録した分類の境（0.75 ERB、§5.2）より狭い。
 - そこで、要求を人の聴覚から導く方針（作者の問い「人間の聴覚認知から定量的に導けるのでは」）に従い、0.75 ERB 未満の組を分けることは要求にしない。完全な分解の正解は、この範囲では人の知覚の参照ではない（AUD-R3 も同じ指摘）。
 - 残る問題は、融合した組の内側の偽の協和の山（R の偽の谷）である。R は候補の位置に単位の純音を足した時の潜在の量で、今鳴る二音の知覚の粗さではない（AUD-R4 M2）。偽の谷は、まず採用した潜在の R と完全な分解の参照との差として示す。
 - 試作では、広がりの変種（§6.2）でも谷は埋まらなかった（AUD-M1 追補 5）。一つの hop の遅れ L の整合度では、15 Hz のうなり（67 ms）が見えない。
@@ -507,7 +535,9 @@ M2 で演奏の経路へ移す時の定義はこの節にまとめる。§5 の�
   - 直近 n_c = max(1, ceil(fs/(hop·0.75·ERB(f_c)))) 個の hop の和を、channel ごとの ring で保つ。
   - ring の未観測の部分は、run の開始前の無音として 0 で始める。窓が満ちるまでも分母を縮めない。
   - 実数の平均二乗 E = 2·ΣE_h/(n_c·N)、位置 f̂ = fs·arg(ΣS_h)/2π、deposit の power d = 2·|ΣS_h|/(n_c·N·G(f̂))。
-- **再配置**（S4）：G(f) = Σ_c |H_c(f)|² は事前の表（ERB 番号の格子）と線形の補間。内部の周波数は 1 Hz〜fs/2 − 1 Hz に clamp する。
+- **再配置**（S4）：G(f) = Σ_c |H_c(f)|² は事前の表（ERB 番号の 1/128 の格子）と線形の補間。内部の周波数は 1 Hz〜fs/2 − 1 Hz に clamp する。
+- **対応する sample rate**：全 channel の中心が Nyquist より下にあること（既定の Log2Space で最高の中心は約 8175.3 Hz）。満たさない rate は、構築の前に通常の設定の error で拒む（AUD-R5 H1）。
+- **入口**：完全な hop だけを受け付ける。runtime の呼び出し側（worker、listener、LOO、body）は完全な hop を送る（AUD-R5 M1）。
 - **圧縮**（S5、§5.5 の順序）
   - P_cb(x) = Σ_j d_j·(1 + ((x_j − x)/b_ERB(x))²)^(−4)、b_ERB(x) = 1.0186·ERB(x)。gate の前の deposit から作る。
   - 実装は、ERB 番号 1/32 の bucket に power の 0〜6 次の moment を集め、query の ±4 ERB 番号にかかる bucket を 6 次の展開で評価する。
@@ -524,7 +554,7 @@ M2 で演奏の経路へ移す時の定義はこの節にまとめる。§5 の�
   - **reset**：filter、前の sample、ring、cursor、S6 を 0 にする。
   - **clone**：これらすべてを複製する。
   - **body の skip**：S1〜S3（hop の和と ring）を進め、S4 以降を行わない。選ばれた時は S4〜S6 を gap の分の間欠の更新で行う（§7）。
-- **gap の後の publish**：今の規則（nfft 16384、341.333 ms）。
+- **gap の後の publish**：今の worker の規則（`window_samples()`、既定の nfft 16384 で 341.333 ms）。front end の側の warm-up の返り値ではなく、worker の窓と frame の id を基準にする（AUD-R5）。
 - **Flora の判断の窓**：V2 では 47 hop（0.5 s）。音高、respawn、出生は 8 hop。
 
 ### 6.1 段と tap
@@ -706,7 +736,10 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
 - 判断の対象が 0 になった（分類、consumer）は、合格ではなく「対象なし」とする。
 
 分類の分け方（§5.4）
-- **分けられる分類**：成分の間隔が 0.75 ERB 以上（Moore ほか 2006 の聴き分けの下限、§3.5）。単音、二音、倍音列、弱い音。過渡もこちらに入れる（成分は分けられる間隔で、onset の扱いを見る）。
+- **分類は組ごとに数値で決める**（AUD-M1 追補 5）。入力の全成分の組について、LTFAT の ERB 番号の差を 0.75（登録した工学の境、§5.2）と比べ、manifest に組ごとに書く。
+  - **二成分の入力**（単音、二音、弱い音、15 Hz の組、LOO の近い組、近い mode の body）：組が 0.75 以上なら分けられる分類、未満なら分けられない分類。110/150 Hz（1.034）は分けられる分類。
+  - **複合音**（倍音列と過渡、manifest の `mixed_complex` の 11 件）：入力全体を分けられる分類として consumer の門で判定し、そのうえで 0.75 未満の組（110 Hz の 12 倍音列で 2 組、220 Hz で 1 組など）は区間の診断を別に記録する。全部の組が 0.75 以上の複合音も同じ扱い。
+  - 門は、分けられる分類の consumer の判定（下の「結果を見た後の目標の改訂」）。分けられない組の区間の値は診断。
 - **分けられない分類**：成分の間隔が 0.75 ERB 未満。15 Hz の組、LOO の近い組、近い mode の body。
 
 基準と選択
@@ -765,11 +798,20 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
     - V4：body の skip を挟む履歴、boxcar、clone、出生の後の `mix − own` と単独の解析の一致、reset の後の 341 ms の待ちを確かめた。gap の後 341 ms での IIR の残りは、最も低い channel（46.0 Hz）で、boxcar の power の比 9.2e-8、圧縮（0.23 乗）に直すと約 2.4%。gate と S6 を含まない単一の channel の値で、実際の H／R／C の残りの上界ではない。listener の接続は M2。
     - V5 の小さな場合（release、合否に使わない、外の負荷あり）：front end の 1 stream の 1 hop は、今の経路の平均 153.5 µs／p99 242.1 µs に対し、新系 140.9 µs／150.1 µs。H／R の kernel は 74.6 µs 対 83.5 µs。LOO の合計は test の経路（新系と NSGT の両方を計算）で、8 人 2.49 → 4.15 ms、16 人 5.06 → 8.29 ms、32 人 10.07 → 15.85 ms。本番の Voice の observer は NSGT を計算しないので、この値は本番の費用ではない。
     - S1 の比較：分けられる二音の音高の不一致が 17 から 20 に増えたので、S1 は採らない。
-    - sample の表（SF-1 の保存した旧 main の habitat の PCM、Flora の放射成分の出現のうち ±12.5 cent 以内に質量の山があるもの）：17_flora で 238／255（93.3%、今の peak の選択は 36.9%）、drone90 で 760／773（98.3%、今は 47.2%）。混合の PCM の上の周波数の対応で、可聴性の判定ではない。
+    - sample の表（SF-1 の保存した旧 main の habitat の PCM、Flora の放射成分の出現のうち、±12.5 cent 以内に質量の山があるもの）。同じ規則（S6 の後の質量の正の局所の最大）で比べると、17_flora で今の経路 121／255 から新系 238／255、drone90 で 445／773 から 760／773。旧い peak の選択の 94／255、365／773 は SF-1 の再現の確認として別に残した。質量の山に対応した出現の率で、成分を識別した率、可聴の率、生態の改善の率ではない（AUD-R5 M4）。
 - **M2 切り替え。** `SynchronousAnalysis` の H／R の front end を新系に替える。
   - 対象は混合、listener、LOO、body の全部。
   - NSGT の power は UI、report、研究の tap、資源のために残す。
   - V3 と V4 を演奏の経路で、F-0 などの参照を取り直し、全テスト。
+  - **結果**（2026-10-24、AUD-M2 の最終報告、commit `232d8e5c`）
+    - 演奏の経路の `SynchronousAnalysis`、`AnalysisStream`、LOO の observer、同期の body、listener を新系に替えた。旧い front end は test の中の対照だけに残した。
+    - 対応する sample rate を構築の前に検証し、最高の channel が Nyquist を超える rate は設定の error にした。`AnalysisStream` は完全な hop だけを受け付ける。
+    - V3（演奏の経路）：Flora 40／40、B-1 84／84、実数と複素の onset の反例が、既存の許容値のまま合格。
+    - V4：前置きの無音、reset、出生の前の履歴の clone、gap の後の publish の待ち（341 ms）、body の skip、`mix − own` と独立の参照の一致（density の相対の L1 3.9e-4、H／R／C 2.2e-4）。
+    - listener：成分ごとの評価に移し、fixture の三つの条件を順序の条件に置き換えた（§3.3）。deterministic と実時間の両方で、観測の id と消費の hop の対応を確かめた。
+    - F-0：二つの target-feature の group で各 4 例を二回ずつ取り直した。旧い値は fixture の注記に残した。sine は旧い hash と一致し、harmonic、modal、habituation が変わった。
+    - 割当（`profile-alloc`、48 kHz、hop 512、window 16384、690 bin、Ordered）：LOO なし 19 回／50,192 byte、Voice の LOO の observer 1 つで 23 回／58,808 byte。新しい front end と body の skip の 64 hop は 0 回。listener の初回の観測の後の 64 観測は 0 回。
+    - 全テスト 1340 件合格、Clippy（既定と `loo-diagnostic`）、`--no-default-features` の check、fmt、Rhai の同期、mdbook（英日）が通った。
 - **M3 実時間と文書。** V5 を宣言の負荷で取る。公開の technote の §3.1（英日）、`AGENTS.md`（`CLAUDE.md`）の解析の経路と割当の記述、ledger の設計の記録を更新する。
 - **M4 採用。** 作者の試聴で sample の採用と自由な量を決める。main への統合は作者が決める。
 - **M5 後の整理。** T2 の共有、使われなくなった peak の抽出と coherent の NSGT の H／R の経路の削除。
@@ -807,6 +849,7 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
 - **0.75 ERB 未満の組の偽の谷**（§5.4）。今の範囲では、登録した限界として受け入れる。
   - 選択肢：(a) 受け入れたまま、(b) 組の粗さを包絡のうなりから作る段を足す（R の意味を変える。判断 2 の範囲を広げる）、(c) 低い帯域だけ長い観測を足す（遅れが増える）。
   - (b) は作者が以前に挙げた方向（Hilbert 包絡）にあたる。試聴で偽の谷が聴こえる問題になった時に決めればよい。
+- **listener を音ごとに評価する直し**（§3.3）。新系では、listener が上の倍音を動ける音として数え、安定な和音でも tension が残る。部分音を音にまとめて評価するかは、listener の coupling を既定で使う判断、または report の tension を読む時に決めればよい。
 - 皮質の段の位置づけ。consumer が現れた時。
 - 時間の自己相関の音高。§6.4 の条件が起きた時。
 - T2 の共有。T2 を演奏の経路で使う判断の時。
@@ -820,12 +863,12 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
 ## 11. 未確認と限界
 
 - 数値実験は、定常の合成音、Python、理想の解析信号、hop 一つの読み出しに限る。過渡、glide、vibrato、雑音、実際の sample の PCM では未確認。
-- 選んだ構成（β = 1/4、統計の窓、ERB 版の文脈、S1 なし）は、改訂した工学の目標に対する暫定の候補で、旧基準では未達（§5.2、§8）。V3〜V5 は選んだ構成で取得中。
+- 選んだ構成（β = 1/4、統計の窓、ERB 版の文脈、S1 なし）は、改訂した工学の目標に対する暫定の候補で、旧基準では未達（§5.2、§8）。V3、V4 は M1（test の中）と M2（演奏の経路）で通った。宣言の負荷の V5 は M3。
 - 0.75 ERB 未満の組は融合するので、近い mode を持つ body やわずかにずれた unison で、sample の行動が変わりうる。
-- 低い channel では、実数の入力の負の周波数の像の影響が大きい。S1 の要否は V2 で決める。
+- 低い channel では、実数の入力の負の周波数の像の影響が大きい。S1 は V2 で悪くなったので採らなかった（§6.2）。像の影響は、登録した差の中に残る。
 - 部分的に占められた弱い成分の位置は、強い成分の方へ寄る。
 - 15 Hz の組の位置は、うなりの周期で揺れる。融合した組は R の unison の谷に偽の谷を作る（§5.4）。
-- 費用は演算の数の見積もりだけで、実測していない。
-- 床の gate を掛けるので、利得の不変は近似である（§5.8）。gate の値が丸めの残りを十分に抑えるかは V3 の前。
+- 費用は、M1 の小さな場合（合否に使わない、外の負荷あり）と、宣言の負荷の V5（M3）の取得に限る。
+- 床の gate を掛けるので、利得の不変は近似である（§5.8）。gate を含む構成で V3 の PCM の門は通った。
 - 指数 0.23 の原典のページと、Zwicker, Flottorp & Stevens（1957）の本文は未照合。
 - 前の試みの失敗の理由は分かっていない。

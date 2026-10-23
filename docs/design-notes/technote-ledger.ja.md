@@ -7141,7 +7141,7 @@ branch `research/flora-info-terrain-20261021`（古い基点の上）では、co
 
 <a id="auditory-front-end-20261024"></a>
 
-状態：branch `research/auditory-system-20261023`（main `a6b197d` から）で設計と実装を進めている。mainへは統合していない。設計の文書は [`auditory-system.md`](auditory-system.md)（版8）。testの中だけの試作とその検証は `f72d4a88`、演奏の経路の切り替えは `232d8e5c`。宣言の負荷の実時間の取得は作業中。Astraの独立のreview AUD-R1〜AUD-R5 は `.orchestration/units/AUD-R*/report.md`（machineの中の記録）にある。作者の採用は記録していない。
+状態：branch `research/auditory-system-20261023`（main `a6b197d` から）で設計と実装を進めている。mainへは統合していない。設計の文書は [`auditory-system.md`](auditory-system.md)（版8）。testの中だけの試作とその検証は `f72d4a88`、演奏の経路の切り替えは `232d8e5c`。宣言の負荷（FI-1bの22場面、headless、物理core 4つ）では、全場面でdeadlineの超過が0、解析のqueueが空だった。Astraの独立のreview AUD-R1〜AUD-R6 は `.orchestration/units/AUD-R*/report.md`（machineの中の記録）にある。作者の採用は記録していない。
 
 **問い。** 作者は、H/Rの前処理で遅れと倍音の構造が引き換えになる理由、周波数の解像度と許される遅れを人間の聴覚認知から導けるか、蝸牛から聴覚野までを忠実に、計算として整った形で作るとどうなるかを問うた。
 

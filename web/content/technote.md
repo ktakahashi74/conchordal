@@ -1209,7 +1209,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `habituation.satiation_sec` | `HabituationParams` | Seconds | Time to reduce the discrepancy from a sustained-drive equilibrium by 90% (default 5.0). |
 | `habituation.recovery_sec` | `HabituationParams` | Seconds | Time to recover 90% after drive withdrawal (default 8.0). |
 | `habituation.ref_drive` | `HabituationParams` | Float | Half-saturation drive in the habituation transfer function (default 0.25). |
-| `loudness_exp` | `LandscapeParams` | Float | Compressive exponent applied to A-weighted peak power in the subjective-intensity front end (default 0.23). |
+| `loudness_exp` | `LandscapeParams` | Float | Compressive exponent applied to the A-weighted critical-band context power in the subjective-intensity front end (§3.1.2; default 0.23). |
 | `tau_ms` | `LandscapeParams` | Milliseconds | S6 subjective-intensity smoothing time constant (`[analysis].tau_ms`). |
 | `stability` | `MeterShaping` | 0.0-1.0 | Beat attractor depth (`meter_stability`): scales entrainment forcing and tempo learning. |
 | `basin_hz` | `MeterShaping` | Hz pair | Scene tempo region (`temporal_basin`): seeds and confines beat-frequency learning; its center initializes metric bodies independently of stability. |

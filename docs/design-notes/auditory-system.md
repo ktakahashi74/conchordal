@@ -1,11 +1,11 @@
 # 新しい聴覚系の設計
 
-状態：設計の草案（版 8）。演奏の経路の実装は branch の上で済んだ（`232d8e5c`、§9 の M2）。宣言の負荷の実時間（V5）、最終のモデルと sample の作者の採用、main への統合は済んでいない。
-作成：2026-10-23。改訂：2026-10-24（独立の review AUD-R2〜AUD-R5、試作 AUD-M1、切り替え AUD-M2 の取得を反映）。
+状態：設計の草案（版 8）。演奏の経路の実装は branch の上で済み（`232d8e5c`、§9 の M2）、宣言の負荷の実時間（V5）は 22 場面すべてで合格した（§9 の M3）。最終のモデルと sample の作者の採用、main への統合は済んでいない。
+作成：2026-10-23。改訂：2026-10-24（独立の review AUD-R2〜AUD-R6、試作 AUD-M1、切り替え AUD-M2、実時間 AUD-M3 の取得を反映）。
 branch `research/auditory-system-20261023`（main `a6b197d` から）。
 入力：
 - 引き継ぎの版 2（`.orchestration/units/AUD-0/handoff.md`）
-- 独立の review AUD-R1〜AUD-R5（`.orchestration/units/AUD-R*/report.md`）
+- 独立の review AUD-R1〜AUD-R6（`.orchestration/units/AUD-R*/report.md`）
 - SF-1 の試作の報告（`.orchestration/units/SF-1/report.md`）
 
 引き継ぎの版 1 の数値と素案は使わない。
@@ -106,7 +106,7 @@ branch `research/auditory-system-20261023`（main `a6b197d` から）。
 | report と UI だけ（知覚の量） | `roughness01_scalar`、`loudness_mass`、`roughness`（UI の plot） | 新しい density から算出 | hop K に frame K−1 | — | 名前、型、算出の則を保つ。入力の density が変わるので値は変わる（AUD-R5 M5）。判断に使う consumer は無い |
 
 その他の確認：
-- `analysis.tau_ms` の既定は 10 ms（`src/config.rs:78`）。`LandscapeParams` の doc comment にある「60〜120 ms」は古い記述で、実行の値ではない。
+- `analysis.tau_ms` の既定は 10 ms（`src/config.rs:78`）。
 - 近似の LOO（自分の密度を scan から引く経路）は、test か `loo-diagnostic` の feature の専用で、演奏の経路には無い（`src/life/pitch_core.rs:1201`、`:1328`）。演奏での欠測の fallback は混合の場である。
 
 ### 2.3 契約表から出る要件
@@ -813,6 +813,12 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
     - 割当（`profile-alloc`、48 kHz、hop 512、window 16384、690 bin、Ordered）：LOO なし 19 回／50,192 byte、Voice の LOO の observer 1 つで 23 回／58,808 byte。新しい front end と body の skip の 64 hop は 0 回。listener の初回の観測の後の 64 観測は 0 回。
     - 全テスト 1340 件合格、Clippy（既定と `loo-diagnostic`）、`--no-default-features` の check、fmt、Rhai の同期、mdbook（英日）が通った。
 - **M3 実時間と文書。** V5 を宣言の負荷で取る。公開の technote の §3.1（英日）、`AGENTS.md`（`CLAUDE.md`）の解析の経路と割当の記述、ledger の設計の記録を更新する。
+  - **結果**（2026-10-24、AUD-M3 の最終報告、source `234a69e1`、`src/` は `232d8e5c` と同じ）
+    - FI-1b の runner、判定、取り直しの規則（`quiet-registration.md`）をそのまま写し、22 場面を取った。48 kHz、hop 512、seed 21、空いた CCD の物理 core 4 つ（論理 8 CPU）に固定、release と LTO の計時用 binary（features `loo-diagnostic,profile-alloc`）。
+    - 22 場面すべてで deadline miss 0、analysis の queue の最大 0。取り直しは 0。外の CPU の負荷（平均 127〜417%）の下での合格を含む。
+    - 入力は 21 場面が FI-1b と同じ。`17_flora` だけ main の側で `temporal_basin(2, 4);` が加わっていた。
+    - 自己除外の observer が最も多い場面（13 個、Voice と Flora の合計）で、analysis の thread の 1 hop の時間は平均 3.8 ms、p99 5.6〜5.9 ms、最大 7.9〜8.4 ms（hop の周期は 10.7 ms）。混合の stream と publish を含む実際の thread の時間で、M1 の LOO だけの値とは対象が違う。ここから安全な人数や速度の比は推定しない。
+    - cpal の出力と UI を使わない headless の取得である。実機の音声 device の underrun、宣言の負荷を超える人数は判定していない。
 - **M4 採用。** 作者の試聴で sample の採用と自由な量を決める。main への統合は作者が決める。
 - **M5 後の整理。** T2 の共有、使われなくなった peak の抽出と coherent の NSGT の H／R の経路の削除。
 
@@ -862,13 +868,14 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
 
 ## 11. 未確認と限界
 
-- 数値実験は、定常の合成音、Python、理想の解析信号、hop 一つの読み出しに限る。過渡、glide、vibrato、雑音、実際の sample の PCM では未確認。
-- 選んだ構成（β = 1/4、統計の窓、ERB 版の文脈、S1 なし）は、改訂した工学の目標に対する暫定の候補で、旧基準では未達（§5.2、§8）。V3、V4 は M1（test の中）と M2（演奏の経路）で通った。宣言の負荷の V5 は M3。
+- 設計の段の数値実験（AUD-1、Python）は、定常の合成音、理想の解析信号、hop 一つの読み出しに限った。その後に取ったのは、Rust の試作と演奏の経路での onset の反例、保存した sample の habitat の PCM の再解析、配線の確認である（§9）。
+- glide、vibrato、雑音、新しい front end で閉じた環の演奏、可聴性は未確認。保存した PCM の結果は、閉じた環の演奏や可聴性には広げない。
+- 選んだ構成（β = 1/4、統計の窓、ERB 版の文脈、S1 なし）は、改訂した工学の目標に対する暫定の候補で、旧基準では未達（§5.2、§8）。V3、V4 は M1（test の中）と M2（演奏の経路）で通り、宣言の負荷の V5 は M3 で通った。
 - 0.75 ERB 未満の組は融合するので、近い mode を持つ body やわずかにずれた unison で、sample の行動が変わりうる。
 - 低い channel では、実数の入力の負の周波数の像の影響が大きい。S1 は V2 で悪くなったので採らなかった（§6.2）。像の影響は、登録した差の中に残る。
 - 部分的に占められた弱い成分の位置は、強い成分の方へ寄る。
 - 15 Hz の組の位置は、うなりの周期で揺れる。融合した組は R の unison の谷に偽の谷を作る（§5.4）。
-- 費用は、M1 の小さな場合（合否に使わない、外の負荷あり）と、宣言の負荷の V5（M3）の取得に限る。
+- 費用は、M1 の小さな場合（合否に使わない、外の負荷あり）と、宣言の負荷の V5（M3、headless、22 場面）の取得に限る。実機の音声 device と、宣言を超える人数は未確認。
 - 床の gate を掛けるので、利得の不変は近似である（§5.8）。gate を含む構成で V3 の PCM の門は通った。
 - 指数 0.23 の原典のページと、Zwicker, Flottorp & Stevens（1957）の本文は未照合。
 - 前の試みの失敗の理由は分かっていない。

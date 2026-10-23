@@ -9911,9 +9911,9 @@ This entry went through three independent Astra reviews (drafts 1–2 conditiona
 
 Status: design and implementation on branch `research/auditory-system-20261023` (from main `a6b197d`), not merged. The
 design note is [`auditory-system.md`](auditory-system.md) (draft 8). The test-only prototype and its validation are at
-`f72d4a88`, and the switch of the performance path is at `232d8e5c`; real-time acquisition at the declared load is in
-progress. Independent Astra reviews AUD-R1 to
-AUD-R5 are in `.orchestration/units/AUD-R*/report.md` (machine-local). No author adoption is recorded.
+`f72d4a88`, and the switch of the performance path is at `232d8e5c`. At the declared load (the 22 FI-1b scenes,
+headless, four physical cores) every scene had zero deadline misses and an empty analysis queue. Independent Astra
+reviews AUD-R1 to AUD-R6 are in `.orchestration/units/AUD-R*/report.md` (machine-local). No author adoption is recorded.
 
 **Question.** The author asked why the H/R front end trades latency against harmonic structure, whether the frequency
 resolution and allowed latency can be derived from human auditory cognition, and how a faithful and computationally

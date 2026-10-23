@@ -1051,7 +1051,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `habituation.satiation_sec` | `HabituationParams` | 秒 | 持続刺激の平衡状態までの差が90%縮む時間（既定5.0）。 |
 | `habituation.recovery_sec` | `HabituationParams` | 秒 | driveがなくなってから90%回復する時間（デフォルト 8.0）。 |
 | `habituation.ref_drive` | `HabituationParams` | Float | habituationの伝達関数における半飽和drive（デフォルト 0.25）。 |
-| `loudness_exp` | `LandscapeParams` | Float | subjective-intensity front endでA-weighted peak powerに適用する圧縮指数（デフォルト 0.23）。 |
+| `loudness_exp` | `LandscapeParams` | Float | subjective-intensity front endで、A-weightingを掛けた臨界帯域の文脈のpowerに適用する圧縮指数（§3.1.2、デフォルト 0.23）。 |
 | `tau_ms` | `LandscapeParams` | ミリ秒 | S6の主観強度密度のleaky平滑の時定数（`[analysis].tau_ms`）。 |
 | `stability` | `MeterShaping` | 0.0-1.0 | ビートアトラクタ深度（`meter_stability`）：強制力とテンポ学習をスケール。 |
 | `basin_hz` | `MeterShaping` | Hz ペア | sceneのテンポ領域（`temporal_basin`）：拍の周波数学習の初期値と帯域制限。中心はstabilityに依らずmetricの身体の初期周期にも使う。 |

@@ -43,6 +43,15 @@ impl AnalysisStream {
         self.analysis.nsgt.enable_resource_power();
     }
 
+    pub(crate) fn with_nsgt_power(mut self, enabled: bool) -> Self {
+        self.analysis.nsgt_enabled = enabled;
+        self
+    }
+
+    pub(crate) fn nsgt_power_enabled(&self) -> bool {
+        self.analysis.nsgt_enabled
+    }
+
     pub(crate) fn voice_observer(&self) -> Self {
         let mut observer = self.clone();
         // Voice observers consume H/R only, even when the mixed stream feeds Flora.
@@ -100,6 +109,73 @@ impl AnalysisStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabling_nsgt_preserves_perception_and_does_not_advance_its_state() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut frozen = nsgt.clone();
+        let mut enabled = AnalysisStream::new(params.clone(), nsgt.clone());
+        let mut disabled = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
+        let mut last_audio = Vec::new();
+        for frame in 0..80 {
+            let audio: Vec<_> = (0..enabled.hop_samples())
+                .map(|n| {
+                    let t = (frame * enabled.hop_samples() + n) as f32 / params.fs;
+                    if (8..64).contains(&frame) {
+                        0.1 * (std::f32::consts::TAU * 110.0 * t).cos()
+                            + 0.07 * (std::f32::consts::TAU * 150.0 * t).sin()
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+            let mut expected = enabled.process(&audio).clone();
+            let mut actual = disabled.process(&audio).clone();
+            expected.recompute_consonance(&params);
+            actual.recompute_consonance(&params);
+            for (a, b) in [
+                (&actual.subjective_intensity, &expected.subjective_intensity),
+                (&actual.harmonicity, &expected.harmonicity),
+                (&actual.roughness, &expected.roughness),
+                (&actual.roughness01, &expected.roughness01),
+                (
+                    &actual.consonance_field_score,
+                    &expected.consonance_field_score,
+                ),
+                (
+                    &actual.consonance_density_mass,
+                    &expected.consonance_density_mass,
+                ),
+            ] {
+                assert!(a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits()));
+            }
+            assert!(actual.nsgt_power.iter().all(|&p| p == 0.0));
+            assert_eq!(
+                crate::life::community::Community::aud_m1_respawn(&actual),
+                crate::life::community::Community::aud_m1_respawn(&expected)
+            );
+            for range in [(55.0, 8000.0), (110.0, 880.0), (440.0, 3520.0)] {
+                assert_eq!(
+                    crate::life::community::Community::aud_m1_range_mass(&actual, range),
+                    crate::life::community::Community::aud_m1_range_mass(&expected, range)
+                );
+            }
+            let anchors = [110.0_f32.log2(), 150.0_f32.log2(), 220.0_f32.log2()];
+            for &a in &anchors {
+                let (chosen, _) =
+                    crate::life::voice::pitch_core::aud_m1_hill_choice(&actual, a, &anchors);
+                let (reference, _) =
+                    crate::life::voice::pitch_core::aud_m1_hill_choice(&expected, a, &anchors);
+                assert_eq!(chosen.to_bits(), reference.to_bits());
+            }
+            last_audio = audio;
+        }
+        // A hidden push_without_analysis would make this next NSGT output differ.
+        assert_eq!(
+            disabled.analysis.nsgt.process_hop(&last_audio),
+            frozen.process_hop(&last_audio)
+        );
+    }
 
     #[test]
     fn voice_observers_drop_resource_work_without_changing_perception() {

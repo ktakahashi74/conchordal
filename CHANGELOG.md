@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Runtime wiring now skips NSGT power and spectral history when no GUI, report,
+  temporal observation tap or Flora resource consumer needs them. Listener streams
+  also skip this work without a GUI, report or listener-side temporal tap.
+  Auditory H/R/C, behavior and gap recovery retain their existing rules.
+
 - Listener stability and resolvability now aggregate components defined by local
   mass maxima. Adjacent bins representing one component no longer offer an
   internal resolution move. Evidence thresholds, movement costs and tension

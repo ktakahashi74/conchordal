@@ -245,6 +245,10 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   power publication owns a scan and allocates. Reports include resource/consumption
   scans and lane state at seconds and lifecycle changes; their allocations are
   outside the renderer contract.
+  Mixed/listener NSGT power and its spectral history are enabled once at wiring
+  only for GUI, reports, temporal observation taps or mixed-bus Flora resources.
+  With none of those consumers the NSGT state does not advance; gap publication
+  still waits the same sample-counted window. Voice observers continue to skip it.
   The analysis worker (`src/core/analysis_worker.rs`) is a separate thread. Streaming
   and synchronous analysis share front-end/potential scratch; `AnalysisStream::process`
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only

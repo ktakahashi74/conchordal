@@ -246,6 +246,85 @@ fn no_ui_consumer_builds_no_frames() {
 }
 
 #[test]
+fn nsgt_wiring_retains_only_requested_bus_power() {
+    for kind in ["none", "gui", "report", "tap", "flora"] {
+        let directory =
+            std::env::temp_dir().join(format!("conchordal-nsgt-{}-{kind}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let script = directory.join("input.rhai");
+        let flora = if kind == "flora" {
+            "place(flora(), consonance(220, 880));"
+        } else {
+            ""
+        };
+        std::fs::write(&script,format!("seed(21); let g=place(sine().amp(0.05).sustain().anchor(),at(220)); {flora} wait(0.12); release(g); wait(0.05);")).unwrap();
+        let mut scenario = compile_scenario_from_script(&script, None).unwrap();
+        if kind == "tap" {
+            scenario.temporal_mode = crate::scenario::TemporalMode::Observe;
+        }
+        let mut config = AppConfig::default();
+        config.analysis.nfft = 2048;
+        config.dcc.coupling_strength = 0.0;
+        let core = build_analysis_runtime_core(&config, 48000);
+        let mut reference = core.nsgt;
+        let mut previous = vec![0.0; core.landscape.space.n_bins()];
+        let mixed_enabled = kind != "none";
+        let listener_enabled = matches!(kind, "gui" | "report" | "tap");
+        let seen = Arc::new(std::sync::Mutex::new([false; 2]));
+        let observed = Arc::clone(&seen);
+        let mut opts = options();
+        opts.listener_forced = true;
+        opts.offline_body_probe = Some(Box::new(move |state, _, _, pcm| {
+            if state.last_analysis_frame == state.frame_idx.checked_sub(1) && state.frame_idx > 0 {
+                if mixed_enabled {
+                    assert_eq!(state.current_landscape.nsgt_power, previous);
+                } else {
+                    assert!(state.current_landscape.nsgt_power.iter().all(|&p| p == 0.0));
+                }
+            }
+            let mut seen = observed.lock().unwrap();
+            seen[0] |= state.current_landscape.nsgt_power.iter().any(|&p| p > 0.0);
+            seen[1] |= state.listener_twin.spectral_history.is_some();
+            previous.copy_from_slice(reference.process_hop(pcm[0]));
+        }));
+        let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
+        if kind == "gui" {
+            opts.ui_tx = Some(ui_tx);
+        }
+        if kind == "report" {
+            opts.reporter = Some(
+                JsonlReporter::create(directory.join("report.jsonl").to_str().unwrap()).unwrap(),
+            );
+        }
+        let wiring = wire_runtime(
+            &config,
+            48000,
+            "NSGT consumer wiring".into(),
+            scenario,
+            Arc::new(AtomicBool::new(false)),
+            opts,
+        )
+        .unwrap();
+        join(wiring).unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [mixed_enabled, listener_enabled],
+            "{kind}"
+        );
+        if kind == "gui" {
+            let frames: Vec<_> = ui_rx.try_iter().collect();
+            assert!(frames.iter().any(|f| f.spec.amps.iter().any(|&p| p > 0.0)));
+            for frame in frames {
+                for (amp, power) in frame.spec.amps.iter().zip(&frame.landscape.nsgt_power) {
+                    assert_eq!(amp.to_bits(), power.sqrt().to_bits());
+                }
+            }
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+#[test]
 fn render_compile_errors_are_returned_before_opening_output() {
     let result = run_render(
         "invalid.txt",

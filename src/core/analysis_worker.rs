@@ -60,11 +60,13 @@ pub(crate) fn run(
             )
             .expect("validated raw T2 geometry")
         });
-    let mut spectral_history = crate::core::spectral_history::SpectralHistory::new(
-        stream.last().space.clone(),
-        stream.sample_rate() as f64,
-        stream.window_samples(),
-    );
+    let mut spectral_history = stream.nsgt_power_enabled().then(|| {
+        crate::core::spectral_history::SpectralHistory::new(
+            stream.last().space.clone(),
+            stream.sample_rate() as f64,
+            stream.window_samples(),
+        )
+    });
     while let Ok(first_hop) = hop_rx.recv() {
         #[cfg(test)]
         let l1_begin = l1_probe.as_mut().map(|p| p.before(first_hop.0));
@@ -162,18 +164,22 @@ pub(crate) fn run(
                     hop.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / hop.len() as f64;
                 tap.observe_frame(frame_id, &frame.nsgt_power, mono_energy, t2);
             }
-            spectral_history.observe(
-                frame_id * hop_samples as u64,
-                (frame_id + 1) * hop_samples as u64,
-                &frame.nsgt_power,
-            );
+            if let Some(history) = &mut spectral_history {
+                history.observe(
+                    frame_id * hop_samples as u64,
+                    (frame_id + 1) * hop_samples as u64,
+                    &frame.nsgt_power,
+                );
+            }
             warmup_samples = warmup_samples.saturating_sub(hop.len());
             analysis = (warmup_samples == 0).then_some(frame_id);
             if matches!(&delivery, AnalysisDelivery::Ordered)
                 && let Some(id) = analysis.take()
             {
                 let mut frame = frame.clone();
-                frame.spectral_history = spectral_history.snapshot();
+                frame.spectral_history = spectral_history
+                    .as_ref()
+                    .and_then(|history| history.snapshot());
                 frame.loo = loo_streams
                     .iter()
                     .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
@@ -194,7 +200,9 @@ pub(crate) fn run(
             && let AnalysisDelivery::Latest(stale) = &delivery
         {
             let mut frame = stream.last().clone();
-            frame.spectral_history = spectral_history.snapshot();
+            frame.spectral_history = spectral_history
+                .as_ref()
+                .and_then(|history| history.snapshot());
             frame.loo = loo_streams
                 .iter()
                 .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
@@ -239,6 +247,75 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn disabling_nsgt_keeps_gap_publication_and_auditory_frames() {
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let params = build_params(&space);
+        let kernel = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs: 48000.0,
+                overlap: 0.75,
+                nfft_override: Some(512),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Coherent,
+        );
+        let mut results = Vec::new();
+        for enabled in [true, false] {
+            let stream = AnalysisStream::new(params.clone(), RtNsgtKernelLog2::new(kernel.clone()))
+                .with_nsgt_power(enabled);
+            let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
+            let (tx, rx) = crossbeam_channel::unbounded();
+            let (_update_tx, update_rx) = crossbeam_channel::unbounded();
+            for id in [0, 1, 5, 6, 7, 8] {
+                let audio: Arc<[f32]> = (0..128)
+                    .map(|n| 0.1 * (2.0 * PI * 440.0 * (id * 128 + n) as f32 / 48000.0).sin())
+                    .collect();
+                hop_tx.send((id, audio, None)).unwrap();
+            }
+            drop(hop_tx);
+            run(
+                stream,
+                hop_rx,
+                tx,
+                update_rx,
+                AnalysisDelivery::Ordered,
+                None,
+                None,
+            );
+            let frames: Vec<_> = rx.into_iter().collect();
+            assert_eq!(
+                frames
+                    .iter()
+                    .map(|(id, f)| (*id, f.is_some()))
+                    .collect::<Vec<_>>(),
+                [(0, true), (1, true), (5, false), (8, true)]
+            );
+            assert_eq!(
+                frames
+                    .last()
+                    .unwrap()
+                    .1
+                    .as_ref()
+                    .unwrap()
+                    .spectral_history
+                    .is_some(),
+                enabled
+            );
+            results.push(frames);
+        }
+        for ((_, expected), (_, actual)) in results[0].iter().zip(&results[1]) {
+            if let (Some(expected), Some(actual)) = (expected, actual) {
+                assert_eq!(actual.subjective_intensity, expected.subjective_intensity);
+                assert_eq!(actual.harmonicity, expected.harmonicity);
+                assert_eq!(actual.roughness01, expected.roughness01);
+                assert!(actual.nsgt_power.iter().all(|&p| p == 0.0));
+            }
+        }
+    }
 
     fn build_params(space: &Log2Space) -> LandscapeParams {
         LandscapeParams {

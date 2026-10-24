@@ -272,13 +272,15 @@ pub(super) fn wire_runtime(
     } else {
         None
     };
-    let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
-    if scenario
+    let resource_power = scenario
         .events
         .iter()
         .flat_map(|event| &event.actions)
-        .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }))
-    {
+        .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }));
+    let display_or_report = ui_tx.is_some() || reporter.is_some();
+    let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
+        .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power);
+    if resource_power {
         analysis_stream.enable_resource_power();
     }
     let analysis_handle = spawn_analysis_worker(
@@ -303,7 +305,9 @@ pub(super) fn wire_runtime(
         listener_analysis_update_tx,
         listener_analysis_handle,
     ) = if listener_analysis_enabled {
-        let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone());
+        // The listener-side research tap also consumes its bus's NSGT power.
+        let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
+            .with_nsgt_power(display_or_report || taps[1].is_some());
         let (presentation_tx, presentation_rx) = bounded::<analysis_worker::AnalysisHop>(64);
         let (result_tx, result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
         let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);

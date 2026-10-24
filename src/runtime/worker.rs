@@ -679,7 +679,7 @@ pub(super) fn process_hop(
         },
     );
 
-    // Feed every habitat hop to NSGT-RT. Dropping hops breaks time continuity.
+    // Feed every habitat hop to analysis. Dropping hops breaks time continuity.
     if !cfg.temporal_meter_t2
         && let Err(err) = channels
             .audio_to_analysis_tx

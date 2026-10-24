@@ -202,7 +202,7 @@ pub const CONST_DOCS: &[ConstDoc] = &[
     ConstDoc {
         name: "habitat_bus",
         ty: "Bus",
-        summary: "Analysis bus: NSGT -> landscape; what the ecology senses.",
+        summary: "Analysis bus: auditory analysis -> landscape; what the ecology senses.",
     },
     ConstDoc {
         name: "presentation_bus",
@@ -287,7 +287,7 @@ supported positions from the live field.",
         id: "routing",
         title: "Routing",
         intro: "Each voice contributes to two independent mono buses: the presentation bus \
-(the work as heard) and the habitat bus (what the ecology senses through NSGT analysis). \
+(the work as heard) and the habitat bus (what the ecology senses through auditory analysis). \
 By default a voice feeds both.",
     },
     CategoryDoc {
@@ -1307,7 +1307,7 @@ the two-argument form sets it explicitly in cents.",
         patch: Patch::Live,
         usage: &["leave_self_out(enabled)"],
         summary: "Evaluate the field without this voice when choosing pitch.",
-        details: "Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.",
+        details: "Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.",
     },
     // --- lifecycle ---
     FnDoc {

@@ -649,7 +649,7 @@ fn localized_const_summary(doc: &docs::ConstDoc, language: ReferenceLanguage) ->
         return doc.summary;
     }
     match doc.name {
-        "habitat_bus" => "解析bus：NSGTからLandscapeへ送られ、生態系が知覚する。",
+        "habitat_bus" => "解析bus：聴覚解析を経てLandscapeへ送られ、生態系が知覚する。",
         "presentation_bus" => "提示bus：cpal出力、録音、UI meterへ送られ、聴き手が耳にする。",
         _ => doc.summary,
     }
@@ -720,7 +720,7 @@ fn localized_category_intro(
             "`modal()`の発音体に使う周波数関係。生成関数は`ModePattern`を返し、構築用メソッドで調整できる。Landscape-awareな構成は実行中のLandscapeから値を取る。"
         }
         "routing" => {
-            "各Voiceは、独立した二つのモノラルバスへ寄与する。presentation busは作品として聴かれる音、habitat busはNSGT解析を通じて生態系が知覚する音である。初期状態では両方へ送る。"
+            "各Voiceは、独立した二つのモノラルバスへ寄与する。presentation busは作品として聴かれる音、habitat busは聴覚解析を通じて生態系が知覚する音である。初期状態では両方へ送る。"
         }
         "director" => {
             "scene全体の地形形成と研究用control。director verbはsoft priorであり、地形を形づくるが、beatをscheduleしたりmeasureを強制したりはしない。"

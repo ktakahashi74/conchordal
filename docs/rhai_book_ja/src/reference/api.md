@@ -31,7 +31,7 @@ cargo run --bin gen_rhai_defs
 
 | 定数 | 型 | 説明 |
 |----------|------|-------------|
-| `habitat_bus` | `Bus` | 解析bus：NSGTからLandscapeへ送られ、生態系が知覚する。 |
+| `habitat_bus` | `Bus` | 解析bus：聴覚解析を経てLandscapeへ送られ、生態系が知覚する。 |
 | `presentation_bus` | `Bus` | 提示bus：cpal出力、録音、UI meterへ送られ、聴き手が耳にする。 |
 
 ## Core API
@@ -667,7 +667,7 @@ leave_self_out(enabled)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Evaluate the field without this voice when choosing pitch. Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+Evaluate the field without this voice when choosing pitch. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 
 ### LifecycleとViability
 
@@ -947,7 +947,7 @@ Random seed for jittered patterns (>= 0). For a scene, initial RNG seed; a scrip
 
 ### Routing
 
-各Voiceは、独立した二つのモノラルバスへ寄与する。presentation busは作品として聴かれる音、habitat busはNSGT解析を通じて生態系が知覚する音である。初期状態では両方へ送る。
+各Voiceは、独立した二つのモノラルバスへ寄与する。presentation busは作品として聴かれる音、habitat busは聴覚解析を通じて生態系が知覚する音である。初期状態では両方へ送る。
 
 #### `send`
 

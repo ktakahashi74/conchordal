@@ -12,7 +12,7 @@ use tracing::debug;
 // Ordered so the per-tick mixdown sums tones in a fixed (source_id, tone_id)
 // order. HashMap iteration order is process-randomized, which makes the
 // non-associative float accumulation below differ run-to-run. The habitat sum
-// feeds NSGT analysis -> landscape -> pitch decisions, so that drift would make
+// feeds auditory analysis -> landscape -> pitch decisions, so that drift would make
 // the pre-synth ALIFE/landscape computation non-deterministic across renders.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ToneKey {

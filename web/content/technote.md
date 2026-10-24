@@ -889,7 +889,7 @@ The API stability tier, Experimental, is independent of that classification.
 
 # 6. System Architecture and Implementation Details
 
-Conchordal is implemented in Rust to satisfy the stringent requirements of real-time audio (latency < 10ms) alongside heavy numerical analysis (NSGT/Convolution). The architecture uses a concurrent, lock-free design pattern.
+Conchordal is implemented in Rust to satisfy the stringent requirements of real-time audio (latency < 10ms) alongside heavy numerical analysis (auditory filterbank, NSGT and convolution). The architecture uses a concurrent, lock-free design pattern.
 
 ## 6.1 Threading Model
 

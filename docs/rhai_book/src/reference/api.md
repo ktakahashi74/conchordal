@@ -31,7 +31,7 @@ The surface is split into four tiers. **Core API** is the curated composing surf
 
 | Constant | Type | Description |
 |----------|------|-------------|
-| `habitat_bus` | `Bus` | Analysis bus: NSGT -> landscape; what the ecology senses. |
+| `habitat_bus` | `Bus` | Analysis bus: auditory analysis -> landscape; what the ecology senses. |
 | `presentation_bus` | `Bus` | Presentation bus: cpal output, recording, UI metering; what the listener hears. |
 
 ## Core API
@@ -667,7 +667,7 @@ leave_self_out(enabled)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Evaluate the field without this voice when choosing pitch. Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+Evaluate the field without this voice when choosing pitch. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 
 ### Lifecycle & Viability
 
@@ -947,7 +947,7 @@ Random seed for jittered patterns (>= 0). For a scene, initial RNG seed; a scrip
 
 ### Routing
 
-Each voice contributes to two independent mono buses: the presentation bus (the work as heard) and the habitat bus (what the ecology senses through NSGT analysis). By default a voice feeds both.
+Each voice contributes to two independent mono buses: the presentation bus (the work as heard) and the habitat bus (what the ecology senses through auditory analysis). By default a voice feeds both.
 
 #### `send`
 

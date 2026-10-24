@@ -404,7 +404,7 @@ pub(super) fn emit_hop_reports(
 
 /// Render one hop and route it to the two mono buses:
 ///   presentation_chunk -> cpal output + wav + UI metering
-///   habitat_chunk -> generator rhythm + NSGT analysis
+///   habitat_chunk -> generator rhythm + auditory analysis
 /// Returns both buses, their peak, and renderer time (including own observation and match reports).
 pub(super) fn render_and_route_audio(
     state: &mut WorkerState,

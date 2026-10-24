@@ -7,4 +7,4 @@ src = "src"
 build-dir = "../../web/static/ja/docs/rhai"
 
 [output.html]
-additional-js = ["theme/rhai-highlight.js"]
+additional-js = ["theme/rhai-highlight.js", "theme/site-nav.js"]

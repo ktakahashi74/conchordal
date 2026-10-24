@@ -13,7 +13,7 @@
 module static;
 
 // Built-in buses (registered as module constants).
-/// Analysis bus: NSGT -> landscape; what the ecology senses.
+/// Analysis bus: auditory analysis -> landscape; what the ecology senses.
 const habitat_bus: Bus;
 /// Presentation bus: cpal output, recording, UI metering; what the listener hears.
 const presentation_bus: Bus;
@@ -404,10 +404,10 @@ fn landscape_weight(population_spec: PopulationSpec, value: f64) -> PopulationSp
 fn landscape_weight(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
 /// Evaluate the field without this voice when choosing pitch.
-/// Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+/// Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 fn leave_self_out(population: Population, enabled: bool) -> Population;
 /// Evaluate the field without this voice when choosing pitch.
-/// Subtracts the Voice's actual habitat PCM before NSGT, smoothing, peak extraction, loudness and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+/// Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 fn leave_self_out(population_spec: PopulationSpec, enabled: bool) -> PopulationSpec;
 
 /// Linear interpolation of positions between two frequencies.

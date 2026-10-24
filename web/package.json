@@ -13,6 +13,8 @@
   "dependencies": {
     "@astrojs/markdown-satteri": "0.4.3",
     "astro": "7.4.0",
+    "katex": "0.19.1",
+    "satteri": "0.10.5",
     "unidecode": "1.1.0"
   },
   "devDependencies": {

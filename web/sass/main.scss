@@ -763,22 +763,3 @@ a {
 
     &:hover { color: $text-primary; border-color: $accent-primary; }
 }
-
-// 800px column + two 256px side slots, each with a 32px gap and 16px edge.
-@media (min-width: 1408px) {
-    .toc-container {
-        position: absolute;
-        right: calc(100% + 2rem);
-        top: 0;
-        bottom: 0;
-        width: 16rem;
-        margin-bottom: 0;
-
-        .toc-disclosure {
-            position: sticky;
-            top: 6rem;
-            max-height: calc(100dvh - 8rem);
-            overflow-y: auto;
-        }
-    }
-}

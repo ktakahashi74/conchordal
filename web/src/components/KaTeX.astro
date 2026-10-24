@@ -1,21 +1,12 @@
 ---
+import 'katex/dist/katex.min.css';
 import { ui, type Locale } from '../i18n/ui';
 interface Props { locale: Locale }
 const { locale } = Astro.props;
 const { mathRegion, tableRegion } = ui[locale];
 ---
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous" />
-<script is:inline defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
-<script is:inline defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
 <script is:inline define:vars={{ mathRegion, tableRegion }}>
   document.addEventListener('DOMContentLoaded', function () {
-    renderMathInElement(document.body, {
-      delimiters: [
-        {left: '$$', right: '$$', display: true},
-        {left: '$', right: '$', display: false},
-      ],
-      throwOnError: false,
-    });
     document.querySelectorAll('.page-content table').forEach(function (table) {
       const region = document.createElement('div');
       region.className = 'table-scroll';

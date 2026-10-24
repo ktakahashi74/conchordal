@@ -148,8 +148,10 @@ hop Kが読むのは引き続きframe K−1で、観測にはそのframeの終�
 
 $$ S(\Delta z) = G\,\max(0, e^{-bu} - e^{-cu})\,A(\Delta z) $$
 
-$$ M(\Delta z) = \left(1-e^{-\Delta z^2/(2\sigma_{sup}^2)}\right)^p, \qquad
-N(\Delta z)=e^{-\Delta z^2/(2\sigma_n^2)} $$
+$$
+M(\Delta z) = \left(1-e^{-\Delta z^2/(2\sigma_{sup}^2)}\right)^p, \qquad
+N(\Delta z)=e^{-\Delta z^2/(2\sigma_n^2)}
+$$
 
 $$ K_{rough}(\Delta z)=(1-w_n)\,S(\Delta z)M(\Delta z)+w_nN(\Delta z) $$
 
@@ -318,8 +320,10 @@ $g=1+\mathrm{stability}$、$\alpha=1$、$\beta=-1$である。入力がなくて
 
 検出した発音$j$では、予測を補正する前の位相誤差$\epsilon_j$を測る。前の発音の誤差で現在の周期$T$を更新し、今回の誤差で位相を補正する。
 
-$$ T^+=T^-\left(1+\eta_p g\frac{\sin\epsilon_{j-1}}{2\pi}\right), \qquad
-   \varphi^+=\varphi^- -\eta_\varphi g\sin\epsilon_j. $$
+$$
+T^+=T^-\left(1+\eta_p g\frac{\sin\epsilon_{j-1}}{2\pi}\right), \qquad
+   \varphi^+=\varphi^- -\eta_\varphi g\sin\epsilon_j.
+$$
 
 $\eta_\varphi=0.6$、$\eta_p=0.1$はLarge & Jones（1999）のsimulationに由来する。検出した発音の時刻を$H=2\times2\,\mathrm{s}+60\,\mathrm{ms}=4.06\,\mathrm{s}$保持する。これは最大候補間隔を二回と、確認窓の末尾を含めた長さである。隣り合うとは限らない三つの発音について、二つの間隔が$w(p)=\min(0.2p,60\,\mathrm{ms})$以内で一致すれば、再来の候補$p$を確認する。音響参加の既存の窓を再使用する。候補の順位は$R(p)=M(p)/N$で付ける。$M$は履歴と$p$だけずらした履歴を、時刻順に一対一で対応させた三角重みの合計、$N$は全候補に共通する履歴全体の発音数である。採用済みの周期も同じ比較に残す。隣接間隔の全てが既存の窓内で一致する履歴では、従来の隣接間隔による確認をそのまま使う。確認したrate $f_o=1/p$から、$r\in\{1,1/2,1/3,1/4,2,3,4\}$の$f_r=r f_o$を作り、連続した拍帯域の中の候補を読む。通常の帯域は0.5〜4 Hzである。整数比で入れ子になる理想的な発音列では、支持$S_r$を共通発音数／両列の和集合の発音数とすると、$S_r=\min(r,1/r)$となる。入力発音のすべてに位相が合うだけでは、倍速の候補を拍に選べない。
 
@@ -1089,11 +1093,15 @@ $$ C_{density\_mass} = \max(0,\; H_{01}(1 - \rho R_{01})) $$
 
 **Landscape habituationとeffective view：**
 
-$$ d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
-h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}} $$
+$$
+d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
+h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}}
+$$
 
-$$ C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad
-C_{density\_mass,i}^{eff}=C_{density\_mass,i}(1-h_i) $$
+$$
+C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad
+C_{density\_mass,i}^{eff}=C_{density\_mass,i}(1-h_i)
+$$
 
 $$ C_{level01,i}^{eff}=\frac{1}{1+e^{-\beta(C_{score,i}^{eff}-\theta)}} $$
 
@@ -1111,11 +1119,15 @@ $$
 
 **時間領域ライフサイクル**（正規化エネルギー $E\in[0,1]$）：
 
-$$ b = \frac{1}{T_e(1+p_d)}, \qquad
-\Delta E_{basal} = -b\,[1+p_d(1-C_{level01}^{eff})]\,\Delta t $$
+$$
+b = \frac{1}{T_e(1+p_d)}, \qquad
+\Delta E_{basal} = -b\,[1+p_d(1-C_{level01}^{eff})]\,\Delta t
+$$
 
-$$ \Delta E_{recovery} = \frac{V(C^{eff})}{T_r}\,\Delta t, \qquad
-\Delta E_{attack} = -f_c + f_r C_{level01}^{eff}m_r $$
+$$
+\Delta E_{recovery} = \frac{V(C^{eff})}{T_r}\,\Delta t, \qquad
+\Delta E_{attack} = -f_c + f_r C_{level01}^{eff}m_r
+$$
 
 $T_e$ はendurance、$T_r$ はrecovery、$p_d$ は不協和penalty、$V(C^{eff})$ は生存可能性window信号、$f_c/f_r$ はアタックcost/recharge割合、$m_r$ は上限つきリズム報酬乗数である。
 
@@ -1123,8 +1135,10 @@ $T_e$ はendurance、$T_r$ はrecovery、$p_d$ は不協和penalty、$V(C^{eff})
 
 $$ Roots[i]=\left(\sum_k k^{-\rho}A[i+\log_2(k)]\right)^{\gamma} $$
 
-$$ H[i]=\max\left(0,\;\sum_m m^{-\rho}Roots[i-\log_2(m)]
--(1-w_{diag})\left(\sum_{k=1}^{K}k^{-2\rho}\right)A[i]\right) $$
+$$
+H[i]=\max\left(0,\;\sum_m m^{-\rho}Roots[i-\log_2(m)]
+-(1-w_{diag})\left(\sum_{k=1}^{K}k^{-2\rho}\right)A[i]\right)
+$$
 
 実装はこの後、任意の絶対周波数TFS gateを適用し、デフォルトではscanをpeak normalizeする。
 

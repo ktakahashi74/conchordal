@@ -153,8 +153,10 @@ The implementation uses a Sethares difference-of-exponentials core, a small dire
 
 $$ S(\Delta z) = G\,\max(0, e^{-bu} - e^{-cu})\,A(\Delta z) $$
 
-$$ M(\Delta z) = \left(1-e^{-\Delta z^2/(2\sigma_{sup}^2)}\right)^p, \qquad
-N(\Delta z)=e^{-\Delta z^2/(2\sigma_n^2)} $$
+$$
+M(\Delta z) = \left(1-e^{-\Delta z^2/(2\sigma_{sup}^2)}\right)^p, \qquad
+N(\Delta z)=e^{-\Delta z^2/(2\sigma_n^2)}
+$$
 
 $$ K_{rough}(\Delta z)=(1-w_n)\,S(\Delta z)M(\Delta z)+w_nN(\Delta z) $$
 
@@ -318,8 +320,10 @@ Here $g=1+\mathrm{stability}$, $\alpha=1$ and $\beta=-1$. The unforced radius te
 
 At detected onset $j$, the meter measures phase error $\epsilon_j$ **before** correcting its prediction. It adjusts the current period $T$ using the preceding error and corrects phase using the current error:
 
-$$ T^+=T^-\left(1+\eta_p g\frac{\sin\epsilon_{j-1}}{2\pi}\right), \qquad
-   \varphi^+=\varphi^- -\eta_\varphi g\sin\epsilon_j. $$
+$$
+T^+=T^-\left(1+\eta_p g\frac{\sin\epsilon_{j-1}}{2\pi}\right), \qquad
+   \varphi^+=\varphi^- -\eta_\varphi g\sin\epsilon_j.
+$$
 
 The gains $\eta_\varphi=0.6$ and $\eta_p=0.1$ come from the Large & Jones (1999) simulation. The meter retains detected acoustic onset times for $H=2\times2\,\mathrm{s}+60\,\mathrm{ms}=4.06\,\mathrm{s}$, covering two maximum candidate intervals and the confirmation tail. Three possibly nonadjacent onsets corroborate a lag $p$ when successive spacings agree within $w(p)=\min(0.2p,60\,\mathrm{ms})$, reusing the acoustic participation window. Lags are ranked by $R(p)=M(p)/N$, where $M$ is triangular, chronological one-to-one matching mass between the history and its shift by $p$, and $N$ is the full history's event count, common to all candidates. An already accepted lag remains in this comparison. Histories whose adjacent intervals all agree within the existing window retain the previous adjacent-interval confirmation path. From the corroborated rate $f_o=1/p$, the meter considers $f_r=r f_o$ for $r\in\{1,1/2,1/3,1/4,2,3,4\}$ within the continuous beat band, normally 0.5–4 Hz. Ideal nested event trains give support $S_r=\min(r,1/r)$: shared events divided by their union. Thus a faster candidate cannot win solely because its PLV also aligns with every input onset.
 
@@ -1247,11 +1251,15 @@ $$ C_{density\_mass} = \max(0,\; H_{01}(1 - \rho R_{01})) $$
 
 **Landscape habituation and effective views:**
 
-$$ d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
-h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}} $$
+$$
+d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
+h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}}
+$$
 
-$$ C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad
-C_{density\_mass,i}^{eff}=C_{density\_mass,i}(1-h_i) $$
+$$
+C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad
+C_{density\_mass,i}^{eff}=C_{density\_mass,i}(1-h_i)
+$$
 
 $$ C_{level01,i}^{eff}=\frac{1}{1+e^{-\beta(C_{score,i}^{eff}-\theta)}} $$
 
@@ -1269,11 +1277,15 @@ where $k$ is `roughness_k` (default $\approx 0.4286$). The function is continuou
 
 **Time-domain lifecycle** (normalized energy $E\in[0,1]$):
 
-$$ b = \frac{1}{T_e(1+p_d)}, \qquad
-\Delta E_{basal} = -b\,[1+p_d(1-C_{level01}^{eff})]\,\Delta t $$
+$$
+b = \frac{1}{T_e(1+p_d)}, \qquad
+\Delta E_{basal} = -b\,[1+p_d(1-C_{level01}^{eff})]\,\Delta t
+$$
 
-$$ \Delta E_{recovery} = \frac{V(C^{eff})}{T_r}\,\Delta t, \qquad
-\Delta E_{attack} = -f_c + f_r C_{level01}^{eff}m_r $$
+$$
+\Delta E_{recovery} = \frac{V(C^{eff})}{T_r}\,\Delta t, \qquad
+\Delta E_{attack} = -f_c + f_r C_{level01}^{eff}m_r
+$$
 
 where $T_e$ is endurance, $T_r$ is recovery, $p_d$ is the dissonance penalty,
 $V(C^{eff})$ is the viability-window signal, $f_c/f_r$ are attack cost/recharge
@@ -1283,8 +1295,10 @@ fractions, and $m_r$ is the bounded rhythm-reward multiplier.
 
 $$ Roots[i]=\left(\sum_k k^{-\rho}A[i+\log_2(k)]\right)^{\gamma} $$
 
-$$ H[i]=\max\left(0,\;\sum_m m^{-\rho}Roots[i-\log_2(m)]
--(1-w_{diag})\left(\sum_{k=1}^{K}k^{-2\rho}\right)A[i]\right) $$
+$$
+H[i]=\max\left(0,\;\sum_m m^{-\rho}Roots[i-\log_2(m)]
+-(1-w_{diag})\left(\sum_{k=1}^{K}k^{-2\rho}\right)A[i]\right)
+$$
 
 The implementation then applies the optional absolute-frequency TFS gate and, by default, peak-normalizes the scan.
 

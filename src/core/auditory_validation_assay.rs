@@ -3,6 +3,24 @@ use super::*;
 use crate::life::{community::Community, flora::Flora};
 use std::{collections::BTreeMap, io::Write};
 
+#[path = "auditory_consumer_assay.rs"]
+mod current;
+
+fn span_extrema(space: &Log2Space, scan: &[f32], low: f32, high: f32) -> (f32, f32) {
+    space.assert_scan_len_named(scan, "interval_consumer_scan");
+    let a = crate::core::log2space::sample_scan_linear_log2(space, scan, low);
+    let b = crate::core::log2space::sample_scan_linear_log2(space, scan, high);
+    let mut minimum = a.min(b);
+    let mut maximum = a.max(b);
+    for (i, &f) in space.centers_hz.iter().enumerate() {
+        if (low..=high).contains(&f) {
+            minimum = minimum.min(scan[i]);
+            maximum = maximum.max(scan[i]);
+        }
+    }
+    (minimum, maximum)
+}
+
 fn assess(actual: &Landscape, truth: &Landscape, anchors: &[f32]) -> Value {
     let space = &truth.space;
     let hill: Vec<_> = anchors.iter().map(|&a| {
@@ -415,11 +433,10 @@ fn acquire_windows(addendum6: bool) {
                     let j = pair["components"][1].as_u64().unwrap() as usize;
                     let low = frequencies[i].min(frequencies[j]);
                     let high = frequencies[i].max(frequencies[j]);
-                    let c = [truth, &actual, old].map(|l| {
-                        super::a4::span_extrema(&space, &l.consonance_field_score_eff, low, high).1
-                    });
+                    let c = [truth, &actual, old]
+                        .map(|l| span_extrema(&space, &l.consonance_field_score_eff, low, high).1);
                     let r = [truth, &actual, old]
-                        .map(|l| super::a4::span_extrema(&space, &l.roughness01, low, high).0);
+                        .map(|l| span_extrema(&space, &l.roughness01, low, high).0);
                     let dc = [
                         (f64::from(c[1]) - f64::from(c[0])).max(0.0),
                         (f64::from(c[2]) - f64::from(c[0])).max(0.0),

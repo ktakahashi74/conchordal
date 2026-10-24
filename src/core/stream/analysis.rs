@@ -15,14 +15,6 @@ impl AnalysisStream {
         self.analysis.frontend.diagnostic()
     }
 
-    #[cfg(test)]
-    pub(crate) fn legacy_new(params: LandscapeParams, nsgt: RtNsgtKernelLog2) -> Self {
-        Self {
-            analysis: SynchronousAnalysis::legacy_new(nsgt, &params),
-            params,
-        }
-    }
-
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let mut analysis = SynchronousAnalysis::new(nsgt_rt, &params);
         // Live analysis publishes raw perception; the worker derives consonance.

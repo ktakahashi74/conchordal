@@ -269,7 +269,7 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   Body skip advances filters and hop statistics; selected updates apply S4–S6 once.
   Flora power publication requires full-window coverage; gaps hold timestamped
   consumption and geometry changes discard it. Allocation
-  census with `profile-alloc` (48 kHz, hop 512, window 16384, 690 bins, Ordered,
+  census with `profile-alloc` (NSGT/history enabled, 48 kHz, hop 512, window 16384, 690 bins, Ordered,
   one hop per batch) measured 19 allocations / 50192 bytes without LOO and
   23 / 58808 with one Voice LOO observer. Its first packet used 79 / 586496,
   including observer construction and test-only assay storage. A separate
@@ -303,6 +303,9 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   spelling is pinned bit-exact by its own tests.
 
 ## Testing Policy
+
+- Reusable auditory consumer acquisitions and their input/reference tools are
+  described in [auditory validation](tests/research/auditory-validation.md).
 - **Inline tests** (`#[cfg(test)] mod tests` in the same source file) are for module-internal logic and private APIs.
 - **Integration tests** (`tests/` directory) are for public API and cross-module behavior; treat them as black-box specs.
 - **Crate-internal test modules** hold larger suites that require private APIs:

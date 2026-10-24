@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Auditory validation retains the V2 consumer tools and ordinary conformance
+  tests while removing completed one-shot acquisitions. V3 onset and V4 history
+  checks now run as ordinary tests without writing acquisition artifacts.
+
 - Runtime wiring now skips NSGT power and spectral history when no GUI, report,
   temporal observation tap or Flora resource consumer needs them. Listener streams
   also skip this work without a GUI, report or listener-side temporal tap.

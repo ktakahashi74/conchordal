@@ -1,12 +1,8 @@
 //! The two registered onset perturbations with the selected front end.
 use super::*;
-use std::io::Write;
 
 #[test]
-#[ignore = "AUD-M1 selected real and complex onset gates"]
 fn aud_m1_v3_onsets() {
-    use sha2::Digest;
-    let dir = output_dir();
     let (params, kernel, hop) =
         crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
     let space = kernel.space().clone();
@@ -15,9 +11,6 @@ fn aud_m1_v3_onsets() {
         PotentialScratch::new(&space, &params.harmonicity_kernel, &params.roughness_kernel);
     let template = ShadowFrontEnd::new(space.clone(), params.fs, 0.25, false, kernel.nfft())
         .with_statistics(hop, true);
-    let mut rows =
-        std::io::BufWriter::new(std::fs::File::create(dir.join("onset-rows.jsonl")).unwrap());
-    let mut summaries = Vec::new();
     for complex in [false, true] {
         let kind = if complex { "complex" } else { "real" };
         let mut inputs = [
@@ -48,21 +41,7 @@ fn aud_m1_v3_onsets() {
                 input[hop - 2] = Complex32::new(1e-9 * a, 0.0);
             }
         }
-        let mut manifest = Vec::new();
-        for (i, input) in inputs.iter().enumerate() {
-            let bytes: Vec<_> = input
-                .iter()
-                .flat_map(|z| [z.re, z.im])
-                .flat_map(|x| x.to_le_bytes())
-                .collect();
-            let name = format!("{kind}-{i}-first-hop-complex.f32");
-            std::fs::write(dir.join(&name), &bytes).unwrap();
-            manifest.push(json!({"file":name,"sha256":sha2::Sha256::digest(&bytes).iter().map(|b|format!("{b:02x}")).collect::<String>(),
-                "format":"interleaved real/imag little-endian f32","subsequent_silent_hops":39}));
-        }
         let mut fronts = [template.clone(), template.clone()];
-        let mut maximum_density = 0.0_f32;
-        let mut maximum_hrc = 0.0_f64;
         for frame in 0..40 {
             let mut landscapes = Vec::new();
             for (front, input) in fronts.iter_mut().zip(&inputs) {
@@ -99,47 +78,19 @@ fn aud_m1_v3_onsets() {
                 .map(|k| errors[k]["max"].as_f64().unwrap())
                 .into_iter()
                 .fold(0.0_f64, f64::max);
-            maximum_density = maximum_density.max(l1);
-            maximum_hrc = maximum_hrc.max(hrc);
-            writeln!(
-                rows,
-                "{}",
-                json!({"kind":kind,"frame":frame,"relative_density_l1":l1,"fields":errors})
-            )
-            .unwrap();
-            if l1 > 1e-3 || hrc > 1e-3 {
-                rows.flush().unwrap();
-                std::fs::write(
-                    dir.join("onset-witness.json"),
-                    serde_json::to_vec(&json!({"kind":kind,"frame":frame,"fs":params.fs,"hop":hop,
-                    "inputs":manifest,"relative_density_l1":l1,"fields":errors,"tolerance":1e-3,
-                    "first":fronts[0].diagnostic(),"second":fronts[1].diagnostic()}))
-                    .unwrap(),
-                )
-                .unwrap();
-            }
-            assert!(l1 <= 1e-3 && hrc <= 1e-3, "registered onset PCM gate");
+            assert!(
+                l1 <= 1e-3 && hrc <= 1e-3,
+                "registered onset PCM gate: kind={kind} frame={frame}"
+            );
             for input in &mut inputs {
                 input.fill(Complex32::default());
             }
         }
-        summaries.push(
-            json!({"kind":kind,"frames":40,"fs":params.fs,"hop":hop,"inputs":manifest,
-            "max_relative_density_l1":maximum_density,"max_hrc":maximum_hrc,"pass":true}),
-        );
     }
-    rows.flush().unwrap();
-    std::fs::write(
-        dir.join("summary.json"),
-        serde_json::to_vec_pretty(&summaries).unwrap(),
-    )
-    .unwrap();
 }
 
 #[test]
-#[ignore = "AUD-M1 selected body history, warmup, clone, and IIR residual"]
 fn aud_m1_v4_state() {
-    let dir = output_dir();
     let (params, kernel, hop) =
         crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
     let space = kernel.space().clone();
@@ -152,7 +103,6 @@ fn aud_m1_v4_state() {
     let mut sparse = template.clone();
     let mut body =
         with_selected_test_frontend(|| SynchronousAnalysis::new(kernel.clone(), &params));
-    let mut maximum_law_error = 0.0_f32;
     for frame in 0..32 {
         let pcm: Vec<_> = (0..hop)
             .map(|i| {
@@ -191,7 +141,6 @@ fn aud_m1_v4_state() {
                     (actual - expected).abs() <= bound,
                     "registered intermittent S6 law"
                 );
-                maximum_law_error = maximum_law_error.max((actual - expected).abs());
             }
         } else {
             sparse.skip(&pcm);
@@ -263,47 +212,4 @@ fn aud_m1_v4_state() {
             "cloned pre-birth history PCM gate"
         );
     }
-    let mut tails = Vec::new();
-    let first = template.bank.centers[0];
-    let trimmed = *template
-        .bank
-        .centers
-        .iter()
-        .find(|&&f| f >= space.fmin)
-        .unwrap();
-    for (label, frequency) in [
-        ("selected_margin", first),
-        ("first_retained_at_or_above_55", trimmed),
-        ("exact_55_diagnostic", 55.0),
-    ] {
-        let b = 0.25 * 1.0186 * (24.7 + f64::from(frequency) / 9.265);
-        let radius = (-std::f64::consts::TAU * b / f64::from(params.fs)).exp();
-        let count = (f64::from(params.fs)
-            / (hop as f64 * 0.75 * (24.7 + f64::from(frequency) / 9.265)))
-            .ceil() as usize;
-        let mut state = [1.0_f64; 4];
-        let mut previous = 1.0;
-        let mut sum = 0.0;
-        for sample in 0..kernel.nfft() {
-            let mut input = 0.0;
-            for stage in &mut state {
-                *stage = radius * *stage + (1.0 - radius) * input;
-                input = *stage;
-            }
-            if sample >= kernel.nfft() - count * hop {
-                sum += state[3] * previous;
-            }
-            previous = state[3];
-        }
-        let power_ratio = sum / (count * hop) as f64;
-        tails.push(json!({"case":label,"center_hz":frequency,"hops":count,"samples":kernel.nfft(),
-            "amplitude_ratio":state[3],"compressed_instantaneous_ratio":state[3].powf(2.0*f64::from(params.loudness_exp)),
-            "boxcar_power_ratio":power_ratio,"compressed_boxcar_ratio":power_ratio.powf(f64::from(params.loudness_exp))}));
-    }
-    std::fs::write(dir.join("summary.json"),serde_json::to_vec_pretty(&json!({"body_selected_hops":8,
-        "max_absolute_s6_law_error":maximum_law_error,"max_cloned_history_hrc_error":maximum_clone_error,
-        "max_cloned_history_density_l1":maximum_clone_density_l1,
-        "warmup_samples":kernel.nfft(),"warmup_ms":kernel.nfft() as f64/f64::from(params.fs)*1000.0,
-        "tails":tails,"tail_scope":"unit steady rotating-frame channel followed by zero input; no floor or S6 in compressed residual ratios",
-        "listener":"observation ids and consumption hops deferred to M2; no shadow listener connection"})).unwrap()).unwrap();
 }

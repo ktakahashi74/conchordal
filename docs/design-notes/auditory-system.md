@@ -1171,3 +1171,17 @@ Astra の review AUD-R9（`.orchestration/units/AUD-R9/report.md`）は、§12.8
 - R → C の変更を通して、habituation の駆動（H の射影と `consonance_field_level`）は変わる。保つのは計算の則であって、出力ではない。
 - 同期の body は、今の各入力の PCM（body 単独、環境、混合）の意味をそのまま保ち、R の入力の scan の則だけを足す。
 - 費用の対象：habitat、listener、Voice の LOO の observer、全 source の body の S1〜S3、選ばれた body の S4 以降、退場中の Voice、出生の clone。状態の大きさは 170 channel で 1 stream あたり約 150 KB（遅延の線と ring）。
+
+### 12.10 段 1 の試作の結果（AUD-M5、2026-10-24）
+
+記録は `.orchestration/units/AUD-M5/report.md` と worktree の `.orchestration/aud-m5/stage1/`、`addendum5/`。test の中だけで、commit していない。
+
+- 実装の照合（E1）：882 例で、Rust と Python の σ の相対の差は最大 5.9e-8。上限の有無で同じ。
+- production の channel では、σ は channel の中の局所の広がりになる。channel の中心が組の平均から外れると、近い方の成分の重みが大きく、σ は二点の値より小さい（125 Hz 付近の CF 121.55 Hz で、差 20 Hz の組の σ は 4.63 Hz、連続の model の 10 Hz に対して）。
+- consumer の判断（E2、57 入力、M2 を同じ binary で取り直して比較）。不一致の数は M2 → 段 1。
+  - 分けられない分類の音高：877 → 782（close_pair_15hz 157 → 114、loo_close 209 → 160、close_mode_body 79 → 76、three_tone と slow_pair は変わらない）。
+  - 分けられない分類の respawn：1322 → 1323。Flora：5797 → 5805。
+  - 他の分類の音高：114 → 116（two_tone 1.0 ERB で 6 → 8）。Flora：928 → 930。respawn は変わらない。
+  - 出生の L1 の平均の変化は、45 cell の全てで M2 の値の ±0.65% 以内。
+- 判定：追補 3〜4 の基準（全 cell で厳密な非悪化）で 30 cell 不合格。追補 5 の基準（上限なし、分類ごとの合計の非悪化と 1% の cell の条件）で 5 条件不合格。上限の有無で離散の判断は同じだったので、「上限が 1.0 ERB の悪化の原因」という統括の見当は支持されなかった。
+- 読み方：moment の二点は、分けられない組の音高の判断を約 11% 改善するが、他の判断を少し動かす。どちらも数の上では小さい。費用（全 stream に遅延の線と ring、channel ごとの積和）は未計測。

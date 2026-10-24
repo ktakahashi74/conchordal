@@ -9914,7 +9914,7 @@ design note is [`auditory-system.md`](auditory-system.md) (draft 8). The test-on
 `f72d4a88`, and the switch of the performance path is at `232d8e5c`. At the declared load (the 22 FI-1b scenes,
 headless, four physical cores) every scene had zero deadline misses and an empty analysis queue. Independent Astra
 reviews AUD-R1 to AUD-R7 are in `.orchestration/units/AUD-R*/report.md` (machine-local). The author tried the new front
-end in the GUI on 2026-10-24 and adopted it as the H/R observation basis.
+end in the GUI on 2026-10-24; adoption is conditional on the limitations matching human hearing and is open.
 
 **Question.** The author asked why the H/R front end trades latency against harmonic structure, whether the frequency
 resolution and allowed latency can be derived from human auditory cognition, and how a faithful and computationally
@@ -9972,8 +9972,8 @@ than gated:
 The earlier raw-NSGT and gammatone attempts were rejected because the H peaks were blurred (the author, 2026-10-24):
 both passed component power to H spread over the analysis bandwidth. The new front end takes position from the channel
 phase advance and gathers each resolvable component's mass into two adjacent bins, so the filter width sets only which
-pairs separate. The author confirmed in the GUI that the H peaks are no longer blurred and adopted the front end with
-the differences above registered. Widening the scope (roughness of unresolved structure from the
+pairs separate. The author confirmed in the GUI that the H peaks are no longer blurred. The boundaries of the limitations are close
+to human hearing, but the treatment beyond them is not (the design note, §12), so adoption is open. Widening the scope (roughness of unresolved structure from the
 envelope, or a separate onset estimate) is an author decision. The SF-1 requirement to separate two tones 15 Hz apart,
 set by the orchestrator's brief, is replaced by consumer-decision tests and the recorded spurious-valley diagnostic.
 

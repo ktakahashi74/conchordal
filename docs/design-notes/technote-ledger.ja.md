@@ -7141,7 +7141,7 @@ branch `research/flora-info-terrain-20261021`（古い基点の上）では、co
 
 <a id="auditory-front-end-20261024"></a>
 
-状態：branch `research/auditory-system-20261023`（main `a6b197d` から）で設計と実装を進めている。mainへは統合していない。設計の文書は [`auditory-system.md`](auditory-system.md)（版8）。testの中だけの試作とその検証は `f72d4a88`、演奏の経路の切り替えは `232d8e5c`。宣言の負荷（FI-1bの22場面、headless、物理core 4つ）では、全場面でdeadlineの超過が0、解析のqueueが空だった。Astraの独立のreview AUD-R1〜AUD-R6 は `.orchestration/units/AUD-R*/report.md`（machineの中の記録）にある。作者の採用は記録していない。
+状態：branch `research/auditory-system-20261023`（main `a6b197d` から）で設計と実装を進めている。mainへは統合していない。設計の文書は [`auditory-system.md`](auditory-system.md)（版8）。testの中だけの試作とその検証は `f72d4a88`、演奏の経路の切り替えは `232d8e5c`。宣言の負荷（FI-1bの22場面、headless、物理core 4つ）では、全場面でdeadlineの超過が0、解析のqueueが空だった。Astraの独立のreview AUD-R1〜AUD-R7 は `.orchestration/units/AUD-R*/report.md`（machineの中の記録）にある。作者は2026-10-24にGUIで試し、新系をH/Rの観測の基盤として採用した。
 
 **問い。** 作者は、H/Rの前処理で遅れと倍音の構造が引き換えになる理由、周波数の解像度と許される遅れを人間の聴覚認知から導けるか、蝸牛から聴覚野までを忠実に、計算として整った形で作るとどうなるかを問うた。
 
@@ -7176,7 +7176,7 @@ branch `research/flora-info-terrain-20261021`（古い基点の上）では、co
 - 0.75 ERB未満の組は融合し、Rのkernelの狭いunisonの谷が、融合した組の内側に偽の協和の谷を作る。
 - listenerのtension。新しいdensityは一つの成分を二binに線形に配るので、listenerを質量の局所の最大ごとにまとめた成分で数えるように移した。移した後も、新系は上の倍音を成分として残す。安定な和音でもtensionが0にならず（平均0.0165、緊張の窓0.0285）、安定と緊張の対比が弱まる。旧いfront endでは、これらの部分音の質量はほぼ0だった。fixtureの三つの絶対の閾値は、安定、解決、落ち着きの窓が緊張の窓より小さいという順序の条件に置き換えた。
 
-この引き換えを採るかは、作者の試聴に残す。範囲を広げること（分けられない構造の粗さを包絡から作る、onsetの推定を別に作る）は作者の判断である。統括のbriefがSF-1に置いた「15 Hz離れた二音を分ける」要求は、consumerの判断の試験と、偽の谷の記録に置き換えた。
+前のraw NSGTとgammatoneの試みは、Hの山がなまったので採らなかった（作者、2026-10-24）。どちらも成分のpowerを分析の帯域の幅に広がったままHに渡していた。新系は位置をchannelの位相の進みから取り、分けられる成分の質量を隣り合う二binに集めるので、filterの幅が決めるのはどの組を分けられるかだけになる。作者はGUIでHの山がなまっていないことを確かめ、上の差を登録したうえで新系を採用した。範囲を広げること（分けられない構造の粗さを包絡から作る、onsetの推定を別に作る）は作者の判断である。統括のbriefがSF-1に置いた「15 Hz離れた二音を分ける」要求は、consumerの判断の試験と、偽の谷の記録に置き換えた。
 
 ## 9.4 整合と拡張の順序
 

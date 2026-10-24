@@ -7,6 +7,7 @@ use crate::core::density;
 use crate::core::erb::hz_to_erb;
 use crate::core::float::finite_or;
 use crate::core::log2space::Log2Space;
+use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 use std::sync::Arc;
 
 // ======================================================================
@@ -189,6 +190,46 @@ pub struct RoughnessKernel {
     pub hw: usize,
 }
 
+/// Sums `density[j] * weights[j - lo] * du[j]` over one row, skipping `j == skip`.
+/// Products keep their left-associated order. Partial sums use eight lanes fixed by
+/// the row offset and a fixed reduction tree, so every SIMD level returns the same
+/// bits. Zeroing the skipped lane leaves each lane sum as skipping would.
+#[inline(always)]
+fn row_sum<S: Simd>(
+    simd: S,
+    density: &[f32],
+    du: &[f32],
+    weights: &[f32],
+    lo: usize,
+    skip: usize,
+) -> f32 {
+    let density = &density[lo..lo + weights.len()];
+    let du = &du[lo..lo + weights.len()];
+    let skip = skip.wrapping_sub(lo);
+    let mut acc = f32x8::splat(simd, 0.);
+    for start in (0..weights.len()).step_by(8) {
+        let end = (start + 8).min(weights.len());
+        let terms = if end - start == 8 && !(start..end).contains(&skip) {
+            f32x8::from_slice(simd, &density[start..end])
+                * f32x8::from_slice(simd, &weights[start..end])
+                * f32x8::from_slice(simd, &du[start..end])
+        } else {
+            let mut lanes = [[0.; 8]; 3];
+            for (lane, values) in lanes.iter_mut().zip([density, weights, du]) {
+                lane[..end - start].copy_from_slice(&values[start..end]);
+                if (start..end).contains(&skip) {
+                    lane[skip - start] = 0.;
+                }
+            }
+            let [d, w, u] = lanes.map(|lane| f32x8::load_array(simd, lane));
+            d * w * u
+        };
+        acc += terms;
+    }
+    let a = acc.to_array();
+    ((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))
+}
+
 #[derive(Debug)]
 pub(crate) struct RoughnessGeometry {
     grid_key: [u32; 4],
@@ -240,19 +281,16 @@ impl RoughnessGeometry {
             space.n_bins(),
             "roughness geometry bin count"
         );
-        for (i, &(lo, hi, offset)) in self.rows.iter().enumerate() {
-            let mut sum = 0.0f32;
-            for j in lo..=hi {
-                if j == i {
-                    continue;
-                }
-                let w = self.weights[offset + j - lo];
-                // Retain the original left-associated products and summation order.
-                sum += density_scan[j] * w * du[j];
-            }
-            r[i] = sum;
-        }
+        dispatch!(Level::new(), simd => self.rows_into(simd, density_scan, du, r));
         density::density_to_mass(r, du)
+    }
+
+    #[inline(always)]
+    fn rows_into<S: Simd>(&self, simd: S, density_scan: &[f32], du: &[f32], r: &mut [f32]) {
+        for (i, &(lo, hi, offset)) in self.rows.iter().enumerate() {
+            let weights = &self.weights[offset..offset + hi - lo + 1];
+            r[i] = row_sum(simd, density_scan, du, weights, lo, i);
+        }
     }
 }
 
@@ -387,24 +425,24 @@ impl RoughnessKernel {
         )
         .max(0.0);
 
-        for i in 0..n {
-            let fi_erb = erb[i];
-            let mut sum = 0.0f32;
-
-            let lo_hz = erb_to_hz(fi_erb - half_width_erb);
-            let hi_hz = erb_to_hz(fi_erb + half_width_erb);
-            let (j_lo, j_hi) = space.bin_range_of_freqs(lo_hz, hi_hz).unwrap_or((0, n - 1));
-
-            for j in j_lo..=j_hi {
-                if j == i {
-                    continue;
-                }
-                let d = fi_erb - erb[j];
-                let w = lut_interp(&self.lut, self.erb_step, self.hw, d);
-                sum += amps_density[j] * w * du[j];
+        let mut weights = Vec::new();
+        dispatch!(Level::new(), simd => {
+            for i in 0..n {
+                let fi_erb = erb[i];
+                let lo_hz = erb_to_hz(fi_erb - half_width_erb);
+                let hi_hz = erb_to_hz(fi_erb + half_width_erb);
+                let (j_lo, j_hi) = space.bin_range_of_freqs(lo_hz, hi_hz).unwrap_or((0, n - 1));
+                weights.clear();
+                weights.extend((j_lo..=j_hi).map(|j| {
+                    if j == i {
+                        0.
+                    } else {
+                        lut_interp(&self.lut, self.erb_step, self.hw, fi_erb - erb[j])
+                    }
+                }));
+                r[i] = row_sum(simd, amps_density, du, &weights, j_lo, i);
             }
-            r[i] = sum;
-        }
+        });
 
         // (3) Integration over ERB axis
         density::density_to_mass(r, du)
@@ -475,6 +513,89 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    fn simd_test_input(space: &Log2Space) -> (RoughnessGeometry, Vec<f32>, Vec<f32>) {
+        let (erb, du) = erb_grid(space);
+        let erb: Arc<[f32]> = erb.into();
+        let geometry = make_kernel().prepare_geometry(space, &erb);
+        let input = (0..space.n_bins())
+            .map(|i| ((i * 37) % 101) as f32 * 0.013 - 0.2)
+            .collect();
+        (geometry, input, du)
+    }
+
+    #[test]
+    fn row_sums_match_bits_on_every_simd_level() {
+        fn rows<S: Simd>(simd: S, geometry: &RoughnessGeometry, d: &[f32], du: &[f32]) -> Vec<u32> {
+            let mut r = vec![0.; d.len()];
+            simd.vectorize(|| geometry.rows_into(simd, d, du, &mut r));
+            r.iter().map(|v| v.to_bits()).collect()
+        }
+        let space = Log2Space::new(55., 8000., 96);
+        let (geometry, input, du) = simd_test_input(&space);
+        let expected: Vec<u32> = geometry
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(i, &(lo, hi, offset))| {
+                let mut a = [0f32; 8];
+                for j in (lo..=hi).filter(|&j| j != i) {
+                    a[(j - lo) % 8] += input[j] * geometry.weights[offset + j - lo] * du[j];
+                }
+                (((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))).to_bits()
+            })
+            .collect();
+        let level = Level::new();
+        let mut checked = 0;
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if let Some(simd) = level.as_sse2() {
+                assert_eq!(rows(simd, &geometry, &input, &du), expected, "sse2");
+                checked += 1;
+            }
+            if let Some(simd) = level.as_sse4_2() {
+                assert_eq!(rows(simd, &geometry, &input, &du), expected, "sse4.2");
+                checked += 1;
+            }
+            if let Some(simd) = level.as_avx2() {
+                assert_eq!(rows(simd, &geometry, &input, &du), expected, "avx2");
+                checked += 1;
+            }
+            if let Some(simd) = level.as_avx512() {
+                assert_eq!(rows(simd, &geometry, &input, &du), expected, "avx512");
+                checked += 1;
+            }
+        }
+        #[cfg(target_arch = "aarch64")]
+        if let Some(simd) = level.as_neon() {
+            assert_eq!(rows(simd, &geometry, &input, &du), expected, "neon");
+            checked += 1;
+        }
+        assert!(checked > 0);
+    }
+
+    #[test]
+    fn row_sums_stay_within_the_reordered_summation_bound() {
+        let space = Log2Space::new(55., 8000., 96);
+        let (geometry, input, du) = simd_test_input(&space);
+        let mut actual = vec![0.; space.n_bins()];
+        geometry.potential_r_into(&input, &space, &du, &mut actual);
+        for (i, &(lo, hi, offset)) in geometry.rows.iter().enumerate() {
+            let terms: Vec<f32> = (lo..=hi)
+                .filter(|&j| j != i)
+                .map(|j| input[j] * geometry.weights[offset + j - lo] * du[j])
+                .collect();
+            let sequential = terms.iter().fold(0f32, |sum, &t| sum + t);
+            // Both orders are recursive sums of the same products, each within
+            // gamma_(n-1) * sum(|t|) of the exact sum (Higham, Accuracy and Stability, 4.2).
+            let u = f64::from(f32::EPSILON) / 2.;
+            let k = terms.len().saturating_sub(1) as f64;
+            let gamma = k * u / (1. - k * u);
+            let bound = 2. * gamma * terms.iter().map(|&t| f64::from(t.abs())).sum::<f64>();
+            let diff = (f64::from(actual[i]) - f64::from(sequential)).abs();
+            assert!(diff <= bound, "row {i}: {diff} > {bound}");
         }
     }
 

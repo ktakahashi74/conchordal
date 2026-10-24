@@ -305,7 +305,7 @@ fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
 fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
 /// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
-/// Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. All Flora uses temporal_basin center (default 2 Hz) for ecological pace. At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. T0 ignores heard beats. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
+/// Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. Births occur at sample crossings; support loss and release retire immediately. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 fn flora() -> FloraSpec;
 
 /// Irregular bodily renewal with acoustic timing choices.
@@ -436,10 +436,6 @@ fn meter_stability(value: i64);
 /// Confidence-weighted rate and phase attraction to the acoustically confirmed beat.
 /// Attracts rate and phase to the beat confirmed from sound; before confirmation, each Voice free-runs with an independent phase. Default entrainment 0.95. The starting rate is the scene's final tempo-basin center, or 2 Hz without a basin. Every crossing is an opportunity, subject to lifecycle, gates and rests. Explicit `sustain()` retains a Tone between crossings. See `pitch_apply_mode()` and `tie()` for how pitch and attacks meet.
 fn metric(population_spec: PopulationSpec) -> PopulationSpec;
-
-/// Couple Flora pace and lane opportunities to the tempo prior and heard beat.
-/// Metric Flora uses the habitat audio-only meter and a private CouplingClock (0.95), starting at the basin center or 2 Hz. Its confidence-weighted frequency scales ecological time relative to 2 Hz, including growth, diffusion, seeds, recovery and consumption. Stale or unconfirmed evidence restores basin pace and continuous allocation. Pending windows reserve current excess once. Births occur at sample crossings; support loss, separation and release retire immediately. Retiring amplitudes follow a finite metabolic tail using the existing dead-mass floor; macro fade bounds release.
-fn metric(flora_spec: FloraSpec) -> FloraSpec;
 
 /// Signed beat-phase offset for metric timing, in -0.5..0.5.
 /// A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/steady/flow participants at fixed offsets.
@@ -874,16 +870,16 @@ fn temperature(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
 fn temperature(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Every Flora follows confirmed acoustic beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: f64, max_hz: f64);
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Every Flora follows confirmed acoustic beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: f64, max_hz: i64);
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Every Flora follows confirmed acoustic beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: i64, max_hz: f64);
 /// Set the beat's tempo band and metric Voice/Flora pace prior.
-/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+/// Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Every Flora follows confirmed acoustic beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 fn temporal_basin(min_hz: i64, max_hz: i64);
 
 /// [research] Select off or observe for new temporal cognition before playback.

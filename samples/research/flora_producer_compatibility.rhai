@@ -1,4 +1,4 @@
-// Ecological pace from the scene tempo prior; no acoustic beat following.
+// Tempo prior for ecological pace; confirmed habitat beats can change the pace.
 temporal_basin(1, 1);
 // Bounded producer compatibility check before the full offline campaigns.
 seed(44001);

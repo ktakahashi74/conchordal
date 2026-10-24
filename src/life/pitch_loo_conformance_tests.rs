@@ -897,8 +897,8 @@ fn representative_density(
 
 #[test]
 fn flora_all_consumers_conform() {
-    flora_ownership_cases(true);
-    flora_ownership_cases(false);
+    flora_ownership_cases(true, false);
+    flora_ownership_cases(false, false);
 }
 
 #[test]
@@ -907,7 +907,12 @@ fn aud_m1_v3_flora() {
     crate::core::auditory_shadow::with_selected_test_frontend(flora_all_consumers_conform);
 }
 
-fn flora_ownership_cases(supported: bool) {
+#[test]
+fn flora_active_timing_consumers_conform() {
+    flora_ownership_cases(true, true);
+}
+
+fn flora_ownership_cases(supported: bool, active_timing: bool) {
     use crate::life::community::Community;
     use crate::life::flora::Flora;
     use crate::scenario::control::Routing;
@@ -927,7 +932,7 @@ fn flora_ownership_cases(supported: bool) {
         (FloraTone::Sine, true, true),
         (FloraTone::Sine, true, false),
     ] {
-        if (!residual || !habitat) != supported {
+        if (!residual || !habitat) != supported || (active_timing && (residual || !habitat)) {
             continue;
         }
         let mut terrain = template.last().clone();
@@ -948,7 +953,6 @@ fn flora_ownership_cases(supported: bool) {
             fade_sec: 0.,
             tone,
             residual,
-            metric: false,
             routing: Routing {
                 to_habitat: habitat,
                 to_presentation: !habitat,
@@ -985,7 +989,27 @@ fn flora_ownership_cases(supported: bool) {
         let mut solo_h = vec![0.; hop];
         let mut audit: Option<[Vec<f32>; 4]> = crate::core::auditory_shadow::selected_test_active()
             .then(|| std::array::from_fn(|_| Vec::new()));
+        let mut crossing_births = 0;
         for frame in 0..256 {
+            if active_timing {
+                let now = (frame * hop) as u64;
+                let observation = crate::life::flora::TemporalObservation {
+                    known: true,
+                    observed_end: Some(now),
+                    state: crate::core::meter::MeterState {
+                        beat: crate::core::meter::MeterBand {
+                            phase: (now as f32 / FS * 2.0).fract(),
+                            freq_hz: 2.0,
+                            confidence: 1.0,
+                            amplitude: 1.0,
+                        },
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
+                flora[0].observe_rhythm(observation, now, Default::default());
+                flora_only.observe_rhythm(observation, now, Default::default());
+            }
             if frame == 64 || frame == 128 {
                 let patch = FloraPatch {
                     amp: Some(if frame == 64 { 0. } else { flora_spec.amp }),
@@ -1019,6 +1043,18 @@ fn flora_ownership_cases(supported: bool) {
             solo_p.fill(0.);
             solo_h.fill(0.);
             flora_only.render_add(&mut solo_p, &mut solo_h);
+            if active_timing {
+                let report =
+                    serde_json::to_value(flora[0].report(now as f64 / FS as f64, &terrain))
+                        .unwrap();
+                assert_eq!(report["temporal"]["active"], true);
+                for event in report["temporal"]["events"].as_array().unwrap() {
+                    if event["action"] == "born" {
+                        assert_eq!(event["scheduled_tick"], event["tick"]);
+                        crossing_births += 1;
+                    }
+                }
+            }
             let removed: Vec<_> = full
                 .iter()
                 .zip(own)
@@ -1291,7 +1327,7 @@ fn flora_ownership_cases(supported: bool) {
                         && body_metrics["registered_movement_gate_pass"] == true
                         && selection_pass
                         && environment_pass;
-                    let record = json!({"conformance_scope":"supported","method":method,"tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"kind":format!("{kind:?}"),
+                    let record = json!({"active_timing":active_timing,"conformance_scope":"supported","method":method,"tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"kind":format!("{kind:?}"),
                     "point_scores":got,"point_reference":expected,"body_scores":body,"body_reference":body_ref,"point":point_metrics,"body":body_metrics,"selection_pass":selection_pass,"environment_pass":environment_pass,"native_ties":full_metrics,
                     "environment_errors":environment_errors,"environment_error_order":["point_score","point_level","body_score","body_level"],"environment_error_deltas":environment_deltas,"decision_failures":decisions,"decision_failure_count":decisions.len(),"decision_failure_examples":decisions.iter().take(4).collect::<Vec<_>>(),"owned_bins":input.own_power_scan.iter().enumerate().filter(|(_,x)| **x>0.).map(|(i,x)| json!([i,x,mix.subjective_intensity[i],actual.subjective_intensity[i]])).collect::<Vec<_>>(),"density_over_removed":over_removed/reference_mass.max(1e-12),"pass":pass});
                     if !pass && let Some(history) = &audit {
@@ -1312,6 +1348,12 @@ fn flora_ownership_cases(supported: bool) {
                 }
             }
         }
+        if active_timing {
+            assert!(
+                crossing_births > 0,
+                "active timing never allocated at a crossing"
+            );
+        }
     }
     let directory = std::env::var_os("FLORA_LOO_REPORT_DIR")
         .map(std::path::PathBuf::from)
@@ -1319,7 +1361,9 @@ fn flora_ownership_cases(supported: bool) {
             std::env::temp_dir().join(format!("conchordal-flora-loo-{}", std::process::id()))
         });
     std::fs::create_dir_all(&directory).unwrap();
-    let path = directory.join(if supported {
+    let path = directory.join(if active_timing {
+        "active-timing.json"
+    } else if supported {
         "supported.json"
     } else {
         "residual-supported.json"

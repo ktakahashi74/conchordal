@@ -1,6 +1,6 @@
 # Flora: a Field-Form Inhabitant
 
-Status: implemented, including T0/T1 tempo-derived pace and finite retirement, 2026-10-23. The adopted design is draft 14: the rendering
+Status: implemented, with beat opportunities for every Flora, tempo-derived pace and finite retirement, 2026-10-24. The adopted design is draft 14: the rendering
 of draft 12 and the consumer–resource dynamics of State and Dynamics. Current paths
 and the historical branch are listed in [Reference Implementation](#reference-implementation).
 The DCC route for the drive of temporal evolution, a listener-side information terrain,
@@ -53,12 +53,24 @@ habituation field.
 ## Coupling Contract
 
 All Flora shares the composer's `temporal_basin` and `meter_stability` priors
-with Voice metric timing. T0 keeps the basin center, or 2 Hz when unspecified,
-and ignores heard beats. T1 uses the private clock described below. Only the habitat audio-only meter supplies beat evidence;
+with Voice metric timing. Every Flora uses the private clock described below.
+Only the habitat audio-only meter supplies beat evidence;
 internal commands never supply a beat. Ecological pace uses the private clock's
 confidence-weighted frequency, excluding its phase correction. A stale, unavailable
 or unconfirmed observation uses the basin center, or 2 Hz without a basin.
 
+
+The principle requires causal, local temporal evidence with uncertainty, and separates
+prediction, action and observed consequences. It does not require universal beat
+synchronization or make an unpredicted onset defective. The author chooses the existing
+T1 rule for every Flora, without an opt-out: the Population metric CouplingClock with
+coupling 0.95 has a synchronization tendency, not a neutral response. Native pace and
+ecological preferences remain authored embodiment. The clock reads tactus only;
+bar selection, phrase structure and onset-overlap preferences are not implemented.
+
+Flora's actual habitat sound may confirm a beat and then support its own opportunities.
+This acoustic feedback is allowed. Priors and internal commands alone cannot supply
+confirmation; absence of confirmation in Flora-only audio is not guaranteed.
 
 1. **Only through sound.** Flora's audio enters the buses selected by its routing. The
    habitat bus feeds NSGT and the landscape; Populations perceive Flora there. Their
@@ -187,9 +199,9 @@ Implementation Findings. Every part of it belongs to the authored-rule tier.
 Flora reads `g = consonance_field_level` and `H01 = harmonicity01` per hop on its
 extent, and `consonance_density_mass` at placement, all before habituation erosion.
 
-**Ecological time.** For T0, `f` is the tempo-basin center (default 2 Hz).
-For T1, `f` is the private CouplingClock velocity before phase correction.
-In both cases, `p = f / (2 Hz)`. Advance the entire consumer-resource
+**Ecological time.** `f` is the private CouplingClock velocity before phase correction.
+Without fresh confirmed evidence it returns to the tempo-basin center (default 2 Hz).
+The adopted authored mapping is `p = f / (2 Hz)`. Advance the entire consumer-resource
 system in `dt_ecological = p * dt_physical`: growth, diffusion, seed rain, resource
 recovery and both forms of consumption use this same time. Thus default growth is
 `4 f`, renewal is `20 / f` seconds and consumption is `0.6 / f` seconds. The ratios
@@ -433,8 +445,9 @@ patches with a linear 80 ms ramp, and `fade_gain` is the placement and release r
 - a relative amplitude `r`, its target `r*`, and its power `q = r²`;
 - a mode: free, current or retiring.
 
-**Tonal update (default T0).** Once per hop, after the decomposition, over the whole pool in fixed
-stages:
+**Tonal update.** At a local crossing, or once per hop during continuous fallback,
+decompose current biomass and visit the whole pool in fixed stages. Between crossings,
+supported tones track and retain their windows as described in Default beat allocation.
 
 1. **Track.** Current lanes, in descending previous `r*` (ties to the lower lane
    index), each claim the nearest unclaimed dominant peak of any cell within 50 cents
@@ -452,18 +465,17 @@ stages:
    - Each remaining candidate takes the lowest-index free lane at `r = 0`, with `z`
      from the seeded RNG, and `e = 1` (`sine`) or one noise draw (`resonant`, see
      Atoms).
-   - With no free lane, the candidate waits. A lane frees within 80 ms of retiring, and
-     births are retried every hop in this order. Only the time to the next free lane is
-     bounded (80 ms plus one hop). A given candidate is born only if it still qualifies
-     and wins the order.
+   - With no free lane, the candidate waits through the finite retirement tail.
+     Births are retried at later opportunities, or each hop during fallback. A given
+     candidate is born only if it still qualifies and wins the order.
 4. **Targets.** Each current lane sets its target position to its peak's and
    `r* = sqrt(m_t)`.
 
 **Known consequences.**
 
 - A peak that jumps more than 50 cents in one hop is a retirement plus a birth. The old
-  lane retires within 80 ms. The new lane is born only at a hop boundary, once a lane is
-  free and the candidate wins the order. Re-onset at the new position therefore has no
+  lane retires through the finite metabolic tail. The new lane is born at an allocation
+  opportunity, once a lane is free and the candidate wins the order. Re-onset at the new position therefore has no
   general upper bound: it grows with the hop length and with contention for lanes.
 - Peaks that cross within 50 cents can swap lanes.
 - Two candidates in adjacent cells closer than 0.5 ERB: only one sounds as a tone, and
@@ -473,13 +485,23 @@ stages:
 band, and its position glides to the residual position. Its bandwidth is `ERB(f)` at
 that position.
 
-**Slew (current lanes).** Each lane reaches its target, or exactly 0, within 80 ms, whatever `A_s` is. Retirement in both T0 and T1 uses the finite tail below.
+**Slew (current lanes).** A fixed target is reached within 80 ms, independently of
+`A_s`. Retirement uses the finite tail below.
 A retiring tonal lane frees at 0.
 
 - `sine` tonal lanes slew amplitude: `|Δr|` per sample is at most `1 / (0.08 · fs)`.
 - `resonant` tonal lanes and residual lanes slew power: `|Δq|` per sample is at most
   `1 / (0.08 · fs)`, with `r = sqrt(q)`.
 - In both cases the step is clipped so that the target is reached exactly.
+
+The slew variable is relative amplitude `r` for sine, or relative power `q = r²`
+for resonant, before the output scale `A_s = amp_s × fade_gain`. A birth from zero
+reaches a fixed target in `ceil(r* × 0.08 × fs)` samples for sine and
+`ceil(r*² × 0.08 × fs)` for resonant. Thus `r* = 0.5` takes 40 ms or 20 ms,
+and `r* = 1` takes 80 ms, even when `amp = 0.03`. Multiplying the slew time by
+output amplitude would confuse relative and output amplitude. These are fixed-target
+arrival times; placement fade, live amplitude ramps, stochastic envelopes and detected
+acoustic onset are separate quantities.
 
 No two lanes ever carry the same signal (there is no handoff), so no statement about
 summed amplitude during transitions is needed. Each lane's own ramp is the guarantee.
@@ -488,7 +510,7 @@ summed amplitude during transitions is needed. Each lane's own ramp is the guara
 its end values pinned, and the output is their product: the lane slew, `amp_s`'s 80 ms
 ramp and `fade_gain`.
 
-### Finite retirement in T0 and T1
+### Finite retirement
 
 Retirement starts immediately but its amplitude follows the mass-decay
 scale. Unsupported biomass has `v' = -rate * p * k * v`, so amplitude has decay
@@ -508,11 +530,11 @@ self-exclusion capture, including the tail. Per-sample processing adds bounded
 scalar work and no allocation; no lane or scratch pool grows at retirement.
 
 
-### Opt-in metric allocation (T1)
+### Default beat allocation
 
-`flora().metric()` is implemented. T0 remains the default. Wiring reserves the
-shared habitat acoustic MeterNetwork only when the scenario contains a metric
-Flora placement. In that run it observes from the start, before any Flora is
+Every Flora uses the former T1 allocation rule. `FloraSpec.metric` and
+`flora().metric()` have been removed. Wiring reserves the shared habitat acoustic
+MeterNetwork only when the scenario contains a Flora placement. In that run it observes from the start, before any Flora is
 placed. The MeterNetwork receives flux and the selected event/continuous recurrence
 path with the scene's enculturation priors. It receives neither internal Voice
 onset commands nor Flora allocation commands. Each Flora owns only its private
@@ -520,7 +542,7 @@ CouplingClock, using the Population metric rule (0.95 attraction, independent
 phase, tempo-basin center or 2 Hz initial rate). The meter observation is frozen
 at the hop start; its audio interval ends at that start. Positive beat confidence
 is the existing model's confirmation signal, not a new confidence threshold.
-Unknown, stale or unconfirmed observations use T0 allocation.
+Unknown, stale or unconfirmed observations use continuous allocation.
 
 Biomass and resource integration remain continuous. Between crossings, current
 lanes track nearby supported candidates. Ordinary replacement retirement becomes
@@ -545,8 +567,8 @@ crossing as support falls, and slew delays acoustic onset detection.
 Flora reports include the acoustic observation end tick, flux, full meter support,
 active/fallback state, local phase, bounded pending slots, drops, and transition
 ticks, generations, waiting samples and forced reasons. Reporting allocation is
-outside the allocation-free renderer contract. Runs without a metric Flora
-placement omit acoustic timing fields. Every Flora report includes ecological pace.
+outside the allocation-free renderer contract. Every Flora report includes acoustic
+timing and ecological pace. Scenes without Flora allocate no Flora meter.
 
 ### Atoms: one kernel
 
@@ -696,10 +718,11 @@ is unchanged.
 
 ## Rhai Surface
 
-Use scene-wide `temporal_basin(lo, hi)` to set all Flora pace. T0 keeps its
-center; `flora().metric()` additionally follows confirmed acoustic beats and
-schedules lane opportunities. The independent `rate` and `renewal` spec and live
-methods are removed. Existing assay migrations and their changed interpretation
+Use scene-wide `temporal_basin(lo, hi)` to set the prior for all Flora pace.
+Every Flora follows confirmed acoustic beats and schedules lane opportunities,
+with continuous allocation at the basin center when evidence is unavailable.
+The `metric`, independent `rate` and `renewal` spec methods are removed;
+there is no timing opt-out or live pace override. Existing assay migrations and their changed interpretation
 are listed in `samples/research/README.md`.
 
 ```rhai
@@ -818,8 +841,9 @@ describe Flora's behaviour as grounded in auditory cognition.
 
 ## Original v1 exclusions
 
-The T1 extension above implements beat opportunities for tonal allocation. The
-following list records the original v1 scope; phrase prediction remains excluded.
+The following list is historical v1 scope. Beat opportunities are now the default,
+and reports also record lifecycle changes and temporal state. Phrase prediction,
+bar selection and explicit Flora forecasts remain excluded.
 
 - **Onsets or pulses** (temporal attacks), and any coupling to the production meter,
   arrival hazard or participation. The boom-and-bust of the dynamics is spectral, not an
@@ -836,7 +860,7 @@ following list records the original v1 scope; phrase prediction remains excluded
 
 ## Tests
 
-T1 adds a saved candidate/rhythm replay against T0, sample-interior birth and
+The default path retains a saved candidate/rhythm replay against unconfirmed fallback, sample-interior birth and
 expired-candidate tests, retained-window mass accounting, unknown fallback and
 clock continuity, and zero-allocation turnover for both atoms. Runtime tests feed
 identical PCM with different internal onset commands through both recurrence
@@ -1055,18 +1079,18 @@ and are judged by listening together with those records.
 
 ## Implementation Findings
 
-### Ecological pace and finite retirement, 2026-10-23
+### Historical ecological pace and finite retirement, 2026-10-23
 
 The old slew was a maximum slope, not an 80 ms duration: a sine lane at amplitude
 `r0` reached zero in `ceil(0.08 * fs * r0)` samples. At the existing hysteresis
 threshold, low-amplitude tones could disappear within one hop. Retirement in both
-T0 and T1 now uses the metabolic amplitude scale and a finite extinction drain.
-Both modes advance the entire ecology at pace `p = f/2`: T0 uses only the scene's
+T0 and T1 used the metabolic amplitude scale and a finite extinction drain.
+At that revision both modes advanced the entire ecology at pace `p = f/2`: T0 uses only the scene's
 normalized tempo-basin center (2 Hz if absent), while T1 follows the same
 confidence-weighted CouplingClock velocity as timing opportunities, with basin
 fallback on stale or unknown observations. The neutral 2 Hz retains the adopted
 ecological coefficients. The first implementation applied pace and finite tails
-only to T1; the subsequent extension also changed T0. T0 retains continuous lane
+only to T1; the subsequent extension also changed T0. T0 retained continuous lane
 allocation, not the old fixed ecological time or the old maximum-slope tail.
 Articulation retirement and ecological recovery are authored embodiment, not
 inferred phrase lengths. The composer supplies only the tempo prior; no new
@@ -1634,9 +1658,12 @@ nominal target-amplitude scale; the ignored alternation test was replaced by the
    holding time decrease; the long drone's JS5 increases (Implementation Findings).
    The value is the existing supported upper bound, not an optimum. The final
    author audition remains open; the previous rate can be restored with one value.
-5. **Temporal participation implemented:** T1 is opt-in through `flora().metric()`;
-   T0 remains the default. See Rendering for the acoustic-only observation, bounded
-   pending state, sample crossings and immediate support-loss exceptions.
+5. **Temporal participation adopted for every Flora, 2026-10-24.** The author
+   selected the existing T1 rule without an opt-out. See Rendering for audio-only
+   observation, bounded pending state, sample crossings and immediate support-loss
+   exceptions. This is an authored participation rule, not uniquely implied by the
+   principle of temporal evidence. Unknown, stale and unconfirmed evidence retains
+   continuous allocation without resetting the clock.
 
 The proposal went through four independent Astra reviews (drafts 1–3 conditionally
 acceptable, draft 4 acceptable as a proposal, with the checks before adoption still open;

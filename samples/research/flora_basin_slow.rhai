@@ -1,4 +1,4 @@
-// Continuous Flora tempo-prior assay: slow.
+// Flora tempo-prior assay: slow.
 seed(21);
 // A sounding Population shapes the terrain; Flora grows around it.
 // The halo can settle into a held spectrum. No beat carrier is used.

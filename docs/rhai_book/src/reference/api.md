@@ -52,16 +52,6 @@ Applies to: `FloraSpec`, `Flora`.
 
 Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
 
-#### `metric`
-
-```rhai,ignore
-metric()
-```
-
-Applies to: `FloraSpec`.
-
-Couple Flora pace and lane opportunities to the tempo prior and heard beat. Metric Flora uses the habitat audio-only meter and a private CouplingClock (0.95), starting at the basin center or 2 Hz. Its confidence-weighted frequency scales ecological time relative to 2 Hz, including growth, diffusion, seeds, recovery and consumption. Stale or unconfirmed evidence restores basin pace and continuous allocation. Pending windows reserve current excess once. Births occur at sample crossings; support loss, separation and release retire immediately. Retiring amplitudes follow a finite metabolic tail using the existing dead-mass floor; macro fade bounds release.
-
 #### `send`
 
 ```rhai,ignore
@@ -987,7 +977,7 @@ Attractor depth in 0-1: how readily a pulse forms. Scene-wide initial condition 
 temporal_basin(min_hz, max_hz)
 ```
 
-Set the beat's tempo band and metric Voice/Flora pace prior. Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. T0 Flora keeps the center pace without following sound; metric Flora follows confirmed beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+Set the beat's tempo band and metric Voice/Flora pace prior. Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Every Flora follows confirmed acoustic beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
 
 #### `set_roughness_aversion`
 
@@ -1017,7 +1007,7 @@ Candidate core verbs under audition: composing surface by intent, but with resea
 flora() -> FloraSpec
 ```
 
-Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. All Flora uses temporal_basin center (default 2 Hz) for ecological pace. At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. T0 ignores heard beats. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. Births occur at sample crossings; support loss and release retire immediately. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 
 #### `fade`
 

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Every Flora now uses the existing T1 beat-opportunity rule. The shared habitat
+  audio-only meter runs from scene start whenever Flora is placed; each Flora has
+  its own confidence-weighted clock. Unknown, stale or unconfirmed observations
+  retain continuous allocation and basin pace. `FloraSpec.metric` and
+  `flora().metric()` are removed. Birth slew, finite retirement, resource laws and
+  routing are unchanged. The old T0/T1 research pair is archived in history;
+  the remaining basin pair compares tempo priors under the new default.
+
 - Auditory validation retains the V2 consumer tools and ordinary conformance
   tests while removing completed one-shot acquisitions. V3 onset and V4 history
   checks now run as ordinary tests without writing acquisition artifacts.

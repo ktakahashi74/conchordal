@@ -55,7 +55,6 @@ contains bins again.
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |
 | `residual` | Boolean; diffuse mass as band noise | `false` | Before placement |
-| `metric()` | Beat opportunities for lane changes | Off (T0) | Before placement |
 | `send` | Bus or BusSet | Both buses | Before placement |
 
 `residual(true)` enables the optional band-noise layer before placement.
@@ -77,17 +76,19 @@ The Flora API is Experimental. Its dynamics are authored composition rules; this
 
 ## Beat opportunities
 
-`flora().metric()` opts into T1: new tonal lanes and ordinary replacements wait
-for the Flora's next local beat crossing. The default T0 updates allocation every
-hop. Biomass and resources continue to evolve every hop in both modes.
+Every Flora uses beat opportunities: with fresh confirmed evidence, new tonal lanes
+and ordinary replacements wait for the Flora's next local clock crossing. Biomass
+and resources continue to evolve every hop. There is no timing opt-out;
+`flora().metric()` has been removed.
 
 Like Population `metric()`, Flora uses a private CouplingClock with confidence-weighted
 rate and phase attraction (coupling 0.95), an independent initial phase, and the
 scene's tempo-basin center as its starting rate (2 Hz without a basin). Its shared
 meter reads only habitat audio: flux and the selected acoustic recurrence path,
 with the same enculturation priors. Internal Voice onset commands and Flora lane
-commands never enter this meter. This is separate from the production meter used
-by Population timing.
+commands never enter this meter. The meter runs from scene start, before Flora is
+placed, and includes Flora's actual habitat sound. That sound may confirm and sustain
+a beat. This is separate from the production meter used by Population timing.
 
 A waiting tone owns only the current excess in its last tonal window. That mass
 is removed once from the residual. Empty windows, out-of-range tones, separation
@@ -96,15 +97,15 @@ sample crossing within the hop; births retain their amplitude slew while retirin
 tones use the metabolic tail described below. Thus neither
 all endings nor detected acoustic onsets are quantized to the beat.
 
-Before beat confirmation, or while the observation is unavailable, allocation uses
-T0. Pending candidates are discarded and current biomass is reconsidered; the
+Before beat confirmation, or while the observation is unknown or stale, allocation
+runs continuously each hop. Pending candidates are discarded and current biomass is reconsidered; the
 private clock is not reset and stored candidates are not replayed as a burst.
 
 ## Pace and release
 
-All Flora uses `temporal_basin(lo, hi)` as the composer's tempo prior. T0 keeps
-its center frequency (2 Hz without a basin) and never follows heard beats.
-Metric Flora follows fresh, confirmed beats with confidence-weighted coupling
+All Flora uses `temporal_basin(lo, hi)` as the composer's tempo prior, starting at
+its center frequency (2 Hz without a basin).
+Every Flora follows fresh, confirmed beats with confidence-weighted coupling
 0.95 and otherwise returns to the center. For frequency f, ecological time
 advances by f/2: growth is 4f/s, resource recovery is 20/f seconds and consumption
 is 0.6/f seconds. Diffusion and seed rain scale together. Phase correction only
@@ -115,6 +116,7 @@ All lanes retire with a finite metabolic amplitude tail. The existing macro
 births while tails occupy slots. The independent `rate` and `renewal` methods
 have been removed. Set the scene's tempo prior instead.
 
-Sample 17 uses continuous T0 and `temporal_basin(2, 4)`: its fixed 3 Hz center is
-1.5 times neutral 2 Hz. The sustained scene has no beat carrier. This is a
-compositional choice, not a new default or a measured optimum.
+Sample 17 uses `temporal_basin(2, 4)`: its 3 Hz prior is 1.5 times neutral 2 Hz.
+The sustained scene has no explicit beat carrier; any confirmed acoustic beat can
+still change Flora's pace. The basin is a compositional choice, not a new default
+or a measured optimum.

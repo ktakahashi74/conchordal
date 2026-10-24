@@ -1,4 +1,4 @@
-// Ecological pace from the scene tempo prior; no acoustic beat following.
+// Tempo prior for ecological pace; confirmed habitat beats can change the pace.
 temporal_basin(1, 1);
 // Tuning only. Evaluation uses another drone, extent, and disjoint seeds.
 seed(41101);

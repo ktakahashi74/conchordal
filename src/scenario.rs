@@ -15,7 +15,6 @@ pub struct FloraSpec {
     pub fade_sec: f32,
     pub tone: FloraTone,
     pub residual: bool,
-    pub metric: bool,
     pub routing: control::Routing,
 }
 
@@ -26,7 +25,6 @@ impl Default for FloraSpec {
             fade_sec: 2.0,
             tone: FloraTone::Sine,
             residual: false,
-            metric: false,
             routing: control::Routing::default(),
         }
     }

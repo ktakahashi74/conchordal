@@ -1,4 +1,4 @@
-// Ecological pace from the scene tempo prior; no acoustic beat following.
+// Tempo prior for ecological pace; confirmed habitat beats can change the pace.
 temporal_basin(2, 2);
 // Succession assay: rate8.
 seed(43006);

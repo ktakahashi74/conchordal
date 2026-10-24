@@ -40,28 +40,29 @@ can run alone and the test suite can compile-check every comparison point.
 
 ## Flora tempo priors
 
-`flora_metric_basin_slow.rhai` and `flora_metric_basin_fast.rhai` use the same
-90-second sustained field and seed 21. Their only parameter difference is the
-tempo basin, 1–2 versus 2–4 Hz. Metric Flora follows the confidence-weighted heard
-beat and uses the basin center when evidence is unavailable; the chosen prior
-therefore does not prescribe a fixed realized tempo. The fast basin is one octave
-above the slow basin, a controlled compositional contrast, not a fitted optimum.
+`flora_basin_slow.rhai` and `flora_basin_fast.rhai` retain the former T1 scenes:
+90 seconds of sustained sound with seed 21, differing only in the tempo basin,
+1–2 versus 2–4 Hz. Every Flora now uses the heard beat with confidence-weighted
+coupling and returns to the basin center when evidence is unknown, stale or
+unconfirmed. The prior does not prescribe a fixed realized tempo. The fast basin
+is one octave above the slow basin, a compositional contrast, not a fitted optimum.
 
-The continuous T0 assays now use a scene tempo prior instead of `rate` or
-`renewal`. Former rate 4/s becomes `temporal_basin(1, 1)`; rate 8/s becomes
-`temporal_basin(2, 2)`. The growth rate is preserved, but the former 4/s assays
-now also have recovery 20 s and consumption 0.6 s, instead of 10 s and 0.3 s.
-Diffusion and seed rain share this pace. All Flora now has the finite metabolic
-tail. Historical measurements remain records of the old implementation; they
-are not numerical baselines for these migrated scripts.
+The T0 pair that cut beat feedback has been removed; the T1 pair no longer calls
+`metric()` and uses the shorter filenames above. The last commit containing both
+T0 and T1 controls is `16ccf89682deaeb89cc8e5af5b108bef43ba878d`.
+Historical T0 acquisitions include the 2026-10-23 pace/retirement comparison
+recorded in the Flora design note's Implementation Findings. Their saved input,
+source and binary hashes identify the old implementation. Those recordings remain
+historical evidence; running the current pair cannot reproduce a T0/T1 causal
+ablation. It compares priors with beat feedback enabled in both scenes.
 
-The succession, mixing, routing and ownership assays are retained because their
-placement, bus and muting contrasts remain meaningful. `flora_succession_rate8`
-retains its filename for the historical record but now compares whole ecological
-pace, not growth in isolation. There were no live Rhai assays independently
-setting renewal. Archived reduced-model experiments remain historical analyses,
-not executable specifications of the current instrument. No assay was deleted.
-
-`flora_basin_slow.rhai` and `flora_basin_fast.rhai` use the same sustained
-scene with T0 allocation and fixed basin centers 1.5 and 3 Hz. Heard beats do
-not alter their pace. They complement the retained metric comparison pair.
+The succession, mixing, lone, low-register, overlap, routing and ownership assays
+retain their placement, bus, muting and resource contrasts. They now exercise the
+same default beat feedback; their old waveform and succession measurements are
+not numerical baselines for the new version. `flora_succession_rate8` retains its
+historical filename but compares whole ecological pace, not growth alone or a
+fixed realized rate. Former rate 4/s assays use a 1 Hz prior and former rate 8/s
+assays a 2 Hz prior. Recovery, consumption, diffusion and seed rain share that pace.
+Producer-compatibility assays still exercise the two bodies and residual choices.
+Archived reduced-model experiments remain historical analyses, not executable
+specifications of the current instrument.

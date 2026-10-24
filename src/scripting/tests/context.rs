@@ -1869,25 +1869,22 @@ fn flora_errors_preserve_native_call_positions() {
 }
 
 #[test]
-fn flora_metric_is_opt_in_initial_only_and_independent_of_population_metric() {
-    for (chain, expected) in [("", false), (".metric()", true)] {
-        let (scenario, _) = run_script(&format!("place(flora(){chain}, random(110,880));"));
-        let spec = scenario
+fn flora_timing_is_implicit_and_population_metric_remains_available() {
+    let (scenario, _) =
+        run_script("place(flora(), random(110,880)); place(sine().metric(), at(220));");
+    assert!(
+        scenario
             .events
             .iter()
             .flat_map(|e| &e.actions)
-            .find_map(|a| match a {
-                Action::PlaceFlora { spec, .. } => Some(spec),
-                _ => None,
-            })
-            .unwrap();
-        assert_eq!(spec.metric, expected);
-    }
-    assert!(
-        run_script_err("let f=place(flora(),random(110,880)); f.metric();")
-            .to_string()
-            .contains("metric")
+            .any(|a| matches!(a, Action::PlaceFlora { .. }))
     );
+    for source in [
+        "flora().metric();",
+        "let f=place(flora(),random(110,880)); f.metric();",
+    ] {
+        assert!(run_script_err(source).to_string().contains("metric"));
+    }
 }
 
 #[test]
@@ -1897,10 +1894,6 @@ fn flora_uses_scene_tempo_and_removes_local_rate_overrides() {
         "flora().renewal(20);",
         "let f = place(flora(), random(110, 1760)); f.rate(4);",
         "let f = place(flora(), random(110, 1760)); f.renewal(20);",
-        "place(flora().metric().rate(4), random(110, 1760));",
-        "place(flora().renewal(20).metric(), random(110, 1760));",
-        "let f = place(flora().metric(), random(110, 1760)); f.rate(4);",
-        "let f = place(flora().metric(), random(110, 1760)); f.renewal(20);",
     ] {
         let ctx = Arc::new(Mutex::new(ScriptContext::default()));
         let engine = ScriptHost::create_engine(ctx);
@@ -1910,6 +1903,6 @@ fn flora_uses_scene_tempo_and_removes_local_rate_overrides() {
         assert!(error.to_string().contains("Function not found"), "{error}");
     }
     let scenario =
-        run_script("temporal_basin(2, 4); place(flora().metric(), random(110, 1760)); wait(1);").0;
+        run_script("temporal_basin(2, 4); place(flora(), random(110, 1760)); wait(1);").0;
     assert_eq!(scenario.meter_shaping.basin_hz, Some((2.0, 4.0)));
 }

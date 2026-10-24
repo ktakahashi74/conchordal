@@ -3,7 +3,7 @@ use super::*;
 /// Immutable per-run settings and shared control flags for the worker thread.
 pub(super) struct WorkerConfig {
     pub(super) loo_populations: Vec<u64>,
-    pub(super) flora_metric: bool,
+    pub(super) has_flora: bool,
     pub(super) render_prototype: bool,
     pub(super) temporal_meter_t2: bool,
     pub(super) onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
@@ -129,7 +129,7 @@ impl WorkerState {
             MeterNetwork::new()
         };
         prod_meter.set_shaping(cfg.meter_shaping);
-        let flora_meter = cfg.flora_metric.then(|| {
+        let flora_meter = cfg.has_flora.then(|| {
             let mut meter = if cfg.temporal_meter_t2 {
                 MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64)
             } else {

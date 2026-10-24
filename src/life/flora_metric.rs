@@ -97,7 +97,7 @@ impl Flora {
             0.5 * (lo + hi)
         });
         self.pace = base / 2.0;
-        let Some(m) = &mut self.temporal else { return };
+        let m = self.temporal.as_mut().unwrap();
         if !m.initialized {
             m.clock = CouplingClock::new(0.95, base, 0.0, 0.0, m.seed);
             m.initialized = true;
@@ -389,7 +389,6 @@ mod tests {
         Flora::new(
             1,
             FloraSpec {
-                metric: true,
                 tone,
                 residual,
                 fade_sec: 0.,
@@ -450,49 +449,51 @@ mod tests {
     }
 
     #[test]
-    fn t0_pace_uses_only_the_basin_and_shares_fallback_dynamics_and_tail() {
+    fn fallback_pace_uses_the_basin_and_preserves_dynamics_and_tail() {
         for basin in [None, Some((0.5, 1.5)), Some((2.0, 4.0))] {
             for tone in [FloraTone::Sine, FloraTone::Resonant] {
                 let shaping = MeterShaping {
                     basin_hz: basin,
                     ..Default::default()
                 };
-                let mut t1 = setup(tone, false);
-                let mut t0 = t1.clone();
-                t0.temporal = None;
-                t0.spec.metric = false;
-                t0.observe_rhythm(observation(0, true), 0, shaping);
-                t1.observe_rhythm(observation(0, false), 0, shaping);
-                assert_eq!(t0.pace, basin.map_or(1.0, |(lo, hi)| (lo + hi) / 4.0));
-                assert_eq!(t0.pace, t1.pace);
-                let mut landscape = Landscape::new(t0.space.clone());
+                let mut unknown = setup(tone, false);
+                let mut unconfirmed = unknown.clone();
+                let mut obs = observation(0, true);
+                obs.state.beat.confidence = 0.0;
+                unconfirmed.observe_rhythm(obs, 0, shaping);
+                unknown.observe_rhythm(observation(0, false), 0, shaping);
+                assert!(
+                    (unconfirmed.pace - basin.map_or(1.0, |(lo, hi)| (lo + hi) / 4.0)).abs() < 1e-6
+                );
+                assert_eq!(unconfirmed.pace, unknown.pace);
+                let mut landscape = Landscape::new(unconfirmed.space.clone());
                 landscape.consonance_field_level.fill(0.7);
                 landscape.harmonicity01.fill(0.4);
-                t0.external_observed_frame = Some(0);
-                t1.external_observed_frame = Some(0);
-                t0.advance(&landscape);
-                t1.advance(&landscape);
-                assert_eq!(t0.biomass_mass_scan, t1.biomass_mass_scan);
-                assert_eq!(t0.resource_state_scan, t1.resource_state_scan);
+                unconfirmed.external_observed_frame = Some(0);
+                unknown.external_observed_frame = Some(0);
+                unconfirmed.advance(&landscape);
+                unknown.advance(&landscape);
+                assert_eq!(unconfirmed.biomass_mass_scan, unknown.biomass_mass_scan);
+                assert_eq!(unconfirmed.resource_state_scan, unknown.resource_state_scan);
                 let mut pcm = vec![0.0; 512];
                 let mut habitat = pcm.clone();
-                hill(&mut t0, 60, 1.0);
-                t0.render_add(&mut pcm, &mut habitat);
-                let slot = t0
+                hill(&mut unconfirmed, 60, 1.0);
+                unconfirmed.render_add(&mut pcm, &mut habitat);
+                let slot = unconfirmed
                     .lanes
                     .iter()
                     .position(|l| l.tonal && l.mode == Mode::Current)
                     .unwrap();
-                t0.release(2.0);
-                t0.render_add(&mut pcm, &mut habitat);
-                assert_eq!(t0.lanes[slot].mode, Mode::Retiring);
-                assert!(t0.lanes[slot].retirement_decay > 0.0);
+                unconfirmed.release(2.0);
+                unconfirmed.render_add(&mut pcm, &mut habitat);
+                assert_eq!(unconfirmed.lanes[slot].mode, Mode::Retiring);
+                assert!(unconfirmed.lanes[slot].retirement_decay > 0.0);
                 let mut hops = 1;
-                while !t0.is_finished() && hops <= 200 {
-                    t0.render_add(&mut pcm, &mut habitat);
+                while !unconfirmed.is_finished() && hops <= 200 {
+                    unconfirmed.render_add(&mut pcm, &mut habitat);
                     hops += 1;
                 }
-                assert!(t0.is_finished());
+                assert!(unconfirmed.is_finished());
                 assert!(hops as f32 * 512.0 / 48000.0 <= 2.0 + 512.0 / 48000.0);
             }
         }
@@ -509,12 +510,8 @@ mod tests {
             ((4.0, 4.0), (3.95, 4.0), 1.9875),
         ] {
             assert_eq!(sane_basin(basin.0, basin.1), bounds);
-            for metric in [false, true] {
+            {
                 let mut f = setup(FloraTone::Sine, false);
-                if !metric {
-                    f.temporal = None;
-                    f.spec.metric = false;
-                }
                 f.observe_rhythm(
                     TemporalObservation::default(),
                     0,
@@ -683,6 +680,91 @@ mod tests {
     }
 
     #[test]
+    fn supported_observation_transitions_preserve_phase_and_revalidate_pending() {
+        for unavailable in ["unknown", "stale", "unconfirmed"] {
+            let mut f = setup(FloraTone::Sine, true);
+            let bin = (f.cells[3].bins.start + f.cells[3].bins.end) / 2;
+            hill(&mut f, bin, 0.1);
+            f.observe_rhythm(observation(0, true), 0, Default::default());
+            f.temporal.as_mut().unwrap().crossings.clear();
+            f.metric_allocate(false, 0);
+            assert!(
+                f.temporal
+                    .as_ref()
+                    .unwrap()
+                    .pending
+                    .iter()
+                    .any(Option::is_some)
+            );
+            assert_eq!(f.births, 0);
+            let mut expected_clock = f.temporal.as_ref().unwrap().clock.clone();
+            let mut expected_crossings = Vec::new();
+            let mut obs = observation(512, true);
+            match unavailable {
+                "unknown" => obs.known = false,
+                "stale" => obs.observed_end = Some(0),
+                _ => obs.state.beat.confidence = 0.0,
+            }
+            // Keep the hill and acoustic support; only observation availability changes.
+            let mut rhythms = NeuralRhythms::from_meter_state(&obs.state);
+            rhythms.delta.alpha = 0.0;
+            expected_clock.gather_rhythm(f.fs, 512, 1024, &rhythms, &mut expected_crossings);
+            hill(&mut f, bin, 0.04);
+            f.observe_rhythm(obs, 512, Default::default());
+            let m = f.temporal.as_ref().unwrap();
+            assert!(!m.active);
+            assert_eq!(m.clock.phase_cycles(), expected_clock.phase_cycles());
+            assert!(m.pending.iter().all(Option::is_none));
+            assert!(m.drops > 0);
+            f.metric_allocate(false, 0);
+            assert_eq!(f.births, 1, "{unavailable}");
+            let event = &f.temporal.as_ref().unwrap().events[0];
+            assert_eq!(
+                (event.tick, event.wait_samples, event.reason),
+                (512, 0, "fallback")
+            );
+            let slot = f
+                .lanes
+                .iter()
+                .position(|l| l.tonal && l.mode == Mode::Current)
+                .unwrap();
+            let mass: f32 = f.lanes[slot]
+                .window
+                .clone()
+                .map(|b| {
+                    (f.biomass_mass_scan[b] - f.cells[f.lanes[slot].cell.unwrap()].floor).max(0.0)
+                })
+                .sum();
+            assert!((f.lanes[slot].target.powi(2) - mass).abs() < 1e-6);
+            let obs = observation(1024, true);
+            expected_clock.gather_rhythm(
+                f.fs,
+                1024,
+                1536,
+                &NeuralRhythms::from_meter_state(&obs.state),
+                &mut expected_crossings,
+            );
+            f.observe_rhythm(obs, 1024, Default::default());
+            let m = f.temporal.as_ref().unwrap();
+            assert!(m.active);
+            assert_eq!(m.clock.phase_cycles(), expected_clock.phase_cycles());
+            f.metric_allocate(true, 173);
+            assert_eq!(f.births, 1, "stale pending sounded after {unavailable}");
+            assert!(
+                f.temporal
+                    .as_ref()
+                    .unwrap()
+                    .pending
+                    .iter()
+                    .all(Option::is_none)
+            );
+            for cell in &f.cells {
+                assert!((cell.excess - cell.tonal_mass - cell.residual_mass).abs() < 1e-6);
+            }
+        }
+    }
+
+    #[test]
     fn flora_metric_release_discards_pending_on_active_beats() {
         let mut violations = Vec::new();
         for fade_sec in [0.05, 0.0] {
@@ -760,10 +842,8 @@ mod tests {
             "../../tests/fixtures/flora_metric_replay.json"
         ))
         .unwrap();
-        let mut t1 = setup(FloraTone::Sine, true);
-        let mut t0 = t1.clone();
-        t0.temporal = None;
-        t0.spec.metric = false;
+        let mut coupled = setup(FloraTone::Sine, true);
+        let mut fallback = coupled.clone();
         let mut pcm0 = vec![0.; 512];
         let mut pcm1 = pcm0.clone();
         let mut habitat = pcm0.clone();
@@ -773,21 +853,23 @@ mod tests {
         let mut different = 0;
         for (frame, (bin, height, phase, confidence)) in rows.into_iter().enumerate() {
             let now = frame as u64 * 512;
-            hill(&mut t0, bin, height);
-            hill(&mut t1, bin, height);
+            hill(&mut fallback, bin, height);
+            hill(&mut coupled, bin, height);
             let mut obs = observation(now, true);
             obs.state.beat.phase = phase;
             obs.state.beat.confidence = confidence;
-            t1.observe_rhythm(obs, now, Default::default());
+            coupled.observe_rhythm(obs, now, Default::default());
+            obs.state.beat.confidence = 0.0;
+            fallback.observe_rhythm(obs, now, Default::default());
             pcm0.fill(0.);
             pcm1.fill(0.);
             habitat.fill(0.);
-            t0.render_add(&mut pcm0, &mut habitat);
+            fallback.render_add(&mut pcm0, &mut habitat);
             habitat.fill(0.);
-            t1.render_add(&mut pcm1, &mut habitat);
-            assert_eq!(t0.biomass_mass_scan, t1.biomass_mass_scan);
-            assert_eq!(t0.resource_state_scan, t1.resource_state_scan);
-            let m = t1.temporal.as_ref().unwrap();
+            coupled.render_add(&mut pcm1, &mut habitat);
+            assert_eq!(fallback.biomass_mass_scan, coupled.biomass_mass_scan);
+            assert_eq!(fallback.resource_state_scan, coupled.resource_state_scan);
+            let m = coupled.temporal.as_ref().unwrap();
             for e in &m.events {
                 if m.active && e.action == "born" {
                     assert_eq!(e.scheduled_tick, Some(e.tick));
@@ -796,14 +878,14 @@ mod tests {
                 forced += usize::from(e.action == "retiring" && e.scheduled_tick.is_none());
             }
             different += usize::from(pcm0 != pcm1);
-            for cell in &t1.cells {
+            for cell in &coupled.cells {
                 assert!((cell.excess - cell.tonal_mass - cell.residual_mass).abs() < 1e-6);
             }
             records.push(
-                serde_json::json!({"frame":frame,"t0_births":t0.births,"t1_births":t1.births,
+                serde_json::json!({"frame":frame,"fallback_births":fallback.births,"coupled_births":coupled.births,
                 "events":m.events,"drops":m.drops,"active":m.active,
-                "t0_power":pcm0.iter().map(|x|(*x as f64).powi(2)).sum::<f64>()/512.,
-                "t1_power":pcm1.iter().map(|x|(*x as f64).powi(2)).sum::<f64>()/512.}),
+                "fallback_power":pcm0.iter().map(|x|(*x as f64).powi(2)).sum::<f64>()/512.,
+                "coupled_power":pcm1.iter().map(|x|(*x as f64).powi(2)).sum::<f64>()/512.}),
             );
         }
         assert!(
@@ -812,7 +894,7 @@ mod tests {
         );
         println!(
             "F11_REPLAY hops=400 waits={waits} forced={forced} different_pcm_hops={different} drops={}",
-            t1.temporal.as_ref().unwrap().drops
+            coupled.temporal.as_ref().unwrap().drops
         );
         if let Ok(path) = std::env::var("F11_REPLAY_OUTPUT") {
             std::fs::write(path, serde_json::to_vec_pretty(&records).unwrap()).unwrap();

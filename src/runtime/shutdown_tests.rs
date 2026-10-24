@@ -44,10 +44,91 @@ fn l1_sample_acquisition() {
         &events,
     )
     .unwrap();
-    let config = AppConfig::default();
+    let mut config = AppConfig::default();
+    config.temporal_meter_t2 = std::env::var_os("L1_CONTINUOUS").is_some();
     let mut opts = options();
     opts.deterministic_analysis = false;
     opts.deterministic_footprints = false;
+    let wiring = wire_runtime(
+        &config,
+        48_000,
+        path,
+        scenario,
+        Arc::new(AtomicBool::new(false)),
+        opts,
+    )
+    .unwrap();
+    join(wiring).unwrap();
+}
+
+#[test]
+#[ignore = "Flora closed-loop acquisition requires FLORA_SCENE and FLORA_REPORT"]
+fn flora_closed_loop_acquisition() {
+    let path = std::env::var("FLORA_SCENE").expect("Flora scene path");
+    let report = std::env::var("FLORA_REPORT").expect("per-hop Flora report path");
+    let scenario = compile_scenario_from_script(std::path::Path::new(&path), Some(21)).unwrap();
+    use std::io::Write;
+    let mut source_report = std::io::BufWriter::new(
+        std::fs::File::create(std::path::Path::new(&report).with_extension("sources.jsonl"))
+            .unwrap(),
+    );
+    let mut reporter = JsonlReporter::create(&report).unwrap();
+    let mut opts = options();
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, pcm| {
+        assert!(pcm.into_iter().flatten().all(|x| x.is_finite()));
+        let mut flora_pcm = [0.0_f32; 512];
+        for source in &state.schedule_renderer.loo_pcm {
+            if source.kind == crate::core::stream::loo::SourceKind::Flora {
+                for (sum, value) in flora_pcm.iter_mut().zip(&source.habitat) {
+                    *sum += value;
+                }
+            }
+        }
+        writeln!(
+            source_report,
+            "{}",
+            serde_json::json!({
+                "tick": tick,
+                "only_flora_pcm": pcm[0] == flora_pcm,
+                "flora_nonzero": flora_pcm.iter().any(|&x| x != 0.0),
+            })
+        )
+        .unwrap();
+        source_report.flush().unwrap();
+        for flora in &state.pop.flora {
+            let snapshot = flora.report(tick as f64 / 48_000.0, &state.current_landscape);
+            let row = serde_json::to_value(&snapshot).unwrap();
+            for key in [
+                "biomass_mass_scan",
+                "resource_state_scan",
+                "biomass_consumption_scan",
+                "external_consumption_scan",
+            ] {
+                assert!(
+                    row[key]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|x| x.as_f64().is_some_and(|x| x.is_finite() && x >= 0.0)),
+                    "{key} at {tick}"
+                );
+            }
+            let temporal = &row["temporal"];
+            if temporal["active"] == true {
+                assert_eq!(temporal["observation"]["observed_end"], tick);
+                for event in temporal["events"].as_array().unwrap() {
+                    if event["action"] == "born" {
+                        assert_eq!(event["scheduled_tick"], event["tick"]);
+                    }
+                }
+            }
+            reporter
+                .write_flora(flora, tick as f64 / 48_000.0, &state.current_landscape)
+                .unwrap();
+        }
+        reporter.flush().unwrap();
+    }));
+    let config = AppConfig::default();
     let wiring = wire_runtime(
         &config,
         48_000,
@@ -108,14 +189,10 @@ fn join(wiring: RuntimeWiring) -> Result<(), String> {
 }
 
 #[test]
-fn flora_meter_is_reserved_only_for_metric_and_observes_before_placement() {
+fn flora_meter_is_reserved_for_any_flora_and_observes_before_placement() {
     for continuous in [false, true] {
-        for placement in [
-            "",
-            "let g = place(flora(), consonance(220, 880));",
-            "let g = place(flora().metric(), consonance(220, 880));",
-        ] {
-            let metric = placement.contains("metric()");
+        for placement in ["", "let g = place(flora(), consonance(220, 880));"] {
+            let has_flora = !placement.is_empty();
             let dir = std::env::temp_dir().join(format!(
                 "flora-meter-{}-{continuous}-{}",
                 std::process::id(),
@@ -129,10 +206,10 @@ fn flora_meter_is_reserved_only_for_metric_and_observes_before_placement() {
             let observed = Arc::clone(&seen);
             let mut opts = options();
             opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
-                assert_eq!(state.flora_meter.is_some(), metric);
+                assert_eq!(state.flora_meter.is_some(), has_flora);
                 if tick > 0 {
-                    assert_eq!(state.flora_rhythm.observed_end, metric.then_some(tick));
-                    assert_eq!(state.flora_rhythm.known, metric);
+                    assert_eq!(state.flora_rhythm.observed_end, has_flora.then_some(tick));
+                    assert_eq!(state.flora_rhythm.known, has_flora);
                     observed.lock().unwrap()[usize::from(tick >= 2400)] = true;
                 }
                 if tick < 2400 {

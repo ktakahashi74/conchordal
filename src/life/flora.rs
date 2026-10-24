@@ -317,6 +317,7 @@ struct Cell {
 pub(crate) struct Flora {
     pub(crate) id: u64,
     spec: FloraSpec,
+    // Temporarily taken only while allocating lanes. Every Flora owns a clock.
     temporal: Option<MetricState>,
     acoustic_observation: TemporalObservation,
     extent_hz: (f32, f32),
@@ -489,9 +490,7 @@ impl Flora {
             id,
             spec,
             acoustic_observation: TemporalObservation::default(),
-            temporal: spec
-                .metric
-                .then(|| MetricState::new(scenario_seed ^ id, fs, hop)),
+            temporal: Some(MetricState::new(scenario_seed ^ id, fs, hop)),
             extent_hz,
             space: landscape.space.clone(),
             range: 0..0,
@@ -577,14 +576,6 @@ impl Flora {
         if !self.releasing {
             self.releasing = true;
             self.gain.to(0.0, fade_sec, self.fs);
-            if self.temporal.is_none() && self.gain.value == 0.0 {
-                for lane in &mut self.lanes {
-                    lane.mode = Mode::Free;
-                    lane.r = 0.0;
-                    lane.q = 0.0;
-                    lane.target = 0.0;
-                }
-            }
         }
     }
 
@@ -716,12 +707,13 @@ impl Flora {
                 self.noisy_len += 1;
             }
         }
-        if let Some(temporal) = &mut self.temporal {
-            temporal.resize(self.cells.len(), self.lanes.len(), space.n_bins());
-            for lane in &mut self.lanes {
-                lane.window = 0..0;
-                lane.pending_since = None;
-            }
+        self.temporal
+            .as_mut()
+            .unwrap()
+            .resize(self.cells.len(), self.lanes.len(), space.n_bins());
+        for lane in &mut self.lanes {
+            lane.window = 0..0;
+            lane.pending_since = None;
         }
         self.order = Vec::with_capacity(self.lanes.len());
         self.noise = vec![0.0; 2 * self.noisy_len * self.hop];
@@ -1095,43 +1087,6 @@ impl Flora {
         }
     }
 
-    fn residual_targets(&mut self) {
-        self.assert_scans();
-        for (c, cell) in self.cells.iter_mut().enumerate() {
-            let held = cell.peak.as_ref().filter(|peak| peak.claimed.is_some());
-            cell.tonal_mass = held.map_or(0.0, |peak| peak.mass);
-            cell.residual_mass = (cell.excess - cell.tonal_mass).max(0.0);
-            let lane = &mut self.lanes[self.tonal_len + c];
-            lane.target = if self.spec.residual {
-                (cell.residual_mass - DEAD_MASS).max(0.0).sqrt()
-            } else {
-                0.0
-            };
-            if cell.residual_mass > 0.0 {
-                let mut moment = 0.0;
-                let mut mass = 0.0;
-                for i in cell.bins.clone() {
-                    if held.is_some_and(|peak| peak.window.contains(&i)) {
-                        continue;
-                    }
-                    let x = self.biomass_mass_scan[i] - cell.floor;
-                    moment += x * self.space.centers_log2[i];
-                    mass += x;
-                }
-                if mass > 0.0 {
-                    lane.target_position = (moment / mass)
-                        .clamp(erb_to_hz(cell.lo_erb).log2(), erb_to_hz(cell.hi_erb).log2());
-                }
-            }
-        }
-        // Bound all targets together; slews and retiring amplitudes keep their history.
-        let target_power: f32 = self.lanes.iter().map(|lane| lane.target.powi(2)).sum();
-        let scale = target_power.max(1.0).sqrt().recip();
-        for lane in &mut self.lanes {
-            lane.target *= scale;
-        }
-    }
-
     pub(crate) fn render_add(&mut self, presentation: &mut [f32], habitat: &mut [f32]) {
         self.render::<true>(presentation, habitat);
     }
@@ -1145,22 +1100,7 @@ impl Flora {
         );
         assert_eq!(presentation.len(), self.hop);
         assert_eq!(habitat.len(), self.hop);
-        if self.temporal.is_some() {
-            self.metric_allocate(false, 0);
-        } else if !(self.range.is_empty() || self.releasing && self.gain.value == 0.0) {
-            self.decompose();
-            if self.releasing {
-                for lane in &mut self.lanes {
-                    if lane.tonal && lane.mode == Mode::Current {
-                        lane.retire();
-                        self.retirements += 1;
-                    }
-                }
-            } else {
-                self.update_tones();
-            }
-            self.residual_targets();
-        }
+        self.metric_allocate(false, 0);
         let decay = (-0.5 * GROWTH_RATE * self.pace * METABOLISM / self.fs).exp();
         for lane in &mut self.lanes {
             lane.retirement_decay = decay;
@@ -1220,11 +1160,11 @@ impl Flora {
                 } else {
                     lane.slew(self.fs);
                 }
-                if self.temporal.is_some() && lane.mode != Mode::Free {
+                if lane.mode != Mode::Free {
                     lane.age_samples += 1;
                 }
                 lane.power_sum += (amp * lane.r).powi(2);
-                if t % 64 == 0 || (self.temporal.is_some() && lane.age_samples == 1) {
+                if t % 64 == 0 || lane.age_samples == 1 {
                     let log2 = lane.position
                         + (lane.target_position - lane.position) * (t + 1) as f32 / self.hop as f32;
                     let (sin, cos) = (TAU * log2.exp2() / self.fs).sin_cos();
@@ -1243,9 +1183,6 @@ impl Flora {
         }
         for lane in &mut self.lanes {
             lane.position = lane.target_position;
-            if self.temporal.is_none() && lane.mode != Mode::Free {
-                lane.age_samples += self.hop;
-            }
             self.energy[usize::from(!lane.tonal)] += lane.power_sum as f64 / self.fs as f64;
         }
         self.lifecycle_changed = before
@@ -1275,11 +1212,10 @@ impl Flora {
             .assert_scan_len_named(&landscape.consonance_field_level, "growth_level_scan");
         self.space
             .assert_scan_len_named(&landscape.harmonicity01, "harmonicity_state_scan");
-        let timing = self.temporal.is_some() || self.acoustic_observation.observed_end.is_some();
         FloraReport {
             pace: self.pace,
             temporal: self.temporal.as_ref(),
-            acoustic_observation: timing.then_some(&self.acoustic_observation),
+            acoustic_observation: Some(&self.acoustic_observation),
             growth_level_scan: &landscape.consonance_field_level,
             harmonicity_state_scan: &landscape.harmonicity01,
             target_partials: self
@@ -1302,7 +1238,7 @@ impl Flora {
                     },
                     frequency_hz: l.position.exp2(),
                     target_mass: l.target.powi(2),
-                    timing: timing.then_some(FloraLaneTimingReport {
+                    timing: Some(FloraLaneTimingReport {
                         generation: l.generation,
                         pending_since: l.pending_since,
                         forced_reason: l.forced_reason,
@@ -1461,9 +1397,7 @@ mod tests {
     }
 
     fn allocate(f: &mut Flora) {
-        f.decompose();
-        f.update_tones();
-        f.residual_targets();
+        f.metric_allocate(false, 0);
     }
 
     fn hop(f: &mut Flora, l: &Landscape) {
@@ -1667,6 +1601,17 @@ mod tests {
         // Default rate: ceil(8 * (512 / 48000) / 0.05) = 2; spread needs only 1.
         assert_eq!(f.substeps, 2);
         for (rate, expected) in [(4.0, 1), (8.0, 2)] {
+            // The scene basin is fixed before placement, not a live clock patch.
+            f = Flora::new(
+                7,
+                spec(),
+                (440.0, 880.0),
+                FloraSeeding::Uniform,
+                42,
+                &l,
+                48000.0,
+                512,
+            );
             f.observe_rhythm(
                 TemporalObservation::default(),
                 0,
@@ -2126,9 +2071,7 @@ mod tests {
             }
             visited_cells.push(f.lanes[lane].cell.unwrap());
             let phase = f.lanes[lane].z;
-            f.decompose();
-            f.update_tones();
-            f.residual_targets();
+            f.metric_allocate(false, 0);
             assert_eq!(phase, f.lanes[lane].z, "tracking reset the phase");
             assert!(
                 !f.lanes[..f.tonal_len]
@@ -2200,8 +2143,7 @@ mod tests {
             lane.target_position = peak.position;
             lane.target = peak.mass.sqrt();
         }
-        f.update_tones();
-        f.residual_targets();
+        f.metric_allocate(false, 0);
         assert_eq!(f.lanes[0].mode, Mode::Retiring);
         assert_eq!(f.cells[1].tonal_mass, 0.0);
         assert!(f.cells[1].peak.as_ref().unwrap().suppressed);
@@ -2419,6 +2361,17 @@ mod tests {
             let peak = f.range.start + f.range.len() / 2;
             f.biomass_mass_scan[peak] = 1.0;
             f.render_add(&mut p, &mut h);
+            if !lower_clamp {
+                // A singleton cell has no excess above its floor. The default
+                // reservation path retires this zero-mass candidate immediately.
+                assert!(f.lanes.iter().all(|l| !l.tonal || l.mode != Mode::Current));
+                assert!(
+                    f.lanes
+                        .iter()
+                        .any(|l| l.forced_reason == Some("empty_window"))
+                );
+                continue;
+            }
             let lane = f
                 .lanes
                 .iter()
@@ -2762,6 +2715,10 @@ mod tests {
         assert!(f.is_finished());
         let mut zero = flora(&l);
         zero.release(0.0);
+        let mut pcm = vec![0.0; zero.hop];
+        let mut habitat = pcm.clone();
+        zero.render_add(&mut pcm, &mut habitat);
+        assert!(pcm.iter().chain(&habitat).all(|&x| x == 0.0));
         assert!(zero.is_finished());
     }
 
@@ -2815,7 +2772,7 @@ mod tests {
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match operation {
                         0 => f.advance(&l),
                         1 => f.decompose(),
-                        2 => f.residual_targets(),
+                        2 => f.metric_allocate(false, 0),
                         3 => f.render_add(&mut [0.0; 100], &mut [0.0; 100]),
                         4 => {
                             f.report(0.0, &l);

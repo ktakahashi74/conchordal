@@ -566,9 +566,13 @@ crossing as support falls, and slew delays acoustic onset detection.
 
 Flora reports include the acoustic observation end tick, flux, full meter support,
 active/fallback state, local phase, bounded pending slots, drops, and transition
-ticks, generations, waiting samples and forced reasons. Reporting allocation is
-outside the allocation-free renderer contract. Every Flora report includes acoustic
-timing and ecological pace. Scenes without Flora allocate no Flora meter.
+ticks, generations, waiting samples and forced reasons. Retirement events labeled
+`crossing` or `fallback` identify allocation timing, not an exhaustive cause
+classification: they can include support loss or separation conflicts handled by
+the tonal update. Counts selected by these labels do not exclude all support-loss
+retirements. Reporting allocation is outside the allocation-free renderer contract.
+Every Flora report includes acoustic timing and ecological pace. Scenes without
+Flora allocate no Flora meter.
 
 ### Atoms: one kernel
 

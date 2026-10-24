@@ -2377,12 +2377,71 @@ mod tests {
                 .iter()
                 .find(|l| l.tonal && l.mode == Mode::Current)
                 .unwrap();
-            let expected = if lower_clamp {
-                0.5
-            } else {
-                0.5 * erb_bw_hz(lane.position.exp2())
-            };
+            let expected = 0.5;
             assert!((-lane.a.ln() * f.fs / PI - expected).abs() < 1e-4);
+        }
+        // A broad peak on a coarser grid retains positive excess within its ERB cell.
+        // Exercise both the hop-boundary fallback and a birth inside the hop.
+        for crossing in [false, true] {
+            let l = Landscape::new(Log2Space::new(220.0, 880.0, 12));
+            let mut f = Flora::new(
+                7,
+                s,
+                (220.0, 880.0),
+                FloraSeeding::Uniform,
+                42,
+                &l,
+                4000.0,
+                100,
+            );
+            for bin in f.range.clone() {
+                f.biomass_mass_scan[bin] = unit_gaussian(bin as f32 - 12.0, 4.0);
+            }
+            normalize(&mut f);
+            if crossing {
+                f.observe_rhythm(
+                    metric::TemporalObservation {
+                        observed_end: Some(0),
+                        known: true,
+                        state: crate::core::meter::MeterState {
+                            beat: crate::core::meter::MeterBand {
+                                freq_hz: 2.0,
+                                confidence: 0.9,
+                                amplitude: 1.0,
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    0,
+                    Default::default(),
+                );
+                let m = f.temporal.as_mut().unwrap();
+                assert!(m.active);
+                m.crossings.clear();
+                m.crossings
+                    .push(crate::life::phonation_engine::CandidatePoint { tick: 37, gate: 0 });
+            } else {
+                assert!(!f.temporal.as_ref().unwrap().active);
+            }
+            f.render_add(&mut p, &mut h);
+            assert_eq!(f.births, 1);
+            let lane = f
+                .lanes
+                .iter()
+                .find(|l| l.tonal && l.mode == Mode::Current)
+                .unwrap();
+            assert!(lane.noisy && lane.target > 0.0);
+            assert_eq!(lane.age_samples, if crossing { 63 } else { 100 });
+            let cell = &f.cells[lane.cell.unwrap()];
+            assert!(cell.excess > 0.0 && cell.peak.as_ref().unwrap().mass > 0.0);
+            let hz = lane.target_position.exp2();
+            let unclamped = hz * ((lane.sigma / f.space.bins_per_oct as f32).exp2() - 1.0);
+            let expected = 0.5 * erb_bw_hz(hz);
+            assert!(unclamped > expected);
+            let actual = -lane.a.ln() * f.fs / PI;
+            assert!((actual - expected).abs() < 1e-4, "{actual} != {expected}");
         }
     }
 

@@ -1007,7 +1007,7 @@ Candidate core verbs under audition: composing surface by intent, but with resea
 flora() -> FloraSpec
 ```
 
-Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. Births occur at sample crossings; support loss and release retire immediately. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 
 #### `fade`
 

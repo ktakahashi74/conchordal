@@ -1249,3 +1249,11 @@ DCC の P/M/A の契約（`dcc-neurocognitive-hierarchy.md` §2）では、P は
 - 作者の耳：比べる対象が無いので断定はできないが、許容の範囲。§13.4 の二つ（低音域の R の幅、偽の谷）は、この場面では聴こえる問題として示されなかった。段 3 と 2-a は、実際の曲で問題を聴いた時に始める。
 - 計時（同じ場面、headless、report あり）：新系は 1 hop の平均 1.84 ms・p99 3.2 ms、解析の待ちの p99 1.8 ms。旧系（main `a6b197d`）は平均 2.29 ms・p99 5.5 ms、解析の待ちの p99 3.3 ms。予算（10.7 ms）を超えた hop は新系で 1 回（27.7 ms、解析の待ちは 1.0 ms で、解析の外）、旧系で 0 回（最大 10.2 ms）。
 - 作者の GUI の試聴では「over budget」の警告が何回か出た。そのときの machine の load average は約 21 で、他の project の job が CPU を使っていた。新系は同じ場面で旧系より軽いので、警告の原因は前処理ではないと見る。警告は hop の時間の超過で、出力の buffer（50 ms）があるので、音の途切れ（underrun）とは別である。
+
+### 13.6 NSGT を要る時だけ計算する（1-1）と、足場の整理（AUD-C1、2026-10-24）
+
+記録は `.orchestration/units/AUD-C1/report.md` と worktree の `.orchestration/aud-c1/`。
+- 1-1（`7e70aee5`）：wiring で一度だけ決める。混合の stream は GUI、report、habitat の temporal tap、場面の Flora の配置のどれかがある時、listener の stream は GUI、report、listener 側の tap がある時に NSGT を計算する。要らない時は、NSGT の状態も spectral history も進めない。NSGT の有無で H／R／C、`subjective_intensity`、行動の判断は bit で一致し、F-0 の hash は変わらない。
+  - offline の render（Flora の無い sample、report なし）の壁時計の時間：`01_a_single_voice` で 1.23 → 0.64 秒、`02_constellation` で 5.11 → 2.66 秒。WAV は SHA-256 で一致。省けたのは NSGT と、それを使う履歴の更新と受け渡し。13.1 の見積もり（主の thread で 1 hop 約 0.12 ms）より大きかった。
+  - GUI の演奏では UI の spectrum が NSGT を要るので、今までどおり計算する。
+- 整理（`32b4dea3`）：一回きりの取得の assay（窓、診断、統計の候補、sample の対応、費用）を消した。V3／V4 の取得は通常の test（`auditory_conformance_tests.rs`）に移した。consumer の判断を比べる V2 の取得器（`auditory_validation_assay.rs`、`auditory_consumer_assay.rs`、`tests/research/aud_m1_*.py`、使い方は `tests/research/auditory-validation.md`）は残した。残した取得器は、M5 の段 1 の E2 の M2 の値を 15 分類すべてで再現した。消した file は git の履歴（`7e70aee5`）に残る。

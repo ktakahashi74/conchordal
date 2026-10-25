@@ -2093,6 +2093,7 @@ mod tests {
             let mut flora = [Flora::new(
                 7,
                 FloraSpec {
+                    pace: 1.0,
                     amp: 0.2,
                     fade_sec: 0.,
                     tone,

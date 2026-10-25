@@ -641,7 +641,7 @@ impl SoundBodyFactory for HarmonicBodyFactory {
         let eval_space = if let Some(frame) = input.landscape {
             &frame.space
         } else {
-            fallback_space = Log2Space::new(55.0, 8000.0, 96);
+            fallback_space = crate::core::log2space::production_space();
             &fallback_space
         };
         let custom_ratios = input

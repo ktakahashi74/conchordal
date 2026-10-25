@@ -14,6 +14,11 @@ pub struct Log2Space {
     pub step_log2: f32,
 }
 
+/// Shared production grid for runtime analysis and body fallbacks.
+pub(crate) fn production_space() -> Log2Space {
+    Log2Space::new(55.0, 8000.0, 96)
+}
+
 impl Log2Space {
     /// Create a log2-space grid between fmin..fmax (inclusive).
     pub fn new(fmin: f32, fmax: f32, bins_per_oct: u32) -> Self {

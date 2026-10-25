@@ -97,7 +97,8 @@ prediction, action and observed consequences. It does not require universal beat
 synchronization or make an unpredicted onset defective. The author chooses the existing
 T1 rule for every Flora, without an opt-out: the Population metric CouplingClock with
 coupling 0.95 has a synchronization tendency, not a neutral response. Native pace and
-ecological preferences remain authored embodiment. The clock reads tactus only;
+ecological preferences remain authored embodiment. The clock entrains to tactus;
+confirmed subdivisions supply additional action opportunities when renewal is faster than a beat;
 bar selection, phrase structure and onset-overlap preferences are not implemented.
 
 Flora's actual habitat sound may confirm a beat and then support its own opportunities.
@@ -256,11 +257,17 @@ with self-exclusion enabled these differ from the mixed terrain displayed in the
 
 **Ecological time.** `f` is the private CouplingClock velocity before phase correction.
 Without fresh confirmed evidence it returns to the tempo-basin center (default 2 Hz).
-The adopted authored mapping is `p = k * f / (2 Hz)`, with `pace(k)` defaulting to 1.
+The unsaturated authored mapping is `p = k * f / (2 Hz)`, with `pace(k)` defaulting to 1.
 The multiplier is an authored property of the body, analogous to Voice intrinsic
-rate; it does not change the private beat clock or its opportunities. Advance the entire consumer-resource
+rate; it does not change the private beat clock. It selects confirmed subdivision
+opportunities when `10 s / (k * f / (2 Hz)) < 1 / f`, equivalently `k > 20`.
+Let `r` be the selected ratio (1 for beats, 2, 3 or 4 for confirmed subdivisions).
+Saturate the ecological speed at `p = (f / (2 Hz)) * min(k, 20*r)`: one
+10-second renewal per nominal opportunity. Continuous fallback uses `r = 1`.
+Phase attraction moves crossings without resetting phase or changing this nominal
+rate law. Advance the entire consumer-resource
 system in `dt_ecological = p * dt_physical`: growth, diffusion, seed rain, resource
-recovery and both forms of consumption use this same time. Thus default growth is
+recovery and both forms of consumption use this same time. Until saturation, growth is
 `4 k f`, renewal is `20 / (k f)` seconds and consumption is `0.6 / (k f)` seconds. The ratios
 come from the adopted 8/s, 10 s and 0.3 s at the existing neutral 2 Hz, not a claim
 about neural rhythms or a new bar/phrase model. Substeps are recomputed each hop
@@ -475,7 +482,11 @@ shared boundary. The minimum-separation rule below handles that case.
 - **Target sum.** `S = Σ_c m_t + [residual on] · Σ_c max(0, m_r − m_dead)`. When
   `S > 1`, every target amplitude is multiplied by `1/√S`, so `Σ r*² ≤ 1`. This is the
   definition of the rendered target, not a loudness guarantee: `amp` is the nominal
-  target-amplitude scale.
+  target-amplitude scale. During confirmed beat allocation, both tonal and residual
+  targets and this joint normalization update only at action crossings from the
+  current hop-held biomass. Supported targets stay fixed between crossings; only
+  the existing amplitude/power slew advances. Continuous fallback updates each hop.
+  Support loss and release retain their immediate exit paths.
 
 ### Lanes
 
@@ -626,12 +637,20 @@ CouplingClock, using the Population metric rule (0.95 attraction, independent
 phase, tempo-basin center or 2 Hz initial rate). The meter observation is frozen
 at the hop start; its audio interval ends at that start. Positive beat confidence
 is the existing model's confirmation signal, not a new confidence threshold.
-Unknown, stale or unconfirmed observations use continuous allocation.
+Unknown, stale or unconfirmed observations use continuous allocation, including
+amplitude targets and their joint normalization. With fresh confirmed beats,
+`T_eco = RENEWAL_SEC / (k*p)` uses the unsaturated `p = f/2`. If T_eco is
+shorter than the private beat period and subdivision confidence is positive with
+known ratio 2, 3 or 4, integer crossings of private phase times that ratio also
+allow action. Otherwise only beat crossings do. Switching layers never resets
+phase. Span/gap transitions retain beat crossings, including their fallback;
+subdivision opportunities affect lane allocation and amplitude targets.
 
 Biomass and resource integration remain continuous. Between crossings, current
 lanes track nearby supported candidates. Ordinary replacement retirement becomes
-pending; each such lane retains its last tonal window and targets only that
-window's current excess. One bounded pending birth slot per cell records the
+pending; each such lane retains its last tonal window. Its current excess is
+reserved each hop for accounting, while its amplitude target stays at the previous
+opportunity's value until the next opportunity or support loss. One bounded pending birth slot per cell records the
 candidate bin and first waiting tick, revalidated every hop. A changed/disappeared
 candidate is dropped. A lane's generation identifies each reuse of its slot.
 
@@ -649,16 +668,15 @@ resetting the clock or replaying the queue. Actual envelopes may change before a
 crossing as support falls, and slew delays acoustic onset detection.
 
 Flora reports include the acoustic observation end tick, flux, full meter support,
-active/fallback state, local phase, bounded pending slots, drops, and transition
+active/fallback state, local phase, selected `opportunity_ratio`, bounded pending slots, drops, and transition
 ticks, generations, waiting samples and forced reasons. Retirement events labeled
 `crossing` or `fallback` identify allocation timing, not an exhaustive cause
 classification: they can include support loss or separation conflicts handled by
 the tonal update. Counts selected by these labels do not exclude all support-loss
 retirements. Reporting allocation is outside the allocation-free renderer contract.
 Every Flora report includes acoustic timing and ecological pace. The top-level
-`pace` is k*f/2; `temporal.pace` retains the private clock's f/2. No new report
-field is needed for the multiplier, preserving the default report contract. Scenes without
-Flora allocate no Flora meter.
+`pace` is the saturated ecological speed; `temporal.pace` retains the private
+clock's f/2. Scenes without Flora allocate no Flora meter.
 
 ### Atoms: one kernel
 
@@ -841,21 +859,15 @@ release(m);
   warn and use 1/64; positive infinity and positive f32 overflow warn and use
   f32::MAX, which reaches the internal saturation below. The minimum preserves
   finite retirement at 0.5 Hz, acquired at 48 kHz / hop 512.
-  Ecological time per hop saturates at `RENEWAL_SEC = 10 s`:
-  `dt_eco = min(k * (f / 2 Hz) * dt_hop, 10 s)`. Retirement uses the same
-  saturated pace. The private beat, birth slew and macro fade keep their clocks.
-  Beyond saturation no additional ecological time is advanced: Flora cannot
-  respond faster than it listens. This is an internal saturation, not a limit
-  on the composer's parameter.
-  The existing substep rule is `ceil(dt_eco * max(8/0.05, diffusion/0.25))`,
-  at least one step. At 96 bins/octave, saturation gives 1600 substeps per hop;
-  at 48 kHz / hop 512 / 4 Hz this starts at k=468.75. F-19d measured
-  84, 146, 296, 684 and 1437 microseconds/hop for k=1, 2, 4, 8 and 16
-  (690 bins, 4 Hz). Scaling the k=16 cost over its 55 substeps estimates
-  about 41.8 ms/hop at saturation; this is an extrapolation, not a new timing
-  acquisition. Cost grows roughly with k until saturation. As with Voice
-  self-exclusion observers, real-time cost depends on the entire scene and is
-  the composer's responsibility; one observer's cost is not a parameter limit.
+  Ecological time saturates at `RENEWAL_SEC = 10 s` per nominal action opportunity:
+  `dt_eco = (f / (2 Hz)) * min(k, 20*r) * dt_hop`. Ratio r is 1 for beats and
+  fallback; confirmed subdivisions select 2, 3 or 4 when k > 20. Saturation thus
+  starts at k=20*r. Retirement uses the same saturated speed; birth slew, macro
+  fade and private beat phase keep their clocks. This replaces CAP-1's hop-based
+  saturation. The existing positivity substep rule is unchanged:
+  `ceil(dt_eco * max(8/0.05, diffusion/0.25))`, at least one step.
+  No new real-time measurement accompanies this change. Whole-scene real-time
+  cost remains the composer's responsibility, as with Voice self-exclusion.
   Other numeric arguments, on the spec and on handle patches, must be
   finite both as given and after conversion to `f32`. Overflow to infinity in the
   conversion is an error. Out-of-range values are script errors, not clamps:

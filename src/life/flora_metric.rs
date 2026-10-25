@@ -35,6 +35,7 @@ pub(super) struct MetricState {
     pub(super) now: u64,
     pub(super) active: bool,
     pub(super) pace: f32,
+    pub(super) opportunity_ratio: u8,
     pending: Vec<Option<Pending>>,
     pub(super) events: Vec<LaneEvent>,
     pub(super) drops: u64,
@@ -48,6 +49,8 @@ pub(super) struct MetricState {
     #[serde(skip)]
     pub(super) crossings: Vec<CandidatePoint>,
     #[serde(skip)]
+    pub(super) beat_crossings: Vec<CandidatePoint>,
+    #[serde(skip)]
     reserved: Vec<bool>,
     #[serde(skip)]
     before: Vec<(Mode, u64, Option<u64>, f32)>,
@@ -56,12 +59,13 @@ pub(super) struct MetricState {
 impl MetricState {
     pub(super) fn new(seed: u64, fs: f32, hop: usize) -> Self {
         let capacity =
-            (hop as f64 / fs as f64 * MAX_ONSET_RATE_HZ as f64 * 1.5).ceil() as usize + 1;
+            (hop as f64 / fs as f64 * MAX_ONSET_RATE_HZ as f64 * 1.5 * 4.0).ceil() as usize + 1;
         Self {
             observation: TemporalObservation::default(),
             now: 0,
             active: false,
             pace: 1.0,
+            opportunity_ratio: 1,
             pending: Vec::new(),
             events: Vec::new(),
             drops: 0,
@@ -70,6 +74,7 @@ impl MetricState {
             initialized: false,
             seed,
             crossings: Vec::with_capacity(capacity),
+            beat_crossings: Vec::with_capacity(capacity),
             reserved: Vec::new(),
             before: Vec::new(),
         }
@@ -96,7 +101,6 @@ impl Flora {
             let (lo, hi) = sane_basin(lo, hi);
             0.5 * (lo + hi)
         });
-        self.pace = ecological_pace(self.spec.pace, base / 2.0, self.hop as f32 / self.fs);
         let m = self.temporal.as_mut().unwrap();
         if !m.initialized {
             m.clock = CouplingClock::new(0.95, base, 0.0, 0.0, m.seed);
@@ -106,6 +110,7 @@ impl Flora {
         m.observation = observation;
         m.events.clear();
         m.crossings.clear();
+        m.beat_crossings.clear();
         // The observation describes the immediately preceding audio interval.
         m.active = observation.known
             && observation.observed_end == Some(now)
@@ -116,17 +121,37 @@ impl Flora {
         if !m.active {
             rhythms.delta.alpha = 0.0;
         }
-        m.clock.gather_rhythm(
-            self.fs,
-            now,
-            now + self.hop as u64,
-            &rhythms,
-            &mut m.crossings,
-        );
+        // T_eco < T_beat reduces to k > 2 * RENEWAL_SEC because p = f / 2 Hz.
+        m.opportunity_ratio = if m.active
+            && self.spec.pace > 2.0 * RENEWAL_SEC
+            && observation.state.subdivision.confidence > 0.0
+            && matches!(observation.state.subdivision_ratio, 2..=4)
+        {
+            observation.state.subdivision_ratio
+        } else {
+            1
+        };
+        if m.opportunity_ratio == 1 {
+            m.clock.gather_rhythm(
+                self.fs,
+                now,
+                now + self.hop as u64,
+                &rhythms,
+                &mut m.crossings,
+            );
+        } else {
+            m.clock.gather_rhythm_subdivided(
+                self.fs,
+                now..now + self.hop as u64,
+                &rhythms,
+                &mut m.beat_crossings,
+                Some((m.opportunity_ratio, &mut m.crossings)),
+            );
+        }
         // Use the same confidence-weighted velocity as the opportunity clock;
         // phase correction changes opportunities, not the ecological time scale.
         m.pace = self.fs / m.clock.nominal_period_ticks(self.fs).unwrap() as f32 / 2.0;
-        self.pace = ecological_pace(self.spec.pace, m.pace, self.hop as f32 / self.fs);
+        self.pace = ecological_pace(self.spec.pace, m.pace, m.opportunity_ratio);
         m.local_phase_cycles = m.clock.phase_cycles();
         if !m.active {
             m.drops += m.pending.iter().filter(|p| p.is_some()).count() as u64;
@@ -140,6 +165,7 @@ impl Flora {
     pub(super) fn metric_allocate(&mut self, crossing: bool, offset: usize) {
         let mut m = self.temporal.take().expect("metric state");
         let tick = m.now + offset as u64;
+        let update_targets = crossing || !m.active || self.releasing;
         m.before.clear();
         m.before.extend(
             self.lanes
@@ -327,7 +353,7 @@ impl Flora {
             } else {
                 0.0
             };
-            if self.span_gap.is_some() && lane.mode == Mode::Free && lane.target > 0.0 {
+            if update_targets && lane.mode == Mode::Free && lane.target > 0.0 {
                 lane.mode = Mode::Current;
                 lane.age_samples = 0;
             }
@@ -343,16 +369,26 @@ impl Flora {
                     .clamp(erb_to_hz(cell.lo_erb).log2(), erb_to_hz(cell.hi_erb).log2());
             }
         }
-        let scale = self
-            .lanes
-            .iter()
-            .map(|l| l.target.powi(2))
-            .sum::<f32>()
-            .max(1.0)
-            .sqrt()
-            .recip();
-        for lane in &mut self.lanes {
-            lane.target *= scale;
+        if update_targets {
+            let scale = self
+                .lanes
+                .iter()
+                .map(|l| l.target.powi(2))
+                .sum::<f32>()
+                .max(1.0)
+                .sqrt()
+                .recip();
+            for lane in &mut self.lanes {
+                lane.target *= scale;
+            }
+        } else {
+            // Current mass still decides support and separation. Only sounding
+            // targets are held; zero targets retain immediate support-loss exits.
+            for (slot, lane) in self.lanes.iter_mut().enumerate() {
+                if lane.target > 0.0 {
+                    lane.target = m.before[slot].3;
+                }
+            }
         }
         for (slot, lane) in self.lanes.iter().enumerate().filter(|(_, l)| l.tonal) {
             let (mode, generation, since, _) = m.before[slot];
@@ -466,6 +502,203 @@ mod tests {
     fn hill(f: &mut Flora, bin: usize, mass: f32) {
         for (i, x) in f.biomass_mass_scan.iter_mut().enumerate() {
             *x = 0.001 + mass * (-0.5 * ((i as f32 - bin as f32) / 1.5).powi(2)).exp();
+        }
+    }
+
+    #[test]
+    fn amplitude_targets_hold_between_opportunities_and_fallback_tracks_each_hop() {
+        for tone in [FloraTone::Sine, FloraTone::Resonant] {
+            let mut f = setup(tone, true);
+            let biomass = |f: &mut Flora, height: f32| {
+                hill(f, 35, height);
+                let cell = f.cells.len() - 2;
+                for (offset, bin) in f.cells[cell].bins.clone().enumerate() {
+                    f.biomass_mass_scan[bin] = 0.001 + height * (offset + 1) as f32 * 0.1;
+                }
+            };
+            biomass(&mut f, 4.0);
+            f.observe_rhythm(observation(0, true), 0, Default::default());
+            f.metric_allocate(true, 0);
+            assert!(f.lanes.iter().any(|l| l.tonal && l.target > 0.0));
+            assert!(f.lanes.iter().any(|l| !l.tonal && l.target > 0.0));
+            let initial: Vec<_> = f.lanes.iter().map(|l| l.target).collect();
+            assert!((initial.iter().map(|x| x * x).sum::<f32>() - 1.0).abs() < 1e-6);
+            for (frame, height) in [8.0, 16.0, 32.0].into_iter().enumerate() {
+                biomass(&mut f, height);
+                let now = (frame + 1) as u64 * 512;
+                f.observe_rhythm(observation(now, true), now, Default::default());
+                f.temporal.as_mut().unwrap().crossings.clear();
+                let mut expected = f.lanes.clone();
+                for lane in &mut expected {
+                    for _ in 0..512 {
+                        lane.slew(f.fs);
+                    }
+                }
+                f.render_add(&mut vec![0.; 512], &mut vec![0.; 512]);
+                assert_eq!(
+                    initial,
+                    f.lanes.iter().map(|l| l.target).collect::<Vec<_>>()
+                );
+                for (actual, expected) in f.lanes.iter().zip(&expected) {
+                    assert_eq!(actual.r, expected.r);
+                    assert_eq!(actual.q, expected.q);
+                }
+            }
+            biomass(&mut f, 0.1);
+            let mut held = f.clone();
+            let m = f.temporal.as_mut().unwrap();
+            m.crossings.push(CandidatePoint {
+                tick: m.now + 173,
+                gate: 0,
+            });
+            let mut changed_pcm = vec![0.; 512];
+            let mut held_pcm = changed_pcm.clone();
+            f.render_add(&mut changed_pcm, &mut vec![0.; 512]);
+            held.render_add(&mut held_pcm, &mut vec![0.; 512]);
+            assert_eq!(changed_pcm[..173], held_pcm[..173]);
+            assert_ne!(changed_pcm[173..], held_pcm[173..]);
+            // At the crossing, both target kinds use the current biomass and one scale.
+            let crossing: Vec<_> = f.lanes.iter().map(|l| l.target).collect();
+            assert_ne!(initial, crossing);
+            for tonal in [true, false] {
+                assert!(
+                    f.lanes
+                        .iter()
+                        .enumerate()
+                        .any(|(i, l)| l.tonal == tonal && l.target > 0.0 && l.target != initial[i])
+                );
+            }
+            for unavailable in 0..3 {
+                let mut fallback = f.clone();
+                let mut obs = observation(2048, true);
+                match unavailable {
+                    0 => obs.known = false,
+                    1 => obs.observed_end = Some(1536),
+                    _ => obs.state.beat.confidence = 0.0,
+                }
+                fallback.observe_rhythm(obs, 2048, Default::default());
+                let mut previous = crossing.clone();
+                for height in [0.2, 0.4] {
+                    biomass(&mut fallback, height);
+                    fallback.metric_allocate(false, 0);
+                    let targets: Vec<_> = fallback.lanes.iter().map(|l| l.target).collect();
+                    assert_ne!(targets, previous);
+                    previous = targets;
+                }
+            }
+            f.biomass_mass_scan.fill(0.0);
+            f.metric_allocate(false, 0);
+            assert!(f.lanes.iter().all(|l| l.target == 0.0));
+            assert!(
+                f.lanes
+                    .iter()
+                    .filter(|l| l.tonal)
+                    .all(|l| l.mode != Mode::Current)
+            );
+        }
+    }
+
+    #[test]
+    fn confirmed_subdivision_births_preserve_beat_phase_across_layer_switches() {
+        for ratio in [2, 3, 4] {
+            let mut template = setup(FloraTone::Sine, false);
+            hill(&mut template, 35, 0.1);
+            template.observe_rhythm(observation(0, true), 0, Default::default());
+            for case in 0..6 {
+                let mut f = template.clone();
+                f.spec.pace = if case == 0 { 20.0 } else { 64.0 };
+                let mut reference = template.clone();
+                let mut extra_birth = false;
+                for frame in 1..160 {
+                    let now = frame * 512;
+                    let mut obs = observation(now, true);
+                    obs.state.subdivision_ratio = if case == 2 { 0 } else { ratio };
+                    obs.state.subdivision.confidence = if case == 1 { 0.0 } else { 0.8 };
+                    if case == 3 {
+                        obs.known = false;
+                    }
+                    if case == 4 {
+                        obs.observed_end = Some(now - 512);
+                    }
+                    // Alternate layers while keeping the exact same beat clock.
+                    if case == 5 && frame % 20 < 10 {
+                        f.spec.pace = 1.0;
+                    } else if case == 5 {
+                        f.spec.pace = 64.0;
+                    }
+                    reference.observe_rhythm(obs, now, Default::default());
+                    f.observe_rhythm(obs, now, Default::default());
+                    let m = f.temporal.as_ref().unwrap();
+                    let beat = reference.temporal.as_ref().unwrap();
+                    assert_eq!(m.clock.phase_cycles(), beat.clock.phase_cycles());
+                    let selected = case == 5 && f.spec.pace > 20.0;
+                    assert_eq!(m.opportunity_ratio, if selected { ratio } else { 1 });
+                    if !selected {
+                        assert_eq!(
+                            m.crossings.iter().map(|c| c.tick).collect::<Vec<_>>(),
+                            beat.crossings.iter().map(|c| c.tick).collect::<Vec<_>>()
+                        );
+                        continue;
+                    }
+                    assert_eq!(
+                        m.beat_crossings.iter().map(|c| c.tick).collect::<Vec<_>>(),
+                        beat.crossings.iter().map(|c| c.tick).collect::<Vec<_>>()
+                    );
+                    if let Some(tick) = m
+                        .crossings
+                        .iter()
+                        .find(|c| !m.beat_crossings.iter().any(|b| b.tick == c.tick))
+                        .map(|c| c.tick)
+                    {
+                        for lane in &mut f.lanes[..f.tonal_len] {
+                            lane.mode = Mode::Free;
+                            lane.target = 0.0;
+                        }
+                        f.render_add(&mut vec![0.; 512], &mut vec![0.; 512]);
+                        extra_birth |= f
+                            .temporal
+                            .as_ref()
+                            .unwrap()
+                            .events
+                            .iter()
+                            .any(|e| e.action == "born" && e.tick == tick);
+                    }
+                }
+                assert_eq!(extra_birth, case == 5);
+            }
+        }
+    }
+
+    #[test]
+    fn opportunity_saturation_matches_states_at_crossings() {
+        for ratio in [1, 2, 3, 4] {
+            let mut a = setup(FloraTone::Sine, false);
+            let mut b = a.clone();
+            a.spec.pace = 20.0 * f32::from(ratio) * 2.0;
+            b.spec.pace = f32::MAX;
+            let terrain = Landscape::new(a.space.clone());
+            let mut crossings = 0;
+            for frame in 0..160 {
+                let now = frame * 512;
+                let mut obs = observation(now, true);
+                obs.state.subdivision_ratio = ratio;
+                obs.state.subdivision.confidence = 1.0;
+                for f in [&mut a, &mut b] {
+                    f.observe_rhythm(obs, now, Default::default());
+                    f.advance(&terrain);
+                    let m = f.temporal.as_ref().unwrap();
+                    assert_eq!(f.pace, 2.0 * m.pace * RENEWAL_SEC * f32::from(ratio));
+                }
+                assert_eq!(a.biomass_mass_scan, b.biomass_mass_scan);
+                assert_eq!(a.resource_state_scan, b.resource_state_scan);
+                crossings += a.temporal.as_ref().unwrap().crossings.len();
+                let mut ap = vec![0.; 512];
+                let mut bp = ap.clone();
+                a.render_add(&mut ap, &mut vec![0.; 512]);
+                b.render_add(&mut bp, &mut vec![0.; 512]);
+                assert_eq!(ap, bp);
+            }
+            assert!(crossings >= 2 * usize::from(ratio));
         }
     }
 
@@ -950,6 +1183,7 @@ mod tests {
         use crate::runtime_profile::{begin_allocations, finish_allocations};
         for tone in [FloraTone::Sine, FloraTone::Resonant] {
             let mut f = setup(tone, true);
+            f.spec.pace = 64.0;
             let bin = f.cells[3].bins.start + 1;
             let mut p = vec![0.; 512];
             let mut h = p.clone();
@@ -961,7 +1195,10 @@ mod tests {
                     bin + ((frame / 20) % 3) as usize * 8,
                     if frame % 20 < 15 { 0.1 } else { 0. },
                 );
-                f.observe_rhythm(observation(now, true), now, Default::default());
+                let mut obs = observation(now, true);
+                obs.state.subdivision_ratio = 4;
+                obs.state.subdivision.confidence = 1.0;
+                f.observe_rhythm(obs, now, Default::default());
                 let m = f.temporal.as_mut().unwrap();
                 m.crossings.clear();
                 if frame % 5 == 0 {

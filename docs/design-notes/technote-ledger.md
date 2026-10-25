@@ -10347,3 +10347,28 @@ beats retain private fallback crossings; unknown acoustic evidence freezes the
 integrals. Release and fade take priority. Voice's SpanGap law and separate random
 stream are reused with a Flora discriminator. This extends an author rule's scope;
 it does not establish phrase perception, boundaries or musical improvement.
+
+
+### 9.3.102 Flora amplitude and subdivision opportunities (2026-10-25)
+
+The author reported slow large changes but vibrato-like motion at high pace, and
+questioned whether increasing pace was producing the intended faster sound motion.
+The coordinating FD-1 count found Flora 1 births/s of 0.96, 2.63, 2.70, 3.03 and
+3.45 at pace 1, 4, 16, 64 and 256. Beat crossings already limited births near pace 4.
+In selected lane-band envelopes, the 3–12 Hz share was 0.14–0.32 at pace 16 and
+0.44–0.83 at 64/256. These diagnostic band extractions can include neighboring
+partials; they are not isolated-lane measurements or listening acceptance.
+
+The author adopted both proposed changes: update tonal/residual amplitude targets,
+including their joint normalization, only at confirmed action opportunities; and
+use confirmed subdivisions when ecological renewal is faster than the private beat.
+The existing positive subdivision confidence and known ratio 2–4 supply the evidence;
+phase is not reset. Targets follow current biomass every hop during unknown, stale
+or unconfirmed fallback. Support loss and release keep immediate exits. Existing
+slew connects the targets. Span/gap decisions keep their beat crossings.
+
+Ecology and retirement now saturate at one 10-second renewal per nominal opportunity,
+replacing CAP-1's per-hop cap: speed is (f/2)*min(k,20*r), with r=1 for beats and
+fallback. Phase correction changes crossing times, not the nominal rate law.
+This is an adopted compositional rule. It does not claim more frequent harmonic
+progression, musical improvement, or a new real-time acceptance result.

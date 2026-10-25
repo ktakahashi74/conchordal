@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Flora now holds tonal and residual amplitude targets and their joint normalization
+  between confirmed action opportunities, retaining slew and immediate support-loss
+  exits. Unknown, stale or unconfirmed timing continues to update each hop.
+  Faster-than-beat ecological renewal uses confirmed subdivisions (ratios 2–4)
+  without resetting beat phase. Ecology and retirement saturate at one renewal
+  per nominal opportunity, replacing the previous per-hop cap. Span/gap transitions
+  retain beat crossings. Flora sound changes under these adopted rules.
+
 - Flora adds initial-only `rest_on_habituation(w)` (default 0). Positive weights
   reuse the shared acoustic attack history to alternate spans and gaps. Exit uses
   tonal target-power-weighted habituation; all lanes retire at a private beat
@@ -19,7 +27,7 @@
   to its private beat clock. Growth, spread, seeding, recovery, consumption and
   retirement share the multiplier. Beat opportunities, birth slew and macro fade
   retain their clocks. Pace retains the 1/64 finite-retirement minimum with no cost-based upper
-  bound; ecological time saturates at 10 seconds per hop. The composer owns
+  bound; ecological time now saturates at 10 seconds per nominal opportunity. The composer owns
   whole-scene real-time cost. `rest_on_habituation(w)` and `dwell(w)` accept
   finite nonnegative weights above 1 without changing their laws.
 

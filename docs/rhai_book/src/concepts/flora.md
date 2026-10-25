@@ -97,8 +97,10 @@ The Flora API is Experimental. Its dynamics are authored composition rules; this
 ## Beat opportunities
 
 Every Flora uses beat opportunities: with fresh confirmed evidence, new tonal lanes
-and ordinary replacements wait for the Flora's next local clock crossing. Biomass
-and resources continue to evolve every hop. There is no timing opt-out;
+and ordinary replacements, together with tonal and residual amplitude targets, wait for the Flora's next local clock crossing. Biomass
+and resources continue to evolve every hop. Targets, including their shared normalization,
+use biomass at each opportunity and stay fixed until the next; the existing slew
+connects them. There is no timing opt-out;
 `flora().metric()` has been removed.
 
 Like Population `metric()`, Flora uses a private CouplingClock with confidence-weighted
@@ -117,8 +119,14 @@ sample crossing within the hop; births retain their amplitude slew while retirin
 tones use the metabolic tail described below. Thus neither
 all endings nor detected acoustic onsets are quantized to the beat.
 
+When ecological renewal is faster than a private beat (`k > 20`) and the meter
+confirms a subdivision (positive confidence and ratio 2, 3 or 4), crossings of
+private phase times that ratio also become opportunities. Otherwise allocation
+uses beat crossings only. Layer changes retain phase. Span/gap transitions still
+use beat crossings.
+
 Before beat confirmation, or while the observation is unknown or stale, allocation
-runs continuously each hop. Pending candidates are discarded and current biomass is reconsidered; the
+runs continuously each hop, including amplitude targets and normalization. Pending candidates are discarded and current biomass is reconsidered; the
 private clock is not reset and stored candidates are not replayed as a burst.
 
 ## Pace and release
@@ -137,22 +145,22 @@ All lanes retire with a finite metabolic amplitude tail. The existing macro
 births while tails occupy slots. The independent `rate` and `renewal` methods
 have been removed. `pace(k)` scales their shared time and divides the retirement
 tail duration by k at fixed f until saturation. Birth slew and macro fade retain physical seconds;
-pace does not change the private beat clock or its opportunities.
+pace retains the private beat clock while selecting the action layer described above.
 
 Sample 17 uses `temporal_basin(2, 4)`: its 3 Hz prior is 1.5 times neutral 2 Hz.
 The sustained scene has no explicit beat carrier; any confirmed acoustic beat can
 still change Flora's pace. The basin is a compositional choice, not a new default
 or a measured optimum.
 
-Ecological time per hop saturates at the 10-second resource renewal time:
-`dt_eco = min{k * (f / 2 Hz) * dt_hop, 10 s}`. Retirement uses the same
-saturated pace. Flora cannot respond faster than it listens; increasing k beyond
-this point advances no additional ecological time. The substep rule is unchanged.
-At 48 kHz / hop 512 / 4 Hz, saturation starts at k=468.75 and uses 1600 substeps
-on the default grid. F-19d measured 84, 146, 296, 684 and 1437 microseconds/hop
-for k=1, 2, 4, 8 and 16 (690 bins, 4 Hz). Extrapolating the last measurement
-from 55 to 1600 substeps estimates 41.8 ms/hop at saturation, not a measurement.
-Cost grows roughly with k until saturation. As with Voice self-exclusion,
+`pace(k)` determines how far ecology advances between action opportunities.
+Its speed saturates at one 10-second resource renewal per nominal opportunity:
+`dt_eco = (f / (2 Hz)) * min{k, 20*r} * dt_hop`, where r is 1 for beats or
+continuous fallback, and the confirmed subdivision ratio otherwise. Saturation
+starts at k=20 for beats, or 40, 60 or 80 for ratios 2, 3 or 4. Further increases
+advance no additional ecology. Retirement shares this speed. Phase correction
+moves opportunities without changing this nominal rate law. The substep rule
+is unchanged; the previous per-hop saturation and its cost estimate are superseded.
+No new real-time measurement is claimed. As with Voice self-exclusion,
 real-time cost depends on the entire scene and is the composer's responsibility.
 
 ## Partial motion

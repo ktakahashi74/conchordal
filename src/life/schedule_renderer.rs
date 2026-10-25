@@ -2101,6 +2101,7 @@ mod tests {
                     residual: true,
                     leave_self_out: true,
                     routing: Routing::default(),
+                    ..FloraSpec::default()
                 },
                 (220., 880.),
                 FloraSeeding::Uniform,

@@ -464,15 +464,22 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   loss and release retire immediately. Changes apply at sample crossings within
   the hop. Unknown, stale or unconfirmed observations use continuous allocation without resetting
   the clock; biomass/resources stay continuous. Flora has no `metric()` opt-in or opt-out.
-  Flora `pace(k)` (default 1, initial and live) multiplies its ecological time
-  relative to the private beat velocity: `dt_eco = min(k * (f / 2 Hz) * dt, 10 s)`. Growth,
-  spread, seeding, recovery and both consumption paths share that time. Retirement
-  uses the same multiplier; birth slew, macro fade and beat opportunities do not.
-  Pace keeps its 1/64 finite-retirement minimum (48 kHz / hop 512, 0.5 Hz).
-  There is no cost-based upper clamp. Ecological time saturates at RENEWAL_SEC
-  (10 seconds) per hop, and retirement uses the same saturated pace. The existing
-  substep rule gives 1600 steps at saturation on the default grid. Whole-scene
-  real-time cost remains the composer's responsibility, as with Voice observers.
+  Tonal and residual amplitude targets, including joint normalization, update only
+  at action crossings during confirmed timing; supported targets hold between
+  crossings while the existing slew advances. Fallback updates every hop.
+  Flora `pace(k)` (default 1, initial and live) scales ecological time relative
+  to private beat velocity f/2. If k > 20 and a fresh confirmed beat has positive
+  subdivision confidence and ratio 2, 3 or 4, phase-times-ratio crossings also
+  allow action. Otherwise use beat crossings. Layer switches preserve phase;
+  span/gap transitions retain beat crossings. `temporal.opportunity_ratio` records
+  the selected layer. Saturation is one RENEWAL_SEC (10 s) per nominal opportunity:
+  `dt_eco = (f / (2 Hz)) * min(k, 20*r) * dt`, with r=1 in fallback.
+  Growth, spread, seeding, recovery, both consumption paths and retirement share
+  this speed; birth slew and macro fade keep physical time. Phase correction
+  moves crossings without changing the nominal speed law. The positivity substep
+  rule remains unchanged. Pace keeps its 1/64 finite-retirement minimum
+  (48 kHz / hop 512, 0.5 Hz), with no cost-based upper clamp.
+  Whole-scene real-time cost remains the composer's responsibility.
   NaN, negative infinity and subminimum pace warn and use the minimum; positive
   infinity and positive f32 overflow warn and use f32::MAX (internal saturation).
   Flora initial/live `pitch_apply_mode("glide")` preserves peak tracking by default.

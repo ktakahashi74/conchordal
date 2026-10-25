@@ -269,7 +269,7 @@ fn pace_retirement_duration_record() {
 #[test]
 fn pace_saturation_preserves_ecology_render_and_retirement() {
     let (terrain, original) = fixed_flora(512);
-    let threshold = RENEWAL_SEC / (original.hop as f32 / original.fs);
+    let threshold = 2.0 * RENEWAL_SEC;
     let mut reference = original.clone();
     reference.apply_patch(&FloraPatch {
         pace: Some(threshold),
@@ -290,7 +290,7 @@ fn pace_saturation_preserves_ecology_render_and_retirement() {
                     MeterShaping::default(),
                 );
                 f.advance(&terrain);
-                assert_eq!(f.substeps, 1600);
+                assert_eq!(f.substeps, 35);
                 assert!(
                     f.biomass_mass_scan
                         .iter()

@@ -328,7 +328,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Live,
         usage: &["pace(multiplier)"],
         summary: "Set Flora's ecological speed relative to its private beat clock with a minimum of 1/64 and no cost-based upper bound (default 1).",
-        details: "Ecological time is min{k*(f/2 Hz)*dt, 10 s} per hop for growth, spread, seeding, recovery and consumption. Retirement shares saturation; beat opportunities, birth slew and macro fade keep their clocks. Finite f32 values above the minimum are retained. Values below 1/64, NaN and negative infinity warn and use 1/64. Positive infinity and positive f32 overflow warn and use f32::MAX, reaching saturation. Live patches emit at wait, flush or scope end. Whole-scene real-time cost is the composer's responsibility, as with Voice self-exclusion. See the Flora chapter for the finite-retirement minimum, measurements and saturation cost estimate.",
+        details: "Ecological speed is (f/2 Hz)*min{k,20*r}: one 10-second renewal per nominal opportunity. Ratio r is 1 for beats/fallback; k>20 enables confirmed subdivisions of 2, 3 or 4. Tonal/residual amplitude targets hold between confirmed opportunities; fallback updates each hop. Retirement shares saturation; beat phase, birth slew and macro fade keep their clocks. Finite f32 values above the minimum are retained. Subminimum values, NaN and negative infinity warn and use 1/64; positive infinity/overflow warn and use f32::MAX. Live patches emit at wait, flush or scope end. Whole-scene real-time cost remains the composer's responsibility. See the Flora chapter for details.",
     },
     FnDoc {
         name: "fade",

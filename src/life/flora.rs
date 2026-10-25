@@ -87,9 +87,9 @@ const INITIAL_BIOMASS: f32 = 0.5;
 const SLEW_SEC: f32 = 0.08;
 const DEAD_MASS: f32 = 0.001;
 
-fn ecological_pace(multiplier: f32, beat_pace: f32, hop_sec: f32) -> f32 {
-    // Saturate all ecological processes, including retirement, at one renewal per hop.
-    (beat_pace * multiplier).min(RENEWAL_SEC / hop_sec)
+fn ecological_pace(multiplier: f32, beat_pace: f32, opportunity_ratio: u8) -> f32 {
+    // One renewal per opportunity; beat_pace is the private beat frequency / 2 Hz.
+    beat_pace * multiplier.min(2.0 * RENEWAL_SEC * f32::from(opportunity_ratio))
 }
 
 fn random_unit(state: &mut u64) -> f32 {
@@ -510,7 +510,7 @@ impl Flora {
             fs,
             hop,
             substeps: 1,
-            pace: ecological_pace(spec.pace, 1.0, hop as f32 / fs),
+            pace: ecological_pace(spec.pace, 1.0, 1),
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
             growth_level_scan: Vec::new(),
@@ -595,7 +595,7 @@ impl Flora {
             self.pace = ecological_pace(
                 pace,
                 self.temporal.as_ref().unwrap().pace,
-                self.hop as f32 / self.fs,
+                self.temporal.as_ref().unwrap().opportunity_ratio,
             );
         }
         if let Some(amp) = patch.amp {
@@ -685,7 +685,7 @@ impl Flora {
             }
         }
         self.diffusion = 0.5 * (10.0 * space.bins_per_oct as f32 / 1200.0).powi(2);
-        self.substeps = (((self.hop as f32 / self.fs) * self.pace).min(RENEWAL_SEC)
+        self.substeps = (((self.hop as f32 / self.fs) * self.pace)
             * (GROWTH_RATE / 0.05).max(self.diffusion / 0.25))
         .ceil()
         .max(1.0) as usize;
@@ -841,12 +841,12 @@ impl Flora {
         if self.range.is_empty() {
             return;
         }
-        self.substeps = (((self.hop as f32 / self.fs) * self.pace).min(RENEWAL_SEC)
+        self.substeps = (((self.hop as f32 / self.fs) * self.pace)
             * (GROWTH_RATE / 0.05).max(self.diffusion / 0.25))
         .ceil()
         .max(1.0) as usize;
         let substeps = self.substeps;
-        let dt = (self.hop as f32 / self.fs * self.pace).min(RENEWAL_SEC) / substeps as f32;
+        let dt = (self.hop as f32 / self.fs * self.pace) / substeps as f32;
         self.advance_ecology(dt, substeps);
     }
 
@@ -1209,7 +1209,12 @@ impl Flora {
             let m = self.temporal.as_ref().unwrap();
             let crossing = m.crossings.iter().any(|c| c.tick == at);
             let active = m.active;
-            let transition = crossing && !self.releasing && self.span_gap_opportunity(at);
+            let beat_crossing = if m.opportunity_ratio == 1 {
+                crossing
+            } else {
+                m.beat_crossings.iter().any(|c| c.tick == at)
+            };
+            let transition = beat_crossing && !self.releasing && self.span_gap_opportunity(at);
             if crossing && (active || transition) && !self.releasing && !self.range.is_empty() {
                 self.metric_allocate(true, t);
                 for lane in &mut self.lanes {

@@ -210,6 +210,18 @@ impl CouplingClock {
         rhythms: &NeuralRhythms,
         out: &mut Vec<CandidatePoint>,
     ) {
+        self.gather_rhythm_subdivided(fs, now_tick..frame_end, rhythms, out, None);
+    }
+
+    pub(crate) fn gather_rhythm_subdivided(
+        &mut self,
+        fs: f32,
+        interval: std::ops::Range<Tick>,
+        rhythms: &NeuralRhythms,
+        out: &mut Vec<CandidatePoint>,
+        mut subdivisions: Option<(u8, &mut Vec<CandidatePoint>)>,
+    ) {
+        let (now_tick, frame_end) = (interval.start, interval.end);
         if !fs.is_finite() || fs <= 0.0 || frame_end <= now_tick {
             return;
         }
@@ -230,6 +242,30 @@ impl CouplingClock {
             let frac_to_next = 1.0 - my_frac as f64;
             let dt_cross_sec = frac_to_next / phase_dot as f64;
             let cross_tick = cursor + dt_cross_sec * fs as f64;
+            // Observe fractional crossings without changing the beat's phase or renewal RNG.
+            if let Some((ratio, points)) = &mut subdivisions {
+                let ratio = f64::from(*ratio);
+                // Search half a sample back so a boundary-rounded crossing belongs
+                // to the next hop rather than being lost at an exact fractional phase.
+                let half_sample = 0.5 * phase_dot as f64 / fs as f64;
+                let mut next = ((self.phase - half_sample) * ratio).ceil();
+                while next / ratio < self.phase.floor() + 1.0 {
+                    if next.rem_euclid(ratio) != 0.0 {
+                        let tick =
+                            cursor + (next / ratio - self.phase) / phase_dot as f64 * fs as f64;
+                        if tick >= cross_tick || tick.round() >= frame_end {
+                            break;
+                        }
+                        if tick.round() >= now_tick as f64 {
+                            points.push(CandidatePoint {
+                                tick: tick.round() as Tick,
+                                gate: self.gate_index,
+                            });
+                        }
+                    }
+                    next += 1.0;
+                }
+            }
             if !cross_tick.is_finite() || cross_tick >= frame_end {
                 let remaining_sec = (frame_end - cursor) / fs as f64;
                 if remaining_sec > 0.0 {
@@ -253,6 +289,13 @@ impl CouplingClock {
                 tick,
                 gate: self.gate_index,
             });
+
+            if let Some((_, points)) = &mut subdivisions {
+                points.push(CandidatePoint {
+                    tick,
+                    gate: self.gate_index,
+                });
+            }
 
             // Renewal: redraw the intrinsic rate for the next interval.
             let ioi = OnsetRule::flow_next_ioi(

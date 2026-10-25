@@ -1197,6 +1197,68 @@ fn coupling_clock_free_runs_at_base_rate_with_zero_confidence() {
 }
 
 #[test]
+fn coupling_subdivisions_follow_private_phase_without_changing_beat_or_rng() {
+    let rhythms = NeuralRhythms::default();
+    for ratio in [2, 3, 4] {
+        let mut clock = CouplingClock::new(0.0, 2.0, 0.0, 0.0, 21);
+        clock.phase = 0.125;
+        let mut beat_only = clock.clone();
+        let mut beats = Vec::new();
+        let mut points = Vec::new();
+        let mut reference = Vec::new();
+        // A long interval crosses several beats and fractional boundaries.
+        clock.gather_rhythm_subdivided(
+            48000.0,
+            0..72000,
+            &rhythms,
+            &mut beats,
+            Some((ratio, &mut points)),
+        );
+        beat_only.gather_rhythm(48000.0, 0, 72000, &rhythms, &mut reference);
+        assert_eq!(
+            beats.iter().map(|c| c.tick).collect::<Vec<_>>(),
+            reference.iter().map(|c| c.tick).collect::<Vec<_>>()
+        );
+        let expected: Vec<_> = (1..=3 * u64::from(ratio))
+            .map(|n| ((n as f64 / f64::from(ratio) - 0.125) * 24000.0).round() as u64)
+            .collect();
+        assert_eq!(points.iter().map(|c| c.tick).collect::<Vec<_>>(), expected);
+        assert_eq!(clock.phase, beat_only.phase);
+        assert_eq!(clock.rng.random::<u64>(), beat_only.rng.random::<u64>());
+        let mut split = CouplingClock::new(0.0, 2.0, 0.0, 0.0, 21);
+        split.phase = 0.125;
+        let mut split_reference = split.clone();
+        reference.clear();
+        points.clear();
+        beats.clear();
+        for now in (0..72000).step_by(500) {
+            split_reference.gather_rhythm(48000.0, now, now + 500, &rhythms, &mut reference);
+            split.gather_rhythm_subdivided(
+                48000.0,
+                now..now + 500,
+                &rhythms,
+                &mut beats,
+                Some((ratio, &mut points)),
+            );
+        }
+        assert_eq!(
+            beats.iter().map(|c| c.tick).collect::<Vec<_>>(),
+            reference.iter().map(|c| c.tick).collect::<Vec<_>>()
+        );
+        assert_eq!(split.phase, split_reference.phase);
+        assert_eq!(points.len(), expected.len());
+        for (i, (point, tick)) in points.iter().zip(expected).enumerate() {
+            if (i + 1) % usize::from(ratio) == 0 {
+                // Preserve the beat clock's existing last-sample boundary clamp.
+                assert_eq!(point.tick, reference[(i + 1) / usize::from(ratio) - 1].tick);
+            } else {
+                assert_eq!(point.tick, tick);
+            }
+        }
+    }
+}
+
+#[test]
 fn coupling_clock_clamps_extreme_base_rate() {
     // A pathological base rate must not collapse the period to ~1 tick.
     let mut clock = CouplingClock::new(0.0, 1.0e9, 0.0, 0.0, 1);

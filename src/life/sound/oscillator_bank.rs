@@ -12,10 +12,9 @@ use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::life::voice::ArticulationSignal;
 use crate::scenario::{HarmonicMode, TimbreGenotype};
 use crate::synth::SynthError;
+use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 use std::f32::consts::TAU;
 use std::sync::Arc;
-#[cfg(feature = "simd-wide")]
-use wide::f32x8;
 
 const PITCH_REFRESH_PERIOD_SAMPLES: usize = 64;
 const MOTION_REFRESH_PERIOD_SAMPLES: usize = 8;
@@ -28,18 +27,6 @@ const SPECTRAL_ENV_RELEASE_SEC: f32 = 0.5;
 const SPECTRAL_ENERGY_FLOOR: f32 = 0.3;
 // Below this damping the coupling is inert; skip the machinery entirely.
 const DAMPING_EPSILON: f32 = 1.0e-4;
-
-#[cfg(any(target_feature = "fma", target_feature = "neon"))]
-#[inline(always)]
-fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
-    a.mul_add(b, c)
-}
-
-#[cfg(not(any(target_feature = "fma", target_feature = "neon")))]
-#[inline(always)]
-fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
-    a * b + c
-}
 
 #[derive(Debug, Clone)]
 enum OscillatorProfile {
@@ -639,7 +626,7 @@ impl OscillatorBank {
     #[cfg(debug_assertions)]
     fn debug_assert_state_norms_sane(&self) {
         for idx in 0..self.active_lane_len {
-            let norm_sq = self.x[idx].mul_add(self.x[idx], self.y[idx] * self.y[idx]);
+            let norm_sq = self.x[idx] * self.x[idx] + self.y[idx] * self.y[idx];
             debug_assert!(
                 norm_sq.is_finite() && (0.25..=4.0).contains(&norm_sq),
                 "oscillator lane {idx} magnitude drifted: |state|^2 = {norm_sq}"
@@ -647,126 +634,91 @@ impl OscillatorBank {
         }
     }
 
-    /// Reference kernel. Both callers are cfg-gated away from the default lib
-    /// build: the non-SIMD `process_sample` and `render_block_for_test`.
-    #[allow(dead_code)]
+    /// Per-lane reference for the rotation kernel.
+    #[cfg(test)]
     fn process_sample_basic(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
         let mut out = 0.0;
         for idx in 0..self.active_lane_len {
-            let x0 = self.x[idx];
-            let y0 = self.y[idx];
-            let c = self.rot_c[idx];
-            let s = self.rot_s[idx];
-
-            let base_x = mul_add_fast(c, x0, -s * y0);
-            let base_y = mul_add_fast(s, x0, c * y0);
+            let (x0, y0) = (self.x[idx], self.y[idx]);
+            let (c, s) = (self.rot_c[idx], self.rot_s[idx]);
+            let base_x = c * x0 - s * y0;
+            let base_y = s * x0 + c * y0;
             let (x1, y1) = if use_motion {
                 (
-                    mul_add_fast(motion_c, base_x, -motion_s * base_y),
-                    mul_add_fast(motion_s, base_x, motion_c * base_y),
+                    motion_c * base_x - motion_s * base_y,
+                    motion_s * base_x + motion_c * base_y,
                 )
             } else {
                 (base_x, base_y)
             };
-
             self.x[idx] = x1;
             self.y[idx] = y1;
-            out = mul_add_fast(self.gain_mask[idx], y1, out);
+            out += self.gain_mask[idx] * y1;
         }
         out
     }
 
-    #[cfg(feature = "simd-wide")]
-    fn process_sample_optimized(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
-        if self.active_lane_len == 0 {
-            return 0.0;
-        }
+    /// Rotates every active lane once. Per-sample calls use the compile-time baseline
+    /// level (SSE2, NEON), which needs no runtime dispatch. Without `mul_add`, every
+    /// level matches `process_sample_basic` bit for bit.
+    fn process_sample(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
+        dispatch!(Level::baseline(), simd => {
+            self.process_sample_lanes(simd, use_motion, motion_s, motion_c)
+        })
+    }
 
-        let x_ptr = self.x.as_mut_ptr();
-        let y_ptr = self.y.as_mut_ptr();
-        let rot_c_ptr = self.rot_c.as_ptr();
-        let rot_s_ptr = self.rot_s.as_ptr();
-        let gain_ptr = self.gain_mask.as_ptr();
-        let motion_s_vec = f32x8::splat(motion_s);
-        let motion_c_vec = f32x8::splat(motion_c);
+    #[inline(always)]
+    fn process_sample_lanes<S: Simd>(
+        &mut self,
+        simd: S,
+        use_motion: bool,
+        motion_s: f32,
+        motion_c: f32,
+    ) -> f32 {
+        let (ms, mc) = (f32x8::splat(simd, motion_s), f32x8::splat(simd, motion_c));
         let mut out = 0.0;
-        let simd_len = self.active_lane_len & !7;
-
-        // Safety: all arrays have length >= lane_len_simd. The SIMD loop only accesses the
-        // active prefix rounded down to a multiple of 8.
-        unsafe {
-            for idx in (0..simd_len).step_by(8) {
-                let x0_arr = std::ptr::read_unaligned(x_ptr.add(idx) as *const [f32; 8]);
-                let y0_arr = std::ptr::read_unaligned(y_ptr.add(idx) as *const [f32; 8]);
-                let rot_c_arr = std::ptr::read_unaligned(rot_c_ptr.add(idx) as *const [f32; 8]);
-                let rot_s_arr = std::ptr::read_unaligned(rot_s_ptr.add(idx) as *const [f32; 8]);
-                let gain_arr = std::ptr::read_unaligned(gain_ptr.add(idx) as *const [f32; 8]);
-
-                let x0 = f32x8::from(x0_arr);
-                let y0 = f32x8::from(y0_arr);
-                let c = f32x8::from(rot_c_arr);
-                let s = f32x8::from(rot_s_arr);
-                let base_x = c.mul_add(x0, -(s * y0));
-                let base_y = s.mul_add(x0, c * y0);
-                let (x1_vec, y1_vec) = if use_motion {
-                    (
-                        motion_c_vec.mul_add(base_x, -(motion_s_vec * base_y)),
-                        motion_s_vec.mul_add(base_x, motion_c_vec * base_y),
-                    )
-                } else {
-                    (base_x, base_y)
-                };
-
-                let x1_arr = x1_vec.to_array();
-                let y1_arr = y1_vec.to_array();
-                std::ptr::write_unaligned(x_ptr.add(idx) as *mut [f32; 8], x1_arr);
-                std::ptr::write_unaligned(y_ptr.add(idx) as *mut [f32; 8], y1_arr);
-
-                for lane in 0..8 {
-                    out = mul_add_fast(gain_arr[lane], y1_arr[lane], out);
-                }
+        let mut idx = 0;
+        while idx + 8 <= self.active_lane_len {
+            let lanes = idx..idx + 8;
+            let load = |values: &[f32]| f32x8::from_slice(simd, &values[lanes.clone()]);
+            let (x0, y0, c, s) = (
+                load(&self.x),
+                load(&self.y),
+                load(&self.rot_c),
+                load(&self.rot_s),
+            );
+            let base_x = c * x0 - s * y0;
+            let base_y = s * x0 + c * y0;
+            let (x1, y1) = if use_motion {
+                (mc * base_x - ms * base_y, ms * base_x + mc * base_y)
+            } else {
+                (base_x, base_y)
+            };
+            x1.store_slice(&mut self.x[lanes.clone()]);
+            y1.store_slice(&mut self.y[lanes.clone()]);
+            for (gain, y1) in self.gain_mask[lanes].iter().zip(y1.to_array()) {
+                out += gain * y1;
             }
+            idx += 8;
         }
-
-        for idx in simd_len..self.active_lane_len {
-            let x0 = self.x[idx];
-            let y0 = self.y[idx];
-            let c = self.rot_c[idx];
-            let s = self.rot_s[idx];
-
-            let base_x = mul_add_fast(c, x0, -s * y0);
-            let base_y = mul_add_fast(s, x0, c * y0);
+        for idx in idx..self.active_lane_len {
+            let (x0, y0) = (self.x[idx], self.y[idx]);
+            let (c, s) = (self.rot_c[idx], self.rot_s[idx]);
+            let base_x = c * x0 - s * y0;
+            let base_y = s * x0 + c * y0;
             let (x1, y1) = if use_motion {
                 (
-                    mul_add_fast(motion_c, base_x, -motion_s * base_y),
-                    mul_add_fast(motion_s, base_x, motion_c * base_y),
+                    motion_c * base_x - motion_s * base_y,
+                    motion_s * base_x + motion_c * base_y,
                 )
             } else {
                 (base_x, base_y)
             };
-
             self.x[idx] = x1;
             self.y[idx] = y1;
-            out = mul_add_fast(self.gain_mask[idx], y1, out);
+            out += self.gain_mask[idx] * y1;
         }
-
         out
-    }
-
-    #[cfg(all(
-        feature = "simd-wide",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    ))]
-    fn process_sample(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
-        self.process_sample_optimized(use_motion, motion_s, motion_c)
-    }
-
-    #[cfg(not(all(
-        feature = "simd-wide",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    )))]
-    fn process_sample(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
-        self.process_sample_basic(use_motion, motion_s, motion_c)
     }
 
     pub fn render_block(&mut self, drive: &[f32], ctrl: ToneControlBlock, out: &mut [f32]) {
@@ -849,11 +801,7 @@ impl OscillatorBank {
         }
     }
 
-    #[cfg(all(
-        test,
-        feature = "simd-wide",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    ))]
+    #[cfg(test)]
     fn render_block_for_test(
         &mut self,
         drive: &[f32],
@@ -890,22 +838,11 @@ impl OscillatorBank {
             }
 
             let sample = if use_optimized {
-                #[cfg(feature = "simd-wide")]
-                {
-                    self.process_sample_optimized(
-                        self.current_motion_enabled,
-                        self.current_motion_s,
-                        self.current_motion_c,
-                    )
-                }
-                #[cfg(not(feature = "simd-wide"))]
-                {
-                    self.process_sample_basic(
-                        self.current_motion_enabled,
-                        self.current_motion_s,
-                        self.current_motion_c,
-                    )
-                }
+                self.process_sample(
+                    self.current_motion_enabled,
+                    self.current_motion_s,
+                    self.current_motion_c,
+                )
             } else {
                 self.process_sample_basic(
                     self.current_motion_enabled,
@@ -1353,10 +1290,6 @@ mod tests {
         assert!(backend.base_gain[9..].iter().all(|gain| *gain == 0.0));
     }
 
-    #[cfg(all(
-        feature = "simd-wide",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    ))]
     #[test]
     fn optimized_kernel_matches_basic_kernel() {
         let snapshot = BodySnapshot {
@@ -1390,26 +1323,10 @@ mod tests {
         basic.render_block_for_test(&drive, ctrl, &mut out_basic, false);
         optimized.render_block_for_test(&drive, ctrl, &mut out_optimized, true);
 
-        for (lhs, rhs) in out_basic.iter().zip(out_optimized.iter()) {
-            assert!(
-                (lhs - rhs).abs() <= 1.0e-6,
-                "output mismatch: {lhs} vs {rhs}"
-            );
-        }
-        for idx in 0..basic.lane_len_simd {
-            assert!(
-                (basic.x[idx] - optimized.x[idx]).abs() <= 1.0e-6,
-                "x mismatch at lane {idx}: {} vs {}",
-                basic.x[idx],
-                optimized.x[idx]
-            );
-            assert!(
-                (basic.y[idx] - optimized.y[idx]).abs() <= 1.0e-6,
-                "y mismatch at lane {idx}: {} vs {}",
-                basic.y[idx],
-                optimized.y[idx]
-            );
-        }
+        let bits = |values: &[f32]| values.iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+        assert_eq!(bits(&out_basic), bits(&out_optimized));
+        assert_eq!(bits(&basic.x), bits(&optimized.x));
+        assert_eq!(bits(&basic.y), bits(&optimized.y));
     }
 
     fn steady_ctrl(pitch_hz: f32, amp: f32) -> ToneControlBlock {

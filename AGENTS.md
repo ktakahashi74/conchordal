@@ -284,15 +284,18 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   independently of Flora placement or self-exclusion consumers.
   Use `--features profile-alloc` when measuring or asserting allocations; without it,
   allocation counts are unavailable. Runtime measurements live in `runtime_profile.rs`.
-- **SIMD**: New explicit SIMD uses `fearless_simd`: select the level once per call
+- **SIMD**: Explicit SIMD uses `fearless_simd`: select the level once per call
   (`dispatch!(Level::new(), ...)` or a `Level::as_*` token) and run generic
   `#[inline(always)]` kernels. Values that reach the ecology must be bit-identical on
   every SIMD level (SSE2 to AVX-512, NEON, wasm): no `mul_add`, and any cross-lane
   reduction uses a fixed logical width and order. Test each level a kernel runs on
   against a scalar reference (`core::roughness_kernel` row sums,
   `core::auditory_frontend` lanes). A kernel may run only on the levels where it is
-  faster if the other levels keep a bit-identical path. Synthesis kernels still use
-  `wide` (`simd-wide`) until migrated.
+  faster if the other levels keep a bit-identical path. Kernels called per sample
+  (synthesis) use `Level::baseline()`, the compile-time level, so they inline without
+  runtime dispatch. On blanche, `~/.cargo/config.toml` builds with
+  `target-cpu=native` (AVX-512, FMA), so its baseline level and `cfg!(target_feature)`
+  differ from CI and other machines, which build for the portable baseline.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
 
 ## Anti-Bloat Rules

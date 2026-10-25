@@ -10,8 +10,7 @@ use crate::core::float::{finite_or, sanitize_nonnegative_finite, sanitize01, uni
 use crate::core::landscape::Landscape;
 use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::scenario::{FloraPatch, FloraSeeding, FloraSpec, FloraTone};
-#[cfg(feature = "simd-wide")]
-use wide::f32x8;
+use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 
 #[path = "flora_metric.rs"]
 mod metric;
@@ -82,18 +81,6 @@ const BACKGROUND_SEED_DENSITY: f32 = 9.6e-4;
 const INITIAL_BIOMASS: f32 = 0.5;
 const SLEW_SEC: f32 = 0.08;
 const DEAD_MASS: f32 = 0.001;
-
-#[inline(always)]
-fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
-    #[cfg(any(target_feature = "fma", target_feature = "neon"))]
-    {
-        a.mul_add(b, c)
-    }
-    #[cfg(not(any(target_feature = "fma", target_feature = "neon")))]
-    {
-        a * b + c
-    }
-}
 
 fn random_unit(state: &mut u64) -> f32 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -278,12 +265,12 @@ impl Lane {
     }
 
     fn atom(&mut self, n: [f32; 2]) -> f32 {
-        let x = mul_add_fast(self.w[0], self.z[0], -self.w[1] * self.z[1]);
-        self.z[1] = mul_add_fast(self.w[1], self.z[0], self.w[0] * self.z[1]);
+        let x = self.w[0] * self.z[0] - self.w[1] * self.z[1];
+        self.z[1] = self.w[1] * self.z[0] + self.w[0] * self.z[1];
         self.z[0] = x;
-        self.e[0] = mul_add_fast(self.a, self.e[0], self.b * n[0]);
-        self.e[1] = mul_add_fast(self.a, self.e[1], self.b * n[1]);
-        mul_add_fast(self.e[0], self.z[0], -self.e[1] * self.z[1])
+        self.e[0] = self.a * self.e[0] + self.b * n[0];
+        self.e[1] = self.a * self.e[1] + self.b * n[1];
+        self.e[0] * self.z[0] - self.e[1] * self.z[1]
     }
 }
 
@@ -1280,57 +1267,15 @@ impl Flora {
     }
 }
 
+/// Sums every lane's atom. With `SIMD`, whole blocks of eight lanes use the
+/// compile-time baseline level (SSE2, NEON); without `mul_add` they match the scalar
+/// `Lane::atom` bit for bit.
 fn synthesize<const SIMD: bool>(lanes: &mut [Lane], noise: &[f32], amp: f32) -> f32 {
-    #[cfg(feature = "simd-wide")]
-    let mut first = 0;
-    #[cfg(not(feature = "simd-wide"))]
-    let first = 0;
-    let mut out = 0.0;
-    #[cfg(feature = "simd-wide")]
-    if SIMD {
-        while first + 8 <= lanes.len() {
-            let block = &mut lanes[first..first + 8];
-            let x = f32x8::from(std::array::from_fn(|i| block[i].z[0]));
-            let y = f32x8::from(std::array::from_fn(|i| block[i].z[1]));
-            let c = f32x8::from(std::array::from_fn(|i| block[i].w[0]));
-            let s = f32x8::from(std::array::from_fn(|i| block[i].w[1]));
-            let er = f32x8::from(std::array::from_fn(|i| block[i].e[0]));
-            let ei = f32x8::from(std::array::from_fn(|i| block[i].e[1]));
-            let a = f32x8::from(std::array::from_fn(|i| block[i].a));
-            let b = f32x8::from(std::array::from_fn(|i| block[i].b));
-            let nr = f32x8::from(std::array::from_fn(|i| {
-                if block[i].noisy {
-                    noise[2 * block[i].noise_index]
-                } else {
-                    0.0
-                }
-            }));
-            let ni = f32x8::from(std::array::from_fn(|i| {
-                if block[i].noisy {
-                    noise[2 * block[i].noise_index + 1]
-                } else {
-                    0.0
-                }
-            }));
-            let xr = c.mul_add(x, -(s * y));
-            let yi = s.mul_add(x, c * y);
-            let er = a.mul_add(er, b * nr);
-            let ei = a.mul_add(ei, b * ni);
-            let signal = er.mul_add(xr, -(ei * yi)).to_array();
-            let xr = xr.to_array();
-            let yi = yi.to_array();
-            let er = er.to_array();
-            let ei = ei.to_array();
-            for i in 0..8 {
-                block[i].z = [xr[i], yi[i]];
-                block[i].e = [er[i], ei[i]];
-                out = mul_add_fast(amp * block[i].r, signal[i], out);
-            }
-            first += 8;
-        }
-    }
-    #[cfg(not(feature = "simd-wide"))]
-    let _ = SIMD;
+    let (first, mut out) = if SIMD {
+        dispatch!(Level::baseline(), simd => synthesize_blocks(simd, lanes, noise, amp))
+    } else {
+        (0, 0.0)
+    };
     for lane in &mut lanes[first..] {
         let n = if lane.noisy {
             [noise[2 * lane.noise_index], noise[2 * lane.noise_index + 1]]
@@ -1338,9 +1283,58 @@ fn synthesize<const SIMD: bool>(lanes: &mut [Lane], noise: &[f32], amp: f32) -> 
             [0.0; 2]
         };
         let signal = lane.atom(n);
-        out = mul_add_fast(amp * lane.r, signal, out);
+        out += amp * lane.r * signal;
     }
     out
+}
+
+/// Returns the first lane past the whole blocks and the blocks' sum.
+#[inline(always)]
+fn synthesize_blocks<S: Simd>(
+    simd: S,
+    lanes: &mut [Lane],
+    noise: &[f32],
+    amp: f32,
+) -> (usize, f32) {
+    let mut out = 0.0;
+    let mut first = 0;
+    while first + 8 <= lanes.len() {
+        let block = &mut lanes[first..first + 8];
+        let x = f32x8::load_array(simd, std::array::from_fn(|i| block[i].z[0]));
+        let y = f32x8::load_array(simd, std::array::from_fn(|i| block[i].z[1]));
+        let c = f32x8::load_array(simd, std::array::from_fn(|i| block[i].w[0]));
+        let s = f32x8::load_array(simd, std::array::from_fn(|i| block[i].w[1]));
+        let er = f32x8::load_array(simd, std::array::from_fn(|i| block[i].e[0]));
+        let ei = f32x8::load_array(simd, std::array::from_fn(|i| block[i].e[1]));
+        let a = f32x8::load_array(simd, std::array::from_fn(|i| block[i].a));
+        let b = f32x8::load_array(simd, std::array::from_fn(|i| block[i].b));
+        let noise_part = |part: usize| {
+            f32x8::load_array(
+                simd,
+                std::array::from_fn(|i| {
+                    if block[i].noisy {
+                        noise[2 * block[i].noise_index + part]
+                    } else {
+                        0.0
+                    }
+                }),
+            )
+        };
+        let (nr, ni) = (noise_part(0), noise_part(1));
+        let xr = c * x - s * y;
+        let yi = s * x + c * y;
+        let er = a * er + b * nr;
+        let ei = a * ei + b * ni;
+        let signal = (er * xr - ei * yi).to_array();
+        let (xr, yi, er, ei) = (xr.to_array(), yi.to_array(), er.to_array(), ei.to_array());
+        for i in 0..8 {
+            block[i].z = [xr[i], yi[i]];
+            block[i].e = [er[i], ei[i]];
+            out += amp * block[i].r * signal[i];
+        }
+        first += 8;
+    }
+    (first, out)
 }
 
 #[cfg(test)]
@@ -2290,8 +2284,8 @@ mod tests {
         lane.e = [0.4, -0.6];
         let n = noise_draw(&mut 123);
         let expected = [
-            mul_add_fast(lane.a, lane.e[0], lane.b * n[0]),
-            mul_add_fast(lane.a, lane.e[1], lane.b * n[1]),
+            lane.a * lane.e[0] + lane.b * n[0],
+            lane.a * lane.e[1] + lane.b * n[1],
         ];
         lane.atom(n);
         assert_eq!(lane.e, expected);
@@ -2504,8 +2498,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "simd-wide")]
-    fn simd_and_scalar_share_noise_and_agree_for_ten_seconds() {
+    fn simd_and_scalar_share_noise_and_match_bits_for_ten_seconds() {
         let l = terrain();
         for tone in [FloraTone::Sine, FloraTone::Resonant] {
             let mut f = flora(&l);
@@ -2526,9 +2519,6 @@ mod tests {
             let mut p = vec![0.0; f.hop];
             let mut h = p.clone();
             let mut reference = p.clone();
-            let mut error = 0.0_f64;
-            let mut norm = 0.0_f64;
-            let mut maximum = 0.0_f32;
             for hop in 0..200 {
                 // Drift, jump beyond the tracking radius, disappear, then reuse freed lanes.
                 let bin = match hop {
@@ -2578,18 +2568,13 @@ mod tests {
                     }
                     _ => {}
                 }
-                for (&x, &y) in p.iter().zip(&reference) {
-                    error += f64::from(x - y).powi(2);
-                    norm += f64::from(y).powi(2);
-                    maximum = maximum.max((x - y).abs());
-                }
+                assert!(
+                    p.iter()
+                        .map(|x| x.to_bits())
+                        .eq(reference.iter().map(|y| y.to_bits())),
+                    "hop {hop}"
+                );
             }
-            assert!(
-                error.sqrt() <= 1e-5 * norm.sqrt(),
-                "relative error {}",
-                (error / norm).sqrt()
-            );
-            assert!(maximum <= 1e-6 * f.spec.amp, "absolute error {maximum}");
         }
     }
 

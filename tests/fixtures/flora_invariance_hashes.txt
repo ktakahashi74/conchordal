@@ -9,24 +9,29 @@
 # Previous fma=1,avx2=1,avx512f=1 harmonic e8142f2b885caed8
 # Previous fma=1,avx2=1,avx512f=1 modal 4d98006dba9e2662
 # Previous fma=1,avx2=1,avx512f=1 habituation 6ae03657b024e499
+# Previous values before synthesis dropped mul_add (fearless_simd migration):
+# Previous fma=1,avx2=1,avx512f=1 sine 160059c3466005b5
+# Previous fma=1,avx2=1,avx512f=1 harmonic 7d5d6aeed950e7a7
+# Previous fma=1,avx2=1,avx512f=1 modal c6c27eb401a2ea1d
+# Previous fma=1,avx2=1,avx512f=1 habituation 99fd0901f51c87fc
 # Input: tests/flora_invariance.rs CASES (embedded scripts, no sample files).
 # Seeds: sine=11, harmonic=12, modal=13, habituation=14.
 # Config: 48000 Hz mono PCM16; nfft=2048; hop_size=512; other keys default.
 # Habituation: sine/harmonic/modal=false; habituation=true.
 # Renderer: conchordal-render, deterministic offline analysis, dev profile.
 # Toolchain: rustc 1.99.0 (b940084d7 2026-09-28)
-# Features: default (simd-wide); platform: Linux x86_64 (GNU).
+# Features: default; platform: Linux x86_64 (GNU).
 # Target-feature keys: cfg!(target_feature = "fma" / "avx2" / "avx512f"), as 0/1.
 # Native Cargo config: -C target-cpu=native -C target-feature=+avx,+avx2,+fma,+f16c.
 # Each case captured twice below; both WAV hashes must agree.
 # target_features case fnv1a64(complete WAV bytes)
-# Capture fma=1,avx2=1,avx512f=1: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=<unset; Cargo config applies>
-fma=1,avx2=1,avx512f=1 sine 160059c3466005b5
-fma=1,avx2=1,avx512f=1 harmonic 7d5d6aeed950e7a7
-fma=1,avx2=1,avx512f=1 modal c6c27eb401a2ea1d
-fma=1,avx2=1,avx512f=1 habituation 99fd0901f51c87fc
 # Capture fma=0,avx2=0,avx512f=0: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=-C target-cpu=x86-64
 fma=0,avx2=0,avx512f=0 sine a83ee63023d228a6
 fma=0,avx2=0,avx512f=0 harmonic 9bcb1345c1ef3ba1
 fma=0,avx2=0,avx512f=0 modal 6cf9b6bbfc1687de
 fma=0,avx2=0,avx512f=0 habituation 07d48b5d61d5bb9b
+# Capture fma=1,avx2=1,avx512f=1: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=<unset; Cargo config applies>
+fma=1,avx2=1,avx512f=1 sine a83ee63023d228a6
+fma=1,avx2=1,avx512f=1 harmonic 9bcb1345c1ef3ba1
+fma=1,avx2=1,avx512f=1 modal 6cf9b6bbfc1687de
+fma=1,avx2=1,avx512f=1 habituation 07d48b5d61d5bb9b

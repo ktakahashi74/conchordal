@@ -181,9 +181,9 @@ fn renders_without_flora_match_auditory_references() {
         u8::from(cfg!(target_feature = "avx2")),
         u8::from(cfg!(target_feature = "avx512f")),
     );
-    // Floating-point DSP differs across platforms and target features: native
-    // AVX/FMA builds already differ from portable x86_64 on this machine. Compare
-    // only a registered Linux x86_64 feature group. Unregistered groups and other
+    // DSP avoids mul_add, so native AVX/FMA and portable x86_64 builds currently
+    // agree; groups stay keyed so a divergence shows per group. Compare only a
+    // registered Linux x86_64 feature group. Unregistered groups and other
     // platforms retain the finite-output and silent-tail checks above.
     let compare_hashes = cfg!(all(target_os = "linux", target_arch = "x86_64"));
     if std::env::var("FLORA_INVARIANCE_CAPTURE").as_deref() == Ok("1") {

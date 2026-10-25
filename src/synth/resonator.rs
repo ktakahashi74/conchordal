@@ -3,22 +3,8 @@
 
 use crate::synth::SynthError;
 use crate::synth::modes::{ModeParams, compile_mode};
+use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 use std::f32::consts::PI;
-#[cfg(feature = "simd-wide")]
-use wide::{f32x4, f32x8};
-
-// Use fused mul-add only when the SIMD path can also fuse, to keep outputs aligned.
-#[cfg(any(target_feature = "fma", target_feature = "neon"))]
-#[inline(always)]
-fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
-    a.mul_add(b, c)
-}
-
-#[cfg(not(any(target_feature = "fma", target_feature = "neon")))]
-#[inline(always)]
-fn mul_add_fast(a: f32, b: f32, c: f32) -> f32 {
-    a * b + c
-}
 
 #[inline]
 fn splitmix64_next(state: &mut u64) -> u64 {
@@ -261,169 +247,42 @@ impl ResonatorBank {
         out
     }
 
-    /// Scalar MCF update with unchecked indexing to remove bounds checks.
-    /// Reached only when the SIMD path is unavailable (see `process_sample`),
-    /// so it is dead in the default build but must keep compiling.
-    #[allow(dead_code)]
-    fn process_sample_magic_scalar_unsafe(&mut self, u: f32) -> f32 {
-        let n = self.active_len;
-        let x_ptr = self.x.as_mut_ptr();
-        let y_ptr = self.y.as_mut_ptr();
-        let e_ptr = self.e.as_ptr();
-        let r_ptr = self.r.as_ptr();
-        let b1_ptr = self.b1.as_ptr();
-        let b2_ptr = self.b2.as_ptr();
-        let gain_ptr = self.gain.as_ptr();
-
-        let mut out = 0.0;
-
-        // Safety: all arrays have length >= active_len, and we only access 0..n.
-        unsafe {
-            for i in 0..n {
-                let x0 = *x_ptr.add(i);
-                let y0 = *y_ptr.add(i);
-                let e = *e_ptr.add(i);
-                let r = *r_ptr.add(i);
-                let b1 = *b1_ptr.add(i);
-                let b2 = *b2_ptr.add(i);
-                let gain = *gain_ptr.add(i);
-
-                let x1 = mul_add_fast(r, mul_add_fast(-e, y0, x0), b1 * u);
-                let y1 = mul_add_fast(r, mul_add_fast(e, x1, y0), b2 * u);
-
-                *x_ptr.add(i) = x1;
-                *y_ptr.add(i) = y1;
-
-                out = mul_add_fast(gain, y1, out);
-            }
-        }
-
-        out
-    }
-
-    /// SIMD fast path with unsafe pointer access to reduce bounds checks/copies.
-    #[cfg(feature = "simd-wide")]
-    fn process_sample_simd_wide_fast(&mut self, u: f32) -> f32 {
-        let n = self.active_len;
-        let n8 = n & !7;
-        let u8 = f32x8::splat(u);
-        let u4 = f32x4::splat(u);
-
-        let x_ptr = self.x.as_mut_ptr();
-        let y_ptr = self.y.as_mut_ptr();
-        let e_ptr = self.e.as_ptr();
-        let r_ptr = self.r.as_ptr();
-        let b1_ptr = self.b1.as_ptr();
-        let b2_ptr = self.b2.as_ptr();
-        let gain_ptr = self.gain.as_ptr();
-
-        let mut out = 0.0;
-
-        // Safety: all arrays have length >= active_len; loops only access valid lanes.
-        unsafe {
-            for i in (0..n8).step_by(8) {
-                let x0_arr = std::ptr::read_unaligned(x_ptr.add(i) as *const [f32; 8]);
-                let y0_arr = std::ptr::read_unaligned(y_ptr.add(i) as *const [f32; 8]);
-                let e_arr = std::ptr::read_unaligned(e_ptr.add(i) as *const [f32; 8]);
-                let r_arr = std::ptr::read_unaligned(r_ptr.add(i) as *const [f32; 8]);
-                let b1_arr = std::ptr::read_unaligned(b1_ptr.add(i) as *const [f32; 8]);
-                let b2_arr = std::ptr::read_unaligned(b2_ptr.add(i) as *const [f32; 8]);
-                let gain_arr = std::ptr::read_unaligned(gain_ptr.add(i) as *const [f32; 8]);
-
-                let x0 = f32x8::from(x0_arr);
-                let y0 = f32x8::from(y0_arr);
-                let e_vec = f32x8::from(e_arr);
-                let r_vec = f32x8::from(r_arr);
-                let b1_vec = f32x8::from(b1_arr);
-                let b2_vec = f32x8::from(b2_arr);
-
-                let rot = e_vec.mul_add(-y0, x0);
-                let x1_vec = r_vec.mul_add(rot, b1_vec * u8);
-                let y1_vec = r_vec.mul_add(e_vec.mul_add(x1_vec, y0), b2_vec * u8);
-
-                let x1_arr = x1_vec.to_array();
-                let y1_arr = y1_vec.to_array();
-
-                std::ptr::write_unaligned(x_ptr.add(i) as *mut [f32; 8], x1_arr);
-                std::ptr::write_unaligned(y_ptr.add(i) as *mut [f32; 8], y1_arr);
-
-                for k in 0..8 {
-                    out = mul_add_fast(gain_arr[k], y1_arr[k], out);
-                }
-            }
-
-            let mut idx = n8;
-            if n - n8 >= 4 {
-                let x0_arr = std::ptr::read_unaligned(x_ptr.add(idx) as *const [f32; 4]);
-                let y0_arr = std::ptr::read_unaligned(y_ptr.add(idx) as *const [f32; 4]);
-                let e_arr = std::ptr::read_unaligned(e_ptr.add(idx) as *const [f32; 4]);
-                let r_arr = std::ptr::read_unaligned(r_ptr.add(idx) as *const [f32; 4]);
-                let b1_arr = std::ptr::read_unaligned(b1_ptr.add(idx) as *const [f32; 4]);
-                let b2_arr = std::ptr::read_unaligned(b2_ptr.add(idx) as *const [f32; 4]);
-                let gain_arr = std::ptr::read_unaligned(gain_ptr.add(idx) as *const [f32; 4]);
-
-                let x0 = f32x4::from(x0_arr);
-                let y0 = f32x4::from(y0_arr);
-                let e_vec = f32x4::from(e_arr);
-                let r_vec = f32x4::from(r_arr);
-                let b1_vec = f32x4::from(b1_arr);
-                let b2_vec = f32x4::from(b2_arr);
-
-                let rot = e_vec.mul_add(-y0, x0);
-                let x1_vec = r_vec.mul_add(rot, b1_vec * u4);
-                let y1_vec = r_vec.mul_add(e_vec.mul_add(x1_vec, y0), b2_vec * u4);
-
-                let x1_arr = x1_vec.to_array();
-                let y1_arr = y1_vec.to_array();
-
-                std::ptr::write_unaligned(x_ptr.add(idx) as *mut [f32; 4], x1_arr);
-                std::ptr::write_unaligned(y_ptr.add(idx) as *mut [f32; 4], y1_arr);
-
-                for k in 0..4 {
-                    out = mul_add_fast(gain_arr[k], y1_arr[k], out);
-                }
-
-                idx += 4;
-            }
-
-            for i in idx..n {
-                let x0 = *x_ptr.add(i);
-                let y0 = *y_ptr.add(i);
-                let e = *e_ptr.add(i);
-                let r = *r_ptr.add(i);
-                let b1 = *b1_ptr.add(i);
-                let b2 = *b2_ptr.add(i);
-                let gain = *gain_ptr.add(i);
-
-                let x1 = mul_add_fast(r, mul_add_fast(-e, y0, x0), b1 * u);
-                let y1 = mul_add_fast(r, mul_add_fast(e, x1, y0), b2 * u);
-
-                *x_ptr.add(i) = x1;
-                *y_ptr.add(i) = y1;
-
-                out = mul_add_fast(gain, y1, out);
-            }
-        }
-
-        out
-    }
-
-    /// Process a single sample with the damped MCF update.
-    #[cfg(all(
-        feature = "simd-wide",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    ))]
+    /// Process a single sample with the damped MCF update. Per-sample calls use the
+    /// compile-time baseline level (SSE2, NEON), which needs no runtime dispatch.
+    /// Without `mul_add`, every level and the scalar tail match
+    /// [`Self::process_sample_ref`] bit for bit.
     pub fn process_sample(&mut self, u: f32) -> f32 {
-        self.process_sample_simd_wide_fast(u)
+        dispatch!(Level::baseline(), simd => self.process_sample_lanes(simd, u))
     }
 
-    /// Process a single sample with the damped MCF update.
-    #[cfg(not(all(
-        feature = "simd-wide",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    )))]
-    pub fn process_sample(&mut self, u: f32) -> f32 {
-        self.process_sample_magic_scalar_unsafe(u)
+    #[inline(always)]
+    fn process_sample_lanes<S: Simd>(&mut self, simd: S, u: f32) -> f32 {
+        let n = self.active_len;
+        let u8 = f32x8::splat(simd, u);
+        let mut out = 0.0;
+        let mut i = 0;
+        while i + 8 <= n {
+            let lanes = i..i + 8;
+            let load = |values: &[f32]| f32x8::from_slice(simd, &values[lanes.clone()]);
+            let (x0, y0, e, r) = (load(&self.x), load(&self.y), load(&self.e), load(&self.r));
+            let x1 = r * (x0 - e * y0) + load(&self.b1) * u8;
+            let y1 = r * (e * x1 + y0) + load(&self.b2) * u8;
+            x1.store_slice(&mut self.x[lanes.clone()]);
+            y1.store_slice(&mut self.y[lanes.clone()]);
+            for (gain, y1) in self.gain[lanes].iter().zip(y1.to_array()) {
+                out += gain * y1;
+            }
+            i += 8;
+        }
+        for i in i..n {
+            let (x0, y0, e, r) = (self.x[i], self.y[i], self.e[i], self.r[i]);
+            let x1 = r * (x0 - e * y0) + self.b1[i] * u;
+            let y1 = r * (e * x1 + y0) + self.b2[i] * u;
+            self.x[i] = x1;
+            self.y[i] = y1;
+            out += self.gain[i] * y1;
+        }
+        out
     }
 
     /// Process a mono block; input and output slices must be same length.
@@ -895,12 +754,7 @@ mod tests {
             }
             let y_ref = bank_ref.process_sample_ref(u);
             let y_def = bank_def.process_sample(u);
-            if cfg!(any(target_feature = "fma", target_feature = "neon")) {
-                let err = (y_ref - y_def).abs();
-                assert!(err < 1.0e-5, "i={i} y_ref={y_ref} y_def={y_def}");
-            } else {
-                assert_eq!(y_ref, y_def);
-            }
+            assert_eq!(y_ref.to_bits(), y_def.to_bits(), "i={i}");
         }
     }
 }

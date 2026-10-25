@@ -35,9 +35,10 @@ pub(crate) struct Transition {
     pub weight: f32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct SpanGap {
     pub acoustic_quiet: bool,
+    pub heard_override: Option<f32>,
     pub phase: Phase,
     pub weight: f32,
     pub own: f64,
@@ -79,6 +80,7 @@ impl SpanGap {
     ) -> Self {
         Self {
             acoustic_quiet: false,
+            heard_override: None,
             phase: Phase::Unstarted,
             weight,
             own: 0.0,
@@ -150,7 +152,15 @@ impl SpanGap {
         if !self.known || self.scan.is_empty() {
             return 0.0;
         }
-        let pos = (self.pitch.log2() - self.first_log2) / self.step_log2;
+        self.heard_override
+            .unwrap_or_else(|| self.heard_at_log2(self.pitch.log2()))
+    }
+
+    pub(crate) fn heard_at_log2(&self, log2: f32) -> f32 {
+        if !self.known || self.scan.is_empty() {
+            return 0.0;
+        }
+        let pos = (log2 - self.first_log2) / self.step_log2;
         crate::core::log2space::sample_scan_linear_at_pos(&self.scan, pos)
     }
 

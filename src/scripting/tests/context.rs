@@ -2027,3 +2027,53 @@ fn flora_pitch_apply_mode_initial_live_and_invalid_names() {
     assert_eq!(warnings.len(), 4);
     assert!(warnings.iter().all(|w| w.position.line().is_some()));
 }
+
+#[test]
+fn flora_rest_on_habituation_is_initial_only_and_uses_cap_one_range() {
+    for value in [
+        0.,
+        0.25,
+        4.,
+        f32::MAX as f64,
+        -1.,
+        f64::NAN,
+        f64::INFINITY,
+        1e100,
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let mut scope = rhai::Scope::new();
+        scope.push("value", value);
+        let _ = engine
+            .eval_with_scope::<Dynamic>(
+                &mut scope,
+                "\nplace(flora().rest_on_habituation(value), random(220,880)); wait(0.1);",
+            )
+            .unwrap();
+        let ctx = ctx.lock().unwrap();
+        let invalid = !(value as f32).is_finite() || value < 0.;
+        let weight = action_times(&ctx.scenario)
+            .into_iter()
+            .find_map(|(_, a)| match a {
+                Action::PlaceFlora { spec, .. } => Some(spec.rest_on_habituation),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(weight, if invalid { 0. } else { value as f32 });
+        let warnings = ctx.warnings.lock().unwrap();
+        assert_eq!(warnings.len(), usize::from(invalid));
+        if invalid {
+            assert_eq!(warnings[0].position.line(), Some(2));
+        }
+    }
+    let (scene, warnings) = run_script("place(flora().rest_on_habituation(4), random(220,880));");
+    assert!(warnings.lock().unwrap().is_empty());
+    assert!(action_times(&scene).iter().any(
+        |(_, a)| matches!(a, Action::PlaceFlora { spec, .. } if spec.rest_on_habituation == 4.)
+    ));
+    assert!(
+        run_script_err("let f=place(flora(),random(220,880)); f.rest_on_habituation(1);")
+            .to_string()
+            .contains("Function not found")
+    );
+}

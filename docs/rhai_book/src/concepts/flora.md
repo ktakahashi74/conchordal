@@ -165,3 +165,25 @@ lane capacity. The Flora handle also accepts live changes: sounding lanes surviv
 and the next allocation uses the new rule. Switching from glide holds the current
 pitch. Residual noise keeps its existing centroid motion. Unsupported names,
 including Voice's `"gate_snap"`, warn and retain the mode (initial default: glide).
+
+## Spans and gaps
+
+`flora().rest_on_habituation(0.25)` lets a Flora stop and return in response to
+heard attack history. This initial-only weight defaults to 0; any finite
+nonnegative f32 value is accepted. Negative or nonfinite values, including f32
+overflow, warn and use 0. Zero creates no private span state or random stream.
+
+The shared habitat observer runs from scene start when any Voice or Flora needs
+it. A Flora's exit rate reads habituation at its sounding tonal carrier frequencies,
+weighted by target power. Without sounding tonal targets, exit stops. Once the
+integrated rate reaches its private random target, a private beat crossing retires
+all tonal and residual lanes. Biomass, resource recovery, consumption and seeding
+continue during the gap, while new lanes are suppressed.
+
+After every tail ends, a separate return rate uses private recovery driven only by
+actual lane births. The next eligible private crossing permits ordinary births
+from current biomass; it does not force them. Unknown acoustic observations freeze
+both integrals. The private clock still supplies fallback crossings when no beat
+is confirmed. Release and fade take priority. Reports use `span_gap` and `flora_id`;
+the reported heard value is the weighted mean, and reported frequencies summarize
+the tonal carriers. This author rule does not assert perceived phrases or endings.

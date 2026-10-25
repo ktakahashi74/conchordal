@@ -18,7 +18,20 @@ pub(super) fn advance_population(
     for flora in &mut state.pop.flora {
         flora.observe_rhythm(state.flora_rhythm, now_tick, cfg.meter_shaping);
         flora.observe_external(&state.current_landscape, state.last_analysis_frame);
+        if let Some(gap) = &mut flora.span_gap {
+            gap.observe(&state.current_landscape, now_tick);
+        }
         flora.advance(&state.current_landscape);
+        if flora.is_finished()
+            && let Some(gap) = &mut flora.span_gap
+        {
+            gap.finish(now_tick);
+            for transition in gap.trace.drain(..) {
+                report_try(&mut state.reporter, "Flora span gap", |writer| {
+                    writer.write_flora_span_gap(flora.id, cfg.fs as u32, &transition)
+                });
+            }
+        }
     }
     if state.pop.rest_enabled {
         state.schedule_renderer.prepare_rest_sources(
@@ -526,6 +539,15 @@ pub(super) fn render_and_route_audio(
             });
         },
     );
+    for flora in &mut state.pop.flora {
+        if let Some(gap) = &mut flora.span_gap {
+            for transition in gap.trace.drain(..) {
+                report_try(&mut state.reporter, "Flora span gap", |writer| {
+                    writer.write_flora_span_gap(flora.id, cfg.fs as u32, &transition)
+                });
+            }
+        }
+    }
     if let Some(runtime) = state.pop.body_metabolism.as_mut() {
         runtime.observe(now_tick, frame.habitat, &state.lparams);
     }

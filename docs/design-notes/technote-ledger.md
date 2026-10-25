@@ -10327,3 +10327,23 @@ which still updated target_position. Both allocation paths now apply the rule.
 Live changes preserve lanes until the next allocation applies the new rule.
 Gate_snap has no Flora counterpart and warns without changing the mode.
 Residual noise centroid motion is outside this tonal-pitch choice.
+
+
+### 9.3.101 Flora spans and gaps (2026-10-25)
+
+The author identified nearly constant Flora volume as another source of monotony.
+The coordinating diagnosis found Flora 1's one-second output p10-to-p90 span near
+10 dB at pace 1 and 3 dB at pace 16, with median two-second changes near 1.7 and
+0.7 dB. The proposed explanation was biomass approaching consumption/recovery
+balance while the surrounding growth level remained near 0.5–0.6. The author
+adopted extending PH-1 A's spans and gaps to Flora.
+
+Initial-only rest_on_habituation defaults to zero and reuses the shared acoustic
+observer. Exit reads heard habituation weighted by sounding tonal target power;
+return uses a private scalar driven by executed lane births. All lanes retire at
+a private crossing, return integration waits for every tail, and ecology continues
+throughout Gap. A return crossing permits rather than forces birth. Unconfirmed
+beats retain private fallback crossings; unknown acoustic evidence freezes the
+integrals. Release and fade take priority. Voice's SpanGap law and separate random
+stream are reused with a Flora discriminator. This extends an author rule's scope;
+it does not establish phrase perception, boundaries or musical improvement.

@@ -70,7 +70,7 @@ impl ScriptHost {
         engine.register_fn("flora", || FloraSpecHandle {
             spec: FloraSpec::default(),
         });
-        for name in ["amp", "fade", "pace"] {
+        for name in ["amp", "fade", "pace", "rest_on_habituation"] {
             let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
             engine.register_fn(
                 name,

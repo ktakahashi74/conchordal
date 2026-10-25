@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Flora adds initial-only `rest_on_habituation(w)` (default 0). Positive weights
+  reuse the shared acoustic attack history to alternate spans and gaps. Exit uses
+  tonal target-power-weighted habituation; all lanes retire at a private beat
+  crossing while ecology continues. Return waits for every tail and private
+  recovery, then permits births at a crossing. Reports identify Flora span/gap
+  transitions; zero weight preserves the previous audio and report.
+
 - Flora adds initial/live `pitch_apply_mode("glide" | "rearticulate")`.
   Glide remains the default. Rearticulate holds each tonal lane's pitch through
   retirement and replaces it when its peak moves beyond the 50-cent claim radius,

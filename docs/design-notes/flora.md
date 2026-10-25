@@ -53,6 +53,37 @@ habituation field.
 
 ## Coupling Contract
 
+Initial-only `rest_on_habituation(w)` applies the existing Voice span/gap author rule
+per Flora instance. The default zero allocates no private span state or random
+stream. Any effective positive Flora weight enables the same mixed-habitat
+`onset_habituation_state_scan` from scene start, including before late placement;
+self-exclusion and presentation observers do not acquire another copy.
+
+During Span, integrate `w * S_bar / tau_e`, with `tau_e = satiation_sec / ln(10)`.
+`S_bar` is the shared scan sampled at sounding tonal carrier frequencies, weighted
+by their target powers. Retiring targets are zero; without sounding tonal targets
+the mean is zero. Use the renderer's actual 64-sample frequency steps and current
+targets, integrating sample intervals before testing a private T1 crossing.
+The shared scan is held until the next publication; unknown evidence freezes exit
+and return integrals, and future evidence is not used, as for Voice.
+
+At an eligible crossing, a completed exit integral retires all tonal and residual
+lanes. Biomass, resource recovery, consumption and seeding continue throughout Gap.
+Return integration starts only at the first sample where all tails have ended,
+using `(1 - S_own) / tau_e`. The private scalar uses Voice's asymmetric relaxation
+and the scene-basin onset window, driven only by actual lane births (including
+residual activation), never by vetoed opportunities. A completed return opens birth
+permission at a private crossing without forcing a birth. The private clock keeps
+its existing fallback velocity when the acoustic beat is unavailable; ordinary
+continuous fallback allocation is unchanged outside these gap transitions.
+
+Targets are drawn once at Span and GapActive entry from a dedicated stream keyed
+by scene seed, Flora ID and a Flora mechanism discriminator. Release and macro fade
+take priority. Reports use `span_gap` with `flora_id` and generation 0; `heard` is
+S_bar, and `f_now`/`f_next` are target-power-weighted carrier means (zero if none),
+not a claim of one fundamental frequency. This is an author rule, not phrase or
+boundary perception.
+
 All Flora shares the composer's `temporal_basin` and `meter_stability` priors
 with Voice metric timing. Every Flora uses the private clock described below.
 Only the habitat audio-only meter supplies beat evidence;
@@ -580,6 +611,11 @@ scalar work and no allocation; no lane or scratch pool grows at retirement.
 
 ### Default beat allocation
 
+With `rest_on_habituation(w) > 0`, Gap suppresses both tonal and residual births.
+Existing lanes use the same finite retirement law; their targets stay zero through
+the tail. After a return crossing, allocation uses current biomass and the ordinary
+slew and pool rules. Zero weight leaves this entire path and its random draws absent.
+
 Every Flora uses the former T1 allocation rule. `FloraSpec.metric` and
 `flora().metric()` have been removed. Wiring reserves the shared habitat acoustic
 MeterNetwork only when the scenario contains a Flora placement. In that run it observes from the start, before any Flora is
@@ -798,7 +834,7 @@ release(m);
 - Defaults: `pace` 1, `amp` 0.03, `fade` 2 s, `tone("sine")`,
   `residual(false)`, both buses.
 - `flora()` returns a `FloraSpec`, with `.pace`, `.amp`, `.tone`,
-  `.residual`, `.fade`, `.pitch_apply_mode` and `.send` (same `Bus` / `BusSet` values as Populations).
+  `.residual`, `.fade`, `.pitch_apply_mode`, `.rest_on_habituation` and `.send` (same `Bus` / `BusSet` values as Populations).
   `.tone` accepts only `"sine"` and `"resonant"`; any other string is a script error.
 - **Validation.** `pace` accepts finite f32 values at least 1/64 (default 1),
   without a cost-based upper bound. Smaller values, NaN and negative infinity
@@ -827,6 +863,9 @@ release(m);
   - `fade` outside `[0, 60]` s.
 
   The upper bounds keep every ramp finite on a musical time scale.
+- Initial-only `rest_on_habituation(w)` defaults to 0 and accepts finite nonnegative
+  f32 weights without an upper musical cap. Negative or nonfinite values, including
+  f32 conversion overflow, warn and use 0. It has no live setter.
 - `place(FloraSpec, Placement)` returns a `Flora` handle.
   - The handle methods `.amp`, `.pace` and `.pitch_apply_mode` record a pending patch. As for
     Populations, the patch is emitted as `UpdateFlora` at the next `wait` / `flush`,

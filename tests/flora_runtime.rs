@@ -198,3 +198,55 @@ fn flora_finishes_with_its_fade_in_both_renderers() {
         }
     }
 }
+
+#[test]
+fn flora_alone_starts_shared_habituation_before_late_placement_and_reports_finish() {
+    let dir = std::env::temp_dir().join(format!(
+        "conchordal-flora-span-start-{}",
+        std::process::id()
+    ));
+    let _guard = TestOutputDirectory::new(dir.clone());
+    for weight in [0, 1] {
+        let script = dir.join("input.rhai");
+        fs::write(&script, format!("wait(1.1); place(flora().fade(0).rest_on_habituation({weight}), random(220,880)); wait(0.2);")).unwrap();
+        let report = dir.join("report.jsonl");
+        let mut config = AppConfig::default();
+        config.analysis.nfft = 2048;
+        run_render(
+            script.to_str().unwrap(),
+            dir.join("audio.wav").to_string_lossy().into_owned(),
+            config,
+            Arc::new(AtomicBool::new(false)),
+            Some(21),
+            Some(report.to_str().unwrap()),
+            0,
+        )
+        .unwrap();
+        let rows: Vec<serde_json::Value> = fs::read_to_string(report)
+            .unwrap()
+            .lines()
+            .map(|s| serde_json::from_str(s).unwrap())
+            .collect();
+        let early = rows.iter().any(|r| {
+            r["type"] == "onset_habituation_scan"
+                && r["known"] == true
+                && r["time_sec"].as_f64().unwrap() < 1.1
+        });
+        assert_eq!(early, weight > 0);
+        let spans: Vec<_> = rows
+            .iter()
+            .filter(|r| r["type"] == "span_gap" && r["flora_id"] == 1)
+            .collect();
+        if weight == 0 {
+            assert!(spans.is_empty());
+        } else {
+            assert!(spans.iter().any(|r| r["state"] == "span"));
+            assert_eq!(spans.last().unwrap()["state"], "finished");
+            assert!(
+                spans
+                    .iter()
+                    .all(|r| r.get("voice_id").is_none() && r["generation"] == 0)
+            );
+        }
+    }
+}

@@ -410,6 +410,16 @@ pub const FN_DOCS: &[FnDoc] = &[
         summary: "Choose tonal peak following (glide, default) or fixed-pitch replacement (rearticulate).",
         details: "Rearticulate holds each tonal lane at birth frequency through its tail, including between beat crossings. Beyond the 50-cent claim radius, lanes retire and replacements follow existing beat, slew and pool rules. Live changes preserve sounding lanes; the next allocation applies the new rule, holding current pitch when switching from glide. Residual noise keeps its centroid motion. Unsupported names, including gate_snap, warn and retain the previous mode. Patches emit at wait, flush or scope end.",
     },
+    FnDoc {
+        name: "rest_on_habituation",
+        owner: Owner::Flora,
+        category: "flora",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["rest_on_habituation(weight)"],
+        summary: "Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0).",
+        details: "Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.",
+    },
     // --- population specs ---
     FnDoc {
         name: "sine",

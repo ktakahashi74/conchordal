@@ -481,6 +481,16 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   beat/slew/tail rules. Live changes preserve lanes and take effect at the next
   allocation. Invalid names, including `"gate_snap"`, warn and leave the mode unchanged.
   Residual noise retains its centroid motion.
+  Flora initial-only `rest_on_habituation(w)` defaults to 0 (no private state/RNG).
+  Positive finite weights enable the existing shared onset-habituation observer
+  from run start. Instance Span exit uses target-power-weighted heard habituation
+  at sounding tonal carrier frequencies. Gap begins at a private T1 crossing,
+  retires tonal and residual lanes, suppresses births and preserves ecology.
+  Return integrates only after every tail ends, using private S_own driven by
+  executed lane births; a crossing permits ordinary allocation without forcing it.
+  Voice's SpanGap law, unknown/future handling and independent RNG are reused with
+  a Flora discriminator. Release/fade take priority. Reports use span_gap with
+  flora_id, generation 0, weighted heard and representative carrier means.
   Flora residual rendering defaults to false; explicit
   `.residual(true)` remains available.
 

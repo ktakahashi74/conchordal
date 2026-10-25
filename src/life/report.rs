@@ -270,6 +270,14 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         transition: &'a crate::life::span_gap::Transition,
     },
+    #[serde(rename = "span_gap")]
+    FloraSpanGap {
+        flora_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        transition: &'a crate::life::span_gap::Transition,
+    },
     OnsetHabituationScan {
         time_sec: f32,
         observation_end: u64,
@@ -787,6 +795,20 @@ impl JsonlReporter {
         self.write_record(&ReportRecord::SpanGap {
             voice_id,
             generation,
+            sample_rate,
+            transition,
+        })
+    }
+
+    pub(crate) fn write_flora_span_gap(
+        &mut self,
+        flora_id: u64,
+        sample_rate: u32,
+        transition: &crate::life::span_gap::Transition,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::FloraSpanGap {
+            flora_id,
+            generation: 0,
             sample_rate,
             transition,
         })

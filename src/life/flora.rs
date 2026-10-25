@@ -5,6 +5,7 @@ use std::ops::Range;
 
 use serde::Serialize;
 
+use super::span_gap::{Phase as SpanPhase, SpanGap};
 use crate::core::erb::{erb_bw_hz, erb_to_hz, hz_to_erb};
 use crate::core::float::{finite_or, sanitize_nonnegative_finite, sanitize01, unit_gaussian};
 use crate::core::landscape::Landscape;
@@ -15,6 +16,8 @@ use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 
 #[path = "flora_metric.rs"]
 mod metric;
+#[path = "flora_span_gap.rs"]
+mod span_gap;
 use metric::MetricState;
 pub(crate) use metric::TemporalObservation;
 
@@ -164,6 +167,7 @@ struct Lane {
     cell: Option<usize>,
     position: f32,
     target_position: f32,
+    sounding_log2: f32,
     sigma: f32,
     r: f32,
     q: f32,
@@ -194,6 +198,7 @@ impl Lane {
             cell: None,
             position,
             target_position: position,
+            sounding_log2: position,
             sigma: 1.0,
             r: 0.0,
             q: 0.0,
@@ -310,6 +315,7 @@ struct Cell {
 #[derive(Clone, Debug)]
 pub(crate) struct Flora {
     pub(crate) id: u64,
+    pub(crate) span_gap: Option<SpanGap>,
     spec: FloraSpec,
     // Temporarily taken only while allocating lanes. Every Flora owns a clock.
     temporal: Option<MetricState>,
@@ -485,6 +491,17 @@ impl Flora {
         let mut flora = Self {
             id,
             spec,
+            span_gap: (spec.rest_on_habituation.is_finite() && spec.rest_on_habituation > 0.0)
+                .then(|| {
+                    SpanGap::new(
+                        spec.rest_on_habituation,
+                        scenario_seed ^ 0x464c_4f52_415f_5048,
+                        id,
+                        0,
+                        fs,
+                        0.0,
+                    )
+                }),
             acoustic_observation: TemporalObservation::default(),
             temporal: Some(MetricState::new(scenario_seed ^ id, fs, hop)),
             extent_hz,
@@ -1152,6 +1169,13 @@ impl Flora {
         );
         assert_eq!(presentation.len(), self.hop);
         assert_eq!(habitat.len(), self.hop);
+        let now = self.temporal.as_ref().unwrap().now;
+        if let Some(gap) = &mut self.span_gap {
+            gap.advance(now, self.releasing);
+            if self.releasing {
+                gap.finish(now);
+            }
+        }
         self.metric_allocate(false, 0);
         let decay = (-0.5 * GROWTH_RATE * self.pace * METABOLISM / self.fs).exp();
         for lane in &mut self.lanes {
@@ -1178,13 +1202,15 @@ impl Flora {
         }
         self.habitat_pcm.fill(0.0);
         for t in 0..self.hop {
-            if self
-                .temporal
-                .as_ref()
-                .is_some_and(|m| m.active && m.crossings.iter().any(|c| c.tick == m.now + t as u64))
-                && !self.releasing
-                && !self.range.is_empty()
-            {
+            let at = now + t as u64;
+            if let Some(gap) = &mut self.span_gap {
+                gap.advance(at, self.releasing);
+            }
+            let m = self.temporal.as_ref().unwrap();
+            let crossing = m.crossings.iter().any(|c| c.tick == at);
+            let active = m.active;
+            let transition = crossing && !self.releasing && self.span_gap_opportunity(at);
+            if crossing && (active || transition) && !self.releasing && !self.range.is_empty() {
                 self.metric_allocate(true, t);
                 for lane in &mut self.lanes {
                     lane.retirement_decay = decay;
@@ -1219,10 +1245,12 @@ impl Flora {
                 if t % 64 == 0 || lane.age_samples == 1 {
                     let log2 = lane.position
                         + (lane.target_position - lane.position) * (t + 1) as f32 / self.hop as f32;
+                    lane.sounding_log2 = log2;
                     let (sin, cos) = (TAU * log2.exp2() / self.fs).sin_cos();
                     lane.w = [cos, sin];
                 }
             }
+            self.observe_sounding_span_gap(at, amp);
             let noise = &self.noise[t * 2 * self.noisy_len..(t + 1) * 2 * self.noisy_len];
             let out = synthesize::<SIMD>(&mut self.lanes, noise, amp);
             if self.spec.routing.to_presentation {
@@ -1232,6 +1260,9 @@ impl Flora {
                 habitat[t] += out;
                 self.habitat_pcm[t] = out;
             }
+        }
+        if let Some(gap) = &mut self.span_gap {
+            gap.advance(now + self.hop as u64, self.releasing);
         }
         for lane in &mut self.lanes {
             lane.position = lane.target_position;

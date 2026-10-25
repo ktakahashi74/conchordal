@@ -281,8 +281,16 @@ pub(super) fn wire_runtime(
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
         .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power);
-    let onset_habituation_enabled = scenario.events.iter().flat_map(|event| &event.actions)
-        .any(|action| matches!(action, Action::Spawn { spec, .. } if spec.control.phonation.rest_on_habituation > 0.0));
+    let onset_habituation_enabled =
+        scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .any(|action| match action {
+                Action::Spawn { spec, .. } => spec.control.phonation.rest_on_habituation > 0.0,
+                Action::PlaceFlora { spec, .. } => spec.rest_on_habituation > 0.0,
+                _ => false,
+            });
     let onset_period = scenario.meter_shaping.basin_hz.map_or(0.5, |(lo, hi)| {
         let (lo, hi) = crate::core::meter::sane_basin(lo, hi);
         2.0 / f64::from(lo + hi)

@@ -50,7 +50,7 @@ pub(super) struct MetricState {
     #[serde(skip)]
     reserved: Vec<bool>,
     #[serde(skip)]
-    before: Vec<(Mode, u64, Option<u64>)>,
+    before: Vec<(Mode, u64, Option<u64>, f32)>,
 }
 
 impl MetricState {
@@ -144,10 +144,26 @@ impl Flora {
         m.before.extend(
             self.lanes
                 .iter()
-                .map(|l| (l.mode, l.generation, l.pending_since)),
+                .map(|l| (l.mode, l.generation, l.pending_since, l.target)),
         );
         self.decompose();
-        if self.releasing {
+        let resting = self.span_gap.as_ref().is_some_and(|gap| !gap.allows_on());
+        if resting {
+            for lane in &mut self.lanes {
+                if lane.mode == Mode::Current {
+                    lane.forced_reason = Some(if self.releasing {
+                        "release"
+                    } else {
+                        "span_gap"
+                    });
+                    self.retirements += u64::from(lane.tonal);
+                    lane.retire();
+                }
+            }
+            for pending in &mut m.pending {
+                m.drops += u64::from(pending.take().is_some());
+            }
+        } else if self.releasing {
             for lane in &mut self.lanes {
                 if lane.tonal && lane.mode == Mode::Current {
                     lane.forced_reason = Some("release");
@@ -303,11 +319,18 @@ impl Flora {
         for (c, cell) in self.cells.iter_mut().enumerate() {
             cell.residual_mass = (cell.excess - cell.tonal_mass).max(0.0);
             let lane = &mut self.lanes[self.tonal_len + c];
+            if resting {
+                continue;
+            }
             lane.target = if self.spec.residual {
                 (cell.residual_mass - DEAD_MASS).max(0.0).sqrt()
             } else {
                 0.0
             };
+            if self.span_gap.is_some() && lane.mode == Mode::Free && lane.target > 0.0 {
+                lane.mode = Mode::Current;
+                lane.age_samples = 0;
+            }
             let mut moment = 0.0;
             let mut mass = 0.0;
             for b in cell.bins.clone().filter(|&b| !m.reserved[b]) {
@@ -332,7 +355,7 @@ impl Flora {
             lane.target *= scale;
         }
         for (slot, lane) in self.lanes.iter().enumerate().filter(|(_, l)| l.tonal) {
-            let (mode, generation, since) = m.before[slot];
+            let (mode, generation, since, _) = m.before[slot];
             let birth = lane.generation != generation;
             let retirement = mode == Mode::Current && lane.mode == Mode::Retiring;
             if birth || retirement {
@@ -351,6 +374,8 @@ impl Flora {
                     action: if birth { "born" } else { "retiring" },
                     reason: if self.releasing {
                         "release"
+                    } else if resting {
+                        "span_gap"
                     } else if forced {
                         lane.forced_reason.unwrap_or("support_lost")
                     } else if crossing {
@@ -363,7 +388,7 @@ impl Flora {
             }
         }
         for (c, cell) in self.cells.iter().enumerate() {
-            let candidate = (m.active && !self.releasing)
+            let candidate = (m.active && !self.releasing && !resting)
                 .then_some(())
                 .and(cell.peak.as_ref())
                 .filter(|p| p.enter && p.claimed.is_none() && !p.suppressed);
@@ -378,6 +403,19 @@ impl Flora {
                         since: tick,
                     });
                 }
+            }
+        }
+        if let Some(gap) = &mut self.span_gap {
+            let born = self.lanes.iter().enumerate().any(|(slot, lane)| {
+                let (mode, generation, _, target) = m.before[slot];
+                lane.mode == Mode::Current
+                    && (lane.generation != generation
+                        || (!lane.tonal
+                            && lane.target > 0.0
+                            && (mode == Mode::Free || target == 0.0)))
+            });
+            if born && !self.releasing && gap.allows_on() {
+                gap.on(tick, false);
             }
         }
         self.temporal = Some(m);

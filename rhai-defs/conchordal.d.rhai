@@ -733,6 +733,13 @@ fn rest_on_habituation(population_spec: PopulationSpec, w: f64) -> PopulationSpe
 /// Initial-only finite nonnegative f32 weight, default 0. Values above 1 proportionally increase exit rate without changing its law. Requires explicit sustain() with metric(), entrained(), steady() or flow(). Shared habitat attack habituation drives exit; private executed attacks govern return after all tails end. Onsets remain on existing legal opportunities and may be vetoed. rest() adds its fixed tail-following gap before recovery resumes. Uses habituation enabled/satiation_sec/recovery_sec; disabled habituation prevents exits. This is an author rule, not phrase perception. Invalid or unsupported values warn and are ignored. Replacements inherit the weight but reset private state.
 fn rest_on_habituation(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
 
+/// Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0).
+/// Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
+fn rest_on_habituation(flora_spec: FloraSpec, weight: f64) -> FloraSpec;
+/// Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0).
+/// Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
+fn rest_on_habituation(flora_spec: FloraSpec, weight: i64) -> FloraSpec;
+
 /// [tuning] Vitality-modulated rhythm coupling.
 fn rhythm_coupling_vitality(population_spec: PopulationSpec, lambda_v: f64, v_floor: f64) -> PopulationSpec;
 /// [tuning] Vitality-modulated rhythm coupling.

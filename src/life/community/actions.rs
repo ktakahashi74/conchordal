@@ -19,7 +19,7 @@ impl Community {
                 seeding,
             } => {
                 self.has_placed_flora = true;
-                self.flora.push(Flora::new(
+                let mut flora = Flora::new(
                     flora_id,
                     spec,
                     extent_hz,
@@ -28,7 +28,14 @@ impl Community {
                     landscape,
                     self.time.fs,
                     self.time.hop,
-                ));
+                );
+                if let Some(gap) = &mut flora.span_gap {
+                    if let Some((params, period)) = self.onset_habituation_config {
+                        gap.configure(params, period);
+                    }
+                    gap.trace_enabled = self.auto_observe.is_some();
+                }
+                self.flora.push(flora);
             }
             Action::UpdateFlora { flora_id, patch } => {
                 if let Some(flora) = self.flora.iter_mut().find(|flora| flora.id == flora_id) {

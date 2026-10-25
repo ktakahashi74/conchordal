@@ -1022,6 +1022,22 @@ pub(super) fn validate_flora_numeric(
     position: Position,
     diagnostics: &ScriptWarnings,
 ) -> Result<f32, Box<EvalAltResult>> {
+    if name == "rest_on_habituation" {
+        let converted = value as f32;
+        if !converted.is_finite() || value < 0.0 {
+            diagnostics
+                .lock()
+                .expect("lock script warnings")
+                .push(ScriptWarning {
+                    message:
+                        "Flora rest_on_habituation expects a finite nonnegative f32 weight; using 0"
+                            .into(),
+                    position,
+                });
+            return Ok(0.0);
+        }
+        return Ok(converted);
+    }
     if name == "pace" {
         let min = crate::scenario::FLORA_PACE_MIN as FLOAT;
         let max = f32::MAX as FLOAT;
@@ -1083,6 +1099,7 @@ impl FloraSpecHandle {
             "pace" => self.spec.pace = value,
             "amp" => self.spec.amp = value,
             "fade" => self.spec.fade_sec = value,
+            "rest_on_habituation" => self.spec.rest_on_habituation = value,
             _ => unreachable!("registered Flora spec parameter"),
         }
         Ok(self)

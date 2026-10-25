@@ -108,6 +108,16 @@ pitch_apply_mode(name)
 
 Choose tonal peak following (glide, default) or fixed-pitch replacement (rearticulate). Rearticulate holds each tonal lane at birth frequency through its tail, including between beat crossings. Beyond the 50-cent claim radius, lanes retire and replacements follow existing beat, slew and pool rules. Live changes preserve sounding lanes; the next allocation applies the new rule, holding current pitch when switching from glide. Residual noise keeps its centroid motion. Unsupported names, including gate_snap, warn and retain the previous mode. Patches emit at wait, flush or scope end.
 
+#### `rest_on_habituation`
+
+```rhai,ignore
+rest_on_habituation(weight)
+```
+
+適用対象：`FloraSpec`。
+
+Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
+
 ### PopulationSpec
 
 PopulationSpecは、初代のVoiceの特性とPopulation全体の生存規則を定める。生成関数で作り、構築用メソッドで調整し、`place()`でPopulationにする。

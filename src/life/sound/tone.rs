@@ -249,6 +249,7 @@ impl Tone {
                 sustain_level,
                 decay_lambda,
                 release_ticks,
+                replacement_level: None,
             },
             planned_kick_pending: None,
             // Pre-sized so the common worker_loop insert path does not reallocate.
@@ -316,6 +317,10 @@ impl Tone {
 
     pub fn note_off(&mut self, tick: Tick) {
         self.envelope = self.envelope.with_release(tick);
+    }
+
+    pub(crate) fn release_for_replacement(&mut self, tick: Tick) {
+        self.envelope = self.envelope.with_replacement_release(tick);
     }
 
     pub fn note_on(&mut self, tick: Tick) {

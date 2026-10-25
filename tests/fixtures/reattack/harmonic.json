@@ -1,0 +1,214 @@
+[
+  {
+    "batches": [
+      {
+        "body_policy": {
+          "at": 0,
+          "gate_allows_onset": true,
+          "is_alive": true
+        },
+        "cmds": [
+          {
+            "On": {
+              "kick": {
+                "strength": 1.0
+              },
+              "tone_id": 0
+            }
+          }
+        ],
+        "onsets": [
+          {
+            "gate": 0,
+            "onset_tick": 0,
+            "strength": 1.0
+          }
+        ],
+        "routing": {
+          "to_habitat": true,
+          "to_presentation": true
+        },
+        "source_generation": 0,
+        "source_id": 1,
+        "tones": [
+          {
+            "adsr": {
+              "attack_sec": 1.5,
+              "decay_sec": 0.800000011920929,
+              "release_sec": 3.0,
+              "sustain_level": 0.8999999761581421
+            },
+            "amp": 0.03999999910593033,
+            "body": {
+              "amp_scale": 1.0,
+              "brightness": 0.3799999952316284,
+              "inharmonic": 0.0,
+              "kind": "Harmonic",
+              "motion": 0.0,
+              "ratios": [
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+                5.0,
+                6.0,
+                7.0,
+                8.0
+              ],
+              "spread": 0.0,
+              "unison": 1
+            },
+            "freq_hz": 196.0,
+            "hold_ticks": 18446744073709551615,
+            "onset": 0,
+            "participation_onset": false,
+            "render_modulator": {
+              "DroneSway": {
+                "phase": 1.9527651071548462,
+                "sway_rate": 0.05000000074505806
+              }
+            },
+            "smoothing_tau_sec": 0.019999999552965164,
+            "tone_id": 0
+          }
+        ]
+      }
+    ],
+    "now": 0,
+    "rhythms": {
+      "delta": {
+        "alpha": 0.0,
+        "beta": 0.0,
+        "freq_hz": 0.0,
+        "mag": 0.0,
+        "phase": 0.0
+      },
+      "env_level": 0.0,
+      "env_open": 0.0,
+      "measure": {
+        "alpha": 0.0,
+        "beta": 0.0,
+        "freq_hz": 0.0,
+        "mag": 0.0,
+        "phase": 0.0
+      },
+      "measure_ratio": 0,
+      "theta": {
+        "alpha": 0.0,
+        "beta": 0.0,
+        "freq_hz": 0.0,
+        "mag": 0.0,
+        "phase": 0.0
+      }
+    }
+  },
+  {
+    "batches": [
+      {
+        "body_policy": {
+          "at": 24064,
+          "gate_allows_onset": true,
+          "is_alive": true
+        },
+        "cmds": [
+          {
+            "Off": {
+              "off_tick": 24512,
+              "tone_id": 0
+            }
+          },
+          {
+            "On": {
+              "kick": {
+                "strength": 1.0
+              },
+              "tone_id": 1
+            }
+          }
+        ],
+        "onsets": [
+          {
+            "gate": 0,
+            "onset_tick": 24512,
+            "strength": 1.0
+          }
+        ],
+        "routing": {
+          "to_habitat": true,
+          "to_presentation": true
+        },
+        "source_generation": 0,
+        "source_id": 1,
+        "tones": [
+          {
+            "adsr": {
+              "attack_sec": 1.5,
+              "decay_sec": 0.800000011920929,
+              "release_sec": 3.0,
+              "sustain_level": 0.8999999761581421
+            },
+            "amp": 0.03999999910593033,
+            "body": {
+              "amp_scale": 1.0,
+              "brightness": 0.3799999952316284,
+              "inharmonic": 0.0,
+              "kind": "Harmonic",
+              "motion": 0.0,
+              "ratios": [
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+                5.0,
+                6.0,
+                7.0,
+                8.0
+              ],
+              "spread": 0.0,
+              "unison": 1
+            },
+            "freq_hz": 197.81427001953125,
+            "hold_ticks": 18446744073709551615,
+            "onset": 24512,
+            "participation_onset": false,
+            "render_modulator": {
+              "DroneSway": {
+                "phase": 2.11027193069458,
+                "sway_rate": 0.05000000074505806
+              }
+            },
+            "smoothing_tau_sec": 0.019999999552965164,
+            "tone_id": 1
+          }
+        ]
+      }
+    ],
+    "now": 24064,
+    "rhythms": {
+      "delta": {
+        "alpha": 0.0,
+        "beta": 1.0,
+        "freq_hz": 2.0,
+        "mag": 0.0,
+        "phase": -0.009971380233764648
+      },
+      "env_level": 0.0,
+      "env_open": 0.9999992251396179,
+      "measure": {
+        "alpha": 0.0,
+        "beta": 0.0,
+        "freq_hz": 0.0,
+        "mag": 0.0,
+        "phase": 0.0
+      },
+      "measure_ratio": 0,
+      "theta": {
+        "alpha": 0.0,
+        "beta": 1.0,
+        "freq_hz": 4.0,
+        "mag": 0.0,
+        "phase": -0.019942760467529297
+      }
+    }
+  }
+]

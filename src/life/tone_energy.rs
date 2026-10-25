@@ -111,9 +111,7 @@ impl ToneEnergy {
                 push(release.apply_at_sample);
                 envelope = envelope.with_release(release.off_sample);
             }
-            let attack = envelope
-                .attack_ticks
-                .min(envelope.hold_end.saturating_sub(envelope.onset).max(1));
+            let attack = envelope.attack_len();
             for at in [
                 envelope.onset,
                 envelope.onset.saturating_add(attack),
@@ -150,9 +148,7 @@ impl ToneEnergy {
         intervention: Option<ScheduledRelease>,
     ) -> Option<u64> {
         let envelope = self.envelope_at(from, intervention);
-        let attack = envelope
-            .attack_ticks
-            .min(envelope.hold_end.saturating_sub(envelope.onset).max(1));
+        let attack = envelope.attack_len();
         let begin = envelope.onset.saturating_add(attack);
         let end = begin.saturating_add(envelope.decay_ticks);
         let lambda = f64::from(envelope.decay_lambda);
@@ -600,6 +596,7 @@ mod tests {
                 sustain_level: 1.,
                 decay_lambda: 0.,
                 release_ticks: 40,
+                replacement_level: None,
             },
             control: Some(ControlForecast {
                 issued_at: 96,

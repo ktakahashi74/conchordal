@@ -742,7 +742,18 @@ impl ScheduleRenderer {
                         if let Some(rt) = self.tones.get_mut(&key)
                             && rt.source_generation == batch.source_generation
                         {
-                            rt.tone.note_off(off_tick);
+                            let replacement = batch.tones.iter().any(|spec| {
+                                spec.onset == off_tick
+                                    && spec.tone_id != tone_id
+                                    && batch.cmds.iter().any(|cmd| {
+                                        matches!(cmd, ToneCmd::On { tone_id, .. } if *tone_id == spec.tone_id)
+                                    })
+                            });
+                            if replacement {
+                                rt.tone.release_for_replacement(off_tick);
+                            } else {
+                                rt.tone.note_off(off_tick);
+                            }
                         }
                     }
                     ToneCmd::Update { .. } => {}
@@ -2145,3 +2156,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "reattack_tests.rs"]
+mod reattack_tests;

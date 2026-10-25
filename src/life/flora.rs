@@ -9,6 +9,7 @@ use crate::core::erb::{erb_bw_hz, erb_to_hz, hz_to_erb};
 use crate::core::float::{finite_or, sanitize_nonnegative_finite, sanitize01, unit_gaussian};
 use crate::core::landscape::Landscape;
 use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
+use crate::scenario::control::PitchApplyMode;
 use crate::scenario::{FloraPatch, FloraSeeding, FloraSpec, FloraTone};
 use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 
@@ -569,6 +570,9 @@ impl Flora {
     }
 
     pub(crate) fn apply_patch(&mut self, patch: &FloraPatch) {
+        if let Some(mode) = patch.pitch_apply_mode {
+            self.spec.pitch_apply_mode = mode;
+        }
         if let Some(pace) = patch.pace {
             self.spec.pace = pace;
             self.pace = ecological_pace(
@@ -1122,7 +1126,12 @@ impl Flora {
             if lane.tonal && lane.mode == Mode::Current {
                 let peak = self.cells[lane.cell.unwrap()].peak.as_ref().unwrap();
                 lane.target = peak.mass.sqrt();
-                lane.target_position = peak.position;
+                lane.target_position = if self.spec.pitch_apply_mode == PitchApplyMode::Rearticulate
+                {
+                    lane.position
+                } else {
+                    peak.position
+                };
                 lane.sigma = peak.sigma;
                 lane.window = peak.window.clone();
                 lane.pending_since = None;
@@ -2988,3 +2997,7 @@ mod tests {
 #[cfg(test)]
 #[path = "flora_heard_tests.rs"]
 mod heard_tests;
+
+#[cfg(test)]
+#[path = "flora_pitch_tests.rs"]
+mod pitch_tests;

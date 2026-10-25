@@ -1984,3 +1984,46 @@ fn flora_pace_clamps_specs_and_live_patches_with_positioned_warnings() {
         }
     }
 }
+
+#[test]
+fn flora_pitch_apply_mode_initial_live_and_invalid_names() {
+    let (scenario, warnings) = run_script(
+        r#"
+        let f = place(flora().pitch_apply_mode("rearticulate"), random(220, 880));
+        f.pitch_apply_mode("glide"); wait(0.1);
+        f.pitch_apply_mode("rearticulate"); f.pitch_apply_mode("gate_snap"); wait(0.1);
+        place(flora().pitch_apply_mode("gate_snap"), random(220, 880));
+        place(flora().pitch_apply_mode("invalid"), random(220, 880));
+        release(f); f.pitch_apply_mode("glide"); wait(0.1);
+    "#,
+    );
+    let placements: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(_, a)| match a {
+            Action::PlaceFlora { spec, .. } => Some(spec.pitch_apply_mode),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        placements,
+        [
+            PitchApplyMode::Rearticulate,
+            PitchApplyMode::Glide,
+            PitchApplyMode::Glide
+        ]
+    );
+    let patches: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(_, a)| match a {
+            Action::UpdateFlora { patch, .. } => patch.pitch_apply_mode,
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        patches,
+        [PitchApplyMode::Glide, PitchApplyMode::Rearticulate]
+    );
+    let warnings = warnings.lock().unwrap();
+    assert_eq!(warnings.len(), 4);
+    assert!(warnings.iter().all(|w| w.position.line().is_some()));
+}

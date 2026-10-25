@@ -10312,3 +10312,18 @@ Scenario remains the artist's macro direction; phrase and long-form models need 
 slower meter oscillators. Personalization, real biosignal input and long-form memory each
 require their own comparison and acceptance conditions. These extensions do not change
 the ledger to “implemented” until the corresponding mechanism and evidence exist.
+
+
+### 9.3.100 Flora partial motion (2026-10-25)
+
+The author observed that fast Flora's glissando is a particular musical expression
+and asked to choose discontinuous motion as well as the existing mixed-listening
+option. Accumulated 50-cent peak claims moved one lane by 855 cents at pace 16.
+The adopted vocabulary is Voice's pitch_apply_mode: glide retains the default,
+while rearticulate fixes each tonal lane at birth through its tail and replaces it
+when the peak leaves the claim radius, under existing beat and slew rules.
+The prototype's remaining 102-cent motion came from the between-crossing allocator,
+which still updated target_position. Both allocation paths now apply the rule.
+Live changes preserve lanes until the next allocation applies the new rule.
+Gate_snap has no Flora counterpart and warns without changing the mode.
+Residual noise centroid motion is outside this tonal-pitch choice.

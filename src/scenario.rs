@@ -19,6 +19,7 @@ pub struct FloraSpec {
     pub amp: f32,
     pub fade_sec: f32,
     pub tone: FloraTone,
+    pub pitch_apply_mode: control::PitchApplyMode,
     pub residual: bool,
     pub leave_self_out: bool,
     pub routing: control::Routing,
@@ -31,6 +32,7 @@ impl Default for FloraSpec {
             amp: 0.03,
             fade_sec: 2.0,
             tone: FloraTone::Sine,
+            pitch_apply_mode: control::PitchApplyMode::Glide,
             residual: false,
             leave_self_out: true,
             routing: control::Routing::default(),
@@ -46,6 +48,7 @@ pub enum FloraTone {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FloraPatch {
+    pub pitch_apply_mode: Option<control::PitchApplyMode>,
     pub pace: Option<f32>,
     pub amp: Option<f32>,
 }

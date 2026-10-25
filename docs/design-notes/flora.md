@@ -448,6 +448,16 @@ shared boundary. The minimum-separation rule below handles that case.
 
 ### Lanes
 
+`pitch_apply_mode("glide")` is the default: tonal lanes follow supported peaks.
+`pitch_apply_mode("rearticulate")` holds each tonal lane at its birth frequency,
+including between beat crossings and throughout its retirement tail. A peak beyond
+50 cents cannot be claimed: the old lane retires and a replacement may be born at
+the peak under the existing opportunity, slew and pool-capacity rules. Live changes
+preserve sounding lanes and apply the new rule at the next allocation; switching
+from glide holds the lane at its then-current frequency. Residual band noise keeps
+its existing centroid motion. Flora does not support `gate_snap`; invalid names
+warn and leave the previous mode unchanged (initial default: glide).
+
 There are two kinds of lane.
 
 - **Tonal lanes** form one pool of `2 × N_cells` lanes, not bound to cells. Candidates
@@ -788,7 +798,7 @@ release(m);
 - Defaults: `pace` 1, `amp` 0.03, `fade` 2 s, `tone("sine")`,
   `residual(false)`, both buses.
 - `flora()` returns a `FloraSpec`, with `.pace`, `.amp`, `.tone`,
-  `.residual`, `.fade` and `.send` (same `Bus` / `BusSet` values as Populations).
+  `.residual`, `.fade`, `.pitch_apply_mode` and `.send` (same `Bus` / `BusSet` values as Populations).
   `.tone` accepts only `"sine"` and `"resonant"`; any other string is a script error.
 - **Validation.** `pace` accepts finite f32 values at least 1/64 (default 1),
   without a cost-based upper bound. Smaller values, NaN and negative infinity
@@ -818,7 +828,7 @@ release(m);
 
   The upper bounds keep every ramp finite on a musical time scale.
 - `place(FloraSpec, Placement)` returns a `Flora` handle.
-  - The handle methods `.amp` and `.pace` record a pending patch. As for
+  - The handle methods `.amp`, `.pace` and `.pitch_apply_mode` record a pending patch. As for
     Populations, the patch is emitted as `UpdateFlora` at the next `wait` / `flush`,
     or at scope end.
   - `release(Flora)` marks the release pending, as `release_population` does

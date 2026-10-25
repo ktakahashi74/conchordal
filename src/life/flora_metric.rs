@@ -199,7 +199,12 @@ impl Flora {
                     peak.claimed = Some(i);
                     lane.cell = Some(c);
                     lane.target = peak.mass.sqrt();
-                    lane.target_position = peak.position;
+                    lane.target_position =
+                        if self.spec.pitch_apply_mode == PitchApplyMode::Rearticulate {
+                            lane.position
+                        } else {
+                            peak.position
+                        };
                     lane.sigma = peak.sigma;
                     lane.window = peak.window.clone();
                     lane.pending_since = None;

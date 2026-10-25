@@ -475,6 +475,12 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   real-time cost remains the composer's responsibility, as with Voice observers.
   NaN, negative infinity and subminimum pace warn and use the minimum; positive
   infinity and positive f32 overflow warn and use f32::MAX (internal saturation).
+  Flora initial/live `pitch_apply_mode("glide")` preserves peak tracking by default.
+  `"rearticulate"` fixes tonal lane frequency at birth through retirement, including
+  between crossings; loss of the 50-cent claim permits replacement under existing
+  beat/slew/tail rules. Live changes preserve lanes and take effect at the next
+  allocation. Invalid names, including `"gate_snap"`, warn and leave the mode unchanged.
+  Residual noise retains its centroid motion.
   Flora residual rendering defaults to false; explicit
   `.residual(true)` remains available.
 

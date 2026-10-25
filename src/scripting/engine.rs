@@ -125,6 +125,30 @@ impl ScriptHost {
                 Ok(spec)
             },
         );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "pitch_apply_mode",
+            move |call: NativeCallContext, mut spec: FloraSpecHandle, name: &str| {
+                if let Some(mode) =
+                    super::spec::flora_pitch_apply_mode(name, call.call_position(), &diagnostics)
+                {
+                    spec.spec.pitch_apply_mode = mode;
+                }
+                spec
+            },
+        );
+        let ctx_flora_pitch = ctx.clone();
+        engine.register_fn(
+            "pitch_apply_mode",
+            move |call: NativeCallContext, handle: FloraHandle, name: &str| {
+                super::context::update_flora_pitch_apply_mode(
+                    &mut ctx_flora_pitch.lock().expect("lock script context"),
+                    handle,
+                    name,
+                    call.call_position(),
+                )
+            },
+        );
         engine.register_fn("residual", |mut spec: FloraSpecHandle, enabled: bool| {
             spec.spec.residual = enabled;
             spec

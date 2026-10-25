@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Flora adds initial/live `pitch_apply_mode("glide" | "rearticulate")`.
+  Glide remains the default. Rearticulate holds each tonal lane's pitch through
+  retirement and replaces it when its peak moves beyond the 50-cent claim radius,
+  using existing beat opportunities and tails. Live changes preserve sounding lanes.
+  Unsupported values, including Voice's `gate_snap`, warn and retain the mode.
+
 - Flora adds initial and live `pace(k)`, default 1, to scale ecological time relative
   to its private beat clock. Growth, spread, seeding, recovery, consumption and
   retirement share the multiplier. Beat opportunities, birth slew and macro fade

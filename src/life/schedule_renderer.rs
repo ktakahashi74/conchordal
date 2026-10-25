@@ -1326,6 +1326,7 @@ mod tests {
                             to_presentation: false,
                             to_habitat: true,
                         },
+                        ..Default::default()
                     },
                     (220.0, 880.0),
                     FloraSeeding::Uniform,

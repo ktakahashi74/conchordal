@@ -98,6 +98,16 @@ release(flora)
 
 Mark a Flora for release using its spec's fade. The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.
 
+#### `pitch_apply_mode`
+
+```rhai,ignore
+pitch_apply_mode(name)
+```
+
+適用対象：`FloraSpec`, `Flora`。
+
+Choose tonal peak following (glide, default) or fixed-pitch replacement (rearticulate). Rearticulate holds each tonal lane at birth frequency through its tail, including between beat crossings. Beyond the 50-cent claim radius, lanes retire and replacements follow existing beat, slew and pool rules. Live changes preserve sounding lanes; the next allocation applies the new rule, holding current pitch when switching from glide. Residual noise keeps its centroid motion. Unsupported names, including gate_snap, warn and retain the previous mode. Patches emit at wait, flush or scope end.
+
 ### PopulationSpec
 
 PopulationSpecは、初代のVoiceの特性とPopulation全体の生存規則を定める。生成関数で作り、構築用メソッドで調整し、`place()`でPopulationにする。

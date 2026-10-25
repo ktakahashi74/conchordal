@@ -547,6 +547,13 @@ fn pitch_apply_mode(population: Population, name: String) -> Population;
 /// Choose `gate_snap`, `glide` or `rearticulate`. Moving continuous and explicitly sustained voices default to glide; finite gated voices default to gate_snap. Gate_snap holds the latest adopted target for a sounded opportunity. Glide slides continuously. Rearticulate uses `rearticulate_above()` to glide small moves and defer larger ones; continuous Hold without coupled opportunities attacks at adoption. Free-pitch finite gated rearticulate is an error. Live mode changes keep the sounding Tone, clear pending attacks and emit no attack. Sustained metric uses shared-beat crossings; sustained participation can wait or skip.
 fn pitch_apply_mode(population_spec: PopulationSpec, name: String) -> PopulationSpec;
 
+/// Choose tonal peak following (glide, default) or fixed-pitch replacement (rearticulate).
+/// Rearticulate holds each tonal lane at birth frequency through its tail, including between beat crossings. Beyond the 50-cent claim radius, lanes retire and replacements follow existing beat, slew and pool rules. Live changes preserve sounding lanes; the next allocation applies the new rule, holding current pitch when switching from glide. Residual noise keeps its centroid motion. Unsupported names, including gate_snap, warn and retain the previous mode. Patches emit at wait, flush or scope end.
+fn pitch_apply_mode(flora: Flora, name: String) -> Flora;
+/// Choose tonal peak following (glide, default) or fixed-pitch replacement (rearticulate).
+/// Rearticulate holds each tonal lane at birth frequency through its tail, including between beat crossings. Beyond the 50-cent claim radius, lanes retire and replacements follow existing beat, slew and pool rules. Live changes preserve sounding lanes; the next allocation applies the new rule, holding current pitch when switching from glide. Residual noise keeps its centroid motion. Unsupported names, including gate_snap, warn and retain the previous mode. Patches emit at wait, flush or scope end.
+fn pitch_apply_mode(flora_spec: FloraSpec, name: String) -> FloraSpec;
+
 /// [research] `"hill_climb"` or `"peak_sampler"`. Research control.
 fn pitch_core(population_spec: PopulationSpec, name: String) -> PopulationSpec;
 

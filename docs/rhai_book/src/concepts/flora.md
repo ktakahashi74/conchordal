@@ -154,3 +154,14 @@ for k=1, 2, 4, 8 and 16 (690 bins, 4 Hz). Extrapolating the last measurement
 from 55 to 1600 substeps estimates 41.8 ms/hop at saturation, not a measurement.
 Cost grows roughly with k until saturation. As with Voice self-exclusion,
 real-time cost depends on the entire scene and is the composer's responsibility.
+
+## Partial motion
+
+`flora().pitch_apply_mode("glide")` keeps the default peak following.
+`"rearticulate"` holds each tonal lane's birth frequency through its retirement tail.
+When the peak leaves the 50-cent claim radius, the old lane retires and a replacement
+can grow at the peak, subject to existing beat opportunities, birth slew and free
+lane capacity. The Flora handle also accepts live changes: sounding lanes survive,
+and the next allocation uses the new rule. Switching from glide holds the current
+pitch. Residual noise keeps its existing centroid motion. Unsupported names,
+including Voice's `"gate_snap"`, warn and retain the mode (initial default: glide).

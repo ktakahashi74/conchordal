@@ -822,3 +822,33 @@ pub(super) fn update_flora_numeric(
     }
     Ok(handle)
 }
+
+pub(super) fn update_flora_pitch_apply_mode(
+    ctx: &mut ScriptContext,
+    handle: FloraHandle,
+    name: &str,
+    position: Position,
+) -> FloraHandle {
+    let Some(mode) = super::spec::flora_pitch_apply_mode(name, position, &ctx.warnings) else {
+        return handle;
+    };
+    let Some(flora) = ctx.flora.get_mut(&handle.id) else {
+        ctx.warn(
+            format!("pitch_apply_mode ignored for unknown Flora {}", handle.id),
+            position,
+        );
+        return handle;
+    };
+    if flora.status == PopulationStatus::Live {
+        flora
+            .pending_patch
+            .get_or_insert_with(FloraPatch::default)
+            .pitch_apply_mode = Some(mode);
+    } else {
+        ctx.warn(
+            format!("pitch_apply_mode ignored for inactive Flora {}", handle.id),
+            position,
+        );
+    }
+    handle
+}

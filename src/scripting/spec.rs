@@ -1088,3 +1088,26 @@ impl FloraSpecHandle {
         Ok(self)
     }
 }
+
+pub(super) fn flora_pitch_apply_mode(
+    name: &str,
+    position: Position,
+    diagnostics: &ScriptWarnings,
+) -> Option<PitchApplyMode> {
+    match name {
+        "glide" => Some(PitchApplyMode::Glide),
+        "rearticulate" => Some(PitchApplyMode::Rearticulate),
+        _ => {
+            diagnostics
+                .lock()
+                .expect("lock script warnings")
+                .push(ScriptWarning {
+                    message: format!(
+                        "Flora pitch_apply_mode expects glide or rearticulate; '{name}' ignored"
+                    ),
+                    position,
+                });
+            None
+        }
+    }
+}

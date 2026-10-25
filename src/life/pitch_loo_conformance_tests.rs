@@ -959,6 +959,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                 to_habitat: habitat,
                 to_presentation: !habitat,
             },
+            ..Default::default()
         };
         let mut flora = [Flora::new(
             7,

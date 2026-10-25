@@ -104,7 +104,7 @@ Both metrics are normalized to the $[0, 1]$ range. The rest of this chapter foll
 
 ### 3.1.1 Filterbank and Hop Statistics
 
-Each channel is a cascade of four complex one-pole filters, with positive pole angle and unity gain at its center. Its bandwidth is $b_c=\tfrac14\,1.0186(24.7+f_c/9.265)$ Hz. Centers lie on the LTFAT ERB-number scale $e(f)=9.2645\ln(1+0.00437f)$ at intervals of 0.1875, anchored at 1000 Hz. The 55–8000 Hz analysis range includes a margin of 0.375 ERB-number units on either side: 170 channels, from about 46.001 to 8175.326 Hz. All centers must lie below Nyquist; unsupported sample rates fail configuration validation.
+Each channel is a cascade of four complex one-pole filters, with positive pole angle and unity gain at its center. Its bandwidth is $b_c=\tfrac14\,1.0186(24.7+f_c/9.265)$ Hz. Centers lie on the LTFAT ERB-number scale $e(f)=9.2645\ln(1+0.00437f)$ at intervals of 0.1875, anchored at 1000 Hz. The analysis range runs from $55\cdot2^{-7/8}\approx29.989$ Hz (84 bins below 55 Hz on the 96-bin-per-octave grid, near the roughly 30 Hz lower limit of melodic pitch for harmonic complexes) to 8000 Hz, with a margin of 0.375 ERB-number units on either side: 174 channels, from about 24.629 to 8175.326 Hz. All centers must lie below Nyquist; unsupported sample rates fail configuration validation.
 
 For each complete hop of $N$ samples, a channel accumulates energy $E_h=\sum|z[n]|^2$ and lag-one correlation $S_h=\sum z[n]\overline{z[n-1]}$. The first sample uses the previous hop's final output. A channel keeps a boxcar of $n_c=\max(1,\lceil f_s/(N\,0.75\,\mathrm{ERB}(f_c))\rceil)$ hops. Unobserved slots start at zero and the denominator stays fixed while the boxcar fills.
 

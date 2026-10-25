@@ -266,6 +266,13 @@ fn duration_range(population_spec: PopulationSpec, min_cycles: i64, max_cycles: 
 /// Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
 fn duration_range(population_spec: PopulationSpec, min_cycles: i64, max_cycles: i64) -> PopulationSpec;
 
+/// Slow pitch proposals while the current environment level is high.
+/// Author rule for free pitch with seek_consonance(), initial-only, default 0. Proposal phase advances at max{0, 1+w*(1-2*L)}, where L is the current pitch environment score converted to level after shared habituation, with pitch self-exclusion when available. Adaptation and movement costs retain their original time units. Gap does not pause or reset this clock. This changes proposal frequency, not sound duration, and never forces an onset. Weight is clamped to [0,1]; non-finite becomes 0 with a warning. Unsupported positive weights warn and become 0. Replacements inherit weight without mutation and start phase at zero. At w=1 and L=1 proposals stop until L falls; habituation does not guarantee departure.
+fn dwell(population_spec: PopulationSpec, w: f64) -> PopulationSpec;
+/// Slow pitch proposals while the current environment level is high.
+/// Author rule for free pitch with seek_consonance(), initial-only, default 0. Proposal phase advances at max{0, 1+w*(1-2*L)}, where L is the current pitch environment score converted to level after shared habituation, with pitch self-exclusion when available. Adaptation and movement costs retain their original time units. Gap does not pause or reset this clock. This changes proposal frequency, not sound duration, and never forces an onset. Weight is clamped to [0,1]; non-finite becomes 0 with a warning. Unsupported positive weights warn and become 0. Replacements inherit weight without mutation and start phase at zero. At w=1 and L=1 proposals stop until L falls; habituation does not guarantee departure.
+fn dwell(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
+
 /// Target the consonance/dissonance boundary (C near its midpoint).
 /// The metastable region between fusion and beating. Density band by default; `.peak()` for the point closest to the boundary.
 fn edge(min_hz: f64, max_hz: f64) -> Placement;

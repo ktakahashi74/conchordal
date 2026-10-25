@@ -19,6 +19,13 @@
   without an H/R observer, retaining resource-power self-exclusion. Flora defaults
   to true and Voice to false: Flora's many partials can sustain their own lattice.
 
+- Initial-only `dwell(w)` slows free `seek_consonance()` pitch proposals while the
+  current habituated environment level is high. A separate weighted phase leaves
+  adaptation in real seconds and preserves existing movement costs and legal
+  onset decisions. Default zero retains the previous behavior. Reports include
+  proposal clocks, environment source and terminal state. This is an author rule,
+  not a model of tonal stability or motive formation.
+
 - Initial-only `rest_on_habituation(w)` adds probabilistic spans and tail-aware
   pauses to explicit sustained metric/entrained/steady/flow Voices. Habitat PCM
   supplies shared attack habituation; executed private attacks govern return.

@@ -256,6 +256,13 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         update: &'a crate::life::temporal_participation::ParticipationContextUpdate,
     },
+    Dwell {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        state: &'a crate::life::voice::pitch_controller::DwellRecord,
+    },
     SpanGap {
         voice_id: u64,
         generation: u32,
@@ -752,6 +759,21 @@ impl JsonlReporter {
             tracked_h,
             tracked_raw_score,
             tracked_eff_score,
+        })
+    }
+
+    pub(crate) fn write_dwell(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        state: &crate::life::voice::pitch_controller::DwellRecord,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::Dwell {
+            voice_id,
+            generation,
+            sample_rate,
+            state,
         })
     }
 

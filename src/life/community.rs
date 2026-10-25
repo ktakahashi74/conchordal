@@ -508,6 +508,7 @@ impl Community {
                     owner: (voice.id(), voice.metadata.generation, body_generation),
                 }
             });
+            voice.pitch_ctl.dwell_trace_enabled = auto_observe_enabled;
             if let Some(gap) = &mut voice.phonation_engine.span_gap {
                 gap.observe(landscape, now);
                 gap.trace_enabled = auto_observe_enabled;
@@ -1219,6 +1220,55 @@ mod tests {
                 .exact_score
                 .is_none()
         );
+    }
+
+    #[test]
+    fn dwell_ownership_requires_matching_id_generation_and_pitch_flag() {
+        let mut landscape = runtime_landscape();
+        landscape.consonance_field_score_eff.fill(0.3);
+        landscape.perc_habituation_state_scan.fill(0.5);
+        let mut community = test_pop();
+        let mut spec = spawn_spec_with_freq(330.0);
+        spec.control.pitch.dwell = 1.0;
+        community.apply_action(
+            Action::Spawn {
+                population_id: 7,
+                ids: vec![70],
+                spec,
+                strategy: None,
+            },
+            &landscape,
+        );
+        for (id, generation, pitch_exclusion, present, expected_source) in [
+            (70, 0, true, true, "self_excluded"),
+            (70, 0, false, true, "mixed"),
+            (70, 1, true, true, "mixed"),
+            (71, 0, true, true, "mixed"),
+            (70, 0, true, false, "mixed"),
+        ] {
+            landscape.loo.clear();
+            if present {
+                landscape.loo.push(crate::core::stream::loo::Observation {
+                    id,
+                    generation,
+                    h_scan: vec![0.0; landscape.space.n_bins()],
+                    r_scan: vec![0.0; landscape.space.n_bins()],
+                    score_scan: vec![1.2; landscape.space.n_bins()].into(),
+                });
+            }
+            community.update_loo_ownership(&landscape);
+            let voice = &mut community.voices[0];
+            voice.effective_control.pitch.leave_self_out = pitch_exclusion;
+            voice.update_pitch_target(&NeuralRhythms::default(), 0.01, &landscape, &[], &[]);
+            let record = voice.pitch_ctl.dwell_state.unwrap();
+            assert_eq!(record.source, expected_source);
+            let score = if expected_source == "self_excluded" {
+                0.6
+            } else {
+                0.3
+            };
+            assert!((record.level - landscape.consonance_representation.level(score)).abs() < 1e-6);
+        }
     }
 
     fn make_dummy_tone_spec() -> crate::life::voice::ToneSpec {

@@ -604,6 +604,16 @@ Retain a Voice's private articulation policy across pitch adoptions and sustaine
 
 VoiceがConsonance Field内をどう移動するかを決める。`seek_consonance()`、`glide()`、`temperature()`が基本の作曲用APIで、残りは山登り探索とpeak samplerを調整する。
 
+#### `dwell`
+
+```rhai,ignore
+dwell(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Slow pitch proposals while the current environment level is high. Author rule for free pitch with seek_consonance(), initial-only, default 0. Proposal phase advances at max{0, 1+w*(1-2*L)}, where L is the current pitch environment score converted to level after shared habituation, with pitch self-exclusion when available. Adaptation and movement costs retain their original time units. Gap does not pause or reset this clock. This changes proposal frequency, not sound duration, and never forces an onset. Weight is clamped to [0,1]; non-finite becomes 0 with a warning. Unsupported positive weights warn and become 0. Replacements inherit weight without mutation and start phase at zero. At w=1 and L=1 proposals stop until L falls; habituation does not guarantee departure.
+
 #### `anchor`
 
 ```rhai,ignore

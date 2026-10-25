@@ -583,6 +583,26 @@ impl Voice {
         // base ratios), so this one-time wiring is sufficient.
         pitch.set_body_ratios(body.snapshot().ratios);
 
+        let initial_dwell = (effective_control.pitch.dwell > 0.0).then(|| {
+            let (level, excluded) = landscape.map_or((0.5, false), |landscape| {
+                pitch.dwell_level(
+                    landscape,
+                    target_freq,
+                    effective_control.pitch.leave_self_out,
+                )
+            });
+            pitch_controller::DwellRecord {
+                at: None,
+                event: "state",
+                elapsed_sec: 0.0,
+                phase: 0.0,
+                remainder: 0.0,
+                level,
+                source: if excluded { "self_excluded" } else { "mixed" },
+                freq_hz: target_freq,
+                weight: effective_control.pitch.dwell,
+            }
+        });
         let mut pitch_ctl = PitchController::new(
             pitch,
             adaptation,
@@ -591,6 +611,7 @@ impl Voice {
             rng,
         );
         pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
+        pitch_ctl.dwell_state = initial_dwell;
 
         let body_envelope = &effective_control.body.envelope;
         let voice_adsr = Some(super::sound::ToneAdsr {
@@ -934,6 +955,7 @@ impl Voice {
         );
         let current_freq = self.body.base_freq_hz();
         let previous = self.target_pitch_log2();
+        self.pitch_ctl.control_tick = self.control_tick;
         self.participation_pitch.adopted = self.pitch_ctl.update_pitch_target(
             current_freq,
             rhythms,

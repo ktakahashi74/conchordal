@@ -10051,6 +10051,33 @@ These bounds protect lane reuse and computation cost; they are not fitted musica
 preferences. Faster closed-loop succession and author audition remain separate
 from the time-scaling and default-compatibility checks.
 
+### 9.3.98 Environment-weighted pitch proposals (2026-10-25)
+
+The author heard the undergrowth prototype and judged it “more dynamic” and “not
+random”, then chose implementation at the same weight. `dwell(w)` is an initial-only
+author rule for free `seek_consonance()` Voices. It integrates a separate proposal
+phase at `max(0, 1+w*(1-2*L))`, using the current pitch environment score after shared
+habituation and the pitch path's ownership selection. Defaults remain zero.
+
+The review required separating real adaptation time from weighted proposal phase,
+interpolating score before conversion to level, honoring pitch rather than survival
+self-exclusion, and preserving adoption, legal On opportunities and PH-1 priority.
+The phase continues through Gap; it does not measure holding time from actual On.
+The midpoint 0.5 comes from the existing sigmoid. Matching the old speed there,
+choosing a linear speed law and stopping at `w=1, L=1` are author choices. The slope
+`2w` and speed range `[1-w,1+w]` follow from those choices. Habituation can raise low
+scores and does not guarantee departure. The default raw kernel yields roughly
+0.063–0.881, a calculation for that configuration, not a universal bound.
+
+This couples proposal frequency within a span to environment evaluation. It does
+not establish tonal arrival/passage, motive retention or variation, or phrase
+closure (T-28 remains open). Borrowing tonal hierarchy for consonance, substituting
+habituated evaluation and mapping duration to re-exploration are three new
+assumptions, not results derived from the motivating tonal literature. Proposal
+counts and On counts remain distinct. The prototype audition selects the author's
+configuration; the registered clock, ownership, onset, default and real-time
+checks establish implementation acceptance separately.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

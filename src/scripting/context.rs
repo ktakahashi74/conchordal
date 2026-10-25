@@ -588,6 +588,16 @@ impl ScriptContext {
                 .phonation
                 .articulation_persistence = 0.0;
         }
+        if population_spec.spec.control.pitch.dwell > 0.0
+            && (!population_spec.spec.consonance_movement
+                || population_spec.spec.control.pitch.mode != PitchMode::Free)
+        {
+            warn_at(
+                "dwell",
+                "dwell() requires free pitch with seek_consonance(); ignored",
+            );
+            population_spec.spec.control.pitch.dwell = 0.0;
+        }
         let weight = population_spec.spec.control.phonation.rest_on_habituation;
         if !weight.is_finite()
             || !(0.0..=1.0).contains(&weight)

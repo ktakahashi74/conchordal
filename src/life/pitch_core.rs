@@ -1838,6 +1838,56 @@ impl AnyPitchCore {
         core
     }
 
+    pub(crate) fn dwell_level(
+        &self,
+        landscape: &Landscape,
+        freq_hz: f32,
+        leave_self_out: bool,
+    ) -> (f32, bool) {
+        let input = match self {
+            Self::PitchHillClimb(core) => &core.loo_input,
+            Self::PitchPeakSampler(core) => &core.loo_input,
+        };
+        let scan = input.exact_score.as_deref().filter(|_| leave_self_out);
+        let score_scan = scan.unwrap_or(&landscape.consonance_field_score_eff);
+        landscape
+            .space
+            .assert_scan_len_named(score_scan, "dwell_score_scan");
+        // Ordinary pitch sampling sanitizes invalid input to zero. Dwell needs
+        // neutral level instead, including when the configured theta is nonzero.
+        let log2 = freq_hz.max(1.0).log2();
+        let sample_hz = log2
+            .exp2()
+            .clamp(landscape.space.fmin, landscape.space.fmax);
+        let (lo, hi) = landscape.freq_bounds_log2();
+        if (lo..=hi).contains(&log2) {
+            let pos =
+                (sample_hz.log2() - landscape.space.centers_log2[0]) / landscape.space.step_log2;
+            let raw = crate::core::log2space::sample_scan_linear_at_pos(score_scan, pos);
+            let invalid_habituation = scan.is_some() && {
+                landscape.space.assert_scan_len_named(
+                    &landscape.perc_habituation_state_scan,
+                    "dwell_habituation_scan",
+                );
+                !crate::core::log2space::sample_scan_linear_at_pos(
+                    &landscape.perc_habituation_state_scan,
+                    pos,
+                )
+                .is_finite()
+            };
+            if !raw.is_finite() || invalid_habituation {
+                return (0.5, scan.is_some());
+            }
+        }
+        let score = sample_ownership_score(landscape, log2, scan);
+        let level = if score.is_finite() {
+            landscape.consonance_representation.level(score)
+        } else {
+            0.5
+        };
+        (if level.is_finite() { level } else { 0.5 }, scan.is_some())
+    }
+
     pub(crate) fn environment_score(&mut self, landscape: &Landscape, freq_hz: f32) -> f32 {
         let input = self.loo_input_mut();
         let scan = loo_score_scan(landscape, input);

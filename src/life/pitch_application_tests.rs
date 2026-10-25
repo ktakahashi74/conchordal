@@ -318,3 +318,32 @@ fn rearticulate_emission_and_live_pulse_update_allocate_zero_after_birth() {
         assert_eq!(counts.bytes, 0);
     }
 }
+
+#[test]
+fn dwell_keeps_glide_in_real_seconds_while_proposals_are_stopped() {
+    let mut trajectories = Vec::new();
+    for weight in [0.0, 1.0] {
+        let (mut v, _, r, _) = setup(512, false);
+        v.effective_control.pitch.dwell = weight;
+        v.effective_control.pitch.pitch_apply_mode = PitchApplyMode::Glide;
+        v.effective_control.pitch.pitch_glide_tau_sec = 0.25;
+        v.effective_control.pitch.proposal_interval_sec = Some(100.0);
+        v.pitch_ctl.force_set_target_pitch_log2(440.0_f32.log2());
+        let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
+        landscape.consonance_field_score_eff.fill(100.0);
+        let mut trajectory = Vec::new();
+        for _ in 0..100 {
+            v.update_pitch_target(&r, 0.01, &landscape, &[], &[]);
+            v.update_articulation_autonomous(0.01, &r);
+            trajectory.push(v.body.base_freq_hz());
+        }
+        assert!(
+            trajectory[0] > 330.0 && trajectory[99] > 430.0,
+            "first={} last={}",
+            trajectory[0],
+            trajectory[99]
+        );
+        trajectories.push(trajectory);
+    }
+    assert_eq!(trajectories[0], trajectories[1]);
+}

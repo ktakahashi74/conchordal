@@ -145,6 +145,7 @@ pub struct Landscape {
     pub(crate) onset_habituation_known: bool,
     /// Level-neutral baseline used by score erosion (mirrors representation theta).
     pub consonance_theta: f32,
+    pub(crate) consonance_representation: ConsonanceRepresentationParams,
     pub(crate) loudness_exp: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
@@ -207,6 +208,7 @@ impl Landscape {
             onset_habituation_end: 0,
             onset_habituation_known: false,
             consonance_theta: 0.0,
+            consonance_representation: ConsonanceRepresentationParams::default(),
             loudness_exp: 1.0,
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
@@ -370,6 +372,7 @@ impl Landscape {
             .assert_scan_len_named(h, "habituation_state_scan");
         let n = self.consonance_field_score.len();
         self.consonance_theta = theta;
+        self.consonance_representation = *repr;
         for i in 0..n {
             let hi = h[i];
             self.perc_habituation_state_scan[i] = hi.clamp(0.0, 1.0);
@@ -383,6 +386,7 @@ impl Landscape {
     }
 
     fn recompute_consonance_field(&mut self, params: &LandscapeParams) {
+        self.consonance_representation = params.consonance_representation;
         let n = self.consonance_field_score.len();
         let kernel = params.consonance_field_kernel();
         for i in 0..n {

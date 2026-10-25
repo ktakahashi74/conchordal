@@ -944,3 +944,116 @@ fn onset_habituation_wiring_starts_before_late_birth_and_zero_allocates_no_state
         );
     }
 }
+
+#[test]
+fn dwell_reporting_preserves_real_tone_commands_and_records_stopped_end_state() {
+    use std::sync::Mutex;
+    let root = std::env::temp_dir().join(format!(
+        "conchordal-dwell-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _directory = super::test_output_directory::TestOutputDirectory::new(root.clone());
+    for stopped in [false, true] {
+        let mut runs = Vec::new();
+        for reporting in [false, true] {
+            let script = root.join(format!("{stopped}-{reporting}.rhai"));
+            std::fs::write(&script, "place(sine().sustain().metric().seek_consonance().dwell(1).proposal_interval(0.1).pitch_apply_mode(\"rearticulate\").rearticulate_above(50).rest_on_habituation(0.25).leave_self_out(true),at(330)); wait(3.0);").unwrap();
+            let scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+            let report = root.join(format!("{stopped}.jsonl"));
+            let capture = Arc::new(Mutex::new(Vec::new()));
+            let copy = capture.clone();
+            let mut opts = options();
+            opts.listener_forced = true;
+            if reporting {
+                opts.reporter = Some(JsonlReporter::create(report.to_str().unwrap()).unwrap());
+            }
+            opts.offline_body_probe = Some(Box::new(move |state, tick, count, _| {
+                for batch in &state.phonation_batches_buf[..count] {
+                    copy.lock().unwrap().push(
+                        serde_json::to_string(&(tick, batch.source_id, &batch.cmds, &batch.tones))
+                            .unwrap(),
+                    );
+                }
+            }));
+            let mut config = AppConfig::default();
+            if stopped {
+                config.psychoacoustics.consonance.field.level.theta = -100.0;
+                config.psychoacoustics.habituation.enabled = false;
+            }
+            let wiring = wire_runtime(
+                &config,
+                48000,
+                script.to_string_lossy().into_owned(),
+                scenario,
+                Arc::new(AtomicBool::new(false)),
+                opts,
+            )
+            .unwrap();
+            join(wiring).unwrap();
+            runs.push(capture.lock().unwrap().clone());
+            if reporting {
+                let records: Vec<serde_json::Value> = std::fs::read_to_string(report)
+                    .unwrap()
+                    .lines()
+                    .map(|s| serde_json::from_str(s).unwrap())
+                    .filter(|r: &serde_json::Value| r["type"] == "dwell")
+                    .collect();
+                assert_eq!(records.iter().filter(|r| r["event"] == "end").count(), 1);
+                if stopped {
+                    assert!(records.iter().all(|r| r["event"] != "proposal"));
+                    assert_eq!(records.last().unwrap()["phase"], 0.0);
+                    assert_eq!(records.last().unwrap()["level"], 1.0);
+                } else {
+                    assert!(records.iter().any(|r| r["event"] == "proposal"));
+                }
+            }
+        }
+        assert_eq!(runs[0], runs[1], "reporting must not change Tone commands");
+    }
+}
+
+#[test]
+fn dwell_proposals_are_reported_before_an_early_stop() {
+    let root = std::env::temp_dir().join(format!(
+        "conchordal-dwell-abort-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _directory = super::test_output_directory::TestOutputDirectory::new(root.clone());
+    let script = root.join("scene.rhai");
+    std::fs::write(&script, "place(sine().sustain().seek_consonance().dwell(0.5).proposal_interval(0.001),at(330)); wait(3.0);").unwrap();
+    let scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+    let report = root.join("report.jsonl");
+    let stop = Arc::new(AtomicBool::new(false));
+    let signal = stop.clone();
+    let mut opts = options();
+    opts.reporter = Some(JsonlReporter::create(report.to_str().unwrap()).unwrap());
+    opts.offline_body_probe = Some(Box::new(move |_, _, _, _| {
+        signal.store(true, Ordering::Release);
+    }));
+    let wiring = wire_runtime(
+        &AppConfig::default(),
+        48000,
+        script.to_string_lossy().into_owned(),
+        scenario,
+        stop,
+        opts,
+    )
+    .unwrap();
+    join(wiring).unwrap();
+    let records: Vec<serde_json::Value> = std::fs::read_to_string(report)
+        .unwrap()
+        .lines()
+        .map(|s| serde_json::from_str(s).unwrap())
+        .filter(|r: &serde_json::Value| r["type"] == "dwell")
+        .collect();
+    assert!(records.iter().any(|r| r["event"] == "proposal"));
+    assert_eq!(records.iter().filter(|r| r["event"] == "end").count(), 1);
+}

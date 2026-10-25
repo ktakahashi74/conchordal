@@ -586,3 +586,269 @@ fn span_gap_private_pitch_cancels_with_a_live_application_mode_change() {
     assert!(gap.glide_target.is_none());
     assert!(v.participation_pitch.pending.is_none());
 }
+
+#[test]
+fn dwell_proposals_reach_distinct_legal_onsets_without_forcing_attacks() {
+    let mut first_onsets = Vec::new();
+    for weight in [0.0, 1.0] {
+        for target in [330.0_f32, 331.0, 440.0] {
+            let (mut v, tb, r, mut out, space) = setup(
+                BodyMethod::Sine,
+                PitchApplyMode::Rearticulate,
+                1.0,
+                0.0,
+                2.0,
+            );
+            v.effective_control.pitch.dwell = weight;
+            v.effective_control.pitch.proposal_interval_sec = Some(0.6);
+            v.effective_control.pitch.neighbor_step_cents = Some(1200.0);
+            v.effective_control.pitch.global_peak_count = 1;
+            v.effective_control.pitch.temperature = Some(0.0);
+            v.effective_control.pitch.tessitura_gravity = Some(0.0);
+            v.effective_control.pitch.move_cost_coeff = 0.0;
+            v.pitch_ctl.apply_control(&v.effective_control.pitch);
+            v.pitch_ctl.set_adaptation_enabled(false);
+            v.pitch_ctl.dwell_trace_enabled = true;
+            let mut evidence = Landscape::new(space.clone());
+            evidence.consonance_field_score_eff.fill(0.55);
+            let index = space.nearest_index(target);
+            evidence.consonance_field_score_eff[index] = 1.5;
+            emit(&mut v, &tb, &r, 0, &mut out, &space);
+            let mut first = None;
+            for step in 1..300 {
+                let at = step * 512;
+                v.control_tick = Some(at);
+                v.update_pitch_target_with_listener_pressure(
+                    &r,
+                    512.0 / tb.fs,
+                    &evidence,
+                    &[],
+                    &[],
+                    ListenerPressure::default(),
+                );
+                v.update_articulation_autonomous(512.0 / tb.fs, &r);
+                emit(&mut v, &tb, &r, at, &mut out, &space);
+                if let Some(on) = out.tones.first() {
+                    first = Some(on.onset);
+                    break;
+                }
+            }
+            if target < 332.0 {
+                assert!(
+                    first.is_none(),
+                    "no adoption or below-threshold adoption must not force On: {target}, {weight}"
+                );
+            } else {
+                first_onsets.push(first.expect("valid adopted target must reach On"));
+            }
+        }
+    }
+    assert!(
+        first_onsets[1] > first_onsets[0],
+        "weighted clock must defer the real On: {first_onsets:?}"
+    );
+    assert_eq!(first_onsets[0] % 24000, first_onsets[1] % 24000);
+}
+
+#[test]
+fn dwell_gap_clock_keeps_running_and_private_recovery_uses_real_time() {
+    use crate::life::span_gap::{Phase, SpanGap};
+    let mut recovery = Vec::new();
+    for weight in [0.0, 1.0] {
+        let (mut v, tb, r, mut out, space) = setup(
+            BodyMethod::Sine,
+            PitchApplyMode::Rearticulate,
+            1.0,
+            0.0,
+            2.0,
+        );
+        v.effective_control.pitch.dwell = weight;
+        v.effective_control.pitch.proposal_interval_sec = Some(0.2);
+        v.pitch_ctl.dwell_trace_enabled = true;
+        let mut gap = SpanGap::new(1.0, 21, 2, 0, tb.fs, 330.0);
+        let mut evidence = Landscape::new(space.clone());
+        evidence.consonance_field_score_eff.fill(-0.5);
+        evidence.onset_habituation_known = true;
+        evidence.onset_habituation_state_scan = vec![0.0; space.n_bins()].into();
+        gap.observe(&evidence, 0);
+        gap.phase = Phase::GapActive;
+        gap.own = 0.8;
+        gap.target = 1000.0;
+        v.phonation_engine.span_gap = Some(gap);
+        for step in 0..100 {
+            let at = step * 512;
+            v.control_tick = Some(at);
+            v.update_pitch_target_with_listener_pressure(
+                &r,
+                512.0 / tb.fs,
+                &evidence,
+                &[],
+                &[],
+                ListenerPressure::default(),
+            );
+            v.update_articulation_autonomous(512.0 / tb.fs, &r);
+            emit(&mut v, &tb, &r, at, &mut out, &space);
+            assert!(out.tones.is_empty());
+        }
+        let gap = v.phonation_engine.span_gap.as_ref().unwrap();
+        assert_eq!(gap.phase, Phase::GapActive);
+        assert!(gap.own < 0.8);
+        recovery.push(gap.own);
+        if weight > 0.0 {
+            assert!(v.pitch_ctl.dwell_trace.len() > 5);
+            let before = v.pitch_ctl.dwell_state.unwrap().remainder;
+            v.phonation_engine.span_gap.as_mut().unwrap().phase = Phase::Ready;
+            emit(&mut v, &tb, &r, 100 * 512, &mut out, &space);
+            assert_eq!(
+                v.pitch_ctl.dwell_state.unwrap().remainder,
+                before,
+                "return cannot reset proposal phase"
+            );
+        }
+    }
+    assert_eq!(
+        recovery[0], recovery[1],
+        "private attack recovery must use real time"
+    );
+}
+
+#[test]
+fn dwell_adoption_at_exit_waits_for_tail_and_ready_veto_then_consumes_once() {
+    use crate::life::span_gap::{Phase, SpanGap};
+    for weight in [0.0, 1.0] {
+        let (mut v, tb, r, mut out, space) = setup(
+            BodyMethod::Sine,
+            PitchApplyMode::Rearticulate,
+            1.0,
+            0.0,
+            2.0,
+        );
+        v.effective_control.pitch.dwell = weight;
+        v.effective_control.pitch.proposal_interval_sec = Some(0.1);
+        v.effective_control.pitch.global_peak_count = 1;
+        v.effective_control.pitch.temperature = Some(0.0);
+        v.effective_control.pitch.tessitura_gravity = Some(0.0);
+        v.effective_control.pitch.move_cost_coeff = 0.0;
+        v.pitch_ctl.apply_control(&v.effective_control.pitch);
+        v.pitch_ctl.set_adaptation_enabled(false);
+        let mut evidence = Landscape::new(space.clone());
+        evidence.consonance_field_score_eff.fill(-0.5);
+        evidence.consonance_field_score_eff[space.nearest_index(440.0)] = 2.0;
+        evidence.onset_habituation_known = true;
+        evidence.onset_habituation_state_scan = vec![1.0; space.n_bins()].into();
+        let mut gap = SpanGap::new(1.0, 21, 2, 0, tb.fs, 330.0);
+        gap.observe(&evidence, 0);
+        v.phonation_engine.span_gap = Some(gap);
+        emit(&mut v, &tb, &r, 0, &mut out, &space);
+        let first = out.tones[0].tone_id;
+        v.phonation_engine.span_gap.as_mut().unwrap().target = 1000.0;
+        let mut exit = None;
+        for step in 1..100 {
+            let ctx = CoreTickCtx {
+                now_tick: step * 512,
+                frame_end: (step + 1) * 512,
+                fs: tb.fs,
+                rhythms: r,
+            };
+            if let Some(opportunity) = v.phonation_engine.clock.opportunity(&ctx)
+                && opportunity.at < ctx.frame_end
+            {
+                v.control_tick = Some(opportunity.at);
+                v.update_pitch_target(&r, 0.5, &evidence, &[], &[]);
+                assert!(v.participation_pitch.adopted);
+                v.update_articulation_autonomous(0.5, &r);
+                v.phonation_engine.span_gap.as_mut().unwrap().target = 0.0;
+                emit(&mut v, &tb, &r, ctx.now_tick, &mut out, &space);
+                assert!(
+                    out.tones.is_empty(),
+                    "same-sample exit must win over adoption"
+                );
+                assert!(out.cmds.iter().any(|cmd|matches!(cmd,ToneCmd::Off{tone_id,off_tick} if *tone_id==first && *off_tick==opportunity.at)));
+                exit = Some(step);
+                break;
+            }
+            emit(&mut v, &tb, &r, ctx.now_tick, &mut out, &space);
+        }
+        let step = exit.expect("legal exit");
+        assert_eq!(
+            v.phonation_engine.span_gap.as_ref().unwrap().phase,
+            Phase::GapTail
+        );
+        emit(&mut v, &tb, &r, (step + 1) * 512, &mut out, &space);
+        assert!(out.tones.is_empty());
+        v.phonation_engine
+            .rest_tail_finished((step + 1) * 512, tb.fs);
+        assert_eq!(
+            v.phonation_engine.span_gap.as_ref().unwrap().phase,
+            Phase::GapActive
+        );
+        v.phonation_engine.span_gap.as_mut().unwrap().phase = Phase::Ready;
+        v.apply_patch(&ControlUpdate {
+            amp: Some(0.0),
+            ..Default::default()
+        })
+        .unwrap();
+        for i in step + 2..step + 110 {
+            emit(&mut v, &tb, &r, i * 512, &mut out, &space);
+            assert!(out.tones.is_empty());
+            assert_eq!(
+                v.phonation_engine.span_gap.as_ref().unwrap().phase,
+                Phase::Ready
+            );
+        }
+        assert!(v.participation_pitch.pending.is_some());
+        v.apply_patch(&ControlUpdate {
+            amp: Some(0.1),
+            ..Default::default()
+        })
+        .unwrap();
+        let mut resumed = 0;
+        for i in step + 110..step + 210 {
+            emit(&mut v, &tb, &r, i * 512, &mut out, &space);
+            resumed += out.tones.len();
+        }
+        assert_eq!(resumed, 1, "consume the held target once, without replay");
+        assert!(v.participation_pitch.pending.is_none());
+    }
+}
+
+#[test]
+fn dwell_multiple_adoptions_replace_pending_without_extra_onsets() {
+    let (mut v, tb, r, mut out, space) = setup(
+        BodyMethod::Sine,
+        PitchApplyMode::Rearticulate,
+        1.0,
+        0.0,
+        2.0,
+    );
+    v.effective_control.pitch.dwell = 1.0;
+    v.effective_control.pitch.proposal_interval_sec = Some(0.2);
+    v.effective_control.pitch.global_peak_count = 1;
+    v.effective_control.pitch.temperature = Some(0.0);
+    v.effective_control.pitch.tessitura_gravity = Some(0.0);
+    v.effective_control.pitch.move_cost_coeff = 0.0;
+    v.pitch_ctl.apply_control(&v.effective_control.pitch);
+    v.pitch_ctl.set_adaptation_enabled(false);
+    let mut evidence = Landscape::new(space.clone());
+    emit(&mut v, &tb, &r, 0, &mut out, &space);
+    let mut adopted = Vec::new();
+    let mut sounded = Vec::new();
+    for step in 1..90 {
+        evidence.consonance_field_score_eff.fill(-100.0);
+        evidence.consonance_field_score_eff
+            [space.nearest_index(if step < 15 { 440.0 } else { 550.0 })] = 2.0;
+        v.control_tick = Some(step * 512);
+        v.update_pitch_target(&r, 512.0 / tb.fs, &evidence, &[], &[]);
+        if v.participation_pitch.adopted {
+            adopted.push((step * 512, v.target_pitch_log2().exp2()));
+        }
+        v.update_articulation_autonomous(512.0 / tb.fs, &r);
+        emit(&mut v, &tb, &r, step * 512, &mut out, &space);
+        sounded.extend(out.tones.iter().map(|t| (t.onset, t.freq_hz)));
+    }
+    assert!(adopted.iter().any(|&(_, hz)| hz > 400.0 && hz < 480.0));
+    assert!(adopted.iter().any(|&(_, hz)| hz > 500.0));
+    assert_eq!(sounded.len(), 1, "sounded={sounded:?}; adopted={adopted:?}");
+    assert!(adopted.iter().all(|&(at, _)| at < sounded[0].0));
+    assert!(sounded[0].1 > 500.0, "the last pending adoption must win");
+}

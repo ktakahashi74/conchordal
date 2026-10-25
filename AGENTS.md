@@ -510,6 +510,23 @@ key is a hard error rather than a silent fallback. `#[serde(default)]` still fil
 returns defaults. An explicit missing `--config` path, unreadable/malformed file,
 unknown key, or invalid numeric range fails the run.
 
+## Environment-weighted pitch proposals
+
+- `dwell(w)` is an initial-only author rule for free `seek_consonance()` Voices,
+  default zero. Finite values clamp to `[0,1]`; non-finite values warn and become
+  zero. Unsupported positive weights warn and become zero.
+- Positive weights integrate a separate proposal phase at
+  `max(0, 1 + w * (1 - 2 * L))`. `L` converts the interpolated current-pitch score
+  using the field representation, after shared habituation. Pitch self-exclusion
+  uses matching ID/generation PCM ownership when available; environment-only
+  observers do not change pitch ownership. Non-finite scores use neutral `L=0.5`.
+- Real seconds still drive adaptation, glide and private attack recovery. Movement
+  cost windows stay unchanged. Gap neither pauses nor resets proposal phase.
+  Replacements inherit weight without mutation and start with zero phase.
+- Reports retain proposal elapsed time, phase, remainder, level, source, pitch and
+  weight, plus the end state. Reporting does not change actions or random draws.
+  This does not implement tonal stability, motive formation or phrase closure.
+
 ## Attack habituation and span/gap
 
 - `rest_on_habituation(w)` is initial-only on PopulationSpec, finite `[0,1]`,

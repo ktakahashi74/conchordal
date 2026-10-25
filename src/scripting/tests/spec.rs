@@ -3222,3 +3222,98 @@ fn rest_on_habituation_respawn_resets_private_state_and_retains_weight() {
         );
     }
 }
+
+#[test]
+fn dwell_is_initial_only_clamped_and_requires_explicit_free_seek() {
+    for chain in [
+        "dwell(0.75).seek_consonance()",
+        "seek_consonance().dwell(0.75)",
+    ] {
+        let spec = first_spawn_spec_for_script(&format!("place(sine().{chain},at(220));"));
+        assert_eq!(spec.control.pitch.dwell, 0.75);
+    }
+    for (chain, expected, warns) in [
+        ("seek_consonance()", 0.0, false),
+        ("seek_consonance().dwell(0)", 0.0, false),
+        ("seek_consonance().dwell(1)", 1.0, false),
+        ("seek_consonance().dwell(2)", 1.0, true),
+        ("seek_consonance().dwell(1e100)", 1.0, true),
+        ("seek_consonance().dwell(-1)", 0.0, true),
+        ("dwell(0.5)", 0.0, true),
+        ("seek_consonance().freq(220).dwell(0.5)", 0.0, true),
+    ] {
+        let (scenario, warnings) = run_script(&format!("create(sine().{chain},1);"));
+        assert_eq!(
+            warnings
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("dwell")),
+            warns,
+            "{chain}"
+        );
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            if let Action::Spawn { spec, .. } = action {
+                assert_eq!(spec.control.pitch.dwell, expected, "{chain}");
+            }
+        }
+    }
+    for invalid in [FLOAT::NAN, FLOAT::INFINITY, FLOAT::NEG_INFINITY] {
+        let mut spec = PopulationSpec::preset(BodyMethod::Sine);
+        spec.set_dwell(invalid);
+        assert_eq!(spec.control.pitch.dwell, 0.0);
+        assert!(
+            spec.diagnostics
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("dwell"))
+        );
+    }
+    assert!(
+        run_script_err("let p=create(sine().seek_consonance(),1); p.dwell(1);")
+            .to_string()
+            .contains("dwell")
+    );
+}
+
+#[test]
+fn dwell_respawn_inherits_weight_without_phase() {
+    let (scenario, _) = run_script_with_seed(
+        "create(sine().seek_consonance().dwell(0.75).respawn_random().respawn_background_death_rate(10000.0),1);",
+        21,
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48000.0,
+        hop: 257,
+    });
+    community.set_seed(scenario.seed);
+    let landscape = Landscape::default();
+    for action in scenario.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape);
+        }
+    }
+    let parent = community.voices[0].id();
+    community.advance(257, 0, 257.0 / 48000.0, &landscape);
+    community.cleanup_dead(0, 257.0 / 48000.0, false, &landscape);
+    let children: Vec<_> = community
+        .voices
+        .iter()
+        .filter(|v| v.id() != parent)
+        .collect();
+    assert!(!children.is_empty());
+    for child in children {
+        assert_eq!(child.effective_control.pitch.dwell, 0.75);
+        assert_eq!(child.accumulated_time_for_test(), 0.0);
+        let state = child.pitch_ctl.dwell_state.unwrap();
+        assert_eq!(
+            (state.phase, state.remainder, state.elapsed_sec),
+            (0.0, 0.0, 0.0)
+        );
+        assert_eq!(state.weight, 0.75);
+    }
+}

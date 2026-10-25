@@ -119,6 +119,17 @@ pub(super) fn advance_population(
     if state.reporter.is_some() {
         for voice in &mut state.pop.voices {
             let id = voice.id();
+            if state.scenario_end_tick.is_none()
+                && state.conductor.is_done()
+                && let Some(mut record) = voice.pitch_ctl.dwell_state
+            {
+                record.event = "end";
+                record.at = Some(now_tick);
+                record.phase = record.remainder;
+                report_try(&mut state.reporter, "dwell end", |writer| {
+                    writer.write_dwell(id, voice.metadata.generation, cfg.fs as u32, &record)
+                });
+            }
             if let Some(gap) = &mut voice.phonation_engine.span_gap {
                 if state.scenario_end_tick.is_none() && state.conductor.is_done() {
                     gap.finish(now_tick);
@@ -165,6 +176,16 @@ pub(super) fn advance_population(
         &state.current_landscape,
         listener_pressure,
     );
+    if state.reporter.is_some() {
+        for voice in &mut state.pop.voices {
+            let id = voice.id();
+            for record in voice.pitch_ctl.dwell_trace.drain(..) {
+                report_try(&mut state.reporter, "dwell", |writer| {
+                    writer.write_dwell(id, voice.metadata.generation, cfg.fs as u32, &record)
+                });
+            }
+        }
+    }
     state.pop.flora.retain(|flora| !flora.is_finished());
     state.pop.cleanup_dead(
         state.frame_idx,

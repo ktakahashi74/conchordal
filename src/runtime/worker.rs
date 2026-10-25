@@ -367,6 +367,22 @@ pub(super) fn finish_run(
     channels: &mut WorkerChannels,
     state: &mut WorkerState,
 ) {
+    if state.scenario_end_tick.is_none() && state.reporter.is_some() {
+        for voice in &state.pop.voices {
+            if let Some(mut record) = voice.pitch_ctl.dwell_state {
+                record.event = "end";
+                record.at = Some(state.timebase.frame_start_tick(state.frame_idx));
+                report_try(&mut state.reporter, "dwell end", |writer| {
+                    writer.write_dwell(
+                        voice.id(),
+                        voice.metadata.generation,
+                        cfg.fs as u32,
+                        &record,
+                    )
+                });
+            }
+        }
+    }
     if let Some(worker) = state.footprint_worker.as_mut() {
         worker.finish();
         route_body_footprints(

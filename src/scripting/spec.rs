@@ -382,6 +382,19 @@ impl PopulationSpec {
             .set_move_cost_exp_clamped(value.round() as i64);
     }
 
+    pub(super) fn set_dwell(&mut self, value: FLOAT) {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            self.warn(
+                "dwell() expects a finite weight in [0,1]; clamped (non-finite becomes 0)".into(),
+            );
+        }
+        self.control.pitch.dwell = if value.is_finite() {
+            value.clamp(0.0, 1.0) as f32
+        } else {
+            0.0
+        };
+    }
+
     pub(super) fn set_proposal_interval_sec(&mut self, value: f32) {
         self.control.pitch.set_proposal_interval_sec_clamped(value);
     }

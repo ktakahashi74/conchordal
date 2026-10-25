@@ -514,3 +514,39 @@ to free pitch. Merely setting entrainment or a role does not select this combina
 The same `rest_on_habituation(w)` span/gap rule also applies to explicit
 `sustain().metric()`. It releases at an existing beat crossing and returns only
 on a legal crossing, with all ordinary vetoes retained.
+
+
+## Dwelling in the current environment
+
+For a free-pitch Voice with `seek_consonance()`, `dwell(w)` ties pitch proposal
+frequency to the environment at its current sounding pitch. A high habituated
+consonance level slows proposals; a low level speeds them up. This is an author
+rule, not an implementation of tonal stability, motive formation or phrase closure.
+
+```rhai
+let pluck = modal().sustain().metric().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(50)
+    .proposal_interval(1.0).dwell(1.0);
+place(pluck, consonance(196.0, 784.0).count(3));
+wait(12.0);
+```
+
+The proposal phase advances at `max{0, 1+w*(1-2*L)}` per real second. `L` is the
+level obtained **after interpolating the environment score**, with shared
+habituation and pitch self-exclusion when a matching observation is available.
+Missing ownership evidence falls back to the mixed field. An observer used only
+for survival does not enable pitch self-exclusion. Private adaptation, crowding
+and movement costs are not part of this level. Invalid scores use neutral 0.5.
+
+The default weight is zero. The builder is initial-only; finite weights are
+clamped to `[0,1]`, non-finite values become zero with a warning, and unsupported
+positive weights warn and become zero. Replacements inherit the weight and start
+a fresh phase. At `w=1, L=1` proposals stop until the level falls; habituation
+pulls evaluation toward 0.5 and does not guarantee departure. At constant `L`
+the result can remain periodic.
+
+This changes the timing of proposals, not the decay of a plucked sound. Existing
+adoption, rearticulation thresholds, pending-target replacement, legal beats and
+vetoes determine actual On events. The clock continues through `rest_on_habituation`
+gaps and is not reset on return. Adaptation, glide and private attack recovery use
+real seconds; the movement-cost window retains its original meaning.

@@ -360,6 +360,22 @@ mod tests {
     }
 
     #[test]
+    fn weights_above_one_scale_exit_without_changing_return() {
+        let mut normal = SpanGap::new(0.25, 21, 1, 0, 48000.0, 440.0);
+        let mut strong = SpanGap::new(4.0, 21, 1, 0, 48000.0, 440.0);
+        for state in [&mut normal, &mut strong] {
+            state.observe(&frame(0.4, 0), 0);
+            state.advance(0, false);
+            state.on(0, true);
+            state.advance(48000, false);
+        }
+        assert_eq!(strong.exit_integral, 16.0 * normal.exit_integral);
+        assert_eq!(strong.own, normal.own);
+        assert_eq!(strong.return_integral, normal.return_integral);
+        assert!(strong.exit_integral.is_finite());
+    }
+
+    #[test]
     fn held_delivery_uses_voice_time_and_distinguishes_unknown_future_and_duplicates() {
         let mut state = SpanGap::new(0.25, 21, 1, 0, 48000.0, 440.0);
         state.observe(&frame(0.4, 0), 0);

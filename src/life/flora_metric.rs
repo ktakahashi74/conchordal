@@ -96,7 +96,7 @@ impl Flora {
             let (lo, hi) = sane_basin(lo, hi);
             0.5 * (lo + hi)
         });
-        self.pace = (base / 2.0) * self.spec.pace;
+        self.pace = ecological_pace(self.spec.pace, base / 2.0, self.hop as f32 / self.fs);
         let m = self.temporal.as_mut().unwrap();
         if !m.initialized {
             m.clock = CouplingClock::new(0.95, base, 0.0, 0.0, m.seed);
@@ -126,7 +126,7 @@ impl Flora {
         // Use the same confidence-weighted velocity as the opportunity clock;
         // phase correction changes opportunities, not the ecological time scale.
         m.pace = self.fs / m.clock.nominal_period_ticks(self.fs).unwrap() as f32 / 2.0;
-        self.pace = m.pace * self.spec.pace;
+        self.pace = ecological_pace(self.spec.pace, m.pace, self.hop as f32 / self.fs);
         m.local_phase_cycles = m.clock.phase_cycles();
         if !m.active {
             m.drops += m.pending.iter().filter(|p| p.is_some()).count() as u64;

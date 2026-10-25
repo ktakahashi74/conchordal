@@ -3124,7 +3124,7 @@ fn rest_on_habituation_is_initial_only_validated_and_order_independent() {
         "sustain().rest_on_habituation(0.25)",
         "metric().rest_on_habituation(0.25)",
         "sustain().metric().rest_on_habituation(-1)",
-        "sustain().metric().rest_on_habituation(2)",
+        "sustain().metric().rest_on_habituation(1e100)",
     ] {
         let (scenario, warnings) = run_script(&format!("create(sine().{chain},1);"));
         assert!(
@@ -3145,7 +3145,7 @@ fn rest_on_habituation_is_initial_only_validated_and_order_independent() {
             .to_string()
             .contains("rest_on_habituation")
     );
-    for value in ["0", "1", "0.25"] {
+    for value in ["0", "1", "0.25", "4", "1e30"] {
         let spec = first_spawn_spec_for_script(&format!(
             "create(sine().sustain().metric().rest_on_habituation({value}),1);"
         ));
@@ -3236,8 +3236,10 @@ fn dwell_is_initial_only_clamped_and_requires_explicit_free_seek() {
         ("seek_consonance()", 0.0, false),
         ("seek_consonance().dwell(0)", 0.0, false),
         ("seek_consonance().dwell(1)", 1.0, false),
-        ("seek_consonance().dwell(2)", 1.0, true),
-        ("seek_consonance().dwell(1e100)", 1.0, true),
+        ("seek_consonance().dwell(2)", 2.0, false),
+        ("seek_consonance().dwell(1e100)", 0.0, true),
+        ("seek_consonance().dwell(4)", 4.0, false),
+        ("seek_consonance().dwell(1e30)", 1e30, false),
         ("seek_consonance().dwell(-1)", 0.0, true),
         ("dwell(0.5)", 0.0, true),
         ("seek_consonance().freq(220).dwell(0.5)", 0.0, true),

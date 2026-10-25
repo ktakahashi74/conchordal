@@ -600,7 +600,7 @@ impl ScriptContext {
         }
         let weight = population_spec.spec.control.phonation.rest_on_habituation;
         if !weight.is_finite()
-            || !(0.0..=1.0).contains(&weight)
+            || weight < 0.0
             || (weight > 0.0
                 && !population_spec
                     .spec
@@ -612,7 +612,7 @@ impl ScriptContext {
         {
             warn_at(
                 "rest_on_habituation",
-                "rest_on_habituation() requires a finite weight in [0,1] and explicit sustain() with metric()/entrained()/steady()/flow(); ignored",
+                "rest_on_habituation() requires a finite nonnegative f32 weight and explicit sustain() with metric()/entrained()/steady()/flow(); ignored",
             );
             population_spec.spec.control.phonation.rest_on_habituation = 0.0;
         }

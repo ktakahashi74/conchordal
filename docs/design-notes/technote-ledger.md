@@ -10078,6 +10078,27 @@ counts and On counts remain distinct. The prototype audition selects the author'
 configuration; the registered clock, ownership, onset, default and real-time
 checks establish implementation acceptance separately.
 
+### 9.3.99 Composer parameters and internal saturation (2026-10-25)
+
+The author rejected the cost-based upper limit of Flora `pace(k)`: a composer
+should be able to increase a parameter while it remains well-defined. Composer
+parameters have no upper limits except where the model breaks or the effect
+saturates. Real-time computation is a whole-scene choice, like the number of
+Voice self-exclusion observers; one observer's cost is not a limit on pace.
+This supersedes the upper bound in §9.3.97, retaining its 1/64 lower bound for
+finite retirement. Ecological time per hop saturates at the 10-second resource
+renewal time; retirement shares the saturated pace. At 48 kHz / hop 512 / 4 Hz,
+k=468.75 reaches 1600 substeps on the default grid. The F-19d k=16 timing
+(1437 microseconds, 55 substeps, 690 bins) extrapolates to 41.8 ms/hop there;
+this is a cost estimate, not another acquisition or a real-time guarantee.
+
+The same rule removes the upper clamp of 1 from `rest_on_habituation(w)` and
+`dwell(w)`. Both accept finite nonnegative f32 weights and retain default zero.
+The first increases exit rate proportionally. The second retains
+`v(L,w) = max(0, 1+w*(1-2L))`; for w>1 it stops at `L >= (1+1/w)/2` and
+reaches speed `1+w` at L=0. The speed range in §9.3.98 therefore becomes
+`[max(0,1-w),1+w]`. These are authored controls, not new perceptual claims.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

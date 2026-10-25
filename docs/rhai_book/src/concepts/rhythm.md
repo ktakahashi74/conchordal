@@ -312,7 +312,8 @@ each note releases before a pause measured from actual tail completion. See
 
 `rest_on_habituation(w)` adds spans of playing and pauses to explicit
 `sustain().entrained()`, `sustain().steady()` and `sustain().flow()` (either builder
-order). The initial-only weight is in `[0,1]`, default `0`. Repeated attacks heard
+order). The initial-only weight is finite and nonnegative, default `0`. Values
+above 1 increase the exit rate proportionally without changing its law. Repeated attacks heard
 in habitat audio near the current pitch increase the chance of leaving a span.
 The next legal opportunity releases the Tone. After every tail has ended, a
 private state driven by this Voice's actual attacks governs return. Return only
@@ -538,10 +539,12 @@ Missing ownership evidence falls back to the mixed field. An observer used only
 for survival does not enable pitch self-exclusion. Private adaptation, crowding
 and movement costs are not part of this level. Invalid scores use neutral 0.5.
 
-The default weight is zero. The builder is initial-only; finite weights are
-clamped to `[0,1]`, non-finite values become zero with a warning, and unsupported
+The default weight is zero. The builder is initial-only; finite nonnegative f32
+weights have no upper clamp. Negative values warn and clamp to zero; values
+non-finite before or after f32 conversion become zero with a warning, and unsupported
 positive weights warn and become zero. Replacements inherit the weight and start
-a fresh phase. At `w=1, L=1` proposals stop until the level falls; habituation
+a fresh phase. For `w>1`, proposals stop at `L >= (1+1/w)/2`; at `L=0` speed is `1+w`.
+At `w=1, L=1` proposals stop until the level falls; habituation
 pulls evaluation toward 0.5 and does not guarantee departure. At constant `L`
 the result can remain periodic.
 

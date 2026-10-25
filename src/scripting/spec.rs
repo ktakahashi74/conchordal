@@ -383,13 +383,14 @@ impl PopulationSpec {
     }
 
     pub(super) fn set_dwell(&mut self, value: FLOAT) {
-        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+        if !(value as f32).is_finite() || value < 0.0 {
             self.warn(
-                "dwell() expects a finite weight in [0,1]; clamped (non-finite becomes 0)".into(),
+                "dwell() expects a finite nonnegative f32 weight; clamped (non-finite becomes 0)"
+                    .into(),
             );
         }
-        self.control.pitch.dwell = if value.is_finite() {
-            value.clamp(0.0, 1.0) as f32
+        self.control.pitch.dwell = if (value as f32).is_finite() {
+            value.max(0.0) as f32
         } else {
             0.0
         };
@@ -1023,7 +1024,7 @@ pub(super) fn validate_flora_numeric(
 ) -> Result<f32, Box<EvalAltResult>> {
     if name == "pace" {
         let min = crate::scenario::FLORA_PACE_MIN as FLOAT;
-        let max = crate::scenario::FLORA_PACE_MAX as FLOAT;
+        let max = f32::MAX as FLOAT;
         let clamped = if value.is_nan() {
             min
         } else {
@@ -1035,7 +1036,7 @@ pub(super) fn validate_flora_numeric(
                 .expect("lock script warnings")
                 .push(ScriptWarning {
                     message: format!(
-                        "Flora pace {value} clamped to {clamped}; expected [{min}, {max}]"
+                        "Flora pace {value} clamped to {clamped}; expected a finite f32 value >= {min}"
                     ),
                     position,
                 });

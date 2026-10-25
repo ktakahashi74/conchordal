@@ -1927,7 +1927,7 @@ fn flora_uses_scene_tempo_and_removes_local_rate_overrides() {
 
 #[test]
 fn flora_pace_clamps_specs_and_live_patches_with_positioned_warnings() {
-    use crate::scenario::{FLORA_PACE_MAX, FLORA_PACE_MIN};
+    use crate::scenario::FLORA_PACE_MIN;
     for value in [
         f64::NEG_INFINITY,
         -1.0,
@@ -1940,12 +1940,14 @@ fn flora_pace_clamps_specs_and_live_patches_with_positioned_warnings() {
         0.1,
         1.0,
         2.0,
-        f64::from(FLORA_PACE_MAX),
+        4.0,
+        64.0,
+        f64::from(f32::MAX),
     ] {
         let expected = if value.is_nan() {
             FLORA_PACE_MIN
         } else {
-            value.clamp(FLORA_PACE_MIN as f64, FLORA_PACE_MAX as f64) as f32
+            value.clamp(FLORA_PACE_MIN as f64, f32::MAX as f64) as f32
         };
         for live in [false, true] {
             let ctx = Arc::new(Mutex::new(ScriptContext::default()));
@@ -1973,9 +1975,7 @@ fn flora_pace_clamps_specs_and_live_patches_with_positioned_warnings() {
             let warnings = ctx.warnings.lock().unwrap();
             assert_eq!(
                 warnings.len(),
-                usize::from(
-                    !(f64::from(FLORA_PACE_MIN)..=f64::from(FLORA_PACE_MAX)).contains(&value)
-                )
+                usize::from(!(f64::from(FLORA_PACE_MIN)..=f64::from(f32::MAX)).contains(&value))
             );
             if let Some(warning) = warnings.first() {
                 assert_eq!(warning.position.line(), Some(2));

@@ -66,7 +66,7 @@ contains bins again.
 
 | Method | Accepted values | Default | Live update |
 |---|---|---|---|
-| `pace` | 1/64–4 | 1 | Yes |
+| `pace` | finite, at least 1/64 | 1 | Yes |
 | `amp` | 0–1 | 0.03 | Yes |
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |
@@ -80,11 +80,10 @@ contains bins again.
 Fades, slews and retiring tones can affect the transient output.
 
 `amp` and `fade` must be finite before and after conversion to f32. Invalid values
-raise errors during script evaluation. `pace` instead warns and clamps to its
-supported bounds. NaN and negative infinity use the lower bound; positive infinity
-uses the upper bound. The bounds were acquired at 48 kHz, hop 512 and the default
-grid: the lower bound protects finite retirement at 0.5 Hz and the upper bound
-keeps full-extent advance below one observer's cost at 4 Hz.
+raise errors during script evaluation. `pace` has no cost-based upper bound.
+Values below 1/64, NaN and negative infinity warn and use 1/64; positive infinity
+and positive f32 overflow warn and use f32::MAX, reaching internal saturation.
+The lower bound preserves finite retirement at 0.5 Hz (48 kHz / hop 512).
 
 Live methods collect a pending patch. The next `wait`, `flush` or scope end emits
 it as UpdateFlora. `release(m)` marks release pending; the patch precedes ReleaseFlora
@@ -129,7 +128,7 @@ its center frequency (2 Hz without a basin).
 Every Flora follows fresh, confirmed beats with confidence-weighted coupling
 0.95 and otherwise returns to the center. `flora().pace(k)` sets an authored
 multiplier relative to that beat; a placed handle also accepts `m.pace(k)`. The
-default is 1. For frequency f, ecological time advances by k*f/2: growth is
+default is 1. Until saturation, for frequency f, ecological time advances by k*f/2: growth is
 4kf/s, resource recovery is 20/(kf) seconds and consumption is 0.6/(kf) seconds. Diffusion and seed rain scale together. Phase correction only
 changes metric opportunities. This authored rule does not model phrase duration.
 
@@ -137,10 +136,21 @@ All lanes retire with a finite metabolic amplitude tail. The existing macro
 `fade` bounds release; `fade(0)` ends immediately. The fixed lane pool can postpone
 births while tails occupy slots. The independent `rate` and `renewal` methods
 have been removed. `pace(k)` scales their shared time and divides the retirement
-tail duration by k at fixed f. Birth slew and macro fade retain physical seconds;
+tail duration by k at fixed f until saturation. Birth slew and macro fade retain physical seconds;
 pace does not change the private beat clock or its opportunities.
 
 Sample 17 uses `temporal_basin(2, 4)`: its 3 Hz prior is 1.5 times neutral 2 Hz.
 The sustained scene has no explicit beat carrier; any confirmed acoustic beat can
 still change Flora's pace. The basin is a compositional choice, not a new default
 or a measured optimum.
+
+Ecological time per hop saturates at the 10-second resource renewal time:
+`dt_eco = min{k * (f / 2 Hz) * dt_hop, 10 s}`. Retirement uses the same
+saturated pace. Flora cannot respond faster than it listens; increasing k beyond
+this point advances no additional ecological time. The substep rule is unchanged.
+At 48 kHz / hop 512 / 4 Hz, saturation starts at k=468.75 and uses 1600 substeps
+on the default grid. F-19d measured 84, 146, 296, 684 and 1437 microseconds/hop
+for k=1, 2, 4, 8 and 16 (690 bins, 4 Hz). Extrapolating the last measurement
+from 55 to 1600 substeps estimates 41.8 ms/hop at saturation, not a measurement.
+Cost grows roughly with k until saturation. As with Voice self-exclusion,
+real-time cost depends on the entire scene and is the composer's responsibility.

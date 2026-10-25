@@ -265,3 +265,85 @@ fn pace_retirement_duration_record() {
         );
     }
 }
+
+#[test]
+fn pace_saturation_preserves_ecology_render_and_retirement() {
+    let (terrain, original) = fixed_flora(512);
+    let threshold = RENEWAL_SEC / (original.hop as f32 / original.fs);
+    let mut reference = original.clone();
+    reference.apply_patch(&FloraPatch {
+        pace: Some(threshold),
+        ..Default::default()
+    });
+    for k in [threshold * 2.0, f32::MAX] {
+        let mut saturated = original.clone();
+        let mut expected = reference.clone();
+        saturated.apply_patch(&FloraPatch {
+            pace: Some(k),
+            ..Default::default()
+        });
+        for hop in 0..4 {
+            for f in [&mut expected, &mut saturated] {
+                f.observe_rhythm(
+                    TemporalObservation::default(),
+                    hop * 512,
+                    MeterShaping::default(),
+                );
+                f.advance(&terrain);
+                assert_eq!(f.substeps, 1600);
+                assert!(
+                    f.biomass_mass_scan
+                        .iter()
+                        .all(|v| v.is_finite() && *v >= 0.0)
+                );
+                assert!(
+                    f.resource_state_scan
+                        .iter()
+                        .all(|u| u.is_finite() && (0.0..=1.0).contains(u))
+                );
+            }
+            assert_eq!(expected.biomass_mass_scan, saturated.biomass_mass_scan);
+            assert_eq!(expected.resource_state_scan, saturated.resource_state_scan);
+            let mut a = vec![0.0; 512];
+            let mut b = vec![0.0; 512];
+            let mut ah = vec![0.0; 512];
+            let mut bh = vec![0.0; 512];
+            expected.render_add(&mut a, &mut ah);
+            saturated.render_add(&mut b, &mut bh);
+            assert_eq!(a, b);
+            assert_eq!(ah, bh);
+            assert!(a.iter().all(|v| v.is_finite()));
+            for (a, b) in expected.lanes.iter().zip(&saturated.lanes) {
+                assert_eq!(a.retirement_decay, b.retirement_decay);
+            }
+        }
+    }
+}
+
+#[test]
+fn pace_sixty_four_keeps_ecology_and_pcm_finite() {
+    let (terrain, mut f) = fixed_flora(512);
+    f.apply_patch(&FloraPatch {
+        pace: Some(64.0),
+        ..Default::default()
+    });
+    let mut presentation = vec![0.0; 512];
+    let mut habitat = vec![0.0; 512];
+    for _ in 0..64 {
+        f.advance(&terrain);
+        presentation.fill(0.0);
+        habitat.fill(0.0);
+        f.render_add(&mut presentation, &mut habitat);
+        assert!(presentation.iter().chain(&habitat).all(|v| v.is_finite()));
+        assert!(
+            f.biomass_mass_scan
+                .iter()
+                .all(|v| v.is_finite() && *v >= 0.0)
+        );
+        assert!(
+            f.resource_state_scan
+                .iter()
+                .all(|u| u.is_finite() && (0.0..=1.0).contains(u))
+        );
+    }
+}

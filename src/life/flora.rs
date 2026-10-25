@@ -72,6 +72,7 @@ fn partition_erb_cells(space: &Log2Space, erb_scan: &[f32], extent_hz: (f32, f32
 
 const GROWTH_RATE: f32 = 8.0;
 const RENEWAL_SEC: f32 = 10.0;
+
 const METABOLISM: f32 = 0.3;
 const CONSUMPTION_SEC: f32 = 0.3;
 const REFERENCE_DENSITY: f32 = 10.0;
@@ -81,6 +82,11 @@ const BACKGROUND_SEED_DENSITY: f32 = 9.6e-4;
 const INITIAL_BIOMASS: f32 = 0.5;
 const SLEW_SEC: f32 = 0.08;
 const DEAD_MASS: f32 = 0.001;
+
+fn ecological_pace(multiplier: f32, beat_pace: f32, hop_sec: f32) -> f32 {
+    // Saturate all ecological processes, including retirement, at one renewal per hop.
+    (beat_pace * multiplier).min(RENEWAL_SEC / hop_sec)
+}
 
 fn random_unit(state: &mut u64) -> f32 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -486,7 +492,7 @@ impl Flora {
             fs,
             hop,
             substeps: 1,
-            pace: spec.pace,
+            pace: ecological_pace(spec.pace, 1.0, hop as f32 / fs),
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
             growth_level_scan: Vec::new(),
@@ -565,7 +571,11 @@ impl Flora {
     pub(crate) fn apply_patch(&mut self, patch: &FloraPatch) {
         if let Some(pace) = patch.pace {
             self.spec.pace = pace;
-            self.pace = self.temporal.as_ref().unwrap().pace * pace;
+            self.pace = ecological_pace(
+                pace,
+                self.temporal.as_ref().unwrap().pace,
+                self.hop as f32 / self.fs,
+            );
         }
         if let Some(amp) = patch.amp {
             self.spec.amp = amp;
@@ -654,8 +664,7 @@ impl Flora {
             }
         }
         self.diffusion = 0.5 * (10.0 * space.bins_per_oct as f32 / 1200.0).powi(2);
-        self.substeps = ((self.hop as f32 / self.fs)
-            * self.pace
+        self.substeps = (((self.hop as f32 / self.fs) * self.pace).min(RENEWAL_SEC)
             * (GROWTH_RATE / 0.05).max(self.diffusion / 0.25))
         .ceil()
         .max(1.0) as usize;
@@ -811,13 +820,12 @@ impl Flora {
         if self.range.is_empty() {
             return;
         }
-        self.substeps = ((self.hop as f32 / self.fs)
-            * self.pace
+        self.substeps = (((self.hop as f32 / self.fs) * self.pace).min(RENEWAL_SEC)
             * (GROWTH_RATE / 0.05).max(self.diffusion / 0.25))
         .ceil()
         .max(1.0) as usize;
         let substeps = self.substeps;
-        let dt = self.hop as f32 / self.fs * self.pace / substeps as f32;
+        let dt = (self.hop as f32 / self.fs * self.pace).min(RENEWAL_SEC) / substeps as f32;
         self.advance_ecology(dt, substeps);
     }
 

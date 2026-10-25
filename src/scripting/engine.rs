@@ -2052,9 +2052,9 @@ fn register_population_spec_numeric_overloads(
     numeric_overloads!(engine, name, |call, population_spec: PopulationSpecHandle; value| {
         let mut population_spec = population_spec;
         population_spec.spec.record_call(name, call.call_position(), &diagnostics);
-        if name == "rest_on_habituation" && (!value.is_finite() || !(0.0..=1.0).contains(&value)) {
+        if name == "rest_on_habituation" && (!value.is_finite() || value < 0.0) {
             diagnostics.lock().expect("lock diagnostics").push(ScriptWarning {
-                message: "rest_on_habituation() expects a finite weight in [0,1]; ignored".into(), position: call.call_position(),
+                message: "rest_on_habituation() expects a finite nonnegative f32 weight; ignored".into(), position: call.call_position(),
             });
             setter(&mut population_spec.spec, 0.0);
         } else {

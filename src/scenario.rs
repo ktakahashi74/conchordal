@@ -12,7 +12,6 @@ use lifecycle::LifecycleConfig;
 // Bounds acquired at 48 kHz / hop 512 on the default 690-bin grid.
 // The minimum protects finite retirement at 0.5 Hz; the maximum budgets 4 Hz advance.
 pub(crate) const FLORA_PACE_MIN: f32 = 1.0 / 64.0;
-pub(crate) const FLORA_PACE_MAX: f32 = 4.0;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FloraSpec {

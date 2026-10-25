@@ -5,8 +5,10 @@
 - Flora adds initial and live `pace(k)`, default 1, to scale ecological time relative
   to its private beat clock. Growth, spread, seeding, recovery, consumption and
   retirement share the multiplier. Beat opportunities, birth slew and macro fade
-  retain their clocks. Pace warns and clamps to bounds set by finite retirement
-  and per-hop ecological cost.
+  retain their clocks. Pace retains the 1/64 finite-retirement minimum with no cost-based upper
+  bound; ecological time saturates at 10 seconds per hop. The composer owns
+  whole-scene real-time cost. `rest_on_habituation(w)` and `dwell(w)` accept
+  finite nonnegative weights above 1 without changing their laws.
 
 - Flora now removes its actual own habitat PCM by default before computing growth
   consonance and seed harmonicity, sharing the subtraction with external resource power.

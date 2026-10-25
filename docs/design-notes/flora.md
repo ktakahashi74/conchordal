@@ -790,13 +790,26 @@ release(m);
 - `flora()` returns a `FloraSpec`, with `.pace`, `.amp`, `.tone`,
   `.residual`, `.fade` and `.send` (same `Bus` / `BusSet` values as Populations).
   `.tone` accepts only `"sine"` and `"resonant"`; any other string is a script error.
-- **Validation.** `pace` accepts `[1/64, 4]` (default 1). Bounds are acquired at
-  48 kHz, hop 512 and the default 690-bin grid. The minimum uses the 0.5 Hz
-  beat boundary and the maximum uses the full extent at 4 Hz.
-  `pace` warns and clamps outside its supported bounds. NaN and
-  negative infinity use the lower bound, positive infinity the upper bound. The
-  lower bound protects finite retirement at the slowest supported beat; the
-  upper bound limits per-hop ecological cost.
+- **Validation.** `pace` accepts finite f32 values at least 1/64 (default 1),
+  without a cost-based upper bound. Smaller values, NaN and negative infinity
+  warn and use 1/64; positive infinity and positive f32 overflow warn and use
+  f32::MAX, which reaches the internal saturation below. The minimum preserves
+  finite retirement at 0.5 Hz, acquired at 48 kHz / hop 512.
+  Ecological time per hop saturates at `RENEWAL_SEC = 10 s`:
+  `dt_eco = min(k * (f / 2 Hz) * dt_hop, 10 s)`. Retirement uses the same
+  saturated pace. The private beat, birth slew and macro fade keep their clocks.
+  Beyond saturation no additional ecological time is advanced: Flora cannot
+  respond faster than it listens. This is an internal saturation, not a limit
+  on the composer's parameter.
+  The existing substep rule is `ceil(dt_eco * max(8/0.05, diffusion/0.25))`,
+  at least one step. At 96 bins/octave, saturation gives 1600 substeps per hop;
+  at 48 kHz / hop 512 / 4 Hz this starts at k=468.75. F-19d measured
+  84, 146, 296, 684 and 1437 microseconds/hop for k=1, 2, 4, 8 and 16
+  (690 bins, 4 Hz). Scaling the k=16 cost over its 55 substeps estimates
+  about 41.8 ms/hop at saturation; this is an extrapolation, not a new timing
+  acquisition. Cost grows roughly with k until saturation. As with Voice
+  self-exclusion observers, real-time cost depends on the entire scene and is
+  the composer's responsibility; one observer's cost is not a parameter limit.
   Other numeric arguments, on the spec and on handle patches, must be
   finite both as given and after conversion to `f32`. Overflow to infinity in the
   conversion is an error. Out-of-range values are script errors, not clamps:

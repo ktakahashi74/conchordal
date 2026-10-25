@@ -60,7 +60,7 @@ pace(multiplier)
 
 適用対象：`FloraSpec`, `Flora`。
 
-Set Flora's ecological speed relative to its private beat clock in [1/64, 4] (default 1). Growth, spread, seed rain, recovery and both consumption paths share dt_eco = pace * (f / 2 Hz) * dt. Retirement uses the same scale; beat opportunities, birth slew and macro fade retain their clocks. Bounds are acquired at 48 kHz, hop 512 and the default grid: finite retirement at 0.5 Hz and advance cost at 4 Hz. Out-of-range values warn and clamp to the supported range. NaN and negative infinity use the lower bound; positive infinity uses the upper bound. Live patches emit at wait, flush or scope end.
+Set Flora's ecological speed relative to its private beat clock with a minimum of 1/64 and no cost-based upper bound (default 1). Ecological time is min{k*(f/2 Hz)*dt, 10 s} per hop for growth, spread, seeding, recovery and consumption. Retirement shares saturation; beat opportunities, birth slew and macro fade keep their clocks. Finite f32 values above the minimum are retained. Values below 1/64, NaN and negative infinity warn and use 1/64. Positive infinity and positive f32 overflow warn and use f32::MAX, reaching saturation. Live patches emit at wait, flush or scope end. Whole-scene real-time cost is the composer's responsibility, as with Voice self-exclusion. See the Flora chapter for the finite-retirement minimum, measurements and saturation cost estimate.
 
 #### `leave_self_out`
 
@@ -457,7 +457,7 @@ rest_on_habituation(w)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-End sustained spans probabilistically as heard attacks become familiar. Initial-only weight in [0,1], default 0. Requires explicit sustain() with metric(), entrained(), steady() or flow(). Shared habitat attack habituation drives exit; private executed attacks govern return after all tails end. Onsets remain on existing legal opportunities and may be vetoed. rest() adds its fixed tail-following gap before recovery resumes. Uses habituation enabled/satiation_sec/recovery_sec; disabled habituation prevents exits. This is an author rule, not phrase perception. Invalid or unsupported values warn and are ignored. Replacements inherit the weight but reset private state.
+End sustained spans probabilistically as heard attacks become familiar. Initial-only finite nonnegative f32 weight, default 0. Values above 1 proportionally increase exit rate without changing its law. Requires explicit sustain() with metric(), entrained(), steady() or flow(). Shared habitat attack habituation drives exit; private executed attacks govern return after all tails end. Onsets remain on existing legal opportunities and may be vetoed. rest() adds its fixed tail-following gap before recovery resumes. Uses habituation enabled/satiation_sec/recovery_sec; disabled habituation prevents exits. This is an author rule, not phrase perception. Invalid or unsupported values warn and are ignored. Replacements inherit the weight but reset private state.
 
 #### `rest`
 
@@ -612,7 +612,7 @@ dwell(w)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Slow pitch proposals while the current environment level is high. Author rule for free pitch with seek_consonance(), initial-only, default 0. Proposal phase advances at max{0, 1+w*(1-2*L)}, where L is the current pitch environment score converted to level after shared habituation, with pitch self-exclusion when available. Adaptation and movement costs retain their original time units. Gap does not pause or reset this clock. This changes proposal frequency, not sound duration, and never forces an onset. Weight is clamped to [0,1]; non-finite becomes 0 with a warning. Unsupported positive weights warn and become 0. Replacements inherit weight without mutation and start phase at zero. At w=1 and L=1 proposals stop until L falls; habituation does not guarantee departure.
+Slow pitch proposals while the current environment level is high. Initial-only author rule for free seek_consonance(), default 0. Finite nonnegative f32 weights have no upper clamp; negative, non-finite or unsupported values warn and become 0. Proposal phase advances at max{0,1+w*(1-2L)}; L is the habituated environment level at the current pitch, using pitch self-exclusion when available. For w>1 it stops at L>=(1+1/w)/2; maximum speed is 1+w at L=0. Replacements inherit weight and reset phase. Gap preserves the clock. Adaptation and movement costs retain their time units. Proposals never force onsets or change sound duration. See the Rhythm chapter for interpolation, conversion and why habituation does not guarantee departure.
 
 #### `anchor`
 

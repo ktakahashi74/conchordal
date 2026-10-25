@@ -171,7 +171,10 @@ impl PitchController {
             let (level, excluded) =
                 self.core
                     .dwell_level(landscape, current_freq, pitch.leave_self_out);
-            self.proposal_phase += dt_sec * (1.0 + pitch.dwell * (1.0 - 2.0 * level)).max(0.0);
+            // At extreme weights, retain a finite pending phase instead of overflowing.
+            self.proposal_phase = (self.proposal_phase
+                + dt_sec * (1.0 + pitch.dwell * (1.0 - 2.0 * level)).max(0.0))
+            .min(f32::MAX);
             self.dwell_state = Some(DwellRecord {
                 at: self.control_tick,
                 event: "state",
@@ -555,6 +558,42 @@ mod dwell_tests {
         assert_eq!(traced.rng.next_u64(), quiet.rng.next_u64());
         traced.force_set_target_pitch_log2(330.0_f32.log2());
         assert_eq!((traced.proposal_phase, traced.accumulated_time), (0.0, 0.0));
+    }
+
+    #[test]
+    fn dwell_large_weights_stop_accelerate_and_keep_phase_finite() {
+        for weight in [4.0, f32::MAX] {
+            let pitch = PitchControl {
+                dwell: weight,
+                proposal_interval_sec: Some(f32::MAX),
+                ..Default::default()
+            };
+            let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
+            let mut ctl = controller(&pitch, &landscape.space);
+            for (score, stopped) in [(100.0, true), (-100.0, false)] {
+                landscape.consonance_field_score_eff.fill(score);
+                for _ in 0..8 {
+                    ctl.update_pitch_target(
+                        220.0,
+                        &NeuralRhythms::default(),
+                        1.0,
+                        &landscape,
+                        &pitch,
+                        &[],
+                        &[],
+                        0.0,
+                    );
+                    assert!(ctl.proposal_phase.is_finite());
+                    assert!(ctl.proposal_phase >= 0.0);
+                    if stopped {
+                        assert_eq!(ctl.proposal_phase, 0.0);
+                    }
+                }
+                if !stopped && weight == 4.0 {
+                    assert_eq!(ctl.proposal_phase, 40.0);
+                }
+            }
+        }
     }
 
     #[test]

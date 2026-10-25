@@ -465,12 +465,16 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   the hop. Unknown, stale or unconfirmed observations use continuous allocation without resetting
   the clock; biomass/resources stay continuous. Flora has no `metric()` opt-in or opt-out.
   Flora `pace(k)` (default 1, initial and live) multiplies its ecological time
-  relative to the private beat velocity: `dt_eco = k * (f / 2 Hz) * dt`. Growth,
+  relative to the private beat velocity: `dt_eco = min(k * (f / 2 Hz) * dt, 10 s)`. Growth,
   spread, seeding, recovery and both consumption paths share that time. Retirement
   uses the same multiplier; birth slew, macro fade and beat opportunities do not.
-  Pace bounds [1/64, 4] are acquired at 48 kHz / hop 512 / 690 bins. Out-of-range
-  pace warns and clamps. The lower bound protects finite retirement at 0.5 Hz;
-  the upper bound limits full-extent advance at 4 Hz against the observer budget.
+  Pace keeps its 1/64 finite-retirement minimum (48 kHz / hop 512, 0.5 Hz).
+  There is no cost-based upper clamp. Ecological time saturates at RENEWAL_SEC
+  (10 seconds) per hop, and retirement uses the same saturated pace. The existing
+  substep rule gives 1600 steps at saturation on the default grid. Whole-scene
+  real-time cost remains the composer's responsibility, as with Voice observers.
+  NaN, negative infinity and subminimum pace warn and use the minimum; positive
+  infinity and positive f32 overflow warn and use f32::MAX (internal saturation).
   Flora residual rendering defaults to false; explicit
   `.residual(true)` remains available.
 
@@ -513,10 +517,13 @@ unknown key, or invalid numeric range fails the run.
 ## Environment-weighted pitch proposals
 
 - `dwell(w)` is an initial-only author rule for free `seek_consonance()` Voices,
-  default zero. Finite values clamp to `[0,1]`; non-finite values warn and become
-  zero. Unsupported positive weights warn and become zero.
+  default zero. Finite nonnegative f32 values have no upper clamp; negative or
+  non-finite values (including f32 conversion overflow) warn and become zero.
+  Unsupported positive weights warn and become zero.
 - Positive weights integrate a separate proposal phase at
-  `max(0, 1 + w * (1 - 2 * L))`. `L` converts the interpolated current-pitch score
+  `max(0, 1 + w * (1 - 2 * L))`. For w > 1 it stops at
+  `L >= (1 + 1/w)/2`, with maximum speed `1+w` at L=0.
+  `L` converts the interpolated current-pitch score
   using the field representation, after shared habituation. Pitch self-exclusion
   uses matching ID/generation PCM ownership when available; environment-only
   observers do not change pitch ownership. Non-finite scores use neutral `L=0.5`.
@@ -529,10 +536,11 @@ unknown key, or invalid numeric range fails the run.
 
 ## Attack habituation and span/gap
 
-- `rest_on_habituation(w)` is initial-only on PopulationSpec, finite `[0,1]`,
+- `rest_on_habituation(w)` is initial-only on PopulationSpec, finite `[0, infinity)`,
   default zero; explicit sustain with metric/entrained/steady/flow is required.
   Invalid or unsupported values warn and are ignored. Templates inherit the
-  weight without mutation; births reset all private state.
+  weight without mutation; births reset all private state. Weights above one
+  proportionally increase exit rate without changing its law.
 - One optional habitat AnalysisStream observer owns attack history from run start
   whenever any effective positive weight appears in the scenario, including later
   placements. It reuses auditory band powers. Listener, synchronous body, Voice

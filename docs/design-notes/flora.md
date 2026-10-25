@@ -237,7 +237,7 @@ Implementation Findings. Every part of it belongs to the authored-rule tier.
 **State.** Each Flora instance holds:
 
 - an **extent** `[lo_hz, hi_hz]` kept in Hz, and its bin range on the current Log2Space
-  (runtime default 55–8000 Hz, 96 bins/oct);
+  (runtime default 55·2^(−7/8)–8000 Hz, approximately 29.989–8000 Hz, 96 bins/oct);
 - a biomass scan `v[x] ≥ 0` (`biomass_mass_scan` in the reference implementation): mass
   per bin, zero outside the extent. Its total is not conserved and is never
   renormalized; silence is a legitimate state;

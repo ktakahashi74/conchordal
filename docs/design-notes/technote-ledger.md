@@ -10372,3 +10372,31 @@ replacing CAP-1's per-hop cap: speed is (f/2)*min(k,20*r), with r=1 for beats an
 fallback. Phase correction changes crossing times, not the nominal rate law.
 This is an adopted compositional rule. It does not claim more frequent harmonic
 progression, musical improvement, or a new real-time acceptance result.
+
+
+### 9.3.103 Low-frequency analysis extent (2026-10-25)
+
+The author adopted extending analysis toward the range supporting melodic pitch.
+The production grid now starts at 55·2^(−7/8) Hz (approximately 29.989 Hz),
+84 bins below 55 Hz at 96 bins/oct, and retains its 8000 Hz upper bound.
+Pressnitzer, Patterson & Krumbholz (2001, JASA 109:2074,
+doi:10.1121/1.1359797) found an approximately 30 Hz lower repetition rate
+for a four-note melodic task with harmonic components below 800 Hz. Component
+band and phase affect that result; it is not a universal threshold for pure tones
+or arbitrary spectra. The exact grid coordinate is an engineering choice to
+retain the existing lattice within f32 rounding, not a precision claimed by the study.
+
+The proposed upper H cutoff was withdrawn. Limits on melodic pitch for isolated
+high pure tones do not establish a cutoff for fusion through a common root;
+high harmonics can support a lower pitch (Oxenham et al., 2011, PNAS 108:7629).
+Weighting the candidate coordinate would not repair that inference or prohibit
+high-frequency growth and selection. H/R/C laws and their normalization remain
+unchanged, although extending the normalization domain can change existing values.
+
+This narrower adoption leaves H support at 5–8 kHz and support through internal
+roots below approximately 30 Hz. It does not guarantee that H is absent wherever
+melodic pitch is weak, classify pitch presence, extend analysis above 8 kHz, or
+implement non-pitched inhabitants. Flora reads base C/H and self-excluded resource
+power; Voice and Listener retain the eroded views. See
+[auditory system](auditory-system.md#hr-1解析の低域拡張2026-10-25) for channel geometry,
+latency, and the distinction between historical and current IIR-tail calculations.

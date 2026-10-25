@@ -30,7 +30,7 @@ realized either as a cloud (the default) or as a deterministic extremum with
 Range bounds must be finite and within the synthesizer's 1–20000 Hz range;
 reversed bounds are accepted. Initial placement stays inside those bounds,
 including jitter and all-zero or fully occupied fallbacks. Field targets use
-the intersection with the analysis band (currently 55–8000 Hz). If there is
+the intersection with the analysis band (currently approximately 29.989–8000 Hz). If there is
 no intersection, placement falls back to log-uniform sampling in the requested
 range because no field evidence is available there. `random()` samples the
 requested range directly. Placement does not constrain subsequent

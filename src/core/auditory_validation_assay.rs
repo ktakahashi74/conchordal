@@ -117,8 +117,7 @@ fn acquire_windows(addendum6: bool) {
             row,
         );
     }
-    let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+    let (params, kernel, hop) = prototype_core(true);
     let space = kernel.space().clone();
     let (_, du) = erb_grid(&space);
     let peak = compute_roughness_reference(&params, &space).peak;

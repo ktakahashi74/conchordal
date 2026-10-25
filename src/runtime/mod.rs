@@ -110,6 +110,9 @@ mod perceptual_action_assay;
 mod tests;
 
 #[cfg(test)]
+mod lowrange_tests;
+
+#[cfg(test)]
 type OfflineBodyProbe = Box<dyn FnMut(&mut WorkerState, Tick, usize, [&[f32]; 2]) + Send>;
 
 #[cfg(test)]

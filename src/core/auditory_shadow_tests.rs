@@ -10,6 +10,42 @@ fn output_dir() -> PathBuf {
     PathBuf::from(std::env::var("AUD_M1_OUTPUT").expect("explicit acquisition output directory"))
 }
 
+// Keep the historical beta comparisons independent of the production grid.
+pub(super) fn prototype_core(
+    habituation: bool,
+) -> (
+    LandscapeParams,
+    crate::core::nsgt_rt::RtNsgtKernelLog2,
+    usize,
+) {
+    use crate::core::harmonicity_kernel::HarmonicityKernel;
+    use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
+    use crate::core::nsgt_rt::RtNsgtKernelLog2;
+
+    let mut config = crate::config::AppConfig::default();
+    config.psychoacoustics.habituation.enabled = habituation;
+    let (mut params, _, hop) = crate::runtime::birth_surrogate_assay_core(&config, 48000);
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    // H caches grid coordinates; R geometry and references are built by each caller.
+    params.harmonicity_kernel = HarmonicityKernel::new(&space, params.harmonicity_kernel.params);
+    let kernel = NsgtKernelLog2::new(
+        NsgtLog2Config {
+            fs: params.fs,
+            overlap: 1.0 - hop as f32 / config.analysis.nfft as f32,
+            nfft_override: Some(config.analysis.nfft),
+            kernel_align: config.analysis.kernel_align,
+        },
+        space,
+        None,
+        if config.psychoacoustics.use_incoherent_power {
+            PowerMode::Incoherent
+        } else {
+            PowerMode::Coherent
+        },
+    );
+    (params, RtNsgtKernelLog2::new(kernel), hop)
+}
+
 #[test]
 fn filter_response_matches_closed_form() {
     let space = Log2Space::new(55.0, 8000.0, 96);
@@ -58,7 +94,7 @@ fn filter_response_matches_closed_form() {
 
 #[test]
 fn reset_clone_and_initial_silence() {
-    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+    let (params, nsgt, _) = prototype_core(false);
     let space = nsgt.space().clone();
     for beta in [1.0, 0.5, 1.0 / 3.0, 0.25] {
         for analytic in [false, true] {
@@ -186,7 +222,7 @@ fn field_errors(actual: &Landscape, truth: &Landscape) -> Value {
 
 #[test]
 fn skipped_body_hops_preserve_filter_history() {
-    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+    let (params, nsgt, _) = prototype_core(false);
     for beta in [1.0, 0.5, 1.0 / 3.0, 0.25] {
         for analytic in [false, true] {
             let mut every =
@@ -241,8 +277,7 @@ fn skipped_body_hops_preserve_filter_history() {
 
 #[test]
 fn onset_and_roundoff_floor_use_existing_pcm_gate() {
-    let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+    let (params, kernel, hop) = prototype_core(true);
     let space = kernel.space().clone();
     let ref_peak = compute_roughness_reference(&params, &space).peak;
     let mut scratch =
@@ -391,8 +426,7 @@ fn aud_m1_v2_consumers() {
     let reference: Value =
         serde_json::from_slice(&std::fs::read(dir.join("reference/reference.json")).unwrap())
             .unwrap();
-    let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+    let (params, kernel, hop) = prototype_core(true);
     let space = kernel.space().clone();
     let (_, du) = erb_grid(&space);
     let ref_peak = compute_roughness_reference(&params, &space).peak;
@@ -650,8 +684,7 @@ fn aud_m1_v2_consumers() {
 
 #[test]
 fn complex_onset_uses_existing_pcm_gate() {
-    let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+    let (params, kernel, hop) = prototype_core(true);
     let space = kernel.space().clone();
     let ref_peak = compute_roughness_reference(&params, &space).peak;
     let mut scratch =
@@ -711,8 +744,7 @@ fn complex_onset_uses_existing_pcm_gate() {
 
 #[test]
 fn endpoint_fade_preserves_deposited_mass() {
-    let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+    let (params, kernel, hop) = prototype_core(true);
     let mut front =
         ShadowFrontEnd::new(kernel.space().clone(), params.fs, 1.0, false, kernel.nfft());
     let last = (front.space.n_bins() - 1) as f32;

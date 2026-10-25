@@ -1,3 +1,17 @@
+# Low-frequency production grid baseline (approximately 29.989..8000 Hz).
+# HR-1: shared 55 Hz refactor preserved every old value; only the lower bound
+# can change normalization, fallback bodies and field-driven behavior.
+# Recapture at the new lower bound preserved all four registered WAV hashes
+# in both feature groups; this is not general old-grid waveform compatibility.
+# Previous 55 Hz values retained before this authorized range extension:
+# Previous fma=0,avx2=0,avx512f=0 sine a83ee63023d228a6
+# Previous fma=0,avx2=0,avx512f=0 harmonic 9bcb1345c1ef3ba1
+# Previous fma=0,avx2=0,avx512f=0 modal 6cf9b6bbfc1687de
+# Previous fma=0,avx2=0,avx512f=0 habituation 07d48b5d61d5bb9b
+# Previous fma=1,avx2=1,avx512f=1 sine a83ee63023d228a6
+# Previous fma=1,avx2=1,avx512f=1 harmonic 9bcb1345c1ef3ba1
+# Previous fma=1,avx2=1,avx512f=1 modal 6cf9b6bbfc1687de
+# Previous fma=1,avx2=1,avx512f=1 habituation 07d48b5d61d5bb9b
 # Causal auditory front-end baseline following f72d4a88.
 # Previous pre-Flora baseline: 1104e553d9225ef869a772af73e4aefa312c0110
 # Previous values retained for the authorized front-end migration:
@@ -25,13 +39,13 @@
 # Native Cargo config: -C target-cpu=native -C target-feature=+avx,+avx2,+fma,+f16c.
 # Each case captured twice below; both WAV hashes must agree.
 # target_features case fnv1a64(complete WAV bytes)
-# Capture fma=0,avx2=0,avx512f=0: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=-C target-cpu=x86-64
-fma=0,avx2=0,avx512f=0 sine a83ee63023d228a6
-fma=0,avx2=0,avx512f=0 harmonic 9bcb1345c1ef3ba1
-fma=0,avx2=0,avx512f=0 modal 6cf9b6bbfc1687de
-fma=0,avx2=0,avx512f=0 habituation 07d48b5d61d5bb9b
 # Capture fma=1,avx2=1,avx512f=1: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=<unset; Cargo config applies>
 fma=1,avx2=1,avx512f=1 sine a83ee63023d228a6
 fma=1,avx2=1,avx512f=1 harmonic 9bcb1345c1ef3ba1
 fma=1,avx2=1,avx512f=1 modal 6cf9b6bbfc1687de
 fma=1,avx2=1,avx512f=1 habituation 07d48b5d61d5bb9b
+# Capture fma=0,avx2=0,avx512f=0: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=-C target-cpu=x86-64
+fma=0,avx2=0,avx512f=0 sine a83ee63023d228a6
+fma=0,avx2=0,avx512f=0 harmonic 9bcb1345c1ef3ba1
+fma=0,avx2=0,avx512f=0 modal 6cf9b6bbfc1687de
+fma=0,avx2=0,avx512f=0 habituation 07d48b5d61d5bb9b

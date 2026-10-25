@@ -305,7 +305,7 @@ fn erb_context_matches_direct_sum_and_isolated_power() {
 #[cfg(test)]
 #[test]
 fn boxcar_matches_explicit_hop_history_and_body_skip() {
-    let (kernel, params) = crate::runtime::body_metabolism_test_core();
+    let (params, kernel, _) = super::tests::prototype_core(false);
     for beta in [0.25, 1.0 / 3.0] {
         for erb in [false, true] {
             let plain = ShadowFrontEnd::new(

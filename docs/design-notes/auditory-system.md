@@ -538,8 +538,8 @@ M2 で演奏の経路へ移す時の定義はこの節にまとめる。§5 の�
   - 係数は f64 で作って f32 に丸め、状態と sample ごとの演算は f32。
 - **格子**
   - 1000 Hz を基準とした LTFAT の ERB 番号 9.2645·ln(1 + 0.00437 f) の上に、間隔 min(1/4, 0.75β) = 0.1875 ERB。
-  - 余白は 55〜8000 Hz の両側に 1.5β ERB。
-  - 試作では 170 channel、範囲 46.001〜8175.326 Hz。
+  - 余白は 55·2^(−7/8)〜8000 Hz（約29.989〜8000 Hz）の両側に 1.5β ERB。
+  - 現行は174 channel、中心の範囲は24.629〜8175.326 Hz。旧い55 Hz下限の試作は170 channel、46.001〜8175.326 Hzだった。
 - **hop の統計**（S3）
   - channel ごとに、hop の未正規化の E_h = Σ|z|² と S_h = Σ z[n]·conj(z[n−1]) を作る。hop の最初の sample は、前の hop の最後の z を使う。
   - 直近 n_c = max(1, ceil(fs/(hop·0.75·ERB(f_c)))) 個の hop の和を、channel ごとの ring で保つ。
@@ -573,7 +573,7 @@ M2 で演奏の経路へ移す時の定義はこの節にまとめる。§5 の�
 |---|---|---|---|
 | S0 入力 | habitat、presentation、`mix − own`、代表音の render の PCM。音量によらない相対の量 | §5.8 | — |
 | S1 解析信号 | 負の周波数を抑える因果の前段。V2 で要否を決める | §6.2 | 複素の PCM |
-| S2 filter | 4 次の複素 one-pole の cascade。帯域 β·1.0186·(24.7 + f/9.265)、中心の利得 1、正の角度の pole。1000 Hz を基準とした LTFAT の ERB 番号の格子、間隔は 1/4 ERB と 0.75·β ERB の小さい方。55〜8000 Hz と両端の余白 | §3.5、§5.2 | tap A：複素の出力 z_c[n] |
+| S2 filter | 4 次の複素 one-pole の cascade。帯域 β·1.0186·(24.7 + f/9.265)、中心の利得 1、正の角度の pole。1000 Hz を基準とした LTFAT の ERB 番号の格子、間隔は 1/4 ERB と 0.75·β ERB の小さい方。約29.989〜8000 Hz と両端の余白 | §3.5、§5.2 | tap A：複素の出力 z_c[n] |
 | S3 hop の統計 | hop ごとの E_h、S_h を channel ごとの ring に保ち、直近 n_c 個の hop の和（boxcar）から E、位置、power を作る（§6.0） | §5.2、§5.3、§5.6 | 診断に整合度 κ_c |
 | S4 再配置 | power 2\|ΣS_h\|/(n_c·N) を G(f̂_c) で割って f̂_c へ移す | §5.5、§5.6、§6.0 | — |
 | S5 圧縮 | §5.5 の 1〜6 の順。臨界帯域（ERB 版）の power、床の gate、A_w、P_ref、0.23 乗、二 bin の配分、du、端の扱い | §5.5、§5.6、§6.0 | 再配置した重みの密度 |
@@ -673,7 +673,7 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
 
 非線形の段の後で F(mix) − F(own) として代用することはできない。どの stream も S1〜S7 を全部通す。
 
-**1 stream・1 hop あたりの演算**（見積もり、実測ではない。選んだ構成）。
+**1 stream・1 hop あたりの演算**（見積もり、実測ではない。以下は下限拡張前の170 channel構成の記録。現行の差分は末尾のHR-1節）。
 - S2〜S3：170 channel × 512 sample × 約 52 演算（4 段の複素の漸化式に約 40、E と S の和に約 12。AUD-M1 の数え方）で、約 4.5 M。
 - 比べると、今の 16384 点の複素 FFT は 5N log₂N ≈ 1.15 Mflop で、これに帯域の疎な積と peak の抽出が加わる。演算の数の比から費用の比を断定しない。
 - S4：deposit ごとに G の表の補間と位置の変換（atan2、log）。
@@ -682,7 +682,7 @@ Chi, Ru & Shamma（2005）の spectro-temporal modulation、Elhilali の coheren
 - channel の間に依存が無いので、SIMD で並べて計算できる。漸化式は時間の方向に逐次。
 - 実時間の費用は V5 で測るまで結論しない。
 
-**状態の大きさ**（選んだ構成、主な配列の payload。allocator の overhead を含まない。AUD-R4 M3）。
+**状態の大きさ**（下限拡張前の170 channel構成、主な配列の payload。allocator の overhead を含まない。AUD-R4 M3）。
 - filter の状態：170 channel × 4 段 × 複素 f32 で 5440 byte。
 - 統計の ring：299 項で 3588 byte。
 - ERB 版の文脈：1381 bucket に f64 の moment 7 個と f64 の中心で、約 88.4 KB。clone ごとに複製される。
@@ -1257,3 +1257,20 @@ DCC の P/M/A の契約（`dcc-neurocognitive-hierarchy.md` §2）では、P は
   - offline の render（Flora の無い sample、report なし）の壁時計の時間：`01_a_single_voice` で 1.23 → 0.64 秒、`02_constellation` で 5.11 → 2.66 秒。WAV は SHA-256 で一致。省けたのは NSGT と、それを使う履歴の更新と受け渡し。13.1 の見積もり（主の thread で 1 hop 約 0.12 ms）より大きかった。
   - GUI の演奏では UI の spectrum が NSGT を要るので、今までどおり計算する。
 - 整理（`32b4dea3`）：一回きりの取得の assay（窓、診断、統計の候補、sample の対応、費用）を消した。V3／V4 の取得は通常の test（`auditory_conformance_tests.rs`）に移した。consumer の判断を比べる V2 の取得器（`auditory_validation_assay.rs`、`auditory_consumer_assay.rs`、`tests/research/aud_m1_*.py`、使い方は `tests/research/auditory-validation.md`）は残した。残した取得器は、M5 の段 1 の E2 の M2 の値を 15 分類すべてで再現した。消した file は git の履歴（`7e70aee5`）に残る。
+
+
+## HR-1：解析の低域拡張（2026-10-25）
+
+本番の解析空間は `core::log2space::production_space()` に集約し、runtime、sample rateの検査、Landscapeがない場合のmodalとharmonic bodyのfallbackが同じ定義を使う。下限は55 Hzから84 bin下の `55·2^(−7/8)` Hz（約29.989 Hz）、上限は8000 Hz、分解能は96 bin/octである。bin数は690から774へ増える。旧いbinの格子位置と最上の中心約7959.39 Hzをf32の丸めの範囲で保つが、bit一致は要求しない。T2の帯域は変更しない。
+
+約30 HzはPressnitzer, Patterson & Krumbholz（2001, JASA 109:2074, doi:10.1121/1.1359797）の、800 Hz未満の成分を持つ倍音複合音による4音旋律の課題から採った解析範囲の値である。純音や任意のスペクトルの普遍的な知覚下限ではない。84 binという位置は既存の格子に合わせる工学上の選択である。
+
+48 kHz・hop 512では、bankは174 channel、最低中心24.629 Hz、最高中心8175.326 Hzとなる。最低中心は入力の遮断周波数ではない。最低channelの4段filterの中心における群遅延 `4r/(fs(1−r))` は約91.34 ms（旧84.23 ms）、boxcarは新旧とも5 hop、重心26.67 msである。leakyの遅れは別に加わり、これらは消費側の判断時刻ではない。最高中心が変わらないのでsample rateは16351 Hzを受け入れ、16000 Hzを拒む。
+
+PH-1の最低channelのsettlingは約8364 sample（174.25 ms、旧7712 sample・160.67 ms）になる。gap後の再開はbandごとの `max(window, boxcar, settling)` の最大であり、既定の16384 sampleでは新旧とも341.333 msである。短いwindowでは待ちが延びる場合がある。
+
+V4に記した46.0 Hzのchannelの尾は、旧い格子での記録として保持する。同じ連続時間の理想化で、停止後の振幅 `exp(−u)·Σ_{k=0..3}u^k/k!`（`u=2πbt`）の二乗を最後の5 hopで平均すると、新しい最低channel（b≈6.967 Hz）のpower比は約5.41e−7、0.23乗で約3.62%となる。旧値は約9.21e−8、約2.41%である。gate、再配置、S6、H/R/Cの誤差やその上界を表す値ではなく、追加の受入閾値には使わない。
+
+保存するscanの要素数は約12.17%、filterのchannel数は約2.35%増える。Hの投射、Rの疎な行幅、Flora資源の疎なFFT重みは異なる費用を持ち、この比から全体の実時間性能は決まらない。§7の演算数と状態量は旧構成の記録である。
+
+H/R/Cの式、入力経路、正規化は変えない。正規化が範囲に依存するため、既存帯域の値や場に従う行動も変わり得る。低域のA特性はloudness massとfloor通過に影響するが、最大値正規化後の孤立音のH01を弱める保証ではない。入力と候補の格子を広げる変更であり、内部根音は既存の4 octaveの余白まで残る。高域Hの停止は導入せず、5〜8 kHzの支持、約30 Hz未満の内部根音、8 kHzより上の扱いは別課題として残す。

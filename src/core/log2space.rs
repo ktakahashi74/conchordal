@@ -16,7 +16,8 @@ pub struct Log2Space {
 
 /// Shared production grid for runtime analysis and body fallbacks.
 pub(crate) fn production_space() -> Log2Space {
-    Log2Space::new(55.0, 8000.0, 96)
+    // About 30 Hz, aligned 84 bins below the existing 55 Hz lattice.
+    Log2Space::new(55.0 * 2.0_f32.powf(-7.0 / 8.0), 8000.0, 96)
 }
 
 impl Log2Space {

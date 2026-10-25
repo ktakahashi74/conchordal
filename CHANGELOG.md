@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend the shared production analysis grid down to 55·2^(−7/8) Hz
+  (approximately 29.989 Hz), adding 84 low-frequency bins and four auditory
+  channels. Runtime analysis, sample-rate validation, and body fallbacks use
+  the same definition. H/R/C formulas and the 8 kHz upper bound remain unchanged;
+  normalization and field-driven behavior can change across the whole grid.
+
 - Flora now holds tonal and residual amplitude targets and their joint normalization
   between confirmed action opportunities, retaining slew and immediate support-loss
   exits. Unknown, stale or unconfirmed timing continues to update each hop.

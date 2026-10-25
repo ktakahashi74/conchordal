@@ -509,7 +509,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - `[psychoacoustics].use_incoherent_power`: retained NSGT power only, not H/R density.
 - The fixed auditory grid includes its 8175.326 Hz upper margin channel. Configured
   and actual device sample rates must put every channel below Nyquist (integer
-  rates at least 16351 Hz for the runtime's 55..8000 Hz grid); unsupported rates
+  rates at least 16351 Hz for the runtime's approximately 29.989..8000 Hz grid); unsupported rates
   return configuration errors before analysis construction.
 - `[audio].output_gain_db` (default `4.5`): fixed dB gain before cpal/WAV guards, calibrated from bundled sample peaks and the 0.98 ceiling. Analysis, listener, report and UI inputs stay at their original levels.
 - `[psychoacoustics.consonance.field.kernel]`

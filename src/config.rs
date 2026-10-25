@@ -618,7 +618,7 @@ impl AppConfig {
             self.audio.sample_rate > 0,
             "audio.sample_rate must be positive"
         );
-        // The fixed 55..8000 Hz auditory grid includes a highest channel at
+        // The fixed approximately 29.989..8000 Hz auditory grid includes a highest channel at
         // 8175.326 Hz; integer rates below 16351 Hz cannot support its margin.
         crate::core::auditory_frontend::validate_sample_rate(
             &crate::core::log2space::production_space(),

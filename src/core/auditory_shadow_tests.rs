@@ -798,3 +798,66 @@ fn selected_frontend_hop_and_body_skip_allocate_nothing() {
     assert_eq!((counts.count, counts.bytes), (0, 0));
     println!("AUD_M2_FRONTEND_ALLOC {counts:?}");
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[test]
+fn filterbank_lanes_match_scalar_bits_on_selected_simd_levels() {
+    use fearless_simd::{Level, Simd};
+    fn bits(bank: &Bank) -> Vec<u32> {
+        let complex = bank
+            .state
+            .iter()
+            .flatten()
+            .chain(&bank.previous)
+            .chain(&bank.correlation);
+        complex
+            .flat_map(|z| [z.re.to_bits(), z.im.to_bits()])
+            .chain(bank.energy.iter().map(|e| e.to_bits()))
+            .collect()
+    }
+    fn run<S: Simd>(simd: S, mut bank: Bank, hops: &[Vec<Complex32>]) -> Vec<u32> {
+        for hop in hops {
+            bank.input.clear();
+            bank.input.extend_from_slice(hop);
+            simd.vectorize(|| bank.read_lanes(simd));
+        }
+        bits(&bank)
+    }
+    let space = Log2Space::new(55., 8000., 96);
+    let bank = AuditoryFrontEnd::selected(space, 48_000., 512, 16_384).bank;
+    let hops: Vec<Vec<Complex32>> = (0..3)
+        .map(|h| {
+            (0..512)
+                .map(|i| {
+                    let t = (h * 512 + i) as f32 / 48_000.;
+                    match h {
+                        0 => Complex32::new((TAU * 440. * t).sin(), 0.3 * (TAU * 97. * t).cos()),
+                        1 => Complex32::new(0.2 * (TAU * 3_100. * t).sin(), 0.),
+                        _ => Complex32::default(),
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    let mut reference = bank.clone();
+    for hop in &hops {
+        reference.input.clear();
+        reference.input.extend_from_slice(hop);
+        reference.read_scalar();
+    }
+    let expected = bits(&reference);
+    let level = Level::new();
+    if let Some(simd) = level.as_avx2() {
+        assert!(run(simd, bank.clone(), &hops) == expected, "avx2");
+    }
+    if let Some(simd) = level.as_avx512() {
+        assert!(run(simd, bank.clone(), &hops) == expected, "avx512");
+    }
+    let mut dispatched = bank.clone();
+    for hop in &hops {
+        dispatched.input.clear();
+        dispatched.input.extend_from_slice(hop);
+        dispatched.read_dispatched();
+    }
+    assert!(bits(&dispatched) == expected, "dispatch");
+}

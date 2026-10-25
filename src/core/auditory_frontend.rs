@@ -4,6 +4,7 @@ use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::utils::a_weighting_gain_pow;
+use fearless_simd::{Level, Simd, f32x16, prelude::*};
 use rustfft::num_complex::Complex32;
 use std::f32::consts::TAU;
 
@@ -137,6 +138,8 @@ struct Bank {
     // Stage-major storage keeps channels contiguous for vectorization.
     state: [Vec<Complex32>; 4],
     previous: Vec<Complex32>,
+    // One hop of input, reused so the lane loop can run every sample per channel block.
+    input: Vec<Complex32>,
     pub energy: Vec<f32>,
     pub frequency: Vec<f32>,
     pub coherence: Vec<f32>,
@@ -189,6 +192,7 @@ impl Bank {
             frequency: vec![0.0; n],
             coherence: vec![0.0; n],
             correlation: vec![Complex32::default(); n],
+            input: Vec::new(),
             #[cfg(test)]
             spread: None,
             statistics: None,
@@ -222,20 +226,20 @@ impl Bank {
     fn read_complex_hop(&mut self, input: impl ExactSizeIterator<Item = Complex32>) {
         let samples = input.len();
         assert!(samples > 0);
-        self.energy.fill(0.0);
-        self.correlation.fill(Complex32::default());
+        self.input.clear();
+        self.input.extend(input);
         #[cfg(test)]
         if let Some(spread) = &mut self.spread {
             spread.start_hop();
         }
-        for x in input {
-            self.one(x);
-            for c in 0..self.centers.len() {
-                let z = self.state[3][c];
-                self.energy[c] += z.norm_sqr();
-                self.correlation[c] += z * self.previous[c].conj();
-                self.previous[c] = z;
-            }
+        #[cfg(test)]
+        let scalar = self.spread.is_some();
+        #[cfg(not(test))]
+        let scalar = false;
+        if scalar {
+            self.read_scalar();
+        } else {
+            self.read_dispatched();
         }
         if let Some(statistics) = &mut self.statistics {
             statistics.push(&mut self.energy, &mut self.correlation, samples);
@@ -253,6 +257,101 @@ impl Bank {
         #[cfg(test)]
         if let Some(spread) = &mut self.spread {
             spread.finish(self.fs);
+        }
+    }
+
+    // Lanes pay off only with 256-bit or wider registers. On narrower levels the
+    // per-sample channel loops below vectorize as well, with identical bits.
+    fn read_dispatched(&mut self) {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            let level = Level::new();
+            if let Some(simd) = level.as_avx512() {
+                return simd.vectorize(|| self.read_lanes(simd));
+            }
+            if let Some(simd) = level.as_avx2() {
+                return simd.vectorize(|| self.read_lanes(simd));
+            }
+        }
+        self.read_scalar();
+    }
+
+    // Per-sample loops; also the reference and the spread diagnostic path.
+    fn read_scalar(&mut self) {
+        self.energy.fill(0.0);
+        self.correlation.fill(Complex32::default());
+        for i in 0..self.input.len() {
+            self.one(self.input[i]);
+            for c in 0..self.centers.len() {
+                let z = self.state[3][c];
+                self.energy[c] += z.norm_sqr();
+                self.correlation[c] += z * self.previous[c].conj();
+                self.previous[c] = z;
+            }
+        }
+    }
+
+    /// Runs the hop for sixteen channels at a time with all state in lanes. Each lane
+    /// repeats `read_scalar`'s Complex32 arithmetic in the same order, so every SIMD
+    /// level returns the same bits as the scalar reference.
+    #[inline(always)]
+    fn read_lanes<S: Simd>(&mut self, simd: S) {
+        let Self {
+            centers,
+            poles,
+            gains,
+            state,
+            previous,
+            energy,
+            correlation,
+            input,
+            ..
+        } = self;
+        for start in (0..centers.len()).step_by(16) {
+            let end = (start + 16).min(centers.len());
+            let real = |values: &[f32]| {
+                let mut lanes = [0.; 16];
+                lanes[..end - start].copy_from_slice(&values[start..end]);
+                f32x16::load_array(simd, lanes)
+            };
+            let split = |values: &[Complex32]| {
+                let (mut re, mut im) = ([0.; 16], [0.; 16]);
+                for (k, z) in values[start..end].iter().enumerate() {
+                    (re[k], im[k]) = (z.re, z.im);
+                }
+                (f32x16::load_array(simd, re), f32x16::load_array(simd, im))
+            };
+            let (pr, pi) = split(poles);
+            let g = real(gains);
+            let mut s = [0, 1, 2, 3].map(|stage| split(&state[stage]));
+            let (mut qr, mut qi) = split(previous);
+            let zero = f32x16::splat(simd, 0.);
+            let (mut e, mut cr, mut ci) = (zero, zero, zero);
+            for x in input.iter() {
+                let (mut ur, mut ui) = (f32x16::splat(simd, x.re), f32x16::splat(simd, x.im));
+                for (sr, si) in &mut s {
+                    let re = (pr * *sr - pi * *si) + g * ur;
+                    let im = (pr * *si + pi * *sr) + g * ui;
+                    (*sr, *si, ur, ui) = (re, im, re, im);
+                }
+                e += ur * ur + ui * ui;
+                let nqi = -qi;
+                cr += ur * qr - ui * nqi;
+                ci += ur * nqi + ui * qr;
+                (qr, qi) = (ur, ui);
+            }
+            let store = |values: &mut [Complex32], (re, im): (f32x16<S>, f32x16<S>)| {
+                let (re, im) = (re.to_array(), im.to_array());
+                for (k, z) in values[start..end].iter_mut().enumerate() {
+                    *z = Complex32::new(re[k], im[k]);
+                }
+            };
+            for (stage, lanes) in state.iter_mut().zip(s) {
+                store(stage, lanes);
+            }
+            store(previous, (qr, qi));
+            store(correlation, (cr, ci));
+            energy[start..end].copy_from_slice(&e.to_array()[..end - start]);
         }
     }
 
@@ -335,6 +434,7 @@ impl AuditoryFrontEnd {
             self.bank.fs,
             hop,
         ));
+        self.bank.input.reserve_exact(hop);
         self.erb_context = erb_context.then(|| statistics::ErbContext::new(self.bank.fs));
         self
     }

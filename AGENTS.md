@@ -284,13 +284,15 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   independently of Flora placement or self-exclusion consumers.
   Use `--features profile-alloc` when measuring or asserting allocations; without it,
   allocation counts are unavailable. Runtime measurements live in `runtime_profile.rs`.
-- **SIMD**: New explicit SIMD uses `fearless_simd`: dispatch once per call with
-  `dispatch!(Level::new(), ...)` into generic `#[inline(always)]` kernels. Values that
-  reach the ecology must be bit-identical on every SIMD level (SSE2 to AVX-512, NEON,
-  wasm): use a fixed logical width (`f32x8`), no `mul_add`, and a fixed reduction
-  order, and test every available level against a scalar replica of that order (see
-  the row sums in `core::roughness_kernel`). Synthesis kernels still use `wide`
-  (`simd-wide`) until migrated.
+- **SIMD**: New explicit SIMD uses `fearless_simd`: select the level once per call
+  (`dispatch!(Level::new(), ...)` or a `Level::as_*` token) and run generic
+  `#[inline(always)]` kernels. Values that reach the ecology must be bit-identical on
+  every SIMD level (SSE2 to AVX-512, NEON, wasm): no `mul_add`, and any cross-lane
+  reduction uses a fixed logical width and order. Test each level a kernel runs on
+  against a scalar reference (`core::roughness_kernel` row sums,
+  `core::auditory_frontend` lanes). A kernel may run only on the levels where it is
+  faster if the other levels keep a bit-identical path. Synthesis kernels still use
+  `wide` (`simd-wide`) until migrated.
 - **Naming**: `snake_case` for modules/functions, `CamelCase` for structs/traits.
 
 ## Anti-Bloat Rules

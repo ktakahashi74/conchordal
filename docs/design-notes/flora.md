@@ -1,7 +1,7 @@
 # Flora: a Field-Form Inhabitant
 
 Status: implemented, with own habitat PCM excluded from growth and seed perception by default,
-beat opportunities for every Flora, tempo-derived pace and finite retirement, 2026-10-25. The adopted design is draft 14: the rendering
+beat opportunities for every Flora, beat-relative authored pace and finite retirement, 2026-10-25. The adopted design is draft 14: the rendering
 of draft 12 and the consumer–resource dynamics of State and Dynamics. Current paths
 and the historical branch are listed in [Reference Implementation](#reference-implementation).
 The DCC route for the drive of temporal evolution, a listener-side information terrain,
@@ -56,8 +56,8 @@ habituation field.
 All Flora shares the composer's `temporal_basin` and `meter_stability` priors
 with Voice metric timing. Every Flora uses the private clock described below.
 Only the habitat audio-only meter supplies beat evidence;
-internal commands never supply a beat. Ecological pace uses the private clock's
-confidence-weighted frequency, excluding its phase correction. A stale, unavailable
+internal commands never supply a beat. Ecological pace multiplies the private clock's confidence-weighted frequency
+by the authored `pace(k)` ratio, excluding phase correction. A stale, unavailable
 or unconfirmed observation uses the basin center, or 2 Hz without a basin.
 
 
@@ -225,10 +225,12 @@ with self-exclusion enabled these differ from the mixed terrain displayed in the
 
 **Ecological time.** `f` is the private CouplingClock velocity before phase correction.
 Without fresh confirmed evidence it returns to the tempo-basin center (default 2 Hz).
-The adopted authored mapping is `p = f / (2 Hz)`. Advance the entire consumer-resource
+The adopted authored mapping is `p = k * f / (2 Hz)`, with `pace(k)` defaulting to 1.
+The multiplier is an authored property of the body, analogous to Voice intrinsic
+rate; it does not change the private beat clock or its opportunities. Advance the entire consumer-resource
 system in `dt_ecological = p * dt_physical`: growth, diffusion, seed rain, resource
 recovery and both forms of consumption use this same time. Thus default growth is
-`4 f`, renewal is `20 / f` seconds and consumption is `0.6 / f` seconds. The ratios
+`4 k f`, renewal is `20 / (k f)` seconds and consumption is `0.6 / (k f)` seconds. The ratios
 come from the adopted 8/s, 10 s and 0.3 s at the existing neutral 2 Hz, not a claim
 about neural rhythms or a new bar/phrase model. Substeps are recomputed each hop
 from ecological time with the same positivity bounds.
@@ -240,7 +242,7 @@ second. It is recomputed each hop, including after a pace or space change.
 Each substep:
 
 ```
-v ← v + dt · [ rate · v · (g · u · v / (v + v_a) − k)     growth, Allee term, metabolism
+v ← v + dt · [ rate · v · (g · u · v / (v + v_a) − μ)     growth, Allee term, metabolism
              + D · ∇²v                                     spread
              + u · (ι_bg + ι · H01) ]                      seed rain
 c_b[x] = Σ_y Ĝ(x, y) · v[y] · bins_per_oct / c_ref
@@ -292,10 +294,11 @@ adopted the recommendation to raise the default `rate` from 4/s to 8/s, retainin
 under Implementation Findings. This is an authored default, not an optimum, and
 the final listening choice remains with the author.
 
-- Rhai: scene-wide `temporal_basin`, with neutral center 2 Hz if omitted.
+- Rhai: scene-wide `temporal_basin`, with neutral center 2 Hz if omitted,
+  and per-Flora `pace(k)` with default 1.
   Internal neutral coefficients: growth 8/s and resource recovery `τ_r = 10 s`.
   Physical-time coefficients follow the common pace above; no independent rate/renewal knobs.
-- Internal: metabolism `k = 0.3`; consumption time `τ_c = 0.3 s`; reference density
+- Internal: metabolism `μ = 0.3`; consumption time `τ_c = 0.3 s`; reference density
   `c_ref = 10` per octave; Allee half-saturation `v_a = 0.144` mass per octave; seed rain
   `ι = 0.48` and background seed `ι_bg = 9.6·10⁻⁴` per octave per second; initial total
   biomass `v_0 = 0.5`; spread σ = 10 cents/√s, `D = σ²/2` in cents²/s.
@@ -311,14 +314,14 @@ fixed. It is a coarse authored choice, not an optimum or a uniquely derived audi
 constant. The local calculation and its limitations are recorded below. Choosing
 0.288 instead of 0.144 remains an audition choice, not an implementation gate.
 
-**Non-negativity.** The substep rule implies `dt · (rate · k + 2D) ≤ 1`, under which `v`
+**Non-negativity.** The substep rule implies `dt · (rate · μ + 2D) ≤ 1`, under which `v`
 stays non-negative in exact arithmetic. An implementation may guard f32 rounding with
 `max(0)`, with a `debug_assert!` that the pre-guard value is not below `−1e-6 · max v`.
 
 **Boundedness is not proven.** Ingredients for a bound: the spread conserves `Σ v`; the
 seed input per bin is at most `(ι_bg + ι) / bins_per_oct` per second; the per-bin growth
-rate is at most `rate · (u − k)`; and `Ĝ(x, x) > 0`, so a bin's own biomass drives its
-resource below `k` once it is large enough. These do not yet bound a bin that keeps
+rate is at most `rate · (u − μ)`; and `Ĝ(x, x) > 0`, so a bin's own biomass drives its
+resource below `μ` once it is large enough. These do not yet bound a bin that keeps
 receiving seeds and spread from its neighbours. Until a bound is derived, a unit test
 checks boundedness on a flat terrain at the largest rate, and the closed-loop assays
 record the largest total biomass.
@@ -537,15 +540,26 @@ ramp and `fade_gain`.
 ### Finite retirement
 
 Retirement starts immediately but its amplitude follows the mass-decay
-scale. Unsupported biomass has `v' = -rate * p * k * v`, so amplitude has decay
-coefficient `lambda = rate * p * k / 2` (`k = 0.3`). For a finite continuous tail,
+scale. Unsupported biomass has `v' = -rate * p * μ * v`, so amplitude has decay
+coefficient `lambda = rate * p * μ / 2` (`μ = 0.3`). For a finite continuous tail,
 use the existing dead-mass floor `r_floor = sqrt(0.001)` and the authored law
 `r_next = max(0, (r + r_floor) * exp(-lambda / fs) - r_floor)`, `q = r*r`.
 This is a shifted exponential, not exact biomass tracking: the floor supplies an
 extinction drain, with zero reached after `log(1 + r0/r_floor)/lambda` seconds
-for constant pace. It avoids an arbitrary long-release duration. The macro fade
+for constant pace. At fixed beat velocity, `pace(k)` divides this duration by k;
+the birth slew and macro fade remain in physical seconds. It avoids an arbitrary long-release duration. The macro fade
 still bounds total release, including explicit zero fade. Ordinary attack/target
 slews remain unchanged.
+
+At the registered 48 kHz setting and 0.5 Hz beat boundary, `pace(1/64)` is the
+smallest power of two with finite retirement. The `1/128` coefficient is below 1
+but the rounded amplitude map has a positive fixed point at `r = 0.09337722`.
+The test starts the accepted map at the normalized lane-amplitude upper bound
+`r = 1` and reaches zero after 31,622,479 samples. Addition, multiplication by a
+nonnegative coefficient, subtraction of the fixed floor and clamping are monotone,
+so every initial amplitude in `[0, 1]` is bounded above by that terminating orbit.
+Faster ecological pace has no larger decay coefficient and preserves this bound.
+
 
 The fixed `2 * cells` tonal pool is retained. Longer retirement occupies its slots;
 a candidate waits if none is free. Retiring tails own no pending reservation and
@@ -595,7 +609,9 @@ ticks, generations, waiting samples and forced reasons. Retirement events labele
 classification: they can include support loss or separation conflicts handled by
 the tonal update. Counts selected by these labels do not exclude all support-loss
 retirements. Reporting allocation is outside the allocation-free renderer contract.
-Every Flora report includes acoustic timing and ecological pace. Scenes without
+Every Flora report includes acoustic timing and ecological pace. The top-level
+`pace` is k*f/2; `temporal.pace` retains the private clock's f/2. No new report
+field is needed for the multiplier, preserving the default report contract. Scenes without
 Flora allocate no Flora meter.
 
 ### Atoms: one kernel
@@ -750,11 +766,13 @@ Use scene-wide `temporal_basin(lo, hi)` to set the prior for all Flora pace.
 Every Flora follows confirmed acoustic beats and schedules lane opportunities,
 with continuous allocation at the basin center when evidence is unavailable.
 The `metric`, independent `rate` and `renewal` spec methods are removed;
-there is no timing opt-out or live pace override. Existing assay migrations and their changed interpretation
+there is no timing opt-out. Only a beat-relative multiplier is exposed as an
+authored body property, through initial and live `pace(k)`. Existing assay migrations and their changed interpretation
 are listed in `samples/research/README.md`.
 
 ```rhai
 let moss = flora()
+    .pace(1.0)        // ecological speed relative to the private beat clock
     .amp(0.03)        // nominal target-amplitude scale: Σ a² ≤ amp²
     .tone("sine")     // tonal atom: "sine" or "resonant"
     .residual(false)  // default; true renders diffuse mass as band noise
@@ -767,12 +785,19 @@ m.amp(0.015);
 release(m);
 ```
 
-- Defaults: `amp` 0.03, `fade` 2 s, `tone("sine")`,
+- Defaults: `pace` 1, `amp` 0.03, `fade` 2 s, `tone("sine")`,
   `residual(false)`, both buses.
-- `flora()` returns a `FloraSpec`, with `.amp`, `.tone`,
+- `flora()` returns a `FloraSpec`, with `.pace`, `.amp`, `.tone`,
   `.residual`, `.fade` and `.send` (same `Bus` / `BusSet` values as Populations).
   `.tone` accepts only `"sine"` and `"resonant"`; any other string is a script error.
-- **Validation.** Every numeric argument, on the spec and on handle patches, must be
+- **Validation.** `pace` accepts `[1/64, 4]` (default 1). Bounds are acquired at
+  48 kHz, hop 512 and the default 690-bin grid. The minimum uses the 0.5 Hz
+  beat boundary and the maximum uses the full extent at 4 Hz.
+  `pace` warns and clamps outside its supported bounds. NaN and
+  negative infinity use the lower bound, positive infinity the upper bound. The
+  lower bound protects finite retirement at the slowest supported beat; the
+  upper bound limits per-hop ecological cost.
+  Other numeric arguments, on the spec and on handle patches, must be
   finite both as given and after conversion to `f32`. Overflow to infinity in the
   conversion is an error. Out-of-range values are script errors, not clamps:
   - `amp` outside `[0, 1]`;
@@ -780,7 +805,7 @@ release(m);
 
   The upper bounds keep every ramp finite on a musical time scale.
 - `place(FloraSpec, Placement)` returns a `Flora` handle.
-  - The handle method `.amp` records a pending patch. As for
+  - The handle methods `.amp` and `.pace` record a pending patch. As for
     Populations, the patch is emitted as `UpdateFlora` at the next `wait` / `flush`,
     or at scope end.
   - `release(Flora)` marks the release pending, as `release_population` does
@@ -1121,8 +1146,9 @@ ecological coefficients. The first implementation applied pace and finite tails
 only to T1; the subsequent extension also changed T0. T0 retained continuous lane
 allocation, not the old fixed ecological time or the old maximum-slope tail.
 Articulation retirement and ecological recovery are authored embodiment, not
-inferred phrase lengths. The composer supplies only the tempo prior; no new
-authored ratio is exposed as a listener-state control.
+inferred phrase lengths. At that revision the composer supplied only the tempo prior. The 2026-10-25
+revision adds only a beat-relative multiplier `pace(k)` as authored embodiment;
+it is not a listener-state control.
 
 
 ### Historical default rate 8/s comparison, 2026-10-23

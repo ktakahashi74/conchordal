@@ -19,7 +19,7 @@ cargo run --bin gen_rhai_defs
 | 型 | 説明 |
 |------|-------------|
 | `FloraSpec` | `flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。 |
-| `Flora` | 配置されたスペクトル成長。振幅、成長速度、帯域資源の回復時間の更新と解放を指定できる。 |
+| `Flora` | 配置されたスペクトル成長。振幅と拍に対する生態時間の倍率を更新でき、解放を指定できる。 |
 | `PopulationSpec` | 再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。 |
 | `Population` | `place()`が返すPopulation。Voiceが死亡し世代交代しても、同一性を保つ安定した参照。 |
 | `Placement` | 初代のVoiceをどこへ配置するかを表す。`at()`、`consonance()`、`dissonance()`、`edge()`、`gap()`、`random()`、`line()`で作る。 |
@@ -51,6 +51,16 @@ amp(level)
 適用対象：`FloraSpec`, `Flora`。
 
 Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+
+#### `pace`
+
+```rhai,ignore
+pace(multiplier)
+```
+
+適用対象：`FloraSpec`, `Flora`。
+
+Set Flora's ecological speed relative to its private beat clock in [1/64, 4] (default 1). Growth, spread, seed rain, recovery and both consumption paths share dt_eco = pace * (f / 2 Hz) * dt. Retirement uses the same scale; beat opportunities, birth slew and macro fade retain their clocks. Bounds are acquired at 48 kHz, hop 512 and the default grid: finite retirement at 0.5 Hz and advance cost at 4 Hz. Out-of-range values warn and clamp to the supported range. NaN and negative infinity use the lower bound; positive infinity uses the upper bound. Live patches emit at wait, flush or scope end.
 
 #### `leave_self_out`
 
@@ -1027,7 +1037,7 @@ Core候補として試聴中の動詞です。作曲用ですが、検証が済�
 flora() -> FloraSpec
 ```
 
-Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: pace 1, amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f and pace k, growth is 4kf/s, recovery is 20/(kf) seconds and consumption is 0.6/(kf) seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 
 #### `fade`
 

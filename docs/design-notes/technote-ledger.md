@@ -10029,6 +10029,28 @@ first coupling in that document's §5. The audition motivates the decision, not 
 claim that the new rule improves the music. Choosing a nonzero weight for a work
 still belongs to the author's audition.
 
+### 9.3.97 Flora pace relative to its private beat (2026-10-25)
+
+After hearing FD-1 v3, the author asked whether Flora could evolve faster: its
+movement seemed too slow relative to temporal DCC. The inherited resource recovery
+time was 10 seconds at 2 Hz, or 20 beats; that ratio was authored, not derived from
+DCC. The author adopted `pace(k)`, default 1, as a body property analogous to Voice
+intrinsic rate. It multiplies all ecological processes together relative to the
+private clock; it does not accelerate the clock itself. Retirement uses the same
+time, while birth slew and macro fade remain in physical seconds.
+
+The lower bound is the smallest power of two that preserves strict f32 decay and
+finite retirement at the slowest supported beat. The upper bound is the largest
+power of two whose one-Flora advance stays within the measured 0.53 ms/hop cost
+of one Voice self-exclusion observer. Out-of-range arguments warn and clamp.
+At 48 kHz, hop 512 and the default 690-bin grid, these bounds are 1/64 and 4.
+The 1/128 candidate still has a rounded amplitude fixed point even though its
+exponential coefficient is below 1. At 4 Hz, k=4 costs 0.296 ms/hop and k=8
+costs 0.684 ms/hop on the acquisition host.
+These bounds protect lane reuse and computation cost; they are not fitted musical
+preferences. Faster closed-loop succession and author audition remain separate
+from the time-scaling and default-compatibility checks.
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);

@@ -486,7 +486,7 @@ impl Flora {
             fs,
             hop,
             substeps: 1,
-            pace: 1.0,
+            pace: spec.pace,
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
             growth_level_scan: Vec::new(),
@@ -563,6 +563,10 @@ impl Flora {
     }
 
     pub(crate) fn apply_patch(&mut self, patch: &FloraPatch) {
+        if let Some(pace) = patch.pace {
+            self.spec.pace = pace;
+            self.pace = self.temporal.as_ref().unwrap().pace * pace;
+        }
         if let Some(amp) = patch.amp {
             self.spec.amp = amp;
             self.amp.to(amp, SLEW_SEC, self.fs);
@@ -814,6 +818,10 @@ impl Flora {
         .max(1.0) as usize;
         let substeps = self.substeps;
         let dt = self.hop as f32 / self.fs * self.pace / substeps as f32;
+        self.advance_ecology(dt, substeps);
+    }
+
+    fn advance_ecology(&mut self, dt: f32, substeps: usize) {
         let bins_per_oct = self.space.bins_per_oct as f32;
         let allee_mass = ALLEE_DENSITY / bins_per_oct;
         for _ in 0..substeps {
@@ -1376,6 +1384,10 @@ fn synthesize_blocks<S: Simd>(
     }
     (first, out)
 }
+
+#[cfg(test)]
+#[path = "flora_pace_tests.rs"]
+mod pace_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2301,7 +2313,10 @@ mod tests {
         f.biomass_mass_scan.fill(0.001);
         hill(&mut f, 33, 1.0);
         normalize(&mut f);
-        f.apply_patch(&FloraPatch { amp: Some(0.0) });
+        f.apply_patch(&FloraPatch {
+            amp: Some(0.0),
+            ..Default::default()
+        });
         let mut p = vec![0.0; f.hop];
         let mut h = p.clone();
         f.render_add(&mut p, &mut h);

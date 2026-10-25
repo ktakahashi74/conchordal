@@ -789,7 +789,7 @@ pub(super) fn update_flora_numeric(
     value: FLOAT,
     position: Position,
 ) -> Result<FloraHandle, Box<EvalAltResult>> {
-    let value = validate_flora_numeric(name, value, position)?;
+    let value = validate_flora_numeric(name, value, position, &ctx.warnings)?;
     let Some(flora) = ctx.flora.get_mut(&handle.id) else {
         ctx.warn(
             format!("{name} ignored for unknown Flora {}", handle.id),
@@ -800,6 +800,7 @@ pub(super) fn update_flora_numeric(
     if flora.status == PopulationStatus::Live {
         let patch = flora.pending_patch.get_or_insert_with(FloraPatch::default);
         match name {
+            "pace" => patch.pace = Some(value),
             "amp" => patch.amp = Some(value),
             _ => unreachable!("registered Flora patch parameter"),
         }

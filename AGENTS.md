@@ -464,6 +464,13 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   loss and release retire immediately. Changes apply at sample crossings within
   the hop. Unknown, stale or unconfirmed observations use continuous allocation without resetting
   the clock; biomass/resources stay continuous. Flora has no `metric()` opt-in or opt-out.
+  Flora `pace(k)` (default 1, initial and live) multiplies its ecological time
+  relative to the private beat velocity: `dt_eco = k * (f / 2 Hz) * dt`. Growth,
+  spread, seeding, recovery and both consumption paths share that time. Retirement
+  uses the same multiplier; birth slew, macro fade and beat opportunities do not.
+  Pace bounds [1/64, 4] are acquired at 48 kHz / hop 512 / 690 bins. Out-of-range
+  pace warns and clamps. The lower bound protects finite retirement at 0.5 Hz;
+  the upper bound limits full-extent advance at 4 Hz against the observer budget.
   Flora residual rendering defaults to false; explicit
   `.residual(true)` remains available.
 

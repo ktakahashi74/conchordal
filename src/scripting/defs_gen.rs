@@ -626,7 +626,7 @@ fn localized_type_summary(doc: &docs::TypeDoc, language: ReferenceLanguage) -> &
             "`flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。"
         }
         "Flora" => {
-            "配置されたスペクトル成長。振幅、成長速度、帯域資源の回復時間の更新と解放を指定できる。"
+            "配置されたスペクトル成長。振幅と拍に対する生態時間の倍率を更新でき、解放を指定できる。"
         }
         "PopulationSpec" => {
             "再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。"

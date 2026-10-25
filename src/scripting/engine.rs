@@ -70,22 +70,23 @@ impl ScriptHost {
         engine.register_fn("flora", || FloraSpecHandle {
             spec: FloraSpec::default(),
         });
-        for name in ["amp", "fade"] {
+        for name in ["amp", "fade", "pace"] {
+            let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
             engine.register_fn(
                 name,
                 move |call: NativeCallContext, spec: FloraSpecHandle, value: FLOAT| {
-                    spec.with_numeric(name, value, call.call_position())
+                    spec.with_numeric(name, value, call.call_position(), &diagnostics)
                 },
             );
+            let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
             engine.register_fn(
                 name,
                 move |call: NativeCallContext, spec: FloraSpecHandle, value: INT| {
-                    spec.with_numeric(name, value as FLOAT, call.call_position())
+                    spec.with_numeric(name, value as FLOAT, call.call_position(), &diagnostics)
                 },
             );
         }
-        {
-            let name = "amp";
+        for name in ["amp", "pace"] {
             let ctx_float = ctx.clone();
             engine.register_fn(
                 name,

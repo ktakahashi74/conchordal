@@ -1691,7 +1691,7 @@ fn flora_patches_are_pending_until_wait_flush_or_finish() {
                 r#"
             let m = place(flora(), random(110, 880));
             wait(0.25);
-            m.amp(0.1).amp(0.2);
+            m.amp(0.1).pace(2).amp(0.2).pace(4);
         "#,
             )
             .unwrap();
@@ -1712,6 +1712,7 @@ fn flora_patches_are_pending_until_wait_flush_or_finish() {
         assert_eq!((updates[0].0, updates[0].1), (0.25, 1));
         let patch = updates[0].2;
         assert_eq!(patch.amp, Some(0.2));
+        assert_eq!(patch.pace, Some(4.0));
     }
 }
 
@@ -1922,4 +1923,64 @@ fn flora_uses_scene_tempo_and_removes_local_rate_overrides() {
     let scenario =
         run_script("temporal_basin(2, 4); place(flora(), random(110, 1760)); wait(1);").0;
     assert_eq!(scenario.meter_shaping.basin_hz, Some((2.0, 4.0)));
+}
+
+#[test]
+fn flora_pace_clamps_specs_and_live_patches_with_positioned_warnings() {
+    use crate::scenario::{FLORA_PACE_MAX, FLORA_PACE_MIN};
+    for value in [
+        f64::NEG_INFINITY,
+        -1.0,
+        0.0,
+        1e-100,
+        f64::NAN,
+        f64::INFINITY,
+        1e100,
+        f64::from(FLORA_PACE_MIN),
+        0.1,
+        1.0,
+        2.0,
+        f64::from(FLORA_PACE_MAX),
+    ] {
+        let expected = if value.is_nan() {
+            FLORA_PACE_MIN
+        } else {
+            value.clamp(FLORA_PACE_MIN as f64, FLORA_PACE_MAX as f64) as f32
+        };
+        for live in [false, true] {
+            let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+            let engine = ScriptHost::create_engine(ctx.clone());
+            let mut scope = rhai::Scope::new();
+            scope.push("value", value);
+            let script = if live {
+                "let m = place(flora(), random(110, 880));\nm.pace(value);\nwait(0.1);"
+            } else {
+                "\nlet m = place(flora().pace(value), random(110, 880));\nwait(0.1);"
+            };
+            let _ = engine
+                .eval_with_scope::<Dynamic>(&mut scope, script)
+                .unwrap();
+            let ctx = ctx.lock().unwrap();
+            let actual = action_times(&ctx.scenario)
+                .iter()
+                .find_map(|(_, action)| match action {
+                    Action::PlaceFlora { spec, .. } if !live => Some(spec.pace),
+                    Action::UpdateFlora { patch, .. } if live => patch.pace,
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(actual, expected);
+            let warnings = ctx.warnings.lock().unwrap();
+            assert_eq!(
+                warnings.len(),
+                usize::from(
+                    !(f64::from(FLORA_PACE_MIN)..=f64::from(FLORA_PACE_MAX)).contains(&value)
+                )
+            );
+            if let Some(warning) = warnings.first() {
+                assert_eq!(warning.position.line(), Some(2));
+                assert!(warning.message.contains("Flora pace"));
+            }
+        }
+    }
 }

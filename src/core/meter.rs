@@ -45,7 +45,7 @@ mod audio_assay;
 mod hierarchy_tests;
 
 // Existing tactus band; faster input is read through an integer subdivision.
-const F_BEAT_MIN: f32 = 0.5;
+pub(crate) const F_BEAT_MIN: f32 = 0.5;
 const F_BEAT_MAX: f32 = 4.0;
 const F_BEAT_INIT: f32 = 2.0;
 // Existing integration floor, also bounds accumulated interval roundoff.

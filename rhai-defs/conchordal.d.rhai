@@ -3,7 +3,7 @@
 
 /// # Types
 /// - FloraSpec: Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent.
-/// - Flora: Placed spectral growth; supports pending amplitude patches and release.
+/// - Flora: Placed spectral growth; supports pending amplitude and pace patches and release.
 /// - PopulationSpec: Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules.
 /// - Population: Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations.
 /// - Placement: Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`.
@@ -305,7 +305,7 @@ fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
 fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
 /// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
-/// Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
+/// Defaults: pace 1, amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f and pace k, growth is 4kf/s, recovery is 20/(kf) seconds and consumption is 0.6/(kf) seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 fn flora() -> FloraSpec;
 
 /// Irregular bodily renewal with acoustic timing choices.
@@ -508,6 +508,19 @@ fn output_gain(db: f64);
 /// Set scene-wide playback gain in dB (default 0).
 /// The last declaration wins for the whole scene, even after wait(). Added to [audio].output_gain_db; amplitude = 10^((config dB + scene dB)/20), applied immediately before the cpal/WAV output limiter, including limiter none. Analysis, listener, reports and UI bus meters remain unchanged. Accepts integers and floats; values and the combined gain must yield a finite, positive f32 amplitude gain. Invalid values report the declaration position; limits come from f32 representability, not a loudness target.
 fn output_gain(db: i64);
+
+/// Set Flora's ecological speed relative to its private beat clock in [1/64, 4] (default 1).
+/// Growth, spread, seed rain, recovery and both consumption paths share dt_eco = pace * (f / 2 Hz) * dt. Retirement uses the same scale; beat opportunities, birth slew and macro fade retain their clocks. Bounds are acquired at 48 kHz, hop 512 and the default grid: finite retirement at 0.5 Hz and advance cost at 4 Hz. Out-of-range values warn and clamp to the supported range. NaN and negative infinity use the lower bound; positive infinity uses the upper bound. Live patches emit at wait, flush or scope end.
+fn pace(flora: Flora, multiplier: f64) -> Flora;
+/// Set Flora's ecological speed relative to its private beat clock in [1/64, 4] (default 1).
+/// Growth, spread, seed rain, recovery and both consumption paths share dt_eco = pace * (f / 2 Hz) * dt. Retirement uses the same scale; beat opportunities, birth slew and macro fade retain their clocks. Bounds are acquired at 48 kHz, hop 512 and the default grid: finite retirement at 0.5 Hz and advance cost at 4 Hz. Out-of-range values warn and clamp to the supported range. NaN and negative infinity use the lower bound; positive infinity uses the upper bound. Live patches emit at wait, flush or scope end.
+fn pace(flora: Flora, multiplier: i64) -> Flora;
+/// Set Flora's ecological speed relative to its private beat clock in [1/64, 4] (default 1).
+/// Growth, spread, seed rain, recovery and both consumption paths share dt_eco = pace * (f / 2 Hz) * dt. Retirement uses the same scale; beat opportunities, birth slew and macro fade retain their clocks. Bounds are acquired at 48 kHz, hop 512 and the default grid: finite retirement at 0.5 Hz and advance cost at 4 Hz. Out-of-range values warn and clamp to the supported range. NaN and negative infinity use the lower bound; positive infinity uses the upper bound. Live patches emit at wait, flush or scope end.
+fn pace(flora_spec: FloraSpec, multiplier: f64) -> FloraSpec;
+/// Set Flora's ecological speed relative to its private beat clock in [1/64, 4] (default 1).
+/// Growth, spread, seed rain, recovery and both consumption paths share dt_eco = pace * (f / 2 Hz) * dt. Retirement uses the same scale; beat opportunities, birth slew and macro fade retain their clocks. Bounds are acquired at 48 kHz, hop 512 and the default grid: finite retirement at 0.5 Hz and advance cost at 4 Hz. Out-of-range values warn and clamp to the supported range. NaN and negative infinity use the lower bound; positive infinity uses the upper bound. Live patches emit at wait, flush or scope end.
+fn pace(flora_spec: FloraSpec, multiplier: i64) -> FloraSpec;
 
 /// Run an array of closures on parallel timelines from the current cursor.
 /// Each branch starts at the current cursor; the cursor advances to the latest branch end.

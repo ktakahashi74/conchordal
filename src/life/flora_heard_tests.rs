@@ -36,7 +36,10 @@ fn heard_resource_unknown_hold_geometry_and_fixed_reference() {
         assert!((ce - expected).abs() < 16.0 * f32::EPSILON * expected);
     }
     let ce = flora.external_consumption_scan.clone();
-    flora.apply_patch(&FloraPatch { amp: Some(0.0) });
+    flora.apply_patch(&FloraPatch {
+        amp: Some(0.0),
+        ..Default::default()
+    });
     flora.observe_external(&terrain, Some(10));
     assert_eq!(ce, flora.external_consumption_scan);
     flora.advance(&terrain);
@@ -142,10 +145,16 @@ fn heard_flora_pcm_oracle_two_sources_routing_mute_fade_and_gap() {
             let mut max_l1 = 0.0f32;
             for frame in 0..160 {
                 if frame == 48 {
-                    flora[0].apply_patch(&FloraPatch { amp: Some(0.0) });
+                    flora[0].apply_patch(&FloraPatch {
+                        amp: Some(0.0),
+                        ..Default::default()
+                    });
                 }
                 if frame == 64 {
-                    flora[0].apply_patch(&FloraPatch { amp: Some(0.03) });
+                    flora[0].apply_patch(&FloraPatch {
+                        amp: Some(0.03),
+                        ..Default::default()
+                    });
                 }
                 if frame == 112 {
                     flora[0].release(0.08);

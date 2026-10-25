@@ -1006,7 +1006,29 @@ pub(super) fn validate_flora_numeric(
     name: &str,
     value: FLOAT,
     position: Position,
+    diagnostics: &ScriptWarnings,
 ) -> Result<f32, Box<EvalAltResult>> {
+    if name == "pace" {
+        let min = crate::scenario::FLORA_PACE_MIN as FLOAT;
+        let max = crate::scenario::FLORA_PACE_MAX as FLOAT;
+        let clamped = if value.is_nan() {
+            min
+        } else {
+            value.clamp(min, max)
+        };
+        if value != clamped {
+            diagnostics
+                .lock()
+                .expect("lock script warnings")
+                .push(ScriptWarning {
+                    message: format!(
+                        "Flora pace {value} clamped to {clamped}; expected [{min}, {max}]"
+                    ),
+                    position,
+                });
+        }
+        return Ok(clamped as f32);
+    }
     let (min, max) = match name {
         "amp" => (0.0, 1.0),
         "fade" => (0.0, 60.0),
@@ -1040,9 +1062,11 @@ impl FloraSpecHandle {
         name: &str,
         value: FLOAT,
         position: Position,
+        diagnostics: &ScriptWarnings,
     ) -> Result<Self, Box<EvalAltResult>> {
-        let value = validate_flora_numeric(name, value, position)?;
+        let value = validate_flora_numeric(name, value, position, diagnostics)?;
         match name {
+            "pace" => self.spec.pace = value,
             "amp" => self.spec.amp = value,
             "fade" => self.spec.fade_sec = value,
             _ => unreachable!("registered Flora spec parameter"),

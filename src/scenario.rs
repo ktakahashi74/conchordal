@@ -9,8 +9,14 @@ use crate::core::meter::MeterShaping;
 use control::{BodyMethod, ControlUpdate, VoiceControl};
 use lifecycle::LifecycleConfig;
 
+// Bounds acquired at 48 kHz / hop 512 on the default 690-bin grid.
+// The minimum protects finite retirement at 0.5 Hz; the maximum budgets 4 Hz advance.
+pub(crate) const FLORA_PACE_MIN: f32 = 1.0 / 64.0;
+pub(crate) const FLORA_PACE_MAX: f32 = 4.0;
+
 #[derive(Debug, Clone, Copy)]
 pub struct FloraSpec {
+    pub pace: f32,
     pub amp: f32,
     pub fade_sec: f32,
     pub tone: FloraTone,
@@ -22,6 +28,7 @@ pub struct FloraSpec {
 impl Default for FloraSpec {
     fn default() -> Self {
         Self {
+            pace: 1.0,
             amp: 0.03,
             fade_sec: 2.0,
             tone: FloraTone::Sine,
@@ -40,6 +47,7 @@ pub enum FloraTone {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FloraPatch {
+    pub pace: Option<f32>,
     pub amp: Option<f32>,
 }
 

@@ -39,7 +39,7 @@ mixed C/H. A geometry change discards old growth/seed scans until new observatio
 are available. Reports show the growth and seed values actually consumed.
 
 `flora()` builds a reusable FloraSpec. `place(spec, placement)` returns a Flora that
-can receive amplitude updates. A Population's Voices and
+can receive amplitude and pace updates. A Population's Voices and
 Flora can share the same habitat, as in this example:
 
 ```rhai
@@ -66,6 +66,7 @@ contains bins again.
 
 | Method | Accepted values | Default | Live update |
 |---|---|---|---|
+| `pace` | 1/64–4 | 1 | Yes |
 | `amp` | 0–1 | 0.03 | Yes |
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |
@@ -78,8 +79,12 @@ contains bins again.
 `amp` is the nominal target-amplitude scale: a ceiling, not a guaranteed level.
 Fades, slews and retiring tones can affect the transient output.
 
-Numeric arguments must be finite before and after conversion to f32. Invalid values
-raise errors during script evaluation; they are not clamped.
+`amp` and `fade` must be finite before and after conversion to f32. Invalid values
+raise errors during script evaluation. `pace` instead warns and clamps to its
+supported bounds. NaN and negative infinity use the lower bound; positive infinity
+uses the upper bound. The bounds were acquired at 48 kHz, hop 512 and the default
+grid: the lower bound protects finite retirement at 0.5 Hz and the upper bound
+keeps full-extent advance below one observer's cost at 4 Hz.
 
 Live methods collect a pending patch. The next `wait`, `flush` or scope end emits
 it as UpdateFlora. `release(m)` marks release pending; the patch precedes ReleaseFlora
@@ -122,15 +127,18 @@ private clock is not reset and stored candidates are not replayed as a burst.
 All Flora uses `temporal_basin(lo, hi)` as the composer's tempo prior, starting at
 its center frequency (2 Hz without a basin).
 Every Flora follows fresh, confirmed beats with confidence-weighted coupling
-0.95 and otherwise returns to the center. For frequency f, ecological time
-advances by f/2: growth is 4f/s, resource recovery is 20/f seconds and consumption
-is 0.6/f seconds. Diffusion and seed rain scale together. Phase correction only
+0.95 and otherwise returns to the center. `flora().pace(k)` sets an authored
+multiplier relative to that beat; a placed handle also accepts `m.pace(k)`. The
+default is 1. For frequency f, ecological time advances by k*f/2: growth is
+4kf/s, resource recovery is 20/(kf) seconds and consumption is 0.6/(kf) seconds. Diffusion and seed rain scale together. Phase correction only
 changes metric opportunities. This authored rule does not model phrase duration.
 
 All lanes retire with a finite metabolic amplitude tail. The existing macro
 `fade` bounds release; `fade(0)` ends immediately. The fixed lane pool can postpone
 births while tails occupy slots. The independent `rate` and `renewal` methods
-have been removed. Set the scene's tempo prior instead.
+have been removed. `pace(k)` scales their shared time and divides the retirement
+tail duration by k at fixed f. Birth slew and macro fade retain physical seconds;
+pace does not change the private beat clock or its opportunities.
 
 Sample 17 uses `temporal_basin(2, 4)`: its 3 Hz prior is 1.5 times neutral 2 Hz.
 The sustained scene has no explicit beat carrier; any confirmed acoustic beat can

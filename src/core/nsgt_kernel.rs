@@ -17,8 +17,10 @@
 
 use crate::core::fft::blackman_harris_window_symmetric;
 use crate::core::log2space::Log2Space;
+use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 use rustfft::{FftPlanner, num_complex::Complex32};
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 use std::sync::Arc;
 
 // =====================================================
@@ -124,6 +126,107 @@ pub struct KernelBand {
     pub spec_pow_sparse: Option<Vec<(usize, f32)>>,
 }
 
+/// Sparse weight rows regrouped into chunks of eight consecutive FFT bins, so each
+/// chunk loads its bins at once. Bins in a chunk window that the row does not use carry
+/// zero weight. Row sums use two accumulators of eight lanes, alternating by chunk, and a
+/// fixed reduction, so every SIMD level returns the same bits.
+#[derive(Clone, Debug)]
+pub(crate) struct Chunks {
+    rows: Vec<Range<usize>>,
+    bins: Vec<usize>,
+    re: Vec<f32>,
+    im: Vec<f32>,
+}
+
+impl Chunks {
+    /// `rows` yield ascending bins below `len`.
+    pub(crate) fn new<R: IntoIterator<Item = (usize, Complex32)>>(
+        rows: impl IntoIterator<Item = R>,
+        len: usize,
+    ) -> Self {
+        assert!(len >= 8, "chunked rows need at least eight bins");
+        let mut chunks = Self {
+            rows: Vec::new(),
+            bins: Vec::new(),
+            re: Vec::new(),
+            im: Vec::new(),
+        };
+        for row in rows {
+            let start = chunks.bins.len();
+            for (k, w) in row {
+                if chunks.bins.len() == start || k >= chunks.bins[chunks.bins.len() - 1] + 8 {
+                    chunks.bins.push(k.min(len - 8));
+                    chunks.re.extend([0.0; 8]);
+                    chunks.im.extend([0.0; 8]);
+                }
+                let slot = chunks.re.len() - 8 + k - chunks.bins[chunks.bins.len() - 1];
+                (chunks.re[slot], chunks.im[slot]) = (w.re, w.im);
+            }
+            chunks.rows.push(start..chunks.bins.len());
+        }
+        chunks
+    }
+
+    #[inline(always)]
+    fn bins<S: Simd>(&self, simd: S, x: [&[f32]; 2], c: usize) -> (f32x8<S>, f32x8<S>) {
+        let bins = self.bins[c]..self.bins[c] + 8;
+        (
+            f32x8::from_slice(simd, &x[0][bins.clone()]),
+            f32x8::from_slice(simd, &x[1][bins]),
+        )
+    }
+
+    #[inline(always)]
+    fn weights<S: Simd>(&self, simd: S, c: usize) -> (f32x8<S>, f32x8<S>) {
+        (
+            f32x8::from_slice(simd, &self.re[8 * c..8 * c + 8]),
+            f32x8::from_slice(simd, &self.im[8 * c..8 * c + 8]),
+        )
+    }
+
+    /// Per row, `sum X[k] * w[k]` with the complex product of `Complex32`; `x` holds
+    /// the real and imaginary parts of X.
+    #[inline(always)]
+    pub(crate) fn coherent<S: Simd>(&self, simd: S, x: [&[f32]; 2], out: &mut [Complex32]) {
+        for (row, out) in self.rows.iter().zip(out) {
+            let mut acc = [[f32x8::splat(simd, 0.0); 2]; 2];
+            for (n, c) in row.clone().enumerate() {
+                let ((xr, xi), (wr, wi)) = (self.bins(simd, x, c), self.weights(simd, c));
+                let [re, im] = &mut acc[n & 1];
+                *re += xr * wr - xi * wi;
+                *im += xr * wi + xi * wr;
+            }
+            *out = Complex32::new(reduce(acc[0][0] + acc[1][0]), reduce(acc[0][1] + acc[1][1]));
+        }
+    }
+
+    /// Per row, `sum |X[k]|^2 * w[k]` over the real weights.
+    #[inline(always)]
+    pub(crate) fn power<S: Simd>(&self, simd: S, x: [&[f32]; 2], out: &mut [f32]) {
+        for (row, out) in self.rows.iter().zip(out) {
+            let mut acc = [f32x8::splat(simd, 0.0); 2];
+            for (n, c) in row.clone().enumerate() {
+                let (xr, xi) = self.bins(simd, x, c);
+                acc[n & 1] += (xr * xr + xi * xi) * self.weights(simd, c).0;
+            }
+            *out = reduce(acc[0] + acc[1]);
+        }
+    }
+}
+
+#[inline(always)]
+fn reduce<S: Simd>(acc: f32x8<S>) -> f32 {
+    let a = acc.to_array();
+    ((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))
+}
+
+/// Splits X into the real and imaginary planes that [`Chunks`] loads.
+pub(crate) fn split_complex(x: &[Complex32], re: &mut [f32], im: &mut [f32]) {
+    for ((z, re), im) in x.iter().zip(re).zip(im) {
+        (*re, *im) = (z.re, z.im);
+    }
+}
+
 #[derive(Clone)]
 pub struct NsgtKernelLog2 {
     pub cfg: NsgtLog2Config,
@@ -133,6 +236,8 @@ pub struct NsgtKernelLog2 {
     hop: usize,
     fft: Arc<dyn rustfft::Fft<f32>>,
     bands: Vec<KernelBand>,
+    // The sparse band kernels, regrouped for SIMD; shared by every analyzer.
+    band_chunks: Arc<Chunks>,
 }
 
 impl NsgtKernelLog2 {
@@ -289,6 +394,23 @@ impl NsgtKernelLog2 {
             });
         }
 
+        let band_chunks = Arc::new(match power_mode {
+            PowerMode::Coherent => Chunks::new(
+                bands
+                    .iter()
+                    .map(|band| band.spec_conj_sparse.iter().flatten().copied()),
+                nfft,
+            ),
+            PowerMode::Incoherent => Chunks::new(
+                bands.iter().map(|band| {
+                    band.spec_pow_sparse
+                        .iter()
+                        .flatten()
+                        .map(|&(k, w)| (k, Complex32::new(w, 0.0)))
+                }),
+                nfft,
+            ),
+        });
         Self {
             cfg,
             space,
@@ -297,7 +419,13 @@ impl NsgtKernelLog2 {
             hop,
             fft,
             bands,
+            band_chunks,
         }
+    }
+
+    /// The band kernels as [`Chunks`], in band order.
+    pub(crate) fn band_chunks(&self) -> &Chunks {
+        &self.band_chunks
     }
 
     /// Construct a coherent kernel for offline-analysis tests.
@@ -369,6 +497,8 @@ impl NsgtKernelLog2 {
             .collect();
 
         let mut buf = vec![Complex32::new(0.0, 0.0); nfft];
+        let (mut re, mut im) = (vec![0.0; nfft], vec![0.0; nfft]);
+        let mut sums = vec![Complex32::default(); self.bands.len()];
 
         for frame_idx in 0..n_frames {
             // Rectangular framing; the kernel already contains the analysis window.
@@ -386,15 +516,11 @@ impl NsgtKernelLog2 {
             self.fft.process(&mut buf);
 
             // Sparse inner product per band: C_k = (1/Nfft) * sum X[nu] * conj(K_k[nu]) = sum x[n] * conj(h_k[n]).
-            for (b_idx, b) in self.bands.iter().enumerate() {
-                let sparse = b
-                    .spec_conj_sparse
-                    .as_ref()
-                    .expect("coherent kernel required for analyze()");
-                let mut acc = Complex32::new(0.0, 0.0);
-                for &(k, w) in sparse {
-                    acc += buf[k] * w;
-                }
+            split_complex(&buf, &mut re, &mut im);
+            let chunks = &*self.band_chunks;
+            dispatch!(Level::new(), simd => chunks.coherent(simd, [&re, &im], &mut sums));
+            for (b_idx, &sum) in sums.iter().enumerate() {
+                let mut acc = sum;
                 acc /= nfft as f32; // 1/Nfft scaling to match rustfft normalization.
                 out[b_idx].coeffs.push(acc);
                 let t_ref = self.time_ref_sample_in_frame();
@@ -428,6 +554,94 @@ impl NsgtKernelLog2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chunk_sums_match_their_order_on_every_simd_level_and_stay_near_sequential_sums() {
+        let len = 4096;
+        let mut seed = 0x9e37_79b9_u64;
+        let mut next = || {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            (seed >> 40) as f32 / (1u64 << 24) as f32 - 0.5
+        };
+        let x: Vec<Complex32> = (0..len).map(|_| Complex32::new(next(), next())).collect();
+        let rows: Vec<Vec<(usize, Complex32)>> = (0..40)
+            .map(|r| {
+                let mut k = (r * 97) % 64;
+                let mut row = Vec::new();
+                while k < len {
+                    row.push((k, Complex32::new(next(), next())));
+                    k += 1 + (r + row.len()) % 11;
+                }
+                row
+            })
+            .collect();
+        let chunks = Chunks::new(rows.iter().map(|row| row.iter().copied()), len);
+        let (mut re, mut im) = (vec![0.0; len], vec![0.0; len]);
+        split_complex(&x, &mut re, &mut im);
+        // Scalar replica of the chunk order: lane by bin offset, accumulator by chunk parity.
+        let expected: Vec<(u32, u32)> = chunks
+            .rows
+            .iter()
+            .map(|row| {
+                let mut acc = [[[0f32; 8]; 2]; 2];
+                for (n, c) in row.clone().enumerate() {
+                    for j in 0..8 {
+                        let (xr, xi) = (re[chunks.bins[c] + j], im[chunks.bins[c] + j]);
+                        let (wr, wi) = (chunks.re[8 * c + j], chunks.im[8 * c + j]);
+                        acc[n & 1][0][j] += xr * wr - xi * wi;
+                        acc[n & 1][1][j] += xr * wi + xi * wr;
+                    }
+                }
+                let part = |p: usize| {
+                    let a: [f32; 8] = std::array::from_fn(|j| acc[0][p][j] + acc[1][p][j]);
+                    (((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))).to_bits()
+                };
+                (part(0), part(1))
+            })
+            .collect();
+        let mut checked = 0;
+        crate::core::for_each_simd_level!(|name, simd| {
+            let mut out = vec![Complex32::default(); rows.len()];
+            simd.vectorize(|| chunks.coherent(simd, [&re, &im], &mut out));
+            let bits: Vec<_> = out
+                .iter()
+                .map(|z| (z.re.to_bits(), z.im.to_bits()))
+                .collect();
+            assert_eq!(bits, expected, "{name}");
+            checked += 1;
+        });
+        assert!(checked > 0);
+        // Both orders sum the same products; each is within gamma_(n-1) * sum(|t|)
+        // of the exact sum (Higham, Accuracy and Stability, 4.2).
+        let mut out = vec![Complex32::default(); rows.len()];
+        dispatch!(Level::new(), simd => chunks.coherent(simd, [&re, &im], &mut out));
+        for ((row, chunk_rows), actual) in rows.iter().zip(&chunks.rows).zip(&out) {
+            let terms: Vec<Complex32> = row.iter().map(|&(k, w)| x[k] * w).collect();
+            let sequential = terms.iter().fold(Complex32::default(), |acc, &t| acc + t);
+            let u = f64::from(f32::EPSILON) / 2.0;
+            let n = (chunk_rows.len() * 8) as f64;
+            let gamma = n * u / (1.0 - n * u);
+            for (actual, sequential, part) in [
+                (
+                    actual.re,
+                    sequential.re,
+                    terms.iter().map(|t| f64::from(t.re.abs())).sum::<f64>(),
+                ),
+                (
+                    actual.im,
+                    sequential.im,
+                    terms.iter().map(|t| f64::from(t.im.abs())).sum::<f64>(),
+                ),
+            ] {
+                let diff = (f64::from(actual) - f64::from(sequential)).abs();
+                assert!(
+                    diff <= 2.0 * gamma * part,
+                    "{diff} > {}",
+                    2.0 * gamma * part
+                );
+            }
+        }
+    }
     use crate::core::phase::wrap_pm_pi;
     #[cfg(feature = "plotcheck")]
     use crate::core::utils::ensure_plots_dir;

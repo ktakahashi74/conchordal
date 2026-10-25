@@ -137,6 +137,7 @@ fn parseval_resource_power_units_support_boundaries_and_amplitude() {
             .resource_weights
             .get()
             .unwrap()
+            .rows
             .iter()
             .flat_map(|r| r.iter())
             .filter(|(j, _)| *j == k)

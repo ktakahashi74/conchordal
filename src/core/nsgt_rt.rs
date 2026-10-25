@@ -16,9 +16,19 @@
 //! - No per-hop allocations; FFT and scratch buffers are reused.
 
 use crate::core::log2space::Log2Space;
-use crate::core::nsgt_kernel::{NsgtKernelLog2, PowerMode};
+use crate::core::nsgt_kernel::{Chunks, NsgtKernelLog2, PowerMode, split_complex};
+use fearless_simd::{Level, dispatch};
 use rustfft::num_complex::Complex32;
 use std::sync::{Arc, OnceLock};
+
+/// Normalized resource rows and their chunks, with the one- or two-sided factor and
+/// the rectangular-window normalization folded into the chunk weights.
+#[derive(Debug)]
+struct ResourceWeights {
+    #[cfg(test)]
+    rows: Vec<Vec<(usize, f32)>>,
+    chunks: Chunks,
+}
 
 /// Smoothing configuration.
 #[derive(Clone, Copy, Debug)]
@@ -71,9 +81,15 @@ pub struct RtNsgtKernelLog2 {
     // per-band states & cached meta
     bands_state: Vec<BandState>,
     out_env: Vec<f32>,
+    // FFT output planes for the chunked sums.
+    x_re: Vec<f32>,
+    x_im: Vec<f32>,
+    band_sums: Vec<Complex32>,
+    band_power: Vec<f32>,
 
     // Resource power shares geometry, FFT, and the raw rectangular PCM window.
-    resource_weights: Arc<OnceLock<Vec<Vec<(usize, f32)>>>>,
+    resource_weights: Arc<OnceLock<ResourceWeights>>,
+    resource_sums: Vec<f32>,
     resource_power: Option<Vec<f32>>,
     valid_samples: usize,
 
@@ -115,6 +131,7 @@ impl RtNsgtKernelLog2 {
             })
             .collect::<Vec<_>>();
 
+        let n_bands = nsgt.bands().len();
         Self {
             nsgt: Arc::new(nsgt),
             fs,
@@ -129,8 +146,13 @@ impl RtNsgtKernelLog2 {
             fft_scratch,
             out_env: vec![0.0; bands_state.len()],
             bands_state,
+            x_re: vec![0.0; nfft],
+            x_im: vec![0.0; nfft],
+            band_sums: vec![Complex32::default(); n_bands],
+            band_power: vec![0.0; n_bands],
             power_mode,
             resource_weights: Arc::new(OnceLock::new()),
+            resource_sums: vec![0.0; n_bands],
             resource_power: None,
             valid_samples: 0,
         }
@@ -170,7 +192,26 @@ impl RtNsgtKernelLog2 {
                     };
                 }
             }
-            rows
+            let normalization = 1.0 / (self.nfft as f32 * self.nfft as f32);
+            let nfft = self.nfft;
+            let chunks = Chunks::new(
+                rows.iter().map(|row| {
+                    row.iter().map(move |&(k, w)| {
+                        let sided = if k == 0 || (nfft.is_multiple_of(2) && k == nfft / 2) {
+                            1.0
+                        } else {
+                            2.0
+                        };
+                        (k, Complex32::new(w * sided * normalization, 0.0))
+                    })
+                }),
+                nfft,
+            );
+            ResourceWeights {
+                #[cfg(test)]
+                rows,
+                chunks,
+            }
         });
         if self.resource_power.is_none() {
             self.resource_power = Some(vec![0.0; self.bands_state.len()]);
@@ -204,23 +245,11 @@ impl RtNsgtKernelLog2 {
             return;
         };
         // The shared FFT uses a rectangular window: sum(window^2) = N.
-        let normalization = 1.0 / (self.nfft as f32 * self.nfft as f32);
-        for ((value, row), state) in out
-            .iter_mut()
-            .zip(self.resource_weights.get().unwrap())
-            .zip(&self.bands_state)
-        {
-            let power = row
-                .iter()
-                .map(|&(k, w)| {
-                    let sided = if k == 0 || (self.nfft.is_multiple_of(2) && k == self.nfft / 2) {
-                        1.0
-                    } else {
-                        2.0
-                    };
-                    self.fft_buf[k].norm_sqr() * w * sided * normalization
-                })
-                .sum::<f32>();
+        let chunks = &self.resource_weights.get().unwrap().chunks;
+        let sums = &mut self.resource_sums;
+        let x = [&self.x_re[..], &self.x_im[..]];
+        dispatch!(Level::new(), simd => chunks.power(simd, x, sums));
+        for ((value, &power), state) in out.iter_mut().zip(&*sums).zip(&self.bands_state) {
             let alpha = if gap == 1 {
                 state.alpha
             } else {
@@ -406,46 +435,37 @@ impl RtNsgtKernelLog2 {
 
         self.fft
             .process_with_scratch(&mut self.fft_buf, &mut self.fft_scratch);
+        split_complex(&self.fft_buf, &mut self.x_re, &mut self.x_im);
     }
 
     fn analyze_one_and_update_gap(&mut self, gap: i32) {
         self.analyze_fft();
         self.update_resource_power(gap);
         let n = self.nfft;
-        // Sparse inner products (same math as NsgtKernelLog2::analyze)
-        let bands = self.nsgt.bands();
+        // Sparse inner products (same per-term math as NsgtKernelLog2::analyze).
         let inv_nfft = 1.0 / n as f32;
         let inv_nfft2 = inv_nfft * inv_nfft;
-        for (bi, band) in bands.iter().enumerate() {
+        let chunks = self.nsgt.band_chunks();
+        let x = [&self.x_re[..], &self.x_im[..]];
+        match self.power_mode {
+            PowerMode::Coherent => {
+                let sums = &mut self.band_sums;
+                dispatch!(Level::new(), simd => chunks.coherent(simd, x, sums));
+            }
+            PowerMode::Incoherent => {
+                let sums = &mut self.band_power;
+                dispatch!(Level::new(), simd => chunks.power(simd, x, sums));
+            }
+        }
+        for bi in 0..self.bands_state.len() {
             // Instantaneous measure (power mode fixed at kernel creation time)
             let p = match self.power_mode {
                 PowerMode::Coherent => {
-                    let sparse = band
-                        .spec_conj_sparse
-                        .as_ref()
-                        .expect("coherent kernel required for RT");
-                    let mut acc = Complex32::new(0.0, 0.0);
-                    // Σ X[k] * conj(K_k[k]) (already conj in spec_conj_sparse)
-                    for &(k, w) in sparse {
-                        // Safety: kernels are built for the same nfft.
-                        debug_assert!(k < self.fft_buf.len());
-                        acc += self.fft_buf[k] * w;
-                    }
+                    let mut acc = self.band_sums[bi];
                     acc *= inv_nfft;
                     acc.norm_sqr()
                 }
-                PowerMode::Incoherent => {
-                    let sparse = band
-                        .spec_pow_sparse
-                        .as_ref()
-                        .expect("incoherent kernel required for RT");
-                    let mut sum = 0.0f32;
-                    for &(k, w_pow) in sparse {
-                        debug_assert!(k < self.fft_buf.len());
-                        sum += self.fft_buf[k].norm_sqr() * w_pow;
-                    }
-                    sum * inv_nfft2
-                }
+                PowerMode::Incoherent => self.band_power[bi] * inv_nfft2,
             };
 
             // Exponential smoothing
@@ -631,8 +651,13 @@ mod tests {
             let state_bytes = std::mem::size_of_val(rt.ring.as_slice())
                 + std::mem::size_of_val(rt.fft_buf.as_slice())
                 + std::mem::size_of_val(rt.fft_scratch.as_slice())
+                + std::mem::size_of_val(rt.x_re.as_slice())
+                + std::mem::size_of_val(rt.x_im.as_slice())
                 + std::mem::size_of_val(rt.bands_state.as_slice())
-                + std::mem::size_of_val(rt.out_env.as_slice());
+                + std::mem::size_of_val(rt.out_env.as_slice())
+                + std::mem::size_of_val(rt.band_sums.as_slice())
+                + std::mem::size_of_val(rt.band_power.as_slice())
+                + std::mem::size_of_val(rt.resource_sums.as_slice());
             let mut copies = Vec::with_capacity(128);
             crate::runtime_profile::begin_allocations();
             for _ in 0..128 {

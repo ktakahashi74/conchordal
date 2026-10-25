@@ -22,6 +22,7 @@ pub mod modulation;
 pub mod nsgt_kernel;
 pub(crate) mod nsgt_rt;
 pub(crate) mod onset;
+pub(crate) mod onset_habituation;
 pub(crate) mod peak_extraction;
 pub(crate) mod phase;
 pub mod psycho_state;

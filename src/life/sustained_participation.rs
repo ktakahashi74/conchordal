@@ -93,6 +93,7 @@ impl Voice {
                             .find(|m| m.at >= cursor)
                             .map(|m| m.at),
                     );
+                    self.prepare_span_segment(&segment, space);
                     self.tick_participation_segment(&segment, state, arrival, out);
                 }
                 let segment = self.phonation_segment(ctx, step.at, step.at.saturating_add(1));
@@ -104,11 +105,13 @@ impl Voice {
                         .find(|m| m.at >= step.at)
                         .map(|m| m.at),
                 );
+                self.prepare_span_segment(&segment, space);
                 self.tick_participation_segment(&segment, state, arrival, out);
                 cursor = step.at.saturating_add(1);
             }
             if cursor < ctx.frame_end {
                 let segment = self.phonation_segment(ctx, cursor, ctx.frame_end);
+                self.prepare_span_segment(&segment, space);
                 self.tick_participation_segment(&segment, state, arrival, out);
             }
         }
@@ -168,7 +171,7 @@ impl Voice {
                     .or(previous_tone);
                 let tone = Self::surviving_tone(
                     tone,
-                    self.phonation_engine.rest.is_some(),
+                    self.phonation_engine.tracks_tails(),
                     &out.cmds,
                     step.at,
                 );

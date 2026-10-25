@@ -359,3 +359,230 @@ fn synchronized_storage_is_prepared_for_the_first_hop_and_reused() {
         assert_eq!(counts.bytes, 0, "{counts:?}");
     }
 }
+
+#[test]
+fn span_gap_executes_on_real_synchronized_and_participation_paths() {
+    use crate::life::span_gap::{Phase, SpanGap};
+    for participating in [false, true] {
+        for persistence in [0.0, 0.5] {
+            for finite in [false, true] {
+                let (mut v, tb, r, mut out, space) = setup(
+                    BodyMethod::Sine,
+                    PitchApplyMode::Rearticulate,
+                    0.0,
+                    persistence,
+                    20.0,
+                );
+                if participating {
+                    let shape = v.phonation_engine.clock.shape_slot().unwrap().take();
+                    v.phonation_engine.clock = PhonationClock::from_config(
+                        &crate::scenario::PhonationClockConfig::Participation {
+                            coupling: 0.0,
+                            base_rate_hz: 20.0,
+                            flow_depth: 0.0,
+                            steady: true,
+                        },
+                        21,
+                    );
+                    *v.phonation_engine.clock.shape_slot().unwrap() = shape;
+                }
+                if finite {
+                    v.phonation_engine.enable_rest(
+                        &crate::scenario::DurationConfig::FixedGate { length_gates: 20 },
+                        1.0,
+                    );
+                }
+                let mut evidence = Landscape::new(space.clone());
+                evidence.onset_habituation_known = true;
+                evidence.onset_habituation_state_scan = vec![1.0; space.n_bins()].into();
+                let mut gap = SpanGap::new(1.0, 21, 2, 0, tb.fs, 330.0);
+                gap.observe(&evidence, 0);
+                gap.trace_enabled = true;
+                v.phonation_engine.span_gap = Some(gap);
+                emit(&mut v, &tb, &r, 0, &mut out, &space);
+                assert_eq!(out.tones.len(), 1, "initial Hold");
+                let original = out.tones[0].tone_id;
+                v.phonation_engine.span_gap.as_mut().unwrap().target = 0.0;
+                let mut released = None;
+                for index in 1..20 {
+                    emit(&mut v, &tb, &r, index * 512, &mut out, &space);
+                    if let Some(at) = out.cmds.iter().find_map(|c| match c {
+                        ToneCmd::Off { tone_id, off_tick } if *tone_id == original => {
+                            Some(*off_tick)
+                        }
+                        _ => None,
+                    }) {
+                        released = Some((at, index));
+                        break;
+                    }
+                }
+                let (off, index) = released.expect("exit at an existing opportunity");
+                assert!(out.tones.is_empty());
+                assert_eq!(
+                    v.phonation_engine.span_gap.as_ref().unwrap().phase,
+                    Phase::GapTail
+                );
+                v.phonation_engine.rest_tail_finished(off - 1, tb.fs);
+                assert_eq!(
+                    v.phonation_engine.span_gap.as_ref().unwrap().phase,
+                    Phase::GapTail
+                );
+                let quiet = (index + 1) * 512;
+                for step in index + 1..index + 4 {
+                    emit(&mut v, &tb, &r, step * 512, &mut out, &space);
+                    assert!(out.tones.is_empty());
+                    assert!(
+                        !out.cmds
+                            .iter()
+                            .any(|c| matches!(c,ToneCmd::Off{tone_id,..} if *tone_id==original))
+                    );
+                }
+                v.phonation_engine.rest_tail_finished(quiet, tb.fs);
+                let gap = v.phonation_engine.span_gap.as_mut().unwrap();
+                assert_eq!(gap.phase, Phase::GapActive);
+                if finite {
+                    assert_eq!(gap.return_integral, 0.0);
+                }
+                gap.target = 0.0;
+                let mut returned = None;
+                for step in index + 4..index + 80 {
+                    let ctx = CoreTickCtx {
+                        now_tick: step * 512,
+                        frame_end: (step + 1) * 512,
+                        fs: tb.fs,
+                        rhythms: r,
+                    };
+                    if let Some(opportunity) = v.phonation_engine.clock.opportunity(&ctx)
+                        && opportunity.at < ctx.frame_end
+                    {
+                        adoption(&mut v, opportunity.at, 440.0);
+                    }
+                    emit(&mut v, &tb, &r, step * 512, &mut out, &space);
+                    if let Some(tone) = out.tones.first() {
+                        assert!(
+                            (tone.freq_hz - 440.0).abs() < 0.001,
+                            "same-sample pending adoption"
+                        );
+                        assert!(v.participation_pitch.pending.is_none());
+                        returned = Some(tone.onset);
+                        break;
+                    }
+                }
+                let returned = returned.expect("return on a legal opportunity");
+                assert!(returned >= quiet);
+                if finite {
+                    assert!(returned >= quiet + 2400);
+                }
+                assert_eq!(
+                    v.phonation_engine.span_gap.as_ref().unwrap().phase,
+                    Phase::Span
+                );
+                v.release.pending = true;
+                emit(&mut v, &tb, &r, returned + 512, &mut out, &space);
+                assert!(out.tones.is_empty());
+                assert_eq!(
+                    v.phonation_engine.span_gap.as_ref().unwrap().phase,
+                    Phase::Finished
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn acoustic_history_changes_a_legal_exit_and_clamping_heard_removes_the_difference() {
+    use crate::core::auditory_frontend::AuditoryFrontEnd;
+    use crate::core::onset_habituation::OnsetHabituation;
+    use crate::life::span_gap::{Phase, SpanGap};
+    let (_, params) = crate::runtime::body_metabolism_test_core();
+    let space = Log2Space::new(55.0, 8000.0, 96);
+    let mut histories = Vec::new();
+    for hz in [330.0, 2000.0] {
+        let mut frontend = AuditoryFrontEnd::selected(space.clone(), 48000.0, 512, 16384);
+        let mut observer = OnsetHabituation::new(
+            &space,
+            frontend.band_energy().0,
+            crate::core::habituation::HabituationParams::default(),
+            0.5,
+            48000.0,
+        );
+        for hop in 0..500 {
+            let audio: Vec<_> = (0..512)
+                .map(|n| {
+                    let t = (hop * 512 + n) as f64 / 48000.0;
+                    (0.1 * (-t.rem_euclid(0.5) / 0.025).exp()
+                        * (std::f64::consts::TAU * hz * t).sin()) as f32
+                })
+                .collect();
+            frontend.process(&audio, &params);
+            observer.process(frontend.band_energy().1, 512, (hop + 1) * 512);
+        }
+        let mut frame = Landscape::new(space.clone());
+        frame.onset_habituation_state_scan = observer.state.into();
+        frame.onset_habituation_end = 500 * 512;
+        frame.onset_habituation_known = true;
+        histories.push(frame);
+    }
+    for clamp in [false, true] {
+        let mut outcomes = Vec::new();
+        for history in &histories {
+            let (mut voice, tb, r, mut out, space) =
+                setup(BodyMethod::Sine, PitchApplyMode::GateSnap, 0.0, 0.0, 20.0);
+            let mut evidence = history.clone();
+            if clamp {
+                std::sync::Arc::make_mut(&mut evidence.onset_habituation_state_scan).fill(0.0);
+            }
+            let start = 500 * 512;
+            let mut gap = SpanGap::new(1.0, 21, 2, 0, 48000.0, 330.0);
+            gap.observe(&evidence, start);
+            voice.phonation_engine.span_gap = Some(gap);
+            emit(&mut voice, &tb, &r, start, &mut out, &space);
+            // This target lies strictly between the two held-history integrals.
+            voice.phonation_engine.span_gap.as_mut().unwrap().target = 0.001;
+            for hop in 1..12 {
+                emit(&mut voice, &tb, &r, start + hop * 512, &mut out, &space);
+            }
+            outcomes.push(voice.phonation_engine.span_gap.as_ref().unwrap().phase);
+        }
+        assert_eq!(outcomes[1], Phase::Span);
+        assert_eq!(
+            outcomes[0],
+            if clamp { Phase::Span } else { Phase::GapTail }
+        );
+    }
+}
+
+#[test]
+fn span_gap_private_pitch_cancels_with_a_live_application_mode_change() {
+    let (mut v, tb, r, mut out, space) = setup(
+        BodyMethod::Sine,
+        PitchApplyMode::Rearticulate,
+        0.0,
+        0.0,
+        2.0,
+    );
+    v.phonation_engine.span_gap = Some(crate::life::span_gap::SpanGap::new(
+        0.25, 21, 2, 0, tb.fs, 330.0,
+    ));
+    emit(&mut v, &tb, &r, 0, &mut out, &space);
+    adoption(&mut v, 512, 440.0);
+    emit(&mut v, &tb, &r, 512, &mut out, &space);
+    assert!(v.participation_pitch.pending.is_some());
+    assert!(
+        v.phonation_engine
+            .span_gap
+            .as_ref()
+            .unwrap()
+            .pending_pitch
+            .is_some()
+    );
+    v.apply_patch(&ControlUpdate {
+        pitch_apply_mode: Some(PitchApplyMode::Glide),
+        ..Default::default()
+    })
+    .unwrap();
+    let gap = v.phonation_engine.span_gap.as_ref().unwrap();
+    assert!(gap.pending_pitch.is_none());
+    assert!(gap.glide_target.is_none());
+    assert!(v.participation_pitch.pending.is_none());
+}

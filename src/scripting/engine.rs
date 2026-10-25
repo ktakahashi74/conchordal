@@ -128,6 +128,13 @@ impl ScriptHost {
             spec.spec.residual = enabled;
             spec
         });
+        engine.register_fn(
+            "leave_self_out",
+            |mut spec: FloraSpecHandle, enabled: bool| {
+                spec.spec.leave_self_out = enabled;
+                spec
+            },
+        );
         engine.register_fn("send", |mut spec: FloraSpecHandle, bus: Bus| {
             spec.spec.routing = bus.routing;
             spec
@@ -678,7 +685,13 @@ impl ScriptHost {
         register_population_spec_numeric_methods(
             &mut engine,
             ctx.clone(),
-            &[("rest", PopulationSpec::set_rest)],
+            &[
+                ("rest", PopulationSpec::set_rest),
+                (
+                    "rest_on_habituation",
+                    PopulationSpec::set_rest_on_habituation,
+                ),
+            ],
         );
         // Tier 3: expert tuning
         register_population_spec_numeric_methods(
@@ -2017,7 +2030,14 @@ fn register_population_spec_numeric_overloads(
     numeric_overloads!(engine, name, |call, population_spec: PopulationSpecHandle; value| {
         let mut population_spec = population_spec;
         population_spec.spec.record_call(name, call.call_position(), &diagnostics);
-        setter(&mut population_spec.spec, value);
+        if name == "rest_on_habituation" && (!value.is_finite() || !(0.0..=1.0).contains(&value)) {
+            diagnostics.lock().expect("lock diagnostics").push(ScriptWarning {
+                message: "rest_on_habituation() expects a finite weight in [0,1]; ignored".into(), position: call.call_position(),
+            });
+            setter(&mut population_spec.spec, 0.0);
+        } else {
+            setter(&mut population_spec.spec, value);
+        }
         population_spec
     });
 }

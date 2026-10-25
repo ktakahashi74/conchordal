@@ -26,7 +26,7 @@ pub(super) fn advance_population(
                 .pop
                 .voices
                 .iter()
-                .filter(|voice| voice.phonation_engine.rest.is_some())
+                .filter(|voice| voice.phonation_engine.tracks_tails())
                 .map(|voice| (voice.id(), voice.metadata.generation)),
         );
     }
@@ -119,6 +119,21 @@ pub(super) fn advance_population(
     if state.reporter.is_some() {
         for voice in &mut state.pop.voices {
             let id = voice.id();
+            if let Some(gap) = &mut voice.phonation_engine.span_gap {
+                if state.scenario_end_tick.is_none() && state.conductor.is_done() {
+                    gap.finish(now_tick);
+                }
+                for transition in gap.trace.drain(..) {
+                    report_try(&mut state.reporter, "span gap", |writer| {
+                        writer.write_span_gap(
+                            id,
+                            voice.metadata.generation,
+                            cfg.fs as u32,
+                            &transition,
+                        )
+                    });
+                }
+            }
             state.participation_predictions.extend(
                 voice
                     .phonation_engine
@@ -451,6 +466,7 @@ pub(super) fn render_and_route_audio(
             {
                 sources.push(crate::core::stream::loo::SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
+                    analyze_hr: true,
                     id: voice.id(),
                     generation: voice.metadata.generation,
                     habitat: vec![0.; cfg.hop],
@@ -464,6 +480,7 @@ pub(super) fn render_and_route_audio(
             {
                 sources.push(crate::core::stream::loo::SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Flora,
+                    analyze_hr: flora.needs_hr_observer(),
                     id: flora.id,
                     generation: 0,
                     habitat: vec![0.0; cfg.hop],
@@ -524,6 +541,18 @@ pub(super) fn render_and_route_audio(
                     .find(|v| v.id() == source.id && v.metadata.generation == source.generation)
             {
                 voice.phonation_engine.rest_tail_finished(at, cfg.fs);
+                if let Some(gap) = &mut voice.phonation_engine.span_gap {
+                    for transition in gap.trace.drain(..) {
+                        report_try(&mut state.reporter, "span gap", |writer| {
+                            writer.write_span_gap(
+                                source.id,
+                                source.generation,
+                                cfg.fs as u32,
+                                &transition,
+                            )
+                        });
+                    }
+                }
             }
         }
     }

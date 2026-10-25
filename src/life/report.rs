@@ -256,6 +256,21 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         update: &'a crate::life::temporal_participation::ParticipationContextUpdate,
     },
+    SpanGap {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        transition: &'a crate::life::span_gap::Transition,
+    },
+    OnsetHabituationScan {
+        time_sec: f32,
+        observation_end: u64,
+        known: bool,
+        fmin_hz: f32,
+        bins_per_octave: u32,
+        state_scan: &'a [f32],
+    },
     ParticipationDecision {
         voice_id: u64,
         sample_rate: u32,
@@ -740,6 +755,21 @@ impl JsonlReporter {
         })
     }
 
+    pub(crate) fn write_span_gap(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        transition: &crate::life::span_gap::Transition,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::SpanGap {
+            voice_id,
+            generation,
+            sample_rate,
+            transition,
+        })
+    }
+
     pub(crate) fn write_habituation_scan(
         &mut self,
         time_sec: f32,
@@ -752,6 +782,17 @@ impl JsonlReporter {
             (&landscape.consonance_field_score_eff, "eff_score_scan"),
         ] {
             space.assert_scan_len_named(scan, name);
+        }
+        if !landscape.onset_habituation_state_scan.is_empty() {
+            space.assert_scan_len(&landscape.onset_habituation_state_scan);
+            self.write_record(&ReportRecord::OnsetHabituationScan {
+                time_sec,
+                observation_end: landscape.onset_habituation_end,
+                known: landscape.onset_habituation_known,
+                fmin_hz: space.fmin,
+                bins_per_octave: space.bins_per_oct,
+                state_scan: &landscape.onset_habituation_state_scan,
+            })?;
         }
         // Borrow the scans; reporting must not add a per-hop snapshot allocation.
         self.write_record(&ReportRecord::HabituationScan {

@@ -280,6 +280,20 @@ pub(super) fn wire_runtime(
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
         .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power);
+    let onset_habituation_enabled = scenario.events.iter().flat_map(|event| &event.actions)
+        .any(|action| matches!(action, Action::Spawn { spec, .. } if spec.control.phonation.rest_on_habituation > 0.0));
+    let onset_period = scenario.meter_shaping.basin_hz.map_or(0.5, |(lo, hi)| {
+        let (lo, hi) = crate::core::meter::sane_basin(lo, hi);
+        2.0 / f64::from(lo + hi)
+    });
+    if onset_habituation_enabled {
+        analysis_stream.enable_onset_habituation(onset_period);
+        if !core.lparams.habituation.enabled {
+            tracing::warn!(
+                "rest_on_habituation is enabled but habituation is disabled; spans will not exit"
+            );
+        }
+    }
     if resource_power {
         analysis_stream.enable_resource_power();
     }
@@ -364,6 +378,8 @@ pub(super) fn wire_runtime(
         .unwrap_or(0);
     pop.reserve_runtime_ids_through(scenario_max_id.max(reserve_runtime_ids_through));
     pop.set_seed(scenario.seed);
+    pop.onset_habituation_config =
+        onset_habituation_enabled.then_some((core.lparams.habituation, onset_period));
     pop.set_control_update_mode(scenario.control_update_mode);
     if reporter.is_some() {
         pop.enable_auto_observe();

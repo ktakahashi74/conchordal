@@ -10,19 +10,33 @@ Population and Flora couple only through sound: habitat audio feeds the Landscap
 and Flora reads its base field level before habituation and its harmonicity.
 Resource depletion and recovery already supply Flora's band fatigue; Voices and the
 listener still read the habituated terrain. There is no direct exchange of their
-state. With both buses selected,
-Flora also hears its own sound through this analysis path. `send(presentation_bus)`
-removes its sound from the habitat while keeping it audible; `send(habitat_bus)` does
-the reverse. The ecology continues on the available terrain without self-perception.
+state. By default, each Flora removes its own actual habitat PCM before evaluating the base
+consonance and harmonicity used for growth and seed rain, as well as external
+resource power. Other Flora remain audible. Within-band competition still comes
+from the resource consumption kernel acting on latent biomass.
+`send(presentation_bus)` keeps its audio out of the habitat, so that Flora reads
+mixed C/H directly without an H/R observer. `send(habitat_bus)` affects the habitat
+without direct presentation. The shared beat meter still hears all habitat audio.
+
+Set `flora().leave_self_out(false)` before placement to use mixed C/H including
+its own sound, without an H/R observer. External resource power still excludes
+its own PCM. Voice defaults to `false`, while Flora defaults to `true` because
+one Flora has many partials whose own harmonic lattice can sustain its growth
+and seed positions. In the undergrowth-v2 observation, that lattice persisted
+without a ground drone; choose `false` to allow this self-support, without a
+guarantee that the pitch stays fixed. Presentation-only Flora uses mixed C/H
+with either setting.
 
 Resource consumption includes latent biomass, even when it does not sound, and the
-power of other habitat audio. Each Flora removes its own actual habitat PCM before
-measuring that external power. The base consonance and harmonicity used for growth
-and seeding still include its own habitat sound. The fixed power reference is the
+power of other habitat audio. The fixed power reference is the
 mean square of a sine with amplitude 0.03 (`0.03²/2 = 0.00045`); changing the Flora's
 amplitude does not change that reference. Missing observations do not count as
 silence: resources retain their initial state before the first valid observation,
-and later gaps retain the last observed external consumption.
+and later gaps retain the last observed external consumption. Growth observations
+start from the mixed pre-birth history. Analysis invalidation ends the runtime,
+following its existing mixed-analysis rule; own-excluded C/H never falls back to
+mixed C/H. A geometry change discards old growth/seed scans until new observations
+are available. Reports show the growth and seed values actually consumed.
 
 `flora()` builds a reusable FloraSpec. `place(spec, placement)` returns a Flora that
 can receive amplitude updates. A Population's Voices and
@@ -41,7 +55,8 @@ release(sun);
 ```
 
 `consonance(lo, hi)` seeds from the base consonance density mass before habituation inside the extent,
-with a uniform fallback when that mass is zero. `random(lo, hi)` seeds uniformly.
+with a uniform fallback when that mass is zero. This placement value is mixed:
+no own sound exists yet. `random(lo, hi)` seeds uniformly.
 Both require density sampling, count 1, zero tension and the target's default spacing
 (1 ERB for consonance, 0 for random). Explicit default modifiers are accepted by value.
 Other placement targets, `at`, `line`, `.peak()` and non-default modifiers raise script
@@ -55,6 +70,7 @@ contains bins again.
 | `fade` | 0–60 seconds | 2 | Before placement |
 | `tone` | `"sine"`, `"resonant"` | `"sine"` | Before placement |
 | `residual` | Boolean; diffuse mass as band noise | `false` | Before placement |
+| `leave_self_out` | Boolean; exclude own sound from growth and seed C/H | `true` | Before placement |
 | `send` | Bus or BusSet | Both buses | Before placement |
 
 `residual(true)` enables the optional band-noise layer before placement.

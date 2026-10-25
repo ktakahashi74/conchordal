@@ -98,7 +98,7 @@ pub(crate) fn run(
                 "analysis delivery requires complete hops"
             );
             if frame_id != next_frame_id {
-                stream.reset();
+                stream.gap_to(frame_id * hop_samples as u64);
                 for observer in &mut loo_streams {
                     observer.reset();
                 }
@@ -147,6 +147,7 @@ pub(crate) fn run(
                                         source.id,
                                         source.generation,
                                         &mut stream,
+                                        source.analyze_hr,
                                     )
                                 }
                             };
@@ -185,7 +186,7 @@ pub(crate) fn run(
                     .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
                     .map(|s| s.snapshot())
                     .collect();
-                frame.flora_power = loo_streams
+                frame.flora_observations = loo_streams
                     .iter()
                     .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Flora)
                     .map(|s| s.resource_snapshot())
@@ -208,7 +209,7 @@ pub(crate) fn run(
                 .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
                 .map(|s| s.snapshot())
                 .collect();
-            frame.flora_power = loo_streams
+            frame.flora_observations = loo_streams
                 .iter()
                 .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Flora)
                 .map(|s| s.resource_snapshot())
@@ -315,6 +316,75 @@ mod tests {
                 assert!(actual.nsgt_power.iter().all(|&p| p == 0.0));
             }
         }
+    }
+
+    #[test]
+    fn onset_habituation_ordered_and_latest_publish_identical_audio_history() {
+        let space = Log2Space::new(200.0, 4000.0, 12);
+        let params = build_params(&space);
+        let kernel = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs: 48000.0,
+                overlap: 0.0,
+                nfft_override: Some(512),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Coherent,
+        );
+        let mut last = Vec::new();
+        for latest in [false, true] {
+            let mut stream =
+                AnalysisStream::new(params.clone(), RtNsgtKernelLog2::new(kernel.clone()))
+                    .with_nsgt_power(false);
+            stream.enable_onset_habituation(0.5);
+            let (hop_tx, hop_rx) = crossbeam_channel::unbounded();
+            let (tx, rx) = crossbeam_channel::unbounded();
+            let (_utx, urx) = crossbeam_channel::unbounded();
+            for id in (0..100).chain(105..300) {
+                let audio: Arc<[f32]> = (0..512)
+                    .map(|n| {
+                        let sample = id * 512 + n;
+                        let envelope = if sample % 24000 < 2400 { 0.2 } else { 0.0 };
+                        envelope * (2.0 * PI * 440.0 * sample as f32 / 48000.0).sin()
+                    })
+                    .collect();
+                hop_tx.send((id, audio, None)).unwrap();
+            }
+            drop(hop_tx);
+            let delivery = if latest {
+                AnalysisDelivery::Latest(rx.clone())
+            } else {
+                AnalysisDelivery::Ordered
+            };
+            run(stream, hop_rx, tx, urx, delivery, None, None);
+            let frames: Vec<_> = rx.into_iter().collect();
+            assert!(
+                frames
+                    .iter()
+                    .any(|(id, frame)| *id == 105 && frame.is_none())
+            );
+            if !latest {
+                assert!(frames.iter().any(|(id, frame)| *id == 105
+                    && frame.as_ref().is_some_and(|f| !f.onset_habituation_known)));
+            }
+            let (id, frame) = frames.into_iter().last().unwrap();
+            assert_eq!(id, 299);
+            let frame = frame.unwrap();
+            assert!(frame.onset_habituation_known);
+            assert_eq!(frame.onset_habituation_end, 300 * 512);
+            assert!(frame.onset_habituation_state_scan.iter().any(|&v| v > 0.0));
+            last.push(frame);
+        }
+        assert_eq!(
+            last[0].onset_habituation_state_scan,
+            last[1].onset_habituation_state_scan
+        );
+        assert_eq!(
+            last[0].onset_habituation_known,
+            last[1].onset_habituation_known
+        );
     }
 
     fn build_params(space: &Log2Space) -> LandscapeParams {
@@ -681,6 +751,7 @@ mod tests {
         crate::core::stream::loo::PcmPacket {
             sources: vec![crate::core::stream::loo::SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Voice,
+                analyze_hr: true,
                 id,
                 generation,
                 habitat: own.to_vec(),
@@ -705,12 +776,14 @@ mod tests {
             let sources = vec![
                 SourcePcm {
                     kind: SourceKind::Voice,
+                    analyze_hr: true,
                     id: 7,
                     generation: 0,
                     habitat: mix.to_vec(),
                 },
                 SourcePcm {
                     kind: SourceKind::Flora,
+                    analyze_hr: true,
                     id: 7,
                     generation: u32::from(frame >= 36),
                     habitat: vec![0.0; hop],
@@ -739,9 +812,9 @@ mod tests {
         for (id, frame) in result_rx.try_iter() {
             let frame = frame.unwrap();
             assert_eq!(frame.loo.len(), 1);
-            assert_eq!(frame.flora_power.len(), 1);
+            assert_eq!(frame.flora_observations.len(), 1);
             assert!(frame.loo[0].h_scan.iter().all(|&x| x == 0.0));
-            let observation = &frame.flora_power[0];
+            let observation = &frame.flora_observations[0];
             assert_eq!(
                 (observation.id, observation.generation),
                 (7, u32::from(id >= 36))

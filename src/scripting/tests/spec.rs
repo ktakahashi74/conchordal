@@ -3108,3 +3108,117 @@ fn counts_accept_integers_only_and_removed_verbs_are_unregistered() {
         run_script_err(script);
     }
 }
+
+#[test]
+fn rest_on_habituation_is_initial_only_validated_and_order_independent() {
+    for timing in ["metric()", "entrained()", "steady()", "flow()"] {
+        for chain in [
+            format!("sustain().{timing}.rest_on_habituation(0.25)"),
+            format!("rest_on_habituation(0.25).{timing}.sustain()"),
+        ] {
+            let spec = first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
+            assert_eq!(spec.control.phonation.rest_on_habituation, 0.25);
+        }
+    }
+    for chain in [
+        "sustain().rest_on_habituation(0.25)",
+        "metric().rest_on_habituation(0.25)",
+        "sustain().metric().rest_on_habituation(-1)",
+        "sustain().metric().rest_on_habituation(2)",
+    ] {
+        let (scenario, warnings) = run_script(&format!("create(sine().{chain},1);"));
+        assert!(
+            warnings
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("rest_on_habituation"))
+        );
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            if let Action::Spawn { spec, .. } = action {
+                assert_eq!(spec.control.phonation.rest_on_habituation, 0.0);
+            }
+        }
+    }
+    assert!(
+        run_script_err("let p=create(sine().sustain().metric(),1); p.rest_on_habituation(0.25);")
+            .to_string()
+            .contains("rest_on_habituation")
+    );
+    for value in ["0", "1", "0.25"] {
+        let spec = first_spawn_spec_for_script(&format!(
+            "create(sine().sustain().metric().rest_on_habituation({value}),1);"
+        ));
+        assert_eq!(
+            spec.control.phonation.rest_on_habituation,
+            value.parse::<f32>().unwrap()
+        );
+    }
+}
+
+#[test]
+fn rest_on_habituation_respawn_resets_private_state_and_retains_weight() {
+    let (scenario, _) = run_script_with_seed(
+        "create(sine().sustain().entrained().cycles(2).rest(0.5).rest_on_habituation(0.25).pitch_apply_mode(\"gate_snap\").respawn_random().respawn_background_death_rate(10000.0),1);",
+        21,
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48000.,
+        hop: 257,
+    });
+    community.set_seed(scenario.seed);
+    let landscape = Landscape::default();
+    for action in scenario.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape);
+        }
+    }
+    let gap = community.voices[0]
+        .phonation_engine
+        .span_gap
+        .as_mut()
+        .unwrap();
+    gap.own = 0.8;
+    gap.exit_integral = 4.0;
+    gap.return_integral = 3.0;
+    let parent = community.voices[0].id();
+    community.voices[0]
+        .phonation_engine
+        .rest
+        .as_mut()
+        .unwrap()
+        .phase = crate::life::phonation_engine::RestPhase::Gap {
+        origin: 0,
+        until: None,
+    };
+    community.advance(257, 0, 257. / 48000., &landscape);
+    community.cleanup_dead(0, 257. / 48000., false, &landscape);
+    let children: Vec<_> = community
+        .voices
+        .iter()
+        .filter(|v| v.id() != parent)
+        .collect();
+    assert!(!children.is_empty());
+    assert!(community.rest_enabled);
+    for child in children {
+        let gap = child.phonation_engine.span_gap.as_ref().unwrap();
+        assert_eq!(gap.weight, 0.25);
+        assert_eq!(gap.phase, crate::life::span_gap::Phase::Unstarted);
+        assert_eq!(
+            (gap.own, gap.exit_integral, gap.return_integral),
+            (0.0, 0.0, 0.0)
+        );
+        assert_eq!(child.effective_control.phonation.rest_periods, Some(0.5));
+        assert_eq!(
+            child.effective_control.phonation.finite_duration,
+            Some(DurationSpec::Gates(2))
+        );
+        assert_eq!(
+            child.phonation_engine.rest.unwrap().phase,
+            crate::life::phonation_engine::RestPhase::Ready
+        );
+    }
+}

@@ -317,12 +317,83 @@ impl Voice {
         }))
     }
 
+    fn prepare_span_segment(&mut self, ctx: &CoreTickCtx, space: Option<&Log2Space>) {
+        self.phonation_engine.advance_span(ctx.now_tick);
+        let deferred = self.defers_participation_pitch();
+        let Some(gap) = &mut self.phonation_engine.span_gap else {
+            return;
+        };
+        for adoption in &self.participation_pitch.rearticulations {
+            if adoption.at <= ctx.now_tick
+                && gap.last_adoption.is_none_or(|last| adoption.at > last)
+            {
+                if deferred {
+                    let application = select_pitch_application(
+                        &self.effective_control.pitch,
+                        space
+                            .map(|space| (space, gap.last_onset_pitch.log2(), adoption.pitch_log2)),
+                    );
+                    if application == PitchApplyMode::Glide {
+                        gap.glide_target = Some(adoption.pitch_log2);
+                        gap.pending_pitch = None;
+                    } else {
+                        gap.pending_pitch = Some(adoption.pitch_log2);
+                        gap.glide_target = None;
+                    }
+                }
+                gap.last_adoption = Some(adoption.at);
+            }
+        }
+        if let Some(step) = self
+            .participation_pitch
+            .steps
+            .iter()
+            .find(|step| step.at == ctx.now_tick)
+            && gap.last_control != Some(step.at)
+        {
+            let target = if deferred {
+                gap.glide_target
+            } else {
+                Some(step.target_log2)
+            };
+            if let Some(target) = target {
+                gap.pitch = Self::glide_pitch(
+                    gap.pitch.log2(),
+                    target,
+                    step.dt,
+                    self.effective_control.pitch.pitch_glide_tau_sec.max(0.0),
+                )
+                .exp2();
+            }
+            gap.last_control = Some(step.at);
+        }
+        gap.next_pitch = gap.pending_pitch.map_or(gap.pitch, f32::exp2);
+        if !deferred
+            && let Some(adoption) = self
+                .participation_pitch
+                .rearticulations
+                .iter()
+                .find(|m| m.at == ctx.now_tick)
+        {
+            gap.next_pitch = adoption.pitch_log2.exp2();
+        }
+    }
+
     fn prepare_participation_hop(
         &mut self,
         ctx: &CoreTickCtx,
         state: &CoreState,
         out: &mut PhonationBatch,
     ) {
+        if self.phonation_engine.span_gap.is_some() {
+            let pitch = self
+                .participation_pitch
+                .steps
+                .first()
+                .map_or(self.body.base_freq_hz(), |step| step.before_log2.exp2());
+            self.phonation_engine
+                .set_span_pitch(ctx.now_tick, pitch, pitch);
+        }
         self.phonation_engine.prepare_synchronized_hop(ctx);
         self.phonation_engine.initial_participating_hold(
             ctx,
@@ -352,6 +423,7 @@ impl Voice {
             &mut self.phonation_scratch.events,
             &mut out.onsets,
         );
+        self.phonation_engine.advance_span(ctx.frame_end);
     }
 
     fn apply_phonation_onsets(&mut self, consonance: f32, out: &PhonationBatch) {
@@ -426,6 +498,16 @@ impl Voice {
 
         let mut phonation_engine =
             PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        if effective_control.phonation.rest_on_habituation > 0.0 {
+            phonation_engine.span_gap = Some(crate::life::span_gap::SpanGap::new(
+                effective_control.phonation.rest_on_habituation,
+                seed_offset,
+                assigned_id,
+                metadata.generation,
+                fs,
+                target_freq,
+            ));
+        }
         if let Some(periods) = effective_control.phonation.rest_periods {
             let mut finite = effective_control.phonation.spec.clone();
             finite.duration = effective_control
@@ -691,6 +773,10 @@ impl Voice {
             self.participation_pitch.steps.clear();
             self.participation_pitch.pending = None;
             self.participation_pitch.glide_target = None;
+            if let Some(gap) = &mut self.phonation_engine.span_gap {
+                gap.pending_pitch = None;
+                gap.glide_target = None;
+            }
             self.participation_pitch.adopted = false;
             self.participation_pitch.pulse_update_pending |= (next == PitchApplyMode::Rearticulate)
                 != (self.participation_pitch.application == PitchApplyMode::Rearticulate);

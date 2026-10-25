@@ -800,6 +800,10 @@ impl PopulationSpec {
         self.phonation_spec.duration = DurationSpec::Field(self.field_duration_spec.clone());
     }
 
+    pub(super) fn set_rest_on_habituation(&mut self, value: f32) {
+        self.control.phonation.rest_on_habituation = value;
+    }
+
     pub(super) fn set_rest(&mut self, periods: f32) {
         self.rest_periods = Some(crate::core::float::sanitize_nonnegative_finite(periods));
     }

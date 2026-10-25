@@ -15,7 +15,7 @@
     - `fft.rs`: Symmetric Blackman-Harris window construction.
     - `stream/potentials.rs`: Shared harmonicity and roughness scratch for streaming,
       synchronous body analysis, and exact leave-self-out evaluation.
-    - `stream/loo.rs`: actual habitat PCM self-removal and per-Voice analysis histories.
+    - `stream/loo.rs`: actual habitat PCM self-removal and per-Voice/Flora analysis histories.
     - `erb.rs`: Equivalent Rectangular Bandwidth scales.
   - `audio/` (Real-time I/O):
     - `output.rs`: cpal stream management (ringbuffer producer).
@@ -242,7 +242,7 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   Flora's own advance/render/capture has zero steady-state allocations, including lane births and retirements; placement, reconfiguration, and reporting may allocate.
   Flora capture allocates one hop buffer at placement and one recycled packet entry
   at first capture; existing storage is reused through fade and retirement. Flora
-  power publication owns a scan and allocates. Reports include resource/consumption
+  power and H/R/level publication owns scans and allocates. Reports include resource/consumption
   scans and lane state at seconds and lifecycle changes; their allocations are
   outside the renderer contract.
   Mixed/listener NSGT power and its spectral history are enabled once at wiring
@@ -260,9 +260,15 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   before the auditory front end, using a clone of the mixed stream's pre-birth
   history. Both histories
   reset on gaps. Processing uses reused scratch; publication owns per-Voice H/R and
-  score scans and therefore allocates. Flora has a separate power observer for each instance. It subtracts actual own
-  habitat PCM, copies the mixed pre-birth raw/power history, and reuses the FFT
-  and shared sparse power weights without evaluating H/R. SourceKind separates
+  score scans and therefore allocates. Each habitat-routed Flora with
+  `leave_self_out(true)` (the default) also evaluates H/R through an auditory observer cloned from the mixed pre-birth history.
+  Its resource observer copies raw/power history and shares sparse power weights.
+  Both paths reuse the same subtracted PCM; only the resource path evaluates FFT.
+  Presentation-only Flora and `leave_self_out(false)` Flora use mixed C/H and
+  keep only their power observer; the latter still excludes own PCM from resources.
+  Observer storage is allocated at birth, processing reuses scratch, and publication
+  owns H/R/score/level and power scans. Flora retains consumed growth/seed scans
+  in placement-allocated buffers for reports and missing-observation holds. SourceKind separates
   Voice and Flora identities. Voice observer clones skip NSGT and disable the mixed stream's
   resource tracker because they consume only H/R. The auditory filterbank, hop
   boxcars and ERB-context scratch allocate at construction and reuse storage.
@@ -279,7 +285,19 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   gap/reconfiguration resets are outside the steady-state processing claim.
   Self-exclusion observers run sequentially on one analysis thread, so sustained
   analysis cost above the hop budget makes the audio worker wait and can interrupt
-  output; cost estimates must include retiring observers.
+  output; cost estimates must include retiring Voice and Flora observers.
+  Habitat-routed Flora adds one H/R evaluation per hop to its existing power cost
+  only with `leave_self_out(true)`; `false` has no H/R observer cost.
+  Voice and Flora H/R observers already use the same `voice_observer()` factory:
+  NSGT is disabled and the resource tracker is removed from that clone. Only the
+  separate Flora power observer advances its FFT. H/R processing borrows the
+  Landscape; snapshots own scans, and Flora level revaluation runs on the worker.
+  Whole-analysis elapsed time includes the mixed stream, other observers,
+  publication and scheduler delays; differences between scenarios or revisions
+  are not a direct measurement of one H/R observer. The ignored
+  `flora_observer_pcm_acquisition` and `flora_voice_observer_cost` tests capture
+  actual single-Flora habitat PCM and replay identical subtraction and pre-birth
+  history through both observers, with stage timings and H/R equality checks.
   The shared density-normalization floor applies to general analysis as well as LOO,
   independently of Flora placement or self-exclusion consumers.
   Use `--features profile-alloc` when measuring or asserting allocations; without it,
@@ -431,7 +449,13 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
     shows the un-eroded terrain.
 - With habituation explicitly disabled the `_eff` views equal their base variants
   bit-exact, so reading the eroded view is always correct for Voice behavior.
-  Flora reads base level/mass and unchanged `harmonicity01`; its habitat audio still
+  Flora reads base level and `harmonicity01` after removing its own actual habitat
+  PCM by default; initial-only `leave_self_out(false)` and presentation-only Flora
+  read mixed C/H without an H/R observer. Resource power always excludes own PCM.
+  Voice defaults to false and Flora to true because a Flora has many partials
+  whose own harmonic lattice can sustain its growth and seed positions. Placement
+  reads mixed base mass because own audio does not yet exist. Gaps retain the existing runtime stop rule;
+  no mixed C/H fallback is used. Its habitat audio still
   drives habituation. Every Flora uses beat opportunities with a shared
   habitat audio-only meter and a private CouplingClock. Wiring creates the meter
   only if the scenario contains a Flora placement; it observes from run
@@ -478,6 +502,27 @@ key is a hard error rather than a silent fallback. `#[serde(default)]` still fil
 `anyhow::Result`: only an omitted config path with no default `config.toml` writes and
 returns defaults. An explicit missing `--config` path, unreadable/malformed file,
 unknown key, or invalid numeric range fails the run.
+
+## Attack habituation and span/gap
+
+- `rest_on_habituation(w)` is initial-only on PopulationSpec, finite `[0,1]`,
+  default zero; explicit sustain with metric/entrained/steady/flow is required.
+  Invalid or unsupported values warn and are ignored. Templates inherit the
+  weight without mutation; births reset all private state.
+- One optional habitat AnalysisStream observer owns attack history from run start
+  whenever any effective positive weight appears in the scenario, including later
+  placements. It reuses auditory band powers. Listener, synchronous body, Voice
+  LOO and Flora power observers do not own this history.
+- Band detector and sparse Gaussian storage allocate at construction. Processing
+  reuses scratch. Published scans share Arc storage across Voices; copy-on-write
+  copies a scan after publication. The private state and dedicated RNG exist only
+  for positive weights. Transition reporting allocates only with reports enabled.
+- A scan travels with its observed end sample and validity. Unknown freezes exit
+  and return integrals; future snapshots retain the previous holding value. Voice
+  time, segmented at opportunities and pitch control samples, advances integrals.
+- Renderer tail completion is registered for rest or span/gap Voices and routed
+  by ID and generation. Rest Waiting/Gap freezes both integrals, while private
+  attack recovery and ordinary clocks continue. Early Off cancels its pending Off.
 
 ## Rhai Spawn API
 Placement builders produce a `Placement` (defined in `src/scripting/placement.rs`,

@@ -115,6 +115,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.90 2026-10-14: Deriving L2 contracts, a continuous-input calculation and a prototype](#l2-principle-derivation-continuous-prototype-20261014)
   - [§9.3.91 2026-10-14: Opt-in L2 adoption and integration, CI repairs and R-4 device results](#l2-opt-in-integration-ci-r4-results-20261014)
   - [§9.3.92 2026-10-14: Author adoption of rounded sample constants and Generations endurance](#sample-rounded-constants-generations-endurance-20261014)
+  - [§9.3.95 Flora growth and seed perception exclude own habitat PCM](#flora-growth-self-exclusion)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -9979,6 +9980,54 @@ decisions slightly, and was withdrawn; the measured-roughness detector and a ker
 author adopted the front end with these mismatches registered. Widening the scope (roughness of unresolved structure from the
 envelope, or a separate onset estimate) is an author decision. The SF-1 requirement to separate two tones 15 Hz apart,
 set by the orchestrator's brief, is replaced by consumer-decision tests and the recorded spurious-valley diagnostic.
+
+<a id="flora-growth-self-exclusion"></a>
+
+### 9.3.95 Flora growth and seed perception exclude own habitat PCM (2026-10-24)
+
+The author adopted removal of Flora's actual own habitat PCM from growth
+consonance and seed harmonicity on 2026-10-24. In the FD-1 undergrowth-v2 observation,
+without the ground drone, the lowest sounding Flora lane stayed at 122.5 Hz from
+80 to 340 seconds and the partials occupied a 61.25 Hz harmonic lattice. A
+presentation-only probe followed the wanderer more often, but removed both
+coupling directions and did not isolate the self-term experimentally.
+
+The adopted implementation subtracts own PCM before H/R analysis, symmetrically
+with the existing external-resource-power path. It leaves other Flora audible and
+retains the base views before habituation. Resource consumption supplies band-scale
+competition after removal of the self-roughness contribution. Placement still reads
+mixed density mass because own sound does not yet exist. Presentation-only Flora
+reads mixed C/H without an H/R observer. Analysis invalidation follows the existing
+runtime stop rule; missing own-excluded observations are never replaced by mixed
+ones. Mutual lattice support between Flora and subjective musical effect remain
+separate questions; this decision does not assert continuing succession.
+
+On 2026-10-25, after hearing FD-1 v3, the author also chose to retain the option
+of self-supported growth. Initial-only `flora().leave_self_out(false)` reads
+mixed growth consonance and seed harmonicity without an H/R observer; external
+resource power still excludes own PCM. The default remains `true`. Voice defaults
+to `false`, while Flora defaults to `true` because its many partials can sustain
+its own harmonic lattice. The FD-1 v2 observation above guides this choice; neither
+setting guarantees fixed pitch or continuing succession in every scene.
+
+### 9.3.96 Attack habituation and probabilistic spans (2026-10-24)
+
+The author selected rule A after the undergrowth audition found that the plucked
+parts continued at a regular beat without variation, and judged temporal DCC
+ineffective as a musical element in that version. Shared habitat attack history
+now supplies an exit rate proportional to habituation near the current pitch.
+Each Voice draws one exponential target on entering a span and one on entering
+an acoustically quiet gap. Private executed attacks govern return. The initial
+weight defaults to zero; existing legal opportunities, tails and vetoes remain
+binding.
+
+This belongs to the author-rule layer of §9.3.57. It differs from the deterministic
+maximum-utility action choice in dcc-neurocognitive-hierarchy §9.6. It adds a
+limited continuation/release action dependent on heard history; it does not
+establish phrase perception, boundary/closure expectation, motive memory or the
+first coupling in that document's §5. The audition motivates the decision, not a
+claim that the new rule improves the music. Choosing a nonzero weight for a work
+still belongs to the author's audition.
 
 ## 9.4 Alignment and Extension Sequence
 

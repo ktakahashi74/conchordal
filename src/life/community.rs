@@ -80,6 +80,7 @@ impl PredGateAccum {
 
 pub struct Community {
     pub(crate) rest_enabled: bool,
+    pub(crate) onset_habituation_config: Option<(crate::core::habituation::HabituationParams, f64)>,
     pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
     birth_surrogate: std::cell::RefCell<Option<super::sound::birth_surrogate::BirthSurrogate>>,
     pub voices: Vec<Voice>,
@@ -212,6 +213,7 @@ impl Community {
             body_metabolism: None,
             birth_surrogate: std::cell::RefCell::new(None),
             rest_enabled: false,
+            onset_habituation_config: None,
             voices: Vec::new(),
             flora: Vec::new(),
             has_placed_flora: false,
@@ -349,7 +351,13 @@ impl Community {
         }
         self.track_runtime_id(id);
         voice.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES, self.time.fs);
-        self.rest_enabled |= voice.phonation_engine.rest.is_some();
+        if let (Some(gap), Some((params, period))) = (
+            &mut voice.phonation_engine.span_gap,
+            self.onset_habituation_config,
+        ) {
+            gap.configure(params, period);
+        }
+        self.rest_enabled |= voice.phonation_engine.tracks_tails();
         self.voices.push(voice);
     }
 
@@ -500,6 +508,10 @@ impl Community {
                     owner: (voice.id(), voice.metadata.generation, body_generation),
                 }
             });
+            if let Some(gap) = &mut voice.phonation_engine.span_gap {
+                gap.observe(landscape, now);
+                gap.trace_enabled = auto_observe_enabled;
+            }
             voice.tick_phonation_into_with_arrival(
                 &tb,
                 now,
@@ -610,7 +622,13 @@ impl Community {
             }
         }
         spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES, self.time.fs);
-        self.rest_enabled |= spawned.phonation_engine.rest.is_some();
+        if let (Some(gap), Some((params, period))) = (
+            &mut spawned.phonation_engine.span_gap,
+            self.onset_habituation_config,
+        ) {
+            gap.configure(params, period);
+        }
+        self.rest_enabled |= spawned.phonation_engine.tracks_tails();
         self.voices.push(spawned);
         #[cfg(test)]
         crate::runtime::l1_probe::record_birth();

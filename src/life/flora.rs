@@ -316,6 +316,8 @@ pub(crate) struct Flora {
     pace: f32,
     diffusion: f32,
     rng: u64,
+    growth_level_scan: Vec<f32>,
+    harmonicity_state_scan: Vec<f32>,
     biomass_mass_scan: Vec<f32>,
     resource_state_scan: Vec<f32>,
     biomass_consumption_scan: Vec<f32>,
@@ -487,6 +489,8 @@ impl Flora {
             pace: 1.0,
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
+            growth_level_scan: Vec::new(),
+            harmonicity_state_scan: Vec::new(),
             biomass_mass_scan: Vec::new(),
             resource_state_scan: Vec::new(),
             biomass_consumption_scan: Vec::new(),
@@ -516,6 +520,12 @@ impl Flora {
             lifecycle_changed: true,
         };
         flora.on_space_change(&landscape.space);
+        flora
+            .growth_level_scan
+            .copy_from_slice(&landscape.consonance_field_level);
+        flora
+            .harmonicity_state_scan
+            .copy_from_slice(&landscape.harmonicity01);
         flora.space.assert_scan_len_named(
             &landscape.consonance_density_mass,
             "consonance_density_mass",
@@ -591,6 +601,8 @@ impl Flora {
         self.external_consumption_scan = vec![0.0; space.n_bins()];
         self.external_observed_frame = None;
         self.external_current = false;
+        self.growth_level_scan = vec![0.0; space.n_bins()];
+        self.harmonicity_state_scan = vec![0.0; space.n_bins()];
         self.scratch_scan = vec![0.0; space.n_bins()];
         self.erb_scan = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
         self.assert_scans();
@@ -709,6 +721,8 @@ impl Flora {
 
     fn assert_scans(&self) {
         for (scan, name) in [
+            (&self.growth_level_scan, "growth_level_scan"),
+            (&self.harmonicity_state_scan, "harmonicity_state_scan"),
             (&self.biomass_mass_scan, "biomass_mass_scan"),
             (&self.resource_state_scan, "resource_state_scan"),
             (&self.biomass_consumption_scan, "biomass_consumption_scan"),
@@ -720,13 +734,17 @@ impl Flora {
         }
     }
 
+    pub(crate) fn needs_hr_observer(&self) -> bool {
+        self.spec.routing.to_habitat && self.spec.leave_self_out
+    }
+
     pub(crate) fn observe_external(&mut self, landscape: &Landscape, frame: Option<u64>) {
         self.external_current = false;
         let Some(frame) = frame else {
             return;
         };
         let Some(power) = landscape
-            .flora_power
+            .flora_observations
             .iter()
             .find(|s| s.id == self.id && s.generation == 0)
             .and_then(|s| s.power_scan.as_ref())
@@ -764,6 +782,28 @@ impl Flora {
             (landscape.space.fmin, landscape.space.step()),
             "Flora space change was not applied"
         );
+        // Before the first render there is no own sound in the mixed history.
+        let fields = if !self.needs_hr_observer() || self.rendered_samples == 0 {
+            Some((&landscape.consonance_field_level, &landscape.harmonicity01))
+        } else if let Some(observation) = landscape
+            .flora_observations
+            .iter()
+            .find(|s| s.id == self.id && s.generation == 0)
+            && let Some(perception) = &observation.perception
+        {
+            Some((&observation.level_scan, &perception.h_scan))
+        } else {
+            // Runtime stops on invalidated analysis; direct callers retain the last fields.
+            None
+        };
+        if let Some((growth, harmonicity)) = fields {
+            self.space
+                .assert_scan_len_named(growth, "consonance_field_level");
+            self.space
+                .assert_scan_len_named(harmonicity, "harmonicity01");
+            self.growth_level_scan.copy_from_slice(growth);
+            self.harmonicity_state_scan.copy_from_slice(harmonicity);
+        }
         if self.range.is_empty() {
             return;
         }
@@ -788,13 +828,13 @@ impl Flora {
                 let u = self.resource_state_scan[i];
                 let growth = GROWTH_RATE
                     * v
-                    * (sanitize01(landscape.consonance_field_level[i]) * u * v / (v + allee_mass)
+                    * (sanitize01(self.growth_level_scan[i]) * u * v / (v + allee_mass)
                         - METABOLISM);
                 let spread = self.diffusion
                     * (self.biomass_mass_scan[left] - 2.0 * v + self.biomass_mass_scan[right]);
                 let seeds = u
                     * (BACKGROUND_SEED_DENSITY
-                        + SEED_RAIN_DENSITY * sanitize01(landscape.harmonicity01[i]))
+                        + SEED_RAIN_DENSITY * sanitize01(self.harmonicity_state_scan[i]))
                     / bins_per_oct;
                 let next = v + dt * (growth + spread + seeds);
                 debug_assert!(next >= -1e-6 * maximum, "negative Flora biomass: {next}");
@@ -1203,8 +1243,8 @@ impl Flora {
             pace: self.pace,
             temporal: self.temporal.as_ref(),
             acoustic_observation: Some(&self.acoustic_observation),
-            growth_level_scan: &landscape.consonance_field_level,
-            harmonicity_state_scan: &landscape.harmonicity01,
+            growth_level_scan: &self.growth_level_scan,
+            harmonicity_state_scan: &self.harmonicity_state_scan,
             target_partials: self
                 .lanes
                 .iter()

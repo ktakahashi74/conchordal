@@ -82,7 +82,9 @@ footprintを聴くことでviableに見えるかもしれません。そこで`c
 すべてのVoiceが読むConsonance Fieldを変え続けます。自分も含むConsonance Field全体への適合度を問いたい場合だけ
 `viability_scope("total")`を使います。
 
-音高移動では、別の設定`leave_self_out(true)`を使います。両者は、混合habitat PCMから
+音高移動では、別の設定`leave_self_out(true)`を使います。Voiceの既定値は`false`、
+Floraは`true`であり、違いはFloraの一個体が多くの部分音を持ち、自分の倍音格子で
+成長と種の位置を支えられるためです。両者は、混合habitat PCMから
 そのVoice自身のhabitat PCMを引いた音の観測を共有します。減算後も、混合場と同じ聴覚フィルタ群、
 hopごとの統計、周波数の再配置、臨界帯域の圧縮、密度の平滑、H・R・Cの計算を使います。
 habitatへ送られたFloraは、residualを含めて残ります。身体によらず同じ方式を使い、mode選択はありません。

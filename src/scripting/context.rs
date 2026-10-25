@@ -588,6 +588,24 @@ impl ScriptContext {
                 .phonation
                 .articulation_persistence = 0.0;
         }
+        let weight = population_spec.spec.control.phonation.rest_on_habituation;
+        if !weight.is_finite()
+            || !(0.0..=1.0).contains(&weight)
+            || (weight > 0.0
+                && !population_spec
+                    .spec
+                    .spawn_spec()
+                    .control
+                    .phonation
+                    .spec
+                    .is_sustained_participation())
+        {
+            warn_at(
+                "rest_on_habituation",
+                "rest_on_habituation() requires a finite weight in [0,1] and explicit sustain() with metric()/entrained()/steady()/flow(); ignored",
+            );
+            population_spec.spec.control.phonation.rest_on_habituation = 0.0;
+        }
         if population_spec.spec.tie_user_set
             && !population_spec.spec.spawn_spec().control.supports_tie()
         {

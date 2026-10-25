@@ -80,6 +80,11 @@ impl Voice {
                     {
                         tie.pending_pitch = self.participation_pitch.pending.is_some();
                     }
+                    self.phonation_engine.set_span_pitch(
+                        segment.now_tick,
+                        pitch.exp2(),
+                        self.participation_pitch.pending.unwrap_or(pitch).exp2(),
+                    );
                     self.tick_participation_segment(&segment, state, arrival, out);
                     self.articulation_persistence_drain_ons(
                         &mut on_index,
@@ -153,6 +158,17 @@ impl Voice {
                 {
                     tie.pending_pitch = self.participation_pitch.pending.is_some();
                 }
+                let at_pitch = self
+                    .participation_pitch
+                    .glide_target
+                    .map_or(pitch, |target| {
+                        Self::glide_pitch(pitch, target, step.dt, tau)
+                    });
+                self.phonation_engine.set_span_pitch(
+                    segment.now_tick,
+                    at_pitch.exp2(),
+                    self.participation_pitch.pending.unwrap_or(at_pitch).exp2(),
+                );
                 self.tick_participation_segment(&segment, state, arrival, out);
                 // M and glide precede a sounded opportunity at exactly the same sample.
                 if let Some(target) = self.participation_pitch.glide_target {
@@ -168,7 +184,7 @@ impl Voice {
                         .or(previous_tone);
                     let tone = Self::surviving_tone(
                         tone,
-                        self.phonation_engine.rest.is_some(),
+                        self.phonation_engine.tracks_tails(),
                         &out.cmds,
                         step.at,
                     );
@@ -203,6 +219,11 @@ impl Voice {
                 {
                     tie.pending_pitch = self.participation_pitch.pending.is_some();
                 }
+                self.phonation_engine.set_span_pitch(
+                    segment.now_tick,
+                    pitch.exp2(),
+                    self.participation_pitch.pending.unwrap_or(pitch).exp2(),
+                );
                 self.tick_participation_segment(&segment, state, arrival, out);
                 self.articulation_persistence_drain_ons(
                     &mut on_index,

@@ -949,6 +949,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
             );
         }
         let flora_spec = FloraSpec {
+            leave_self_out: true,
             amp: 0.35,
             fade_sec: 0.,
             tone,
@@ -981,6 +982,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
         let mut reference_stream = template.clone();
         let mut sources = [crate::life::schedule_renderer::SourcePcm {
             kind: crate::core::stream::loo::SourceKind::Voice,
+            analyze_hr: true,
             id: 2,
             generation: 0,
             habitat: vec![0.; hop],

@@ -635,6 +635,7 @@ fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
 fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
     PhonationEngine {
         rest: None,
+        span_gap: None,
         #[cfg(test)]
         synchronized_counts: [0; 4],
         sustain_participation: false,
@@ -2441,4 +2442,123 @@ fn coupling_clock_keeps_advancing_while_onset_disallowed_then_resumes_promptly()
         "onsets resume promptly once the gate opens"
     );
     assert!(cmds.iter().any(|cmd| matches!(cmd, ToneCmd::On { .. })));
+}
+
+#[test]
+fn span_exit_integrates_between_candidates_and_cancels_exactly_one_pending_off() {
+    use crate::life::span_gap::{Phase, SpanGap};
+    let mut engine = test_engine(
+        OnsetRule::Always { strength: 1.0 },
+        DurationRule::fixed_gate(1),
+    );
+    engine.sustain_participation = true;
+    let mut frame = crate::core::landscape::Landscape::default();
+    frame.onset_habituation_state_scan = vec![1.0; frame.space.n_bins()].into();
+    frame.onset_habituation_known = true;
+    let mut gap = SpanGap::new(1.0, 21, 2, 0, 48000.0, 440.0);
+    gap.observe(&frame, 0);
+    gap.advance(0, false);
+    gap.on(0, true);
+    gap.target = 200.0 / 48000.0 * std::f64::consts::LN_10 / 5.0;
+    engine.span_gap = Some(gap);
+    engine.hold.tone_id = Some(7);
+    engine.hold.note_on_sent = true;
+    engine.active_notes = 1;
+    engine.schedule_note_off(7, 1000);
+    engine.rest = Some(RestState {
+        periods: 1.0,
+        phase: RestPhase::Continue(1000),
+    });
+    let candidates = [
+        CandidatePoint { tick: 100, gate: 0 },
+        CandidatePoint { tick: 300, gate: 1 },
+    ];
+    let mut grid = ThetaGrid::default();
+    grid.rebuild_from_candidates(&candidates);
+    let mut field = TimingField::default();
+    field.rebuild_flat(&grid);
+    let mut cmds = Vec::new();
+    let mut events = Vec::new();
+    let mut onsets = Vec::new();
+    engine.process_candidates(
+        &CoreTickCtx {
+            now_tick: 0,
+            frame_end: 512,
+            fs: 48000.0,
+            rhythms: NeuralRhythms::default(),
+        },
+        &candidates,
+        &mut grid,
+        &field,
+        &CoreState {
+            is_alive: true,
+            onset_allowed: false,
+        },
+        None,
+        &mut cmds,
+        &mut events,
+        &mut onsets,
+    );
+    assert_eq!(cmds.len(), 1);
+    assert!(matches!(
+        cmds[0],
+        ToneCmd::Off {
+            tone_id: 7,
+            off_tick: 300
+        }
+    ));
+    assert!(engine.pending_off.is_empty());
+    assert_eq!(engine.active_notes, 0);
+    assert_eq!(engine.span_gap.as_ref().unwrap().phase, Phase::GapTail);
+    engine.drain_note_offs(2000, &mut cmds);
+    assert_eq!(cmds.len(), 1);
+    let exit = engine.span_gap.as_ref().unwrap().exit_integral;
+    engine.advance_span(2000);
+    assert_eq!(engine.span_gap.as_ref().unwrap().exit_integral, exit);
+}
+
+#[test]
+fn span_gap_ready_veto_keeps_target_and_initial_hold_obeys_the_block() {
+    use crate::life::span_gap::{Phase, SpanGap};
+    let mut engine = test_engine(
+        OnsetRule::Always { strength: 1.0 },
+        DurationRule::fixed_gate(1),
+    );
+    engine.sustain_participation = true;
+    engine.span_gap = Some(SpanGap::new(1.0, 21, 2, 0, 48000.0, 440.0));
+    engine.span_gap.as_mut().unwrap().phase = Phase::GapActive;
+    let ctx = CoreTickCtx {
+        now_tick: 0,
+        frame_end: 512,
+        fs: 48000.0,
+        rhythms: NeuralRhythms::default(),
+    };
+    let state = CoreState {
+        is_alive: true,
+        onset_allowed: true,
+    };
+    let mut cmds = Vec::new();
+    let mut events = Vec::new();
+    let mut onsets = Vec::new();
+    engine.initial_participating_hold(&ctx, &state, &mut cmds, &mut events, &mut onsets);
+    assert!(onsets.is_empty());
+    let gap = engine.span_gap.as_mut().unwrap();
+    gap.phase = Phase::Ready;
+    gap.target = 4.0;
+    engine.tick_hold(
+        &ctx,
+        &CoreState {
+            onset_allowed: false,
+            ..state
+        },
+        None,
+        &mut cmds,
+        &mut events,
+        &mut onsets,
+    );
+    assert_eq!(engine.span_gap.as_ref().unwrap().phase, Phase::Ready);
+    assert_eq!(engine.span_gap.as_ref().unwrap().target, 4.0);
+    engine.tick_hold(&ctx, &state, None, &mut cmds, &mut events, &mut onsets);
+    assert_eq!(onsets.len(), 1);
+    assert_eq!(engine.span_gap.as_ref().unwrap().phase, Phase::Span);
 }

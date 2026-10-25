@@ -88,7 +88,7 @@ impl Voice {
                         .or(previous_tone);
                     let tone = Self::surviving_tone(
                         tone,
-                        self.phonation_engine.rest.is_some(),
+                        self.phonation_engine.tracks_tails(),
                         &out.cmds,
                         step.at,
                     );

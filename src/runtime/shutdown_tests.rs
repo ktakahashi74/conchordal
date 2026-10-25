@@ -62,6 +62,45 @@ fn l1_sample_acquisition() {
 }
 
 #[test]
+#[ignore = "F-19b PCM acquisition requires F19B_SCENE and F19B_PCM"]
+fn flora_observer_pcm_acquisition() {
+    use std::io::Write;
+    let path = std::env::var("F19B_SCENE").unwrap();
+    let scenario = compile_scenario_from_script(std::path::Path::new(&path), Some(21)).unwrap();
+    let mut output =
+        std::io::BufWriter::new(std::fs::File::create(std::env::var("F19B_PCM").unwrap()).unwrap());
+    let mut opts = options();
+    opts.offline_body_probe = Some(Box::new(move |state, _, _, pcm| {
+        let mut sources = state
+            .schedule_renderer
+            .loo_pcm
+            .iter()
+            .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Flora);
+        let source = sources.next();
+        assert!(sources.next().is_none(), "single Flora capture");
+        output
+            .write_all(&u32::from(source.is_some()).to_le_bytes())
+            .unwrap();
+        for &sample in pcm[0]
+            .iter()
+            .chain(source.map_or(&[0.0; 512][..], |s| &s.habitat))
+        {
+            output.write_all(&sample.to_le_bytes()).unwrap();
+        }
+    }));
+    let wiring = wire_runtime(
+        &AppConfig::default(),
+        48_000,
+        path,
+        scenario,
+        Arc::new(AtomicBool::new(false)),
+        opts,
+    )
+    .unwrap();
+    join(wiring).unwrap();
+}
+
+#[test]
 #[ignore = "Flora closed-loop acquisition requires FLORA_SCENE and FLORA_REPORT"]
 fn flora_closed_loop_acquisition() {
     let path = std::env::var("FLORA_SCENE").expect("Flora scene path");
@@ -740,4 +779,168 @@ fn auditory_listener_clocks_and_device_rate_validation() {
         println!("AUD_M2_LISTENER_CLOCK deterministic={deterministic} rows={rows:?}");
     }
     std::fs::remove_file(script).unwrap();
+}
+
+#[test]
+#[ignore = "PH-1 offline acquisition requires PH1_SCENE and PH1_OUTPUT"]
+fn ph1_offline_acquisition() {
+    use std::io::Write;
+    let path = std::env::var("PH1_SCENE").unwrap();
+    let directory = std::path::PathBuf::from(std::env::var("PH1_OUTPUT").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    let config = std::env::var("PH1_CONFIG").map_or_else(
+        |_| AppConfig::default(),
+        |path| AppConfig::load_or_default(Some(&path)).unwrap(),
+    );
+    crate::life::modal::register_modal();
+    let (label, scenario, gain) =
+        super::scenario_load::load_scenario(std::path::Path::new(&path), Some(21), &config.audio)
+            .unwrap();
+    let mut reporter =
+        JsonlReporter::create(directory.join("report.jsonl").to_str().unwrap()).unwrap();
+    reporter.write_meta(scenario.seed).unwrap();
+    reporter
+        .write_scene_markers(&scenario.scene_markers)
+        .unwrap();
+    let mut evidence =
+        std::io::BufWriter::new(std::fs::File::create(directory.join("commands.jsonl")).unwrap());
+    let mut opts = options();
+    opts.reporter = Some(reporter);
+    opts.listener_forced = true;
+    opts.offline_body_probe = Some(Box::new(move |state, tick, count, pcm| {
+        let batches: Vec<_> = state.phonation_batches_buf[..count]
+            .iter()
+            .map(|batch| {
+                serde_json::json!({
+                    "source_id":batch.source_id,"commands":batch.cmds,"tones":batch.tones,
+                })
+            })
+            .collect();
+        let sources:Vec<_>=state.schedule_renderer.loo_pcm.iter().map(|source|serde_json::json!({
+            "id":source.id,"generation":source.generation,"kind":format!("{:?}",source.kind),
+            "nonzero_samples":source.habitat.iter().filter(|&&x|x!=0.0).count(),
+        })).collect();
+        writeln!(
+            evidence,
+            "{}",
+            serde_json::json!({"tick":tick,"batches":batches,"sources":sources,
+                "habitat_nonzero_samples":pcm[0].iter().filter(|&&x|x!=0.0).count(),
+                "presentation_nonzero_samples":pcm[1].iter().filter(|&&x|x!=0.0).count(),
+            })
+        )
+        .unwrap();
+    }));
+    let (tx, rx) = bounded::<Arc<[f32]>>(16);
+    let guard = Some(Arc::new(LimiterMeter::default()));
+    let wav = crate::audio::writer::WavOutput::run(
+        rx,
+        directory.join("audio.wav").to_string_lossy().into_owned(),
+        48000,
+        super::wiring::resolve_limiter_mode(&config),
+        guard.clone(),
+        gain,
+    );
+    opts.wav_tx = Some(tx);
+    opts.guard_meter = guard;
+    let wiring = wire_runtime(
+        &config,
+        48000,
+        label,
+        scenario,
+        Arc::new(AtomicBool::new(false)),
+        opts,
+    )
+    .unwrap();
+    join(wiring).unwrap();
+    wav.join().unwrap();
+}
+
+#[test]
+fn onset_habituation_wiring_starts_before_late_birth_and_zero_allocates_no_state() {
+    use std::sync::Mutex;
+    let root = std::env::temp_dir().join(format!(
+        "conchordal-span-gap-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _directory = super::test_output_directory::TestOutputDirectory::new(root.clone());
+    for weight in [0.0, 0.25] {
+        let mut runs = Vec::new();
+        for reporting in [false, true] {
+            let source = format!(
+                r#"
+                let early=place(sine().sustain().amp(0.1),at(440.0));
+                wait(1.0);
+                let late=place(sine().sustain().metric().rest_on_habituation({weight}).amp(0.1),at(440.0));
+                wait(1.0); release(late); release(early); wait(0.2);
+            "#
+            );
+            let script = root.join(format!("{weight}-{reporting}.rhai"));
+            std::fs::write(&script, source).unwrap();
+            let scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+            let capture = Arc::new(Mutex::new((false, false, Vec::new())));
+            let copy = Arc::clone(&capture);
+            let mut opts = options();
+            if reporting {
+                opts.reporter = Some(
+                    JsonlReporter::create(root.join(format!("{weight}.jsonl")).to_str().unwrap())
+                        .unwrap(),
+                );
+            }
+            opts.offline_body_probe = Some(Box::new(move |state, tick, count, _| {
+                let mut observed = copy.lock().unwrap();
+                let frame = &state.current_landscape;
+                if weight == 0.0 {
+                    assert!(frame.onset_habituation_state_scan.is_empty());
+                    assert!(
+                        state
+                            .pop
+                            .voices
+                            .iter()
+                            .all(|v| v.phonation_engine.span_gap.is_none())
+                    );
+                } else if tick > 512 && tick < 48000 {
+                    assert!(frame.onset_habituation_known);
+                    assert_eq!(
+                        frame.onset_habituation_state_scan.len(),
+                        frame.space.n_bins()
+                    );
+                    observed.0 |= frame.onset_habituation_state_scan.iter().any(|&x| x > 0.0);
+                }
+                for voice in &state.pop.voices {
+                    if let Some(gap) = &voice.phonation_engine.span_gap {
+                        observed.1 = true;
+                        assert!(gap.own >= 0.0 && gap.own <= 1.0);
+                    }
+                }
+                for batch in &state.phonation_batches_buf[..count] {
+                    observed.2.push(
+                        serde_json::to_string(&(tick, batch.source_id, &batch.cmds, &batch.tones))
+                            .unwrap(),
+                    );
+                }
+            }));
+            let wiring = wire_runtime(
+                &AppConfig::default(),
+                48000,
+                script.to_string_lossy().into_owned(),
+                scenario,
+                Arc::new(AtomicBool::new(false)),
+                opts,
+            )
+            .unwrap();
+            join(wiring).unwrap();
+            let value = capture.lock().unwrap();
+            assert_eq!(value.0, weight > 0.0);
+            assert_eq!(value.1, weight > 0.0);
+            runs.push(value.2.clone());
+        }
+        assert_eq!(
+            runs[0], runs[1],
+            "reporting must not change actions or random draws"
+        );
+    }
 }

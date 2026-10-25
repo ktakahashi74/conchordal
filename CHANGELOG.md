@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Flora now removes its actual own habitat PCM by default before computing growth
+  consonance and seed harmonicity, sharing the subtraction with external resource power.
+  Other Flora remain audible. Base views retain the mixed landscape's current
+  kernel and sigmoid parameters; reports expose the consumed scans. Placement
+  still uses mixed density mass before own sound exists. Presentation-only Flora
+  reads mixed C/H without an H/R observer. Analysis gaps retain the existing
+  runtime stop rule, with no mixed fallback for own-excluded observations.
+  Initial-only `flora().leave_self_out(false)` selects mixed growth/seed C/H
+  without an H/R observer, retaining resource-power self-exclusion. Flora defaults
+  to true and Voice to false: Flora's many partials can sustain their own lattice.
+
+- Initial-only `rest_on_habituation(w)` adds probabilistic spans and tail-aware
+  pauses to explicit sustained metric/entrained/steady/flow Voices. Habitat PCM
+  supplies shared attack habituation; executed private attacks govern return.
+  Existing opportunities and vetoes remain in force. Default zero allocates no
+  observer or private random stream. Reports include state transitions and the
+  shared scan. Recovery excludes front-end restart transients using the existing
+  analysis window, band boxcars and filter-derived settling times.
+
 - Every Flora now uses the existing T1 beat-opportunity rule. The shared habitat
   audio-only meter runs from scene start whenever Flora is placed; each Flora has
   its own confidence-weighted clock. Unknown, stale or unconfirmed observations

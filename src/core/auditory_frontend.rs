@@ -418,6 +418,74 @@ pub(crate) struct AuditoryFrontEnd {
 pub(crate) type ShadowFrontEnd = AuditoryFrontEnd;
 
 impl AuditoryFrontEnd {
+    pub(crate) fn band_hop_counts(&self) -> &[usize] {
+        &self
+            .bank
+            .statistics
+            .as_ref()
+            .expect("selected front end has hop statistics")
+            .counts
+    }
+
+    pub(crate) fn band_energy(&self) -> (&[f32], &[f32]) {
+        (&self.bank.centers, &self.bank.energy)
+    }
+
+    pub(crate) fn band_settling_samples(&self) -> Vec<usize> {
+        use rustfft::num_complex::Complex64;
+        self.bank
+            .poles
+            .iter()
+            .zip(&self.bank.gains)
+            .zip(&self.bank.centers)
+            .map(|((&pole, &gain), &hz)| {
+                let pole = Complex64::new(f64::from(pole.re), f64::from(pole.im));
+                let r = pole.norm();
+                if r >= 1.0 {
+                    return usize::MAX;
+                }
+                let g = f64::from(gain);
+                let omega = std::f64::consts::TAU * f64::from(hz) / f64::from(self.bank.fs);
+                let positive = (g / (Complex64::from_polar(1.0, omega) - pole).norm()).powi(4);
+                let negative = (g / (Complex64::from_polar(1.0, -omega) - pole).norm()).powi(4);
+                // Bound the omitted impulse-response tail for every sine phase.
+                // The lower steady amplitude also includes the negative-frequency image.
+                let margin =
+                    0.5 * (positive - negative).max(0.0) * (1.0 - 10.0_f64.powf(-1.0 / 20.0));
+                if margin <= 0.0 {
+                    return usize::MAX;
+                }
+                let tail = |samples: usize| {
+                    let n = samples as f64;
+                    let q = 1.0 - r;
+                    (g / q).powi(4)
+                        * r.powf(n)
+                        * (1.0
+                            + n * q
+                            + n * (n + 1.0) * q * q / 2.0
+                            + n * (n + 1.0) * (n + 2.0) * q * q * q / 6.0)
+                };
+                let mut hi = 1_usize;
+                while tail(hi) > margin {
+                    let Some(next) = hi.checked_mul(2) else {
+                        return usize::MAX;
+                    };
+                    hi = next;
+                }
+                let mut lo = hi / 2;
+                while lo + 1 < hi {
+                    let mid = lo + (hi - lo) / 2;
+                    if tail(mid) > margin {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                hi
+            })
+            .collect()
+    }
+
     pub(crate) fn selected(space: Log2Space, fs: f32, hop: usize, window: usize) -> Self {
         Self::configured(space, fs, 0.25, false, window).with_statistics(hop, true)
     }

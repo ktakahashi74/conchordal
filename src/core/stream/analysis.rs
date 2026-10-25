@@ -7,6 +7,8 @@ use crate::core::nsgt_rt::RtNsgtKernelLog2;
 pub struct AnalysisStream {
     analysis: SynchronousAnalysis,
     params: LandscapeParams,
+    onset_habituation: Option<crate::core::onset_habituation::OnsetHabituation>,
+    next_sample: u64,
 }
 
 impl AnalysisStream {
@@ -28,7 +30,38 @@ impl AnalysisStream {
             ref_peak,
             params.roughness_ref_eps,
         );
-        Self { analysis, params }
+        Self {
+            analysis,
+            params,
+            onset_habituation: None,
+            next_sample: 0,
+        }
+    }
+
+    pub(crate) fn enable_onset_habituation(&mut self, period: f64) {
+        let mut state = crate::core::onset_habituation::OnsetHabituation::new(
+            &self.analysis.landscape.space,
+            self.analysis.frontend.band_energy().0,
+            self.params.habituation,
+            period,
+            self.params.fs,
+        );
+        state.settling_samples = self.analysis.frontend.band_settling_samples();
+        self.onset_habituation = Some(state);
+        self.analysis.landscape.onset_habituation_state_scan =
+            vec![0.0; self.analysis.landscape.space.n_bins()].into();
+    }
+
+    pub(crate) fn gap_to(&mut self, sample: u64) {
+        let window = self.window_samples();
+        let hop = self.hop_samples();
+        if let Some(state) = &mut self.onset_habituation {
+            state.missing(sample.saturating_sub(self.next_sample));
+            state.restart_frontend(window, self.analysis.frontend.band_hop_counts(), hop);
+        }
+        self.analysis.reset(&self.params);
+        self.next_sample = sample;
+        self.analysis.landscape.onset_habituation_known = false;
     }
 
     pub(crate) fn enable_resource_power(&mut self) {
@@ -45,7 +78,14 @@ impl AnalysisStream {
     }
 
     pub(crate) fn voice_observer(&self) -> Self {
-        let mut observer = self.clone();
+        let mut observer = Self {
+            analysis: self.analysis.clone(),
+            params: self.params.clone(),
+            onset_habituation: None,
+            next_sample: self.next_sample,
+        };
+        observer.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
+        observer.analysis.landscape.onset_habituation_known = false;
         // Voice observers consume H/R only, even when the mixed stream feeds Flora.
         observer.analysis.nsgt.disable_resource_power();
         observer.analysis.nsgt_enabled = false;
@@ -80,12 +120,37 @@ impl AnalysisStream {
         if !audio.is_empty() {
             assert_eq!(audio.len(), self.hop_samples(), "one complete analysis hop");
             self.analysis.process_spectral(audio, 1, &self.params, true);
+            self.next_sample = self.next_sample.saturating_add(audio.len() as u64);
+            if let Some(state) = &mut self.onset_habituation {
+                state.process(
+                    self.analysis.frontend.band_energy().1,
+                    audio.len(),
+                    self.next_sample,
+                );
+                let frame = &mut self.analysis.landscape;
+                if frame.onset_habituation_state_scan.len() != state.state.len() {
+                    frame.onset_habituation_state_scan = state.state.clone().into();
+                } else {
+                    std::sync::Arc::make_mut(&mut frame.onset_habituation_state_scan)
+                        .copy_from_slice(&state.state);
+                }
+                frame.onset_habituation_end = self.next_sample;
+                frame.onset_habituation_known = state.known();
+            }
         }
         &self.analysis.landscape
     }
 
     pub fn reset(&mut self) {
+        let window = self.window_samples();
+        let hop = self.hop_samples();
+        if let Some(state) = &mut self.onset_habituation {
+            state.reset();
+            state.restart_frontend(window, self.analysis.frontend.band_hop_counts(), hop);
+        }
         self.analysis.reset(&self.params);
+        self.next_sample = 0;
+        self.analysis.landscape.onset_habituation_known = false;
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
@@ -101,6 +166,36 @@ impl AnalysisStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn onset_habituation_has_one_optional_owner_and_reset_invalidates_publication() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut stream = AnalysisStream::new(params, nsgt).with_nsgt_power(false);
+        assert!(stream.onset_habituation.is_none());
+        assert!(stream.last().onset_habituation_state_scan.is_empty());
+        stream.enable_onset_habituation(0.5);
+        let silence = vec![0.0; stream.hop_samples()];
+        assert!(!stream.last().onset_habituation_known);
+        stream.process(&silence);
+        assert!(stream.last().onset_habituation_known);
+        let observer = stream.voice_observer();
+        assert!(observer.onset_habituation.is_none());
+        assert!(observer.last().onset_habituation_state_scan.is_empty());
+        assert!(!observer.last().onset_habituation_known);
+        stream.reset();
+        assert!(!stream.last().onset_habituation_known);
+        assert!(
+            stream
+                .onset_habituation
+                .as_ref()
+                .unwrap()
+                .state
+                .iter()
+                .all(|&x| x == 0.0)
+        );
+        stream.process(&silence);
+        assert!(!stream.last().onset_habituation_known);
+    }
 
     #[test]
     fn disabling_nsgt_preserves_perception_and_does_not_advance_its_state() {
@@ -263,6 +358,218 @@ mod tests {
         assert_eq!(
             actual.consonance_kernel.score(0.4, 0.6).to_bits(),
             params.consonance_field_kernel().score(0.4, 0.6).to_bits()
+        );
+    }
+}
+
+#[cfg(test)]
+mod onset_habituation_tests {
+    use super::*;
+    use crate::core::onset_habituation::OnsetHabituation;
+
+    #[test]
+    fn short_worker_window_and_band_boxcars_exclude_reset_transients() {
+        use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
+        let mut config = crate::config::AppConfig::default();
+        config.analysis.nfft = 512;
+        config.analysis.hop_size = 512;
+        config.validate().unwrap();
+        let (_, mut params) = crate::runtime::body_metabolism_test_core();
+        params.habituation.enabled = true;
+        let space = crate::core::log2space::Log2Space::new(55.0, 8000.0, 96);
+        let kernel = NsgtKernelLog2::new(
+            NsgtLog2Config {
+                fs: params.fs,
+                overlap: 0.0,
+                nfft_override: Some(config.analysis.nfft),
+                ..Default::default()
+            },
+            space,
+            None,
+            PowerMode::Coherent,
+        );
+        let mut stream = AnalysisStream::new(params.clone(), RtNsgtKernelLog2::new(kernel))
+            .with_nsgt_power(false);
+        let hop = stream.hop_samples();
+        assert_eq!(hop, 512);
+        assert_eq!(stream.window_samples(), config.analysis.nfft);
+        let mut observer = OnsetHabituation::new(
+            &stream.last().space,
+            stream.analysis.frontend.band_energy().0,
+            params.habituation,
+            0.5,
+            params.fs,
+        );
+        let mut audio = vec![0.0; hop];
+        observer.settling_samples = stream.analysis.frontend.band_settling_samples();
+        let mut attacks = Vec::new();
+        for frame in 0..1100 {
+            if (1000..1010).contains(&frame) {
+                continue;
+            }
+            if frame == 1010 {
+                observer.missing(10 * hop as u64);
+                stream.reset();
+                observer.restart_frontend(
+                    stream.window_samples(),
+                    stream.analysis.frontend.band_hop_counts(),
+                    hop,
+                );
+            }
+            for (i, value) in audio.iter_mut().enumerate() {
+                let sample = frame * hop as u64 + i as u64;
+                *value = (0.1
+                    * (std::f64::consts::TAU * 440.0 * sample as f64 / f64::from(params.fs)).sin())
+                    as f32;
+            }
+            stream.process(&audio);
+            let end = (frame + 1) * hop as u64;
+            observer.process(stream.analysis.frontend.band_energy().1, hop, end);
+            if frame >= 1010 {
+                for channel in observer.attacks_at(end) {
+                    let recovered_hops = frame - 1009;
+                    let hz = stream.analysis.frontend.band_energy().0[channel];
+                    let boxcar_hops = stream.analysis.frontend.band_hop_counts()[channel];
+                    println!(
+                        "short-window attack channel={channel} hz={hz} recovered_hops={recovered_hops} boxcar_hops={boxcar_hops} window_samples={}",
+                        stream.window_samples()
+                    );
+                    attacks.push((channel, recovered_hops));
+                }
+            }
+        }
+        assert!(
+            attacks.is_empty(),
+            "supported short window retained reset transients: {attacks:?}"
+        );
+    }
+
+    // Reusing the worker window excludes reconstruction transients from evidence.
+    #[test]
+    fn continuous_pcm_after_gap_does_not_create_an_attack() {
+        let (nsgt, mut params) = crate::runtime::body_metabolism_test_core();
+        params.habituation.enabled = true;
+        let fs = params.fs;
+        let mut stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
+        let mut observer = OnsetHabituation::new(
+            &stream.last().space,
+            stream.analysis.frontend.band_energy().0,
+            params.habituation,
+            0.5,
+            fs,
+        );
+        let hop = stream.hop_samples();
+        let mut audio = vec![0.0; hop];
+        observer.settling_samples = stream.analysis.frontend.band_settling_samples();
+        let make_audio = |audio: &mut [f32], start: u64| {
+            for (i, value) in audio.iter_mut().enumerate() {
+                *value = (0.1
+                    * (std::f64::consts::TAU * 440.0 * (start + i as u64) as f64 / f64::from(fs))
+                        .sin()) as f32;
+            }
+        };
+        for frame in 0..1000 {
+            make_audio(&mut audio, frame * hop as u64);
+            stream.process(&audio);
+            observer.process(
+                stream.analysis.frontend.band_energy().1,
+                hop,
+                (frame + 1) * hop as u64,
+            );
+        }
+        let before = observer.state.clone();
+        let mut continuous = stream.clone();
+        let mut continuous_observer = observer.clone();
+        for frame in 1000..1010 {
+            make_audio(&mut audio, frame * hop as u64);
+            continuous.process(&audio);
+        }
+        continuous_observer.missing(10 * hop as u64);
+        observer.missing(10 * hop as u64);
+        stream.reset();
+        observer.restart_frontend(
+            stream.window_samples(),
+            stream.analysis.frontend.band_hop_counts(),
+            hop,
+        );
+        continuous_observer.restart_frontend(
+            continuous.window_samples(),
+            continuous.analysis.frontend.band_hop_counts(),
+            hop,
+        );
+        assert_eq!(before, observer.state);
+        let mut rises = Vec::new();
+        for frame in 1010..1210 {
+            make_audio(&mut audio, frame * hop as u64);
+            stream.process(&audio);
+            continuous.process(&audio);
+            observer.process(
+                stream.analysis.frontend.band_energy().1,
+                hop,
+                (frame + 1) * hop as u64,
+            );
+            continuous_observer.process(
+                continuous.analysis.frontend.band_energy().1,
+                hop,
+                (frame + 1) * hop as u64,
+            );
+            assert!(
+                continuous_observer
+                    .state
+                    .iter()
+                    .zip(&before)
+                    .all(|(a, b)| a <= b)
+            );
+            if (frame - 1010) * (hop as u64) < stream.window_samples() as u64 {
+                assert_eq!(
+                    observer.state, before,
+                    "recovery window must freeze the scan"
+                );
+            }
+            for channel in observer.attacks_at((frame + 1) * hop as u64) {
+                println!(
+                    "unexpected attack channel={channel} hz={} recovered_hops={} window_samples={} boxcar_hops={}",
+                    stream.analysis.frontend.band_energy().0[channel],
+                    frame - 1009,
+                    stream.window_samples(),
+                    stream.analysis.frontend.band_hop_counts()[channel]
+                );
+            }
+            let center = stream
+                .analysis
+                .frontend
+                .band_energy()
+                .0
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| (*a - 440.0).abs().total_cmp(&(*b - 440.0).abs()))
+                .unwrap()
+                .0;
+            println!(
+                "band_hz={} reset_energy={} continuous_energy={}",
+                stream.analysis.frontend.band_energy().0[center],
+                stream.analysis.frontend.band_energy().1[center],
+                continuous.analysis.frontend.band_energy().1[center]
+            );
+            let largest_rise = observer
+                .state
+                .iter()
+                .zip(&before)
+                .map(|(a, b)| a - b)
+                .fold(0.0_f32, f32::max);
+            println!(
+                "gap recovery frame={frame} end={} largest_rise={largest_rise}",
+                (frame + 1) * hop as u64
+            );
+            rises.push(largest_rise);
+        }
+        assert_eq!(
+            rises[0], 0.0,
+            "the first post-gap hop must not use pre-gap energy"
+        );
+        assert!(
+            rises.iter().all(|&rise| rise == 0.0),
+            "unchanged stationary PCM gained attack habituation after a gap"
         );
     }
 }

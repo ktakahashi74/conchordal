@@ -301,6 +301,7 @@ pub struct PhonationControl {
     pub gate: PhonationGate,
     pub(crate) finite_duration: Option<crate::scenario::DurationSpec>,
     pub(crate) rest_periods: Option<f32>,
+    pub(crate) rest_on_habituation: f32,
     pub(crate) articulation_persistence: f32,
     pub(crate) tie: f32,
     #[cfg(test)]

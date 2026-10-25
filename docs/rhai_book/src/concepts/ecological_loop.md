@@ -92,7 +92,9 @@ habitat bus and reshape the terrain for every other voice. Use
 `viability_scope("total")` only when the intended question is explicitly
 whether the voice fits the total field including itself.
 
-Pitch movement has its own switch, `leave_self_out(true)`. Both consumers read
+Pitch movement has its own switch, `leave_self_out(true)`. Voice defaults to
+`false`, while Flora defaults to `true` because one Flora has many partials
+whose own harmonic lattice can sustain its growth and seed positions. Both consumers read
 one synchronized observation of the mixed habitat PCM minus that Voice's actual
 habitat PCM. The remainder passes through the same causal auditory filterbank, hop statistics, frequency reassignment,
 critical-band compression, density smoothing and H/R/C pipeline as

@@ -29,3 +29,5 @@ pub(crate) mod body_metabolism;
 pub mod sound;
 #[cfg(test)]
 mod tests;
+
+pub(crate) mod span_gap;

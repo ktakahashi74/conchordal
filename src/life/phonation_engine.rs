@@ -178,6 +178,7 @@ pub(crate) struct RestState {
 
 pub struct PhonationEngine {
     pub(crate) rest: Option<RestState>,
+    pub(crate) span_gap: Option<crate::life::span_gap::SpanGap>,
     pub(crate) sustain_participation: bool,
     #[cfg(test)]
     pub(crate) synchronized_counts: [usize; 4],
@@ -208,6 +209,78 @@ impl fmt::Debug for PhonationEngine {
 }
 
 impl PhonationEngine {
+    pub(crate) fn tracks_tails(&self) -> bool {
+        self.rest.is_some() || self.span_gap.is_some()
+    }
+
+    pub(crate) fn advance_span(&mut self, at: Tick) {
+        if let Some(gap) = &mut self.span_gap {
+            if let Some(RestState {
+                phase: RestPhase::Gap {
+                    until: Some(until), ..
+                },
+                ..
+            }) = self.rest
+                && at >= until
+            {
+                gap.advance(until.max(gap.last_tick.unwrap_or(until)), true);
+                if let Some(rest) = &mut self.rest {
+                    rest.phase = RestPhase::Ready;
+                }
+            }
+            let frozen = self.rest.is_some_and(|rest| {
+                matches!(
+                    rest.phase,
+                    RestPhase::Waiting(_) | RestPhase::Gap { .. } | RestPhase::Finished
+                )
+            });
+            gap.advance(at, frozen);
+        }
+    }
+
+    pub(crate) fn set_span_pitch(&mut self, at: Tick, current: f32, next: f32) {
+        self.advance_span(at);
+        if let Some(gap) = &mut self.span_gap {
+            gap.pitch = current;
+            gap.next_pitch = next;
+        }
+    }
+
+    fn span_opportunity(&mut self, at: Tick, fs: f32, out: &mut Vec<ToneCmd>) {
+        let frozen = self.rest.is_some_and(|rest| {
+            matches!(
+                rest.phase,
+                RestPhase::Waiting(_) | RestPhase::Gap { .. } | RestPhase::Finished
+            )
+        });
+        let Some(gap) = &mut self.span_gap else {
+            return;
+        };
+        gap.opportunity(at, frozen);
+        if gap.phase == crate::life::span_gap::Phase::GapRequested && !frozen {
+            if let Some(tone_id) = self.hold.tone_id.take() {
+                self.pending_off.retain(|off| off.0.tone_id != tone_id);
+                if !gap.acoustic_quiet {
+                    out.push(ToneCmd::Off {
+                        tone_id,
+                        off_tick: at,
+                    });
+                }
+                self.active_notes = self.active_notes.saturating_sub(1);
+                if let Some(rest) = &mut self.rest {
+                    rest.phase = RestPhase::Waiting(at);
+                }
+                gap.off(at);
+                if gap.acoustic_quiet {
+                    self.rest_tail_finished(at, fs);
+                }
+            } else {
+                gap.off(at);
+                gap.quiet(at, Some(at));
+            }
+        }
+    }
+
     pub(crate) fn reserve_synchronized_hop(&mut self, hop: usize, fs: f32) -> usize {
         // Phase pull is bounded by the existing half-cycle error range.
         let count = (hop as f64 / f64::from(fs)
@@ -261,6 +334,14 @@ impl PhonationEngine {
                 at.saturating_add(ticks)
             });
             rest.phase = RestPhase::Gap { origin: at, until };
+        }
+        if let Some(gap) = &mut self.span_gap {
+            let resume = match self.rest.map(|rest| rest.phase) {
+                Some(RestPhase::Gap { until, .. }) => until.map(|until| until.max(at)),
+                Some(RestPhase::Waiting(_) | RestPhase::Finished) => None,
+                _ => Some(at),
+            };
+            gap.quiet(at, resume);
         }
     }
 
@@ -412,6 +493,7 @@ impl PhonationEngine {
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
             rest: None,
+            span_gap: None,
             #[cfg(test)]
             synchronized_counts: [0; 4],
             sustain_participation: config.mode == PhonationMode::Hold
@@ -451,14 +533,20 @@ impl PhonationEngine {
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
     ) {
-        let allow_onset = min_allowed_onset_tick
-            .map(|min_tick| ctx.now_tick >= min_tick)
-            .unwrap_or(true);
+        self.advance_span(ctx.now_tick);
+        let allow_onset = self.rest.is_none_or(|rest| rest.phase == RestPhase::Ready)
+            && self.span_gap.as_ref().is_none_or(|gap| gap.allows_on())
+            && min_allowed_onset_tick
+                .map(|min_tick| ctx.now_tick >= min_tick)
+                .unwrap_or(true);
         if allow_onset && state.onset_allowed && state.is_alive && !self.hold.note_on_sent {
             let tone_id = self.next_tone_id;
             self.next_tone_id = self.next_tone_id.wrapping_add(1);
             self.hold.note_on_sent = true;
             self.hold.tone_id = Some(tone_id);
+            if let Some(gap) = &mut self.span_gap {
+                gap.on(ctx.now_tick, false);
+            }
             out_cmds.push(ToneCmd::On {
                 tone_id,
                 kick: OnsetKick { strength: 1.0 },
@@ -474,6 +562,11 @@ impl PhonationEngine {
                 onset_tick: ctx.now_tick,
                 strength: 1.0,
             });
+        }
+        if !state.is_alive
+            && let Some(gap) = &mut self.span_gap
+        {
+            gap.finish(ctx.now_tick);
         }
         if !state.is_alive
             && let Some(tone_id) = self.hold.tone_id.take()
@@ -575,7 +668,11 @@ impl PhonationEngine {
             if next.off_tick > up_to_tick {
                 break;
             }
+            self.advance_span(next.off_tick);
             self.pending_off.pop();
+            if let Some(gap) = &mut self.span_gap {
+                gap.off(next.off_tick);
+            }
             if let Some(rest) = self.rest.as_mut()
                 && self.hold.tone_id == Some(next.tone_id)
             {
@@ -729,6 +826,7 @@ impl PhonationEngine {
             while cursor < ctx.frame_end {
                 let (boundary, segment_ctx, effective_state) = if self.rest.is_some() {
                     self.drain_note_offs(cursor, out_cmds);
+                    self.advance_span(cursor);
                     self.rest_resume(cursor);
                     let boundary = self
                         .rest
@@ -923,13 +1021,18 @@ impl PhonationEngine {
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
             self.drain_note_offs(c.tick, out_cmds);
+            self.advance_span(c.tick);
+            if state.is_alive {
+                self.span_opportunity(c.tick, ctx.fs, out_cmds);
+            }
+            let span_allowed = self.span_gap.as_ref().is_none_or(|gap| gap.allows_on());
             let synchronized =
                 self.sustain_participation && matches!(self.clock, PhonationClock::Coupling(_));
             if synchronized {
                 self.rest_resume(c.tick);
             }
-            let rest_allowed =
-                !synchronized || self.rest.is_none_or(|r| r.phase == RestPhase::Ready);
+            let rest_allowed = span_allowed
+                && (!synchronized || self.rest.is_none_or(|r| r.phase == RestPhase::Ready));
             let live_tone = self.hold.tone_id.is_some();
             if synchronized && let Some(shape) = self.clock.shape_mut() {
                 shape.has_tone = live_tone;
@@ -1014,6 +1117,9 @@ impl PhonationEngine {
                 if self.sustain_participation {
                     self.hold.tone_id = Some(tone_id);
                     self.hold.note_on_sent = true;
+                }
+                if let Some(gap) = &mut self.span_gap {
+                    gap.on(c.tick, true);
                 }
                 out_cmds.push(ToneCmd::On { tone_id, kick });
                 self.active_notes = self.active_notes.saturating_add(1);

@@ -310,6 +310,23 @@ finite note length and sustained participation are retained independently, and
 each note releases before a pause measured from actual tail completion. See
 [Cutting notes and leaving a rest](consonance.md#cutting-notes-and-leaving-a-rest).
 
+`rest_on_habituation(w)` adds spans of playing and pauses to explicit
+`sustain().entrained()`, `sustain().steady()` and `sustain().flow()` (either builder
+order). The initial-only weight is in `[0,1]`, default `0`. Repeated attacks heard
+in habitat audio near the current pitch increase the chance of leaving a span.
+The next legal opportunity releases the Tone. After every tail has ended, a
+private state driven by this Voice's actual attacks governs return. Return only
+permits a legal onset; tie, shape and other vetoes still apply. Clocks and pitch
+proposals continue during the pause, and a pending pitch is consumed only by an
+actual onset. This author rule does not model perceived phrases or cadences.
+
+Unlike `rest(periods)`, the pause has no fixed period count. With both methods,
+the fixed rest runs first while the span/gap integrals pause. The private attack
+state continues recovering. The shared `habituation` config supplies enabled,
+satiation and recovery times; disabling habituation prevents span exits. Invalid
+weights and unsupported timing modes warn and act as zero. Reborn Voices inherit
+the weight and start with fresh private state.
+
 ## Retaining an articulation policy
 
 Within free-pitch sustained participation, `articulation_persistence(p)` lets a Voice
@@ -493,3 +510,7 @@ completion and a gap; the clock keeps advancing and omitted crossings never repl
 Role, measure emphasis and microtiming keep their meanings. Fixed pitch
 is accepted just as in sustained participation; tie and persistence remain limited
 to free pitch. Merely setting entrainment or a role does not select this combination.
+
+The same `rest_on_habituation(w)` span/gap rule also applies to explicit
+`sustain().metric()`. It releases at an existing beat crossing and returns only
+on a legal crossing, with all ordinary vetoes retained.

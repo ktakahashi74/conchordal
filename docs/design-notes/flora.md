@@ -1,6 +1,7 @@
 # Flora: a Field-Form Inhabitant
 
-Status: implemented, with beat opportunities for every Flora, tempo-derived pace and finite retirement, 2026-10-24. The adopted design is draft 14: the rendering
+Status: implemented, with own habitat PCM excluded from growth and seed perception by default,
+beat opportunities for every Flora, tempo-derived pace and finite retirement, 2026-10-25. The adopted design is draft 14: the rendering
 of draft 12 and the consumer–resource dynamics of State and Dynamics. Current paths
 and the historical branch are listed in [Reference Implementation](#reference-implementation).
 The DCC route for the drive of temporal evolution, a listener-side information terrain,
@@ -78,7 +79,10 @@ confirmation; absence of confirmation in Flora-only audio is not guaranteed.
    state coupling in either direction. This is the contract Voices already follow.
 2. **Flora reads the base view before habituation.** It reads
    `consonance_field_level` and `harmonicity01` per hop and, at placement,
-   `consonance_density_mass`. Habituation does not modify `harmonicity01`.
+   `consonance_density_mass`. Growth and seed perception exclude this Flora's own
+   habitat PCM by default; placement still reads the mixed mass because no own audio exists yet.
+   The field uses the mixed landscape's current kernel and sigmoid coefficients.
+   Habituation does not modify `harmonicity01`.
    Consumer–resource depletion and recovery already express fatigue of a habitat band.
    Reading the eroded view would count that fatigue twice, including habituation
    driven by Flora's own sound. The adopted dynamics constants were selected on the
@@ -86,20 +90,33 @@ confirmation; absence of confirmation in Flora-only audio is not guaranteed.
    extra erosion, and the author adopted the base view after listening that day.
    Global habituation remains enabled by default: Voices and the listener still read
    eroded views, and Flora's habitat audio still drives habituation.
-3. **Flora perceives itself in C/H.** Base consonance and harmonicity include its
-   own sound. Only the external resource-consumption input excludes its actual
-   habitat PCM. Self-interaction in C/H shapes the pattern:
-   - its own roughness lowers fitness within a critical band of each sounding peak;
-   - its own harmonicity raises fitness and seeds at common-root relatives.
-
-   It is not what keeps Flora moving: in the reduced model the succession continues on
-   a fixed terrain.
+3. **Flora excludes itself from C/H by default.** With `leave_self_out(true)`,
+   its observer subtracts its actual
+   habitat PCM before the auditory front end. Growth and seed rain hear other
+   Voices and other Flora, including their residual sound and retiring tails.
+   The same subtracted PCM feeds the existing external power observer; subtraction
+   occurs once, and only the resource path evaluates an FFT. The H/R path uses
+   the same causal front end and potentials as Voice self-exclusion.
+   Within-band competition remains in the resource consumption kernel: the
+   row-normalized Gaussian has sigma 0.5 ERB and support within 1.5 ERB.
+   It acts on latent biomass even when that biomass does not sound. This is the
+   remaining source of band-scale competition, not an equivalent self-roughness term
+   or a new hard minimum-distance guarantee.
+   Set `flora().leave_self_out(false)` before placement to hear its own sound in
+   mixed growth C/H, using the same path as presentation-only Flora without an
+   H/R observer. External resource power still excludes own PCM in either mode.
+   Voice defaults to `false`, while Flora defaults to `true` because one Flora
+   has many partials whose own harmonic lattice can sustain its growth and seed
+   positions. In the FD-1 v2 observation, the lowest sounding lane stayed near
+   122.5 Hz from 80 to 340 seconds, with partials on a 61.25 Hz lattice even
+   without a ground drone. Choose `false` when that self-supported lattice is
+   desired; it does not guarantee a fixed pitch in every scene.
 4. **Routing** follows `send()` as for Populations; the default is both buses.
    - `send(habitat_bus)`: a living, unheard terrain. The ecology responds to it; the
      listener does not hear it.
    - `send(presentation_bus)`: heard decor. Flora still reads the landscape, but its own
-     sound is absent from it, so it cannot perceive itself. The succession continues on
-     the terrain made by others.
+     sound is absent from it. It reads mixed C/H directly and creates no H/R observer.
+     Its resource power observer remains available; succession uses others' terrain.
 5. **Self-sound separation of Voices.** Flora is part of every Voice's surroundings.
    The renderer builds each Voice's own-sound history from the Voice's own body and the
    whole habitat buffer (`sound.history.process`, `src/life/schedule_renderer.rs`).
@@ -130,15 +147,18 @@ confirmation; absence of confirmation in Flora-only audio is not guaranteed.
 
 These are recorded as caveats, not solved by the design:
 
-- **Delayed self-perception.** Flora perceives its own sound through the analysis path:
-  - the worker keeps the landscape at most `MAX_LANDSCAPE_LAG_FRAMES` (= 1) hops behind
-    generated audio (`src/runtime/mod.rs`);
-  - NSGT band integration adds further delay, most in low bands.
-
-  The neutral growth time scale (`1/rate` = 0.125 s) is above this, and the reduced
-  model is insensitive to up to 213 ms of added delay. That does not prove stability,
-  because the loop is discontinuous (next item). Stability is checked by the closed-loop
-  assays in Tests, including a low-register extent and two overlapping Flora.
+- **Delayed perception of others.** The worker keeps the landscape at most
+  `MAX_LANDSCAPE_LAG_FRAMES` (= 1) hops behind generated audio. The causal auditory
+  filterbank and hop statistics add their own history. Excluding own PCM removes
+  direct C/H self-feedback, but two Flora can still support each other's harmonic
+  lattice. No stability or ongoing-succession claim follows from self-exclusion.
+  At placement the observer copies the mixed pre-birth auditory history, so valid
+  mixed history is valid immediately. A gap resets both histories; publication
+  waits the existing full-window warmup. The runtime ends on analysis invalidation
+  or disconnect, as it already does for mixed analysis, rather than continuing on
+  a substitute mixed observation. Direct Flora advancement without a new observer
+  retains its last growth/seed scans; a geometry change clears those scans to zero
+  until matching observations arrive. Reports expose the scans actually consumed.
 - **External power also has analysis latency.** Each Flora subtracts only its own
   habitat PCM before FFT. Initial windows and post-gap windows are unknown; an
   available old consumption is a timestamped hold approximation. The resource law
@@ -168,11 +188,9 @@ These are recorded as caveats, not solved by the design:
 
   A change of dominant peak within a cell can still switch the acoustic input. This is
   the main closed-loop risk, and the assays measure it as flapping.
-- **A future `pred` self-term.** If delayed self-perception has to be replaced by
-  Flora's own state, Flora's perceived contribution must first be removed from the
-  terrain it reads. Otherwise it would be counted twice. That requires per-source
-  separation of Flora's C/H landscape, which the consumption-only power observer
-  does not provide and which remains out of scope.
+- **A future `pred` self-term.** Own C/H is removed by default from Flora's perceived
+  terrain. An explicit forecast or predictive self-term is still unimplemented
+  and would need a separate adopted rule; removal does not authorize adding one.
 - **Temporal observation.** With `temporal_mode("observe")`, temporal observation sees
   Flora's audio. Births and deaths are slewed (see Rendering) so that steady Flora is
   not a train of attacks. Whether the existing onset detector stays quiet on Flora
@@ -197,7 +215,13 @@ Implementation Findings. Every part of it belongs to the authored-rule tier.
 - the consumption kernel and fixed-capacity scratch (see Allocation).
 
 Flora reads `g = consonance_field_level` and `H01 = harmonicity01` per hop on its
-extent, and `consonance_density_mass` at placement, all before habituation erosion.
+extent from its own-PCM-excluded observation by default, and mixed `consonance_density_mass`
+at placement, all before habituation erosion. There is no own audio at placement.
+Presentation-only Flora and `leave_self_out(false)` Flora read mixed C/H.
+Kernel and sigmoid valuation are refreshed
+with the worker's current parameters alongside the mixed Landscape.
+`growth_level_scan` and `harmonicity_state_scan` report the consumed values;
+with self-exclusion enabled these differ from the mixed terrain displayed in the UI.
 
 **Ecological time.** `f` is the private CouplingClock velocity before phase correction.
 Without fresh confirmed evidence it returns to the tempo-basin center (default 2 Hz).

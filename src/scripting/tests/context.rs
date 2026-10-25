@@ -1485,8 +1485,8 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
         let moss = flora().amp(0.1).fade(0.25)
             .tone("resonant").residual(false).send(presentation_bus);
         place(moss, consonance(110).range(1, 16));
-        place(flora().residual(true).send(habitat_bus), random(220, 880));
-        place(flora().send(habitat_bus | presentation_bus), consonance(110, 880));
+        place(flora().residual(true).leave_self_out(false).send(habitat_bus), random(220, 880));
+        place(flora().leave_self_out(true).send(habitat_bus | presentation_bus), consonance(110, 880));
         place(flora(), random(110, 880));
         wait(0.5);
         "#,
@@ -1510,17 +1510,20 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
     assert_eq!((spec.amp, spec.fade_sec), (0.1, 0.25));
     assert_eq!(spec.tone, FloraTone::Resonant);
     assert!(!spec.residual);
+    assert!(spec.leave_self_out);
     assert!(!spec.routing.to_habitat && spec.routing.to_presentation);
     assert_eq!(placed[1].1, 2);
     assert_eq!(placed[1].3, (220.0, 880.0));
     assert!(matches!(placed[1].4, FloraSeeding::Uniform));
     assert!(placed[1].2.residual);
+    assert!(!placed[1].2.leave_self_out);
     assert!(placed[1].2.routing.to_habitat && !placed[1].2.routing.to_presentation);
     for (_, _, spec, _, _) in &placed[2..] {
         assert!(spec.routing.to_habitat && spec.routing.to_presentation);
         assert_eq!((spec.amp, spec.fade_sec), (0.03, 2.0));
         assert_eq!(spec.tone, FloraTone::Sine);
         assert!(!spec.residual);
+        assert!(spec.leave_self_out);
     }
     assert!(
         !action_times(&scenario)
@@ -1528,6 +1531,20 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
             .any(|(_, a)| matches!(a, Action::ReleaseFlora { .. }))
     );
     assert_eq!(scenario.duration_sec, 0.5);
+}
+
+#[test]
+fn flora_leave_self_out_is_boolean_and_initial_only() {
+    for script in [
+        "flora().leave_self_out(0);",
+        "let f = place(flora(), random(110, 880)); f.leave_self_out(false);",
+    ] {
+        assert!(
+            run_script_err(script)
+                .to_string()
+                .contains("leave_self_out")
+        );
+    }
 }
 
 #[test]

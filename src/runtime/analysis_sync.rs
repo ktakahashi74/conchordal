@@ -32,15 +32,17 @@ pub(super) fn merge_latest_analysis_results(
             }
             Ok((_, None)) => {
                 unavailable = true;
+                current_landscape.onset_habituation_known = false;
                 current_landscape.spectral_history = None;
                 current_landscape.loo.clear();
-                current_landscape.flora_power.clear();
+                current_landscape.flora_observations.clear();
                 *last_analysis_frame = None;
                 latest_audio = None;
             }
             Err(TryRecvError::Empty) => break,
             Err(TryRecvError::Disconnected) => {
                 unavailable = true;
+                current_landscape.onset_habituation_known = false;
                 break;
             }
         }
@@ -67,6 +69,9 @@ pub(super) fn merge_latest_analysis_results(
         frame.roughness_ref_peak,
         frame.roughness_ref_eps,
     );
+    current_landscape.onset_habituation_state_scan = frame.onset_habituation_state_scan;
+    current_landscape.onset_habituation_end = frame.onset_habituation_end;
+    current_landscape.onset_habituation_known = frame.onset_habituation_known;
     current_landscape.roughness = frame.roughness;
     current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
     current_landscape.roughness01 = frame.roughness01;
@@ -77,7 +82,7 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
     current_landscape.loo = frame.loo;
-    current_landscape.flora_power = frame.flora_power;
+    current_landscape.flora_observations = frame.flora_observations;
     current_landscape.spectral_history = frame.spectral_history;
     current_landscape.recompute_consonance(lparams);
 

@@ -140,12 +140,15 @@ pub struct Landscape {
     pub consonance_density_mass_eff: Vec<f32>,
     /// perc_habituation_state_scan in [0,1] (copy of the worker-owned state).
     pub perc_habituation_state_scan: Vec<f32>,
+    pub(crate) onset_habituation_state_scan: std::sync::Arc<[f32]>,
+    pub(crate) onset_habituation_end: u64,
+    pub(crate) onset_habituation_known: bool,
     /// Level-neutral baseline used by score erosion (mirrors representation theta).
     pub consonance_theta: f32,
     pub(crate) loudness_exp: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
-    pub(crate) flora_power: Vec<crate::core::stream::loo::FloraObservation>,
+    pub(crate) flora_observations: Vec<crate::core::stream::loo::FloraObservation>,
     pub(crate) loo: Vec<crate::core::stream::loo::Observation>,
     pub(crate) spectral_history:
         Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
@@ -200,13 +203,16 @@ impl Landscape {
             consonance_field_level_eff: vec![0.0; n],
             consonance_density_mass_eff: vec![0.0; n],
             perc_habituation_state_scan: vec![0.0; n],
+            onset_habituation_state_scan: std::sync::Arc::from([]),
+            onset_habituation_end: 0,
+            onset_habituation_known: false,
             consonance_theta: 0.0,
             loudness_exp: 1.0,
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
             spectral_history: None,
             loo: Vec::new(),
-            flora_power: Vec::new(),
+            flora_observations: Vec::new(),
             roughness01_scalar: 0.0,
             loudness_mass: 0.0,
             pitch_objective_mode: PitchObjectiveMode::Consonance,
@@ -220,9 +226,12 @@ impl Landscape {
     }
 
     pub fn resize_to_space(&mut self, space: Log2Space) {
+        self.onset_habituation_state_scan = std::sync::Arc::from([]);
+        self.onset_habituation_end = 0;
+        self.onset_habituation_known = false;
         self.spectral_history = None;
         self.loo.clear();
-        self.flora_power.clear();
+        self.flora_observations.clear();
         let n = space.n_bins();
         self.space = space;
         self.roughness.resize(n, 0.0);
@@ -315,6 +324,9 @@ impl Landscape {
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
         for observation in &mut self.loo {
+            observation.revalue(&self.space, params);
+        }
+        for observation in &mut self.flora_observations {
             observation.revalue(&self.space, params);
         }
         self.assert_scan_lengths();

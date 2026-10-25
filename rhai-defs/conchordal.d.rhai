@@ -305,7 +305,7 @@ fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
 fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
 /// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
-/// Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
+/// Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 fn flora() -> FloraSpec;
 
 /// Irregular bodily renewal with acoustic timing choices.
@@ -404,11 +404,15 @@ fn landscape_weight(population_spec: PopulationSpec, value: f64) -> PopulationSp
 fn landscape_weight(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
 /// Evaluate the field without this voice when choosing pitch.
-/// Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+/// Default false, unlike Flora's true: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 fn leave_self_out(population: Population, enabled: bool) -> Population;
 /// Evaluate the field without this voice when choosing pitch.
-/// Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+/// Default false, unlike Flora's true: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 fn leave_self_out(population_spec: PopulationSpec, enabled: bool) -> PopulationSpec;
+
+/// Exclude Flora's own habitat PCM from growth consonance and seed harmonicity.
+/// Default true, unlike Voice's false: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Set false before placement to read mixed C/H without an H/R observer. External resource power always excludes own PCM. Presentation-only Flora reads mixed C/H regardless of this setting.
+fn leave_self_out(flora_spec: FloraSpec, enabled: bool) -> FloraSpec;
 
 /// Linear interpolation of positions between two frequencies.
 fn line(start_hz: f64, end_hz: f64) -> Placement;
@@ -694,6 +698,13 @@ fn rest(population_spec: PopulationSpec, periods: f64) -> PopulationSpec;
 /// Release each finite participation note, then leave a rest after all its tails finish.
 /// Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. `while_alive()` clears finite intent. Released tails keep their pitch.
 fn rest(population_spec: PopulationSpec, periods: i64) -> PopulationSpec;
+
+/// End sustained spans probabilistically as heard attacks become familiar.
+/// Initial-only weight in [0,1], default 0. Requires explicit sustain() with metric(), entrained(), steady() or flow(). Shared habitat attack habituation drives exit; private executed attacks govern return after all tails end. Onsets remain on existing legal opportunities and may be vetoed. rest() adds its fixed tail-following gap before recovery resumes. Uses habituation enabled/satiation_sec/recovery_sec; disabled habituation prevents exits. This is an author rule, not phrase perception. Invalid or unsupported values warn and are ignored. Replacements inherit the weight but reset private state.
+fn rest_on_habituation(population_spec: PopulationSpec, w: f64) -> PopulationSpec;
+/// End sustained spans probabilistically as heard attacks become familiar.
+/// Initial-only weight in [0,1], default 0. Requires explicit sustain() with metric(), entrained(), steady() or flow(). Shared habitat attack habituation drives exit; private executed attacks govern return after all tails end. Onsets remain on existing legal opportunities and may be vetoed. rest() adds its fixed tail-following gap before recovery resumes. Uses habituation enabled/satiation_sec/recovery_sec; disabled habituation prevents exits. This is an author rule, not phrase perception. Invalid or unsupported values warn and are ignored. Replacements inherit the weight but reset private state.
+fn rest_on_habituation(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
 
 /// [tuning] Vitality-modulated rhythm coupling.
 fn rhythm_coupling_vitality(population_spec: PopulationSpec, lambda_v: f64, v_floor: f64) -> PopulationSpec;

@@ -52,6 +52,16 @@ Applies to: `FloraSpec`, `Flora`.
 
 Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
 
+#### `leave_self_out`
+
+```rhai,ignore
+leave_self_out(enabled)
+```
+
+Applies to: `FloraSpec`.
+
+Exclude Flora's own habitat PCM from growth consonance and seed harmonicity. Default true, unlike Voice's false: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Set false before placement to read mixed C/H without an H/R observer. External resource power always excludes own PCM. Presentation-only Flora reads mixed C/H regardless of this setting.
+
 #### `send`
 
 ```rhai,ignore
@@ -429,6 +439,16 @@ Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` 
 
 Sustain phonation mode (default). The default is a continuous note until release. Explicit `sustain()` combined with `metric()`, `entrained()`, `steady()` or `flow()`, in either order, retains the sounding Tone between opportunities. A selected attack replaces it; waiting or skipping retains it. Add `cycles()` or `adaptive_duration()` with `rest()` for finite notes separated by pauses. See the Rhythm chapter for pitch application, tie and persistence.
 
+#### `rest_on_habituation`
+
+```rhai,ignore
+rest_on_habituation(w)
+```
+
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
+
+End sustained spans probabilistically as heard attacks become familiar. Initial-only weight in [0,1], default 0. Requires explicit sustain() with metric(), entrained(), steady() or flow(). Shared habitat attack habituation drives exit; private executed attacks govern return after all tails end. Onsets remain on existing legal opportunities and may be vetoed. rest() adds its fixed tail-following gap before recovery resumes. Uses habituation enabled/satiation_sec/recovery_sec; disabled habituation prevents exits. This is an author rule, not phrase perception. Invalid or unsupported values warn and are ignored. Replacements inherit the weight but reset private state.
+
 #### `rest`
 
 ```rhai,ignore
@@ -667,7 +687,7 @@ leave_self_out(enabled)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Evaluate the field without this voice when choosing pitch. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+Evaluate the field without this voice when choosing pitch. Default false, unlike Flora's true: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
 
 ### Lifecycle & Viability
 
@@ -1007,7 +1027,7 @@ Candidate core verbs under audition: composing surface by intent, but with resea
 flora() -> FloraSpec
 ```
 
-Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
+Build a FloraSpec for spectral growth over a frequency extent. Defaults: amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f, growth is 4f/s, recovery is 20/f seconds and consumption is 0.6/f seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 
 #### `fade`
 

@@ -877,6 +877,7 @@ mod tests {
                     .enumerate()
                     .map(|(index, id)| SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
+                        analyze_hr: true,
                         id,
                         generation: if index == 1 { 8 } else { 7 },
                         habitat: vec![0.; time.hop],
@@ -886,6 +887,7 @@ mod tests {
                     .iter()
                     .map(|s| SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
+                        analyze_hr: true,
                         id: s.id,
                         generation: s.generation,
                         habitat: s.habitat.clone(),
@@ -1314,6 +1316,7 @@ mod tests {
                 let mut flora = [Flora::new(
                     7,
                     FloraSpec {
+                        leave_self_out: true,
                         amp: 0.2,
                         fade_sec: 0.0,
                         tone: FloraTone::Sine,
@@ -1338,6 +1341,7 @@ mod tests {
                 let rhythms = NeuralRhythms::default();
                 let mut sources = [SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
+                    analyze_hr: true,
                     id: 2,
                     generation: 7,
                     habitat: vec![0.; time.hop],
@@ -1412,18 +1416,21 @@ mod tests {
             let mut scratch = [
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
+                    analyze_hr: true,
                     id: 2,
                     generation: 7,
                     habitat: vec![0.; time.hop],
                 },
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
+                    analyze_hr: true,
                     id: 2,
                     generation: 8,
                     habitat: vec![0.; time.hop],
                 },
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
+                    analyze_hr: true,
                     id: 999,
                     generation: 0,
                     habitat: vec![0.; time.hop],
@@ -1433,6 +1440,7 @@ mod tests {
                 .iter()
                 .map(|s| SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
+                    analyze_hr: true,
                     id: s.id,
                     generation: s.generation,
                     habitat: vec![0.; time.hop],
@@ -1967,12 +1975,14 @@ mod tests {
                 let mut sources = [
                     SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
+                        analyze_hr: true,
                         id: 2,
                         generation: 7,
                         habitat: vec![0.; 64],
                     },
                     SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
+                        analyze_hr: true,
                         id: 2,
                         generation: 8,
                         habitat: vec![0.; 64],
@@ -2051,6 +2061,7 @@ mod tests {
         let mut renderer = ScheduleRenderer::new(tb).with_prototype(true);
         renderer.loo_pcm.push(SourcePcm {
             kind: crate::core::stream::loo::SourceKind::Voice,
+            analyze_hr: true,
             id: 2,
             generation: 7,
             habitat: vec![0.; tb.hop],
@@ -2085,6 +2096,7 @@ mod tests {
                     fade_sec: 0.,
                     tone,
                     residual: true,
+                    leave_self_out: true,
                     routing: Routing::default(),
                 },
                 (220., 880.),
@@ -2097,6 +2109,7 @@ mod tests {
             let mut renderer = ScheduleRenderer::new(time);
             renderer.loo_pcm.push(SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Flora,
+                analyze_hr: true,
                 id: 7,
                 generation: 0,
                 habitat: vec![0.0; time.hop],

@@ -32,3 +32,41 @@ pub(crate) mod temporal_expectation;
 pub(crate) mod temporal_history;
 pub mod timebase;
 pub(crate) mod utils;
+
+/// Runs `$body` once for each SIMD level this machine supports, binding the level's
+/// name and token. Bodies wrap kernel calls in `$simd.vectorize(..)` so each level
+/// compiles with its own target features.
+#[cfg(test)]
+macro_rules! for_each_simd_level {
+    (|$name:ident, $simd:ident| $body:expr) => {{
+        #[allow(unused_imports)]
+        use fearless_simd::Simd as _;
+        let level = fearless_simd::Level::new();
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if let Some($simd) = level.as_sse2() {
+                let $name = "sse2";
+                $body;
+            }
+            if let Some($simd) = level.as_sse4_2() {
+                let $name = "sse4.2";
+                $body;
+            }
+            if let Some($simd) = level.as_avx2() {
+                let $name = "avx2";
+                $body;
+            }
+            if let Some($simd) = level.as_avx512() {
+                let $name = "avx512";
+                $body;
+            }
+        }
+        #[cfg(target_arch = "aarch64")]
+        if let Some($simd) = level.as_neon() {
+            let $name = "neon";
+            $body;
+        }
+    }};
+}
+#[cfg(test)]
+pub(crate) use for_each_simd_level;

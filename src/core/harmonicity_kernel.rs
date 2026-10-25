@@ -30,6 +30,7 @@
 
 use crate::core::float::{finite_or, sanitize_nonnegative_finite, unit_gaussian};
 use crate::core::log2space::Log2Space;
+use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HarmonicityParams {
@@ -173,6 +174,26 @@ impl HarmonicityKernel {
         root_spectrum: &mut [f32],
         landscape: &mut [f32],
     ) -> f32 {
+        dispatch!(Level::new(), simd => self.potential_h_lanes(
+            simd,
+            envelope,
+            space,
+            smeared_env,
+            root_spectrum,
+            landscape,
+        ))
+    }
+
+    #[inline(always)]
+    fn potential_h_lanes<S: Simd>(
+        &self,
+        simd: S,
+        envelope: &[f32],
+        space: &Log2Space,
+        smeared_env: &mut [f32],
+        root_spectrum: &mut [f32],
+        landscape: &mut [f32],
+    ) -> f32 {
         space.assert_scan_len_named(smeared_env, "h_smeared_scan");
         assert_eq!(
             space.bins_per_oct, self.bins_per_oct,
@@ -209,7 +230,7 @@ impl HarmonicityKernel {
             let shift_bins = (k as f32).log2() * bins_per_oct;
             let weight = (k as f32).powf(-self.params.rho_common_root);
             let offset = center_offset - shift_bins;
-            Self::accumulate_shifted(smeared_env, root_spectrum, offset, weight);
+            Self::accumulate_shifted(simd, smeared_env, root_spectrum, offset, weight);
         }
         let gamma_root = self.params.gamma_root.max(1e-3);
         if (gamma_root - 1.0).abs() > 1e-6 {
@@ -224,7 +245,7 @@ impl HarmonicityKernel {
             let shift_bins = (m as f32).log2() * bins_per_oct;
             let weight = (m as f32).powf(-self.params.rho_common_root);
             let offset = shift_bins - center_offset;
-            Self::accumulate_shifted(root_spectrum, landscape, offset, weight);
+            Self::accumulate_shifted(simd, root_spectrum, landscape, offset, weight);
         }
         if diag_w < 1.0 {
             let scale = 1.0 - diag_w;
@@ -281,7 +302,69 @@ impl HarmonicityKernel {
     }
     /// Optimized Shift-and-Add with safe bounds checking.
     /// dst[i + offset] += src[i] * weight
-    fn accumulate_shifted(src: &[f32], dst: &mut [f32], offset: f32, weight: f32) {
+    /// Adds `weight` times `src`, shifted by the fractional `offset`, into `dst` by
+    /// linear interpolation. Each destination element receives its `w1` term (from the
+    /// previous source element) before its `w0` term, as in the per-source loop of
+    /// [`Self::accumulate_shifted_reference`], so the sums are bit-identical; without that
+    /// loop-carried store they also vectorize.
+    #[inline(always)]
+    fn accumulate_shifted<S: Simd>(
+        simd: S,
+        src: &[f32],
+        dst: &mut [f32],
+        offset: f32,
+        weight: f32,
+    ) {
+        let offset_i = offset.floor() as isize;
+        let frac = offset - offset_i as f32;
+        let w0 = weight * (1.0 - frac);
+        let w1 = weight * frac;
+
+        // Calculate valid iteration range for 'i' (index in src)
+        // Constraints:
+        // 1. 0 <= i < src.len()
+        // 2. 0 <= i + offset_i < dst.len() - 1 (Need space for w1 interpolation)
+
+        // Lower bound: i >= 0 AND i >= -offset_i
+        let start_i = 0.max(-offset_i);
+
+        // Upper bound (exclusive): i < src.len() AND i < dst.len() - 1 - offset_i
+        let end_i = (src.len() as isize).min(dst.len() as isize - 1 - offset_i);
+
+        // If range is invalid/empty, do nothing
+        if start_i >= end_i {
+            return;
+        }
+
+        let start = start_i as usize;
+        let len = (end_i - start_i) as usize;
+
+        // Destination start index
+        // Since start >= -offset_i, (start + offset_i) is guaranteed >= 0
+        let dst_start = (start as isize + offset_i) as usize;
+
+        // Create slices for the hot loop (avoids bounds check inside loop)
+        let src_slice = &src[start..start + len];
+        let dst_slice = &mut dst[dst_start..dst_start + len + 1];
+
+        dst_slice[0] += src_slice[0] * w0;
+        let (w0v, w1v) = (f32x8::splat(simd, w0), f32x8::splat(simd, w1));
+        let mut k = 1;
+        while k + 8 <= len {
+            let d = f32x8::from_slice(simd, &dst_slice[k..k + 8]);
+            let previous = f32x8::from_slice(simd, &src_slice[k - 1..k + 7]);
+            let current = f32x8::from_slice(simd, &src_slice[k..k + 8]);
+            ((d + previous * w1v) + current * w0v).store_slice(&mut dst_slice[k..k + 8]);
+            k += 8;
+        }
+        for k in k..len {
+            dst_slice[k] = (dst_slice[k] + src_slice[k - 1] * w1) + src_slice[k] * w0;
+        }
+        dst_slice[len] += src_slice[len - 1] * w1;
+    }
+
+    #[cfg(test)]
+    fn accumulate_shifted_reference(src: &[f32], dst: &mut [f32], offset: f32, weight: f32) {
         let offset_i = offset.floor() as isize;
         let frac = offset - offset_i as f32;
         let w0 = weight * (1.0 - frac);
@@ -361,6 +444,47 @@ impl HarmonicityKernel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accumulate_shifted_matches_per_source_loop_bits_on_every_simd_level() {
+        let src: Vec<f32> = (0..700)
+            .map(|i| ((i * 29) % 113) as f32 * 0.017 - 0.4)
+            .collect();
+        let base: Vec<f32> = (0..1460).map(|i| ((i * 13) % 71) as f32 * 0.003).collect();
+        let cases = [
+            (0.0, 1.0),
+            (384.0, 0.7),
+            (380.37, 0.25),
+            (-12.6, 1.3),
+            (1455.2, 0.5),
+            (-699.5, 2.0),
+        ];
+        let mut checked = 0;
+        crate::core::for_each_simd_level!(|name, simd| {
+            for &(offset, weight) in &cases {
+                let mut expected = base.clone();
+                HarmonicityKernel::accumulate_shifted_reference(
+                    &src,
+                    &mut expected,
+                    offset,
+                    weight,
+                );
+                let mut actual = base.clone();
+                simd.vectorize(|| {
+                    HarmonicityKernel::accumulate_shifted(simd, &src, &mut actual, offset, weight)
+                });
+                assert!(
+                    actual
+                        .iter()
+                        .map(|v| v.to_bits())
+                        .eq(expected.iter().map(|v| v.to_bits())),
+                    "{name} {offset}"
+                );
+            }
+            checked += 1;
+        });
+        assert!(checked > 0);
+    }
     use crate::core::log2space::Log2Space;
     #[cfg(feature = "plotcheck")]
     use crate::core::utils::ensure_plots_dir;

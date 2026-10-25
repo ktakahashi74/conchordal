@@ -190,44 +190,84 @@ pub struct RoughnessKernel {
     pub hw: usize,
 }
 
-/// Sums `density[j] * weights[j - lo] * du[j]` over one row, skipping `j == skip`.
+/// One row of `density[j] * weights[j - lo] * du[j]` terms, skipping `j == skip`.
 /// Products keep their left-associated order. Partial sums use eight lanes fixed by
 /// the row offset and a fixed reduction tree, so every SIMD level returns the same
-/// bits. Zeroing the skipped lane leaves each lane sum as skipping would.
-#[inline(always)]
-fn row_sum<S: Simd>(
-    simd: S,
-    density: &[f32],
-    du: &[f32],
-    weights: &[f32],
-    lo: usize,
+/// bits. A zero in the skipped lane leaves each lane sum as skipping would.
+struct Row<'a> {
+    density: &'a [f32],
+    du: &'a [f32],
+    weights: &'a [f32],
     skip: usize,
-) -> f32 {
-    let density = &density[lo..lo + weights.len()];
-    let du = &du[lo..lo + weights.len()];
-    let skip = skip.wrapping_sub(lo);
-    let mut acc = f32x8::splat(simd, 0.);
-    for start in (0..weights.len()).step_by(8) {
-        let end = (start + 8).min(weights.len());
-        let terms = if end - start == 8 && !(start..end).contains(&skip) {
-            f32x8::from_slice(simd, &density[start..end])
-                * f32x8::from_slice(simd, &weights[start..end])
-                * f32x8::from_slice(simd, &du[start..end])
+}
+
+impl<'a> Row<'a> {
+    fn new(density: &'a [f32], du: &'a [f32], weights: &'a [f32], lo: usize, skip: usize) -> Self {
+        Self {
+            density: &density[lo..lo + weights.len()],
+            du: &du[lo..lo + weights.len()],
+            weights,
+            skip: skip.wrapping_sub(lo),
+        }
+    }
+
+    #[inline(always)]
+    fn chunk<S: Simd>(&self, simd: S, start: usize) -> f32x8<S> {
+        let end = (start + 8).min(self.weights.len());
+        if end - start == 8 {
+            let terms = f32x8::from_slice(simd, &self.density[start..end])
+                * f32x8::from_slice(simd, &self.weights[start..end])
+                * f32x8::from_slice(simd, &self.du[start..end]);
+            if (start..end).contains(&self.skip) {
+                let lane = f32x8::load_array(simd, [0., 1., 2., 3., 4., 5., 6., 7.]);
+                lane.simd_eq(f32x8::splat(simd, (self.skip - start) as f32))
+                    .select(f32x8::splat(simd, 0.), terms)
+            } else {
+                terms
+            }
         } else {
             let mut lanes = [[0.; 8]; 3];
-            for (lane, values) in lanes.iter_mut().zip([density, weights, du]) {
+            for (lane, values) in lanes.iter_mut().zip([self.density, self.weights, self.du]) {
                 lane[..end - start].copy_from_slice(&values[start..end]);
-                if (start..end).contains(&skip) {
-                    lane[skip - start] = 0.;
+                if (start..end).contains(&self.skip) {
+                    lane[self.skip - start] = 0.;
                 }
             }
             let [d, w, u] = lanes.map(|lane| f32x8::load_array(simd, lane));
             d * w * u
-        };
-        acc += terms;
+        }
     }
+}
+
+#[inline(always)]
+fn reduce<S: Simd>(acc: f32x8<S>) -> f32 {
     let a = acc.to_array();
     ((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))
+}
+
+#[inline(always)]
+fn row_sum<S: Simd>(simd: S, row: &Row) -> f32 {
+    let mut acc = f32x8::splat(simd, 0.);
+    for start in (0..row.weights.len()).step_by(8) {
+        acc += row.chunk(simd, start);
+    }
+    reduce(acc)
+}
+
+/// Two rows advanced together so their independent sums overlap; each row keeps the
+/// lanes and order of [`row_sum`].
+#[inline(always)]
+fn row_sum_pair<S: Simd>(simd: S, a: &Row, b: &Row) -> (f32, f32) {
+    let (mut acc_a, mut acc_b) = (f32x8::splat(simd, 0.), f32x8::splat(simd, 0.));
+    for start in (0..a.weights.len().max(b.weights.len())).step_by(8) {
+        if start < a.weights.len() {
+            acc_a += a.chunk(simd, start);
+        }
+        if start < b.weights.len() {
+            acc_b += b.chunk(simd, start);
+        }
+    }
+    (reduce(acc_a), reduce(acc_b))
 }
 
 #[derive(Debug)]
@@ -287,9 +327,22 @@ impl RoughnessGeometry {
 
     #[inline(always)]
     fn rows_into<S: Simd>(&self, simd: S, density_scan: &[f32], du: &[f32], r: &mut [f32]) {
-        for (i, &(lo, hi, offset)) in self.rows.iter().enumerate() {
-            let weights = &self.weights[offset..offset + hi - lo + 1];
-            r[i] = row_sum(simd, density_scan, du, weights, lo, i);
+        let row = |i: usize| {
+            let (lo, hi, offset) = self.rows[i];
+            Row::new(
+                density_scan,
+                du,
+                &self.weights[offset..=offset + hi - lo],
+                lo,
+                i,
+            )
+        };
+        for i in (0..self.rows.len()).step_by(2) {
+            if i + 1 < self.rows.len() {
+                (r[i], r[i + 1]) = row_sum_pair(simd, &row(i), &row(i + 1));
+            } else {
+                r[i] = row_sum(simd, &row(i));
+            }
         }
     }
 }
@@ -440,7 +493,7 @@ impl RoughnessKernel {
                         lut_interp(&self.lut, self.erb_step, self.hw, fi_erb - erb[j])
                     }
                 }));
-                r[i] = row_sum(simd, amps_density, du, &weights, j_lo, i);
+                r[i] = row_sum(simd, &Row::new(amps_density, du, &weights, j_lo, i));
             }
         });
 
@@ -547,32 +600,11 @@ mod tests {
                 (((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))).to_bits()
             })
             .collect();
-        let level = Level::new();
         let mut checked = 0;
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            if let Some(simd) = level.as_sse2() {
-                assert_eq!(rows(simd, &geometry, &input, &du), expected, "sse2");
-                checked += 1;
-            }
-            if let Some(simd) = level.as_sse4_2() {
-                assert_eq!(rows(simd, &geometry, &input, &du), expected, "sse4.2");
-                checked += 1;
-            }
-            if let Some(simd) = level.as_avx2() {
-                assert_eq!(rows(simd, &geometry, &input, &du), expected, "avx2");
-                checked += 1;
-            }
-            if let Some(simd) = level.as_avx512() {
-                assert_eq!(rows(simd, &geometry, &input, &du), expected, "avx512");
-                checked += 1;
-            }
-        }
-        #[cfg(target_arch = "aarch64")]
-        if let Some(simd) = level.as_neon() {
-            assert_eq!(rows(simd, &geometry, &input, &du), expected, "neon");
+        crate::core::for_each_simd_level!(|name, simd| {
+            assert_eq!(rows(simd, &geometry, &input, &du), expected, "{name}");
             checked += 1;
-        }
+        });
         assert!(checked > 0);
     }
 

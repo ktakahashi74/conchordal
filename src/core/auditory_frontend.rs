@@ -394,6 +394,8 @@ pub(crate) struct AuditoryFrontEnd {
     #[cfg(test)]
     pub channel_mass: Vec<f32>,
     deposit_power: Vec<f32>,
+    // Critical-band context power per channel, batched before the deposit loop.
+    local_power: Vec<f32>,
     #[cfg(test)]
     context_power: Vec<f32>,
     erb_context: Option<statistics::ErbContext>,
@@ -434,8 +436,10 @@ impl AuditoryFrontEnd {
             self.bank.fs,
             hop,
         ));
-        self.bank.input.reserve_exact(hop);
-        self.erb_context = erb_context.then(|| statistics::ErbContext::new(self.bank.fs));
+        // Full length up front: a clone's capacity is its length, so clones never grow.
+        self.bank.input = vec![Complex32::default(); hop];
+        let channels = self.bank.centers.len();
+        self.erb_context = erb_context.then(|| statistics::ErbContext::new(self.bank.fs, channels));
         self
     }
 
@@ -494,6 +498,7 @@ impl AuditoryFrontEnd {
             #[cfg(test)]
             channel_mass: vec![0.0; channels],
             deposit_power: vec![0.0; channels],
+            local_power: vec![0.0; channels],
             #[cfg(test)]
             context_power: vec![0.0; channels],
             erb_context: None,
@@ -608,18 +613,16 @@ impl AuditoryFrontEnd {
         }
         if let Some(context) = &mut self.erb_context {
             context.prepare(&self.bank.frequency, &self.deposit_power);
+            context.powers_into(&self.bank.frequency, &mut self.local_power);
         }
+        #[cfg(not(test))]
+        assert!(self.erb_context.is_some(), "selected ERB context");
         for c in 0..self.bank.centers.len() {
             let raw_frequency = self.bank.frequency[c];
             let f = raw_frequency.clamp(1.0, self.bank.fs / 2.0 - 1.0);
             let d = self.deposit_power[c];
             #[cfg(not(test))]
-            let local = self
-                .erb_context
-                .as_ref()
-                .expect("selected ERB context")
-                .power_at(f)
-                .max(d);
+            let local = self.local_power[c].max(d);
             #[cfg(test)]
             let local = {
                 let unit = Complex32::from_polar(1.0, TAU * f / self.bank.fs);
@@ -656,7 +659,11 @@ impl AuditoryFrontEnd {
                                     })
                                     .sum::<f64>() as f32;
                             }
-                            context.power_at(f)
+                            debug_assert_eq!(
+                                context.power_at(f).to_bits(),
+                                self.local_power[c].to_bits()
+                            );
+                            self.local_power[c]
                         },
                     )
                     .max(d)

@@ -861,3 +861,58 @@ fn filterbank_lanes_match_scalar_bits_on_selected_simd_levels() {
     }
     assert!(bits(&dispatched) == expected, "dispatch");
 }
+
+#[test]
+fn pcb_occupied_scan_matches_full_scan_bits() {
+    let fs = 48_000.0;
+    let mut reused = statistics::ErbContext::new(fs, 170);
+    let mut seed = 0x2545_f491_u64;
+    let mut next = || {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        (seed >> 40) as f32 / (1u64 << 24) as f32
+    };
+    for trial in 0..12 {
+        let frequencies: Vec<f32> = (0..170).map(|_| 20.0 * 1_200.0f32.powf(next())).collect();
+        let power: Vec<f32> = (0..170)
+            .map(|c| {
+                if (c + trial) % 7 == 0 {
+                    0.0
+                } else {
+                    next() * 1e-3
+                }
+            })
+            .collect();
+        reused.prepare(&frequencies, &power);
+        let mut fresh = statistics::ErbContext::new(fs, 170);
+        fresh.prepare(&frequencies, &power);
+        let queries = frequencies
+            .iter()
+            .copied()
+            .chain((0..400).map(|k| 0.5 + k as f32 * 60.0));
+        let queries: Vec<f32> = queries.collect();
+        let expected: Vec<u32> = queries
+            .iter()
+            .map(|&query| fresh.power_at(query).to_bits())
+            .collect();
+        let mut batched = vec![0.0; queries.len()];
+        reused.powers_into(&queries, &mut batched);
+        assert!(
+            batched
+                .iter()
+                .map(|p| p.to_bits())
+                .eq(expected.iter().copied()),
+            "{trial}"
+        );
+        crate::core::for_each_simd_level!(|name, simd| {
+            let mut lanes = vec![0.0; queries.len()];
+            simd.vectorize(|| reused.powers_lanes(simd, &queries, &mut lanes));
+            assert!(
+                lanes
+                    .iter()
+                    .map(|p| p.to_bits())
+                    .eq(expected.iter().copied()),
+                "{trial} {name}"
+            );
+        });
+    }
+}

@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "395628d"
+source_commit = "ec3c1327"
 author = "Koichi Takahashi"
-last_updated = "2026-10-23"
+last_updated = "2026-10-25"
 source_version = "0.5.0"
-source_snapshot = "395628d"
-revision_scope = "Flora fixed Allee density of 0.144 mass/oct (2026-10-23)"
+source_snapshot = "ec3c1327"
+revision_scope = "Flora self-exclusion, beat opportunities and pace; authored rest and dwell; replacement release and conditional NSGT (2026-10-25)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -137,7 +137,7 @@ movement cost and the product defining tension retain their existing values.
 
 ### 3.1.3 Spectral Power, History and Timing
 
-Mixed and listener streams also calculate NSGT power for spectrum displays, reports, spectral history and research taps. Flora resource power retains its separate FFT/NSGT-weighted analysis. Voice self-exclusion observers calculate the auditory density without running NSGT. `analysis.nfft` controls the retained NSGT window, Flora resource coverage and the publication hold after gaps; `analysis.kernel_align` controls NSGT kernel alignment. `psychoacoustics.use_incoherent_power` selects the NSGT power measure, independently of H/R input.
+Mixed and listener streams calculate NSGT power and spectral history only when a display, report or temporal observation tap needs them; Flora placements also enable the mixed stream's resource analysis. Without these consumers, NSGT does not advance. Each Flora retains a separate FFT/NSGT-weighted resource observer. Voice and Flora H/R self-exclusion observers calculate the auditory density without running NSGT. `analysis.nfft` controls the retained NSGT window, Flora resource coverage and the publication hold after gaps; `analysis.kernel_align` controls NSGT kernel alignment. `psychoacoustics.use_incoherent_power` selects the NSGT power measure, independently of H/R input.
 
 The audio worker at hop K still reads analysis frame K−1, stamped at that frame's end. Before a run, history is silence. A gap resets filter, previous sample, statistics and density state, and publication waits for the existing `window_samples()` coverage (16384 samples, 341.333 ms at 48 kHz by default). This publication rule is not an accuracy bound on the IIR tail. Clones retain the full causal history. Synchronous body analysis advances filters and hop statistics even on unselected hops; selected updates apply S4–S6 once, with the elapsed-hop interval for S6.
 
@@ -514,7 +514,7 @@ This mechanic creates a Darwinian pressure: **Survival of the Consonant**. Poor 
 
 ## 5.3 Pitch Retargeting Logic
 
-Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target. Candidate evaluation reads the habituation-eroded score at the candidate fundamental. Self-exclusion recomputes a raw score from the estimated remaining density, then applies the same local erosion before comparison. Body-aware metabolism leaves these point-based movement evaluations in place. Its energy changes can still affect subsequent movement through the existing energy-dependent behavior.
+Agents are not static; they move through frequency space to improve their fitness. The execution layer applies a retarget gate (a zero-crossing of the meter-derived theta band, Section 4.3, plus an integration window) and then asks the PitchCore to propose the next target. Candidate evaluation reads the habituation-eroded score at the candidate fundamental. Self-exclusion recomputes a raw score from the actual remaining habitat PCM, then applies the same local erosion before comparison. Body-aware metabolism leaves these point-based movement evaluations in place. Its energy changes can still affect subsequent movement through the existing energy-dependent behavior.
 
 ### 5.3.1 Pitch Application Modes
 
@@ -524,6 +524,8 @@ Three modes govern how a new pitch target is applied:
 *   **Glide**: Smooth continuous pitch transition with a configurable time constant $\tau$. The SoundBody interpolates exponentially toward the target frequency, producing portamento effects. Suited for drone-like Voices or slow melodic movement.
 
 *   **Rearticulate**: For free-pitch Hold Voices without a participation clock, the default zero boundary releases the old Tone and attacks at each changed target's adoption sample. A positive rearticulate_above boundary instead slides at or below its distance from the last sounded onset.
+
+When a new Tone replaces another at the same sample for the same source and generation, the old Tone decays with its original release duration from its current envelope value.
 
 For `seek_consonance()` voices the mode is resolved automatically from the phonation timing unless the script chooses explicitly: sustained voices (`once()`) glide, while re-attacking voices (pulse or coupled timing) snap at onsets. Explicit sustain with participation also resolves to Glide.
 
@@ -827,6 +829,33 @@ supported as in sustained participation, while tie/persistence retain their
 free-pitch scope. Implicit Coupled tuning and standalone presets are unchanged.
 
 
+### Authored rest and dwell
+
+`rest_on_habituation(w)` and `dwell(w)` are initial-only author rules, both disabled
+by default (`w = 0`). They accept finite nonnegative f32 weights without an imposed
+upper cap. They do not implement phrase perception or a principle of tonal stability.
+
+For Voices, `rest_on_habituation(w)` requires explicit `sustain()` with `metric()`,
+`entrained()`, `steady()` or `flow()`. A shared audio-only history of heard attacks
+supplies habituation at the sounding pitch. With habituation enabled, the weight
+scales the stochastic exit rate from a sounding span. Exit uses an existing legal
+opportunity and releases the Tone; return accumulation starts after the audible
+tail ends. Return depends on private recovery from the Voice's own attacks, and
+resumes sound only at a legal opportunity that passes the existing policy. Unknown
+observations suspend exit and return accumulation while private recovery continues.
+This history is separate from the Landscape-level consonance erosion in §3.5.
+
+`dwell(w)` requires free pitch with explicit `seek_consonance()`. It changes the
+pitch-proposal clock according to the current environmental level $L$ after shared
+habituation erosion:
+
+$$ \Delta\phi = \Delta t\,\max\{0, 1+w(1-2L)\}. $$
+
+High levels slow exploration, low levels accelerate it, and the clock stops when
+the expression reaches zero. Pitch self-exclusion supplies $L$ when enabled and
+available; otherwise the mixed effective field is used. Existing legal proposal
+gates still apply. Adaptation, glide and private recovery keep physical time.
+
 ## 5.5 The Breath Oscillator: Kuramoto Articulation
 
 Independent of onset scheduling, the `KuramotoCore` ArticulationCore entrains each voice's *envelope* (its breath) to the meter-derived theta band, using a mean-field Kuramoto phase step:
@@ -852,8 +881,15 @@ Local consumer–resource rules govern growth, spread, consumption and recovery.
 The Allee half-saturation density is fixed at 0.144 mass per octave and converted
 to mass per bin on the Log2Space grid.
 Each Flora's resource is consumed by its latent biomass and by other habitat
-sound. Its actual habitat PCM is removed before external power is measured;
-its base consonance and harmonicity still include self-sound. The acoustic
+sound. Its actual habitat PCM is removed before external power is measured.
+By default, habitat-routed Flora also removes its own PCM before the auditory
+front end computes the base consonance and harmonicity used for growth and seeding.
+Its H/R observer starts from the mixed stream's pre-birth history. Initial-only
+`leave_self_out(false)` uses mixed C/H without this H/R observer; presentation-only
+Flora also uses mixed C/H. Resource power always excludes own PCM. Placement uses
+mixed base mass because no own sound exists yet. Missing self-excluded C/H is not
+replaced by mixed C/H; the runtime's existing observation-gap stop rule applies.
+The acoustic
 reference is the mean square of a sine with nominal amplitude 0.03. Supported
 FFT power is distributed across NSGT bins and integrated with the existing band
 coefficients. Missing observations preserve initial resource state or the last
@@ -866,22 +902,52 @@ Placement, updates, release and bus routing are available through the Experiment
 Rhai surface; sample `17_flora.rhai` combines Flora with a
 retuned Population.
 
-`flora().metric()` optionally schedules tonal births and ordinary replacements
-at private CouplingClock crossings. A shared habitat audio-only meter uses the
-selected recurrence path and enculturation priors, without internal onset commands.
-Biomass and resources remain continuous. Waiting lanes reserve only current excess
-in their last window; unsupported tones, separation conflicts and release retire
-immediately. Transitions occur inside the hop at sample ticks and retain the
-metabolic amplitude tail with finite extinction at the existing dead-mass scale.
-The clock frequency, before phase correction, scales the entire ecological time
-relative to neutral 2 Hz. Fresh beat evidence contributes with the existing 0.95
-confidence weighting; stale or unknown observations return pace to the tempo-basin
-center (2 Hz without a basin) and allocation to continuous T0 opportunities.
-The macro fade still bounds release. T0 remains the default; it uses the fixed tempo-basin center without following
-heard beats. The same ecological time scaling and finite retirement tail apply
-to every Flora. For frequency f, growth is 4f/s, recovery is 20/f seconds and
-consumption is 0.6/f seconds. Independent rate/renewal controls are removed;
-explicit fade(0) still ends immediately.
+Every Flora schedules tonal births and ordinary replacements at private
+CouplingClock crossings when fresh audio confirms a beat. There is no Flora
+`metric()` switch. A shared habitat audio-only meter uses the selected recurrence
+path and enculturation priors, without internal onset commands. In a scene with
+Flora placements it observes from run start, including before placement. Private
+clocks begin with independent phases and the tempo-basin center (2 Hz without a
+basin); fresh confirmed beats attract them with strength 0.95 weighted by confidence.
+Unknown, stale or unconfirmed observations use continuous allocation and the
+basin-centered rate without resetting phase.
+
+`pace(k)` sets ecological speed relative to that private clock, initially or live.
+Its default is 1, its lower bound is 1/64, and finite f32 values have no additional
+upper cap. Let $f$ be the clock velocity in Hz before phase correction and $r$ the
+selected opportunity ratio. If $k > 20$ and fresh confirmed beat evidence also has
+positive subdivision confidence with ratio 2, 3 or 4, crossings of private phase
+times that ratio allow action. Otherwise $r=1$ and actions use beat crossings.
+Layer changes preserve phase. The ecological speed is
+
+$$ p = \frac{f}{2}\min\{k,20r\}, \qquad \Delta t_{eco}=p\,\Delta t. $$
+
+This saturates at one `RENEWAL_SEC` (10 ecological seconds) per nominal opportunity;
+continuous fallback uses $r=1$. Growth, diffusion, seeding, resource recovery and
+consumption share this time scale, as does retirement. Biomass and resources
+remain continuous. During confirmed timing, tonal and residual amplitude targets
+and their joint normalization update only at action crossings; supported targets
+hold between crossings while the existing slew advances. Fallback updates targets
+each hop. Waiting lanes reserve only current excess in their last window.
+Support loss, separation conflicts and release retire lanes immediately, with a
+finite metabolic tail. Transitions apply at sample ticks within the hop. Macro
+fade bounds release, and explicit `fade(0)` ends immediately.
+
+`pitch_apply_mode("glide")` is the default and lets tonal lanes follow supported
+peaks. `pitch_apply_mode("rearticulate")` holds each lane's sounding frequency,
+including its retirement tail. A peak more than 50 cents away requires retirement
+and a new lane under the existing opportunity and capacity rules. Live mode changes
+preserve sounding lanes; switching from glide holds their then-current frequency.
+Residual noise keeps its centroid motion. Flora does not support `gate_snap`.
+
+Initial-only `rest_on_habituation(w)` applies the span/gap author rule from §5.4
+to a whole Flora, with default 0 and finite nonnegative weights without an imposed
+upper cap. Heard habituation is weighted by the target power of sounding tonal
+lanes. A gap suppresses tonal and residual births while existing lanes retire;
+biomass and resources continue evolving. Return follows private recovery after
+the tails end. Span/gap transitions use beat crossings, including the free-running
+clock during fallback; subdivision opportunities affect allocation and amplitude
+targets only.
 
 These dynamics belong to the authored-rule tier. Their use of an auditory landscape
 does not make the growth or succession rules a model grounded in auditory cognition.
@@ -927,7 +993,7 @@ The application creates four primary thread contexts, plus the GUI event loop:
 
 2.  **Analysis Thread (Background Priority)**:
     *   Defined in `core/analysis_worker.rs`, running `AnalysisStream` from `core/stream/analysis.rs`.
-    *   **Responsibility**: Receives habitat-bus hops (time-domain chunks), runs the auditory front end for subjective intensity and retains NSGT power for spectral displays and history, then computes *both* the Harmonicity field (Sibling Projection) and the Roughness field (ERB-domain convolution) in a single pipeline.
+    *   **Responsibility**: Receives habitat-bus hops (time-domain chunks), runs the auditory front end for subjective intensity, and computes *both* the Harmonicity field (Sibling Projection) and the Roughness field (ERB-domain convolution). NSGT power and spectral history run separately when the consumers listed in §3.1.3 need them.
     *   **Update Cycle**: When analysis is complete, it sends the updated Landscape snapshot back to the worker thread via a bounded SPSC channel.
 
 3.  **Listener-Analysis Thread**:
@@ -947,7 +1013,7 @@ The application creates four primary thread contexts, plus the GUI event loop:
 To maintain data consistency without locking the audio thread, Conchordal uses a multi-channel update strategy for the Landscape. Rendered audio is split across two buses: the **habitat bus** (the environment the ecosystem senses) and the **presentation bus** (what the audience hears). A drone can be routed to the habitat bus only—shaping the landscape without being presented.
 
 1.  The **Worker Thread** renders audio per bus and sends each habitat hop to the **Analysis Thread**; presentation hops go to the **Listener-Analysis Thread**.
-2.  The **Analysis Thread** runs the auditory subjective-intensity + Roughness + Harmonicity pipeline alongside NSGT spectral power and sends the resulting raw `Landscape` snapshot back.
+2.  The **Analysis Thread** runs the auditory subjective-intensity + Roughness + Harmonicity pipeline, with NSGT spectral power enabled for the consumers in §3.1.3, and sends the resulting raw `Landscape` snapshot back.
 3.  The **Worker Thread** merges the analysis result into the current `Landscape`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
 4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the phonation onset strengths of habitat-routed voices; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
 5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
@@ -1177,7 +1243,9 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; one shared meter reads habitat recurrence and fast phase/intensity evidence, with optional continuous T2 recurrence | §4–5, §7 | Implemented. Dedicated beat carriers appear only in explicit synchronization demonstrations (sample 07) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition |
-| Temporal structure grounded in auditory cognition | Default-disabled `temporal_meter_t2` feeds whole-habitat continuous T2 recurrence into the production meter; group accents and Periodic arrival costs have separate default-disabled settings | §5.4 | Partial. Continuous recurrence, accent and arrival mechanisms are implemented. Production recurrence does not require group assignment and retains causal support and explicit unknowns; group arrival retains owner credit. Group-event numerical parameters have no defaults; an omitted arrival weight uses 1 |
+| Temporal structure grounded in auditory cognition | Default-disabled `temporal_meter_t2` feeds whole-habitat continuous T2 recurrence into the production meter; group accents and Periodic arrival costs have separate default-disabled settings | §5.4 | Partial. Continuous recurrence, accent and arrival mechanisms are implemented. Production recurrence does not require group assignment and retains causal support and explicit unknowns; group arrival retains owner credit. Group-event numerical parameters have no defaults; an omitted arrival weight uses 1. Phrase perception and harmonic rhythm remain open |
+| Authored spectral ecology | Flora consumer–resource dynamics, default own-PCM exclusion for C/H, beat/subdivision allocation and amplitude targets, ecological pace, lane pitch modes and optional habituation-driven rest | §5.6 | Implemented as author rules; the Rhai API is Experimental |
+| Authored temporal behavior | Voice span/gap control from heard attacks and private recovery; environmental-level dwell changes pitch-search timing | §5.4 | Implemented as author rules, not phrase perception or tonal-stability principles |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented, off by default; the physical biosignal loop is open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
 | Excitation and body radiation | Optional excitation renderer in the instrument and offline binary: immediate Sine/Harmonic response and Modal free decay, with separate Off and disposal | §5.1, §6.1 | Implemented as an opt-in; the default remains the legacy renderer |
@@ -1188,7 +1256,8 @@ The Manifesto declares commitments; this chapter records which of them the curre
 
 - Cultural tuning systems and individual hearing profiles as landscape parameters.
 - Persistence of temporal relations across performance conditions for `entrained` and `flow`.
-- Phrase, section and long-context memory, held as research outside the instrument's core.
+- Phrase perception, section structure and long-context memory. Authored rest and dwell do not implement these mechanisms.
+- Harmonic rhythm as a mechanism coordinating pitch changes with metrical structure. Existing note-boundary gates and Flora lane opportunities do not implement it.
 - Cognitive retention and interference, and stream identity in overlapping sound.
 - The physical biosignal loop of DCC stage two.
 - Real-time acceptance under device overload and large populations.

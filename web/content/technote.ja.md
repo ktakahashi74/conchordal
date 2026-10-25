@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "395628d"
+source_commit = "ec3c1327"
 author = "Koichi Takahashi"
-last_updated = "2026-10-23"
+last_updated = "2026-10-25"
 source_version = "0.5.0"
-source_snapshot = "395628d"
-revision_scope = "FloraのAllee半飽和密度0.144 mass/octに同期（2026-10-23）"
+source_snapshot = "ec3c1327"
+revision_scope = "Floraの自己除外・拍の機会・pace、作者規則の休止とdwell、置換時のrelease、NSGTの条件付き計算に同期（2026-10-25）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -132,7 +132,7 @@ ListenerTwinは、正のbin質量を局所の山ごとに成分へまとめて�
 
 ### 3.1.3 スペクトルのpower、履歴、時刻
 
-混合音とlistenerのstreamでは、スペクトル表示、report、spectral history、研究用tapのNSGT powerも計算する。Floraの資源powerは、別のFFTとNSGT重みによる解析を保つ。Voiceの自己除外のobserverではNSGTを計算しない。`analysis.nfft`は残るNSGTの窓、Floraの資源のcoverage、欠測後の公表の待ちに効く。`analysis.kernel_align`はNSGTのkernelの配置、`psychoacoustics.use_incoherent_power`はNSGT powerの方式を指定し、H・Rへの入力とは独立している。
+混合音とlistenerのstreamでは、表示、report、時間観測のtapで必要な場合にだけ、NSGT powerとspectral historyを計算する。Floraを配置するsceneでは、混合音の資源解析も有効になる。これらの用途がなければNSGTは進めない。各Floraの資源powerは、別のFFTとNSGT重みによるobserverで求める。VoiceとFloraのH/R自己除外observerではNSGTを計算しない。`analysis.nfft`は残るNSGTの窓、Floraの資源のcoverage、欠測後の公表の待ちに効く。`analysis.kernel_align`はNSGTのkernelの配置、`psychoacoustics.use_incoherent_power`はNSGT powerの方式を指定し、H・Rへの入力とは独立している。
 
 hop Kが読むのは引き続きframe K−1で、観測にはそのframeの終了時刻を付ける。run開始前の履歴は無音。欠測ではフィルタ、前のsample、統計の窓、密度をresetし、従来の`window_samples()`が満ちるまで公表を待つ。既定では16384 sample、48 kHzで341.333 msとなる。この待ちはIIRの残りの精度を保証する境界ではない。cloneは因果的な履歴をすべて引き継ぐ。同期のbody解析では、選ばれないhopもフィルタと統計を進める。選ばれたhopでS4〜S6を一度行い、S6には経過したhop数を使う。
 
@@ -518,9 +518,11 @@ Voice は直接結合ではなく2つの直交する信号を通じてコアを�
 
 ## 5.3 ピッチリターゲティングとクラウディング
 
-エージェントは静的ではない。適応度を改善するために周波数空間を移動する。候補評価は候補基音位置のhabituationで浸食されたscoreを読む。自己除外を有効にすると、身体投影から推定した残余密度でraw scoreを計算し直し、比較前に同じlocal erosionを適用する。身体込みの代謝を有効にしても、移動の候補採点はこの点評価のままである。energyの変化は、既存のenergyに依存する振る舞いを通じて、その後の移動へ波及しうる。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
+エージェントは静的ではない。適応度を改善するために周波数空間を移動する。候補評価は候補基音位置のhabituationで浸食されたscoreを読む。自己除外を有効にすると、自身の実音を引いたhabitat PCMでraw scoreを計算し直し、比較前に同じlocal erosionを適用する。身体込みの代謝を有効にしても、移動の候補採点はこの点評価のままである。energyの変化は、既存のenergyに依存する振る舞いを通じて、その後の移動へ波及しうる。ピッチ選択には2つの移動モードとクラウディングメカニズムがある。
 
 **音高の適用**: ピッチ移動は `PitchApplyMode` が決める。`GateSnap` はノートの境界でピッチを離散的に切り替え（各ノートは一つの安定した周波数で鳴る）、`Glide` は連続的なポルタメントで移る。`seek_consonance()` を使うボイスでは、スクリプトが明示しない限りモードは発声タイミングから自動的に決まる。持続するVoice（`once()`）と明示の持続＋参加はGlide、打ち直すVoice（pulse / coupled）は発音時に切り替わる。参加の時計を持たない自由音高のHoldでは、Rearticulateの境界0は採用時に打ち直し、正の境界は最後の発音音高からの変位に応じて滑るか打ち直すかを選ぶ。持続＋参加の明示のGateSnapは、採用した目標を鳴らすと選ぶ機会まで保留する。
+
+同じsourceとgenerationで、同じsampleに新しいToneが古いToneを置き換える場合、古いToneはその時点の包絡の値から、元のrelease時間を使って減衰する。
 
 **クラウディング**: クラウディング（相互排斥）とピッチ適応は、単一の共有された占有場（occupancy field）を参照する。各占有*基音*（生 f0）を中心とするガウシアンペナルティで、その幅は `crowding_sigma_cents`（デフォルト 60）が定め、強度は `crowding_strength` が制御する。これにより、エージェント同士が同一周波数に収束して「団子」状態になるのを防ぐ。オクターブ等価（クロマ）のペナルティは適用せず、オクターブ関係は協和ポテンシャルを通してだけ作用する。
 
@@ -750,6 +752,18 @@ CouplingClockの整数交差を発音の機会に使う。初回はHoldと同じ
 自由音高の範囲を保つ。暗黙のCoupledや単独のプリセットの意味は変わらない。
 
 
+### 作者規則による休止と滞在
+
+`rest_on_habituation(w)`と`dwell(w)`は、初期設定で指定する作者規則であり、どちらも既定値は0で無効となる。有限の非負f32値を受け付け、それ以外に重みの上限は置かない。句の知覚や調性の安定を説明する原理の実装ではない。
+
+Voiceの`rest_on_habituation(w)`には、明示的な`sustain()`と、`metric()`、`entrained()`、`steady()`、`flow()`のいずれかが必要となる。実音から共有のattack履歴を作り、現在鳴っている音高での慣れを読む。habituationが有効なとき、重みは発音区間を確率的に終える率に掛かる。既存の規則で許された機会にToneをreleaseし、聞こえる尾が終わってから復帰の積算を始める。復帰には自身のattackに対する私的な回復を使い、既存の方策を通った発音機会で音を再開する。観測がunknownの間は退出と復帰の積算を止め、私的な回復は進める。この履歴は3.5節のLandscape全体の協和性の浸食とは別に持つ。
+
+`dwell(w)`には、自由音高と明示的な`seek_consonance()`が必要となる。共有の慣れによる浸食後の、現在の音高での環境評価$L$を使い、音高を提案する時計を次のように進める。
+
+$$ \Delta\phi = \Delta t\,\max\{0, 1+w(1-2L)\}. $$
+
+評価が高いと探索を遅くし、低いと速くする。式の値が0に達すると時計は止まる。音高の自己除外が有効で観測が得られる場合はその評価を使い、それ以外では混合音のeffective fieldを使う。提案には既存の時刻の制約も適用する。適応、glide、私的な回復は実時間で進む。
+
 ## 5.5 呼吸振動子：蔵本アーティキュレーション
 
 オンセットのスケジューリングとは別に、`KuramotoCore` ArticulationCore は各ボイスの*エンベロープ*——いわば呼吸——を、平均場の蔵本位相ステップでメーター由来のシータ帯域に同調させる：
@@ -766,9 +780,23 @@ $\omega_{target}$ はシータ帯域の角周波数、$K_{global}$ はシーン�
 
 Flora は Population と並ぶ作曲の形である。一つの Flora は、Log2Space 上の限られた帯域に非負のスペクトル質量を持つ。habituation 適用前の協和性地形から育ち、Voice と同じ habitat に住む。Flora の帯域の疲労は資源の消費と回復が表す。Voice と listener の habituation は維持され、Flora の habitat 音もその駆動に含まれる。Flora と Population の結合は、互いの放射音と、それを分析した Landscape だけを通る。
 
-局所的な消費者–資源の規則が、成長、拡散、消費、回復を進める。Allee効果の半飽和密度は0.144 mass/octに固定し、Log2Spaceの1オクターブあたりのbin数で割って各binの質量へ換算する。各 Flora の資源は、自身の潜在的な biomass と、ほかの habitat 音によって消費される。外音の power を測る前に、実際に描画した自身の habitat PCM を引く。成長と種まきが読む base の協和性・調和性には、引き続き自己音を含める。power の基準は振幅 0.03 の正弦波の平均二乗である。FFT の支持内 power を NSGT bin に配分し、既存の帯域別係数で時間積分する。観測がない間は無音とみなさず、初期の資源状態、または最後に観測した消費を保持する。資源は個体ごとに持ち、mute 中や presentation のみに送られた隣の個体は habitat power を与えない。ERB cell で質量を tonal lane と residual lane に分け、lane を追跡しながら、sine または resonant の音を合成する。residual 成分は既定で無効となり、`.residual(true)` で有効にできる。fade と振幅変更の ramp は sample ごとに進む。配置、更新、release、bus routing は Experimental の Rhai API から使える。`17_flora.rhai` は、途中で音高を変える Population と Flora を組み合わせる。
+局所的な消費者–資源の規則が、成長、拡散、消費、回復を進める。Allee効果の半飽和密度は0.144 mass/octに固定し、Log2Spaceの1オクターブあたりのbin数で割って各binの質量へ換算する。各Floraの資源は、自身の潜在的なbiomassと、ほかのhabitat音によって消費される。外音のpowerを測る前に、実際に描画した自身のhabitat PCMを引く。
 
-`flora().metric()`を指定すると、tonal laneの出生と通常の交代を、各FloraのCouplingClockが拍を通過する機会へ寄せる。共有の拍観測はhabitatの実音だけを読み、選択中のrecurrence経路と文化的事前分布を使う。内部onset指令は入力しない。biomassと資源は連続に更新する。保留中の音は最後のwindowに残る超過質量だけを予約し、音の支持が失われた場合、最小分離の違反、releaseでは直ちに退場する。変更はhop内のsample時刻で適用する。退場振幅は代謝と既存の微小質量基準から導いた有限のtailで下がり、全体のreleaseはmacro fadeで終わる。位相補正前の時計の周波数を中立の2 Hzで割り、生態の時間全体を伸縮する。新しい拍観測は既存の結合強度0.95と確信度に従って反映する。拍が未確認、または観測が古い間は、歩調をbasinの中心（未指定なら2 Hz）へ、割当を連続動作へ戻す。既定のT0はbasinの中心に歩調を固定し、聞こえた拍には追従しない。生態時間の伸縮と有限のtailはすべてのFloraに適用する。周波数fに対し、成長は毎秒4f、回復は20/f秒、消費は0.6/f秒となる。rateとrenewalの個別指定は削除し、明示したfade(0)では直ちに終了する。
+habitatへ音を送るFloraでは、成長と種まきが読むbaseの協和性・調波性も、既定で自身のPCMを引いてから聴覚の前処理で求める。H/Rのobserverは、出生直前の混合音の履歴を引き継ぐ。初期設定で`leave_self_out(false)`を指定すると、このH/R observerを使わず、混合音のC/Hを読む。presentationのみに送るFloraも混合音のC/Hを使う。資源powerは常に自己音を除く。配置時にはまだ自己音がないので、混合音のbase massを使う。自己除外したC/Hが欠けても混合音のC/Hへ戻さず、既存の観測欠落時の実行停止規則に従う。
+
+powerの基準は振幅0.03の正弦波の平均二乗である。FFTの支持内powerをNSGT binに配分し、既存の帯域別係数で時間積分する。観測がない間は無音とみなさず、初期の資源状態、または最後に観測した消費を保持する。資源は個体ごとに持ち、mute中やpresentationのみに送られた隣の個体はhabitat powerを与えない。ERB cellで質量をtonal laneとresidual laneに分け、laneを追跡しながら、sineまたはresonantの音を合成する。residual成分は既定で無効となり、`.residual(true)`で有効にできる。fadeと振幅変更のrampはsampleごとに進む。配置、更新、release、bus routingはExperimentalのRhai APIから使える。`17_flora.rhai`は、途中で音高を変えるPopulationとFloraを組み合わせる。
+
+すべてのFloraは、新鮮な実音の観測で拍が確認されている間、私有のCouplingClockが拍を通過する機会にtonal laneの出生と通常の交代を行う。Floraには`metric()`による切り替えはない。共有のメーターはhabitatの実音だけを読み、選択中のrecurrence経路と文化的事前分布を使う。内部onset指令は入力しない。Floraを配置するsceneでは、配置前を含め実行開始時から観測する。各時計は独立した位相とbasinの中心（未指定なら2 Hz）で始まり、新鮮で確認済みの拍には結合強度0.95と確信度に応じて引き寄せられる。観測がunknown、古い、または拍が未確認の間は、位相をリセットせず、basin中心の速さと連続的な割当に戻る。
+
+`pace(k)`は、その私有の時計に対する生態の速さの倍率を、初期設定または演奏中に指定する。既定値は1、下限は1/64であり、有限のf32値にそれ以外の上限は置かない。位相補正前の時計の速度を$f$ Hz、選択した機会の比率を$r$とする。$k > 20$で、新鮮で確認済みの拍に加えて細分の確信度が正、比率が2、3、4のいずれかなら、私有位相をその比率で掛けた交差を行為の機会にする。それ以外では$r=1$とし、拍の交差を使う。層を切り替えても位相を保つ。生態の速度は次式となる。
+
+$$ p = \frac{f}{2}\min\{k,20r\}, \qquad \Delta t_{eco}=p\,\Delta t. $$
+
+公称の一機会あたり`RENEWAL_SEC`（生態時間で10秒）で飽和し、連続的な割当に戻る間は$r=1$を使う。成長、拡散、種まき、資源の回復と消費、退場は同じ時間尺度に従う。biomassと資源は連続に変化する。拍を確認できている間、tonalとresidualの振幅目標、および両者の共通の正規化は行為の機会でだけ更新する。機会の間では、支持のある目標を保ち、既存のslewだけを進める。連続動作への復帰中は各hopで目標を更新する。保留中のlaneは最後のwindowに残る現在の超過質量だけを予約する。支持の喪失、最小分離の違反、releaseでは直ちに退場を始め、代謝による有限のtailで減衰する。変更はhop内のsample時刻で適用する。全体のreleaseはmacro fadeで終わり、明示した`fade(0)`では直ちに終了する。
+
+`pitch_apply_mode("glide")`が既定であり、tonal laneは支持のあるpeakを追う。`pitch_apply_mode("rearticulate")`では、退場中のtailを含め、各laneの発音周波数を保つ。50 centsを超えて離れたpeakへ移るには、既存laneを退場させ、既存の機会と収容数の規則に従って新しいlaneを作る。演奏中のmode変更では鳴っているlaneを保ち、glideから切り替える場合はその時点の周波数を保持する。residual noiseの重心移動は継続する。Floraは`gate_snap`に対応しない。
+
+初期設定の`rest_on_habituation(w)`は、5.4節の発音区間と休止の作者規則をFlora全体に適用する。既定値は0で、有限の非負f32値にそれ以外の上限は置かない。聞こえた音への慣れは、鳴っているtonal laneの目標powerで重み付けする。休止中はtonalとresidualの出生を抑え、既存laneを退場させる。biomassと資源の変化は続く。尾が終わった後の私的な回復に従って復帰する。発音区間と休止の遷移には拍の交差を使い、連続動作への復帰中も自走する時計の拍の交差に従う。細分の機会は割当と振幅目標にだけ作用する。
 
 この力学は authored-rule tier、すなわち作者が設計した規則に属する。聴覚モデルの地形を使っていても、成長や遷移の規則自体を聴覚認知に根差すモデルとは位置付けない。API の安定性を示す Experimental とは別の分類である。
 
@@ -811,7 +839,7 @@ UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-le
 
 2.  **解析スレッド（バックグラウンド優先度）**:
     *   `core/analysis_worker.rs` で定義され、`core/stream/analysis.rs` の `AnalysisStream` を実行する。
-    *   **責務**: ハビタットバスのホップを受信し、聴覚の前処理で主観強度密度を作り、調波性と粗さの両フィールドを計算する。NSGT powerはスペクトル表示と履歴のために並行して保持する。
+    *   **責務**: ハビタットバスのホップを受信し、聴覚の前処理で主観強度密度を作り、調波性と粗さの両フィールドを計算する。NSGT powerとspectral historyは、3.1.3節の用途で必要な場合に別途計算する。
     *   **更新サイクル**: 完了した地形スナップショットをバウンドSPSCチャンネル経由でワーカースレッドに送信する。
 
 3.  **リスナー解析スレッド**:
@@ -831,7 +859,7 @@ UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-le
 オーディオスレッドをロックせずにデータの一貫性を保つため、Conchordal はランドスケープを複数チャネル経由で更新する。レンダリングされたオーディオは二つのバスに分かれる。**ハビタットバス**はエコシステムが感じ取る環境であり、**プレゼンテーションバス**は聴衆が実際に聴く音である。ドローンをハビタットバスだけに送れば、聴かせることなく地形だけを形づくることもできる。
 
 1.  **ワーカースレッド**がバスごとにオーディオをレンダリングし、ハビタットホップを**解析スレッド**へ、プレゼンテーションホップを**リスナー解析スレッド**へ送信する。
-2.  **解析スレッド**が聴覚の主観強度密度 + roughness + harmonicityの処理とNSGT powerの計算を実行し、raw `Landscape`スナップショットを返送する。
+2.  **解析スレッド**が聴覚の主観強度密度 + roughness + harmonicityの処理を実行し、raw `Landscape`スナップショットを返送する。NSGT powerは3.1.3節の用途に応じて有効にする。
 3.  **ワーカースレッド**が解析結果を`Landscape`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
 4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）とハビタットへ送られるボイスの発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
 5.  `Community`がeffective Landscapeを、ピッチ選択、代謝、spawn、respawn、Voiceのライフサイクルに使う。
@@ -1019,7 +1047,9 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | 集団：ニッチ・共生・地形変形 | クラウディング、リスポーン、閉ループ | §5 | 実装済み |
 | 中央指揮者の不在 | 局所の知覚のみ。一つの共有メーターがhabitatの再来と速い入力の位相・強度を読み、連続T2再来を任意で使う | §4–5, §7 | 実装済み。専用の拍打ちは明示的な同期の実演（sample 07）に限る |
 | シナリオ=マクロの演出 | ディレクターの地形操作 | §6.3.6 | 作者による構成として実装済み |
-| 時間構造を聴覚認知に根差させる | 既定で無効のtemporal_meter_t2がhabitat全体の連続T2再来を生成側のメーターへ渡す。群アクセントとPeriodic到来は別設定で既定は無効 | §5.4 | 部分。連続再来・アクセント・到来の機構は実装済み。生成側の再来は群の割当てを前提にせず、因果的な支持とunknownの区別を保つ。群の到来は元の音群への帰属を保つ。群eventの数値自由量は既定値を持たず、到来の重みは省略時に1を使う |
+| 時間構造を聴覚認知に根差させる | 既定で無効のtemporal_meter_t2がhabitat全体の連続T2再来を生成側のメーターへ渡す。群アクセントとPeriodic到来は別設定で既定は無効 | §5.4 | 部分。連続再来・アクセント・到来の機構は実装済み。生成側の再来は群の割当てを前提にせず、因果的な支持とunknownの区別を保つ。群の到来は元の音群への帰属を保つ。群eventの数値自由量は既定値を持たず、到来の重みは省略時に1を使う。句の知覚と和声の律動は未解決 |
+| 作者規則によるスペクトルの生態 | Floraの消費者–資源の動態、C/Hの既定の自己PCM除外、拍と細分での割当と振幅目標更新、生態のpace、laneの音高mode、任意の慣れによる休止 | §5.6 | 作者規則として実装済み。Rhai APIはExperimental |
+| 作者規則による時間的な振る舞い | 聞こえたattackと私的な回復によるVoiceの発音区間・休止、環境評価による音高探索の時計の伸縮 | §5.4 | 作者規則として実装済み。句の知覚や調性の安定の原理ではない |
 | DCC 第2段階：生体信号閉ループ | `[dcc]` coupling 有効時、`ListenerTwin` 圧力を pitch-search temperature へ戻す | §4.1, §6.2 | 模擬ループは実装済み・既定無効。実生体信号ループは未解決 |
 | 実際に提示された音との認知的結合 | presentation 専用分析。入力欠落時は観測を無効化し、連続した1窓分が揃うまで DCC 圧力を停止 | §6.2 | 実装済み。実機での過負荷検証は未解決 |
 | 励振と身体の放射 | 楽器とoffline用binaryで任意に選べる励振renderer。Sine/Harmonicの即時応答、Modalの自由減衰、Offと退役の分離 | §5.1, §6.1 | 実装済み。既定は従来のrenderer |
@@ -1030,7 +1060,8 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 
 - ランドスケープのパラメータとしての文化的音律体系と個人の聴覚特性。
 - `entrained`・`flow` における、演奏条件をまたいだ時間関係の持続。
-- phrase、section、長い文脈の記憶。楽器本体の外の研究として保留。
+- 句の知覚、sectionの構造、長い文脈の記憶。作者規則の休止とdwellは、これらの機構を実装していない。
+- 音高の変化を拍節構造に揃える和声の律動。既存の発音境界の制約やFloraのlaneの機会だけでは、この機構の実装とはならない。
 - 認知的な保持と干渉、重なる音の中での流れの同定。
 - DCC 第2段階の実生体信号ループ。
 - 実機の過負荷と大きな個体数での実時間受入。

@@ -358,6 +358,25 @@ impl Community {
             gap.configure(params, period);
         }
         self.rest_enabled |= voice.phonation_engine.tracks_tails();
+        if let Some(sequence) = &mut voice.pitch_ctl.own_sequence
+            && self
+                .voices
+                .iter()
+                .filter(|v| {
+                    v.pitch_ctl
+                        .own_sequence
+                        .as_ref()
+                        .is_some_and(|s| s.resident)
+                })
+                .count()
+                >= 16
+        {
+            warn!(
+                voice_id = id,
+                "follow_own_sequence: resident state resource limit; disabled until replacement"
+            );
+            sequence.reject_residency();
+        }
         self.voices.push(voice);
     }
 
@@ -509,6 +528,9 @@ impl Community {
                 }
             });
             voice.pitch_ctl.dwell_trace_enabled = auto_observe_enabled;
+            if let Some(sequence) = &mut voice.pitch_ctl.own_sequence {
+                sequence.trace_enabled = auto_observe_enabled;
+            }
             if let Some(gap) = &mut voice.phonation_engine.span_gap {
                 gap.observe(landscape, now);
                 gap.trace_enabled = auto_observe_enabled;
@@ -525,6 +547,7 @@ impl Community {
                 Some(&landscape.space),
                 batch,
             );
+            voice.finish_sequence_execution(batch, frame_end);
             if auto_observe_enabled && !was_gate_open && voice.phonation_gate_open() {
                 gate_open_events.push(PhonationGateOpenEvent {
                     time_sec,
@@ -630,6 +653,25 @@ impl Community {
             gap.configure(params, period);
         }
         self.rest_enabled |= spawned.phonation_engine.tracks_tails();
+        if let Some(sequence) = &mut spawned.pitch_ctl.own_sequence
+            && self
+                .voices
+                .iter()
+                .filter(|v| {
+                    v.pitch_ctl
+                        .own_sequence
+                        .as_ref()
+                        .is_some_and(|s| s.resident)
+                })
+                .count()
+                >= 16
+        {
+            warn!(
+                voice_id = id,
+                "follow_own_sequence: resident state resource limit; disabled until replacement"
+            );
+            sequence.reject_residency();
+        }
         self.voices.push(spawned);
         #[cfg(test)]
         crate::runtime::l1_probe::record_birth();
@@ -726,6 +768,16 @@ impl Community {
             .any(|v| v.effective_control.pitch.leave_self_out || v.selection_environment)
         {
             self.update_loo_ownership(landscape);
+        }
+        let sequence_field = self
+            .voices
+            .iter()
+            .any(|v| v.sequence_control.is_some())
+            .then(|| std::sync::Arc::new(landscape.clone()));
+        for voice in &mut self.voices {
+            if let Some(deferred) = &mut voice.sequence_control {
+                deferred.field = sequence_field.clone();
+            }
         }
         let mut rhythms = landscape.rhythm;
         let global_coupling = self.global_coupling;

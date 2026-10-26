@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add initial-only `follow_own_sequence(w)` for stepwise sustained Voices, default
+  zero. A fixed PPM-Decay candidate model learns executed self pitch intervals;
+  an author rule adds positive follow after candidate generation. Sample-ordered
+  execution records and paired counterfactual decisions distinguish learned sound
+  from rejected targets. Glide and unsupported configurations warn and disable it.
+  This does not learn rhythm or harmonic context, form phrases, or change defaults.
+
 - Extend the shared production analysis grid down to 55·2^(−7/8) Hz
   (approximately 29.989 Hz), adding 84 low-frequency bins and four auditory
   channels. Runtime analysis, sample-rate validation, and body fallbacks use

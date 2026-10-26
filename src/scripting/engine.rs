@@ -739,6 +739,27 @@ impl ScriptHost {
                 spec
             },
         );
+        // Clamp finite Rhai floats before narrowing to the DSP representation.
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "follow_own_sequence",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
+                spec.spec
+                    .record_call("follow_own_sequence", call.call_position(), &diagnostics);
+                spec.spec.set_follow_own_sequence(weight);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "follow_own_sequence",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
+                spec.spec
+                    .record_call("follow_own_sequence", call.call_position(), &diagnostics);
+                spec.spec.set_follow_own_sequence(weight as FLOAT);
+                spec
+            },
+        );
         // Tier 3: expert tuning
         register_population_spec_numeric_methods(
             &mut engine,

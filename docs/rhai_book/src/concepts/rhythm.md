@@ -553,3 +553,51 @@ adoption, rearticulation thresholds, pending-target replacement, legal beats and
 vetoes determine actual On events. The clock continues through `rest_on_habituation`
 gaps and is not reset on return. Adaptation, glide and private attack recovery use
 real seconds; the movement-cost window retains its original meaning.
+
+## Following a Voice's own pitch sequence
+
+`follow_own_sequence(w)` favors pitch intervals that the Voice has learned from
+its own executed notes. It is an initial-only option with default weight zero.
+For example:
+
+```rhai
+let voice = modal().sustain().metric().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(0)
+    .follow_own_sequence(0.05);
+place(voice, consonance(220.0, 880.0));
+wait(12.0);
+```
+
+The candidate model is **PPM-Decay (Harrison, Bianco, Chait, Pearce 2020)**.
+Mapping execution to symbols and coupling prediction to generation are **author
+rules**. This is not a validated theory of melodic composition. The initial goal
+is only that the order of self-executed pitches can change the next pitch choice.
+It does not learn duration, timing, rests or harmonic context, or create phrases.
+
+The supported initial form is free `seek_consonance()` with explicit `sustain()`
+and `metric()`, `entrained()`, `steady()` or `flow()`. Pitch application must be
+`gate_snap` or `rearticulate`, with `rearticulate_above(0)` and without `articulation_persistence()`. Positive rearticulation thresholds can glide small
+movements and are therefore unsupported, as is `pitch_apply_mode("glide")`.
+Unsupported final configurations warn and ignore the word, independent of method
+order. A later loss of support closes the learning epoch; the next supported
+onset starts a new reference. A pause or release alone does not erase learning.
+
+The first onset establishes a reference. Each later onset contributes the signed
+interval from the preceding executed pitch, rounded to 100 cents for learning
+only. The sound itself remains continuous in pitch space. One decision retrieves
+one fixed probability distribution. Existing candidates are generated first,
+then receive `w * (log₂ p_candidate - log₂ p_current)`. Both symbols
+use the same last executed pitch. Higher weights can overpower the harmonic field
+and reinforce an accidental pattern; they do not guarantee stopping or variety.
+`0.05` score/bit is a small initial example, not a fitted or optimal value.
+
+Finite nonnegative weights have no upper clamp. Negative and non-finite inputs
+warn and become zero. Replacements inherit the weight, with fresh learning and a
+separate random stream. With zero weight no sequence learning, retrieval or
+random draws occur. The initial resource envelope is 16 resident states,
+600 seconds per Voice, 4,800 learned intervals, 38,400 decisions and 64 candidates
+per decision, with declared ranges inside 20–20,000 Hz. Exceeding support stops
+sequence scoring until replacement; small decayed traces are never silently
+discarded. Non-finite probability or score calculations disable that decision's
+sequence term and are diagnostic failures, not successful predictions. Execution,
+learning and decision records distinguish actual onsets from unexecuted targets.

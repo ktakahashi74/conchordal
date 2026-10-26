@@ -588,6 +588,20 @@ impl ScriptContext {
                 .phonation
                 .articulation_persistence = 0.0;
         }
+        if population_spec.spec.control.pitch.follow_own_sequence > 0.0
+            && (!population_spec.spec.consonance_movement
+                || !population_spec
+                    .spec
+                    .spawn_spec()
+                    .control
+                    .supports_own_sequence())
+        {
+            warn_at(
+                "follow_own_sequence",
+                "follow_own_sequence() requires free seek_consonance(), stepwise sustained participation, no glide or articulation persistence; ignored",
+            );
+            population_spec.spec.control.pitch.follow_own_sequence = 0.0;
+        }
         if population_spec.spec.control.pitch.dwell > 0.0
             && (!population_spec.spec.consonance_movement
                 || population_spec.spec.control.pitch.mode != PitchMode::Free)

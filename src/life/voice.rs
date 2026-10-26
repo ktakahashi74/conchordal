@@ -25,6 +25,8 @@ pub(crate) mod articulation_core;
 pub(crate) mod pitch_controller;
 #[path = "pitch_core.rs"]
 pub(crate) mod pitch_core;
+#[path = "sequence_execution.rs"]
+pub(crate) mod sequence_execution;
 #[path = "sound_body.rs"]
 pub(crate) mod sound_body;
 
@@ -49,6 +51,7 @@ pub struct VoiceMetadata {
 
 #[derive(Debug)]
 pub struct Voice {
+    pub(super) sequence_control: Option<sequence_execution::DeferredPitch>,
     pub id: u64,
     pub metadata: VoiceMetadata,
     fixed_body_method: BodyMethod,
@@ -612,6 +615,19 @@ impl Voice {
         );
         pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
         pitch_ctl.dwell_state = initial_dwell;
+        if effective_control.pitch.follow_own_sequence > 0.0
+            && effective_control.supports_own_sequence()
+        {
+            let half = effective_control.pitch.range_oct.clamp(0.0, 6.0) * 0.5;
+            pitch_ctl.own_sequence = Some(crate::life::own_sequence::OwnSequence::new(
+                seed_offset,
+                assigned_id,
+                metadata.generation,
+                fs,
+                effective_control.pitch.follow_own_sequence,
+                (target_pitch_log2 - half, target_pitch_log2 + half),
+            ));
+        }
 
         let body_envelope = &effective_control.body.envelope;
         let voice_adsr = Some(super::sound::ToneAdsr {
@@ -659,6 +675,9 @@ impl Voice {
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
         Voice {
+            sequence_control: (effective_control.pitch.follow_own_sequence > 0.0
+                && effective_control.supports_own_sequence())
+            .then(sequence_execution::DeferredPitch::default),
             participation_pitch: ParticipationPitchState {
                 steps: Vec::new(),
                 application: pitch_application,
@@ -735,6 +754,9 @@ impl Voice {
                 && matches!(self.phonation_engine.clock, PhonationClock::Coupling(_))
             {
                 capacity = capacity.max(self.phonation_engine.reserve_synchronized_hop(hop, fs));
+            }
+            if let Some(deferred) = &mut self.sequence_control {
+                deferred.reserve(capacity + 1);
             }
             self.participation_pitch.rearticulations.reserve(capacity);
             if let Some(shape) = self.phonation_engine.clock.shape_mut() {
@@ -815,6 +837,24 @@ impl Voice {
     }
 
     fn apply_effective_control(&mut self, control: VoiceControl, dirty: Dirty) {
+        if self.pitch_ctl.own_sequence.is_some()
+            && (control.supports_own_sequence() != self.effective_control.supports_own_sequence()
+                || control.pitch.freq != self.effective_control.pitch.freq
+                || control.pitch.range_oct != self.effective_control.pitch.range_oct)
+        {
+            let was_supported = self.pitch_ctl.own_sequence.as_ref().unwrap().supported;
+            self.pitch_ctl.own_sequence.as_mut().unwrap().supported = false;
+            self.flush_sequence_controls();
+            self.pitch_ctl.own_sequence.as_mut().unwrap().supported = was_supported;
+            let center = control.pitch.freq.log2();
+            let half = control.pitch.range_oct.clamp(0.0, 6.0) * 0.5;
+            if let Some(sequence) = &mut self.pitch_ctl.own_sequence {
+                sequence.reconfigure(
+                    control.supports_own_sequence(),
+                    (center - half, center + half),
+                );
+            }
+        }
         self.effective_control = control;
         if dirty.body {
             self.apply_body_runtime();
@@ -946,6 +986,45 @@ impl Voice {
         neighbor_salience: &[f32],
         listener_pressure: ListenerPressure,
     ) {
+        if self.effective_control.supports_own_sequence()
+            && let Some(deferred) = &mut self.sequence_control
+        {
+            deferred.push(
+                self.control_tick,
+                self.body.base_freq_hz(),
+                rhythms,
+                dt_sec,
+                landscape,
+                &self.effective_control.pitch,
+                neighbor_pitch_log2,
+                neighbor_salience,
+                listener_pressure,
+            );
+            self.participation_pitch.adopted = false;
+            return;
+        }
+        self.decide_pitch_from_frequency(
+            self.body.base_freq_hz(),
+            rhythms,
+            dt_sec,
+            landscape,
+            neighbor_pitch_log2,
+            neighbor_salience,
+            listener_pressure,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn decide_pitch_from_frequency(
+        &mut self,
+        current_freq: f32,
+        rhythms: &NeuralRhythms,
+        dt_sec: f32,
+        landscape: &Landscape,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        listener_pressure: ListenerPressure,
+    ) {
         #[cfg(feature = "loo-diagnostic")]
         self::pitch_core::diagnostic::set_owner(
             self.id,
@@ -953,7 +1032,6 @@ impl Voice {
             self.metadata.generation,
             self.control_tick.unwrap_or(0),
         );
-        let current_freq = self.body.base_freq_hz();
         let previous = self.target_pitch_log2();
         self.pitch_ctl.control_tick = self.control_tick;
         self.participation_pitch.adopted = self.pitch_ctl.update_pitch_target(
@@ -1436,6 +1514,12 @@ impl Voice {
             clock.hop_frames = hop_tick;
         }
         self.phonation_engine.set_sound_adsr(self.voice_adsr);
+        if self.sequence_control.is_some() && self.effective_control.supports_own_sequence() {
+            self.emit_sequence_participation(
+                &ctx, &state, consonance, target_amp, arrival, space, out,
+            );
+            return;
+        }
         if self.sustain_participation
             && let Some(shape) = self.phonation_engine.clock.shape_mut()
         {

@@ -814,7 +814,7 @@ fn final_scores(
         .copied()
         .zip(scores.iter().copied())
         .collect();
-    hill.select_scored(pitches[3], scores[3], &mut scored, rng)
+    hill.select_scored(pitches[3], scores[3], &mut scored, rng, None)
 }
 
 fn projected_power(recipe: &Recipe, environment: &Landscape) -> Vec<f32> {

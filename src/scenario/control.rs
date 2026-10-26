@@ -21,6 +21,17 @@ pub struct VoiceControl {
 }
 
 impl VoiceControl {
+    pub(crate) fn supports_own_sequence(&self) -> bool {
+        self.pitch.mode == PitchMode::Free
+            && self.pitch.core_kind == PitchCoreKind::HillClimb
+            && matches!(
+                self.pitch.pitch_apply_mode,
+                PitchApplyMode::GateSnap | PitchApplyMode::Rearticulate
+            )
+            && self.pitch.rearticulate_above_cents == 0.0
+            && self.phonation.spec.is_sustained_participation()
+            && self.phonation.articulation_persistence == 0.0
+    }
     pub(crate) fn supports_tie(&self) -> bool {
         self.pitch.mode == PitchMode::Free
             && matches!(
@@ -247,6 +258,7 @@ pub struct PitchControl {
     pub move_cost_exp: Option<u8>,
     pub proposal_interval_sec: Option<f32>,
     pub(crate) dwell: f32,
+    pub(crate) follow_own_sequence: f64,
     pub global_peak_count: usize,
     pub global_peak_min_sep_cents: f32,
     pub use_ratio_candidates: bool,
@@ -280,6 +292,7 @@ impl Default for PitchControl {
             move_cost_exp: None,
             proposal_interval_sec: None,
             dwell: 0.0,
+            follow_own_sequence: 0.0,
             global_peak_count: 0,
             global_peak_min_sep_cents: DEFAULT_GLOBAL_PEAK_MIN_SEP_CENTS,
             use_ratio_candidates: false,

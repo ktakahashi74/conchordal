@@ -322,6 +322,13 @@ fn flow(population_spec: PopulationSpec) -> PopulationSpec;
 /// Emit pending live patches without advancing time.
 fn flush();
 
+/// Favor continuations learned from this Voice's executed pitch intervals.
+/// Initial-only finite nonnegative score/bit weight; default 0, example 0.05. Negative or non-finite values warn and become 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Glide and unsupported final forms warn and disable it. Existing tie behavior remains. Candidate model: PPM-Decay (Harrison, Bianco, Chait, Pearce 2020). Symbol encoding and generation coupling are author rules. Learns rounded intervals from committed self onsets; output stays unquantized. Adds follow after candidate generation. Replacements inherit weight but start empty. No rhythm, harmony or phrase learning. See Rhythm for resource limits and numerical failures.
+fn follow_own_sequence(population_spec: PopulationSpec, w: f64) -> PopulationSpec;
+/// Favor continuations learned from this Voice's executed pitch intervals.
+/// Initial-only finite nonnegative score/bit weight; default 0, example 0.05. Negative or non-finite values warn and become 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Glide and unsupported final forms warn and disable it. Existing tie behavior remains. Candidate model: PPM-Decay (Harrison, Bianco, Chait, Pearce 2020). Symbol encoding and generation coupling are author rules. Learns rounded intervals from committed self onsets; output stays unquantized. Adds follow after candidate generation. Replacements inherit weight but start empty. No rhythm, harmony or phrase learning. See Rhythm for resource limits and numerical failures.
+fn follow_own_sequence(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
+
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 fn freq(population: Population, hz: f64) -> Population;
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).

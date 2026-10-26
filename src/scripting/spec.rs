@@ -382,6 +382,15 @@ impl PopulationSpec {
             .set_move_cost_exp_clamped(value.round() as i64);
     }
 
+    pub(super) fn set_follow_own_sequence(&mut self, value: FLOAT) {
+        self.control.pitch.follow_own_sequence = if value.is_finite() && value >= 0.0 {
+            value
+        } else {
+            self.warn("follow_own_sequence() expects a finite nonnegative weight; using 0".into());
+            0.0
+        };
+    }
+
     pub(super) fn set_dwell(&mut self, value: FLOAT) {
         if !(value as f32).is_finite() || value < 0.0 {
             self.warn(

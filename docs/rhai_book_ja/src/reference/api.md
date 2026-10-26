@@ -634,6 +634,16 @@ dwell(w)
 
 Slow pitch proposals while the current environment level is high. Initial-only author rule for free seek_consonance(), default 0. Finite nonnegative f32 weights have no upper clamp; negative, non-finite or unsupported values warn and become 0. Proposal phase advances at max{0,1+w*(1-2L)}; L is the habituated environment level at the current pitch, using pitch self-exclusion when available. For w>1 it stops at L>=(1+1/w)/2; maximum speed is 1+w at L=0. Replacements inherit weight and reset phase. Gap preserves the clock. Adaptation and movement costs retain their time units. Proposals never force onsets or change sound duration. See the Rhythm chapter for interpolation, conversion and why habituation does not guarantee departure.
 
+#### `follow_own_sequence`
+
+```rhai,ignore
+follow_own_sequence(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Favor continuations learned from this Voice's executed pitch intervals. Initial-only finite nonnegative score/bit weight; default 0, example 0.05. Negative or non-finite values warn and become 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Glide and unsupported final forms warn and disable it. Existing tie behavior remains. Candidate model: PPM-Decay (Harrison, Bianco, Chait, Pearce 2020). Symbol encoding and generation coupling are author rules. Learns rounded intervals from committed self onsets; output stays unquantized. Adds follow after candidate generation. Replacements inherit weight but start empty. No rhythm, harmony or phrase learning. See Rhythm for resource limits and numerical failures.
+
 #### `anchor`
 
 ```rhai,ignore

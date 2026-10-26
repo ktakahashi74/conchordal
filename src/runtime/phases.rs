@@ -132,6 +132,17 @@ pub(super) fn advance_population(
     if state.reporter.is_some() {
         for voice in &mut state.pop.voices {
             let id = voice.id();
+            if let Some(sequence) = &mut voice.pitch_ctl.own_sequence {
+                report_try(&mut state.reporter, "own sequence", |writer| {
+                    writer.write_own_sequence(
+                        id,
+                        voice.metadata.generation,
+                        cfg.fs as u32,
+                        sequence,
+                        &mut voice.pitch_ctl.sequence_decisions,
+                    )
+                });
+            }
             if state.scenario_end_tick.is_none()
                 && state.conductor.is_done()
                 && let Some(mut record) = voice.pitch_ctl.dwell_state

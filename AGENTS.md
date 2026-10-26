@@ -580,6 +580,22 @@ unknown key, or invalid numeric range fails the run.
 
 ## Environment-weighted pitch proposals
 
+- `follow_own_sequence(w)` is initial-only, finite nonnegative, default zero.
+  PPM-Decay (Harrison et al. 2020, ppm v0.1.1) is a candidate model; the 100-cent
+  executed-interval encoder, execution adapter and positive follow score are author
+  rules. It supports free HillClimb with stepwise sustained participation only;
+  glide, positive rearticulation thresholds and persistence warn and disable it.
+  Existing tie behavior, including metric default tie(1), is retained.
+- Sequence-enabled pitch controls retain their original field, rhythm, neighbors
+  and sample inputs, then execute between committed phonation segments. Learn only
+  actual self onsets, never proposals; one retrieval snapshot serves a whole decision.
+  Counterfactual selection shares candidates and clones the selection RNG state.
+  Weight zero retains the original execution path and random consumption.
+- Retain all traces within the declared 16-state, 600-second, 4,800-interval,
+  38,400-decision, 64-candidate envelope. Resource exhaustion disables sequence
+  scoring until replacement. Support loss starts a new epoch; pause/release and
+  inferred phrase boundaries do not reset it. Do not claim harmony or rhythm learning.
+
 - `dwell(w)` is an initial-only author rule for free `seek_consonance()` Voices,
   default zero. Finite nonnegative f32 values have no upper clamp; negative or
   non-finite values (including f32 conversion overflow) warn and become zero.

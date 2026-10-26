@@ -24,6 +24,8 @@ pub struct PitchController {
     #[cfg(test)]
     pub(crate) trace_owner: Option<(u64, u32)>,
     core: AnyPitchCore,
+    pub(crate) own_sequence: Option<crate::life::own_sequence::OwnSequence>,
+    pub(crate) sequence_decisions: Vec<crate::life::own_sequence::SequenceDecision>,
     adaptation: AdaptationContext,
     target_pitch_log2: f32,
     integration_window: f32,
@@ -58,6 +60,8 @@ impl PitchController {
             #[cfg(test)]
             trace_owner: None,
             core,
+            own_sequence: None,
+            sequence_decisions: Vec::new(),
             adaptation,
             target_pitch_log2,
             integration_window,
@@ -291,6 +295,13 @@ impl PitchController {
             );
             let features = FeaturesNow::from_occupancy_scan(&landscape.space, &self.occupancy_scan);
             self.adaptation.ensure_len(features.density.len());
+            if let AnyPitchCore::PitchHillClimb(core) = &mut self.core {
+                core.sequence_enabled = self.own_sequence.is_some();
+                core.sequence_trace = self.own_sequence.as_ref().is_some_and(|s| s.trace_enabled);
+                core.sequence = self
+                    .control_tick
+                    .and_then(|at| self.own_sequence.as_mut().and_then(|seq| seq.predict(at)));
+            }
             #[cfg(feature = "loo-diagnostic")]
             super::pitch_core::diagnostic::replay(
                 &self.core,
@@ -317,6 +328,22 @@ impl PitchController {
                 neighbor_salience,
                 &mut self.rng,
             );
+            if let AnyPitchCore::PitchHillClimb(core) = &self.core
+                && let Some(mut record) = core.sequence_decision.borrow_mut().take()
+            {
+                record.at = self.control_tick.unwrap_or(0);
+                if let Some(seq) = &mut self.own_sequence {
+                    if let Some(reason) = record.reason {
+                        seq.reason = Some(reason);
+                    }
+                    if record.reason == Some("candidate_resource_limit") {
+                        seq.resource_stopped = true;
+                    }
+                    if seq.trace_enabled {
+                        self.sequence_decisions.push(record);
+                    }
+                }
+            }
             target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
             if self.adaptation_enabled
@@ -360,6 +387,13 @@ impl PitchController {
         };
         target_pitch_log2 = clamped;
         self.target_pitch_log2 = target_pitch_log2;
+        if should_propose
+            && previous_target > 0.0
+            && target_pitch_log2 != previous_target
+            && let (Some(sequence), Some(at)) = (&mut self.own_sequence, self.control_tick)
+        {
+            sequence.bind_target(at, target_pitch_log2);
+        }
         #[cfg(test)]
         if should_propose && let Some(owner) = self.trace_owner {
             crate::life::body_metabolism::assay::log_move(owner, target_pitch_log2);

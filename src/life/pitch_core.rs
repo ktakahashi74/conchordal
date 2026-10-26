@@ -49,7 +49,7 @@ pub struct TargetProposal {
 
 #[allow(clippy::too_many_arguments)]
 pub trait PitchCore {
-    fn propose_target<R: Rng + ?Sized>(
+    fn propose_target<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -63,7 +63,7 @@ pub trait PitchCore {
     ) -> TargetProposal;
 
     #[allow(clippy::too_many_arguments)]
-    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+    fn propose_target_with_crowding_salience<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -118,6 +118,11 @@ pub struct PitchHillClimbPitchCore {
     loo_input: LooInput,
     #[cfg(feature = "loo-diagnostic")]
     diagnostic_variant: Option<&'static str>,
+    pub(crate) sequence: Option<crate::life::own_sequence::SequenceSnapshot>,
+    pub(crate) sequence_enabled: bool,
+    pub(crate) sequence_trace: bool,
+    pub(crate) sequence_decision:
+        std::cell::RefCell<Option<crate::life::own_sequence::SequenceDecision>>,
     scratch: std::cell::RefCell<ProposalScratch>,
 }
 
@@ -127,6 +132,7 @@ struct ProposalScratch {
     peaks: Vec<(f32, f32)>,
     scored: Vec<(f32, f32)>,
     ratios: Vec<f32>,
+    counterfactual: Vec<(f32, f32)>,
 }
 
 impl PitchHillClimbPitchCore {
@@ -161,6 +167,10 @@ impl PitchHillClimbPitchCore {
             loo_input: LooInput::default(),
             #[cfg(feature = "loo-diagnostic")]
             diagnostic_variant: None,
+            sequence: None,
+            sequence_enabled: false,
+            sequence_trace: false,
+            sequence_decision: Default::default(),
             scratch: Default::default(),
         }
     }
@@ -281,7 +291,7 @@ impl PitchHillClimbPitchCore {
     /// must return the same value. It is invoked during local/global peak scanning,
     /// candidate rescoring, and the current-position baseline, so a stateful scorer
     /// that returns different values per call will produce inconsistent proposals.
-    pub fn propose_with_scorer<R: Rng + ?Sized>(
+    pub fn propose_with_scorer<R: Rng + Clone>(
         &self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -304,6 +314,7 @@ impl PitchHillClimbPitchCore {
             peaks,
             scored,
             ratios,
+            counterfactual,
         } = &mut *scratch;
         candidates.clear();
         candidates.extend(seed_step_candidates(
@@ -354,7 +365,17 @@ impl PitchHillClimbPitchCore {
         dedupe_log2_by_cents(candidates, 1.0);
         scored.clear();
         for &candidate in candidates.iter() {
-            let pitch = candidate.clamp(fmin, fmax);
+            let mut pitch = candidate.clamp(fmin, fmax);
+            if let Some(snapshot) = self
+                .sequence
+                .as_ref()
+                .filter(|s| s.bounds_log2.0.max(fmin) <= s.bounds_log2.1.min(fmax))
+            {
+                pitch = pitch.clamp(
+                    snapshot.bounds_log2.0.max(fmin),
+                    snapshot.bounds_log2.1.min(fmax),
+                );
+            }
             let score = scorer(pitch);
             if score.is_finite() {
                 scored.push((pitch, score));
@@ -369,22 +390,136 @@ impl PitchHillClimbPitchCore {
 
         #[cfg(feature = "loo-diagnostic")]
         diagnostic::record_candidates(scored);
+        let current_target_log2 = self
+            .sequence
+            .as_ref()
+            .filter(|s| s.bounds_log2.0.max(fmin) <= s.bounds_log2.1.min(fmax))
+            .map_or(current_target_log2, |snapshot| {
+                current_target_log2.clamp(
+                    snapshot.bounds_log2.0.max(fmin),
+                    snapshot.bounds_log2.1.min(fmax),
+                )
+            });
         let current_adjusted = scorer(current_target_log2);
-        self.select_scored(current_target_log2, current_adjusted, scored, rng)
+        self.select_with_sequence(
+            current_target_log2,
+            current_adjusted,
+            scored,
+            counterfactual,
+            rng,
+        )
     }
 
-    fn select_scored<R: Rng + ?Sized>(
+    pub(super) fn select_with_sequence<R: Rng + Clone>(
+        &self,
+        current_target_log2: f32,
+        current_adjusted: f32,
+        scored: &mut Vec<(f32, f32)>,
+        counterfactual: &mut Vec<(f32, f32)>,
+        rng: &mut R,
+    ) -> TargetProposal {
+        if !self.sequence_enabled {
+            return self.select_scored(current_target_log2, current_adjusted, scored, rng, None);
+        }
+        counterfactual.clear();
+        counterfactual.extend_from_slice(scored);
+        let mut reason = None;
+        let mut terms = Vec::new();
+        if let Some(snapshot) = &self.sequence {
+            if scored.len() > 64 {
+                reason = Some("candidate_resource_limit");
+            } else {
+                for (pitch, score) in scored.iter_mut() {
+                    match snapshot.contribution(*pitch, current_target_log2) {
+                        Some(term) if ((*score as f64 + term) as f32).is_finite() => {
+                            let exact = *score as f64 + term;
+                            let combined = exact as f32;
+                            if self.sequence_trace {
+                                terms.push(crate::life::own_sequence::CandidateScore {
+                                    pitch_log2: *pitch,
+                                    existing: *score,
+                                    sequence: term,
+                                    combined,
+                                    rounding_error: (combined as f64 - exact).abs(),
+                                });
+                            }
+                            *score = combined;
+                        }
+                        _ => {
+                            reason = Some("nonfinite_sequence_score");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if reason.is_some() {
+            scored.copy_from_slice(counterfactual);
+        }
+        let mut counter_rng = rng.clone();
+        let without = self.select_scored(
+            current_target_log2,
+            current_adjusted,
+            counterfactual,
+            &mut counter_rng,
+            None,
+        );
+        let mut precision = (self.sequence_trace && self.sequence.is_some()).then(|| {
+            crate::life::own_sequence::SelectionPrecision {
+                score_error_bound: terms.iter().map(|t| t.rounding_error).fold(0.0, f64::max)
+                    + 4e-12 * self.sequence.as_ref().unwrap().weight,
+                ..Default::default()
+            }
+        });
+        let selected = self.select_scored(
+            current_target_log2,
+            current_adjusted,
+            scored,
+            rng,
+            precision.as_mut(),
+        );
+        *self.sequence_decision.borrow_mut() = Some(crate::life::own_sequence::SequenceDecision {
+            at: self.sequence.as_ref().map_or(0, |s| s.at),
+            epoch: self.sequence.as_ref().map_or(0, |s| s.epoch),
+            version: self.sequence.as_ref().map_or(0, |s| s.version),
+            active: self.sequence.is_some() && reason.is_none(),
+            reason,
+            baseline_log2: current_target_log2,
+            selected_log2: selected.target_pitch_log2,
+            without_sequence_log2: without.target_pitch_log2,
+            changed: selected.target_pitch_log2.to_bits() != without.target_pitch_log2.to_bits(),
+            previous_hz: self.sequence.as_ref().map(|s| s.previous_hz),
+            distribution: self
+                .sequence
+                .as_ref()
+                .filter(|_| self.sequence_trace)
+                .map_or_else(Vec::new, |s| s.probabilities[..s.alphabet].to_vec()),
+            candidates: terms,
+            precision,
+        });
+        selected
+    }
+
+    fn select_scored<R: Rng + Clone>(
         &self,
         current_target_log2: f32,
         current_adjusted: f32,
         scored: &mut Vec<(f32, f32)>,
         rng: &mut R,
+        mut precision: Option<&mut crate::life::own_sequence::SelectionPrecision>,
     ) -> TargetProposal {
         let mut best_pitch = current_target_log2;
         let mut best_score = f32::MIN;
         let mut best_distance = f32::INFINITY;
         for &(pitch, score) in scored.iter() {
             let distance = (pitch - current_target_log2).abs();
+            if let Some(audit) = precision.as_deref_mut() {
+                let error = 2.0 * audit.score_error_bound
+                    + f32::EPSILON as f64 * (score.abs() as f64 + best_score.abs() as f64);
+                if ((score as f64 - best_score as f64).abs() - 1e-6).abs() <= error {
+                    audit.uncertain_rank_comparisons += 1;
+                }
+            }
             let better_score = score > best_score + 1e-6;
             let same_score = (score - best_score).abs() <= 1e-6;
             let closer = distance < best_distance - 1e-6;
@@ -399,6 +534,12 @@ impl PitchHillClimbPitchCore {
 
         let improvement = best_score - current_adjusted;
         let mut target_pitch_log2 = current_target_log2;
+        if let Some(audit) = precision.as_deref_mut() {
+            let error = audit.score_error_bound
+                + f32::EPSILON as f64 * (best_score.abs() as f64 + current_adjusted.abs() as f64);
+            audit.greedy_margin = improvement as f64 - IMPROVEMENT_THRESHOLD as f64;
+            audit.greedy_uncertain = audit.greedy_margin.abs() <= error;
+        }
 
         if improvement > IMPROVEMENT_THRESHOLD {
             target_pitch_log2 = best_pitch;
@@ -410,7 +551,31 @@ impl PitchHillClimbPitchCore {
                 let pick = rng.random_range(0..scored.len());
                 let (candidate_pitch, candidate_score) = scored[pick];
                 let delta = candidate_score - current_adjusted;
-                if delta >= 0.0 || rng.random_range(0.0..1.0) < (delta / self.temperature).exp() {
+                let draw = if delta >= 0.0 {
+                    None
+                } else {
+                    Some(rng.random_range(0.0..1.0))
+                };
+                let probability = if delta >= 0.0 {
+                    1.0
+                } else {
+                    (delta / self.temperature).exp()
+                };
+                if let Some(audit) = precision {
+                    let error = audit.score_error_bound
+                        + f32::EPSILON as f64
+                            * (candidate_score.abs() as f64 + current_adjusted.abs() as f64);
+                    let relative = (error / self.temperature as f64).exp_m1();
+                    audit.acceptance_probability = Some(probability);
+                    audit.acceptance_draw = draw;
+                    audit.acceptance_relative_error = Some(relative);
+                    audit.acceptance_uncertain = (delta as f64).abs() <= error
+                        || draw.is_some_and(|u| {
+                            (u as f64 - probability as f64).abs()
+                                <= probability as f64 * relative + 2.0 * f32::EPSILON as f64
+                        });
+                }
+                if delta >= 0.0 || draw.is_some_and(|u| u < probability) {
                     target_pitch_log2 = candidate_pitch;
                 }
             }
@@ -425,7 +590,7 @@ impl PitchHillClimbPitchCore {
 }
 
 impl PitchCore for PitchHillClimbPitchCore {
-    fn propose_target<R: Rng + ?Sized>(
+    fn propose_target<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -451,7 +616,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         )
     }
 
-    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+    fn propose_target_with_crowding_salience<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -679,7 +844,7 @@ impl PitchPeakSamplerCore {
 }
 
 impl PitchCore for PitchPeakSamplerCore {
-    fn propose_target<R: Rng + ?Sized>(
+    fn propose_target<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -705,7 +870,7 @@ impl PitchCore for PitchPeakSamplerCore {
         )
     }
 
-    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+    fn propose_target_with_crowding_salience<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -1637,7 +1802,7 @@ fn score_candidates_with(
     scored
 }
 
-fn push_gaussian_candidates<R: Rng + ?Sized>(
+fn push_gaussian_candidates<R: Rng + Clone>(
     candidates: &mut Vec<f32>,
     center_log2: f32,
     min_log2: f32,
@@ -1657,7 +1822,7 @@ fn push_gaussian_candidates<R: Rng + ?Sized>(
     }
 }
 
-fn sample_standard_normal<R: Rng + ?Sized>(rng: &mut R) -> f32 {
+fn sample_standard_normal<R: Rng + Clone>(rng: &mut R) -> f32 {
     let u1 = rng.random_range(f32::EPSILON..1.0);
     let u2 = rng.random_range(0.0..1.0);
     let mag = (-2.0 * u1.ln()).sqrt();
@@ -1665,7 +1830,7 @@ fn sample_standard_normal<R: Rng + ?Sized>(rng: &mut R) -> f32 {
     mag * angle.cos()
 }
 
-fn sample_softmax_candidate<R: Rng + ?Sized>(
+fn sample_softmax_candidate<R: Rng + Clone>(
     scored: &[(f32, f32)],
     temperature: f32,
     rng: &mut R,
@@ -1725,13 +1890,15 @@ fn dedupe_log2_by_cents(values_log2: &mut Vec<f32>, dedupe_cents: f32) {
 }
 
 #[derive(Debug, Clone)]
+// Fixed snapshots avoid allocating on each sequence-enabled pitch decision.
+#[allow(clippy::large_enum_variant)]
 pub enum AnyPitchCore {
     PitchHillClimb(PitchHillClimbPitchCore),
     PitchPeakSampler(PitchPeakSamplerCore),
 }
 
 impl PitchCore for AnyPitchCore {
-    fn propose_target<R: Rng + ?Sized>(
+    fn propose_target<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,
@@ -1769,7 +1936,7 @@ impl PitchCore for AnyPitchCore {
         }
     }
 
-    fn propose_target_with_crowding_salience<R: Rng + ?Sized>(
+    fn propose_target_with_crowding_salience<R: Rng + Clone>(
         &mut self,
         current_pitch_log2: f32,
         current_target_log2: f32,

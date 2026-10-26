@@ -162,6 +162,34 @@ pub(crate) struct ParticipationOutcomeSample {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
+    OwnSequenceLearning {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::life::own_sequence::SequenceLearning,
+    },
+    SelfExecution {
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::life::own_sequence::ExecutionRecord,
+    },
+    OwnSequence {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::life::own_sequence::SequenceDecision,
+    },
+    OwnSequenceState {
+        voice_id: u64,
+        generation: u32,
+        epoch: u64,
+        history_version: u64,
+        retained_intervals: usize,
+        resource_stopped: bool,
+        reason: Option<&'static str>,
+    },
     Flora(crate::life::flora::FloraReport<'a>),
     TemporalMeter(&'a TemporalMeterSample),
     BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
@@ -783,6 +811,51 @@ impl JsonlReporter {
             sample_rate,
             state,
         })
+    }
+
+    pub(crate) fn write_own_sequence(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        sequence: &mut crate::life::own_sequence::OwnSequence,
+        decisions: &mut Vec<crate::life::own_sequence::SequenceDecision>,
+    ) -> Result<(), String> {
+        let changed = !sequence.executions.is_empty() || !decisions.is_empty();
+        for record in sequence.executions.drain(..) {
+            self.write_record(&ReportRecord::SelfExecution {
+                sample_rate,
+                record: &record,
+            })?;
+        }
+        for record in sequence.learning.drain(..) {
+            self.write_record(&ReportRecord::OwnSequenceLearning {
+                voice_id,
+                generation,
+                sample_rate,
+                record: &record,
+            })?;
+        }
+        for record in decisions.drain(..) {
+            self.write_record(&ReportRecord::OwnSequence {
+                voice_id,
+                generation,
+                sample_rate,
+                record: &record,
+            })?;
+        }
+        if changed {
+            self.write_record(&ReportRecord::OwnSequenceState {
+                voice_id,
+                generation,
+                epoch: sequence.epoch,
+                history_version: sequence.version,
+                retained_intervals: sequence.model.symbols.len(),
+                resource_stopped: sequence.resource_stopped,
+                reason: sequence.reason,
+            })?;
+        }
+        Ok(())
     }
 
     pub(crate) fn write_span_gap(

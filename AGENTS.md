@@ -180,6 +180,42 @@ echo "cargo test exit=$? @ $(date -Iseconds)" > test_status.txt
   pre-hearing predictions unless a consumer needs them.
 
 
+## Mechanism Evidence and Composer Controls
+
+Follow [ledger §9.3.104](docs/design-notes/technote-ledger.md#mechanism-evidence-and-composer-controls)
+(adopted 2026-10-27). Classify each mechanism as principle, candidate or author rule;
+separate mixed-tier parts of a term. A candidate has a published formal model but an
+unidentified brain mechanism or task-fitted parameters: preserve its source equations
+and values, and identify author-rule additions. This does not change §9.3.57's
+source-matched versus original computation rule or §9.3.56's five listener layers.
+
+- Keep defaults > presets > individual axes. Principles operate by default;
+  candidate and author-rule axes are neutral by default. Qualifying candidates may
+  enter one default listener preset after source agreement and author adoption by
+  listening; allow removal or replacement of that preset with one term. Check the
+  preset and existing vocabulary before adding a term, and prune displaced author
+  rules after candidate layers arrive.
+- The composer chooses hypothesis use and weight, and style-dependent priors, in
+  layer-3 cognitive coordinates. Do not expose layer-4 memory/learning dynamics or
+  change layer-1 sensation. Initial conditions and macro form remain author choices.
+- Accept principles and candidates by source agreement, registered causal difference
+  and real-time operation on the declared load. Candidate acceptance verifies the
+  implementation of a hypothesis, not its truth. Author rules require implementation
+  checks (default agreement, causal difference, real time) and author listening.
+  Audition a bundled default listener preset once; do not rank parameter values by
+  listening. Composer-control upper bounds come only from failure or saturation,
+  not cost. Principle-layer acceptance still has no subjective gate.
+- §9.3.55's three conditions now qualify default-active principles; they no longer
+  prohibit candidate or author-rule connections to generation under this policy.
+  Default-off passive diagnostics and research code remain allowed.
+- Add evidence labels to the registry, LSP hover and generated API pages as those
+  surfaces are implemented: Principle / Candidate (source) / Author rule. These are
+  distinct from Core / Experimental / Tuning / Research disclosure tiers. Keep the
+  bilingual composer guide aligned; describe labels and the default listener preset
+  in the public technote only after implementation. Inventory existing terms and
+  return divided classifications, including default-active author-rule parts, to
+  the author; do not silently change their defaults during documentation work.
+
 ## Air-Gap Protocol
 - The `conchordal` binary (instrument) MUST NOT write audio to disk
   in any build profile. Performances are ephemeral by design (manifesto).

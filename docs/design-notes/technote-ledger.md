@@ -116,6 +116,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.91 2026-10-14: Opt-in L2 adoption and integration, CI repairs and R-4 device results](#l2-opt-in-integration-ci-r4-results-20261014)
   - [§9.3.92 2026-10-14: Author adoption of rounded sample constants and Generations endurance](#sample-rounded-constants-generations-endurance-20261014)
   - [§9.3.95 Flora growth and seed perception exclude own habitat PCM](#flora-growth-self-exclusion)
+  - [§9.3.104 Mechanism evidence tiers and composer controls](#mechanism-evidence-and-composer-controls)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -4312,6 +4313,8 @@ default-off passive diagnostics (report/UI) may be kept as exceptions. The effec
 is left to local ALife decisions and authored Scenario structure; ListenerTwin keeps
 passive observation indicators only.
 
+**Amended 2026-10-27.** Under [§9.3.104](#mechanism-evidence-and-composer-controls), the three conditions above now identify principles that operate by default. Functions that fail them may connect to generation as candidates or author rules, with neutral individual controls by default; admission to a default listener preset requires that section's conditions. This supersedes the prohibition above to that extent, while retaining permission for default-off passive diagnostics and research code.
+
 **Result of applying the rule.** Each condition was judged separately per function.
 "Not identified" refers to the candidates examined for this plan, not to future research.
 
@@ -5983,6 +5986,8 @@ above remain separate; no physical body law or R/H/C behavior changed.
 
 ### 9.3.56 Layers of the listener model: what is fixed and who sets the rest
 
+See [§9.3.104](#mechanism-evidence-and-composer-controls) for the unified policy on mechanism evidence and composer controls; these five layers are unchanged.
+
 Adopted 2026-09-29.
 
 **Boundary criterion.** The listener model is divided by who may change each quantity.
@@ -6089,6 +6094,8 @@ Levelt, W. J. M. (1965), *JASA* 38, 548–560.
 <a id="two-tier-rule"></a>
 
 ### 9.3.57 Two-tier Rule, Acceptance and Revised Adoptions
+
+See [§9.3.104](#mechanism-evidence-and-composer-controls) for mechanism evidence tiers, candidate acceptance and defaults; this two-tier computation rule is unchanged.
 
 Updated 2026-10-07. This section supplies the two-tier rule referenced by other
 documents since 2026-09-24 and records the adoptions after the October review.
@@ -10400,3 +10407,130 @@ implement non-pitched inhabitants. Flora reads base C/H and self-excluded resour
 power; Voice and Listener retain the eroded views. See
 [auditory system](auditory-system.md#hr-1解析の低域拡張2026-10-25) for channel geometry,
 latency, and the distinction between historical and current IIR-tail calculations.
+
+<a id="mechanism-evidence-and-composer-controls"></a>
+
+### 9.3.104 Mechanism evidence tiers and composer controls (2026-10-27)
+
+Adopted by the author on 2026-10-27, including permission to bundle qualifying
+candidates into a default listener preset and to label vocabulary by evidence tier.
+This is a design adoption, not completion of the preset or labels. DCC extension
+comes first.
+
+#### Context and purpose
+
+The author's words are retained below in the original Japanese.
+
+> 2026-10-26：「現在のままでは、音楽として成立しないので、音楽が成立する程度まで DCC を完成させたい。しかし、原理との接続が確実なものは実装しきった。では次はどういう方針で進めたらいいか」。
+
+> 2026-10-27：「原理としては確定ではないが、候補理論はあるもの、あるいは、原理としては形式化されているが、パラメータが確定していないもの、などもないか」。「作るとして、原理として確信度が低いものはその採否も含めて作曲パラメータとなるね？」。「これを整理した統一的なポリシーを露出する必要があるね？」。「simple things simple 原則は覚えてるね？適用されてるね？」。「DCC の拡張を先にやる」。
+
+In English: the current instrument does not yet make music work, although the
+mechanisms with secure connections to principles have been implemented. The author
+asks for candidate theories, including formal models whose parameters are not
+settled, and makes the adoption of less certain mechanisms a composer choice. The
+policy must be visible, preserve simple things simple, and extend DCC first.
+
+Mechanisms with secure grounding already exist in the core: articulation grouping,
+beat and meter, expectation and habituation over repetitions lasting a few seconds,
+roughness and harmonicity, the auditory front end, and habituation. The missing
+layers needed for music to work—harmonic context, repetition and variation, phrase
+grouping and inflection—require candidate theories not established as principles,
+or author rules. This policy makes their evidence and selection visible to the
+composer. Evidence for a function does not make every implemented equation or
+parameter a principle.
+
+#### Relation to existing rules
+
+| Rule | Treatment here |
+|---|---|
+| §9.3.55 mechanism selection (2026-09-20) | Retain the three conditions: primary evidence and an identified mechanism; an existing model or explicit engineering rule; no new human data collection required. Amend the prohibition on connecting functions that fail them to generation, as stated below. |
+| §9.3.56 five listener layers (2026-09-29) | Unchanged: this rule determines who may set a quantity. The composer sets layer 3, initial conditions and macro form, not layers 1 or 4. |
+| §9.3.57 two-tier computation rule (2026-10-07) | Unchanged: separate source-matched computation from original approximations, thresholds and coefficients. Retain the three principle-layer acceptance criteria. |
+| Author decision of 2026-10-27 | Less certain mechanisms, including whether to use them, are composer controls. |
+
+Evidence tiers apply per mechanism. They are distinct from the two-tier division of
+computation and the five-layer division of authority over quantities.
+
+#### Evidence tiers
+
+| Tier | Definition and implementation rule |
+|---|---|
+| Principle | A mechanism satisfying all three conditions of §9.3.55 and adopting a published model as specified by its source. |
+| Candidate | A published formal model exists, but its corresponding brain mechanism is unidentified, or its parameters are task-specific fits rather than universal constants. Implement its internal equations and parameters as specified by the source and record that source. Separate additions absent from the source as author-rule parts. |
+| Author rule | A mechanism without a published formal model, whose form is borrowed and chosen by the author; examples include `rest_on_habituation` and `dwell`. |
+
+If one term contains parts with different tiers, record those parts separately, as
+in §9.3.57. Terms that are not mechanisms, such as placement and macro form, need
+not be assigned a mechanism tier.
+
+#### Defaults > presets > individual axes
+
+Preserve simple things simple in this order:
+
+1. Principles operate by default.
+2. Individual controls for candidate and author-rule mechanisms are unused
+   (neutral) by default. Advanced composers may choose their weights: complex
+   things possible.
+3. Candidate mechanisms needed for music to work may be bundled into one
+   **default listener preset**, after passing numerical agreement with their
+   sources and adoption through the author's listening. One term lets the
+   composer remove that preset or replace it, for example with a sensation-only
+   listener. Keep the minimal script musical without stacking controls.
+4. Before adding a term, check whether the default preset and existing vocabulary
+   can express it. Once candidate layers are present, review and prune author-rule
+   terms that no longer have a role.
+
+Choose the default preset's name and contents after each candidate's acceptance
+and audition. This policy alone does not accept any particular candidate or preset.
+
+#### Who decides
+
+The composer decides whether the listener and Voice use a hypothesis and how much
+weight they give it: layer 3. Name controls in cognitive coordinates, not symbolic
+rules such as scales or time signatures. Style-dependent values, including
+register and long-term statistics of learned sequences, also belong to layer-3
+enculturation and are composer choices.
+
+Internal dynamics of a hypothesis, including memory integration and learning,
+belong to layer 4. Implement them as specified by the source and do not expose them
+as controls. Do not alter layer-1 sensation: the front end, `roughness01` or
+`harmonicity01`.
+
+#### Acceptance and parameter values
+
+| Target | Acceptance |
+|---|---|
+| Principles and candidates | Numerical agreement with the source, the registered causal difference, and real-time operation on the declared load (§9.3.57). For a candidate, this verifies that the hypothesis was implemented correctly; it does not prove the hypothesis true. |
+| Author rules | Implementation checks (default agreement, causal difference and real-time operation), plus adoption through the author's listening. |
+| Bundling a default listener preset | One author audition of the bundled preset. Do not rank parameter values by listening. |
+
+Set upper bounds on composer quantities only at failure or effect saturation, not
+from cost. Individual mechanism controls default to neutral. Do not ask listening
+tests to decide which parameter values are better. This adds no subjective gate to
+principle-layer acceptance.
+
+#### Amendment to the selection rule
+
+The three conditions of §9.3.55 now determine whether a mechanism qualifies as a
+**principle operating by default**. Functions that fail them may still connect to
+generation as candidates or author rules. Their individual controls remain unused
+by default; entry into the default listener preset requires the preset adoption
+conditions above. Default-off passive diagnostics and research code remain allowed.
+
+#### Presentation and classification of existing vocabulary
+
+This bilingual ledger section is the policy source; AGENTS.md carries a short
+working rule. The English and Japanese Rhai books are to provide a composer-facing
+chapter explaining what operates by default, what can be selected, and each tier.
+
+Add an evidence-tier field to the registry and show labels in LSP hover and generated
+API pages: Principle / Candidate (source) / Author rule. The existing Core /
+Experimental / Tuning / Research disclosure tiers describe usage, not evidence, and
+remain distinct. Update the public technote to describe implemented behavior only
+after the labels and default listener preset are implemented.
+
+Inventory existing vocabulary and propose tiers, returning only the cases where
+classification divides to the author. Separate mixed-tier parts within a term and
+author-rule parts already active by default. A classification proposal neither
+changes existing controls or defaults nor adopts a candidate.

@@ -193,7 +193,9 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   scores, or stylistic priors such as key and functional-harmony profiles.
   Under the author's 2026-10-27 criterion, generatively computed functional harmony
   may remain an optional composition choice outside the main line; fixed harmonic
-  profiles are presets and must be removed.
+  profiles are presets and must be removed. Research assays may use authored
+  harmony only when the brief, listening guide and report state at the top what
+  was written, by whom, and that the ecology did not generate it.
 - Keep defaults > presets > individual axes. Principles operate by default;
   candidate and author-rule axes are neutral by default. Qualifying candidates may
   enter one default listener preset after source agreement and author adoption by

@@ -68,18 +68,26 @@ not already adopted.
 |---|---:|---|
 | `follow_own_sequence` | 0.05 | Candidate: Harrison et al. (2020), PPM-Decay; author rules for interval encoding and scoring |
 | `follow_own_tonality` | 0.10 | Candidate: Toiviainen–Krumhansl (2003), Model 1; author rules for encoding, key selection and scoring |
+| `melodic_continuity` | 0.00076066292 | Candidate: von Hippel (2000), text-consistent AR(1); author rules for prefix estimation, scoring and replacement |
 | `phrase_boundary` | 1 | Candidate: Cambouropoulos (2001), LBDM; author rules for online boundaries and gain |
 | Final section arch / ritard | 1 / 1 | Candidates: Todd (1992), Friberg–Sundberg (1999); author rules for interval assignment, gain floor and clock mapping |
 
-These are the SQ-1, TK-1i, PX-1i and PE-1i demonstration weights. They make
+These are the SQ-1, TK-1i, ME-1i, PX-1i and PE-1i demonstration weights. They make
 mechanism differences available to audition; they are not author-adopted values
 and will be updated after adoption. `listener_profile` itself is labelled **Not a
 mechanism (profile selection)**; the constituent terms retain their own labels.
 
+ME's weight matches the displaced old terms' mean absolute score contribution.
+`follow_tonal_context` is not inherited: the table costs about 1 GB and 80 seconds
+to create, and approximation acceptance is limited to [0.25,1], based on
+measurements at 0.25/0.5/1. These are not word limits; outside that range acceptance
+is unverified and no extra warning is added.
+
 Explicit Population weights override the profile, including explicit zero.
 Inheritance checks the final Voice form at placement, independently for each
 mechanism, and silently skips unsupported Voices. Individual axes still default
-to zero. Existing author-rule base behavior remains active in both profiles.
+to zero. Existing author-rule base behavior remains, except that a known enabled ME
+prediction replaces movement cost and fixed-center gravity for that decision.
 
 Section expression uses the last completed `section`, only when it ends at the
 scene's score cursor and the entire scene satisfies existing PE-1 support.

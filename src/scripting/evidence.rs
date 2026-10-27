@@ -574,8 +574,8 @@ pub const TONALITY: &[EvidenceDoc] = &[
 
 /// A profile selects mechanisms; it supplies no separate evidence claim.
 pub const LISTENER_PROFILE: &[EvidenceDoc] = &[EvidenceDoc {
-    en: "Not a mechanism (profile selection): see follow_own_sequence, follow_own_tonality, phrase_boundary and expressive_section for candidate models and author rules.",
-    ja: "該当なし（型の選択）：候補モデルと作者規則の札は follow_own_sequence、follow_own_tonality、phrase_boundary、expressive_section を参照。",
+    en: "Not a mechanism (profile selection): see follow_own_sequence, follow_own_tonality, melodic_continuity, phrase_boundary and expressive_section for candidate models and author rules.",
+    ja: "該当なし（型の選択）：候補モデルと作者規則の札は follow_own_sequence、follow_own_tonality、melodic_continuity、phrase_boundary、expressive_section を参照。",
 }];
 pub const MELODIC_CONTINUITY: &[EvidenceDoc] = &[
     EvidenceDoc {

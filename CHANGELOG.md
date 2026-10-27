@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend optional `listener_profile("tonal")` with the melodic continuity audition
+  weight 0.00076066292. Explicit values, including zero, override inheritance;
+  unsupported final Voices remain silent. Sensory stays the default. Tonal context
+  remains an individual axis because of table cost and approximation scope.
 - Add initial `listener_profile("sensory" | "tonal")`. Sensory remains the default;
   tonal bundles provisional sequence, tonality, phrase and final-section expression
   audition weights. Explicit axes (including zero) win; unsupported consumers are

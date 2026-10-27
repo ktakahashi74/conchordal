@@ -1076,6 +1076,7 @@ impl PitchCore for PitchHillClimbPitchCore {
         {
             let sequence_record = self.sequence_decision.borrow_mut().take();
             let tonality_record = self.tonality_decision.borrow_mut().take();
+            let tonal_known = self.tonal.as_ref().and_then(|t| t.selection_known.get());
             without = self
                 .propose_with_scorer(
                     current_pitch_log2,
@@ -1088,6 +1089,9 @@ impl PitchCore for PitchHillClimbPitchCore {
                 .target_pitch_log2;
             *self.sequence_decision.borrow_mut() = sequence_record;
             *self.tonality_decision.borrow_mut() = tonality_record;
+            if let Some(tonal) = &self.tonal {
+                tonal.selection_known.set(tonal_known);
+            }
         }
         if snapshot.is_some() || self.melodic_trace {
             *self.melodic_decision.borrow_mut() = Some(crate::life::melodic_continuity::Decision {

@@ -702,8 +702,8 @@ at 48 kHz, hop 512 and control step 64, alongside its existing Voice and Flora
 analysis. This is a declared test load, not a weight or population limit.
 The adapter tracks at most 16 overlapping identities during recovery and rejects
 more than 8192 pending events/control steps in a hop. Reporting stores traces only
-until their next hop emission. This term is not a default listener preset, and its
-example weight is not an adopted musical setting.
+until their next hop emission. Sensory leaves this term disabled; tonal inherits its audition weight.
+The example weight is not an adopted musical setting.
 
 ## Melodic continuity from your own pitch history
 
@@ -749,7 +749,7 @@ and 600 seconds from Scenario sample zero (not from birth). Support is bounded t
 20–20,000 Hz. Resource exhaustion stops ME until replacement and restores the old
 costs. ME and PPM states are counted separately; their producer is shared. Reporting
 adds `melodic_continuity` decisions and state records, including unknown reasons and
-the full old-path counterfactual. No default listener preset is added.
+the full old-path counterfactual. The optional tonal profile inherits an audition weight; sensory leaves ME disabled.
 
 ## Following the heard harmonic context
 

@@ -226,9 +226,12 @@ source-matched versus original computation rule or §9.3.56's five listener laye
 - `listener_profile("sensory" | "tonal")` is an initial Director setting before
   scene actions/scopes. `DEFAULT_LISTENER_PROFILE` in `scripting/context.rs` is
   `"sensory"`; changing it needs separate author adoption.
-- Tonal inherits SQ 0.05, TK 0.10, PX 1 and final-section arch/ritard 1/1.
+- Tonal inherits SQ 0.05, TK 0.10, ME 0.00076066292, PX 1 and final-section arch/ritard 1/1.
   These are audition weights, not adopted defaults. Explicit Population weights,
   including zero, win; unsupported final forms are silently skipped.
+- TC is excluded from tonal: its table costs about 1 GB/80 seconds, and the
+  declared approximation acceptance range is [0.25,1] (measured at 0.25/0.5/1).
+  This is not an upper bound or an extra warning on the individual word.
 - Implicit expression uses the last completed section and existing whole-scene
   PE-1 support. No suitable section means no effect; explicit expressive_section
   (including zero) wins. Runtime rejection is silent only for profile expression.

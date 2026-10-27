@@ -746,6 +746,9 @@ impl ScriptContext {
                 if !specified.contains_key("follow_own_tonality") {
                     population_spec.spec.control.pitch.follow_own_tonality = 0.10;
                 }
+                if !specified.contains_key("melodic_continuity") {
+                    population_spec.spec.control.pitch.melodic_continuity = 0.00076066292;
+                }
             }
         }
         let id = self.next_population_id;

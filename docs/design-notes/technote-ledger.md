@@ -10995,3 +10995,9 @@ Remaining limitations:
   records the later judgment that externally supplied harmony and melody still
   did not constitute music. Completing this inventory guarantees neither musical
   success nor author adoption of the combined listener profile.
+
+Author audition (2026-10-27), on the stepped v6b baseline, the same scene with
+`listener_profile("tonal")`, and the TC-1b pair with `follow_tonal_context(0.5)`
+alone: both effects were audible but slight. The default stays sensory, TC stays
+outside the profile, and the musical problem remains open after the pitch-choice
+layers.

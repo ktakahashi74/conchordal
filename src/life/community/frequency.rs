@@ -40,8 +40,13 @@ fn field_peak_score(target: FieldTarget, landscape: &Landscape, i: usize) -> f32
 }
 
 /// Non-negative density mass for a field target at bin `i`. `gap_ref` is the
-/// loudest in-range intensity, used only by `Gap`.
-fn field_density_mass(target: FieldTarget, landscape: &Landscape, i: usize, gap_ref: f32) -> f32 {
+/// loudest in-range intensity, used only by `Gap`. Shared by spawn placement and Rain.
+pub(crate) fn field_density_mass(
+    target: FieldTarget,
+    landscape: &Landscape,
+    i: usize,
+    gap_ref: f32,
+) -> f32 {
     match target {
         FieldTarget::Consonance => landscape
             .consonance_density_mass_eff

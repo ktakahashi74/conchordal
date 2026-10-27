@@ -55,6 +55,9 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::PlaceFlora { .. }
                 | Action::UpdateFlora { .. }
                 | Action::ReleaseFlora { .. }
+                | Action::PlaceRain { .. }
+                | Action::UpdateRain { .. }
+                | Action::ReleaseRain { .. }
                 | Action::Spawn { .. }
                 | Action::UpdatePopulation { .. }
                 | Action::ReleasePopulation { .. }

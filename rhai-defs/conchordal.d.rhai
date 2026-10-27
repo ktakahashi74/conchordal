@@ -6,6 +6,10 @@
 ///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
 /// - Flora: Placed spectral growth; supports pending amplitude and pace patches and release.
 ///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
+/// - RainSpec: Reusable impact-texture definition built by `rain()`; placed as a Rain over a frequency extent.
+///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
+/// - Rain: Placed impact texture with its resonant objects; supports live amp, rate, hit and width patches and release.
+///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
 /// - PopulationSpec: Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules.
 ///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
 /// - Population: Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations.
@@ -132,10 +136,33 @@ fn amp(flora_spec: FloraSpec, level: f64) -> FloraSpec;
 /// Evidence: Author rule: underlying spectral growth, consumption and retirement ecology; not an auditory cognition model.
 fn amp(flora_spec: FloraSpec, level: i64) -> FloraSpec;
 
+/// Set Rain's output scale in [0, 1].
+/// Scales impacts and objects together. Live patches ramp over 80 ms and emit at wait, flush or scope end.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn amp(rain: Rain, level: f64) -> Rain;
+/// Set Rain's output scale in [0, 1].
+/// Scales impacts and objects together. Live patches ramp over 80 ms and emit at wait, flush or scope end.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn amp(rain: Rain, level: i64) -> Rain;
+/// Set Rain's output scale in [0, 1].
+/// Scales impacts and objects together. Live patches ramp over 80 ms and emit at wait, flush or scope end.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn amp(rain_spec: RainSpec, level: f64) -> RainSpec;
+/// Set Rain's output scale in [0, 1].
+/// Scales impacts and objects together. Live patches ramp over 80 ms and emit at wait, flush or scope end.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn amp(rain_spec: RainSpec, level: i64) -> RainSpec;
+
 /// Hold the voice at its pitch: an anchored voice never moves.
 /// `at()` anchors implicitly unless the final spec explicitly seeks consonance and remains free; in that case it sets only the initial position. `freq()` still sets an anchored pitch. A later `anchor()` or `freq()` overrides movement, while a later `seek_consonance()` restores it. Use `anchor()` to hold strategy-placed voices (`consonance()`, `dissonance()`, ...) at their settled position, or to state the intent explicitly.
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
 fn anchor(population_spec: PopulationSpec) -> PopulationSpec;
+
+/// Hold Rain's objects at their placement pitches.
+/// Without it, an object drifts toward higher consonance by at most a semitone each time it is struck.
+/// Evidence: Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).
+/// Evidence: Author rule: objects start on consonance peaks and drift toward consonance with the Voice movement-cost defaults when struck; anchor() holds them.
+fn anchor(rain_spec: RainSpec) -> RainSpec;
 
 /// Retain a Voice's private articulation policy across pitch adoptions and sustained clock opportunities.
 /// Initial-only policy inertia in [0,1], default 0. Requires free-pitch sustained metric/entrained/steady/flow, rearticulate and a positive boundary. Base follows that boundary; Connect glides adoptions and extends living Tones at sounded opportunities. Small moves and cost skips propose Connect; large moves and selected sounding propose Base. For 0<p<1, opposing proposals retain the policy with probability p. Endpoints use Base. Rest, release and legal initial onsets take priority. Unsupported settings warn and are ignored. This is policy inertia, not a legato proportion.
@@ -466,6 +493,13 @@ fn fade(flora_spec: FloraSpec, seconds: f64) -> FloraSpec;
 /// Evidence: Author rule: underlying spectral growth, consumption and retirement ecology; not an auditory cognition model.
 fn fade(flora_spec: FloraSpec, seconds: i64) -> FloraSpec;
 
+/// [experimental] Set Rain's placement and release fade in [0, 60] seconds.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn fade(rain_spec: RainSpec, seconds: f64) -> RainSpec;
+/// [experimental] Set Rain's placement and release fade in [0, 60] seconds.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn fade(rain_spec: RainSpec, seconds: i64) -> RainSpec;
+
 /// [experimental] Build a FloraSpec for spectral growth over a frequency extent.
 /// Defaults: pace 1, amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f and pace k, growth is 4kf/s, recovery is 20/(kf) seconds and consumption is 0.6/(kf) seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 /// Evidence: Not a mechanism (initial body): Flora body, amplitude or fade choices; see flora and pace.
@@ -597,6 +631,28 @@ fn harmonic_modes() -> ModePattern;
 /// Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire scene, even after wait(). All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.
 /// Evidence: Author rule: shared opportunities for background changes. Zero is neutral; N is a composer quantity, not an inferred measure or a perceptual constant.
 fn harmonic_rhythm(N: i64);
+
+/// [experimental] Set the probability in [0, 1] that an impact strikes one of the objects.
+/// A struck object is driven at the impact's own onset, scaled so its onset peak matches the impact's level; the impact and the ring share their start.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn hit(rain: Rain, probability: f64) -> Rain;
+/// [experimental] Set the probability in [0, 1] that an impact strikes one of the objects.
+/// A struck object is driven at the impact's own onset, scaled so its onset peak matches the impact's level; the impact and the ring share their start.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn hit(rain: Rain, probability: i64) -> Rain;
+/// [experimental] Set the probability in [0, 1] that an impact strikes one of the objects.
+/// A struck object is driven at the impact's own onset, scaled so its onset peak matches the impact's level; the impact and the ring share their start.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn hit(rain_spec: RainSpec, probability: f64) -> RainSpec;
+/// [experimental] Set the probability in [0, 1] that an impact strikes one of the objects.
+/// A struck object is driven at the impact's own onset, scaled so its onset peak matches the impact's level; the impact and the ring share their start.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn hit(rain_spec: RainSpec, probability: i64) -> RainSpec;
+
+/// [experimental] Set the impacts' material as a ModePattern; default modal_table("wine_glass").
+/// The pattern's ratios are taken once at placement, at the extent's geometric centre, and at most eight are used. Mode k has level 0.85^k with a 3 dB spread. Decay is 25 ms at 3.2 kHz, longer at lower centres as (3.2 kHz / f)^0.5, with a log-normal spread; higher modes decay as ratio^-0.5. Each impact starts with a raised-cosine onset of 0.5 to 1.5 ms.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn impact_modes(rain_spec: RainSpec, pattern: ModePattern) -> RainSpec;
 
 /// Set the intrinsic bodily rate at creation for entrained()/steady()/flow(), in Hz.
 /// Initial-only body rate for `entrained()`, `steady()` and `flow()`, in Hz. Default 2 Hz; finite range 0.01..=200 Hz protects execution. Either builder order works. It scales `cycles()`, finite durations and `rest()` together; ADSR release stays in seconds. Replacements start from the Population template. Other timing forms warn and ignore it. This sets a body scale, not a required onset rate.
@@ -791,6 +847,26 @@ fn neighbor_step_cents(population_spec: PopulationSpec, value: i64) -> Populatio
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 fn noise() -> PopulationSpec;
 
+/// [experimental] Set the T60 of an object's first mode in [0.01, 30] seconds.
+/// Higher modes decay faster, as ratio^-0.7.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn object_decay(rain_spec: RainSpec, seconds: f64) -> RainSpec;
+/// [experimental] Set the T60 of an object's first mode in [0.01, 30] seconds.
+/// Higher modes decay faster, as ratio^-0.7.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn object_decay(rain_spec: RainSpec, seconds: i64) -> RainSpec;
+
+/// [experimental] Set the objects' ModePattern; default modal_table("vibraphone_1").
+/// Mode k has gain 0.5^k. Landscape-aware patterns read the Landscape at placement.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn object_modes(rain_spec: RainSpec, pattern: ModePattern) -> RainSpec;
+
+/// [experimental] Set the number of resonant objects, 0 to 16.
+/// Objects start on eroded consonance-level peaks inside the extent, at least 1 ERB apart; missing peaks are filled by log-uniform positions. Each hop an object proposes the best eroded consonance score within one semitone, less the Voice movement cost, and moves there when next struck. Objects stay inside the extent and 1 ERB apart. `anchor()` holds them.
+/// Evidence: Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).
+/// Evidence: Author rule: objects start on consonance peaks and drift toward consonance with the Voice movement-cost defaults when struck; anchor() holds them.
+fn objects(rain_spec: RainSpec, count: i64) -> RainSpec;
+
 /// Odd harmonics: f, 3f, 5f, ...
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 fn odd_modes() -> ModePattern;
@@ -888,6 +964,11 @@ fn place(population_spec: PopulationSpec, placement: Placement) -> Population;
 /// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 fn place(flora_spec: FloraSpec, placement: Placement) -> Flora;
 
+/// Place a Rain over a field or random frequency extent.
+/// random(lo, hi) draws impact centres log-uniformly. consonance, dissonance, edge and gap follow the same density masses as Voice placement, rebuilt each hop; zero mass falls back to log-uniform. Count must be 1, with density sampling, no tension and the default spacing.
+/// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
+fn place(rain_spec: RainSpec, placement: Placement) -> Rain;
+
 /// Scoped callback execution with automatic population release.
 /// Accepts 0-3 positional arguments, or an array of arguments.
 /// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
@@ -947,6 +1028,11 @@ fn pulse_lock(population_spec: PopulationSpec, depth: f64) -> PopulationSpec;
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn pulse_lock(population_spec: PopulationSpec, depth: i64) -> PopulationSpec;
 
+/// [experimental] Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike.
+/// Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impact times are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn rain() -> RainSpec;
+
 /// Log-uniform random placement inside a frequency range.
 /// Evidence: Not a mechanism (placement): initial position, extent or population count (§9.3.56).
 fn random(min_hz: f64, max_hz: f64) -> Placement;
@@ -993,6 +1079,23 @@ fn range(pattern: ModePattern, min_mul: i64, max_mul: f64) -> ModePattern;
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 fn range(pattern: ModePattern, min_mul: i64, max_mul: i64) -> ModePattern;
 
+/// [experimental] Set the mean impact rate in [0, 2000] per second.
+/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn rate(rain: Rain, impacts_per_second: f64) -> Rain;
+/// [experimental] Set the mean impact rate in [0, 2000] per second.
+/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn rate(rain: Rain, impacts_per_second: i64) -> Rain;
+/// [experimental] Set the mean impact rate in [0, 2000] per second.
+/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn rate(rain_spec: RainSpec, impacts_per_second: f64) -> RainSpec;
+/// [experimental] Set the mean impact rate in [0, 2000] per second.
+/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+fn rate(rain_spec: RainSpec, impacts_per_second: i64) -> RainSpec;
+
 /// [tuning] Ratio-based movement candidates; 0 disables.
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
 fn ratio_candidates(population: Population, count: i64) -> Population;
@@ -1035,6 +1138,10 @@ fn release(population: Population);
 /// The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.
 /// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 fn release(flora: Flora);
+
+/// Mark a Rain for release using its spec's fade.
+/// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
+fn release(rain: Rain);
 
 /// [experimental] Reuse peaks of the periodicity distribution heard in habitat; zero is neutral.
 /// Author rule, Experimental. Set a finite nonnegative weight before scene actions or scopes. Default 0. At 48000 Hz, actual mixed habitat PCM, including self, supplies an IPEM periodicity observation (Candidate). Continuous-lag interpolation, normalization, cumulative listening-time averaging, two peak proposals and score addition are author rules. Free HillClimb Voices consume it; Flora does not. No pitch names, fixed scale, octave folding, forgetting control, or listener-profile adoption. Peaks can be subharmonics or shift under averaging; they are not a record of emitted fundamentals. Gaps retain experience and restart only PS observation; TC remains invalid. Long sessions adapt slowly.
@@ -1241,6 +1348,13 @@ fn send(flora_spec: FloraSpec, bus_or_set: Bus) -> FloraSpec;
 /// Default: habitat_bus | presentation_bus.
 /// Evidence: Not a mechanism (routing): selects or combines buses; see leave_self_out for the independent self-perception rule.
 fn send(flora_spec: FloraSpec, bus_or_set: BusSet) -> FloraSpec;
+
+/// Route Rain to a Bus or BusSet, using the same buses as Populations.
+/// Evidence: Not a mechanism (routing): selects or combines buses; see leave_self_out for the independent self-perception rule.
+fn send(rain_spec: RainSpec, bus_or_set: Bus) -> RainSpec;
+/// Route Rain to a Bus or BusSet, using the same buses as Populations.
+/// Evidence: Not a mechanism (routing): selects or combines buses; see leave_self_out for the independent self-perception rule.
+fn send(rain_spec: RainSpec, bus_or_set: BusSet) -> RainSpec;
 
 /// [tuning] Cursor event: nonnegative dimensionless Voice interaction strength (default 1).
 /// Cursor event: changes interaction strength from this script time onward. Dimensionless, nonnegative, default 1.
@@ -1480,6 +1594,23 @@ fn wait(seconds: i64);
 /// Resets timing to one continuous note and clears finite duration, rest-sustain and explicit sustained-participation intent. Unlike `sustain()`, combining it with a timing preset does not retain a sounding Tone between that preset's opportunities. The last timing choice wins.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn while_alive(population_spec: PopulationSpec) -> PopulationSpec;
+
+/// [experimental] Set the half range in [0, 5] octaves by which each impact mode strays from impact_modes.
+/// Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn width(rain: Rain, octaves: f64) -> Rain;
+/// [experimental] Set the half range in [0, 5] octaves by which each impact mode strays from impact_modes.
+/// Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn width(rain: Rain, octaves: i64) -> Rain;
+/// [experimental] Set the half range in [0, 5] octaves by which each impact mode strays from impact_modes.
+/// Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn width(rain_spec: RainSpec, octaves: f64) -> RainSpec;
+/// [experimental] Set the half range in [0, 5] octaves by which each impact mode strays from impact_modes.
+/// Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
+/// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+fn width(rain_spec: RainSpec, octaves: i64) -> RainSpec;
 
 /// [tuning] Peak-sampler search window width in cents.
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.

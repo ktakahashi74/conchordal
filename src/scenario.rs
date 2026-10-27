@@ -62,6 +62,56 @@ pub enum FloraSeeding {
     Uniform,
 }
 
+/// Impacts drawn one by one over a frequency extent, with resonant objects they strike.
+#[derive(Debug, Clone)]
+pub struct RainSpec {
+    pub amp: f32,
+    pub fade_sec: f32,
+    /// Mean impacts per second.
+    pub rate: f32,
+    /// Probability that an impact lands on one of the objects.
+    pub hit: f32,
+    /// Material of every impact; its ratios are taken at placement.
+    pub impact_modes: crate::core::mode_pattern::ModePattern,
+    /// Half range, in octaves, by which each impact mode strays from `impact_modes`.
+    pub width: f32,
+    pub objects: u32,
+    /// Objects keep their placement pitch instead of drifting toward consonance.
+    pub anchored: bool,
+    pub object_modes: crate::core::mode_pattern::ModePattern,
+    /// T60 of an object's first mode, in seconds.
+    pub object_decay: f32,
+    pub routing: control::Routing,
+}
+
+impl Default for RainSpec {
+    fn default() -> Self {
+        Self {
+            amp: 0.02,
+            fade_sec: 2.0,
+            rate: 40.0,
+            hit: 0.06,
+            impact_modes: crate::core::mode_pattern::ModePattern::modal_table("wine_glass")
+                .expect("built-in modal table"),
+            width: 0.05,
+            objects: 3,
+            anchored: false,
+            object_modes: crate::core::mode_pattern::ModePattern::modal_table("vibraphone_1")
+                .expect("built-in modal table"),
+            object_decay: 2.0,
+            routing: control::Routing::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RainPatch {
+    pub amp: Option<f32>,
+    pub rate: Option<f32>,
+    pub hit: Option<f32>,
+    pub width: Option<f32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub(crate) expression: Option<expression::Expression>,
@@ -739,6 +789,21 @@ pub enum Action {
         flora_id: u64,
         fade_sec: f32,
     },
+    PlaceRain {
+        rain_id: u64,
+        spec: RainSpec,
+        extent_hz: (f32, f32),
+        /// Distribution of impact band centres over the extent.
+        target: FieldTarget,
+    },
+    UpdateRain {
+        rain_id: u64,
+        patch: RainPatch,
+    },
+    ReleaseRain {
+        rain_id: u64,
+        fade_sec: f32,
+    },
 
     Spawn {
         population_id: u64,
@@ -787,6 +852,11 @@ impl fmt::Display for Action {
             Action::UpdateFlora { flora_id, .. } => write!(f, "Update Flora={flora_id}"),
             Action::ReleaseFlora { flora_id, fade_sec } => {
                 write!(f, "Release Flora={flora_id} fade={fade_sec:.3}")
+            }
+            Action::PlaceRain { rain_id, .. } => write!(f, "Place Rain={rain_id}"),
+            Action::UpdateRain { rain_id, .. } => write!(f, "Update Rain={rain_id}"),
+            Action::ReleaseRain { rain_id, fade_sec } => {
+                write!(f, "Release Rain={rain_id} fade={fade_sec:.3}")
             }
             Action::Spawn {
                 population_id, ids, ..

@@ -58,6 +58,7 @@ impl Sig {
         match self.params.first().map(String::as_str) {
             Some("PopulationSpec") | Some("Population") => Owner::Population,
             Some("FloraSpec") | Some("Flora") => Owner::Flora,
+            Some("RainSpec") | Some("Rain") => Owner::Rain,
             Some("Placement") => Owner::Placement,
             Some("ModePattern") => Owner::ModePattern,
             _ => Owner::Global,
@@ -85,6 +86,8 @@ impl Sig {
                     "Population" => "population",
                     "FloraSpec" => "flora_spec",
                     "Flora" => "flora",
+                    "RainSpec" => "rain_spec",
+                    "Rain" => "rain",
                     "Placement" => "placement",
                     _ => "pattern",
                 },
@@ -174,6 +177,8 @@ fn map_type(t: &str) -> String {
         "PopulationHandle" => "Population".to_string(),
         "FloraSpecHandle" => "FloraSpec".to_string(),
         "FloraHandle" => "Flora".to_string(),
+        "RainSpecHandle" => "RainSpec".to_string(),
+        "RainHandle" => "Rain".to_string(),
         other => other.to_string(),
     }
 }
@@ -295,9 +300,10 @@ pub fn check() -> Result<(), String> {
             Style::Free => 0,
         };
         let actual: BTreeSet<usize> = sigs.iter().map(|s| s.params.len() - receiver).collect();
-        if matches!(owner, Owner::Population | Owner::Flora) {
+        if matches!(owner, Owner::Population | Owner::Flora | Owner::Rain) {
             let (spec, handle) = match owner {
                 Owner::Flora => ("FloraSpec", "Flora"),
+                Owner::Rain => ("RainSpec", "Rain"),
                 _ => ("PopulationSpec", "Population"),
             };
             let receivers: BTreeSet<&str> = sigs
@@ -710,6 +716,12 @@ fn localized_type_summary(doc: &docs::TypeDoc, language: ReferenceLanguage) -> &
         "ModePattern" => "モーダル合成の発音体に使う周波数構成。`*_modes()`関数で作る。",
         "Bus" => "二つのmono出力busの一つ。`|`で結合すると`BusSet`になる。",
         "BusSet" => "`bus | bus`で作るbusの組み合わせ。`send()`へ渡す。",
+        "RainSpec" => {
+            "`rain()`で作る、打音のtextureの再利用可能な設定。周波数範囲に配置するとRainになる。"
+        }
+        "Rain" => {
+            "配置された打音のtextureと共鳴する物。amp、rate、hit、widthの更新と解放を指定できる。"
+        }
         _ => doc.summary,
     }
 }
@@ -734,6 +746,7 @@ fn localized_category_title(
     }
     match category.id {
         "flora" => "Flora",
+        "rain" => "Rain",
         "population_specs" => "PopulationSpec",
         "placement" => "配置",
         "timeline" => "TimelineとPopulation",
@@ -760,6 +773,9 @@ fn localized_category_intro(
     match category.id {
         "flora" => {
             "Floraは、Landscapeを入力とする作曲上の規則で、指定した周波数範囲にスペクトルの重みを成長させる。聴覚認知のモデルではない。"
+        }
+        "rain" => {
+            "Rainは、打音を一つずつ分布から引き直して周波数範囲に降らせる。配置の指定で、自由な分布かLandscapeに従う分布かを選ぶ。打音は一つの素材を毎回少しずつ変えて鳴らす。共鳴する物は協和の山に置かれ、打音が当たると鳴り、当たるたびに半音まで協和の高い方へ移る。`anchor()`で高さを固定できる。作曲上のtextureの規則で、聴覚認知のモデルではない。"
         }
         "population_specs" => {
             "PopulationSpecは、初代のVoiceの特性とPopulation全体の生存規則を定める。生成関数で作り、構築用メソッドで調整し、`place()`でPopulationにする。"
@@ -821,6 +837,17 @@ fn applies_line(doc: &FnDoc, sigs: &[Sig], language: ReferenceLanguage) -> Optio
                 Patch::Live => "`FloraSpec`, `Flora`",
                 Patch::Initial => "`FloraSpec`",
                 Patch::Na => unreachable!("Flora method patch contract"),
+            };
+            Some(match language {
+                ReferenceLanguage::English => format!("Applies to: {receivers}."),
+                ReferenceLanguage::Japanese => format!("適用対象：{receivers}。"),
+            })
+        }
+        Owner::Rain => {
+            let receivers = match doc.patch {
+                Patch::Live => "`RainSpec`, `Rain`",
+                Patch::Initial => "`RainSpec`",
+                Patch::Na => unreachable!("Rain method patch contract"),
             };
             Some(match language {
                 ReferenceLanguage::English => format!("Applies to: {receivers}."),

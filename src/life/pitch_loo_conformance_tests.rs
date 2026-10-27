@@ -1040,6 +1040,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                     &NeuralRhythms::default(),
                     &mut sources,
                     &mut flora,
+                    &mut [],
                     |_, _, _, _| {},
                 )
                 .habitat

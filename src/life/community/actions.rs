@@ -1,6 +1,7 @@
 use super::{Community, RuntimePopulationState, SpawnParams, SpawnReason};
 use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::life::flora::Flora;
+use crate::life::rain::Rain;
 use crate::scenario::control::MIN_FREQ_HZ;
 use crate::scenario::{Action, RespawnPolicy, SpawnStrategy, VoiceSpec};
 use rand::{SeedableRng, rngs::SmallRng};
@@ -49,6 +50,37 @@ impl Community {
                     flora.release(fade_sec);
                 } else {
                     warn!(flora_id, "Release ignored for unknown Flora");
+                }
+            }
+            Action::PlaceRain {
+                rain_id,
+                spec,
+                extent_hz,
+                target,
+            } => {
+                self.has_placed_rain = true;
+                self.rain.push(Rain::new(
+                    rain_id,
+                    spec,
+                    extent_hz,
+                    target,
+                    self.seed,
+                    landscape,
+                    self.time.fs,
+                ));
+            }
+            Action::UpdateRain { rain_id, patch } => {
+                if let Some(rain) = self.rain.iter_mut().find(|rain| rain.id() == rain_id) {
+                    rain.apply_patch(&patch);
+                } else {
+                    warn!(rain_id, "Update ignored for unknown Rain");
+                }
+            }
+            Action::ReleaseRain { rain_id, fade_sec } => {
+                if let Some(rain) = self.rain.iter_mut().find(|rain| rain.id() == rain_id) {
+                    rain.release(fade_sec);
+                } else {
+                    warn!(rain_id, "Release ignored for unknown Rain");
                 }
             }
             Action::Spawn {

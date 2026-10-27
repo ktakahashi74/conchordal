@@ -186,6 +186,32 @@ pub const FLORA_PACE: &[EvidenceDoc] = &[
     },
 ];
 
+pub const RAIN: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).",
+    ja: "作者規則：分布から一つずつ引く打音と、打音が当たって鳴る共鳴する物によるtexture。聴覚モデルではない作曲上の規則（docs/design-notes/rain.md）。",
+}];
+
+pub const RAIN_BODY: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.",
+    ja: "該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。",
+}];
+
+pub const RAIN_OBJECTS: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).",
+        ja: "原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: objects start on consonance peaks and drift toward consonance with the Voice movement-cost defaults when struck; anchor() holds them.",
+        ja: "作者規則：物は協和の山から始まり、打たれるたびにVoiceの移動費用の既定値で協和の方へ動く。anchor()で固定する。",
+    },
+];
+
+pub const SWAY: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.",
+    ja: "作者規則：0.4〜102秒の九つのAR(1)過程による活動の1/fの揺らぎ。聴覚野の1/f変動への同調（Garcia-Lazaro et al. 2006）を動機とするが、そのモデルではない。",
+}];
+
 pub const FIELD_BODY: &[EvidenceDoc] = &[
     EvidenceDoc {
         en: "Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).",

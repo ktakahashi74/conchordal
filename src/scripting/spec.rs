@@ -1052,6 +1052,63 @@ pub(super) struct FloraHandle {
     pub(super) id: u64,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct RainSpecHandle {
+    pub(super) spec: RainSpec,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RainHandle {
+    pub(super) id: u64,
+}
+
+/// Upper impact rate; it bounds per-sample work, not a musical choice.
+pub(super) const RAIN_RATE_MAX: FLOAT = 2000.0;
+
+pub(super) fn validate_rain_numeric(
+    name: &str,
+    value: FLOAT,
+    position: Position,
+) -> Result<f32, Box<EvalAltResult>> {
+    let (min, max) = match name {
+        "amp" | "hit" => (0.0, 1.0),
+        "fade" => (0.0, 60.0),
+        "rate" => (0.0, RAIN_RATE_MAX),
+        // Five octaves either side of a centre covers the audible band from any centre.
+        "width" => (0.0, 5.0),
+        "object_decay" => (0.01, 30.0),
+        _ => unreachable!("registered Rain parameter"),
+    };
+    if !value.is_finite() || !(min..=max).contains(&value) {
+        return Err(Box::new(EvalAltResult::ErrorRuntime(
+            format!("Rain {name} must be finite and within [{min}, {max}]").into(),
+            position,
+        )));
+    }
+    Ok(value as f32)
+}
+
+impl RainSpecHandle {
+    pub(super) fn with_numeric(
+        mut self,
+        name: &str,
+        value: FLOAT,
+        position: Position,
+    ) -> Result<Self, Box<EvalAltResult>> {
+        let value = validate_rain_numeric(name, value, position)?;
+        match name {
+            "amp" => self.spec.amp = value,
+            "fade" => self.spec.fade_sec = value,
+            "rate" => self.spec.rate = value,
+            "hit" => self.spec.hit = value,
+            "width" => self.spec.width = value,
+            "object_decay" => self.spec.object_decay = value,
+            _ => unreachable!("registered Rain spec parameter"),
+        }
+        Ok(self)
+    }
+}
+
 pub(super) fn validate_flora_numeric(
     name: &str,
     value: FLOAT,

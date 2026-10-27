@@ -730,14 +730,18 @@ pub(super) fn process_hop(
         cfg.exiting.store(true, Ordering::SeqCst);
     }
 
-    let finished_now =
-        if state.pop.abort_requested && !cfg.render_prototype && !state.pop.has_placed_flora {
-            true
-        } else {
-            state.scenario_end_tick.is_some()
-                && state.schedule_renderer.is_idle()
-                && state.pop.flora.is_empty()
-        };
+    let finished_now = if state.pop.abort_requested
+        && !cfg.render_prototype
+        && !state.pop.has_placed_flora
+        && !state.pop.has_placed_rain
+    {
+        true
+    } else {
+        state.scenario_end_tick.is_some()
+            && state.schedule_renderer.is_idle()
+            && state.pop.flora.is_empty()
+            && state.pop.rain.is_empty()
+    };
     if finished_now {
         state.playback_state = PlaybackState::Finished;
     }

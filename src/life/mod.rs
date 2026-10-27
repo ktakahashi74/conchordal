@@ -8,6 +8,7 @@ pub(crate) mod energy_window;
 pub(crate) mod flora;
 pub mod gate_clock;
 pub(crate) mod onset_footprint;
+pub(crate) mod rain;
 pub(crate) mod tone_energy;
 pub mod voice;
 pub(crate) use voice::articulation_core;

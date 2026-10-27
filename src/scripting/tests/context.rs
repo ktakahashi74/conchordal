@@ -2470,3 +2470,147 @@ fn listener_profile_rejects_unknown_and_late_selection() {
         assert!(run_script_err(script).message.contains("listener_profile"));
     }
 }
+
+#[test]
+fn rain_specs_emit_placements_for_every_field_target() {
+    let (scenario, _) = run_script(
+        r#"
+        let drops = rain().amp(0.2).fade(0.5).rate(80).hit(0.3).width(0.1).objects(5)
+            .object_modes(modal_table("xylophone")).object_decay(1.5).send(habitat_bus)
+            .impact_modes(modal_table("uniform_wooden_bar")).anchor();
+        place(drops, random(300, 6000));
+        place(rain(), consonance(110, 880));
+        place(rain(), dissonance(110, 880));
+        place(rain(), edge(110, 880));
+        place(rain(), gap(110, 880));
+        wait(0.5);
+        "#,
+    );
+    let placed: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(_, action)| match action {
+            Action::PlaceRain {
+                rain_id,
+                spec,
+                extent_hz,
+                target,
+            } => Some((*rain_id, spec.clone(), *extent_hz, *target)),
+            _ => None,
+        })
+        .collect();
+    let targets: Vec<_> = placed.iter().map(|p| p.3).collect();
+    assert_eq!(
+        targets,
+        [
+            FieldTarget::Uniform,
+            FieldTarget::Consonance,
+            FieldTarget::Dissonance,
+            FieldTarget::Edge,
+            FieldTarget::Gap
+        ]
+    );
+    let (id, spec, extent, _) = &placed[0];
+    assert_eq!((*id, *extent), (1, (300.0, 6000.0)));
+    assert_eq!(
+        (
+            spec.amp,
+            spec.fade_sec,
+            spec.rate,
+            spec.hit,
+            spec.width,
+            spec.objects,
+            spec.object_decay
+        ),
+        (0.2, 0.5, 80.0, 0.3, 0.1, 5, 1.5)
+    );
+    assert_eq!(
+        spec.object_modes,
+        ModePattern::modal_table("xylophone").unwrap()
+    );
+    assert_eq!(
+        spec.impact_modes,
+        ModePattern::modal_table("uniform_wooden_bar").unwrap()
+    );
+    assert!(spec.anchored);
+    assert!(spec.routing.to_habitat && !spec.routing.to_presentation);
+    let defaults = &placed[1].1;
+    assert_eq!(
+        (
+            defaults.rate,
+            defaults.hit,
+            defaults.width,
+            defaults.objects,
+            defaults.anchored
+        ),
+        (40.0, 0.06, 0.05, 3, false)
+    );
+}
+
+#[test]
+fn rain_rejects_unsupported_placements_and_values() {
+    for (script, message) in [
+        ("place(rain(), at(220));", "field or random extent"),
+        ("place(rain(), line(110, 880));", "field or random extent"),
+        (
+            "place(rain(), random(110, 880).count(2));",
+            "count must be 1",
+        ),
+        (
+            "place(rain(), consonance(110, 880).peak());",
+            "peak sampling",
+        ),
+        (
+            "place(rain(), consonance(110, 880).tension(0.5));",
+            "tension must be 0",
+        ),
+        (
+            "place(rain(), random(110, 880).spacing(1));",
+            "spacing must be 0",
+        ),
+        (
+            "place(rain(), gap(110, 880).spacing(2));",
+            "spacing must be 1",
+        ),
+        (
+            "place(rain(), random(110, 110));",
+            "at least one Log2Space bin",
+        ),
+        ("rain().objects(17);", "objects must be within"),
+        ("rain().rate(-1);", "rate must be finite"),
+        ("rain().hit(1.5);", "hit must be finite"),
+        ("rain().width(6);", "width must be finite"),
+        ("rain().object_decay(0);", "object_decay must be finite"),
+    ] {
+        let error = run_script_err(script).to_string();
+        assert!(error.contains(message), "{script}: {error}");
+    }
+}
+
+#[test]
+fn rain_patches_wait_for_boundaries_and_release_extends_finish() {
+    let (scenario, _) = run_script(
+        r#"
+        let r = place(rain().fade(3), random(300, 6000));
+        wait(1);
+        r.amp(0.1).rate(10).hit(0.5).width(0);
+        wait(1);
+        release(r);
+        "#,
+    );
+    let actions = action_times(&scenario);
+    let update = actions
+        .iter()
+        .find_map(|(time, action)| match action {
+            Action::UpdateRain { rain_id, patch } => Some((*time, *rain_id, *patch)),
+            _ => None,
+        })
+        .expect("rain patch");
+    assert_eq!((update.0, update.1), (1.0, 1));
+    assert_eq!(
+        (update.2.amp, update.2.rate, update.2.hit, update.2.width),
+        (Some(0.1), Some(10.0), Some(0.5), Some(0.0))
+    );
+    assert!(actions.iter().any(|(time, action)| *time == 2.0
+        && matches!(action, Action::ReleaseRain { rain_id: 1, fade_sec } if *fade_sec == 3.0)));
+    assert_eq!(scenario.duration_sec, 5.0);
+}

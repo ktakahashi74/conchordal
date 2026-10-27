@@ -32,6 +32,13 @@ struct FloraState {
 }
 
 #[derive(Clone, Debug)]
+struct RainState {
+    fade_sec: f32,
+    status: PopulationStatus,
+    pending_patch: Option<RainPatch>,
+}
+
+#[derive(Clone, Debug)]
 pub struct ScriptWarning {
     pub message: String,
     pub position: Position,
@@ -43,6 +50,7 @@ pub(super) type ScriptWarnings = Arc<Mutex<Vec<ScriptWarning>>>;
 pub(super) struct ScopeFrame {
     pub(super) created_populations: Vec<u64>,
     created_flora: Vec<u64>,
+    created_rain: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +68,8 @@ pub struct ScriptContext {
     pub(super) next_population_id: u64,
     next_flora_id: u64,
     flora: BTreeMap<u64, FloraState>,
+    next_rain_id: u64,
+    rain: BTreeMap<u64, RainState>,
     pub(super) next_voice_id: u64,
     pub(super) populations: BTreeMap<u64, PopulationState>,
     pub(super) scopes: Vec<ScopeFrame>,
@@ -114,6 +124,8 @@ impl ScriptContext {
             next_population_id: 1,
             next_flora_id: 1,
             flora: BTreeMap::new(),
+            next_rain_id: 1,
+            rain: BTreeMap::new(),
             next_voice_id: 1,
             populations: BTreeMap::new(),
             scopes: Vec::new(),
@@ -223,6 +235,102 @@ impl ScriptContext {
         }
     }
 
+    pub(super) fn place_rain(
+        &mut self,
+        spec: RainSpecHandle,
+        placement: Placement,
+        position: Position,
+    ) -> Result<RainHandle, Box<EvalAltResult>> {
+        let error =
+            |message: String| Box::new(EvalAltResult::ErrorRuntime(message.into(), position));
+        let Some(SpawnStrategy::Field {
+            target,
+            sampling,
+            min_freq,
+            max_freq,
+            min_dist_erb,
+            tension,
+        }) = placement.strategy
+        else {
+            return Err(error(
+                "Rain needs a field or random extent placement".into(),
+            ));
+        };
+        let default_spacing = if target == FieldTarget::Uniform {
+            0.0
+        } else {
+            1.0
+        };
+        if placement.count != 1 {
+            return Err(error("Rain placement count must be 1".into()));
+        }
+        if sampling != FieldSampling::Density {
+            return Err(error("Rain rejects peak sampling; use density".into()));
+        }
+        if tension != 0.0 {
+            return Err(error("Rain placement tension must be 0".into()));
+        }
+        if min_dist_erb != default_spacing {
+            return Err(error(format!(
+                "Rain placement spacing must be {default_spacing}"
+            )));
+        }
+        if [min_freq, max_freq]
+            .iter()
+            .any(|freq| !(MIN_FREQ_HZ..=MAX_FREQ_HZ).contains(freq))
+        {
+            return Err(error(format!(
+                "field placement bounds must be finite and within {MIN_FREQ_HZ}..={MAX_FREQ_HZ} Hz"
+            )));
+        }
+        if (f64::from(max_freq) / f64::from(min_freq)).log2() < 1.0 / 96.0 {
+            return Err(error(
+                "Rain extent must span at least one Log2Space bin (1/96 octave)".into(),
+            ));
+        }
+        let id = self.next_rain_id;
+        self.next_rain_id = self.next_rain_id.wrapping_add(1);
+        self.rain.insert(
+            id,
+            RainState {
+                fade_sec: spec.spec.fade_sec,
+                status: PopulationStatus::Live,
+                pending_patch: None,
+            },
+        );
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.created_rain.push(id);
+        }
+        self.push_event(
+            self.cursor,
+            vec![Action::PlaceRain {
+                rain_id: id,
+                spec: spec.spec,
+                extent_hz: (min_freq, max_freq),
+                target,
+            }],
+        );
+        Ok(RainHandle { id })
+    }
+
+    pub(super) fn release_rain(&mut self, rain_id: u64, position: Position) {
+        let Some(rain) = self.rain.get_mut(&rain_id) else {
+            self.warn(format!("release on unknown Rain {rain_id}"), position);
+            return;
+        };
+        match rain.status {
+            PopulationStatus::Live => rain.status = PopulationStatus::ReleasePending,
+            PopulationStatus::ReleasePending => self.warn(
+                format!("release ignored for Rain {rain_id}: release already pending"),
+                position,
+            ),
+            PopulationStatus::Released => self.warn(
+                format!("release ignored for inactive Rain {rain_id}"),
+                position,
+            ),
+        }
+    }
+
     pub(super) fn push_event(&mut self, time_sec: f32, actions: Vec<Action>) {
         if actions.is_empty() {
             return;
@@ -250,6 +358,7 @@ impl ScriptContext {
         self.scopes.push(ScopeFrame {
             created_populations: Vec::new(),
             created_flora: Vec::new(),
+            created_rain: Vec::new(),
         });
     }
 
@@ -309,6 +418,20 @@ impl ScriptContext {
             });
             flora.status = PopulationStatus::Released;
         }
+        for rain_id in scope.created_rain {
+            let rain = self.rain.get_mut(&rain_id).expect("scoped Rain");
+            if rain.status == PopulationStatus::Released {
+                continue;
+            }
+            if let Some(patch) = rain.pending_patch.take() {
+                updates.push(Action::UpdateRain { rain_id, patch });
+            }
+            releases.push(Action::ReleaseRain {
+                rain_id,
+                fade_sec: rain.fade_sec,
+            });
+            rain.status = PopulationStatus::Released;
+        }
         if !updates.is_empty() || !crowding_updates.is_empty() || !releases.is_empty() {
             updates.extend(crowding_updates);
             updates.extend(releases);
@@ -331,7 +454,8 @@ impl ScriptContext {
         for event in &self.scenario.events {
             for action in &event.actions {
                 if let Action::ReleasePopulation { fade_sec, .. }
-                | Action::ReleaseFlora { fade_sec, .. } = action
+                | Action::ReleaseFlora { fade_sec, .. }
+                | Action::ReleaseRain { fade_sec, .. } = action
                 {
                     let fade = fade_sec.max(0.0);
                     max_end = max_end.max(event.time + fade);
@@ -401,6 +525,22 @@ impl ScriptContext {
                     fade_sec: flora.spec.fade_sec,
                 });
                 flora.status = PopulationStatus::Released;
+            }
+        }
+
+        for (&rain_id, rain) in &mut self.rain {
+            if rain.status == PopulationStatus::Released {
+                continue;
+            }
+            if let Some(patch) = rain.pending_patch.take() {
+                update_actions.push(Action::UpdateRain { rain_id, patch });
+            }
+            if rain.status == PopulationStatus::ReleasePending {
+                release_actions.push(Action::ReleaseRain {
+                    rain_id,
+                    fade_sec: rain.fade_sec,
+                });
+                rain.status = PopulationStatus::Released;
             }
         }
 
@@ -981,6 +1121,39 @@ impl ScriptContext {
             position,
         );
     }
+}
+
+pub(super) fn update_rain_numeric(
+    ctx: &mut ScriptContext,
+    handle: RainHandle,
+    name: &str,
+    value: FLOAT,
+    position: Position,
+) -> Result<RainHandle, Box<EvalAltResult>> {
+    let value = super::spec::validate_rain_numeric(name, value, position)?;
+    let Some(rain) = ctx.rain.get_mut(&handle.id) else {
+        ctx.warn(
+            format!("{name} ignored for unknown Rain {}", handle.id),
+            position,
+        );
+        return Ok(handle);
+    };
+    if rain.status == PopulationStatus::Live {
+        let patch = rain.pending_patch.get_or_insert_with(RainPatch::default);
+        match name {
+            "amp" => patch.amp = Some(value),
+            "rate" => patch.rate = Some(value),
+            "hit" => patch.hit = Some(value),
+            "width" => patch.width = Some(value),
+            _ => unreachable!("registered Rain patch parameter"),
+        }
+    } else {
+        ctx.warn(
+            format!("{name} ignored for inactive Rain {}", handle.id),
+            position,
+        );
+    }
+    Ok(handle)
 }
 
 pub(super) fn update_flora_numeric(

@@ -87,6 +87,9 @@ pub(super) fn advance_population(
             }
         }
     }
+    for rain in &mut state.pop.rain {
+        rain.advance(&state.current_landscape);
+    }
     if state.pop.rest_enabled {
         state.schedule_renderer.prepare_rest_sources(
             state
@@ -275,6 +278,9 @@ pub(super) fn advance_population(
         for flora in &mut state.pop.flora {
             flora.release_at_scenario_end();
         }
+        for rain in &mut state.pop.rain {
+            rain.release_at_scenario_end();
+        }
         state.schedule_renderer.shutdown_at(now_tick);
     }
 
@@ -296,6 +302,7 @@ pub(super) fn advance_population(
         }
     }
     state.pop.flora.retain(|flora| !flora.is_finished());
+    state.pop.rain.retain(|rain| !rain.is_finished());
     state.pop.cleanup_dead(
         state.frame_idx,
         cfg.hop_duration.as_secs_f32(),
@@ -654,6 +661,7 @@ pub(super) fn render_and_route_audio(
         &state.current_landscape.rhythm,
         sources,
         &mut state.pop.flora,
+        &mut state.pop.rain,
         |id, start, window, matched| {
             report_try(&mut state.reporter, "local prediction match", |writer| {
                 writer.write_local_prediction_match(id, cfg.fs as u32, start, window, matched)

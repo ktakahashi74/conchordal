@@ -1,0 +1,71 @@
+# Rain: Impacts Drawn from Distributions, and the Objects They Strike
+
+Status: experimental v1 on `work/rain-20261027`, for the author's audition. Not merged.
+
+## Problem
+
+The author asked whether two axes form a musical expression:
+
+1. Texture as a distribution of sound, not bound by consonance.
+2. Short resonant tones combined with that texture.
+
+Rain is the inspiration, not the target. Reproducing rain is not the goal.
+
+The offline prototypes in `.orchestration/units/TEX-1/` gave three findings that hold beyond rain:
+
+- **Exact repetition sounds artificial.** In A, 28 Voices each repeated one fixed strike. The author heard the same repetition. A2 drew every strike fresh and sounded more natural. Auditory listeners learn exactly repeated sounds quickly, and they hear textures through their time-averaged statistics. A texture source therefore keeps its statistics fixed and draws every event anew. A Voice keeps a fixed body, so it cannot do this.
+- **Common onset binds a tone to the texture.** In C3, objects were struck by the drops that landed on them, at the same instant and with level following the drop. The author heard it as one world. In C2, objects were struck independently and the author heard a separate layer. Both are expressions. Grouping by common onset is the auditory scene-analysis principle that separates them.
+- **One material reads as drops; scattered modes read as crumpling.** In C4, strikes were band-limited noise bursts, and the author found them unnatural. The first Rust impacts (M0/M1) placed six modes at random within half an octave, decaying in 6 ms, and the author heard them as crumpling ("くしゃくしゃ"), not rain. A2 and C3, heard as natural and rain-like, struck one inharmonic pattern (wine glass) every time, with 60-cent mode offsets, decays of 25-50 ms and a soft onset. Listeners judge material from a body's mode structure and damping. When every event has a new random structure, each event is a different object, and a run of them sounds like something being crumpled. When every event shares one structure, the events group into one material struck many times. Each event then has a momentary pitch, but the pitch changes every time, lasts tens of milliseconds and is never sustained, so the texture carries no melody or harmony.
+
+## Concept
+
+Rain is a third composition mode, beside Populations and Flora. Each Rain has:
+
+- a stream of impacts over a frequency extent, every impact drawn from distributions;
+- optional resonant objects that belong to the Rain and ring when an impact lands on them.
+
+The coupling contract matches Flora's. Rain, Flora and Populations affect each other only through radiated sound and the Landscape. Voices are never struck by Rain. The separate-layer expression (C2) is a Rain placed beside a Population.
+
+## Impacts
+
+- **Timing.** A Poisson process at the composer's `rate` (impacts per second). There is no beat. Live `rate()` patches change the next draws.
+- **Band position.** At each impact the centre frequency is drawn from the placement's distribution over the extent. The distribution is rebuilt each hop from the Landscape with the spawn-placement density masses (`field_density_mass`):
+  - `random(lo, hi)`: log-uniform, independent of the Landscape;
+  - `consonance(lo, hi)`: follows the eroded consonance density mass;
+  - `dissonance`, `edge` and `gap`: follow the same masses as Voice placement.
+  - When the in-range mass is zero, the distribution is log-uniform.
+- **Material.** `impact_modes(pattern)` sets the struck body with the ModePattern vocabulary; the default is `modal_table("wine_glass")`. Its ratios are taken once at placement, at the extent's geometric centre, and at most eight are used.
+- **Strike.** Mode `k` sits at `centre · ratio_k · 2^{u_k}`, where `u_k` is drawn uniformly from ±`width` for every impact. Mode `k` has level `0.85^k` with a 3 dB spread and a random phase. The first mode decays with time constant `τ = 25 ms · (3.2 kHz / f_c)^{1/2}` with a log-normal spread of 0.4, and mode `k` with `τ / ratio_k^{1/2}`. Each impact starts with a raised-cosine onset of 0.5 to 1.5 ms; a hard start adds a broadband click. Level is log-normal with a 5 dB spread, capped at +9 dB. These constants reproduce the A2 prototype (25 ms over 1.5-7 kHz and 50 ms over 0.25-1.5 kHz); they are authored, not parameters of auditory cognition.
+- **Width.** `width(octaves)` is a composer control in [0, 5], live-patchable. The default 0.05 (60 cents, as in A2) keeps every impact recognisably the same material. Wider ranges scatter the modes until the material dissolves into crackles; 0 repeats the pattern exactly. The upper bound covers the audible band from any centre.
+- **Pool.** 64 preallocated impact slots. A new impact takes a free slot, or the one closest to its end.
+
+## Objects
+
+- **Count.** `objects(n)`, from 0 to 16; the default is 3.
+- **Pitch.** At placement each object takes a peak of the eroded consonance field level inside the extent, with peaks at least 1 ERB apart. Pitched sound follows consonance even when the impacts are free. Missing peaks are filled by log-uniform positions in the extent.
+- **Drift.** Each hop an object proposes the best eroded consonance score within one semitone of its sounding pitch, inside the extent and at least 1 ERB from the other objects. The score subtracts the Voice movement cost (1 per octave: coefficient 0.5 over the 2 s integration window), and a move must gain more than the Voice threshold 0.1. The pitch objective sign applies as it does to Voices. The object moves to its proposal only when it is next struck, so the new pitch starts with a strike and the rate of movement follows `hit`. `anchor()` holds every object at its placement pitch; the author found the drifting version more interesting (M0/M1), so drift is the default. Mode ratios stay fixed from placement; modes that reach 0.45 fs are muted, not dropped, so a retuned bank keeps its state.
+- **Body.** `object_modes(pattern)` uses the ModePattern vocabulary; the default is `modal_table("vibraphone_1")`. Mode `k` has gain `0.5^k` and T60 `object_decay · ratio^{-0.7}`. The default `object_decay` is 2 s.
+- **Strikes.** Each impact lands on an object with probability `hit` (default 0.06, about 2.4 strikes per second at the default rate, matching the C3 audition). The object is chosen uniformly. The impact also sounds, so the common onset is preserved. The drive is scaled per object so the ring's onset peak matches the impact's level. Common onset is what binds the two, so their onsets are made equally loud. Longer `object_decay` still adds presence.
+
+## Rendering and runtime
+
+- Rain renders after Voices and Flora, into the buses its `send()` selects. This happens before the self-sound history reads the habitat bus, so Voices hear Rain as external sound.
+- Advance, impact triggering and rendering allocate nothing in steady state.
+- Placement and a Log2Space change may allocate.
+- RNG: `SmallRng` seeded from the scenario seed and the Rain id.
+- Release ramps the gain to zero over `fade`. A finished Rain is removed. The run waits for Rain tails, as it does for Flora.
+
+## Why impacts do not form consonance
+
+An impact's pitch lasts tens of milliseconds and changes with every impact, so the harmonicity impacts leave in the Landscape is brief and scattered; they mostly add roughness. The Landscape's memory is short (density smoothing of 10 ms, hop windows of tens of milliseconds), and habituation is negative feedback that erodes sustained peaks. A run of impacts therefore does not build a consonance structure by itself (TEX-1 N0/N1: no change in octave shares or spectral flatness). Consonance comes from pitched sound with slow inertia, which is the objects' role. Impacts use Landscape distributions based on level or roughness, such as `gap`, and `width` moves them toward pitch when the composer wants it.
+
+## Measurements (TEX-1 M0/M1, before the impact material)
+
+Four objects, no drone, impacts on `gap(150, 5000)`, 60 s, seeds 21-24. Over all object pairs, the mean distance to the nearest of unison, 6/5, 5/4, 4/3, 3/2, 5/3 and the octave fell from 66 cents at placement to 42 cents over the last 30 s. Uniformly random intervals give 60 cents. Two seeds reached near-just chords (seed 21 ended at 180, 359, 719 and 960 Hz, every pair within 2 cents); two moved little. These numbers describe the mechanism; they do not decide whether it is heard as music. Listening to seed 21, the author found the drifting objects (M1) more interesting than fixed ones (M0) and heard the impacts as crumpling, which led to the impact material above. On the same scene and seed, the author heard the material impacts (P1) as natural and the scattered-mode impacts (M1) as artificial rather than rain.
+
+## Caveats and exclusions in v1
+
+- Rain reads the mixed Landscape, including its own sound. A Landscape-following Rain can reinforce itself. Flora's self-exclusion observer is not mirrored.
+- v1 has no reports, GUI or beat participation.
+- Objects hear their own sound and each other's. Habituation erodes a peak an object sustains, so objects keep wandering instead of settling. Two objects that reach an octave or fifth can move together as a locked pair.
+- Rain is Experimental. The technote is not updated until the author accepts the expression.

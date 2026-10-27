@@ -176,6 +176,7 @@ fn heard_flora_pcm_oracle_two_sources_routing_mute_fade_and_gap() {
                         &Default::default(),
                         &mut [],
                         &mut flora,
+                        &mut [],
                         |_, _, _, _| {},
                     )
                     .habitat
@@ -361,6 +362,7 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                         &Default::default(),
                         &mut [],
                         &mut flora,
+                        &mut [],
                         |_, _, _, _| {},
                     )
                     .habitat

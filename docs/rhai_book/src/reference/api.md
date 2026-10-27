@@ -22,6 +22,8 @@ Evidence labels describe parts of a mechanism, independently of disclosure tiers
 |------|-------------|----------|
 | `FloraSpec` | Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Flora` | Placed spectral growth; supports pending amplitude and pace patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
+| `RainSpec` | Reusable impact-texture definition built by `rain()`; placed as a Rain over a frequency extent. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
+| `Rain` | Placed impact texture with its resonant objects; supports live amp, rate, hit and width patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `PopulationSpec` | Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Population` | Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Placement` | Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
@@ -135,6 +137,66 @@ Applies to: `FloraSpec`.
 Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
 
 **Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: probabilistic span exit and private recovery/return; neutral at weight 0 (§9.3.96, §9.3.101).
+
+### Rain
+
+Rain draws every impact fresh from distributions over a frequency extent; the placement selects a free or Landscape-following distribution. Every impact strikes one material with fresh small variations. Its resonant objects start on consonance peaks, ring when impacts land on them, and drift toward consonance unless anchored. It is an authored texture rule, not a model of auditory cognition.
+
+#### `amp`
+
+```rhai,ignore
+amp(level)
+```
+
+Applies to: `RainSpec`, `Rain`.
+
+Set Rain's output scale in [0, 1]. Scales impacts and objects together. Live patches ramp over 80 ms and emit at wait, flush or scope end.
+
+**Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+
+#### `anchor`
+
+```rhai,ignore
+anchor()
+```
+
+Applies to: `RainSpec`.
+
+Hold Rain's objects at their placement pitches. Without it, an object drifts toward higher consonance by at most a semitone each time it is struck.
+
+**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: objects start on consonance peaks and drift toward consonance with the Voice movement-cost defaults when struck; anchor() holds them.
+
+#### `send`
+
+```rhai,ignore
+send(bus_or_set)
+```
+
+Applies to: `RainSpec`.
+
+Route Rain to a Bus or BusSet, using the same buses as Populations.
+
+**Evidence:** Not a mechanism (routing): selects or combines buses; see leave_self_out for the independent self-perception rule.
+
+#### `place`
+
+```rhai,ignore
+place(rain_spec, placement) -> Rain
+```
+
+Place a Rain over a field or random frequency extent. random(lo, hi) draws impact centres log-uniformly. consonance, dissonance, edge and gap follow the same density masses as Voice placement, rebuilt each hop; zero mass falls back to log-uniform. Count must be 1, with density sampling, no tension and the default spacing.
+
+**Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
+
+#### `release`
+
+```rhai,ignore
+release(rain)
+```
+
+Mark a Rain for release using its spec's fade.
+
+**Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 
 ### Population Specs
 
@@ -1392,6 +1454,114 @@ Applies to: `FloraSpec`.
 Enable or disable rendering diffuse Flora mass as band noise. Disabled by default; residual(true) opts in.
 
 **Evidence:** Not a mechanism (initial body): Flora body, amplitude or fade choices; see flora and pace.<br>Author rule: underlying spectral growth, consumption and retirement ecology; not an auditory cognition model.
+
+### Rain
+
+#### `rain`
+
+```rhai,ignore
+rain() -> RainSpec
+```
+
+Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike. Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impact times are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
+
+**Evidence:** Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+
+#### `fade`
+
+```rhai,ignore
+fade(seconds)
+```
+
+Applies to: `RainSpec`.
+
+Set Rain's placement and release fade in [0, 60] seconds.
+
+**Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+
+#### `rate`
+
+```rhai,ignore
+rate(impacts_per_second)
+```
+
+Applies to: `RainSpec`, `Rain`.
+
+Set the mean impact rate in [0, 2000] per second. Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+
+**Evidence:** Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+
+#### `hit`
+
+```rhai,ignore
+hit(probability)
+```
+
+Applies to: `RainSpec`, `Rain`.
+
+Set the probability in [0, 1] that an impact strikes one of the objects. A struck object is driven at the impact's own onset, scaled so its onset peak matches the impact's level; the impact and the ring share their start.
+
+**Evidence:** Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+
+#### `width`
+
+```rhai,ignore
+width(octaves)
+```
+
+Applies to: `RainSpec`, `Rain`.
+
+Set the half range in [0, 5] octaves by which each impact mode strays from impact_modes. Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
+
+**Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+
+#### `objects`
+
+```rhai,ignore
+objects(count)
+```
+
+Applies to: `RainSpec`.
+
+Set the number of resonant objects, 0 to 16. Objects start on eroded consonance-level peaks inside the extent, at least 1 ERB apart; missing peaks are filled by log-uniform positions. Each hop an object proposes the best eroded consonance score within one semitone, less the Voice movement cost, and moves there when next struck. Objects stay inside the extent and 1 ERB apart. `anchor()` holds them.
+
+**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: objects start on consonance peaks and drift toward consonance with the Voice movement-cost defaults when struck; anchor() holds them.
+
+#### `object_modes`
+
+```rhai,ignore
+object_modes(pattern)
+```
+
+Applies to: `RainSpec`.
+
+Set the objects' ModePattern; default modal_table("vibraphone_1"). Mode k has gain 0.5^k. Landscape-aware patterns read the Landscape at placement.
+
+**Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+
+#### `impact_modes`
+
+```rhai,ignore
+impact_modes(pattern)
+```
+
+Applies to: `RainSpec`.
+
+Set the impacts' material as a ModePattern; default modal_table("wine_glass"). The pattern's ratios are taken once at placement, at the extent's geometric centre, and at most eight are used. Mode k has level 0.85^k with a 3 dB spread. Decay is 25 ms at 3.2 kHz, longer at lower centres as (3.2 kHz / f)^0.5, with a log-normal spread; higher modes decay as ratio^-0.5. Each impact starts with a raised-cosine onset of 0.5 to 1.5 ms.
+
+**Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+
+#### `object_decay`
+
+```rhai,ignore
+object_decay(seconds)
+```
+
+Applies to: `RainSpec`.
+
+Set the T60 of an object's first mode in [0.01, 30] seconds. Higher modes decay faster, as ratio^-0.7.
+
+**Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
 
 ### Phonation & Rhythm
 

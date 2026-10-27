@@ -25,6 +25,8 @@ impl ScriptHost {
         engine.register_type_with_name::<PopulationHandle>("Population");
         engine.register_type_with_name::<FloraSpecHandle>("FloraSpec");
         engine.register_type_with_name::<FloraHandle>("Flora");
+        engine.register_type_with_name::<RainSpecHandle>("RainSpec");
+        engine.register_type_with_name::<RainHandle>("Rain");
         engine.register_type_with_name::<Placement>("Placement");
         engine.register_type_with_name::<Bus>("Bus");
         engine.register_type_with_name::<BusSet>("BusSet");
@@ -186,6 +188,111 @@ impl ScriptHost {
                     .lock()
                     .expect("lock script context")
                     .release_flora(handle.id, call.call_position());
+            },
+        );
+
+        engine.register_fn("rain", || RainSpecHandle {
+            spec: RainSpec::default(),
+        });
+        for name in ["amp", "fade", "rate", "hit", "width", "object_decay"] {
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, spec: RainSpecHandle, value: FLOAT| {
+                    spec.with_numeric(name, value, call.call_position())
+                },
+            );
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, spec: RainSpecHandle, value: INT| {
+                    spec.with_numeric(name, value as FLOAT, call.call_position())
+                },
+            );
+        }
+        for name in ["amp", "rate", "hit", "width"] {
+            let ctx_float = ctx.clone();
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, handle: RainHandle, value: FLOAT| {
+                    let mut ctx = ctx_float.lock().expect("lock script context");
+                    update_rain_numeric(&mut ctx, handle, name, value, call.call_position())
+                },
+            );
+            let ctx_int = ctx.clone();
+            engine.register_fn(
+                name,
+                move |call: NativeCallContext, handle: RainHandle, value: INT| {
+                    let mut ctx = ctx_int.lock().expect("lock script context");
+                    update_rain_numeric(
+                        &mut ctx,
+                        handle,
+                        name,
+                        value as FLOAT,
+                        call.call_position(),
+                    )
+                },
+            );
+        }
+        engine.register_fn(
+            "objects",
+            |call: NativeCallContext,
+             mut spec: RainSpecHandle,
+             count: INT|
+             -> Result<RainSpecHandle, Box<EvalAltResult>> {
+                let max = crate::life::rain::MAX_RAIN_OBJECTS;
+                if !(0..=INT::from(max)).contains(&count) {
+                    return Err(Box::new(EvalAltResult::ErrorRuntime(
+                        format!("Rain objects must be within [0, {max}]").into(),
+                        call.call_position(),
+                    )));
+                }
+                spec.spec.objects = count as u32;
+                Ok(spec)
+            },
+        );
+        engine.register_fn(
+            "object_modes",
+            |mut spec: RainSpecHandle, pattern: ModePattern| {
+                spec.spec.object_modes = pattern;
+                spec
+            },
+        );
+        engine.register_fn(
+            "impact_modes",
+            |mut spec: RainSpecHandle, pattern: ModePattern| {
+                spec.spec.impact_modes = pattern;
+                spec
+            },
+        );
+        engine.register_fn("anchor", |mut spec: RainSpecHandle| {
+            spec.spec.anchored = true;
+            spec
+        });
+        engine.register_fn("send", |mut spec: RainSpecHandle, bus: Bus| {
+            spec.spec.routing = bus.routing;
+            spec
+        });
+        engine.register_fn("send", |mut spec: RainSpecHandle, buses: BusSet| {
+            spec.spec.routing = buses.routing();
+            spec
+        });
+        let ctx_place_rain = ctx.clone();
+        engine.register_fn(
+            "place",
+            move |call: NativeCallContext, spec: RainSpecHandle, placement: Placement| {
+                ctx_place_rain
+                    .lock()
+                    .expect("lock script context")
+                    .place_rain(spec, placement, call.call_position())
+            },
+        );
+        let ctx_release_rain = ctx.clone();
+        engine.register_fn(
+            "release",
+            move |call: NativeCallContext, handle: RainHandle| {
+                ctx_release_rain
+                    .lock()
+                    .expect("lock script context")
+                    .release_rain(handle.id, call.call_position());
             },
         );
 

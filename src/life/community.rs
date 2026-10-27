@@ -89,6 +89,8 @@ pub struct Community {
     pub voices: Vec<Voice>,
     pub(crate) flora: Vec<super::flora::Flora>,
     pub(crate) has_placed_flora: bool,
+    pub(crate) rain: Vec<super::rain::Rain>,
+    pub(crate) has_placed_rain: bool,
     current_frame: u64,
     pub abort_requested: bool,
     pub global_coupling: f32,
@@ -205,6 +207,8 @@ mod frequency;
 mod respawn;
 mod social;
 
+pub(crate) use frequency::field_density_mass;
+
 use social::*;
 
 impl Community {
@@ -223,6 +227,8 @@ impl Community {
             voices: Vec::new(),
             flora: Vec::new(),
             has_placed_flora: false,
+            rain: Vec::new(),
+            has_placed_rain: false,
             current_frame: 0,
             abort_requested: false,
             global_coupling: 1.0,

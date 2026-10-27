@@ -22,6 +22,8 @@ cargo run --bin gen_rhai_defs
 |------|-------------|----------|
 | `FloraSpec` | `flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `Flora` | 配置されたスペクトル成長。振幅と拍に対する生態時間の倍率を更新でき、解放を指定できる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `RainSpec` | `rain()`で作る、打音のtextureの再利用可能な設定。周波数範囲に配置するとRainになる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `Rain` | 配置された打音のtextureと共鳴する物。amp、rate、hit、widthの更新と解放を指定できる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `PopulationSpec` | 再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `Population` | `place()`が返すPopulation。Voiceが死亡し世代交代しても、同一性を保つ安定した参照。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `Placement` | 初代のVoiceをどこへ配置するかを表す。`at()`、`consonance()`、`dissonance()`、`edge()`、`gap()`、`random()`、`line()`で作る。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
@@ -135,6 +137,66 @@ rest_on_habituation(weight)
 Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
 
 **根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：spanの確率的な退出と私的回復・復帰。重み0で中立（§9.3.96、§9.3.101）。
+
+### Rain
+
+Rainは、打音を一つずつ分布から引き直して周波数範囲に降らせる。配置の指定で、自由な分布かLandscapeに従う分布かを選ぶ。打音は一つの素材を毎回少しずつ変えて鳴らす。共鳴する物は協和の山に置かれ、打音が当たると鳴り、当たるたびに半音まで協和の高い方へ移る。`anchor()`で高さを固定できる。作曲上のtextureの規則で、聴覚認知のモデルではない。
+
+#### `amp`
+
+```rhai,ignore
+amp(level)
+```
+
+適用対象：`RainSpec`, `Rain`。
+
+Set Rain's output scale in [0, 1]. Scales impacts and objects together. Live patches ramp over 80 ms and emit at wait, flush or scope end.
+
+**根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
+
+#### `anchor`
+
+```rhai,ignore
+anchor()
+```
+
+適用対象：`RainSpec`。
+
+Hold Rain's objects at their placement pitches. Without it, an object drifts toward higher consonance by at most a semitone each time it is struck.
+
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：物は協和の山から始まり、打たれるたびにVoiceの移動費用の既定値で協和の方へ動く。anchor()で固定する。
+
+#### `send`
+
+```rhai,ignore
+send(bus_or_set)
+```
+
+適用対象：`RainSpec`。
+
+Route Rain to a Bus or BusSet, using the same buses as Populations.
+
+**根拠:** 該当なし（経路）：busの選択・結合。独立した自己知覚の規則はleave_self_outを参照。
+
+#### `place`
+
+```rhai,ignore
+place(rain_spec, placement) -> Rain
+```
+
+Place a Rain over a field or random frequency extent. random(lo, hi) draws impact centres log-uniformly. consonance, dissonance, edge and gap follow the same density masses as Voice placement, rebuilt each hop; zero mass falls back to log-uniform. Count must be 1, with density sampling, no tension and the default spacing.
+
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
+#### `release`
+
+```rhai,ignore
+release(rain)
+```
+
+Mark a Rain for release using its spec's fade.
+
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
 ### PopulationSpec
 
@@ -1392,6 +1454,114 @@ residual(enabled)
 Enable or disable rendering diffuse Flora mass as band noise. Disabled by default; residual(true) opts in.
 
 **根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
+
+### Rain
+
+#### `rain`
+
+```rhai,ignore
+rain() -> RainSpec
+```
+
+Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike. Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impact times are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
+
+**根拠:** 作者規則：分布から一つずつ引く打音と、打音が当たって鳴る共鳴する物によるtexture。聴覚モデルではない作曲上の規則（docs/design-notes/rain.md）。
+
+#### `fade`
+
+```rhai,ignore
+fade(seconds)
+```
+
+適用対象：`RainSpec`。
+
+Set Rain's placement and release fade in [0, 60] seconds.
+
+**根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
+
+#### `rate`
+
+```rhai,ignore
+rate(impacts_per_second)
+```
+
+適用対象：`RainSpec`, `Rain`。
+
+Set the mean impact rate in [0, 2000] per second. Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+
+**根拠:** 作者規則：分布から一つずつ引く打音と、打音が当たって鳴る共鳴する物によるtexture。聴覚モデルではない作曲上の規則（docs/design-notes/rain.md）。
+
+#### `hit`
+
+```rhai,ignore
+hit(probability)
+```
+
+適用対象：`RainSpec`, `Rain`。
+
+Set the probability in [0, 1] that an impact strikes one of the objects. A struck object is driven at the impact's own onset, scaled so its onset peak matches the impact's level; the impact and the ring share their start.
+
+**根拠:** 作者規則：分布から一つずつ引く打音と、打音が当たって鳴る共鳴する物によるtexture。聴覚モデルではない作曲上の規則（docs/design-notes/rain.md）。
+
+#### `width`
+
+```rhai,ignore
+width(octaves)
+```
+
+適用対象：`RainSpec`, `Rain`。
+
+Set the half range in [0, 5] octaves by which each impact mode strays from impact_modes. Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
+
+**根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
+
+#### `objects`
+
+```rhai,ignore
+objects(count)
+```
+
+適用対象：`RainSpec`。
+
+Set the number of resonant objects, 0 to 16. Objects start on eroded consonance-level peaks inside the extent, at least 1 ERB apart; missing peaks are filled by log-uniform positions. Each hop an object proposes the best eroded consonance score within one semitone, less the Voice movement cost, and moves there when next struck. Objects stay inside the extent and 1 ERB apart. `anchor()` holds them.
+
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：物は協和の山から始まり、打たれるたびにVoiceの移動費用の既定値で協和の方へ動く。anchor()で固定する。
+
+#### `object_modes`
+
+```rhai,ignore
+object_modes(pattern)
+```
+
+適用対象：`RainSpec`。
+
+Set the objects' ModePattern; default modal_table("vibraphone_1"). Mode k has gain 0.5^k. Landscape-aware patterns read the Landscape at placement.
+
+**根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
+
+#### `impact_modes`
+
+```rhai,ignore
+impact_modes(pattern)
+```
+
+適用対象：`RainSpec`。
+
+Set the impacts' material as a ModePattern; default modal_table("wine_glass"). The pattern's ratios are taken once at placement, at the extent's geometric centre, and at most eight are used. Mode k has level 0.85^k with a 3 dB spread. Decay is 25 ms at 3.2 kHz, longer at lower centres as (3.2 kHz / f)^0.5, with a log-normal spread; higher modes decay as ratio^-0.5. Each impact starts with a raised-cosine onset of 0.5 to 1.5 ms.
+
+**根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
+
+#### `object_decay`
+
+```rhai,ignore
+object_decay(seconds)
+```
+
+適用対象：`RainSpec`。
+
+Set the T60 of an object's first mode in [0.01, 30] seconds. Higher modes decay faster, as ratio^-0.7.
+
+**根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
 
 ### Phonationとリズム
 

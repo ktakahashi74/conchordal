@@ -229,6 +229,7 @@ fn b7_static_current_scores() {
                 &NeuralRhythms::default(),
                 &mut runtime.pcm,
                 &mut [],
+                &mut [],
                 |_, _, _, _| {},
             );
             runtime.observe(now, mixed.habitat, &params);
@@ -512,6 +513,7 @@ fn prepared_body_slots_capture_skip_and_density_rebuild_without_allocating() {
             &NeuralRhythms::default(),
             &mut runtime.pcm,
             &mut [],
+            &mut [],
             |_, _, _, _| {},
         );
         runtime.observe(0, frame.habitat, &params);
@@ -541,6 +543,7 @@ fn prepared_body_slots_capture_skip_and_density_rebuild_without_allocating() {
                 now,
                 &NeuralRhythms::default(),
                 &mut runtime.pcm,
+                &mut [],
                 &mut [],
                 |_, _, _, _| {},
             );

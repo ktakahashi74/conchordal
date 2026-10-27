@@ -6,11 +6,12 @@ mod placement;
 mod spec;
 
 use context::ScriptWarnings;
-use context::{PopulationStatus, update_flora_numeric};
+use context::{PopulationStatus, update_flora_numeric, update_rain_numeric};
 pub use context::{ScriptContext, ScriptWarning};
 pub use placement::{Bus, BusSet, Placement};
 use spec::{
-    BrainKind, FloraHandle, FloraSpecHandle, PhonationKind, PopulationSpec, validate_flora_numeric,
+    BrainKind, FloraHandle, FloraSpecHandle, PhonationKind, PopulationSpec, RainHandle,
+    RainSpecHandle, validate_flora_numeric,
 };
 pub use spec::{PopulationHandle, PopulationSpecHandle};
 
@@ -35,9 +36,9 @@ use crate::scenario::lifecycle::LifecycleConfig;
 use crate::scenario::{
     Action, ArticulationCoreConfig, ControlUpdateMode, CoupledTimingSpec, DurationSpec,
     EnvelopeConfig, FieldDurationSpec, FieldSampling, FieldTarget, FloraPatch, FloraSeeding,
-    FloraSpec, FloraTone, MetabolismRhythmReward, PhonationSpec, RespawnPeakBiasConfig,
-    RespawnPolicy, RhythmCouplingMode, RhythmRelation, RhythmRewardMetric, RhythmRole,
-    ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
+    FloraSpec, FloraTone, MetabolismRhythmReward, PhonationSpec, RainPatch, RainSpec,
+    RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRelation, RhythmRewardMetric,
+    RhythmRole, ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
 };
 
 fn parse_enum<T: Copy>(

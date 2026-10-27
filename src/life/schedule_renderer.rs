@@ -463,9 +463,18 @@ impl ScheduleRenderer {
         rhythms: &NeuralRhythms,
         emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
     ) -> RenderFrame<'_> {
-        self.render_with_source_pcm(phonation_batches, now, rhythms, &mut [], &mut [], emit)
+        self.render_with_source_pcm(
+            phonation_batches,
+            now,
+            rhythms,
+            &mut [],
+            &mut [],
+            &mut [],
+            emit,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn render_with_source_pcm(
         &mut self,
         phonation_batches: &[PhonationBatch],
@@ -473,6 +482,7 @@ impl ScheduleRenderer {
         rhythms: &NeuralRhythms,
         sources: &mut [SourcePcm],
         flora: &mut [super::flora::Flora],
+        rain: &mut [super::rain::Rain],
         mut emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
     ) -> RenderFrame<'_> {
         for source in &mut self.loo_pcm {
@@ -656,6 +666,10 @@ impl ScheduleRenderer {
             {
                 source.habitat.copy_from_slice(&flora.habitat_pcm);
             }
+        }
+        // Before the self-sound history reads the habitat bus: Voices hear Rain as external.
+        for rain in rain {
+            rain.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
         }
         self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
@@ -1154,6 +1168,7 @@ mod tests {
                     &NeuralRhythms::default(),
                     &mut source,
                     &mut [],
+                    &mut [],
                     |_, _, _, _| {},
                 );
                 let pcm = frame.habitat.to_vec();
@@ -1420,6 +1435,7 @@ mod tests {
                         &rhythms,
                         &mut sources,
                         &mut [],
+                        &mut [],
                         |id, start, window, m| matches.push(match_bits(id, start, window, m)),
                     );
                     let expected = oracle.render_with_source_pcm(
@@ -1427,6 +1443,7 @@ mod tests {
                         now,
                         &rhythms,
                         &mut expected_sources,
+                        &mut [],
                         &mut [],
                         |id, start, window, m| {
                             expected_matches.push(match_bits(id, start, window, m))
@@ -2007,6 +2024,7 @@ mod tests {
                         &rhythms,
                         &mut sources,
                         &mut flora,
+                        &mut [],
                         |_, _, _, _| {},
                     );
                     let control = voice_only.render(batches, now, &rhythms);
@@ -2105,6 +2123,7 @@ mod tests {
                     now,
                     &rhythms,
                     &mut scratch,
+                    &mut [],
                     &mut [],
                     |_, _, _, _| {},
                 );
@@ -2652,6 +2671,7 @@ mod tests {
                     &rhythms,
                     &mut sources,
                     &mut [],
+                    &mut [],
                     |_, _, _, _| {},
                 );
                 assert!(renderer.rest_sources.iter().all(|s| s.quiet_at.is_none()));
@@ -2662,6 +2682,7 @@ mod tests {
                         at,
                         &rhythms,
                         &mut sources,
+                        &mut [],
                         &mut [],
                         |_, _, _, _| {},
                     );
@@ -2680,6 +2701,7 @@ mod tests {
                         at,
                         &rhythms,
                         &mut sources,
+                        &mut [],
                         &mut [],
                         |_, _, _, _| {},
                     );
@@ -2783,6 +2805,7 @@ mod tests {
                 &NeuralRhythms::default(),
                 &mut [],
                 &mut flora,
+                &mut [],
                 |_, _, _, _| {},
             );
             crate::runtime_profile::begin_allocations();
@@ -2794,6 +2817,7 @@ mod tests {
                     &NeuralRhythms::default(),
                     &mut [],
                     &mut flora,
+                    &mut [],
                     |_, _, _, _| {},
                 );
             }

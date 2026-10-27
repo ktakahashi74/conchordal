@@ -221,6 +221,20 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   return divided classifications, including default-active author-rule parts, to
   the author; do not silently change their defaults during documentation work.
 
+## Listener Profile
+
+- `listener_profile("sensory" | "tonal")` is an initial Director setting before
+  scene actions/scopes. `DEFAULT_LISTENER_PROFILE` in `scripting/context.rs` is
+  `"sensory"`; changing it needs separate author adoption.
+- Tonal inherits SQ 0.05, TK 0.10, PX 1 and final-section arch/ritard 1/1.
+  These are audition weights, not adopted defaults. Explicit Population weights,
+  including zero, win; unsupported final forms are silently skipped.
+- Implicit expression uses the last completed section and existing whole-scene
+  PE-1 support. No suitable section means no effect; explicit expressive_section
+  (including zero) wins. Runtime rejection is silent only for profile expression.
+- Profile selection has no mechanism evidence claim. Keep the constituent
+  candidate and author-rule labels; do not extend their supported consumers.
+
 ## Air-Gap Protocol
 - The `conchordal` binary (instrument) MUST NOT write audio to disk
   in any build profile. Performances are ephemeral by design (manifesto).

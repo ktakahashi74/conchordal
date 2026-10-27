@@ -1144,18 +1144,55 @@ impl ScriptHost {
             },
         );
 
+        let ctx_for_profile = ctx.clone();
+        engine.register_fn(
+            "listener_profile",
+            move |call: NativeCallContext, name: &str| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_profile.lock().expect("lock script context");
+                let position = call.call_position();
+                if ctx.cursor != 0.0
+                    || !ctx.scenario.events.is_empty()
+                    || !ctx.scenario.scene_markers.is_empty()
+                    || !ctx.scopes.is_empty()
+                {
+                    return Err(Box::new(EvalAltResult::ErrorRuntime(
+                        "listener_profile must precede scene actions and scopes".into(),
+                        position,
+                    )));
+                }
+                ctx.listener_profile = parse_enum(
+                    "listener_profile",
+                    name,
+                    position,
+                    &[("sensory", "sensory"), ("tonal", "tonal")],
+                )?;
+                Ok(())
+            },
+        );
+
         let ctx_for_section = ctx.clone();
         engine.register_fn(
             "section",
             move |call_ctx: NativeCallContext, name: &str, callback: FnPtr| {
-                {
+                let start = {
                     let mut ctx = ctx_for_section.lock().expect("lock script context");
                     ctx.push_scene_marker(name);
                     ctx.push_scope();
-                }
+                    ctx.cursor
+                };
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
                 let mut ctx = ctx_for_section.lock().expect("lock script context");
                 ctx.pop_scope();
+                if ctx.listener_profile == "tonal" {
+                    ctx.profile_section = Some(crate::scenario::expression::Expression {
+                        start: f64::from(start),
+                        end: f64::from(ctx.cursor),
+                        arch: 1.0,
+                        ritard: 1.0,
+                        position: (0, 0),
+                        from_profile: true,
+                    });
+                }
                 result.map(|_| ())
             },
         );
@@ -1170,6 +1207,7 @@ impl ScriptHost {
                   callback: FnPtr| {
                 let start = {
                     let mut ctx = ctx_for_expression.lock().expect("lock script context");
+                    ctx.explicit_expression = true;
                     ctx.push_scene_marker(name);
                     ctx.push_scope();
                     ctx.cursor
@@ -1194,6 +1232,7 @@ impl ScriptHost {
                             crate::scenario::expression::Expression {
                                 start: f64::from(start),
                                 end: f64::from(end),
+                                from_profile: false,
                                 arch: arch.min(1.0),
                                 ritard: ritard.min(1.0),
                                 position: (

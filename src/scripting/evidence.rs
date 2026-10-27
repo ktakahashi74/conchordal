@@ -571,3 +571,9 @@ pub const TONALITY: &[EvidenceDoc] = &[
         ja: "作者規則：自己指令の符号化、数値誤差を考慮した調選択、候補生成後のprofileによる重み付き選好。既定0。",
     },
 ];
+
+/// A profile selects mechanisms; it supplies no separate evidence claim.
+pub const LISTENER_PROFILE: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Not a mechanism (profile selection): see follow_own_sequence, follow_own_tonality, phrase_boundary and expressive_section for candidate models and author rules.",
+    ja: "該当なし（型の選択）：候補モデルと作者規則の札は follow_own_sequence、follow_own_tonality、phrase_boundary、expressive_section を参照。",
+}];

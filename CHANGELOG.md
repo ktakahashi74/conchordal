@@ -2,12 +2,16 @@
 
 ## Unreleased
 
+- Add initial `listener_profile("sensory" | "tonal")`. Sensory remains the default;
+  tonal bundles provisional sequence, tonality, phrase and final-section expression
+  audition weights. Explicit axes (including zero) win; unsupported consumers are
+  silently skipped without widening their support. Author adoption remains pending.
+
 - Label all scripting terms and AppConfig keys by mechanism evidence in the
   documentation registry, generated bilingual API references and function hover.
   Mixed terms distinguish principle inputs, candidate models (including pending
   source matches) and author rules. Add English and Japanese composer guides;
-  disclosure tiers and existing defaults are unchanged. No default listener preset
-  is introduced.
+  disclosure tiers and existing defaults are unchanged. This metadata change itself introduces no listener profile.
 
 - Add initial-only `phrase_boundary(w)`, neutral by default, for discrete
   sustained Sine Voices. The LBDM candidate analyzes six executed On events;

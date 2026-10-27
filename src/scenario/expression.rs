@@ -11,6 +11,7 @@ pub(crate) struct Expression {
     pub arch: f64,
     pub ritard: f64,
     pub position: (usize, usize),
+    pub from_profile: bool,
 }
 
 impl Expression {
@@ -201,11 +202,13 @@ impl Scenario {
             reason = Some("transformed scene exceeds the initial 600 physical second support");
         }
         if let Some(reason) = reason {
-            tracing::warn!(
-                line = expression.position.0,
-                column = expression.position.1,
-                "expressive_section ignored: {reason}"
-            );
+            if !expression.from_profile {
+                tracing::warn!(
+                    line = expression.position.0,
+                    column = expression.position.1,
+                    "expressive_section ignored: {reason}"
+                );
+            }
             self.expression = None;
             return;
         }
@@ -239,6 +242,7 @@ mod tests {
                 arch: number("weight").min(1.0),
                 ritard: number("weight").min(1.0),
                 position: (0, 0),
+                from_profile: false,
             };
             let x = number("x");
             let time = e.performance(e.start + 300.0 * x);
@@ -269,6 +273,7 @@ mod tests {
             arch: 1.0,
             ritard: 1.0,
             position: (0, 0),
+            from_profile: false,
         };
         let parts: f64 = (0..4)
             .map(|i| e.integral((i + 1) as f64 / 4.) - e.integral(i as f64 / 4.))

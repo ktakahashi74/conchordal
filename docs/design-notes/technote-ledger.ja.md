@@ -7728,3 +7728,14 @@ Noneを返す。このsceneの既知の未来energyの生成器とは扱わな�
 [Friberg–Sundberg 1999](https://www.diva-portal.org/smash/get/diva2:1246197/FULLTEXT01.pdf)。
 
 Once は `PhonationGate::Immediate` に限る。知覚によって最初の発音を遅らせる形は、予定された発音の契約に含めない。
+
+
+### 9.3.111 聴き手の型の選択（PRE-1、2026-10-27）
+
+`listener_profile(name)` は場面の動作やscopeより前に指定するDirectorの語とする。既定はsensoryのまま、scripting/context.rsの一つの定数で保持する。tonalにはSQ-1 0.05（Harrisonほか2020のPPM-Decay）、TK-1i 0.10（Toiviainen–Krumhansl 2003）、PX-1i 1（Cambouropoulos 2001）、PE-1iのarch/ritard 1/1（Todd 1992、Friberg–Sundberg 1999）を束ねる。値は各unitの試聴用であり、作者の採用値ではない。候補kernelと作者規則の接続の札を分けたまま、選択自体は「該当なし（型の選択）」とする。
+
+Populationで明示した値は0を含めて継承より優先し、不正値を既存検査で0にした場合も同じとする。配置時の最終形について各機構の支持範囲を調べ、型の対象外には警告せず何もしない。明示の語の警告と実行時の支持判定は残す。解決した制御値はpopulation templateから出生・交代へ渡り、学習履歴は個体に閉じる。
+
+PE-1の場面全体の制限は維持する。最後に完了したsectionの終端が最終score cursorと一致し、完成したイベント列が既存の検査を通る場合だけ表情を適用する。明示のexpressive_sectionは0/0も含めて優先する。該当区間の欠如や非対応の場面は無作用とし、実デバイスの配送hopと600秒限界の検査も保つ。型由来の拒否だけは警告を出さず、明示の拒否は従来どおり警告する。非対応Voiceを選別して別の時計へ写すような支持範囲の追加は行わない。
+
+語なしと明示sensoryの両方について、RH-1iの9場面のWAVとTone命令をINT-6のhashと照合する。tonalの配送と明示値の優先は実Voiceで、支持された区間は実デバイス時計の準備まで検査する。元のv6bとstep版の対を試聴材料として描画し、機構ごとの判断変更数を記録する。実装確認と作者の採用は区別し、既定をtonalへ変える変更は別承認とする。

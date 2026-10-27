@@ -715,6 +715,17 @@ on the PopulationSpec first; the returned Population exposes only live patches a
         details: "Release is terminal at the scripting surface: later live patches on the same Population are ignored.",
     },
     FnDoc {
+        name: "listener_profile",
+        evidence: LISTENER_PROFILE,
+        owner: Owner::Global,
+        category: "timeline",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["listener_profile(name)"],
+        summary: "Choose the scene's initial listener profile: sensory (default) or tonal.",
+        details: "Call before scene actions or scopes. Sensory inherits no candidate weights and preserves the existing author-rule base. Tonal supplies follow_own_sequence=0.05 (Harrison et al. 2020 PPM-Decay candidate), follow_own_tonality=0.10 (Toiviainen-Krumhansl 2003 candidate), phrase_boundary=1 (Cambouropoulos 2001 LBDM candidate), and arch=1/ritard=1 on the last completed section (Todd 1992 and Friberg-Sundberg 1999 candidates). Each includes the author-rule adapters described by its own evidence labels. These are SQ-1/TK-1i/PX-1i/PE-1i audition weights, not author-adopted values; update after adoption. Explicit Population weights, including zero, win. Unsupported final Voices are silently skipped. Section expression needs the existing whole-scene PE-1 support; absent or unsupported sections are silent, and any explicit expressive_section, including zero, overrides profile expression. Individual axes remain neutral. The default remains sensory until separate author approval.",
+    },
+    FnDoc {
         name: "expressive_section",
         evidence: EXPRESSION,
         owner: Owner::Global,

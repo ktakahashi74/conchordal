@@ -730,6 +730,7 @@ mod expression_tests {
             arch: 0.0,
             ritard: 0.0,
             position: (0, 0),
+            from_profile: false,
         });
         clock.expression_clock = Some(ExpressionClock {
             rate: 2.0,
@@ -755,6 +756,7 @@ mod expression_tests {
             arch: 0.0,
             ritard: 1.0,
             position: (0, 0),
+            from_profile: false,
         });
         let mut points = Vec::new();
         let rhythms = NeuralRhythms::default();
@@ -774,6 +776,7 @@ mod expression_tests {
             arch: 0.0,
             ritard: 1.0,
             position: (0, 0),
+            from_profile: false,
         };
         let mut clock = CouplingClock::new(1.0, 2.0, 0.8, 0.0, 21);
         clock.expression = Some(e);
@@ -814,6 +817,7 @@ mod expression_tests {
             arch: 0.0,
             ritard: 1.0,
             position: (0, 0),
+            from_profile: false,
         };
         let mut clock = CouplingClock::new(0.9, 2.0, 0.8, 0.2, 21);
         let rate = clock.intrinsic_rate_hz;

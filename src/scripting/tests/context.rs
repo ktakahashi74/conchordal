@@ -2298,3 +2298,167 @@ fn expressive_section_respawn_keeps_global_weights_with_a_fresh_clock() {
     }
     assert_eq!(community.expression, Some(expression));
 }
+
+#[test]
+fn listener_profile_resolves_final_forms_and_explicit_zero_into_voices() {
+    let base = r#"sine().sustain().metric().seek_consonance().pitch_apply_mode("rearticulate").rearticulate_above(0)"#;
+    for (tail, expected) in [
+        ("", (0.05, 0.10, 1.0)),
+        (
+            ".follow_own_sequence(0).follow_own_tonality(0).phrase_boundary(0)",
+            (0.0, 0.0, 0.0),
+        ),
+        (
+            ".follow_own_sequence(0.2).follow_own_tonality(0.3).phrase_boundary(0.4)",
+            (0.2, 0.3, 0.4),
+        ),
+        (".rearticulate_above(50)", (0.0, 0.0, 1.0)),
+        (".pitch_apply_mode(\"glide\")", (0.0, 0.0, 0.0)),
+    ] {
+        let (scenario, warnings) = run_script_with_seed(
+            &format!("listener_profile(\"tonal\"); place({base}{tail}, at(220)); wait(1);"),
+            21,
+        );
+        let warnings = warnings.lock().unwrap();
+        if tail.contains("glide") {
+            assert_eq!(warnings.len(), 1);
+            assert!(
+                warnings[0]
+                    .message
+                    .starts_with("rearticulate_above() ignored")
+            );
+        } else {
+            assert!(warnings.is_empty(), "{tail}: {warnings:?}");
+        }
+        let mut community = Community::new(Timebase {
+            fs: 48000.0,
+            hop: 512,
+        });
+        let landscape = Landscape::default();
+        for (_, action) in action_times(&scenario) {
+            if matches!(action, Action::Spawn { .. }) {
+                community.apply_action(action.clone(), &landscape);
+            }
+        }
+        let voice = &community.voices[0];
+        let control = &voice.effective_control;
+        assert_eq!(
+            (
+                control.pitch.follow_own_sequence,
+                control.pitch.follow_own_tonality,
+                control.phonation.phrase_boundary
+            ),
+            expected
+        );
+        assert_eq!(voice.pitch_ctl.own_sequence.is_some(), expected.0 > 0.0);
+        assert_eq!(voice.pitch_ctl.own_tonality.is_some(), expected.1 > 0.0);
+        assert_eq!(
+            voice.phonation_engine.phrase_boundary.is_some(),
+            expected.2 > 0.0
+        );
+    }
+    let (scene, warnings) = run_script(
+        r#"listener_profile("tonal");
+        place(modal().sustain().steady().seek_consonance().pitch_apply_mode("gate_snap"),at(220));"#,
+    );
+    assert!(warnings.lock().unwrap().is_empty());
+    for (_, action) in action_times(&scene) {
+        if let Action::Spawn { spec, .. } = action {
+            assert_eq!(spec.control.pitch.follow_own_sequence, 0.05);
+            assert_eq!(spec.control.pitch.follow_own_tonality, 0.10);
+            assert_eq!(spec.control.phonation.phrase_boundary, 0.0);
+        }
+    }
+    // Cloned builders retain explicit zero regardless of method order.
+    let spec = first_spawn_spec_for_script(
+        "listener_profile(\"tonal\"); let p=sine().follow_own_sequence(0).follow_own_tonality(0).phrase_boundary(0); place(p.sustain().steady().seek_consonance().pitch_apply_mode(\"gate_snap\"),at(220));",
+    );
+    assert_eq!(spec.control.pitch.follow_own_sequence, 0.0);
+    assert_eq!(spec.control.pitch.follow_own_tonality, 0.0);
+    assert_eq!(spec.control.phonation.phrase_boundary, 0.0);
+}
+
+#[test]
+fn listener_profile_unsupported_is_silent_but_explicit_warnings_remain() {
+    for body in ["sine()", "modal()", "sine().sustain().metric()"] {
+        let (scenario, warnings) = run_script(&format!(
+            "listener_profile(\"tonal\"); place({body},at(220)); wait(1);"
+        ));
+        assert!(warnings.lock().unwrap().is_empty());
+        for (_, action) in action_times(&scenario) {
+            if let Action::Spawn { spec, .. } = action {
+                assert_eq!(spec.control.pitch.follow_own_sequence, 0.0);
+                assert_eq!(spec.control.pitch.follow_own_tonality, 0.0);
+                assert_eq!(spec.control.phonation.phrase_boundary, 0.0);
+            }
+        }
+    }
+    let (_, warnings) = run_script(
+        r#"listener_profile("tonal");
+        place(modal().follow_own_sequence(1).follow_own_tonality(1).phrase_boundary(1),at(220));"#,
+    );
+    assert_eq!(warnings.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn listener_profile_sensory_and_omission_keep_scenario_identical() {
+    let body = r#"seed(21); section("end", || {
+        place(sine().sustain().metric().seek_consonance().pitch_apply_mode("gate_snap"),at(220)); wait(2);
+    });"#;
+    let (implicit, _) = run_script(body);
+    let (explicit, _) = run_script(&format!("listener_profile(\"sensory\"); {body}"));
+    assert_eq!(format!("{implicit:?}"), format!("{explicit:?}"));
+    assert!(implicit.expression.is_none());
+}
+
+#[test]
+fn listener_profile_section_uses_existing_expression_support_and_explicit_override() {
+    let body = r#"section("first", || { place(sine().metric(),at(220)); wait(2); });
+        section("last", || { place(sine().metric(),at(330)); wait(4); });"#;
+    let (mut scenario, warnings) = run_script(&format!("listener_profile(\"tonal\"); {body}"));
+    assert!(warnings.lock().unwrap().is_empty());
+    let e = scenario.expression.unwrap();
+    assert_eq!((e.start, e.end, e.arch, e.ritard), (2.0, 6.0, 1.0, 1.0));
+    assert!(e.from_profile);
+    scenario.prepare_expression(48000.0, 512);
+    assert!(scenario.expression.is_some());
+    assert!(scenario.duration_sec > 6.0);
+    for script in [
+        "place(sine().metric(),at(220)); wait(2);",
+        "section(\"end\", || {place(sine().sustain().metric(),at(220)); wait(2);});",
+        "section(\"end\", || {place(flora(),random(220,880)); wait(2);});",
+        "section(\"end\", || {place(sine().metric(),at(220)); wait(2);}); wait(1);",
+        "section(\"end\", || {expressive_section(\"zero\",0,0,|| {place(sine().metric(),at(220)); wait(2);});});",
+    ] {
+        let (scenario, warnings) = run_script(&format!("listener_profile(\"tonal\"); {script}"));
+        assert!(scenario.expression.is_none(), "{script}");
+        assert!(warnings.lock().unwrap().is_empty(), "{script}");
+    }
+    let (scenario, _) = run_script(
+        r#"listener_profile("tonal"); expressive_section("end",0.2,0.3,|| {
+        place(sine().metric(),at(220)); wait(2);
+    });"#,
+    );
+    let e = scenario.expression.unwrap();
+    assert_eq!((e.arch, e.ritard, e.from_profile), (0.2, 0.3, false));
+    let (scenario, warnings) = run_script(
+        r#"listener_profile("tonal"); play(|| {
+        section("end", || { place(sine().metric(),at(220)); wait(2); });
+    });"#,
+    );
+    assert!(warnings.lock().unwrap().is_empty());
+    assert!(scenario.expression.unwrap().from_profile);
+}
+
+#[test]
+fn listener_profile_rejects_unknown_and_late_selection() {
+    for script in [
+        "listener_profile(\"unknown\");",
+        "wait(1); listener_profile(\"tonal\");",
+        "section(\"x\", || {}); listener_profile(\"tonal\");",
+        "place(sine(),at(220)); listener_profile(\"tonal\");",
+        "section(\"x\", || { listener_profile(\"tonal\"); });",
+    ] {
+        assert!(run_script_err(script).message.contains("listener_profile"));
+    }
+}

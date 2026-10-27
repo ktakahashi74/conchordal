@@ -666,6 +666,11 @@ fn line(start_hz: i64, end_hz: f64) -> Placement;
 /// Evidence: Not a mechanism (placement): initial position, extent or population count (§9.3.56).
 fn line(start_hz: i64, end_hz: i64) -> Placement;
 
+/// Choose the scene's initial listener profile: sensory (default) or tonal.
+/// Call before scene actions or scopes. Sensory inherits no candidate weights and preserves the existing author-rule base. Tonal supplies follow_own_sequence=0.05 (Harrison et al. 2020 PPM-Decay candidate), follow_own_tonality=0.10 (Toiviainen-Krumhansl 2003 candidate), phrase_boundary=1 (Cambouropoulos 2001 LBDM candidate), and arch=1/ritard=1 on the last completed section (Todd 1992 and Friberg-Sundberg 1999 candidates). Each includes the author-rule adapters described by its own evidence labels. These are SQ-1/TK-1i/PX-1i/PE-1i audition weights, not author-adopted values; update after adoption. Explicit Population weights, including zero, win. Unsupported final Voices are silently skipped. Section expression needs the existing whole-scene PE-1 support; absent or unsupported sections are silent, and any explicit expressive_section, including zero, overrides profile expression. Individual axes remain neutral. The default remains sensory until separate author approval.
+/// Evidence: Not a mechanism (profile selection): see follow_own_sequence, follow_own_tonality, phrase_boundary and expressive_section for candidate models and author rules.
+fn listener_profile(name: String);
+
 /// Weak onset emphasis following the emergent measure, amount 0-1 (default 0).
 /// Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/steady/flow presets.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.

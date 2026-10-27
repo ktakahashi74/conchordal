@@ -2739,6 +2739,7 @@ fn expression_maps_new_gate_offs_but_preserves_already_reserved_off() {
         arch: 0.0,
         ritard: 1.0,
         position: (0, 0),
+        from_profile: false,
     };
     let mut engine = PhonationEngine::from_config(
         &PhonationConfig {

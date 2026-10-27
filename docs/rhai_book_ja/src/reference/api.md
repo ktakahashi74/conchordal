@@ -391,6 +391,16 @@ Close a live Population; its voices enter their release phase and fade out. Rele
 
 **根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
+#### `listener_profile`
+
+```rhai,ignore
+listener_profile(name)
+```
+
+Choose the scene's initial listener profile: sensory (default) or tonal. Call before scene actions or scopes. Sensory inherits no candidate weights and preserves the existing author-rule base. Tonal supplies follow_own_sequence=0.05 (Harrison et al. 2020 PPM-Decay candidate), follow_own_tonality=0.10 (Toiviainen-Krumhansl 2003 candidate), phrase_boundary=1 (Cambouropoulos 2001 LBDM candidate), and arch=1/ritard=1 on the last completed section (Todd 1992 and Friberg-Sundberg 1999 candidates). Each includes the author-rule adapters described by its own evidence labels. These are SQ-1/TK-1i/PX-1i/PE-1i audition weights, not author-adopted values; update after adoption. Explicit Population weights, including zero, win. Unsupported final Voices are silently skipped. Section expression needs the existing whole-scene PE-1 support; absent or unsupported sections are silent, and any explicit expressive_section, including zero, overrides profile expression. Individual axes remain neutral. The default remains sensory until separate author approval.
+
+**根拠:** 該当なし（型の選択）：候補モデルと作者規則の札は follow_own_sequence、follow_own_tonality、phrase_boundary、expressive_section を参照。
+
 #### `expressive_section`
 
 ```rhai,ignore

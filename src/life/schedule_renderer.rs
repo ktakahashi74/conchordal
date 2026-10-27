@@ -1078,6 +1078,7 @@ mod tests {
             arch: 1.0,
             ritard: 0.0,
             position: (0, 0),
+            from_profile: false,
         };
         for oracle in [false, true] {
             let mut actual = ScheduleRenderer::new(time).with_expression(Some(expression));

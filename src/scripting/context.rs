@@ -1,5 +1,8 @@
 use super::*;
 
+// Change only after author adoption of the bundled audition.
+const DEFAULT_LISTENER_PROFILE: &str = "sensory";
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum PopulationStatus {
     Live,
@@ -45,6 +48,9 @@ pub(super) struct ScopeFrame {
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub(super) expression_sections: Vec<(crate::scenario::expression::Expression, Position)>,
+    pub(super) listener_profile: &'static str,
+    pub(super) profile_section: Option<crate::scenario::expression::Expression>,
+    pub(super) explicit_expression: bool,
     pub cursor: f32,
     pub scenario: Scenario,
     pub seed: u64,
@@ -77,6 +83,9 @@ impl ScriptContext {
     /// `seed()` call, which wins because it runs during evaluation.
     pub(super) fn with_seed(seed: u64) -> Self {
         Self {
+            listener_profile: DEFAULT_LISTENER_PROFILE,
+            profile_section: None,
+            explicit_expression: false,
             cursor: 0.0,
             expression_sections: Vec::new(),
             scenario: Scenario {
@@ -438,6 +447,15 @@ impl ScriptContext {
                 Err(reason) => self.warn(format!("expressive_section ignored: {reason}"), position),
             }
         }
+        if self.listener_profile == "tonal"
+            && !self.explicit_expression
+            && let Some(expression) = self.profile_section
+            && expression.end == f64::from(self.cursor)
+            && expression.validate(&self.scenario).is_ok()
+        {
+            self.scenario.expression = Some(expression);
+            self.scenario.expression_cursor = Some(self.cursor);
+        }
         let release_tail = self.max_release_tail();
         if release_tail > end_time {
             end_time = release_tail;
@@ -686,6 +704,21 @@ impl ScriptContext {
                 "tie() ignored outside free-pitch sustain() with metric()/entrained()/steady()/flow() and gate_snap/rearticulate",
             );
             population_spec.spec.control.phonation.tie = 0.0;
+        }
+        // Resolve the preset after final-form validation; explicit zero also wins.
+        if self.listener_profile == "tonal" {
+            let control = population_spec.spec.spawn_spec().control;
+            if control.supports_phrase_boundary() && !specified.contains_key("phrase_boundary") {
+                population_spec.spec.control.phonation.phrase_boundary = 1.0;
+            }
+            if population_spec.spec.consonance_movement && control.supports_own_sequence() {
+                if !specified.contains_key("follow_own_sequence") {
+                    population_spec.spec.control.pitch.follow_own_sequence = 0.05;
+                }
+                if !specified.contains_key("follow_own_tonality") {
+                    population_spec.spec.control.pitch.follow_own_tonality = 0.10;
+                }
+            }
         }
         let id = self.next_population_id;
         self.next_population_id = self.next_population_id.wrapping_add(1);

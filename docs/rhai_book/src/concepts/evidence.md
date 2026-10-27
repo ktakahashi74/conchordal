@@ -33,7 +33,7 @@ See [Rhythm](rhythm.md) for its supported execution paths and resource limits.
 authored finite-sequence completion, a six-onset online adaptation, birth-fixed
 caps and gain on one later legal Sine onset. Its implementation checks do not
 reproduce the original program or corpus results. It defaults to weight 0 and is
-not part of a default listener preset. See [Rhythm](rhythm.md) for support and
+available in the opt-in tonal profile, while the default sensory profile leaves it off. See [Rhythm](rhythm.md) for support and
 response expiry.
 
 Evidence is independent of **Core / Experimental / Tuning / Research**, which
@@ -56,11 +56,38 @@ whose defaults are 0.
 Defaults come first, then presets, then individual controls: simple pieces should
 not require a stack of parameters.
 
-A **default listener preset is not implemented yet**. The policy permits one
-bundle of qualifying candidate mechanisms after source agreement and the author's
-adoption through listening. Its name and contents have not been chosen. A future
-single term should remove or replace that bundle. None of today's labels installs
-such a preset or claims that a candidate has passed all acceptance steps.
+### The listener profile
+
+Write `listener_profile("tonal");` before scene actions or scopes to select a
+bundle; `listener_profile("sensory");` removes its inherited weights. Omitting the
+word still selects **sensory**, preserving the existing base sound. Changing that
+default requires separate author adoption; the bundle is available for audition,
+not already adopted.
+
+| Mechanism | Tonal weight | Evidence |
+|---|---:|---|
+| `follow_own_sequence` | 0.05 | Candidate: Harrison et al. (2020), PPM-Decay; author rules for interval encoding and scoring |
+| `follow_own_tonality` | 0.10 | Candidate: Toiviainen–Krumhansl (2003), Model 1; author rules for encoding, key selection and scoring |
+| `phrase_boundary` | 1 | Candidate: Cambouropoulos (2001), LBDM; author rules for online boundaries and gain |
+| Final section arch / ritard | 1 / 1 | Candidates: Todd (1992), Friberg–Sundberg (1999); author rules for interval assignment, gain floor and clock mapping |
+
+These are the SQ-1, TK-1i, PX-1i and PE-1i demonstration weights. They make
+mechanism differences available to audition; they are not author-adopted values
+and will be updated after adoption. `listener_profile` itself is labelled **Not a
+mechanism (profile selection)**; the constituent terms retain their own labels.
+
+Explicit Population weights override the profile, including explicit zero.
+Inheritance checks the final Voice form at placement, independently for each
+mechanism, and silently skips unsupported Voices. Individual axes still default
+to zero. Existing author-rule base behavior remains active in both profiles.
+
+Section expression uses the last completed `section`, only when it ends at the
+scene's score cursor and the entire scene satisfies existing PE-1 support.
+Without a suitable section it does nothing. Flora, sustained participation and
+other unsupported PE-1 scenes are silently skipped as a whole; this does not
+extend PE-1 to those Voices. Any explicit `expressive_section`, including weights
+0/0, takes priority over inherited expression. Runtime delivery and duration
+checks remain in force. See [Rhythm](rhythm.md) for each mechanism's limits.
 
 ## What the composer chooses
 

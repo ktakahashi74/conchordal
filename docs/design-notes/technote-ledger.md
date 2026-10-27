@@ -10793,3 +10793,35 @@ not v6b. Reference: [Todd 1992](https://continuum-hypothesis.com/music/todd_dyn.
 [Friberg–Sundberg 1999](https://www.diva-portal.org/smash/get/diva2:1246197/FULLTEXT01.pdf).
 
 Once additionally requires `PhonationGate::Immediate`; viability-delayed initial onsets are outside the scheduled-onset contract.
+
+
+### 9.3.111 Listener profile selection (PRE-1, 2026-10-27)
+
+`listener_profile(name)` is an initial Director setting, before scene actions or
+scopes. Sensory remains the default through one constant in scripting/context.rs.
+Tonal inherits SQ-1 0.05 (Harrison et al. 2020 PPM-Decay), TK-1i 0.10
+(Toiviainen–Krumhansl 2003), PX-1i 1 (Cambouropoulos 2001), and PE-1i
+arch/ritard 1/1 (Todd 1992; Friberg–Sundberg 1999). These are audition weights
+from the respective unit reports, not adopted values. Their candidate kernels
+and author-rule adapters retain separate labels. Selection itself is not a
+mechanism and adds no source or brain-evidence claim.
+
+Population declarations, including explicit zero and invalid values neutralized
+by existing validation, override inheritance. Resolve each mechanism against the
+final placed Voice form, without a warning for unsupported inherited weights;
+retain explicit warnings and existing runtime support checks. Population templates
+carry the resolved controls into births and replacements; learning remains local.
+
+PE-1 retains its whole-scene restriction. Select the last completed section only
+when its end equals the final score cursor and its completed events pass existing
+validation. Any explicit expressive_section, including zero, overrides inheritance.
+No suitable section or unsupported scene is a silent no-op. Device delivery and
+600-second checks are unchanged; implicit failures are silent, explicit failures
+still warn. No special Voice bypass or unsupported clock mapping is introduced.
+
+The nine RH-1i default scenes must retain both WAV and Tone-command hashes against
+INT-6, for omitted and explicit sensory selection. Tonal delivery and explicit
+precedence are checked at the actual Voice, and supported section expression is
+checked through device-clock preparation. The unchanged v6b and its step variant
+supply paired audition material and mechanism decision counts. These checks do not
+claim author adoption; changing the default to tonal is a separate approved change.

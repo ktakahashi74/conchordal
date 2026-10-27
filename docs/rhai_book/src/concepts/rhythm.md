@@ -601,3 +601,58 @@ sequence scoring until replacement; small decayed traces are never silently
 discarded. Non-finite probability or score calculations disable that decision's
 sequence term and are diagnostic failures, not successful predictions. Execution,
 learning and decision records distinguish actual onsets from unexecuted targets.
+
+## Responding to a local phrase boundary
+
+`phrase_boundary(w)` softens one new Sine Tone after a local boundary in that
+Voice's own executed notes. It is initial-only, finite and nonnegative, with
+weight zero by default. Unsupported final forms warn and ignore it. Use explicit
+`sustain()` with `metric()`, `entrained()`, `steady()` or `flow()`, and discrete
+`gate_snap` or `rearticulate` pitch application. For example:
+
+```rhai
+let voice = sine().sustain().steady().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(0)
+    .phrase_boundary(1.0);
+place(voice, consonance(220.0, 880.0));
+wait(12.0);
+```
+
+The **candidate model is LBDM (Cambouropoulos 2001)**. Its interval truncation,
+change and proximity equations, and pitch/IOI/rest weights `.25/.50/.25` are
+retained. **Online adaptation and the post-boundary response are author rules**.
+They do not infer the end of a future phrase, form a Todd expression arch or
+change release or clocks. The cap declaration is one octave and four initial
+bodily periods for IOI and rest, fixed at birth. Mapping one initial period to a
+quarter note is an author convention using the source's whole-note example,
+not a psychological constant or a new seconds-valued composer control.
+
+The adapter waits for six consecutive executed On events and the first five
+Tones' effective Off events. Release tails may overlap: rest means the symbolic
+Off-to-On interval, not acoustic silence. Missing support, overlapping gates,
+simultaneous On events, pitch updates, or a new generation discard incomplete
+history and pending responses. The last Tone need not have released yet.
+Component profiles normalize over the three interior points; a positive strict
+central peak publishes once as `final-local`. Plateaus and unobservable endpoints
+do not create boundaries. This local result differs from normalization over an
+entire finished melody.
+
+The boundary position and the time it becomes known are separate. PX-1 reads
+renderer execution receipts from the completed hop on the next hop. SQ-1 keeps
+its existing issuance-stage records and within-hop learning; the two features
+share identities and record representation, not one confirmed event stream.
+The first existing candidate opportunity after publication consumes the pending
+response even if rest, lifecycle, Connect, tie or another rule vetoes On. It
+expires one last observed, untruncated IOI after publication. A legal new On must
+also execute before that deadline, with matching identity and no intervening On
+or support loss. Cancellation never transfers a response to another Tone.
+
+A successful reaction applies `g = 1/(1+w*B)` once to that Tone's PCM, including
+its tail, habitat, presentation and self-exclusion capture. Existing strength,
+its direct metabolic update and candidate times remain unchanged. Updates retain
+the gain. Pending reservations have unsupported self forecasts; executed gains
+are carried by supported forecasts. Changed sound may change later perceptions
+and choices. Reports expose `phrase_boundary` and `phrase_execution` records.
+A sparse or absent reaction is possible; this word does not guarantee phrase
+planning or musical improvement. Corpus replication and author adoption are
+separate from implementation agreement.

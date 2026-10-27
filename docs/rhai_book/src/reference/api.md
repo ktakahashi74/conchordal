@@ -561,6 +561,18 @@ Sustain phonation mode (default). The default is a continuous note until release
 
 **Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 
+#### `phrase_boundary`
+
+```rhai,ignore
+phrase_boundary(w)
+```
+
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
+
+Soften one new Sine onset after a confirmed local self boundary. Initial-only finite nonnegative weight, default 0. Requires Sine, sustained metric/entrained/steady/flow and discrete pitch; unsupported final forms warn and disable it. Candidate model: LBDM (Cambouropoulos 2001). Online adaptation and the post-boundary response are author rules. Renderer execution receipts are published after each hop, separately from SQ-1 issuance records. A six-onset window uses pitch/IOI/rest weights .25/.50/.25. Caps are one octave and four initial bodily cycles (an author mapping to a whole note), fixed at birth. The first existing opportunity consumes the response even if vetoed. A legal new Tone receives gain 1/(1+w*B), without changing strength, clocks or release. See Rhythm for support, expiry and evidence limits.
+
+**Evidence:** Candidate (LBDM, Cambouropoulos 2001): local boundary model with pitch/IOI/rest weights .25/.50/.25; implementation checks do not reproduce the original program or corpus results (§9.3.106).<br>Author rule: finite-sequence completion, six-onset online adaptation, birth-fixed caps and post-boundary gain 1/(1+w*B) on one later legal Sine onset. Weight defaults 0; no default listener preset adoption (§9.3.106).
+
 #### `rest_on_habituation`
 
 ```rhai,ignore

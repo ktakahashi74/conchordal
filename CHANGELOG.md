@@ -9,6 +9,13 @@
   disclosure tiers and existing defaults are unchanged. No default listener preset
   is introduced.
 
+- Add initial-only `phrase_boundary(w)`, neutral by default, for discrete
+  sustained Sine Voices. The LBDM candidate analyzes six executed On events;
+  author rules publish local boundaries and soften one later legal On without
+  changing strength, clocks or release. Renderer receipts remain distinct from
+  SQ-1 issuance records. Veto, expiry, cancellation and loss of support discard
+  the reaction; unsupported final forms warn and ignore the word.
+
 - Add initial-only `follow_own_sequence(w)` for stepwise sustained Voices, default
   zero. A fixed PPM-Decay candidate model learns executed self pitch intervals;
   an author rule adds positive follow after candidate generation. Sample-ordered

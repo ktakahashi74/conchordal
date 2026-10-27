@@ -15,6 +15,25 @@ pub(super) fn advance_population(
         &state.current_landscape,
         &mut state.pop,
     );
+    for receipt in state.schedule_renderer.phrase_receipts.drain(..) {
+        if let Some(voice) = state.pop.voices.iter_mut().find(|v| {
+            v.id() == receipt.record.voice_id && v.metadata.generation == receipt.record.generation
+        }) && let Some(phrase) = &mut voice.phonation_engine.phrase_boundary
+        {
+            phrase.trace_enabled = state.reporter.is_some();
+            phrase.observe(&receipt, now_tick);
+        }
+    }
+    for voice in &mut state.pop.voices {
+        if let Some(phrase) = &mut voice.phonation_engine.phrase_boundary {
+            phrase.finish_publication(now_tick);
+            for boundary in phrase.trace.drain(..) {
+                report_try(&mut state.reporter, "phrase boundary", |writer| {
+                    writer.write_phrase_boundary(&boundary)
+                });
+            }
+        }
+    }
     for flora in &mut state.pop.flora {
         flora.observe_rhythm(state.flora_rhythm, now_tick, cfg.meter_shaping);
         flora.observe_external(&state.current_landscape, state.last_analysis_frame);
@@ -473,6 +492,15 @@ pub(super) fn render_and_route_audio(
     now_tick: Tick,
     phonation_count: usize,
 ) -> (Arc<[f32]>, Arc<[f32]>, f32, Duration) {
+    state
+        .schedule_renderer
+        .retain_phrase_sources(|id, generation| {
+            state.pop.voices.iter().any(|v| {
+                v.id() == id
+                    && v.metadata.generation == generation
+                    && v.phonation_engine.phrase_boundary.is_some()
+            })
+        });
     if let Some(runtime) = state.pop.body_metabolism.as_mut() {
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
@@ -696,6 +724,11 @@ pub(super) fn render_and_route_audio(
         }
     }
 
+    for receipt in &state.schedule_renderer.phrase_receipts {
+        report_try(&mut state.reporter, "phrase execution", |writer| {
+            writer.write_phrase_execution(receipt)
+        });
+    }
     (presentation_chunk, habitat_chunk, max_p, synthesis_elapsed)
 }
 

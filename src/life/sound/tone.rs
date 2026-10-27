@@ -42,6 +42,12 @@ struct ExcitedState {
 
 #[derive(Clone)]
 pub struct Tone {
+    pub(crate) phrase: Option<crate::life::phrase_boundary::PhraseTone>,
+    pub(crate) phrase_on: bool,
+    pub(crate) phrase_off: bool,
+    pub(crate) phrase_pitch_changed: bool,
+    pub(crate) phrase_off_origin: &'static str,
+    pub(crate) phrase_gain: f32,
     excited: Option<ExcitedState>,
     backend: AnyBackend,
     render_modulator: Option<RenderModulator>,
@@ -136,6 +142,12 @@ impl Tone {
     /// Reset a probe of this same body without rebuilding its allocated backend.
     pub(crate) fn reset_representative(&mut self, template: &Self, pitch_hz: f32) {
         assert!(!template.started && template.pending_updates.is_empty());
+        self.phrase = template.phrase;
+        self.phrase_on = template.phrase_on;
+        self.phrase_off = template.phrase_off;
+        self.phrase_pitch_changed = template.phrase_pitch_changed;
+        self.phrase_off_origin = template.phrase_off_origin;
+        self.phrase_gain = template.phrase_gain;
         self.backend.reset_representative();
         self.excited = template.excited.clone();
         self.render_modulator = template.render_modulator.clone();
@@ -236,6 +248,12 @@ impl Tone {
         let pitch_alpha = smoothing_alpha(sample_dt, pitch_tau_sec);
 
         Some(Self {
+            phrase: None,
+            phrase_on: false,
+            phrase_off: false,
+            phrase_pitch_changed: false,
+            phrase_off_origin: "materialized_duration",
+            phrase_gain: 1.,
             excited: None,
             backend,
             render_modulator: render_modulator.map(RenderModulator::from_spec),
@@ -289,7 +307,7 @@ impl Tone {
     }
 
     pub(crate) fn supports_self_model(&self) -> bool {
-        self.excited.is_none()
+        self.excited.is_none() && self.phrase.is_none_or(|p| p.reservation.is_none())
     }
 
     pub(crate) fn residual_bound(&self, now: Tick) -> Option<f64> {
@@ -316,10 +334,26 @@ impl Tone {
     }
 
     pub fn note_off(&mut self, tick: Tick) {
+        if self.phrase.is_some() {
+            if self.phrase_off {
+                return;
+            }
+            if tick <= self.envelope.hold_end {
+                self.phrase_off_origin = "command_off";
+            }
+        }
         self.envelope = self.envelope.with_release(tick);
     }
 
     pub(crate) fn release_for_replacement(&mut self, tick: Tick) {
+        if self.phrase.is_some() {
+            if self.phrase_off {
+                return;
+            }
+            if tick <= self.envelope.hold_end {
+                self.phrase_off_origin = "replacement_off";
+            }
+        }
         self.envelope = self.envelope.with_replacement_release(tick);
     }
 
@@ -427,7 +461,36 @@ impl Tone {
         false
     }
 
+    pub(crate) fn phrase_start_due(&self, at: Tick) -> bool {
+        at >= self.envelope.onset
+            && at < self.envelope.release_end
+            && self
+                .excited
+                .as_ref()
+                .is_none_or(|s| !s.closed && !s.retired)
+            && !self.started
+            && (self.pending_impulse_energy > 0.
+                || self.pending_trigger.is_some_and(|t| at >= t.at_tick))
+    }
+
+    pub(crate) fn phrase_pitch(&self) -> Option<f32> {
+        self.backend.is_sine().then_some(self.current_pitch_hz)
+    }
+
+    pub(crate) fn phrase_release(&self) -> Tick {
+        self.envelope.hold_end
+    }
+
     pub fn render_tick(&mut self, tick: Tick, _fs: f32, dt: f32, rhythms: &NeuralRhythms) -> f32 {
+        let sample = self.render_unscaled_tick(tick, dt, rhythms);
+        if self.phrase_gain == 1. {
+            sample
+        } else {
+            sample * self.phrase_gain
+        }
+    }
+
+    fn render_unscaled_tick(&mut self, tick: Tick, dt: f32, rhythms: &NeuralRhythms) -> f32 {
         #[cfg(test)]
         {
             self.radiated_amplitude = 0.0;
@@ -802,7 +865,7 @@ impl Tone {
             if let Some(target) = pending.update.target_amp.filter(|a| a.is_finite()) {
                 updates.events[updates.len] = AmplitudeUpdate {
                     at_sample: pending.at_tick.max(now),
-                    target: target.max(0.),
+                    target: target.max(0.) * self.phrase_gain,
                 };
                 updates.len += 1;
             }
@@ -812,8 +875,8 @@ impl Tone {
             valid_until,
             amplitude_smoothing: (self.current_amp != self.target_amp || updates.len > 0)
                 .then_some(AmplitudeSmoothing {
-                    current: self.current_amp,
-                    target: self.target_amp,
+                    current: self.current_amp * self.phrase_gain,
+                    target: self.target_amp * self.phrase_gain,
                     alpha: self.amp_alpha,
                 }),
             amplitude_updates: (updates.len > 0).then_some(updates),
@@ -842,7 +905,11 @@ impl Tone {
             "phase3 self model unsupported: renderer"
         );
         let envelope = release.map_or(self.envelope, |at| self.envelope.with_release(at));
-        (self.current_pitch_hz, self.current_amp, envelope)
+        (
+            self.current_pitch_hz,
+            self.current_amp * self.phrase_gain,
+            envelope,
+        )
     }
 
     pub(crate) fn excitation_end_tick(&self) -> Tick {
@@ -868,6 +935,9 @@ impl Tone {
     }
 
     fn apply_update(&mut self, update: &ToneUpdate) {
+        if self.phrase.is_some() && !self.phrase_off && update.target_freq_hz.is_some() {
+            self.phrase_pitch_changed = true;
+        }
         if let Some(pulse) = update.autonomous_pulse
             && let Some(modulator) = &mut self.render_modulator
         {
@@ -1020,6 +1090,93 @@ fn default_body_snapshot() -> BodySnapshot {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn phrase_boundary_gain_survives_updates_clone_reset_and_prediction() {
+        use crate::life::tone_energy::ToneEnergy;
+        let time = Timebase { fs: 8000., hop: 64 };
+        let mut plain = Tone::from_parts(
+            time,
+            0,
+            4000,
+            293.,
+            0.2,
+            None,
+            Some(RenderModulatorSpec::SeqGate { duration_sec: 10. }),
+            Some(ToneAdsr {
+                attack_sec: 0.,
+                decay_sec: 0.,
+                sustain_level: 1.,
+                release_sec: 0.1,
+            }),
+        )
+        .unwrap();
+        plain.arm_onset_trigger(1.);
+        plain.schedule_planned_kick(OnsetKick { strength: 1. });
+        let mut soft = plain.clone();
+        soft.phrase_gain = 0.8;
+        let mut probe = plain.clone();
+        probe.reset_representative(&soft, 293.);
+        assert_eq!(probe.phrase_gain, 0.8);
+        let rhythms = NeuralRhythms::default();
+        for tone in [&mut plain, &mut soft] {
+            tone.set_smoothing_tau_sec(0.05);
+            tone.schedule_update(
+                600,
+                ToneUpdate {
+                    target_amp: Some(0.4),
+                    ..Default::default()
+                },
+            );
+        }
+        let mut forecast = None;
+        let mut power = [0_f64; 2];
+        for tick in 0..4800 {
+            if tick == 512 {
+                let (_, amplitude, envelope) = soft.prediction_parameters(None);
+                forecast = Some(ToneEnergy {
+                    amplitude,
+                    envelope,
+                    control: Some(soft.prediction_control(tick, &rhythms)),
+                    sine: soft.prediction_sine(tick),
+                    bank: soft.prediction_bank(tick),
+                    scheduled_release: None,
+                });
+                assert!(forecast.as_ref().unwrap().sine.is_some());
+            }
+            for tone in [&mut plain, &mut soft] {
+                tone.apply_updates_if_due(tick);
+                tone.kick_planned_if_due(tick);
+            }
+            let a = plain.render_tick(tick, time.fs, 1. / time.fs, &rhythms);
+            let b = soft.render_tick(tick, time.fs, 1. / time.fs, &rhythms);
+            assert_eq!(b, a * 0.8);
+            power[0] += f64::from(a).powi(2);
+            power[1] += f64::from(b).powi(2);
+            if let Some(f) = &forecast {
+                let predicted = f.sine_point(tick, None).unwrap().0[1];
+                assert!((predicted - f64::from(b)).abs() < 0.002);
+            }
+        }
+        assert!(power[0] > 0.);
+        assert!((power[1] / power[0] - 0.64).abs() < 1e-6);
+        let mut pending = plain.clone();
+        pending.phrase = Some(crate::life::phrase_boundary::PhraseTone {
+            reservation: Some(crate::life::phrase_boundary::Reservation {
+                voice: 2,
+                generation: 7,
+                tone: 7,
+                confirming_seq: 11,
+                confirming_tone: 6,
+                known: 0,
+                expires: 100,
+                gain: 0.8,
+            }),
+        });
+        assert!(!pending.supports_self_model());
+        assert!(pending.prediction_sine(0).is_none());
+        assert!(pending.prediction_bank(0).is_none());
+    }
+
     use super::*;
 
     #[test]

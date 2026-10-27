@@ -807,29 +807,47 @@ fn ph1_offline_acquisition() {
     let mut opts = options();
     opts.reporter = Some(reporter);
     opts.listener_forced = true;
-    opts.offline_body_probe = Some(Box::new(move |state, tick, count, pcm| {
-        let batches: Vec<_> = state.phonation_batches_buf[..count]
-            .iter()
-            .map(|batch| {
-                serde_json::json!({
-                    "source_id":batch.source_id,"commands":batch.cmds,"tones":batch.tones,
+    if let Ok(path) = std::env::var("PH1_PROFILE") {
+        opts.profile = Some(
+            RunProfile::create(
+                &path,
+                scenario.seed,
+                true,
+                config.dcc.coupling_strength,
+                true,
+                48000,
+                config.analysis.hop_size,
+                None,
+            )
+            .unwrap(),
+        );
+    }
+    // Profiling follows the ordinary reporter path without command-probe overhead.
+    if opts.profile.is_none() {
+        opts.offline_body_probe = Some(Box::new(move |state, tick, count, pcm| {
+            let batches: Vec<_> = state.phonation_batches_buf[..count]
+                .iter()
+                .map(|batch| {
+                    serde_json::json!({
+                        "source_id":batch.source_id,"commands":batch.cmds,"tones":batch.tones,
+                    })
                 })
-            })
-            .collect();
-        let sources:Vec<_>=state.schedule_renderer.loo_pcm.iter().map(|source|serde_json::json!({
+                .collect();
+            let sources:Vec<_>=state.schedule_renderer.loo_pcm.iter().map(|source|serde_json::json!({
             "id":source.id,"generation":source.generation,"kind":format!("{:?}",source.kind),
             "nonzero_samples":source.habitat.iter().filter(|&&x|x!=0.0).count(),
         })).collect();
-        writeln!(
-            evidence,
-            "{}",
-            serde_json::json!({"tick":tick,"batches":batches,"sources":sources,
-                "habitat_nonzero_samples":pcm[0].iter().filter(|&&x|x!=0.0).count(),
-                "presentation_nonzero_samples":pcm[1].iter().filter(|&&x|x!=0.0).count(),
-            })
-        )
-        .unwrap();
-    }));
+            writeln!(
+                evidence,
+                "{}",
+                serde_json::json!({"tick":tick,"batches":batches,"sources":sources,
+                    "habitat_nonzero_samples":pcm[0].iter().filter(|&&x|x!=0.0).count(),
+                    "presentation_nonzero_samples":pcm[1].iter().filter(|&&x|x!=0.0).count(),
+                })
+            )
+            .unwrap();
+        }));
+    }
     let (tx, rx) = bounded::<Arc<[f32]>>(16);
     let guard = Some(Arc::new(LimiterMeter::default()));
     let wav = crate::audio::writer::WavOutput::run(

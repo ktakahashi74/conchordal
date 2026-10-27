@@ -588,6 +588,19 @@ impl ScriptContext {
                 .phonation
                 .articulation_persistence = 0.0;
         }
+        if population_spec.spec.control.phonation.phrase_boundary > 0.0
+            && !population_spec
+                .spec
+                .spawn_spec()
+                .control
+                .supports_phrase_boundary()
+        {
+            warn_at(
+                "phrase_boundary",
+                "phrase_boundary() requires Sine, sustained metric/entrained/steady/flow and discrete pitch; ignored",
+            );
+            population_spec.spec.control.phonation.phrase_boundary = 0.0;
+        }
         if population_spec.spec.control.pitch.follow_own_sequence > 0.0
             && (!population_spec.spec.consonance_movement
                 || !population_spec

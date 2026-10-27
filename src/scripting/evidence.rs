@@ -243,6 +243,17 @@ pub const SEQUENCE: &[EvidenceDoc] = &[
     },
 ];
 
+pub const PHRASE_BOUNDARY: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Candidate (LBDM, Cambouropoulos 2001): local boundary model with pitch/IOI/rest weights .25/.50/.25; implementation checks do not reproduce the original program or corpus results (§9.3.106).",
+        ja: "候補（LBDM、Cambouropoulos 2001）：音高・IOI・休みの重み.25/.50/.25を用いる局所境界モデル。実装の検査は原著プログラムやcorpus成績の再現ではない（§9.3.106）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: finite-sequence completion, six-onset online adaptation, birth-fixed caps and post-boundary gain 1/(1+w*B) on one later legal Sine onset. Weight defaults 0; no default listener preset adoption (§9.3.106).",
+        ja: "作者規則：有限列の完備化、6 Onのオンライン接続、出生時に固定する上限、境界判明後の合法なSine On一件へのgain 1/(1+w*B)。重みの既定値は0。既定の聴き手の型への採用は未実施（§9.3.106）。",
+    },
+];
+
 /// AppConfig leaf keys, including research-only optional records.
 pub const CONFIG_DOCS: &[ConfigDoc] = &[
     ConfigDoc {

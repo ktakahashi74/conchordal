@@ -29,6 +29,13 @@ fixtures cover distributions, information content and learning state; they do no
 establish R API or RNG equivalence. The term remains opt-in with weight 0 by default.
 See [Rhythm](rhythm.md) for its supported execution paths and resource limits.
 
+`phrase_boundary(w)` combines the LBDM candidate (Cambouropoulos, 2001) with
+authored finite-sequence completion, a six-onset online adaptation, birth-fixed
+caps and gain on one later legal Sine onset. Its implementation checks do not
+reproduce the original program or corpus results. It defaults to weight 0 and is
+not part of a default listener preset. See [Rhythm](rhythm.md) for support and
+response expiry.
+
 Evidence is independent of **Core / Experimental / Tuning / Research**, which
 organize how the API is used and disclosed. Experimental does not mean Candidate,
 and Core does not mean Principle.
@@ -43,8 +50,9 @@ choices, not consequences of sensory principles. Adding labels changes no sound,
 value, route or control.
 
 Under the current policy, **new candidate and author-rule axes start neutral**.
-This does not switch off the existing base. `dwell`, `rest_on_habituation` and
-`follow_own_sequence` are examples of optional weights whose defaults are 0.
+This does not switch off the existing base. `dwell`, `rest_on_habituation`,
+`follow_own_sequence` and `phrase_boundary` are examples of optional weights
+whose defaults are 0.
 Defaults come first, then presets, then individual controls: simple pieces should
 not require a stack of parameters.
 

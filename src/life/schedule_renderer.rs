@@ -1,13 +1,67 @@
 use crate::core::modulation::NeuralRhythms;
 use crate::core::temporal_expectation::{AcousticTemporalExpectation, OwnSoundHistory};
 use crate::core::timebase::{Tick, Timebase};
+use crate::life::own_sequence::{ExecutionKind, ExecutionRecord};
 use crate::life::phonation_engine::ToneCmd;
+use crate::life::phrase_boundary::Receipt;
 use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
 use crate::scenario::control::Routing;
 use std::collections::BTreeMap;
 use std::time::Instant;
 use tracing::debug;
+
+#[derive(Clone, Default)]
+struct PhraseSource {
+    sequence: u64,
+    latest_on: Option<(u64, u64)>,
+    invalid_sequence: u64,
+    overlap_at: Option<Tick>,
+}
+
+impl PhraseSource {
+    #[allow(clippy::too_many_arguments)]
+    fn receipt(
+        &mut self,
+        owner: (u64, u32),
+        tone: u64,
+        kind: ExecutionKind,
+        at: Tick,
+        available: Tick,
+        hz: Option<f32>,
+        origin: &'static str,
+        gain: f32,
+    ) -> Receipt {
+        self.sequence += 1;
+        match kind {
+            ExecutionKind::On => {
+                self.latest_on = Some((tone, self.sequence));
+            }
+            ExecutionKind::Off => {}
+            ExecutionKind::Missing | ExecutionKind::PitchUpdate => {
+                self.invalid_sequence = self.sequence
+            }
+        }
+        Receipt {
+            reservation: None,
+            reaction_applied: false,
+            interval_supported: true,
+            record: ExecutionRecord {
+                voice_id: owner.0,
+                generation: owner.1,
+                tone_id: tone,
+                kind,
+                sample: at,
+                available_at: available,
+                execution_sequence: self.sequence,
+                frequency_hz: hz,
+                strength: None,
+            },
+            origin,
+            gain,
+        }
+    }
+}
 
 // Ordered so the per-tick mixdown sums tones in a fixed (source_id, tone_id)
 // order. HashMap iteration order is process-randomized, which makes the
@@ -73,6 +127,8 @@ pub(crate) struct RestSource {
 }
 
 pub struct ScheduleRenderer {
+    phrase_sources: BTreeMap<(u64, u32), PhraseSource>,
+    pub(crate) phrase_receipts: Vec<Receipt>,
     pub(crate) rest_sources: Vec<RestSource>,
     prototype: bool,
     time: Timebase,
@@ -141,6 +197,8 @@ impl ScheduleRenderer {
 
     pub fn new(time: Timebase) -> Self {
         Self {
+            phrase_sources: BTreeMap::new(),
+            phrase_receipts: Vec::new(),
             rest_sources: Vec::new(),
             prototype: false,
             time,
@@ -176,6 +234,12 @@ impl ScheduleRenderer {
         let mut fork = Self::new(self.time);
         fork.prototype = self.prototype;
         fork.cutoff_tick = self.cutoff_tick;
+        fork.phrase_sources = self
+            .phrase_sources
+            .iter()
+            .filter(|(key, _)| key.0 == source_id)
+            .map(|(key, source)| (*key, source.clone()))
+            .collect();
         fork.tones = self
             .tones
             .iter()
@@ -440,11 +504,9 @@ impl ScheduleRenderer {
 
         self.update_rest_completion(now);
         self.tones.retain(|_, rt| {
-            if !rt.tone.is_done(now) {
-                return true;
-            }
-
-            false
+            // A zero-length tail can finish exactly at this hop boundary.
+            // Keep its first effective Off until the execution pass records it.
+            !rt.tone.is_done(now) || (rt.tone.phrase_on && !rt.tone.phrase_off)
         });
 
         let end = now.saturating_add(hop as Tick);
@@ -466,9 +528,9 @@ impl ScheduleRenderer {
         }
         let commands_us = profile_lap(&mut checkpoint);
         #[cfg(test)]
-        let use_blocks = !self.sample_major_oracle;
+        let use_blocks = !self.sample_major_oracle && self.phrase_sources.is_empty();
         #[cfg(not(test))]
-        let use_blocks = true;
+        let use_blocks = self.phrase_sources.is_empty();
         if use_blocks {
             let samples = (end - now) as usize;
             let mut sample_rhythms = rhythms;
@@ -527,7 +589,6 @@ impl ScheduleRenderer {
                 }
             }
         }
-        #[cfg(test)]
         if !use_blocks {
             self.render_sample_major_oracle(now, end, rhythms, sources);
         }
@@ -574,8 +635,7 @@ impl ScheduleRenderer {
         }
     }
 
-    // Frozen sample-major loop from main 792ae36; test oracle only.
-    #[cfg(test)]
+    // Sample-major execution is required for chronological PX-1 receipts.
     fn render_sample_major_oracle(
         &mut self,
         now: Tick,
@@ -586,11 +646,16 @@ impl ScheduleRenderer {
         let fs = self.time.fs;
         let dt = 1.0 / fs;
         for tick in now..end {
+            if !self.phrase_sources.is_empty() {
+                self.execute_phrase_events(tick, end);
+            }
             let idx = (tick - now) as usize;
             let mut acc_presentation = 0.0f32;
             let mut acc_habitat = 0.0f32;
             for rt in self.tones.values_mut() {
-                rt.tone.apply_updates_if_due(tick);
+                if rt.tone.phrase.is_none() {
+                    rt.tone.apply_updates_if_due(tick);
+                }
                 rt.tone.kick_planned_if_due(tick);
                 let sample = rt.tone.render_tick(tick, fs, dt, &rhythms);
 
@@ -622,6 +687,148 @@ impl ScheduleRenderer {
             self.buf_presentation[idx] = acc_presentation;
             self.buf_habitat[idx] = acc_habitat;
             rhythms.advance_in_place(dt);
+        }
+    }
+
+    pub(crate) fn retain_phrase_sources(&mut self, mut active: impl FnMut(u64, u32) -> bool) {
+        let tones = &self.tones;
+        self.phrase_sources.retain(|key, _| {
+            active(key.0, key.1)
+                || tones.iter().any(|(id, rt)| {
+                    id.source_id == key.0
+                        && rt.source_generation == key.1
+                        && rt.tone.phrase.is_some()
+                })
+        });
+    }
+
+    fn execute_phrase_events(&mut self, at: Tick, available: Tick) {
+        // Off and validity changes precede all same-sample On events.
+        for (key, rt) in &mut self.tones {
+            let tone = &mut rt.tone;
+            if tone.phrase.is_none() {
+                continue;
+            }
+            tone.apply_updates_if_due(at);
+            let owner = (key.source_id, rt.source_generation);
+            let Some(source) = self.phrase_sources.get_mut(&owner) else {
+                continue;
+            };
+            if tone.phrase_pitch_changed {
+                tone.phrase_pitch_changed = false;
+                self.phrase_receipts.push(source.receipt(
+                    owner,
+                    key.tone_id,
+                    ExecutionKind::PitchUpdate,
+                    at,
+                    available,
+                    None,
+                    "executed_pitch_update",
+                    1.,
+                ));
+            }
+            if tone.phrase_on && !tone.phrase_off && at >= tone.phrase_release() {
+                tone.phrase_off = true;
+                self.phrase_receipts.push(source.receipt(
+                    owner,
+                    key.tone_id,
+                    ExecutionKind::Off,
+                    at,
+                    available,
+                    None,
+                    tone.phrase_off_origin,
+                    tone.phrase_gain,
+                ));
+            }
+        }
+        for (owner, source) in &mut self.phrase_sources {
+            let count = self
+                .tones
+                .iter()
+                .filter(|(key, rt)| {
+                    key.source_id == owner.0
+                        && rt.source_generation == owner.1
+                        && rt.tone.phrase.is_some()
+                        && !rt.tone.phrase_on
+                        && rt.tone.phrase_start_due(at)
+                })
+                .count();
+            let held = self.tones.iter().any(|(key, rt)| {
+                key.source_id == owner.0
+                    && rt.source_generation == owner.1
+                    && rt.tone.phrase_on
+                    && !rt.tone.phrase_off
+            });
+            if count > 1 || (count > 0 && held) {
+                source.overlap_at = Some(at);
+                self.phrase_receipts.push(source.receipt(
+                    *owner,
+                    0,
+                    ExecutionKind::Missing,
+                    at,
+                    available,
+                    None,
+                    "overlapping_or_simultaneous_on",
+                    1.,
+                ));
+            }
+        }
+        for (key, rt) in &mut self.tones {
+            let tone = &mut rt.tone;
+            if tone.phrase_on || !tone.phrase_start_due(at) {
+                continue;
+            }
+            let onset = tone.onset();
+            let supported_hz = tone.phrase_pitch();
+            let Some(phrase) = &mut tone.phrase else {
+                continue;
+            };
+            let owner = (key.source_id, rt.source_generation);
+            let Some(source) = self.phrase_sources.get_mut(&owner) else {
+                continue;
+            };
+            if at != onset {
+                self.phrase_receipts.push(source.receipt(
+                    owner,
+                    key.tone_id,
+                    ExecutionKind::Missing,
+                    at,
+                    available,
+                    None,
+                    "late_execution",
+                    1.,
+                ));
+            }
+            let interval_supported = supported_hz.is_some() && source.overlap_at != Some(at);
+            let reservation = phrase.reservation.take();
+            let reaction_applied = reservation.is_some_and(|r| {
+                interval_supported
+                    && r.voice == owner.0
+                    && r.generation == owner.1
+                    && r.tone == key.tone_id
+                    && at >= r.known
+                    && at < r.expires
+                    && source.latest_on == Some((r.confirming_tone, r.confirming_seq))
+                    && source.invalid_sequence <= r.confirming_seq
+            });
+            if reaction_applied {
+                tone.phrase_gain = reservation.unwrap().gain;
+            }
+            tone.phrase_on = true;
+            let mut receipt = source.receipt(
+                owner,
+                key.tone_id,
+                ExecutionKind::On,
+                at,
+                available,
+                supported_hz,
+                "renderer_on",
+                tone.phrase_gain,
+            );
+            receipt.interval_supported = interval_supported;
+            receipt.reservation = reservation;
+            receipt.reaction_applied = reaction_applied;
+            self.phrase_receipts.push(receipt);
         }
     }
 
@@ -684,6 +891,12 @@ impl ScheduleRenderer {
                             Some(spec.render_modulator.clone()),
                             spec.adsr,
                         ) {
+                            tone.phrase = spec.phrase;
+                            if spec.phrase.is_some() {
+                                self.phrase_sources
+                                    .entry((batch.source_id, batch.source_generation))
+                                    .or_default();
+                            }
                             if self.prototype {
                                 tone.enable_phase3();
                             }
@@ -1267,6 +1480,283 @@ mod tests {
         assert!(renderer.tones.values().all(|rt| rt.tone.is_done(now)));
     }
 
+    #[test]
+    fn phrase_boundary_renderer_receipts_reservation_and_fork() {
+        use crate::life::phrase_boundary::{PhraseBoundary, PhraseTone};
+        let time = Timebase {
+            fs: 1000.,
+            hop: 100,
+        };
+        for reject in [
+            "none",
+            "identity",
+            "generation",
+            "expired",
+            "intervening",
+            "pitch",
+            "cancelled",
+        ] {
+            let mut renderer = ScheduleRenderer::new(time);
+            let mut phrase = PhraseBoundary::new(2, 7, time.fs, 1., [12., 4., 4.]);
+            let batches: Vec<_> = [0., 1., 2., 6., 7., 8.]
+                .into_iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    let mut batch = outcome_batch(BodyKind::Sine);
+                    let tone = &mut batch.tones[0];
+                    tone.tone_id = i as u64 + 1;
+                    tone.onset = i as u64 * 100 + 3;
+                    tone.freq_hz = 100. * 2_f32.powf(n / 12.);
+                    tone.hold_ticks = Some(if i == 5 { 1000 } else { 90 });
+                    tone.phrase = Some(PhraseTone { reservation: None });
+                    batch.cmds[0] = ToneCmd::On {
+                        tone_id: tone.tone_id,
+                        kick: OnsetKick { strength: 1. },
+                    };
+                    batch
+                })
+                .collect();
+            for now in (0..600).step_by(100) {
+                renderer.render(
+                    if now == 0 { &batches } else { &[] },
+                    now,
+                    &NeuralRhythms::default(),
+                );
+                let mut previous = None;
+                for receipt in renderer.phrase_receipts.drain(..) {
+                    assert_eq!(receipt.record.available_at, now + 100);
+                    assert!(receipt.record.sample >= now && receipt.record.sample < now + 100);
+                    assert!(previous.is_none_or(|p| p <= receipt.record.sample));
+                    previous = Some(receipt.record.sample);
+                    phrase.observe(&receipt, now + 100);
+                }
+            }
+            let mut reservation = phrase
+                .opportunity(603)
+                .expect("boundary reaches a legal opportunity");
+            assert_eq!(reservation.gain, 0.8);
+            reservation.tone = 7;
+            match reject {
+                "identity" => reservation.tone = 99,
+                "generation" => reservation.generation = 8,
+                "expired" => reservation.expires = 603,
+                _ => {}
+            }
+            let mut target = outcome_batch(BodyKind::Sine);
+            target.tones[0].tone_id = 7;
+            target.tones[0].onset = 603;
+            target.tones[0].phrase = Some(PhraseTone {
+                reservation: Some(reservation),
+            });
+            target.cmds[0] = ToneCmd::On {
+                tone_id: 7,
+                kick: OnsetKick { strength: 1. },
+            };
+            if reject == "cancelled" {
+                target.cmds.clear();
+            }
+            target.cmds.push(ToneCmd::Off {
+                tone_id: 6,
+                off_tick: 603,
+            });
+            let mut next = vec![target];
+            if reject == "intervening" {
+                let mut early = next[0].clone();
+                early.tones[0].tone_id = 8;
+                early.tones[0].onset = 601;
+                early.tones[0].phrase = Some(PhraseTone { reservation: None });
+                early.cmds[0] = ToneCmd::On {
+                    tone_id: 8,
+                    kick: OnsetKick { strength: 1. },
+                };
+                next.push(early);
+            }
+            if reject == "pitch" {
+                // A still-held confirming tone loses support before the target On.
+                let rt = renderer
+                    .tones
+                    .get_mut(&ToneKey {
+                        source_id: 2,
+                        tone_id: 6,
+                    })
+                    .unwrap();
+                rt.tone.schedule_update(
+                    601,
+                    ToneUpdate {
+                        target_freq_hz: Some(120.),
+                        ..Default::default()
+                    },
+                );
+            }
+            renderer.render(&next, 600, &NeuralRhythms::default());
+            let on = renderer
+                .phrase_receipts
+                .iter()
+                .find(|r| r.record.kind == ExecutionKind::On && r.record.tone_id == 7);
+            if reject == "cancelled" {
+                assert!(on.is_none());
+            } else {
+                assert_eq!(on.unwrap().reaction_applied, reject == "none", "{reject}");
+                assert_eq!(
+                    on.unwrap().gain,
+                    if reject == "none" { 0.8 } else { 1. },
+                    "{reject}"
+                );
+            }
+            let mut fork = renderer.fork_source(2);
+            let expected = renderer
+                .render(&[], 700, &NeuralRhythms::default())
+                .habitat
+                .to_vec();
+            assert_eq!(
+                fork.render(&[], 700, &NeuralRhythms::default()).habitat,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn phrase_boundary_off_is_unique_and_precedes_same_sample_on() {
+        use crate::life::phrase_boundary::PhraseTone;
+        let mut renderer = ScheduleRenderer::new(Timebase {
+            fs: 1000.,
+            hop: 100,
+        });
+        let mut a = outcome_batch(BodyKind::Sine);
+        a.tones[0].phrase = Some(PhraseTone { reservation: None });
+        a.tones[0].hold_ticks = Some(1000);
+        renderer.render(&[a.clone()], 0, &NeuralRhythms::default());
+        renderer.phrase_receipts.clear();
+        a.cmds = vec![
+            ToneCmd::Off {
+                tone_id: 1,
+                off_tick: 113,
+            },
+            ToneCmd::Off {
+                tone_id: 1,
+                off_tick: 113,
+            },
+            ToneCmd::On {
+                tone_id: 2,
+                kick: OnsetKick { strength: 1. },
+            },
+        ];
+        a.tones[0].tone_id = 2;
+        a.tones[0].onset = 113;
+        renderer.render(&[a], 100, &NeuralRhythms::default());
+        let receipts = &renderer.phrase_receipts;
+        assert_eq!(receipts.len(), 2);
+        assert_eq!(receipts[0].record.kind, ExecutionKind::Off);
+        assert_eq!(receipts[1].record.kind, ExecutionKind::On);
+        assert_eq!(receipts[0].record.sample, receipts[1].record.sample);
+        renderer.phrase_receipts.clear();
+        renderer.render(
+            &[PhonationBatch {
+                source_id: 2,
+                source_generation: 7,
+                cmds: vec![ToneCmd::Off {
+                    tone_id: 1,
+                    off_tick: 201,
+                }],
+                ..Default::default()
+            }],
+            200,
+            &NeuralRhythms::default(),
+        );
+        assert!(renderer.phrase_receipts.is_empty());
+    }
+
+    #[test]
+    fn phrase_boundary_overlap_remains_unsupported_after_the_latest_tone_releases() {
+        use crate::life::phrase_boundary::PhraseTone;
+        let mut renderer = ScheduleRenderer::new(Timebase {
+            fs: 1000.,
+            hop: 100,
+        });
+        let mut first = outcome_batch(BodyKind::Sine);
+        first.tones[0].onset = 10;
+        first.tones[0].hold_ticks = Some(1000);
+        first.tones[0].phrase = Some(PhraseTone { reservation: None });
+        let mut second = first.clone();
+        second.tones[0].tone_id = 2;
+        second.tones[0].hold_ticks = Some(10);
+        second.cmds[0] = ToneCmd::On {
+            tone_id: 2,
+            kick: OnsetKick { strength: 1. },
+        };
+        renderer.render(&[first, second.clone()], 0, &NeuralRhythms::default());
+        assert!(
+            renderer
+                .phrase_receipts
+                .iter()
+                .any(|r| r.record.kind == ExecutionKind::Missing)
+        );
+        let mut observer =
+            crate::life::phrase_boundary::PhraseBoundary::new(2, 7, 1000., 1., [12., 4., 4.]);
+        observer.trace_enabled = true;
+        for receipt in &renderer.phrase_receipts {
+            if receipt.record.kind == ExecutionKind::On {
+                assert!(receipt.record.frequency_hz.is_some());
+                assert!(!receipt.interval_supported);
+            }
+            observer.observe(receipt, 100);
+        }
+        assert!(observer.trace.is_empty());
+        assert!(observer.opportunity(100).is_none());
+        renderer.phrase_receipts.clear();
+        second.tones[0].tone_id = 3;
+        second.tones[0].onset = 110;
+        second.cmds[0] = ToneCmd::On {
+            tone_id: 3,
+            kick: OnsetKick { strength: 1. },
+        };
+        renderer.render(&[second], 100, &NeuralRhythms::default());
+        assert!(
+            renderer
+                .phrase_receipts
+                .iter()
+                .any(|r| r.record.kind == ExecutionKind::Missing && r.record.sample == 110)
+        );
+        assert!(
+            renderer
+                .phrase_receipts
+                .iter()
+                .filter(|r| r.record.kind == ExecutionKind::On)
+                .all(|r| !r.interval_supported)
+        );
+    }
+
+    #[test]
+    fn phrase_boundary_zero_tail_off_survives_hop_cleanup() {
+        use crate::life::phrase_boundary::PhraseTone;
+        let mut renderer = ScheduleRenderer::new(Timebase {
+            fs: 1000.,
+            hop: 100,
+        });
+        let mut batch = outcome_batch(BodyKind::Sine);
+        batch.tones[0].onset = 0;
+        batch.tones[0].hold_ticks = Some(100);
+        batch.tones[0].phrase = Some(PhraseTone { reservation: None });
+        batch.tones[0].adsr = Some(crate::life::sound::ToneAdsr {
+            attack_sec: 0.,
+            decay_sec: 0.,
+            sustain_level: 1.,
+            release_sec: 0.,
+        });
+        renderer.render(&[batch], 0, &NeuralRhythms::default());
+        assert_eq!(renderer.phrase_receipts.len(), 1);
+        assert_eq!(renderer.phrase_receipts[0].record.kind, ExecutionKind::On);
+        renderer.phrase_receipts.clear();
+        renderer.render(&[], 100, &NeuralRhythms::default());
+        assert_eq!(renderer.phrase_receipts.len(), 1);
+        let off = &renderer.phrase_receipts[0].record;
+        assert_eq!(off.kind, ExecutionKind::Off);
+        assert_eq!((off.sample, off.available_at), (100, 200));
+        renderer.phrase_receipts.clear();
+        renderer.render(&[], 200, &NeuralRhythms::default());
+        assert!(renderer.phrase_receipts.is_empty());
+    }
+
     fn outcome_batch(kind: BodyKind) -> PhonationBatch {
         PhonationBatch {
             body_policy: None,
@@ -1278,6 +1768,7 @@ mod tests {
                 kick: OnsetKick { strength: 1. },
             }],
             tones: vec![ToneSpec {
+                phrase: None,
                 participation_onset: false,
                 tone_id: 1,
                 onset: 13,
@@ -1530,6 +2021,7 @@ mod tests {
                         },
                     ],
                     tones: vec![ToneSpec {
+                        phrase: None,
                         participation_onset: false,
                         tone_id: 1,
                         onset,
@@ -1645,6 +2137,7 @@ mod tests {
                 },
             ],
             tones: vec![ToneSpec {
+                phrase: None,
                 participation_onset: false,
                 tone_id,
                 onset: 0,
@@ -1788,6 +2281,7 @@ mod tests {
                     kick: OnsetKick { strength: 1.0 },
                 }],
                 tones: vec![ToneSpec {
+                    phrase: None,
                     participation_onset: false,
                     tone_id: 1,
                     onset: 0,
@@ -1883,6 +2377,7 @@ mod tests {
                 },
             ],
             tones: vec![ToneSpec {
+                phrase: None,
                 participation_onset: false,
                 tone_id,
                 onset: 0,
@@ -1931,6 +2426,7 @@ mod tests {
                 kick: OnsetKick { strength: 1.0 },
             }],
             tones: vec![ToneSpec {
+                phrase: None,
                 participation_onset: false,
                 tone_id,
                 onset: 0,

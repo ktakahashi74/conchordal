@@ -177,6 +177,7 @@ pub(crate) struct RestState {
 }
 
 pub struct PhonationEngine {
+    pub(crate) phrase_boundary: Option<crate::life::phrase_boundary::PhraseBoundary>,
     pub(crate) rest: Option<RestState>,
     pub(crate) span_gap: Option<crate::life::span_gap::SpanGap>,
     pub(crate) sustain_participation: bool,
@@ -492,6 +493,7 @@ impl PhonationEngine {
         let onset_rule = OnsetRule::from_config(&config.onset, seed);
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
+            phrase_boundary: None,
             rest: None,
             span_gap: None,
             #[cfg(test)]
@@ -1020,6 +1022,10 @@ impl PhonationEngine {
         let fixed_period = self.clock.fixed_period_ticks(ctx.fs);
         self.drain_note_offs(ctx.now_tick, out_cmds);
         for c in candidates {
+            let phrase = self
+                .phrase_boundary
+                .as_mut()
+                .and_then(|p| p.opportunity(c.tick));
             self.drain_note_offs(c.tick, out_cmds);
             self.advance_span(c.tick);
             if state.is_alive {
@@ -1113,6 +1119,10 @@ impl PhonationEngine {
                     }
                 }
                 let tone_id = self.next_tone_id;
+                if let Some(mut reservation) = phrase {
+                    reservation.tone = tone_id;
+                    self.phrase_boundary.as_mut().unwrap().selected = Some(reservation);
+                }
                 self.next_tone_id = self.next_tone_id.wrapping_add(1);
                 if self.sustain_participation {
                     self.hold.tone_id = Some(tone_id);

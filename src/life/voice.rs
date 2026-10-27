@@ -8,6 +8,7 @@ use crate::life::phonation_engine::{
     CoreState, CoreTickCtx, OnsetEvent, PhonationClock, PhonationEngine, ToneCmd, ToneId,
     ToneOnEvent, ToneUpdate,
 };
+pub use crate::life::phrase_boundary::PhraseTone;
 use crate::life::social_density::SocialDensityTrace;
 use crate::life::sound::{BodySnapshot, RenderModulatorSpec};
 use crate::scenario::control::{
@@ -105,6 +106,8 @@ pub(crate) struct ReleaseState {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct ToneSpec {
+    #[cfg_attr(test, serde(default, skip_serializing_if = "Option::is_none"))]
+    pub phrase: Option<PhraseTone>,
     /// Whether this onset came from a clock candidate.
     pub participation_onset: bool,
     pub tone_id: ToneId,
@@ -129,6 +132,7 @@ impl ToneSpec {
         adsr: Option<super::sound::ToneAdsr>,
     ) -> Self {
         Self {
+            phrase: None,
             participation_onset: event.participation_onset,
             tone_id: event.tone_id,
             onset: event.onset_tick,
@@ -501,6 +505,20 @@ impl Voice {
 
         let mut phonation_engine =
             PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        if effective_control.phonation.phrase_boundary > 0.0
+            && effective_control.supports_phrase_boundary()
+            && let Some(period) = phonation_engine.clock.intrinsic_period_sec()
+        {
+            // Author mapping: one initial bodily cycle is a quarter note.
+            phonation_engine.phrase_boundary =
+                Some(crate::life::phrase_boundary::PhraseBoundary::new(
+                    assigned_id,
+                    metadata.generation,
+                    fs,
+                    effective_control.phonation.phrase_boundary,
+                    [12., 4. * period, 4. * period],
+                ));
+        }
         if effective_control.phonation.rest_on_habituation > 0.0 {
             phonation_engine.span_gap = Some(crate::life::span_gap::SpanGap::new(
                 effective_control.phonation.rest_on_habituation,

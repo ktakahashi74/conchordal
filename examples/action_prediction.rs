@@ -66,6 +66,7 @@ fn note(
             },
         ],
         tones: vec![ToneSpec {
+            phrase: None,
             participation_onset: false,
             tone_id,
             onset,

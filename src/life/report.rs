@@ -162,6 +162,14 @@ pub(crate) struct ParticipationOutcomeSample {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ReportRecord<'a> {
+    PhraseBoundary {
+        #[serde(flatten)]
+        boundary: &'a crate::life::phrase_boundary::Boundary,
+    },
+    PhraseExecution {
+        #[serde(flatten)]
+        receipt: &'a crate::life::phrase_boundary::Receipt,
+    },
     OwnSequenceLearning {
         voice_id: u64,
         generation: u32,
@@ -811,6 +819,20 @@ impl JsonlReporter {
             sample_rate,
             state,
         })
+    }
+
+    pub(crate) fn write_phrase_boundary(
+        &mut self,
+        boundary: &crate::life::phrase_boundary::Boundary,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::PhraseBoundary { boundary })
+    }
+
+    pub(crate) fn write_phrase_execution(
+        &mut self,
+        receipt: &crate::life::phrase_boundary::Receipt,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::PhraseExecution { receipt })
     }
 
     pub(crate) fn write_own_sequence(

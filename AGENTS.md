@@ -792,3 +792,23 @@ For orchestration, pass/fail timing, or long jobs on blanche, read [operations/o
 - If two appends to a record file (e.g. `docs/roadmap/**`) conflict, keep both entries,
   upstream first. Edits to the same paragraph and conflicts in code need a real merge;
   stop and report when the intent of either side is unclear.
+
+## PX-1 local self boundaries
+
+- `phrase_boundary(w)` is initial-only, default 0. Its LBDM equations are a
+  candidate (Cambouropoulos 2001); finite completion, causal publication and
+  post-boundary gain are author rules. See ledger 9.3.106.
+- PX-1 uses renderer-executed receipts, published after a hop and read next hop.
+  SQ-1 retains issuance records and same-hop learning. Share identity and record
+  representation only; never describe these as one confirmed stream.
+- Six On events and five effective Offs supply one local window. Caps are 12
+  semitones and four initial bodily periods for IOI/rest, fixed at birth. The
+  quarter-note mapping is an author convention. Missing support discards the
+  unfinished window and response, without resetting SQ-1 or TC-1.
+- The first existing candidate consumes the response even on veto. A reservation
+  applies to one legal Sine Tone only after identity, freshness and support checks
+  at execution. Gain lives in Tone and multiplies its final PCM once. Preserve
+  it across Update, clone, representative reset and supported predictions.
+- Positive PX-1 sources use chronological sample-major rendering for receipts;
+  the default block renderer is unchanged. Analysis stores six notes per Voice;
+  receipt buffers retain capacity, and boundary trace allocation requires reports.

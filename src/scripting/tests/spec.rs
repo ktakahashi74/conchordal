@@ -3459,3 +3459,36 @@ fn own_sequence_resident_limit_keeps_execution_records() {
     assert!(!s.executions.is_empty());
     assert!(s.model.symbols.is_empty());
 }
+
+#[test]
+fn phrase_boundary_is_initial_only_validated_on_the_final_form() {
+    for value in [FLOAT::NAN, FLOAT::INFINITY, FLOAT::NEG_INFINITY, -1.] {
+        let mut spec = PopulationSpec::preset(BodyMethod::Sine);
+        spec.set_phrase_boundary(value);
+        assert_eq!(spec.control.phonation.phrase_boundary, 0.);
+    }
+    let mut spec = PopulationSpec::preset(BodyMethod::Sine);
+    spec.set_phrase_boundary(f64::MAX);
+    assert_eq!(spec.control.phonation.phrase_boundary, f64::MAX);
+    for chain in [
+        "phrase_boundary(1).sustain().steady().pitch_apply_mode(\"rearticulate\")",
+        "steady().sustain().pitch_apply_mode(\"rearticulate\").phrase_boundary(1.0)",
+    ] {
+        let spec = first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
+        assert_eq!(spec.control.phonation.phrase_boundary, 1.);
+    }
+    for chain in [
+        "sine().phrase_boundary(1)",
+        "sine().steady().sustain().pitch_apply_mode(\"glide\").phrase_boundary(1)",
+        "harmonic().steady().sustain().phrase_boundary(1)",
+        "sine().steady().sustain().phrase_boundary(-1)",
+    ] {
+        let spec = first_spawn_spec_for_script(&format!("create({chain},1);"));
+        assert_eq!(spec.control.phonation.phrase_boundary, 0.);
+    }
+    assert!(
+        run_script_err("let p=create(sine().steady().sustain(),1); p.phrase_boundary(1);")
+            .to_string()
+            .contains("phrase_boundary")
+    );
+}

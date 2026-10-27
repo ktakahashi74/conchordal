@@ -39,6 +39,7 @@ fn batch(source_id: u64, recipe: &Recipe) -> PhonationBatch {
             kick: OnsetKick { strength: 1.0 },
         }],
         tones: vec![ToneSpec {
+            phrase: None,
             participation_onset: false,
             tone_id: 1,
             onset: 0,

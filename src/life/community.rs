@@ -548,6 +548,13 @@ impl Community {
                 batch,
             );
             voice.finish_sequence_execution(batch, frame_end);
+            if let Some(phrase) = &mut voice.phonation_engine.phrase_boundary {
+                for tone in &mut batch.tones {
+                    tone.phrase = Some(phrase.tone(tone.tone_id));
+                }
+                // A discarded materialization must never transfer its reservation.
+                phrase.selected = None;
+            }
             if auto_observe_enabled && !was_gate_open && voice.phonation_gate_open() {
                 gate_open_events.push(PhonationGateOpenEvent {
                     time_sec,
@@ -1325,6 +1332,7 @@ mod tests {
 
     fn make_dummy_tone_spec() -> crate::life::voice::ToneSpec {
         crate::life::voice::ToneSpec {
+            phrase: None,
             participation_onset: false,
             tone_id: 1,
             onset: 0,

@@ -21,6 +21,15 @@ pub struct VoiceControl {
 }
 
 impl VoiceControl {
+    pub(crate) fn supports_phrase_boundary(&self) -> bool {
+        self.body.method == BodyMethod::Sine
+            && self.phonation.spec.is_sustained_participation()
+            && matches!(
+                self.pitch.pitch_apply_mode,
+                PitchApplyMode::GateSnap | PitchApplyMode::Rearticulate
+            )
+    }
+
     pub(crate) fn supports_own_sequence(&self) -> bool {
         self.pitch.mode == PitchMode::Free
             && self.pitch.core_kind == PitchCoreKind::HillClimb
@@ -317,6 +326,7 @@ pub struct PhonationControl {
     pub(crate) finite_duration: Option<crate::scenario::DurationSpec>,
     pub(crate) rest_periods: Option<f32>,
     pub(crate) rest_on_habituation: f32,
+    pub(crate) phrase_boundary: f64,
     pub(crate) articulation_persistence: f32,
     pub(crate) tie: f32,
     #[cfg(test)]

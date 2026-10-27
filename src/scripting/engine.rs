@@ -760,6 +760,26 @@ impl ScriptHost {
                 spec
             },
         );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "phrase_boundary",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
+                spec.spec
+                    .record_call("phrase_boundary", call.call_position(), &diagnostics);
+                spec.spec.set_phrase_boundary(weight);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "phrase_boundary",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
+                spec.spec
+                    .record_call("phrase_boundary", call.call_position(), &diagnostics);
+                spec.spec.set_phrase_boundary(weight as FLOAT);
+                spec
+            },
+        );
         // Tier 3: expert tuning
         register_population_spec_numeric_methods(
             &mut engine,

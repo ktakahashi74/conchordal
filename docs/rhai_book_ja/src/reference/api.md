@@ -561,6 +561,18 @@ Sustain phonation mode (default). The default is a continuous note until release
 
 **根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
+#### `phrase_boundary`
+
+```rhai,ignore
+phrase_boundary(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Soften one new Sine onset after a confirmed local self boundary. Initial-only finite nonnegative weight, default 0. Requires Sine, sustained metric/entrained/steady/flow and discrete pitch; unsupported final forms warn and disable it. Candidate model: LBDM (Cambouropoulos 2001). Online adaptation and the post-boundary response are author rules. Renderer execution receipts are published after each hop, separately from SQ-1 issuance records. A six-onset window uses pitch/IOI/rest weights .25/.50/.25. Caps are one octave and four initial bodily cycles (an author mapping to a whole note), fixed at birth. The first existing opportunity consumes the response even if vetoed. A legal new Tone receives gain 1/(1+w*B), without changing strength, clocks or release. See Rhythm for support, expiry and evidence limits.
+
+**根拠:** 候補（LBDM、Cambouropoulos 2001）：音高・IOI・休みの重み.25/.50/.25を用いる局所境界モデル。実装の検査は原著プログラムやcorpus成績の再現ではない（§9.3.106）。<br>作者規則：有限列の完備化、6 Onのオンライン接続、出生時に固定する上限、境界判明後の合法なSine On一件へのgain 1/(1+w*B)。重みの既定値は0。既定の聴き手の型への採用は未実施（§9.3.106）。
+
 #### `rest_on_habituation`
 
 ```rhai,ignore

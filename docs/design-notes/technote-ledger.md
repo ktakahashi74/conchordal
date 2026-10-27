@@ -10611,3 +10611,62 @@ causal controls, runtime cost and author audition remain distinct claims.
 The mechanism remains outside any default listener preset; author audition and
 preset adoption are separate decisions. The public technote is updated upon
 integration, not as a record of this development task.
+
+### 9.3.106 Local self boundaries and post-boundary gain (2026-10-27)
+
+PX-1 implements the adopted v2 scope: LBDM analysis of confirmed symbolic self
+acts, followed by one reactive Sine gain. The candidate is Cambouropoulos (2001),
+[Fig. 1](https://ofai.at/papers/oefai-tr-2001-11.pdf): truncate each nonnegative
+interval, compute `r(a,b)=abs(a-b)/(a+b)` (zero for two zeros), then
+`s_i=x_i*(r_prev+r_next)`, normalize each component and combine pitch/IOI/rest
+with `.25/.50/.25`. The finite reference completion uses interior points only,
+maximum normalization (zero maxima produce zero), positive strict peaks, no
+plateau boundaries, no endpoint padding, no extra cutoff and no optional
+semitone offset. These completions are author rules, not recovered source code.
+The paper's Fig. 1 is an algorithm diagram, not a numeric fixture. Its corpus
+scores are not reproduced by implementation tests.
+
+The author adapter uses six On events and five completed Off-to-next-On
+intervals. Only the three interior strengths normalize the local window. Each
+window publishes once as `final-local`; boundary position, confirming On and
+publication time are distinct. Missing data, pitch updates, simultaneous On,
+overlapping gates and generation replacement invalidate local support. Acoustic
+release tails are not symbolic gate overlaps. The last On may remain held.
+
+`phrase_boundary(w)` is initial-only, default zero, with finite nonnegative f64
+weights and no cost-derived upper clamp. Supported initial forms use Sine,
+explicit sustained participation and discrete pitch. The cap declaration fixes
+pitch at 12 semitones and IOI/rest at four initial intrinsic bodily periods,
+recorded in seconds and frozen at birth. Treating that period as a quarter note
+is an explicit author mapping of the source's whole-note example, not a universal
+seconds constant. The registered numerical example remains `[12,4,4]`, one-second
+IOI, zero rest and pitch intervals `[1,1,4,1,1]`: `B=.25`, `w=1`, `g=.8`.
+
+On 2026-10-27 the orchestrator resolved an implementation-precondition conflict:
+SQ-1 keeps its issuance-stage `sequence_execution.rs` records and same-hop
+learning unchanged. PX-1 adds separate renderer-executed receipts, published
+when the hop completes and consumed at the next hop. Only Voice/generation/Tone
+identities and record representation are shared. These are two confirmation
+stages, not one shared confirmed self sequence. No TC-1 or SQ-1 state resets at a
+boundary. This supersedes the original PX-1i brief's stream-sharing assumption
+and v2 §5.5's same-receipt-stream requirement in precisely that respect.
+
+The first existing candidate opportunity consumes the pending response,
+including vetoes. It cannot change strength, clocks, hold or release. A legal new
+On reserves `g=1/(1+w*B)` until `known_sample + last_untruncated_IOI`, exclusively.
+Only the latest confirming window can supply a pending response. The renderer
+checks identity, deadline, support and intervening On at execution; cancellation
+never transfers the reservation. A Tone applies the accepted gain once at its
+final PCM return, preserving it through updates, clone and representative reset.
+Both buses, body observation and self-exclusion receive that same PCM. Pending
+reservations have unsupported self forecasts; supported forecasts after execution
+scale amplitude once, with power following its square. Direct metabolism retains
+onset strength; indirect changes through habitat perception are allowed.
+
+The boundary and response form a mixed-tier mechanism: **Candidate (LBDM)** plus
+**Author rule (completion, causal adapter and gain response)**. The default
+listener preset does not adopt it. Implementation agreement, declared-load
+operation and author audition remain separate records. There is no Todd arch,
+future endpoint planning, PX-1 release, tempo deformation or harmonic-memory
+reset in this change. Reports use `phrase_boundary` and `phrase_execution` to
+keep local boundaries, actual On/Off, publication and applied gain inspectable.

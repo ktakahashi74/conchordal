@@ -634,6 +634,7 @@ fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
 
 fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
     PhonationEngine {
+        phrase_boundary: None,
         rest: None,
         span_gap: None,
         #[cfg(test)]
@@ -2623,4 +2624,107 @@ fn span_gap_ready_veto_keeps_target_and_initial_hold_obeys_the_block() {
     engine.tick_hold(&ctx, &state, None, &mut cmds, &mut events, &mut onsets);
     assert_eq!(onsets.len(), 1);
     assert_eq!(engine.span_gap.as_ref().unwrap().phase, Phase::Span);
+}
+
+#[test]
+fn phrase_boundary_consumes_vetoed_opportunity_without_changing_commands_or_strength() {
+    use crate::life::own_sequence::{ExecutionKind, ExecutionRecord};
+    use crate::life::phrase_boundary::{PhraseBoundary, Receipt};
+    for veto in [false, true] {
+        let mut phrase = PhraseBoundary::new(2, 7, 1000., 1., [12., 4., 4.]);
+        let mut seq = 0;
+        for (i, n) in [0., 1., 2., 6., 7., 8.].into_iter().enumerate() {
+            for kind in if i == 0 {
+                vec![ExecutionKind::On]
+            } else {
+                vec![ExecutionKind::Off, ExecutionKind::On]
+            } {
+                seq += 1;
+                phrase.observe(
+                    &Receipt {
+                        reservation: None,
+                        reaction_applied: false,
+                        interval_supported: true,
+                        record: ExecutionRecord {
+                            voice_id: 2,
+                            generation: 7,
+                            tone_id: if kind == ExecutionKind::On {
+                                i as u64 + 1
+                            } else {
+                                i as u64
+                            },
+                            kind,
+                            sample: i as u64 * 1000,
+                            available_at: i as u64 * 1000 + 16,
+                            execution_sequence: seq,
+                            frequency_hz: Some(220. * 2_f32.powf(n / 12.)),
+                            strength: None,
+                        },
+                        origin: "renderer",
+                        gain: 1.,
+                    },
+                    i as u64 * 1000 + 16,
+                );
+            }
+        }
+        let make = || {
+            test_engine(
+                OnsetRule::Always { strength: 0.7 },
+                DurationRule::Custom(Box::new(|_| DurationPlan::None)),
+            )
+        };
+        let mut baseline = make();
+        let mut active = make();
+        active.phrase_boundary = Some(phrase);
+        let mut outputs = Vec::new();
+        for engine in [&mut baseline, &mut active] {
+            let mut commands = Vec::new();
+            let mut events = Vec::new();
+            let mut onsets = Vec::new();
+            for (at, allowed) in [(5500, !veto), (5600, true)] {
+                engine.process_candidates(
+                    &CoreTickCtx {
+                        now_tick: at,
+                        frame_end: at + 1,
+                        fs: 1000.,
+                        rhythms: NeuralRhythms::default(),
+                    },
+                    &[CandidatePoint { tick: at, gate: at }],
+                    &mut ThetaGrid::default(),
+                    &TimingField::default(),
+                    &CoreState {
+                        is_alive: true,
+                        onset_allowed: allowed,
+                    },
+                    None,
+                    &mut commands,
+                    &mut events,
+                    &mut onsets,
+                );
+            }
+            let mut core = crate::life::voice::AnyArticulationCore::from_config(
+                &crate::scenario::ArticulationCoreConfig::default(),
+                1000.,
+                21,
+                &mut rand::rngs::SmallRng::seed_from_u64(21),
+            );
+            if let crate::life::voice::AnyArticulationCore::Entrain(inner) = &mut core {
+                inner.energy = 0.6;
+                inner.metabolism.action_cost_per_attack = 0.2;
+                inner.metabolism.recharge_per_attack = 0.3;
+            }
+            for onset in &onsets {
+                core.apply_phonation_onset(0.8, onset.strength);
+            }
+            let crate::life::voice::AnyArticulationCore::Entrain(inner) = core else {
+                panic!("expected Entrain metabolism");
+            };
+            assert!(inner.energy > 0.6);
+            outputs.push(serde_json::to_value((&commands, &onsets, inner.energy)).unwrap());
+        }
+        assert_eq!(outputs[0], outputs[1]);
+        let phrase = active.phrase_boundary.as_mut().unwrap();
+        assert_eq!(phrase.selected.is_some(), !veto);
+        assert!(phrase.opportunity(5601).is_none());
+    }
 }

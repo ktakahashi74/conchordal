@@ -5,6 +5,17 @@
 
 const LN_STALE: f32 = std::f32::consts::LN_10; // "stale" = 90% eroded
 
+/// Multi-timescale adaptation (research option). Octave-spaced linear components from
+/// 0.3 s to 38.4 s cover the few hundred milliseconds to tens of seconds over which A1
+/// stimulus-specific adaptation runs concurrently (Ulanovsky et al. 2004). Weights
+/// follow tau^-0.15, the fractional order Lundstrom et al. (2008) measured over about
+/// 1-30 s. With the span truncated, the step response is not a pure power law; it keeps
+/// the overall depth near the single-time-constant default (73% eroded at 5 s) while
+/// recovery time grows with exposure.
+const MULTISCALE_COMPONENTS: usize = 8;
+const MULTISCALE_TAU_MIN_SEC: f32 = 0.3;
+const MULTISCALE_ORDER: f32 = 0.15;
+
 /// Relax a signed score toward its level-neutral baseline `theta`.
 #[inline]
 pub fn erode_score(raw: f32, h: f32, theta: f32) -> f32 {
@@ -24,6 +35,9 @@ pub struct HabituationParams {
     pub satiation_sec: f32,
     pub recovery_sec: f32,
     pub ref_drive: f32,
+    /// Replace the satiation/recovery pair with multi-timescale adaptation in the
+    /// landscape field. Onset habituation keeps the single pair.
+    pub multiscale: bool,
 }
 
 impl Default for HabituationParams {
@@ -33,6 +47,7 @@ impl Default for HabituationParams {
             satiation_sec: 5.0,
             recovery_sec: 8.0,
             ref_drive: 0.25,
+            multiscale: false,
         }
     }
 }
@@ -45,6 +60,9 @@ pub struct HabituationField {
     ref_drive: f32,
     theta: f32,
     h: Vec<f32>,
+    /// Bin-major component states for multi-timescale adaptation; empty when single.
+    components: Vec<f32>,
+    weights: [f32; MULTISCALE_COMPONENTS],
 }
 
 impl HabituationField {
@@ -56,12 +74,21 @@ impl HabituationField {
             ref_drive: params.ref_drive.max(1e-6),
             theta,
             h: vec![0.0; n_bins],
+            components: if params.multiscale {
+                vec![0.0; n_bins * MULTISCALE_COMPONENTS]
+            } else {
+                Vec::new()
+            },
+            weights: multiscale_weights(),
         }
     }
 
     pub fn ensure_len(&mut self, n_bins: usize) {
         if self.h.len() != n_bins {
             self.h.resize(n_bins, 0.0);
+            if !self.components.is_empty() {
+                self.components.resize(n_bins * MULTISCALE_COMPONENTS, 0.0);
+            }
         }
     }
 
@@ -107,6 +134,22 @@ impl HabituationField {
             return;
         }
         let dt = dt.max(0.0);
+        if !self.components.is_empty() {
+            let a: [f32; MULTISCALE_COMPONENTS] =
+                std::array::from_fn(|k| (-dt / multiscale_tau(k)).exp());
+            for i in 0..self.h.len() {
+                let d = self.transfer(level[i] * proj[i]).clamp(0.0, 1.0);
+                let states = &mut self.components
+                    [i * MULTISCALE_COMPONENTS..(i + 1) * MULTISCALE_COMPONENTS];
+                let mut h = 0.0;
+                for k in 0..MULTISCALE_COMPONENTS {
+                    states[k] = a[k] * states[k] + (1.0 - a[k]) * d;
+                    h += self.weights[k] * states[k];
+                }
+                self.h[i] = h.clamp(0.0, 1.0);
+            }
+            return;
+        }
         let a_e = (-dt / self.tau_e).exp();
         let a_r = (-dt / self.tau_r).exp();
         for i in 0..self.h.len() {
@@ -115,6 +158,17 @@ impl HabituationField {
             self.h[i] = (a * self.h[i] + (1.0 - a) * d).clamp(0.0, 1.0);
         }
     }
+}
+
+fn multiscale_tau(k: usize) -> f32 {
+    MULTISCALE_TAU_MIN_SEC * (1u32 << k) as f32
+}
+
+fn multiscale_weights() -> [f32; MULTISCALE_COMPONENTS] {
+    let raw: [f32; MULTISCALE_COMPONENTS] =
+        std::array::from_fn(|k| multiscale_tau(k).powf(-MULTISCALE_ORDER));
+    let total: f32 = raw.iter().sum();
+    raw.map(|w| w / total)
 }
 
 #[cfg(test)]
@@ -216,6 +270,61 @@ mod tests {
     fn advance_panics_on_proj_len_mismatch() {
         let mut f = HabituationField::new(&full_drive_params(), 0.0, 3);
         f.advance_from_parts(&[1.0, 1.0, 1.0], &[1.0, 1.0], 0.05);
+    }
+
+    fn multiscale() -> HabituationParams {
+        HabituationParams {
+            multiscale: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn multiscale_step_keeps_eroding_across_time_scales() {
+        let mut f = HabituationField::new(&multiscale(), 0.0, 1);
+        let dt = 0.01;
+        let mut at = |seconds: f32| {
+            let steps = (seconds / dt).round() as usize;
+            for _ in 0..steps {
+                f.advance_from_parts(&[1.0], &[1000.0], dt);
+            }
+            f.state()[0]
+        };
+        // Expected sums of the weighted components: 0.46 at 1 s, 0.73 at 5 s, 0.94 at 30 s.
+        let h1 = at(1.0);
+        let h5 = at(4.0);
+        let h30 = at(25.0);
+        assert!((h1 - 0.46).abs() < 0.02, "h(1 s) = {h1}");
+        assert!((h5 - 0.73).abs() < 0.02, "h(5 s) = {h5}");
+        assert!((h30 - 0.94).abs() < 0.02, "h(30 s) = {h30}");
+    }
+
+    #[test]
+    fn multiscale_recovery_lengthens_with_exposure() {
+        let recovery_after = |exposure: f32| {
+            let mut f = HabituationField::new(&multiscale(), 0.0, 1);
+            let dt = 0.01;
+            for _ in 0..(exposure / dt) as usize {
+                f.advance_from_parts(&[1.0], &[1000.0], dt);
+            }
+            let mut t = 0.0;
+            while f.state()[0] > 0.1 {
+                f.advance_from_parts(&[0.0], &[0.0], dt);
+                t += dt;
+            }
+            t
+        };
+        let (short, long) = (recovery_after(2.0), recovery_after(60.0));
+        assert!((short - 2.3).abs() < 0.3, "after 2 s: {short}");
+        assert!((long - 17.2).abs() < 1.0, "after 60 s: {long}");
+    }
+
+    #[test]
+    fn multiscale_resizes_with_the_space() {
+        let mut f = HabituationField::new(&multiscale(), 0.0, 2);
+        f.ensure_len(5);
+        f.advance_from_parts(&[1.0; 5], &[1000.0; 5], 1.0);
+        assert!(f.state().iter().all(|&h| h > 0.4 && h < 0.5));
     }
 
     #[test]

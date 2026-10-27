@@ -208,6 +208,9 @@ pub struct HabituationConfig {
     pub recovery_sec: f32,
     #[serde(default = "HabituationConfig::default_ref_drive")]
     pub ref_drive: f32,
+    /// Research option: multi-timescale adaptation instead of the satiation/recovery pair.
+    #[serde(default)]
+    pub multiscale: bool,
 }
 
 impl HabituationConfig {
@@ -232,6 +235,7 @@ impl Default for HabituationConfig {
             satiation_sec: Self::default_satiation_sec(),
             recovery_sec: Self::default_recovery_sec(),
             ref_drive: Self::default_ref_drive(),
+            multiscale: false,
         }
     }
 }

@@ -196,6 +196,7 @@ fn config_load_custom_values() {
                 satiation_sec: 4.0,
                 recovery_sec: 7.0,
                 ref_drive: 0.3,
+                multiscale: true,
             },
             use_incoherent_power: false,
         },

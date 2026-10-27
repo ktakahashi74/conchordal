@@ -47,6 +47,7 @@ pub(super) fn build_analysis_runtime_core(
             satiation_sec: config.psychoacoustics.habituation.satiation_sec,
             recovery_sec: config.psychoacoustics.habituation.recovery_sec,
             ref_drive: config.psychoacoustics.habituation.ref_drive,
+            multiscale: config.psychoacoustics.habituation.multiscale,
         },
         loudness_exp: config.psychoacoustics.loudness_exp,
         tau_ms: config.analysis.tau_ms,

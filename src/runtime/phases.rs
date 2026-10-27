@@ -47,6 +47,10 @@ pub(super) fn advance_population(
         );
         for voice in &mut state.pop.voices {
             voice.harmonic_temperature_bonus = listener_pressure.temperature_bonus;
+            if voice.harmonic_member && state.conductor.is_done() {
+                // Terminal shutdown must veto proposals before collection.
+                voice.start_remove_fade(0.0);
+            }
         }
         state.pop.harmonic_ticks.clear();
         state.pop.harmonic_ticks.extend_from_slice(&clock.ticks);

@@ -79,6 +79,7 @@ impl PredGateAccum {
 }
 
 pub struct Community {
+    pub(crate) expression: Option<crate::scenario::expression::Expression>,
     pub(crate) rest_enabled: bool,
     pub(crate) onset_habituation_config: Option<(crate::core::habituation::HabituationParams, f64)>,
     pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
@@ -210,6 +211,7 @@ impl Community {
     pub fn new(time: Timebase) -> Self {
         debug!("Community sample rate: {:.1} Hz", time.fs);
         Self {
+            expression: None,
             body_metabolism: None,
             birth_surrogate: std::cell::RefCell::new(None),
             rest_enabled: false,
@@ -531,9 +533,20 @@ impl Community {
             if let Some(sequence) = &mut voice.pitch_ctl.own_sequence {
                 sequence.trace_enabled = auto_observe_enabled;
             }
+            if let Some(tonality) = &mut voice.pitch_ctl.own_tonality {
+                tonality.trace_enabled = auto_observe_enabled;
+            }
             if let Some(gap) = &mut voice.phonation_engine.span_gap {
                 gap.observe(landscape, now);
                 gap.trace_enabled = auto_observe_enabled;
+            }
+            voice.phonation_engine.expression_active = self
+                .expression
+                .is_some_and(|e| now as f64 >= e.start * f64::from(tb.fs));
+            if let super::phonation_engine::PhonationClock::Coupling(clock) =
+                &mut voice.phonation_engine.clock
+            {
+                clock.expression = self.expression.filter(|e| e.ritard > 0.0);
             }
             voice.tick_phonation_into_with_arrival(
                 &tb,

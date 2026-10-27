@@ -772,11 +772,31 @@ impl ScriptHost {
         );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
+            "follow_own_tonality",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
+                spec.spec
+                    .record_call("follow_own_tonality", call.call_position(), &diagnostics);
+                spec.spec.set_follow_own_tonality(weight);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
             "phrase_boundary",
             move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
                 spec.spec
                     .record_call("phrase_boundary", call.call_position(), &diagnostics);
                 spec.spec.set_phrase_boundary(weight as FLOAT);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "follow_own_tonality",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
+                spec.spec
+                    .record_call("follow_own_tonality", call.call_position(), &diagnostics);
+                spec.spec.set_follow_own_tonality(weight as FLOAT);
                 spec
             },
         );
@@ -1136,6 +1156,60 @@ impl ScriptHost {
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
                 let mut ctx = ctx_for_section.lock().expect("lock script context");
                 ctx.pop_scope();
+                result.map(|_| ())
+            },
+        );
+
+        let ctx_for_expression = ctx.clone();
+        engine.register_fn(
+            "expressive_section",
+            move |call_ctx: NativeCallContext,
+                  name: &str,
+                  arch: Dynamic,
+                  ritard: Dynamic,
+                  callback: FnPtr| {
+                let start = {
+                    let mut ctx = ctx_for_expression.lock().expect("lock script context");
+                    ctx.push_scene_marker(name);
+                    ctx.push_scope();
+                    ctx.cursor
+                };
+                let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
+                let mut ctx = ctx_for_expression.lock().expect("lock script context");
+                ctx.pop_scope();
+                let weight = |value: Dynamic| {
+                    value
+                        .as_float()
+                        .ok()
+                        .or_else(|| value.as_int().ok().map(|n| n as f64))
+                };
+                let weights = weight(arch).zip(weight(ritard));
+                let position = call_ctx.call_position();
+                if let Some((arch, ritard)) = weights
+                    .filter(|(a, r)| a.is_finite() && r.is_finite() && *a >= 0.0 && *r >= 0.0)
+                {
+                    if arch != 0.0 || ritard != 0.0 {
+                        let end = ctx.cursor;
+                        ctx.expression_sections.push((
+                            crate::scenario::expression::Expression {
+                                start: f64::from(start),
+                                end: f64::from(end),
+                                arch: arch.min(1.0),
+                                ritard: ritard.min(1.0),
+                                position: (
+                                    position.line().unwrap_or(0),
+                                    position.position().unwrap_or(0),
+                                ),
+                            },
+                            position,
+                        ));
+                    }
+                } else {
+                    ctx.warn(
+                        "expressive_section ignored: weights must be finite and nonnegative".into(),
+                        position,
+                    );
+                }
                 result.map(|_| ())
             },
         );

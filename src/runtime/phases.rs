@@ -162,6 +162,17 @@ pub(super) fn advance_population(
                     )
                 });
             }
+            if let Some(tonality) = &mut voice.pitch_ctl.own_tonality {
+                report_try(&mut state.reporter, "own tonality", |writer| {
+                    writer.write_own_tonality(
+                        id,
+                        voice.metadata.generation,
+                        cfg.fs as u32,
+                        tonality,
+                        voice.pitch_ctl.own_sequence.is_some(),
+                    )
+                });
+            }
             if state.scenario_end_tick.is_none()
                 && state.conductor.is_done()
                 && let Some(mut record) = voice.pitch_ctl.dwell_state

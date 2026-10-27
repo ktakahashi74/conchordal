@@ -656,3 +656,51 @@ and choices. Reports expose `phrase_boundary` and `phrase_execution` records.
 A sparse or absent reaction is possible; this word does not guarantee phrase
 planning or musical improvement. Corpus replication and author adoption are
 separate from implementation agreement.
+
+## Following the Voice's own tonality
+
+`follow_own_tonality(w)` favors pitches belonging to a key inferred from the
+Voice's committed self commands. It is an initial-only finite nonnegative weight,
+with default zero. Negative or non-finite values warn and become zero. The final
+specification must use free `seek_consonance()`, sustained participation, and
+`gate_snap` or `rearticulate` with `rearticulate_above(0)` and no articulation
+persistence; unsupported forms warn and ignore the term.
+
+```rhai
+let voice = sine().sustain().steady().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(0)
+    .follow_own_tonality(0.5);
+place(voice, at(220));
+wait(4);
+```
+
+The candidate model is Toiviainen and Krumhansl (2003), Model 1: pitch activation
+has a 0.5-second time constant and stops at Off; pitch memory obeys
+`dm/dt = p - m/3`. The memory is correlated with 24 Krumhansl–Kessler major/minor
+profiles. These are Western tonal priors, not universal sensory constants.
+
+The author rules are distinct: A4=440 Hz and rounded twelve-tone pitch classes
+encode commands; an unambiguous maximum correlation selects a profile; its
+min–max normalized preference contributes `w * (q_candidate - q_current_target)`
+after ordinary candidate generation. Output frequencies remain unquantized.
+This observes self commands, not verified acoustic onsets or the habitat's key.
+A rest scales the remaining memory equally, so the key preference can persist
+through a long silence. No extra confidence threshold or musical forgetting time
+is imposed. Ambiguous numerical ranking is neutral while retaining the correlations.
+
+The field, movement cost, tessitura gravity, existing selection rules and legal
+phonation opportunities remain in use. Positive weights can change both pitch and
+subsequent onset timing. `follow_own_sequence` contributes independently; neither
+term is required by the other. Numerical overflow removes the whole failing term
+for that decision. Replacements inherit weights but start with empty histories.
+Ordinary rests, section markers and range changes preserve tonality memory.
+Overlapping or pitch-updated commands close an epoch until all old tones end;
+missing identities or exhausted tracking capacity remain neutral until replacement.
+
+The demonstrated load is the three enabled plucks in the 354-second v6b scene,
+at 48 kHz, hop 512 and control step 64, alongside its existing Voice and Flora
+analysis. This is a declared test load, not a weight or population limit.
+The adapter tracks at most 16 overlapping identities during recovery and rejects
+more than 8192 pending events/control steps in a hop. Reporting stores traces only
+until their next hop emission. This term is not a default listener preset, and its
+example weight is not an adopted musical setting.

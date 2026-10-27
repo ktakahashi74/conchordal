@@ -170,6 +170,13 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         receipt: &'a crate::life::phrase_boundary::Receipt,
     },
+    OwnTonality {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::life::own_tonality::TonalityDecision,
+    },
     OwnSequenceLearning {
         voice_id: u64,
         generation: u32,
@@ -833,6 +840,33 @@ impl JsonlReporter {
         receipt: &crate::life::phrase_boundary::Receipt,
     ) -> Result<(), String> {
         self.write_record(&ReportRecord::PhraseExecution { receipt })
+    }
+
+    pub(crate) fn write_own_tonality(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        tonality: &mut crate::life::own_tonality::OwnTonality,
+        sequence_reports_execution: bool,
+    ) -> Result<(), String> {
+        for record in tonality.executions.drain(..) {
+            if !sequence_reports_execution {
+                self.write_record(&ReportRecord::SelfExecution {
+                    sample_rate,
+                    record: &record,
+                })?;
+            }
+        }
+        for record in tonality.decisions.drain(..) {
+            self.write_record(&ReportRecord::OwnTonality {
+                voice_id,
+                generation,
+                sample_rate,
+                record: &record,
+            })?;
+        }
+        Ok(())
     }
 
     pub(crate) fn write_own_sequence(

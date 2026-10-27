@@ -812,3 +812,30 @@ For orchestration, pass/fail timing, or long jobs on blanche, read [operations/o
 - Positive PX-1 sources use chronological sample-major rendering for receipts;
   the default block renderer is unchanged. Analysis stores six notes per Voice;
   receipt buffers retain capacity, and boundary trace allocation requires reports.
+
+## Known final expression (PE-1, §9.3.109)
+
+`expressive_section` is initial-only authored form. Its candidate kernels live in
+`scenario/expression.rs`; scripting validates the completed event stream, wiring
+checks actual delivery hops and transforms the schedule once. Neutral calls use
+ordinary section scope/events with no runtime expression. Nonzero unsupported
+scenes warn and ignore the whole effect, preserving other controls. The initial
+support is immediate Once without free rearticulation and non-sustained synchronized Coupled;
+Flora, participation, sustained metric and rest are excluded. The fixed score
+clock is private to generation; physical DSP, ecology, perception and memory do
+not change clocks. Gain is applied once before Tone PCM branches. Reborn clocks
+initialize independently. Do not feed authored endpoints to perceived closure.
+## Self-command tonality (TK-1)
+
+- `follow_own_tonality(w)` is initial-only, finite nonnegative f64, default zero.
+  It shares the committed command collector and deferred control path with SQ-1,
+  but owns independent fixed-size Model 1 state (`life/own_tonality.rs`). Do not
+  instantiate PPM to enable TK, or reset TK on SQ resource failure/range changes.
+- Source candidate: Toiviainen & Krumhansl (2003), Model 1, tau_p=.5 s,
+  dm/dt=p-m/3 and 24 K-K correlations. Author rules: absolute 12-TET encoding,
+  unique numerical key selection and post-generation profile preference.
+  Log-scaled memory preserves correlation through long rests; no silence reset.
+- Positive supported TK clamps candidate and baseline coordinates before scoring.
+  The selector composes existing + SQ + TK once; each failure removes only that
+  term, and counterfactuals preserve the other. Zero TK retains the old SQ path.
+  See ledger §9.3.107 and the independent Decimal fixture for acceptance scope.

@@ -2077,3 +2077,224 @@ fn flora_rest_on_habituation_is_initial_only_and_uses_cap_one_range() {
             .contains("Function not found")
     );
 }
+
+#[test]
+fn expressive_section_zero_preserves_scope_events_and_unsupported_scenes() {
+    let body = r#"let p = place(modal().sustain().metric(), at(330)); wait(1);"#;
+    let regular = format!("section(\"last\", || {{ {body} }});");
+    let neutral = format!("expressive_section(\"last\", 0, 0.0, || {{ {body} }});");
+    let (a, _) = run_script_with_seed(&regular, 21);
+    let (b, warnings) = run_script_with_seed(&neutral, 21);
+    assert_eq!(format!("{a:?}"), format!("{b:?}"));
+    assert!(warnings.lock().unwrap().is_empty());
+}
+
+#[test]
+fn expressive_section_weights_are_finite_nonnegative_and_saturate_at_full_application() {
+    for value in [
+        0.0,
+        1e-30,
+        0.5,
+        1.0,
+        f64::MAX,
+        -1.0,
+        f64::NAN,
+        f64::INFINITY,
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let mut scope = rhai::Scope::new();
+        scope.push("weight", value);
+        let _ = engine
+            .eval_with_scope::<Dynamic>(
+                &mut scope,
+                "expressive_section(\"last\",weight,weight,|| {wait(1);});",
+            )
+            .unwrap();
+        let ctx = ctx.lock().unwrap();
+        let valid = value.is_finite() && value >= 0.0;
+        assert_eq!(ctx.warnings.lock().unwrap().len(), usize::from(!valid));
+        assert_eq!(
+            ctx.expression_sections.len(),
+            usize::from(valid && value != 0.0)
+        );
+        if let Some((expression, _)) = ctx.expression_sections.first() {
+            assert_eq!(expression.arch, value.min(1.0));
+            assert_eq!(expression.ritard, value.min(1.0));
+        }
+    }
+}
+
+#[test]
+fn expressive_section_validates_final_shapes_and_global_release() {
+    for body in [
+        "modal().sustain().metric()",
+        "harmonic().sustain().seek_consonance().pitch_apply_mode(\"rearticulate\")",
+        "modal().entrained()",
+        "modal().once().phonate_when_viable()",
+        "modal().sustain().metric().cycles(1).rest(0.5)",
+        "modal().sustain().metric().seek_consonance().pitch_apply_mode(\"rearticulate\").rearticulate_above(0).follow_own_sequence(1)",
+    ] {
+        let script = format!(
+            "expressive_section(\"last\", 1, 1, || {{ place({body}, at(330)); wait(2); }});"
+        );
+        let (scene, warnings) = run_script(&script);
+        assert!(scene.expression.is_none(), "{body}");
+        if body.contains("follow_own_sequence") {
+            assert!(scene.events.iter().flat_map(|e| &e.actions).any(|a| {
+                matches!(a, Action::Spawn { spec, .. } if spec.control.pitch.follow_own_sequence == 1.0)
+            }));
+        }
+        assert!(
+            warnings
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("expressive_section ignored"))
+        );
+    }
+    for script in [
+        "let p = place(modal().metric(),at(330)); expressive_section(\"last\",1,1,|| {wait(2);});",
+        "expressive_section(\"last\",1,1,|| {place(flora(),random(100,800));wait(2);});",
+        "expressive_section(\"last\",1,1,|| {wait(2);});place(modal(),at(330));wait(1);",
+        "expressive_section(\"last\",1,1,|| {});",
+        "expressive_section(\"last\",1,1,|| {wait(2);});wait(1);",
+        "expressive_section(\"a\",1,0,|| {wait(1);});expressive_section(\"b\",1,0,|| {wait(1);});",
+        "expressive_section(\"last\",1,1,|| {let p=place(modal().once(),at(330));wait(1);p.pitch_apply_mode(\"glide\");wait(1);});",
+    ] {
+        let (scene, warnings) = run_script(script);
+        assert!(scene.expression.is_none(), "{script}");
+        assert!(!warnings.lock().unwrap().is_empty());
+    }
+    let (mut scene, warnings) = run_script(
+        "let p=place(modal().metric(),at(330));section(\"first\",|| {wait(2);});expressive_section(\"last\",1,1,|| {wait(4);release(p);});",
+    );
+    assert!(warnings.lock().unwrap().is_empty());
+    let e = scene.expression.unwrap();
+    let tail = scene.duration_sec - 6.0;
+    scene.prepare_expression(48000.0, 512);
+    assert!(scene.expression.is_some());
+    assert!((scene.duration_sec - (e.performance(6.0) as f32 + tail)).abs() < 1e-6);
+    assert!(scene.duration_sec > 6.0 + tail);
+}
+
+#[test]
+fn expressive_section_same_hop_once_is_disabled_before_any_transform() {
+    let (mut scene, _) = run_script(
+        "expressive_section(\"last\",1,1,|| {place(modal().once(),at(330));wait(0.001);});",
+    );
+    assert!(scene.expression.is_some());
+    let events = format!("{:?}", scene.events);
+    scene.prepare_expression(48000.0, 512);
+    // At score zero delivery is hop zero, positive release is the next hop.
+    assert!(scene.expression.is_some());
+    assert_ne!(format!("{:?}", scene.events), events);
+    let (mut scene, _) = run_script(
+        "wait(0.001);expressive_section(\"last\",1,1,|| {place(modal().once(),at(330));wait(0.001);});",
+    );
+    let events = format!("{:?}", scene.events);
+    scene.prepare_expression(48000.0, 512);
+    assert!(scene.expression.is_none());
+    assert_eq!(format!("{:?}", scene.events), events);
+}
+
+#[test]
+fn expressive_section_maps_parallel_once_events_without_stealing_release_ownership() {
+    let script = r#"
+        let outer = place(sine().once().anchor(),at(220));
+        wait(1);
+        expressive_section("ending",1,1,|| {
+            parallel([
+                || {place(modal().metric().respawn_random(),at(330));wait(2);},
+                || {wait(1);place(sine().once().anchor(),at(440));wait(3);}
+            ]);
+            release(outer);
+        });
+    "#;
+    let (mut scene, warnings) = run_script(script);
+    assert!(warnings.lock().unwrap().is_empty());
+    let e = scene.expression.unwrap();
+    assert_eq!((e.start, e.end), (1.0, 5.0));
+    let before = scene.events.clone();
+    scene.prepare_expression(48000.0, 512);
+    assert!(scene.expression.is_some());
+    for (old, new) in before.iter().zip(&scene.events) {
+        assert_eq!(format!("{:?}", old.actions), format!("{:?}", new.actions));
+        assert_eq!(old.order, new.order);
+        if !old.actions.iter().any(|a| matches!(a, Action::Finish)) {
+            assert_eq!(new.time, e.performance(f64::from(old.time)) as f32);
+        }
+    }
+    let releases: Vec<_> = before
+        .iter()
+        .flat_map(|event| {
+            event.actions.iter().filter_map(move |a| {
+                if let Action::ReleasePopulation { population_id, .. } = a {
+                    Some((*population_id, event.time))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+    assert!(releases.contains(&(1, 5.0)));
+    assert!(releases.contains(&(2, 3.0)));
+    assert!(releases.contains(&(3, 5.0)));
+    let renamed = run_script(&script.replace("ending", "renamed")).0;
+    assert_eq!(format!("{:?}", before), format!("{:?}", renamed.events));
+}
+
+#[test]
+fn expressive_section_respawn_keeps_global_weights_with_a_fresh_clock() {
+    use crate::life::phonation_engine::PhonationClock;
+    let (scene, warnings) = run_script_with_seed(
+        "expressive_section(\"last\",0.5,1,|| {place(sine().metric().respawn_random().respawn_background_death_rate(10000),at(220));wait(2);});",
+        21,
+    );
+    assert!(warnings.lock().unwrap().is_empty());
+    let expression = scene.expression.unwrap();
+    let mut community = Community::new(Timebase {
+        fs: 48000.0,
+        hop: 512,
+    });
+    community.expression = Some(expression);
+    community.set_seed(scene.seed);
+    let landscape = Landscape::default();
+    for action in scene.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape);
+        }
+    }
+    let parent = community.voices[0].id();
+    let PhonationClock::Coupling(clock) = &mut community.voices[0].phonation_engine.clock else {
+        panic!()
+    };
+    clock.expression = Some(expression);
+    clock.gather_rhythm(
+        48000.0,
+        0,
+        512,
+        &crate::core::modulation::NeuralRhythms::default(),
+        &mut Vec::new(),
+    );
+    assert!(clock.expression_gate_tick(0.0, 48000.0).is_some());
+    community.advance(512, 0, 512.0 / 48000.0, &landscape);
+    community.cleanup_dead(0, 512.0 / 48000.0, false, &landscape);
+    let children: Vec<_> = community
+        .voices
+        .iter()
+        .filter(|v| v.id() != parent)
+        .collect();
+    assert!(!children.is_empty());
+    for child in children {
+        let PhonationClock::Coupling(clock) = &child.phonation_engine.clock else {
+            panic!()
+        };
+        assert!(clock.expression.is_none());
+        assert!(clock.expression_gate_tick(0.0, 48000.0).is_none());
+    }
+    assert_eq!(community.expression, Some(expression));
+}

@@ -799,11 +799,16 @@ fn ph1_offline_acquisition() {
     let mut reporter =
         JsonlReporter::create(directory.join("report.jsonl").to_str().unwrap()).unwrap();
     reporter.write_meta(scenario.seed).unwrap();
-    reporter
-        .write_scene_markers(&scenario.scene_markers)
-        .unwrap();
+    if scenario.expression.is_none() {
+        reporter
+            .write_scene_markers(&scenario.scene_markers)
+            .unwrap();
+    }
     let mut evidence =
         std::io::BufWriter::new(std::fs::File::create(directory.join("commands.jsonl")).unwrap());
+    let mut load = std::env::var_os("PH1_LOAD").map(|_| {
+        std::io::BufWriter::new(std::fs::File::create(directory.join("load.jsonl")).unwrap())
+    });
     let mut opts = options();
     opts.reporter = Some(reporter);
     opts.listener_forced = true;
@@ -825,6 +830,19 @@ fn ph1_offline_acquisition() {
     // Profiling follows the ordinary reporter path without command-probe overhead.
     if opts.profile.is_none() {
         opts.offline_body_probe = Some(Box::new(move |state, tick, count, pcm| {
+            if let Some(load) = load.as_mut() {
+                writeln!(
+                    load,
+                    "{}",
+                    serde_json::json!({
+                        "tick": tick,
+                        "voices_including_retiring": state.pop.voices.len(),
+                        "tones": state.schedule_renderer.active_tone_count(),
+                        "loo_sources": state.schedule_renderer.loo_pcm.len(),
+                    })
+                )
+                .unwrap();
+            }
             let batches: Vec<_> = state.phonation_batches_buf[..count]
                 .iter()
                 .map(|batch| {

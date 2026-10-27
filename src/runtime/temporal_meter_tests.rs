@@ -103,6 +103,8 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
         8000,
         "invalid raw rate".into(),
         Scenario {
+            expression: None,
+            expression_cursor: None,
             seed: 21,
             output_gain_db: 0.0,
             output_gain_position: None,

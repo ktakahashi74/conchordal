@@ -635,6 +635,7 @@ fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
 fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
     PhonationEngine {
         phrase_boundary: None,
+        expression_active: false,
         rest: None,
         span_gap: None,
         #[cfg(test)]
@@ -2727,4 +2728,67 @@ fn phrase_boundary_consumes_vetoed_opportunity_without_changing_commands_or_stre
         assert_eq!(phrase.selected.is_some(), !veto);
         assert!(phrase.opportunity(5601).is_none());
     }
+}
+
+#[test]
+fn expression_maps_new_gate_offs_but_preserves_already_reserved_off() {
+    let fs = 48000.0;
+    let e = crate::scenario::expression::Expression {
+        start: 1.0,
+        end: 8.0,
+        arch: 0.0,
+        ritard: 1.0,
+        position: (0, 0),
+    };
+    let mut engine = PhonationEngine::from_config(
+        &PhonationConfig {
+            clock: PhonationClockConfig::Coupling {
+                coupling: 0.0,
+                base_rate_hz: 2.0,
+                flow_depth: 0.0,
+                microtiming: 0.0,
+            },
+            ..Default::default()
+        },
+        21,
+    );
+    engine.schedule_note_off(77, 60000);
+    let PhonationClock::Coupling(clock) = &mut engine.clock else {
+        panic!()
+    };
+    clock.expression = Some(e);
+    let mut candidates = Vec::new();
+    clock.gather_rhythm(fs, 48000, 96000, &NeuralRhythms::default(), &mut candidates);
+    let first = candidates[0];
+    let expected = clock
+        .expression_gate_tick(first.gate as f64 + 2.5, fs)
+        .unwrap();
+    let ctx = CoreTickCtx {
+        now_tick: 48000,
+        frame_end: 96000,
+        fs,
+        rhythms: NeuralRhythms::default(),
+    };
+    let off = engine.schedule_hold_theta(
+        OnsetContext {
+            tone_id: 78,
+            tick: first.tick,
+            gate: first.gate,
+            exc_gate: 1.0,
+            exc_slope: 0.0,
+        },
+        2.5,
+        &ctx,
+        &mut ThetaGrid::default(),
+        Some(24000.0),
+    );
+    assert_eq!(off, expected);
+    assert_ne!(off, first.tick + 60000);
+    assert!(
+        engine
+            .pending_off
+            .iter()
+            .any(|p| p.0.tone_id == 77 && p.0.off_tick == 60000)
+    );
+    assert!(engine.footprint_hold().is_none());
 }

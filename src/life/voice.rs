@@ -647,6 +647,17 @@ impl Voice {
             ));
         }
 
+        if effective_control.pitch.follow_own_tonality > 0.0
+            && effective_control.supports_own_sequence()
+        {
+            pitch_ctl.own_tonality = Some(crate::life::own_tonality::OwnTonality::new(
+                assigned_id,
+                metadata.generation,
+                fs,
+                effective_control.pitch.follow_own_tonality,
+            ));
+        }
+
         let body_envelope = &effective_control.body.envelope;
         let voice_adsr = Some(super::sound::ToneAdsr {
             attack_sec: body_envelope.attack_sec,
@@ -693,7 +704,8 @@ impl Voice {
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
         Voice {
-            sequence_control: (effective_control.pitch.follow_own_sequence > 0.0
+            sequence_control: ((effective_control.pitch.follow_own_sequence > 0.0
+                || effective_control.pitch.follow_own_tonality > 0.0)
                 && effective_control.supports_own_sequence())
             .then(sequence_execution::DeferredPitch::default),
             participation_pitch: ParticipationPitchState {
@@ -855,15 +867,19 @@ impl Voice {
     }
 
     fn apply_effective_control(&mut self, control: VoiceControl, dirty: Dirty) {
-        if self.pitch_ctl.own_sequence.is_some()
-            && (control.supports_own_sequence() != self.effective_control.supports_own_sequence()
-                || control.pitch.freq != self.effective_control.pitch.freq
-                || control.pitch.range_oct != self.effective_control.pitch.range_oct)
-        {
-            let was_supported = self.pitch_ctl.own_sequence.as_ref().unwrap().supported;
-            self.pitch_ctl.own_sequence.as_mut().unwrap().supported = false;
-            self.flush_sequence_controls();
-            self.pitch_ctl.own_sequence.as_mut().unwrap().supported = was_supported;
+        let support_changed =
+            control.supports_own_sequence() != self.effective_control.supports_own_sequence();
+        let range_changed = control.pitch.freq != self.effective_control.pitch.freq
+            || control.pitch.range_oct != self.effective_control.pitch.range_oct;
+        if self.sequence_control.is_some() && (support_changed || range_changed) {
+            if self.pitch_ctl.own_tonality.is_some() {
+                self.flush_sequence_controls();
+            } else if let Some(sequence) = &mut self.pitch_ctl.own_sequence {
+                let was_supported = sequence.supported;
+                sequence.supported = false;
+                self.flush_sequence_controls();
+                self.pitch_ctl.own_sequence.as_mut().unwrap().supported = was_supported;
+            }
             let center = control.pitch.freq.log2();
             let half = control.pitch.range_oct.clamp(0.0, 6.0) * 0.5;
             if let Some(sequence) = &mut self.pitch_ctl.own_sequence {
@@ -871,6 +887,9 @@ impl Voice {
                     control.supports_own_sequence(),
                     (center - half, center + half),
                 );
+            }
+            if let Some(tonality) = &mut self.pitch_ctl.own_tonality {
+                tonality.reconfigure(control.supports_own_sequence());
             }
         }
         self.effective_control = control;
@@ -1520,7 +1539,8 @@ impl Voice {
         let state = CoreState {
             is_alive: self.is_alive()
                 && !self.release.remove_pending
-                && !(self.reports_onset_pitch() && self.release.pending),
+                && !((self.reports_onset_pitch() || self.phonation_engine.expression_active)
+                    && self.release.pending),
             onset_allowed,
         };
         out.body_policy = Some(super::action_candidates::PolicySnapshot {
@@ -2382,3 +2402,49 @@ mod tie_tests;
 #[cfg(test)]
 #[path = "synchronized_tests.rs"]
 mod synchronized_tests;
+
+#[cfg(test)]
+mod expression_release_tests {
+    use super::*;
+
+    #[test]
+    fn expression_stops_late_once_onset_during_population_release_tail() {
+        let mut voice = Voice::spawn_from_control(
+            VoiceControl::default(),
+            ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+            1,
+            0,
+            VoiceMetadata::default(),
+            48000.0,
+            None,
+            0,
+        );
+        voice.phonation_engine.expression_active = true;
+        voice.start_remove_fade(1.0);
+        let tb = Timebase {
+            fs: 48000.0,
+            hop: 512,
+        };
+        let mut batch = PhonationBatch::default();
+        voice.tick_phonation_into(
+            &tb,
+            0,
+            &NeuralRhythms::default(),
+            None,
+            0.0,
+            1.0,
+            0.5,
+            &mut batch,
+        );
+        assert!(batch.tones.is_empty());
+        assert!(
+            batch
+                .cmds
+                .iter()
+                .all(|cmd| !matches!(cmd, ToneCmd::On { .. }))
+        );
+    }
+}

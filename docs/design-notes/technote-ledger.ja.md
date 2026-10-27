@@ -108,6 +108,7 @@
   - [§9.3.92 2026-10-14：作者の試聴によるsampleの定数丸めとGenerationsのenduranceの採択](#sample-rounded-constants-generations-endurance-20261014)
   - [§9.3.95 Floraの成長と種の知覚から自分のhabitat PCMを除く](#flora-growth-self-exclusion)
   - [§9.3.104 機構の根拠の段と、作曲者の量の統一方針](#mechanism-evidence-and-composer-controls)
+  - [§9.3.109 既知の最終区間の表情](#known-final-expression)
 - [§9.4 整合と拡張の順序](#94-整合と拡張の順序)
 
 ---
@@ -7632,3 +7633,98 @@ PX-1の版2の初期範囲は、確定した記号的自己行為列のLBDM分�
 公開後の最初の既存候補機会で、vetoされた場合も保留反応を消費する。strength、時計、hold、releaseは変えない。合法な新規Onに `g=1/(1+w*B)` を予約し、期限は `known_sample + 最後の切り詰め前IOI` 未満とする。保留できる反応は最新の確定window一件だけ。rendererは実行時にidentity、期限、支持、間の別Onを再確認し、取消を別Toneへ転送しない。採られたgainはToneの最終PCMに一度だけ掛け、Update、clone、代表Toneのresetでも保持する。両bus、body観測、自己除外には同じPCMを渡す。予約中の自己予測はunsupportedとし、実行後の対応予測では振幅を一度だけscaleしてpowerに二乗の関係を保つ。直接の代謝更新は元のstrengthを使い、habitat音を介する間接の将来変化は許す。
 
 札は **候補（LBDM）＋作者規則（完備化、オンラインadapter、gain反応）**。既定の聴き手の型には組み込まない。実装の一致、宣言した負荷での動作、作者試聴は別の記録とする。Toddの弧、未来終端の計画、PX-1 release、tempo変形、和声記憶のresetは含めない。`phrase_boundary` と `phrase_execution` のreportで局所境界、実行On/Off、公開時刻、実際のgainを区別する。
+
+### 9.3.107 TK2003 Model 1による自己指令の調性
+
+`follow_own_tonality(w)` はToiviainenとKrumhansl（2003）のModel 1を候補として
+実装する。[著者公開稿](https://users.jyu.fi/~ptoiviai/pdf/ToivKrumhPercep2003.pdf)
+§§4–5の式(2)、(7)に従い、Onで1になる活性を時定数0.5秒で減衰させ、Offで0にする。
+記憶は `dm/dt=p-m/3`。論文のKrumhansl–Kessler長短調profileを移調した24調と相関を取る。
+SOM表示とModel 2は、この消費者には実装しない。仮説の実装であって脳機構の同定ではない。
+
+入力と生成への結線は作者規則である。確定した自己指令をA4=440 Hzの12平均律の
+音高階級へ丸める。半整数は0から遠ざかる向き、負の音名番号にはEuclidean mod 12を使う。
+相関の最大が数値誤差区間を含めて一意なら、そのprofileを0〜1の選好qへ写す。
+既存の候補を生成した後に `w*(q(候補)-q(現在のtarget))` を加える。
+候補とbaselineは評価前に同じ実行可能音域へ制限し、出力周波数は量子化しない。
+habitat全体の調、TC-1のlag像からの採譜、Margulisの和声・階層モデルは対象外とする。
+
+語は初期設定だけに使う有限非負f64で、既定0。最終形が自由なseek_consonance、
+sustainによる参加、gate_snap／rearticulate、閾値0、articulation persistenceなしを
+満たさなければ警告して無効にする。無効な重みも0にする。0ではTK状態を作らず、
+既存経路を維持する。置換は重みだけを継ぎ、記憶を空にする。休止・section名・音域変更は
+TKの記憶を保つ。SQの音域resetはSQ内に閉じる。対数scaleを持つf64記憶は長い休止でも
+相関の形を保ち、新しい入力との相対量も維持する。別の忘却時刻は加えない。
+
+deferred controlと分割phonationのcollectorをSQと共有し、状態は独立に持つ。
+判断sampleより前の指令だけを取り込み、未来のOffと同sampleの新Onは先取りしない。
+これは指令の記録であり、rendererが鳴らした証明ではない。重複発音とPitchUpdateでは
+全旧Toneの終了まで支持を失う。Missing、identity不一致、逆順入力、追跡容量の喪失は
+次世代まで中立とする。復帰用identityは固定16枠、保留イベント・controlの8192件超過で
+TKを停止する。report有効時だけtraceを保持し、hopごとに排出する。
+SQのPPMの履歴・時間制限をTKへ転用しない。
+
+採点は既存項＋SQ＋TKを一度だけ合成する。失敗した項全体を外し、合計だけがoverflow
+する場合はTKを外してSQを保つ。反実仮想は名指した項だけを除き、cloneしたRNGを使う。
+移動費用、音域への重力、dwellの入力と発音機会の規則は維持する。
+正の重みは音高を変え、その結果として後続の乱数消費や発音時刻も変え得る。
+TK専用の乱数drawや時刻補正は加えない。
+
+80桁Decimalの独立参照列は、原典の十進profileと区間解析解から作る。
+p/mの全中間値、24相関、12移調、無音、長い休止、一様・対称ベクトルを照合する。
+これは原式への一致であり、元MIDI・原著コード・人の評定の再現ではない。
+中間値の許容2e-12はf64評価の誤差を覆い、式(3)と式(7)の混同を識別する。
+相関の誤差区間は不連続な最大調選択を保護する。因果対照は候補集合を固定した履歴差、
+音域端、SQ合成、片側失敗、実producerの時刻順序を含む。
+費用の宣言負荷は354秒のv6b、打音3 Voiceを有効にし、48 kHz・hop512・control64、
+他のVoice、Flora2個、reportを含む。普遍的なVoice数上限ではない。
+作者による聴取と将来の既定preset採用は、実装受入と分けて記録する。
+
+<a id="known-final-expression"></a>
+### 9.3.109 既知の最終区間に置く強弱と減速（2026-10-27）
+
+`expressive_section(name, arch_weight, ritard_weight, callback)`は初期だけの大きな形の
+指定であり、所有と自動解放は`section`に従う。有限の非負の二つの重みは語の省略で0、
+両方0なら旧経路を通る。採用した曲線の完全適用点1で飽和させ、原曲線を外挿しない。
+既定の聴き手の型には加えない。
+
+**候補の原式。** Todd（1992）式7–10の単層、m=1、E=0、U=-0.5、K=100、delta=0.5、
+構造との結合なしの強度を用い、正規化値はA(x)=2 min(x,1-x)となる。Friberg–Sundberg
+（1999）式2–4からq=3、v(x)=(1+kx)^(1/3)、k=v_end^3-1と1/vの積分Fを採る。
+完全適用時のv_end=0.3は図6の条件である。1999年の聴取刺激の末尾から二番目のIOIの
+再正規化と最終音処理、Toddのテンポ結合と階層、後年のKTHの別曲線は採用しない。
+数値一致はこの限定した式との一致であり、原演奏の再現や脳機構の同定ではない。
+
+**作者規則。** 一つの明示された最終区間[s0,s1]へ割り当て、
+v_end=1-0.7 min(ritard_weight,1)、振幅g=sqrt(1+min(arch_weight,1) A)とする。
+振幅の床1により端点で音を切らない。時間写像はT(s)=s0+(s1-s0)F(x)で、入口前は恒等、
+終端後は遅延量を保つ。生成時計は位相補正を含む入口の位相速度と位相を保存し、区間内の
+速度再抽選を停止する。新生Voiceは独自に初期化した速度・位相を使う。減速重みは正なら
+微小でも時計を固定し、0なら従来の時計を維持する。この不連続は作者規則として開示する。
+
+初版の対象は自由音高の再発音を伴わないOnceと、gateまたはfield音長を持つ非持続の
+同期Coupledである。Flora、参加時計、持続metric、rest、それらの系列・shape消費者は
+対象外とする。外側と再生成のPopulationも終端までの解放が必要である。完成した事象列と
+更新後の設定、装置確定後の配送hopを検査し、対象外なら警告して区間効果全体を無視する。
+解放後の余韻中に新しい発音を認めない。入口後に予約するgate単位のOffはscoreから写像し、
+入口前に予約済みのOffは物理tickを保存する。Finishは写像した解放開始と元の秒数の余韻から
+再計算する。初版の演奏長は変換後600物理秒以内。局所写像はf64を使い、既存のf32時刻と
+hop配送の粒度を別に扱う。
+
+強弱はbody capture、自己音、presentation、habitat、LOOへ分岐する前のsource PCMに
+一度だけ掛ける。DSP、包絡、発音行為のエネルギー、代謝、音高提案・dwell、聴覚・学習は
+物理時間のままである。観測由来のfieldと履歴予測は変調済みPCMを受け、再乗算しない。
+代表ToneEnergy／onset-footprintの生成は参加時計専用で、対象時計の`footprint_hold`は
+Noneを返す。このsceneの既知の未来energyの生成器とは扱わない。将来この消費者を拡張する
+場合、表情gainを表せない窓ではunknownを保つ。rendererのforkは表情を保持して物理PCMを
+予測する。作者の区間名・終端は、知覚された句や終止の証拠へ渡さない。
+
+`tests/research/pe1_reference.py`は公表potentialと積分をDecimalで独立計算し、Rustの
+有理化した式をoracleにしない。中立・微小重み、逆写像、score crossing、物理tail、
+所有と対象外診断、PCM経路を対照とする。実行時の取得、作者の採用は実装検査と分ける。
+統括は有効時の試聴素材を専用の非持続Voice三体へ明示的に変更し、v6b二版は既定一致の入力に
+残した。専用素材はv6bのpluck音色と拍の事前設定を使うが、v6bではないと札を付ける。
+原典：[Todd 1992](https://continuum-hypothesis.com/music/todd_dyn.pdf)、
+[Friberg–Sundberg 1999](https://www.diva-portal.org/smash/get/diva2:1246197/FULLTEXT01.pdf)。
+
+Once は `PhonationGate::Immediate` に限る。知覚によって最初の発音を遅らせる形は、予定された発音の契約に含めない。

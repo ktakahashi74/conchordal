@@ -141,3 +141,57 @@ The value must be finite and convert to a finite, positive `f32` amplitude
 multiplier. The sum with the config gain must meet the same condition. Invalid
 values report the declaration's source position. These limits follow `f32`
 representation; there is no additional artistic dB range or loudness target.
+
+## Expression toward a known end
+
+`expressive_section(name, arch_weight, ritard_weight, callback)` gives the final
+explicit interval a loudness arch and a common slowing clock. It has the same
+ownership and automatic releases as `section`. Both weights are finite,
+nonnegative and initial-only. Zero is neutral; values at or above one saturate
+at full application. Omitting the term changes nothing, and two zero weights
+use the existing `section` path.
+
+```rhai
+temporal_basin(1.6, 2.4);
+meter_stability(0.55);
+let pluck = modal().metric()
+    .modes(stiff_string_modes(0.004).count(12))
+    .brightness(0.42).adsr(0.004, 0.18, 0.0, 0.35).amp(0.04);
+let pulse = place(pluck, line(196.0, 392.0).count(3));
+section("opening", || { wait(4.0); });
+expressive_section("ending", 1.0, 1.0, || {
+    wait(8.0);
+    release(pulse);
+});
+```
+
+This uses candidate curves from Todd (1992, single-layer intensity) and
+Friberg–Sundberg (1999, q=3 timing). Assigning them to an authored interval,
+adding the amplitude floor and freezing the generation clock are author rules.
+It does not infer a phrase or assert a perceived ending. No listener preset
+activates it automatically.
+
+The initial supported scene contains Once Voices without free-pitch
+rearticulation, or non-sustained synchronized `metric()` Voices. Flora,
+participating clocks, sustained metric Voices, `follow_own_sequence`, and `rest`
+are outside this scope. Unsupported scenes warn and ignore the entire expression
+effect, preserving their other controls. One nonzero interval is allowed, and
+all populations must be released by its end. Outer populations need explicit
+release, as in the example; scope exit releases only its own populations.
+There can be no later spawn or patch. Invalid weights or intervals also warn
+and ignore the effect. At device setup, colliding Once onset/release hops and
+transformed durations above 600 seconds are diagnosed before applying the map.
+
+The arch changes emitted source PCM in both buses, including already sounding
+tails; it does not multiply articulation energy directly. At full application
+its midpoint amplitude is multiplied by square root of two. Ritard stretches
+nominal time by about 1.403 at full application and reaches 0.3 of its entry
+rate. It freezes each synchronized clock's entry phase velocity and renewal,
+while sensory observation, ecology and body envelopes retain physical time.
+Gate durations follow the same time map; releases start later but their fades
+retain physical seconds. Pending Off commands issued before entry stay at their
+original physical ticks. A positive ritard, however small, freezes the clock;
+zero ritard leaves the original clock active. Section names and the known end
+are never evidence for ListenerTwin's perception of closure.
+
+Once voices must start immediately; `phonate_when_viable()` on Once is outside this initial support.

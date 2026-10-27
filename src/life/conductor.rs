@@ -23,6 +23,7 @@ struct SceneInfo {
 
 #[derive(Debug)]
 pub struct Conductor {
+    pub(crate) expression: Option<crate::scenario::expression::Expression>,
     event_queue: VecDeque<QueuedEvent>,
     total_duration: f32,
     scenes: Vec<SceneInfo>,
@@ -57,6 +58,7 @@ impl Conductor {
 
         let total_duration = s.duration_sec;
         Self {
+            expression: s.expression,
             event_queue: events.into(),
             total_duration,
             scenes,

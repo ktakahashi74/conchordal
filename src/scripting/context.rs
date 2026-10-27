@@ -44,6 +44,7 @@ pub(super) struct ScopeFrame {
 
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
+    pub(super) expression_sections: Vec<(crate::scenario::expression::Expression, Position)>,
     pub cursor: f32,
     pub scenario: Scenario,
     pub seed: u64,
@@ -77,7 +78,10 @@ impl ScriptContext {
     pub(super) fn with_seed(seed: u64) -> Self {
         Self {
             cursor: 0.0,
+            expression_sections: Vec::new(),
             scenario: Scenario {
+                expression: None,
+                expression_cursor: None,
                 seed,
                 output_gain_db: 0.0,
                 output_gain_position: None,
@@ -417,6 +421,23 @@ impl ScriptContext {
             }
         }
         let mut end_time = self.finalize_duration();
+        if !self.expression_sections.is_empty() {
+            let (expression, position) = self.expression_sections[0];
+            let result = if self.expression_sections.len() != 1 {
+                Err("only one nonzero expressive section is supported")
+            } else if f64::from(self.cursor) > expression.end {
+                Err("requires the final section, without a later score cursor")
+            } else {
+                expression.validate(&self.scenario)
+            };
+            match result {
+                Ok(()) => {
+                    self.scenario.expression = Some(expression);
+                    self.scenario.expression_cursor = Some(self.cursor);
+                }
+                Err(reason) => self.warn(format!("expressive_section ignored: {reason}"), position),
+            }
+        }
         let release_tail = self.max_release_tail();
         if release_tail > end_time {
             end_time = release_tail;
@@ -614,6 +635,20 @@ impl ScriptContext {
                 "follow_own_sequence() requires free seek_consonance(), stepwise sustained participation, no glide or articulation persistence; ignored",
             );
             population_spec.spec.control.pitch.follow_own_sequence = 0.0;
+        }
+        if population_spec.spec.control.pitch.follow_own_tonality > 0.0
+            && (!population_spec.spec.consonance_movement
+                || !population_spec
+                    .spec
+                    .spawn_spec()
+                    .control
+                    .supports_own_sequence())
+        {
+            warn_at(
+                "follow_own_tonality",
+                "follow_own_tonality() requires free seek_consonance(), stepwise sustained participation, no glide or articulation persistence; ignored",
+            );
+            population_spec.spec.control.pitch.follow_own_tonality = 0.0;
         }
         if population_spec.spec.control.pitch.dwell > 0.0
             && (!population_spec.spec.consonance_movement

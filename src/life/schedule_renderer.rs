@@ -129,6 +129,8 @@ pub(crate) struct RestSource {
 pub struct ScheduleRenderer {
     phrase_sources: BTreeMap<(u64, u32), PhraseSource>,
     pub(crate) phrase_receipts: Vec<Receipt>,
+    expression: Option<crate::scenario::expression::Expression>,
+    expression_gain: Vec<f32>,
     pub(crate) rest_sources: Vec<RestSource>,
     prototype: bool,
     time: Timebase,
@@ -199,6 +201,8 @@ impl ScheduleRenderer {
         Self {
             phrase_sources: BTreeMap::new(),
             phrase_receipts: Vec::new(),
+            expression: None,
+            expression_gain: Vec::new(),
             rest_sources: Vec::new(),
             prototype: false,
             time,
@@ -217,6 +221,17 @@ impl ScheduleRenderer {
         }
     }
 
+    pub(crate) fn with_expression(
+        mut self,
+        expression: Option<crate::scenario::expression::Expression>,
+    ) -> Self {
+        self.expression = expression;
+        if expression.is_some_and(|e| e.arch > 0.0) {
+            self.expression_gain = vec![1.0; self.time.hop];
+        }
+        self
+    }
+
     pub(crate) fn with_prototype(mut self, prototype: bool) -> Self {
         self.prototype = prototype;
         self
@@ -232,6 +247,7 @@ impl ScheduleRenderer {
     /// Used by examples/action_prediction.rs; cloning allocates and is not an RT path.
     pub fn fork_source(&self, source_id: u64) -> Self {
         let mut fork = Self::new(self.time);
+        fork = fork.with_expression(self.expression);
         fork.prototype = self.prototype;
         fork.cutoff_tick = self.cutoff_tick;
         fork.phrase_sources = self
@@ -511,6 +527,11 @@ impl ScheduleRenderer {
 
         let end = now.saturating_add(hop as Tick);
         let dt = 1.0 / fs;
+        if let Some(expression) = self.expression.filter(|e| e.arch > 0.0) {
+            for (i, gain) in self.expression_gain.iter_mut().enumerate() {
+                *gain = expression.gain((now + i as Tick) as f64 / f64::from(fs));
+            }
+        }
         let rhythms = *rhythms;
         let setup_us = profile_lap(&mut checkpoint);
         self.apply_phonation_batches(phonation_batches, now);
@@ -547,6 +568,14 @@ impl ScheduleRenderer {
                     *sample = rt
                         .tone
                         .render_tick(tick, fs, dt, &self.scratch_rhythms[idx]);
+                }
+                if !self.expression_gain.is_empty() {
+                    for (sample, gain) in self.scratch_pcm[..samples]
+                        .iter_mut()
+                        .zip(&self.expression_gain)
+                    {
+                        *sample *= gain;
+                    }
                 }
                 let pcm = &self.scratch_pcm[..samples];
                 if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
@@ -657,7 +686,10 @@ impl ScheduleRenderer {
                     rt.tone.apply_updates_if_due(tick);
                 }
                 rt.tone.kick_planned_if_due(tick);
-                let sample = rt.tone.render_tick(tick, fs, dt, &rhythms);
+                let mut sample = rt.tone.render_tick(tick, fs, dt, &rhythms);
+                if !self.expression_gain.is_empty() {
+                    sample *= self.expression_gain[(tick - now) as usize];
+                }
 
                 if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
                     capture.sample(slot, idx, sample, rt.routing);
@@ -1030,6 +1062,85 @@ mod tests {
         assert_eq!(actual.len(), expected.len());
         for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
             assert_eq!(actual.to_bits(), expected.to_bits(), "sample {index}");
+        }
+    }
+
+    #[test]
+    fn expression_modulates_existing_tails_before_every_pcm_branch() {
+        use crate::scenario::expression::Expression;
+        let time = Timebase {
+            fs: 8000.0,
+            hop: 64,
+        };
+        let expression = Expression {
+            start: 0.016,
+            end: 0.08,
+            arch: 1.0,
+            ritard: 0.0,
+            position: (0, 0),
+        };
+        for oracle in [false, true] {
+            let mut actual = ScheduleRenderer::new(time).with_expression(Some(expression));
+            actual.sample_major_oracle = oracle;
+            let mut baseline = ScheduleRenderer::new(time);
+            let mut source = [SourcePcm {
+                kind: crate::core::stream::loo::SourceKind::Voice,
+                analyze_hr: true,
+                id: 2,
+                generation: 7,
+                habitat: vec![0.0; 64],
+            }];
+            actual.loo_pcm = vec![SourcePcm {
+                kind: source[0].kind,
+                analyze_hr: true,
+                id: 2,
+                generation: 7,
+                habitat: vec![0.0; 64],
+            }];
+            let observer = AcousticTemporalExpectation::new(8000).unwrap();
+            actual.self_sound.push(Some(Box::new(SelfSound {
+                source_id: 2,
+                used: true,
+                body: vec![0.0; 64],
+                habitat: vec![0.0; 64],
+                history: OwnSoundHistory::new(&observer, 0),
+            })));
+            let mut batch = outcome_batch(BodyKind::Sine);
+            batch.tones[0].hold_ticks = Some(800);
+            let mut changed = false;
+            for hop in 0..14 {
+                let now = hop * 64;
+                let commands = if hop == 0 {
+                    std::slice::from_ref(&batch)
+                } else {
+                    &[]
+                };
+                let expected = baseline
+                    .render(commands, now, &NeuralRhythms::default())
+                    .habitat
+                    .to_vec();
+                let frame = actual.render_with_source_pcm(
+                    commands,
+                    now,
+                    &NeuralRhythms::default(),
+                    &mut source,
+                    &mut [],
+                    |_, _, _, _| {},
+                );
+                let pcm = frame.habitat.to_vec();
+                assert_pcm_bits(frame.presentation, &pcm);
+                for i in 0..64 {
+                    let want = expected[i] * expression.gain((now + i as u64) as f64 / 8000.0);
+                    assert_eq!(pcm[i].to_bits(), want.to_bits());
+                    changed |= pcm[i] != expected[i];
+                }
+                assert_pcm_bits(&source[0].habitat, &pcm);
+                assert_pcm_bits(&actual.loo_pcm[0].habitat, &pcm);
+                let own = actual.self_sound[0].as_ref().unwrap();
+                assert_pcm_bits(&own.body, &pcm);
+                assert_pcm_bits(&own.habitat, &pcm);
+            }
+            assert!(changed);
         }
     }
 

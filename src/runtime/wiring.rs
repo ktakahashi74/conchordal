@@ -173,7 +173,7 @@ pub(super) fn wire_runtime(
     config: &AppConfig,
     runtime_sample_rate: u32,
     scenario_label: String,
-    scenario: Scenario,
+    mut scenario: Scenario,
     stop_flag: Arc<AtomicBool>,
     opts: WiringOptions,
 ) -> Result<RuntimeWiring, String> {
@@ -188,7 +188,7 @@ pub(super) fn wire_runtime(
         start_playing,
         audio_prod,
         wav_tx,
-        reporter,
+        mut reporter,
         deterministic_analysis,
         deterministic_footprints,
         guard_meter,
@@ -205,6 +205,13 @@ pub(super) fn wire_runtime(
     let fs = core.fs;
     let hop = core.hop;
     let hop_duration = core.hop_duration;
+    let expression_markers = scenario.expression.is_some();
+    scenario.prepare_expression(fs, hop);
+    if expression_markers {
+        report_try(&mut reporter, "scene markers", |writer| {
+            writer.write_scene_markers(&scenario.scene_markers)
+        });
+    }
     let lparams_runtime = core.lparams.clone();
 
     let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
@@ -588,9 +595,11 @@ pub(crate) fn init_runtime(
     report_try(&mut reporter, "meta", |writer| {
         writer.write_meta(scenario.seed)
     });
-    report_try(&mut reporter, "scene markers", |writer| {
-        writer.write_scene_markers(&scenario.scene_markers)
-    });
+    if scenario.expression.is_none() {
+        report_try(&mut reporter, "scene markers", |writer| {
+            writer.write_scene_markers(&scenario.scene_markers)
+        });
+    }
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
     let deterministic_analysis = (reporter.is_some() || observing) && !args.play;
     let profile = args.profile.as_deref().map(|path| {
@@ -707,7 +716,9 @@ pub fn run_render(
     let mut reporter = report_path.map(JsonlReporter::create).transpose()?;
     if let Some(writer) = reporter.as_mut() {
         writer.write_meta(scenario.seed)?;
-        writer.write_scene_markers(&scenario.scene_markers)?;
+        if scenario.expression.is_none() {
+            writer.write_scene_markers(&scenario.scene_markers)?;
+        }
     }
 
     // Render mode never opens an audio device: use configured sample-rate directly.

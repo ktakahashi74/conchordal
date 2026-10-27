@@ -549,3 +549,25 @@ pub const CONFIG_DOCS: &[ConfigDoc] = &[
         evidence: RESEARCH,
     },
 ];
+
+pub const EXPRESSION: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Candidate: Todd (1992) single-layer intensity and Friberg–Sundberg (1999) q=3 timing curve; not a verified brain mechanism.",
+        ja: "候補：Todd (1992) の単層の強度と Friberg–Sundberg (1999) の q=3 の時間曲線。脳機構の確定ではない。",
+    },
+    EvidenceDoc {
+        en: "Author rule: known final interval, weight saturation, amplitude floor, frozen generation clock and supported voice restrictions (§9.3.109).",
+        ja: "作者規則：既知の最終区間、重みの飽和、振幅の床、生成時計の固定と対象の制限（§9.3.109）。",
+    },
+];
+
+pub const TONALITY: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Candidate: Toiviainen & Krumhansl (2003), Model 1, pitch activation and memory with Krumhansl–Kessler key profiles (§9.3.107).",
+        ja: "候補：Toiviainen & Krumhansl（2003）のModel 1。音高活性・記憶とKrumhansl–Kesslerの調profile（§9.3.107）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: self-command encoding, numerical key selection and weighted profile preference after candidate generation; default 0.",
+        ja: "作者規則：自己指令の符号化、数値誤差を考慮した調選択、候補生成後のprofileによる重み付き選好。既定0。",
+    },
+];

@@ -117,6 +117,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.92 2026-10-14: Author adoption of rounded sample constants and Generations endurance](#sample-rounded-constants-generations-endurance-20261014)
   - [§9.3.95 Flora growth and seed perception exclude own habitat PCM](#flora-growth-self-exclusion)
   - [§9.3.104 Mechanism evidence tiers and composer controls](#mechanism-evidence-and-composer-controls)
+  - [§9.3.109 Known final expression](#known-final-expression)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -10670,3 +10671,125 @@ operation and author audition remain separate records. There is no Todd arch,
 future endpoint planning, PX-1 release, tempo deformation or harmonic-memory
 reset in this change. Reports use `phrase_boundary` and `phrase_execution` to
 keep local boundaries, actual On/Off, publication and applied gain inspectable.
+
+### 9.3.107 Self-command tonality with TK2003 Model 1
+
+`follow_own_tonality(w)` implements the candidate Model 1 in Toiviainen &
+Krumhansl (2003), *Measuring and modeling real-time responses to music: The
+ dynamics of tonality induction*, §§4–5, equations (2) and (7)
+([author manuscript](https://users.jyu.fi/~ptoiviai/pdf/ToivKrumhPercep2003.pdf)).
+Activation starts at one, decays with tau_p=0.5 s and stops at Off. Memory obeys
+`dm/dt=p-m/3`; it is correlated with the 24 transpositions of the paper's K-K
+major/minor profiles. SOM visualization and Model 2 are outside this consumer.
+This is implementation of a hypothesis, not identification of its brain mechanism.
+
+The input and generation coupling are author rules. Committed own commands are
+rounded to absolute pitch classes (A4=440, nearest semitone, half ties away from
+zero, Euclidean mod 12). The consumer selects a key only if its correlation exceeds
+all others outside the numerical error interval, min–max normalizes that profile,
+and adds `w*(q(candidate)-q(current target))` after candidate generation. The
+baseline and candidates use the same executable range before evaluation; output
+frequencies are not quantized. The term does not infer habitat harmony, use TC-1
+lag images as notes, or implement Margulis's harmonic/hierarchical expectations.
+
+The initial-only weight is finite nonnegative f64 and defaults to zero. The final
+spec requires free seek_consonance, sustained participation, gate_snap/rearticulate,
+zero rearticulation threshold and no articulation persistence. Invalid weights or
+unsupported final forms warn and disable it. Zero creates no TK state and retains
+the old path. Replacements inherit weight with empty memory. Ordinary rests,
+section markers and range changes preserve TK memory; range resets remain SQ-local.
+Log-scaled f64 memory preserves the shape through silence and the relative size
+of new input. Silence alone never supplies an additional forgetting threshold.
+
+The shared deferred control/phonation collector feeds SQ and TK independently.
+Only commands strictly before a decision enter it; future Off and same-sample On
+are excluded. This is a committed-command model, not a renderer success receipt.
+Overlap or pitch update closes TK until every tracked old tone ends. Missing or
+inconsistent identity, tracking overflow or unordered input stops TK until
+replacement. Recovery has 16 fixed identity slots. More than 8192 queued
+commands/control steps closes the TK resource path. Traces are enabled only with
+reporting and drained per hop. SQ's PPM limits are not TK's limits.
+
+Scoring composes existing + SQ + TK once. Failure removes the whole failing term;
+combined overflow removes TK while preserving valid SQ. Counterfactuals remove
+only their named term, with cloned RNG. The existing selector, movement cost,
+tessitura gravity, dwell input and legal phonation opportunities remain. Positive
+weights may change later RNG consumption and onset times as a consequence of
+changed scores and pitches; no extra TK draw or clock correction is introduced.
+
+The independent 80-digit Decimal fixture uses the source's decimal profiles and
+piecewise analytic solution, all intermediate p/m and 24 correlations, 12
+transpositions, silence, long rests, uniform and symmetric vectors. It tests
+source-equation agreement, not the original MIDI, software or human ratings.
+Intermediate tolerance 2e-12 covers f64 evaluation and detects equation (3)/(7)
+confusion; numerical rank intervals protect discontinuous key selection. The
+registered causal controls hold candidate sets fixed while changing history and
+include range edges, SQ composition, failure isolation and actual producer order.
+The declared runtime load is v6b's three enabled plucks at 48 kHz/hop512/control64
+for 354 seconds with its other Voice, two Flora and reporting. It is not a universal
+Voice limit. Author listening and any future default preset adoption remain separate.
+
+<a id="known-final-expression"></a>
+### 9.3.109 Expression over a known final interval (2026-10-27)
+
+`expressive_section(name, arch_weight, ritard_weight, callback)` is an initial-only
+macro-form instruction with section ownership and automatic releases. Its two
+finite nonnegative weights default to zero by omission; both zero takes the old
+section path. Each saturates at one, the full selected curve, rather than
+extrapolating beyond the adopted model. It is not included in a listener preset.
+
+**Candidate kernels.** Todd (1992), *The dynamics of dynamics*, equations 7–10:
+single layer, m=1, E=0, U=-0.5, K=100, delta=0.5, no structural coupling. Its
+normalized intensity is A(x)=2 min(x,1-x). Friberg and Sundberg (1999), *Does music
+performance allude to locomotion?*, equations 2–4: q=3, v(x)=(1+kx)^(1/3),
+k=v_end^3-1, and the integral F of 1/v. Full application uses the figure-6
+v_end=0.3. The penultimate-IOI renormalization and final-note processing of the
+1999 listening stimuli, Todd's tempo coupling and hierarchy, and KTH's later
+phrase-arch/ritard rules are not implemented. Numerical agreement is agreement
+with these restricted equations, not reproduction of the original performances
+or identification of a brain mechanism.
+
+**Author rules.** Assign the curve to one explicit final interval [s0,s1],
+interpolate v_end=1-0.7 min(ritard_weight,1), and use amplitude
+g=sqrt(1+min(arch_weight,1) A). The unit floor preserves sound at the boundaries.
+The clock uses T(s)=s0+(s1-s0)F(x), with identity before and retained delay after.
+It freezes the entry phase velocity (including phase pull), retains phase, and
+stops renewal draws inside the interval. A new Voice uses its own initialized
+rate and phase. A positive ritard also freezes at arbitrarily small weights;
+zero leaves the original generation clock intact. This discontinuity is disclosed.
+
+Initial support is Once without free rearticulation and non-sustained synchronized
+Coupled clocks with gate/field durations. Flora, participation, sustained metric,
+rest and their sequence/shape consumers are excluded. Every population, including
+outer populations and respawning populations, needs release by the end. Validation
+checks the completed event stream and patch results, then actual device delivery
+hops. Unsupported scenes warn and ignore the entire expression effect. No new
+onsets are admitted during a released population's physical tail. New gate Offs
+use the score map; Offs reserved before entry retain their physical ticks.
+Finish is recomputed from mapped releases plus unscaled physical tails. The first
+supported duration is at most 600 physical seconds; source timing uses local f64
+and the existing f32 schedule/hop delivery remains explicit.
+
+Gain is applied once to source PCM before body capture, own sound, presentation,
+habitat and LOO branches. DSP, envelopes, articulation energy, metabolism, pitch
+proposal/dwell, auditory observation and learning retain physical time. Observed
+fields/history forecasts already receive modulated PCM and are not multiplied
+again. The representative ToneEnergy/onset-footprint producer is participation-only
+(`footprint_hold` returns None for the supported clocks); it is not a known
+future-energy producer for this scene. Extending these consumers must preserve
+unknown results for windows whose expressive gain they cannot represent. The
+renderer fork retains the expression when forwarding physical PCM. Authored names
+and endpoints never become evidence for perceived phrase closure.
+
+The independent Decimal reference in `tests/research/pe1_reference.py` uses the
+published potential and integral, not the rationalized Rust formulas. Controls
+cover neutral and tiny weights, inverse mapping, exact score crossings, physical
+tails, scope and unsupported declarations, and PCM routing. Native acquisition
+and author adoption remain separate from these implementation checks. The PE-1i
+orchestrator explicitly substituted a dedicated non-sustained three-Voice audition
+scene for active v6b comparison; both v6b versions remain neutral-regression inputs.
+The dedicated scene uses v6b's pluck timbre and tempo priors and is labelled as
+not v6b. Reference: [Todd 1992](https://continuum-hypothesis.com/music/todd_dyn.pdf),
+[Friberg–Sundberg 1999](https://www.diva-portal.org/smash/get/diva2:1246197/FULLTEXT01.pdf).
+
+Once additionally requires `PhonationGate::Immediate`; viability-delayed initial onsets are outside the scheduled-onset contract.

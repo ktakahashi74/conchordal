@@ -1,4 +1,5 @@
 pub mod control;
+pub(crate) mod expression;
 pub(crate) mod lifecycle;
 
 use std::fmt;
@@ -63,6 +64,8 @@ pub enum FloraSeeding {
 
 #[derive(Debug, Clone)]
 pub struct Scenario {
+    pub(crate) expression: Option<expression::Expression>,
+    pub(crate) expression_cursor: Option<f32>,
     pub seed: u64,
     /// Scene playback gain, added to the audio config in dB before output guards.
     pub output_gain_db: f32,

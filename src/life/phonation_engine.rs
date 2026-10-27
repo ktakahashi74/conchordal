@@ -178,6 +178,7 @@ pub(crate) struct RestState {
 
 pub struct PhonationEngine {
     pub(crate) phrase_boundary: Option<crate::life::phrase_boundary::PhraseBoundary>,
+    pub(crate) expression_active: bool,
     pub(crate) rest: Option<RestState>,
     pub(crate) span_gap: Option<crate::life::span_gap::SpanGap>,
     pub(crate) sustain_participation: bool,
@@ -494,6 +495,7 @@ impl PhonationEngine {
         let duration_rule = DurationRule::from_config(&config.duration);
         Self {
             phrase_boundary: None,
+            expression_active: false,
             rest: None,
             span_gap: None,
             #[cfg(test)]
@@ -703,7 +705,18 @@ impl PhonationEngine {
             0.0
         };
         let off_pos = onset.gate as f64 + hold_theta as f64;
-        let off_tick_opt = Self::tick_for_gate_pos(off_pos, ctx, timing_grid, fixed_period);
+        let mapped_off = match &self.clock {
+            PhonationClock::Coupling(clock)
+                if clock.expression.is_some_and(|e| {
+                    onset.tick >= (e.start * f64::from(ctx.fs)).round() as Tick
+                }) =>
+            {
+                clock.expression_gate_tick(off_pos, ctx.fs)
+            }
+            _ => None,
+        };
+        let off_tick_opt =
+            mapped_off.or_else(|| Self::tick_for_gate_pos(off_pos, ctx, timing_grid, fixed_period));
         let fallback = timing_grid
             .boundaries
             .last()

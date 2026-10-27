@@ -34,3 +34,5 @@ pub(crate) mod own_sequence;
 pub(crate) mod phrase_boundary;
 pub(crate) mod ppm_decay;
 pub(crate) mod span_gap;
+
+pub(crate) mod own_tonality;

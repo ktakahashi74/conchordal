@@ -356,6 +356,8 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         deterministic_footprints: true,
     };
     let scenario = crate::scenario::Scenario {
+        expression: None,
+        expression_cursor: None,
         temporal_mode: crate::scenario::TemporalMode::Off,
         seed: 1,
         output_gain_db: 0.0,
@@ -852,6 +854,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             deterministic_footprints: true,
         };
         let scenario = crate::scenario::Scenario {
+            expression: None,
+            expression_cursor: None,
             temporal_mode: crate::scenario::TemporalMode::Off,
             seed: 1,
             output_gain_db: 0.0,
@@ -892,6 +896,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             listener_analysis_update_tx: None,
         };
         let scenario = crate::scenario::Scenario {
+            expression: None,
+            expression_cursor: None,
             temporal_mode: crate::scenario::TemporalMode::Off,
             seed: 1,
             output_gain_db: 0.0,

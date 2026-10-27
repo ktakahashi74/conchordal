@@ -391,6 +391,16 @@ Close a live Population; its voices enter their release phase and fade out. Rele
 
 **根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
+#### `expressive_section`
+
+```rhai,ignore
+expressive_section(name, arch_weight, ritard_weight, callback)
+```
+
+Give a known final section a loudness arch and a shared slowing clock. Initial-only finite nonnegative weights, neutral at zero and saturated at one. Same scope and releases as section. Acts on all Voice PCM, including outer populations and tails. Supports immediate Once without free rearticulation and non-sustained synchronized metric voices; Flora, participation, sustained metric and rest are unsupported. Every population must be released by the end. Unsupported scenes warn and ignore the whole effect. Ritard freezes generation phase velocity and renewal while auditory observation continues; gate durations follow the score map, body envelopes and release tails keep physical seconds. Only one nonzero final section; both zero follows the unchanged section path. This is authored form, not perceived closure.
+
+**根拠:** 候補：Todd (1992) の単層の強度と Friberg–Sundberg (1999) の q=3 の時間曲線。脳機構の確定ではない。<br>作者規則：既知の最終区間、重みの飽和、振幅の床、生成時計の固定と対象の制限（§9.3.109）。
+
 #### `section`
 
 ```rhai,ignore
@@ -781,6 +791,18 @@ follow_own_sequence(w)
 Favor continuations learned from this Voice's executed pitch intervals. Initial-only finite nonnegative score/bit weight; default 0, example 0.05. Negative or non-finite values warn and become 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Glide and unsupported final forms warn and disable it. Existing tie behavior remains. Candidate model: PPM-Decay (Harrison, Bianco, Chait, Pearce 2020). Symbol encoding and generation coupling are author rules. Learns rounded intervals from committed self onsets; output stays unquantized. Adds follow after candidate generation. Replacements inherit weight but start empty. No rhythm, harmony or phrase learning. See Rhythm for resource limits and numerical failures.
 
 **根拠:** 候補（PPM-Decay、Harrisonほか2020）：公表解析の固定モデル。原典fixtureの照合範囲は分布・情報量・学習状態であり、R APIや乱数生成器の同値性ではない（§9.3.105）。<br>作者規則：実行された音程の符号化、実行への接続、候補生成後の追従評価。重みの既定値は0。既定の聴き手の型への採用は未実施（§9.3.105）。
+
+#### `follow_own_tonality`
+
+```rhai,ignore
+follow_own_tonality(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Favor pitches in this Voice's recently inferred key. Initial-only finite nonnegative weight, default 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Unsupported final forms and invalid weights warn and disable it. Candidate: Toiviainen and Krumhansl (2003), Model 1. Author rules: committed self-command pitch classes, unique-key selection and profile-based candidate rescoring. Does not estimate habitat harmony or quantize output. Rests preserve the key preference; numerical ambiguity is neutral. Independent of follow_own_sequence. Replacements inherit weight and start empty. See Rhythm for scope and numerical handling.
+
+**根拠:** 候補：Toiviainen & Krumhansl（2003）のModel 1。音高活性・記憶とKrumhansl–Kesslerの調profile（§9.3.107）。<br>作者規則：自己指令の符号化、数値誤差を考慮した調選択、候補生成後のprofileによる重み付き選好。既定0。
 
 #### `anchor`
 

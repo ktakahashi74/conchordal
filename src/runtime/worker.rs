@@ -109,7 +109,7 @@ impl WorkerState {
     }
 
     pub(super) fn new(
-        pop: Community,
+        mut pop: Community,
         conductor: Conductor,
         landscape: Landscape,
         lparams: LandscapeParams,
@@ -117,6 +117,8 @@ impl WorkerState {
         reporter: Option<JsonlReporter>,
         cfg: &WorkerConfig,
     ) -> Self {
+        let expression = conductor.expression;
+        pop.expression = expression;
         let current_landscape: Landscape = landscape;
         let log_space = current_landscape.space.clone();
         let timebase = crate::core::timebase::Timebase {
@@ -206,7 +208,9 @@ impl WorkerState {
                 tx.send(Vec::new()).expect("initial LOO capture storage");
                 (tx, rx)
             },
-            schedule_renderer: ScheduleRenderer::new(timebase).with_prototype(cfg.render_prototype),
+            schedule_renderer: ScheduleRenderer::new(timebase)
+                .with_prototype(cfg.render_prototype)
+                .with_expression(expression),
             scenario_end_tick: None,
             phonation_batches_buf: Vec::new(),
             body_snapshot: None,

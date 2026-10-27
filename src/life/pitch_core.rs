@@ -120,6 +120,11 @@ pub struct PitchHillClimbPitchCore {
     diagnostic_variant: Option<&'static str>,
     pub(crate) sequence: Option<crate::life::own_sequence::SequenceSnapshot>,
     pub(crate) sequence_enabled: bool,
+    pub(crate) tonality: Option<crate::life::own_tonality::TonalitySnapshot>,
+    pub(crate) tonality_enabled: bool,
+    pub(crate) tonality_trace: bool,
+    pub(crate) tonality_decision:
+        std::cell::RefCell<Option<crate::life::own_tonality::TonalityDecision>>,
     pub(crate) sequence_trace: bool,
     pub(crate) sequence_decision:
         std::cell::RefCell<Option<crate::life::own_sequence::SequenceDecision>>,
@@ -169,6 +174,10 @@ impl PitchHillClimbPitchCore {
             diagnostic_variant: None,
             sequence: None,
             sequence_enabled: false,
+            tonality: None,
+            tonality_enabled: false,
+            tonality_trace: false,
+            tonality_decision: std::cell::RefCell::new(None),
             sequence_trace: false,
             sequence_decision: Default::default(),
             scratch: Default::default(),
@@ -363,6 +372,11 @@ impl PitchHillClimbPitchCore {
         );
         candidates.retain(|x| x.is_finite());
         dedupe_log2_by_cents(candidates, 1.0);
+        let tonality_bounds = self
+            .tonality
+            .as_ref()
+            .map(|s| s.bounds_log2)
+            .filter(|b| b.0.max(fmin) <= b.1.min(fmax));
         scored.clear();
         for &candidate in candidates.iter() {
             let mut pitch = candidate.clamp(fmin, fmax);
@@ -375,6 +389,9 @@ impl PitchHillClimbPitchCore {
                     snapshot.bounds_log2.0.max(fmin),
                     snapshot.bounds_log2.1.min(fmax),
                 );
+            }
+            if let Some(bounds) = tonality_bounds {
+                pitch = pitch.clamp(bounds.0.max(fmin), bounds.1.min(fmax));
             }
             let score = scorer(pitch);
             if score.is_finite() {
@@ -400,7 +417,20 @@ impl PitchHillClimbPitchCore {
                     snapshot.bounds_log2.1.min(fmax),
                 )
             });
+        let current_target_log2 = tonality_bounds.map_or(current_target_log2, |b| {
+            current_target_log2.clamp(b.0.max(fmin), b.1.min(fmax))
+        });
         let current_adjusted = scorer(current_target_log2);
+        if self.tonality.is_some() && tonality_bounds.is_none() {
+            return self.select_with_tonality(
+                current_target_log2,
+                current_adjusted,
+                scored,
+                counterfactual,
+                rng,
+                false,
+            );
+        }
         self.select_with_sequence(
             current_target_log2,
             current_adjusted,
@@ -418,6 +448,16 @@ impl PitchHillClimbPitchCore {
         counterfactual: &mut Vec<(f32, f32)>,
         rng: &mut R,
     ) -> TargetProposal {
+        if self.tonality_enabled {
+            return self.select_with_tonality(
+                current_target_log2,
+                current_adjusted,
+                scored,
+                counterfactual,
+                rng,
+                true,
+            );
+        }
         if !self.sequence_enabled {
             return self.select_scored(current_target_log2, current_adjusted, scored, rng, None);
         }
@@ -497,6 +537,201 @@ impl PitchHillClimbPitchCore {
             candidates: terms,
             precision,
         });
+        selected
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn select_with_tonality<R: Rng + Clone>(
+        &self,
+        baseline: f32,
+        current_score: f32,
+        scored: &mut Vec<(f32, f32)>,
+        counterfactual: &mut Vec<(f32, f32)>,
+        rng: &mut R,
+        range_supported: bool,
+    ) -> TargetProposal {
+        use crate::life::own_sequence::{SelectionPrecision, SequenceDecision};
+        use crate::life::own_tonality::{TonalityDecision, TonalityScore};
+        counterfactual.clear();
+        counterfactual.extend_from_slice(scored);
+        let mut sq_reason = None;
+        let mut tk_reason = self.tonality.as_ref().and_then(|t| t.estimate.reason);
+        let mut sq_active = self.sequence.is_some();
+        if !range_supported {
+            tk_reason = Some("empty_range_intersection");
+        }
+        let mut tk_active = range_supported
+            && self
+                .tonality
+                .as_ref()
+                .is_some_and(|t| t.estimate.key.is_some());
+        if sq_active && scored.len() > 64 {
+            sq_active = false;
+            sq_reason = Some("candidate_resource_limit");
+        }
+        // Check entire terms independently before modifying any candidate.
+        for &(pitch, existing) in scored.iter() {
+            if sq_active
+                && !self
+                    .sequence
+                    .as_ref()
+                    .unwrap()
+                    .contribution(pitch, baseline)
+                    .is_some_and(|v| ((existing as f64 + v) as f32).is_finite())
+            {
+                sq_active = false;
+                sq_reason = Some("nonfinite_sequence_score");
+            }
+            if tk_active
+                && !self
+                    .tonality
+                    .as_ref()
+                    .unwrap()
+                    .contribution(pitch, baseline)
+                    .is_some_and(|v| ((existing as f64 + v) as f32).is_finite())
+            {
+                tk_active = false;
+                tk_reason = Some("nonfinite_tonality_score");
+            }
+        }
+        let sq_term = |pitch| {
+            if sq_active {
+                self.sequence
+                    .as_ref()
+                    .unwrap()
+                    .contribution(pitch, baseline)
+                    .unwrap()
+            } else {
+                0.0
+            }
+        };
+        if tk_active
+            && scored.iter().any(|&(p, s)| {
+                !((s as f64
+                    + sq_term(p)
+                    + self
+                        .tonality
+                        .as_ref()
+                        .unwrap()
+                        .contribution(p, baseline)
+                        .unwrap()) as f32)
+                    .is_finite()
+            })
+        {
+            tk_active = false;
+            tk_reason = Some("nonfinite_combined_score");
+        }
+        let tk_term = |pitch| {
+            if tk_active {
+                self.tonality
+                    .as_ref()
+                    .unwrap()
+                    .contribution(pitch, baseline)
+                    .unwrap()
+            } else {
+                0.0
+            }
+        };
+        let mut terms = Vec::new();
+        let mut precision = SelectionPrecision::default();
+        for (pitch, score) in scored.iter_mut() {
+            let sequence = sq_term(*pitch);
+            let tonality = tk_term(*pitch);
+            let exact = *score as f64 + sequence + tonality;
+            let combined = exact as f32;
+            precision.score_error_bound = precision
+                .score_error_bound
+                .max((combined as f64 - exact).abs());
+            if self.tonality_trace {
+                terms.push(TonalityScore {
+                    pitch_log2: *pitch,
+                    existing: *score,
+                    sequence,
+                    tonality,
+                    combined,
+                });
+            }
+            *score = combined;
+        }
+        if sq_active {
+            precision.score_error_bound += 4e-12 * self.sequence.as_ref().unwrap().weight;
+        }
+        if tk_active {
+            precision.score_error_bound +=
+                32.0 * f64::EPSILON * self.tonality.as_ref().unwrap().weight;
+        }
+        // Counterfactuals reuse scratch and cloned RNG; only the final selection consumes draws.
+        let mut without_sq = baseline;
+        if self.sequence_enabled {
+            for (p, score) in counterfactual.iter_mut() {
+                *score = (*score as f64 + tk_term(*p)) as f32;
+            }
+            without_sq = self
+                .select_scored(
+                    baseline,
+                    current_score,
+                    counterfactual,
+                    &mut rng.clone(),
+                    None,
+                )
+                .target_pitch_log2;
+        }
+        let mut without_tk = baseline;
+        if self.tonality_trace {
+            // Restore the original scores from the retained trace, avoiding a third buffer.
+            counterfactual.clear();
+            counterfactual.extend(
+                terms
+                    .iter()
+                    .map(|t| (t.pitch_log2, (t.existing as f64 + t.sequence) as f32)),
+            );
+            without_tk = self
+                .select_scored(
+                    baseline,
+                    current_score,
+                    counterfactual,
+                    &mut rng.clone(),
+                    None,
+                )
+                .target_pitch_log2;
+        }
+        let selected =
+            self.select_scored(baseline, current_score, scored, rng, Some(&mut precision));
+        if self.sequence_enabled {
+            *self.sequence_decision.borrow_mut() = Some(SequenceDecision {
+                at: 0,
+                epoch: self.sequence.as_ref().map_or(0, |s| s.epoch),
+                version: self.sequence.as_ref().map_or(0, |s| s.version),
+                active: sq_active,
+                reason: sq_reason,
+                baseline_log2: baseline,
+                selected_log2: selected.target_pitch_log2,
+                without_sequence_log2: without_sq,
+                changed: selected.target_pitch_log2.to_bits() != without_sq.to_bits(),
+                previous_hz: self.sequence.as_ref().map(|s| s.previous_hz),
+                distribution: self
+                    .sequence
+                    .as_ref()
+                    .filter(|_| self.sequence_trace)
+                    .map_or_else(Vec::new, |s| s.probabilities[..s.alphabet].to_vec()),
+                candidates: Vec::new(),
+                precision: Some(precision.clone()),
+            });
+        }
+        if self.tonality_trace {
+            *self.tonality_decision.borrow_mut() = Some(TonalityDecision {
+                at: 0,
+                epoch: 0,
+                estimate: self.tonality.as_ref().map(|s| s.estimate.clone()),
+                reason: tk_reason,
+                baseline_log2: baseline,
+                selected_log2: selected.target_pitch_log2,
+                without_tonality_log2: without_tk,
+                changed: selected.target_pitch_log2.to_bits() != without_tk.to_bits(),
+                candidates: terms,
+                precision,
+            });
+        }
         selected
     }
 

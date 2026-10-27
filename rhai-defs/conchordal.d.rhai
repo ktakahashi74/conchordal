@@ -449,6 +449,12 @@ fn entrainment(population_spec: PopulationSpec, strength: f64) -> PopulationSpec
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn entrainment(population_spec: PopulationSpec, strength: i64) -> PopulationSpec;
 
+/// Give a known final section a loudness arch and a shared slowing clock.
+/// Initial-only finite nonnegative weights, neutral at zero and saturated at one. Same scope and releases as section. Acts on all Voice PCM, including outer populations and tails. Supports immediate Once without free rearticulation and non-sustained synchronized metric voices; Flora, participation, sustained metric and rest are unsupported. Every population must be released by the end. Unsupported scenes warn and ignore the whole effect. Ritard freezes generation phase velocity and renewal while auditory observation continues; gate durations follow the score map, body envelopes and release tails keep physical seconds. Only one nonzero final section; both zero follows the unchanged section path. This is authored form, not perceived closure.
+/// Evidence: Candidate: Todd (1992) single-layer intensity and Friberg–Sundberg (1999) q=3 timing curve; not a verified brain mechanism.
+/// Evidence: Author rule: known final interval, weight saturation, amplitude floor, frozen generation clock and supported voice restrictions (§9.3.109).
+fn expressive_section(name: String, arch_weight: ?, ritard_weight: ?, callback: Fn);
+
 /// [experimental] Set Flora's placement and release fade in [0, 60] seconds.
 /// Requires a finite value before and after f32 conversion; invalid values raise script errors.
 /// Evidence: Not a mechanism (initial body): Flora body, amplitude or fade choices; see flora and pace.
@@ -486,6 +492,17 @@ fn follow_own_sequence(population_spec: PopulationSpec, w: f64) -> PopulationSpe
 /// Evidence: Candidate (PPM-Decay, Harrison et al. 2020): fixed published-analysis model; source fixtures cover distributions, information content and learning state, not R API or RNG equivalence (§9.3.105).
 /// Evidence: Author rule: executed-interval encoding, execution adaptation and follow scoring after candidate generation; weight defaults 0. No default listener preset adoption (§9.3.105).
 fn follow_own_sequence(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
+
+/// Favor pitches in this Voice's recently inferred key.
+/// Initial-only finite nonnegative weight, default 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Unsupported final forms and invalid weights warn and disable it. Candidate: Toiviainen and Krumhansl (2003), Model 1. Author rules: committed self-command pitch classes, unique-key selection and profile-based candidate rescoring. Does not estimate habitat harmony or quantize output. Rests preserve the key preference; numerical ambiguity is neutral. Independent of follow_own_sequence. Replacements inherit weight and start empty. See Rhythm for scope and numerical handling.
+/// Evidence: Candidate: Toiviainen & Krumhansl (2003), Model 1, pitch activation and memory with Krumhansl–Kessler key profiles (§9.3.107).
+/// Evidence: Author rule: self-command encoding, numerical key selection and weighted profile preference after candidate generation; default 0.
+fn follow_own_tonality(population_spec: PopulationSpec, w: f64) -> PopulationSpec;
+/// Favor pitches in this Voice's recently inferred key.
+/// Initial-only finite nonnegative weight, default 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Unsupported final forms and invalid weights warn and disable it. Candidate: Toiviainen and Krumhansl (2003), Model 1. Author rules: committed self-command pitch classes, unique-key selection and profile-based candidate rescoring. Does not estimate habitat harmony or quantize output. Rests preserve the key preference; numerical ambiguity is neutral. Independent of follow_own_sequence. Replacements inherit weight and start empty. See Rhythm for scope and numerical handling.
+/// Evidence: Candidate: Toiviainen & Krumhansl (2003), Model 1, pitch activation and memory with Krumhansl–Kessler key profiles (§9.3.107).
+/// Evidence: Author rule: self-command encoding, numerical key selection and weighted profile preference after candidate generation; default 0.
+fn follow_own_tonality(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
 
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.

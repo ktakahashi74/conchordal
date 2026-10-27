@@ -358,6 +358,431 @@ mod tests {
         assert!(same_hop > 0, "same-hop causal witness required");
         println!("SQ same-hop prior onset decisions={same_hop}");
     }
+    #[test]
+    fn tonality_causal_producer_preserves_neutral_commands_and_excludes_future() {
+        let mut same_hop = 0;
+        for tie in [0.0, 0.5, 1.0] {
+            let mut control = VoiceControl::default();
+            control.pitch.freq = 330.0;
+            control.phonation.tie = tie;
+            control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+            control.pitch.proposal_interval_sec = Some(0.001);
+            control.phonation.spec = crate::scenario::PhonationSpec {
+                timing: crate::scenario::PhonationTiming::Coupled(
+                    crate::scenario::CoupledTimingSpec {
+                        relation: crate::scenario::RhythmRelation::Participating,
+                        coupling: 0.8,
+                        ..Default::default()
+                    },
+                ),
+                duration: crate::scenario::DurationSpec::WhileAlive,
+                sustain_participation: true,
+            };
+            let make = |control| {
+                Voice::spawn_from_control(
+                    control,
+                    ArticulationCoreConfig::Drone {
+                        sway: None,
+                        breath_gain_init: None,
+                    },
+                    2,
+                    0,
+                    VoiceMetadata::default(),
+                    48000.0,
+                    None,
+                    21,
+                )
+            };
+            let mut old = make(control.clone());
+            control.pitch.follow_own_tonality = 1.0;
+            let mut learned = make(control.clone());
+            learned
+                .pitch_ctl
+                .own_tonality
+                .as_mut()
+                .unwrap()
+                .trace_enabled = true;
+            let mut causal = make(control);
+            causal.pitch_ctl.own_tonality = None;
+            let tb = Timebase {
+                fs: 48000.0,
+                hop: 512,
+            };
+            let mut field = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
+            for (i, &pitch) in field.space.centers_log2.iter().enumerate() {
+                field.consonance_field_score_eff[i] = (pitch * 7.0).sin();
+            }
+            for v in [&mut old, &mut causal, &mut learned] {
+                v.configure_control_hop(512, 64, tb.fs);
+            }
+            let mut a = PhonationBatch::default();
+            let mut b = PhonationBatch::default();
+            let mut c = PhonationBatch::default();
+            learned.prepare_phonation_batch(&mut c);
+            old.prepare_phonation_batch(&mut a);
+            causal.prepare_phonation_batch(&mut b);
+            for hop in 0..512 {
+                let at = hop * 512;
+                for (v, batch) in [
+                    (&mut old, &mut a),
+                    (&mut causal, &mut b),
+                    (&mut learned, &mut c),
+                ] {
+                    v.tick_phonation_into_with_arrival(
+                        &tb,
+                        at,
+                        &field.rhythm,
+                        None,
+                        0.0,
+                        1.0,
+                        0.8,
+                        None,
+                        Some(&field.space),
+                        batch,
+                    );
+                }
+                assert_eq!(
+                    serde_json::to_value(&a).unwrap(),
+                    serde_json::to_value(&b).unwrap(),
+                    "hop {hop}"
+                );
+                for step in 0..8 {
+                    for v in [&mut old, &mut causal, &mut learned] {
+                        v.set_control_tick(at + 512 + step * 64);
+                        v.tick_control(64.0 / tb.fs, &field.rhythm, &field, &[], &[], 0.0);
+                    }
+                }
+            }
+            let tonality = learned.pitch_ctl.own_tonality.as_ref().unwrap();
+            let records = &tonality.executions;
+            for decision in tonality
+                .decisions
+                .iter()
+                .filter(|d| d.estimate.as_ref().is_some_and(|e| e.key.is_some()))
+            {
+                let previous = records
+                    .iter()
+                    .filter(|e| e.kind == ExecutionKind::On && e.sample < decision.at)
+                    .max_by_key(|e| e.sample)
+                    .unwrap();
+                let mut replay = crate::life::own_tonality::OwnTonality::new(2, 0, tb.fs, 1.0);
+                for event in records.iter().filter(|e| e.sample < decision.at) {
+                    replay.observe(event);
+                }
+                let snapshot = replay.snapshot(decision.at, (0.0, 14.0)).unwrap();
+                assert_eq!(
+                    snapshot.estimate.correlations,
+                    decision.estimate.as_ref().unwrap().correlations
+                );
+                if previous.sample / 512 == decision.at / 512 {
+                    same_hop += 1;
+                }
+            }
+        }
+        assert!(same_hop > 0, "same-hop causal witness required");
+        println!("TK same-hop prior onset decisions={same_hop}");
+    }
+
+    #[test]
+    fn tonality_context_changes_choice_and_composes_without_erasing_sequence() {
+        use crate::life::own_sequence::SequenceSnapshot;
+        use crate::life::own_tonality::{PROFILES, TonalityModel, TonalitySnapshot};
+        use crate::life::voice::pitch_core::PitchHillClimbPitchCore;
+        use rand::SeedableRng;
+        let hz = |pc: i32| (261.625565 * 2.0f64.powf(pc as f64 / 12.0)) as f32;
+        let baseline = hz(1).log2();
+        let pitches: Vec<_> = (0..12).map(|pc| hz(pc).log2()).collect();
+        let mut core = PitchHillClimbPitchCore::new(200.0, baseline, 0.0);
+        core.set_temperature(0.0);
+        core.tonality_enabled = true;
+        core.tonality_trace = true;
+        let snapshot = |tonic, weight| {
+            let mut model = TonalityModel::default();
+            for c in 0..12 {
+                model.memory[c] = PROFILES[0][(c + 12 - tonic) % 12];
+            }
+            TonalitySnapshot {
+                estimate: model.estimate(),
+                weight,
+                bounds_log2: (hz(0).log2(), hz(12).log2()),
+            }
+        };
+        let choose = |core: &PitchHillClimbPitchCore, scores: &[f32]| {
+            let mut scores: Vec<_> = pitches
+                .iter()
+                .copied()
+                .zip(scores.iter().copied())
+                .collect();
+            core.select_with_sequence(
+                baseline,
+                0.0,
+                &mut scores,
+                &mut Vec::new(),
+                &mut rand::rngs::SmallRng::seed_from_u64(42),
+            )
+            .target_pitch_log2
+        };
+        core.tonality = Some(snapshot(0, 1.0));
+        assert_eq!(choose(&core, &[0.0; 12]), pitches[0]);
+        core.tonality = Some(snapshot(6, 1.0));
+        assert_eq!(choose(&core, &[0.0; 12]), pitches[6]);
+        let mut field = [0.0; 12];
+        field[3] = 10.0;
+        assert_eq!(choose(&core, &field), pitches[3]);
+        let mut probabilities = [0.01; 241];
+        probabilities[13] = 0.8;
+        core.sequence_enabled = true;
+        core.sequence = Some(SequenceSnapshot {
+            probabilities,
+            alphabet: 25,
+            offset: 12,
+            previous_hz: hz(0) as f64,
+            weight: 10.0,
+            bounds_log2: (hz(0).log2(), hz(12).log2()),
+            at: 0,
+            version: 0,
+            epoch: 0,
+        });
+        core.tonality = Some(snapshot(6, f64::MAX));
+        let result = choose(&core, &[0.0; 12]);
+        assert_eq!(result, baseline);
+        assert_eq!(
+            core.tonality_decision.borrow().as_ref().unwrap().reason,
+            Some("nonfinite_tonality_score")
+        );
+        assert!(core.sequence_decision.borrow().as_ref().unwrap().active);
+        core.sequence.as_mut().unwrap().weight = f64::MAX;
+        core.tonality = Some(snapshot(6, 1.0));
+        assert_eq!(choose(&core, &[0.0; 12]), pitches[6]);
+        assert_eq!(
+            core.sequence_decision.borrow().as_ref().unwrap().reason,
+            Some("nonfinite_sequence_score")
+        );
+        assert_eq!(
+            core.sequence_decision
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .without_sequence_log2,
+            pitches[6]
+        );
+    }
+
+    #[test]
+    fn tonality_scores_only_executable_range_and_preserves_report_independence() {
+        use crate::core::{landscape::Landscape, log2space::Log2Space};
+        use crate::life::own_tonality::{PROFILES, TonalityModel, TonalitySnapshot};
+        use crate::life::voice::pitch_core::PitchHillClimbPitchCore;
+        use rand::{RngExt, SeedableRng};
+        let baseline = 440.0f32.log2();
+        let mut model = TonalityModel::default();
+        model.memory = PROFILES[0];
+        let mut core = PitchHillClimbPitchCore::new(1200.0, baseline, 0.0);
+        core.tonality_enabled = true;
+        core.tonality_trace = true;
+        core.tonality = Some(TonalitySnapshot {
+            estimate: model.estimate(),
+            weight: 1.0,
+            bounds_log2: (430.0f32.log2(), 450.0f32.log2()),
+        });
+        let landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(42);
+        let mut paired = rng.clone();
+        let first = core.propose_with_scorer(baseline, baseline, &landscape, &[], &mut rng, |p| p);
+        let record = core.tonality_decision.borrow_mut().take().unwrap();
+        assert!(
+            record
+                .candidates
+                .iter()
+                .all(|c| (430.0f32.log2()..=450.0f32.log2()).contains(&c.pitch_log2))
+        );
+        assert!((430.0f32.log2()..=450.0f32.log2()).contains(&first.target_pitch_log2));
+        core.tonality_trace = false;
+        let second =
+            core.propose_with_scorer(baseline, baseline, &landscape, &[], &mut paired, |p| p);
+        assert_eq!(first.target_pitch_log2, second.target_pitch_log2);
+        assert_eq!(rng.random::<u64>(), paired.random::<u64>());
+    }
+
+    #[test]
+    fn tonality_producer_context_changes_choice_and_commits_that_pitch() {
+        use crate::life::own_tonality::OwnTonality;
+        let mut selected = Vec::new();
+        for shift in [0, 6] {
+            let mut control = VoiceControl::default();
+            control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+            let mut voice = Voice::spawn_from_control(
+                control,
+                ArticulationCoreConfig::Drone {
+                    sway: None,
+                    breath_gain_init: None,
+                },
+                2,
+                0,
+                VoiceMetadata::default(),
+                48000.0,
+                None,
+                21,
+            );
+            voice.configure_control_hop(512, 64, 48000.0);
+            voice.pitch_ctl.own_tonality = Some(OwnTonality::new(2, 0, 48000.0, 1.0));
+            let mut deferred = DeferredPitch::default();
+            let mut batch = PhonationBatch::default();
+            let tb = Timebase {
+                fs: 48000.0,
+                hop: 512,
+            };
+            for i in 0..24 {
+                let at = i * 6000;
+                let pc = [0, 4, 7][i as usize % 3] + shift;
+                let hz = (261.625565 * 2.0f64.powf(pc as f64 / 12.0)) as f32;
+                voice.force_set_pitch_log2(hz.log2());
+                if i > 0 {
+                    voice
+                        .participation_pitch
+                        .rearticulations
+                        .push(Rearticulation {
+                            at,
+                            pitch_log2: hz.log2(),
+                        });
+                }
+                voice.tick_phonation_into(
+                    &tb,
+                    at,
+                    &NeuralRhythms::default(),
+                    None,
+                    0.0,
+                    1.0,
+                    0.8,
+                    &mut batch,
+                );
+                assert_eq!(batch.tones.len(), 1);
+                voice.consume_sequence_execution(&mut deferred, &batch, &mut 0, &mut 0, at + 512);
+            }
+            let snapshot = voice
+                .pitch_ctl
+                .own_tonality
+                .as_ref()
+                .unwrap()
+                .snapshot(144000, (200.0f32.log2(), 1000.0f32.log2()))
+                .unwrap();
+            assert!(snapshot.estimate.key.is_some());
+            let baseline = 277.18263f32.log2();
+            let mut core = PitchHillClimbPitchCore::new(200.0, baseline, 0.0);
+            core.set_temperature(0.0);
+            core.tonality_enabled = true;
+            core.tonality = Some(snapshot);
+            let mut scores: Vec<_> = (0..12)
+                .map(|c| ((261.625565 * 2.0f64.powf(c as f64 / 12.0)) as f32).log2())
+                .map(|p| (p, 0.0))
+                .collect();
+            let chosen = core
+                .select_with_sequence(
+                    baseline,
+                    0.0,
+                    &mut scores,
+                    &mut Vec::new(),
+                    &mut rand::rngs::SmallRng::seed_from_u64(42),
+                )
+                .target_pitch_log2;
+            voice.force_set_pitch_log2(chosen);
+            voice
+                .participation_pitch
+                .rearticulations
+                .push(Rearticulation {
+                    at: 144000,
+                    pitch_log2: chosen,
+                });
+            voice.tick_phonation_into(
+                &tb,
+                144000,
+                &NeuralRhythms::default(),
+                None,
+                0.0,
+                1.0,
+                0.8,
+                &mut batch,
+            );
+            assert_eq!(batch.tones.len(), 1);
+            assert_eq!(batch.tones[0].freq_hz.to_bits(), chosen.exp2().to_bits());
+            selected.push(chosen);
+        }
+        assert_ne!(selected[0], selected[1]);
+        println!(
+            "TK actual producer history contrast: selected_hz={:?}",
+            selected.iter().map(|x| x.exp2()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn tonality_range_patch_preserves_history_and_support_patch_closes_it() {
+        use crate::life::own_tonality::OwnTonality;
+        let mut control = VoiceControl::default();
+        control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+        control.phonation.spec = crate::scenario::PhonationSpec {
+            timing: crate::scenario::PhonationTiming::Coupled(
+                crate::scenario::CoupledTimingSpec::default(),
+            ),
+            duration: crate::scenario::DurationSpec::WhileAlive,
+            sustain_participation: true,
+        };
+        let mut voice = Voice::spawn_from_control(
+            control,
+            ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+            2,
+            0,
+            VoiceMetadata::default(),
+            48000.0,
+            None,
+            21,
+        );
+        voice.pitch_ctl.own_tonality = Some(OwnTonality::new(2, 0, 48000.0, 1.0));
+        voice.sequence_control = Some(DeferredPitch::default());
+        voice.pitch_ctl.own_tonality.as_mut().unwrap().model.memory[0] = 1.0;
+        let mut changed_range = voice.effective_control.clone();
+        changed_range.pitch.range_oct = 0.5;
+        voice.apply_effective_control(
+            changed_range,
+            Dirty {
+                pitch: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            voice.pitch_ctl.own_tonality.as_ref().unwrap().model.memory[0],
+            1.0
+        );
+        assert_eq!(voice.pitch_ctl.own_tonality.as_ref().unwrap().epoch, 0);
+        voice
+            .apply_patch(&ControlUpdate {
+                pitch_apply_mode: Some(PitchApplyMode::Glide),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(!voice.pitch_ctl.own_tonality.as_ref().unwrap().supported);
+        assert_eq!(
+            voice.pitch_ctl.own_tonality.as_ref().unwrap().model.memory,
+            [0.0; 12]
+        );
+        voice
+            .apply_patch(&ControlUpdate {
+                pitch_apply_mode: Some(PitchApplyMode::Rearticulate),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(
+            voice
+                .pitch_ctl
+                .own_tonality
+                .as_ref()
+                .unwrap()
+                .snapshot(100, (0.0, 14.0))
+                .is_none()
+        );
+    }
 }
 
 #[derive(Debug)]
@@ -529,6 +954,14 @@ impl Voice {
             });
         }
         *tones = out.tones.len();
+        if (deferred.events.len() > 8192 || deferred.used > 8192)
+            && let Some(tonality) = &mut self.pitch_ctl.own_tonality
+        {
+            tonality.stop("collector_capacity");
+            if self.pitch_ctl.own_sequence.is_none() {
+                deferred.events.clear();
+            }
+        }
         deferred.events.sort_by_key(|e| {
             (
                 e.sample,
@@ -546,7 +979,10 @@ impl Voice {
             record.execution_sequence = deferred.next_execution;
             deferred.next_execution += 1;
             if let Some(sequence) = &mut self.pitch_ctl.own_sequence {
-                sequence.observe(record);
+                sequence.observe(record.clone());
+            }
+            if let Some(tonality) = &mut self.pitch_ctl.own_tonality {
+                tonality.observe(&record);
             }
         }
     }

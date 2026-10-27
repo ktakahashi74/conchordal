@@ -129,6 +129,8 @@ fn conductor_dispatches_finish_on_time() {
         actions: vec![Action::Finish],
     };
     let scenario = Scenario {
+        expression: None,
+        expression_cursor: None,
         seed: 0,
         output_gain_db: 0.0,
         output_gain_position: None,
@@ -154,6 +156,8 @@ fn conductor_dispatches_finish_on_time() {
 #[test]
 fn conductor_keeps_future_events_queued_in_order() {
     let scenario = Scenario {
+        expression: None,
+        expression_cursor: None,
         seed: 0,
         output_gain_db: 0.0,
         output_gain_position: None,

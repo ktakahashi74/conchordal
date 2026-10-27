@@ -391,6 +391,16 @@ Close a live Population; its voices enter their release phase and fade out. Rele
 
 **Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 
+#### `expressive_section`
+
+```rhai,ignore
+expressive_section(name, arch_weight, ritard_weight, callback)
+```
+
+Give a known final section a loudness arch and a shared slowing clock. Initial-only finite nonnegative weights, neutral at zero and saturated at one. Same scope and releases as section. Acts on all Voice PCM, including outer populations and tails. Supports immediate Once without free rearticulation and non-sustained synchronized metric voices; Flora, participation, sustained metric and rest are unsupported. Every population must be released by the end. Unsupported scenes warn and ignore the whole effect. Ritard freezes generation phase velocity and renewal while auditory observation continues; gate durations follow the score map, body envelopes and release tails keep physical seconds. Only one nonzero final section; both zero follows the unchanged section path. This is authored form, not perceived closure.
+
+**Evidence:** Candidate: Todd (1992) single-layer intensity and Friberg–Sundberg (1999) q=3 timing curve; not a verified brain mechanism.<br>Author rule: known final interval, weight saturation, amplitude floor, frozen generation clock and supported voice restrictions (§9.3.109).
+
 #### `section`
 
 ```rhai,ignore
@@ -781,6 +791,18 @@ Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` 
 Favor continuations learned from this Voice's executed pitch intervals. Initial-only finite nonnegative score/bit weight; default 0, example 0.05. Negative or non-finite values warn and become 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Glide and unsupported final forms warn and disable it. Existing tie behavior remains. Candidate model: PPM-Decay (Harrison, Bianco, Chait, Pearce 2020). Symbol encoding and generation coupling are author rules. Learns rounded intervals from committed self onsets; output stays unquantized. Adds follow after candidate generation. Replacements inherit weight but start empty. No rhythm, harmony or phrase learning. See Rhythm for resource limits and numerical failures.
 
 **Evidence:** Candidate (PPM-Decay, Harrison et al. 2020): fixed published-analysis model; source fixtures cover distributions, information content and learning state, not R API or RNG equivalence (§9.3.105).<br>Author rule: executed-interval encoding, execution adaptation and follow scoring after candidate generation; weight defaults 0. No default listener preset adoption (§9.3.105).
+
+#### `follow_own_tonality`
+
+```rhai,ignore
+follow_own_tonality(w)
+```
+
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
+
+Favor pitches in this Voice's recently inferred key. Initial-only finite nonnegative weight, default 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Unsupported final forms and invalid weights warn and disable it. Candidate: Toiviainen and Krumhansl (2003), Model 1. Author rules: committed self-command pitch classes, unique-key selection and profile-based candidate rescoring. Does not estimate habitat harmony or quantize output. Rests preserve the key preference; numerical ambiguity is neutral. Independent of follow_own_sequence. Replacements inherit weight and start empty. See Rhythm for scope and numerical handling.
+
+**Evidence:** Candidate: Toiviainen & Krumhansl (2003), Model 1, pitch activation and memory with Krumhansl–Kessler key profiles (§9.3.107).<br>Author rule: self-command encoding, numerical key selection and weighted profile preference after candidate generation; default 0.
 
 #### `anchor`
 

@@ -93,7 +93,20 @@ pub(super) const COUPLING_PULL_K: f32 = 1.0;
 /// drags those crossings into a common alignment, so independently placed
 /// voices synchronize without any externally imposed grid.
 #[derive(Clone, Debug)]
+struct ExpressionClock {
+    rate: f64,
+    score: f64,
+    phase: f64,
+    first_gate: u64,
+    first_phase: f64,
+}
+
+#[derive(Clone, Debug)]
 pub struct CouplingClock {
+    pub(crate) expression: Option<crate::scenario::expression::Expression>,
+    expression_clock: Option<ExpressionClock>,
+    last_phase_dot: Option<f32>,
+    last_cross_phase: Option<f64>,
     pub(crate) shape: Option<crate::life::shape_policy::ShapePolicy>,
     pub(super) coupling: f32,
     pub(super) base_rate_hz: f32,
@@ -135,6 +148,10 @@ impl CouplingClock {
         // fire on the same tick before the meter entrains them.
         let phase: f64 = rng.random_range(0.0..1.0);
         Self {
+            expression: None,
+            expression_clock: None,
+            last_phase_dot: None,
+            last_cross_phase: None,
             shape: None,
             coupling: coupling.clamp(0.0, 1.0),
             base_rate_hz,
@@ -213,7 +230,87 @@ impl CouplingClock {
         self.gather_rhythm_subdivided(fs, now_tick..frame_end, rhythms, out, None);
     }
 
+    pub(crate) fn expression_gate_tick(&self, gate: f64, fs: f32) -> Option<Tick> {
+        let expression = self.expression?;
+        let clock = self.expression_clock.as_ref()?;
+        let cycles = clock.first_phase + gate - clock.first_gate as f64 - clock.phase;
+        Some(
+            (expression.performance(clock.score + cycles / clock.rate) * f64::from(fs)).round()
+                as Tick,
+        )
+    }
+
     pub(crate) fn gather_rhythm_subdivided(
+        &mut self,
+        fs: f32,
+        interval: std::ops::Range<Tick>,
+        rhythms: &NeuralRhythms,
+        out: &mut Vec<CandidatePoint>,
+        subdivisions: Option<(u8, &mut Vec<CandidatePoint>)>,
+    ) {
+        let Some(expression) = self.expression else {
+            return self.gather_unexpressive(fs, interval, rhythms, out, subdivisions);
+        };
+        let entry = (expression.start * f64::from(fs)).round() as Tick;
+        if interval.end <= entry {
+            return self.gather_unexpressive(fs, interval, rhythms, out, subdivisions);
+        }
+        // Sustained shape/subdivision consumers are excluded by scene validation.
+        debug_assert!(subdivisions.is_none());
+        if interval.start < entry {
+            self.gather_unexpressive(fs, interval.start..entry, rhythms, out, None);
+        }
+        let start = interval.start.max(entry);
+        let end = interval
+            .end
+            .min((expression.performance(expression.end) * f64::from(fs)).round() as Tick);
+        if end <= start {
+            return;
+        }
+        if self.expression_clock.is_none() {
+            self.expression_clock = Some(ExpressionClock {
+                rate: f64::from(self.last_phase_dot.unwrap_or(self.intrinsic_rate_hz)),
+                score: expression.score(start as f64 / f64::from(fs)),
+                phase: self.phase,
+                first_gate: if self.has_gate {
+                    self.gate_index + 1
+                } else {
+                    0
+                },
+                first_phase: if self.last_phase_dot.is_some()
+                    && self.phase.fract() == 0.0
+                    && self.last_cross_phase != Some(self.phase)
+                {
+                    self.phase
+                } else {
+                    self.phase.floor() + 1.0
+                },
+            });
+        }
+        loop {
+            let gate = if self.has_gate {
+                self.gate_index + 1
+            } else {
+                0
+            };
+            let tick = self
+                .expression_gate_tick(gate as f64, fs)
+                .expect("frozen score clock");
+            if tick >= end {
+                break;
+            }
+            self.has_gate = true;
+            self.gate_index = gate;
+            if tick >= start {
+                out.push(CandidatePoint { tick, gate });
+            }
+        }
+        let clock = self.expression_clock.as_ref().expect("frozen score clock");
+        self.phase =
+            clock.phase + clock.rate * (expression.score(end as f64 / f64::from(fs)) - clock.score);
+    }
+
+    fn gather_unexpressive(
         &mut self,
         fs: f32,
         interval: std::ops::Range<Tick>,
@@ -237,6 +334,7 @@ impl CouplingClock {
             }
             let (f_eff, phase_dot, my_frac) = self.velocity_from_rhythms(rhythms);
             self.last_f_eff_hz = f_eff;
+            self.last_phase_dot = Some(phase_dot);
 
             // Cycles to the next integer crossing (a full cycle when on a beat).
             let frac_to_next = 1.0 - my_frac as f64;
@@ -278,6 +376,7 @@ impl CouplingClock {
             self.phase += phase_dot as f64 * adv_sec;
             // Land exactly on the integer to stop floating drift accumulating.
             self.phase = self.phase.round();
+            self.last_cross_phase = Some(self.phase);
 
             let tick = (cross_tick.round() as Tick).clamp(now_tick, end_tick - 1);
             if self.has_gate {
@@ -614,5 +713,122 @@ impl PhonationClock {
                 gate_index: 0,
             })),
         }
+    }
+}
+
+#[cfg(test)]
+mod expression_tests {
+    use super::*;
+    use crate::scenario::expression::Expression;
+
+    #[test]
+    fn expression_rounds_a_positive_half_sample_up() {
+        let mut clock = CouplingClock::new(1.0, 2.0, 0.0, 0.0, 21);
+        clock.expression = Some(Expression {
+            start: 0.0,
+            end: 1.0,
+            arch: 0.0,
+            ritard: 0.0,
+            position: (0, 0),
+        });
+        clock.expression_clock = Some(ExpressionClock {
+            rate: 2.0,
+            score: 0.5 / 48000.0,
+            phase: 0.0,
+            first_gate: 0,
+            first_phase: 0.0,
+        });
+        assert_eq!(clock.expression_gate_tick(0.0, 48000.0), Some(1));
+    }
+
+    #[test]
+    fn expression_emits_an_unconsumed_crossing_exactly_at_entry_once() {
+        let mut clock = CouplingClock::new(1.0, 2.0, 0.0, 0.0, 21);
+        clock.phase = 2.0;
+        clock.last_phase_dot = Some(2.0);
+        clock.last_cross_phase = Some(1.0);
+        clock.has_gate = true;
+        clock.gate_index = 1;
+        clock.expression = Some(Expression {
+            start: 1.0,
+            end: 2.0,
+            arch: 0.0,
+            ritard: 1.0,
+            position: (0, 0),
+        });
+        let mut points = Vec::new();
+        let rhythms = NeuralRhythms::default();
+        clock.gather_rhythm(48000.0, 48000, 48512, &rhythms, &mut points);
+        clock.gather_rhythm(48000.0, 48512, 49024, &rhythms, &mut points);
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].tick, 48000);
+        assert_eq!(points[0].gate, 2);
+    }
+
+    #[test]
+    fn expression_freezes_phase_pull_maps_crossings_and_fractional_offs() {
+        let fs = 48000.0;
+        let e = Expression {
+            start: 1.0,
+            end: 5.0,
+            arch: 0.0,
+            ritard: 1.0,
+            position: (0, 0),
+        };
+        let mut clock = CouplingClock::new(1.0, 2.0, 0.8, 0.0, 21);
+        clock.expression = Some(e);
+        clock.phase = 0.25;
+        clock.last_phase_dot = Some(2.5);
+        let mut points = Vec::new();
+        clock.gather_rhythm(fs, 48000, 48512, &NeuralRhythms::default(), &mut points);
+        assert!(points.is_empty());
+        let frozen_intrinsic = clock.intrinsic_rate_hz;
+        let first = e.performance(1.0 + 0.75 / 2.5);
+        let off = clock.expression_gate_tick(2.5, fs).unwrap();
+        assert_eq!(
+            off,
+            (e.performance(1.0 + (0.75 + 2.5) / 2.5) * 48000.0).round() as u64
+        );
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.delta.freq_hz = 20.0;
+        rhythms.delta.alpha = 1.0;
+        for now in (48512..(e.performance(5.0) * 48000.0) as u64 + 512).step_by(512) {
+            clock.gather_rhythm(fs, now, now + 512, &rhythms, &mut points);
+        }
+        assert_eq!(points[0].tick, (first * 48000.0).round() as u64);
+        for (i, p) in points.iter().enumerate() {
+            assert_eq!(
+                p.tick,
+                (e.performance(1.0 + (0.75 + i as f64) / 2.5) * 48000.0).round() as u64
+            );
+        }
+        assert_eq!(clock.intrinsic_rate_hz, frozen_intrinsic);
+        assert_eq!(clock.expression_clock.as_ref().unwrap().rate, 2.5);
+    }
+
+    #[test]
+    fn expression_birth_uses_initialized_rate_and_does_not_copy_parent_phase() {
+        let e = Expression {
+            start: 0.0,
+            end: 5.0,
+            arch: 0.0,
+            ritard: 1.0,
+            position: (0, 0),
+        };
+        let mut clock = CouplingClock::new(0.9, 2.0, 0.8, 0.2, 21);
+        let rate = clock.intrinsic_rate_hz;
+        let phase = clock.phase;
+        clock.expression = Some(e);
+        clock.gather_rhythm(
+            48000.0,
+            48000,
+            48512,
+            &NeuralRhythms::default(),
+            &mut Vec::new(),
+        );
+        let frozen = clock.expression_clock.as_ref().unwrap();
+        assert_eq!(frozen.rate, f64::from(rate));
+        assert_eq!(frozen.phase, phase);
+        assert_eq!(frozen.score, e.score(1.0));
     }
 }

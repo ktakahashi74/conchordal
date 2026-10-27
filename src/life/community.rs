@@ -550,9 +550,6 @@ impl Community {
             if let Some(sequence) = &mut voice.pitch_ctl.own_sequence {
                 sequence.trace_enabled = auto_observe_enabled;
             }
-            if let Some(tonality) = &mut voice.pitch_ctl.own_tonality {
-                tonality.trace_enabled = auto_observe_enabled;
-            }
             if let Some(gap) = &mut voice.phonation_engine.span_gap {
                 gap.observe(landscape, now);
                 gap.trace_enabled = auto_observe_enabled;

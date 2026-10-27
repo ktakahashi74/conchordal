@@ -10674,6 +10674,8 @@ keep local boundaries, actual On/Off, publication and applied gain inspectable.
 
 ### 9.3.107 Self-command tonality with TK2003 Model 1
 
+**Removed on 2026-10-27.** The author retains generatively computed functional harmony only as an optional composition choice, but rejects presets. This mechanism's fixed major/minor profiles are presets, so its word and implementation were removed, including its tonal-profile weight. The original implementation record below is retained as history.
+
 `follow_own_tonality(w)` implements the candidate Model 1 in Toiviainen &
 Krumhansl (2003), *Measuring and modeling real-time responses to music: The
  dynamics of tonality induction*, §§4–5, equations (2) and (7)
@@ -10907,12 +10909,14 @@ separate. Public technote changes remain outside this worker's scope.
 
 `listener_profile(name)` is an initial Director setting, before scene actions or
 scopes. Sensory remains the default through one constant in scripting/context.rs.
-Tonal inherits SQ-1 0.05 (Harrison et al. 2020 PPM-Decay), TK-1i 0.10
-(Toiviainen–Krumhansl 2003), PX-1i 1 (Cambouropoulos 2001), and PE-1i
+Tonal inherits SQ-1 0.05 (Harrison et al. 2020 PPM-Decay), PX-1i 1 (Cambouropoulos 2001), and PE-1i
 arch/ritard 1/1 (Todd 1992; Friberg–Sundberg 1999). These are audition weights
 from the respective unit reports, not adopted values. Their candidate kernels
 and author-rule adapters retain separate labels. Selection itself is not a
 mechanism and adds no source or brain-evidence claim.
+
+TK-1i 0.10 (Toiviainen–Krumhansl 2003) was implemented, then removed on
+2026-10-27: its fixed key profiles are presets under the author's criterion (§9.3.107).
 
 Population declarations, including explicit zero and invalid values neutralized
 by existing validation, override inheritance. Resolve each mechanism against the
@@ -10940,21 +10944,27 @@ claim author adoption; changing the default to tonal is a separate approved chan
 
 The author's 2026-10-27 request is resolved item by item: implement the identified
 model where its inputs and coupling can be specified, or record why this instrument
-does not adopt it. Six items have implementations, one classifies an existing
-mechanism, and five are not implemented. This is not twelve new mechanisms, proof
+does not adopt it. Five items remain implemented, one was implemented then removed, one classifies
+an existing mechanism, and five are not implemented. This is not twelve new mechanisms, proof
 of brain mechanisms, or author adoption of the combined sound.
+
+Author criteria (2026-10-27; translated from Japanese):
+
+> It depends on how the functional-harmony profile is described. If it is computed generatively from rules, keep it as an optional composition choice, but not on the main line. If it is a preset, it is unnecessary; remove it.
+
+> Do not introduce human-authored harmony into conchordal without warning: written progressions or scores, or stylistic prior knowledge such as key or functional-harmony profiles.
 
 | Item | Subject | Result and reason | Word and evidence tier |
 |---|---|---|---|
 | 1 | Sensory short-term tonal context | Implemented: fixed IPEM 40-channel ANI, periodicity pitch and memories with 0.1/1.5-second half-lives. | `follow_tonal_context(w)`: candidate observation; author-rule sine probes, 1-cent table, readout, rescoring and dwell coupling. §9.3.110. |
-| 2 | Changing key estimates | Implemented: Toiviainen–Krumhansl (2003) Model 1 activation, memory and 24 key correlations from self commands. | `follow_own_tonality(w)`: candidate estimator; author-rule pitch-class encoding, maximum-key choice and rescoring. §9.3.107. |
+| 2 | Changing key estimates | Implemented, then removed on 2026-10-27 because the fixed key profiles are presets under the author's criterion: Toiviainen–Krumhansl (2003) Model 1 activation, memory and 24 key correlations from self commands. | Removed TK: candidate estimator; author-rule pitch-class encoding, maximum-key choice and rescoring. §9.3.107. |
 | 3 | Harmonic tension | Not implemented. Lerdahl–Krumhansl (2007) needs key, chord, voice-leading and hierarchy inputs that are absent. Farbood (2012) can use acoustic features, but omitting changing harmony does not recover harmonic context. Neither supplies the target arc and action policy. | No new word; existing tension controls are unchanged. This does not declare the models generally unimplementable. |
 | 4 | Range and mobility in next-pitch distributions | Implemented: von Hippel (2000), the AR(1) mean and variance consistent with Eq. 1 and the text. Restoring omissions in the printed distribution is an interpretation, not an approved erratum. | `melodic_continuity(w)`: candidate distribution; author-rule finite-prefix estimation, self-On adapter, scoring and replacement. Only known decisions replace movement cost and fixed-center gravity; unknown, failure and disabled paths retain them. §9.3.108. |
 | 5 | Implication–realization | Not implemented. Narmour (1990) and Schellenberg (1997) leave unverified branches and the continuous-pitch reversal mapping. Adding proximity overlaps item 4; reversal as a whole is not declared redundant. | No new word. |
 | 6 | Melodic expectation | Not implemented. Margulis (2005) requires harmonic function and hierarchical span/head inputs that are absent. Replacing major parts with new rules is not source agreement; noncausality or complete overlap with SQ is not the reason. | No new word. |
 | 7 | Statistical learning of one's own sequence | Implemented: Harrison et al. (2020), PPM-Decay with the published settings. | `follow_own_sequence(w)`: candidate predictor; author-rule committed self-interval encoding and generation coupling. §9.3.105. |
 | 8 | Predictive pleasure | Not implemented. Cheung et al. (2019) measures chord-level pleasure; Gold et al. (2019) measures excerpt-level preference. Neither supplies the conversion to a single self-interval choice. Input, calibration, unit of evaluation and coupling would be new, without an independently established need. | No new word. |
-| 9 | Phrase boundaries | Implemented: Cambouropoulos (2001), LBDM equations and weights. | `phrase_boundary(w)`: candidate boundary analysis; author-rule online window and gain on the first legal new Sine On after publication. Renderer receipts remain distinct from SQ/TK/ME committed commands. §9.3.106. |
+| 9 | Phrase boundaries | Implemented: Cambouropoulos (2001), LBDM equations and weights. | `phrase_boundary(w)`: candidate boundary analysis; author-rule online window and gain on the first legal new Sine On after publication. Renderer receipts remain distinct from SQ/ME committed commands. §9.3.106. |
 | 10 | Phrase arch and final slowing | Implemented over a composer-specified final interval with shared timing and intensity. | `expressive_section(name, arch_weight, ritard_weight, callback)`: author rule overall; Todd (1992) single-layer intensity and Friberg–Sundberg (1999) q=3 curve are candidate kernels. Existing support covers restricted Once/WhileAlive and nonsustained synchronized Coupled Gates/Field forms. §9.3.109. |
 | 11 | Beat oscillator coupling | Existing mechanism classified; no new beat model or source acceptance is claimed. | Existing beat/entrainment vocabulary. Large neural-resonance form and Large–Jones (1999) gains retain Candidate (source agreement pending), with author-rule coupling separated. §9.3.104. |
 | 12 | Syncopation and groove | Not implemented. Longuet-Higgins–Lee indices and Witek et al. (2014) ratings supply no online policy for future onsets, rests, durations or phrase endings. Sioros et al.'s anticipations differ from RH-1 but require a known score. Opportunity weights alone do not implement that function. | No new word. This is not a rejection of syncopation in general. |
@@ -10969,8 +10979,9 @@ TC experiments are not claimed as reproduced.
 
 `listener_profile("sensory" | "tonal")` still defaults to **sensory**.
 INT-7 adds `melodic_continuity=0.00076066292` to tonal alongside SQ 0.05,
-TK 0.10, PX 1 and final supported section arch/ritard 1/1. These are audition
-weights. ME matches the mean absolute contribution of the displaced old terms;
+PX 1 and final supported section arch/ritard 1/1. These are audition
+weights. TK 0.10 was implemented, then removed from the profile on the same date.
+ME matches the mean absolute contribution of the displaced old terms;
 it is not an author-adopted value. Explicit Population values, including zero,
 win; unsupported final forms receive no inherited term or profile warning.
 TC stays outside the profile because of its approximately 1 GB/80-second table
@@ -10981,7 +10992,7 @@ upper bound nor a new warning.
 
 Remaining limitations:
 
-- SQ/TK/ME/TC require supported stepwise sustained forms; PX additionally requires
+- SQ/ME/TC require supported stepwise sustained forms; PX additionally requires
   Sine. Default forms and small-motion glides are not covered. Original v6b uses
   `rearticulate_above(50)` for its plucks, so adding tonal, including ME, leaves
   its sound unchanged. The step version is a separate baseline pair.

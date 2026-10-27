@@ -877,20 +877,6 @@ changes which pitch is chosen from the sequence of executed intervals only; it d
 not model rhythm, duration, phrase boundaries or harmonic context, and it does not
 learn other Voices' sequences.
 
-### Following self-command tonality
-
-`follow_own_tonality(w)` applies to the same free, stepwise sustained
-`seek_consonance()` forms as `follow_own_sequence`; it is initial-only and defaults
-to zero. The candidate is Toiviainen and Krumhansl (2003), Model 1: pitch activation
-uses a 0.5-second time constant, memory follows `dm/dt = p - m/3`, and the memory
-is correlated with 24 Krumhansl–Kessler major/minor profiles.
-
-Encoding committed self commands as twelve pitch classes, choosing an unambiguous
-maximum, and adding `w (q_candidate - q_current_target)` are author rules. Output
-pitch remains continuous. These Western tonal priors describe the Voice's own
-commands, not a transcription of heard sound or a shared habitat key. The term
-adds no duration or phrase planning; SQ remains independently usable.
-
 ### Melodic continuity from range and mobility
 
 Initial-only `melodic_continuity(w)` uses the same supported stepwise sustained
@@ -903,7 +889,7 @@ Finite-prefix sample statistics, committed self-On input and continuous log-dens
 scoring are author rules. With at least four onsets and certifiably positive
 variance, a known prediction replaces movement cost and fixed-center gravity,
 including their role in peak extraction, and scores the resulting legal candidates.
-Unknown or failed predictions restore those two terms. SQ and TK remain independent.
+Unknown or failed predictions restore those two terms. SQ remains independent.
 There is no new forgetting window, rhythm, harmony or phrase planner.
 
 ### Following heard tonal context
@@ -931,7 +917,7 @@ sustained metric/entrained/steady/flow participation and discrete gate-snap or
 rearticulation. Its candidate is Cambouropoulos (2001), LBDM, with pitch/IOI/rest
 weights .25/.50/.25. Online normalization over a six-onset window and the response
 are author rules. The input is the renderer's completed execution receipts,
-separate from the committed commands used by SQ, TK and ME.
+separate from the committed commands used by SQ and ME.
 
 After a confirmed local boundary becomes available, the first existing opportunity
 consumes the response. A legal new Tone before expiry receives `1/(1+w*B)` gain
@@ -959,7 +945,7 @@ The section is an initial form choice, not evidence of a perceived phrase or cad
 
 `listener_profile("sensory" | "tonal")` is a Director setting before scene actions
 or scopes. Omission selects **sensory**, preserving the existing base behavior.
-Tonal bundles SQ 0.05, TK 0.10, ME 0.00076066292, PX 1 and final supported section
+Tonal bundles SQ 0.05, ME 0.00076066292, PX 1 and final supported section
 arch/ritard 1/1. Explicit Population weights, including zero, take precedence;
 unsupported final forms and absent suitable sections are silently skipped.
 An explicit `expressive_section`, including zero/zero, overrides inherited expression.

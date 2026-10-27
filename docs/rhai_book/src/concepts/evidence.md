@@ -67,12 +67,11 @@ not already adopted.
 | Mechanism | Tonal weight | Evidence |
 |---|---:|---|
 | `follow_own_sequence` | 0.05 | Candidate: Harrison et al. (2020), PPM-Decay; author rules for interval encoding and scoring |
-| `follow_own_tonality` | 0.10 | Candidate: Toiviainen–Krumhansl (2003), Model 1; author rules for encoding, key selection and scoring |
 | `melodic_continuity` | 0.00076066292 | Candidate: von Hippel (2000), text-consistent AR(1); author rules for prefix estimation, scoring and replacement |
 | `phrase_boundary` | 1 | Candidate: Cambouropoulos (2001), LBDM; author rules for online boundaries and gain |
 | Final section arch / ritard | 1 / 1 | Candidates: Todd (1992), Friberg–Sundberg (1999); author rules for interval assignment, gain floor and clock mapping |
 
-These are the SQ-1, TK-1i, ME-1i, PX-1i and PE-1i demonstration weights. They make
+These are the SQ-1, ME-1i, PX-1i and PE-1i demonstration weights. They make
 mechanism differences available to audition; they are not author-adopted values
 and will be updated after adoption. `listener_profile` itself is labelled **Not a
 mechanism (profile selection)**; the constituent terms retain their own labels.

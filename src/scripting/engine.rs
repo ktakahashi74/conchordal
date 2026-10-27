@@ -792,31 +792,11 @@ impl ScriptHost {
         );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
-            "follow_own_tonality",
-            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
-                spec.spec
-                    .record_call("follow_own_tonality", call.call_position(), &diagnostics);
-                spec.spec.set_follow_own_tonality(weight);
-                spec
-            },
-        );
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
             "phrase_boundary",
             move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
                 spec.spec
                     .record_call("phrase_boundary", call.call_position(), &diagnostics);
                 spec.spec.set_phrase_boundary(weight as FLOAT);
-                spec
-            },
-        );
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
-            "follow_own_tonality",
-            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
-                spec.spec
-                    .record_call("follow_own_tonality", call.call_position(), &diagnostics);
-                spec.spec.set_follow_own_tonality(weight as FLOAT);
                 spec
             },
         );

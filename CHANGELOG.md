@@ -2,12 +2,18 @@
 
 ## Unreleased
 
+- Remove `follow_own_tonality(w)` and its tonal listener-profile weight. Its fixed
+  Krumhansl–Kessler major/minor profiles are style presets, not generatively
+  computed harmony, and fail the author's criterion for retaining such priors.
+  Sequence learning, melodic continuity and heard tonal context remain available;
+  sensory stays the default. The removed word now uses Rhai's ordinary unknown-function error.
+
 - Extend optional `listener_profile("tonal")` with the melodic continuity audition
   weight 0.00076066292. Explicit values, including zero, override inheritance;
   unsupported final Voices remain silent. Sensory stays the default. Tonal context
   remains an individual axis because of table cost and approximation scope.
 - Add initial `listener_profile("sensory" | "tonal")`. Sensory remains the default;
-  tonal bundles provisional sequence, tonality, phrase and final-section expression
+  tonal bundles provisional sequence, phrase and final-section expression
   audition weights. Explicit axes (including zero) win; unsupported consumers are
   silently skipped without widening their support. Author adoption remains pending.
 - Add initial-only `melodic_continuity(w)`, neutral by default. A von Hippel (2000)
@@ -41,14 +47,6 @@
   warn and ignore the effect. Initial support covers Once without free rearticulation
   and non-sustained synchronized metric Voices, excluding Flora and participation.
   Gate durations follow the common score map; auditory and body time stay physical.
-
-- Add initial-only `follow_own_tonality(w)`, default zero. Toiviainen and Krumhansl
-  (2003) Model 1 supplies a candidate model of committed self-command tonality;
-  author rules encode pitch classes and rescore existing pitch candidates.
-  It works independently of sequence learning, preserves rests and range-change
-  history, and keeps undefined or numerically ambiguous key choices neutral.
-  Output is not quantized; no listener preset or habitat key inference is added.
-
 
 - Add initial-only `follow_own_sequence(w)` for stepwise sustained Voices, default
   zero. A fixed PPM-Decay candidate model learns executed self pitch intervals;

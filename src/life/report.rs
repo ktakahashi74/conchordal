@@ -196,13 +196,6 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         record: &'a crate::core::tonal_context::Record,
     },
-    OwnTonality {
-        voice_id: u64,
-        generation: u32,
-        sample_rate: u32,
-        #[serde(flatten)]
-        record: &'a crate::life::own_tonality::TonalityDecision,
-    },
     OwnSequenceLearning {
         voice_id: u64,
         generation: u32,
@@ -916,33 +909,6 @@ impl JsonlReporter {
                 retained_onsets: me.prefix.n,
                 resource_stopped: me.resource_stopped,
                 reason: me.reason,
-            })?;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn write_own_tonality(
-        &mut self,
-        voice_id: u64,
-        generation: u32,
-        sample_rate: u32,
-        tonality: &mut crate::life::own_tonality::OwnTonality,
-        sequence_reports_execution: bool,
-    ) -> Result<(), String> {
-        for record in tonality.executions.drain(..) {
-            if !sequence_reports_execution {
-                self.write_record(&ReportRecord::SelfExecution {
-                    sample_rate,
-                    record: &record,
-                })?;
-            }
-        }
-        for record in tonality.decisions.drain(..) {
-            self.write_record(&ReportRecord::OwnTonality {
-                voice_id,
-                generation,
-                sample_rate,
-                record: &record,
             })?;
         }
         Ok(())

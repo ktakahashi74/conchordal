@@ -399,14 +399,6 @@ impl PopulationSpec {
             0.0
         };
     }
-    pub(super) fn set_follow_own_tonality(&mut self, value: FLOAT) {
-        self.control.pitch.follow_own_tonality = if value.is_finite() && value >= 0.0 {
-            value
-        } else {
-            self.warn("follow_own_tonality() expects a finite nonnegative weight; using 0".into());
-            0.0
-        };
-    }
 
     pub(super) fn set_melodic_continuity(&mut self, value: FLOAT) {
         self.control.pitch.melodic_continuity = if value.is_finite() && value >= 0.0 {

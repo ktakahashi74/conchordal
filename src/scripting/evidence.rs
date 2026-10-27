@@ -561,21 +561,10 @@ pub const EXPRESSION: &[EvidenceDoc] = &[
     },
 ];
 
-pub const TONALITY: &[EvidenceDoc] = &[
-    EvidenceDoc {
-        en: "Candidate: Toiviainen & Krumhansl (2003), Model 1, pitch activation and memory with Krumhansl–Kessler key profiles (§9.3.107).",
-        ja: "候補：Toiviainen & Krumhansl（2003）のModel 1。音高活性・記憶とKrumhansl–Kesslerの調profile（§9.3.107）。",
-    },
-    EvidenceDoc {
-        en: "Author rule: self-command encoding, numerical key selection and weighted profile preference after candidate generation; default 0.",
-        ja: "作者規則：自己指令の符号化、数値誤差を考慮した調選択、候補生成後のprofileによる重み付き選好。既定0。",
-    },
-];
-
 /// A profile selects mechanisms; it supplies no separate evidence claim.
 pub const LISTENER_PROFILE: &[EvidenceDoc] = &[EvidenceDoc {
-    en: "Not a mechanism (profile selection): see follow_own_sequence, follow_own_tonality, melodic_continuity, phrase_boundary and expressive_section for candidate models and author rules.",
-    ja: "該当なし（型の選択）：候補モデルと作者規則の札は follow_own_sequence、follow_own_tonality、melodic_continuity、phrase_boundary、expressive_section を参照。",
+    en: "Not a mechanism (profile selection): see follow_own_sequence, melodic_continuity, phrase_boundary and expressive_section for candidate models and author rules.",
+    ja: "該当なし（型の選択）：候補モデルと作者規則の札は follow_own_sequence、melodic_continuity、phrase_boundary、expressive_section を参照。",
 }];
 pub const MELODIC_CONTINUITY: &[EvidenceDoc] = &[
     EvidenceDoc {

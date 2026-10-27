@@ -24,7 +24,6 @@ pub struct PitchController {
     #[cfg(test)]
     pub(crate) trace_owner: Option<(u64, u32)>,
     core: AnyPitchCore,
-    pub(crate) own_tonality: Option<crate::life::own_tonality::OwnTonality>,
     pub(crate) melodic: Option<crate::life::melodic_continuity::MelodicContinuity>,
     pub(crate) own_sequence: Option<crate::life::own_sequence::OwnSequence>,
     pub(crate) sequence_decisions: Vec<crate::life::own_sequence::SequenceDecision>,
@@ -64,7 +63,6 @@ impl PitchController {
             trace_owner: None,
             core,
             own_sequence: None,
-            own_tonality: None,
             melodic: None,
             sequence_decisions: Vec::new(),
             adaptation,
@@ -329,15 +327,6 @@ impl PitchController {
             let features = FeaturesNow::from_occupancy_scan(&landscape.space, &self.occupancy_scan);
             self.adaptation.ensure_len(features.density.len());
             if let AnyPitchCore::PitchHillClimb(core) = &mut self.core {
-                core.tonality_enabled = self.own_tonality.is_some();
-                core.tonality_trace = self.own_tonality.as_ref().is_some_and(|s| s.trace_enabled);
-                let center = pitch.freq.log2();
-                let half = pitch.range_oct.clamp(0.0, 6.0) * 0.5;
-                core.tonality = self.control_tick.and_then(|at| {
-                    self.own_tonality
-                        .as_ref()
-                        .and_then(|t| t.snapshot(at, (center - half, center + half)))
-                });
                 core.melodic = self
                     .control_tick
                     .and_then(|at| self.melodic.as_mut().and_then(|me| me.predict(at)));
@@ -388,19 +377,6 @@ impl PitchController {
                     if seq.trace_enabled {
                         self.sequence_decisions.push(record);
                     }
-                }
-            }
-            if let AnyPitchCore::PitchHillClimb(core) = &self.core
-                && let Some(mut record) = core.tonality_decision.borrow_mut().take()
-                && let Some(tonality) = &mut self.own_tonality
-            {
-                record.at = self.control_tick.unwrap_or(0);
-                record.epoch = tonality.epoch;
-                if record.reason.is_none() {
-                    record.reason = tonality.reason;
-                }
-                if tonality.trace_enabled {
-                    tonality.decisions.push(record);
                 }
             }
             if let AnyPitchCore::PitchHillClimb(core) = &self.core

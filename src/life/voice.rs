@@ -647,17 +647,6 @@ impl Voice {
             ));
         }
 
-        if effective_control.pitch.follow_own_tonality > 0.0
-            && effective_control.supports_own_sequence()
-        {
-            pitch_ctl.own_tonality = Some(crate::life::own_tonality::OwnTonality::new(
-                assigned_id,
-                metadata.generation,
-                fs,
-                effective_control.pitch.follow_own_tonality,
-            ));
-        }
-
         if effective_control.pitch.melodic_continuity > 0.0
             && effective_control.supports_own_sequence()
         {
@@ -715,7 +704,6 @@ impl Voice {
 
         Voice {
             sequence_control: ((effective_control.pitch.follow_own_sequence > 0.0
-                || effective_control.pitch.follow_own_tonality > 0.0
                 || effective_control.pitch.melodic_continuity > 0.0)
                 && effective_control.supports_own_sequence())
             .then(sequence_execution::DeferredPitch::default),
@@ -892,9 +880,7 @@ impl Voice {
                 .own_sequence
                 .as_ref()
                 .is_some_and(|s| s.supported);
-            if let Some(s) = &mut self.pitch_ctl.own_sequence
-                && (self.pitch_ctl.own_tonality.is_none() || self.pitch_ctl.melodic.is_some())
-            {
+            if let Some(s) = &mut self.pitch_ctl.own_sequence {
                 s.supported = false;
             }
             if let Some(s) = &mut self.pitch_ctl.melodic {
@@ -917,9 +903,6 @@ impl Voice {
                     control.supports_own_sequence(),
                     (center - half, center + half),
                 );
-            }
-            if let Some(tonality) = &mut self.pitch_ctl.own_tonality {
-                tonality.reconfigure(control.supports_own_sequence());
             }
         }
         self.effective_control = control;

@@ -2303,17 +2303,17 @@ fn expressive_section_respawn_keeps_global_weights_with_a_fresh_clock() {
 fn listener_profile_resolves_final_forms_and_explicit_zero_into_voices() {
     let base = r#"sine().sustain().metric().seek_consonance().pitch_apply_mode("rearticulate").rearticulate_above(0)"#;
     for (tail, expected) in [
-        ("", (0.05, 0.10, 1.0, 0.00076066292)),
+        ("", (0.05, 1.0, 0.00076066292)),
         (
-            ".follow_own_sequence(0).follow_own_tonality(0).phrase_boundary(0).melodic_continuity(0)",
-            (0.0, 0.0, 0.0, 0.0),
+            ".follow_own_sequence(0).phrase_boundary(0).melodic_continuity(0)",
+            (0.0, 0.0, 0.0),
         ),
         (
-            ".follow_own_sequence(0.2).follow_own_tonality(0.3).phrase_boundary(0.4).melodic_continuity(0.7)",
-            (0.2, 0.3, 0.4, 0.7),
+            ".follow_own_sequence(0.2).phrase_boundary(0.4).melodic_continuity(0.7)",
+            (0.2, 0.4, 0.7),
         ),
-        (".rearticulate_above(50)", (0.0, 0.0, 1.0, 0.0)),
-        (".pitch_apply_mode(\"glide\")", (0.0, 0.0, 0.0, 0.0)),
+        (".rearticulate_above(50)", (0.0, 1.0, 0.0)),
+        (".pitch_apply_mode(\"glide\")", (0.0, 0.0, 0.0)),
     ] {
         let (scenario, warnings) = run_script_with_seed(
             &format!("listener_profile(\"tonal\"); place({base}{tail}, at(220)); wait(1);"),
@@ -2345,26 +2345,24 @@ fn listener_profile_resolves_final_forms_and_explicit_zero_into_voices() {
         assert_eq!(
             (
                 control.pitch.follow_own_sequence,
-                control.pitch.follow_own_tonality,
                 control.phonation.phrase_boundary,
                 control.pitch.melodic_continuity
             ),
             expected
         );
-        assert_eq!(voice.pitch_ctl.melodic.is_some(), expected.3 > 0.0);
+        assert_eq!(voice.pitch_ctl.melodic.is_some(), expected.2 > 0.0);
         assert_eq!(control.pitch.follow_tonal_context, 0.0);
         if let Some(me) = &voice.pitch_ctl.melodic {
             let mut observed = me.clone();
             for pitch in [96., 96., 98., 96.] {
                 observed.prefix.push(pitch);
             }
-            assert_eq!(observed.predict(0).unwrap().weight, expected.3);
+            assert_eq!(observed.predict(0).unwrap().weight, expected.2);
         }
         assert_eq!(voice.pitch_ctl.own_sequence.is_some(), expected.0 > 0.0);
-        assert_eq!(voice.pitch_ctl.own_tonality.is_some(), expected.1 > 0.0);
         assert_eq!(
             voice.phonation_engine.phrase_boundary.is_some(),
-            expected.2 > 0.0
+            expected.1 > 0.0
         );
     }
     let (scene, warnings) = run_script(
@@ -2375,17 +2373,15 @@ fn listener_profile_resolves_final_forms_and_explicit_zero_into_voices() {
     for (_, action) in action_times(&scene) {
         if let Action::Spawn { spec, .. } = action {
             assert_eq!(spec.control.pitch.follow_own_sequence, 0.05);
-            assert_eq!(spec.control.pitch.follow_own_tonality, 0.10);
             assert_eq!(spec.control.pitch.melodic_continuity, 0.00076066292);
             assert_eq!(spec.control.phonation.phrase_boundary, 0.0);
         }
     }
     // Cloned builders retain explicit zero regardless of method order.
     let spec = first_spawn_spec_for_script(
-        "listener_profile(\"tonal\"); let p=sine().follow_own_sequence(0).follow_own_tonality(0).phrase_boundary(0).melodic_continuity(0); place(p.sustain().steady().seek_consonance().pitch_apply_mode(\"gate_snap\"),at(220));",
+        "listener_profile(\"tonal\"); let p=sine().follow_own_sequence(0).phrase_boundary(0).melodic_continuity(0); place(p.sustain().steady().seek_consonance().pitch_apply_mode(\"gate_snap\"),at(220));",
     );
     assert_eq!(spec.control.pitch.follow_own_sequence, 0.0);
-    assert_eq!(spec.control.pitch.follow_own_tonality, 0.0);
     assert_eq!(spec.control.pitch.melodic_continuity, 0.0);
     assert_eq!(spec.control.phonation.phrase_boundary, 0.0);
 }
@@ -2400,7 +2396,6 @@ fn listener_profile_unsupported_is_silent_but_explicit_warnings_remain() {
         for (_, action) in action_times(&scenario) {
             if let Action::Spawn { spec, .. } = action {
                 assert_eq!(spec.control.pitch.follow_own_sequence, 0.0);
-                assert_eq!(spec.control.pitch.follow_own_tonality, 0.0);
                 assert_eq!(spec.control.pitch.melodic_continuity, 0.0);
                 assert_eq!(spec.control.phonation.phrase_boundary, 0.0);
             }
@@ -2408,9 +2403,9 @@ fn listener_profile_unsupported_is_silent_but_explicit_warnings_remain() {
     }
     let (_, warnings) = run_script(
         r#"listener_profile("tonal");
-        place(modal().follow_own_sequence(1).follow_own_tonality(1).phrase_boundary(1).melodic_continuity(1),at(220));"#,
+        place(modal().follow_own_sequence(1).phrase_boundary(1).melodic_continuity(1),at(220));"#,
     );
-    assert_eq!(warnings.lock().unwrap().len(), 4);
+    assert_eq!(warnings.lock().unwrap().len(), 3);
 }
 
 #[test]

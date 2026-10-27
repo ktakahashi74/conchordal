@@ -33,12 +33,11 @@ Conchordalの語には、[APIリファレンス](../reference/api.md)とエデ�
 | 機構 | tonal の重み | 根拠の段 |
 |---|---:|---|
 | `follow_own_sequence` | 0.05 | 候補：Harrisonほか（2020）のPPM-Decay。音程の符号化と採点は作者規則 |
-| `follow_own_tonality` | 0.10 | 候補：Toiviainen–Krumhansl（2003）のModel 1。符号化、調の選択、採点は作者規則 |
 | `melodic_continuity` | 0.00076066292 | 候補：von Hippel（2000）の本文に整合するAR(1)。有限列の推定、採点、旧項の置換は作者規則 |
 | `phrase_boundary` | 1 | 候補：Cambouropoulos（2001）のLBDM。オンラインの境界とgainへの接続は作者規則 |
 | 最後の区間のarch / ritard | 1 / 1 | 候補：Todd（1992）、Friberg–Sundberg（1999）。区間への割当て、gainの床、時計への接続は作者規則 |
 
-値はSQ-1、TK-1i、ME-1i、PX-1i、PE-1iの試聴用の値です。機構の差を聴くための材料であり、作者の採用値ではありません。採用後に更新します。`listener_profile` 自体の札は「該当なし（型の選択）」です。中身の各語の札は維持します。
+値はSQ-1、ME-1i、PX-1i、PE-1iの試聴用の値です。機構の差を聴くための材料であり、作者の採用値ではありません。採用後に更新します。`listener_profile` 自体の札は「該当なし（型の選択）」です。中身の各語の札は維持します。
 
 MEの重みは、置き換える旧二項と平均の絶対寄与を揃えた値です。`follow_tonal_context`は、約1 GB・作成約80秒の表の費用と、近似の受入範囲を理由に含めません。受入範囲[0.25,1]は0.25、0.5、1の測定に基づきます。語の値域を制限するものではなく、範囲外の受入は未検証のまま、追加の警告も出しません。
 

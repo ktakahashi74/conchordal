@@ -397,9 +397,9 @@ Close a live Population; its voices enter their release phase and fade out. Rele
 listener_profile(name)
 ```
 
-Choose the scene's initial listener profile: sensory (default) or tonal. Call before scene actions/scopes. Sensory preserves the author-rule base. Tonal inherits follow_own_sequence=0.05, follow_own_tonality=0.10, melodic_continuity=0.00076066292, phrase_boundary=1, and final-section arch/ritard=1/1. These are audition weights, not author-adopted values; ME matches the displaced terms' mean absolute contribution. Candidate models and author-rule adapters retain their individual evidence labels. TC is excluded: its table costs about 1 GB/80 seconds and approximation acceptance covers [0.25,1] at measured weights 0.25/0.5/1. Explicit Population values, including zero, win. Unsupported final Voices are silently skipped. Expression requires existing whole-scene PE support; absent/unsupported sections are silent. Explicit expressive_section, including zero, wins. Individual axes default to zero; sensory remains the default until separate author adoption.
+Choose the scene's initial listener profile: sensory (default) or tonal. Call before scene actions/scopes. Sensory preserves the author-rule base. Tonal inherits follow_own_sequence=0.05, melodic_continuity=0.00076066292, phrase_boundary=1, and final-section arch/ritard=1/1. These are audition weights, not author-adopted values; ME matches the displaced terms' mean absolute contribution. Candidate models and author-rule adapters retain their individual evidence labels. TC is excluded: its table costs about 1 GB/80 seconds and approximation acceptance covers [0.25,1] at measured weights 0.25/0.5/1. Explicit Population values, including zero, win. Unsupported final Voices are silently skipped. Expression requires existing whole-scene PE support; absent/unsupported sections are silent. Explicit expressive_section, including zero, wins. Individual axes default to zero; sensory remains the default until separate author adoption.
 
-**Evidence:** Not a mechanism (profile selection): see follow_own_sequence, follow_own_tonality, melodic_continuity, phrase_boundary and expressive_section for candidate models and author rules.
+**Evidence:** Not a mechanism (profile selection): see follow_own_sequence, melodic_continuity, phrase_boundary and expressive_section for candidate models and author rules.
 
 #### `expressive_section`
 
@@ -825,18 +825,6 @@ Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` 
 Favor continuations learned from this Voice's executed pitch intervals. Initial-only finite nonnegative score/bit weight; default 0, example 0.05. Negative or non-finite values warn and become 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Glide and unsupported final forms warn and disable it. Existing tie behavior remains. Candidate model: PPM-Decay (Harrison, Bianco, Chait, Pearce 2020). Symbol encoding and generation coupling are author rules. Learns rounded intervals from committed self onsets; output stays unquantized. Adds follow after candidate generation. Replacements inherit weight but start empty. No rhythm, harmony or phrase learning. See Rhythm for resource limits and numerical failures.
 
 **Evidence:** Candidate (PPM-Decay, Harrison et al. 2020): fixed published-analysis model; source fixtures cover distributions, information content and learning state, not R API or RNG equivalence (§9.3.105).<br>Author rule: executed-interval encoding, execution adaptation and follow scoring after candidate generation; weight defaults 0. No default listener preset adoption (§9.3.105).
-
-#### `follow_own_tonality`
-
-```rhai,ignore
-follow_own_tonality(w)
-```
-
-Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
-
-Favor pitches in this Voice's recently inferred key. Initial-only finite nonnegative weight, default 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Unsupported final forms and invalid weights warn and disable it. Candidate: Toiviainen and Krumhansl (2003), Model 1. Author rules: committed self-command pitch classes, unique-key selection and profile-based candidate rescoring. Does not estimate habitat harmony or quantize output. Rests preserve the key preference; numerical ambiguity is neutral. Independent of follow_own_sequence. Replacements inherit weight and start empty. See Rhythm for scope and numerical handling.
-
-**Evidence:** Candidate: Toiviainen & Krumhansl (2003), Model 1, pitch activation and memory with Krumhansl–Kessler key profiles (§9.3.107).<br>Author rule: self-command encoding, numerical key selection and weighted profile preference after candidate generation; default 0.
 
 #### `anchor`
 

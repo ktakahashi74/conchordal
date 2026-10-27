@@ -189,6 +189,11 @@ unidentified brain mechanism or task-fitted parameters: preserve its source equa
 and values, and identify author-rule additions. This does not change §9.3.57's
 source-matched versus original computation rule or §9.3.56's five listener layers.
 
+- Do not introduce human-authored harmony without warning: written progressions,
+  scores, or stylistic priors such as key and functional-harmony profiles.
+  Under the author's 2026-10-27 criterion, generatively computed functional harmony
+  may remain an optional composition choice outside the main line; fixed harmonic
+  profiles are presets and must be removed.
 - Keep defaults > presets > individual axes. Principles operate by default;
   candidate and author-rule axes are neutral by default. Qualifying candidates may
   enter one default listener preset after source agreement and author adoption by
@@ -226,7 +231,7 @@ source-matched versus original computation rule or §9.3.56's five listener laye
 - `listener_profile("sensory" | "tonal")` is an initial Director setting before
   scene actions/scopes. `DEFAULT_LISTENER_PROFILE` in `scripting/context.rs` is
   `"sensory"`; changing it needs separate author adoption.
-- Tonal inherits SQ 0.05, TK 0.10, ME 0.00076066292, PX 1 and final-section arch/ritard 1/1.
+- Tonal inherits SQ 0.05, ME 0.00076066292, PX 1 and final-section arch/ritard 1/1.
   These are audition weights, not adopted defaults. Explicit Population weights,
   including zero, win; unsupported final forms are silently skipped.
 - TC is excluded from tonal: its table costs about 1 GB/80 seconds, and the
@@ -864,20 +869,6 @@ Flora, participation, sustained metric and rest are excluded. The fixed score
 clock is private to generation; physical DSP, ecology, perception and memory do
 not change clocks. Gain is applied once before Tone PCM branches. Reborn clocks
 initialize independently. Do not feed authored endpoints to perceived closure.
-## Self-command tonality (TK-1)
-
-- `follow_own_tonality(w)` is initial-only, finite nonnegative f64, default zero.
-  It shares the committed command collector and deferred control path with SQ-1,
-  but owns independent fixed-size Model 1 state (`life/own_tonality.rs`). Do not
-  instantiate PPM to enable TK, or reset TK on SQ resource failure/range changes.
-- Source candidate: Toiviainen & Krumhansl (2003), Model 1, tau_p=.5 s,
-  dm/dt=p-m/3 and 24 K-K correlations. Author rules: absolute 12-TET encoding,
-  unique numerical key selection and post-generation profile preference.
-  Log-scaled memory preserves correlation through long rests; no silence reset.
-- Positive supported TK clamps candidate and baseline coordinates before scoring.
-  The selector composes existing + SQ + TK once; each failure removes only that
-  term, and counterfactuals preserve the other. Zero TK retains the old SQ path.
-  See ledger §9.3.107 and the independent Decimal fixture for acceptance scope.
 
 ## Tonal context
 

@@ -564,55 +564,6 @@ wait(12.0);
 
 gainはtailまで保持し、habitat、presentation、自己除外用PCMに同じ音を渡す。strength、直接の代謝更新、候補時刻、releaseは変えない。Updateでもgainを保持する。予約中の自己予測はunsupportedとし、実行後の対応予測にはgainを反映する。音が変わった結果として後の知覚や選択が変わることはある。reportの `phrase_boundary` と `phrase_execution` で境界と実行結果を確認できる。将来の句末の計画やToddの強弱弧ではなく、反応が疎になる場合もある。原典corpusの再現、実装の一致、作者の音楽的な採用は別の判断である。
 
-## 自己の調性に沿って音高を選ぶ
-
-`follow_own_tonality(w)` は、Voice自身が確定した発音指令から調を推定し、
-その調に沿う音高を選びやすくする。初期設定だけに使う有限非負の重みで、
-既定値は0。負値や非有限値は警告して0にする。最終的な設定に
-`seek_consonance()`、自由な音高、sustainによる参加、`gate_snap` または
-`rearticulate`、`rearticulate_above(0)` が必要になる。
-articulation persistenceとの併用など、対象外の形は警告して無視する。
-
-```rhai
-let voice = sine().sustain().steady().seek_consonance()
-    .pitch_apply_mode("rearticulate").rearticulate_above(0)
-    .follow_own_tonality(0.5);
-place(voice, at(220));
-wait(4);
-```
-
-候補のモデルはToiviainenとKrumhansl（2003）のModel 1。
-音高の活性は時定数0.5秒で減衰し、Offで0になる。記憶は
-`dm/dt = p - m/3` に従い、24の長短調のKrumhansl–Kessler profileとの
-相関を求める。これらのprofileは西洋音楽の調に関する事前知識であり、
-感覚の普遍定数ではない。
-
-原典にない作者規則も含む。自己指令をA4=440 Hzの12音高階級へ丸め、
-相関の最大が数値誤差を含めても一意なら、その調を選ぶ。
-profileを0〜1の選好qへ写し、既存の候補を作った後に
-`w * (q_candidate - q_current_target)` を加える。実際に鳴らす周波数は量子化しない。
-入力は自己の確定指令であり、音響的な発音の確認やhabitat全体の調ではない。
-休止中は記憶全体が同じ倍率で減衰するので、調への選好は長い無音の後も残る。
-数値上の順位が確定しない場合は、相関値を保持したまま寄与を0にする。
-音楽的な確信度の閾値や、別の忘却時間は加えない。
-
-Consonance Field、移動費用、音域への重力、既存の選択方式と発音機会は残る。
-正の重みは音高を変え、その後の発音時刻も変え得る。
-`follow_own_sequence` とは独立に使え、併用時はそれぞれの差分を加える。
-数値overflowでは、その判断の失敗した項全体を外す。
-世代交代では重みだけを継ぎ、履歴は空から始める。
-休止、section名、音域の変更だけでは調の記憶を消さない。
-指令の重複発音やPitchUpdateで支持を失った場合は、旧Toneの終了を待って再開する。
-identityの欠落や追跡容量の喪失では、次世代まで中立を保つ。
-
-費用を確認する負荷は354秒のv6bで、打音3 Voiceを有効にした構成。
-48 kHz、hop512、control64とし、既存のVoice・Floraの解析も含む。
-これは試験対象の宣言であり、重みやPopulation数の上限ではない。
-異常時の復帰管理は重複identityを16個まで保持し、1 hopの保留イベント・
-controlが8192件を超えた場合はTKを停止する。
-reportのtraceは次のhopの出力まで保持する。既定のsensoryでは無効で、tonalの選択時だけ型の値を継承する。
-例の重みは作者が採用した設定ではない。
-
 ## 自分の音高履歴から次の音を選ぶ
 
 `melodic_continuity(w)` は、Voice が確定した自己の On の音高列から、次の音の

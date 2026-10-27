@@ -172,17 +172,6 @@ pub(super) fn advance_population(
                     )
                 });
             }
-            if let Some(tonality) = &mut voice.pitch_ctl.own_tonality {
-                report_try(&mut state.reporter, "own tonality", |writer| {
-                    writer.write_own_tonality(
-                        id,
-                        voice.metadata.generation,
-                        cfg.fs as u32,
-                        tonality,
-                        voice.pitch_ctl.own_sequence.is_some(),
-                    )
-                });
-            }
             if let Some(me) = &mut voice.pitch_ctl.melodic {
                 report_try(&mut state.reporter, "melodic continuity", |writer| {
                     writer.write_melodic_continuity(
@@ -190,8 +179,7 @@ pub(super) fn advance_population(
                         voice.metadata.generation,
                         cfg.fs as u32,
                         me,
-                        voice.pitch_ctl.own_sequence.is_none()
-                            && voice.pitch_ctl.own_tonality.is_none(),
+                        voice.pitch_ctl.own_sequence.is_none(),
                     )
                 });
             }

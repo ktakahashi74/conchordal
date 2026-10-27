@@ -856,6 +856,27 @@ the expression reaches zero. Pitch self-exclusion supplies $L$ when enabled and
 available; otherwise the mixed effective field is used. Existing legal proposal
 gates still apply. Adaptation, glide and private recovery keep physical time.
 
+### Following executed self intervals
+
+`follow_own_sequence(w)` is an initial-only, opt-in preference for free
+`seek_consonance()` Voices with stepwise sustained participation (no glide, no
+positive rearticulation boundary, no articulation persistence); the default
+`w = 0` leaves behavior unchanged. Its predictor is a candidate model: PPM-Decay
+(Harrison, Bianco, Chait and Pearce 2020) with the published analysis settings
+(order 4, a 15-item buffer, long-term weight 0.6, half-life 3.5 s, retrieval noise
+0.8). Only executed self onsets train it; rejected and pending targets do not.
+
+Execution recording, interval encoding and the coupling to pitch choice are author
+rules. Each executed frequency becomes the signed interval
+`round(12 log2(f / f_previous))` in semitones, rounded to the nearest integer with ties away from zero; output pitch is not quantized. After
+the existing candidate generation, each candidate's score gains
+`w (log2 p(candidate) − log2 p(current target))` from one immutable retrieval of
+the predictive distribution, so the current target receives zero and the field,
+self-exclusion, habituation and movement terms are unchanged. The preference
+changes which pitch is chosen from the sequence of executed intervals only; it does
+not model rhythm, duration, phrase boundaries or harmonic context, and it does not
+learn other Voices' sequences.
+
 ## 5.5 The Breath Oscillator: Kuramoto Articulation
 
 Independent of onset scheduling, the `KuramotoCore` ArticulationCore entrains each voice's *envelope* (its breath) to the meter-derived theta band, using a mean-field Kuramoto phase step:

@@ -587,3 +587,8 @@ pub const TONAL_CONTEXT: &[EvidenceDoc] = &[
         ja: "作者規則：正弦probe、表による近似、相関の読み出し、候補再採点とdwellへの接続。重みの既定値は0（§9.3.110）。",
     },
 ];
+
+pub const HARMONIC_RHYTHM: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Author rule: shared opportunities for background changes. Zero is neutral; N is a composer quantity, not an inferred measure or a perceptual constant.",
+    ja: "作者規則：背景の変化を共有の機会にまとめる。0は中立。Nは作曲者が置く量であり、推定小節長や知覚の定数ではない。",
+}];

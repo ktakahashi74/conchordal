@@ -1905,6 +1905,17 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     // --- director ---
     FnDoc {
+        name: "harmonic_rhythm",
+        evidence: HARMONIC_RHYTHM,
+        owner: Owner::Global,
+        category: "director",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["harmonic_rhythm(N)"],
+        summary: "Allow background changes on shared opportunities every N beats; zero is neutral.",
+        details: "Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire scene, even after wait(). All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.",
+    },
+    FnDoc {
         name: "meter_stability",
         evidence: METER,
         owner: Owner::Global,

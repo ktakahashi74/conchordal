@@ -171,6 +171,11 @@ impl CouplingClock {
         }
     }
 
+    pub(crate) fn scene_origin(mut self) -> Self {
+        self.phase = 0.0;
+        self
+    }
+
     pub(crate) fn phase_cycles(&self) -> f64 {
         self.phase
     }

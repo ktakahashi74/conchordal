@@ -27,6 +27,8 @@ pub(super) struct LaneEvent {
     action: &'static str,
     reason: &'static str,
     wait_samples: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    payload: Option<(f32, f32, f32, usize, usize)>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -54,6 +56,7 @@ pub(super) struct MetricState {
     reserved: Vec<bool>,
     #[serde(skip)]
     before: Vec<(Mode, u64, Option<u64>, f32)>,
+    held: Vec<(f32, f32, Range<usize>)>,
 }
 
 impl MetricState {
@@ -77,6 +80,7 @@ impl MetricState {
             beat_crossings: Vec::with_capacity(capacity),
             reserved: Vec::new(),
             before: Vec::new(),
+            held: Vec::new(),
         }
     }
 
@@ -165,7 +169,16 @@ impl Flora {
     pub(super) fn metric_allocate(&mut self, crossing: bool, offset: usize) {
         let mut m = self.temporal.take().expect("metric state");
         let tick = m.now + offset as u64;
-        let update_targets = crossing || !m.active || self.releasing;
+        let harmonic = self.harmonic_ticks.is_some();
+        let update_targets = crossing || (!harmonic && !m.active) || self.releasing;
+        if harmonic && !update_targets {
+            m.held.clear();
+            m.held.extend(
+                self.lanes
+                    .iter()
+                    .map(|l| (l.target_position, l.sigma, l.window.clone())),
+            );
+        }
         m.before.clear();
         m.before.extend(
             self.lanes
@@ -200,7 +213,7 @@ impl Flora {
             for pending in &mut m.pending {
                 m.drops += u64::from(pending.take().is_some());
             }
-        } else if crossing || !m.active {
+        } else if crossing || (!harmonic && !m.active) {
             self.update_tones();
         } else {
             // Existing W priority determines which continuing lane owns a candidate.
@@ -239,7 +252,9 @@ impl Flora {
                 if let Some((c, _, _)) = nearest {
                     let peak = self.cells[c].peak.as_mut().unwrap();
                     peak.claimed = Some(i);
-                    lane.cell = Some(c);
+                    if !harmonic {
+                        lane.cell = Some(c);
+                    }
                     lane.target = peak.mass.sqrt();
                     lane.target_position =
                         if self.spec.pitch_apply_mode == PitchApplyMode::Rearticulate {
@@ -276,6 +291,13 @@ impl Flora {
                         lane.retire();
                         self.retirements += 1;
                     }
+                }
+            }
+            if harmonic && !update_targets {
+                for (lane, (position, sigma, window)) in self.lanes.iter_mut().zip(&m.held) {
+                    lane.target_position = *position;
+                    lane.sigma = *sigma;
+                    lane.window.clone_from(window);
                 }
             }
             // Separation is a support constraint, including retained old windows.
@@ -364,7 +386,7 @@ impl Flora {
                 moment += x * self.space.centers_log2[b];
                 mass += x;
             }
-            if mass > 0.0 {
+            if mass > 0.0 && (!harmonic || update_targets) {
                 lane.target_position = (moment / mass)
                     .clamp(erb_to_hz(cell.lo_erb).log2(), erb_to_hz(cell.hi_erb).log2());
             }
@@ -401,7 +423,8 @@ impl Flora {
                 } else {
                     since
                 };
-                let forced = retirement && (self.releasing || (m.active && !crossing));
+                let forced =
+                    retirement && (self.releasing || ((m.active || harmonic) && !crossing));
                 m.events.push(LaneEvent {
                     tick,
                     scheduled_tick: crossing.then_some(tick),
@@ -420,11 +443,37 @@ impl Flora {
                         "fallback"
                     },
                     wait_samples: tick.saturating_sub(since.unwrap_or(tick)),
+                    payload: None,
+                });
+            }
+        }
+        if harmonic && crossing {
+            for (slot, lane) in self
+                .lanes
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.mode == Mode::Current)
+            {
+                m.events.push(LaneEvent {
+                    tick,
+                    scheduled_tick: Some(tick),
+                    slot,
+                    generation: lane.generation,
+                    action: "target",
+                    reason: "shared",
+                    wait_samples: 0,
+                    payload: Some((
+                        lane.target,
+                        lane.target_position,
+                        lane.sigma,
+                        lane.window.start,
+                        lane.window.end,
+                    )),
                 });
             }
         }
         for (c, cell) in self.cells.iter().enumerate() {
-            let candidate = (m.active && !self.releasing && !resting)
+            let candidate = ((m.active || harmonic) && !self.releasing && !resting)
                 .then_some(())
                 .and(cell.peak.as_ref())
                 .filter(|p| p.enter && p.claimed.is_none() && !p.suppressed);
@@ -502,6 +551,68 @@ mod tests {
     fn hill(f: &mut Flora, bin: usize, mass: f32) {
         for (i, x) in f.biomass_mass_scan.iter_mut().enumerate() {
             *x = 0.001 + mass * (-0.5 * ((i as f32 - bin as f32) / 1.5).powi(2)).exp();
+        }
+    }
+
+    #[test]
+    fn harmonic_flora_holds_complete_payload_and_private_pace() {
+        for known in [false, true] {
+            let mut f = setup(FloraTone::Resonant, true);
+            f.harmonic_ticks = Some(vec![173]);
+            hill(&mut f, 35, 4.0);
+            f.observe_rhythm(observation(0, known), 0, Default::default());
+            f.metric_allocate(false, 0);
+            assert_eq!(f.births, 0);
+            f.metric_allocate(true, 173);
+            assert!(f.births > 0);
+            let payload: Vec<_> = f
+                .lanes
+                .iter()
+                .map(|l| (l.target, l.target_position, l.sigma, l.window.clone()))
+                .collect();
+            for (i, x) in f.biomass_mass_scan.iter_mut().enumerate() {
+                *x = 0.001 + 8.0 * (-0.5 * ((i as f32 - 35.) / 2.0).powi(2)).exp();
+            }
+            f.harmonic_ticks = Some(vec![]);
+            f.observe_rhythm(observation(512, known), 512, Default::default());
+            f.metric_allocate(false, 0);
+            for (lane, held) in f.lanes.iter().zip(&payload) {
+                if lane.mode == Mode::Current && lane.target > 0.0 {
+                    assert_eq!(
+                        (
+                            lane.target,
+                            lane.target_position,
+                            lane.sigma,
+                            lane.window.clone()
+                        ),
+                        *held
+                    );
+                }
+            }
+            assert!(
+                f.temporal
+                    .as_ref()
+                    .unwrap()
+                    .events
+                    .iter()
+                    .all(|e| e.action != "born" && e.action != "target")
+            );
+            for pace in [1., 16., 100.] {
+                let mut ordinary = setup(FloraTone::Resonant, false);
+                ordinary.spec.pace = pace;
+                f.spec.pace = pace;
+                ordinary.observe_rhythm(observation(1024, known), 1024, Default::default());
+                f.observe_rhythm(observation(1024, known), 1024, Default::default());
+                assert_eq!(f.pace, ordinary.pace);
+            }
+            f.biomass_mass_scan.fill(0.0);
+            f.metric_allocate(false, 0);
+            assert!(
+                f.lanes
+                    .iter()
+                    .filter(|l| l.tonal)
+                    .all(|l| l.mode != Mode::Current)
+            );
         }
     }
 

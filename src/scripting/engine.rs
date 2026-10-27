@@ -1878,6 +1878,13 @@ impl ScriptHost {
                 let mut ctx = ctx_for_population_pitch_apply_mode
                     .lock()
                     .expect("lock script context");
+                let cursor = ctx.cursor;
+                ctx.harmonic_sites.push((
+                    handle.id,
+                    cursor,
+                    "pitch_apply_mode",
+                    call.call_position(),
+                ));
                 let Some(population) = ctx.populations.get_mut(&handle.id) else {
                     diagnostics
                         .lock()
@@ -1983,6 +1990,8 @@ impl ScriptHost {
         numeric_overloads!(engine, "rearticulate_above", |call, handle: PopulationHandle; value| {
             let mut ctx = ctx_for_boundary.lock().expect("lock script context");
             let position = call.call_position();
+            let cursor = ctx.cursor;
+            ctx.harmonic_sites.push((handle.id, cursor, "rearticulate_above", position));
             if let Some(population) = ctx.populations.get_mut(&handle.id) {
                 if population.status != PopulationStatus::Live {
                     ctx.warn_population_inactive(handle.id, "rearticulate_above", position);
@@ -2018,6 +2027,23 @@ impl ScriptHost {
         // soft priors, symmetric to the consonance-field ops). These never
         // schedule a beat: `meter_stability` sets how readily a pulse forms,
         // `temporal_basin` sets the tempo region the pulse gravitates toward.
+        let ctx_for_harmonic = ctx.clone();
+        engine.register_fn(
+            "harmonic_rhythm",
+            move |call: NativeCallContext, value: INT| {
+                let mut ctx = ctx_for_harmonic.lock().expect("lock script context");
+                if value < 0 {
+                    ctx.warn(
+                        "harmonic_rhythm requires a nonnegative integer; previous setting retained"
+                            .into(),
+                        call.call_position(),
+                    );
+                } else {
+                    ctx.scenario.harmonic_rhythm = value as u64;
+                    ctx.harmonic_position = call.call_position();
+                }
+            },
+        );
         let ctx_for_meter_stability_f = ctx.clone();
         engine.register_fn(
             "meter_stability",
@@ -2308,6 +2334,9 @@ fn apply_population_numeric_patch(
 ) -> Result<PopulationHandle, Box<EvalAltResult>> {
     let mut ctx = ctx_arc.lock().expect("lock script context");
     let diagnostics = ctx.warnings.clone();
+    let cursor = ctx.cursor;
+    ctx.harmonic_sites
+        .push((handle.id, cursor, label, position));
     let Some(population) = ctx.populations.get_mut(&handle.id) else {
         ctx.warn(
             format!("{label} ignored for unknown population {}", handle.id),

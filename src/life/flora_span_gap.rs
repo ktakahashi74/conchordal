@@ -200,6 +200,49 @@ mod tests {
     }
 
     #[test]
+    fn harmonic_flora_private_exit_and_ready_wait_for_shared_birth() {
+        for active in [false, true] {
+            let (l, mut f) = setup(1., false);
+            f.harmonic_ticks = Some(vec![100]);
+            render(&mut f, &l, 0, active, false);
+            assert_eq!(f.span_gap.as_ref().unwrap().phase, SpanPhase::Span);
+            let births = f.births;
+            f.span_gap.as_mut().unwrap().target = 0.;
+            f.harmonic_ticks = Some(vec![]);
+            render(&mut f, &l, 512, active, true);
+            assert_eq!(f.span_gap.as_ref().unwrap().phase, SpanPhase::GapTail);
+            let mut ready_at = None;
+            for hop in 2..1500 {
+                f.advance(&l);
+                if f.span_gap.as_ref().unwrap().phase == SpanPhase::GapActive {
+                    f.span_gap.as_mut().unwrap().target = 0.0001;
+                }
+                render(&mut f, &l, hop * 512, active, true);
+                assert_eq!(f.births, births);
+                if f.span_gap.as_ref().unwrap().phase == SpanPhase::Ready {
+                    ready_at = Some((hop + 1) * 512);
+                    break;
+                }
+            }
+            let now = ready_at.expect("private clock must complete gap and return");
+            f.harmonic_ticks = Some(vec![now + 211]);
+            render(&mut f, &l, now, active, false);
+            assert!(f.births > births);
+            assert_eq!(f.span_gap.as_ref().unwrap().phase, SpanPhase::Span);
+            assert_eq!(
+                f.span_gap
+                    .as_ref()
+                    .unwrap()
+                    .trace
+                    .last()
+                    .unwrap()
+                    .execution_at,
+                now + 211
+            );
+        }
+    }
+
+    #[test]
     fn gap_suppresses_all_births_keeps_ecology_and_returns_at_crossing_after_tails() {
         for active in [false, true] {
             for residual in [false, true] {

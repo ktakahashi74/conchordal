@@ -79,6 +79,8 @@ impl PredGateAccum {
 }
 
 pub struct Community {
+    pub(crate) harmonic_rhythm: bool,
+    pub(crate) harmonic_ticks: Vec<u64>,
     pub(crate) expression: Option<crate::scenario::expression::Expression>,
     pub(crate) rest_enabled: bool,
     pub(crate) onset_habituation_config: Option<(crate::core::habituation::HabituationParams, f64)>,
@@ -211,6 +213,8 @@ impl Community {
     pub fn new(time: Timebase) -> Self {
         debug!("Community sample rate: {:.1} Hz", time.fs);
         Self {
+            harmonic_rhythm: false,
+            harmonic_ticks: Vec::new(),
             expression: None,
             body_metabolism: None,
             birth_surrogate: std::cell::RefCell::new(None),
@@ -477,6 +481,26 @@ impl Community {
         let mut phonation_onsets_in_hop = 0u32;
         let mut habitat_onset_strength_in_hop = 0.0f32;
         let mut used = 0usize;
+        if self.harmonic_rhythm {
+            self.update_loo_ownership(landscape);
+            self.prepare_substep_snapshot(self.crowding_active());
+            for i in 0..self.voices.len() {
+                if self.voices[i].harmonic_member {
+                    self.fill_neighbors_from_snapshot(
+                        self.voices[i].id(),
+                        self.voices[i].metadata.population_id,
+                    );
+                    self.voices[i]
+                        .harmonic_neighbors
+                        .0
+                        .clone_from(&self.advance_scratch.neighbor_pitch_log2);
+                    self.voices[i]
+                        .harmonic_neighbors
+                        .1
+                        .clone_from(&self.advance_scratch.neighbor_salience);
+                }
+            }
+        }
         let social_trace = self.social_trace.as_ref();
         let auto_observe_enabled = self.auto_observe.is_some();
         let time_sec = self.current_time_sec();
@@ -562,18 +586,22 @@ impl Community {
             {
                 clock.expression = self.expression.filter(|e| e.ritard > 0.0);
             }
-            voice.tick_phonation_into_with_arrival(
-                &tb,
-                now,
-                &landscape.rhythm,
-                social_trace,
-                social_coupling,
-                extra_gate_gain,
-                consonance,
-                arrival_context.as_ref(),
-                Some(&landscape.space),
-                batch,
-            );
+            if voice.harmonic_member {
+                voice.tick_harmonic(&tb, now, landscape, &self.harmonic_ticks, batch);
+            } else {
+                voice.tick_phonation_into_with_arrival(
+                    &tb,
+                    now,
+                    &landscape.rhythm,
+                    social_trace,
+                    social_coupling,
+                    extra_gate_gain,
+                    consonance,
+                    arrival_context.as_ref(),
+                    Some(&landscape.space),
+                    batch,
+                );
+            }
             voice.finish_sequence_execution(batch, frame_end);
             if let Some(phrase) = &mut voice.phonation_engine.phrase_boundary {
                 for tone in &mut batch.tones {
@@ -679,6 +707,7 @@ impl Community {
                 core.enable_plv(observe.plv_window);
             }
         }
+        spawned.harmonic_member = self.harmonic_rhythm && control.supports_harmonic_rhythm();
         spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES, self.time.fs);
         if let (Some(gap), Some((params, period))) = (
             &mut spawned.phonation_engine.span_gap,

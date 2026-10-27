@@ -10,6 +10,10 @@ pub(super) fn advance_population(
 ) -> usize {
     #[cfg(test)]
     crate::life::body_metabolism::assay::begin_hop(now_tick);
+    #[cfg(test)]
+    if now_tick == 0 && std::env::var_os("HRY_EXECUTION").is_some() {
+        state.schedule_renderer.harmonic_execution = Some(Vec::new());
+    }
     state.conductor.dispatch_until(
         state.current_time(),
         &state.current_landscape,
@@ -34,7 +38,34 @@ pub(super) fn advance_population(
             }
         }
     }
+    if let Some(clock) = &mut state.harmonic_clock {
+        clock.advance(
+            cfg.fs,
+            now_tick,
+            now_tick + cfg.hop as u64,
+            state.flora_rhythm,
+        );
+        for voice in &mut state.pop.voices {
+            voice.harmonic_temperature_bonus = listener_pressure.temperature_bonus;
+        }
+        state.pop.harmonic_ticks.clear();
+        state.pop.harmonic_ticks.extend_from_slice(&clock.ticks);
+        report_try(&mut state.reporter, "harmonic clock", |writer| {
+            writer.write_harmonic_clock(
+                now_tick,
+                state.flora_rhythm.observed_end,
+                clock.observed,
+                &clock.ticks,
+            )
+        });
+    }
     for flora in &mut state.pop.flora {
+        flora.harmonic_ticks = state.harmonic_clock.as_ref().map(|clock| {
+            let mut ticks = flora.harmonic_ticks.take().unwrap_or_default();
+            ticks.clear();
+            ticks.extend_from_slice(&clock.ticks);
+            ticks
+        });
         flora.observe_rhythm(state.flora_rhythm, now_tick, cfg.meter_shaping);
         flora.observe_external(&state.current_landscape, state.last_analysis_frame);
         if let Some(gap) = &mut flora.span_gap {
@@ -151,6 +182,11 @@ pub(super) fn advance_population(
     if state.reporter.is_some() {
         for voice in &mut state.pop.voices {
             let id = voice.id();
+            for event in voice.harmonic_events.drain(..) {
+                report_try(&mut state.reporter, "harmonic voice", |writer| {
+                    writer.write_harmonic_voice(id, voice.metadata.generation, &event)
+                });
+            }
             for record in voice.pitch_ctl.tonal_trace.drain(..) {
                 report_try(&mut state.reporter, "tonal context", |writer| {
                     writer.write_tonal_context(

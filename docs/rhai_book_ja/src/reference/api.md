@@ -1291,6 +1291,16 @@ Route the voice to specific buses; accepts a `Bus` or a `BusSet`. PopulationSpec
 
 scene全体の地形形成と研究用control。director verbはsoft priorであり、地形を形づくるが、beatをscheduleしたりmeasureを強制したりはしない。
 
+#### `harmonic_rhythm`
+
+```rhai,ignore
+harmonic_rhythm(N)
+```
+
+背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、wait()後の記述も途中変更にはならない。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。
+
+**根拠:** 作者規則：背景の変化を共有の機会にまとめる。0は中立。Nは作曲者が置く量であり、推定小節長や知覚の定数ではない。
+
 #### `meter_stability`
 
 ```rhai,ignore

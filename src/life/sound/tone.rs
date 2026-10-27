@@ -477,6 +477,11 @@ impl Tone {
         self.backend.is_sine().then_some(self.current_pitch_hz)
     }
 
+    #[cfg(test)]
+    pub(crate) fn harmonic_execution_state(&self) -> (bool, f32) {
+        (self.started, self.target_pitch_hz)
+    }
+
     pub(crate) fn phrase_release(&self) -> Tick {
         self.envelope.hold_end
     }

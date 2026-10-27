@@ -11012,3 +11012,63 @@ Author audition (2026-10-27), on the stepped v6b baseline, the same scene with
 alone: both effects were audible but slight. The default stays sensory, TC stays
 outside the profile, and the musical problem remains open after the pitch-choice
 layers.
+
+<a id="shared-harmonic-rhythm"></a>
+### 9.3.113 Shared opportunities for background changes (HRY-1)
+
+`harmonic_rhythm(N)` is an **author rule**, neutral at omission/0. It constrains
+when local background choices become audible targets; it supplies no chord,
+key, functional profile or written progression. N is a nonnegative composer
+integer, independent of the listener's inferred measure. N=4 in the one v6b
+comparison is a fixture, not a default or a perceptual optimum.
+
+The source review recorded full-text inspection of Bregman & Pinker (1978,
+General Discussion pp.29–30), Dawe, Platt & Racine (1993, pp.795, 797–801, 805;
+1995, pp.907, 912–913), and Temperley (2009, p.4). Synchrony supports grouping;
+harmonic change can inform metrical interpretation. These findings do not derive
+this gate or prove improved harmonic connection. The 1993 experiment used one
+I–V–I progression; that authored stimulus is not an implementation input. The
+1995 paper did not directly test inferred meter. Temperley's symbolic model is
+not an audio-only online model, and its 2001 predecessor did not implement the
+claimed bidirectional relation. Smith & Cuddy (1989) was checked at abstract
+level only; it does not establish a universal advantage of matching harmonic
+rhythm and meter. Bregman (1990), Lerdahl & Jackendoff (1983), and Temperley (2001)
+were checked only through book descriptions/overviews, not the relevant book
+passages. This implementation inherits that recorded review; no new literature
+verification is claimed.
+
+A single sample-zero CouplingClock reads the preceding completed habitat
+observation. Its first beat crossing is an opportunity; a remainder selects every
+N-th subsequent beat. Unknown/stale/unconfirmed intervals use the same prior
+clock; reacquisition resets neither phase nor remainder. No N-sized queue exists.
+All Flora and birth-qualified Once/WhileAlive/Free/Rearticulate/zero-threshold
+Voices share the ticks. This is structural selection, not scene-role perception.
+
+Flora retains private beat/subdivision clocks for span/gap and the existing
+`p=(f_eff/2)*min(k,20*r)` ecological pace. N does not enter that formula. At k=16,
+N=4, a steady opportunity interval spans 32 ecological seconds; the old renewal
+bound per nominal opportunity is not a bound per HRY opportunity. Forced exits
+remain visible limitations. Ready permits a later shared birth, never an
+immediate off-grid birth. The held payload includes amplitude, position, sigma,
+audible window and residual centroid; current resources still determine support.
+Noise, filter state, slews, tail decay and macro amplitude controls continue.
+
+Voice pitch integration occurs chronologically in the current hop with matching
+LOO ownership and a stable neighbor snapshot. Explicit interval replaces the
+integration threshold; dwell uses its own phase and theta wrap is not an extra
+gate. Missing readiness retains the clock. Terminal release and invalid pitch
+support precede selection. A temporary exit preserves the Once latch and resumes
+only at an opportunity, even at the same pitch. Legal On materialization commits
+the pitch; surviving tones receive no autonomous pitch Update. Conflicting live
+pitch patches retain previous values, while independent controls still apply.
+
+Acceptance separates neutral WAV/Tone identity over the registered nine scenes,
+nonempty causal application at shared ticks, complete held payloads, multiple
+crossings, unknown/reacquisition, rest/resume and terminal priority, and release
+hop costs with and without opportunities. Renderer execution and issuance are
+recorded separately in the bounded acquisition. Author audition is a single
+v6b omission/N=4 comparison with seed 21; implementation checks do not constitute
+that audition. Live N changes, glide consumers, perceptual roles, measure resets
+and new acoustic harmonic-change cues are outside this first version. Neither
+numerical synchronization nor offline completion alone establishes musical
+benefit or real-time operation on an unmeasured load.

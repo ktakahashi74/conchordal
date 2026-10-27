@@ -344,6 +344,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         start_flag: Arc::new(AtomicBool::new(true)),
         exiting: Arc::new(AtomicBool::new(false)),
         scaffold: Default::default(),
+        harmonic_rhythm: 0,
         meter_shaping: Default::default(),
         guard_meter: None,
         underrun_frames: None,
@@ -364,6 +365,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         output_gain_position: None,
         control_update_mode: Default::default(),
         scaffold: Default::default(),
+        harmonic_rhythm: 0,
         meter_shaping: Default::default(),
         scene_markers: Vec::new(),
         events: vec![crate::scenario::TimedEvent {
@@ -842,6 +844,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             start_flag: Arc::new(AtomicBool::new(true)),
             exiting: Arc::new(AtomicBool::new(false)),
             scaffold: Default::default(),
+            harmonic_rhythm: 0,
             meter_shaping: Default::default(),
             guard_meter: None,
             underrun_frames: None,
@@ -862,6 +865,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             output_gain_position: None,
             control_update_mode: Default::default(),
             scaffold: Default::default(),
+            harmonic_rhythm: 0,
             meter_shaping: Default::default(),
             scene_markers: Vec::new(),
             events: vec![crate::scenario::TimedEvent {
@@ -904,6 +908,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             output_gain_position: None,
             control_update_mode: Default::default(),
             scaffold: Default::default(),
+            harmonic_rhythm: 0,
             meter_shaping: Default::default(),
             scene_markers: Vec::new(),
             events: vec![crate::scenario::TimedEvent {

@@ -127,6 +127,8 @@ pub(crate) struct RestSource {
 }
 
 pub struct ScheduleRenderer {
+    #[cfg(test)]
+    pub(crate) harmonic_execution: Option<Vec<(Tick, u64, u64, &'static str, f32)>>,
     phrase_sources: BTreeMap<(u64, u32), PhraseSource>,
     pub(crate) phrase_receipts: Vec<Receipt>,
     expression: Option<crate::scenario::expression::Expression>,
@@ -199,6 +201,8 @@ impl ScheduleRenderer {
 
     pub fn new(time: Timebase) -> Self {
         Self {
+            #[cfg(test)]
+            harmonic_execution: None,
             phrase_sources: BTreeMap::new(),
             phrase_receipts: Vec::new(),
             expression: None,
@@ -560,14 +564,36 @@ impl ScheduleRenderer {
                 sample_rhythms.advance_in_place(dt);
             }
             // Each sample still accumulates in ToneKey order, starting from zero.
-            for rt in self.tones.values_mut() {
+            #[allow(clippy::for_kv_map)] // The test-only execution observer uses the key.
+            for (_key, rt) in &mut self.tones {
                 for (idx, sample) in self.scratch_pcm[..samples].iter_mut().enumerate() {
                     let tick = now + idx as Tick;
+                    #[cfg(test)]
+                    let before = rt.tone.harmonic_execution_state();
                     rt.tone.apply_updates_if_due(tick);
                     rt.tone.kick_planned_if_due(tick);
                     *sample = rt
                         .tone
                         .render_tick(tick, fs, dt, &self.scratch_rhythms[idx]);
+                    #[cfg(test)]
+                    if let Some(trace) = &mut self.harmonic_execution {
+                        let after = rt.tone.harmonic_execution_state();
+                        if before.1.to_bits() != after.1.to_bits() {
+                            trace.push((
+                                tick,
+                                _key.source_id,
+                                _key.tone_id,
+                                "pitch_update",
+                                after.1,
+                            ));
+                        }
+                        if before.0 && tick == rt.tone.phrase_release() {
+                            trace.push((tick, _key.source_id, _key.tone_id, "off", after.1));
+                        }
+                        if !before.0 && after.0 {
+                            trace.push((tick, _key.source_id, _key.tone_id, "on", after.1));
+                        }
+                    }
                 }
                 if !self.expression_gain.is_empty() {
                     for (sample, gain) in self.scratch_pcm[..samples]

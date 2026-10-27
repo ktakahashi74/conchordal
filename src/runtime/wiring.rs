@@ -415,6 +415,7 @@ pub(super) fn wire_runtime(
         pop.enable_auto_observe();
     }
     let scaffold = scenario.scaffold;
+    let harmonic_rhythm = scenario.harmonic_rhythm;
     let meter_shaping = scenario.meter_shaping;
     // Reserve observers from birth, including populations enabled by a later patch.
     let mut loo_populations = Vec::new();
@@ -473,6 +474,7 @@ pub(super) fn wire_runtime(
         exiting: stop_flag,
         scaffold,
         meter_shaping,
+        harmonic_rhythm,
         guard_meter,
         underrun_frames,
         audio_counters,

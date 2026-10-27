@@ -3674,3 +3674,55 @@ fn tonal_context_initial_final_shape_and_invalid_weights() {
             .contains("follow_tonal_context")
     );
 }
+
+#[test]
+fn harmonic_rhythm_is_a_scene_initial_integer_and_rejects_conflicting_live_patches() {
+    let (scenario, warnings) = run_script(
+        r#"
+        let p = place(sine().brain("drone").sustain().seek_consonance()
+            .pitch_apply_mode("rearticulate"), at(220.0));
+        wait(0.1);
+        p.pitch_apply_mode("glide"); p.amp(0.2);
+        wait(0.1);
+        harmonic_rhythm(4); harmonic_rhythm(-1);
+        wait(0.1);
+    "#,
+    );
+    assert_eq!(scenario.harmonic_rhythm, 4);
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|w| w.message.contains("previous setting retained"))
+    );
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|w| w.message.contains("birth-time participation") && !w.position.is_none())
+    );
+    let mut updates = 0;
+    for event in scenario.events {
+        for action in event.actions {
+            if let Action::UpdatePopulation { patch, .. } = action {
+                assert_ne!(patch.pitch_apply_mode, Some(PitchApplyMode::Glide));
+                if patch.amp == Some(0.2) {
+                    updates += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(updates, 1);
+    let (neutral, _) = run_script("harmonic_rhythm(0); wait(0.1);");
+    assert_eq!(neutral.harmonic_rhythm, 0);
+    let (_, warnings) = run_script("harmonic_rhythm(1); wait(0.1);");
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|w| w.message.contains("no supported"))
+    );
+}

@@ -593,6 +593,11 @@ fn harmonic() -> PopulationSpec;
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 fn harmonic_modes() -> ModePattern;
 
+/// Allow background changes on shared opportunities every N beats; zero is neutral.
+/// Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire scene, even after wait(). All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.
+/// Evidence: Author rule: shared opportunities for background changes. Zero is neutral; N is a composer quantity, not an inferred measure or a perceptual constant.
+fn harmonic_rhythm(N: i64);
+
 /// Set the intrinsic bodily rate at creation for entrained()/steady()/flow(), in Hz.
 /// Initial-only body rate for `entrained()`, `steady()` and `flow()`, in Hz. Default 2 Hz; finite range 0.01..=200 Hz protects execution. Either builder order works. It scales `cycles()`, finite durations and `rest()` together; ADSR release stays in seconds. Replacements start from the Population template. Other timing forms warn and ignore it. This sets a body scale, not a required onset rate.
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).

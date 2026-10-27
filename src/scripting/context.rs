@@ -47,6 +47,8 @@ pub(super) struct ScopeFrame {
 
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
+    pub(super) harmonic_position: Position,
+    pub(super) harmonic_sites: Vec<(u64, f32, &'static str, Position)>,
     pub(super) expression_sections: Vec<(crate::scenario::expression::Expression, Position)>,
     pub(super) listener_profile: &'static str,
     pub(super) profile_section: Option<crate::scenario::expression::Expression>,
@@ -83,6 +85,8 @@ impl ScriptContext {
     /// `seed()` call, which wins because it runs during evaluation.
     pub(super) fn with_seed(seed: u64) -> Self {
         Self {
+            harmonic_position: Position::NONE,
+            harmonic_sites: Vec::new(),
             listener_profile: DEFAULT_LISTENER_PROFILE,
             profile_section: None,
             explicit_expression: false,
@@ -97,6 +101,7 @@ impl ScriptContext {
                 temporal_mode: crate::scenario::TemporalMode::Off,
                 control_update_mode: ControlUpdateMode::SnapshotPhased,
                 scaffold: ScaffoldConfig::Off,
+                harmonic_rhythm: 0,
                 meter_shaping: MeterShaping::default(),
                 scene_markers: Vec::new(),
                 events: Vec::new(),
@@ -413,6 +418,81 @@ impl ScriptContext {
 
     pub(super) fn finish(&mut self) {
         self.emit_pending_actions();
+        if self.scenario.harmonic_rhythm > 0 {
+            let mut members = BTreeMap::new();
+            let mut targets = 0;
+            let mut warnings = Vec::new();
+            for event in &mut self.scenario.events {
+                for action in &mut event.actions {
+                    match action {
+                        Action::PlaceFlora { .. } => targets += 1,
+                        Action::Spawn {
+                            population_id,
+                            spec,
+                            ..
+                        } => {
+                            let supported = spec.control.supports_harmonic_rhythm();
+                            targets += usize::from(supported);
+                            members.insert(*population_id, supported);
+                            if !supported
+                                && spec.control.pitch.mode == PitchMode::Free
+                                && matches!(
+                                    spec.control.phonation.spec.timing,
+                                    PhonationTiming::Once
+                                )
+                                && matches!(
+                                    spec.control.phonation.spec.duration,
+                                    DurationSpec::WhileAlive
+                                )
+                            {
+                                warnings.push((format!("harmonic_rhythm: population {population_id} excluded; requires rearticulate with zero threshold"), self.harmonic_position));
+                            }
+                        }
+                        Action::UpdatePopulation {
+                            population_id,
+                            patch,
+                        } if members.get(population_id) == Some(&true) => {
+                            let mut rejected = Vec::new();
+                            if patch
+                                .pitch_apply_mode
+                                .is_some_and(|p| p != PitchApplyMode::Rearticulate)
+                            {
+                                patch.pitch_apply_mode = None;
+                                rejected.push("pitch_apply_mode");
+                            }
+                            if patch.rearticulate_above_cents.is_some_and(|v| v > 0.0) {
+                                patch.rearticulate_above_cents = None;
+                                rejected.push("rearticulate_above");
+                            }
+                            if patch.freq.take().is_some() {
+                                rejected.push("freq");
+                            }
+                            for label in rejected {
+                                let position = self
+                                    .harmonic_sites
+                                    .iter()
+                                    .rev()
+                                    .find(|(id, time, name, _)| {
+                                        id == population_id && *time == event.time && *name == label
+                                    })
+                                    .map_or(self.harmonic_position, |s| s.3);
+                                warnings.push((format!("harmonic_rhythm: {label} would remove birth-time participation; previous value retained"), position));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if targets == 0 {
+                warnings.push((
+                    "harmonic_rhythm has no supported Flora or Voice placements".into(),
+                    self.harmonic_position,
+                ));
+            }
+            for (message, position) in warnings {
+                self.warn(message, position);
+            }
+        }
         // Listener, metric founders and Flora read the scene's final basin.
         if let Some((a, b)) = self.scenario.meter_shaping.basin_hz {
             let (lo, hi) = sane_basin(a, b);

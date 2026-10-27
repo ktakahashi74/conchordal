@@ -648,10 +648,14 @@ disappear as their research questions settle.",
                 if let Some(applies) = applies_line(doc, sigs, language) {
                     let _ = writeln!(out, "{applies}\n");
                 }
-                out.push_str(doc.summary);
-                if !doc.details.is_empty() {
-                    out.push(' ');
-                    out.push_str(doc.details);
+                if language == ReferenceLanguage::Japanese && doc.name == "harmonic_rhythm" {
+                    out.push_str("背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、wait()後の記述も途中変更にはならない。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。");
+                } else {
+                    out.push_str(doc.summary);
+                    if !doc.details.is_empty() {
+                        out.push(' ');
+                        out.push_str(doc.details);
+                    }
                 }
                 out.push('\n');
                 let label = match language {

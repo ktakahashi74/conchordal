@@ -21,6 +21,8 @@ pub(crate) struct DwellRecord {
 
 #[derive(Debug)]
 pub struct PitchController {
+    pub(crate) harmonic_gate: Option<bool>,
+    pub(crate) harmonic_evaluated: bool,
     #[cfg(test)]
     pub(crate) trace_owner: Option<(u64, u32)>,
     core: AnyPitchCore,
@@ -59,6 +61,8 @@ impl PitchController {
         rng: SmallRng,
     ) -> Self {
         Self {
+            harmonic_gate: None,
+            harmonic_evaluated: false,
             #[cfg(test)]
             trace_owner: None,
             core,
@@ -163,6 +167,7 @@ impl PitchController {
         neighbor_salience: &[f32],
         temperature_bonus: f32,
     ) -> bool {
+        self.harmonic_evaluated = false;
         let previous_target = self.target_pitch_log2;
         let dt_sec = dt_sec.max(0.0);
         let current_freq = current_freq_hz.max(1.0);
@@ -265,13 +270,20 @@ impl PitchController {
         // When theta rhythm is present, sync proposals to theta zero-crossings.
         // When no rhythm is detected (e.g. drone agents), fall back to time-based triggering.
         let has_rhythm = rhythms.theta.mag.is_finite() && rhythms.theta.mag > 0.0;
-        let should_propose = if let Some(interval_sec) = proposal_interval_sec {
+        let should_propose = if let Some(opportunity) = self.harmonic_gate {
+            opportunity
+                && proposal_clock >= proposal_interval_sec.unwrap_or(self.integration_window)
+        } else if let Some(interval_sec) = proposal_interval_sec {
             proposal_clock >= interval_sec
         } else if has_rhythm {
             theta_cross && proposal_clock >= self.integration_window
         } else {
             proposal_clock >= self.integration_window
         };
+        self.harmonic_evaluated = should_propose;
+        if self.harmonic_gate.is_some() && !should_propose {
+            return false;
+        }
         if should_propose {
             let elapsed = self.accumulated_time;
             if dwelling {

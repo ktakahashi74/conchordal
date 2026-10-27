@@ -21,6 +21,18 @@ pub struct VoiceControl {
 }
 
 impl VoiceControl {
+    pub(crate) fn supports_harmonic_rhythm(&self) -> bool {
+        matches!(
+            self.phonation.spec.timing,
+            crate::scenario::PhonationTiming::Once
+        ) && matches!(
+            self.phonation.spec.duration,
+            crate::scenario::DurationSpec::WhileAlive
+        ) && self.pitch.mode == PitchMode::Free
+            && self.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
+            && self.pitch.rearticulate_above_cents == 0.0
+    }
+
     pub(crate) fn supports_phrase_boundary(&self) -> bool {
         self.body.method == BodyMethod::Sine
             && self.phonation.spec.is_sustained_participation()

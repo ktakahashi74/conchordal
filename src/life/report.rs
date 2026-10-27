@@ -1113,6 +1113,26 @@ impl JsonlReporter {
             .map_err(|err| format!("flush report: {err}"))
     }
 
+    pub(crate) fn write_harmonic_clock(
+        &mut self,
+        now: u64,
+        observed_end: Option<u64>,
+        observed: bool,
+        ticks: &[u64],
+    ) -> Result<(), String> {
+        self.write_record(&serde_json::json!({"type": "harmonic_rhythm", "hop_start": now,
+            "observed_end": observed_end, "source": if observed { "observed" } else { "prior_only" }, "ticks": ticks}))
+    }
+
+    pub(crate) fn write_harmonic_voice(
+        &mut self,
+        id: u64,
+        generation: u32,
+        event: &super::harmonic_rhythm::VoiceEvent,
+    ) -> Result<(), String> {
+        self.write_record(&serde_json::json!({"type": "harmonic_voice", "voice_id": id, "generation": generation, "event": event}))
+    }
+
     fn write_record<T: Serialize>(&mut self, record: &T) -> Result<(), String> {
         serde_json::to_writer(&mut self.writer, record)
             .map_err(|err| format!("encode report record: {err}"))?;

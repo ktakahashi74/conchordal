@@ -111,6 +111,7 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
             temporal_mode: Default::default(),
             control_update_mode: Default::default(),
             scaffold: Default::default(),
+            harmonic_rhythm: 0,
             meter_shaping: Default::default(),
             scene_markers: Vec::new(),
             events: Vec::new(),

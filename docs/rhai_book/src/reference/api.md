@@ -1291,6 +1291,16 @@ Route the voice to specific buses; accepts a `Bus` or a `BusSet`. PopulationSpec
 
 Scene-global terrain shaping and research controls. Director verbs are soft priors: they shape the terrain and never schedule a beat or force a measure.
 
+#### `harmonic_rhythm`
+
+```rhai,ignore
+harmonic_rhythm(N)
+```
+
+Allow background changes on shared opportunities every N beats; zero is neutral. Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire scene, even after wait(). All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.
+
+**Evidence:** Author rule: shared opportunities for background changes. Zero is neutral; N is a composer quantity, not an inferred measure or a perceptual constant.
+
 #### `meter_stability`
 
 ```rhai,ignore

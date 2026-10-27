@@ -12,6 +12,7 @@ pub(super) struct WorkerConfig {
     pub(super) start_flag: Arc<AtomicBool>,
     pub(super) exiting: Arc<AtomicBool>,
     pub(super) scaffold: ScaffoldConfig,
+    pub(super) harmonic_rhythm: u64,
     pub(super) meter_shaping: crate::core::meter::MeterShaping,
     pub(super) guard_meter: Option<Arc<LimiterMeter>>,
     pub(super) underrun_frames: Option<Arc<AtomicU64>>,
@@ -83,6 +84,7 @@ pub(super) struct WorkerState {
     // perception meter inside ListenerTwin. See "Perception vs Production".
     // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
     pub(super) prod_meter: MeterNetwork,
+    pub(super) harmonic_clock: Option<crate::life::harmonic_rhythm::HarmonicRhythm>,
     pub(super) flora_meter: Option<MeterNetwork>,
     pub(super) flora_rhythm: crate::life::flora::TemporalObservation,
     pub(super) t2_sample: Option<crate::life::report::TemporalMeterSample>,
@@ -119,6 +121,7 @@ impl WorkerState {
     ) -> Self {
         let expression = conductor.expression;
         pop.expression = expression;
+        pop.harmonic_rhythm = cfg.harmonic_rhythm > 0;
         let current_landscape: Landscape = landscape;
         let log_space = current_landscape.space.clone();
         let timebase = crate::core::timebase::Timebase {
@@ -131,7 +134,7 @@ impl WorkerState {
             MeterNetwork::new()
         };
         prod_meter.set_shaping(cfg.meter_shaping);
-        let flora_meter = cfg.has_flora.then(|| {
+        let flora_meter = (cfg.has_flora || cfg.harmonic_rhythm > 0).then(|| {
             let mut meter = if cfg.temporal_meter_t2 {
                 MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64)
             } else {
@@ -193,6 +196,12 @@ impl WorkerState {
             latest_listener_fast_state: None,
             latest_listener_state: None,
             prod_meter,
+            harmonic_clock: (cfg.harmonic_rhythm > 0).then(|| {
+                crate::life::harmonic_rhythm::HarmonicRhythm::new(
+                    cfg.harmonic_rhythm,
+                    cfg.meter_shaping,
+                )
+            }),
             flora_meter,
             flora_rhythm: Default::default(),
             t2_sample: None,
@@ -631,6 +640,10 @@ pub(super) fn process_hop(
     if state.reporter.is_some() {
         for flora in &state.pop.flora {
             if flora.lifecycle_changed
+                || state
+                    .harmonic_clock
+                    .as_ref()
+                    .is_some_and(|c| !c.ticks.is_empty())
                 || now_tick == 0
                 || now_tick / second_ticks
                     != now_tick.saturating_sub(cfg.hop as Tick) / second_ticks

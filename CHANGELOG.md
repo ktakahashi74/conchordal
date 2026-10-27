@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add neutral-by-default `harmonic_rhythm(N)`: shared background change opportunities
+  for all Flora and supported stepwise held Voices. Preserve local pitch selection,
+  private rest clocks and ecological pace; retain release/support-loss precedence.
+  This scene-wide initial author rule does not prescribe harmony or a measure length.
+
 - Remove `follow_own_tonality(w)` and its tonal listener-profile weight. Its fixed
   Krumhansl–Kessler major/minor profiles are style presets, not generatively
   computed harmony, and fail the author's criterion for retaining such priors.

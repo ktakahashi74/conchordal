@@ -137,6 +137,7 @@ fn conductor_dispatches_finish_on_time() {
         temporal_mode: crate::scenario::TemporalMode::Off,
         control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
         scaffold: crate::scenario::ScaffoldConfig::Off,
+        harmonic_rhythm: 0,
         meter_shaping: crate::core::meter::MeterShaping::default(),
         scene_markers: Vec::new(),
         events: vec![event],
@@ -164,6 +165,7 @@ fn conductor_keeps_future_events_queued_in_order() {
         temporal_mode: crate::scenario::TemporalMode::Off,
         control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
         scaffold: crate::scenario::ScaffoldConfig::Off,
+        harmonic_rhythm: 0,
         meter_shaping: crate::core::meter::MeterShaping::default(),
         scene_markers: Vec::new(),
         events: vec![

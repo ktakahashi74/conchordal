@@ -314,6 +314,7 @@ struct Cell {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Flora {
+    pub(crate) harmonic_ticks: Option<Vec<u64>>,
     pub(crate) id: u64,
     pub(crate) span_gap: Option<SpanGap>,
     spec: FloraSpec,
@@ -489,6 +490,7 @@ impl Flora {
                 && extent_hz.1 > extent_hz.0
         );
         let mut flora = Self {
+            harmonic_ticks: None,
             id,
             spec,
             span_gap: (spec.rest_on_habituation.is_finite() && spec.rest_on_habituation > 0.0)
@@ -1215,7 +1217,15 @@ impl Flora {
                 m.beat_crossings.iter().any(|c| c.tick == at)
             };
             let transition = beat_crossing && !self.releasing && self.span_gap_opportunity(at);
-            if crossing && (active || transition) && !self.releasing && !self.range.is_empty() {
+            let allocation = if let Some(ticks) = &self.harmonic_ticks {
+                ticks.binary_search(&at).is_ok()
+            } else {
+                crossing && (active || transition)
+            };
+            if self.harmonic_ticks.is_some() && transition {
+                self.metric_allocate(false, t);
+            }
+            if allocation && !self.releasing && !self.range.is_empty() {
                 self.metric_allocate(true, t);
                 for lane in &mut self.lanes {
                     lane.retirement_decay = decay;

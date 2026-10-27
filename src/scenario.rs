@@ -76,6 +76,7 @@ pub struct Scenario {
     pub scaffold: ScaffoldConfig,
     /// Scene-global shaping of the emergent production meter (composer-set soft
     /// priors: attractor depth + frequency basin). Default = neutral.
+    pub harmonic_rhythm: u64,
     pub meter_shaping: MeterShaping,
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,

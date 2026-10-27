@@ -890,9 +890,20 @@ fn ph1_offline_acquisition() {
             .unwrap(),
         );
     }
+    let mut execution = std::env::var_os("HRY_EXECUTION").map(|_| {
+        std::io::BufWriter::new(std::fs::File::create(directory.join("execution.jsonl")).unwrap())
+    });
     // Profiling follows the ordinary reporter path without command-probe overhead.
     if opts.profile.is_none() {
         opts.offline_body_probe = Some(Box::new(move |state, tick, count, pcm| {
+            if let (Some(writer), Some(trace)) = (
+                &mut execution,
+                &mut state.schedule_renderer.harmonic_execution,
+            ) {
+                for record in trace.drain(..) {
+                    writeln!(writer, "{}", serde_json::to_string(&record).unwrap()).unwrap();
+                }
+            }
             if let Some(load) = load.as_mut() {
                 writeln!(
                     load,

@@ -22,6 +22,8 @@ use rand::SeedableRng;
 
 #[path = "articulation_core.rs"]
 pub(crate) mod articulation_core;
+#[path = "harmonic_voice.rs"]
+mod harmonic_voice;
 #[path = "pitch_controller.rs"]
 pub(crate) mod pitch_controller;
 #[path = "pitch_core.rs"]
@@ -52,6 +54,11 @@ pub struct VoiceMetadata {
 
 #[derive(Debug)]
 pub struct Voice {
+    pub(crate) harmonic_member: bool,
+    pub(crate) harmonic_temperature_bonus: f32,
+    pub(crate) harmonic_events: Vec<super::harmonic_rhythm::VoiceEvent>,
+    harmonic_waiting: bool,
+    pub(crate) harmonic_neighbors: (Vec<f32>, Vec<f32>),
     pub(super) sequence_control: Option<sequence_execution::DeferredPitch>,
     pub id: u64,
     pub metadata: VoiceMetadata,
@@ -703,6 +710,11 @@ impl Voice {
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
         Voice {
+            harmonic_member: false,
+            harmonic_temperature_bonus: 0.0,
+            harmonic_events: Vec::new(),
+            harmonic_waiting: false,
+            harmonic_neighbors: Default::default(),
             sequence_control: ((effective_control.pitch.follow_own_sequence > 0.0
                 || effective_control.pitch.melodic_continuity > 0.0)
                 && effective_control.supports_own_sequence())
@@ -968,6 +980,13 @@ impl Voice {
         }
         let mut control = self.effective_control.clone();
         control.apply_update(patch);
+        if self.harmonic_member && !control.supports_harmonic_rhythm() {
+            control.pitch.pitch_apply_mode = self.effective_control.pitch.pitch_apply_mode;
+            control.pitch.rearticulate_above_cents =
+                self.effective_control.pitch.rearticulate_above_cents;
+            control.pitch.mode = self.effective_control.pitch.mode;
+            control.pitch.freq = self.effective_control.pitch.freq;
+        }
         self.ensure_fixed_kinds(&control)?;
         control.validate_pitch_application()?;
         let dirty = Dirty::from_update(patch);
@@ -1036,6 +1055,9 @@ impl Voice {
         neighbor_salience: &[f32],
         listener_pressure: ListenerPressure,
     ) {
+        if self.harmonic_member {
+            return;
+        }
         if self.effective_control.supports_own_sequence()
             && let Some(deferred) = &mut self.sequence_control
         {
@@ -1356,6 +1378,10 @@ impl Voice {
     }
 
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
+        if self.harmonic_member {
+            self.articulation.set_gate(1.0);
+            return;
+        }
         let configured = select_pitch_application(&self.effective_control.pitch, None);
         if configured != self.participation_pitch.application {
             self.participation_pitch.adoption_application = configured;
@@ -1813,7 +1839,8 @@ impl Voice {
             // Explicit amplitude controls bypass the threshold for autonomous vitality drift.
             let amp_changed = self.amp_update_pending
                 || (target_amp - tracked.last_target_amp).abs() >= Self::PHONATION_AMP_UPDATE_EPS;
-            let freq_changed = freq_hz.is_finite()
+            let freq_changed = !self.harmonic_member
+                && freq_hz.is_finite()
                 && freq_hz > 0.0
                 && (freq_hz - tracked.last_target_freq_hz).abs() > 0.01;
             let drive_changed = (continuous_drive - tracked.last_continuous_drive).abs() > 1e-4;

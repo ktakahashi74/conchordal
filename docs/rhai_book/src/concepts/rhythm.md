@@ -771,3 +771,30 @@ approximation acceptance is unverified. The interval is an adopted operating
 range based on those three tested weights, not an exhaustive continuous sweep.
 The API still accepts every finite nonnegative weight, without an out-of-range
 warning. Acceptance scope is not a cost-based weight limit.
+
+### Shared opportunities for background changes
+
+`harmonic_rhythm(N)` is a scene-wide initial premise. The last valid declaration
+applies to the whole scene, including when written after `wait()`; put it before
+placements for clarity. N is a nonnegative integer. Omission and `0` retain the
+ordinary path; `1` permits changes every beat. Larger integers space opportunities
+by N beats without choosing any pitches. N is a composer's quantity, not a measure
+length inferred by the listener. This mechanism is an **Author rule**.
+
+All Flora and Voices born with Once/WhileAlive, free pitch, rearticulation and a
+zero rearticulation threshold share one opportunity clock. Readiness can skip an
+opportunity. Initial Voice onsets retain their placement time; Flora births and
+resumption after a temporary pitch-range exit wait for an opportunity. Other
+Voices retain their timing. This structural selection is not a perceptual
+foreground/background classifier. Conflicting live pitch patches on participating
+Voices warn and retain the previous setting; independent amplitude changes apply.
+
+Between opportunities, Flora holds amplitude, position, bandwidth and audible
+window targets while ecology, noise, slews and tails continue. Its private clock
+still drives rest transitions and ecological pace. Release and loss of support
+can retire sound between opportunities; becoming ready after rest does not itself
+start sound. The shared clock reads completed habitat audio and continues from its
+tempo prior through unknown intervals, without resetting on reacquisition.
+There are no chord tables, written progressions, live N changes, measure resets
+or new harmonic cues in the meter. Synchronizing target decisions does not certify
+perceptual simultaneity or improved harmonic connection.

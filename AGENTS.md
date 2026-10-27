@@ -885,3 +885,17 @@ path's RNG and clocks. Tables exist only for enabled runs and are shared;
 include construction memory and every LOO/retiring observer in cost reports.
 Use the fixed C/NumPy fixtures for observation agreement and consumer decisions
 for decoder acceptance. No preset adoption or modulation guarantee is implied.
+
+## Shared harmonic rhythm (HRY-1, §9.3.113)
+
+`harmonic_rhythm(N)` is an initial scene-wide author rule; omission/0 bypass it.
+One sample-zero clock counts beat crossings using a remainder independent of N.
+All Flora and birth-qualified Once/WhileAlive/Free/Rearticulate/threshold-zero
+Voices consume the same ticks. Keep Flora private span/gap clocks and ecological
+pace independent of N. Hold complete audible targets, including sigma/window;
+support loss and terminal release win. Voice pitch time advances chronologically
+once, with LOO ownership prepared before collection; no off-grid frequency Update.
+Temporary range exits resume only at an opportunity, including same-pitch resumes.
+Reject conflicting live pitch patches without dropping unrelated controls. N=4
+in the audition is a fixture, not an adopted default. No authored harmony or
+perceptual foreground classifier is implied.

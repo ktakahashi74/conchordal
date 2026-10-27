@@ -195,6 +195,11 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   listening; allow removal or replacement of that preset with one term. Check the
   preset and existing vocabulary before adding a term, and prune displaced author
   rules after candidate layers arrive.
+- Existing author-rule defaults that run the instrument (movement cost, tessitura
+  gravity, consonance evaluation coefficients, habituation constants, participation,
+  metabolism and lifecycle rules) remain the default base behavior with author-rule
+  labels. "Neutral by default" applies to mechanism axes added under §9.3.104;
+  changing the existing base is a separate change with its own audition.
 - The composer chooses hypothesis use and weight, and style-dependent priors, in
   layer-3 cognitive coordinates. Do not expose layer-4 memory/learning dynamics or
   change layer-1 sensation. Initial conditions and macro form remain author choices.

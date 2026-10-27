@@ -10484,6 +10484,16 @@ Preserve simple things simple in this order:
 Choose the default preset's name and contents after each candidate's acceptance
 and audition. This policy alone does not accept any particular candidate or preset.
 
+**Existing base behavior (2026-10-27).** The vocabulary inventory found that most
+existing terms are author rules, and the instrument's basic operation already relies on
+author-rule defaults: movement cost 0.5, tessitura gravity 0.1, the consonance
+evaluation coefficients, habituation constants, participation defaults, metabolism and
+lifecycle rules. These remain the default base behavior and receive author-rule labels;
+their values are not claimed to follow from principle. "Neutral by default" applies to
+mechanism axes added under this policy (candidates and new author rules), not to this
+existing base. Reviewing or neutralizing parts of the base is a separate change with
+its own audition, to be considered when candidate layers displace them.
+
 #### Who decides
 
 The composer decides whether the listener and Voice use a hypothesis and how much

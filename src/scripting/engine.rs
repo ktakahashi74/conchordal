@@ -194,7 +194,15 @@ impl ScriptHost {
         engine.register_fn("rain", || RainSpecHandle {
             spec: RainSpec::default(),
         });
-        for name in ["amp", "fade", "rate", "hit", "width", "object_decay"] {
+        for name in [
+            "amp",
+            "fade",
+            "rate",
+            "sway",
+            "hit",
+            "width",
+            "object_decay",
+        ] {
             engine.register_fn(
                 name,
                 move |call: NativeCallContext, spec: RainSpecHandle, value: FLOAT| {
@@ -208,7 +216,7 @@ impl ScriptHost {
                 },
             );
         }
-        for name in ["amp", "rate", "hit", "width"] {
+        for name in ["amp", "rate", "sway", "hit", "width"] {
             let ctx_float = ctx.clone();
             engine.register_fn(
                 name,

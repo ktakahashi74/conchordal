@@ -2475,7 +2475,7 @@ fn listener_profile_rejects_unknown_and_late_selection() {
 fn rain_specs_emit_placements_for_every_field_target() {
     let (scenario, _) = run_script(
         r#"
-        let drops = rain().amp(0.2).fade(0.5).rate(80).hit(0.3).width(0.1).objects(5)
+        let drops = rain().amp(0.2).fade(0.5).rate(80).sway(1).hit(0.3).width(0.1).objects(5)
             .object_modes(modal_table("xylophone")).object_decay(1.5).send(habitat_bus)
             .impact_modes(modal_table("uniform_wooden_bar")).anchor();
         place(drops, random(300, 6000));
@@ -2516,12 +2516,13 @@ fn rain_specs_emit_placements_for_every_field_target() {
             spec.amp,
             spec.fade_sec,
             spec.rate,
+            spec.sway,
             spec.hit,
             spec.width,
             spec.objects,
             spec.object_decay
         ),
-        (0.2, 0.5, 80.0, 0.3, 0.1, 5, 1.5)
+        (0.2, 0.5, 80.0, 1.0, 0.3, 0.1, 5, 1.5)
     );
     assert_eq!(
         spec.object_modes,
@@ -2577,6 +2578,7 @@ fn rain_rejects_unsupported_placements_and_values() {
         ),
         ("rain().objects(17);", "objects must be within"),
         ("rain().rate(-1);", "rate must be finite"),
+        ("rain().sway(5);", "sway must be finite"),
         ("rain().hit(1.5);", "hit must be finite"),
         ("rain().width(6);", "width must be finite"),
         ("rain().object_decay(0);", "object_decay must be finite"),
@@ -2592,7 +2594,7 @@ fn rain_patches_wait_for_boundaries_and_release_extends_finish() {
         r#"
         let r = place(rain().fade(3), random(300, 6000));
         wait(1);
-        r.amp(0.1).rate(10).hit(0.5).width(0);
+        r.amp(0.1).rate(10).sway(0.5).hit(0.5).width(0);
         wait(1);
         release(r);
         "#,
@@ -2607,8 +2609,14 @@ fn rain_patches_wait_for_boundaries_and_release_extends_finish() {
         .expect("rain patch");
     assert_eq!((update.0, update.1), (1.0, 1));
     assert_eq!(
-        (update.2.amp, update.2.rate, update.2.hit, update.2.width),
-        (Some(0.1), Some(10.0), Some(0.5), Some(0.0))
+        (
+            update.2.amp,
+            update.2.rate,
+            update.2.sway,
+            update.2.hit,
+            update.2.width
+        ),
+        (Some(0.1), Some(10.0), Some(0.5), Some(0.5), Some(0.0))
     );
     assert!(actions.iter().any(|(time, action)| *time == 2.0
         && matches!(action, Action::ReleaseRain { rain_id: 1, fade_sec } if *fade_sec == 3.0)));

@@ -23,7 +23,7 @@ Evidence labels describe parts of a mechanism, independently of disclosure tiers
 | `FloraSpec` | Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Flora` | Placed spectral growth; supports pending amplitude and pace patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `RainSpec` | Reusable impact-texture definition built by `rain()`; placed as a Rain over a frequency extent. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
-| `Rain` | Placed impact texture with its resonant objects; supports live amp, rate, hit and width patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
+| `Rain` | Placed impact texture with its resonant objects; supports live amp, rate, sway, hit and width patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `PopulationSpec` | Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Population` | Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Placement` | Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
@@ -1463,7 +1463,7 @@ Enable or disable rendering diffuse Flora mass as band noise. Disabled by defaul
 rain() -> RainSpec
 ```
 
-Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike. Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impact times are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
+Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike. Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, sway 0, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impacts are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
 
 **Evidence:** Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
 
@@ -1487,9 +1487,21 @@ rate(impacts_per_second)
 
 Applies to: `RainSpec`, `Rain`.
 
-Set the mean impact rate in [0, 2000] per second. Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+Set the mean impact rate in [0, 2000] per second. Impact times form a Poisson process at this rate, swayed by sway(); 0 stops new impacts. The bound limits per-sample work. Live patches take effect at once.
 
 **Evidence:** Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
+
+#### `sway`
+
+```rhai,ignore
+sway(octaves)
+```
+
+Applies to: `RainSpec`, `Rain`.
+
+Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0. The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.
+
+**Evidence:** Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.
 
 #### `hit`
 

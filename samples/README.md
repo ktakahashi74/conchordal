@@ -1,8 +1,8 @@
 # Samples
 
-Seventeen samples in two groups, kept together in `samples/`. Samples 1–12
+Eighteen samples in two groups, kept together in `samples/`. Samples 1–12
 introduce the instrument's capabilities one at a time: API and behavior
-demonstrations, not musical works. Samples 13–17 are longer scenes written
+demonstrations, not musical works. Samples 13–18 are longer scenes written
 as compositions combining those capabilities. Run and read both groups.
 
 ```bash
@@ -24,13 +24,14 @@ cargo run --release -- samples/01_a_single_voice.rhai
 11. **Autumn Cycle** — a directed harmony; the season turns and comes home.
 12. **Emergence and Resolution** — a colony heats up and settles, with rhythmic input from its own onsets and no dedicated beat carrier.
 
-## Composed scenes (13–17)
+## Composed scenes (13–18)
 
 13. **Three Windows** — three lines attack on pitch adoption and leave by their own doors.
 14. **Stone and Wire** — two metrical voices turn while an independent line crosses.
 15. **Folded Air** — a companion rests and returns, changing articulation across sections.
 16. **Open Court** — a denser crowd fills the court around two independent paths.
 17. **Flora** — a spectral mass grows around a sounding Population and follows its retune through sound.
+18. **Rain on Glass** — impacts sway in density; the bars they strike drift toward an unheard field and follow it when it turns.
 
 ## Reading and running
 
@@ -39,10 +40,10 @@ movement, timbre). Samples 7–9 introduce three timing intentions: coupling
 to a shared beat (`metric()`), participation informed by heard sound without
 targeting shared-beat phase (`entrained()`), and non-metric clustered
 renewal (`flow()`). Sample 10 closes the loop into life; 11–12 combine
-several mechanisms. Samples 13–17
+several mechanisms. Samples 13–18
 combine adoption-driven attacks, metrical voices with a crossing line, a resting
-companion with changing articulation, a denser crowd, and Flora growing around a
-Population. All samples are compile-checked by the test suite, so they always match the current API.
+companion with changing articulation, a denser crowd, Flora growing around a
+Population, and Rain striking bars that follow an unheard field. All samples are compile-checked by the test suite, so they always match the current API.
 Top-level samples intentionally do not call `seed(...)`: each run starts from
 a fresh scenario seed. Research assays keep fixed seeds so comparisons remain
 reproducible.

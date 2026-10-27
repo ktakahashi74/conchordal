@@ -720,7 +720,7 @@ fn localized_type_summary(doc: &docs::TypeDoc, language: ReferenceLanguage) -> &
             "`rain()`で作る、打音のtextureの再利用可能な設定。周波数範囲に配置するとRainになる。"
         }
         "Rain" => {
-            "配置された打音のtextureと共鳴する物。amp、rate、hit、widthの更新と解放を指定できる。"
+            "配置された打音のtextureと共鳴する物。amp、rate、sway、hit、widthの更新と解放を指定できる。"
         }
         _ => doc.summary,
     }

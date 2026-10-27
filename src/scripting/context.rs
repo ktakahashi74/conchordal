@@ -1143,6 +1143,7 @@ pub(super) fn update_rain_numeric(
         match name {
             "amp" => patch.amp = Some(value),
             "rate" => patch.rate = Some(value),
+            "sway" => patch.sway = Some(value),
             "hit" => patch.hit = Some(value),
             "width" => patch.width = Some(value),
             _ => unreachable!("registered Rain patch parameter"),

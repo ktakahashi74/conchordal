@@ -23,7 +23,7 @@ cargo run --bin gen_rhai_defs
 | `FloraSpec` | `flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `Flora` | 配置されたスペクトル成長。振幅と拍に対する生態時間の倍率を更新でき、解放を指定できる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `RainSpec` | `rain()`で作る、打音のtextureの再利用可能な設定。周波数範囲に配置するとRainになる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
-| `Rain` | 配置された打音のtextureと共鳴する物。amp、rate、hit、widthの更新と解放を指定できる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `Rain` | 配置された打音のtextureと共鳴する物。amp、rate、sway、hit、widthの更新と解放を指定できる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `PopulationSpec` | 再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `Population` | `place()`が返すPopulation。Voiceが死亡し世代交代しても、同一性を保つ安定した参照。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 | `Placement` | 初代のVoiceをどこへ配置するかを表す。`at()`、`consonance()`、`dissonance()`、`edge()`、`gap()`、`random()`、`line()`で作る。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
@@ -1463,7 +1463,7 @@ Enable or disable rendering diffuse Flora mass as band noise. Disabled by defaul
 rain() -> RainSpec
 ```
 
-Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike. Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impact times are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
+Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike. Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, sway 0, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impacts are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
 
 **根拠:** 作者規則：分布から一つずつ引く打音と、打音が当たって鳴る共鳴する物によるtexture。聴覚モデルではない作曲上の規則（docs/design-notes/rain.md）。
 
@@ -1487,9 +1487,21 @@ rate(impacts_per_second)
 
 適用対象：`RainSpec`, `Rain`。
 
-Set the mean impact rate in [0, 2000] per second. Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+Set the mean impact rate in [0, 2000] per second. Impact times form a Poisson process at this rate, swayed by sway(); 0 stops new impacts. The bound limits per-sample work. Live patches take effect at once.
 
 **根拠:** 作者規則：分布から一つずつ引く打音と、打音が当たって鳴る共鳴する物によるtexture。聴覚モデルではない作曲上の規則（docs/design-notes/rain.md）。
+
+#### `sway`
+
+```rhai,ignore
+sway(octaves)
+```
+
+適用対象：`RainSpec`, `Rain`。
+
+Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0. The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.
+
+**根拠:** 作者規則：0.4〜102秒の九つのAR(1)過程による活動の1/fの揺らぎ。聴覚野の1/f変動への同調（Garcia-Lazaro et al. 2006）を動機とするが、そのモデルではない。
 
 #### `hit`
 

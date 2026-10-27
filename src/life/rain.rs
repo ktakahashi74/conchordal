@@ -30,6 +30,14 @@ const IMPACT_ATTACK_MAX_SEC: f32 = 0.0015;
 /// Amplitude below which a decaying impact is dropped (-80 dB).
 const IMPACT_FLOOR: f32 = 1e-4;
 pub(crate) const MAX_RAIN_OBJECTS: u32 = 16;
+/// Upper impact rate; it bounds per-sample work, not a musical choice.
+pub(crate) const MAX_RAIN_RATE: f32 = 2000.0;
+/// Time constants of the sway process: one AR(1) per octave from 0.4 s to 102 s. Equal
+/// variances at octave spacing give a 1/f spectrum between about 0.0016 and 0.4 Hz.
+/// The fastest stays below the pulse range (about 0.5 Hz and up), so the sway is heard as
+/// changing intensity, not as a beat.
+const SWAY_TAU_MIN_SEC: f32 = 0.4;
+const SWAY_POLES: usize = 9;
 const OBJECT_MIN_SPACING_ERB: f32 = 1.0;
 const OBJECT_DECAY_EXPONENT: f32 = 0.7;
 /// Largest retuning per strike: one semitone, so an object drifts slowly.
@@ -113,7 +121,15 @@ pub(crate) struct Rain {
     bin_log2: Vec<f32>,
     cdf: Vec<f32>,
     bin_step_log2: f32,
-    samples_to_impact: f32,
+    /// Remaining unit-exponential budget before the next impact. Subtracting the current
+    /// rate per sample (time rescaling) keeps the process Poisson while the rate changes.
+    impact_budget: f32,
+    /// Impact rate per sample after sway, updated once per rendered block.
+    rate_per_sample: f32,
+    /// Unit-variance AR(1) states whose sum drives the sway.
+    sway: [f32; SWAY_POLES],
+    #[cfg(test)]
+    impacts_struck: u64,
     impacts: Vec<Impact>,
     /// Impact mode ratios, taken from `impact_modes` at placement.
     impact_ratios: Vec<f32>,
@@ -206,7 +222,11 @@ impl Rain {
             target,
             extent_hz,
             fs,
-            samples_to_impact: 0.0,
+            impact_budget: 0.0,
+            rate_per_sample: 0.0,
+            sway: [0.0; SWAY_POLES],
+            #[cfg(test)]
+            impacts_struck: 0,
             rng,
             bin_log2: Vec::new(),
             cdf: Vec::new(),
@@ -227,7 +247,10 @@ impl Rain {
             releasing: false,
             spec,
         };
-        rain.samples_to_impact = rain.next_interval();
+        rain.impact_budget = rain.exponential();
+        for k in 0..SWAY_POLES {
+            rain.sway[k] = rain.normal();
+        }
         rain.advance(landscape);
         rain.gain.to(1.0, rain.spec.fade_sec, fs);
         rain
@@ -244,7 +267,9 @@ impl Rain {
         }
         if let Some(rate) = patch.rate {
             self.spec.rate = rate;
-            self.samples_to_impact = self.samples_to_impact.min(self.next_interval());
+        }
+        if let Some(sway) = patch.sway {
+            self.spec.sway = sway;
         }
         if let Some(hit) = patch.hit {
             self.spec.hit = hit;
@@ -351,13 +376,24 @@ impl Rain {
         }
     }
 
-    fn next_interval(&mut self) -> f32 {
-        let rate = self.spec.rate.max(0.0);
-        if rate == 0.0 {
-            return f32::INFINITY;
-        }
+    fn exponential(&mut self) -> f32 {
         let u: f32 = self.rng.random::<f32>().max(f32::MIN_POSITIVE);
-        -u.ln() * self.fs / rate
+        -u.ln()
+    }
+
+    /// Advance the sway by `dt` seconds and set the impact rate it gives:
+    /// `rate * 2^(sway * g)`, where `g` has unit variance and a 1/f spectrum.
+    fn advance_rate(&mut self, dt: f32) {
+        let mut g = 0.0f32;
+        for k in 0..SWAY_POLES {
+            let a = (-dt / (SWAY_TAU_MIN_SEC * (1u32 << k) as f32)).exp();
+            let n = self.normal();
+            self.sway[k] = a * self.sway[k] + (1.0 - a * a).sqrt() * n;
+            g += self.sway[k];
+        }
+        g /= (SWAY_POLES as f32).sqrt();
+        let rate = (self.spec.rate * (self.spec.sway * g).exp2()).clamp(0.0, MAX_RAIN_RATE);
+        self.rate_per_sample = rate / self.fs;
     }
 
     fn normal(&mut self) -> f32 {
@@ -454,11 +490,16 @@ impl Rain {
     /// Render one hop and add it to the buses selected by `send()`.
     pub(crate) fn render_add(&mut self, presentation: &mut [f32], habitat: &mut [f32]) {
         assert_eq!(presentation.len(), habitat.len());
+        self.advance_rate(presentation.len() as f32 / self.fs);
         for t in 0..presentation.len() {
-            self.samples_to_impact -= 1.0;
-            while self.samples_to_impact <= 0.0 {
+            self.impact_budget -= self.rate_per_sample;
+            while self.impact_budget <= 0.0 {
                 self.strike();
-                self.samples_to_impact += self.next_interval();
+                #[cfg(test)]
+                {
+                    self.impacts_struck += 1;
+                }
+                self.impact_budget += self.exponential();
             }
             let mut out = 0.0f32;
             let modes = self.impact_ratios.len();
@@ -823,6 +864,85 @@ mod tests {
         render(&mut rain, 20);
         assert_eq!(rain.object_target_log2[0], placed);
         assert_eq!(rain.object_log2[0], placed);
+    }
+
+    #[test]
+    fn impact_counts_follow_the_rate_and_its_live_patches() {
+        let l = landscape();
+        let mut rain = Rain::new(
+            1,
+            RainSpec {
+                rate: 40.0,
+                objects: 0,
+                ..RainSpec::default()
+            },
+            (300.0, 6000.0),
+            FieldTarget::Uniform,
+            21,
+            &l,
+            48_000.0,
+        );
+        render(&mut rain, 5625); // 60 s
+        let first = rain.impacts_struck;
+        assert!((2155..=2645).contains(&first), "{first}");
+        rain.apply_patch(&RainPatch {
+            rate: Some(200.0),
+            ..RainPatch::default()
+        });
+        render(&mut rain, 1875); // 20 s
+        let second = rain.impacts_struck - first;
+        assert!((3684..=4316).contains(&second), "{second}");
+    }
+
+    #[test]
+    fn sway_spreads_the_rate_by_octaves_with_one_over_f_memory() {
+        let l = landscape();
+        let make = |sway| {
+            Rain::new(
+                1,
+                RainSpec {
+                    sway,
+                    objects: 0,
+                    ..RainSpec::default()
+                },
+                (300.0, 6000.0),
+                FieldTarget::Uniform,
+                21,
+                &l,
+                48_000.0,
+            )
+        };
+        let dt = 512.0 / 48_000.0;
+        let mut still = make(0.0);
+        for _ in 0..100 {
+            still.advance_rate(dt);
+            assert_eq!(still.rate_per_sample * 48_000.0, 40.0);
+        }
+        let mut swayed = make(1.0);
+        let octaves: Vec<f32> = (0..1_000_000)
+            .map(|_| {
+                swayed.advance_rate(dt);
+                (swayed.rate_per_sample * 48_000.0 / 40.0).log2()
+            })
+            .collect();
+        let n = octaves.len() as f32;
+        let mean = octaves.iter().sum::<f32>() / n;
+        let var = octaves.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n;
+        assert!((0.75..=1.25).contains(&var.sqrt()), "sd {}", var.sqrt());
+        let autocorr = |seconds: f32| {
+            let lag = (seconds / dt).round() as usize;
+            let cov = octaves
+                .iter()
+                .zip(&octaves[lag..])
+                .map(|(a, b)| (a - mean) * (b - mean))
+                .sum::<f32>()
+                / (n - lag as f32);
+            cov / var
+        };
+        // Equal-variance poles at 0.4 s * 2^k give about 0.70 at 1 s and 0.35 at 10 s.
+        let (one, ten) = (autocorr(1.0), autocorr(10.0));
+        assert!((0.6..=0.8).contains(&one), "{one}");
+        assert!((0.2..=0.5).contains(&ten), "{ten}");
     }
 
     #[test]

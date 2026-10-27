@@ -70,6 +70,7 @@ const EXPERIMENTAL_FNS: &[&str] = &[
     "residual",
     "rain",
     "rate",
+    "sway",
     "hit",
     "width",
     "objects",
@@ -206,7 +207,7 @@ pub const TYPE_DOCS: &[TypeDoc] = &[
     TypeDoc {
         evidence: CONTAINER,
         name: "Rain",
-        summary: "Placed impact texture with its resonant objects; supports live amp, rate, hit and width patches and release.",
+        summary: "Placed impact texture with its resonant objects; supports live amp, rate, sway, hit and width patches and release.",
     },
     TypeDoc {
         evidence: CONTAINER,
@@ -358,7 +359,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Na,
         usage: &["rain()"],
         summary: "Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike.",
-        details: "Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impact times are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.",
+        details: "Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, sway 0, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impacts are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.",
     },
     FnDoc {
         name: "amp",
@@ -391,7 +392,18 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Live,
         usage: &["rate(impacts_per_second)"],
         summary: "Set the mean impact rate in [0, 2000] per second.",
-        details: "Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.",
+        details: "Impact times form a Poisson process at this rate, swayed by sway(); 0 stops new impacts. The bound limits per-sample work. Live patches take effect at once.",
+    },
+    FnDoc {
+        name: "sway",
+        evidence: SWAY,
+        owner: Owner::Rain,
+        category: "rain",
+        style: Style::Method,
+        patch: Patch::Live,
+        usage: &["sway(octaves)"],
+        summary: "Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0.",
+        details: "The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.",
     },
     FnDoc {
         name: "hit",

@@ -1,6 +1,6 @@
 # Rain: Impacts Drawn from Distributions, and the Objects They Strike
 
-Status: experimental v1 on `work/rain-20261027`, for the author's audition. Not merged.
+Status: experimental v1 on `work/rain-20261027`, for the author's audition. Not merged. Sample 18 (*Rain on Glass*) uses it.
 
 ## Problem
 
@@ -28,7 +28,8 @@ The coupling contract matches Flora's. Rain, Flora and Populations affect each o
 
 ## Impacts
 
-- **Timing.** A Poisson process at the composer's `rate` (impacts per second). There is no beat. Live `rate()` patches change the next draws.
+- **Timing.** A Poisson process at the composer's `rate` (impacts per second). There is no beat. The process runs by time rescaling: a unit-exponential budget is drawn after each impact and the current rate is subtracted per sample, so it stays Poisson while the rate changes, and live `rate()` patches take effect at once.
+- **Sway.** `sway(octaves)` lets the rate fluctuate as `rate · 2^{sway · g(t)}`, where `g` has unit variance and a 1/f spectrum (the author's proposal after S1). `g` sums nine equal-variance AR(1) processes with time constants 0.4 s · 2^k, k = 0..8 (0.4 s to 102 s), which gives 1/f between about 0.0016 and 0.4 Hz. The fastest stays below the pulse range (about 0.5 Hz and up), so the sway is heard as changing intensity rather than a beat. States start from their stationary distribution, so the sway is present from placement. The swayed rate is capped at the work bound of 2000 per second. Default 0, range [0, 4]; beyond four octaves the rate spends most of its time at zero or at the bound. Struck objects follow the swayed rate, since strikes are a fraction `hit` of impacts.
 - **Band position.** At each impact the centre frequency is drawn from the placement's distribution over the extent. The distribution is rebuilt each hop from the Landscape with the spawn-placement density masses (`field_density_mass`):
   - `random(lo, hi)`: log-uniform, independent of the Landscape;
   - `consonance(lo, hi)`: follows the eroded consonance density mass;
@@ -62,6 +63,12 @@ An impact's pitch lasts tens of milliseconds and changes with every impact, so t
 ## Measurements (TEX-1 M0/M1, before the impact material)
 
 Four objects, no drone, impacts on `gap(150, 5000)`, 60 s, seeds 21-24. Over all object pairs, the mean distance to the nearest of unison, 6/5, 5/4, 4/3, 3/2, 5/3 and the octave fell from 66 cents at placement to 42 cents over the last 30 s. Uniformly random intervals give 60 cents. Two seeds reached near-just chords (seed 21 ended at 180, 359, 719 and 960 Hz, every pair within 2 cents); two moved little. These numbers describe the mechanism; they do not decide whether it is heard as music. Listening to seed 21, the author found the drifting objects (M1) more interesting than fixed ones (M0) and heard the impacts as crumpling, which led to the impact material above. On the same scene and seed, the author heard the material impacts (P1) as natural and the scattered-mode impacts (M1) as artificial rather than rain.
+
+## Sample 18 and the S1 trace
+
+Sample 18 places a Rain with four objects on `gap(150, 5000)` with `sway(1)`, adds an unheard field (a habitat-only harmonic drone on D), turns the field up a fourth, then releases it and thins the rain. An object-pitch trace of the same scene without sway (S1, seed 21) showed the objects approaching the new harmony within a few seconds of the turn, one landing on G4 within 2 cents, and then loosening as habituation eroded the field. Before the turn they barely approached the field. The author wanted to take S1 further.
+
+With `sway(1)` (S2, the sample as written), the author reported a very strong cognitive effect: pleasure, and the body sways by itself, although the rain has no beat. S3 added three quiet sustained voices seeking the same field, to make the unheard field audible; the author found them unnatural. They share neither the impacts' onsets nor the rain's sway, so they are heard as a separate overlay (the C2 finding) rather than part of the rain world. The sample keeps the S2 form.
 
 ## Caveats and exclusions in v1
 

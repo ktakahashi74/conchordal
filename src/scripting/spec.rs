@@ -1062,9 +1062,6 @@ pub(super) struct RainHandle {
     pub(super) id: u64,
 }
 
-/// Upper impact rate; it bounds per-sample work, not a musical choice.
-pub(super) const RAIN_RATE_MAX: FLOAT = 2000.0;
-
 pub(super) fn validate_rain_numeric(
     name: &str,
     value: FLOAT,
@@ -1073,7 +1070,10 @@ pub(super) fn validate_rain_numeric(
     let (min, max) = match name {
         "amp" | "hit" => (0.0, 1.0),
         "fade" => (0.0, 60.0),
-        "rate" => (0.0, RAIN_RATE_MAX),
+        "rate" => (0.0, crate::life::rain::MAX_RAIN_RATE as FLOAT),
+        // Beyond four octaves the swayed rate spends most of its time at zero or at the
+        // work bound.
+        "sway" => (0.0, 4.0),
         // Five octaves either side of a centre covers the audible band from any centre.
         "width" => (0.0, 5.0),
         "object_decay" => (0.01, 30.0),
@@ -1100,6 +1100,7 @@ impl RainSpecHandle {
             "amp" => self.spec.amp = value,
             "fade" => self.spec.fade_sec = value,
             "rate" => self.spec.rate = value,
+            "sway" => self.spec.sway = value,
             "hit" => self.spec.hit = value,
             "width" => self.spec.width = value,
             "object_decay" => self.spec.object_decay = value,

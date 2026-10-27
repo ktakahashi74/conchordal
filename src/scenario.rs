@@ -69,6 +69,8 @@ pub struct RainSpec {
     pub fade_sec: f32,
     /// Mean impacts per second.
     pub rate: f32,
+    /// Standard deviation, in octaves of `rate`, of a 1/f fluctuation of the impact rate.
+    pub sway: f32,
     /// Probability that an impact lands on one of the objects.
     pub hit: f32,
     /// Material of every impact; its ratios are taken at placement.
@@ -90,6 +92,7 @@ impl Default for RainSpec {
             amp: 0.02,
             fade_sec: 2.0,
             rate: 40.0,
+            sway: 0.0,
             hit: 0.06,
             impact_modes: crate::core::mode_pattern::ModePattern::modal_table("wine_glass")
                 .expect("built-in modal table"),
@@ -108,6 +111,7 @@ impl Default for RainSpec {
 pub struct RainPatch {
     pub amp: Option<f32>,
     pub rate: Option<f32>,
+    pub sway: Option<f32>,
     pub hit: Option<f32>,
     pub width: Option<f32>,
 }

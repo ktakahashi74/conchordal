@@ -8,7 +8,7 @@
 ///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
 /// - RainSpec: Reusable impact-texture definition built by `rain()`; placed as a Rain over a frequency extent.
 ///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
-/// - Rain: Placed impact texture with its resonant objects; supports live amp, rate, hit and width patches and release.
+/// - Rain: Placed impact texture with its resonant objects; supports live amp, rate, sway, hit and width patches and release.
 ///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
 /// - PopulationSpec: Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules.
 ///   Evidence: Not a mechanism (API container): use the labels of the constructor and operations on this type.
@@ -1029,7 +1029,7 @@ fn pulse_lock(population_spec: PopulationSpec, depth: f64) -> PopulationSpec;
 fn pulse_lock(population_spec: PopulationSpec, depth: i64) -> PopulationSpec;
 
 /// [experimental] Build a RainSpec: impacts drawn one by one over a frequency extent, and resonant objects they strike.
-/// Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impact times are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
+/// Defaults: amp 0.02, fade 2 s, rate 40 impacts/s, sway 0, hit 0.06, wine_glass impacts with width 0.05 octave, 3 objects with vibraphone_1 modes, object_decay 2 s, both buses. Impacts are Poisson, with no beat. Every impact strikes the same material at a centre drawn from the placement's distribution, with fresh level, decay and mode offsets; it rings for tens of milliseconds at a new centre each time, so the texture has no musical pitch. Objects start on consonance peaks, at least 1 ERB apart, and drift toward higher consonance by at most a semitone each time they are struck, unless anchored. An impact lands on a uniformly chosen object with probability hit and strikes it at the same instant.
 /// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
 fn rain() -> RainSpec;
 
@@ -1080,19 +1080,19 @@ fn range(pattern: ModePattern, min_mul: i64, max_mul: f64) -> ModePattern;
 fn range(pattern: ModePattern, min_mul: i64, max_mul: i64) -> ModePattern;
 
 /// [experimental] Set the mean impact rate in [0, 2000] per second.
-/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Impact times form a Poisson process at this rate, swayed by sway(); 0 stops new impacts. The bound limits per-sample work. Live patches take effect at once.
 /// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
 fn rate(rain: Rain, impacts_per_second: f64) -> Rain;
 /// [experimental] Set the mean impact rate in [0, 2000] per second.
-/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Impact times form a Poisson process at this rate, swayed by sway(); 0 stops new impacts. The bound limits per-sample work. Live patches take effect at once.
 /// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
 fn rate(rain: Rain, impacts_per_second: i64) -> Rain;
 /// [experimental] Set the mean impact rate in [0, 2000] per second.
-/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Impact times form a Poisson process at this rate, swayed by sway(); 0 stops new impacts. The bound limits per-sample work. Live patches take effect at once.
 /// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
 fn rate(rain_spec: RainSpec, impacts_per_second: f64) -> RainSpec;
 /// [experimental] Set the mean impact rate in [0, 2000] per second.
-/// Impact times form a Poisson process at this rate; 0 stops new impacts. The bound limits per-sample work. Live patches apply to the next draws.
+/// Impact times form a Poisson process at this rate, swayed by sway(); 0 stops new impacts. The bound limits per-sample work. Live patches take effect at once.
 /// Evidence: Author rule: impact texture; impacts drawn one by one from distributions and resonant objects they strike; a composition rule, not an auditory model (docs/design-notes/rain.md).
 fn rate(rain_spec: RainSpec, impacts_per_second: i64) -> RainSpec;
 
@@ -1475,6 +1475,23 @@ fn sustain_drive(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
 /// Nonnegative dimensionless continuous drive for sustained voices, default 0.
 /// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
 fn sustain_drive(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
+
+/// [experimental] Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0.
+/// The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.
+/// Evidence: Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.
+fn sway(rain: Rain, octaves: f64) -> Rain;
+/// [experimental] Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0.
+/// The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.
+/// Evidence: Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.
+fn sway(rain: Rain, octaves: i64) -> Rain;
+/// [experimental] Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0.
+/// The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.
+/// Evidence: Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.
+fn sway(rain_spec: RainSpec, octaves: f64) -> RainSpec;
+/// [experimental] Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0.
+/// The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.
+/// Evidence: Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.
+fn sway(rain_spec: RainSpec, octaves: i64) -> RainSpec;
 
 /// Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory.
 /// The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler's candidate choice. Musically the movement-tension dial; its placement twin is `tension()`.

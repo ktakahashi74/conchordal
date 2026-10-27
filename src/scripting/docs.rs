@@ -131,7 +131,12 @@ pub fn tier_lists() -> impl Iterator<Item = (&'static str, Tier)> {
         .chain(RESEARCH_FNS.iter().map(|n| (*n, Tier::Research)))
 }
 
+#[path = "evidence.rs"]
+mod evidence;
+pub use evidence::*;
+
 pub struct FnDoc {
+    pub evidence: &'static [EvidenceDoc],
     pub name: &'static str,
     pub owner: Owner,
     pub category: &'static str,
@@ -153,11 +158,13 @@ pub struct CategoryDoc {
 }
 
 pub struct TypeDoc {
+    pub evidence: &'static [EvidenceDoc],
     pub name: &'static str,
     pub summary: &'static str,
 }
 
 pub struct ConstDoc {
+    pub evidence: &'static [EvidenceDoc],
     pub name: &'static str,
     pub ty: &'static str,
     pub summary: &'static str,
@@ -165,34 +172,42 @@ pub struct ConstDoc {
 
 pub const TYPE_DOCS: &[TypeDoc] = &[
     TypeDoc {
+        evidence: CONTAINER,
         name: "FloraSpec",
         summary: "Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent.",
     },
     TypeDoc {
+        evidence: CONTAINER,
         name: "Flora",
         summary: "Placed spectral growth; supports pending amplitude and pace patches and release.",
     },
     TypeDoc {
+        evidence: CONTAINER,
         name: "PopulationSpec",
         summary: "Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules.",
     },
     TypeDoc {
+        evidence: CONTAINER,
         name: "Population",
         summary: "Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations.",
     },
     TypeDoc {
+        evidence: CONTAINER,
         name: "Placement",
         summary: "Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`.",
     },
     TypeDoc {
+        evidence: CONTAINER,
         name: "ModePattern",
         summary: "Frequency pattern for modal synthesis bodies; built by `*_modes()` constructors.",
     },
     TypeDoc {
+        evidence: CONTAINER,
         name: "Bus",
         summary: "One of the two mono output buses; combine with `|` into a `BusSet`.",
     },
     TypeDoc {
+        evidence: CONTAINER,
         name: "BusSet",
         summary: "Combination of buses produced by `bus | bus`, accepted by `send()`.",
     },
@@ -200,11 +215,13 @@ pub const TYPE_DOCS: &[TypeDoc] = &[
 
 pub const CONST_DOCS: &[ConstDoc] = &[
     ConstDoc {
+        evidence: ROUTING,
         name: "habitat_bus",
         ty: "Bus",
         summary: "Analysis bus: auditory analysis -> landscape; what the ecology senses.",
     },
     ConstDoc {
+        evidence: ROUTING,
         name: "presentation_bus",
         ty: "Bus",
         summary: "Presentation bus: cpal output, recording, UI metering; what the listener hears.",
@@ -302,6 +319,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     // --- Flora ---
     FnDoc {
         name: "flora",
+        evidence: FLORA_BODY,
         owner: Owner::Global,
         category: "flora",
         style: Style::Free,
@@ -312,6 +330,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "amp",
+        evidence: FLORA_BODY,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -322,6 +341,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "pace",
+        evidence: FLORA_PACE,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -332,6 +352,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "fade",
+        evidence: FLORA_BODY,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -342,6 +363,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "tone",
+        evidence: FLORA_BODY,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -352,6 +374,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "residual",
+        evidence: FLORA_BODY,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -362,6 +385,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "leave_self_out",
+        evidence: SELF_EXCLUSION,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -372,6 +396,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "send",
+        evidence: ROUTING,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -382,6 +407,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "place",
+        evidence: FORM,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Free,
@@ -392,6 +418,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "release",
+        evidence: FORM,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Free,
@@ -402,6 +429,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "pitch_apply_mode",
+        evidence: PITCH,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -412,6 +440,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "rest_on_habituation",
+        evidence: REST_HABITUATION,
         owner: Owner::Flora,
         category: "flora",
         style: Style::Method,
@@ -423,6 +452,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     // --- population specs ---
     FnDoc {
         name: "sine",
+        evidence: BODY,
         owner: Owner::Global,
         category: "population_specs",
         style: Style::Free,
@@ -433,6 +463,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "harmonic",
+        evidence: BODY,
         owner: Owner::Global,
         category: "population_specs",
         style: Style::Free,
@@ -443,6 +474,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "modal",
+        evidence: BODY,
         owner: Owner::Global,
         category: "population_specs",
         style: Style::Free,
@@ -453,6 +485,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "saw",
+        evidence: BODY,
         owner: Owner::Global,
         category: "population_specs",
         style: Style::Free,
@@ -463,6 +496,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "square",
+        evidence: BODY,
         owner: Owner::Global,
         category: "population_specs",
         style: Style::Free,
@@ -473,6 +507,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "noise",
+        evidence: BODY,
         owner: Owner::Global,
         category: "population_specs",
         style: Style::Free,
@@ -484,6 +519,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     // --- placement ---
     FnDoc {
         name: "at",
+        evidence: PLACEMENT,
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
@@ -494,6 +530,7 @@ pub const FN_DOCS: &[FnDoc] = &[
     },
     FnDoc {
         name: "consonance",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
@@ -506,6 +543,7 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
     },
     FnDoc {
         name: "dissonance",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
@@ -517,6 +555,7 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
     },
     FnDoc {
         name: "edge",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
@@ -528,6 +567,7 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
     },
     FnDoc {
         name: "gap",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
@@ -538,6 +578,7 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
     },
     FnDoc {
         name: "peak",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Placement,
         category: "placement",
         style: Style::Method,
@@ -548,6 +589,7 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
     },
     FnDoc {
         name: "density",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Placement,
         category: "placement",
         style: Style::Method,
@@ -558,6 +600,7 @@ multiples with `range()`); `consonance(min, max)` takes an absolute range. Defau
     },
     FnDoc {
         name: "tension",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Placement,
         category: "placement",
         style: Style::Method,
@@ -572,6 +615,7 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
     },
     FnDoc {
         name: "random",
+        evidence: PLACEMENT,
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
@@ -582,6 +626,7 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
     },
     FnDoc {
         name: "line",
+        evidence: PLACEMENT,
         owner: Owner::Global,
         category: "placement",
         style: Style::Free,
@@ -592,6 +637,7 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
     },
     FnDoc {
         name: "count",
+        evidence: PLACEMENT,
         owner: Owner::Placement,
         category: "placement",
         style: Style::Method,
@@ -602,6 +648,7 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
     },
     FnDoc {
         name: "range",
+        evidence: PLACEMENT,
         owner: Owner::Placement,
         category: "placement",
         style: Style::Method,
@@ -612,6 +659,7 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
     },
     FnDoc {
         name: "spacing",
+        evidence: FIELD_PLACEMENT,
         owner: Owner::Placement,
         category: "placement",
         style: Style::Method,
@@ -623,6 +671,7 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
     // --- timeline ---
     FnDoc {
         name: "place",
+        evidence: FORM,
         owner: Owner::Population,
         category: "timeline",
         style: Style::Free,
@@ -634,6 +683,7 @@ on the PopulationSpec first; the returned Population exposes only live patches a
     },
     FnDoc {
         name: "wait",
+        evidence: FORM,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -644,6 +694,7 @@ on the PopulationSpec first; the returned Population exposes only live patches a
     },
     FnDoc {
         name: "flush",
+        evidence: FORM,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -654,6 +705,7 @@ on the PopulationSpec first; the returned Population exposes only live patches a
     },
     FnDoc {
         name: "release",
+        evidence: FORM,
         owner: Owner::Population,
         category: "timeline",
         style: Style::Free,
@@ -664,6 +716,7 @@ on the PopulationSpec first; the returned Population exposes only live patches a
     },
     FnDoc {
         name: "section",
+        evidence: FORM,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -674,6 +727,7 @@ on the PopulationSpec first; the returned Population exposes only live patches a
     },
     FnDoc {
         name: "play",
+        evidence: FORM,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -690,6 +744,7 @@ on the PopulationSpec first; the returned Population exposes only live patches a
     },
     FnDoc {
         name: "parallel",
+        evidence: FORM,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -701,6 +756,7 @@ branch end.",
     },
     FnDoc {
         name: "output_gain",
+        evidence: OPERATION,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -711,6 +767,7 @@ branch end.",
     },
     FnDoc {
         name: "seed",
+        evidence: OPERATION,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -721,6 +778,7 @@ branch end.",
     },
     FnDoc {
         name: "temporal_mode",
+        evidence: OPERATION,
         owner: Owner::Global,
         category: "timeline",
         style: Style::Free,
@@ -732,6 +790,7 @@ branch end.",
     // --- body ---
     FnDoc {
         name: "amp",
+        evidence: BODY,
         owner: Owner::Population,
         category: "body",
         style: Style::Method,
@@ -742,6 +801,7 @@ branch end.",
     },
     FnDoc {
         name: "freq",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "body",
         style: Style::Method,
@@ -752,6 +812,7 @@ branch end.",
     },
     FnDoc {
         name: "brightness",
+        evidence: BODY,
         owner: Owner::Population,
         category: "body",
         style: Style::Method,
@@ -762,6 +823,7 @@ branch end.",
     },
     FnDoc {
         name: "spread",
+        evidence: BODY,
         owner: Owner::Population,
         category: "body",
         style: Style::Method,
@@ -772,6 +834,7 @@ branch end.",
     },
     FnDoc {
         name: "unison",
+        evidence: BODY,
         owner: Owner::Population,
         category: "body",
         style: Style::Method,
@@ -782,6 +845,7 @@ branch end.",
     },
     FnDoc {
         name: "modes",
+        evidence: BODY,
         owner: Owner::Population,
         category: "body",
         style: Style::Method,
@@ -792,6 +856,7 @@ branch end.",
     },
     FnDoc {
         name: "adsr",
+        evidence: BODY,
         owner: Owner::Population,
         category: "body",
         style: Style::Method,
@@ -803,6 +868,7 @@ branch end.",
     // --- phonation ---
     FnDoc {
         name: "brain",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -813,6 +879,7 @@ branch end.",
     },
     FnDoc {
         name: "sustain",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -823,6 +890,7 @@ branch end.",
     },
     FnDoc {
         name: "dwell",
+        evidence: DWELL,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -833,6 +901,7 @@ branch end.",
     },
     FnDoc {
         name: "follow_own_sequence",
+        evidence: SEQUENCE,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -843,6 +912,7 @@ branch end.",
     },
     FnDoc {
         name: "rest_on_habituation",
+        evidence: REST_HABITUATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -853,6 +923,7 @@ branch end.",
     },
     FnDoc {
         name: "rest",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -863,6 +934,7 @@ branch end.",
     },
     FnDoc {
         name: "repeat",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -873,6 +945,7 @@ branch end.",
     },
     FnDoc {
         name: "metric",
+        evidence: METER,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -883,6 +956,7 @@ branch end.",
     },
     FnDoc {
         name: "entrained",
+        evidence: PARTICIPATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -893,6 +967,7 @@ branch end.",
     },
     FnDoc {
         name: "steady",
+        evidence: PARTICIPATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -903,6 +978,7 @@ branch end.",
     },
     FnDoc {
         name: "flow",
+        evidence: PARTICIPATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -913,6 +989,7 @@ branch end.",
     },
     FnDoc {
         name: "intrinsic_rate",
+        evidence: BODY,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -923,6 +1000,7 @@ branch end.",
     },
     FnDoc {
         name: "entrainment",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -933,6 +1011,7 @@ branch end.",
     },
     FnDoc {
         name: "rhythm_role",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -944,6 +1023,7 @@ recurring downbeat can seed an emergent measure.",
     },
     FnDoc {
         name: "measure_accent",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -956,6 +1036,7 @@ Does not schedule onsets or impose a grouping. Order-independent with metric/ent
     },
     FnDoc {
         name: "microtiming",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -967,6 +1048,7 @@ Does not place entrained/steady/flow participants at fixed offsets.",
     },
     FnDoc {
         name: "once",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -977,6 +1059,7 @@ Does not place entrained/steady/flow participants at fixed offsets.",
     },
     FnDoc {
         name: "pulse",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -987,6 +1070,7 @@ Does not place entrained/steady/flow participants at fixed offsets.",
     },
     FnDoc {
         name: "while_alive",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -997,6 +1081,7 @@ Does not place entrained/steady/flow participants at fixed offsets.",
     },
     FnDoc {
         name: "phonate_when_viable",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1011,6 +1096,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "cycles",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1021,6 +1107,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "adaptive_duration",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1031,6 +1118,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "pulse_lock",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1041,6 +1129,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "social",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1051,6 +1140,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "duration_range",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1061,6 +1151,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "duration_curve",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1071,6 +1162,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "shorten_on_drop",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1081,6 +1173,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "rhythm_freq",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1091,6 +1184,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "rhythm_coupling_vitality",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1101,6 +1195,7 @@ economy is the timeout.",
     },
     FnDoc {
         name: "rhythm_reward",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1112,6 +1207,7 @@ economy is the timeout.",
     // --- pitch ---
     FnDoc {
         name: "anchor",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1127,6 +1223,7 @@ position, or to state the intent explicitly.",
     },
     FnDoc {
         name: "seek_consonance",
+        evidence: SEEK,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1142,6 +1239,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "glide",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1152,6 +1250,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "rearticulate_above",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1162,6 +1261,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "tie",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1172,6 +1272,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "articulation_persistence",
+        evidence: PHONATION,
         owner: Owner::Population,
         category: "phonation",
         style: Style::Method,
@@ -1182,6 +1283,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "pitch_core",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1192,6 +1294,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "pitch_apply_mode",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1202,6 +1305,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "landscape_weight",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1212,6 +1316,7 @@ was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, 
     },
     FnDoc {
         name: "temperature",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1226,6 +1331,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "neighbor_step_cents",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1236,6 +1342,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "move_cost",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1246,6 +1353,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "move_cost_exp",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1256,6 +1364,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "move_cost_time_scale",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1266,6 +1375,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "proposal_interval",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1276,6 +1386,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "tessitura_gravity",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1286,6 +1397,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "window_cents",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1296,6 +1408,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "top_k",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1306,6 +1419,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "sigma_cents",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1316,6 +1430,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "random_candidates",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1326,6 +1441,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "global_peaks",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1336,6 +1452,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     },
     FnDoc {
         name: "ratio_candidates",
+        evidence: PITCH,
         owner: Owner::Population,
         category: "pitch",
         style: Style::Method,
@@ -1347,6 +1464,7 @@ sampler's candidate choice. Musically the movement-tension dial; its placement t
     // --- neighbors ---
     FnDoc {
         name: "avoid_neighbors",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "neighbors",
         style: Style::Method,
@@ -1361,6 +1479,7 @@ the two-argument form sets it explicitly in cents.",
     },
     FnDoc {
         name: "crowding_target",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "neighbors",
         style: Style::Method,
@@ -1371,6 +1490,7 @@ the two-argument form sets it explicitly in cents.",
     },
     FnDoc {
         name: "leave_self_out",
+        evidence: SELF_EXCLUSION,
         owner: Owner::Population,
         category: "neighbors",
         style: Style::Method,
@@ -1382,6 +1502,7 @@ the two-argument form sets it explicitly in cents.",
     // --- lifecycle ---
     FnDoc {
         name: "endurance",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1393,6 +1514,7 @@ actual lifetime varies with field fit, attacks, recovery, and release time.",
     },
     FnDoc {
         name: "recovery",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1404,6 +1526,7 @@ the separate per-attack economy.",
     },
     FnDoc {
         name: "attack_cost_fraction",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1414,6 +1537,7 @@ the separate per-attack economy.",
     },
     FnDoc {
         name: "attack_recharge_fraction",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1424,6 +1548,7 @@ the separate per-attack economy.",
     },
     FnDoc {
         name: "sustain_drive",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1434,6 +1559,7 @@ the separate per-attack economy.",
     },
     FnDoc {
         name: "consonance_viability",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1444,6 +1570,7 @@ the separate per-attack economy.",
     },
     FnDoc {
         name: "viability_scope",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1454,6 +1581,7 @@ the separate per-attack economy.",
     },
     FnDoc {
         name: "dissonance_penalty",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "lifecycle",
         style: Style::Method,
@@ -1466,6 +1594,7 @@ well-fit voice survives.",
     // --- respawn ---
     FnDoc {
         name: "respawn_random",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "respawn",
         style: Style::Method,
@@ -1478,6 +1607,7 @@ choice, so this is not uniform random placement.",
     },
     FnDoc {
         name: "respawn_hereditary",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "respawn",
         style: Style::Method,
@@ -1489,6 +1619,7 @@ Consonance Field level is used.",
     },
     FnDoc {
         name: "respawn_consonance",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "respawn",
         style: Style::Method,
@@ -1501,6 +1632,7 @@ to the parent; without a usable peak, the policy falls back to the parent or ori
     },
     FnDoc {
         name: "respawn_capacity",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "respawn",
         style: Style::Method,
@@ -1511,6 +1643,7 @@ to the parent; without a usable peak, the policy falls back to the parent or ori
     },
     FnDoc {
         name: "respawn_settle",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "respawn",
         style: Style::Method,
@@ -1523,6 +1656,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "respawn_min_consonance",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "respawn",
         style: Style::Method,
@@ -1533,6 +1667,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "respawn_background_death_rate",
+        evidence: ECOLOGY,
         owner: Owner::Population,
         category: "respawn",
         style: Style::Method,
@@ -1544,6 +1679,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     // --- modes ---
     FnDoc {
         name: "harmonic_modes",
+        evidence: BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1554,6 +1690,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "odd_modes",
+        evidence: BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1564,6 +1701,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "power_modes",
+        evidence: BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1574,6 +1712,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "stiff_string_modes",
+        evidence: BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1584,6 +1723,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "custom_modes",
+        evidence: BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1594,6 +1734,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "modal_table",
+        evidence: BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1604,6 +1745,7 @@ the remaining alternatives. Requires a strategy-bearing placement: `consonance()
     },
     FnDoc {
         name: "landscape_density_modes",
+        evidence: FIELD_BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1616,6 +1758,7 @@ landscape data yields no usable position.",
     },
     FnDoc {
         name: "landscape_peaks_modes",
+        evidence: FIELD_BODY,
         owner: Owner::Global,
         category: "modes",
         style: Style::Free,
@@ -1627,6 +1770,7 @@ Falls back to harmonic modes when live landscape data yields no usable peak.",
     },
     FnDoc {
         name: "count",
+        evidence: BODY,
         owner: Owner::ModePattern,
         category: "modes",
         style: Style::Method,
@@ -1637,6 +1781,7 @@ Falls back to harmonic modes when live landscape data yields no usable peak.",
     },
     FnDoc {
         name: "range",
+        evidence: BODY,
         owner: Owner::ModePattern,
         category: "modes",
         style: Style::Method,
@@ -1647,6 +1792,7 @@ Falls back to harmonic modes when live landscape data yields no usable peak.",
     },
     FnDoc {
         name: "spacing",
+        evidence: BODY,
         owner: Owner::ModePattern,
         category: "modes",
         style: Style::Method,
@@ -1657,6 +1803,7 @@ Falls back to harmonic modes when live landscape data yields no usable peak.",
     },
     FnDoc {
         name: "gamma",
+        evidence: BODY,
         owner: Owner::ModePattern,
         category: "modes",
         style: Style::Method,
@@ -1667,6 +1814,7 @@ Falls back to harmonic modes when live landscape data yields no usable peak.",
     },
     FnDoc {
         name: "jitter",
+        evidence: BODY,
         owner: Owner::ModePattern,
         category: "modes",
         style: Style::Method,
@@ -1677,6 +1825,7 @@ Falls back to harmonic modes when live landscape data yields no usable peak.",
     },
     FnDoc {
         name: "seed",
+        evidence: BODY,
         owner: Owner::ModePattern,
         category: "modes",
         style: Style::Method,
@@ -1688,6 +1837,7 @@ Falls back to harmonic modes when live landscape data yields no usable peak.",
     // --- routing ---
     FnDoc {
         name: "send",
+        evidence: ROUTING,
         owner: Owner::Population,
         category: "routing",
         style: Style::Method,
@@ -1701,6 +1851,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     // --- director ---
     FnDoc {
         name: "meter_stability",
+        evidence: METER,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1711,6 +1862,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     FnDoc {
         name: "temporal_basin",
+        evidence: METER,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1721,6 +1873,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     FnDoc {
         name: "set_roughness_aversion",
+        evidence: VALUATION,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1731,6 +1884,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     FnDoc {
         name: "set_global_coupling",
+        evidence: COUPLING,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1741,6 +1895,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     FnDoc {
         name: "set_pitch_objective",
+        evidence: VALUATION,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1751,6 +1906,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     FnDoc {
         name: "control_update_mode",
+        evidence: OPERATION,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1761,6 +1917,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     FnDoc {
         name: "scaffold_off",
+        evidence: RESEARCH,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1772,6 +1929,7 @@ rhythm-composition abstraction.",
     },
     FnDoc {
         name: "scaffold_shared",
+        evidence: RESEARCH,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,
@@ -1782,6 +1940,7 @@ rhythm-composition abstraction.",
     },
     FnDoc {
         name: "scaffold_scrambled",
+        evidence: RESEARCH,
         owner: Owner::Global,
         category: "director",
         style: Style::Free,

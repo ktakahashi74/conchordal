@@ -10,6 +10,7 @@
 
 # コンセプト
 
+- [機構の根拠と作曲者の選択](concepts/evidence.md)
 - [Population — Voiceをまとめる持続単位](concepts/voice_life.md)
 - [Flora](concepts/flora.md)
 - [VoiceとLandscape — 音と環境のフィードバック](concepts/ecological_loop.md)

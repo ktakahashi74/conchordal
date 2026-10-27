@@ -14,25 +14,27 @@ cargo run --bin gen_rhai_defs
 
 スクリプティング面は四層に分かれます。**Core API**は作曲用の基本語彙です。Experimentalと併せてトップレベルのサンプルを記述できます。**Experimental**は試聴中のCore候補です。**Mechanism Tuning**は、Coreでは表せない挙動を作品が必要とするとき、動詞の背後にある機構を調整します。**Research Controls**は作曲ではなく、instrumentを研究するためのものです。関数ごとの技術説明は、LSP hoverと同じ英語の単一ソースを掲載しています。
 
+根拠の札は機構の部分ごとに付き、公開用途の区分とは独立です。[機構の根拠と作曲者の選択](../concepts/evidence.md)を参照してください。札の追加は既定値の変更や受入の認定ではありません。
+
 ## 型
 
-| 型 | 説明 |
-|------|-------------|
-| `FloraSpec` | `flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。 |
-| `Flora` | 配置されたスペクトル成長。振幅と拍に対する生態時間の倍率を更新でき、解放を指定できる。 |
-| `PopulationSpec` | 再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。 |
-| `Population` | `place()`が返すPopulation。Voiceが死亡し世代交代しても、同一性を保つ安定した参照。 |
-| `Placement` | 初代のVoiceをどこへ配置するかを表す。`at()`、`consonance()`、`dissonance()`、`edge()`、`gap()`、`random()`、`line()`で作る。 |
-| `ModePattern` | モーダル合成の発音体に使う周波数構成。`*_modes()`関数で作る。 |
-| `Bus` | 二つのmono出力busの一つ。`|`で結合すると`BusSet`になる。 |
-| `BusSet` | `bus | bus`で作るbusの組み合わせ。`send()`へ渡す。 |
+| 型 | 説明 | 根拠 |
+|------|-------------|----------|
+| `FloraSpec` | `flora()`で作る、スペクトル成長の再利用可能な設定。周波数範囲に配置するとFloraになる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `Flora` | 配置されたスペクトル成長。振幅と拍に対する生態時間の倍率を更新でき、解放を指定できる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `PopulationSpec` | 再利用可能なPopulationSpec。初代のVoiceの特性に、生存過程、respawn、個体数の規則を組み合わせる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `Population` | `place()`が返すPopulation。Voiceが死亡し世代交代しても、同一性を保つ安定した参照。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `Placement` | 初代のVoiceをどこへ配置するかを表す。`at()`、`consonance()`、`dissonance()`、`edge()`、`gap()`、`random()`、`line()`で作る。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `ModePattern` | モーダル合成の発音体に使う周波数構成。`*_modes()`関数で作る。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `Bus` | 二つのmono出力busの一つ。`|`で結合すると`BusSet`になる。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
+| `BusSet` | `bus | bus`で作るbusの組み合わせ。`send()`へ渡す。 | 該当なし（APIの器）：構築・操作に使う語の札を参照。 |
 
 ## 組み込み定数
 
-| 定数 | 型 | 説明 |
-|----------|------|-------------|
-| `habitat_bus` | `Bus` | 解析bus：聴覚解析を経てLandscapeへ送られ、生態系が知覚する。 |
-| `presentation_bus` | `Bus` | 提示bus：cpal出力、録音、UI meterへ送られ、聴き手が耳にする。 |
+| 定数 | 型 | 説明 | 根拠 |
+|----------|------|-------------|----------|
+| `habitat_bus` | `Bus` | 解析bus：聴覚解析を経てLandscapeへ送られ、生態系が知覚する。 | 該当なし（経路）：busの選択・結合。独立した自己知覚の規則はleave_self_outを参照。 |
+| `presentation_bus` | `Bus` | 提示bus：cpal出力、録音、UI meterへ送られ、聴き手が耳にする。 | 該当なし（経路）：busの選択・結合。独立した自己知覚の規則はleave_self_outを参照。 |
 
 ## Core API
 
@@ -52,6 +54,8 @@ amp(level)
 
 Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
 
+**根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
+
 #### `pace`
 
 ```rhai,ignore
@@ -61,6 +65,8 @@ pace(multiplier)
 適用対象：`FloraSpec`, `Flora`。
 
 Set Flora's ecological speed relative to its private beat clock with a minimum of 1/64 and no cost-based upper bound (default 1). Ecological speed is (f/2 Hz)*min{k,20*r}: one 10-second renewal per nominal opportunity. Ratio r is 1 for beats/fallback; k>20 enables confirmed subdivisions of 2, 3 or 4. Tonal/residual amplitude targets hold between confirmed opportunities; fallback updates each hop. Retirement shares saturation; beat phase, birth slew and macro fade keep their clocks. Finite f32 values above the minimum are retained. Subminimum values, NaN and negative infinity warn and use 1/64; positive infinity/overflow warn and use f32::MAX. Live patches emit at wait, flush or scope end. Whole-scene real-time cost remains the composer's responsibility. See the Flora chapter for details.
+
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>作者規則：生態時間の速度、行動機会、既定倍率1、機会あたり10秒の生態時間の飽和（§9.3.97–99, §9.3.102）。
 
 #### `leave_self_out`
 
@@ -72,6 +78,8 @@ leave_self_out(enabled)
 
 Exclude Flora's own habitat PCM from growth consonance and seed harmonicity. Default true, unlike Voice's false: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Set false before placement to read mixed C/H without an H/R observer. External resource power always excludes own PCM. Presentation-only Flora reads mixed C/H regardless of this setting.
 
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：H/R入力から自己のhabitat PCMを除く選択。Voiceの既定はfalse、Floraはtrue。Floraの資源powerの自己除外とは独立（§9.3.95）。
+
 #### `send`
 
 ```rhai,ignore
@@ -82,6 +90,8 @@ send(bus_or_set)
 
 Route Flora to a Bus or BusSet, using the same buses as Populations. Default: habitat_bus | presentation_bus.
 
+**根拠:** 該当なし（経路）：busの選択・結合。独立した自己知覚の規則はleave_self_outを参照。
+
 #### `place`
 
 ```rhai,ignore
@@ -90,6 +100,8 @@ place(flora_spec, placement) -> Flora
 
 Place a Flora over a consonance or random frequency extent. Consonance seeds from the base consonance density mass before habituation; random seeds uniformly. Requires count 1, density sampling, zero tension and target-default spacing. Bounds follow field placements and must span at least 1/96 octave, one initial Log2Space bin. Scoped Flora releases at scope end.
 
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
 #### `release`
 
 ```rhai,ignore
@@ -97,6 +109,8 @@ release(flora)
 ```
 
 Mark a Flora for release using its spec's fade. The next wait, flush or scope end emits its pending patch before ReleaseFlora in one event. Repeated release and release after scope end warn and are ignored.
+
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
 #### `pitch_apply_mode`
 
@@ -108,6 +122,8 @@ pitch_apply_mode(name)
 
 Choose tonal peak following (glide, default) or fixed-pitch replacement (rearticulate). Rearticulate holds each tonal lane at birth frequency through its tail, including between beat crossings. Beyond the 50-cent claim radius, lanes retire and replacements follow existing beat, slew and pool rules. Live changes preserve sounding lanes; the next allocation applies the new rule, holding current pitch when switching from glide. Residual noise keeps its centroid motion. Unsupported names, including gate_snap, warn and retain the previous mode. Patches emit at wait, flush or scope end.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `rest_on_habituation`
 
 ```rhai,ignore
@@ -117,6 +133,8 @@ rest_on_habituation(weight)
 適用対象：`FloraSpec`。
 
 Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
+
+**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：spanの確率的な退出と私的回復・復帰。重み0で中立（§9.3.96、§9.3.101）。
 
 ### PopulationSpec
 
@@ -130,6 +148,8 @@ sine() -> PopulationSpec
 
 PopulationSpec whose founder voices use a pure sine body.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `harmonic`
 
 ```rhai,ignore
@@ -137,6 +157,8 @@ harmonic() -> PopulationSpec
 ```
 
 PopulationSpec whose founder voices use a harmonic-series body.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `modal`
 
@@ -146,6 +168,8 @@ modal() -> PopulationSpec
 
 PopulationSpec whose founder voices use a resonator-based modal body; shape it with `modes()`.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `saw`
 
 ```rhai,ignore
@@ -153,6 +177,8 @@ saw() -> PopulationSpec
 ```
 
 Harmonic-body preset with brightness 0.85.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `square`
 
@@ -162,6 +188,8 @@ square() -> PopulationSpec
 
 Harmonic-body preset with brightness 0.65.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `noise`
 
 ```rhai,ignore
@@ -169,6 +197,8 @@ noise() -> PopulationSpec
 ```
 
 Harmonic-body preset with brightness 1 and motion 1 (mainly vibrato; jitter is not perceptible in the measured configuration).
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 ### 配置
 
@@ -182,6 +212,8 @@ at(freq_hz) -> Placement
 
 Place at a fixed frequency in Hz, or start an explicitly moving voice here. With explicit `seek_consonance()` and free pitch, this sets the starting position. Otherwise it locks the pitch. `freq()` and `anchor()` lock it; `seek_consonance()` enables movement.
 
+**根拠:** 該当なし（配置）：開始位置、範囲、個体数（§9.3.56）。
+
 #### `consonance`
 
 ```rhai,ignore
@@ -191,6 +223,8 @@ consonance(min_hz, max_hz) -> Placement
 
 Target consonance maxima. Density cloud by default; `.peak()` for the extremum. `consonance(root)` takes a harmonic window around a root (default 1x-4x, set multiples with `range()`); `consonance(min, max)` takes an absolute range. Default spacing is 1.0 ERB.
 
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+
 #### `dissonance`
 
 ```rhai,ignore
@@ -198,6 +232,8 @@ dissonance(min_hz, max_hz) -> Placement
 ```
 
 Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
+
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `edge`
 
@@ -207,6 +243,8 @@ edge(min_hz, max_hz) -> Placement
 
 Target the consonance/dissonance boundary (C near its midpoint). The metastable region between fusion and beating. Density band by default; `.peak()` for the point closest to the boundary.
 
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+
 #### `gap`
 
 ```rhai,ignore
@@ -214,6 +252,8 @@ gap(min_hz, max_hz) -> Placement
 ```
 
 Target empty registers (low subjective intensity); fill the room. Density cloud by default; `.peak()` for the emptiest position.
+
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `peak`
 
@@ -225,6 +265,8 @@ peak()
 
 Realize a field target as its deterministic extremum.
 
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+
 #### `density`
 
 ```rhai,ignore
@@ -234,6 +276,8 @@ density()
 適用対象：`Placement`。
 
 Realize a field target as a stochastic cloud (the default).
+
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `tension`
 
@@ -245,6 +289,8 @@ tension(degree)
 
 Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1). Consonance placement only. 0 leaves ordinary Consonance placement unchanged: `peak()` selects the strongest peak, while the default density remains the ordinary Consonance cloud. Higher values target a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).
 
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+
 #### `random`
 
 ```rhai,ignore
@@ -253,6 +299,8 @@ random(min_hz, max_hz) -> Placement
 
 Log-uniform random placement inside a frequency range.
 
+**根拠:** 該当なし（配置）：開始位置、範囲、個体数（§9.3.56）。
+
 #### `line`
 
 ```rhai,ignore
@@ -260,6 +308,8 @@ line(start_hz, end_hz) -> Placement
 ```
 
 Linear interpolation of positions between two frequencies.
+
+**根拠:** 該当なし（配置）：開始位置、範囲、個体数（§9.3.56）。
 
 #### `count`
 
@@ -271,6 +321,8 @@ count(n)
 
 Positive number of founder voices to place (default 1).
 
+**根拠:** 該当なし（配置）：開始位置、範囲、個体数（§9.3.56）。
+
 #### `range`
 
 ```rhai,ignore
@@ -281,6 +333,8 @@ range(min_mul, max_mul)
 
 Multiplier range relative to the root; only valid on `consonance(root)`.
 
+**根拠:** 該当なし（配置）：開始位置、範囲、個体数（§9.3.56）。
+
 #### `spacing`
 
 ```rhai,ignore
@@ -290,6 +344,8 @@ spacing(min_erb)
 適用対象：`Placement`。
 
 Minimum ERB distance between placed voices; valid on field placements.
+
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 ### TimelineとPopulation
 
@@ -303,6 +359,8 @@ place(population_spec, placement) -> Population
 
 Create a Population at the current script time. `place()` is the sole Population boundary. Configure initial-only properties on the PopulationSpec first; the returned Population exposes only live patches and release.
 
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
 #### `wait`
 
 ```rhai,ignore
@@ -310,6 +368,8 @@ wait(seconds)
 ```
 
 Emit pending live patches, then advance the timeline cursor.
+
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
 #### `flush`
 
@@ -319,6 +379,8 @@ flush()
 
 Emit pending live patches without advancing time.
 
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
 #### `release`
 
 ```rhai,ignore
@@ -327,6 +389,8 @@ release(population)
 
 Close a live Population; its voices enter their release phase and fade out. Release is terminal at the scripting surface: later live patches on the same Population are ignored.
 
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
 #### `section`
 
 ```rhai,ignore
@@ -334,6 +398,8 @@ section(name, callback)
 ```
 
 Named scope; populations placed inside are released when the callback returns.
+
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
 #### `play`
 
@@ -347,6 +413,8 @@ play(callback, [args])
 
 Scoped callback execution with automatic population release. Accepts 0-3 positional arguments, or an array of arguments.
 
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
 #### `parallel`
 
 ```rhai,ignore
@@ -354,6 +422,8 @@ parallel(callbacks)
 ```
 
 Run an array of closures on parallel timelines from the current cursor. Each branch starts at the current cursor; the cursor advances to the latest branch end.
+
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
 #### `output_gain`
 
@@ -363,6 +433,8 @@ output_gain(db)
 
 Set scene-wide playback gain in dB (default 0). The last declaration wins for the whole scene, even after wait(). Added to [audio].output_gain_db; amplitude = 10^((config dB + scene dB)/20), applied immediately before the cpal/WAV output limiter, including limiter none. Analysis, listener, reports and UI bus meters remain unchanged. Accepts integers and floats; values and the combined gain must yield a finite, positive f32 amplitude gain. Invalid values report the declaration position; limits come from f32 representability, not a loudness target.
 
+**根拠:** 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。
+
 #### `seed`
 
 ```rhai,ignore
@@ -370,6 +442,8 @@ seed(value)
 ```
 
 Set the random seed for reproducible scenarios. For a scene, initial RNG seed; a script declaration overrides the CLI seed, and the last declaration wins. For a ModePattern, sets that pattern's private seed. Integer >=0; no fixed seed in top-level composing samples.
+
+**根拠:** 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。
 
 ### Bodyと音色
 
@@ -385,6 +459,8 @@ amp(value)
 
 Amplitude in 0.0-1.0.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `freq`
 
 ```rhai,ignore
@@ -394,6 +470,8 @@ freq(hz)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 #### `brightness`
 
@@ -405,6 +483,8 @@ brightness(value)
 
 Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `spread`
 
 ```rhai,ignore
@@ -414,6 +494,8 @@ spread(value)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Dimensionless detuning spread in [0,1], default 0.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `unison`
 
@@ -425,6 +507,8 @@ unison(count)
 
 Number of unison detuning copies.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `modes`
 
 ```rhai,ignore
@@ -435,6 +519,8 @@ modes(pattern)
 
 Set the mode pattern of a modal body. See the Mode Patterns section for constructors and modifiers.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `adsr`
 
 ```rhai,ignore
@@ -444,6 +530,8 @@ adsr(attack_sec, decay_sec, sustain_level, release_sec)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 ADSR amplitude envelope. Attack, decay and release are nonnegative seconds; sustain level is in [0,1]. Omission uses the selected body's envelope. An explicit envelope alone does not add a mortality drain.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 ### Phonationとリズム
 
@@ -459,6 +547,8 @@ brain(name)
 
 Articulation life: `"entrain"` (default), `"seq"`, or `"drone"`. Selects articulation life independently of onset timing. `entrain` responds to consonance and metabolism. `seq` holds for 1 second, ignoring metabolic controls. `drone` lives until release, with a 0.05 Hz sway whose base amplitude multiplier ranges from 0.3 to 1.0 before rhythm relaxation gain. Explicit metabolic and articulation-rhythm controls ignored by seq/drone produce warnings.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `sustain`
 
 ```rhai,ignore
@@ -469,6 +559,8 @@ sustain()
 
 Sustain phonation mode (default). The default is a continuous note until release. Explicit `sustain()` combined with `metric()`, `entrained()`, `steady()` or `flow()`, in either order, retains the sounding Tone between opportunities. A selected attack replaces it; waiting or skipping retains it. Add `cycles()` or `adaptive_duration()` with `rest()` for finite notes separated by pauses. See the Rhythm chapter for pitch application, tie and persistence.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `rest_on_habituation`
 
 ```rhai,ignore
@@ -478,6 +570,8 @@ rest_on_habituation(w)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 End sustained spans probabilistically as heard attacks become familiar. Initial-only finite nonnegative f32 weight, default 0. Values above 1 proportionally increase exit rate without changing its law. Requires explicit sustain() with metric(), entrained(), steady() or flow(). Shared habitat attack habituation drives exit; private executed attacks govern return after all tails end. Onsets remain on existing legal opportunities and may be vetoed. rest() adds its fixed tail-following gap before recovery resumes. Uses habituation enabled/satiation_sec/recovery_sec; disabled habituation prevents exits. This is an author rule, not phrase perception. Invalid or unsupported values warn and are ignored. Replacements inherit the weight but reset private state.
+
+**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：spanの確率的な退出と私的回復・復帰。重み0で中立（§9.3.96、§9.3.101）。
 
 #### `rest`
 
@@ -490,6 +584,8 @@ rest(periods)
 
 Release each finite participation note, then leave a rest after all its tails finish. Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. `while_alive()` clears finite intent. Released tails keep their pitch.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `repeat`
 
 ```rhai,ignore
@@ -499,6 +595,8 @@ repeat()
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Repeated/pulsed phonation mode.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `metric`
 
@@ -510,6 +608,8 @@ metric()
 
 Confidence-weighted rate and phase attraction to the acoustically confirmed beat. Attracts rate and phase to the beat confirmed from sound; before confirmation, each Voice free-runs with an independent phase. Default entrainment 0.95. The starting rate is the scene's final tempo-basin center, or 2 Hz without a basin. Every crossing is an opportunity, subject to lifecycle, gates and rests. Explicit `sustain()` retains a Tone between crossings. See `pitch_apply_mode()` and `tie()` for how pitch and attacks meet.
 
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>候補（照合未了）：Largeの神経共鳴振動子の形とLarge & Jones（1999）のシミュレーション利得。原典一致・候補受入を認定しない。<br>作者規則：参加、結合の既定値、事前分布。metricのentrainmentは0.95、meter_stabilityの既定は0、basin未指定時の中心は2 Hz。これらの値は原理から導いた定数ではない。
+
 #### `entrained`
 
 ```rhai,ignore
@@ -519,6 +619,8 @@ entrained()
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Adaptive acoustic participation with a lifetime-fixed bodily scale. Uses the intrinsic body period (default 2 Hz) as a starting scale, then adapts participation to heard recurrence. At each opportunity, acoustic context selects sounding, waiting or skipping. Default entrainment 0.5. `intrinsic_rate()` sets the body scale. Explicit `sustain()` retains a Tone while opportunities continue; without it, notes have finite duration.
+
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>作者規則：参加・skip・再帰入力の扱いと結合値。intrinsic_rateは身体の初期尺度（§9.3.55–57）。
 
 #### `steady`
 
@@ -530,6 +632,8 @@ steady()
 
 Fixed private due times; acoustic context selects sound or skip. Keeps a private due-time grid at the intrinsic body period (default 2 Hz). Acoustic context selects sounding or skipping at due time; it does not shift the grid. Default entrainment 0.5. `intrinsic_rate()` sets the body scale. Explicit `sustain()` retains a Tone between opportunities.
 
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>作者規則：参加・skip・再帰入力の扱いと結合値。intrinsic_rateは身体の初期尺度（§9.3.55–57）。
+
 #### `flow`
 
 ```rhai,ignore
@@ -539,6 +643,8 @@ flow()
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Irregular bodily renewal with acoustic timing choices. Draws irregular renewal intervals at the intrinsic body scale (default 2 Hz), with acoustic context selecting sounding, waiting or skipping. Default entrainment 0.05. `intrinsic_rate()` sets the body scale. Finite note lengths use three times the body period. Explicit `sustain()` retains a Tone between opportunities.
+
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>作者規則：参加・skip・再帰入力の扱いと結合値。intrinsic_rateは身体の初期尺度（§9.3.55–57）。
 
 #### `intrinsic_rate`
 
@@ -550,6 +656,8 @@ intrinsic_rate(hz)
 
 Set the intrinsic bodily rate at creation for entrained()/steady()/flow(), in Hz. Initial-only body rate for `entrained()`, `steady()` and `flow()`, in Hz. Default 2 Hz; finite range 0.01..=200 Hz protects execution. Either builder order works. It scales `cycles()`, finite durations and `rest()` together; ADSR release stays in seconds. Replacements start from the Population template. Other timing forms warn and ignore it. This sets a body scale, not a required onset rate.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `entrainment`
 
 ```rhai,ignore
@@ -559,6 +667,8 @@ entrainment(strength)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Preset-specific acoustic timing influence or beat-rate and phase attraction. Order-independent with presets: `entrainment(0.8).metric()` and `metric().entrainment(0.8)` are equivalent. Within a selected preset it changes the timing influence, not the preset. For entrained(), it weights acoustic period adaptation and timing costs; for flow(), acoustic timing costs while the renewal scale stays fixed; for steady(), sound-or-skip costs without adapting the period or moving due. For metric(), beat confidence weights its attraction of both effective rate and phase toward the confirmed beat. Omitted values are 0.95 for metric(), 0.5 for entrained()/steady() and 0.05 for flow(). Zero removes these acoustic timing influences; flow still draws irregular renewal intervals. Without an already coupled timing specification, a bare call initializes Coupled timing with its defaults.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `rhythm_role`
 
@@ -570,6 +680,8 @@ rhythm_role(name)
 
 Metrical job: `"beat"`, `"subdivision"`, `"accent"`, or `"texture"`. `accent` emits a stronger onset that drives the shared meter harder, so a recurring downbeat can seed an emergent measure.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `measure_accent`
 
 ```rhai,ignore
@@ -579,6 +691,8 @@ measure_accent(amount)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Weak onset emphasis following the emergent measure, amount 0-1 (default 0). Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/steady/flow presets.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `microtiming`
 
@@ -590,6 +704,8 @@ microtiming(amount)
 
 Signed beat-phase offset for metric timing, in -0.5..0.5. A value of 0.5 offsets the synchronized target by half a beat. Does not place entrained/steady/flow participants at fixed offsets.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `cycles`
 
 ```rhai,ignore
@@ -599,6 +715,8 @@ cycles(n)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Duration of n rhythm cycles. For entrained/steady/flow, duration uses the intrinsic bodily period set by intrinsic_rate(hz), or 2 Hz when omitted, independently of acoustic cadence adaptation. Metric timing uses its effective beat period. Flow retains its threefold hold multiplier. With rest(), this finite duration is retained independently of sustain() and the participation preset, and each sounded note releases at its scheduled end.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `tie`
 
@@ -610,6 +728,8 @@ tie(p)
 
 Extend a living Tone with probability p at an opportunity without pending pitch. Initial-only probability in [0,1] for free-pitch explicit sustained metric/entrained/steady/flow with gate_snap or rearticulate. At a selected opportunity without pending pitch, extend the living Tone with probability p; otherwise attack. Pending targets and initial/post-rest onsets still attack. Default 1 for sustained metric, 0 for sustained participation. Finite Off, tails, rest and release take priority. Unsupported explicit settings warn and are ignored. This thins opportunities; it does not select phrases or move their timing.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `articulation_persistence`
 
 ```rhai,ignore
@@ -619,6 +739,8 @@ articulation_persistence(p)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Retain a Voice's private articulation policy across pitch adoptions and sustained clock opportunities. Initial-only policy inertia in [0,1], default 0. Requires free-pitch sustained metric/entrained/steady/flow, rearticulate and a positive boundary. Base follows that boundary; Connect glides adoptions and extends living Tones at sounded opportunities. Small moves and cost skips propose Connect; large moves and selected sounding propose Base. For 0<p<1, opposing proposals retain the policy with probability p. Endpoints use Base. Rest, release and legal initial onsets take priority. Unsupported settings warn and are ignored. This is policy inertia, not a legato proportion.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 ### Pitch Movement
 
@@ -634,6 +756,8 @@ dwell(w)
 
 Slow pitch proposals while the current environment level is high. Initial-only author rule for free seek_consonance(), default 0. Finite nonnegative f32 weights have no upper clamp; negative, non-finite or unsupported values warn and become 0. Proposal phase advances at max{0,1+w*(1-2L)}; L is the habituated environment level at the current pitch, using pitch self-exclusion when available. For w>1 it stops at L>=(1+1/w)/2; maximum speed is 1+w at L=0. Replacements inherit weight and reset phase. Gap preserves the clock. Adaptation and movement costs retain their time units. Proposals never force onsets or change sound duration. See the Rhythm chapter for interpolation, conversion and why habituation does not guarantee departure.
 
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：馴化後の場の水準に応じた提案の遅延。重み0で中立（§9.3.98）。
+
 #### `follow_own_sequence`
 
 ```rhai,ignore
@@ -643,6 +767,8 @@ follow_own_sequence(w)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Favor continuations learned from this Voice's executed pitch intervals. Initial-only finite nonnegative score/bit weight; default 0, example 0.05. Negative or non-finite values warn and become 0. Requires free seek_consonance(), sustained metric/entrained/steady/flow, gate_snap or rearticulate, and rearticulate_above(0). Glide and unsupported final forms warn and disable it. Existing tie behavior remains. Candidate model: PPM-Decay (Harrison, Bianco, Chait, Pearce 2020). Symbol encoding and generation coupling are author rules. Learns rounded intervals from committed self onsets; output stays unquantized. Adds follow after candidate generation. Replacements inherit weight but start empty. No rhythm, harmony or phrase learning. See Rhythm for resource limits and numerical failures.
+
+**根拠:** 候補（PPM-Decay、Harrisonほか2020）：公表解析の固定モデル。原典fixtureの照合範囲は分布・情報量・学習状態であり、R APIや乱数生成器の同値性ではない（§9.3.105）。<br>作者規則：実行された音程の符号化、実行への接続、候補生成後の追従評価。重みの既定値は0。既定の聴き手の型への採用は未実施（§9.3.105）。
 
 #### `anchor`
 
@@ -654,6 +780,8 @@ anchor()
 
 Hold the voice at its pitch: an anchored voice never moves. `at()` anchors implicitly unless the final spec explicitly seeks consonance and remains free; in that case it sets only the initial position. `freq()` still sets an anchored pitch. A later `anchor()` or `freq()` overrides movement, while a later `seek_consonance()` restores it. Use `anchor()` to hold strategy-placed voices (`consonance()`, `dissonance()`, ...) at their settled position, or to state the intent explicitly.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `seek_consonance`
 
 ```rhai,ignore
@@ -663,6 +791,8 @@ seek_consonance()
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Free movement toward better field positions; defaults to hill-climb and a 0.30-second glide. With this explicit intent and a final free pitch mode, `at(hz)` sets only the initial position. A later `freq()` or `anchor()` restores the lock; calling `seek_consonance()` after either restores movement. How pitch decisions land is resolved at placement unless `pitch_apply_mode()` was called: sustained voices glide, re-attacking voices (`pulse()`, `metric()`, `entrained()`, `steady()`, `flow()`) snap at onsets. Explicit `glide()` and `pitch_core()` choices override these defaults in either builder order.
+
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：協和の評価と局所探索。重みとglideの既定値を含む（§9.3.98）。
 
 #### `glide`
 
@@ -674,6 +804,8 @@ glide(tau_sec)
 
 Pitch glide time constant in seconds. Glide time constant in seconds, nonnegative. `seek_consonance()` defaults to 0.30 seconds unless explicitly set; otherwise the control default is 0 seconds. Applies in glide mode and to small moves in rearticulate mode.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `rearticulate_above`
 
 ```rhai,ignore
@@ -683,6 +815,8 @@ rearticulate_above(cents)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Nonnegative boundary in cents from the last sounded pitch; default 0. Distance boundary in cents, nonnegative, default 0. Requires rearticulate mode; other modes warn and ignore it. Adopted moves at or below a positive boundary glide; larger ones wait for a sounded opportunity, or attack at adoption in continuous Hold without coupled timing. The reference is the last actual onset pitch. Zero uses gate_snap behavior for sustained coupled timing. A live boundary change applies at the next adoption.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 #### `pitch_apply_mode`
 
@@ -694,6 +828,8 @@ pitch_apply_mode(name)
 
 `"gate_snap"`, `"glide"` or `"rearticulate"`: choose how adopted pitch targets are applied. Choose `gate_snap`, `glide` or `rearticulate`. Moving continuous and explicitly sustained voices default to glide; finite gated voices default to gate_snap. Gate_snap holds the latest adopted target for a sounded opportunity. Glide slides continuously. Rearticulate uses `rearticulate_above()` to glide small moves and defer larger ones; continuous Hold without coupled opportunities attacks at adoption. Free-pitch finite gated rearticulate is an error. Live mode changes keep the sounding Tone, clear pending attacks and emit no attack. Sustained metric uses shared-beat crossings; sustained participation can wait or skip.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `temperature`
 
 ```rhai,ignore
@@ -704,6 +840,8 @@ temperature(value)
 
 Search temperature shared by both pitch cores: 0 settles greedily, higher is more exploratory. The single stochastic-search knob. At 0 the hill-climb is greedy (move only on a clear improvement, otherwise stay) and the peak sampler takes the argmax candidate. Higher values let the hill-climb accept downhill moves (Metropolis) and soften the peak sampler's candidate choice. Musically the movement-tension dial; its placement twin is `tension()`.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `proposal_interval`
 
 ```rhai,ignore
@@ -713,6 +851,8 @@ proposal_interval(seconds)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Proposal generation interval in seconds. Controls opportunities to propose a pitch target, not the bodily participation rate set by intrinsic_rate(hz). A proposal or adoption is not necessarily a sounded onset.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 ### 近傍の知覚
 
@@ -729,6 +869,8 @@ avoid_neighbors(strength, sigma_cents)
 
 Crowding repulsion from neighboring voices. With one argument the repulsion width uses the default; the two-argument form sets it explicitly in cents.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `leave_self_out`
 
 ```rhai,ignore
@@ -738,6 +880,8 @@ leave_self_out(enabled)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Evaluate the field without this voice when choosing pitch. Default false, unlike Flora's true: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：H/R入力から自己のhabitat PCMを除く選択。Voiceの既定はfalse、Floraはtrue。Floraの資源powerの自己除外とは独立（§9.3.95）。
 
 ### LifecycleとViability
 
@@ -753,6 +897,8 @@ endurance(seconds)
 
 Nominal survival time at zero field fit, excluding the release tail. Energy is normalized to 0-1. The runtime drain rate is derived at spawn; actual lifetime varies with field fit, attacks, recovery, and release time.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `recovery`
 
 ```rhai,ignore
@@ -762,6 +908,8 @@ recovery(seconds)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Time to refill normalized energy from empty at full viability. Optional. If omitted, continuous recovery is disabled. This does not govern the separate per-attack economy.
+
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 
 #### `attack_cost_fraction`
 
@@ -773,6 +921,8 @@ attack_cost_fraction(value)
 
 Fraction of normalized energy spent by a full-strength attack.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `attack_recharge_fraction`
 
 ```rhai,ignore
@@ -782,6 +932,8 @@ attack_recharge_fraction(value)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Maximum normalized energy restored by a fully consonant attack.
+
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 
 #### `sustain_drive`
 
@@ -793,6 +945,8 @@ sustain_drive(value)
 
 Nonnegative dimensionless continuous drive for sustained voices, default 0.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `consonance_viability`
 
 ```rhai,ignore
@@ -803,6 +957,8 @@ consonance_viability(low, high)
 
 Viability window in unbounded Consonance Field scores. Thresholds are finite Consonance Field scores, not bounded levels. Below low the continuous fitness is zero; above high it is one. Defaults to total without a viability window, environment with one; explicit `viability_scope()` overrides that default in either builder order.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `dissonance_penalty`
 
 ```rhai,ignore
@@ -812,6 +968,8 @@ dissonance_penalty(value)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 How strongly good field fit extends life beyond zero-fit endurance. The zero-fit endurance remains fixed; the penalty changes how much longer a well-fit voice survives.
+
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 
 ### Respawn
 
@@ -827,6 +985,8 @@ respawn_random()
 
 Respawn without parent inheritance. Candidates come from the Population's original Placement and, when set, `respawn_settle()` adds alternative candidates. The current scene score weights the final choice, so this is not uniform random placement.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `respawn_hereditary`
 
 ```rhai,ignore
@@ -836,6 +996,8 @@ respawn_hereditary(sigma_oct)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Respawn near an energy-weighted living parent with Gaussian standard deviation sigma_oct in octaves. Candidates share one selected parent. The candidate with the highest current Consonance Field level is used.
+
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 
 #### `respawn_consonance`
 
@@ -847,6 +1009,8 @@ respawn_consonance()
 
 Respawn from high field-score peaks, biased around an energy-weighted living parent. When living members exist, one parent is selected by energy. Candidate peaks come from the current Consonance Field and are weighted by scene score and their relation to the parent; without a usable peak, the policy falls back to the parent or original Placement.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `respawn_capacity`
 
 ```rhai,ignore
@@ -856,6 +1020,8 @@ respawn_capacity(count)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Maximum number of living members in the Population. Defaults to the number of founder Voices created by `place()` and cannot be lower than that founder count.
+
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 
 #### `respawn_settle`
 
@@ -867,6 +1033,8 @@ respawn_settle(placement)
 
 Add a Placement source to the replacement candidate pool. The policy's own baseline still supplies one candidate; this Placement supplies the remaining alternatives. Requires a strategy-bearing placement: `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()` (not `at()`).
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `respawn_min_consonance`
 
 ```rhai,ignore
@@ -877,6 +1045,8 @@ respawn_min_consonance(level)
 
 Minimum consonance level for respawn acceptance. Minimum Consonance Field level in [0,1]; omitted means no level threshold. A level is a bounded sigmoid view of a score.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 #### `respawn_background_death_rate`
 
 ```rhai,ignore
@@ -886,6 +1056,8 @@ respawn_background_death_rate(rate)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Background turnover rate per second.
+
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 
 ### Mode Pattern
 
@@ -899,6 +1071,8 @@ harmonic_modes() -> ModePattern
 
 Harmonic series: f, 2f, 3f, ...
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `odd_modes`
 
 ```rhai,ignore
@@ -906,6 +1080,8 @@ odd_modes() -> ModePattern
 ```
 
 Odd harmonics: f, 3f, 5f, ...
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `power_modes`
 
@@ -915,6 +1091,8 @@ power_modes(beta) -> ModePattern
 
 Power law: f * n^beta.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `stiff_string_modes`
 
 ```rhai,ignore
@@ -922,6 +1100,8 @@ stiff_string_modes(stiffness) -> ModePattern
 ```
 
 Stiffness-adjusted harmonics.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `custom_modes`
 
@@ -931,6 +1111,8 @@ custom_modes(ratios) -> ModePattern
 
 Custom frequency ratios from an array.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `modal_table`
 
 ```rhai,ignore
@@ -938,6 +1120,8 @@ modal_table(name) -> ModePattern
 ```
 
 Named mode table lookup. Canonical names: `uniform_aluminum_bar`, `uniform_wooden_bar`, `xylophone`, `vibraphone_1`, `vibraphone_2`, `wine_glass`. Names are case-sensitive; an unknown name is a script error.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `landscape_density_modes`
 
@@ -947,6 +1131,8 @@ landscape_density_modes() -> ModePattern
 
 Modes selected from the strongest live landscape density-mass positions. Selection is deterministic: after each strongest position is chosen, nearby weights are suppressed according to `spacing()`. Falls back to harmonic modes when live landscape data yields no usable position.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：Landscapeの密度・極値から身体のモードを選ぶ規則。入力の評価も作者の規則。
+
 #### `landscape_peaks_modes`
 
 ```rhai,ignore
@@ -954,6 +1140,8 @@ landscape_peaks_modes() -> ModePattern
 ```
 
 Modes selected from the strongest local peaks of the live Consonance Field level. Selection is deterministic and enforces the ERB separation from `spacing()`. Falls back to harmonic modes when live landscape data yields no usable peak.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：Landscapeの密度・極値から身体のモードを選ぶ規則。入力の評価も作者の規則。
 
 #### `count`
 
@@ -965,6 +1153,8 @@ count(n)
 
 Number of modes.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `range`
 
 ```rhai,ignore
@@ -974,6 +1164,8 @@ range(min_mul, max_mul)
 適用対象：`ModePattern`。
 
 Frequency multipliers relative to the fundamental; only valid on `landscape_*_modes()`.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `spacing`
 
@@ -985,6 +1177,8 @@ spacing(min_erb)
 
 Minimum ERB distance between modes; only valid on `landscape_*_modes()`.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `gamma`
 
 ```rhai,ignore
@@ -994,6 +1188,8 @@ gamma(g)
 適用対象：`ModePattern`。
 
 Density sharpening exponent; only valid on `landscape_density_modes()`.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 #### `jitter`
 
@@ -1005,6 +1201,8 @@ jitter(cents)
 
 Randomize mode frequencies by up to the given cents.
 
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `seed`
 
 ```rhai,ignore
@@ -1014,6 +1212,8 @@ seed(value)
 適用対象：`ModePattern`。
 
 Random seed for jittered patterns (>= 0). For a scene, initial RNG seed; a script declaration overrides the CLI seed, and the last declaration wins. For a ModePattern, sets that pattern's private seed. Integer >=0; no fixed seed in top-level composing samples.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
 ### Routing
 
@@ -1029,6 +1229,8 @@ send(bus)
 
 Route the voice to specific buses; accepts a `Bus` or a `BusSet`. PopulationSpec only. `send(habitat_bus)` makes a voice sensed by the ecology but absent from the presented sound; `send(presentation_bus)` is heard without perturbing the ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).
 
+**根拠:** 該当なし（経路）：busの選択・結合。独立した自己知覚の規則はleave_self_outを参照。
+
 ### Directorとglobal parameter
 
 scene全体の地形形成と研究用control。director verbはsoft priorであり、地形を形づくるが、beatをscheduleしたりmeasureを強制したりはしない。
@@ -1041,6 +1243,8 @@ meter_stability(value)
 
 Attractor depth in 0-1: how readily a pulse forms. Scene-wide initial condition in [0,1], default 0; the last declaration wins. Shapes how readily a beat forms and the influence of the tempo basin. It does not schedule onsets.
 
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>候補（照合未了）：Largeの神経共鳴振動子の形とLarge & Jones（1999）のシミュレーション利得。原典一致・候補受入を認定しない。<br>作者規則：参加、結合の既定値、事前分布。metricのentrainmentは0.95、meter_stabilityの既定は0、basin未指定時の中心は2 Hz。これらの値は原理から導いた定数ではない。
+
 #### `temporal_basin`
 
 ```rhai,ignore
@@ -1048,6 +1252,8 @@ temporal_basin(min_hz, max_hz)
 ```
 
 Set the beat's tempo band and metric Voice/Flora pace prior. Scene-wide initial condition: the last declaration applies to every metric Population and every Flora, regardless of cursor position. Bounds are Hz, sanitized to the supported tempo band; their center initializes metric Voices and attracts the inferred beat according to meter stability. Every Flora follows confirmed acoustic beats and otherwise returns to the center. Without a basin the center is 2 Hz. Participating presets use their own intrinsic rate. This does not schedule a beat.
+
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>候補（照合未了）：Largeの神経共鳴振動子の形とLarge & Jones（1999）のシミュレーション利得。原典一致・候補受入を認定しない。<br>作者規則：参加、結合の既定値、事前分布。metricのentrainmentは0.95、meter_stabilityの既定は0、basin未指定時の中心は2 Hz。これらの値は原理から導いた定数ではない。
 
 #### `set_roughness_aversion`
 
@@ -1057,6 +1263,8 @@ set_roughness_aversion(weight)
 
 How much the modeled listener minds roughness (default 1.0). Cursor event: changes roughness valuation from this script time onward. Dimensionless, nonnegative; zero removes aversion. Does not change raw roughness sensation.
 
+**根拠:** 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。
+
 #### `set_pitch_objective`
 
 ```rhai,ignore
@@ -1064,6 +1272,8 @@ set_pitch_objective(name)
 ```
 
 Cursor event: choose consonance or dissonance valuation. Cursor event: changes pitch valuation from this script time onward. Canonical names: `consonance` (default) and `dissonance` (negative consonance). Does not change the sensation model.
+
+**根拠:** 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。
 
 ## Experimental
 
@@ -1079,6 +1289,8 @@ flora() -> FloraSpec
 
 Build a FloraSpec for spectral growth over a frequency extent. Defaults: pace 1, amp 0.03, fade 2 s, sine tone, residual disabled, leave_self_out true, both buses. Every Flora uses the shared habitat audio-only meter and a private CouplingClock (0.95). Fresh confirmed beats guide lane opportunities and ecological pace; unknown, stale or unconfirmed evidence restores continuous allocation and temporal_basin center pace (default 2 Hz). At frequency f and pace k, growth is 4kf/s, recovery is 20/(kf) seconds and consumption is 0.6/(kf) seconds. Pending windows reserve current excess once. While fresh confirmed beat observations are available, births occur at sample crossings. Support loss and release retire immediately. Birth ticks mark allocation; amplitude slew delays acoustic onset detection. All retiring lanes use a finite metabolic tail, bounded by macro fade; fade(0) ends immediately.
 
+**根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
+
 #### `fade`
 
 ```rhai,ignore
@@ -1088,6 +1300,8 @@ fade(seconds)
 適用対象：`FloraSpec`。
 
 Set Flora's placement and release fade in [0, 60] seconds. Requires a finite value before and after f32 conversion; invalid values raise script errors.
+
+**根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
 
 #### `tone`
 
@@ -1099,6 +1313,8 @@ tone(name)
 
 Choose Flora's tonal atom: exactly "sine" or "resonant". Other strings raise script errors.
 
+**根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
+
 #### `residual`
 
 ```rhai,ignore
@@ -1108,6 +1324,8 @@ residual(enabled)
 適用対象：`FloraSpec`。
 
 Enable or disable rendering diffuse Flora mass as band noise. Disabled by default; residual(true) opts in.
+
+**根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
 
 ### Phonationとリズム
 
@@ -1120,6 +1338,8 @@ phonate_when_viable()
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Withhold the first onset until perceived consonance is viable. Silently settles into the field until consonance reaches the low bound of the voice's consonance-viability window (`consonance_viability()`, or always-viable if that window was never set), then phonates normally and never re-gates. A voice that never settles dies unheard and the respawn policy replaces it -- there is no timeout parameter, the energy economy is the timeout.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 ## Mechanism Tuning
 
@@ -1137,6 +1357,8 @@ once()
 
 Single trigger.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `pulse`
 
 ```rhai,ignore
@@ -1146,6 +1368,8 @@ pulse(rate_hz)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Pulse at an explicit rate in Hz.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `while_alive`
 
@@ -1157,6 +1381,8 @@ while_alive()
 
 Hold/sustain until release. Resets timing to one continuous note and clears finite duration, rest-sustain and explicit sustained-participation intent. Unlike `sustain()`, combining it with a timing preset does not retain a sounding Tone between that preset's opportunities. The last timing choice wins.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `adaptive_duration`
 
 ```rhai,ignore
@@ -1166,6 +1392,8 @@ adaptive_duration()
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `pulse_lock`
 
@@ -1177,6 +1405,8 @@ pulse_lock(depth)
 
 Low-level pulse phase weighting in 0-1.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `social`
 
 ```rhai,ignore
@@ -1186,6 +1416,8 @@ social(coupling)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Social coupling for participation or `pulse()`, in 0-1.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `duration_range`
 
@@ -1197,6 +1429,8 @@ duration_range(min_cycles, max_cycles)
 
 Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `duration_curve`
 
 ```rhai,ignore
@@ -1206,6 +1440,8 @@ duration_curve(k, x0)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Adaptive duration curve parameters.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `shorten_on_drop`
 
@@ -1217,6 +1453,8 @@ shorten_on_drop(gain)
 
 Shorten adaptive duration when field support drops.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `rhythm_freq`
 
 ```rhai,ignore
@@ -1226,6 +1464,8 @@ rhythm_freq(freq_hz)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Internal theta/rhythm oscillator frequency. Sets the Entrain articulation core oscillator; it does not set the entrained()/steady()/flow() participation scale. Use intrinsic_rate(hz) for that bodily rate.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 #### `rhythm_coupling_vitality`
 
@@ -1237,6 +1477,8 @@ rhythm_coupling_vitality(lambda_v, v_floor)
 
 Vitality-modulated rhythm coupling.
 
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
 #### `rhythm_reward`
 
 ```rhai,ignore
@@ -1246,6 +1488,8 @@ rhythm_reward(rho_t, metric)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`. Gain rho_t and metric `attack_phase_match` or `none` (default). Effective only for brain entrain, continuous Hold phonation and autonomous attacks (glide or gate_snap, without sustained coupled timing). Gated or coupled opportunities use ordinary consonance recharge and ignore this reward, producing a warning when explicitly requested.
+
+**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
 ### Pitch Movement
 
@@ -1259,6 +1503,8 @@ landscape_weight(value)
 
 Nonnegative dimensionless landscape-objective weight, default 1.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `neighbor_step_cents`
 
 ```rhai,ignore
@@ -1268,6 +1514,8 @@ neighbor_step_cents(value)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Step size for neighbor exploration in cents.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 #### `move_cost`
 
@@ -1279,6 +1527,8 @@ move_cost(coeff)
 
 Nonnegative dimensionless movement-cost coefficient, default 0.5.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `move_cost_exp`
 
 ```rhai,ignore
@@ -1288,6 +1538,8 @@ move_cost_exp(exp)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Exponent for the move cost.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 #### `tessitura_gravity`
 
@@ -1299,6 +1551,8 @@ tessitura_gravity(value)
 
 Nonnegative dimensionless attraction toward the tessitura center; omission uses the pitch core default.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `window_cents`
 
 ```rhai,ignore
@@ -1308,6 +1562,8 @@ window_cents(width)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Peak-sampler search window width in cents.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 #### `top_k`
 
@@ -1319,6 +1575,8 @@ top_k(count)
 
 Number of top candidates kept by the peak sampler.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `sigma_cents`
 
 ```rhai,ignore
@@ -1329,6 +1587,8 @@ sigma_cents(spread)
 
 Gaussian spread of the peak sampler in cents.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `random_candidates`
 
 ```rhai,ignore
@@ -1338,6 +1598,8 @@ random_candidates(count)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Number of random candidates considered.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 #### `global_peaks`
 
@@ -1350,6 +1612,8 @@ global_peaks(count, min_sep_cents)
 
 Global field peaks as movement candidates, with optional minimum separation.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `ratio_candidates`
 
 ```rhai,ignore
@@ -1359,6 +1623,8 @@ ratio_candidates(count)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Ratio-based movement candidates; 0 disables.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 ### 近傍の知覚
 
@@ -1372,6 +1638,8 @@ crowding_target(same_visible, other_visible)
 
 Which voices are visible to crowding: own population, other populations (booleans).
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 ### LifecycleとViability
 
 #### `viability_scope`
@@ -1384,6 +1652,8 @@ viability_scope(name)
 
 `"environment"` or `"total"`: choose the field used for viability. Environment uses the same PCM self-removal observation as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 
+**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
+
 ### Directorとglobal parameter
 
 #### `set_global_coupling`
@@ -1393,6 +1663,8 @@ set_global_coupling(value)
 ```
 
 Cursor event: nonnegative dimensionless Voice interaction strength (default 1). Cursor event: changes interaction strength from this script time onward. Dimensionless, nonnegative, default 1.
+
+**根拠:** 作者規則：結合の重み。Voice間の結合と聴き手のDCC帰還は別経路（§9.3.57）。
 
 ## Research Controls
 
@@ -1408,6 +1680,8 @@ temporal_mode(name)
 
 Select off or observe for new temporal cognition before playback. Declare once at top level before events or time advance. Default off keeps behavior. Observe currently tracks ordered NSGT evidence on both buses; relation inference remains unknown and no new action pressure is applied. Participate is rejected until implemented and calibrated. Run a new scenario to change mode.
 
+**根拠:** 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。
+
 ### Pitch Movement
 
 #### `pitch_core`
@@ -1420,6 +1694,8 @@ pitch_core(name)
 
 `"hill_climb"` or `"peak_sampler"`. Research control.
 
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
+
 #### `move_cost_time_scale`
 
 ```rhai,ignore
@@ -1429,6 +1705,8 @@ move_cost_time_scale(name)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`. Canonical names: `legacy` (default, integration-window scaling) and `proposal_interval`. Research control; changes the time scale used for movement cost.
+
+**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
 ### Directorとglobal parameter
 
@@ -1440,6 +1718,8 @@ control_update_mode(name)
 
 `"snapshot_phased"` (default) or `"sequential_rotating"`. Scene-wide research control. Scene-wide initial condition; the last declaration wins. Canonical names: `snapshot_phased` (default) and `sequential_rotating`.
 
+**根拠:** 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。
+
 #### `scaffold_off`
 
 ```rhai,ignore
@@ -1447,6 +1727,8 @@ scaffold_off()
 ```
 
 Disable the external rhythm scaffold. Scene-wide initial condition; the last declaration wins. Scaffolds are external comparison controls for demos and assays, not the rhythm-composition abstraction.
+
+**根拠:** 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。
 
 #### `scaffold_shared`
 
@@ -1456,6 +1738,8 @@ scaffold_shared(freq_hz)
 
 Shared external scaffold pulse. Scene-wide initial condition; the last declaration wins. Frequency is nonnegative Hz; the default scene has no external scaffold.
 
+**根拠:** 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。
+
 #### `scaffold_scrambled`
 
 ```rhai,ignore
@@ -1463,3 +1747,85 @@ scaffold_scrambled(freq_hz, seed)
 ```
 
 Per-voice scrambled scaffold pulse. Scene-wide initial condition; the last declaration wins. Frequency is nonnegative Hz; the default scene has no external scaffold.
+
+**根拠:** 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。
+
+## 設定の根拠
+
+以下はAppConfigの末端キーであり、新たなRhai関数ではありません。研究設定の層1・4の制約は維持され、協和の評価係数をRhaiへ直接公開する変更もありません。任意の設定は引き続き省略できます。busの結合（`|`）は該当なし（経路）です。`send()`と組み込みbusの説明を参照してください。
+
+| キー | 根拠 |
+|-----|----------|
+| `birth_surrogate` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `body_metabolism.enabled` | 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。 |
+| `body_metabolism.updates_per_hop` | 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。 |
+| `body_metabolism.observation_frames` | 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。 |
+| `body_metabolism.representative_hold_sec` | 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。 |
+| `render_prototype` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `temporal_meter_t2` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `audio.latency_ms` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `audio.sample_rate` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `audio.limiter` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `audio.output_gain_db` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `analysis.nfft` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `analysis.hop_size` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `analysis.tau_ms` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `analysis.kernel_align` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `psychoacoustics.loudness_exp` | 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：採用した感覚実装の尺度。全係数の原典一致の認定でも、層1の感覚を作曲用に開放する札でもない（§9.3.94）。 |
+| `psychoacoustics.roughness_k` | 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：採用した感覚実装の尺度。全係数の原典一致の認定でも、層1の感覚を作曲用に開放する札でもない（§9.3.94）。 |
+| `psychoacoustics.consonance.field.kernel.a` | 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。 |
+| `psychoacoustics.consonance.field.kernel.b` | 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。 |
+| `psychoacoustics.consonance.field.kernel.c` | 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。 |
+| `psychoacoustics.consonance.field.kernel.d` | 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。 |
+| `psychoacoustics.consonance.field.level.beta` | 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。 |
+| `psychoacoustics.consonance.field.level.theta` | 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。 |
+| `psychoacoustics.consonance.density.roughness_gain` | 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。 |
+| `psychoacoustics.habituation.enabled` | 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。 |
+| `psychoacoustics.habituation.satiation_sec` | 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。 |
+| `psychoacoustics.habituation.recovery_sec` | 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。 |
+| `psychoacoustics.habituation.ref_drive` | 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。 |
+| `psychoacoustics.use_incoherent_power` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `dcc.coupling_strength` | 作者規則：結合の重み。Voice間の結合と聴き手のDCC帰還は別経路（§9.3.57）。 |
+| `dcc.max_temperature_bonus` | 作者規則：結合の重み。Voice間の結合と聴き手のDCC帰還は別経路（§9.3.57）。 |
+| `playback.wait_user_exit` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `playback.wait_user_start` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
+| `temporal_ridge.means` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_ridge.deviations` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.group_means` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.group_deviations` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.accent_means` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.accent_deviations` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.group_retirement_sec` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.inactive_energy_max` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.correlation_window_sec` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.min_pairs` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.min_coverage` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_acoustic.persistence_hops` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_period.model` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_period.horizon_sec` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.component_weights` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.gain` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.threshold` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.weight_gain` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.window` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.combination` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.attribution` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_t2.unknown` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body.means` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body.deviations` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body.accent_means` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body.accent_deviations` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body_prototypes.model_version` | 該当なし（観測データ）：凍結した記述子、識別子、取得時の構成。データを認知の定数としない。 |
+| `temporal_body_prototypes.sample_rate` | 該当なし（観測データ）：凍結した記述子、識別子、取得時の構成。データを認知の定数としない。 |
+| `temporal_body_prototypes.nfft` | 該当なし（観測データ）：凍結した記述子、識別子、取得時の構成。データを認知の定数としない。 |
+| `temporal_body_prototypes.hop_size` | 該当なし（観測データ）：凍結した記述子、識別子、取得時の構成。データを認知の定数としない。 |
+| `temporal_body_prototypes.means` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body_prototypes.deviations` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body_prototypes.accent_means` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body_prototypes.accent_deviations` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_body_prototypes.medoids.record_id` | 該当なし（観測データ）：凍結した記述子、識別子、取得時の構成。データを認知の定数としない。 |
+| `temporal_body_prototypes.medoids.raw_values` | 該当なし（観測データ）：凍結した記述子、識別子、取得時の構成。データを認知の定数としない。 |
+| `temporal_body_prototypes.medoids.mask` | 該当なし（観測データ）：凍結した記述子、識別子、取得時の構成。データを認知の定数としない。 |
+| `temporal_onset_comparison.footprint` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_onset_comparison.arrival` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
+| `temporal_onset_comparison.arrival_weight` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |

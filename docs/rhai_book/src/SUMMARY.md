@@ -10,6 +10,7 @@
 
 # Concepts
 
+- [Mechanism Evidence and Choices](concepts/evidence.md)
 - [Population — A Persistent Unit of Voices](concepts/voice_life.md)
 - [Flora](concepts/flora.md)
 - [Voice and Landscape — Sound–Environment Feedback](concepts/ecological_loop.md)

@@ -231,6 +231,27 @@ fn doc_index() -> Result<BTreeMap<(&'static str, Owner), &'static FnDoc>, Vec<St
             ));
         }
     }
+    for (name, parts) in docs::FN_DOCS
+        .iter()
+        .map(|doc| (doc.name, doc.evidence))
+        .chain(docs::TYPE_DOCS.iter().map(|doc| (doc.name, doc.evidence)))
+        .chain(docs::CONST_DOCS.iter().map(|doc| (doc.name, doc.evidence)))
+        .chain(docs::CONFIG_DOCS.iter().map(|doc| (doc.name, doc.evidence)))
+    {
+        if parts.is_empty()
+            || parts
+                .iter()
+                .any(|part| part.en.is_empty() || part.ja.is_empty())
+        {
+            errors.push(format!("missing bilingual evidence: {name}"));
+        }
+    }
+    let mut config_names = BTreeSet::new();
+    for doc in docs::CONFIG_DOCS {
+        if !config_names.insert(doc.name) {
+            errors.push(format!("duplicate configuration evidence: {}", doc.name));
+        }
+    }
     if errors.is_empty() {
         Ok(index)
     } else {
@@ -370,11 +391,17 @@ pub fn render_d_rhai() -> String {
     out.push_str("/// # Types\n");
     for doc in docs::TYPE_DOCS {
         let _ = writeln!(out, "/// - {}: {}", doc.name, doc.summary);
+        for part in doc.evidence {
+            let _ = writeln!(out, "///   Evidence: {}", part.en);
+        }
     }
     out.push_str("module static;\n\n");
     out.push_str("// Built-in buses (registered as module constants).\n");
     for c in docs::CONST_DOCS {
         let _ = writeln!(out, "/// {}", c.summary);
+        for part in c.evidence {
+            let _ = writeln!(out, "/// Evidence: {}", part.en);
+        }
         let _ = writeln!(out, "const {}: {};", c.name, c.ty);
     }
 
@@ -393,6 +420,9 @@ pub fn render_d_rhai() -> String {
             let _ = writeln!(out, "/// {tag}{}", doc.summary);
             for line in doc.details.lines() {
                 let _ = writeln!(out, "/// {line}");
+            }
+            for part in doc.evidence {
+                let _ = writeln!(out, "/// Evidence: {}", part.en);
             }
             let _ = writeln!(out, "{}", sig.decl(doc));
         }
@@ -421,6 +451,17 @@ pub fn render_reference_md_ja() -> String {
 enum ReferenceLanguage {
     English,
     Japanese,
+}
+
+fn evidence_text(parts: &[docs::EvidenceDoc], language: ReferenceLanguage) -> String {
+    parts
+        .iter()
+        .map(|part| match language {
+            ReferenceLanguage::English => part.en,
+            ReferenceLanguage::Japanese => part.ja,
+        })
+        .collect::<Vec<_>>()
+        .join("<br>")
 }
 
 fn render_reference_md_for(language: ReferenceLanguage) -> String {
@@ -474,35 +515,37 @@ exist for studying the instrument, not composing with it.\n\n",
 
     match language {
         ReferenceLanguage::English => {
-            out.push_str("## Types\n\n| Type | Description |\n|------|-------------|\n")
+            out.push_str("Evidence labels describe parts of a mechanism, independently of disclosure tiers. See [Mechanism evidence and choices](../concepts/evidence.md). Labels do not change defaults or certify acceptance.\n\n## Types\n\n| Type | Description | Evidence |\n|------|-------------|----------|\n")
         }
         ReferenceLanguage::Japanese => {
-            out.push_str("## 型\n\n| 型 | 説明 |\n|------|-------------|\n")
+            out.push_str("根拠の札は機構の部分ごとに付き、公開用途の区分とは独立です。[機構の根拠と作曲者の選択](../concepts/evidence.md)を参照してください。札の追加は既定値の変更や受入の認定ではありません。\n\n## 型\n\n| 型 | 説明 | 根拠 |\n|------|-------------|----------|\n")
         }
     }
     for t in docs::TYPE_DOCS {
         let _ = writeln!(
             out,
-            "| `{}` | {} |",
+            "| `{}` | {} | {} |",
             t.name,
-            localized_type_summary(t, language)
+            localized_type_summary(t, language),
+            evidence_text(t.evidence, language)
         );
     }
     match language {
         ReferenceLanguage::English => out.push_str(
-            "\n## Built-in Constants\n\n| Constant | Type | Description |\n|----------|------|-------------|\n",
+            "\n## Built-in Constants\n\n| Constant | Type | Description | Evidence |\n|----------|------|-------------|----------|\n",
         ),
         ReferenceLanguage::Japanese => out.push_str(
-            "\n## 組み込み定数\n\n| 定数 | 型 | 説明 |\n|----------|------|-------------|\n",
+            "\n## 組み込み定数\n\n| 定数 | 型 | 説明 | 根拠 |\n|----------|------|-------------|----------|\n",
         ),
     }
     for c in docs::CONST_DOCS {
         let _ = writeln!(
             out,
-            "| `{}` | `{}` | {} |",
+            "| `{}` | `{}` | {} | {} |",
             c.name,
             c.ty,
-            localized_const_summary(c, language)
+            localized_const_summary(c, language),
+            evidence_text(c.evidence, language)
         );
     }
 
@@ -611,8 +654,29 @@ disappear as their research questions settle.",
                     out.push_str(doc.details);
                 }
                 out.push('\n');
+                let label = match language {
+                    ReferenceLanguage::English => "Evidence",
+                    ReferenceLanguage::Japanese => "根拠",
+                };
+                let _ = writeln!(
+                    out,
+                    "\n**{label}:** {}",
+                    evidence_text(doc.evidence, language)
+                );
             }
         }
+    }
+    match language {
+        ReferenceLanguage::English => out.push_str("\n## Configuration evidence\n\nThese are AppConfig leaf keys, not additional Rhai functions. Research settings retain their layer-1/4 restrictions; raw consonance valuation coefficients are not exposed as Rhai controls. Optional records remain optional. Bus combination (`|`) is not a mechanism (routing); see `send()` and the built-in buses.\n\n| Key | Evidence |\n|-----|----------|\n"),
+        ReferenceLanguage::Japanese => out.push_str("\n## 設定の根拠\n\n以下はAppConfigの末端キーであり、新たなRhai関数ではありません。研究設定の層1・4の制約は維持され、協和の評価係数をRhaiへ直接公開する変更もありません。任意の設定は引き続き省略できます。busの結合（`|`）は該当なし（経路）です。`send()`と組み込みbusの説明を参照してください。\n\n| キー | 根拠 |\n|-----|----------|\n"),
+    }
+    for doc in docs::CONFIG_DOCS {
+        let _ = writeln!(
+            out,
+            "| `{}` | {} |",
+            doc.name,
+            evidence_text(doc.evidence, language)
+        );
     }
     out
 }
@@ -808,6 +872,51 @@ fn applies_line(doc: &FnDoc, sigs: &[Sig], language: ReferenceLanguage) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn evidence_reaches_every_hover_and_keeps_mixed_parts_separate() {
+        let definitions = render_d_rhai();
+        let mut has_evidence = false;
+        let mut declarations = 0;
+        for line in definitions.lines() {
+            has_evidence |= line.starts_with("/// Evidence: ");
+            if line.starts_with("fn ") || line.starts_with("const ") {
+                assert!(has_evidence, "missing evidence for {line}");
+                has_evidence = false;
+                declarations += 1;
+            }
+        }
+        assert!(declarations > docs::FN_DOCS.len());
+        for (reference, heading, principle, pending, author) in [
+            (
+                render_reference_md(),
+                "Evidence",
+                "Principle:",
+                "Candidate (source match pending):",
+                "Author rule:",
+            ),
+            (
+                render_reference_md_ja(),
+                "根拠",
+                "原理：",
+                "候補（照合未了）：",
+                "作者規則：",
+            ),
+        ] {
+            let metric = reference
+                .split("#### `metric`")
+                .nth(1)
+                .unwrap()
+                .split("#### ")
+                .next()
+                .unwrap();
+            for expected in [heading, principle, pending, author] {
+                assert!(metric.contains(expected), "metric lacks {expected}");
+            }
+            assert!(reference.contains("`psychoacoustics.habituation.enabled`"));
+            assert!(reference.contains("PPM-Decay"));
+        }
+    }
 
     #[test]
     fn every_float_argument_has_an_integer_overload() {

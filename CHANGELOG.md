@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Label all scripting terms and AppConfig keys by mechanism evidence in the
+  documentation registry, generated bilingual API references and function hover.
+  Mixed terms distinguish principle inputs, candidate models (including pending
+  source matches) and author rules. Add English and Japanese composer guides;
+  disclosure tiers and existing defaults are unchanged. No default listener preset
+  is introduced.
+
 - Add initial-only `follow_own_sequence(w)` for stepwise sustained Voices, default
   zero. A fixed PPM-Decay candidate model learns executed self pitch intervals;
   an author rule adds positive follow after candidate generation. Sample-ordered

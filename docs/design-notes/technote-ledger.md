@@ -10935,3 +10935,63 @@ supply paired audition material and mechanism decision counts. These checks do n
 claim author adoption; changing the default to tonal is a separate approved change.
 
 <a id="melodic-continuity"></a>
+
+### 9.3.112 Results for the twelve candidate-layer items (INT-7, 2026-10-27)
+
+The author's 2026-10-27 request is resolved item by item: implement the identified
+model where its inputs and coupling can be specified, or record why this instrument
+does not adopt it. Six items have implementations, one classifies an existing
+mechanism, and five are not implemented. This is not twelve new mechanisms, proof
+of brain mechanisms, or author adoption of the combined sound.
+
+| Item | Subject | Result and reason | Word and evidence tier |
+|---|---|---|---|
+| 1 | Sensory short-term tonal context | Implemented: fixed IPEM 40-channel ANI, periodicity pitch and memories with 0.1/1.5-second half-lives. | `follow_tonal_context(w)`: candidate observation; author-rule sine probes, 1-cent table, readout, rescoring and dwell coupling. §9.3.110. |
+| 2 | Changing key estimates | Implemented: Toiviainen–Krumhansl (2003) Model 1 activation, memory and 24 key correlations from self commands. | `follow_own_tonality(w)`: candidate estimator; author-rule pitch-class encoding, maximum-key choice and rescoring. §9.3.107. |
+| 3 | Harmonic tension | Not implemented. Lerdahl–Krumhansl (2007) needs key, chord, voice-leading and hierarchy inputs that are absent. Farbood (2012) can use acoustic features, but omitting changing harmony does not recover harmonic context. Neither supplies the target arc and action policy. | No new word; existing tension controls are unchanged. This does not declare the models generally unimplementable. |
+| 4 | Range and mobility in next-pitch distributions | Implemented: von Hippel (2000), the AR(1) mean and variance consistent with Eq. 1 and the text. Restoring omissions in the printed distribution is an interpretation, not an approved erratum. | `melodic_continuity(w)`: candidate distribution; author-rule finite-prefix estimation, self-On adapter, scoring and replacement. Only known decisions replace movement cost and fixed-center gravity; unknown, failure and disabled paths retain them. §9.3.108. |
+| 5 | Implication–realization | Not implemented. Narmour (1990) and Schellenberg (1997) leave unverified branches and the continuous-pitch reversal mapping. Adding proximity overlaps item 4; reversal as a whole is not declared redundant. | No new word. |
+| 6 | Melodic expectation | Not implemented. Margulis (2005) requires harmonic function and hierarchical span/head inputs that are absent. Replacing major parts with new rules is not source agreement; noncausality or complete overlap with SQ is not the reason. | No new word. |
+| 7 | Statistical learning of one's own sequence | Implemented: Harrison et al. (2020), PPM-Decay with the published settings. | `follow_own_sequence(w)`: candidate predictor; author-rule committed self-interval encoding and generation coupling. §9.3.105. |
+| 8 | Predictive pleasure | Not implemented. Cheung et al. (2019) measures chord-level pleasure; Gold et al. (2019) measures excerpt-level preference. Neither supplies the conversion to a single self-interval choice. Input, calibration, unit of evaluation and coupling would be new, without an independently established need. | No new word. |
+| 9 | Phrase boundaries | Implemented: Cambouropoulos (2001), LBDM equations and weights. | `phrase_boundary(w)`: candidate boundary analysis; author-rule online window and gain on the first legal new Sine On after publication. Renderer receipts remain distinct from SQ/TK/ME committed commands. §9.3.106. |
+| 10 | Phrase arch and final slowing | Implemented over a composer-specified final interval with shared timing and intensity. | `expressive_section(name, arch_weight, ritard_weight, callback)`: author rule overall; Todd (1992) single-layer intensity and Friberg–Sundberg (1999) q=3 curve are candidate kernels. Existing support covers restricted Once/WhileAlive and nonsustained synchronized Coupled Gates/Field forms. §9.3.109. |
+| 11 | Beat oscillator coupling | Existing mechanism classified; no new beat model or source acceptance is claimed. | Existing beat/entrainment vocabulary. Large neural-resonance form and Large–Jones (1999) gains retain Candidate (source agreement pending), with author-rule coupling separated. §9.3.104. |
+| 12 | Syncopation and groove | Not implemented. Longuet-Higgins–Lee indices and Witek et al. (2014) ratings supply no online policy for future onsets, rests, durations or phrase endings. Sioros et al.'s anticipations differ from RH-1 but require a known score. Opportunity weights alone do not implement that function. | No new word. This is not a rejection of syncopation in general. |
+
+The decisions were checked against the scrutiny and implementation records for
+TC-1/TC-1b, TK-1/TK-1i, TS-1, ME-1/ME-1i, SQ-1/SQ-1i, PL-1,
+PX-1/PX-1i, PE-1/PE-1i and SY-1 under `.orchestration/units/`, together with
+POL-1 and the common scrutiny instructions. The coordinator's later SQ listening
+note describes a slight improvement; the earlier SQ-1i implementation report does
+not certify adoption of the combined profile. ME Figure 7 and the entire original
+TC experiments are not claimed as reproduced.
+
+`listener_profile("sensory" | "tonal")` still defaults to **sensory**.
+INT-7 adds `melodic_continuity=0.00076066292` to tonal alongside SQ 0.05,
+TK 0.10, PX 1 and final supported section arch/ritard 1/1. These are audition
+weights. ME matches the mean absolute contribution of the displaced old terms;
+it is not an author-adopted value. Explicit Population values, including zero,
+win; unsupported final forms receive no inherited term or profile warning.
+TC stays outside the profile because of its approximately 1 GB/80-second table
+and its approximation acceptance scope. The adopted range [0.25,1] rests on
+measurements at 0.25, 0.5 and 1, not a continuous sweep. Measurements at 0.125
+and 2 failed. Acceptance outside the range is unverified; it is neither a word
+upper bound nor a new warning.
+
+Remaining limitations:
+
+- SQ/TK/ME/TC require supported stepwise sustained forms; PX additionally requires
+  Sine. Default forms and small-motion glides are not covered. Original v6b uses
+  `rearticulate_above(50)` for its plucks, so adding tonal, including ME, leaves
+  its sound unchanged. The step version is a separate baseline pair.
+- TC table reduction remains unimplemented. Cost does not bound composer weights.
+- PX and PE provide limited expression foundations; neither applies to the chosen
+  v6b scene. Causal differences in supported dedicated materials do not imply
+  application to this scene.
+- No new layer plans durations, rests or future phrases. PE's known composer
+  interval is not autonomous phrase formation.
+- CT-1's rendering/score audit predates author judgment. The common scrutiny brief
+  records the later judgment that externally supplied harmony and melody still
+  did not constitute music. Completing this inventory guarantees neither musical
+  success nor author adoption of the combined listener profile.

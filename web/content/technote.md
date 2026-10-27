@@ -1277,6 +1277,8 @@ Scene-global terrain shaping, on both axes:
 *   **Temporal terrain**: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)` (Section 4.4).
 *   **Interaction**: `set_global_coupling(v)` scales agent interaction strength.
 
+`harmonic_rhythm(N)` is an optional scene-wide initial setting for coordinating background changes. For positive integer N, one shared clock offers every Nth beat crossing to all Flora and eligible held, free-pitch Voices using rearticulation. Existing pitch selection and local readiness still decide whether to change; release and loss of support take priority. The clock follows completed habitat-audio observations and continues from its tempo prior while observations are unknown. Omission or 0 preserves the previous behavior. This is an **author rule** about change timing, with N chosen by the composer; it supplies no keys, chord tables or progressions, and makes no claim to a perceived bar length.
+
 **Scenario Parsing**: Scenarios are loaded from `.rhai` files. This separation allows users to compose the "Macro-Structure" (the narrative arc, the changing laws of physics) while the "Micro-Structure" (the specific notes and rhythms) emerges from the agents' adaptation to those changes.
 
 # 7. Case Studies: Analysis of Emergent Behavior

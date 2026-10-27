@@ -877,6 +877,98 @@ changes which pitch is chosen from the sequence of executed intervals only; it d
 not model rhythm, duration, phrase boundaries or harmonic context, and it does not
 learn other Voices' sequences.
 
+### Following self-command tonality
+
+`follow_own_tonality(w)` applies to the same free, stepwise sustained
+`seek_consonance()` forms as `follow_own_sequence`; it is initial-only and defaults
+to zero. The candidate is Toiviainen and Krumhansl (2003), Model 1: pitch activation
+uses a 0.5-second time constant, memory follows `dm/dt = p - m/3`, and the memory
+is correlated with 24 Krumhansl–Kessler major/minor profiles.
+
+Encoding committed self commands as twelve pitch classes, choosing an unambiguous
+maximum, and adding `w (q_candidate - q_current_target)` are author rules. Output
+pitch remains continuous. These Western tonal priors describe the Voice's own
+commands, not a transcription of heard sound or a shared habitat key. The term
+adds no duration or phrase planning; SQ remains independently usable.
+
+### Melodic continuity from range and mobility
+
+Initial-only `melodic_continuity(w)` uses the same supported stepwise sustained
+forms and defaults to zero. Its candidate is von Hippel (2000), *Redefining Pitch
+Proximity*: the text-consistent AR(1) mean `mu = m + r*(last-m)` and variance
+`v = s²*(1-r²)`. This interpretation restores mean and scale missing from the
+printed distribution; it is not an author-approved erratum.
+
+Finite-prefix sample statistics, committed self-On input and continuous log-density
+scoring are author rules. With at least four onsets and certifiably positive
+variance, a known prediction replaces movement cost and fixed-center gravity,
+including their role in peak extraction, and scores the resulting legal candidates.
+Unknown or failed predictions restore those two terms. SQ and TK remain independent.
+There is no new forgetting window, rhythm, harmony or phrase planner.
+
+### Following heard tonal context
+
+`follow_tonal_context(w)` is an initial-only, default-zero term for free stepwise
+sustained `seek_consonance()` at 48 kHz. The candidate observation is the IPEM
+sensory short-term memory model associated with Leman (2000) and described by
+Bigand et al. (2014): 40-channel ANI, periodicity pitch and local/global memories
+with 0.1/1.5-second half-lives. It receives actual habitat PCM, or `mix - own`
+when self-exclusion is enabled; the active listener observes presentation PCM.
+
+The sine probe, 1-cent lookup approximation, correlation readout and generation
+coupling are author rules. They add `w*q` to existing candidates and the current
+target baseline, and to the current sounding pitch's score before the dwell
+sigmoid. An unknown query makes the selection use its existing path. The term
+provides neither chord labels nor harmonic plans. The approximation's declared
+operating range is [0.25,1], established at 0.25/0.5/1; the word still accepts all
+finite nonnegative weights. Enabled initialization builds a shared table of about
+1 GB, measured at about 80 seconds, before audio starts; disabled use builds none.
+
+### Responding to local phrase boundaries
+
+Initial-only `phrase_boundary(w)`, default zero, supports Sine Voices with explicit
+sustained metric/entrained/steady/flow participation and discrete gate-snap or
+rearticulation. Its candidate is Cambouropoulos (2001), LBDM, with pitch/IOI/rest
+weights .25/.50/.25. Online normalization over a six-onset window and the response
+are author rules. The input is the renderer's completed execution receipts,
+separate from the committed commands used by SQ, TK and ME.
+
+After a confirmed local boundary becomes available, the first existing opportunity
+consumes the response. A legal new Tone before expiry receives `1/(1+w*B)` gain
+through its tail on both buses and self-exclusion capture. A veto does not transfer
+the response to a later opportunity. Existing strength, release and clocks stay
+in place. This detects a past local boundary; it does not plan a future ending.
+
+### Expression over a known final section
+
+`expressive_section(name, arch_weight, ritard_weight, callback)` assigns a loudness
+arch and final slowing to a composer-declared last interval. Both weights default
+to zero and saturate at one; zero/zero follows ordinary `section` behavior.
+Supported scenes use restricted Once/WhileAlive or nonsustained synchronized
+Coupled Gates/Field Voices. Flora, sustained participation and other unsupported
+forms disable the scene-wide effect.
+
+Todd (1992) single-layer intensity and the Friberg–Sundberg (1999) q=3 timing
+curve are candidate kernels. Interval assignment, the amplitude floor, weight
+interpolation and the frozen generation clock are author rules. One shared time
+map moves crossings, new gate Offs and release starts; DSP, metabolism, perception,
+memory and release tails keep physical time. Gain applies once before PCM routing.
+The section is an initial form choice, not evidence of a perceived phrase or cadence.
+
+### Selecting a listener profile
+
+`listener_profile("sensory" | "tonal")` is a Director setting before scene actions
+or scopes. Omission selects **sensory**, preserving the existing base behavior.
+Tonal bundles SQ 0.05, TK 0.10, ME 0.00076066292, PX 1 and final supported section
+arch/ritard 1/1. Explicit Population weights, including zero, take precedence;
+unsupported final forms and absent suitable sections are silently skipped.
+An explicit `expressive_section`, including zero/zero, overrides inherited expression.
+
+Profile selection makes no separate mechanism claim: each term retains its candidate
+and author-rule labels. TC is excluded because of table initialization cost and its
+limited approximation acceptance range. Individual axes remain zero by default;
+selecting a profile does not broaden their supported Voice forms.
+
 ## 5.5 The Breath Oscillator: Kuramoto Articulation
 
 Independent of onset scheduling, the `KuramotoCore` ArticulationCore entrains each voice's *envelope* (its breath) to the meter-derived theta band, using a mean-field Kuramoto phase step:
